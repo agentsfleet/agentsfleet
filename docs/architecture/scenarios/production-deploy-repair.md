@@ -6,7 +6,7 @@
 
 **Crew shape:** three independently installed Fleets cooperate through events and durable repair linkage. There is no crew row, coordinator Fleet, or vendor-specific Grafana/Elasticsearch Fleet. Grafana and Elasticsearch are evidence sources read by all three members.
 
-**Proof boundary:** the first two Fleets, approval boundary, draft-PR writer, and initial incident-to-PR linkage ship in M157_002. M157_003 hardens linkage, provenance, append-only run history, merge correlation, and approval spend. M157_004 adds the read-only verifier, durable GitHub production-result intake, standard Fleet result, and deterministic integration proof.
+**Proof boundary:** the first two Fleets, approval boundary, draft-PR writer, and initial incident-to-PR linkage ship in M157_002. M157_003 hardens linkage, provenance, append-only run history, merge correlation, and approval spend. It also adds the read-only verifier, durable GitHub production-result intake, standard Fleet result, and deterministic integration proof. The live GitHub App subscription and delivery are not yet proven together; the registration playbook requires that final operator check.
 
 Legend: ✅ implemented and tested · 🟡 being hardened · 🔨 specified, not built.
 
@@ -36,7 +36,7 @@ Trigger wiring determines which Fleet runs. No model chooses a crew member, and 
 
 ## 2. Approve before repository write access exists
 
-A Fleet whose repository binding declares write access parks every first-encounter event before gate rules are evaluated. The approval card states the repository, permissions, and a ceiling of 32 write-credential requests. Approval releases the run, but every request reserves one use atomically before the daemon reads a secret or calls GitHub. A failed request still consumes its reserved use; exhaustion requires a new human approval.
+A Fleet whose repository binding declares write access parks every first-encounter event before gate rules are evaluated. The approval card states the repository, trusted Pull Request base, permissions, and a ceiling of 32 write-credential requests. Approval releases the run, but every request reserves one use atomically before the daemon reads a secret or calls GitHub. A failed request still consumes its reserved use; exhaustion requires a new human approval.
 
 The token is repository-scoped, expires in one hour, carries contents and Pull Request write permissions, and never carries workflow-file permission. The daemon verifies the token returned by GitHub before exposing it to the run.
 
@@ -47,6 +47,10 @@ The repairer reads the failed deployment, recent code changes, and current files
 For a bounded forward fix, the repairer writes blobs, a tree, a commit, one daemon-issued branch, and one draft PR through GitHub APIs. It never checks out a repository, merges, deploys, or rewinds history.
 
 The branch is `agentsfleet-repair/<repair_ref>`. The repair reference is the unpadded URL-safe Base64 encoding of the approved repository-write gate's 16 raw Universally Unique Identifier version 7 (UUIDv7) bytes. It is exactly 22 characters, so the complete branch is 41 characters. The daemon supplies the complete branch in trusted run context; the repairer copies it verbatim and never builds identity metadata itself.
+
+The user-authored `TRIGGER.md` declares the exact repository and trusted Pull Request base. The daemon combines them with the approved gate's repair branch and emits generic HTTP rules for host, method, path, and locked top-level JSON fields. Those rules allow repository reads, Git object creation, the exact `refs/heads/<repair branch>` ref, and a draft Pull Request whose head and base equal the trusted values. The runner evaluates only those generic rules. It contains no GitHub repair type, procedure, or progress flag.
+
+The user-authored `SKILL.md` owns remote reconciliation. Before writing, the repairer searches all Pull Request states for the exact repository, head, and base, then reads the exact ref. An existing Pull Request ends with its URL. An existing validated ref with no Pull Request creates only the missing draft Pull Request. When neither exists, it creates Git objects, the exact ref, and the draft Pull Request. A timeout or ambiguous response causes another read before any repeated write. GitHub holds progress across runner restarts; the generic runner rules bind each request but do not claim process-local cardinality.
 
 When the PR-opened webhook returns, the daemon:
 
@@ -97,7 +101,7 @@ Either merge or production may arrive first; both are durable.
 
 The verifier is a third, read-only Fleet. GitHub deployment-status intake runs before Fleet trigger matching. A Vercel deployment is eligible only when Vercel reports it through GitHub's deployment-status event.
 
-Every normalized production result is stored before correlation. The same reconciler runs after either a production-result insert or a merged-hash write, so webhook order does not change the outcome. Before emitting an event, the daemon requires all of the following:
+Every normalized production result is stored before correlation. The same reconciler runs after either a production-result insert or a merged-hash write, so webhook order does not change the outcome. Both paths take the same transaction-scoped PostgreSQL advisory lock keyed by workspace, repository, and commit before writing or reconciling. A simultaneous arrival therefore waits, then observes the first committed side instead of both deliveries missing each other. Before emitting an event, the daemon requires all of the following:
 
 - the provider marks the deployment terminal;
 - the environment is production;
@@ -107,18 +111,19 @@ Every normalized production result is stored before correlation. The same reconc
 
 A successful match records one verification attempt. When its fixed window completes, the dispatcher emits one internal `repair_production_result` event. Normal Fleet routing then selects every installed Fleet subscribed to that proof-qualified event type. The verifier subscribes to `repair_production_result`, never raw `deployment_status`; no Fleet name, role, or crew lookup is introduced.
 
-Each selected verifier Fleet gets one slot 835 dispatch intent before Redis is called. The row starts with `verifier_event_id = NULL` and sets `verify_after` to fifteen minutes after production completion. Its row identifier is the stable dispatch key. A bounded background dispatcher selects due rows. Redis atomically appends the Fleet event and remembers the generated stream event identifier, or returns the identifier from an earlier attempt with the same key. The daemon then fills `verifier_event_id` once.
+Each selected verifier Fleet gets one slot 835 dispatch intent before Redis is called. The row starts with `verifier_event_id = NULL` and sets `verify_after` to fifteen minutes after production completion. Its row identifier is the stable dispatch key. A bounded background dispatcher selects due rows. One failed row is logged and retried on the next sweep without blocking later due rows. Redis atomically appends the Fleet event and remembers the generated stream event identifier, or returns the identifier from an earlier attempt with the same key. The daemon then fills `verifier_event_id` once. A later cleanup sweep deletes the transient Redis once-key and records that cleanup in slot 835. Cleanup retries are safe because the durable event link already prevents another dispatch. The dispatcher releases its database connection before every Redis call.
 
 ```text
-slot 835 intent                 Redis enqueue-once             slot 835 complete
-event id = NULL           ---> new or existing event id  ---> event id = <id>
-verify_after = deploy+15m          only when due
-          ^                              |
-          |                              |
-          `------- bounded retry --------+
+slot 835 intent          Redis enqueue-once          slot 835 complete       cleanup
+event id = NULL    ---> new or existing event id ---> event id = <id>  ---> delete once-key
+verify_after = +15m          only when due                                      |
+          ^                         |                                            |
+          |                         |                                            v
+          `------ bounded retry ----+                              record cleanup in slot 835
 
 crash before Redis  -> pending intent is retried
 crash after Redis   -> retry returns the same event id
+crash during cleanup -> deletion and cleanup record are retried safely
 ```
 
 The `verifier_event_id` is therefore the standard Fleet event identifier for Fleet 3's verification run. It is not another incident identifier and users do not copy it between Fleets. It lets event history, logs, and support trace the exact verification run back to the repair and production result.
@@ -137,7 +142,7 @@ The verifier event reuses the linked incident request, repair result, and Pull R
 
 Its repository binding is read-only and pinned to the exact merged commit carried by the event. It must never inspect whatever commit happens to be current when the Fleet runs.
 
-The standard Fleet event stores the verifier's response and repair context. Operators read `cleared`, `not_cleared`, or `inconclusive` from that response; the daemon does not parse model prose into another status. M157_004 adds no separate incident card. Human review and merge remain mandatory; verification never auto-merges or auto-reverts.
+The standard Fleet event stores the verifier's response and repair context. Operators read `cleared`, `not_cleared`, or `inconclusive` from that response; the daemon does not parse model prose into another status. This workstream adds no separate incident card. Human review and merge remain mandatory; verification never auto-merges or auto-reverts.
 
 ## 8. Production-result normalization
 
@@ -145,16 +150,18 @@ Production results enter as signed GitHub deployment-status events. This include
 
 ```text
 production_result {
-  provider, provider_deployment_id,
+  provider, provider_deployment_id, provider_status_id,
   workspace_id, repository,
   environment, commit_sha,
   conclusion, completed_at
 }
 ```
 
-The platform GitHub App subscribes to deployment-status events and holds Deployments read-only permission. Development registration proves one signed delivery reaches `/v1/ingress/github` before the same setting is applied to production. Fixture coverage is not accepted as evidence that the live App subscription exists.
+The platform GitHub App subscribes to deployment-status events and holds Deployments read-only permission. Development registration proves one signed delivery reaches `/v1/ingress/github` before the same setting is applied to production. The live record includes `deployment.id` as deployment context and `deployment_status.id` as slot 834's append identity. Fixture coverage is not accepted as evidence that the live App subscription exists.
 
-Slot 834 retains every normalized production result idempotently. Slot 835 retains each correlated verification attempt, its fixed `verify_after`, and its nullable-then-final `verifier_event_id`. The same reconciler reads both repair merges and production results, so result-first, merge-first, replayed delivery, and process restart converge on one attempt and one Fleet event per matching verifier Fleet. Several matching verifier installations intentionally produce several independent results; normal trigger configuration narrows that set without a crew resolver. An exact correlation schedules `repair_production_result` with the matched incident and repair evidence, merged commit, production result, and fixed evidence window. Provider vocabulary is translated only at ingress. Verifier routing and prompting remain independent of the deployment vendor. A payload without exact repository, environment, or commit identity fails closed and emits nothing.
+`agentsfleet` accepts any signed terminal production status from a mapped GitHub installation. That proves GitHub origin and repository routing; it does not attest that Vercel produced the status. GitHub permits every push-capable identity to create deployment statuses, so each such identity in a mapped repository is inside this first spine's trusted producer boundary. The daemon does not inspect `deployment_status.creator` or App identity. The live proof records the expected deployment integration, received creator identity, repository, commit, deployment identifier, deployment-status identifier, and delivery identifier in Pull Request (PR) Session Notes for audit; it does not add a daemon rejection rule.
+
+Slot 834 retains every normalized production result idempotently by provider status identifier (`deployment_status.id`). It also retains the provider deployment identifier (`deployment.id`) as correlation evidence. Slot 835 retains each correlated verification attempt, its fixed `verify_after`, nullable-then-final `verifier_event_id`, claim fence, and Redis cleanup marker. The same reconciler reads both repair merges and production results under their shared transaction lock, so result-first, merge-first, simultaneous delivery, replayed delivery, and process restart converge on one attempt and one Fleet event per matching verifier Fleet. Two repair links for the same exact commit are ambiguous: correlation logs the ambiguity and creates no closure event. Several matching verifier installations intentionally produce several independent results; normal trigger configuration narrows that set without a crew resolver. An exact correlation schedules `repair_production_result` with the matched incident request and response, repair evidence, merged commit, production result, and fixed evidence window. Provider vocabulary is translated only at ingress. Verifier routing and prompting remain independent of the deployment vendor. A payload without exact repository, environment, or commit identity fails closed and emits nothing.
 
 ## 9. What exists and what changes
 
@@ -164,28 +171,34 @@ Slot 834 retains every normalized production result idempotently. Slot 835 retai
 | Incident repairer Fleet | ✅ | `library/incident-repairer/`; approval-gated draft PR. |
 | Write-kind approval park and fenced mint | ✅ | M157_002 integration coverage. |
 | Incident-to-PR linkage | 🟡 | Slot 830 exists; M157_003 moves it onto shared ingress and adds provenance. |
-| Append-only workflow history | 🔨 | M157_003, slot 831. |
-| Exact merged-commit correlation | 🔨 | M157_003, slot 832. |
-| Bounded approval mint spends | 🔨 | M157_003, slot 833. |
-| Incident verifier Fleet | 🔨 | M157_004; independently installed and read-only. |
-| GitHub production-result normalization | 🔨 | M157_004; includes Vercel deployments surfaced through GitHub. |
-| GitHub App deployment subscription and permission | 🔨 | M157_004; operator playbook plus development live-delivery proof. |
-| Durable production-result ledger and order-independent reconciler | 🔨 | M157_004, slots 834–835. |
-| Proof-qualified `repair_production_result` event | 🔨 | M157_004; emitted only after exact repair correlation. |
+| Append-only workflow history | 🟡 | M157_003, slot 831. |
+| Exact merged-commit correlation | 🟡 | M157_003, slot 832. |
+| Bounded approval mint spends | 🟡 | M157_003, slot 833. |
+| Incident verifier Fleet | 🟡 | M157_003; independently installed and read-only. |
+| GitHub production-result normalization | 🟡 | M157_003; includes Vercel deployments surfaced through GitHub. |
+| GitHub App deployment subscription and permission | 🔨 | M157_003 operator playbook plus development live-delivery proof. |
+| Durable production-result ledger and order-independent reconciler | 🟡 | M157_003, slots 834–835. |
+| Proof-qualified `repair_production_result` event | 🟡 | M157_003; emitted only after exact repair correlation. |
 
 ## 10. Invariants
 
 - One incident can record at most one repair PR per repair Fleet.
+- A write-bound repair lease carries provider-neutral HTTP rules for one exact repository, trusted base, and daemon-issued repair branch.
+- The repairer's user-authored skill reconciles the exact remote ref and Pull Request before writes; runner-local state never represents progress.
+- The runner contains no GitHub repair module or provider-specific request sequence.
 - A repair branch carries one 22-character daemon-issued gate reference, never raw Fleet-plus-event identifiers.
 - A repair reference resolves one approved write gate and one exact Fleet-plus-event row or records nothing.
 - Repair-branch traffic never becomes a fresh incident.
 - Preview evidence is append-only and never closes the loop.
 - Only exact workspace + repository + merged commit hash correlation can wake verification.
-- Production-first, merge-first, and replayed delivery converge on one durable verification attempt.
-- A Postgres-to-Redis crash leaves a retryable intent or returns the original Fleet event identifier; it never creates a second verifier event.
+- Production-first, merge-first, simultaneous arrival, and replayed delivery converge on one durable verification attempt.
+- A PostgreSQL-to-Redis crash leaves a retryable intent or returns the original Fleet event identifier; it never creates a second verifier event.
+- No database connection or row lock remains held during Redis input/output.
+- The transient Redis once-key is deleted only after durable event completion; interrupted cleanup is retried and cannot create another event.
 - A verifier event is not queued before its fixed fifteen-minute production window is complete.
 - Raw `deployment_status` never wakes the verifier; exact correlation schedules `repair_production_result`, and the due dispatcher emits it.
 - Production verification requires the platform GitHub App's deployment-status subscription and Deployments read-only permission.
+- A signed deployment status proves mapped GitHub origin. Every push-capable identity in the mapped repository is within the trusted producer boundary; this first spine does not attest the producer in daemon code.
 - A production result without a commit hash fails closed.
 - All three Fleets read Grafana and Elasticsearch; those vendors do not become Fleets.
 - Every matching verifier Fleet receives its own attempt; no name, role, or crew resolver chooses one.

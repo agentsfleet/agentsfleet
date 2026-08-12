@@ -9,6 +9,7 @@ const logging = @import("log");
 
 test {
     _ = @import("main.zig");
+    _ = @import("git/repair_branch.zig");
     _ = @import("db/pool.zig");
     _ = @import("db/pg_query.zig");
     _ = @import("db/sql_splitter.zig");
@@ -153,6 +154,10 @@ test {
     _ = @import("queue/fleet_ready.zig");
     _ = @import("queue/redis_fleet_probe.zig");
     _ = @import("queue/redis_fleet_decode.zig");
+    _ = @import("fleet/repair_verification_dispatcher.zig");
+    _ = @import("state/repair_evidence.zig");
+    _ = @import("state/repair_production_results.zig");
+    _ = @import("state/repair_verifications.zig");
     // Persistent Fleet Memory — role isolation + selection policy + adapter write-path tests.
     _ = @import("memory/fleet_memory_role_test.zig");
     _ = @import("memory/fleet_memory_test.zig");

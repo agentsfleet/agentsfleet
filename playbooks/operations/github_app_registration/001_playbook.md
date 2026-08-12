@@ -27,18 +27,26 @@ In GitHub **Settings → Developer settings → GitHub Apps**, create the app:
 - Keep webhooks active with
   `<API_BASE>/v1/ingress/github` and a new high-entropy webhook secret.
 - Keep Secure Sockets Layer (SSL) verification enabled.
-- Subscribe only to **Pull request** and **Workflow run**.
+- Subscribe to **Pull request**, **Workflow run**, and **Deployment status**.
 - Set the minimum repository permissions:
   - Metadata: read-only.
   - Contents: read-only.
   - Pull requests: read and write.
   - Actions: read-only.
+  - Deployments: read-only.
 
 Add another permission only when a shipped fleet requires it. GitHub's current
 registration and least-privilege guidance is in
 [Registering a GitHub App](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app)
 and
 [Choosing permissions](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/choosing-permissions-for-a-github-app).
+
+For every mapped repository, name the expected deployment integration. GitHub
+permits every push-capable identity to create a deployment status, so all of
+those identities are inside this first spine's trusted producer boundary. The
+`agentsfleet` handler accepts any signed status from the mapped GitHub
+installation. It does not verify the status creator or App identity, and this
+is GitHub-origin proof rather than Vercel attestation.
 
 ## 2. Indy: vault the six fields
 
@@ -83,15 +91,28 @@ step once before live acceptance.
 3. Indy opens a test pull request; Orly confirms exactly one intended fleet
    receives the delivery and can post a review with a short-lived installation
    token.
-4. Orly replays the delivery identifier and confirms no second fleet event or
-   review is created.
+4. Indy uses the expected deployment integration to create a completed
+   production deployment status for the merged test commit. Orly confirms the
+   signed delivery reaches `/v1/ingress/github` and records the same repository,
+   commit, deployment identifier, deployment-status identifier, delivery identifier,
+   and creator identity shown by GitHub.
+5. Orly replays each delivery identifier and confirms no second fleet event,
+   review, or production result is created.
 
-Record the environment, repository, pull-request URL, fleet identifier, and
-delivery identifier. Record no credential values.
+Record the development environment, repository, Pull Request (PR) URL, fleet
+identifier, expected deployment integration, received creator identity,
+deployment identifier, deployment-status identifier, and delivery identifier in the
+Pull Request (PR) Session Notes.
+Record no credential values. This is an audit record, not an enforceable
+single-writer rule.
 
 ## Complete when
 
 - The exact environment URLs are configured and reachable.
 - The six-field bag exists in the admin workspace.
 - `agentsfleetd` has restarted after the sync.
-- The install, callback, event, outbound review, and replay checks pass.
+- The install, callback, Pull Request, deployment-status, outbound review, and
+  replay checks pass.
+- Pull Request (PR) Session Notes contain the expected deployment integration,
+  received creator identity, deployment identifier, deployment-status identifier,
+  and delivery identifier.

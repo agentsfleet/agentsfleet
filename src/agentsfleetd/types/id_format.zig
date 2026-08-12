@@ -1,5 +1,6 @@
 //! Canonical entity identifiers. Every `core.*` / `fleet.*` / `memory.*` row id
-//! is a UUIDv7 minted here, so this file owns the one spelling the rest of the
+//! is a Universally Unique Identifier version 7 (UUIDv7) minted here, so this
+//! file owns the one spelling the rest of the
 //! system compares: lowercase hex, dashed, version 7, Request for Comments
 //! (RFC) 4122 variant.
 //!
@@ -15,6 +16,7 @@ const clock = constants.clock;
 
 /// Canonical dashed UUID text: 32 hex chars plus 4 dashes.
 pub const UUID_TEXT_LEN: usize = 36;
+pub const UUID_BYTE_LEN: usize = 16;
 
 /// Entropy UUIDv7 carries after the 48-bit timestamp. The version nibble and
 /// variant bits overwrite 6 of these 80 bits, leaving 74 random.
@@ -96,6 +98,14 @@ pub fn generateScheduleId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
+pub fn generateRepairProductionResultId(alloc: std.mem.Allocator) ![]const u8 {
+    return allocUuidV7(alloc);
+}
+
+pub fn generateRepairVerificationId(alloc: std.mem.Allocator) ![]const u8 {
+    return allocUuidV7(alloc);
+}
+
 pub fn isSupportedFleetId(id: []const u8) bool {
     return isUuidV7(id);
 }
@@ -127,6 +137,27 @@ pub fn isUuidV7(id: []const u8) bool {
     };
 }
 
+/// Decode canonical UUIDv7 text into its 16-byte representation.
+pub fn uuidV7ToBytes(id: []const u8) ?[UUID_BYTE_LEN]u8 {
+    if (!isUuidV7(id)) return null;
+    var compact: [UUID_BYTE_LEN * 2]u8 = undefined;
+    var compact_index: usize = 0;
+    for (id) |char| {
+        if (char == DASH_CHAR) continue;
+        compact[compact_index] = char;
+        compact_index += 1;
+    }
+    var raw: [UUID_BYTE_LEN]u8 = undefined;
+    _ = std.fmt.hexToBytes(&raw, &compact) catch return null;
+    return raw;
+}
+
+/// Format UUIDv7 bytes using the canonical lowercase dashed spelling.
+pub fn uuidV7FromBytes(raw: [UUID_BYTE_LEN]u8) ?[UUID_TEXT_LEN]u8 {
+    const out = formatUuidBytes(raw);
+    return if (isUuidV7(&out)) out else null;
+}
+
 /// Mint a UUIDv7. Returns the text by value, not a slice into a caller-supplied
 /// buffer, so no id can outlive the storage it was written into.
 pub fn generateUuidV7() ![UUID_TEXT_LEN]u8 {
@@ -155,7 +186,7 @@ pub fn encodeUuidV7(now_ms: i64, entropy: [ENTROPY_LEN]u8) ![UUID_TEXT_LEN]u8 {
     const ts_ms: u64 = @intCast(now_ms);
     if (ts_ms > MAX_TIMESTAMP_MS) return error.TimestampOutOfRange;
 
-    var raw: [TIMESTAMP_BYTES + ENTROPY_LEN]u8 = undefined;
+    var raw: [UUID_BYTE_LEN]u8 = undefined;
 
     // Big-endian timestamp: byte order is what makes UUIDv7 text sort
     // chronologically, so the most significant byte has to land first.
@@ -167,10 +198,10 @@ pub fn encodeUuidV7(now_ms: i64, entropy: [ENTROPY_LEN]u8) ![UUID_TEXT_LEN]u8 {
     raw[VERSION_BYTE_INDEX] = (raw[VERSION_BYTE_INDEX] & LOW_NIBBLE_MASK) | VERSION_7_HIGH_NIBBLE;
     raw[VARIANT_BYTE_INDEX] = (raw[VARIANT_BYTE_INDEX] & VARIANT_CLEAR_MASK) | VARIANT_RFC4122_HIGH_BITS;
 
-    // Interleave the hex with dashes at DASH_INDEXES — the same constant
-    // `isCanonicalUuid` checks, so the writer and the reader cannot drift on
-    // where the groups break. Infallible by construction: the output width is
-    // fixed, so there is no formatting error to swallow.
+    return uuidV7FromBytes(raw) orelse unreachable;
+}
+
+fn formatUuidBytes(raw: [UUID_BYTE_LEN]u8) [UUID_TEXT_LEN]u8 {
     const hex = std.fmt.bytesToHex(raw, .lower);
     var out: [UUID_TEXT_LEN]u8 = undefined;
     var hex_index: usize = 0;

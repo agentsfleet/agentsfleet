@@ -35,6 +35,7 @@ const Hx = hx_mod.Hx;
 const Billed = lease_row.Billed;
 // service.zig sibling — one logical module split for the length gate.
 const log = logging.scoped(.runner_lease);
+const LOG_LEASE_RECEIVED_INSERT_FAILED = "lease_received_insert_failed";
 
 /// Fresh → run the pre-execution write-path billing; reclaim → reuse the prior
 /// lease's billing (the original lease already debited; never re-charged).
@@ -58,17 +59,39 @@ pub fn resolveBilling(hx: Hx, session: *FleetSession, acq: assign.Acquired) ?Bil
 /// already terminal (a refused re-delivery whose earlier XACK was lost) — the
 /// XACK is still owed.
 pub fn blockEvent(hx: Hx, fleet_id: []const u8, event_id: []const u8, label: []const u8) void {
-    const affected = rows.markBlocked(hx.ctx.pool, fleet_id, event_id, label) catch |err| {
+    blockEventWithDetail(hx, fleet_id, event_id, label, "");
+}
+
+pub fn blockEventWithDetail(hx: Hx, fleet_id: []const u8, event_id: []const u8, label: []const u8, detail: []const u8) void {
+    const affected = rows.markBlockedWithDetail(hx.ctx.pool, fleet_id, event_id, label, detail) catch |err| {
         log.warn("lease_block_write_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = fleet_id, .event_id = event_id, .failure_label = label, .err = @errorName(err) });
         return;
     };
     var scratch = activity_publisher.Scratch.init(hx.alloc);
     defer scratch.deinit();
-    activity_publisher.publishEventComplete(hx.ctx.queue, &scratch, fleet_id, event_id, rows.STATUS_GATE_BLOCKED, .{ .label = label });
+    activity_publisher.publishEventComplete(hx.ctx.queue, &scratch, fleet_id, event_id, rows.STATUS_GATE_BLOCKED, .{ .label = label, .detail = detail });
     redis_fleet.xackFleet(hx.ctx.queue, fleet_id, event_id) catch |err| {
         log.warn("lease_block_xack_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .event_id = event_id, .err = @errorName(err) });
     };
     log.debug("lease_gate_blocked", .{ .fleet_id = fleet_id, .event_id = event_id, .failure_label = label, .rows_affected = affected });
+}
+
+/// Refuse a stored configuration before provider resolution, billing, or an
+/// approval card. The event row makes the upgrade action durable; the stream
+/// entry is acknowledged because a corrected config must be retried as a new
+/// event, preserving the event lifecycle's terminal-row invariant.
+pub fn refuseStoredConfig(hx: Hx, session: *FleetSession, acq: assign.Acquired, label: []const u8, detail: []const u8) void {
+    var event = eventView(acq);
+    const first_delivery = rows.insertReceivedRow(hx.alloc, hx.ctx.pool, session, &event) catch |err| {
+        log.err(LOG_LEASE_RECEIVED_INSERT_FAILED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
+        return;
+    };
+    if (first_delivery) {
+        var scratch = activity_publisher.Scratch.init(hx.alloc);
+        defer scratch.deinit();
+        activity_publisher.publishEventReceived(hx.ctx.queue, &scratch, session.fleet_id, event.event_id, event.actor);
+    }
+    blockEventWithDetail(hx, session.fleet_id, event.event_id, label, detail);
 }
 
 /// A borrowed `FleetEvent` view over the acquired envelope for the leaf write
@@ -108,7 +131,7 @@ fn runBilling(hx: Hx, session: *FleetSession, event: *const redis_fleet.FleetEve
     const pool = hx.ctx.pool;
 
     const first_delivery = rows.insertReceivedRow(alloc, pool, session, event) catch |err| {
-        log.err("lease_received_insert_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
+        log.err(LOG_LEASE_RECEIVED_INSERT_FAILED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = session.fleet_id, .event_id = event.event_id, .err = @errorName(err) });
         return null;
     };
     if (!first_delivery) {

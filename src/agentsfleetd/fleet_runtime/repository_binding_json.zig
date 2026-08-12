@@ -11,8 +11,9 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const config_types = @import("config_types.zig");
 
-const F_REPOSITORIES = "repositories";
-const F_ACCESS = "access";
+pub const FIELD_REPOSITORIES = "repositories";
+pub const FIELD_ACCESS = "access";
+pub const FIELD_BASE = "base";
 
 /// Serialize a binding as `{"repositories":[…],"access":"read|write"}`.
 /// Caller must free. Repository spellings pass through verbatim — the matcher
@@ -21,19 +22,25 @@ pub fn serialize(alloc: Allocator, binding: config_types.RepositoryBinding) ![]u
     var aw: std.Io.Writer.Allocating = .init(alloc);
     errdefer aw.deinit();
     const w = &aw.writer;
-    try w.writeAll("{\"" ++ F_REPOSITORIES ++ "\":[");
+    try w.writeAll("{\"" ++ FIELD_REPOSITORIES ++ "\":[");
     for (binding.repositories, 0..) |repo, i| {
         if (i > 0) try w.writeByte(',');
         try w.writeByte('"');
         try writeJsonEscaped(w, repo);
         try w.writeByte('"');
     }
-    try w.writeAll("],\"" ++ F_ACCESS ++ "\":\"");
+    try w.writeAll("],\"" ++ FIELD_ACCESS ++ "\":\"");
     try w.writeAll(switch (binding.access) {
         .read => config_types.S_REPOSITORY_ACCESS_READ,
         .write => config_types.S_REPOSITORY_ACCESS_WRITE,
     });
-    try w.writeAll("\"}");
+    try w.writeByte('"');
+    if (binding.base_branch) |base| {
+        try w.writeAll(",\"" ++ FIELD_BASE ++ "\":\"");
+        try writeJsonEscaped(w, base);
+        try w.writeByte('"');
+    }
+    try w.writeByte('}');
     return aw.toOwnedSlice();
 }
 
@@ -50,13 +57,14 @@ pub fn matches(alloc: Allocator, stated_json: []const u8, binding: config_types.
         else => return false,
     };
 
-    const access = switch (obj.get(F_ACCESS) orelse return false) {
+    const access = switch (obj.get(FIELD_ACCESS) orelse return false) {
         .string => |s| config_types.RepositoryAccess.fromSlice(s) orelse return false,
         else => return false,
     };
     if (access != binding.access) return false;
+    if (!baseMatches(obj.get(FIELD_BASE), binding.base_branch)) return false;
 
-    const stated = switch (obj.get(F_REPOSITORIES) orelse return false) {
+    const stated = switch (obj.get(FIELD_REPOSITORIES) orelse return false) {
         .array => |a| a.items,
         else => return false,
     };
@@ -74,6 +82,12 @@ pub fn matches(alloc: Allocator, stated_json: []const u8, binding: config_types.
         if (!statedContains(stated, want)) return false;
     }
     return true;
+}
+
+fn baseMatches(stated: ?std.json.Value, expected: ?[]const u8) bool {
+    const want = expected orelse return stated == null or stated.? == .null;
+    const value = stated orelse return false;
+    return value == .string and std.mem.eql(u8, value.string, want);
 }
 
 fn containsIgnoreCase(haystack: []const []const u8, needle: []const u8) bool {
@@ -116,34 +130,35 @@ const REPOS_ONE = [_][]const u8{REPO_PAYMENTS};
 const REPOS_TWO = [_][]const u8{ REPO_PAYMENTS, "acme/widgets" };
 
 test "binding json: serialize round-trips through matches" {
-    const binding: config_types.RepositoryBinding = .{ .repositories = &REPOS_ONE, .access = .write };
+    const binding: config_types.RepositoryBinding = .{ .repositories = &REPOS_ONE, .access = .write, .base_branch = "main" };
     const json = try serialize(testing.allocator, binding);
     defer testing.allocator.free(json);
     try testing.expect(matches(testing.allocator, json, binding));
     // pin test: literal is the contract
-    try testing.expectEqualStrings("{\"repositories\":[\"acme/payments\"],\"access\":\"write\"}", json);
+    try testing.expectEqualStrings("{\"repositories\":[\"acme/payments\"],\"access\":\"write\",\"base\":\"main\"}", json);
 }
 
 test "binding json: access drift and repository drift both refuse" {
     // pin test: literal is the contract
-    const stated = "{\"repositories\":[\"acme/payments\"],\"access\":\"write\"}";
+    const stated = "{\"repositories\":[\"acme/payments\"],\"access\":\"write\",\"base\":\"main\"}";
     // Access narrowed since approval.
     try testing.expect(!matches(testing.allocator, stated, .{ .repositories = &REPOS_ONE, .access = .read }));
     // Config GREW a repository the human never saw on the card.
-    try testing.expect(!matches(testing.allocator, stated, .{ .repositories = &REPOS_TWO, .access = .write }));
+    try testing.expect(!matches(testing.allocator, stated, .{ .repositories = &REPOS_TWO, .access = .write, .base_branch = "main" }));
     // Config now names a different repository entirely.
     const other = [_][]const u8{"acme/other"};
-    try testing.expect(!matches(testing.allocator, stated, .{ .repositories = &other, .access = .write }));
+    try testing.expect(!matches(testing.allocator, stated, .{ .repositories = &other, .access = .write, .base_branch = "main" }));
+    try testing.expect(!matches(testing.allocator, stated, .{ .repositories = &REPOS_ONE, .access = .write, .base_branch = "develop" }));
 }
 
 test "binding json: comparison is case-insensitive and order-insensitive" {
-    const stated = "{\"repositories\":[\"Acme/Widgets\",\"acme/payments\"],\"access\":\"write\"}";
+    const stated = "{\"repositories\":[\"Acme/Widgets\",\"acme/payments\"],\"access\":\"write\",\"base\":\"main\"}";
     const declared = [_][]const u8{ "acme/payments", "acme/widgets" };
-    try testing.expect(matches(testing.allocator, stated, .{ .repositories = &declared, .access = .write }));
+    try testing.expect(matches(testing.allocator, stated, .{ .repositories = &declared, .access = .write, .base_branch = "main" }));
 }
 
 test "binding json: malformed stated json is a mismatch, never a pass" {
-    const binding: config_types.RepositoryBinding = .{ .repositories = &REPOS_ONE, .access = .write };
+    const binding: config_types.RepositoryBinding = .{ .repositories = &REPOS_ONE, .access = .write, .base_branch = "main" };
     try testing.expect(!matches(testing.allocator, "not json", binding));
     try testing.expect(!matches(testing.allocator, "{}", binding));
     try testing.expect(!matches(testing.allocator, "{\"repositories\":\"all\",\"access\":\"write\"}", binding));

@@ -205,7 +205,7 @@ fn seedBase(h: *TestHarness, conn: *pg.Conn, tags_json: []const u8) !void {
 /// True iff the lease response carried a non-null lease (the runner was
 /// assigned the fleet's event). Frees the parsed body internally.
 fn leasePresent(h: *TestHarness, token: []const u8) !bool {
-    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json("{}");
+    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json(protocol.LEASE_REQUEST_CURRENT_JSON);
     const resp = try req.send();
     defer resp.deinit();
     try resp.expectStatus(.ok);
