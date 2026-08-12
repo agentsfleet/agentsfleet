@@ -64,6 +64,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/http/middleware/authenticate.zig` | EDIT | The credential joins the accepted principal set, resolving to a user rather than a tenant |
 | `src/agentsfleetd/errors/error_registry.zig` | EDIT | Registered codes for exchange failure, deployment mismatch, and revoked credential |
 | `src/agentsfleetd/errors/error_entries_runtime.zig` | EDIT | Runtime entries for the new codes |
+| `src/agentsfleetd/db/index_usage_integration_test.zig` | EDIT | Declares the two indexes `250` creates; the suite refuses an undeclared index |
 | `cli/src/commands/login.ts` | EDIT | Step 6 exchanges the session token before anything is persisted |
 | `cli/src/commands/login-exchange.ts` | CREATE | The mint-and-revoke exchange, split out so `login.ts` holds its length cap |
 | `cli/src/commands/logout.ts` | EDIT | Revokes CLI credentials only, and clears the stored deployment |
@@ -72,6 +73,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/src/services/config.ts` | EDIT | The stored deployment joins the target ladder, below the flag and the environment variable |
 | `cli/src/services/http-client.ts` | EDIT | A request refuses a credential minted against another deployment |
 | `cli/src/lib/api-paths.ts` | EDIT | The credential paths join the centralised map |
+| `cli/test/acceptance/fixtures/state-dir.ts` | EDIT | Adds the empty-state-dir fixture, the inverse of the stubbed one |
+| `cli/test/acceptance/help-and-errors.spec.ts` | EDIT | Isolates `AGENTSFLEET_STATE_DIR`, so the auth-guard assertions stop reading the developer's real login |
+| `cli/test/acceptance/flags-and-env.spec.ts` | EDIT | Same isolation; this workstream changes the persisted shape these specs observe |
 | `public/openapi/paths/auth.yaml`, `public/openapi.json` | EDIT | The three new endpoints are public surface |
 | `docs/AUTH.md` | EDIT | Records the second credential class and how it differs from the tenant key |
 | `~/Projects/docs/changelog.mdx` | EDIT | User-visible: login stops expiring immediately |
