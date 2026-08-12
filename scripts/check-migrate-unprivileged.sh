@@ -35,9 +35,17 @@ readonly SCRATCH_ROLE="unprivileged_migrator_check"
 readonly SCRATCH_PASSWORD="unprivileged_migrate_check"
 readonly SUPERUSER="agentsfleet"
 readonly SUPERUSER_DB="agentsfleetdb"
-# The roles migration 110 expects to already exist on a re-run. Membership is
-# mirrored onto the scratch role so it stands where the managed migrator stands.
-readonly APP_ROLES="db_migrator api_runtime memory_runtime ops_readonly_human ops_readonly_fleet"
+# The roles migrations 110 and 120 expect to already exist on a re-run. Membership
+# is mirrored onto the scratch role so it stands where the managed migrator stands.
+#
+# Every role those two slots create belongs here. A managed migrator reaches a
+# re-run holding ADMIN OPTION on each of them, because it is the role that
+# created them — PlanetScale is primed by the release command and nothing else
+# (playbooks/founding/03_priming_infra: "Do not apply schema files manually").
+# Omitting one models a cluster that deploy never produces: the role exists, but
+# the migrator cannot grant it, and slot 110's membership GRANT fails with 42501.
+readonly APP_ROLES="db_migrator api_runtime memory_runtime vault_runtime \
+billing_runtime metering_runtime ops_readonly_human ops_readonly_fleet"
 
 su_psql() {
   docker compose exec -T postgres psql -U "$SUPERUSER" -d "$SUPERUSER_DB" -v ON_ERROR_STOP=1 -q "$@"
