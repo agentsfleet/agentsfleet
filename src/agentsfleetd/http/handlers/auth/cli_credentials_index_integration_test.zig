@@ -11,9 +11,12 @@
 
 const std = @import("std");
 
+const pg = @import("pg");
+
 const fixtures = @import("cli_credentials_test_fixtures.zig");
 const clock = @import("common").clock;
 const ec = @import("../../../errors/error_registry.zig");
+const store = @import("../../../state/cli_credentials.zig");
 
 const ALLOC = fixtures.ALLOC;
 const PATH = fixtures.PATH;
@@ -189,6 +192,51 @@ test "integration: test_failed_mint_leaves_the_prior_credential_live — a faile
     const row = try fixtures.wholeRow(h, prior.id);
     defer ALLOC.free(row);
     try std.testing.expect(std.mem.endsWith(u8, row, "|NULL"));
+
+    fixtures.cleanup(h);
+}
+
+/// Stand-ins for the mint-time attribution the probe below does not assert on.
+const PROBE_DEPLOYMENT = "http://127.0.0.1:0";
+const PROBE_ADDRESS = "127.0.0.1";
+
+// SAFETY: assigned by the test below before `checkAllAllocationFailures` ever
+// runs the probe, and the harness owns the connection for the whole test.
+var probe_conn: *pg.Conn = undefined;
+
+const MintProbe = struct {
+    fn run(alloc: std.mem.Allocator) !void {
+        const minted = try store.mint(alloc, probe_conn, .{
+            .user_id = fixtures.OWNER_USER_ID,
+            .tenant_id = fixtures.TENANT_ID,
+            .machine_name = fixtures.MACHINE_NAME,
+            .deployment = PROBE_DEPLOYMENT,
+            .created_from_address = PROBE_ADDRESS,
+        });
+        minted.deinit(alloc);
+    }
+};
+
+test "integration: mint leaks nothing at any allocation-failure point" {
+    // `mint` owns two allocations and an `errdefer` for each: the credential
+    // itself, then the row identifier. If the second fails, the first must be
+    // freed — and nothing but an exhaustive sweep proves that ordering, because
+    // the leak only appears on the path a happy-path test never takes.
+    //
+    // Both allocations sit above BEGIN by design, so an injected failure never
+    // strands an open transaction on the pooled connection. That the sweep runs
+    // clean against a live datastore is the evidence for it.
+    const h = fixtures.seededHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    probe_conn = conn;
+
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, MintProbe.run, .{});
 
     fixtures.cleanup(h);
 }
