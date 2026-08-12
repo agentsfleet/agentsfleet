@@ -1,41 +1,14 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { Writable } from "node:stream";
 import { runCli } from "../src/cli.ts";
 import { loadWorkspaces } from "../src/lib/state.ts";
 import { asFetchOverride, makeHeaders } from "./helpers.ts";
+import { bufferStream, withFreshStateDir } from "./helpers-cli-state.ts";
 
-function bufferStream(): { stream: Writable; read: () => string } {
-  let data = "";
-  return {
-    stream: new Writable({
-      write(chunk, _enc, cb) {
-        data += String(chunk);
-        cb();
-      },
-    }),
-    read: () => data,
-  };
-}
 
-async function withStateDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
-  const old = process.env.AGENTSFLEET_STATE_DIR;
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-state-"));
-  process.env.AGENTSFLEET_STATE_DIR = dir;
-  try {
-    return await fn(dir);
-  } finally {
-    if (old === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
-    else process.env.AGENTSFLEET_STATE_DIR = old;
-    await fs.rm(dir, { recursive: true, force: true });
-  }
-}
 
 test("workspace create does not persist local state when API create fails", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
 
@@ -87,7 +60,7 @@ test("workspace create does not persist local state when API create fails", asyn
 });
 
 test("workspace create reconciles once without replaying an uncertain POST", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
     let requestCount = 0;
@@ -116,7 +89,7 @@ test("workspace create reconciles once without replaying an uncertain POST", asy
 });
 
 test("workspace create accepts exactly 128 Unicode code points", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
     const name = "🙂".repeat(128);
@@ -157,7 +130,7 @@ test("workspace create accepts exactly 128 Unicode code points", async () => {
 });
 
 test("workspace create rejects an overlong name before dispatch", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
     let requestCount = 0;
@@ -187,7 +160,7 @@ test("workspace create rejects an overlong name before dispatch", async () => {
 });
 
 test("workspace create rejects directional formatting before dispatch", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
     let requestCount = 0;
@@ -214,7 +187,7 @@ test("workspace create rejects directional formatting before dispatch", async ()
 });
 
 test("workspace create rejects Unicode line separators before dispatch", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
     let requestCount = 0;
@@ -241,7 +214,7 @@ test("workspace create rejects Unicode line separators before dispatch", async (
 });
 
 test("workspace create persists backend workspace_id in json mode", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
 
@@ -286,7 +259,7 @@ test("workspace create persists backend workspace_id in json mode", async () => 
 });
 
 test("workspace secrets names the real secret command and exits 0", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
 
@@ -310,7 +283,7 @@ test("workspace secrets names the real secret command and exits 0", async () => 
 });
 
 test("workspace secrets in --json mode names the real secret command", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
 
