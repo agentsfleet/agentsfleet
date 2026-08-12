@@ -84,6 +84,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | ~50 files under `cmd/`, `fleet/`, `fleet_runtime/`, `http/`, `cron/`, `auth/`, `credentials/`, `memory/`, `events/`, `db/`, `state/` | EDIT | Mechanical `*pg.Pool` → `*db.Pool` type respell so every borrower passes through the wrapper's release backstop; test files gain `db.adopt` at construction seams |
 | `build.zig.zon` | EDIT | pg.zig re-pinned to fork tag `v0.0.0-af.4`: upstream `b5a1f25` merge + the `peekForError` use-after-reset fix the coverage lane exposed (Indy-directed; Discovery) |
 | `scripts/check-migrate-unprivileged.sh` | EDIT | Its pre-existing-role list mirrors the ADMIN OPTION a managed migrator holds from having created each role. The three new elevation roles belong in it, or slot 110's membership GRANT is refused with 42501 (CI discovery; Indy-approved) |
+| `scripts/check_migrate_role_parity.sh` | CREATE | Static gate: the lane's `APP_ROLES` must equal the roles `schema/` creates. Turns a twelve-minute coverage-lane 42501 into a one-second failure naming the omitted role |
+| `make/check-safety-gates.mk`, `make/quality.mk` | EDIT | The parity gate joins the file's other static tree checks and `lint-all`'s prerequisites |
 
 **Amended — free-trial removal folded in (Indy-directed, see Discovery).** Removing the mechanism retires the merge-blocker below rather than guarding it, so the two land together:
 
@@ -359,6 +361,14 @@ N/A — no files deleted.
   > Indy (2026-08-12): "yes do that" — acks extending `APP_ROLES` after the alternatives were surfaced. No schema-side fix preserves the guarantee: skipping the grant when ADMIN OPTION is absent leaves `api_runtime` without dormant membership and breaks the boundary this workstream exists to create; the role-creating `DO` block cannot confer ADMIN OPTION on itself; and failing loudly is what 42501 already does.
 
   Red-green: CI attempt 1 (job `94059107452`) refused the grant; `make check-migrate-unprivileged` passes locally with the extended list.
+
+  **Guard added so the list cannot drift again.** `scripts/check_migrate_role_parity.sh` asserts set equality between `APP_ROLES` and the roles `schema/` creates, scanning both spellings the slots use (slot 110's quoted-name ARRAY, slot 120's literal `CREATE ROLE`). Static — no database, no container — so drift fails in a second naming the omitted role rather than as a 42501 twelve minutes into the coverage lane. Its own red-green surfaced two defects in itself before it shipped: a `sed` range that never terminates on its start line (so the single-line form of `APP_ROLES` harvested `docker compose exec postgres psql` as role names — rewritten in awk, with both formatting forms pinned), and a scan that read `--` comments and invented a role named `defaults` from slot 110's own prose *"which CREATE ROLE defaults to TRUE"*.
+
+  **Not wired into CI, by decision.** The `safety-gates` job (`.github/workflows/lint.yml`) runs named targets rather than `make lint-all`, and no workflow invokes `lint-all` at all — so a gate wired only there fires on local VERIFY and in no Pull Request. Adding a four-line step to `safety-gates` was offered and declined.
+
+  > Indy (2026-08-12): "skil this check-migrate-role-parity in CI"
+
+  Residual gap, stated plainly: a future milestone that adds a role, omits it from `APP_ROLES`, and does not run `make lint-all` before opening a Pull Request will still surface the drift as a 42501 in the coverage lane rather than as this gate's one-line failure.
 
 - **Metrics review** — no new events. The two operator-facing counters (`refusedReleaseCount`, `refusedMarkCount`) are process-local counts with no identity, per §3's metric shape; no analytics or funnel surface changes.
 

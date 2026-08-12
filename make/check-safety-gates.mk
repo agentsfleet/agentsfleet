@@ -2,16 +2,17 @@
 # Safety gates — deploy correctness, vault-read approval, architecture-doc truth
 # =============================================================================
 #
-# Three static checks that assert properties of the tree rather than build
+# Four static checks that assert properties of the tree rather than build
 # anything, like check-openapi or check-route-registration-doc. Split out of
 # quality.mk (RULE FLL), which the vault-gate parity scan pushed past the
 # 350-line cap; the same reason check-test-reachability.mk lives on its own.
 #
-# Where they fire: all three are prerequisites of `lint-all`, so CI's lint job
+# Where they fire: all four are prerequisites of `lint-all`, so CI's lint job
 # runs them. check-vault-gate-parity additionally hangs off check-playbooks, so
 # validating the playbooks surface can never skip the guardrail that protects it.
 
-.PHONY: check-vault-gate-parity check-architecture-doc check-deploy-safety
+.PHONY: check-vault-gate-parity check-architecture-doc check-deploy-safety \
+        check-migrate-role-parity
 
 check-vault-gate-parity:  ## Every playbooks/operations/ script that reads the vault calls both approval + auth gates
 	@echo "→ [playbooks] vault-gate parity — every operations script that reads the vault passes both gates..."
@@ -42,6 +43,13 @@ check-vault-gate-parity:  ## Every playbooks/operations/ script that reads the v
 check-architecture-doc:  ## docs/architecture/ stays true — milestone refs resolve, relative links resolve, no orphan markers
 	@bash scripts/check_architecture_doc_test.sh
 	@bash scripts/check_architecture_doc.sh
+
+check-migrate-role-parity:  ## check-migrate-unprivileged.sh's APP_ROLES matches every role schema/ creates
+	@# Static — no database, no container. It belongs here rather than inside
+	@# check-migrate-unprivileged because that target needs live infra: a drifted
+	@# list would otherwise surface as a 42501 twelve minutes into the coverage
+	@# lane, naming a role instead of the list that omitted it (M154_002).
+	@bash scripts/check_migrate_role_parity.sh
 
 check-deploy-safety:  ## deploy.sh version-skip equality + deploy mutex, and shellcheck over deploy/baremetal/
 	@# deploy/ sits outside _shell_lint's scripts/*.sh glob, so it would otherwise
