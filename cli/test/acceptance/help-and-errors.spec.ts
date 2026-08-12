@@ -23,7 +23,7 @@ import {
 } from "./fixtures/command-matrix.ts";
 import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
 import { runFleetctl, composeEnv } from "./fixtures/cli.js";
-import { makeStubbedStateDir, makeEmptyStateDirSync, type StubbedStateDir } from "./fixtures/state-dir.ts";
+import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
 import {
   expectInvalidSubcommand,
   assertNoConnectionError,
@@ -97,15 +97,9 @@ beforeAll(async () => {
   validateModule = await import(path.join(CLI_ROOT, "src/program/validators.ts")) as ValidateModule;
 });
 
-const EMPTY_STATE_DIR = makeEmptyStateDirSync();
-
 function emptyEnv(extra?: Record<string, string>): Record<string, string> {
   return composeEnv({
     AGENTSFLEET_API_URL: UNROUTABLE_API_URL,
-    // Without this the spawned binary inherits the real HOME and reads
-    // ~/.config/agentsfleet, so "not authenticated" holds only while the
-    // developer is logged out. The spread stays last so callers can override.
-    AGENTSFLEET_STATE_DIR: EMPTY_STATE_DIR,
     NO_COLOR: "1",
     ...(extra ?? {}),
   });

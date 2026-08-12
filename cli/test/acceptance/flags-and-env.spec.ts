@@ -22,7 +22,7 @@ import { helpTail } from "../../src/program/cli-tree-help.ts";
 import { runFleetctl, spawnFleetctl, composeEnv } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
-import { makeStubbedStateDir, makeEmptyStateDirSync, type StubbedStateDir } from "./fixtures/state-dir.ts";
+import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
 import { resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 
@@ -46,15 +46,9 @@ beforeAll(async () => {
   pkgVersion = (JSON.parse(pkgRaw) as { version: string }).version;
 });
 
-const EMPTY_STATE_DIR = makeEmptyStateDirSync();
-
 function emptyEnv(extra?: Record<string, string>): Record<string, string> {
   return composeEnv({
     AGENTSFLEET_API_URL: UNROUTABLE_API_URL,
-    // See help-and-errors.spec.ts: the spawned binary otherwise inherits the
-    // real HOME and reads ~/.config/agentsfleet. The spread stays last so
-    // callers can override.
-    AGENTSFLEET_STATE_DIR: EMPTY_STATE_DIR,
     NO_COLOR: "1",
     ...(extra ?? {}),
   });
