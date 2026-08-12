@@ -3,13 +3,9 @@
 //! run-latency histogram); the shared otlp.Exporter batches and POSTs to
 //! GRAFANA_OTLP_ENDPOINT/v1/metrics on a background flush thread, fire-and-forget.
 //!
-//! Migrated onto the generic otlp/ substrate. Evented families are delta — a
-//! Grafana Cloud OTel Collector (deltatocumulative) converts before Mimir; flush
-//! coalesces them per (metric, labelset) — see otel_metrics_aggregate.zig.
-//! Each flush additionally snapshots the fixed-label runtime families into the
-//! same Aggregator and streams the per-runner families into the same envelope
-//! (both via otel_metrics_runtime.zig) — the sole egress for every family the
-//! daemon exports.
+//! Evented families are delta — a collector converts before Mimir. Each flush
+//! coalesces them per (metric, labelset) via otel_metrics_aggregate.zig, then
+//! folds in the runtime families (otel_metrics_runtime.zig): the sole egress.
 
 const std = @import("std");
 const common = @import("common");
@@ -82,12 +78,16 @@ pub const Attribution = struct {
 
 /// Attach `gen_ai.provider.name` and `gen_ai.request.model` when each can be
 /// represented safely, counting every omission. An unrepresentable value is
-/// dropped, never truncated or coerced: a truncated model name reads as a
-/// different model, and a private spelling under a standard key claims
-/// interoperability it does not have.
+/// dropped, never truncated or coerced: a truncated model reads as a different
+/// model, and a private spelling under a standard key claims interoperability
+/// it does not have. The budget keys on the identity the wire carries — since
+/// normalization folds case, two spellings of one provider export as a single
+/// series and must not spend two attribution slots.
 fn appendProviderAndModel(sample: *Sample, attr: Attribution) void {
+    var keyed = attr.provider;
     if (semconv.providerOrdinal(attr.provider)) |ordinal| {
         _ = payload.addLabelAtIndex(sample, semconv.ATTR_PROVIDER_NAME, dims.providerValueIndex(ordinal));
+        keyed = semconv.WELL_KNOWN_PROVIDERS[ordinal];
     } else {
         health.recordAttributeOmission(.provider_name, .unmapped_provider);
     }
@@ -96,7 +96,7 @@ fn appendProviderAndModel(sample: *Sample, attr: Attribution) void {
         health.recordAttributeOmission(.request_model, .value_too_long);
         return;
     }
-    if (!cardinality.admitModel(attr.provider, attr.model)) {
+    if (!cardinality.admitModel(keyed, attr.model)) {
         health.recordAttributeOmission(.request_model, .budget_exhausted);
         return;
     }

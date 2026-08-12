@@ -241,3 +241,30 @@ test "test_attribution_budget_reopens_each_flush_window" {
     const s = otel_metrics.testPop();
     try std.testing.expect(s == null);
 }
+
+test "two spellings of one provider spend a single attribution slot" {
+    // Regression: normalization folds ASCII case, so "Anthropic" and
+    // "anthropic" export as one series. Keying the budget on the caller's raw
+    // spelling would charge that single series twice and starve a genuinely
+    // distinct model of its slot.
+    otel_metrics.testSetInstalled(TEST_CFG);
+    defer otel_metrics.testClear();
+    cardinality.reset();
+    defer cardinality.reset();
+
+    otel_metrics.recordCreditConsumed(5, .receive, .{ .posture = POSTURE, .provider = "anthropic", .model = MODEL });
+    otel_metrics.recordCreditConsumed(5, .receive, .{ .posture = POSTURE, .provider = "Anthropic", .model = MODEL });
+
+    try std.testing.expectEqual(@as(usize, 1), cardinality.trackedCount());
+
+    // Both samples still carry the canonical spelling on the wire.
+    var seen: usize = 0;
+    while (otel_metrics.testPop()) |sample| {
+        seen += 1;
+        try std.testing.expectEqualStrings(
+            "anthropic",
+            findLabel(&sample, semconv.ATTR_PROVIDER_NAME) orelse return error.ProviderLabelMissing,
+        );
+    }
+    try std.testing.expectEqual(@as(usize, 2), seen);
+}
