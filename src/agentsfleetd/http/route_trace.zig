@@ -57,6 +57,8 @@ fn classify(route: router.Route) RouteTraits {
         .verify_auth_session,
         .delete_auth_session,
         .delete_all_auth_sessions,
+        .cli_credentials,
+        .cli_credential_by_id,
         .create_workspace,
         .get_tenant_billing,
         .get_tenant_billing_charges,
