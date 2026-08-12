@@ -15,7 +15,8 @@ const otlp_config = @import("otlp/config.zig");
 const health = @import("metrics_otel.zig");
 const common = @import("common");
 
-const POSTURE = "platform";
+const Mode = @import("../state/tenant_provider.zig").Mode;
+const POSTURE: Mode = .platform;
 const PROVIDER = "anthropic";
 const MODEL = "claude-opus-4-8";
 const MODEL_FIXTURE_FMT = "model-{d}";

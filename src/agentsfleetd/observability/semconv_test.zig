@@ -93,12 +93,19 @@ test "every histogram bucket table fits the payload bucket array" {
     }
 }
 
-test "provider normalization admits only exact well-known names" {
+test "provider normalization folds case but coerces nothing else" {
     try std.testing.expectEqualStrings("anthropic", semconv.normalizeProvider("anthropic").?); // pin test: literal is the contract
     try std.testing.expectEqualStrings("openai", semconv.normalizeProvider("openai").?); // pin test: literal is the contract
-    // No case folding, no prefix matching, no separator coercion: each of these
-    // would publish a private spelling under a standard key.
-    try std.testing.expect(semconv.normalizeProvider("Anthropic") == null);
+    // Case folds, because the returned value is always the table's own spelling
+    // rather than the caller's: "Anthropic" exports as "anthropic". The provider
+    // identifier reaches us unvalidated from the Command-Line Interface (CLI)
+    // option, so refusing a capitalisation difference only ever counted a false
+    // omission — it never protected the wire.
+    try std.testing.expectEqualStrings("anthropic", semconv.normalizeProvider("Anthropic").?);
+    try std.testing.expectEqualStrings("aws.bedrock", semconv.normalizeProvider("AWS.Bedrock").?);
+    // No prefix matching and no separator coercion: those name a *different*
+    // provider, and answering with a standard name would claim interoperability
+    // the value does not have.
     try std.testing.expect(semconv.normalizeProvider("anthropic-beta") == null);
     try std.testing.expect(semconv.normalizeProvider("aws_bedrock") == null);
     try std.testing.expect(semconv.normalizeProvider("") == null);

@@ -152,7 +152,7 @@ fn completeRenew(hx: Hx, runner_id: []const u8, lease_id: []const u8, lease: Lea
             // metric under its own charge class. The fenced statement above
             // already committed, so a lost or capped renewal emits nothing.
             otel_metrics.recordCreditConsumed(renewed.charged_nanos, .renewal, .{
-                .posture = parsePosture(lease.posture).label(),
+                .posture = parsePosture(lease.posture),
                 .provider = lease.provider,
                 .model = lease.model,
             });
@@ -262,6 +262,5 @@ fn bumpLastSeen(hx: Hx, runner_id: []const u8) void {
 /// Map the stored posture label back to `Mode` for the balance gate (mirrors
 /// service_report); keyed on the enum's own `label()` (RULE UFS), unknown → platform.
 fn parsePosture(label: []const u8) tenant_provider.Mode {
-    if (std.mem.eql(u8, label, tenant_provider.Mode.self_managed.label())) return .self_managed;
-    return .platform;
+    return tenant_provider.Mode.parse(label) orelse .platform;
 }

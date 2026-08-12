@@ -4,9 +4,8 @@
 //! GRAFANA_OTLP_ENDPOINT/v1/metrics on a background flush thread, fire-and-forget.
 //!
 //! Migrated onto the generic otlp/ substrate. Evented families are delta — a
-//! Grafana Cloud OTel Collector (deltatocumulative) converts before Mimir; see
-//! otel_metrics_payload.zig. Flush coalesces the window's samples into one
-//! windowed-delta series per (metric, labelset) — see otel_metrics_aggregate.zig.
+//! Grafana Cloud OTel Collector (deltatocumulative) converts before Mimir; flush
+//! coalesces them per (metric, labelset) — see otel_metrics_aggregate.zig.
 //! Each flush additionally snapshots the fixed-label runtime families into the
 //! same Aggregator and streams the per-runner families into the same envelope
 //! (both via otel_metrics_runtime.zig) — the sole egress for every family the
@@ -20,10 +19,13 @@ const otlp_config = @import("otlp/config.zig");
 const otlp_ring = @import("otlp/ring.zig");
 const otlp_exporter = @import("otlp/exporter.zig");
 const payload = @import("otel_metrics_payload.zig");
+const wire = @import("otel_metrics_wire.zig");
 const aggregate = @import("otel_metrics_aggregate.zig");
 const cardinality = @import("otel_metrics_cardinality.zig");
 const runtime = @import("otel_metrics_runtime.zig");
 const semconv = @import("semconv.zig");
+const dims = @import("otel_metrics_dims.zig");
+const Mode = @import("../state/tenant_provider.zig").Mode;
 
 const OTLP_METRICS_PATH = "/v1/metrics";
 const BUFFER_CAPACITY: usize = 1024;
@@ -47,9 +49,9 @@ const Exporter = otlp_exporter.Exporter(.{
     .collect = collectMetrics,
     .pending_count = metricsPendingCount,
     .wake_threshold = 768,
-    // Level and cumulative families are pending work even when no evented
-    // sample is: an idle daemon must keep pushing, or dashboards go stale and
-    // store-side absence stops meaning "exporter dead".
+    // Level and cumulative families are pending work even when no evented sample
+    // is: an idle daemon must keep pushing, or dashboards go stale and store-side
+    // absence stops meaning "exporter dead".
     .always_collect = true,
 });
 
@@ -71,19 +73,21 @@ fn currentNanos() u64 {
 /// as a standard attribute. Workspace and tenant are deliberately absent — they
 /// never reach a metric.
 pub const Attribution = struct {
-    posture: []const u8,
+    /// Closed by type. Parsed at the Postgres boundary, where billing also
+    /// resolves it, so the metric reports the posture the system charged against.
+    posture: Mode,
     provider: []const u8,
     model: []const u8,
 };
 
 /// Attach `gen_ai.provider.name` and `gen_ai.request.model` when each can be
 /// represented safely, counting every omission. An unrepresentable value is
-/// dropped rather than truncated or coerced: a truncated model name reads as a
-/// different model, and a private provider spelling under a standard key claims
-/// interoperability the value does not have.
+/// dropped, never truncated or coerced: a truncated model name reads as a
+/// different model, and a private spelling under a standard key claims
+/// interoperability it does not have.
 fn appendProviderAndModel(sample: *Sample, attr: Attribution) void {
-    if (semconv.normalizeProvider(attr.provider)) |known| {
-        _ = payload.addClosedLabel(sample, semconv.ATTR_PROVIDER_NAME, known);
+    if (semconv.providerOrdinal(attr.provider)) |ordinal| {
+        _ = payload.addLabelAtIndex(sample, semconv.ATTR_PROVIDER_NAME, dims.providerValueIndex(ordinal));
     } else {
         health.recordAttributeOmission(.provider_name, .unmapped_provider);
     }
@@ -106,7 +110,7 @@ pub fn recordCreditConsumed(nanos: i64, charge: semconv.ChargeClass, attr: Attri
     if (!isInstalled()) return;
     if (nanos == 0) return;
     var s = payload.newSample(.credit_consumed, nanos);
-    _ = payload.addClosedLabel(&s, semconv.ATTR_CHARGE_TYPE, charge.label());
+    _ = payload.addClosedLabel(&s, semconv.ATTR_CHARGE_TYPE, charge);
     _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
     appendProviderAndModel(&s, attr);
     enqueueSample(s);
@@ -120,7 +124,7 @@ pub fn observeTokenUsage(count: i64, token_type: semconv.TokenType, attr: Attrib
     if (count == 0) return;
     var s = payload.newSample(.token_usage, count);
     _ = payload.addInternedLabel(&s, semconv.ATTR_OPERATION_NAME, semconv.OPERATION_INVOKE_AGENT);
-    _ = payload.addClosedLabel(&s, semconv.ATTR_TOKEN_TYPE, token_type.label());
+    _ = payload.addClosedLabel(&s, semconv.ATTR_TOKEN_TYPE, token_type);
     _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
     appendProviderAndModel(&s, attr);
     enqueueSample(s);
@@ -139,7 +143,7 @@ pub fn observeCacheReadTokens(count: i64, attr: Attribution) void {
 /// Observe one agent invocation's wall-clock duration (milliseconds in, seconds
 /// on the wire). `error_type` is null on a clean run and the coarse failure
 /// verdict otherwise.
-pub fn observeInvokeAgentDuration(wall_ms: i64, error_type: ?[]const u8, attr: Attribution) void {
+pub fn observeInvokeAgentDuration(wall_ms: i64, error_type: ?semconv.ErrorType, attr: Attribution) void {
     if (!isInstalled()) return;
     var s = payload.newSample(.invoke_agent_duration, wall_ms);
     _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
@@ -171,7 +175,7 @@ pub fn recordRunSettlement(
     cached_tokens: i64,
     output_tokens: i64,
     wall_ms: i64,
-    error_type: ?[]const u8,
+    error_type: ?semconv.ErrorType,
     attr: Attribution,
 ) void {
     if (!isInstalled()) return;
@@ -273,7 +277,7 @@ fn serializeMetrics(
         };
         count += 1;
     }
-    const envelope = try payload.serializeSeries(alloc, cfg, series_buf[0..count], times, runtime.appendStreamedRunnerFamilies);
+    const envelope = try wire.serializeSeries(alloc, cfg, series_buf[0..count], times, runtime.appendStreamedRunnerFamilies);
     // Streamed series shed at the payload budget are a real data loss the
     // operator must be able to see; appended ones join the export count the
     // backend's partial-rejection reply is validated against.

@@ -22,6 +22,7 @@
 const std = @import("std");
 const common = @import("common");
 const payload = @import("otel_metrics_payload.zig");
+const wire = @import("otel_metrics_wire.zig");
 const aggregate = @import("otel_metrics_aggregate.zig");
 const dims = @import("otel_metrics_dims.zig");
 const instruments = @import("otel_instruments.zig");
@@ -98,7 +99,7 @@ const StreamState = struct {
     alloc: std.mem.Allocator,
     times: payload.WireTimes,
     need_comma: bool,
-    result: payload.ExtraAppendResult,
+    result: wire.ExtraAppendResult,
     exhausted: bool,
 
     fn emit(self: *StreamState, sample: payload.Sample) void {
@@ -130,13 +131,13 @@ const StreamState = struct {
 
     fn append(self: *StreamState, series: payload.Series) !void {
         if (self.need_comma) try self.list.appendSlice(self.alloc, ",");
-        try payload.appendSeriesMetric(self.list, self.alloc, series, self.times);
+        try wire.appendSeriesMetric(self.list, self.alloc, series, self.times);
         self.need_comma = true;
         self.result.appended += 1;
     }
 };
 
-/// payload.ExtraAppendFn: append the per-runner families for every live slot,
+/// wire.ExtraAppendFn: append the per-runner families for every live slot,
 /// plus one overflow series when any failure increment ever missed the table.
 /// Returns how many objects were appended and how many were shed at the
 /// payload budget.
@@ -145,7 +146,7 @@ pub fn appendStreamedRunnerFamilies(
     alloc: std.mem.Allocator,
     times: payload.WireTimes,
     wrote_any: bool,
-) anyerror!payload.ExtraAppendResult {
+) anyerror!wire.ExtraAppendResult {
     var st = StreamState{
         .list = list,
         .alloc = alloc,

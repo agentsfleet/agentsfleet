@@ -161,38 +161,94 @@ pub const KEYS = blk: {
     break :blk dedup(raw);
 };
 
-/// Closed label values the evented and streamed paths attach beyond the
-/// registry's fixed dimensions: provider names, token/charge classes, the
-/// execution postures, the single error-type verdict, the operation name, and
-/// the per-runner reason/outcome labels.
-const EXTRA_CLOSED_VALUES = [_][]const u8{semconv.OPERATION_INVOKE_AGENT} ++
+/// Values that belong to no closed enum: the operation name, the well-known
+/// provider spellings, and the per-runner reason/outcome labels the streamed
+/// path interns at comptime. These occupy the table's leading block.
+const LITERAL_VALUES = [_][]const u8{semconv.OPERATION_INVOKE_AGENT} ++
     semconv.WELL_KNOWN_PROVIDERS ++
-    dimValueStrings(semconv.TokenType) ++
-    dimValueStrings(semconv.ChargeClass) ++
-    dimValueStrings(Mode) ++
-    [_][]const u8{semconv.ERROR_TYPE_FLEET_ERROR} ++
     mr.REASON_LABELS ++ mr.OUTCOME_LABELS;
 
-/// Every closed label value any family can put on the wire, deduplicated.
-pub const VALUES = blk: {
-    // ~120 values × ~120-entry dedup scans × ~24-byte compares ≈ 350k
-    // branches; next power of ten above.
+/// Closed enums the evented record API attaches beyond the registry's fixed
+/// dimensions. The fixed-dimension enums are discovered from `dimsFor`, so only
+/// the evented ones are named here.
+const EVENTED_ENUMS = [_]type{ semconv.TokenType, semconv.ChargeClass, Mode, semconv.ErrorType };
+
+fn containsType(comptime table: []const type, comptime T: type) bool {
+    for (table) |entry| {
+        if (entry == T) return true;
+    }
+    return false;
+}
+
+/// Every closed enum whose members can reach the wire, in block order: the
+/// evented enums first, then each family's fixed dimensions in registry order.
+/// An enum dimensioning two families occupies exactly one block.
+const CLOSED_ENUMS: []const type = blk: {
     @setEvalBranchQuota(EVAL_QUOTA_VALUE_TABLE);
-    var raw: []const []const u8 = &EXTRA_CLOSED_VALUES;
+    var out: []const type = &EVENTED_ENUMS;
     for (0..families.METRIC_ID_COUNT) |i| {
         const id: families.MetricId = @enumFromInt(i);
         for (dimsFor(id)) |dim| switch (dim) {
-            .fixed => |f| {
-                for (dimValueStrings(f.Enum)) |v| raw = raw ++ &[_][]const u8{v};
+            .fixed => |f| if (!containsType(out, f.Enum)) {
+                out = out ++ &[_]type{f.Enum};
             },
             .dynamic => {},
         };
     }
-    break :blk dedup(raw);
+    break :blk out;
+};
+
+/// Base index of each closed enum's block, parallel to `CLOSED_ENUMS`.
+const ENUM_BASE: [CLOSED_ENUMS.len]u16 = blk: {
+    var bases: [CLOSED_ENUMS.len]u16 = undefined;
+    var next: usize = LITERAL_VALUES.len;
+    for (CLOSED_ENUMS, &bases) |E, *base| {
+        base.* = @intCast(next);
+        next += @typeInfo(E).@"enum".fields.len;
+    }
+    break :blk bases;
+};
+
+/// Index of the first well-known provider, derived from its position in the
+/// literal block so that adding a literal cannot silently shift the providers.
+const PROVIDER_BASE: u16 = blk: {
+    for (LITERAL_VALUES, 0..) |v, i| {
+        if (std.mem.eql(u8, v, semconv.WELL_KNOWN_PROVIDERS[0])) break :blk @intCast(i);
+    }
+    @compileError("well-known providers are absent from the literal value block");
+};
+
+/// Every label value any family can put on the wire: the literal block, then
+/// each closed enum's members in declaration order. Deliberately not
+/// deduplicated — a shared spelling across two enums keeps two indices so that
+/// every member stays at its own block's base plus its ordinal.
+pub const VALUES = blk: {
+    @setEvalBranchQuota(EVAL_QUOTA_VALUE_TABLE);
+    var out: []const []const u8 = &LITERAL_VALUES;
+    for (CLOSED_ENUMS) |E| {
+        for (dimValueStrings(E)) |v| out = out ++ &[_][]const u8{v};
+    }
+    break :blk out;
 };
 
 comptime {
+    @setEvalBranchQuota(EVAL_QUOTA_VALUE_TABLE);
     std.debug.assert(KEYS.len <= std.math.maxInt(u8));
+    std.debug.assert(VALUES.len <= std.math.maxInt(u16));
+    // Ordinal indexing is sound only while every closed enum numbers its
+    // members densely from zero: an explicitly-valued or sparse enum would let
+    // `@intFromEnum` index past its own block and into its neighbour's.
+    for (CLOSED_ENUMS) |E| {
+        for (@typeInfo(E).@"enum".fields, 0..) |f, i| std.debug.assert(f.value == i);
+    }
+    // Blocks are contiguous and disjoint, and together with the literal block
+    // they exactly cover the table.
+    var expected: usize = LITERAL_VALUES.len;
+    for (CLOSED_ENUMS, ENUM_BASE) |E, base| {
+        std.debug.assert(base == expected);
+        expected += @typeInfo(E).@"enum".fields.len;
+    }
+    std.debug.assert(expected == VALUES.len);
 }
 
 /// Comptime index of a registered label key; unknown keys fail the build, so
@@ -214,11 +270,25 @@ pub fn internedValueIndex(comptime val: []const u8) u16 {
     @compileError("label value is not a declared closed value: " ++ val);
 }
 
-/// Runtime lookup of a closed value; null when the value is not declared —
-/// the caller's signal to omit rather than export an unregistered spelling.
-pub fn runtimeValueIndex(val: []const u8) ?u16 {
-    for (VALUES, 0..) |v, i| {
-        if (std.mem.eql(u8, v, val)) return @intCast(i);
+/// Comptime base index of a closed enum's block. An enum with no block fails
+/// the build, so a writer physically cannot attach an unregistered value — the
+/// runtime miss this replaces returned false and was discarded by every caller.
+pub fn baseOf(comptime E: type) u16 {
+    // `inline` because the element type is `type`: an ordinary loop index is
+    // runtime-known, and a type cannot be selected at runtime.
+    inline for (CLOSED_ENUMS, ENUM_BASE) |T, base| {
+        if (T == E) return base;
     }
-    return null;
+    @compileError("closed enum has no registry home: " ++ @typeName(E));
+}
+
+/// Interned index of one closed enum member: one add, no search.
+pub fn valueIndexOf(comptime E: type, value: E) u16 {
+    return baseOf(E) + @intFromEnum(value);
+}
+
+/// Interned index of a well-known provider, resolved from the ordinal
+/// `semconv.providerOrdinal` already computed while normalizing.
+pub fn providerValueIndex(ordinal: u16) u16 {
+    return PROVIDER_BASE + ordinal;
 }

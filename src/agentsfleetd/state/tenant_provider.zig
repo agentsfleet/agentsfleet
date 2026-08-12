@@ -42,6 +42,21 @@ pub const Mode = enum {
             .self_managed => "self_managed",
         };
     }
+
+    /// Recover the mode from its stored spelling, or null when the column holds
+    /// something neither member spells. Deliberately exact and deliberately
+    /// fallible: this column is written only by this codebase, so an unknown
+    /// spelling is a data-integrity fault to surface, not a value to guess at.
+    /// Guessing is what the previous per-file helpers did — every unrecognised
+    /// string became `.platform`, silently attributing a self-managed run to
+    /// platform spend.
+    pub fn parse(stored: []const u8) ?Self {
+        inline for (@typeInfo(Self).@"enum".fields) |f| {
+            const member: Self = @enumFromInt(f.value);
+            if (std.mem.eql(u8, stored, member.label())) return member;
+        }
+        return null;
+    }
 };
 
 /// Resolved provider configuration for one event. The api_key field is
