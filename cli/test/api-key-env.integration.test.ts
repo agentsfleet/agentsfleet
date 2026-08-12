@@ -17,42 +17,26 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-import { Writable } from "node:stream";
+import { bufferStream, withFreshStateDir as withEmptyStateDir } from "./helpers-cli-state.ts";
 
 import { runCli } from "../src/cli.ts";
 import { asFetchOverride, makeHeaders, type ResponseLike } from "./helpers.ts";
 
-function bufferStream(): { stream: Writable; read: () => string } {
-  let data = "";
-  return {
-    stream: new Writable({
-      write(chunk, _enc, cb) {
-        data += String(chunk);
-        cb();
-      },
-    }),
-    read: () => data,
-  };
-}
 
+/** Fresh state dir pre-seeded with a workspace, so workspace-scoped commands
+ *  resolve a context. Credentials stay absent on purpose — these tests prove
+ *  `AGENTSFLEET_API_KEY` alone clears the guard. */
 async function withFreshStateDir<T>(fn: () => Promise<T>): Promise<T> {
-  const previous = process.env.AGENTSFLEET_STATE_DIR;
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-apikey-"));
-  process.env.AGENTSFLEET_STATE_DIR = dir;
-  await fs.writeFile(
-    path.join(dir, "workspaces.json"),
-    `${JSON.stringify({ current_workspace_id: "ws_test", items: [{ workspace_id: "ws_test" }] })}\n`,
-    "utf8",
-  );
-  try {
+  return withEmptyStateDir(async (dir) => {
+    await fs.writeFile(
+      path.join(dir, "workspaces.json"),
+      `${JSON.stringify({ current_workspace_id: "ws_test", items: [{ workspace_id: "ws_test" }] })}
+`,
+      "utf8",
+    );
     return await fn();
-  } finally {
-    if (previous === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
-    else process.env.AGENTSFLEET_STATE_DIR = previous;
-    await fs.rm(dir, { recursive: true, force: true });
-  }
+  });
 }
 
 // Clean env with every auth source stripped, then exactly one key set.

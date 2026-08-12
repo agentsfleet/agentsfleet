@@ -3,28 +3,15 @@
 // against a tempdir-backed state store. AGENTSFLEET_STATE_DIR is set per
 // test so concurrent runs don't share files.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { describe, expect, test } from "bun:test";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { Cause, Effect, Exit, Option, Redacted } from "effect";
 import { Credentials, credentialsLayer } from "../src/services/credentials.ts";
 import { UnexpectedError } from "../src/errors/index.ts";
+import { useFreshStateDir } from "./helpers-cli-state.ts";
 
-let tempDir: string;
-let originalStateDir: string | undefined;
-
-beforeEach(() => {
-  tempDir = mkdtempSync(join(tmpdir(), "agentsfleet-creds-test-"));
-  originalStateDir = process.env.AGENTSFLEET_STATE_DIR;
-  process.env.AGENTSFLEET_STATE_DIR = tempDir;
-});
-
-afterEach(() => {
-  if (originalStateDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
-  else process.env.AGENTSFLEET_STATE_DIR = originalStateDir;
-  rmSync(tempDir, { recursive: true, force: true });
-});
+const stateDir = useFreshStateDir();
 
 const provideEffect = async <A, E>(
   effect: Effect.Effect<A, E, Credentials>,
@@ -116,7 +103,7 @@ describe("Credentials service", () => {
   // (credentials.ts:38-43) on every uid — unlike chmod, which root/CI can
   // still read past.
   test("getAccessToken surfaces UnexpectedError when credentials.json is a directory", async () => {
-    mkdirSync(join(tempDir, "credentials.json"));
+    mkdirSync(join(stateDir(), "credentials.json"));
     const exit = await Effect.runPromiseExit(
       Effect.provide(
         Effect.gen(function* () {

@@ -5,11 +5,9 @@
 // through login.ts in those suites, so their inner closures never fire as
 // callable units. These tests invoke each directly with in-memory layers.
 
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { Effect, Exit, Layer, Option, Redacted } from "effect";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
+import { useFreshStateDir } from "./helpers-cli-state.ts";
 import {
   resolveDirectToken,
   saveDirectToken,
@@ -174,19 +172,7 @@ describe("saveDirectToken", () => {
       cliVersion: "0.0.0-test",
     });
 
-  let tempStateDir: string | null = null;
-  let prevStateDir: string | undefined;
-  beforeEach(() => {
-    prevStateDir = process.env.AGENTSFLEET_STATE_DIR;
-    tempStateDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentsfleet-funcfill-"));
-    process.env.AGENTSFLEET_STATE_DIR = tempStateDir;
-  });
-  afterEach(() => {
-    if (tempStateDir) fs.rmSync(tempStateDir, { recursive: true, force: true });
-    tempStateDir = null;
-    if (prevStateDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
-    else process.env.AGENTSFLEET_STATE_DIR = prevStateDir;
-  });
+  useFreshStateDir();
 
   test("validates then persists the token on a successful ping", async () => {
     const saved = { token: null as string | null };

@@ -78,6 +78,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/test/acceptance/flags-and-env.spec.ts` | EDIT | Same isolation; this workstream changes the persisted shape these specs observe |
 | `cli/test/setup.ts` | EDIT | The preload defaults the runner to an empty state dir, so logged-out is the baseline for in-process tests |
 | `cli/test/json-contract.test.ts` | EDIT | Its auth-required test takes its own state dir, since sibling files write credentials into the current one |
+| `cli/test/helpers-cli-state.ts` | EDIT | Gains `useFreshStateDir` (hook-scoped) and `preserveStateDirEnv` (save/restore only) beside the existing `withFreshStateDir` — one home for state-dir isolation |
+| `cli/test/{help,cli-alignment,workspace-create,doctor-json,api-key-env,services-credentials,login-logout-identity,login-helpers-funcfill,handlers-bind-wrap-effect,telemetry/identity}` | EDIT | Ten files migrated off private copies of the same scope guard onto the shared helpers; net −132 lines |
 | `public/openapi/paths/auth.yaml`, `public/openapi.json` | EDIT | The three new endpoints are public surface |
 | `docs/AUTH.md` | EDIT | Records the second credential class and how it differs from the tenant key |
 | `~/Projects/docs/changelog.mdx` | EDIT | User-visible: login stops expiring immediately |
