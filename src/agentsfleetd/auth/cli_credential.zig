@@ -89,7 +89,46 @@ pub fn looksWellFormed(value: []const u8) bool {
     return true;
 }
 
+/// Longest machine name a credential may be minted under. A machine name is
+/// the operator's own label for a terminal, shown back to them in a list and
+/// carried by the partial unique index that makes two live credentials per
+/// machine unrepresentable. Bounded here so a caller cannot widen the indexed
+/// column by sending a megabyte.
+pub const MAX_MACHINE_NAME_LEN: usize = 64;
+
+/// Whether `name` is a usable machine label: non-empty, within the cap, and
+/// drawn from a grammar that survives a shell, a log line, and a terminal
+/// table without quoting. Lives beside the credential's own shape check
+/// because both are single-sourced facts the minting endpoint and the
+/// command-line client must agree on exactly (RULE UFS).
+pub fn isValidMachineName(name: []const u8) bool {
+    if (name.len == 0 or name.len > MAX_MACHINE_NAME_LEN) return false;
+    for (name) |c| {
+        const ok = (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or
+            (c >= '0' and c <= '9') or c == '-' or c == '_' or c == '.';
+        if (!ok) return false;
+    }
+    return true;
+}
+
 const testing = std.testing;
+
+test "a machine name is accepted only within the declared grammar" {
+    // A hostname is the expected input, so dots belong; whitespace and shell
+    // metacharacters do not, because this string is displayed back to an
+    // operator and printed into logs.
+    try testing.expect(isValidMachineName("indy-macbook.local"));
+    try testing.expect(isValidMachineName("runner_01"));
+    try testing.expect(isValidMachineName("a"));
+    try testing.expect(isValidMachineName("a" ** MAX_MACHINE_NAME_LEN));
+
+    try testing.expect(!isValidMachineName(""));
+    try testing.expect(!isValidMachineName("a" ** (MAX_MACHINE_NAME_LEN + 1)));
+    try testing.expect(!isValidMachineName("my machine"));
+    try testing.expect(!isValidMachineName("rm -rf /"));
+    try testing.expect(!isValidMachineName("host\nname"));
+    try testing.expect(!isValidMachineName("hôte"));
+}
 
 test "generated credential has the declared shape" {
     const cred = try generate(testing.allocator);
