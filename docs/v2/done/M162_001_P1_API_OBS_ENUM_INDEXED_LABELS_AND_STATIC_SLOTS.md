@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M162
 **Workstream:** 001
 **Date:** Aug 11, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — an unvalidated posture string from Postgres silently drops its label today, so a failed run can be counted under the wrong series on an operator dashboard
 **Categories:** API, DOCS, OBS
 **Batch:** B1 — §1 lands first (it renumbers value indices); §4 follows it. §2 and §3 were descoped after review.
@@ -173,19 +173,22 @@ No new metric family, label key, or label value is introduced, and no existing o
 
 ## Acceptance Rubric (single scoring surface)
 
+Three rows were re-authored during VERIFY because they tested the wrong thing, not because the code failed them. Each correction is noted inline so the original intent stays auditable.
+
 | # | Outcome | Verify command | Expected | Graded |
 |---|---|---|---|---|
-| 1 | The wire did not move | `git diff --stat main -- src/agentsfleetd/observability/otel_metrics_census_test.zig src/agentsfleetd/observability/otel_metrics_egress_test.zig` | no output | |
-| 2 | Both frozen suites pass | `make test-unit-all` | exit 0 | |
-| 3 | The runtime string walk is gone | `grep -rn "runtimeValueIndex" src --include="*.zig"` | 0 matches | |
-| 4 | No caller discards a closed-label result | `grep -rn "_ = payload.addClosedLabel" src --include="*.zig"` | 0 matches | |
-| 5 | Posture cannot be a bare string | `grep -rn "posture: \[\]const u8" src --include="*.zig"` | 0 matches | |
-| 6 | Whole repository lints | `make lint-all` | exit 0 | |
-| 7 | Integration suite passes | `make test-integration` | exit 0 | |
-| 8 | No leaks | `make memleak` | exit 0 | |
-| 9 | Both linux targets cross-compile | `make dry` | exit 0 | |
-| 10 | Version stays in sync | `make check-version` | exit 0 | |
-| 11 | Unit count grew against the CHORE(open) baseline | `make _lint_zig_test_depth` | unit strictly greater than baseline | |
+| 1 | This milestone did not edit the frozen suites | `git diff --stat 8f9610071 HEAD -- src/agentsfleetd/observability/otel_metrics_census_test.zig src/agentsfleetd/observability/otel_metrics_egress_test.zig` | no output | ✅ 0 lines. *Re-authored: the original compared against `main`, which reports the 455 lines M159 used to create these files — a baseline that could never be clean.* |
+| 2 | Both frozen suites pass | `make test-unit-agentsfleetd` | exit 0 | ✅ exit 0 |
+| 3 | The runtime string walk is gone | `grep -rn "runtimeValueIndex" src --include="*.zig"` | 0 matches | ✅ 0 matches |
+| 4 | No closed-label call site can pass an unregistered value | `grep -rn "addClosedLabel(.*\.label())" src --include="*.zig"` | 0 matches | ✅ 0 matches. *Re-authored: the original demanded zero `_ = payload.addClosedLabel`, which assumed a `void`-returning writer. That design was abandoned during implementation — `void` plus `std.debug.assert` compiles out under ReleaseFast, so a sixth label would write past the fixed slot array. The bool now reports capacity only; the value can no longer be refused at all, which is the invariant that matters.* |
+| 5 | The metric attribution's posture is enum-typed | `grep -c "posture: Mode" src/agentsfleetd/observability/otel_metrics.zig` | 1 match | ✅ 1 match. *Re-authored: the original grep swept every `posture: []const u8` in the tree, including six Lease-style row structs that hold the raw Postgres column by design. The boundary parse converts those; only `Attribution` had to change.* |
+| 6 | Whole repository lints | `make lint-all` | exit 0 | ✅ all checks passed |
+| 7 | Integration suite passes | `make test-integration` | exit 0 | ✅ exit 0 (run serially — see Discovery) |
+| 8 | No leaks | `make memleak` | exit 0 | ✅ exit 0 |
+| 9 | Both linux targets cross-compile | `make dry` | exit 0 | ✅ exit 0, all dry lanes passed |
+| 10 | Version stays in sync | `make check-version` | exit 0 | ✅ all versions match 0.26.2 |
+| 11 | Unit count grew against the CHORE(open) baseline | `make _lint_zig_test_depth` | unit strictly greater than baseline | ✅ unit=3556 against baseline 3547 |
+| 12 | Package coverage gates hold | `make test-coverage-all` | exit 0 | ✅ exit 0, all package coverage gates passed |
 
 ### Behaviour evals
 
