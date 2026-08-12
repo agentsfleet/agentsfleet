@@ -68,7 +68,10 @@ pub fn resolvePrincipalTenant(
     switch (principal.mode) {
         .api_key => return principal.tenant_id,
         .runner => return null,
-        .jwt_oidc => {},
+        // A CLI credential is a person, so it resolves the same way a browser
+        // session does — through the authoritative user row rather than the
+        // tenant its credential recorded at mint.
+        .jwt_oidc, .cli_credential => {},
     }
     if (principal.user_id) |subject| {
         var q = PgQuery.from(try conn.query(
