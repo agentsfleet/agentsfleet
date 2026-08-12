@@ -192,15 +192,17 @@ test "integration: a failed statement inside an elevated callback rolls back and
 
     _ = try conn.exec("SET ROLE api_runtime", .{});
 
-    // Dimension 2.3: the callback errors mid-transaction; withRole rolls the
-    // owned transaction back, and the server reverts SET LOCAL with it.
-    const Ctx = struct {};
-    const failed = pool_elevation.withRole(conn, .vault, Ctx{}, struct {
-        fn run(_: Ctx, v: pool_elevation.Elevated(.vault)) !void {
-            // A statement that cannot succeed even elevated: relation absent.
-            _ = try v.conn.exec("SELECT no_such_column FROM vault.secrets", .{});
-        }
-    }.run);
+    // Dimension 2.3: a statement fails mid-scope; `deinit` rolls the owned
+    // transaction back, and the server reverts SET LOCAL with it. Nothing in
+    // this block issues a reset — the defer is the whole cleanup.
+    const failed = blk: {
+        var scope = pool_elevation.begin(conn, .vault) catch |err| break :blk err;
+        defer scope.deinit();
+        // A statement that cannot succeed even elevated: relation absent.
+        _ = scope.conn.exec("SELECT no_such_column FROM vault.secrets", .{}) catch |err| break :blk err;
+        scope.commit() catch |err| break :blk err;
+        break :blk {};
+    };
     try std.testing.expectError(error.PG, failed);
 
     // The connection reports the base role and serves an unelevated read —
@@ -269,11 +271,7 @@ test "integration: a failed connection is refused elevation before any SET LOCAL
     // mid-query or failed connection never gets a SET LOCAL issued on it.
     try conn.begin();
     try std.testing.expectError(error.PG, conn.exec("SELECT no_such_thing", .{}));
-    const Ctx = struct {};
-    const refused = pool_elevation.withRole(conn, .vault, Ctx{}, struct {
-        fn run(_: Ctx, _: pool_elevation.Elevated(.vault)) !void {}
-    }.run);
-    try std.testing.expectError(pool_elevation.Error.ElevationRefused, refused);
+    try std.testing.expectError(pool_elevation.Error.ElevationRefused, pool_elevation.begin(conn, .vault));
     try conn.rollback();
     _ = try scalarI64(conn, "SELECT 1::bigint", .{});
 }
@@ -294,13 +292,11 @@ test "integration: api_runtime elevates to metering_runtime and returns to base"
     // the one live proof that the api_runtime -> metering_runtime SET path
     // (slot 120's membership) actually holds in the catalogue.
     _ = try conn.exec("SET ROLE api_runtime", .{});
-    const Ctx = struct { alloc: std.mem.Allocator };
-    const inside_role = try pool_elevation.withRole(conn, .metering, Ctx{ .alloc = alloc }, struct {
-        fn run(c: Ctx, v: pool_elevation.Elevated(.metering)) ![]u8 {
-            return currentRoleOwned(c.alloc, v.conn);
-        }
-    }.run);
+    var scope = try pool_elevation.begin(conn, .metering);
+    defer scope.deinit();
+    const inside_role = try currentRoleOwned(alloc, scope.conn);
     defer alloc.free(inside_role);
+    try scope.commit();
     try std.testing.expectEqualStrings("metering_runtime", inside_role);
 
     const after_role = try currentRoleOwned(alloc, conn);
@@ -321,16 +317,14 @@ test "integration: a connection returns to the base role and is reusable after a
 
     _ = try conn.exec("SET ROLE api_runtime", .{});
 
-    // Dimension 3.2: inside the callback the role is elevated; after the
-    // commit the SAME connection reports the base role and serves an
-    // unelevated read, with no reset call anywhere in this test.
-    const Ctx = struct { alloc: std.mem.Allocator };
-    const inside_role = try pool_elevation.withRole(conn, .billing, Ctx{ .alloc = alloc }, struct {
-        fn run(c: Ctx, v: pool_elevation.Elevated(.billing)) ![]u8 {
-            return currentRoleOwned(c.alloc, v.conn);
-        }
-    }.run);
+    // Dimension 3.2: inside the scope the role is elevated; after the commit
+    // the SAME connection reports the base role and serves an unelevated read,
+    // with no reset call anywhere in this test.
+    var scope = try pool_elevation.begin(conn, .billing);
+    defer scope.deinit();
+    const inside_role = try currentRoleOwned(alloc, scope.conn);
     defer alloc.free(inside_role);
+    try scope.commit();
     try std.testing.expectEqualStrings("billing_runtime", inside_role);
 
     const after_role = try currentRoleOwned(alloc, conn);

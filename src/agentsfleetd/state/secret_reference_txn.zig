@@ -185,20 +185,17 @@ pub fn begin(
     // here first; every caller treats that as fatal to its own write.
     //
     // `FOR UPDATE` on `vault.secrets` needs `vault_runtime` (schema/300), so
-    // the lock statement runs in an elevated callback inside THIS transaction
-    // and steps back down before the `core.*` steps — which run as
-    // `api_runtime`, whose privileges those steps need in turn.
-    const LockCtx = struct { workspace_id: []const u8, key_name: []const u8 };
-    const found = try pool_elevation.withRole(conn, .vault, LockCtx{
-        .workspace_id = workspace_id,
-        .key_name = key_name,
-    }, struct {
-        fn run(c: LockCtx, v: pool_elevation.Elevated(.vault)) !bool {
-            var q = PgQuery.from(try v.conn.query(LOCK_SECRET, .{ c.workspace_id, c.key_name }));
-            defer q.deinit();
-            return (try q.next()) != null;
-        }
-    }.run);
+    // the lock statement runs in an elevated scope inside THIS transaction and
+    // steps back down before the `core.*` steps — which run as `api_runtime`,
+    // whose privileges those steps need in turn.
+    var lock_scope = try pool_elevation.begin(conn, .vault);
+    defer lock_scope.deinit();
+    const found = blk: {
+        var q = PgQuery.from(try lock_scope.conn.query(LOCK_SECRET, .{ workspace_id, key_name }));
+        defer q.deinit();
+        break :blk (try q.next()) != null;
+    };
+    try lock_scope.commit();
     if (!found) return Error.SecretGone;
 
     // Step 0, issued here because step 1 is the cheaper rejection: no point

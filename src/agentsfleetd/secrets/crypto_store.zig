@@ -65,37 +65,34 @@ pub fn load(
     workspace_id: []const u8,
     key_name: []const u8,
 ) ![]u8 {
-    // Ciphertext is readable only as `vault_runtime` (schema/300); the
-    // callback runs inside exactly one elevated transaction, and the result
-    // is drained (defer inside the callback) before the commit. The plaintext
-    // rides an out-parameter so the caller's errdefer owns it if the commit
-    // itself fails after the callback succeeded.
-    var out: ?[]u8 = null;
-    errdefer if (out) |p| secure_memory.freeBytes(alloc, p);
-    const Ctx = struct { alloc: std.mem.Allocator, workspace_id: []const u8, key_name: []const u8, out: *?[]u8 };
-    try pool_elevation.withRole(conn, .vault, Ctx{
-        .alloc = alloc,
-        .workspace_id = workspace_id,
-        .key_name = key_name,
-        .out = &out,
-    }, struct {
-        fn run(c: Ctx, v: pool_elevation.Elevated(.vault)) !void {
-            var result = PgQuery.from(try v.conn.query(sql.SELECT_SECRET, .{ c.workspace_id, c.key_name }));
-            defer result.deinit();
+    // Ciphertext is readable only as `vault_runtime` (schema/300). The result
+    // drains (defer) before commit — COMMIT with a result in flight is a
+    // protocol error — and the plaintext is an ordinary local: `errdefer`
+    // frees it if the commit itself fails.
+    var scope = try pool_elevation.begin(conn, .vault);
+    defer scope.deinit();
 
-            const row = try result.next() orelse {
-                // Not-found is a normal control-flow path — caller decides whether to treat
-                // it as an error. Log at debug so it doesn't trip "logged errors" test gates.
-                log.debug("not_found", .{ .workspace_id = c.workspace_id, .key_name = c.key_name });
-                return cp.SecretError.NotFound;
-            };
+    // The query drains at this block's exit, BEFORE the commit below: COMMIT
+    // with a result in flight is a protocol error.
+    const plaintext = blk: {
+        var result = PgQuery.from(try scope.conn.query(sql.SELECT_SECRET, .{ workspace_id, key_name }));
+        defer result.deinit();
 
-            var kek = try cp.loadKek();
-            defer std.crypto.secureZero(u8, &kek);
-            c.out.* = try decryptRowAt(c.alloc, row, c.workspace_id, c.key_name, &kek, 0);
-        }
-    }.run);
-    return out.?;
+        const row = try result.next() orelse {
+            // Not-found is a normal control-flow path — caller decides whether to treat
+            // it as an error. Log at debug so it doesn't trip "logged errors" test gates.
+            log.debug("not_found", .{ .workspace_id = workspace_id, .key_name = key_name });
+            return cp.SecretError.NotFound;
+        };
+
+        var kek = try cp.loadKek();
+        defer std.crypto.secureZero(u8, &kek);
+        break :blk try decryptRowAt(alloc, row, workspace_id, key_name, &kek, 0);
+    };
+    errdefer secure_memory.freeBytes(alloc, plaintext);
+
+    try scope.commit();
+    return plaintext;
 }
 
 /// Decrypt one `vault.secrets` row into plaintext, reading its ciphertext
@@ -222,44 +219,34 @@ pub fn loadAllForWorkspace(
     }
 
     // Elevate to `vault_runtime` for the one SELECT (schema/300). The list
-    // accumulates in the caller's frame (errdefer above owns it on ANY
-    // failure, the commit's included); the callback only appends.
+    // accumulates in this frame, so the errdefer above owns it on ANY failure,
+    // the commit's included.
     var undecryptable: usize = 0;
-    const Ctx = struct {
-        alloc: std.mem.Allocator,
-        workspace_id: []const u8,
-        kek: *const [KEY_LEN]u8,
-        out: *std.ArrayList(WorkspaceSecret),
-        undecryptable: *usize,
-    };
-    try pool_elevation.withRole(conn, .vault, Ctx{
-        .alloc = alloc,
-        .workspace_id = workspace_id,
-        .kek = &kek,
-        .out = &out,
-        .undecryptable = &undecryptable,
-    }, struct {
-        fn run(c: Ctx, v: pool_elevation.Elevated(.vault)) !void {
-            var result = PgQuery.from(try v.conn.query(sql.SELECT_SECRETS_FOR_WORKSPACE, .{c.workspace_id}));
-            defer result.deinit();
-            while (try result.next()) |row| {
-                const key_name = try c.alloc.dupe(u8, try row.get([]const u8, 0));
-                errdefer c.alloc.free(key_name);
-                const created_at = try row.get(i64, 1);
-                // Ciphertext columns start at index 2 — same block, same order as
-                // SELECT_SECRET, which is why one decrypt routine serves both. A decrypt
-                // failure degrades THIS row to null rather than failing the workspace;
-                // decryptRowAt has already logged the cause with row context.
-                const plaintext = decryptRowAt(c.alloc, row, c.workspace_id, key_name, c.kek, 2) catch |err| blk: {
-                    if (err == error.OutOfMemory) return err; // not a per-row data fault
-                    c.undecryptable.* += 1;
-                    break :blk null;
-                };
-                errdefer if (plaintext) |p| secure_memory.freeBytes(c.alloc, p);
-                try c.out.append(c.alloc, .{ .key_name = key_name, .created_at = created_at, .plaintext = plaintext });
-            }
+    var scope = try pool_elevation.begin(conn, .vault);
+    defer scope.deinit();
+
+    {
+        // Scoped so the result drains before the commit below.
+        var result = PgQuery.from(try scope.conn.query(sql.SELECT_SECRETS_FOR_WORKSPACE, .{workspace_id}));
+        defer result.deinit();
+        while (try result.next()) |row| {
+            const key_name = try alloc.dupe(u8, try row.get([]const u8, 0));
+            errdefer alloc.free(key_name);
+            const created_at = try row.get(i64, 1);
+            // Ciphertext columns start at index 2 — same block, same order as
+            // SELECT_SECRET, which is why one decrypt routine serves both. A decrypt
+            // failure degrades THIS row to null rather than failing the workspace;
+            // decryptRowAt has already logged the cause with row context.
+            const plaintext = decryptRowAt(alloc, row, workspace_id, key_name, &kek, 2) catch |err| blk: {
+                if (err == error.OutOfMemory) return err; // not a per-row data fault
+                undecryptable += 1;
+                break :blk null;
+            };
+            errdefer if (plaintext) |p| secure_memory.freeBytes(alloc, p);
+            try out.append(alloc, .{ .key_name = key_name, .created_at = created_at, .plaintext = plaintext });
         }
-    }.run);
+    }
+    try scope.commit();
     log.info("retrieved_workspace", .{ .workspace_id = workspace_id, .count = out.items.len, .undecryptable = undecryptable });
     return out.toOwnedSlice(alloc);
 }

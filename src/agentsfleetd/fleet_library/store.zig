@@ -34,19 +34,17 @@ pub fn freeStringSlice(alloc: std.mem.Allocator, values: []const []const u8) voi
 fn secretExists(conn: *pg.Conn, workspace_id: []const u8, name: []const u8) !bool {
     // Presence still needs SELECT on the table, held only by `vault_runtime`
     // (schema/300); the result drains (defer) before the commit.
-    const Ctx = struct { workspace_id: []const u8, name: []const u8 };
-    return pool_elevation.withRole(conn, .vault, Ctx{
-        .workspace_id = workspace_id,
-        .name = name,
-    }, struct {
-        fn run(c: Ctx, v: pool_elevation.Elevated(.vault)) !bool {
-            var q = PgQuery.from(try v.conn.query(
-                \\SELECT 1 FROM vault.secrets
-                \\WHERE workspace_id = $1::uuid AND key_name = $2
-                \\LIMIT 1
-            , .{ c.workspace_id, c.name }));
-            defer q.deinit();
-            return (try q.next()) != null;
-        }
-    }.run);
+    var scope = try pool_elevation.begin(conn, .vault);
+    defer scope.deinit();
+    const found = blk: {
+        var q = PgQuery.from(try scope.conn.query(
+            \\SELECT 1 FROM vault.secrets
+            \\WHERE workspace_id = $1::uuid AND key_name = $2
+            \\LIMIT 1
+        , .{ workspace_id, name }));
+        defer q.deinit();
+        break :blk (try q.next()) != null;
+    };
+    try scope.commit();
+    return found;
 }

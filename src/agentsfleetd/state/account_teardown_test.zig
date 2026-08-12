@@ -241,7 +241,7 @@ test "integration: a failure inside the elevated memory delete rolls the purge b
     try std.testing.expectEqual(@as(i64, 1), try countMemory(conn, RB_FLEET_ID));
 
     // The memory delete is the purge's FIRST statement and runs under the
-    // .memory elevation — raising here drives withRole's in-transaction error
+    // .memory elevation — raising here drives the scope's in-transaction error
     // branch (best-effort step-down, error surfacing to the purge's rollback),
     // which the core.users injection above never reaches: that one fires after
     // every elevated statement has already succeeded and stepped down.

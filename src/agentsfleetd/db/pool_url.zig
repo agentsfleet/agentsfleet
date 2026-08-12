@@ -10,11 +10,23 @@ const pg = @import("pg");
 
 const S_SSLMODE = "sslmode=";
 
-// Defaults mirrored from pool.zig's sizing block; `initFromEnvForRole`
-// overwrites both from env-resolved sizing.
+// The ONE home for pool sizing. `pool.zig` imports these rather than
+// restating them: the pair was duplicated in both files, each comment claiming
+// to mirror the other, which is a drift waiting to happen on a value that
+// decides how many connections a deployment opens.
+//
+// Default pool size is a small fraction of the API in-flight-request ceiling:
+// many concurrent requests share a handful of DB connections, so the pool need
+// not scale 1:1 with request concurrency. Mirrors the
+// `API_MAX_IN_FLIGHT_REQUESTS` loader default divided by the per-connection
+// request-sharing factor. `initFromEnvForRole` overwrites both from
+// env-resolved sizing, so the deployed value can be far larger than this.
 const API_MAX_IN_FLIGHT_REQUESTS_DEFAULT: u16 = 256;
 const POOL_SIZE_INFLIGHT_DIVISOR: u16 = 64;
 pub const POOL_SIZE_DEFAULT: u16 = API_MAX_IN_FLIGHT_REQUESTS_DEFAULT / POOL_SIZE_INFLIGHT_DIVISOR;
+
+// Acquire timeout fails fast: a starved pool surfaces as a quick error rather
+// than a multi-second stall that masquerades as a slow request.
 pub const ACQUIRE_TIMEOUT_MS_DEFAULT: u32 = 2_000;
 const CONNECT_TIMEOUT_MS_DEFAULT: u32 = 10_000;
 

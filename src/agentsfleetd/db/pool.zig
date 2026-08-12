@@ -70,17 +70,11 @@ pub const Pool = struct {
 const POOL_SIZE_ENV = "DATABASE_POOL_SIZE";
 const ACQUIRE_TIMEOUT_MS_ENV = "DATABASE_ACQUIRE_TIMEOUT_MS";
 
-// Default pool size is a small fraction of the API in-flight-request ceiling:
-// many concurrent requests share a handful of DB connections, so the pool need
-// not scale 1:1 with request concurrency. Mirrors the `API_MAX_IN_FLIGHT_REQUESTS`
-// loader default (256) divided by the per-connection request-sharing factor.
-const API_MAX_IN_FLIGHT_REQUESTS_DEFAULT: u16 = 256;
-const POOL_SIZE_INFLIGHT_DIVISOR: u16 = 64;
-const POOL_SIZE_DEFAULT: u16 = API_MAX_IN_FLIGHT_REQUESTS_DEFAULT / POOL_SIZE_INFLIGHT_DIVISOR;
-
-// Acquire timeout fails fast: a starved pool surfaces as a quick error rather
-// than a multi-second stall that masquerades as a slow request.
-const ACQUIRE_TIMEOUT_MS_DEFAULT: u32 = 2_000;
+// Pool sizing lives in `pool_url.zig` — one definition, imported here, so the
+// two files cannot drift on the value that decides how many connections a
+// deployment opens.
+const POOL_SIZE_DEFAULT = pool_url.POOL_SIZE_DEFAULT;
+const ACQUIRE_TIMEOUT_MS_DEFAULT = pool_url.ACQUIRE_TIMEOUT_MS_DEFAULT;
 
 // Upper bound on a role tag ("migrator" is the longest) and on a fully
 // composed "<KNOB>_<ROLE>" env-var name; both leave slack for future roles.

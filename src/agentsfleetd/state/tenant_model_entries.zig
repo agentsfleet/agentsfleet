@@ -206,17 +206,15 @@ pub fn secretExistsForTenant(conn: *pg.Conn, tenant_id: []const u8, secret_ref: 
     };
     const workspace_id = ws orelse return false;
 
-    const Ctx = struct { workspace_id: []const u8, secret_ref: []const u8 };
-    return pool_elevation.withRole(conn, .vault, Ctx{
-        .workspace_id = workspace_id,
-        .secret_ref = secret_ref,
-    }, struct {
-        fn run(c: Ctx, v: pool_elevation.Elevated(.vault)) !bool {
-            var q = PgQuery.from(try v.conn.query(sql.EXISTS_SECRET_IN_WORKSPACE, .{ c.workspace_id, c.secret_ref }));
-            defer q.deinit();
-            return (try q.next()) != null;
-        }
-    }.run);
+    var scope = try pool_elevation.begin(conn, .vault);
+    defer scope.deinit();
+    const found = blk: {
+        var q = PgQuery.from(try scope.conn.query(sql.EXISTS_SECRET_IN_WORKSPACE, .{ workspace_id, secret_ref }));
+        defer q.deinit();
+        break :blk (try q.next()) != null;
+    };
+    try scope.commit();
+    return found;
 }
 
 pub fn referencedSecretCount(conn: *pg.Conn, tenant_id: []const u8, secret_ref: []const u8) !i64 {

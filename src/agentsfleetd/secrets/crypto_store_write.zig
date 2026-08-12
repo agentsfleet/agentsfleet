@@ -130,66 +130,48 @@ fn writeEnvelope(
     // the statement; standalone it owns the transaction. All envelope crypto
     // above runs BEFORE elevating, so no transaction is held open across key
     // derivation — the elevated span is one INSERT/UPDATE.
-    const Ctx = struct {
-        alloc: std.mem.Allocator,
-        workspace_id: []const u8,
-        key_name: []const u8,
-        wrapped_dek: *const cp.EncryptedBlob,
-        encrypted_payload: *const cp.EncryptedBlob,
-        projection: metadata.Projection,
-        now_ms: i64,
-        statement: []const u8,
-    };
-    const written = try pool_elevation.withRole(conn, .vault, Ctx{
-        .alloc = alloc,
-        .workspace_id = workspace_id,
-        .key_name = key_name,
-        .wrapped_dek = &wrapped_dek,
-        .encrypted_payload = &encrypted_payload,
-        .projection = projection,
-        .now_ms = now_ms,
-        .statement = statement,
-    }, struct {
-        fn run(c: Ctx, v: pool_elevation.Elevated(.vault)) !?i64 {
-            if (with_id) {
-                const secret_id = try id_format.generateVaultSecretId(c.alloc);
-                defer c.alloc.free(secret_id);
-                return try v.conn.exec(c.statement, .{
-                    secret_id,
-                    c.workspace_id,
-                    c.key_name,
-                    c.wrapped_dek.ciphertext,
-                    c.wrapped_dek.nonce[0..],
-                    c.wrapped_dek.tag[0..],
-                    c.encrypted_payload.nonce[0..],
-                    c.encrypted_payload.ciphertext,
-                    c.encrypted_payload.tag[0..],
-                    KEK_VERSION_AAD_BOUND,
-                    c.now_ms,
-                    c.projection.kind.wire(),
-                    c.projection.provider,
-                    c.projection.base_url,
-                    c.projection.has_key,
-                });
-            }
-            return try v.conn.exec(c.statement, .{
-                c.workspace_id,
-                c.key_name,
-                c.wrapped_dek.ciphertext,
-                c.wrapped_dek.nonce[0..],
-                c.wrapped_dek.tag[0..],
-                c.encrypted_payload.nonce[0..],
-                c.encrypted_payload.ciphertext,
-                c.encrypted_payload.tag[0..],
+    var scope = try pool_elevation.begin(conn, .vault);
+    defer scope.deinit();
+    const written = blk: {
+        if (with_id) {
+            const secret_id = try id_format.generateVaultSecretId(alloc);
+            defer alloc.free(secret_id);
+            break :blk try scope.conn.exec(statement, .{
+                secret_id,
+                workspace_id,
+                key_name,
+                wrapped_dek.ciphertext,
+                wrapped_dek.nonce[0..],
+                wrapped_dek.tag[0..],
+                encrypted_payload.nonce[0..],
+                encrypted_payload.ciphertext,
+                encrypted_payload.tag[0..],
                 KEK_VERSION_AAD_BOUND,
-                c.now_ms,
-                c.projection.kind.wire(),
-                c.projection.provider,
-                c.projection.base_url,
-                c.projection.has_key,
+                now_ms,
+                projection.kind.wire(),
+                projection.provider,
+                projection.base_url,
+                projection.has_key,
             });
         }
-    }.run);
+        break :blk try scope.conn.exec(statement, .{
+            workspace_id,
+            key_name,
+            wrapped_dek.ciphertext,
+            wrapped_dek.nonce[0..],
+            wrapped_dek.tag[0..],
+            encrypted_payload.nonce[0..],
+            encrypted_payload.ciphertext,
+            encrypted_payload.tag[0..],
+            KEK_VERSION_AAD_BOUND,
+            now_ms,
+            projection.kind.wire(),
+            projection.provider,
+            projection.base_url,
+            projection.has_key,
+        });
+    };
+    try scope.commit();
     // The affected-row count is the answer, and it means opposite things to the
     // two callers: zero rows is a taken name for `create` (DO NOTHING wrote
     // nothing) and a missing one for `replace` (the UPDATE matched nothing).

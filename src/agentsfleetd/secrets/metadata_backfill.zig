@@ -148,23 +148,17 @@ fn write(
     projection: metadata.Projection,
 ) !bool {
     // The UPDATE lands only as `vault_runtime` (schema/300).
-    const Ctx = struct { workspace_id: []const u8, key_name: []const u8, projection: metadata.Projection };
-    const affected = try pool_elevation.withRole(conn, .vault, Ctx{
-        .workspace_id = workspace_id,
-        .key_name = key_name,
-        .projection = projection,
-    }, struct {
-        fn run(c: Ctx, v: pool_elevation.Elevated(.vault)) !?i64 {
-            return try v.conn.exec(sql.UPDATE_SECRET_METADATA, .{
-                c.workspace_id,
-                c.key_name,
-                c.projection.kind.wire(),
-                c.projection.provider,
-                c.projection.base_url,
-                c.projection.has_key,
-            });
-        }
-    }.run);
+    var scope = try pool_elevation.begin(conn, .vault);
+    defer scope.deinit();
+    const affected = try scope.conn.exec(sql.UPDATE_SECRET_METADATA, .{
+        workspace_id,
+        key_name,
+        projection.kind.wire(),
+        projection.provider,
+        projection.base_url,
+        projection.has_key,
+    });
+    try scope.commit();
     return (affected orelse 0) > 0;
 }
 

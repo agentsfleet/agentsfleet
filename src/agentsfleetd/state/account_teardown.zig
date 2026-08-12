@@ -191,16 +191,15 @@ pub fn purgeByOidcSubject(
     const elevated_ids = try ElevatedIds.resolve(conn, alloc, tenant_id);
     defer elevated_ids.deinit(alloc);
     // `inline for`: the statement list is comptime, so each tagged statement
-    // gets its own `withRole` instantiation — elevated for exactly that
-    // statement inside the purge transaction, stepping back down so the next
-    // statement runs as `api_runtime` again. A refusal rolls the purge back.
+    // opens its own scope — elevated for exactly that statement inside the
+    // purge transaction, stepping back down so the next statement runs as
+    // `api_runtime` again. A refusal rolls the purge back.
     inline for (PURGE_STATEMENTS) |stmt| {
         if (comptime stmt.role) |role| {
-            try pool_elevation.withRole(conn, role, elevated_ids.slice(stmt.bind.?), struct {
-                fn run(ids: []const []const u8, v: pool_elevation.Elevated(role)) !void {
-                    _ = try v.conn.exec(stmt.sql, .{ids});
-                }
-            }.run);
+            var scope = try pool_elevation.begin(conn, role);
+            defer scope.deinit();
+            _ = try scope.conn.exec(stmt.sql, .{elevated_ids.slice(stmt.bind.?)});
+            try scope.commit();
         } else {
             _ = try conn.exec(stmt.sql, .{tenant_id});
         }

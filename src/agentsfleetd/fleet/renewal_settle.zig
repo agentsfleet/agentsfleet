@@ -176,51 +176,38 @@ pub fn claimAndSettle(
     const ledger_uid: []const u8 = &ledger_uid_value;
 
     // Elevate to `metering_runtime` for the one fenced statement (schema/120).
-    // The statement is unchanged; the result drains before the callback
-    // returns and the commit runs (see `renewal.renew`).
-    const Ctx = struct {
-        lease_id: []const u8,
-        runner_id: []const u8,
-        now_ms: i64,
-        meter: renewal_meter.MeterInputs,
-        ledger_uid: []const u8,
-        succeeded: bool,
+    // The statement is unchanged; the result drains at the block's exit,
+    // before the commit (see `renewal.renew`).
+    var scope = try pool_elevation.begin(conn, .metering);
+    defer scope.deinit();
+
+    const outcome: ?SettleOutcome = blk: {
+        var q = PgQuery.from(try scope.conn.query(CLAIM_SETTLE_SQL, .{
+            lease_id,
+            runner_id,
+            now_ms,
+            meter.cumulative_input,
+            meter.cumulative_cached,
+            meter.cumulative_output,
+            meter.run_nanos_per_sec,
+            meter.input_nanos_per_mtok,
+            meter.cached_input_nanos_per_mtok,
+            meter.output_nanos_per_mtok,
+            telemetry.ChargeType.stage.label(),
+            protocol.RUNNER_LEASE_STATUS_ACTIVE,
+            protocol.RUNNER_LEASE_STATUS_REPORTED,
+            MS_PER_SECOND,
+            TOKENS_PER_MTOK,
+            ledger_uid,
+            succeeded,
+        }));
+        defer q.deinit();
+        const row = try q.next() orelse break :blk null;
+        break :blk .{
+            .charged_nanos = (try row.get(?i64, 0)) orelse 0,
+            .claimed = (try row.get(i64, 1)) == 1,
+        };
     };
-    const outcome = try pool_elevation.withRole(conn, .metering, Ctx{
-        .lease_id = lease_id,
-        .runner_id = runner_id,
-        .now_ms = now_ms,
-        .meter = meter,
-        .ledger_uid = ledger_uid,
-        .succeeded = succeeded,
-    }, struct {
-        fn run(c: Ctx, v: pool_elevation.Elevated(.metering)) !?SettleOutcome {
-            var q = PgQuery.from(try v.conn.query(CLAIM_SETTLE_SQL, .{
-                c.lease_id,
-                c.runner_id,
-                c.now_ms,
-                c.meter.cumulative_input,
-                c.meter.cumulative_cached,
-                c.meter.cumulative_output,
-                c.meter.run_nanos_per_sec,
-                c.meter.input_nanos_per_mtok,
-                c.meter.cached_input_nanos_per_mtok,
-                c.meter.output_nanos_per_mtok,
-                telemetry.ChargeType.stage.label(),
-                protocol.RUNNER_LEASE_STATUS_ACTIVE,
-                protocol.RUNNER_LEASE_STATUS_REPORTED,
-                MS_PER_SECOND,
-                TOKENS_PER_MTOK,
-                c.ledger_uid,
-                c.succeeded,
-            }));
-            defer q.deinit();
-            const row = try q.next() orelse return null;
-            return .{
-                .charged_nanos = (try row.get(?i64, 0)) orelse 0,
-                .claimed = (try row.get(i64, 1)) == 1,
-            };
-        }
-    }.run);
+    try scope.commit();
     return outcome orelse .{ .claimed = false, .charged_nanos = 0 };
 }

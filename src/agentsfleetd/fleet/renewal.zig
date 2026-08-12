@@ -201,53 +201,40 @@ pub fn renew(
     // its atomicity argument (charge and cursor advance commit together) is
     // untouched. The result drains (defer) before the callback returns and
     // the commit runs: COMMIT with a result in flight is a protocol error.
-    const Ctx = struct {
-        lease_id: []const u8,
-        runner_id: []const u8,
-        want_until: i64,
-        now_ms: i64,
-        meter: renewal_meter.MeterInputs,
-        ledger_uid: []const u8,
+    var scope = try pool_elevation.begin(conn, .metering);
+    defer scope.deinit();
+
+    const outcome: ?OutcomeRow = blk: {
+        var q = PgQuery.from(try scope.conn.query(RENEW_METER_SQL, .{
+            lease_id,
+            runner_id,
+            want_until,
+            constants.MAX_RUNTIME_MS,
+            protocol.RUNNER_LEASE_STATUS_ACTIVE,
+            now_ms,
+            meter.cumulative_input,
+            meter.cumulative_cached,
+            meter.cumulative_output,
+            meter.run_nanos_per_sec,
+            meter.input_nanos_per_mtok,
+            meter.cached_input_nanos_per_mtok,
+            meter.output_nanos_per_mtok,
+            telemetry.ChargeType.stage.label(),
+            MS_PER_SECOND,
+            TOKENS_PER_MTOK,
+            ledger_uid,
+        }));
+        defer q.deinit();
+        const row = try q.next() orelse break :blk null;
+        break :blk .{
+            .probe_found = try row.get(i64, 0),
+            .new_until = try row.get(?i64, 1),
+            .hard_cap = try row.get(?i64, 2),
+            .aff_updated = try row.get(i64, 3),
+            .charged_nanos = try row.get(?i64, 4),
+        };
     };
-    const outcome = try pool_elevation.withRole(conn, .metering, Ctx{
-        .lease_id = lease_id,
-        .runner_id = runner_id,
-        .want_until = want_until,
-        .now_ms = now_ms,
-        .meter = meter,
-        .ledger_uid = ledger_uid,
-    }, struct {
-        fn run(c: Ctx, v: pool_elevation.Elevated(.metering)) !?OutcomeRow {
-            var q = PgQuery.from(try v.conn.query(RENEW_METER_SQL, .{
-                c.lease_id,
-                c.runner_id,
-                c.want_until,
-                constants.MAX_RUNTIME_MS,
-                protocol.RUNNER_LEASE_STATUS_ACTIVE,
-                c.now_ms,
-                c.meter.cumulative_input,
-                c.meter.cumulative_cached,
-                c.meter.cumulative_output,
-                c.meter.run_nanos_per_sec,
-                c.meter.input_nanos_per_mtok,
-                c.meter.cached_input_nanos_per_mtok,
-                c.meter.output_nanos_per_mtok,
-                telemetry.ChargeType.stage.label(),
-                MS_PER_SECOND,
-                TOKENS_PER_MTOK,
-                c.ledger_uid,
-            }));
-            defer q.deinit();
-            const row = try q.next() orelse return null;
-            return .{
-                .probe_found = try row.get(i64, 0),
-                .new_until = try row.get(?i64, 1),
-                .hard_cap = try row.get(?i64, 2),
-                .aff_updated = try row.get(i64, 3),
-                .charged_nanos = try row.get(?i64, 4),
-            };
-        }
-    }.run);
+    try scope.commit();
     return mapOutcome(outcome orelse return .lost, now_ms);
 }
 

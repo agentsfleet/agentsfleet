@@ -27,3 +27,21 @@ that checkout. This file carries only project facts.
   an unset `NEXT_PUBLIC_API_URL` instead of guessing a backend.
 - Public endpoint, command, flag, or behavior changes require a matching branch
   in `~/Projects/docs`; never edit that repository through this worktree.
+- **Never read a lane's result through a pipe.** `make … | tail` reports the
+  exit status of `tail`, so a failing lane reads as green. Redirect to a file
+  and echo `$?`, or check `PIPESTATUS`. This has produced a false "integration
+  passed" more than once. Note also that `failed command:` in `zig build`
+  output is NOT a failure signal — it appears on successful runs too; the exit
+  code decides.
+- **Commit before restructuring, especially with untracked files present.** A
+  restructure that deletes an untracked file destroys it — git has no copy to
+  restore, and `git status` shows nothing missing afterwards. Work that took a
+  full review round to produce has been lost this way. Commit the working
+  state first, then restructure on top of it.
+- **One integration lane per machine.** `make test-integration` and
+  `make memleak` are per-worktree but not per-machine: several worktrees
+  running them at once drive load high enough that timeout-bounded tests
+  (Redis reconnect, SSE latency) fail on timing alone, in files the branch
+  never touched. Check `pgrep -f agentsfleetd-integration-tests` before
+  starting one, and treat a failure in an untouched file under load as suspect
+  until it reproduces on a quiet host.

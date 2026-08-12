@@ -20,6 +20,7 @@ const TestHarness = harness_mod.TestHarness;
 const base = @import("../db/test_fixtures.zig");
 const constants = @import("common");
 const renewal = @import("renewal.zig");
+const tenant_billing = @import("../state/tenant_billing.zig");
 
 const ALLOC = std.testing.allocator;
 
@@ -84,6 +85,24 @@ fn seedLease(conn: *pg.Conn, fencing_token: i64, created_at: i64, lease_expires_
 
 fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
     _ = conn.exec(sql, args) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+}
+
+/// The tenant's wallet balance, read directly rather than through the store so
+/// the assertion does not depend on the same elevation path it is checking.
+fn walletBalance(conn: *pg.Conn) !i64 {
+    return scalarBigint(conn, "SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid", base.TEST_TENANT_ID);
+}
+
+/// Total credit the ledger recorded against this run's event.
+fn ledgerCharged(conn: *pg.Conn) !i64 {
+    return scalarBigint(conn, "SELECT COALESCE(SUM(credit_deducted_nanos), 0)::bigint FROM billing.usage_ledger WHERE event_id = $1", EVENT_ID);
+}
+
+fn scalarBigint(conn: *pg.Conn, sql: []const u8, arg: []const u8) !i64 {
+    var q = PgQuery.from(try conn.query(sql, .{arg}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.RowMissing;
+    return row.get(i64, 0);
 }
 
 fn teardown(conn: *pg.Conn) void {
@@ -236,4 +255,84 @@ test "renew clamps the new deadline to the hard cap when TTL would overshoot it"
     const after = try readDeadlines(conn);
     try std.testing.expectEqual(want_cap, after.lease);
     try std.testing.expectEqual(want_cap, after.affinity);
+}
+
+// ── The money actually moves ─────────────────────────────────────────────────
+//
+// Every renewal case above passes `.{}` for the meter, so every rate is zero
+// and `charged_nanos == 0` is the correct answer — which means none of them can
+// tell a working billing path from one that charges nothing at all. That gap is
+// not hypothetical: stage billing shipped for months priced entirely to zero,
+// because a trial gate defaulted to "active" for every tenant and no test ever
+// asserted a positive charge. Type checking was never going to catch it.
+//
+// This case is the counterweight. It meters a slice at explicit non-zero rates
+// and asserts the three things that must agree: the outcome reports a charge,
+// the wallet fell by exactly that charge, and the ledger recorded it.
+
+/// Rates chosen so the arithmetic is exact and legible: 1s of runtime at
+/// RUN_RATE plus 1 Mtok of input at INPUT_RATE, with no rounding anywhere.
+const RUN_RATE_NANOS_PER_SEC: i64 = 100_000;
+const INPUT_RATE_NANOS_PER_MTOK: i64 = 2_000_000;
+const TOKENS_PER_MTOK: i64 = 1_000_000;
+const METERED_SPAN_MS: i64 = 1_000;
+const STARTING_BALANCE_NANOS: i64 = 50_000_000;
+
+test "integration: a metered renewal charges the wallet and the ledger by the same amount" {
+    var h = TestHarness.start(ALLOC, .{ .configureRegistry = noopRegistry }) catch |err| {
+        if (err == error.SkipZigTest) return error.SkipZigTest;
+        return err;
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    teardown(conn);
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "renewal-int-fleet", "{}", "# z");
+    try seedRunner(conn);
+
+    // A funded wallet, reset first so the balance assertion is exact rather
+    // than inherited from an earlier suite's grant.
+    base.resetBillingFor(conn, base.TEST_TENANT_ID);
+    try tenant_billing.provision(conn, base.TEST_TENANT_ID, STARTING_BALANCE_NANOS, "test_metered_renewal");
+
+    // The cursor sits METERED_SPAN_MS before now, so the slice bills exactly
+    // that span. Cumulative token counts are diffed against the cursor's zeros
+    // inside the fenced statement, so 1 Mtok of input is a 1 Mtok delta.
+    try seedAffinity(conn, 5, NOW_MS - MS_PER_SECOND);
+    try seedLease(conn, 5, NOW_MS - 2_000, NOW_MS - MS_PER_SECOND);
+    _ = try conn.exec("UPDATE fleet.runner_affinity SET last_metered_at = $2 WHERE fleet_id = $1::uuid", .{ FLEET_ID, NOW_MS - METERED_SPAN_MS });
+    _ = try conn.exec("UPDATE fleet.runner_leases SET last_metered_at = $2 WHERE id = $1::uuid", .{ LEASE_ID, NOW_MS - METERED_SPAN_MS });
+    defer teardown(conn);
+
+    const before = try walletBalance(conn);
+    try std.testing.expectEqual(STARTING_BALANCE_NANOS, before);
+
+    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{
+        .cumulative_input = TOKENS_PER_MTOK,
+        .run_nanos_per_sec = RUN_RATE_NANOS_PER_SEC,
+        .input_nanos_per_mtok = INPUT_RATE_NANOS_PER_MTOK,
+    });
+
+    // 1s × RUN_RATE + 1 Mtok × INPUT_RATE.
+    const want_charge = RUN_RATE_NANOS_PER_SEC + INPUT_RATE_NANOS_PER_MTOK;
+    const charged = switch (outcome) {
+        .renewed => |r| r.charged_nanos,
+        else => return error.TestExpectedRenewed,
+    };
+    try std.testing.expectEqual(want_charge, charged);
+
+    // Non-vacuous: a zero here would mean the whole assertion agreed on nothing,
+    // which is precisely how the trial-gate bug stayed invisible.
+    try std.testing.expect(charged > 0);
+
+    // The wallet fell by exactly the reported charge — the outcome cannot claim
+    // a debit the balance did not take.
+    try std.testing.expectEqual(before - want_charge, try walletBalance(conn));
+
+    // And the ledger recorded the same money, so the audit row and the wallet
+    // cannot disagree about what this run cost.
+    try std.testing.expectEqual(want_charge, try ledgerCharged(conn));
 }

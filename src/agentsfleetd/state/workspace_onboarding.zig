@@ -59,17 +59,15 @@ pub fn read(
     // sql.SELECT_HAS_SECRET). The five signals were always five independent
     // EXISTS probes, so reading this one a statement later loses nothing a
     // caller could observe.
-    const HasSecretCtx = struct { workspace_id: []const u8 };
-    const has_secret = try pool_elevation.withRole(conn, .vault, HasSecretCtx{
-        .workspace_id = workspace_id,
-    }, struct {
-        fn run(c: HasSecretCtx, v: pool_elevation.Elevated(.vault)) !bool {
-            var q = PgQuery.from(try v.conn.query(sql.SELECT_HAS_SECRET, .{c.workspace_id}));
-            defer q.deinit();
-            const row = (try q.next()) orelse return false;
-            return try row.get(bool, 0);
-        }
-    }.run);
+    var secret_scope = try pool_elevation.begin(conn, .vault);
+    defer secret_scope.deinit();
+    const has_secret = blk: {
+        var q = PgQuery.from(try secret_scope.conn.query(sql.SELECT_HAS_SECRET, .{workspace_id}));
+        defer q.deinit();
+        const row = (try q.next()) orelse break :blk false;
+        break :blk try row.get(bool, 0);
+    };
+    try secret_scope.commit();
 
     // The query result is fully drained (defer above) before this second read on
     // the same connection — the platform-default view runs its own query.
