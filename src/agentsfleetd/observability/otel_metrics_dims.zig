@@ -164,7 +164,8 @@ pub const KEYS = blk: {
 /// Values that belong to no closed enum: the operation name, the well-known
 /// provider spellings, and the per-runner reason/outcome labels the streamed
 /// path interns at comptime. These occupy the table's leading block.
-const LITERAL_VALUES = [_][]const u8{semconv.OPERATION_INVOKE_AGENT} ++
+const OPERATION_VALUES = [_][]const u8{semconv.OPERATION_INVOKE_AGENT};
+const LITERAL_VALUES = OPERATION_VALUES ++
     semconv.WELL_KNOWN_PROVIDERS ++
     mr.REASON_LABELS ++ mr.OUTCOME_LABELS;
 
@@ -211,12 +212,10 @@ const ENUM_BASE: [CLOSED_ENUMS.len]u16 = blk: {
 
 /// Index of the first well-known provider, derived from its position in the
 /// literal block so that adding a literal cannot silently shift the providers.
-const PROVIDER_BASE: u16 = blk: {
-    for (LITERAL_VALUES, 0..) |v, i| {
-        if (std.mem.eql(u8, v, semconv.WELL_KNOWN_PROVIDERS[0])) break :blk @intCast(i);
-    }
-    @compileError("well-known providers are absent from the literal value block");
-};
+/// Derived from the block layout rather than by searching for a provider
+/// spelling: a literal that happened to equal a provider name would otherwise
+/// bind this to the wrong index.
+const PROVIDER_BASE: u16 = OPERATION_VALUES.len;
 
 /// Every label value any family can put on the wire: the literal block, then
 /// each closed enum's members in declaration order. Deliberately not
