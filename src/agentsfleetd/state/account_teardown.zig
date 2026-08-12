@@ -91,15 +91,34 @@ const ElevatedIds = struct {
     workspace_ids: [][]const u8,
     fleet_ids: [][]const u8,
 
+    /// Lock the tenant row. `core.workspaces` references `core.tenants`, so a
+    /// workspace inserted concurrently must take a KEY SHARE lock on this row,
+    /// which this FOR UPDATE blocks.
+    fn lockTenant(conn: *pg.Conn, tenant_id: []const u8) !void {
+        var q = PgQuery.from(try conn.query("SELECT id FROM core.tenants WHERE id = $1::uuid FOR UPDATE", .{tenant_id}));
+        defer q.deinit();
+        _ = try q.next();
+    }
+
     fn resolve(conn: *pg.Conn, alloc: std.mem.Allocator, tenant_id: []const u8) !ElevatedIds {
-        // FOR UPDATE, and on the WORKSPACE rows specifically: `core.fleets`
-        // references `core.workspaces`, so a concurrent fleet insert must take
-        // a KEY SHARE lock on its parent workspace row, which this conflicts
-        // with. Without it a fleet created after this read is still deleted by
-        // the live subquery on `core.fleets`, while its `memory.memory_entries`
-        // rows — which carry no foreign key to fleets, so nothing cascades —
-        // are absent from the bound array and survive the erasure forever.
-        // A tenant-row lock would not close this: fleets do not reference it.
+        // Two locks, one per level of the parent chain. They close different
+        // holes and neither substitutes for the other, because the elevated
+        // statements bind FROZEN arrays while the `core` deletes re-evaluate
+        // their subqueries per statement — so anything inserted between the
+        // read and the delete loses its `core` rows and keeps the elevated
+        // ones, which no foreign key cascades behind.
+        //
+        //   tenant row     — blocks a concurrent workspace INSERT
+        //                    (`core.workspaces` → `core.tenants`). Without it a
+        //                    workspace created here keeps its `vault.secrets`.
+        //   workspace rows — blocks a concurrent fleet INSERT
+        //                    (`core.fleets` → `core.workspaces`). Without it a
+        //                    fleet created here keeps its `memory_entries`.
+        //
+        // Held in parent-to-child order, which is also the order the deletes
+        // walk, so two concurrent purges of one tenant queue rather than
+        // deadlock.
+        try lockTenant(conn, tenant_id);
         const ws = try idsText(conn, alloc, "SELECT id::text FROM core.workspaces WHERE tenant_id = $1::uuid FOR UPDATE", tenant_id);
         errdefer freeIds(alloc, ws);
         const fleets = try idsText(conn, alloc, "SELECT id::text FROM core.fleets WHERE workspace_id IN " ++ WS_OF_TENANT, tenant_id);

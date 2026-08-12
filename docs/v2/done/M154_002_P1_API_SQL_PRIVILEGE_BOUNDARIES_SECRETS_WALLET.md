@@ -370,6 +370,23 @@ N/A — no files deleted.
 
   Residual gap, stated plainly: a future milestone that adds a role, omits it from `APP_ROLES`, and does not run `make lint-all` before opening a Pull Request will still surface the drift as a 42501 in the coverage lane rather than as this gate's one-line failure.
 
+- **Reviewer finding on the open Pull Request (P1, valid, fixed here).** Greptile flagged `account_teardown.zig:103`: *"If workspace creation overlaps account erasure, this `FOR UPDATE` locks only the tenant's existing workspaces, so a later workspace and fleet are omitted from the captured `fleet_ids`."* Verified from source rather than from the label, and it is a **regression this branch introduced**. The first commit locked the tenant row (`lockTenant`); a later commit deleted that helper and substituted a workspace-row lock, reasoning that *"a tenant-row lock would not close this: fleets do not reference it."* True of fleets, and the wrong conclusion — the two locks guard different levels of the same parent chain and neither substitutes for the other:
+
+  | Lock | Blocks | Via | Cost of omitting it |
+  |---|---|---|---|
+  | tenant row | a concurrent **workspace** INSERT | `core.workspaces` → `core.tenants` | the new workspace keeps its `vault.secrets` |
+  | workspace rows | a concurrent **fleet** INSERT | `core.fleets` → `core.workspaces` | the new fleet keeps its `memory_entries` |
+
+  The elevated DELETEs bind arrays frozen at resolve time while the `core` DELETEs re-evaluate their subqueries per statement, so anything inserted in that window loses its `core` row and keeps the elevated one, which no foreign key cascades behind. Trading one lock for the other closed the fleet hole and reopened the workspace hole — orphaned ciphertext outliving the account it belonged to. `resolve` now takes both, parent-to-child, so two concurrent purges of one tenant queue rather than deadlock.
+
+  **Shipped without a regression test, deliberately.** A contention test was written and then deleted, because probing it showed it passed with `lockTenant` removed — it proved nothing. The reason is structural: a contender that holds its workspace INSERT open holds `FOR KEY SHARE` on the tenant row for the whole test, and the purge's final statement (`DELETE FROM core.tenants`) conflicts with that lock regardless, so "the purge is refused" is satisfied by a statement far below the one under test. Nor can a held-open contender distinguish the two cases at all: with or without the lock the purge times out and rolls back, leaving no observable difference.
+
+  Reproducing the real defect needs the concurrent insert to **commit** mid-purge — after the id sets resolve, before the `core` deletes run — which requires `std.Thread.spawn`, a secret seeded on the late workspace, and an assertion that `vault.secrets` for it is empty afterwards. That was offered and declined; a source-text tripwire asserting the two `FOR UPDATE` statements still exist was offered as the cheap alternative and rejected on the grounds that it is coverage in appearance only.
+
+  > Indy (2026-08-12): "i think to me 2 is just a cover up or pointless fix, so i prefer 3" · "2 is almost 3"
+
+  **Residual gap, stated plainly:** both purge locks are unpinned. An edit that removes either one reopens a permanent erasure gap — orphaned `vault.secrets` or `memory_entries` outliving the account — and no lane will fail. That is exactly how this defect entered: an edit that removed the tenant lock while reasoning carefully about why the workspace lock sufficed.
+
 - **Metrics review** — no new events. The two operator-facing counters (`refusedReleaseCount`, `refusedMarkCount`) are process-local counts with no identity, per §3's metric shape; no analytics or funnel surface changes.
 
 - **Skill-chain outcomes** — the six-reviewer `/review` pass and its adversarial round ran before this session and are recorded above with their findings ledger. `kishore-babysit-prs` runs after the first push.
