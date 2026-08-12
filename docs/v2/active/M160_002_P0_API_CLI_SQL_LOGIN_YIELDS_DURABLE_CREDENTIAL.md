@@ -123,12 +123,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The platform issues exactly one durable credential today and it belongs to a tenant, so a terminal holding one acts as the whole tenant and the audit trail records a free-text string where a person should be. This slice adds the missing primitive. **Implementation default:** one live credential per `(user, machine)` enforced by a partial unique index rather than by application logic, because the rule that must never break is the one the database refuses to represent. The credential carries a fixed prefix and is validated on load, so a session token written into that field is rejected at read time.
 
-- **Dimension 1.1** — a credential resolves to the user who created it, never to a tenant-wide principal → Test `test_credential_resolves_to_its_user`
-- **Dimension 1.2** — two live credentials for one `(user, machine)` cannot be created → Test `test_second_live_credential_per_machine_is_refused`
-- **Dimension 1.3** — only a hash is stored; the credential itself is unreadable from the row → Test `test_row_holds_no_recoverable_credential`
+- **Dimension 1.1** — a credential resolves to the user who created it, never to a tenant-wide principal → Test `test_credential_resolves_to_its_user` — **DONE**
+- **Dimension 1.2** — two live credentials for one `(user, machine)` cannot be created → Test `test_second_live_credential_per_machine_is_refused` — **DONE**
+- **Dimension 1.3** — only a hash is stored; the credential itself is unreadable from the row → Test `test_row_holds_no_recoverable_credential` — **DONE**
 - **Dimension 1.4** — a value lacking the credential prefix is refused on load rather than sent → Test `test_non_prefixed_value_is_refused_on_load`
-- **Dimension 1.5** — a revoked credential authenticates nothing → Test `test_revoked_credential_is_refused`
-- **Dimension 1.6** — the row records the machine and address that minted it, written once at mint and never on the authenticate path → Test `test_mint_records_attribution_and_auth_path_writes_nothing`
+- **Dimension 1.5** — a revoked credential authenticates nothing → Test `test_revoked_credential_is_refused` — **DONE**
+- **Dimension 1.6** — the row records the machine and address that minted it, written once at mint and never on the authenticate path → Test `test_mint_records_attribution_and_auth_path_writes_nothing` — **DONE**
 
 ### §2 — Login spends its sixty seconds on something that lasts
 
@@ -218,7 +218,8 @@ REFUSALS   registered codes; typed, never silent
 | Revoke fails during re-login | The prior credential cannot be revoked | Login continues and succeeds; the orphaned identifier is reported for manual revocation |
 | Deployment mismatch | A stored credential is used against another deployment | Refused before the request leaves the process, under the registered code |
 | Credential revoked elsewhere | An operator revokes it from another terminal or the dashboard | The next command answers the revoked code and points at login |
-| Concurrent logins, one machine | Two logins race on the same `(user, machine)` | The partial unique index refuses the second insert; the loser retries against the revoked row and exactly one credential is live |
+| Concurrent logins, one machine | Two logins race on the same `(user, machine)` | The partial unique index refuses the losing insert, which rolls back its own revoke; exactly one credential is live and the loser is answered a registered code |
+| Mint fails after the revoke | A transient datastore error, or a lost index race, hits the insert | Revoke and insert are one transaction, so the rollback leaves the prior credential live — a failed re-login never leaves the operator with nothing |
 | Stored state absent or unreadable | A hand-deleted or corrupt state file | Treated as logged out, never as a silent fallback to another deployment |
 | Session token written into the credential field | A regression in the persistence path | Refused on load by the prefix check, before any request carries it |
 | Tenant key presented where a user credential is required | A caller substitutes an `/v1/api-keys` value | Resolves as a tenant principal and is refused by any route requiring a user principal |
@@ -277,6 +278,7 @@ The existing login-completed analytics event keeps its name and its position in 
 | 4.4 | unit | `test_credential_ladder_order_unchanged` | `AGENTSFLEET_API_KEY` outranks the stored credential |
 | 4.5 | unit | `test_logout_clears_stored_deployment` | After logout, no stored deployment remains |
 | failure | integration | `test_concurrent_logins_leave_one_live_credential` | Two interleaved logins on one machine leave exactly one live credential |
+| failure | integration | `test_failed_mint_leaves_the_prior_credential_live` | With the insert failing under an injected fault, the prior credential is still live — the revoke rolled back with it |
 | failure | unit | `test_corrupt_state_reads_as_logged_out` | An unreadable state file reads as logged out, never as another deployment |
 | failure | integration | `test_tenant_key_refused_on_user_scoped_route` | A tenant API key does not satisfy a route requiring a user principal |
 | invariant | unit | `test_no_credential_material_in_emitted_output` | Across login, failure, and refusal paths, no emitted string contains credential or token material |
