@@ -2,6 +2,7 @@ const std = @import("std");
 const clock = @import("common").clock;
 const env = @import("common").env;
 const pg = @import("pg");
+const db = @import("./pool.zig");
 const PgQuery = @import("pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const pool_mod = @import("pool.zig");
@@ -145,7 +146,7 @@ test "integration: canary pool acquire + exec + query SELECT 1" {
 
     const opts = try parseUrl(std.heap.page_allocator, url);
     const inner = try pg.Pool.init(@import("common").globalIo(), alloc, opts);
-    const pool = try pool_mod.adopt(inner, alloc);
+    const pool = try db.adopt(inner, alloc);
 
     defer pool.deinit();
 
@@ -740,27 +741,6 @@ const ROLE_PRIVILEGE_MATRIX = [_]RolePrivilege{
     .{ .role = "memory_runtime", .table = "vault.secrets", .select = false, .insert = false, .update = false, .delete = false },
     .{ .role = "memory_runtime", .table = "billing.tenant_wallet", .select = false, .insert = false, .update = false, .delete = false },
     .{ .role = "memory_runtime", .table = "billing.usage_ledger", .select = false, .insert = false, .update = false, .delete = false },
-
-    // vault_runtime — the sealed store, and nothing that holds money.
-    .{ .role = "vault_runtime", .table = "vault.secrets", .select = true, .insert = true, .update = true, .delete = true },
-    .{ .role = "vault_runtime", .table = "billing.tenant_wallet", .select = false, .insert = false, .update = false, .delete = false },
-    .{ .role = "vault_runtime", .table = "billing.usage_ledger", .select = false, .insert = false, .update = false, .delete = false },
-
-    // billing_runtime — the wallet and the ledger. No DELETE on either: a
-    // wallet leaves with its tenant through the cascade, and a charge never
-    // leaves at all.
-    .{ .role = "billing_runtime", .table = "billing.tenant_wallet", .select = true, .insert = true, .update = true, .delete = false },
-    .{ .role = "billing_runtime", .table = "billing.usage_ledger", .select = true, .insert = true, .update = true, .delete = false },
-    .{ .role = "billing_runtime", .table = "vault.secrets", .select = false, .insert = false, .update = false, .delete = false },
-
-    // metering_runtime — the composite, and the row that proves it is composed
-    // rather than inherited: it reads and updates the wallet, but may not
-    // CREATE one. An inheriting membership in billing_runtime would silently
-    // flip that INSERT to true, which is exactly the widening this pins shut.
-    .{ .role = "metering_runtime", .table = "billing.tenant_wallet", .select = true, .insert = false, .update = true, .delete = false },
-    .{ .role = "metering_runtime", .table = "billing.usage_ledger", .select = true, .insert = true, .update = true, .delete = false },
-    .{ .role = "metering_runtime", .table = "fleet.runner_leases", .select = true, .insert = false, .update = true, .delete = false },
-    .{ .role = "metering_runtime", .table = "vault.secrets", .select = false, .insert = false, .update = false, .delete = false },
 
     // Read-only operator principals reach neither money nor secrets, in any
     // direction. Each schema slot REVOKEs explicitly so re-widening is a visible

@@ -46,9 +46,7 @@ const PurgeStatement = struct { sql: []const u8, role: ?pool_elevation.Role = nu
 /// Which pre-resolved id set an elevated statement binds as `$1`.
 const ElevatedBind = enum { fleet_ids, workspace_ids };
 
-/// Child-before-parent delete order. An unelevated statement binds `$1` =
-/// tenant_id; a statement carrying a `.role` binds `$1` = the `ElevatedBind`
-/// id array `ElevatedIds.resolve` pre-resolved for it.
+/// Child-before-parent delete order. Every statement binds `$1` = tenant_id.
 /// The fleet-scoped child deletes run before `core.fleets` (which their
 /// subqueries read), and all workspace children run before `core.workspaces`.
 const PURGE_STATEMENTS = [_]PurgeStatement{
@@ -93,22 +91,16 @@ const ElevatedIds = struct {
     workspace_ids: [][]const u8,
     fleet_ids: [][]const u8,
 
-    /// Lock the tenant row before reading the id sets. A workspace or fleet
-    /// inserted concurrently takes a KEY SHARE lock on `core.tenants` through
-    /// its foreign key, which this FOR UPDATE blocks — without it the arrays
-    /// freeze at transaction start while the later `core` deletes re-evaluate
-    /// their own subqueries per statement, so a workspace created in between
-    /// would lose its `core` rows while its secrets and memory entries, bound
-    /// from the stale arrays, survived the erasure.
-    fn lockTenant(conn: *pg.Conn, tenant_id: []const u8) !void {
-        var q = PgQuery.from(try conn.query("SELECT id FROM core.tenants WHERE id = $1::uuid FOR UPDATE", .{tenant_id}));
-        defer q.deinit();
-        _ = try q.next();
-    }
-
     fn resolve(conn: *pg.Conn, alloc: std.mem.Allocator, tenant_id: []const u8) !ElevatedIds {
-        try lockTenant(conn, tenant_id);
-        const ws = try idsText(conn, alloc, "SELECT id::text FROM core.workspaces WHERE tenant_id = $1::uuid", tenant_id);
+        // FOR UPDATE, and on the WORKSPACE rows specifically: `core.fleets`
+        // references `core.workspaces`, so a concurrent fleet insert must take
+        // a KEY SHARE lock on its parent workspace row, which this conflicts
+        // with. Without it a fleet created after this read is still deleted by
+        // the live subquery on `core.fleets`, while its `memory.memory_entries`
+        // rows — which carry no foreign key to fleets, so nothing cascades —
+        // are absent from the bound array and survive the erasure forever.
+        // A tenant-row lock would not close this: fleets do not reference it.
+        const ws = try idsText(conn, alloc, "SELECT id::text FROM core.workspaces WHERE tenant_id = $1::uuid FOR UPDATE", tenant_id);
         errdefer freeIds(alloc, ws);
         const fleets = try idsText(conn, alloc, "SELECT id::text FROM core.fleets WHERE workspace_id IN " ++ WS_OF_TENANT, tenant_id);
         return .{ .workspace_ids = ws, .fleet_ids = fleets };

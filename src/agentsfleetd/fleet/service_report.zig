@@ -161,11 +161,9 @@ fn claimReportAndSettle(hx: Hx, runner_id: []const u8, lease: Lease, body: proto
     defer hx.ctx.pool.release(conn);
     const meter = renewal_meter.buildMeterInputs(
         conn,
-        lease.tenant_id,
         lease.provider,
         parsePosture(lease.posture),
         lease.model,
-        now_ms,
         body.input_tokens,
         body.cached_input_tokens,
         body.output_tokens,

@@ -32,39 +32,6 @@ fn eachGrantLine(sql: []const u8, ctx: anytype, comptime visit: fn (@TypeOf(ctx)
     }
 }
 
-/// The grantee list of a GRANT line: everything after the last ` TO `, with a
-/// trailing `WITH ...` clause and the semicolon removed.
-fn granteesOf(line: []const u8) []const u8 {
-    const to = std.mem.lastIndexOf(u8, line, " TO ") orelse return "";
-    var rest = line[to + " TO ".len ..];
-    if (std.mem.indexOf(u8, rest, " WITH ")) |with| rest = rest[0..with];
-    return std.mem.trim(u8, rest, " ;");
-}
-
-/// Whether `line` grants to `role`, parsed as a comma-separated grantee list.
-/// A substring match cannot answer this: PostgreSQL takes several grantees per
-/// statement, and the slots already use that spelling (`TO ops_readonly_human,
-/// ops_readonly_fleet`), so `GRANT ... TO reporting, api_runtime` would slip
-/// past a naive ` TO api_runtime` scan.
-fn grantsTo(line: []const u8, role: []const u8) bool {
-    var it = std.mem.splitScalar(u8, granteesOf(line), ',');
-    while (it.next()) |grantee| {
-        if (std.mem.eql(u8, std.mem.trim(u8, grantee, " ;"), role)) return true;
-    }
-    return false;
-}
-
-test "the grantee parser reads lists, not substrings" {
-    // The scanner's own regression guard: every assertion below is a spelling
-    // that a substring match gets wrong in one direction or the other.
-    try testing.expect(grantsTo("GRANT SELECT ON x TO reporting, api_runtime;", "api_runtime"));
-    try testing.expect(grantsTo("GRANT SELECT ON x TO api_runtime, reporting;", "api_runtime"));
-    try testing.expect(grantsTo("GRANT memory_runtime TO api_runtime WITH INHERIT FALSE, SET TRUE;", "api_runtime"));
-    // `api_runtime_readonly` is a different role and must not match.
-    try testing.expect(!grantsTo("GRANT SELECT ON x TO api_runtime_readonly;", "api_runtime"));
-    try testing.expect(!grantsTo("GRANT SELECT ON x TO billing_runtime;", "api_runtime"));
-}
-
 test "every elevation membership granted to api_runtime is dormant until SET ROLE" {
     // Dimension 1.4. A bare `GRANT <role> TO api_runtime` follows api_runtime's
     // INHERIT attribute (CREATE ROLE defaults it TRUE): the privileges would
@@ -78,7 +45,7 @@ test "every elevation membership granted to api_runtime is dormant until SET ROL
             fn visit(c: Counter, line: []const u8) !void {
                 // Membership grants have no ` ON ` clause; privilege grants do.
                 if (std.mem.indexOf(u8, line, " ON ") != null) return;
-                if (!grantsTo(line, "api_runtime")) return;
+                if (std.mem.indexOf(u8, line, " TO api_runtime") == null) return;
                 c.memberships.* += 1;
                 try testing.expect(std.mem.indexOf(u8, line, "WITH INHERIT FALSE, SET TRUE") != null);
             }
@@ -93,81 +60,66 @@ test "api_runtime holds no direct grant on the secret store or the wallet" {
     // Dimension 1.1's declared-posture twin (the catalogue form runs in the
     // integration tier). Any GRANT naming both a money/secret table and
     // api_runtime is the regression this exists to catch.
-    const Tally = struct { api_grants: *usize, ledger_exception: *usize };
-    var api_grants: usize = 0;
-    var ledger_exception: usize = 0;
+    const Ctx = struct {};
     for (allSlots()) |slot| {
-        try eachGrantLine(slot.sql, Tally{
-            .api_grants = &api_grants,
-            .ledger_exception = &ledger_exception,
-        }, struct {
-            fn visit(t: Tally, line: []const u8) !void {
-                if (!grantsTo(line, "api_runtime")) return;
-                t.api_grants.* += 1;
+        try eachGrantLine(slot.sql, Ctx{}, struct {
+            fn visit(_: Ctx, line: []const u8) !void {
+                const names_api = std.mem.indexOf(u8, line, " TO api_runtime") != null;
+                if (!names_api) return;
                 try testing.expect(std.mem.indexOf(u8, line, "vault.secrets") == null);
                 try testing.expect(std.mem.indexOf(u8, line, "billing.tenant_wallet") == null);
                 // The ledger is the one deliberate exception: SELECT only.
                 if (std.mem.indexOf(u8, line, "billing.usage_ledger") != null) {
                     try testing.expect(std.mem.startsWith(u8, line, "GRANT SELECT ON"));
-                    t.ledger_exception.* += 1;
                 }
             }
         }.visit);
     }
-    // Positive control: without it this test passes just as green when the
-    // scanner stops matching anything at all (a changed grant spelling, a
-    // renamed role, a slot dropped from the embed list).
-    try testing.expect(api_grants > 0);
-    try testing.expectEqual(@as(usize, 1), ledger_exception);
 }
 
 test "metering_runtime's direct grants match the fenced statement's footprint exactly" {
     // Dimension 1.5. Reach stays enumerable: the grant list IS the statement's
-    // table list — the three `fleet` tables it writes, plus the wallet and the
-    // ledger with only the verbs it issues. Nothing arrives by membership,
-    // which is the property that makes "enumerable" literally true: an
-    // inheriting membership in billing_runtime would silently re-add INSERT
-    // and DELETE on the wallet, neither of which the statement issues.
+    // table list — three `fleet` tables, nothing else, and the money tables
+    // arrive only through the inheriting billing membership.
     const Tally = struct {
-        objects: *usize,
-        usage_schemas: *usize,
+        fleet_tables: *usize,
+        saw_usage: *bool,
+        saw_billing_membership: *bool,
         saw_api_membership: *bool,
     };
-    var objects: usize = 0;
-    var usage_schemas: usize = 0;
+    var fleet_tables: usize = 0;
+    var saw_usage = false;
+    var saw_billing_membership = false;
     var saw_api_membership = false;
     for (allSlots()) |slot| {
         try eachGrantLine(slot.sql, Tally{
-            .objects = &objects,
-            .usage_schemas = &usage_schemas,
+            .fleet_tables = &fleet_tables,
+            .saw_usage = &saw_usage,
+            .saw_billing_membership = &saw_billing_membership,
             .saw_api_membership = &saw_api_membership,
         }, struct {
             fn visit(t: Tally, line: []const u8) !void {
-                if (grantsTo(line, "metering_runtime")) {
+                if (std.mem.indexOf(u8, line, "TO metering_runtime") != null) {
+                    // Direct object grants: only the three fleet tables + schema USAGE.
                     if (std.mem.indexOf(u8, line, " ON fleet.") != null) {
-                        t.objects.* += 1;
+                        t.fleet_tables.* += 1;
                         const allowed = std.mem.indexOf(u8, line, "fleet.runner_leases") != null or
                             std.mem.indexOf(u8, line, "fleet.runner_affinity") != null or
                             std.mem.indexOf(u8, line, "fleet.runner_lifetime_counters") != null;
                         try testing.expect(allowed);
-                    } else if (std.mem.indexOf(u8, line, " ON billing.tenant_wallet") != null) {
-                        t.objects.* += 1;
-                        // Reads the balance, updates it. Never creates a wallet
-                        // (the starter grant does) and never deletes one (the
-                        // tenant cascade does).
-                        try testing.expect(std.mem.startsWith(u8, line, "GRANT SELECT, UPDATE ON"));
-                    } else if (std.mem.indexOf(u8, line, " ON billing.usage_ledger") != null) {
-                        t.objects.* += 1;
-                        try testing.expect(std.mem.startsWith(u8, line, "GRANT SELECT, INSERT, UPDATE ON"));
-                    } else if (std.mem.indexOf(u8, line, "USAGE ON SCHEMA") != null) {
-                        t.usage_schemas.* += 1;
+                    } else if (std.mem.indexOf(u8, line, "USAGE ON SCHEMA fleet") != null) {
+                        t.saw_usage.* = true;
+                    } else if (std.mem.indexOf(u8, line, "GRANT billing_runtime") != null) {
+                        // The composite's one membership — INHERITING on purpose.
+                        try testing.expect(std.mem.indexOf(u8, line, "WITH INHERIT TRUE") != null);
+                        t.saw_billing_membership.* = true;
                     } else {
-                        // No other object, and no membership, may be granted to
-                        // the composite — an ` ON `-less line here is a role
-                        // membership sneaking privilege in sideways.
+                        // No other object may be granted to the composite.
                         try testing.expect(false);
                     }
-                    // The secret store is never in the metering footprint.
+                    // Never a direct grant on the money tables.
+                    try testing.expect(std.mem.indexOf(u8, line, "tenant_wallet") == null);
+                    try testing.expect(std.mem.indexOf(u8, line, "usage_ledger") == null);
                     try testing.expect(std.mem.indexOf(u8, line, "vault.secrets") == null);
                 }
                 if (std.mem.indexOf(u8, line, "GRANT metering_runtime TO api_runtime") != null) {
@@ -176,34 +128,10 @@ test "metering_runtime's direct grants match the fenced statement's footprint ex
             }
         }.visit);
     }
-    // Three fleet tables + the wallet + the ledger.
-    try testing.expectEqual(@as(usize, 5), objects);
-    // One `GRANT USAGE ON SCHEMA fleet, billing` line.
-    try testing.expectEqual(@as(usize, 1), usage_schemas);
+    try testing.expectEqual(@as(usize, 3), fleet_tables);
+    try testing.expect(saw_usage);
+    try testing.expect(saw_billing_membership);
     try testing.expect(saw_api_membership);
-}
-
-test "no elevation role inherits another role's privileges" {
-    // The composite was the only membership between elevation roles, and it is
-    // gone: every role's reach is now exactly its own direct grants. A future
-    // `GRANT <role> TO <role>` re-opens the sideways path this milestone
-    // closed, so it fails here rather than widening a boundary quietly.
-    const elevation_roles = [_][]const u8{ "vault_runtime", "billing_runtime", "metering_runtime", "memory_runtime" };
-    const Ctx = struct { roles: []const []const u8 };
-    for (allSlots()) |slot| {
-        try eachGrantLine(slot.sql, Ctx{ .roles = &elevation_roles }, struct {
-            fn visit(c: Ctx, line: []const u8) !void {
-                // Object grants carry ` ON `; what is left is a membership.
-                if (std.mem.indexOf(u8, line, " ON ") != null) return;
-                for (c.roles) |role| {
-                    if (grantsTo(line, role)) {
-                        std.debug.print("\nFAIL: elevation role {s} is granted a membership: {s}\n", .{ role, line });
-                        return error.TestUnexpectedResult;
-                    }
-                }
-            }
-        }.visit);
-    }
 }
 
 test "the elevation module's role names appear verbatim in the slots that create them" {

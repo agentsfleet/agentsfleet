@@ -13,8 +13,6 @@ const BillingRow = struct {
     grant_source: []u8,
     updated_at_ms: i64,
     exhausted_at_ms: ?i64,
-    /// NULL in the column means the trial is open-ended for this tenant.
-    free_trial_ends_at_ms: ?i64,
 
     pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         alloc.free(self.grant_source);
@@ -60,44 +58,33 @@ pub const DebitResult = struct { balance_nanos: i64, updated_at_ms: i64 };
 /// only fires on the 0-row path, so the happy path stays one round-trip.
 pub fn debit(conn: *pg.Conn, tenant_id: []const u8, nanos: i64) !DebitResult {
     if (nanos < 0) return error.InvalidDebit;
+    const now_ms = clock.nowMillis();
     // Both statements here (the debit and the 0-row probe) are wallet reads
     // and writes, so one `billing_runtime` callback covers the pair; each
     // result drains (defer) before the next statement or the commit.
-    const Ctx = struct { tenant_id: []const u8, nanos: i64 };
-    return pool_elevation.withRole(conn, .billing, Ctx{
+    const Ctx = struct { tenant_id: []const u8, nanos: i64, now_ms: i64 };
+    const result = try pool_elevation.withRole(conn, .billing, Ctx{
         .tenant_id = tenant_id,
         .nanos = nanos,
+        .now_ms = now_ms,
     }, struct {
         fn run(c: Ctx, v: pool_elevation.Elevated(.billing)) !DebitResult {
-            return debitElevated(v, c.tenant_id, c.nanos);
+            // A successful debit clears `balance_exhausted_at` — the only path
+            // there is a prior top-up moving balance_nanos above zero. Keeping
+            // this in the same UPDATE keeps the transition atomic so the `stop`
+            // gate can never see "positive balance AND exhausted_at set".
+            const debited: ?DebitResult = blk: {
+                var q = PgQuery.from(try v.conn.query(sql.DEBIT_TENANT_BALANCE, .{ c.tenant_id, c.nanos, c.now_ms }));
+                defer q.deinit();
+                const row = (try q.next()) orelse break :blk null;
+                break :blk .{ .balance_nanos = try row.get(i64, 0), .updated_at_ms = try row.get(i64, 1) };
+            };
+            if (debited) |d| return d;
+            if (!try rowExists(v, c.tenant_id)) return error.TenantBillingMissing;
+            return error.CreditExhausted;
         }
     }.run);
-}
-
-/// The debit on a connection the caller already elevated. The metering path
-/// debits, may mark exhaustion, and writes the ledger row in ONE
-/// `billing_runtime` span, so taking the handle keeps a telemetry event to a
-/// single elevation instead of one per store call.
-pub fn debitElevated(
-    v: pool_elevation.Elevated(.billing),
-    tenant_id: []const u8,
-    nanos: i64,
-) !DebitResult {
-    if (nanos < 0) return error.InvalidDebit;
-    const now_ms = clock.nowMillis();
-    // A successful debit clears `balance_exhausted_at` — the only path there is
-    // a prior top-up moving balance_nanos above zero. Keeping this in the same
-    // UPDATE keeps the transition atomic so the `stop` gate can never see
-    // "positive balance AND exhausted_at set".
-    const debited: ?DebitResult = blk: {
-        var q = PgQuery.from(try v.conn.query(sql.DEBIT_TENANT_BALANCE, .{ tenant_id, nanos, now_ms }));
-        defer q.deinit();
-        const row = (try q.next()) orelse break :blk null;
-        break :blk .{ .balance_nanos = try row.get(i64, 0), .updated_at_ms = try row.get(i64, 1) };
-    };
-    if (debited) |d| return d;
-    if (!try rowExists(v, tenant_id)) return error.TenantBillingMissing;
-    return error.CreditExhausted;
+    return result;
 }
 
 /// Wallet read; the `Elevated(.billing)` parameter is the compile-time proof
@@ -106,21 +93,6 @@ fn rowExists(v: pool_elevation.Elevated(.billing), tenant_id: []const u8) !bool 
     var q = PgQuery.from(try v.conn.query(sql.SELECT_TENANT_BILLING_EXISTS, .{tenant_id}));
     defer q.deinit();
     return (try q.next()) != null;
-}
-
-/// This tenant's free-trial boundary, or null when open-ended. Also null when
-/// the tenant has no billing row at all — a tenant that was never granted a
-/// balance is not mid-trial, and the metering path treats both the same.
-pub fn loadTrialBoundary(conn: *pg.Conn, tenant_id: []const u8) !?i64 {
-    const Ctx = struct { tenant_id: []const u8 };
-    return pool_elevation.withRole(conn, .billing, Ctx{ .tenant_id = tenant_id }, struct {
-        fn run(c: Ctx, v: pool_elevation.Elevated(.billing)) !?i64 {
-            var q = PgQuery.from(try v.conn.query(sql.SELECT_TENANT_TRIAL_BOUNDARY, .{c.tenant_id}));
-            defer q.deinit();
-            const row = (try q.next()) orelse return null;
-            return try row.get(?i64, 0);
-        }
-    }.run);
 }
 
 pub fn loadByTenant(
@@ -147,13 +119,11 @@ pub fn loadByTenant(
             errdefer c.alloc.free(grant_source);
             const ts = try row.get(i64, 2);
             const exhausted_at_ms = try row.get(?i64, 3);
-            const free_trial_ends_at_ms = try row.get(?i64, 4);
             c.out.* = .{
                 .balance_nanos = bal,
                 .grant_source = grant_source,
                 .updated_at_ms = ts,
                 .exhausted_at_ms = exhausted_at_ms,
-                .free_trial_ends_at_ms = free_trial_ends_at_ms,
             };
         }
     }.run);
@@ -164,21 +134,17 @@ pub fn loadByTenant(
 /// if currently NULL. Returns true if the transition happened (first call),
 /// false if the row was already marked (idempotent replay).
 pub fn markExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
-    const Ctx = struct { tenant_id: []const u8 };
-    return pool_elevation.withRole(conn, .billing, Ctx{ .tenant_id = tenant_id }, struct {
+    const Ctx = struct { tenant_id: []const u8, now_ms: i64 };
+    return pool_elevation.withRole(conn, .billing, Ctx{
+        .tenant_id = tenant_id,
+        .now_ms = clock.nowMillis(),
+    }, struct {
         fn run(c: Ctx, v: pool_elevation.Elevated(.billing)) !bool {
-            return markExhaustedElevated(v, c.tenant_id);
+            var q = PgQuery.from(try v.conn.query(sql.MARK_BALANCE_EXHAUSTED, .{ c.tenant_id, c.now_ms }));
+            defer q.deinit();
+            return (try q.next()) != null;
         }
     }.run);
-}
-
-/// The exhaustion mark on a connection the caller already elevated — the
-/// metering path reaches it from inside its own billing span (see
-/// `debitElevated`).
-pub fn markExhaustedElevated(v: pool_elevation.Elevated(.billing), tenant_id: []const u8) !bool {
-    var q = PgQuery.from(try v.conn.query(sql.MARK_BALANCE_EXHAUSTED, .{ tenant_id, clock.nowMillis() }));
-    defer q.deinit();
-    return (try q.next()) != null;
 }
 
 /// Atomic exhaustion clear. Sets `balance_exhausted_at = NULL`

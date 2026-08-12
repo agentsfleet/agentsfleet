@@ -11,7 +11,6 @@
 
 const std = @import("std");
 const pg = @import("pg");
-const clock = @import("common").clock;
 
 const billing = @import("tenant_billing.zig");
 const model_rate_cache = @import("model_rate_cache.zig");
@@ -39,8 +38,8 @@ fn runFee(elapsed_ms: i64) i64 {
 /// charge — token cost lands on the user's own provider bill.
 ///
 /// Takes a connection because the platform branch prices against the catalogue
-/// generation this connection observes; free-trial and self-managed resolve with
-/// no statement at all. An error means the rate could not be established — the
+/// generation this connection observes; self_managed resolves with no statement
+/// at all. An error means the rate could not be established — the
 /// caller decides its own posture for that and must not substitute a guess.
 ///
 /// `error.ModelNotPriced` under platform when the catalogue authoritatively has
@@ -62,28 +61,8 @@ pub fn computeStageCharge(
     input_tokens: u32,
     cached_input_tokens: u32,
     output_tokens: u32,
-    trial_ends_at_ms: ?i64,
 ) !i64 {
-    return computeStageChargeAt(conn, provider, posture, model, elapsed_ms, input_tokens, cached_input_tokens, output_tokens, trial_ends_at_ms, clock.nowMillis());
-}
-
-/// `computeStageCharge` at an injected clock — pub so the DB-backed sibling
-/// suite (`tenant_billing_edge_integration_test.zig`) can price post-trial states, the
-/// uncatalogued-model refusal included, without waiting for a tenant's boundary
-/// to arrive on the real clock.
-pub fn computeStageChargeAt(
-    conn: *pg.Conn,
-    provider: []const u8,
-    posture: Posture,
-    model: []const u8,
-    elapsed_ms: i64,
-    input_tokens: u32,
-    cached_input_tokens: u32,
-    output_tokens: u32,
-    trial_ends_at_ms: ?i64,
-    now_ms: i64,
-) !i64 {
-    const rates = (try resolveRenewSliceRates(conn, provider, posture, model, trial_ends_at_ms, now_ms)) orelse
+    const rates = (try resolveRenewSliceRates(conn, provider, posture, model)) orelse
         return error.ModelNotPriced;
     return sliceCharge(rates, elapsed_ms, @as(i64, input_tokens), @as(i64, cached_input_tokens), @as(i64, output_tokens));
 }
@@ -99,17 +78,13 @@ pub const SliceRates = struct {
     output_nanos_per_mtok: i64,
 };
 
-/// The two branches that price without consulting the catalogue at all:
-/// free-trial (open per `trial_ends_at_ms`) → all zero (a metered run charges
-/// 0); self_managed → run rate only (token tiers 0, recorded-not-charged).
+/// The one branch that prices without consulting the catalogue: self_managed →
+/// run rate only (token tiers 0, recorded-not-charged, because the user's own
+/// provider bills those tokens).
 ///
-/// `null` means "the catalogue is required", i.e. platform posture outside the
-/// trial. Split out so those two paths cost no statement and stay provable
-/// without a database — and so the free-trial short-circuit is visibly ahead of
-/// the posture switch, which is what makes a missing model harmless during the
-/// trial window.
-fn sliceRatesWithoutCatalogue(posture: Posture, trial_ends_at_ms: ?i64, now_ms: i64) ?SliceRates {
-    if (billing.isFreeTrialActive(trial_ends_at_ms, now_ms)) return SliceRates{ .run_nanos_per_sec = 0, .input_nanos_per_mtok = 0, .cached_input_nanos_per_mtok = 0, .output_nanos_per_mtok = 0 };
+/// `null` means "the catalogue is required", i.e. platform posture. Split out so
+/// that path costs no statement and stays provable without a database.
+fn sliceRatesWithoutCatalogue(posture: Posture) ?SliceRates {
     return switch (posture) {
         .self_managed => SliceRates{ .run_nanos_per_sec = RUN_NANOS_PER_SEC, .input_nanos_per_mtok = 0, .cached_input_nanos_per_mtok = 0, .output_nanos_per_mtok = 0 },
         .platform => null,
@@ -135,10 +110,8 @@ pub fn resolveRenewSliceRates(
     provider: []const u8,
     posture: Posture,
     model: []const u8,
-    trial_ends_at_ms: ?i64,
-    now_ms: i64,
 ) !?SliceRates {
-    if (sliceRatesWithoutCatalogue(posture, trial_ends_at_ms, now_ms)) |rates| return rates;
+    if (sliceRatesWithoutCatalogue(posture)) |rates| return rates;
 
     const revision = try revision_state.read(conn);
     const rate = (try model_rate_cache.rateAtRevision(conn, revision, provider, model)) orelse return null;
@@ -161,16 +134,9 @@ pub fn sliceCharge(rates: SliceRates, elapsed_ms: i64, d_input: i64, d_cached: i
         @divTrunc(rates.output_nanos_per_mtok * d_output, TOKENS_PER_MTOK);
 }
 
-// ── Free-trial gate + rate-math (inline so tests reach the private
-//    time-injected `computeStageChargeAt`) ────────────────────────────────
+// ── Rate-math (inline so tests reach the private catalogue-free branch) ──────
 
-// A boundary chosen by these tests, not read from the product: pricing must be
-// provable at any clock position without a real date having to arrive.
-const TRIAL_ENDS_AT_MS: i64 = 1_785_542_400_000;
-const POST_TRIAL_NOW_MS: i64 = TRIAL_ENDS_AT_MS + 1_000;
-const PRE_TRIAL_NOW_MS: i64 = TRIAL_ENDS_AT_MS - 1_000;
-
-/// The catalogue-free half of a stage charge, for the branches that price
+/// The catalogue-free half of a stage charge, for the branch that prices
 /// without one. Null means the platform branch, which needs a connection and is
 /// covered in `state/model_rate_cache_integration_test.zig` instead — a fake
 /// connection here would test the fake.
@@ -180,28 +146,27 @@ fn stageChargeWithoutCatalogue(
     input_tokens: u32,
     cached_input_tokens: u32,
     output_tokens: u32,
-    now_ms: i64,
 ) ?i64 {
-    const rates = sliceRatesWithoutCatalogue(posture, TRIAL_ENDS_AT_MS, now_ms) orelse return null;
+    const rates = sliceRatesWithoutCatalogue(posture) orelse return null;
     return sliceCharge(rates, elapsed_ms, @as(i64, input_tokens), @as(i64, cached_input_tokens), @as(i64, output_tokens));
 }
 
-test "stage charge: self_managed is the run fee only, tokens and model ignored (post-trial)" {
+test "stage charge: self_managed is the run fee only, tokens and model ignored" {
     // self_managed bills runFee(elapsed_ms) and nothing for tokens; it never
     // consults the catalogue, so it resolves with no connection at all.
     try std.testing.expectEqual(
         runFee(20_000),
-        stageChargeWithoutCatalogue(.self_managed, 20_000, 1_000_000, 1_000_000, 1_000_000, POST_TRIAL_NOW_MS).?, // pin test: literal is the contract
+        stageChargeWithoutCatalogue(.self_managed, 20_000, 1_000_000, 1_000_000, 1_000_000).?, // pin test: literal is the contract
     );
     // 20s of active runtime → 20 × RUN_NANOS_PER_SEC.
     try std.testing.expectEqual(
         @as(i64, 20) * RUN_NANOS_PER_SEC,
-        stageChargeWithoutCatalogue(.self_managed, 20_000, 0, 0, 0, POST_TRIAL_NOW_MS).?,
+        stageChargeWithoutCatalogue(.self_managed, 20_000, 0, 0, 0).?,
     );
     // At lease issue elapsed_ms is 0 → zero run fee, zero charge.
     try std.testing.expectEqual(
         @as(i64, 0),
-        stageChargeWithoutCatalogue(.self_managed, 0, 0, 0, 0, POST_TRIAL_NOW_MS).?,
+        stageChargeWithoutCatalogue(.self_managed, 0, 0, 0, 0).?,
     );
 }
 
@@ -216,47 +181,46 @@ test "runFee: per-second rate with ms precision, identical for both postures" {
     // exactly the run fee for the same elapsed time.
     try std.testing.expectEqual(
         runFee(45_000),
-        stageChargeWithoutCatalogue(.self_managed, 45_000, 0, 0, 0, POST_TRIAL_NOW_MS).?,
+        stageChargeWithoutCatalogue(.self_managed, 45_000, 0, 0, 0).?,
     );
 }
 
-test "stage charge: the free-trial window is zero regardless of posture / tokens / elapsed" {
-    // Pre-trial → every combination short-circuits to billing.FREE_TRIAL_STAGE_NANOS.
-    // PLATFORM resolving to a value here is the load-bearing part: it proves the
-    // trial gate fires BEFORE the catalogue branch, which is what lets a trial
-    // slice price with no connection and no catalogue row.
-    try std.testing.expectEqual(
-        billing.FREE_TRIAL_STAGE_NANOS,
-        stageChargeWithoutCatalogue(.platform, 60_000, 800, 0, 1000, PRE_TRIAL_NOW_MS).?, // pin test: literal is the contract
-    );
-    try std.testing.expectEqual(
-        billing.FREE_TRIAL_STAGE_NANOS,
-        stageChargeWithoutCatalogue(.self_managed, 60_000, 1_000_000, 1_000_000, 1_000_000, PRE_TRIAL_NOW_MS).?, // pin test: literal is the contract
-    );
-    // At the cutoff (now_ms == the tenant's boundary) the trial is over — strict
-    // less-than gate; self_managed then charges the run fee.
-    try std.testing.expectEqual(
-        runFee(60_000),
-        stageChargeWithoutCatalogue(.self_managed, 60_000, 0, 0, 0, TRIAL_ENDS_AT_MS).?,
-    );
+test "pricing is clock independent: no rate path takes a time parameter" {
+    // The structural pin that keeps the deleted trial gate from growing back.
+    // A boundary check needs a clock to compare against, so the absence of any
+    // time parameter on the rate resolvers is what makes "no slice can price to
+    // zero because of the calendar" true by construction rather than by review.
+    const resolve_params = @typeInfo(@TypeOf(resolveRenewSliceRates)).@"fn".params;
+    try std.testing.expectEqual(@as(usize, 4), resolve_params.len); // conn, provider, posture, model
+    const without_catalogue_params = @typeInfo(@TypeOf(sliceRatesWithoutCatalogue)).@"fn".params;
+    try std.testing.expectEqual(@as(usize, 1), without_catalogue_params.len); // posture
+    try std.testing.expectEqual(Posture, without_catalogue_params[0].type.?);
+
+    // And behaviourally: the same posture resolves to the same rates every time.
+    const a = sliceRatesWithoutCatalogue(.self_managed).?;
+    const b = sliceRatesWithoutCatalogue(.self_managed).?;
+    try std.testing.expectEqual(a.run_nanos_per_sec, b.run_nanos_per_sec);
+}
+
+test "every slice is charged: no posture prices a metered run at zero" {
+    // The property that replaced the free-trial gate. A run that consumed time
+    // is billed for that time, so a slice can no longer settle at zero and
+    // advance the metering cursor with nothing collected.
+    try std.testing.expect(stageChargeWithoutCatalogue(.self_managed, 60_000, 0, 0, 0).? > 0);
+    try std.testing.expectEqual(runFee(60_000), stageChargeWithoutCatalogue(.self_managed, 60_000, 0, 0, 0).?);
 }
 
 test "sliceRatesWithoutCatalogue: which branches price without a catalogue read" {
-    // self_managed post-trial → run rate only; token tiers stay 0 (the user's
-    // own provider bills the tokens), so a metered slice is run-fee-only.
-    const sm = sliceRatesWithoutCatalogue(.self_managed, TRIAL_ENDS_AT_MS, POST_TRIAL_NOW_MS).?;
+    // self_managed → run rate only; token tiers stay 0 (the user's own provider
+    // bills the tokens), so a metered slice is run-fee-only.
+    const sm = sliceRatesWithoutCatalogue(.self_managed).?;
     try std.testing.expectEqual(RUN_NANOS_PER_SEC, sm.run_nanos_per_sec);
     try std.testing.expectEqual(@as(i64, 0), sm.input_nanos_per_mtok);
     try std.testing.expectEqual(@as(i64, 0), sm.output_nanos_per_mtok);
-    // Free-trial short-circuits to all-zero before the posture switch — even
-    // platform charges nothing, and issues no statement to find that out.
-    const ft = sliceRatesWithoutCatalogue(.platform, TRIAL_ENDS_AT_MS, PRE_TRIAL_NOW_MS).?;
-    try std.testing.expectEqual(@as(i64, 0), ft.run_nanos_per_sec);
-    try std.testing.expectEqual(@as(i64, 0), ft.input_nanos_per_mtok);
-    // Platform, post-trial → null: the ONLY combination that needs the
-    // catalogue, and therefore the only one that costs a connection. If this
-    // ever returned a value, the platform branch would price from a constant.
-    try std.testing.expect(sliceRatesWithoutCatalogue(.platform, TRIAL_ENDS_AT_MS, POST_TRIAL_NOW_MS) == null);
+    // Platform → null: the ONLY combination that needs the catalogue, and
+    // therefore the only one that costs a connection. If this ever returned a
+    // value, the platform branch would price from a constant.
+    try std.testing.expect(sliceRatesWithoutCatalogue(.platform) == null);
 }
 
 test "tenant billing error table validates at comptime (pin relocated beside its owner)" {

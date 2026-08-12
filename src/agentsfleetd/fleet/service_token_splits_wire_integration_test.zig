@@ -6,10 +6,9 @@
 // affinity cursor to the reported cumulatives; a re-sent renewal with identical
 // cumulatives meters a zero-delta slice (cumulative-diff idempotency).
 //
-// Free-trial note: the boundary is a tenant fact (§7). arrange() closes this
-// suite's tenant's trial, so the server prices every slice at the suite's own
-// registry rates and the token_cost identity plus the strict non-zero arms
-// assert unconditionally at any clock position. Requires LIVE_DB; skipped when
+// Pricing note: the server prices every slice at the suite's own registry
+// rates, so the token_cost identity plus the strict non-zero arms assert
+// unconditionally. Requires LIVE_DB; skipped when
 // TEST_DATABASE_URL is unset.
 
 const std = @import("std");
@@ -125,8 +124,8 @@ fn seedBalance(conn: *pg.Conn) !void {
 }
 
 // Catalogue row for this suite's private (provider, model) pair + cache reseat,
-// so the server's own rate resolution prices the wire deltas non-zero once the
-// free-trial window closes. The cache is process-global: page_allocator, per
+// so the server's own rate resolution prices the wire deltas non-zero.
+// The cache is process-global: page_allocator, per
 // the fixture convention (populate deinits any prior cache before reseating).
 fn seedModelRates(conn: *pg.Conn) !void {
     const now_ms: i64 = clock.nowMillis();
@@ -180,9 +179,6 @@ fn arrange(cursor_in: i64, cursor_cached: i64, cursor_out: i64) !Setup {
     try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "service-splits-fleet", "{}", "# z");
     try seedRunner(conn);
     try seedBalance(conn);
-    // §7: an open trial prices every slice to zero; close this tenant's
-    // boundary so the wire proof carries the seeded registry rates.
-    try base.endFreeTrialFor(conn, base.TEST_TENANT_ID);
     try seedModelRates(conn);
     const last_metered = clock.nowMillis() - CURSOR_AGE_MS;
     try seedAffinity(conn, cursor_in, cursor_cached, cursor_out, last_metered);
@@ -202,7 +198,7 @@ fn cleanup(s: Setup) void {
 // catalogue row is an error, never a silent zero-rate fallback that would let
 // a seeding regression read as a passing zero-cost identity.
 fn expectedTokenCost(conn: *pg.Conn, d_in: i64, d_cached: i64, d_out: i64) !i64 {
-    const rates = (try billing_rates.resolveRenewSliceRates(conn, PROVIDER, .platform, MODEL, base.TRIAL_ENDED_AT_MS, clock.nowMillis())) orelse
+    const rates = (try billing_rates.resolveRenewSliceRates(conn, PROVIDER, .platform, MODEL)) orelse
         return error.ModelNotPriced;
     const token_only = billing_rates.SliceRates{
         .run_nanos_per_sec = 0,
@@ -220,7 +216,7 @@ fn expectedTokenCost(conn: *pg.Conn, d_in: i64, d_cached: i64, d_out: i64) !i64 
 /// derivable — `charged - expectedRunFee(wall)` isolates the token term exactly
 /// as the retired column did.
 fn expectedRunFee(conn: *pg.Conn, wall_ms: i64) i64 {
-    const resolved = billing_rates.resolveRenewSliceRates(conn, PROVIDER, .platform, MODEL, base.TRIAL_ENDED_AT_MS, clock.nowMillis()) catch null;
+    const resolved = billing_rates.resolveRenewSliceRates(conn, PROVIDER, .platform, MODEL) catch null;
     const run_only = billing_rates.SliceRates{
         .run_nanos_per_sec = if (resolved) |r| r.run_nanos_per_sec else tenant_billing.RUN_NANOS_PER_SEC,
         .input_nanos_per_mtok = 0,
@@ -306,8 +302,6 @@ test "integration: wire renew bills the body's splits, advances the cursor, and 
     const token_cost1 = stage1.charged - expectedRunFee(s.conn, stage1.wall); // no clamp at BIG_BALANCE
     try std.testing.expectEqual(try expectedTokenCost(s.conn, CUM_IN, CUM_CACHED, CUM_OUT), token_cost1);
     // The registry prices these deltas non-zero — the spec's wire proof arm.
-    // `arrange` closed this tenant's trial boundary, so it asserts here
-    // unconditionally rather than waiting on a build-time window to lapse.
     try std.testing.expect(token_cost1 > 0);
 
     // The affinity cursor advanced to the reported cumulatives.

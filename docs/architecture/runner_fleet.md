@@ -19,7 +19,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Max run duration | `MAX_RUNTIME_MS` hard cap | `/renew` extends to `min(now+LEASE_TTL_MS, created_at+MAX_RUNTIME_MS)` | §Per-lease renewal |
 | Stale-writer rejection | `UZ-RUN-005` | `report` verifies the monotonic `fencing_token` in the same atomic statement that flips the lease | §System guarantees |
 | Sandbox failure fails closed | `UZ-RUN-007` | the child never starts; the lease stays redeliverable | §System guarantees |
-| Renewal refused on empty wallet | `UZ-RUN-012` | coverage re-check on `/renew`; unreachable while the free trial is open (`FREE_TRIAL_END_MS`) | §Money gates |
+| Renewal refused on empty wallet | `UZ-RUN-012` | coverage re-check on `/renew` | §Money gates |
 | Readiness recovery bound | `min-idle + ceil(active_fleets / 100) × interval` | `SWEEP_BATCH_LIMIT` = 100, keyset cursor on `(updated_at, id)`; ≈6 min at 100 fleets, ≈15 at 1 000, ≈55 at 5 000 | §Failure recovery model |
 | Runner datastore credentials | zero | `build_runner.zig` links no `pg` / `httpz` / `redis`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
 | Control protocol | five verbs | register · heartbeat · lease · report · activity; `me` resolves from the token | §The control protocol |
@@ -483,7 +483,7 @@ The credit-pool billing model debits twice per event, and both debits live on `a
 - At **report**: reconcile the run's telemetry row to the actual token counts. The charged amount stays at the pre-execution estimate — report updates telemetry, it does not re-charge.
 - At **renewal** (M80_006 `/renew`): the same balance gate re-runs as a **coverage check only** — no debit, no telemetry row. A live child's renewal is refused with `UZ-RUN-012` when the tenant can no longer cover the run; the child is killed and the lease ends at its current deadline, never extended. In M80_006 a renewed lease is **not** re-billed — the run charge at lease issue covers the whole run however many renewals extend it (M80_010 later moves the run debit onto these ticks as a per-slice Δ-debit). The gate's exhaustion policy is resolved **once at startup** and carried on the request `Context` (`ctx.balance_policy`), shared by the lease and renewal paths — not re-read from the environment per request.
 
-Receive credits are not refunded if the run later exhausts. This mirrors the deleted `metering.zig` exactly; only the caller moved from the worker to `agentsfleetd`'s lease/report path. **Metering never stops, but the gate only bites post-trial** — `UZ-RUN-012` is unreachable until `FREE_TRIAL_END_MS` passes. The free-trial mechanics are canonical in [`billing_and_provider_keys.md` §2.3](./billing_and_provider_keys.md#23-promotional-windows-free-trial-mechanism).
+Receive credits are not refunded if the run later exhausts. This mirrors the deleted `metering.zig` exactly; only the caller moved from the worker to `agentsfleetd`'s lease/report path. **Metering never stops and the gate is always live** — `UZ-RUN-012` fires whenever a tenant's balance cannot cover the next slice. The free allowance is the starter grant, canonical in [`billing_and_provider_keys.md` §2.3](./billing_and_provider_keys.md#23-the-free-allowance-is-a-grant-not-a-window).
 
 ## Redis topology — what changed
 

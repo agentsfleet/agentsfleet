@@ -4,9 +4,7 @@
 // integration root (`integration_tests.zig`), where the canonical lanes
 // actually provide one; parked in the unit root they executed in no lane.
 //
-// The trial boundary is a tenant fact (§7): the block test closes its own
-// tenant's boundary via `base.endFreeTrialFor`, so the refusal asserts
-// unconditionally at any clock position.
+// Pricing depends on no clock, so the refusal asserts unconditionally.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -137,13 +135,9 @@ test "integration: balanceCoversEstimate blocks when stop policy AND balance bel
     // platform: receive = EVENT_NANOS (0), stage = token-floor cost (run fee is
     // 0 at issue). Balance 0 < est_total → blocked. seedPlatformProvider just
     // granted the starter balance onto this suite's tenant and provision is
-    // idempotent — reset so the 0 actually lands. An open trial prices every
-    // stage charge to 0, leaving `balance < est_total` unreachable — so this
-    // tenant's own boundary is closed (§7: the trial is a tenant fact) and the
-    // refusal asserts unconditionally at any clock position.
+    // idempotent — reset so the 0 actually lands.
     base.resetBillingFor(db_ctx.conn, TENANT_ID);
     try tenant_billing.provision(db_ctx.conn, TENANT_ID, 0, "test_block");
-    try base.endFreeTrialFor(db_ctx.conn, TENANT_ID);
 
     try std.testing.expect(!metering.balanceCoversEstimate(
         db_ctx.pool,

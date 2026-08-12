@@ -8,12 +8,11 @@
 // against the live test DB + Redis (skipped when either is missing), and
 // calls `event_rows.markBlocked` directly for row-level invariants.
 //
-// The balance-exhausted HTTP path (spec 1.1) is unreachable while the free
-// trial window keeps every charge at zero (billing_and_provider_keys.md §
-// free-trial gate: "the HTTP-path gate integration tests skip while the
-// window is open"); the row mechanics + label spelling are pinned here via
-// markBlocked, and the gate wiring is exercised through the same blockEvent
-// path by the other refusals.
+// The balance-exhausted HTTP path pins its row mechanics + label spelling here
+// via markBlocked, and the gate wiring is exercised through the same blockEvent
+// path by the other refusals. That path used to be unreachable end-to-end
+// because every charge priced to zero; charges apply now, so driving it through
+// the real HTTP flow has become possible and is worth adding.
 
 const std = @import("std");
 const clock = @import("common").clock;

@@ -8,11 +8,10 @@
 -- commit together or a replayed renewal charges again.
 --
 -- `metering_runtime` is composed to exactly that statement's footprint:
+--   - an INHERITING member of `billing_runtime`, so the wallet debit and the
+--     ledger accumulate arm work under one SET ROLE;
 --   - direct grants on exactly the three `fleet` tables the statement names,
---     each granted beside its CREATE TABLE (RULE SGR: schema/610, 630, 650);
---   - direct grants on the two `billing` tables it names, and only the verbs
---     it issues: SELECT + UPDATE on the wallet, SELECT + INSERT + UPDATE on
---     the ledger (schema/700, schema/710).
+--     each granted beside its CREATE TABLE (RULE SGR: schema/610, 630, 650).
 -- Reach stays enumerable — the grant list IS the statement's table list.
 --
 -- Runs after schema/110 (billing_runtime must exist to be inherited) and before
@@ -35,28 +34,15 @@ BEGIN
 END
 $$;
 
--- The right to name what is inside `fleet` and `billing`; the table grants
--- that make it useful live with each CREATE TABLE (RULE SGR): the three fleet
--- tables in schema/610, 630, 650, the wallet in schema/700, the ledger in
--- schema/710.
---
--- No membership in `billing_runtime`. An inheriting membership was the first
--- shape and it was wider than the statement: it carried INSERT and DELETE on
--- `billing.tenant_wallet`, neither of which either fenced statement issues (it
--- reads the wallet and updates it; the row is created by the signup starter
--- grant under `billing_runtime` and erased by the tenant cascade). Composing
--- the reach from direct grants is what makes the claim above literally true —
--- the grant list IS the statement's table list, with nothing arriving sideways.
-GRANT USAGE ON SCHEMA fleet, billing TO metering_runtime;
+-- INHERITING on purpose — the whole point of the composite. The unit test
+-- asserting dormant memberships (schema_privilege_test.zig) asserts this one is
+-- the deliberate exception.
+GRANT billing_runtime TO metering_runtime WITH INHERIT TRUE;
 
--- Revoked explicitly, not merely absent above. Roles and their memberships are
--- CLUSTER-level: they outlive `DROP DATABASE`, so a cluster that ever applied
--- the earlier inheriting-membership form still carries it — the composite would
--- keep INSERT and DELETE on the wallet through inheritance while this file
--- claims its reach is only what it grants directly. Revoking makes the slot
--- converge to the declared posture from either starting state. A membership
--- that was never granted revokes as a notice, not an error.
-REVOKE billing_runtime FROM metering_runtime;
+-- The right to name what is inside `fleet`; the table grants that make it
+-- useful live with each CREATE TABLE. USAGE on `billing` arrives through the
+-- inherited membership above.
+GRANT USAGE ON SCHEMA fleet TO metering_runtime;
 
 -- Membership, not privilege — dormant until the metering path names it with
 -- SET ROLE, exactly as schema/110 grants the other elevation roles.

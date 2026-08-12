@@ -19,14 +19,12 @@
 //! event loop XACKs the event so it isn't redelivered into the same fault.
 
 const std = @import("std");
-const pg = @import("pg");
+const clock = @import("common").clock;
 const logging = @import("log");
 const ec = @import("../errors/error_registry.zig");
 const db = @import("../db/pool.zig");
 const Allocator = std.mem.Allocator;
 
-const pool_elevation = @import("../db/pool_elevation.zig");
-const billing_span = @import("metering_billing_span.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const billing_rates = @import("../state/tenant_billing_rates.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
@@ -43,12 +41,16 @@ const log = logging.scoped(.fleet_metering);
 /// Per-event context shared by the gate, both debits, and post-execution
 /// telemetry. Posture and model come from the resolver; everything else
 /// flows through from the worker.
-const S_BEGIN = "BEGIN";
 const S_COMMIT = "COMMIT";
 
-/// Defined beside the billing span that binds it (`metering_billing_span`),
-/// re-exported here because every caller reaches it through this module.
-pub const PreflightContext = billing_span.PreflightContext;
+pub const PreflightContext = struct {
+    workspace_id: []const u8,
+    fleet_id: []const u8,
+    event_id: []const u8,
+    posture: tenant_provider.Mode,
+    provider: []const u8,
+    model: []const u8,
+};
 
 pub const DebitOutcome = union(enum) {
     /// Debit + telemetry both committed. Nanos drained on this charge.
@@ -117,9 +119,6 @@ pub fn balanceCoversEstimate(
         tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
         0,
         tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
-        // This tenant's own trial boundary, already loaded above — pricing is
-        // per tenant, so one account's trial ending cannot change another's gate.
-        billing.free_trial_ends_at_ms,
     ) catch |err| {
         log.warn("gate_stage_estimate_fail", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .tenant_id = tenant_id, .err = @errorName(err) });
         return true;
@@ -231,69 +230,83 @@ fn debitAndInsert(
     nanos: i64,
     policy: balance_policy.Policy,
 ) DebitOutcome {
-    const conn = acquireInTransaction(pool, ctx.fleet_id) orelse return .{ .db_error = {} };
+    const conn = pool.acquire() catch |err| {
+        log.warn("acquire_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = ctx.fleet_id, .err = @errorName(err) });
+        return .{ .db_error = {} };
+    };
     defer pool.release(conn);
+
+    _ = conn.exec("BEGIN", .{}) catch |err| {
+        log.warn("begin_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = ctx.fleet_id, .err = @errorName(err) });
+        return .{ .db_error = {} };
+    };
     var tx_open = true;
     defer if (tx_open) {
         conn.rollback() catch |err| log.warn(ROLLBACK_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
     };
 
-    // One `billing_runtime` elevation for the whole event; a failure inside
-    // leaves the rollback to the `tx_open` defer and is logged by the span.
-    const outcome = pool_elevation.withRole(conn, .billing, billing_span.BillingSpan{
-        .alloc = alloc,
-        .tenant_id = tenant_id,
-        .ctx = ctx,
-        .event_created_at = event_created_at,
-        .charge_type = charge_type,
-        .nanos = nanos,
-    }, billing_span.BillingSpan.run) catch return .{ .db_error = {} };
-
-    switch (outcome) {
-        // Rolled back by the `tx_open` defer; the span logged the cause.
-        .missing_tenant_billing => return .{ .missing_tenant_billing = {} },
-        .exhausted => {
-            // The exhaustion mark commits: it is the transition the `stop`
-            // gate reads, and it happened even though the debit did not.
-            if (!commitEvent(conn, ctx.fleet_id)) return .{ .db_error = {} };
-            tx_open = false;
-            onExhaustedDebit(ctx.fleet_id, tenant_id, charge_type, nanos, policy);
-            return .{ .exhausted = {} };
-        },
-        .debited => {
-            if (!commitEvent(conn, ctx.fleet_id)) return .{ .db_error = {} };
-            tx_open = false;
-            log.debug("debit", .{ .charge_type = charge_type.label(), .tenant_id = tenant_id, .event_id = ctx.event_id, .nanos = nanos });
-            return .{ .deducted = nanos };
-        },
+    if (nanos > 0) {
+        _ = tenant_billing.debit(conn, tenant_id, nanos) catch |err| switch (err) {
+            error.CreditExhausted => {
+                _ = tenant_billing.markExhausted(conn, tenant_id) catch |mark_err| {
+                    log.warn("mark_exhausted_fail", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = ctx.fleet_id, .tenant_id = tenant_id, .err = @errorName(mark_err) });
+                };
+                _ = conn.exec(S_COMMIT, .{}) catch |commit_err| log.warn(COMMIT_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(commit_err) });
+                tx_open = false;
+                onExhaustedDebit(ctx.fleet_id, tenant_id, charge_type, nanos, policy);
+                return .{ .exhausted = {} };
+            },
+            error.TenantBillingMissing => {
+                conn.rollback() catch |rollback_err| log.warn(ROLLBACK_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(rollback_err) });
+                tx_open = false;
+                log.err("missing_tenant_billing", .{
+                    .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+                    .fleet_id = ctx.fleet_id,
+                    .tenant_id = tenant_id,
+                    .workspace_id = ctx.workspace_id,
+                    .msg = "starter grant was never inserted for this tenant",
+                });
+                return .{ .missing_tenant_billing = {} };
+            },
+            else => {
+                conn.rollback() catch |rollback_err| log.warn(ROLLBACK_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(rollback_err) });
+                tx_open = false;
+                log.warn("debit_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = ctx.fleet_id, .tenant_id = tenant_id, .err = @errorName(err) });
+                return .{ .db_error = {} };
+            },
+        };
     }
-}
 
-/// A pooled connection with the event transaction already open. Null when
-/// either step failed (logged); the connection is released here in that case,
-/// so the caller registers its own release only on success.
-fn acquireInTransaction(pool: *db.Pool, fleet_id: []const u8) ?*pg.Conn {
-    const conn = pool.acquire() catch |err| {
-        log.warn("acquire_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
-        return null;
+    fleet_telemetry_store.insertTelemetry(conn, alloc, .{
+        .tenant_id = tenant_id,
+        .workspace_id = ctx.workspace_id,
+        .fleet_id = ctx.fleet_id,
+        .event_id = ctx.event_id,
+        .charge_type = charge_type,
+        .posture = ctx.posture,
+        .model = ctx.model,
+        .credit_deducted_nanos = nanos,
+        .token_count_input = null,
+        .token_count_cached_input = null,
+        .token_count_output = null,
+        .wall_ms = null,
+        .event_created_at = event_created_at,
+        .created_at = clock.nowMillis(),
+    }) catch |err| {
+        conn.rollback() catch |rb_err| log.warn(ROLLBACK_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(rb_err) });
+        tx_open = false;
+        log.warn("telemetry_insert_fail", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = ctx.fleet_id, .event_id = ctx.event_id, .charge_type = charge_type.label(), .err = @errorName(err) });
+        return .{ .db_error = {} };
     };
-    _ = conn.exec(S_BEGIN, .{}) catch |err| {
-        log.warn("begin_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
-        pool.release(conn);
-        return null;
-    };
-    return conn;
-}
 
-/// Commit the event's transaction, reporting failure as false (already
-/// logged) so the caller answers `db_error` rather than claiming a charge the
-/// database never kept.
-fn commitEvent(conn: *pg.Conn, fleet_id: []const u8) bool {
     _ = conn.exec(S_COMMIT, .{}) catch |err| {
-        log.warn(COMMIT_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .err = @errorName(err) });
-        return false;
+        log.warn(COMMIT_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = ctx.fleet_id, .err = @errorName(err) });
+        return .{ .db_error = {} };
     };
-    return true;
+    tx_open = false;
+
+    log.debug("debit", .{ .charge_type = charge_type.label(), .tenant_id = tenant_id, .event_id = ctx.event_id, .nanos = nanos });
+    return .{ .deducted = nanos };
 }
 
 fn onExhaustedDebit(

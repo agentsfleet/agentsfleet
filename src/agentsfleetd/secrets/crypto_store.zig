@@ -225,48 +225,44 @@ pub fn loadAllForWorkspace(
     // accumulates in the caller's frame (errdefer above owns it on ANY
     // failure, the commit's included); the callback only appends.
     var undecryptable: usize = 0;
-    try pool_elevation.withRole(conn, .vault, WorkspaceScan{
+    const Ctx = struct {
+        alloc: std.mem.Allocator,
+        workspace_id: []const u8,
+        kek: *const [KEY_LEN]u8,
+        out: *std.ArrayList(WorkspaceSecret),
+        undecryptable: *usize,
+    };
+    try pool_elevation.withRole(conn, .vault, Ctx{
         .alloc = alloc,
         .workspace_id = workspace_id,
         .kek = &kek,
         .out = &out,
         .undecryptable = &undecryptable,
-    }, WorkspaceScan.run);
+    }, struct {
+        fn run(c: Ctx, v: pool_elevation.Elevated(.vault)) !void {
+            var result = PgQuery.from(try v.conn.query(sql.SELECT_SECRETS_FOR_WORKSPACE, .{c.workspace_id}));
+            defer result.deinit();
+            while (try result.next()) |row| {
+                const key_name = try c.alloc.dupe(u8, try row.get([]const u8, 0));
+                errdefer c.alloc.free(key_name);
+                const created_at = try row.get(i64, 1);
+                // Ciphertext columns start at index 2 — same block, same order as
+                // SELECT_SECRET, which is why one decrypt routine serves both. A decrypt
+                // failure degrades THIS row to null rather than failing the workspace;
+                // decryptRowAt has already logged the cause with row context.
+                const plaintext = decryptRowAt(c.alloc, row, c.workspace_id, key_name, c.kek, 2) catch |err| blk: {
+                    if (err == error.OutOfMemory) return err; // not a per-row data fault
+                    c.undecryptable.* += 1;
+                    break :blk null;
+                };
+                errdefer if (plaintext) |p| secure_memory.freeBytes(c.alloc, p);
+                try c.out.append(c.alloc, .{ .key_name = key_name, .created_at = created_at, .plaintext = plaintext });
+            }
+        }
+    }.run);
     log.info("retrieved_workspace", .{ .workspace_id = workspace_id, .count = out.items.len, .undecryptable = undecryptable });
     return out.toOwnedSlice(alloc);
 }
-
-/// The elevated read behind `loadAllForWorkspace`, appending into the
-/// caller's list so the caller's errdefer owns every element even if the
-/// bracketing commit fails.
-const WorkspaceScan = struct {
-    alloc: std.mem.Allocator,
-    workspace_id: []const u8,
-    kek: *const [KEY_LEN]u8,
-    out: *std.ArrayList(WorkspaceSecret),
-    undecryptable: *usize,
-
-    fn run(c: WorkspaceScan, v: pool_elevation.Elevated(.vault)) !void {
-        var result = PgQuery.from(try v.conn.query(sql.SELECT_SECRETS_FOR_WORKSPACE, .{c.workspace_id}));
-        defer result.deinit();
-        while (try result.next()) |row| {
-            const key_name = try c.alloc.dupe(u8, try row.get([]const u8, 0));
-            errdefer c.alloc.free(key_name);
-            const created_at = try row.get(i64, 1);
-            // Ciphertext columns start at index 2 — same block, same order as
-            // SELECT_SECRET, which is why one decrypt routine serves both. A decrypt
-            // failure degrades THIS row to null rather than failing the workspace;
-            // decryptRowAt has already logged the cause with row context.
-            const plaintext = decryptRowAt(c.alloc, row, c.workspace_id, key_name, c.kek, 2) catch |err| blk: {
-                if (err == error.OutOfMemory) return err; // not a per-row data fault
-                c.undecryptable.* += 1;
-                break :blk null;
-            };
-            errdefer if (plaintext) |p| secure_memory.freeBytes(c.alloc, p);
-            try c.out.append(c.alloc, .{ .key_name = key_name, .created_at = created_at, .plaintext = plaintext });
-        }
-    }
-};
 
 /// Zero and release every plaintext in `entries`, their key names, and the
 /// slice itself — `loadAllForWorkspace` hands back owned memory at both levels,

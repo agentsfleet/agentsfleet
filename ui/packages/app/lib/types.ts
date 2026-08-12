@@ -290,16 +290,6 @@ export const EVENT_NANOS = 0;
 // per-stage fees.
 export const RUN_NANOS_PER_SEC = 100_000;
 
-// Per-stage charge while a tenant's free trial is open: the server's
-// `compute_stage_charge` returns this regardless of posture / model / tokens.
-//
-// The trial's END is deliberately NOT a constant here. It lives on the tenant's
-// own billing row (`billing.tenant_wallet.free_trial_ends_at`, NULL =
-// open-ended) and reaches this surface as `free_trial.ends_at_ms` below. A
-// build-time date is what let one instant flip pricing for every tenant at once
-// with no deploy; the dashboard reads the tenant's boundary and never its own.
-export const FREE_TRIAL_STAGE_NANOS = 0;
-
 // Unix-epoch timestamps on this type are **milliseconds**, matching the
 // server's `*_at_ms` fields (src/state/tenant_billing.zig). Pass them
 // straight to `new Date(n)`; never multiply by 1000.
@@ -308,12 +298,6 @@ export type TenantBilling = {
   updated_at: number;
   is_exhausted: boolean;
   exhausted_at: number | null;
-  // This tenant's free-trial state, from src/agentsfleetd/state/tenant_billing.zig.
-  // `ends_at_ms` is epoch milliseconds (pass straight to `new Date(n)`), and is
-  // null when the trial is open-ended — the default for every tenant, and not a
-  // missing value. Render the open-ended case as "no end date", never as an
-  // expiry at the epoch.
-  free_trial: { active: boolean; ends_at_ms: number | null };
 };
 
 // ── Tenant LLM provider ──

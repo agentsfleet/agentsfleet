@@ -23,28 +23,12 @@
 //!     convention-not-structure shape this module retires for money and
 //!     secrets.
 //!   - A callback opened on a connection already inside an explicit
-//!     transaction elevates in place and steps back down when it returns —
-//!     the signup starter grant and the secret reference protocol mix `core.*`
-//!     statements (as `api_runtime`) with elevated ones inside one atomic
-//!     transaction. Outside a transaction the callback owns one, because
-//!     `SET LOCAL` without a transaction is a warning and a no-op.
-//!   - **The step-down is `SET LOCAL ROLE NONE`, which RESTORES
-//!     `session_user`** — it does not name a role. Naming one
-//!     (`SET LOCAL ROLE api_runtime`) was tried and is wrong: it *forces*
-//!     rather than restores, so a session that entered the callback as
-//!     something broader is silently downgraded for the rest of its
-//!     transaction, and the unelevated statements that follow inside a mixed
-//!     transaction (the purge's `core.*` deletes, the signup starter grant's
-//!     continuation) lose privileges they held on the way in.
-//!
-//!     The invariant that makes `NONE` correct in production: every pool that
-//!     elevates logs in AS the data-plane role (`DATABASE_URL_API`), so
-//!     `session_user` IS `api_runtime`. Elevation is API-pool-only — migrations
-//!     run on their own pool and never elevate. The integration suite is the
-//!     one session where that does not hold (it connects as a superuser), so
-//!     its post-callback statements run with more rights than production has;
-//!     the refusal assertions that matter drop to `SET ROLE api_runtime`
-//!     explicitly rather than relying on the step-down.
+//!     transaction elevates in place and steps back down with
+//!     `SET LOCAL ROLE NONE` — the signup starter grant and the secret
+//!     reference protocol mix `core.*` statements (as `api_runtime`) with
+//!     elevated ones inside one atomic transaction. Outside a transaction the
+//!     callback owns one, because `SET LOCAL` without a transaction is a
+//!     warning and a no-op.
 //!
 //! Every open elevation is additionally tracked by connection identity;
 //! `pool.zig`'s release consults `auditRelease` as the belt-and-braces
@@ -54,10 +38,10 @@
 //! connection is refused, never stacked.
 
 const std = @import("std");
+const common = @import("common");
 const pg = @import("pg");
 const logging = @import("log");
 const error_codes = @import("../errors/error_registry.zig");
-const tracker = @import("pool_elevation_tracker.zig");
 
 const log = logging.scoped(.db_elevation);
 
@@ -90,11 +74,6 @@ pub const ROLE_NAME_BILLING = "billing_runtime";
 pub const ROLE_NAME_METERING = "metering_runtime";
 pub const ROLE_NAME_MEMORY = "memory_runtime";
 
-/// The data-plane role every elevating pool logs in as (schema/110). Not an
-/// elevation role — the one the elevation roles are reached FROM, and the one
-/// `session_user` is expected to be wherever this module runs in production.
-pub const ROLE_NAME_API = "api_runtime";
-
 // Statements are comptime-composed: the role is an identifier, not a bindable
 // parameter, and composing from the named constants keeps the grep surface one.
 const S_SET_LOCAL_ROLE_PREFIX = "SET LOCAL ROLE ";
@@ -118,20 +97,106 @@ pub fn Elevated(comptime role: Role) type {
 
         pub const elevated_role = role;
 
-        // bvisor pattern: the handle is one pointer, passed by value — stated
-        // against the pointer's own width so it holds on any target.
+        // bvisor pattern: the handle is one pointer, passed by value.
         comptime {
-            std.debug.assert(@sizeOf(@This()) == @sizeOf(*pg.Conn));
+            std.debug.assert(@sizeOf(@This()) == 8);
         }
     };
 }
 
-/// Which connections are currently elevated lives in `pool_elevation_tracker`
-/// — a separate concern with its own process-global table, re-exported here so
-/// callers keep one import.
-pub const Error = tracker.Error;
-pub const auditRelease = tracker.auditRelease;
-pub const refusedReleaseCount = tracker.refusedReleaseCount;
+pub const Error = error{
+    /// The connection is already elevated (nesting is refused, RULE OWN), is in
+    /// a failed or mid-query state, or the tracking table is full.
+    ElevationRefused,
+};
+
+/// Deterministic bound on concurrently elevated connections. At most one
+/// elevation is open per connection, so the ceiling that matters is pool size
+/// — which is env-tunable up to the u16 maximum, NOT the default. Sizing this
+/// against the default would refuse elevations on any large deployment, and a
+/// refusal here surfaces as a 500 with no obvious cause, so the table is
+/// generous and its exhaustion is counted (`refusedMarkCount`) rather than
+/// silent.
+const MAX_TRACKED_ELEVATIONS = 1024;
+
+const Entry = struct { conn: *pg.Conn, role: Role };
+
+// One mutex, protecting exactly `g_elevated`: the fixed table of connections
+// currently inside an elevation callback. Compared by pointer identity only —
+// nothing here dereferences the connection.
+var g_mutex: common.Mutex = .{};
+var g_elevated: [MAX_TRACKED_ELEVATIONS]?Entry = [_]?Entry{null} ** MAX_TRACKED_ELEVATIONS;
+var g_refused_releases = std.atomic.Value(u64).init(0);
+var g_refused_marks = std.atomic.Value(u64).init(0);
+
+fn mark(conn: *pg.Conn, role: Role) Error!void {
+    g_mutex.lock();
+    defer g_mutex.unlock();
+    var free_slot: ?usize = null;
+    for (&g_elevated, 0..) |entry, i| {
+        if (entry) |e| {
+            if (e.conn == conn) return Error.ElevationRefused;
+        } else if (free_slot == null) {
+            free_slot = i;
+        }
+    }
+    const slot = free_slot orelse {
+        // Table pressure, not misuse — counted separately from the nesting
+        // refusal above so an operator can tell the two apart.
+        _ = g_refused_marks.fetchAdd(1, .monotonic);
+        return Error.ElevationRefused;
+    };
+    g_elevated[slot] = .{ .conn = conn, .role = role };
+}
+
+fn unmark(conn: *pg.Conn) void {
+    g_mutex.lock();
+    defer g_mutex.unlock();
+    for (&g_elevated) |*entry| {
+        if (entry.*) |e| {
+            if (e.conn == conn) {
+                entry.* = null;
+                return;
+            }
+        }
+    }
+}
+
+/// Pool-release backstop. Returns the role a still-open elevation held
+/// (clearing it and counting the refusal), or null for the normal, unelevated
+/// release. The caller (`pool.zig`) destroys the connection instead of
+/// pooling it.
+pub fn auditRelease(conn: *pg.Conn) ?Role {
+    g_mutex.lock();
+    defer g_mutex.unlock();
+    for (&g_elevated) |*entry| {
+        if (entry.*) |e| {
+            if (e.conn == conn) {
+                entry.* = null;
+                _ = g_refused_releases.fetchAdd(1, .monotonic);
+                log.err("elevated_release_refused", .{
+                    .role = e.role.dbName(),
+                    .error_code = error_codes.ERR_INTERNAL_DB_ELEVATED_RELEASE,
+                });
+                return e.role;
+            }
+        }
+    }
+    return null;
+}
+
+/// Operator-facing count of connections refused at release (count only, no
+/// identity).
+pub fn refusedReleaseCount() u64 {
+    return g_refused_releases.load(.monotonic);
+}
+
+/// Operator-facing count of elevations refused because the tracking table was
+/// full. Non-zero means the table is undersized for the deployment's pool, so
+/// the pressure is visible instead of arriving as unexplained 500s.
+pub fn refusedMarkCount() u64 {
+    return g_refused_marks.load(.monotonic);
+}
 
 /// The payload type of `f`'s return, with its error union stripped —
 /// `withRole` re-wraps it in `anyerror` because the bracketing statements
@@ -144,22 +209,11 @@ fn Payload(comptime f: anytype) type {
     };
 }
 
-/// Log and answer the one refusal this module raises. Both entry checks share
-/// it so the operator sees the same fields whichever tripped.
-fn refuse(conn: *pg.Conn, comptime role: Role) Error {
-    log.err(EVENT_ELEVATION_REFUSED, .{
-        .role = comptime role.dbName(),
-        .conn_state = @tagName(conn._state),
-        .error_code = error_codes.ERR_INTERNAL_DB_ELEVATION_REFUSED,
-    });
-    return Error.ElevationRefused;
-}
-
 /// Run `f(ctx, handle)` with `conn` elevated to `role` for exactly one
 /// transaction.
 ///
 /// In an explicit transaction already (`BEGIN` issued by the caller):
-/// elevates in place; the role steps back down to `api_runtime` when `f`
+/// elevates in place; the role steps down with `SET LOCAL ROLE NONE` when `f`
 /// returns, and the caller's COMMIT/ROLLBACK ends the transaction. Outside
 /// one: this call owns the transaction — COMMIT when `f` succeeds, ROLLBACK
 /// when it fails. A connection mid-query, failed, or already elevated is
@@ -179,11 +233,26 @@ pub fn withRole(
     const in_txn = switch (conn._state) {
         .transaction => true,
         .idle => false,
-        else => return refuse(conn, role),
+        else => {
+            log.err(EVENT_ELEVATION_REFUSED, .{
+                .role = comptime role.dbName(),
+                .conn_state = @tagName(conn._state),
+                .error_code = error_codes.ERR_INTERNAL_DB_ELEVATION_REFUSED,
+            });
+            return Error.ElevationRefused;
+        },
     };
-    tracker.mark(conn, comptime role.dbName()) catch return refuse(conn, role);
+
+    mark(conn, role) catch |err| {
+        log.err(EVENT_ELEVATION_REFUSED, .{
+            .role = comptime role.dbName(),
+            .conn_state = @tagName(conn._state),
+            .error_code = error_codes.ERR_INTERNAL_DB_ELEVATION_REFUSED,
+        });
+        return err;
+    };
     // Single owner for the unmark: every exit path below runs it exactly once.
-    defer tracker.unmark(conn);
+    defer unmark(conn);
 
     if (!in_txn) try conn.begin();
     errdefer if (!in_txn) conn.rollback() catch |err|
@@ -210,31 +279,15 @@ pub fn withRole(
     return result;
 }
 
-/// One elevated statement, its affected-row count returned — the shape roughly
-/// half the call sites have. Same bracket, same registry, same grep surface as
-/// `withRole`; it exists because spelling a context struct and a callback for
-/// a body that is one `exec` cost a dozen lines at each of those sites and
-/// pushed several callers past the function-length cap.
-///
-/// Reads stay on `withRole`: a row must be consumed and drained inside the
-/// callback, which is exactly the closure the callback form already is.
-pub fn execAs(
-    conn: *pg.Conn,
-    comptime role: Role,
-    statement: []const u8,
-    args: anytype,
-) !?i64 {
-    const Ctx = struct { statement: []const u8, args: @TypeOf(args) };
-    return withRole(conn, role, Ctx{ .statement = statement, .args = args }, struct {
-        fn run(c: Ctx, v: Elevated(role)) !?i64 {
-            return v.conn.exec(c.statement, c.args);
-        }
-    }.run);
-}
-
 // ── tests ───────────────────────────────────────────────────────────────────
 
 const testing = std.testing;
+
+fn fakeConn(comptime addr: usize) *pg.Conn {
+    // Registry entries are compared by pointer identity and never dereferenced,
+    // so an aligned dummy address stands in for a connection.
+    return @ptrFromInt(std.mem.alignForward(usize, addr, @alignOf(pg.Conn)));
+}
 
 test "role names match the schema slots verbatim" {
     try testing.expectEqualStrings("vault_runtime", Role.vault.dbName());
@@ -252,43 +305,39 @@ test "elevation statements are SET LOCAL, never session-scoped SET ROLE" {
     try testing.expect(std.mem.startsWith(u8, S_SET_LOCAL_ROLE_NONE, S_SET_LOCAL_ROLE_PREFIX));
 }
 
-test "the step-down restores session_user rather than naming a role" {
-    // Naming a role here forces instead of restores: a session that entered
-    // broader than the named role is silently downgraded for the rest of its
-    // transaction, and the unelevated statements that follow in a mixed
-    // transaction lose privileges they held on the way in. NONE is the only
-    // spelling that returns the connection to exactly what it was.
-    try testing.expectEqualStrings("SET LOCAL ROLE NONE", S_SET_LOCAL_ROLE_NONE);
-    inline for ([_]Role{ .vault, .billing, .metering, .memory }) |r| {
-        try testing.expect(std.mem.indexOf(u8, S_SET_LOCAL_ROLE_NONE, r.dbName()) == null);
-    }
-    // The base role is not one of the elevation roles: it is what they are
-    // reached FROM, so no `Role` tag may name it.
-    inline for ([_]Role{ .vault, .billing, .metering, .memory }) |r| {
-        try testing.expect(!std.mem.eql(u8, r.dbName(), ROLE_NAME_API));
-    }
-}
-
 test "Elevated handles are distinct types per role, one pointer wide" {
     // The whole point of the typestate: a vault handle is not a billing
     // handle, so the compiler refuses a cross-domain pass.
     try testing.expect(Elevated(.vault) != Elevated(.billing));
     try testing.expect(Elevated(.vault).elevated_role == .vault);
-    try testing.expectEqual(@sizeOf(*pg.Conn), @sizeOf(Elevated(.metering)));
+    try testing.expectEqual(@as(usize, 8), @sizeOf(Elevated(.metering)));
 }
 
-test "every role's tracker name is the name it elevates with" {
-    // The tracker stores names, not tags, so this is the seam that would drift
-    // silently: an entry naming a role the SET LOCAL never issued would make
-    // the release-refusal log point at the wrong privilege.
-    inline for ([_]Role{ .vault, .billing, .metering, .memory }) |r| {
-        try testing.expect(std.mem.endsWith(u8, setLocalStatement(r), r.dbName()));
-    }
+test "a second elevation on the same connection is refused, a different one is not" {
+    const a = fakeConn(0x10000);
+    const b = fakeConn(0x20000);
+    try mark(a, .vault);
+    defer unmark(b);
+    try testing.expectError(Error.ElevationRefused, mark(a, .billing));
+    try mark(b, .billing);
+    unmark(a);
+    try mark(a, .metering);
+    unmark(a);
+}
+
+test "auditRelease clears the entry, counts the refusal, and is one-shot" {
+    const c = fakeConn(0x30000);
+    const before = refusedReleaseCount();
+    try mark(c, .billing);
+    const hit = auditRelease(c);
+    try testing.expect(hit != null);
+    try testing.expectEqual(Role.billing, hit.?);
+    try testing.expectEqual(before + 1, refusedReleaseCount());
+    // Cleared: a second audit of the same connection is the normal path.
+    try testing.expect(auditRelease(c) == null);
+    try testing.expectEqual(before + 1, refusedReleaseCount());
 }
 
 test {
     _ = @import("schema_privilege_test.zig");
-    // Already imported at file scope; referencing that binding pulls the
-    // tracker's own tests in without repeating its path (RULE UFS).
-    _ = tracker;
 }

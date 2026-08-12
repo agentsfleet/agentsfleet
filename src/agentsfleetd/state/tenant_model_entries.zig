@@ -194,9 +194,7 @@ pub fn secretExistsForTenant(conn: *pg.Conn, tenant_id: []const u8, secret_ref: 
     // the vault probe under `vault_runtime` (see sql.zig on the split). The
     // primary workspace is stable — created at signup, ordered by creation —
     // so the moment between the statements changes nothing a caller can see.
-    // Sized to what it holds: a workspace id is UUID text, so a longer value
-    // is malformed rather than merely oversized.
-    var ws_buf: [id_format.UUID_TEXT_LEN]u8 = undefined;
+    var ws_buf: [64]u8 = undefined;
     const ws = blk: {
         var q = PgQuery.from(try conn.query(sql.SELECT_PRIMARY_WORKSPACE, .{tenant_id}));
         defer q.deinit();

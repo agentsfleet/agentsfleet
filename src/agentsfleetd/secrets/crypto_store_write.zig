@@ -96,104 +96,6 @@ pub fn replace(
 /// means for this caller — a taken name for `create`, a missing one for
 /// `replace` — because the count is the answer in both directions and neither
 /// caller may re-read to find out.
-/// The envelope: the payload under a per-secret Data Encryption Key (DEK), and
-/// that DEK under the process Key Encryption Key (KEK). Owns both buffers.
-const Sealed = struct {
-    wrapped_dek: cp.EncryptedBlob,
-    encrypted_payload: cp.EncryptedBlob,
-
-    fn deinit(self: *Sealed, alloc: std.mem.Allocator) void {
-        self.wrapped_dek.deinit(alloc);
-        self.encrypted_payload.deinit(alloc);
-        self.* = undefined;
-    }
-};
-
-/// Derive a fresh DEK and seal both halves. Runs entirely before any
-/// elevation, so no transaction is ever held open across key derivation.
-fn seal(
-    alloc: std.mem.Allocator,
-    workspace_id: []const u8,
-    key_name: []const u8,
-    plaintext: []const u8,
-) !Sealed {
-    var kek = try cp.loadKek();
-    defer std.crypto.secureZero(u8, &kek);
-
-    var dek: [KEY_LEN]u8 = undefined;
-    defer std.crypto.secureZero(u8, &dek);
-    try constants.secureRandomBytes(&dek);
-
-    // Both halves bind the same Additional Authenticated Data (AAD), so a
-    // ciphertext moved to another workspace or key name fails to open.
-    const aad = try buildAad(alloc, workspace_id, key_name, KEK_VERSION_AAD_BOUND);
-    defer alloc.free(aad);
-
-    const wrapped_dek = try cp.encrypt(alloc, dek[0..], aad, &kek);
-    errdefer wrapped_dek.deinit(alloc);
-    const encrypted_payload = try cp.encrypt(alloc, plaintext, aad, &dek);
-    return .{ .wrapped_dek = wrapped_dek, .encrypted_payload = encrypted_payload };
-}
-
-/// One sealed row's bound values, held together so the two argument shapes
-/// below read as the same write with and without a generated identifier.
-/// The blobs are borrowed — they outlive the elevated span on the caller's
-/// stack, which is where their `defer` frees them.
-const SealedWrite = struct {
-    alloc: std.mem.Allocator,
-    workspace_id: []const u8,
-    key_name: []const u8,
-    wrapped_dek: *const cp.EncryptedBlob,
-    encrypted_payload: *const cp.EncryptedBlob,
-    projection: metadata.Projection,
-    now_ms: i64,
-    statement: []const u8,
-
-    /// `create`: the row identifier is generated here, so the statement binds
-    /// it first and every later placeholder shifts by one.
-    fn execCreate(c: SealedWrite, v: pool_elevation.Elevated(.vault)) !?i64 {
-        const secret_id = try id_format.generateVaultSecretId(c.alloc);
-        defer c.alloc.free(secret_id);
-        return v.conn.exec(c.statement, .{
-            secret_id,
-            c.workspace_id,
-            c.key_name,
-            c.wrapped_dek.ciphertext,
-            c.wrapped_dek.nonce[0..],
-            c.wrapped_dek.tag[0..],
-            c.encrypted_payload.nonce[0..],
-            c.encrypted_payload.ciphertext,
-            c.encrypted_payload.tag[0..],
-            KEK_VERSION_AAD_BOUND,
-            c.now_ms,
-            c.projection.kind.wire(),
-            c.projection.provider,
-            c.projection.base_url,
-            c.projection.has_key,
-        });
-    }
-
-    /// `replace`: the row already exists and is matched by workspace and name.
-    fn execReplace(c: SealedWrite, v: pool_elevation.Elevated(.vault)) !?i64 {
-        return v.conn.exec(c.statement, .{
-            c.workspace_id,
-            c.key_name,
-            c.wrapped_dek.ciphertext,
-            c.wrapped_dek.nonce[0..],
-            c.wrapped_dek.tag[0..],
-            c.encrypted_payload.nonce[0..],
-            c.encrypted_payload.ciphertext,
-            c.encrypted_payload.tag[0..],
-            KEK_VERSION_AAD_BOUND,
-            c.now_ms,
-            c.projection.kind.wire(),
-            c.projection.provider,
-            c.projection.base_url,
-            c.projection.has_key,
-        });
-    }
-};
-
 fn writeEnvelope(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
@@ -205,26 +107,87 @@ fn writeEnvelope(
     comptime with_id: bool,
     comptime zero_rows_err: anyerror,
 ) !void {
-    var sealed = try seal(alloc, workspace_id, key_name, plaintext);
-    defer sealed.deinit(alloc);
+    var kek = try cp.loadKek();
+    defer std.crypto.secureZero(u8, &kek);
+
+    var dek: [KEY_LEN]u8 = undefined;
+    defer std.crypto.secureZero(u8, &dek);
+    try constants.secureRandomBytes(&dek);
+
+    const aad = try buildAad(alloc, workspace_id, key_name, KEK_VERSION_AAD_BOUND);
+    defer alloc.free(aad);
+
+    const wrapped_dek = try cp.encrypt(alloc, dek[0..], aad, &kek);
+    defer wrapped_dek.deinit(alloc);
+
+    const encrypted_payload = try cp.encrypt(alloc, plaintext, aad, &dek);
+    defer encrypted_payload.deinit(alloc);
+
+    const now_ms = clock.nowMillis();
 
     // The write lands only as `vault_runtime` (schema/300). Inside a caller's
     // transaction (the secret-reference protocol) the callback brackets just
     // the statement; standalone it owns the transaction. All envelope crypto
     // above runs BEFORE elevating, so no transaction is held open across key
     // derivation — the elevated span is one INSERT/UPDATE.
-    const written = try pool_elevation.withRole(conn, .vault, SealedWrite{
+    const Ctx = struct {
+        alloc: std.mem.Allocator,
+        workspace_id: []const u8,
+        key_name: []const u8,
+        wrapped_dek: *const cp.EncryptedBlob,
+        encrypted_payload: *const cp.EncryptedBlob,
+        projection: metadata.Projection,
+        now_ms: i64,
+        statement: []const u8,
+    };
+    const written = try pool_elevation.withRole(conn, .vault, Ctx{
         .alloc = alloc,
         .workspace_id = workspace_id,
         .key_name = key_name,
-        .wrapped_dek = &sealed.wrapped_dek,
-        .encrypted_payload = &sealed.encrypted_payload,
+        .wrapped_dek = &wrapped_dek,
+        .encrypted_payload = &encrypted_payload,
         .projection = projection,
-        .now_ms = clock.nowMillis(),
+        .now_ms = now_ms,
         .statement = statement,
     }, struct {
-        fn run(c: SealedWrite, v: pool_elevation.Elevated(.vault)) !?i64 {
-            return if (with_id) c.execCreate(v) else c.execReplace(v);
+        fn run(c: Ctx, v: pool_elevation.Elevated(.vault)) !?i64 {
+            if (with_id) {
+                const secret_id = try id_format.generateVaultSecretId(c.alloc);
+                defer c.alloc.free(secret_id);
+                return try v.conn.exec(c.statement, .{
+                    secret_id,
+                    c.workspace_id,
+                    c.key_name,
+                    c.wrapped_dek.ciphertext,
+                    c.wrapped_dek.nonce[0..],
+                    c.wrapped_dek.tag[0..],
+                    c.encrypted_payload.nonce[0..],
+                    c.encrypted_payload.ciphertext,
+                    c.encrypted_payload.tag[0..],
+                    KEK_VERSION_AAD_BOUND,
+                    c.now_ms,
+                    c.projection.kind.wire(),
+                    c.projection.provider,
+                    c.projection.base_url,
+                    c.projection.has_key,
+                });
+            }
+            return try v.conn.exec(c.statement, .{
+                c.workspace_id,
+                c.key_name,
+                c.wrapped_dek.ciphertext,
+                c.wrapped_dek.nonce[0..],
+                c.wrapped_dek.tag[0..],
+                c.encrypted_payload.nonce[0..],
+                c.encrypted_payload.ciphertext,
+                c.encrypted_payload.tag[0..],
+                KEK_VERSION_AAD_BOUND,
+                c.now_ms,
+                c.projection.kind.wire(),
+                c.projection.provider,
+                c.projection.base_url,
+                c.projection.has_key,
+            });
         }
     }.run);
     // The affected-row count is the answer, and it means opposite things to the

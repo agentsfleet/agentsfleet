@@ -129,12 +129,6 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
 
     test_fixtures.resetBillingFor(db_ctx.conn, TEST_TENANT_ID);
     try tenant_billing.insertStarterGrant(db_ctx.conn, TEST_TENANT_ID);
-    // §7: a tenant's trial is open-ended by default, and an open trial prices
-    // every stage charge to zero — which would leave the drained-balance
-    // refusal below permanently unprovable, and silently so. Closing THIS
-    // tenant's boundary is what arms it. No wall-clock date to wait for and
-    // none that can retire the assertion later.
-    try test_fixtures.endFreeTrialFor(db_ctx.conn, TEST_TENANT_ID);
     try seedModelRate(db_ctx.conn);
     defer teardownModelRate(db_ctx.conn);
 
@@ -227,6 +221,12 @@ test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=false,
     try r.expectStatus(.ok);
     try std.testing.expect(r.bodyContains("\"is_exhausted\":false"));
     try std.testing.expect(r.bodyContains("\"exhausted_at\":null"));
+
+    // The removed surface, asserted on the wire rather than on the struct: the
+    // dashboard's typed `TenantBilling` no longer declares `free_trial`, so a
+    // server still emitting it would be shipping a field no client reads —
+    // and the balance beside it would be the one nothing was charged against.
+    try std.testing.expect(!r.bodyContains("free_trial"));
 }
 
 test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=true + exhausted_at=<ms> on an exhausted tenant" {

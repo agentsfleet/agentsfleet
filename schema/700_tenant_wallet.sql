@@ -30,12 +30,6 @@ CREATE TABLE IF NOT EXISTS billing.tenant_wallet (
     balance_nanos        BIGINT NOT NULL,
     grant_source         TEXT   NOT NULL,
     balance_exhausted_at BIGINT,
-    -- When this tenant's promotional free trial ends, in epoch milliseconds.
-    -- NULL means open-ended: the trial has no end yet and stage charges stay
-    -- zero for this tenant until one is set. Per-tenant rather than a build-time
-    -- constant so a trial can end for one account without a release, and so a
-    -- date passing can never change pricing for everyone at once.
-    free_trial_ends_at   BIGINT,
     created_at           BIGINT NOT NULL,
     updated_at           BIGINT NOT NULL,
     -- A numeric floor, not a value set: RULE STS bans frozen string vocabularies
@@ -57,24 +51,11 @@ CREATE TABLE IF NOT EXISTS billing.tenant_wallet (
 -- path — to serve no query.
 
 -- billing_runtime reads and writes the wallet: the starter grant at signup
--- (`state/signup_bootstrap.zig`), the balance reads, and the exhausted-marker
--- transitions — each elevating for one transaction. api_runtime holds no
--- direct grant; the catalogue test asserts zero rows for it here.
---
--- No DELETE, to anyone. A wallet leaves only with the tenant that owns it,
--- through the `core.tenants` cascade — referential actions run with the table
--- owner's authority, so the purge needs no billing elevation for it
--- (`state/account_teardown.zig` says so at its statement list). The grant was
--- carried over from a draft where erasure deleted the row explicitly; nothing
--- in the tree issues that statement, so it was reach with no caller.
-GRANT SELECT, INSERT, UPDATE ON billing.tenant_wallet TO billing_runtime;
-
--- metering_runtime reaches the wallet directly, composed to exactly what the
--- fenced renew/settle statement issues against it: it reads the balance and
--- updates it. Never INSERT (the starter grant above is the only creator) and
--- never DELETE (the cascade is). See schema/120 for why this is a direct grant
--- rather than a membership.
-GRANT SELECT, UPDATE ON billing.tenant_wallet TO metering_runtime;
+-- (`state/signup_bootstrap.zig`), every metered debit (via `metering_runtime`'s
+-- inheriting membership, schema/120), the balance read, and account erasure —
+-- each elevating for one transaction. api_runtime holds no direct grant; the
+-- catalogue test asserts zero rows for it here.
+GRANT SELECT, INSERT, UPDATE, DELETE ON billing.tenant_wallet TO billing_runtime;
 
 -- Read-only operator principals never see a balance. Stated explicitly rather
 -- than relied upon: these roles hold no grant here, and saying so makes

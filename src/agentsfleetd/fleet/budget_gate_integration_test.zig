@@ -9,11 +9,10 @@
 //! Reuses the lifecycle harness (TestHarness + live Postgres + Redis), the same
 //! way `event_lifecycle_reclaim_integration_test.zig` does.
 //!
-//! Note on spend: every charge is zero until `FREE_TRIAL_END_MS`
-//! (2026-08-01T00:00:00Z), so a fleet driven through the HTTP path today accrues
-//! no `credit_deducted_nanos` of its own. These tests therefore seed the spend
-//! directly, which is what the gate actually reads — the gate's decision is
-//! independent of how the telemetry rows came to exist.
+//! Note on spend: these tests seed the spend directly rather than driving a
+//! fleet through the HTTP path to accrue it, because that is what the gate
+//! actually reads — the gate's decision is independent of how the telemetry
+//! rows came to exist.
 
 const std = @import("std");
 const pg = @import("pg");

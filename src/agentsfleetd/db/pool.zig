@@ -74,14 +74,13 @@ const ACQUIRE_TIMEOUT_MS_ENV = "DATABASE_ACQUIRE_TIMEOUT_MS";
 // many concurrent requests share a handful of DB connections, so the pool need
 // not scale 1:1 with request concurrency. Mirrors the `API_MAX_IN_FLIGHT_REQUESTS`
 // loader default (256) divided by the per-connection request-sharing factor.
-// One home, in `pool_url`, because `parseUrl` bakes the same two values into
-// the options it returns: defined twice, a tuning edit here would silently
-// disagree with the pool every URL parse produces.
-const POOL_SIZE_DEFAULT = pool_url.POOL_SIZE_DEFAULT;
+const API_MAX_IN_FLIGHT_REQUESTS_DEFAULT: u16 = 256;
+const POOL_SIZE_INFLIGHT_DIVISOR: u16 = 64;
+const POOL_SIZE_DEFAULT: u16 = API_MAX_IN_FLIGHT_REQUESTS_DEFAULT / POOL_SIZE_INFLIGHT_DIVISOR;
 
 // Acquire timeout fails fast: a starved pool surfaces as a quick error rather
 // than a multi-second stall that masquerades as a slow request.
-const ACQUIRE_TIMEOUT_MS_DEFAULT = pool_url.ACQUIRE_TIMEOUT_MS_DEFAULT;
+const ACQUIRE_TIMEOUT_MS_DEFAULT: u32 = 2_000;
 
 // Upper bound on a role tag ("migrator" is the longest) and on a fully
 // composed "<KNOB>_<ROLE>" env-var name; both leave slack for future roles.

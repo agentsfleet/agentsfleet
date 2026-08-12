@@ -172,24 +172,6 @@ pub const Txn = struct {
 ///
 /// On any failure the transaction is rolled back before returning, so a caller
 /// that never receives a `Txn` has nothing to clean up.
-/// Step 1's `FOR UPDATE` on `vault.secrets` needs `vault_runtime`
-/// (schema/300), so it runs in an elevated callback inside the caller's
-/// transaction and steps back down before the `core.*` steps — which run as
-/// `api_runtime`, whose privileges those steps need in turn.
-fn lockSecretRow(conn: *pg.Conn, workspace_id: []const u8, key_name: []const u8) !bool {
-    const Ctx = struct { workspace_id: []const u8, key_name: []const u8 };
-    return pool_elevation.withRole(conn, .vault, Ctx{
-        .workspace_id = workspace_id,
-        .key_name = key_name,
-    }, struct {
-        fn run(c: Ctx, v: pool_elevation.Elevated(.vault)) !bool {
-            var q = PgQuery.from(try v.conn.query(LOCK_SECRET, .{ c.workspace_id, c.key_name }));
-            defer q.deinit();
-            return (try q.next()) != null;
-        }
-    }.run);
-}
-
 pub fn begin(
     conn: *pg.Conn,
     workspace_id: []const u8,
@@ -201,7 +183,23 @@ pub fn begin(
 
     // Step 1 — the credential itself. Absent means a concurrent delete got
     // here first; every caller treats that as fatal to its own write.
-    if (!try lockSecretRow(conn, workspace_id, key_name)) return Error.SecretGone;
+    //
+    // `FOR UPDATE` on `vault.secrets` needs `vault_runtime` (schema/300), so
+    // the lock statement runs in an elevated callback inside THIS transaction
+    // and steps back down before the `core.*` steps — which run as
+    // `api_runtime`, whose privileges those steps need in turn.
+    const LockCtx = struct { workspace_id: []const u8, key_name: []const u8 };
+    const found = try pool_elevation.withRole(conn, .vault, LockCtx{
+        .workspace_id = workspace_id,
+        .key_name = key_name,
+    }, struct {
+        fn run(c: LockCtx, v: pool_elevation.Elevated(.vault)) !bool {
+            var q = PgQuery.from(try v.conn.query(LOCK_SECRET, .{ c.workspace_id, c.key_name }));
+            defer q.deinit();
+            return (try q.next()) != null;
+        }
+    }.run);
+    if (!found) return Error.SecretGone;
 
     // Step 0, issued here because step 1 is the cheaper rejection: no point
     // resolving an owner for a credential that is already gone. Copied out

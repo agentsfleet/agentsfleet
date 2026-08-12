@@ -10,11 +10,8 @@ const pg = @import("pg");
 
 const S_SSLMODE = "sslmode=";
 
-// The one home for pool sizing: `pool.zig` reads both from here, and
-// `initFromEnvForRole` overwrites them from env-resolved sizing. Many
-// concurrent requests share a handful of connections, so the pool need not
-// scale 1:1 with request concurrency — the in-flight default divided by the
-// per-connection request-sharing factor.
+// Defaults mirrored from pool.zig's sizing block; `initFromEnvForRole`
+// overwrites both from env-resolved sizing.
 const API_MAX_IN_FLIGHT_REQUESTS_DEFAULT: u16 = 256;
 const POOL_SIZE_INFLIGHT_DIVISOR: u16 = 64;
 pub const POOL_SIZE_DEFAULT: u16 = API_MAX_IN_FLIGHT_REQUESTS_DEFAULT / POOL_SIZE_INFLIGHT_DIVISOR;

@@ -29,18 +29,6 @@ export const EVENT_NANOS = 0n;
 // per-stage fees — runtime is metered by the second, not per stage.
 export const RUN_NANOS_PER_SEC = 100_000n;
 
-// Per-stage charge while a tenant's free trial is open: the server's
-// `compute_stage_charge` returns this regardless of posture / model / tokens.
-// Identifier names match the Zig + JS mirrors.
-//
-// The trial's END is deliberately NOT a constant here. It is a per-tenant fact
-// (`billing.tenant_wallet.free_trial_ends_at`, NULL = open-ended), so this
-// static marketing page has no boundary to state and must not invent one. The
-// copy below says what is true for everyone — the trial is open — and the
-// tenant's own boundary is surfaced in the dashboard billing panel, which can
-// actually read it. Customer surface for live rates: agentsfleet.net/#pricing.
-export const FREE_TRIAL_STAGE_NANOS = 0n;
-
 export const RATES_DISPLAY = {
   STARTER_CREDIT: "$5",
   EVENT_RATE: "free",

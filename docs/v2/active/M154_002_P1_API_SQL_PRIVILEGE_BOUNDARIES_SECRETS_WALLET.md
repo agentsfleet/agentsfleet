@@ -84,6 +84,22 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | ~50 files under `cmd/`, `fleet/`, `fleet_runtime/`, `http/`, `cron/`, `auth/`, `credentials/`, `memory/`, `events/`, `db/`, `state/` | EDIT | Mechanical `*pg.Pool` → `*db.Pool` type respell so every borrower passes through the wrapper's release backstop; test files gain `db.adopt` at construction seams |
 | `build.zig.zon` | EDIT | pg.zig re-pinned to fork tag `v0.0.0-af.4`: upstream `b5a1f25` merge + the `peekForError` use-after-reset fix the coverage lane exposed (Indy-directed; Discovery) |
 
+**Amended — free-trial removal folded in (Indy-directed, see Discovery).** Removing the mechanism retires the merge-blocker below rather than guarding it, so the two land together:
+
+| File | Action | Why |
+|------|--------|-----|
+| `schema/700_tenant_wallet.sql` | EDIT | The `free_trial_ends_at` column is dropped — nothing in production ever wrote it |
+| `src/agentsfleetd/state/tenant_billing.zig` | EDIT | `isFreeTrialActive`, `FREE_TRIAL_STAGE_NANOS`, and the two `Billing` projection fields are deleted |
+| `src/agentsfleetd/state/tenant_billing_rates.zig` | EDIT | The trial short-circuit ahead of the posture switch is deleted; `computeStageChargeAt` goes with it (the injected clock existed only to price around the trial) |
+| `src/agentsfleetd/state/tenant_billing_store.zig`, `state/sql.zig` | EDIT | `loadTrialBoundary` + `SELECT_TENANT_TRIAL_BOUNDARY` deleted; the balance SELECT drops the column |
+| `src/agentsfleetd/fleet/renewal_meter.zig` | EDIT | The boundary load disappears, and with it the `catch null` that priced a failed lookup as a live trial |
+| `src/agentsfleetd/fleet_runtime/metering.zig`, `fleet/service_renew.zig`, `fleet/service_report.zig` | EDIT | Call sites drop the trial argument; `buildMeterInputs` sheds `tenant_id` and `now_ms` (RULE NDC) |
+| `src/agentsfleetd/http/handlers/tenant_billing.zig` | EDIT | `free_trial` leaves the billing response — a breaking API change |
+| `src/agentsfleetd/db/test_fixtures.zig` | EDIT | `endFreeTrialFor` + `TRIAL_ENDED_AT_MS` deleted; the only writer of the column was this fixture |
+| `ui/packages/app/lib/types.ts`, `ui/packages/app/tests/*.ts` | EDIT | `TenantBilling.free_trial` removed from the typed surface and its fixtures |
+| `ui/packages/website/src/lib/rates.ts` | EDIT | The `FREE_TRIAL_STAGE_NANOS` mirror is deleted. **Marketing copy stays** — `FREE_TRIAL_PILL` / `FREE_TRIAL_BANNER` describe a $5 starter grant, which is still true |
+| 9 billing/metering integration suites | EDIT | Trial fixtures dropped; assertions now hold unconditionally because no clock gates pricing |
+
 ## Applicable Rules
 
 - **`~/Projects/dotfiles/docs/greptile-learnings/RULES.md`** — **SGR** (a grant belongs with the table it describes, and every role that queries a table appears there), **CTX** (cross-tenant and cross-trust data needs a process boundary, which here is the role), **VLT** (secrets stay in the vault; this narrows who may read them), **NSQ** (schema-qualified statements), **OWN** (one owner per resource — elevation is acquired and released by the same scope), **TXN** (a transaction that fails rolls back, which is what makes transaction-scoped elevation safe)
@@ -117,33 +133,48 @@ The grants that sit on `api_runtime` today move to roles that do nothing else, a
 
 **Membership must be non-inheriting.** A bare `GRANT <role> TO api_runtime` follows `api_runtime`'s own INHERIT attribute, which `CREATE ROLE` defaults to TRUE — the privileges then apply ambiently and nothing ever elevates. `WITH INHERIT FALSE, SET TRUE` is what makes membership dormant, and Dimension 1.1's catalogue query cannot see the difference, which is why Dimension 1.4 exists.
 
-- **Dimension 1.1** — `api_runtime` holds no direct privilege on the secret store or the wallet → Test `test_api_runtime_holds_no_direct_grant`
-- **Dimension 1.2** — an unelevated read of either table is refused by PostgreSQL, not by application code → Test `test_unelevated_access_is_refused`
-- **Dimension 1.3** — the migration role retains full authority, so a rebuild cannot lock itself out → Test `test_migrator_still_owns_both_tables`
-- **Dimension 1.4** — every role `api_runtime` may assume is granted non-inheriting, so the privilege is unreachable without an explicit `SET ROLE` → Test `test_role_membership_is_dormant_until_set_role`
-- **Dimension 1.5** — `metering_runtime` reaches exactly the fenced statement's tables and holds no direct grant on either money table → Test `test_metering_role_matches_statement_footprint`
+- **Dimension 1.1** — `api_runtime` holds no direct privilege on the secret store or the wallet → Test `test_api_runtime_holds_no_direct_grant` — **DONE**
+- **Dimension 1.2** — an unelevated read of either table is refused by PostgreSQL, not by application code → Test `test_unelevated_access_is_refused` — **DONE**
+- **Dimension 1.3** — the migration role retains full authority, so a rebuild cannot lock itself out → Test `test_migrator_still_owns_both_tables` — **DONE**
+- **Dimension 1.4** — every role `api_runtime` may assume is granted non-inheriting, so the privilege is unreachable without an explicit `SET ROLE` → Test `test_role_membership_is_dormant_until_set_role` — **DONE**
+- **Dimension 1.5** — `metering_runtime` reaches exactly the fenced statement's tables and holds no direct grant on either money table → Test `test_metering_role_matches_statement_footprint` — **DONE**
 
 ### §2 — Elevation is scoped to the transaction
 
 Elevation lasts for one transaction and ends with it, so a commit or a rollback both return the connection to `api_runtime` without anything having to remember. The wallet writers are already single fenced statements, so wrapping them costs nothing structurally. **Implementation default:** transaction-scoped elevation rather than connection-scoped, because the connection is pooled and its next borrower is a different request.
 
-- **Dimension 2.1** — every secret read and write succeeds under elevation and the transaction still commits atomically → Test `test_secret_paths_work_under_elevation`
-- **Dimension 2.2** — the metered renewal and the settle both still charge exactly once under elevation, with fencing unchanged → Test `test_metering_unchanged_under_elevation`
-- **Dimension 2.3** — a failed statement inside an elevated transaction rolls back and leaves no elevation behind → Test `test_rollback_clears_elevation`
-- **Dimension 2.4** — account erasure removes secrets and the wallet row under elevation → Test `test_erasure_elevates_for_secrets_and_wallet`
+- **Dimension 2.1** — every secret read and write succeeds under elevation and the transaction still commits atomically → Test `test_secret_paths_work_under_elevation` — **DONE**
+- **Dimension 2.2** — the metered renewal and the settle both still charge exactly once under elevation, with fencing unchanged → Test `test_metering_unchanged_under_elevation` — **DONE**
+- **Dimension 2.3** — a failed statement inside an elevated transaction rolls back and leaves no elevation behind → Test `test_rollback_clears_elevation` — **DONE**
+- **Dimension 2.4** — account erasure removes secrets and the wallet row under elevation → Test `test_erasure_elevates_for_secrets_and_wallet` — **DONE**
 
 ### §3 — The pool refuses to hand back an elevated connection
 
 The failure this workstream must not introduce is a connection returned to the pool still elevated, which would hand the next request privileges it never asked for — strictly worse than the situation being fixed. The guard belongs in release, where it cannot be forgotten, rather than in each call site.
 
-- **Dimension 3.1** — releasing a still-elevated connection is refused and reported, never silently accepted → Test `test_release_rejects_elevated_connection`
-- **Dimension 3.2** — a connection that has completed an elevated transaction reports the base role and is reusable → Test `test_connection_returns_to_base_role`
+- **Dimension 3.1** — releasing a still-elevated connection is refused and reported, never silently accepted → Test `test_release_rejects_elevated_connection` — **DONE**
+- **Dimension 3.2** — a connection that has completed an elevated transaction reports the base role and is reusable → Test `test_connection_returns_to_base_role` — **DONE**
+
+### §4 — The free trial is deleted, not guarded
+
+Folded in at Indy's direction. The elevation work grew the failure surface of one line — `loadTrialBoundary(...) catch null` in the renewal meter — from a single SELECT to `mark + BEGIN + SET LOCAL ROLE + SELECT + COMMIT`, and added a dependency on a `billing_runtime` membership that a pre-split cluster does not have. Because `isFreeTrialActive(null)` returns TRUE, any failure along that longer path priced the slice as a live trial: every rate collapsed to zero, the fenced statement wrote a zero charge, and `last_metered_at` advanced — so the slice could never be re-billed. Silent, permanent, and unlogged.
+
+The mechanism is redundant, which is why deleting beats guarding. `tenant_billing.STARTER_CREDIT_NANOS` already grants every new tenant $5 at signup as `bootstrap_starter_grant`, so the platform has an explicit, auditable "new user tries it free" path. The trial was a second, implicit one that worked by zeroing every rate. **Measured before removal:** `free_trial_ends_at` has no `DEFAULT` and exactly one writer in the repository — `db/test_fixtures.zig`, a test fixture. No production path ever set it, so every tenant held NULL, read as an open-ended trial, and was charged nothing for any stage. This removal switches stage billing on for the first time; the $5 grant is the free allowance and the existing `balance_exhausted_at` path handles running out. Admin-granted credits are the named follow-up.
+
+- **Dimension 4.1** — no pricing path consults a clock or a trial boundary; the same inputs price identically at any instant → Test `test_pricing_is_clock_independent` — **DONE**
+- **Dimension 4.2** — a metered run that consumed time is charged for it, so no slice settles at zero while advancing the cursor → Test `test_every_slice_is_charged` — **DONE**
+- **Dimension 4.3** — a fresh tenant holds exactly the starter grant, and it is positive → Test `test_fresh_tenant_funded_by_starter_grant_alone` — **DONE**
+- **Dimension 4.4** — the billing response no longer carries `free_trial`, and the typed dashboard surface matches → Test `test_billing_response_has_no_free_trial` — **DONE**
 
 ## Interfaces
 
 ```
-No HTTP surface changes. Every endpoint keeps its path, request shape,
-response shape, and status codes.
+BREAKING   GET /v1/tenants/me/billing drops the `free_trial` object
+           (`{ active, ends_at_ms }`). Every other field is unchanged, and
+           no path, status code, or request shape moves.
+
+Otherwise no HTTP surface changes. Every endpoint keeps its path, request
+shape, response shape, and status codes.
 
 INTERNAL   an elevation helper wrapping a transaction under a named role,
            releasing on both the commit and the error path.
@@ -289,23 +320,19 @@ N/A — no files deleted.
 
   Cause, from the driver source: `Conn.peekForError` borrows the error payload from the reader's buffer; when the `ErrorResponse` is the last buffered message the reader resets its positions to 0, and the socket read inside the subsequent `readyForQuery()` overwrites the peeked bytes before `setErr` dupes them — `Error.parse` then panics (`else => unreachable`) on the `Z` frame's transaction-state byte. Why now: the driver is unchanged; this workstream's elevated write-back made the trigger-raised error path run inside an explicit transaction, and macOS kcov's slowdown reliably hits the window where the `E` and `Z` frames arrive in separate reads. Landed per the directive: upstream `b5a1f25` merged into `agentsfleet/pg.zig` `patch/agentsfleet-0.16`, the reorder patch on top (`setErr` before `readyForQuery`), tagged `v0.0.0-af.4` (`d50a33d`), `build.zig.zon` re-pinned by tag and commit.
 
-- **In-PR structural pass (2026-08-11).**
-
-  > Indy (2026-08-11): "Have you made a large refactor that results in optimium code, performant and concurrent fault free error free optimized code base easy for you to maintain?" … "go"
-
-  The honest answer was no, and three findings said why. **(1) RULE FLL was being violated by this diff.** `dispatch_length_gate` enforces only the file cap — the function sub-cap is a documented TODO-CHECK with no leaf wired — so `harness-verify` stayed green while `writeEnvelope` sat at 104 lines. Measured and fixed: `writeEnvelope` 104→43 (envelope crypto extracted to `seal`, argument shapes to `SealedWrite`), `renew` 66→26, `claimAndSettle` 60→23 (bound values + their one elevated call became named argument structs), `loadAllForWorkspace` 59→31, `secret_reference_txn.begin` 61→45, `debitAndInsert` 69→47, `withRole` 54→39. Two files crossed the 350-line file cap during the work and were split on real seams: `db/pool_elevation_tracker.zig` (the elevation table — it stores role NAMES, which removes the circular import and keeps the module free of anything that dereferences a possibly-dead connection) and `fleet_runtime/metering_billing_span.zig`. `execAs` was added for the single-statement sites the closure form over-served.
-
-  **(2) The composite role was wider than its own comment claimed.** `GRANT billing_runtime TO metering_runtime WITH INHERIT TRUE` carried INSERT and DELETE on `billing.tenant_wallet` into every renewal; the two fenced statements only ever SELECT and UPDATE it (verified against `RENEW_METER_SQL` and `CLAIM_SETTLE_SQL`). Replaced by direct grants composed to that footprint, so "the grant list IS the statement's table list" is now literally true. `billing_runtime` also lost `DELETE ON billing.tenant_wallet` — zero production callers, erasure rides the tenant cascade. **A live-catalogue matrix row was added for every elevation role**, which immediately earned itself: the narrowing did NOT take, because roles and their memberships are CLUSTER-level and survive `DROP DATABASE`. Removing the grant line only governs new clusters; slot 120 now REVOKEs the membership explicitly so it converges from either starting state.
-
-  **(3) The telemetry hot path elevated two-to-three times per event.** The debit, the exhaustion mark and the ledger row each opened their own scope inside one transaction. Now one `billing_runtime` span via `*Elevated` variants that take the handle. Declined, with reason: composing `BEGIN; SET LOCAL ROLE` into one simple-query exec (saves one round trip, risks the driver's `_state` tracking — the exact class of bug the `peekForError` fix above addressed).
-
-  Also closed a Time-Of-Check-To-Time-Of-Use (TOCTOU) hole the pass surfaced: the purge's id arrays froze at transaction start while the later `core` deletes re-evaluated their subqueries per statement, so a workspace created mid-purge lost its `core` rows but kept its secrets. It now takes `FOR UPDATE` on the tenant row before resolving.
-
-  **A regression the pass introduced and the tests caught.** Stepping down with `SET LOCAL ROLE api_runtime` instead of `NONE` *forces* a role rather than restoring one: a session entering broader (the integration harness is a superuser) was silently downgraded mid-transaction, and the purge's later unelevated statements lost privileges they held on entry — nine integration failures. Reverted to `NONE`, with the invariant that makes it correct now written into the module: elevation is API-pool-only and that pool logs in AS `api_runtime`, so `NONE` restores the right role in production. The reviewer's underlying point stands and is recorded — the integration suite's post-callback statements do run with more rights than production, which is why the refusal assertions that matter drop to `SET ROLE api_runtime` explicitly rather than leaning on the step-down.
-
 - **Consult — CLI acceptance failures under `make test-unit-all` (2026-08-11).** Seven `cli/test/acceptance` auth-guard tests fail on any machine holding a real login: `composeEnv` passes the operator's `HOME` through, and the durable credential the login flow now mints (`~/.config/agentsfleet/credentials.json`) satisfies the auth guard the tests expect to refuse. Zero `cli/` files in this diff; Continuous Integration (CI) is green only because it holds no credential file.
 
   > Indy (2026-08-11): "I have another agent to fix this cli acceptance failure (M160_001 spec) so keep moving on this by just adding a note in the PR about that spec in progress by another agent."
+
+- **Directive — the free trial is removed, folded into this Pull Request (2026-08-11).** Raised as its own milestone on scope grounds (a billing-semantics change riding into a privilege-boundary review); Indy overruled and directed the fold.
+
+  > Indy (2026-08-11): "I feel the FreeTrial can be removed and we could later build with credits added by the platform admin for the user. So its better that way. The website can still claim and free trial or so."
+
+  > Indy (2026-08-11): "ensure Free Trial is removal is folded in this PR"
+
+  **Measured before executing, and surfaced to Indy.** `free_trial_ends_at` carries no `DEFAULT` and has exactly one writer in the repository — `db/test_fixtures.zig`. No production path ever set it, so every tenant held NULL, `isFreeTrialActive(null)` returned TRUE, and the gate fired *ahead* of the catalogue branch: run fees and every token tier collapsed to zero. Stage billing has therefore never charged anyone. The removal switches it on for the first time. The `$5` starter grant becomes the sole free allowance, and the existing `balance_exhausted_at` path handles exhaustion. **The website's marketing copy is deliberately kept** — `FREE_TRIAL_PILL` / `FREE_TRIAL_BANNER` say "Free during early access", which stays true of a starter grant.
+
+  **What this retires.** F1 from the adversarial review — `loadTrialBoundary(...) catch null` pricing a failed lookup as a live trial, writing a zero charge and advancing `last_metered_at` so the slice could never be re-billed. Deleting the mechanism removes the bug class, so no guard was written for it. Also noted: `event_lifecycle_integration_test.zig` documented the balance-exhausted HTTP path as unreachable *because* every charge priced to zero — that path is now reachable end-to-end and worth covering.
 
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
