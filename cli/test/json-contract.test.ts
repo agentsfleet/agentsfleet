@@ -6,6 +6,7 @@
 import { describe, test, expect } from "bun:test";
 import type { Command } from "commander";
 import { makeBufferStream, ui } from "./helpers.ts";
+import { makeEmptyStateDirSync } from "./acceptance/fixtures/state-dir.ts";
 import { runCli } from "../src/cli.ts";
 import { writeError } from "../src/program/io.ts";
 import { buildProgram } from "../src/program/cli-tree.ts";
@@ -126,17 +127,30 @@ describe("JSON mode suppresses banners", () => {
 
 describe("JSON error envelope", () => {
   test("auth required in JSON mode emits AUTH_REQUIRED on stderr", async () => {
-    const out = makeBufferStream();
-    const err = makeBufferStream();
-    const code = await runCli(["--json", "workspace", "list"], {
-      stdout: out.stream,
-      stderr: err.stream,
-      env: { NO_COLOR: "1" },
-    });
-    expect(code).toBe(1);
-    const parsed = tryParseJson(err.read()) as { error: { code: string } } | null;
-    expect(parsed).not.toBeNull();
-    expect(parsed?.error.code).toBe("AUTH_REQUIRED");
+    // Credentials resolve from `process.env.AGENTSFLEET_STATE_DIR`
+    // (src/lib/state.ts `resolveStatePaths`), NOT the `env` handed to
+    // `runCli` — `loadCredentials()` runs before that env is consulted. Sibling
+    // files in this suite write credentials into whatever directory is current,
+    // so take a fresh empty one rather than trusting the runner default to be
+    // pristine by the time this file runs.
+    const priorStateDir = process.env.AGENTSFLEET_STATE_DIR;
+    process.env.AGENTSFLEET_STATE_DIR = makeEmptyStateDirSync();
+    try {
+      const out = makeBufferStream();
+      const err = makeBufferStream();
+      const code = await runCli(["--json", "workspace", "list"], {
+        stdout: out.stream,
+        stderr: err.stream,
+        env: { NO_COLOR: "1" },
+      });
+      expect(code).toBe(1);
+      const parsed = tryParseJson(err.read()) as { error: { code: string } } | null;
+      expect(parsed).not.toBeNull();
+      expect(parsed?.error.code).toBe("AUTH_REQUIRED");
+    } finally {
+      if (priorStateDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+      else process.env.AGENTSFLEET_STATE_DIR = priorStateDir;
+    }
   });
 
   test("removed v1 commands surface as commander unknown-command (exit 2)", async () => {

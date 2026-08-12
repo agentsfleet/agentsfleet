@@ -76,6 +76,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/test/acceptance/fixtures/state-dir.ts` | EDIT | Adds the empty-state-dir fixture, the inverse of the stubbed one |
 | `cli/test/acceptance/help-and-errors.spec.ts` | EDIT | Isolates `AGENTSFLEET_STATE_DIR`, so the auth-guard assertions stop reading the developer's real login |
 | `cli/test/acceptance/flags-and-env.spec.ts` | EDIT | Same isolation; this workstream changes the persisted shape these specs observe |
+| `cli/test/setup.ts` | EDIT | The preload defaults the runner to an empty state dir, so logged-out is the baseline for in-process tests |
+| `cli/test/json-contract.test.ts` | EDIT | Its auth-required test takes its own state dir, since sibling files write credentials into the current one |
 | `public/openapi/paths/auth.yaml`, `public/openapi.json` | EDIT | The three new endpoints are public surface |
 | `docs/AUTH.md` | EDIT | Records the second credential class and how it differs from the tenant key |
 | `~/Projects/docs/changelog.mdx` | EDIT | User-visible: login stops expiring immediately |
