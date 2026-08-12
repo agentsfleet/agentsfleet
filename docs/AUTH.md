@@ -139,6 +139,8 @@ The complete capability vocabulary (`src/agentsfleetd/auth/scopes.zig`). Scope s
 
 Capabilities reach a principal as an explicit `scopes` claim. Three grants are applied **in code** at principal construction — `scopes.zig::DefaultGrant`, keyed by *credential source* (not a role name) and **never checked at a gate** (gates take `Scope` values). All other capability sets are provisioned **manually** at the identity provider.
 
+**A fourth source resolves rather than grants.** The CLI credential (`afc_`, Flow 1) carries no `DefaultGrant`. It proves *identity* only; its capabilities are fetched from the identity provider per request, keyed on the owning user's `oidc_subject`, and parsed by the same `parseClaim` the JWT path uses. See *CLI credential — resolved, not granted* below for why it differs and what that costs.
+
 **Code-applied default grants** (`DefaultGrant` → `defaultScopes` / `defaultClaim`):
 
 | Source | Scopes provisioned | Applied by |
@@ -157,6 +159,32 @@ The two grants are **derived, not restated** — `TENANT_OWNER_GRANT = TENANT_AP
 |---|---|
 | platform operator (almost no one) | `runner:enroll`, `runner:write`, `stream:read`, `model:admin`, `platform-key:admin`, `platform-library:write`, `workspace:any` |
 | read-only collaborator | `fleet:read`, `schedule:read`, `grant:read`, `connector:read`, `billing:read`, `approval:read` |
+
+### CLI credential — resolved, not granted
+
+> **Status: in flight.** The credential class, its middleware, and its lookup are written and tested; the `afc_` branch in `bearer_or_api_key` and the mint endpoints are not yet wired, so nothing below is live on a deployed instance. Flow 1 still persists a Clerk JWT until that lands. This section records the decided model so the next reader does not re-derive it.
+
+The `afc_` credential minted by `agentsfleet login` is the only credential source whose capabilities are **not** authored in `DefaultGrant`. Its authenticate path is:
+
+```
+Bearer afc_… → SHA-256 → core.cli_credentials row (JOIN core.users)
+             → user_id, tenant_id, revoked_at, oidc_subject
+             → revoked?  → UZ-AUTH-023
+             → scope resolver, keyed on oidc_subject (cached, short TTL)
+             → parseClaim(claim)            ← same parser the JWT path uses
+             → principal{ mode = .cli_credential, scopes }
+             → require_scope                ← same gate, same route table
+```
+
+**Why it differs from `agt_t`.** An `agt_t` key is a *tenant* credential, deliberately decoupled from its creator: `240_api_keys.sql` makes `created_by` a plain string rather than a foreign key precisely so a key outlives the admin who minted it, because erasing a departed admin must not revoke working automation. Binding it to that admin's live scopes would resurrect exactly the coupling that decision removed. An `afc_` credential is the opposite — it *is* a person, so it must track that person.
+
+**What a fixed grant would have cost.** Today a CLI session carries a Clerk JWT, so a read-only collaborator's terminal is genuinely read-only. Replacing that JWT with a durable credential and a code-applied grant would silently widen them to the full grant on their next `login` — a privilege escalation introduced by the durability, not inherited from anywhere. Resolving the claim keeps parity with the dashboard.
+
+**Why the claim is not stored on the row.** Snapshotting it at mint would make `core.cli_credentials` a second store of a fact Clerk owns, and it would freeze at issuance; a Postgres projection fed by `user.updated` webhooks would add backfill, ordering, and reconciliation to operate. The resolver holds an in-memory TTL cache instead — a latency optimisation with no persistence, so there is nothing to reconcile and staleness self-heals toward Clerk within the TTL.
+
+**Failure modes.** Provider unreachable with a warm cache: serve cached up to a hard ceiling. Past the ceiling, or cold: `ERR_AUTH_UNAVAILABLE`, matching what a JWKS-fetch failure already returns on the JWT path. No claim provisioned for the subject: empty set, fail closed.
+
+**Known gap.** Flow 1's credential is durable and shareable (accepted, see the M160 spec), so a shared credential carries the *sharer's* current scopes. Narrowing the sharer narrows every terminal holding it, which is the intended direction, but there is no per-credential ceiling below the person's own grant. Adding one is a row column and an intersection at `parseClaim`, not a redesign.
 
 **Development provisioning.** To unlock the Runners page and Model rates page for a local/dev user, grant only the read scopes those views need — set this onto that user's Clerk Public metadata:
 
