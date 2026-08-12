@@ -10,11 +10,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
   sequencing signal. A section that contradicts these rules loses — delete it.
 -->
 
-# M160_001: Login hands the terminal a credential that names the human and outlives the session
+# M160_002: Login hands the terminal a credential that names the human and outlives the session
 
 **Prototype:** v2.0.0
 **Milestone:** M160
-**Workstream:** 001
+**Workstream:** 002
 **Date:** Aug 11, 2026
 **Status:** IN_PROGRESS
 **Priority:** P0 — the documented front door to the Command-Line Interface (CLI) yields a credential that dies in under a minute, so every command after `login` fails
@@ -365,7 +365,7 @@ The existing login-completed analytics event keeps its name and its position in 
 - **Why this spec exists (Aug 11, 2026).** Found during M136_001's live proof run. `agentsfleet login` reported success; `agentsfleet auth status` immediately reported `expired: yes`, `server_check: unauthorized (UZ-AUTH-003)`, with `saved_at 2026-08-11T08:11:00.206Z` and `expires_at 2026-08-11T08:11:52.000Z` — a fifty-two-second credential. A search of `cli/src` for `refresh(Token|Session)` and `refresh_token` returned no hits, confirming no renewal path was ever intended.
 
 - **Root cause has two layers (Aug 11, 2026).** The carve-out comment in `ui/packages/app/app/cli-auth/[session_id]/page.tsx` states the design intent as roughly fifteen minutes and, in the same comment, records the `api` template as currently sixty seconds — the discrepancy is documented against itself in the source. **Layer one** is that template setting, which is operator configuration, not code. **Layer two** is that even the intended fifteen minutes is the wrong shape for a terminal: it is a session token, and the CLI carries no Clerk SDK and cannot refresh one, which the same comment states. This workstream fixes layer two; layer one is Indy's.
-  > Indy (2026-08-11): "Yes fold both layers in M160_001 and rewrite it for Opation A now. I will fix the clerk dashboard setting." — context: the Clerk `api` template lifetime is applied by Indy out of band; this spec's code path is correct at any template value and is tested against a stubbed mint.
+  > Indy (2026-08-11): "Yes fold both layers in M160_001 and rewrite it for Opation A now. I will fix the clerk dashboard setting." — context: the Clerk `api` template lifetime is applied by Indy out of band; this spec's code path is correct at any template value and is tested against a stubbed mint. The quote names this workstream by its original number; it was renumbered to M160_002 on Aug 12, 2026 to free the M160_001 identifier already held by the shipped acceptance-e2e workstream.
 
 - **Decisions taken (Aug 11, 2026), from the use-case walk.**
   > Indy (2026-08-11): "1. Yes agreed to revoke CLI credentials only." — context: logout ends the terminal's credential and leaves browser sessions alone, because the browser holds a Clerk-refreshed credential class the CLI cannot use. Dimension 3.4.
