@@ -34,6 +34,9 @@ prepare_host_paths() {
 verify_host_base() {
   runner_remote '
     set -e
+    # Debian omits sbin from non-interactive Tailscale SSH sessions even
+    # though nftables installs nft there. Match the established egress probe.
+    export PATH="/usr/sbin:/sbin:$PATH"
     test "$(tailscale status --json | jq -r .Self.Online)" = true
     command -v bwrap >/dev/null
     command -v nft >/dev/null

@@ -24,6 +24,9 @@ const ENV_SERVICE_NAME = "OTEL_SERVICE_NAME";
 /// Operator-supplied replica identity. Absent by default: a fabricated instance
 /// id would multiply every series by the replica count without being trustworthy.
 const ENV_SERVICE_INSTANCE_ID = "OTEL_SERVICE_INSTANCE_ID";
+/// Fly injects the machine's identity into every VM; it is the fallback
+/// replica identity when the operator supplies none.
+const ENV_FLY_MACHINE_ID = "FLY_MACHINE_ID";
 const TRIM_CHARS = " \t\r\n";
 
 pub const GrafanaOtlpConfig = struct {
@@ -89,16 +92,23 @@ pub fn configFromEnv(env_map: *const EnvMap, alloc: std.mem.Allocator) ?GrafanaO
     return cfg;
 }
 
-/// An operator-supplied instance id, or null. A blank value is treated as
-/// absent so an empty deployment variable cannot put an empty standard
-/// attribute on every signal.
+/// An operator-supplied instance id, or the platform's machine identity, or
+/// null. A blank value is treated as absent so an empty deployment variable
+/// cannot put an empty standard attribute on every signal. The Fly machine id
+/// is a real replica identity, never a fabricated one — without it the
+/// production replicas publish cumulative sums under one series identity,
+/// which reads as false counter resets in the store.
 fn trustedInstanceId(env_map: *const EnvMap, alloc: std.mem.Allocator) ?[]const u8 {
-    const raw = env_resolve.config(env_map, alloc, ENV_SERVICE_INSTANCE_ID) orelse return null;
-    if (std.mem.trim(u8, raw, TRIM_CHARS).len == 0) {
-        alloc.free(raw);
-        return null;
+    const keys = [_][]const u8{ ENV_SERVICE_INSTANCE_ID, ENV_FLY_MACHINE_ID };
+    for (keys) |key| {
+        const raw = env_resolve.config(env_map, alloc, key) orelse continue;
+        if (std.mem.trim(u8, raw, TRIM_CHARS).len == 0) {
+            alloc.free(raw);
+            continue;
+        }
+        return raw;
     }
-    return raw;
+    return null;
 }
 
 /// Serialize the envelope prefix every OTLP signal shares: the standard

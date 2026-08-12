@@ -107,4 +107,6 @@ test "test_no_handler_local_authentication" {
 /// the HMAC webhook receivers and the connector OAuth callbacks. Raising this
 /// number means a new route opted out of the middleware chain — which is the
 /// decision this test exists to make visible, so it must be a deliberate edit.
-const EXPECTED_UNAUTHENTICATED_ROUTES: usize = 11;
+/// Dropped from 11 when the ops-class Prometheus pull route was retired with
+/// its rendering layer (runtime metrics now ride the OTLP push exporter).
+const EXPECTED_UNAUTHENTICATED_ROUTES: usize = 10;

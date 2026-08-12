@@ -74,7 +74,6 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         // ── No-auth / signature-authed: never run requireScope. Defensive NONE. ──
         .healthz,
         .readyz,
-        .metrics,
         .create_auth_session,
         .poll_auth_session,
         .verify_auth_session,

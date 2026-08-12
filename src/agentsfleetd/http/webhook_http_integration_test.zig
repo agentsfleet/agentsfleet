@@ -271,18 +271,18 @@ test "A5b: an uppercase fleet_id is rejected before it can split the dedup key" 
 }
 
 test "A6: paused fleet → 200 ignored fleet_paused, trigger metric unchanged" {
-    const metrics_fleet = @import("../observability/metrics_fleet.zig");
+    const metrics_counters = @import("../observability/metrics_counters.zig");
     const alloc = std.testing.allocator;
     var s = Setup.init(alloc, "paused") catch |err| return skipOrErr(err);
     defer s.deinit(alloc);
-    const triggered_before = metrics_fleet.snapshotFleetFields().fleet_triggered_total;
+    const triggered_before = metrics_counters.snapshot().fleet_triggered_total;
     const r = try postSigned(alloc, &s, "workflow_run", "del_a6", FAILURE_BODY);
     defer r.deinit();
     // 200-ignored (not 4xx) so sender retry queues stay quiet for
     // an intentionally paused fleet; nothing accepted → metric unchanged.
     try r.expectStatus(.ok);
     try std.testing.expect(r.bodyContains("\"ignored\":\"fleet_paused\""));
-    try std.testing.expectEqual(triggered_before, metrics_fleet.snapshotFleetFields().fleet_triggered_total);
+    try std.testing.expectEqual(triggered_before, metrics_counters.snapshot().fleet_triggered_total);
 }
 
 test "A7: completed + conclusion=success → 200 ignored non_failure_conclusion" {
@@ -696,7 +696,7 @@ test "C1: generic route — enqueue failure releases the dedup slot; retry deliv
 }
 
 test "C2: generic route — paused fleet → 200 ignored fleet_paused, dedup slot not consumed" {
-    const metrics_fleet = @import("../observability/metrics_fleet.zig");
+    const metrics_counters = @import("../observability/metrics_counters.zig");
     const alloc = std.testing.allocator;
     var s = linearSetup(alloc, "paused") catch |err| return skipOrErr(err);
     defer s.deinit(alloc);
@@ -704,14 +704,14 @@ test "C2: generic route — paused fleet → 200 ignored fleet_paused, dedup slo
     cleanupLinearRedis(s.h, alloc);
     defer cleanupLinearRedis(s.h, alloc);
 
-    const triggered_before = metrics_fleet.snapshotFleetFields().fleet_triggered_total;
+    const triggered_before = metrics_counters.snapshot().fleet_triggered_total;
     const r1 = try postSignedLinear(alloc, &s, LINEAR_BODY);
     defer r1.deinit();
     // 200-ignored (not 4xx): sender retry queues add no value for an
     // intentionally paused fleet; nothing accepted → trigger metric unchanged.
     try r1.expectStatus(.ok);
     try std.testing.expect(r1.bodyContains("\"ignored\":\"fleet_paused\""));
-    try std.testing.expectEqual(triggered_before, metrics_fleet.snapshotFleetFields().fleet_triggered_total);
+    try std.testing.expectEqual(triggered_before, metrics_counters.snapshot().fleet_triggered_total);
 
     // The dedup slot was not consumed: after resume, the SAME event_id
     // delivers exactly one event (an operator redelivery still works).

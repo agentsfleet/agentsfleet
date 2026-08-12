@@ -28,7 +28,12 @@ import { SOURCE_KIND_UPLOAD } from "@/lib/types";
 import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
-import { getDefaultWorkspaceId, waitForFleetActive } from "./fixtures/seed";
+import {
+  emptyBodySkillMd,
+  getDefaultWorkspaceId,
+  triggerMd,
+  waitForFleetActive,
+} from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
@@ -51,36 +56,6 @@ interface OnboardTemplateResp {
 interface CreateFleetResp {
   fleet_id: string;
   name: string;
-}
-
-// Frontmatter satisfies the importer (name, description, semver version);
-// the body after it is deliberately empty, which the runner refuses to
-// execute as a generic chat — the delivery fails closed at startup.
-function emptyBodySkillMd(name: string): string {
-  return [
-    "---",
-    `name: ${name}`,
-    "description: Fixture skill with an empty body; every delivery fails its startup check.",
-    "version: 0.1.0",
-    "---",
-    "",
-  ].join("\n");
-}
-
-function triggerMd(name: string): string {
-  return [
-    "---",
-    `name: ${name}`,
-    "",
-    "x-agentsfleet:",
-    "  triggers:",
-    "    - type: cron",
-    '      schedule: "0 0 * * *"',
-    "  budget:",
-    "    daily_dollars: 1.0",
-    "---",
-    "",
-  ].join("\n");
 }
 
 interface FailedLeaseLocation {

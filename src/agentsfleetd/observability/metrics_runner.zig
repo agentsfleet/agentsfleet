@@ -1,5 +1,6 @@
-//! Per-runner Prometheus metrics, pushed in on the runner verbs and rendered
-//! in-memory on /metrics (no database on the scrape path).
+//! Per-runner runtime metrics, pushed in on the runner verbs and streamed to
+//! the OTLP exporter at flush time (otel_metrics_runtime.zig walks
+//! `liveSlots()`; no database on the flush path).
 //!
 //! A fixed-capacity hash slot table keyed on runner_id holds, per runner:
 //!   - failures by FailureClass (+ an `unknown` bucket)   [report]
@@ -8,8 +9,9 @@
 //!   - currently-held lease count (gauge)                 [lease grant / report]
 //!
 //! No allocator at runtime — compile-time capacity. Counter overflow past the
-//! table routes to runner_id="_other" (reason/outcome preserved); the per-runner
-//! gauges (last-seen, active-leases) are simply not tracked for overflow runners.
+//! table accumulates in an in-process sink (reason/outcome preserved) of which
+//! full per-reason/outcome `_other` series plus the failure total export; the per-runner gauges
+//! (last-seen, active-leases) are simply not tracked for overflow runners.
 //! Thread-safe: CAS slot claim, lock-free atomic counters. Tests live in
 //! metrics_runner_test.zig.
 //!
@@ -31,43 +33,27 @@ const Outcome = contract.protocol.Outcome;
 /// Max distinct runner_ids tracked. Overflow → `_other` (counters only).
 /// pub so the test file can drive the table to its cardinality edge.
 pub const MAX_SLOTS: usize = 4096;
-/// Truncated runner_id length stored per slot (enough for a Prometheus label).
-const ID_LEN: usize = 48;
+/// Truncated runner_id length stored per slot (enough for a metric label
+/// value). pub for the streamed appender's comptime bound check against the
+/// sample's inline dynamic buffer.
+pub const ID_LEN: usize = 48;
 const MS_PER_S: i64 = 1000;
 /// How long a claimer waits for another thread's in-flight `initSlot` before it
 /// gives up and drops the record. Bounded so a descheduled initializer can never
 /// stall a metrics write path; dropping one increment beats blocking a runner.
 const READY_SPIN_CAP: u32 = 4096;
 
-const FAILURES_NAME = "agentsfleet_runner_failures_total";
-const FAILURES_HELP = "Runner-executed runs that failed, labelled by runner and failure reason.";
-const FAILURES_OVERFLOW_NAME = "agentsfleet_runner_failures_overflow_total";
-const FAILURES_OVERFLOW_HELP = "Failure increments routed to _other due to runner_id cardinality overflow.";
-const EXECUTIONS_NAME = "agentsfleet_runner_executions_total";
-const EXECUTIONS_HELP = "Runs a runner reported, labelled by runner and outcome.";
-const LAST_SEEN_NAME = "agentsfleet_runner_last_seen_seconds";
-const LAST_SEEN_HELP = "Seconds since a runner was last seen (report or heartbeat); computed at render.";
-const ACTIVE_LEASES_NAME = "agentsfleet_runner_active_leases";
-const ACTIVE_LEASES_HELP = "Leases a runner currently holds (best-effort; abandoned leases self-heal on restart).";
-// The agentsfleet_memory_* families (GLOBAL, unlabelled — per-fleet labels would
-// explode cardinality) live in metrics_memory.zig; renderPrometheus appends them.
-// Prometheus exposition format strings are single-sourced there (RULE UFS).
-const FMT_HELP_TYPE = metrics_memory.FMT_HELP_TYPE;
-const FMT_HELP_TYPE_VALUE = metrics_memory.FMT_HELP_TYPE_VALUE;
-const FMT_SERIES_2LABEL = "{s}{{{s}=\"{s}\",{s}=\"{s}\"}} {d}\n";
-const FMT_SERIES_1LABEL = "{s}{{{s}=\"{s}\"}} {d}\n";
-const LABEL_RUNNER = "runner_id";
-const LABEL_REASON = "reason";
-const LABEL_OUTCOME = "outcome";
+pub const FAILURES_NAME = "agentsfleet_runner_failures_total";
+pub const FAILURES_OVERFLOW_NAME = "agentsfleet_runner_failures_overflow_total";
+pub const EXECUTIONS_NAME = "agentsfleet_runner_executions_total";
+pub const LAST_SEEN_NAME = "agentsfleet_runner_last_seen_seconds";
+pub const ACTIVE_LEASES_NAME = "agentsfleet_runner_active_leases";
 const REASON_UNKNOWN = "unknown";
-const ID_OTHER = "_other";
-const TYPE_COUNTER = metrics_memory.TYPE_COUNTER;
-const TYPE_GAUGE = metrics_memory.TYPE_GAUGE;
 
 const reason_fields = @typeInfo(FailureClass).@"enum".fields;
 const N_REASONS: usize = reason_fields.len + 1;
 const UNKNOWN_IDX: usize = reason_fields.len;
-const REASON_LABELS: [N_REASONS][]const u8 = blk: {
+pub const REASON_LABELS: [N_REASONS][]const u8 = blk: {
     var labels: [N_REASONS][]const u8 = undefined;
     for (reason_fields, 0..) |f, i| labels[i] = f.name;
     labels[UNKNOWN_IDX] = REASON_UNKNOWN;
@@ -76,7 +62,7 @@ const REASON_LABELS: [N_REASONS][]const u8 = blk: {
 
 const outcome_fields = @typeInfo(Outcome).@"enum".fields;
 const N_OUTCOMES: usize = outcome_fields.len;
-const OUTCOME_LABELS: [N_OUTCOMES][]const u8 = blk: {
+pub const OUTCOME_LABELS: [N_OUTCOMES][]const u8 = blk: {
     var labels: [N_OUTCOMES][]const u8 = undefined;
     for (outcome_fields, 0..) |f, i| labels[i] = f.name;
     break :blk labels;
@@ -240,68 +226,91 @@ pub fn decRunnerActiveLeases(runner_id: []const u8) void {
     }
 }
 
-// ── Prometheus rendering (in-memory; called by metrics_render) ───────────────
+// ── OTLP export surface (consumed by otel_metrics_runtime.zig) ──────────────
 
-fn renderFailureSeries(writer: anytype, runner: []const u8, c: *const Counters) !void {
-    for (&c.failures, 0..) |*v, idx| {
-        const val = v.load(.acquire); // safe because: pairs with the fetchAdd in incRunnerFailure
-        if (val == 0) continue;
-        try writer.print(FMT_SERIES_2LABEL, .{ FAILURES_NAME, LABEL_RUNNER, runner, LABEL_REASON, REASON_LABELS[idx], val });
+/// One live runner's state, copied out for the streamed OTLP families.
+pub const SlotView = struct {
+    /// Borrowed from the slot table, which is static and written once before
+    /// the slot publishes ready — valid for the process lifetime.
+    runner_id: []const u8,
+    failures: [N_REASONS]u64,
+    executions: [N_OUTCOMES]u64,
+    /// Seconds since last report/heartbeat, clamped at 0; null = never seen
+    /// (the exporter emits no last-seen gauge for such slots).
+    last_seen_seconds: ?i64,
+    /// Clamped at 0: the best-effort decrement can transiently undershoot.
+    active_leases: i64,
+};
+
+/// Walks occupied+ready slots. Ages are computed against the single wall-clock
+/// instant captured at iterator creation, so one flush's gauges are mutually
+/// consistent.
+pub const LiveSlotIterator = struct {
+    idx: usize = 0,
+    now_ms: i64,
+
+    pub fn next(self: *LiveSlotIterator) ?SlotView {
+        while (self.idx < MAX_SLOTS) {
+            const slot = &g_slots[self.idx];
+            self.idx += 1;
+            // safe because: pairs with the cmpxchg release on claim and the
+            // .release store in initSlot
+            if (slot.occupied.load(.acquire) != 1 or slot.ready.load(.acquire) != 1) continue;
+            return viewOf(slot, self.now_ms);
+        }
+        return null;
     }
+};
+
+pub fn liveSlots() LiveSlotIterator {
+    return .{ .now_ms = clock.nowMillis() };
 }
 
-fn renderExecutionSeries(writer: anytype, runner: []const u8, c: *const Counters) !void {
-    for (&c.executions, 0..) |*v, idx| {
-        const val = v.load(.acquire); // safe because: pairs with the fetchAdd in observeRunnerExecution
-        if (val == 0) continue;
-        try writer.print(FMT_SERIES_2LABEL, .{ EXECUTIONS_NAME, LABEL_RUNNER, runner, LABEL_OUTCOME, OUTCOME_LABELS[idx], val });
-    }
+fn viewOf(slot: *const Slot, now_ms: i64) SlotView {
+    var view = SlotView{
+        .runner_id = slot.runner_id[0..slot.runner_id_len],
+        // SAFETY: the loops below write every cell before the view is returned.
+        .failures = undefined,
+        // SAFETY: same — the second loop fills every execution cell.
+        .executions = undefined,
+        .last_seen_seconds = null,
+        .active_leases = @max(0, slot.active_leases.load(.acquire)), // safe because: best-effort gauge; clamp transient <0
+    };
+    for (&slot.counters.failures, 0..) |*v, i| view.failures[i] = v.load(.acquire); // safe because: pairs with the fetchAdd in incRunnerFailure
+    for (&slot.counters.executions, 0..) |*v, i| view.executions[i] = v.load(.acquire); // safe because: pairs with the fetchAdd in observeRunnerExecution
+    const seen = slot.last_seen_ms.load(.acquire); // safe because: pairs with the store in observe/touch
+    if (seen != 0) view.last_seen_seconds = @divFloor(@max(0, now_ms - seen), MS_PER_S);
+    return view;
 }
 
-fn renderCounterFamilies(writer: anytype) !void {
-    try writer.print(FMT_HELP_TYPE, .{ FAILURES_NAME, FAILURES_HELP, FAILURES_NAME, TYPE_COUNTER });
-    for (&g_slots) |*slot| {
-        if (slot.occupied.load(.acquire) != 1 or slot.ready.load(.acquire) != 1) continue;
-        try renderFailureSeries(writer, slot.runner_id[0..slot.runner_id_len], &slot.counters);
-    }
-    try renderFailureSeries(writer, ID_OTHER, &g_overflow);
-    try writer.print(FMT_HELP_TYPE_VALUE, .{ FAILURES_OVERFLOW_NAME, FAILURES_OVERFLOW_HELP, FAILURES_OVERFLOW_NAME, TYPE_COUNTER, FAILURES_OVERFLOW_NAME, g_overflow_total.load(.acquire) });
-
-    try writer.print(FMT_HELP_TYPE, .{ EXECUTIONS_NAME, EXECUTIONS_HELP, EXECUTIONS_NAME, TYPE_COUNTER });
-    for (&g_slots) |*slot| {
-        if (slot.occupied.load(.acquire) != 1 or slot.ready.load(.acquire) != 1) continue;
-        try renderExecutionSeries(writer, slot.runner_id[0..slot.runner_id_len], &slot.counters);
-    }
-    try renderExecutionSeries(writer, ID_OTHER, &g_overflow);
+/// Total failure increments routed past the table (runner_id cardinality
+/// overflow) — the value behind the runner_failures_overflow series.
+pub fn overflowTotal() u64 {
+    return g_overflow_total.load(.acquire); // safe because: pairs with the fetchAdd in incRunnerFailure
 }
 
-fn renderGaugeFamilies(writer: anytype) !void {
-    const now_ms = clock.nowMillis();
-    try writer.print(FMT_HELP_TYPE, .{ LAST_SEEN_NAME, LAST_SEEN_HELP, LAST_SEEN_NAME, TYPE_GAUGE });
-    for (&g_slots) |*slot| {
-        if (slot.occupied.load(.acquire) != 1 or slot.ready.load(.acquire) != 1) continue;
-        const seen = slot.last_seen_ms.load(.acquire); // safe because: pairs with the store in observe/touch
-        if (seen == 0) continue;
-        const age_s = @divFloor(@max(0, now_ms - seen), MS_PER_S);
-        try writer.print(FMT_SERIES_1LABEL, .{ LAST_SEEN_NAME, LABEL_RUNNER, slot.runner_id[0..slot.runner_id_len], age_s });
-    }
+/// Wire identity for runners routed past the slot table — the shared bucket
+/// the operator assets group residual load under.
+pub const ID_OTHER = "_other";
 
-    try writer.print(FMT_HELP_TYPE, .{ ACTIVE_LEASES_NAME, ACTIVE_LEASES_HELP, ACTIVE_LEASES_NAME, TYPE_GAUGE });
-    for (&g_slots) |*slot| {
-        if (slot.occupied.load(.acquire) != 1 or slot.ready.load(.acquire) != 1) continue;
-        const held = @max(0, slot.active_leases.load(.acquire)); // safe because: best-effort gauge; clamp transient <0
-        if (held == 0) continue;
-        try writer.print(FMT_SERIES_1LABEL, .{ ACTIVE_LEASES_NAME, LABEL_RUNNER, slot.runner_id[0..slot.runner_id_len], held });
-    }
-}
+pub const OverflowCounts = struct {
+    failures: [N_REASONS]u64,
+    executions: [N_OUTCOMES]u64,
+};
 
-/// Render every per-runner family plus the agentsfleet_memory_* families. Emits
-/// nothing until a runner has been seen or a memory counter has moved.
-pub fn renderPrometheus(writer: anytype) !void {
-    if (g_slot_count.load(.acquire) == 0 and g_overflow_total.load(.acquire) == 0 and !metrics_memory.anyActive()) return;
-    try renderCounterFamilies(writer);
-    try renderGaugeFamilies(writer);
-    try metrics_memory.renderFamilies(writer);
+/// Per-reason/outcome counts for runners routed past the table, exported
+/// under `runner_id="_other"` so fleet-wide sums stay complete after a
+/// cardinality overflow.
+pub fn overflowCounts() OverflowCounts {
+    var counts: OverflowCounts = .{
+        // SAFETY: the first loop below writes every failure cell before return.
+        .failures = undefined,
+        // SAFETY: the second loop below writes every execution cell before return.
+        .executions = undefined,
+    };
+    for (&g_overflow.failures, 0..) |*v, i| counts.failures[i] = v.load(.acquire); // safe because: pairs with the fetchAdd at the overflow site
+    for (&g_overflow.executions, 0..) |*v, i| counts.executions[i] = v.load(.acquire); // safe because: pairs with the fetchAdd at the overflow site
+    return counts;
 }
 
 // Test-only reset, consumed by metrics_runner_test.zig. Resets the memory

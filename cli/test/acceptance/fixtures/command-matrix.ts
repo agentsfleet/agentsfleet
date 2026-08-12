@@ -12,7 +12,6 @@
 
 export const COMMAND_GROUPS: ReadonlyArray<string> = [
   "workspace",
-  "fleet-key",
   "api-key",
   "connector",
   "grant",
@@ -43,7 +42,6 @@ export const READ_ONLY_COMMANDS: ReadonlyArray<ReadOnlyCommandRow> = [
   { args: ["doctor", "--json"], requiredKey: "checks" },
   { args: ["workspace", "list", "--json"], isList: true, itemsKey: "workspaces" },
   { args: ["workspace", "show", "--json"], requiredKey: "workspace_id" },
-  { args: ["fleet-key", "list", "--json"], isList: true, itemsKey: "items" },
   { args: ["api-key", "list", "--json"], isList: true, itemsKey: "items" },
   { args: ["connector", "list", "--json"], label: "connector list" },
   { args: ["tenant", "provider", "show", "--json"], requiredKey: "mode" },
@@ -107,7 +105,12 @@ export const REQUIRES_IDENTIFIER: ReadonlyArray<RequiresIdentifierRow> = [
   { args: ["logs"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
   { args: ["workspace", "use"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: "UNKNOWN_WORKSPACE" },
   { args: ["workspace", "delete"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: null },
-  { args: ["fleet-key", "delete"], expectedErrorCode: "UZ-FLEETKEY-001", argName: "key_id", apiHits: false, validatesClient: true },
+  // api-key delete validates its positional through commander's parseIdOption,
+  // not the handler's validateRequiredId, so its rejection text omits the
+  // `invalid <name>: ` stem the client-side sweep below asserts — hence
+  // validatesClient: false. The server-side probe still applies: a well-formed
+  // but unknown key answers UZ-APIKEY-003 (ERR_APIKEY_NOT_FOUND).
+  { args: ["api-key", "delete"], expectedErrorCode: "UZ-APIKEY-003", argName: "api_key_id", apiHits: true, validatesClient: false },
   // grant delete also requires --fleet <id>, so the generic single-ID
   // matrix cannot exercise it without a live fleet fixture.
   { args: ["grant", "delete"], expectedErrorCode: "UZ-GRANT-001", argName: "grant_id", apiHits: false, validatesClient: false },
@@ -127,7 +130,7 @@ export interface RequiresPositionalArgRow {
 export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = [
   { args: ["workspace", "use"], missingArgName: "workspace_id" },
   { args: ["workspace", "delete"], missingArgName: "workspace_id" },
-  { args: ["fleet-key", "delete"], missingArgName: "key_id" },
+  { args: ["api-key", "delete"], missingArgName: "api_key_id" },
   { args: ["grant", "delete"], missingArgName: "grant_id" },
   { args: ["connector", "status"], missingArgName: "provider" },
   { args: ["kill"], missingArgName: "fleet_id" },

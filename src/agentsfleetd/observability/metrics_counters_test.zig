@@ -1,14 +1,21 @@
 const std = @import("std");
 const mc = @import("metrics_counters.zig");
-comptime {
-    _ = @import("metrics_fleet.zig");
+const window = @import("otel_metrics_window_test.zig");
+
+// ── Fleet trigger counter ───────────────────────────────────────────────
+
+test "single fleet trigger increments the counter by exactly one" {
+    const before = mc.snapshot().fleet_triggered_total;
+    mc.incFleetsTriggered();
+    const after = mc.snapshot().fleet_triggered_total;
+    try std.testing.expectEqual(@as(u64, 1), after - before);
 }
 
 // ── SSE hub counters (dropped frames + reconnects) ──────────────────────
 
 // The hub/subscription behaviour tests assert their local mirrors (dropCount,
 // delivery recovery); these pin the operator-facing counters themselves so the
-// inc call sites, the snapshot fields, and the render lines cannot silently
+// inc call sites, the snapshot fields, and the exported series cannot silently
 // go dead while the behaviour suite stays green.
 
 test "incSseDroppedFrames increments its dedicated counter by 1" {
@@ -25,20 +32,21 @@ test "incSseHubReconnects increments its dedicated counter by 1" {
     try std.testing.expectEqual(before.sse_hub_reconnects_total + 1, after.sse_hub_reconnects_total);
 }
 
-test "renderPrometheus carries the SSE hub counter lines with snapshot values" {
+test "the exported window carries the SSE hub counters with snapshot values" {
     const alloc = std.testing.allocator;
-    const render = @import("metrics_render.zig");
     mc.incSseDroppedFrames();
     mc.incSseHubReconnects();
     const snap = mc.snapshot();
-    const output = try render.renderPrometheus(alloc, false);
-    defer alloc.free(output);
-    var dropped_buf: [128]u8 = undefined;
-    const dropped = try std.fmt.bufPrint(&dropped_buf, "agentsfleet_sse_dropped_frames_total {d}", .{snap.sse_dropped_frames_total});
-    try std.testing.expect(std.mem.indexOf(u8, output, dropped) != null);
-    var reconnects_buf: [128]u8 = undefined;
-    const reconnects = try std.fmt.bufPrint(&reconnects_buf, "agentsfleet_sse_hub_reconnects_total {d}", .{snap.sse_hub_reconnects_total});
-    try std.testing.expect(std.mem.indexOf(u8, output, reconnects) != null);
+    const body = try window.flushWindowJson(alloc);
+    defer alloc.free(body);
+    try std.testing.expectEqual(
+        @as(i64, @intCast(snap.sse_dropped_frames_total)),
+        try window.familyValueWith(body, "agentsfleet_sse_dropped_frames_total", &.{}), // pin test: literal is the contract
+    );
+    try std.testing.expectEqual(
+        @as(i64, @intCast(snap.sse_hub_reconnects_total)),
+        try window.familyValueWith(body, "agentsfleet_sse_hub_reconnects_total", &.{}), // pin test: literal is the contract
+    );
 }
 
 // ── Backpressure counters + gauges ──────────────────────────────────────
@@ -56,71 +64,114 @@ test "in-flight gauges reflect the last stored value" {
     const snap = mc.snapshot();
     try std.testing.expectEqual(@as(u64, 7), snap.api_in_flight_requests);
     try std.testing.expectEqual(@as(u64, 4), snap.sse_in_flight_streams);
+    mc.setApiInFlightRequests(0);
+    mc.setSseInFlightStreams(0);
+}
+
+// Dimension 3.2 — saturation levels export as gauges carrying the live value,
+// and a second set inside the SAME flush window folds to the newest value
+// (last-value-wins end to end: setter → snapshot → collector → gauge point).
+test "test_saturation_families_export_current_level" {
+    const alloc = std.testing.allocator;
+    const IN_FLIGHT_FAMILY = "agentsfleet_api_in_flight_requests"; // pin test: literal is the contract
+
+    mc.setApiInFlightRequests(3);
+    const body = try window.flushWindowJson(alloc);
+    defer alloc.free(body);
+    // A level serializes in the gauge shape, valued exactly what was set.
+    try window.expectFamilyWith(body, IN_FLIGHT_FAMILY, &.{"\"gauge\":{\"dataPoints\""});
+    try std.testing.expectEqual(@as(i64, 3), try window.familyValueWith(body, IN_FLIGHT_FAMILY, &.{}));
+
+    // Two sets in one window: the newest level wins, never their sum.
+    mc.setApiInFlightRequests(3);
+    mc.setApiInFlightRequests(1);
+    const body2 = try window.flushWindowJson(alloc);
+    defer alloc.free(body2);
+    try std.testing.expectEqual(@as(i64, 1), try window.familyValueWith(body2, IN_FLIGHT_FAMILY, &.{}));
+
+    mc.setApiInFlightRequests(0);
+}
+
+// Dimension 3.3 — a counter family exports as a monotonic CUMULATIVE sum
+// (stamped from process start, needing no per-flush delta memo): two
+// increments arrive on the wire as a sum valued exactly two.
+test "test_cumulative_families_export_as_sums" {
+    const alloc = std.testing.allocator;
+    mc.resetLeasePollMetricsForTest();
+    defer mc.resetLeasePollMetricsForTest();
+    mc.incReadyWriteFailure();
+    mc.incReadyWriteFailure();
+
+    const body = try window.flushWindowJson(alloc);
+    defer alloc.free(body);
+    const SUM_CUMULATIVE_MONOTONIC = "\"sum\":{\"aggregationTemporality\":2,\"isMonotonic\":true"; // pin test: literal is the contract
+    try window.expectFamilyWith(body, mc.READY_WRITE_FAILURES_NAME, &.{SUM_CUMULATIVE_MONOTONIC});
+    try std.testing.expectEqual(@as(i64, 2), try window.familyValueWith(body, mc.READY_WRITE_FAILURES_NAME, &.{}));
 }
 
 // ── Signup funnel families ──────────────────────────────────────────────
 
-// The signup families had no render coverage, so the namespace normalization
-// could have mangled their names with nothing to catch it. The labelled
-// `failed` family matters most: its six reasons come from separate snapshot
-// fields, and a mis-paired reason would misattribute why signups are failing.
-test "renderPrometheus carries every signup funnel family under one namespace" {
+// The signup families had no exported coverage, so a name drift could ship
+// with nothing to catch it. The labelled `failed` family matters most: its six
+// reasons come from separate snapshot fields, and a mis-paired reason would
+// misattribute why signups are failing.
+test "the window carries every signup funnel family with its reason labels" {
     const alloc = std.testing.allocator;
-    const render = @import("metrics_render.zig");
-    const output = try render.renderPrometheus(alloc, true);
-    defer alloc.free(output);
+    const body = try window.flushWindowJson(alloc);
+    defer alloc.free(body);
 
-    for ([_][]const u8{
-        "# TYPE agentsfleet_signup_bootstrapped_total counter\n",
-        "# TYPE agentsfleet_signup_replayed_total counter\n",
-        "# TYPE agentsfleet_signup_failed_total counter\n",
-    }) |type_line| {
-        try std.testing.expect(std.mem.indexOf(u8, output, type_line) != null);
-    }
+    try window.expectFamilySample(body, "agentsfleet_signup_bootstrapped_total"); // pin test: literal is the contract
+    try window.expectFamilySample(body, "agentsfleet_signup_replayed_total"); // pin test: literal is the contract
 
-    // Each rejection reason renders its own series off its own counter field.
-    for ([_][]const u8{
-        "bad_sig",          "stale_ts",
-        "missing_email",    "db_error",
-        "pool_unavailable", "metadata_writeback",
-    }) |reason| {
-        var buf: [128]u8 = undefined;
-        const series = try std.fmt.bufPrint(&buf, "agentsfleet_signup_failed_total{{reason=\"{s}\"}} ", .{reason});
-        try std.testing.expect(std.mem.indexOf(u8, output, series) != null);
+    // Each rejection reason exports its own series, keyed by the enum the
+    // registry declares the dimension off.
+    inline for (@typeInfo(mc.SignupFailReason).@"enum".fields) |reason| {
+        var frag_buf: [96]u8 = undefined;
+        const reason_attr = try window.attrFragment(&frag_buf, "reason", reason.name);
+        try window.expectFamilyWith(body, "agentsfleet_signup_failed_total", &.{reason_attr}); // pin test: literal is the contract
     }
+}
+
+// Dimension: a reason value physically binds to its declared label — writing
+// one enum member moves exactly that member's cell and no sibling's.
+test "test_reason_labels_bind_by_enum_not_order" {
+    const before = mc.snapshot();
+    mc.incSignupFailed(.stale_ts);
+    const after = mc.snapshot();
+    try std.testing.expectEqual(before.signup_failed_stale_ts_total + 1, after.signup_failed_stale_ts_total);
+    try std.testing.expectEqual(before.signup_failed_bad_sig_total, after.signup_failed_bad_sig_total);
+    try std.testing.expectEqual(before.signup_failed_missing_email_total, after.signup_failed_missing_email_total);
+    try std.testing.expectEqual(before.signup_failed_db_error_total, after.signup_failed_db_error_total);
+    try std.testing.expectEqual(before.signup_failed_pool_unavailable_total, after.signup_failed_pool_unavailable_total);
+    try std.testing.expectEqual(before.signup_failed_metadata_writeback_total, after.signup_failed_metadata_writeback_total);
 }
 
 // ── Lease-poll cost + readiness index ───────────────────────────────────
 //
 // These families exist because the fan-out defect they now measure was
-// invisible: nothing on /metrics distinguished an idle poll that cost one Redis
+// invisible: nothing exported distinguished an idle poll that cost one Redis
 // read from one that walked every fleet on the platform. So the tests pin the
-// three properties that make them trustworthy — the render path emits them with
-// no datastore reachable, they carry no per-fleet identity, and the depth gauge
+// three properties that make them trustworthy — the export path emits them with
+// no datastore reachable, they carry no per-entity label, and the depth gauge
 // is a sample rather than a running delta.
 
-/// Label keys that would create a series per entity. Rendering any of these on a
-/// lease-poll or readiness family is a cardinality leak that outlives the
-/// process, so the assertion is against the whole family block, not one line.
+/// Label keys that would create a series per entity. Exporting any of these on
+/// a lease-poll or readiness family is a cardinality leak that outlives the
+/// process, so the assertion is against every dataPoint of the family.
 const FORBIDDEN_LABEL_KEYS = [_][]const u8{ "fleet", "fleet_id", "workspace", "workspace_id", "tenant", "tenant_id", "runner", "runner_id", "event", "event_id", "lease", "lease_id" };
 
-/// The slice of rendered output belonging to one metric family: from its `# HELP`
-/// line to the start of the next family. Asserting against this rather than the
-/// whole scrape keeps a neighbouring family's legitimate `runner_id` label from
-/// masking a leak here.
-fn familyBlock(output: []const u8, name: []const u8) ![]const u8 {
-    var head_buf: [160]u8 = undefined;
-    const head = try std.fmt.bufPrint(&head_buf, "# HELP {s} ", .{name});
-    const start = std.mem.indexOf(u8, output, head) orelse return error.FamilyNotRendered;
-    const rest = output[start + head.len ..];
-    const end = std.mem.indexOf(u8, rest, "# HELP ") orelse rest.len;
-    return rest[0..end];
-}
+const LEASE_READY_FAMILIES = [_][]const u8{
+    mc.LEASE_POLLS_NAME,
+    mc.CANDIDATES_SCANNED_NAME,
+    mc.DB_ROUNDTRIPS_NAME,
+    mc.READY_DEPTH_NAME,
+    mc.READY_WRITE_FAILURES_NAME,
+};
 
-test "the lease-poll cost families render with their snapshot values" {
+test "the lease-poll cost families export with their snapshot values" {
     const alloc = std.testing.allocator;
-    const render = @import("metrics_render.zig");
     mc.resetLeasePollMetricsForTest();
+    defer mc.resetLeasePollMetricsForTest();
 
     // Two polls of different widths, so the totals are distinguishable from
     // each other and from the poll count.
@@ -132,23 +183,15 @@ test "the lease-poll cost families render with their snapshot values" {
     try std.testing.expectEqual(@as(u64, 7), snap.lease_poll_candidates_scanned_total);
     try std.testing.expectEqual(@as(u64, 3), snap.lease_poll_db_roundtrips_total);
 
-    const output = try render.renderPrometheus(alloc, false);
-    defer alloc.free(output);
-    for ([_][]const u8{
-        mc.LEASE_POLLS_NAME,
-        mc.CANDIDATES_SCANNED_NAME,
-        mc.DB_ROUNDTRIPS_NAME,
-        mc.READY_DEPTH_NAME,
-        mc.READY_WRITE_FAILURES_NAME,
-    }) |name| {
-        _ = familyBlock(output, name) catch |err| {
-            std.debug.print("family not rendered: {s}\n", .{name});
+    const body = try window.flushWindowJson(alloc);
+    defer alloc.free(body);
+    for (LEASE_READY_FAMILIES) |name| {
+        window.expectFamilySample(body, name) catch |err| {
+            std.debug.print("family not exported: {s}\n", .{name});
             return err;
         };
     }
-    var line_buf: [160]u8 = undefined;
-    const polls_line = try std.fmt.bufPrint(&line_buf, "{s} 2", .{mc.LEASE_POLLS_NAME});
-    try std.testing.expect(std.mem.indexOf(u8, output, polls_line) != null);
+    try std.testing.expectEqual(@as(i64, 2), try window.familyValueWith(body, mc.LEASE_POLLS_NAME, &.{}));
 }
 
 test "an idle poll still contributes a sample" {
@@ -162,52 +205,44 @@ test "an idle poll still contributes a sample" {
     try std.testing.expectEqual(@as(u64, 1), snap.lease_polls_total);
     try std.testing.expectEqual(@as(u64, 0), snap.lease_poll_candidates_scanned_total);
     try std.testing.expectEqual(@as(u64, 0), snap.lease_poll_db_roundtrips_total);
+    mc.resetLeasePollMetricsForTest();
 }
 
 test "no lease-poll or readiness family carries a per-entity label" {
     const alloc = std.testing.allocator;
-    const render = @import("metrics_render.zig");
     mc.resetLeasePollMetricsForTest();
+    defer mc.resetLeasePollMetricsForTest();
     mc.observeLeasePoll(4, 2);
     mc.setReadyIndexDepth(9);
     mc.incReadyWriteFailure();
 
-    const output = try render.renderPrometheus(alloc, false);
-    defer alloc.free(output);
+    const body = try window.flushWindowJson(alloc);
+    defer alloc.free(body);
 
-    for ([_][]const u8{
-        mc.LEASE_POLLS_NAME,
-        mc.CANDIDATES_SCANNED_NAME,
-        mc.DB_ROUNDTRIPS_NAME,
-        mc.READY_DEPTH_NAME,
-        mc.READY_WRITE_FAILURES_NAME,
-    }) |name| {
-        const block = try familyBlock(output, name);
-        // Every one of these is wholly unlabelled, so a brace anywhere in its
-        // block is a cardinality leak — no exceptions to check around.
-        try std.testing.expect(std.mem.indexOfScalar(u8, block, '{') == null);
+    for (LEASE_READY_FAMILIES) |name| {
+        // Every one of these is wholly unlabelled: each dataPoint carries an
+        // empty attribute list, so a forbidden key cannot ride any of them.
+        try window.expectFamilyWith(body, name, &.{window.NO_ATTRIBUTES});
         for (FORBIDDEN_LABEL_KEYS) |key| {
             var probe_buf: [64]u8 = undefined;
-            const probe = try std.fmt.bufPrint(&probe_buf, "{s}=\"", .{key});
-            try std.testing.expect(std.mem.indexOf(u8, block, probe) == null);
+            const probe = try std.fmt.bufPrint(&probe_buf, "\"key\":\"{s}\"", .{key});
+            try window.expectNoFamilyWith(body, name, &.{probe});
         }
     }
 }
 
-test "readiness write failures render and move with observed state" {
+test "readiness write failures export and move with observed state" {
     mc.resetLeasePollMetricsForTest();
+    defer mc.resetLeasePollMetricsForTest();
     mc.incReadyWriteFailure();
     mc.incReadyWriteFailure();
     mc.incReadyWriteFailure();
     try std.testing.expectEqual(@as(u64, 3), mc.snapshot().fleet_ready_write_failures_total);
 
     const alloc = std.testing.allocator;
-    const render = @import("metrics_render.zig");
-    const output = try render.renderPrometheus(alloc, false);
-    defer alloc.free(output);
-    var line_buf: [160]u8 = undefined;
-    const line = try std.fmt.bufPrint(&line_buf, "{s} 3", .{mc.READY_WRITE_FAILURES_NAME});
-    try std.testing.expect(std.mem.indexOf(u8, output, line) != null);
+    const body = try window.flushWindowJson(alloc);
+    defer alloc.free(body);
+    try std.testing.expectEqual(@as(i64, 3), try window.familyValueWith(body, mc.READY_WRITE_FAILURES_NAME, &.{}));
 }
 
 test "readiness depth is a sample the caller overwrites, never an accumulator" {
@@ -227,17 +262,15 @@ test "readiness depth is a sample the caller overwrites, never an accumulator" {
     try std.testing.expectEqual(@as(u64, 0), mc.snapshot().fleet_ready_depth);
 }
 
-test "the render path needs no datastore" {
-    // /metrics must stay healthy exactly when Postgres or Redis is not, so the
-    // scrape reads the in-memory snapshot only. This test runs with no pool and
-    // no Redis client in scope at all — it passing is the proof.
+test "the export path needs no datastore" {
+    // The exported window must stay healthy exactly when Postgres or Redis is
+    // not, so the flush reads in-memory snapshots only. This test runs with no
+    // pool and no Redis client in scope at all — it passing is the proof.
     const alloc = std.testing.allocator;
-    const render = @import("metrics_render.zig");
     mc.resetLeasePollMetricsForTest();
+    defer mc.resetLeasePollMetricsForTest();
     mc.setReadyIndexDepth(5);
-    const output = try render.renderPrometheus(alloc, false);
-    defer alloc.free(output);
-    var depth_buf: [160]u8 = undefined;
-    const depth_line = try std.fmt.bufPrint(&depth_buf, "{s} 5", .{mc.READY_DEPTH_NAME});
-    try std.testing.expect(std.mem.indexOf(u8, output, depth_line) != null);
+    const body = try window.flushWindowJson(alloc);
+    defer alloc.free(body);
+    try std.testing.expectEqual(@as(i64, 5), try window.familyValueWith(body, mc.READY_DEPTH_NAME, &.{}));
 }

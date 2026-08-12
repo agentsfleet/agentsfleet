@@ -249,6 +249,7 @@
       "models": [
         { "model_id": "accounts/fireworks/models/deepseek-v4-pro", "context_cap_tokens": 1048576, "input": 1.74, "cached_input": 0.145, "output": 3.48 },
         { "model_id": "accounts/fireworks/models/deepseek-v4-flash", "context_cap_tokens": 1048576, "input": 0.14, "cached_input": 0.028, "output": 0.28 },
+        { "model_id": "accounts/fireworks/models/kimi-k3", "context_cap_tokens": 1048576, "input": 3.0, "cached_input": 0.3, "output": 15.0 },
         { "model_id": "accounts/fireworks/models/kimi-k2p7-code", "context_cap_tokens": 262144, "input": 0.95, "cached_input": 0.19, "output": 4.0 },
         { "model_id": "accounts/fireworks/models/glm-5p2", "context_cap_tokens": 1048576, "input": 1.4, "cached_input": 0.14, "output": 4.4 },
         { "model_id": "accounts/fireworks/models/qwen3p7-plus", "context_cap_tokens": 262144, "input": 0.4, "cached_input": 0.08, "output": 1.6 },

@@ -3,10 +3,9 @@
 //! run-latency histogram); the shared otlp.Exporter batches and POSTs to
 //! GRAFANA_OTLP_ENDPOINT/v1/metrics on a background flush thread, fire-and-forget.
 //!
-//! Migrated onto the generic otlp/ substrate. Delta temporality — a Grafana Cloud
-//! OTel Collector (deltatocumulative) converts before Mimir; see
-//! otel_metrics_payload.zig. Flush coalesces the window's samples into one
-//! windowed-delta series per (metric, labelset) — see otel_metrics_aggregate.zig.
+//! Evented families are delta — a collector converts before Mimir. Each flush
+//! coalesces them per (metric, labelset) via otel_metrics_aggregate.zig, then
+//! folds in the runtime families (otel_metrics_runtime.zig): the sole egress.
 
 const std = @import("std");
 const common = @import("common");
@@ -16,9 +15,14 @@ const otlp_config = @import("otlp/config.zig");
 const otlp_ring = @import("otlp/ring.zig");
 const otlp_exporter = @import("otlp/exporter.zig");
 const payload = @import("otel_metrics_payload.zig");
+const wire = @import("otel_metrics_wire.zig");
 const aggregate = @import("otel_metrics_aggregate.zig");
 const cardinality = @import("otel_metrics_cardinality.zig");
+const families = @import("otel_metrics_families.zig");
+const attribution = @import("otel_metrics_attribution.zig");
+const runtime = @import("otel_metrics_runtime.zig");
 const semconv = @import("semconv.zig");
+const dims = @import("otel_metrics_dims.zig");
 
 const OTLP_METRICS_PATH = "/v1/metrics";
 const BUFFER_CAPACITY: usize = 1024;
@@ -31,6 +35,9 @@ var g_ring: RingT = .{};
 // Flush-thread-owned window state (read/written only by the flush thread).
 var g_window_start_ns: u64 = 0;
 var g_last_ring_dropped: u64 = 0;
+/// Stamped on the first collect; the startTimeUnixNano every cumulative sum
+/// carries, so a restart is visible as a new start time.
+var g_process_start_ns: u64 = 0;
 
 const Exporter = otlp_exporter.Exporter(.{
     .signal = .metrics,
@@ -39,6 +46,10 @@ const Exporter = otlp_exporter.Exporter(.{
     .collect = collectMetrics,
     .pending_count = metricsPendingCount,
     .wake_threshold = 768,
+    // Level and cumulative families are pending work even when no evented sample
+    // is: an idle daemon must keep pushing, or dashboards go stale and store-side
+    // absence stops meaning "exporter dead".
+    .always_collect = true,
 });
 
 pub const install = Exporter.install;
@@ -54,38 +65,7 @@ fn currentNanos() u64 {
 // Callers invoke these AFTER the money transaction commits.
 // ---------------------------------------------------------------------------
 
-/// The identity dimensions every run metric shares. `provider` and `model` are
-/// the raw stored values; this module decides whether either can be exported
-/// as a standard attribute. Workspace and tenant are deliberately absent — they
-/// never reach a metric.
-pub const Attribution = struct {
-    posture: []const u8,
-    provider: []const u8,
-    model: []const u8,
-};
-
-/// Attach `gen_ai.provider.name` and `gen_ai.request.model` when each can be
-/// represented safely, counting every omission. An unrepresentable value is
-/// dropped rather than truncated or coerced: a truncated model name reads as a
-/// different model, and a private provider spelling under a standard key claims
-/// interoperability the value does not have.
-fn appendProviderAndModel(sample: *Sample, attr: Attribution) void {
-    if (semconv.normalizeProvider(attr.provider)) |known| {
-        _ = payload.addLabel(sample, semconv.ATTR_PROVIDER_NAME, known);
-    } else {
-        health.recordAttributeOmission(.provider_name, .unmapped_provider);
-    }
-    if (attr.model.len == 0) return;
-    if (!payload.valueFits(attr.model)) {
-        health.recordAttributeOmission(.request_model, .value_too_long);
-        return;
-    }
-    if (!cardinality.admitModel(attr.provider, attr.model)) {
-        health.recordAttributeOmission(.request_model, .budget_exhausted);
-        return;
-    }
-    _ = payload.addLabel(sample, semconv.ATTR_REQUEST_MODEL, attr.model);
-}
+pub const Attribution = attribution.Attribution;
 
 /// Record a committed credit debit (nanocredits) under its fixed charge class.
 /// Every caller invokes this strictly after its money write commits, so a
@@ -94,9 +74,9 @@ pub fn recordCreditConsumed(nanos: i64, charge: semconv.ChargeClass, attr: Attri
     if (!isInstalled()) return;
     if (nanos == 0) return;
     var s = payload.newSample(.credit_consumed, nanos);
-    _ = payload.addLabel(&s, semconv.ATTR_CHARGE_TYPE, charge.label());
-    _ = payload.addLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
-    appendProviderAndModel(&s, attr);
+    _ = payload.addClosedLabel(&s, semconv.ATTR_CHARGE_TYPE, charge);
+    _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
+    attribution.appendProviderAndModel(&s, attr);
     enqueueSample(s);
 }
 
@@ -107,10 +87,10 @@ pub fn observeTokenUsage(count: i64, token_type: semconv.TokenType, attr: Attrib
     if (!isInstalled()) return;
     if (count == 0) return;
     var s = payload.newSample(.token_usage, count);
-    _ = payload.addLabel(&s, semconv.ATTR_OPERATION_NAME, semconv.OPERATION_INVOKE_AGENT);
-    _ = payload.addLabel(&s, semconv.ATTR_TOKEN_TYPE, token_type.label());
-    _ = payload.addLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
-    appendProviderAndModel(&s, attr);
+    _ = payload.addInternedLabel(&s, semconv.ATTR_OPERATION_NAME, semconv.OPERATION_INVOKE_AGENT);
+    _ = payload.addClosedLabel(&s, semconv.ATTR_TOKEN_TYPE, token_type);
+    _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
+    attribution.appendProviderAndModel(&s, attr);
     enqueueSample(s);
 }
 
@@ -119,21 +99,32 @@ pub fn observeCacheReadTokens(count: i64, attr: Attribution) void {
     if (!isInstalled()) return;
     if (count == 0) return;
     var s = payload.newSample(.cache_read_token_usage, count);
-    _ = payload.addLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
-    appendProviderAndModel(&s, attr);
+    _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
+    attribution.appendProviderAndModel(&s, attr);
     enqueueSample(s);
 }
 
 /// Observe one agent invocation's wall-clock duration (milliseconds in, seconds
 /// on the wire). `error_type` is null on a clean run and the coarse failure
 /// verdict otherwise.
-pub fn observeInvokeAgentDuration(wall_ms: i64, error_type: ?[]const u8, attr: Attribution) void {
+pub fn observeInvokeAgentDuration(wall_ms: i64, error_type: ?semconv.ErrorType, attr: Attribution) void {
     if (!isInstalled()) return;
     var s = payload.newSample(.invoke_agent_duration, wall_ms);
-    _ = payload.addLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
-    if (error_type) |value| _ = payload.addLabel(&s, semconv.ATTR_ERROR_TYPE, value);
-    appendProviderAndModel(&s, attr);
+    _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
+    if (error_type) |value| _ = payload.addClosedLabel(&s, semconv.ATTR_ERROR_TYPE, value);
+    attribution.appendProviderAndModel(&s, attr);
     enqueueSample(s);
+}
+
+/// Observe one label-free runtime histogram value through the bounded event
+/// ring. The registry owns its bounds, scale, and fixed series ceiling.
+pub fn observeRuntimeHistogram(comptime id: families.MetricId, value: i64) void {
+    const meta = comptime families.metaFor(id);
+    comptime std.debug.assert(meta.evented and !meta.cost);
+    comptime std.debug.assert(meta.kind == .histogram);
+    comptime std.debug.assert(dims.dimsFor(id).len == 0);
+    if (!isInstalled()) return;
+    enqueueSample(payload.newSample(id, @max(0, value)));
 }
 
 fn enqueueSample(sample: Sample) void {
@@ -159,7 +150,7 @@ pub fn recordRunSettlement(
     cached_tokens: i64,
     output_tokens: i64,
     wall_ms: i64,
-    error_type: ?[]const u8,
+    error_type: ?semconv.ErrorType,
     attr: Attribution,
 ) void {
     if (!isInstalled()) return;
@@ -185,8 +176,13 @@ fn collectMetrics(
 ) otlp_exporter.CollectResult {
     if (max_entries == 0) return .empty;
     const now = currentNanos();
+    if (g_process_start_ns == 0) g_process_start_ns = now;
     var agg = aggregate.Aggregator.init();
     const drained = drainMetrics(&agg, @min(max_entries, BUFFER_CAPACITY));
+    // Runtime families join the same window AFTER the evented drain: their
+    // declared worst case is part of the derived series ceiling, so they can
+    // never be the samples that overflow it.
+    runtime.collect(&agg);
     // Close the attribution window with the sample window it governs. The
     // series ceiling the budget is derived from is per-flush (the Aggregator is
     // rebuilt every window), so holding admissions across windows would let
@@ -195,14 +191,15 @@ fn collectMetrics(
     cardinality.reset();
     const total_dropped = droppedSinceLastFlush(agg.dropped);
     health.recordDiscard(.metrics, .aggregate_cap, @intCast(agg.dropped));
-    if (agg.count == 0 and total_dropped == 0) {
-        g_window_start_ns = now;
-        return .empty;
-    }
 
     const start = if (g_window_start_ns == 0) now else g_window_start_ns;
     g_window_start_ns = now;
-    const serialized = serializeMetrics(alloc, cfg, &agg, total_dropped, start, now) catch {
+    const times = payload.WireTimes{
+        .window_start_ns = start,
+        .process_start_ns = g_process_start_ns,
+        .now_ns = now,
+    };
+    const serialized = serializeMetrics(alloc, cfg, &agg, total_dropped, times) catch {
         return .{ .serialize_failed = drained };
     };
     return .{ .ready = .{
@@ -238,8 +235,7 @@ fn serializeMetrics(
     cfg: otlp_config.GrafanaOtlpConfig,
     agg: *const aggregate.Aggregator,
     total_dropped: u64,
-    start: u64,
-    now: u64,
+    times: payload.WireTimes,
 ) !SerializedMetrics {
     var series_buf: [aggregate.MAX_SERIES + 1]payload.Series = undefined;
     const base = agg.toSeries(series_buf[0..aggregate.MAX_SERIES]);
@@ -248,6 +244,7 @@ fn serializeMetrics(
         series_buf[count] = .{
             .id = .samples_dropped,
             .labels = &[_]payload.Label{},
+            .dynamic = &.{},
             .sum_value = @intCast(total_dropped),
             .hist_count = 0,
             .hist_sum = 0,
@@ -255,9 +252,16 @@ fn serializeMetrics(
         };
         count += 1;
     }
+    const envelope = try wire.serializeSeries(alloc, cfg, series_buf[0..count], times, runtime.appendStreamedRunnerFamilies);
+    // Streamed series shed at the payload budget are a real data loss the
+    // operator must be able to see; appended ones join the export count the
+    // backend's partial-rejection reply is validated against.
+    if (envelope.extra.shed > 0) {
+        health.recordDiscard(.metrics, .aggregate_cap, @intCast(envelope.extra.shed));
+    }
     return .{
-        .body = try payload.serializeSeries(alloc, cfg, series_buf[0..count], start, now),
-        .export_count = count,
+        .body = envelope.body,
+        .export_count = count + envelope.extra.appended,
     };
 }
 
@@ -294,6 +298,7 @@ pub fn testClear() void {
     Exporter.testClear();
     while (g_ring.pop()) |_| {}
     g_window_start_ns = 0;
+    g_process_start_ns = 0;
     g_last_ring_dropped = g_ring.droppedCount();
     health.setQueueDepth(.metrics, 0);
 }
