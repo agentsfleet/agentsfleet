@@ -24,7 +24,10 @@ const worker_slots = @import("clerk_fetch_worker.zig");
 const log = logging.scoped(.clerk_backend);
 
 pub const SECRET_ENV_VAR = "CLERK_SECRET_KEY";
-const API_BASE = "https://api.clerk.com/v1";
+/// Root of the provider's backend API. Public because the scope resolver reads
+/// `/users/{id}` from the same base — one spelling of the host for every
+/// backend call, so a deployment pointed at a different base moves both.
+pub const API_BASE = "https://api.clerk.com/v1";
 
 /// HTTP method used for the metadata-merge endpoint. Exposed as a const so
 /// a unit test can assert it without standing up a mock HTTP server. Clerk's
