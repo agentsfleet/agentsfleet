@@ -5,17 +5,19 @@
 const std = @import("std");
 const otel_metrics = @import("otel_metrics.zig");
 const payload = @import("otel_metrics_payload.zig");
+const wire = @import("otel_metrics_wire.zig");
 const dims = @import("otel_metrics_dims.zig");
 const families = @import("otel_metrics_families.zig");
 const semconv = @import("semconv.zig");
 const otlp_config = @import("otlp/config.zig");
+const Mode = @import("../state/tenant_provider.zig").Mode;
 
 const Ring = otel_metrics.TestRing;
 const BUFFER_CAPACITY = otel_metrics.TEST_BUFFER_CAPACITY;
 
 // Fixture identity. The posture is a real resolver label, not an invented one,
 // so the attribute values these tests pin are the values production emits.
-const POSTURE = "platform";
+const POSTURE: Mode = .platform;
 const PROVIDER = "anthropic";
 const MODEL = "claude-opus-4-8";
 
@@ -109,40 +111,62 @@ test "a second dynamic label is refused — one caller-supplied value per sample
     try std.testing.expectEqual(@as(u8, 1), s.label_count);
 }
 
-test "a value outside the closed table is refused, never partially written" {
-    var s = payload.newSample(.token_usage, 1);
-    try std.testing.expect(!payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, "fixture-unregistered-value"));
-    try std.testing.expectEqual(@as(u8, 0), s.label_count);
+test "a value outside the closed table cannot be written — the build refuses it" {
+    // The runtime refusal this replaces returned false and every caller
+    // discarded it. There is no runtime case left to exercise: an unregistered
+    // value has no enum, and an enum with no registry block fails `baseOf` at
+    // comptime. What remains testable is that the writer's index arithmetic is
+    // the enum's own ordinal, which is what makes the miss unrepresentable.
+    inline for (@typeInfo(Mode).@"enum".fields) |f| {
+        const member: Mode = @enumFromInt(f.value);
+        const idx = dims.valueIndexOf(Mode, member);
+        try std.testing.expectEqualStrings(member.label(), dims.VALUES[idx]);
+    }
 }
 
-test "closed-table validation is pool-wide, not per-key — pinned as the contract" {
-    // The intern pool is one global closed set: a value declared for a
-    // different dimension is accepted under any key. Bounded either way (only
-    // declared values exist at all); per-key value sets would add tables for
-    // a mismatch no writer can express through the typed instrument layer.
+test "each closed enum occupies its own block, so a shared spelling keeps distinct indices" {
+    // Value indices are per-enum blocks rather than one deduplicated pool, so
+    // two enums that spell a value identically resolve to different indices and
+    // each still renders its own spelling at egress. Series identity is
+    // unaffected: `matches` compares the metric id before any label.
     var s = payload.newSample(.token_usage, 1);
-    try std.testing.expect(payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, semconv.TokenType.input.label()));
+    try std.testing.expect(payload.addClosedLabel(&s, semconv.ATTR_TOKEN_TYPE, semconv.TokenType.input));
     try std.testing.expectEqual(@as(u8, 1), s.label_count);
+    try std.testing.expectEqualStrings(
+        semconv.TokenType.input.label(),
+        dims.VALUES[dims.valueIndexOf(semconv.TokenType, .input)],
+    );
 }
 
-test "an unregistered error_type is dropped while the duration sample still exports" {
-    // The closed pool registers exactly the one error verdict production can
-    // pass (semconv.ERROR_TYPE_FLEET_ERROR); an undeclared spelling loses the
-    // label, never the measurement — the same omission posture as provider
-    // and model, without a counter because no live caller can reach it.
+test "a clean run carries no error_type, and a failed one carries exactly the registered verdict" {
+    // The old shape of this test passed an undeclared spelling and asserted the
+    // label was dropped. That case no longer exists to test: `error_type` is
+    // `?semconv.ErrorType`, so an unregistered verdict is a compile error rather
+    // than a silent drop nobody counted. What is left to pin is the live
+    // behaviour on both sides of the optional.
     otel_metrics.testSetInstalled(TEST_CFG);
     defer otel_metrics.testClear();
-    otel_metrics.observeInvokeAgentDuration(42, "fixture-unregistered-error", ATTR);
-    const popped = otel_metrics.testPop();
-    try std.testing.expect(popped != null);
-    var has_error_key = false;
+
+    otel_metrics.observeInvokeAgentDuration(42, null, ATTR);
+    const clean = otel_metrics.testPop();
+    try std.testing.expect(clean != null);
+    try std.testing.expect(!hasKey(clean.?, semconv.ATTR_ERROR_TYPE));
+    // Posture, provider, and model — no error label on a clean run.
+    try std.testing.expectEqual(@as(u8, 3), clean.?.label_count);
+
+    otel_metrics.observeInvokeAgentDuration(42, .fleet_error, ATTR);
+    const failed = otel_metrics.testPop();
+    try std.testing.expect(failed != null);
+    try std.testing.expect(hasKey(failed.?, semconv.ATTR_ERROR_TYPE));
+    try std.testing.expectEqual(@as(u8, 4), failed.?.label_count);
+}
+
+fn hasKey(sample: payload.Sample, key: []const u8) bool {
     var i: u8 = 0;
-    while (i < popped.?.label_count) : (i += 1) {
-        if (std.mem.eql(u8, payload.labelKey(popped.?.labels[i]), semconv.ATTR_ERROR_TYPE)) has_error_key = true;
+    while (i < sample.label_count) : (i += 1) {
+        if (std.mem.eql(u8, payload.labelKey(sample.labels[i]), key)) return true;
     }
-    try std.testing.expect(!has_error_key);
-    // Posture, provider, and model all survived the dropped error label.
-    try std.testing.expectEqual(@as(u8, 3), popped.?.label_count);
+    return false;
 }
 
 test "every live attribute key has a registered intern index" {
@@ -225,16 +249,16 @@ test "the serialized payload matches the pinned OTLP-JSON fixture" {
 
     // Window = [1000, 2000] (delta temporality, one window stamp).
     var s_credit = payload.newSample(.credit_consumed, 0);
-    _ = payload.addClosedLabel(&s_credit, semconv.ATTR_CHARGE_TYPE, semconv.ChargeClass.settle.label());
+    _ = payload.addClosedLabel(&s_credit, semconv.ATTR_CHARGE_TYPE, semconv.ChargeClass.settle);
     _ = payload.addClosedLabel(&s_credit, semconv.ATTR_EXECUTION_POSTURE, POSTURE);
-    _ = payload.addClosedLabel(&s_credit, semconv.ATTR_PROVIDER_NAME, PROVIDER);
+    _ = payload.addLabelAtIndex(&s_credit, semconv.ATTR_PROVIDER_NAME, dims.providerValueIndex(semconv.providerOrdinal(PROVIDER).?));
     _ = payload.setDynamicLabel(&s_credit, semconv.ATTR_REQUEST_MODEL, MODEL);
 
     var s_tokens = payload.newSample(.token_usage, 0);
     _ = payload.addInternedLabel(&s_tokens, semconv.ATTR_OPERATION_NAME, semconv.OPERATION_INVOKE_AGENT);
-    _ = payload.addClosedLabel(&s_tokens, semconv.ATTR_TOKEN_TYPE, semconv.TokenType.input.label());
+    _ = payload.addClosedLabel(&s_tokens, semconv.ATTR_TOKEN_TYPE, semconv.TokenType.input);
     _ = payload.addClosedLabel(&s_tokens, semconv.ATTR_EXECUTION_POSTURE, POSTURE);
-    _ = payload.addClosedLabel(&s_tokens, semconv.ATTR_PROVIDER_NAME, PROVIDER);
+    _ = payload.addLabelAtIndex(&s_tokens, semconv.ATTR_PROVIDER_NAME, dims.providerValueIndex(semconv.providerOrdinal(PROVIDER).?));
     _ = payload.setDynamicLabel(&s_tokens, semconv.ATTR_REQUEST_MODEL, MODEL);
 
     var s_dur = payload.newSample(.invoke_agent_duration, 0);
@@ -262,7 +286,7 @@ test "the serialized payload matches the pinned OTLP-JSON fixture" {
     // are delta, so the cumulative process-start stamp never reaches the wire
     // here and the pre-widening fixture stays byte-identical.
     const times = payload.WireTimes{ .window_start_ns = 1000, .process_start_ns = 500, .now_ns = 2000 };
-    const envelope = try payload.serializeSeries(alloc, TEST_CFG, &series, times, null);
+    const envelope = try wire.serializeSeries(alloc, TEST_CFG, &series, times, null);
     const body = envelope.body;
     defer alloc.free(body);
 
@@ -290,7 +314,7 @@ test "test_gauge_serializes_as_gauge" {
         .bucket_counts = &[_]u64{},
     }};
     const times = payload.WireTimes{ .window_start_ns = 1000, .process_start_ns = 500, .now_ns = 2000 };
-    const envelope = try payload.serializeSeries(alloc, TEST_CFG, &series, times, null);
+    const envelope = try wire.serializeSeries(alloc, TEST_CFG, &series, times, null);
     const body = envelope.body;
     defer alloc.free(body);
 

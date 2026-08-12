@@ -186,8 +186,15 @@ pub const ChargeClass = enum {
 /// stays off this metric — it multiplies the per-model series budget below,
 /// and it is already carried exactly by the durable event row and the capped
 /// `agentsfleet_runner_failures_total` Prometheus family.
-pub const ERROR_TYPE_FLEET_ERROR = "fleet_error";
-const ERROR_TYPE_SLOTS: usize = 2; // absent on success, or the value above
+pub const ErrorType = enum {
+    fleet_error,
+
+    pub fn label(self: ErrorType) []const u8 {
+        return @tagName(self);
+    }
+};
+
+const ERROR_TYPE_SLOTS: usize = 2; // absent on success, or the one value above
 
 // ---------------------------------------------------------------------------
 // Provider normalization
@@ -216,11 +223,26 @@ pub const WELL_KNOWN_PROVIDERS = [_][]const u8{
 
 /// Map a stored provider identifier onto its exact well-known name, or null
 /// when no exact mapping exists. Never truncates and never invents a value.
-pub fn normalizeProvider(stored: []const u8) ?[]const u8 {
-    for (WELL_KNOWN_PROVIDERS) |known| {
-        if (std.mem.eql(u8, stored, known)) return known;
+/// Position of a stored provider identifier within the well-known table, or
+/// null when no exact mapping exists. The metric writer resolves its interned
+/// value index from this ordinal, so the one walk here replaces both the walk
+/// below and a second walk over every declared closed value.
+pub fn providerOrdinal(stored: []const u8) ?u16 {
+    // Case-insensitive because the identifier reaches us unvalidated from the
+    // Command-Line Interface (CLI) provider option, where "Anthropic" and
+    // "anthropic" name the same provider. The emitted value is always the table's
+    // canonical spelling, so tolerating case here removes a false omission
+    // without ever putting a non-standard spelling on the wire. ASCII-only is
+    // correct: every well-known name is ASCII.
+    for (WELL_KNOWN_PROVIDERS, 0..) |known, i| {
+        if (std.ascii.eqlIgnoreCase(stored, known)) return @intCast(i);
     }
     return null;
+}
+
+pub fn normalizeProvider(stored: []const u8) ?[]const u8 {
+    const ordinal = providerOrdinal(stored) orelse return null;
+    return WELL_KNOWN_PROVIDERS[ordinal];
 }
 
 /// Counted off the resolver's own enum so the derived series budget below can

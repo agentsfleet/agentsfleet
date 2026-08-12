@@ -5,10 +5,11 @@ const families = @import("otel_metrics_families.zig");
 const cardinality = @import("otel_metrics_cardinality.zig");
 const semconv = @import("semconv.zig");
 
-const POSTURE = "platform";
+const Mode = @import("../state/tenant_provider.zig").Mode;
+const POSTURE: Mode = .platform;
 const MODEL = "claude-opus-4-8";
 
-fn sumSample(value: i64, charge: []const u8) payload.Sample {
+fn sumSample(value: i64, charge: semconv.ChargeClass) payload.Sample {
     var s = payload.newSample(.credit_consumed, value);
     _ = payload.addClosedLabel(&s, semconv.ATTR_CHARGE_TYPE, charge);
     _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, POSTURE);
@@ -26,7 +27,7 @@ fn histSample(value: i64) payload.Sample {
 test "test_aggregates_sum_per_window: same-labelset sums coalesce to one series" {
     var agg = aggregate.Aggregator.init();
     var i: usize = 0;
-    while (i < 5) : (i += 1) agg.add(sumSample(10, semconv.ChargeClass.receive.label()));
+    while (i < 5) : (i += 1) agg.add(sumSample(10, semconv.ChargeClass.receive));
 
     try std.testing.expectEqual(@as(usize, 1), agg.count);
     var buf: [aggregate.MAX_SERIES]payload.Series = undefined;
@@ -77,8 +78,8 @@ test "histogram sum saturates instead of trapping on two maxInt observations" {
 
 test "distinct label sets aggregate into distinct series" {
     var agg = aggregate.Aggregator.init();
-    agg.add(sumSample(10, semconv.ChargeClass.receive.label()));
-    agg.add(sumSample(20, semconv.ChargeClass.renewal.label()));
+    agg.add(sumSample(10, semconv.ChargeClass.receive));
+    agg.add(sumSample(20, semconv.ChargeClass.renewal));
     try std.testing.expectEqual(@as(usize, 2), agg.count);
 }
 
@@ -180,9 +181,9 @@ test "test_gauge_folds_to_last_value" {
 // own rule: the sum totals, the gauge takes the newest observation.
 test "test_mixed_kinds_fold_independently" {
     var agg = aggregate.Aggregator.init();
-    agg.add(sumSample(10, semconv.ChargeClass.receive.label()));
+    agg.add(sumSample(10, semconv.ChargeClass.receive));
     agg.add(gaugeSample(3));
-    agg.add(sumSample(20, semconv.ChargeClass.receive.label()));
+    agg.add(sumSample(20, semconv.ChargeClass.receive));
     agg.add(gaugeSample(9));
 
     try std.testing.expectEqual(@as(usize, 2), agg.count);

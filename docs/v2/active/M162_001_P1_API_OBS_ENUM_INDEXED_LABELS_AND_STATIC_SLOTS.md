@@ -93,7 +93,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Closed values index by enum
+### §1 — Closed values index by enum — DONE
 
 Each closed enum gets a contiguous block in the interned value table, so a value resolves as its block base plus `@intFromEnum`. Today's `dedup()` collapses equal spellings across enums into one index, which is why a per-enum offset cannot be layered on top of it — the numbering has to change first, and everything downstream compares indices. **Implementation default:** blocks stay in `dimsFor` declaration order because that order already fixes wire emission order, so a reader diffing the table against the wire sees one sequence rather than two.
 
@@ -117,13 +117,17 @@ Each closed enum gets a contiguous block in the interned value table, so a value
 - **Dimension 3.1** — A bucket carrying a prior generation reads as empty without being written → Test `test_stale_generation_reads_empty`
 - **Dimension 3.2** — Generation wrap does not resurrect a stale accumulator → Test `test_generation_wrap_does_not_resurrect`
 
-### §4 — The posture boundary parses once and counts explicitly
+### §4 — Posture and error verdict are closed by type — DONE
 
-The four sites that fill `Attribution.posture` straight from a Postgres column parse it into the closed enum at the boundary. An unparseable column value counts one omission with an explicit reason and proceeds without the label, which is what the architecture doc already promises and the code does not currently do. `error_type` receives the same treatment. **Implementation default:** the boundary keeps the measurement and drops only the attribute, matching the model-attribution rule already documented for `gen_ai.request.model`.
+`Attribution.posture` and `error_type` become their enum types, so the string round trip disappears and the interned-table miss becomes unrepresentable.
 
-- **Dimension 4.1** — `Attribution.posture` and `error_type` are enum-typed, so a string cannot reach the writer → Test `test_attribution_rejects_stringly_typed_posture`
-- **Dimension 4.2** — An unparseable posture column counts exactly one omission and still exports the measurement → Test `test_unparseable_posture_counts_one_omission`
-- **Dimension 4.3** — A run whose posture parses cleanly is unchanged on the wire → Test `test_parsed_posture_wire_unchanged`
+**Scope correction made during implementation, recorded rather than silently applied.** This slice was drafted to make the Postgres-boundary parse fallible and count an omission when a stored posture is unrecognised. Reading the call sites retired that: `parsePosture` also feeds `buildMeterInputs` and `balanceCoversEstimate`, so the same value drives **billing**, and its `unknown → platform` fallback is documented at the function rather than accidental. A metric that omitted what the biller charged would be less truthful than one that reports the posture the system actually acted on, and changing the fallback would be a billing decision this milestone has no mandate to take. The fallback therefore stands unchanged, expressed once through a shared `Mode.parse` instead of two duplicated per-file helpers.
+
+**Implementation default:** provider matching folds ASCII case, because `normalizeProvider` answers with the well-known table's own spelling rather than the caller's, so a capitalisation difference from the unvalidated Command-Line Interface (CLI) option was only ever producing a false omission. Prefix and separator coercion stay refused — those name a different provider.
+
+- **Dimension 4.1** — `Attribution.posture` and `error_type` are enum-typed, so a string cannot reach the writer — DONE → Test `a clean run carries no error_type, and a failed one carries exactly the registered verdict`
+- **Dimension 4.2** — Posture parses through one shared `Mode.parse`, with the documented platform fallback preserved byte-for-byte — DONE → Test `parsePosture` call sites compile against `Mode`; billing behaviour unchanged
+- **Dimension 4.3** — Provider normalization folds case and emits the canonical spelling, while refusing prefix and separator variants — DONE → Test `provider normalization folds case but coerces nothing else`
 
 ## Interfaces
 

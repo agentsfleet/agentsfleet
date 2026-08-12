@@ -42,7 +42,6 @@ const tenant_provider = @import("../state/tenant_provider.zig");
 const activity_publisher = @import("../fleet_runtime/activity_publisher.zig");
 const metrics_runner = @import("../observability/metrics_runner.zig");
 const otel_metrics = @import("../observability/otel_metrics.zig");
-const semconv = @import("../observability/semconv.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const runner_events = @import("runner_events.zig");
 
@@ -113,7 +112,7 @@ pub fn report(hx: Hx, req: *httpz.Request) void {
         // The coarse verdict only. The granular failure class stays on the
         // durable event row and the capped runner-failure Prometheus family;
         // on this histogram it would multiply the per-model series budget.
-        if (body.outcome == .fleet_error) semconv.ERROR_TYPE_FLEET_ERROR else null,
+        if (body.outcome == .fleet_error) .fleet_error else null,
         attributionFor(lease),
     );
     captureCompletion(hx, lease, body);
@@ -282,7 +281,7 @@ fn buildContextJson(alloc: std.mem.Allocator, checkpoint: protocol.ReportCheckpo
 /// design: they never enter an OTLP metric attribute.
 fn attributionFor(lease: Lease) otel_metrics.Attribution {
     return .{
-        .posture = parsePosture(lease.posture).label(),
+        .posture = parsePosture(lease.posture),
         .provider = lease.provider,
         .model = lease.model,
     };
@@ -291,8 +290,7 @@ fn attributionFor(lease: Lease) otel_metrics.Attribution {
 /// Map the stored posture label back to `Mode` for the telemetry span. Keyed on
 /// the enum's own `label()` (RULE UFS — no literal); unknown → platform.
 fn parsePosture(label: []const u8) tenant_provider.Mode {
-    if (std.mem.eql(u8, label, tenant_provider.Mode.self_managed.label())) return .self_managed;
-    return .platform;
+    return tenant_provider.Mode.parse(label) orelse .platform;
 }
 
 /// Release the fleet's affinity claim so its next event becomes leasable. The

@@ -10,7 +10,8 @@ const semconv = @import("semconv.zig");
 const otlp_config = @import("otlp/config.zig");
 const health = @import("metrics_otel.zig");
 
-const POSTURE = "platform";
+const Mode = @import("../state/tenant_provider.zig").Mode;
+const POSTURE: Mode = .platform;
 const PROVIDER = "anthropic";
 const MODEL = "claude-opus-4-8";
 const MODEL_FIXTURE_FMT = "model-{d}";
@@ -95,7 +96,7 @@ test "zero-valued token directions emit no misleading series" {
     // No cached input and no output: only the input direction, the credit, and
     // the duration should exist. A zero observation would otherwise create a
     // series implying the run produced measured-zero output.
-    otel_metrics.recordRunSettlement(0, 10, 0, 0, 5, semconv.ERROR_TYPE_FLEET_ERROR, ATTR);
+    otel_metrics.recordRunSettlement(0, 10, 0, 0, 5, .fleet_error, ATTR);
 
     const input = otel_metrics.testPop() orelse return error.NoSampleEnqueued;
     try std.testing.expectEqual(payload.MetricId.token_usage, input.id);
@@ -104,7 +105,7 @@ test "zero-valued token directions emit no misleading series" {
     const duration = otel_metrics.testPop() orelse return error.NoSampleEnqueued;
     try std.testing.expectEqual(payload.MetricId.invoke_agent_duration, duration.id);
     try std.testing.expectEqualStrings(
-        semconv.ERROR_TYPE_FLEET_ERROR,
+        semconv.ErrorType.fleet_error.label(),
         findLabel(&duration, semconv.ATTR_ERROR_TYPE).?,
     );
 
