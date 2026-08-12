@@ -65,6 +65,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/errors/error_registry.zig` | EDIT | Registered codes for exchange failure, deployment mismatch, and revoked credential |
 | `src/agentsfleetd/errors/error_entries_runtime.zig` | EDIT | Runtime entries for the new codes |
 | `src/agentsfleetd/db/index_usage_integration_test.zig` | EDIT | Declares the two indexes `250` creates; the suite refuses an undeclared index |
+| `src/agentsfleetd/queue/redis_pool_test.zig` | EDIT | Out of scope, folded in on Indy's Aug 12 call (see Discovery): the acquire-overshoot bound is sized by the bug it guards, so a loaded machine stops failing a correct pool |
 | `cli/src/commands/login.ts` | EDIT | Step 6 exchanges the session token before anything is persisted |
 | `cli/src/commands/login-exchange.ts` | CREATE | The mint-and-revoke exchange, split out so `login.ts` holds its length cap |
 | `cli/src/commands/logout.ts` | EDIT | Revokes CLI credentials only, and clears the stored deployment |
@@ -382,6 +383,13 @@ The existing login-completed analytics event keeps its name and its position in 
 
 - **Consult — the user foreign key diverges from `240`, deliberately (Aug 11, 2026, PLAN).** `240:7-10` makes `created_by` a plain string specifically so an automation key outlives the admin who minted it; erasing a departed admin must not break nightly jobs. A personal credential inverts that requirement: if the human is erased, every terminal holding their credential must stop, or offboarding is theatre — and a credential shared with a colleague would outlive the account it belongs to. `250` therefore carries `user_id UUID NOT NULL REFERENCES core.users ON DELETE CASCADE`, and the schema file records the divergence so the next reader does not read it as an oversight.
   > Indy (2026-08-11): "2. Yes makes sense, go ahead to have cli_credentials with a FK to user_id" — context: the divergence is intended, not an inconsistency with the sibling table.
+
+- **Scope decisions, Aug 12, 2026 (post-combine triage).** Three calls taken after the first full verification lane on the shared branch.
+  > Indy (2026-08-12): "Keep it" — context: `9c491ceac` fixes a pre-existing `queue/` flake (the pool acquire-overshoot bound) unrelated to this workstream. Approved as an in-scope inclusion rather than a separate branch; the Files-Changed table records it as such.
+  > Indy (2026-08-12): "just keep it simple you say zig build list-tests, check_zig_test_reachability.py, make audit - just follow a simpler route, not complicating and doing the same or little different with a new approach." — context: the never-compiled-module gap. **No new gate, no new script, no governance change.** Every new module this workstream adds carries a `refAllDecls` test block until it has real callers; the existing `check-test-reachability` already compiles every test root, so that block is what makes the module compile-checked. The repo-wide hole stays open by decision, not oversight.
+  > Indy (2026-08-12): "Finish M136's §5 too" — context: M136_001 is no longer parked. Both workstreams complete on this branch and both specs move to `done/` before the Pull Request (PR) opens.
+
+- **Consult — a green `zig build` is not a compiled module (Aug 12, 2026, EXECUTE).** `state/cli_credentials.zig` carried two genuine compile errors while the build reported success: `copyListed` fed `pg.Row.get`'s error union straight into `alloc.dupe`, and `listForUser` built its accumulator with Zig-0.15-era `std.ArrayList(T){}`. Neither was analysed, because Zig only compiles a function body once something references it, nothing in the tree called the module, and `tests.zig` referenced it with a bare `_ = @import(...)` — which evaluates a module without analysing its bodies. `check-test-reachability` did not catch it: that gate inspects `test` blocks, and the file had none. Found only by adding `refAllDecls`, which is why the convention above is now mandatory for this workstream's modules.
 
 - **Metrics review** — to be recorded at CHORE(close).
 - **Skill-chain outcomes** — `/write-unit-test`, `/write-integration-test`, `/review`, `kishore-babysit-prs` results to be recorded per `AGENTS.md` CHORE(close).
