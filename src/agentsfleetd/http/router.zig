@@ -13,7 +13,6 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     // Static-string paths — no parse needed.
     if (std.mem.eql(u8, path, "/healthz")) return .healthz;
     if (std.mem.eql(u8, path, "/readyz")) return .readyz;
-    if (std.mem.eql(u8, path, "/metrics")) return .metrics;
     if (std.mem.eql(u8, path, model_library_h.MODEL_LIBRARY_PATH)) return .model_library;
     if (std.mem.eql(u8, path, "/v1/auth/sessions")) return .create_auth_session;
     if (std.mem.eql(u8, path, "/v1/tenants/me/billing/charges")) return .get_tenant_billing_charges;

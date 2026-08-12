@@ -335,3 +335,111 @@ test "signup_bootstrap_store: public API resolves at compile time" {
     _ = store.insertMembership;
     _ = store.tryInsertWorkspace;
 }
+
+fn walletBalance(conn: *pg.Conn, tenant_id: []const u8) !?i64 {
+    var q = PgQuery.from(try conn.query(
+        "SELECT balance_nanos FROM billing.tenant_wallet WHERE tenant_id = $1::uuid",
+        .{tenant_id},
+    ));
+    defer q.deinit();
+    const row = (try q.next()) orelse return null;
+    return try row.get(i64, 0);
+}
+
+fn deleteWallet(conn: *pg.Conn, tenant_id: []const u8) !void {
+    _ = try conn.exec(
+        "DELETE FROM billing.tenant_wallet WHERE tenant_id = $1::uuid",
+        .{tenant_id},
+    );
+}
+
+// Only the create transaction writes the wallet row, so a tenant that lost it
+// (pre-grant bootstrap, schema rebuild) would 500 on every billing read with
+// no path back. The replay is the converging write.
+test "bootstrapPersonalAccount: replay restores a missing wallet row at the starter balance" {
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    const oidc = "oidc-test-replay-heal-01";
+    cleanupBootstrappedAccount(db_ctx.conn, oidc);
+    defer cleanupBootstrappedAccount(db_ctx.conn, oidc);
+
+    var created = try bootstrap.bootstrapPersonalAccount(db_ctx.conn, std.testing.allocator, .{
+        .oidc_subject = oidc,
+        .email = "replay-heal@test.agent",
+        .display_name = "Replay Heal",
+    });
+    defer created.deinit(std.testing.allocator);
+    try std.testing.expect(created.created);
+
+    try deleteWallet(db_ctx.conn, created.tenant_id);
+    try std.testing.expectEqual(@as(?i64, null), try walletBalance(db_ctx.conn, created.tenant_id));
+
+    var replayed = try bootstrap.bootstrapPersonalAccount(db_ctx.conn, std.testing.allocator, .{
+        .oidc_subject = oidc,
+        .email = "replay-heal@test.agent",
+        .display_name = "Replay Heal",
+    });
+    defer replayed.deinit(std.testing.allocator);
+    try std.testing.expect(!replayed.created);
+    try std.testing.expectEqual(
+        @as(?i64, tenant_billing.STARTER_CREDIT_NANOS),
+        try walletBalance(db_ctx.conn, created.tenant_id),
+    );
+}
+
+// The heal must be a pure convergence: an existing wallet — including one the
+// tenant has spent from — is never topped up by a replayed webhook.
+test "bootstrapPersonalAccount: replay never tops up an existing spent-down wallet" {
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    const oidc = "oidc-test-replay-no-topup-01";
+    cleanupBootstrappedAccount(db_ctx.conn, oidc);
+    defer cleanupBootstrappedAccount(db_ctx.conn, oidc);
+
+    var created = try bootstrap.bootstrapPersonalAccount(db_ctx.conn, std.testing.allocator, .{
+        .oidc_subject = oidc,
+        .email = "replay-no-topup@test.agent",
+        .display_name = "No Topup",
+    });
+    defer created.deinit(std.testing.allocator);
+    try std.testing.expect(created.created);
+
+    const debit_nanos: i64 = 1_000;
+    _ = try tenant_billing.debit(db_ctx.conn, created.tenant_id, debit_nanos);
+    const spent_down = tenant_billing.STARTER_CREDIT_NANOS - debit_nanos;
+    try std.testing.expectEqual(@as(?i64, spent_down), try walletBalance(db_ctx.conn, created.tenant_id));
+
+    var replayed = try bootstrap.bootstrapPersonalAccount(db_ctx.conn, std.testing.allocator, .{
+        .oidc_subject = oidc,
+        .email = "replay-no-topup@test.agent",
+        .display_name = "No Topup",
+    });
+    defer replayed.deinit(std.testing.allocator);
+    try std.testing.expect(!replayed.created);
+    try std.testing.expectEqual(@as(?i64, spent_down), try walletBalance(db_ctx.conn, created.tenant_id));
+}
+
+// The heal reports true exactly when it inserted — the replay path keys its
+// operator-visible record on this, so the contract is pinned here.
+test "healStarterGrant: true exactly when a missing row was inserted" {
+    const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+    const oidc = "oidc-test-heal-contract-01";
+    cleanupBootstrappedAccount(db_ctx.conn, oidc);
+    defer cleanupBootstrappedAccount(db_ctx.conn, oidc);
+
+    var created = try bootstrap.bootstrapPersonalAccount(db_ctx.conn, std.testing.allocator, .{
+        .oidc_subject = oidc,
+        .email = "heal-contract@test.agent",
+        .display_name = "Heal Contract",
+    });
+    defer created.deinit(std.testing.allocator);
+
+    try std.testing.expect(!try tenant_billing.healStarterGrant(db_ctx.conn, created.tenant_id));
+    try deleteWallet(db_ctx.conn, created.tenant_id);
+    try std.testing.expect(try tenant_billing.healStarterGrant(db_ctx.conn, created.tenant_id));
+    try std.testing.expect(!try tenant_billing.healStarterGrant(db_ctx.conn, created.tenant_id));
+}

@@ -83,6 +83,7 @@ pub fn bootstrapPersonalAccount(
     params: BootstrapParams,
 ) !Bootstrap {
     if (try store.findExistingByOidcSubject(conn, alloc, params.oidc_subject)) |existing| {
+        try healWalletOnReplay(conn, existing.tenant_id);
         return replayExisting(params.oidc_subject, existing);
     }
 
@@ -94,11 +95,24 @@ pub fn bootstrapPersonalAccount(
         if (err == error.PG and isUniqueViolation(conn)) {
             if (try store.findExistingByOidcSubject(conn, alloc, params.oidc_subject)) |existing| {
                 log.info("signup_replay_after_race", .{ .oidc_subject = params.oidc_subject });
+                try healWalletOnReplay(conn, existing.tenant_id);
                 return replayExisting(params.oidc_subject, existing);
             }
         }
         return err;
     };
+}
+
+/// The wallet row is part of the bootstrap invariant (step 5 in the module
+/// doc), but only the create transaction writes it — a tenant that lost the
+/// row (pre-grant bootstrap, schema rebuild) 500s on every billing read with
+/// no path back. Replay is the converging write: the underlying insert is
+/// ON CONFLICT DO NOTHING, so a healthy wallet — including a spent-down
+/// balance — is never touched.
+fn healWalletOnReplay(conn: *pg.Conn, tenant_id: []const u8) !void {
+    if (try tenant_billing.healStarterGrant(conn, tenant_id)) {
+        log.info("signup_replay_wallet_healed", .{ .tenant_id = tenant_id });
+    }
 }
 
 fn replayExisting(oidc_subject: []const u8, existing: store.ExistingAccount) Bootstrap {

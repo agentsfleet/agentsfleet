@@ -128,7 +128,7 @@ fn buildMeter(conn: *pg.Conn, lease: Lease, body: protocol.RenewRequest, now_ms:
         conn,
         lease.tenant_id,
         lease.provider,
-        parsePosture(lease.posture),
+        parsePosture(lease.posture, lease.fleet_id),
         lease.model,
         now_ms,
         body.input_tokens,
@@ -152,7 +152,7 @@ fn completeRenew(hx: Hx, runner_id: []const u8, lease_id: []const u8, lease: Lea
             // metric under its own charge class. The fenced statement above
             // already committed, so a lost or capped renewal emits nothing.
             otel_metrics.recordCreditConsumed(renewed.charged_nanos, .renewal, .{
-                .posture = parsePosture(lease.posture).label(),
+                .posture = parsePosture(lease.posture, lease.fleet_id),
                 .provider = lease.provider,
                 .model = lease.model,
             });
@@ -185,7 +185,7 @@ fn runRenew(hx: Hx, lease_id: []const u8, runner_id: []const u8, lease: Lease, b
 /// renewal and issue share one credit policy. Policy is resolved once at
 /// startup and carried on the request context (not re-read from the env here).
 fn creditsCover(hx: Hx, lease: Lease) bool {
-    return metering.balanceCoversEstimate(hx.ctx.pool, hx.alloc, lease.tenant_id, parsePosture(lease.posture), lease.provider, lease.model, hx.ctx.balance_policy);
+    return metering.balanceCoversEstimate(hx.ctx.pool, hx.alloc, lease.tenant_id, parsePosture(lease.posture, lease.fleet_id), lease.provider, lease.model, hx.ctx.balance_policy);
 }
 
 /// The fleet's own spend ceiling. Returns the breach verdict when the run must
@@ -261,7 +261,12 @@ fn bumpLastSeen(hx: Hx, runner_id: []const u8) void {
 
 /// Map the stored posture label back to `Mode` for the balance gate (mirrors
 /// service_report); keyed on the enum's own `label()` (RULE UFS), unknown → platform.
-fn parsePosture(label: []const u8) tenant_provider.Mode {
-    if (std.mem.eql(u8, label, tenant_provider.Mode.self_managed.label())) return .self_managed;
-    return .platform;
+fn parsePosture(label: []const u8, fleet_id: []const u8) tenant_provider.Mode {
+    return tenant_provider.Mode.parse(label) orelse {
+        // See service_report.parsePosture: unreachable through this codebase, so
+        // a miss means the column was written out of band. Logged, not absorbed;
+        // the platform fallback billing depends on is unchanged.
+        log.warn("renew_posture_unparseable", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = fleet_id, .posture = label });
+        return .platform;
+    };
 }

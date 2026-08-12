@@ -67,11 +67,6 @@ pub fn invokeReadyz(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     health.innerReadyz(hx.*);
 }
 
-pub fn invokeMetrics(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    health.innerMetrics(hx.*, req);
-}
-
 pub fn invokeModelLibrary(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (!common.requireMethod(hx.res, req.method, .GET)) return;

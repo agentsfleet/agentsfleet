@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
-import { getDefaultWorkspaceId } from "./fixtures/seed";
+import { getDefaultWorkspaceId, skillMd, triggerMd } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
@@ -43,39 +43,6 @@ const SOURCE_KIND_UPLOAD = "upload";
 function loadFixtureCache(): Record<string, { sessionJwt: string }> {
   const cachePath = path.join(process.cwd(), ".fixture-jwts.json");
   return JSON.parse(fsSync.readFileSync(cachePath, "utf8"));
-}
-
-function triggerMd(): string {
-  return [
-    "---",
-    `name: ${INSTALL_LIBRARY_NAME}`,
-    "",
-    "x-agentsfleet:",
-    "  triggers:",
-    "    - type: cron",
-    '      schedule: "0 0 * * *"',
-    "  tools:",
-    "    - agentmail",
-    "  budget:",
-    "    daily_dollars: 1.0",
-    "---",
-    "",
-  ].join("\n");
-}
-
-function skillMd(): string {
-  return [
-    "---",
-    `name: ${INSTALL_LIBRARY_NAME}`,
-    "description: Fixture skill body for the install-cli e2e spec.",
-    "version: 0.1.0",
-    "---",
-    "",
-    `# ${INSTALL_LIBRARY_NAME}`,
-    "",
-    "Body for fixture fleet installed via agentsfleet.",
-    "",
-  ].join("\n");
 }
 
 interface SpawnResult {
@@ -131,8 +98,8 @@ async function onboardLibrary(apiUrl: string, workspaceId: string, token: string
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         source_kind: SOURCE_KIND_UPLOAD,
-        skill_markdown: skillMd(),
-        trigger_markdown: triggerMd(),
+        skill_markdown: skillMd(INSTALL_LIBRARY_NAME),
+        trigger_markdown: triggerMd(INSTALL_LIBRARY_NAME),
       }),
     },
   );

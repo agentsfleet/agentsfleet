@@ -15,6 +15,8 @@
  */
 
 import { spawn } from "node:child_process";
+import { mkdtempSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import url from "node:url";
 
@@ -144,6 +146,12 @@ export function composeEnv(fields) {
     // Default every spawn to telemetry-off so the suite is hermetic under
     // any runner; a caller may still override by listing the key in fields.
     AGENTSFLEET_TELEMETRY_DISABLED: "1",
+    // The credential store resolves from HOME, which is passed through above,
+    // so a developer who has actually logged in would hand real credentials to
+    // specs that assert unauthenticated behaviour — green on a clean runner,
+    // red on any working machine. Default every spawn to its own empty store;
+    // the specs that need a shared one already pass their own here.
+    AGENTSFLEET_STATE_DIR: mkdtempSync(path.join(os.tmpdir(), "agentsfleet-acceptance-")),
   };
   for (const [key, value] of Object.entries(fields)) {
     if (value === undefined || value === null) continue;

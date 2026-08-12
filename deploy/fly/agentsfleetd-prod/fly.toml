@@ -24,15 +24,15 @@ primary_region = "iad"
 # (~192 across 3 machines). Both knobs default to 1 (runtime_loader.zig).
 # 64 mostly-I/O-parked handler threads sit easily in 4gb: the 16MiB stacks are
 # virtual / lazily committed, plus ~64MiB of large buffers across 2 workers.
-# Watch pool saturation on /metrics; the next lever is more replicas (the
-# binding constraint per scaling.md).
+# Watch pool saturation via the exported runtime families in Grafana; the
+# next lever is more replicas (the binding constraint per scaling.md).
 #
 # Backpressure knobs:
 #   API_MAX_IN_FLIGHT_REQUESTS — shed ceiling (default 256, runtime_loader.zig)
-#                      for API-class routes only: /healthz, /readyz and
-#                      /metrics are ops-class and are NEVER shed (an overload
-#                      must not blind the operators), and the SSE stream is
-#                      gated by its own cap below, not this one. api requests
+#                      for API-class routes only: /healthz and /readyz are
+#                      ops-class and are NEVER shed (an overload must not
+#                      blind the operators), and the SSE stream is gated by
+#                      its own cap below, not this one. api requests
 #                      above the ceiling are answered 429 + Retry-After
 #                      instead of queueing. Concurrent dispatch is physically
 #                      bounded by WORKERS x THREADS (64 here), so the guard
@@ -80,8 +80,3 @@ primary_region = "iad"
   interval = "15s"
   timeout = "5s"
   grace_period = "30s"
-
-[[metrics]]
-  port = 9091
-  path = "/metrics"
-  processes = ["app"]

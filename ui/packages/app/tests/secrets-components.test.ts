@@ -14,10 +14,12 @@ vi.mock("next/navigation", () => ({
 }));
 
 const createSecretActionMock = vi.fn();
+const replaceSecretActionMock = vi.fn();
 const deleteSecretActionMock = vi.fn();
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
   createSecretAction: createSecretActionMock,
   deleteSecretAction: deleteSecretActionMock,
+  replaceSecretAction: replaceSecretActionMock,
 }));
 
 const captureProductEventMock = vi.fn();
@@ -68,7 +70,7 @@ afterEach(() => cleanup());
 // ── EditSecretDialog — dismiss guard ────────────────────────────────────
 
 describe("EditSecretDialog dismiss guard", () => {
-  afterEach(() => createSecretActionMock.mockReset());
+  afterEach(() => replaceSecretActionMock.mockReset());
 
   it("blocks dialog dismissal while a rotate save is in flight", async () => {
     const onOpenChange = vi.fn();
@@ -76,7 +78,7 @@ describe("EditSecretDialog dismiss guard", () => {
     // so `pending` is true when we attempt to dismiss; resolving at the end
     // lets the transition settle instead of leaking into later tests.
     let resolveSave!: (v: { ok: true; data: { name: string } }) => void;
-    createSecretActionMock.mockReturnValue(
+    replaceSecretActionMock.mockReturnValue(
       new Promise<{ ok: true; data: { name: string } }>((r) => {
         resolveSave = r;
       }),
