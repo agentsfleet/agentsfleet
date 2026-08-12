@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M154
 **Workstream:** 002
 **Date:** Aug 01, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — a security boundary that exists in prose and not in grants
 **Categories:** API, SQL
 **Batch:** B1 — its own Pull Request, both halves together; the grants live in slots M154_001 authors
@@ -334,6 +334,25 @@ N/A — no files deleted.
 
   **What this retires.** F1 from the adversarial review — `loadTrialBoundary(...) catch null` pricing a failed lookup as a live trial, writing a zero charge and advancing `last_metered_at` so the slice could never be re-billed. Deleting the mechanism removes the bug class, so no guard was written for it. Also noted: `event_lifecycle_integration_test.zig` documented the balance-exhausted HTTP path as unreachable *because* every charge priced to zero — that path is now reachable end-to-end and worth covering.
 
-- **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
-- **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
-- **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
+- **Directive — fix the five review findings in-branch (2026-08-12).** A Chief Technology Officer (CTO)-framed review of the branch produced five findings; Indy directed all five fixed here rather than deferred.
+
+  > Indy (2026-08-12): "Okay Go and fix all the 5 findings in the worktree and branch you are in. commit and then start on the changes."
+
+  | Finding | Resolution |
+  |---|---|
+  | Closure ceremony: ~15 lines × 21 call sites for a context struct plus an anonymous callback struct | `withRole` replaced by a `begin`/`commit`/`deinit` scope guard; `withRole` deleted. Call sites net −102 lines |
+  | The typestate's guarantee was overstated in its own documentation | `Elevated(role)` kept and still required by vault/billing signatures, now from `scope.handle()`, with a test pinning that a billing scope cannot produce a vault handle. The module comment now says plainly that PostgreSQL is the enforcement and the type moves that refusal to the call site |
+  | File-shape churn: the tracker fold only fit under the 350-line cap because a fix had been dropped | Re-split to `pool_elevation_tracker.zig` (role names, one-way import). Files now 270 and 198 lines |
+  | `POOL_SIZE_DEFAULT` / `ACQUIRE_TIMEOUT_MS_DEFAULT` duplicated in `pool.zig` and `pool_url.zig` | One home in `pool_url.zig`; `pool.zig` imports |
+  | The table-full pressure path had no test | Tested: exhaustion refuses and moves `refusedMarkCount`, a freed slot is reusable, and a nesting refusal is asserted NOT to move that counter |
+  | Invariants over machinery | A metered renewal now asserts the outcome's charge, the wallet decrement, and the ledger row all agree and are positive. Every prior renewal case passed an empty meter, so all rates were zero and none could distinguish a working billing path from one charging nothing |
+
+  Three operational rules were added to the repository `AGENTS.md`, each from a failure observed this session: never read a lane result through a pipe (it reports `tail`'s exit status and made a red integration lane read as green); commit before restructuring (an untracked file deleted by a restructure is unrecoverable and leaves no trace in `git status`); one integration lane per machine (concurrent lanes fail timeout-bounded tests in untouched files).
+
+- **Cross-agent work loss (2026-08-12).** Three adversarial-review fixes were absent from the working tree when this session picked it up, and `git status` showed nothing wrong. Two were merge-blockers and were re-applied here: the `FOR UPDATE` on the purge's workspace read, and the elevation table bound plus its refusal counter. The third (F1, the trial-boundary `catch null`) was superseded by the free-trial removal. A restructure had also deleted a test helper, leaving the unit root uncompilable, and destroyed an untracked file outright.
+
+- **Metrics review** — no new events. The two operator-facing counters (`refusedReleaseCount`, `refusedMarkCount`) are process-local counts with no identity, per §3's metric shape; no analytics or funnel surface changes.
+
+- **Skill-chain outcomes** — the six-reviewer `/review` pass and its adversarial round ran before this session and are recorded above with their findings ledger. `kishore-babysit-prs` runs after the first push.
+
+- **Deferrals** — none. Every finding raised in this workstream landed in-branch.
