@@ -8,7 +8,6 @@ const matchers = @import("route_matchers.zig");
 pub const Route = union(enum) {
     healthz,
     readyz,
-    metrics,
     // The model library catalogue — GET /v1/models, any authenticated tenant
     // (handlers/model_library.zig). The dashboard's model pickers are the consumer.
     model_library,

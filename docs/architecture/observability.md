@@ -15,36 +15,55 @@ Every row is extracted from the sections below; the owner column names the secti
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Signal paths | 4 | Prometheus pull · OTLP push (no collector hop) · PostHog · Postgres (money) | §The four signal paths |
-| Metric namespace | `agentsfleet_` only | `semantic_schema_test.zig` renders the body and fails on any family outside it | §The four signal paths |
+| Signal paths | 3 | OTLP push (no collector hop) · PostHog · Postgres (money) | §The three signal paths |
+| Metric namespace | `agentsfleet_` runtime families; dotted semconv cost families | `otel_metrics_families.zig` declares every exported name; the namespace guard reads the registry | §The three signal paths |
 | Runner telemetry | deliberately bare | `record_metric` is a no-op stub; local logfmt to the host, liveness over `/v1/runners` | §`agentsfleet-runner` — deliberately bare |
-| Library read series | 102 total, comptime-asserted | closed enums; a new member fails the build, never grows the scrape | §Library read stages are Prometheus, not spans |
+| Library read series | 102 total, comptime-asserted | closed enums; a new member fails the build, never grows the export | §Library read stages are metrics, not spans |
 | Trace budget | 10 generic spans per monotonic second | 4 runner rejections + 4 server errors + 2 sampled successes; successful runner verbs never enqueue | §Traces |
-| OTLP queues | logs 2047 · traces 1023 · metrics 1023 (≤ 256 coalesced series) | fire-and-forget; a full ring drops, never blocks; no retry, deliberately | §The OTLP exporter substrate, §Capacity and loss audit |
+| OTLP queues | logs 2047 · traces 1023 · metrics 1023 (derived series ceiling: 256 cost + runtime worst case) | fire-and-forget; a full ring drops, never blocks; no retry, deliberately | §The OTLP exporter substrate, §Capacity and loss audit |
 | PostHog events | 5 production captures | `FleetCompleted` fires only after the fenced claim; `$insert_id` = SHA-256 of `fleet_id \|\| 0x00 \|\| event_id` | §PostHog is product analytics |
 | Per-runner label ceiling | 4096 exact `runner_id` slots | counters overflow to `_other`, gauges drop | §Label registry |
 | Tenant identity on metrics | never | exact per-workspace cost is a Postgres ledger query, which is exact rather than bounded | §Label registry |
 | Log envelope | 4 KiB buffer, `truncated=true` on overflow | exporter-internal scopes stay stderr-only so a failing exporter cannot feed itself | §The shared logging module |
-| Performance gating | nothing gates on a percentile | the scrape is the evidence; a threshold that cannot fail reports success forever | §Library read stages are Prometheus, not spans |
+| Performance gating | nothing gates on a percentile | the exported series are the evidence; a threshold that cannot fail reports success forever | §Library read stages are metrics, not spans |
 | The M61 naming trap | the live OTel export survived `OTEL_EXPORT_REMOVAL` | check `otel_logs.zig` / `otel_traces.zig` + the `GRAFANA_OTLP_*` gate, never the milestone name | §The M61 naming trap |
 | Production wiring truth | dated table, Jul 23, 2026 | per-surface state with code evidence | §Signal routing |
 
-## The four signal paths
+## The three signal paths
 
 All of it lives under `src/agentsfleetd/observability/`.
 
 | Path | What | Consumer |
 |---|---|---|
-| Prometheus (pull) | `agentsfleet_*` families, rendered at `GET /metrics` via `metrics_render.zig`. Nothing pushes. | operator dashboards |
-| OTLP (push) | logs → Loki, traces → Tempo, metrics → Mimir. Direct to Grafana Cloud; **no collector hop**. Gated on the `GRAFANA_OTLP_*` env triple. | Grafana Cloud |
+| OTLP (push) | logs → Loki, traces → Tempo, metrics (runtime + cost families) → Mimir. Direct to Grafana Cloud; **no collector hop**. Gated on the `GRAFANA_OTLP_*` env triple. The daemon's **only** metrics egress: there is no pull endpoint. | Grafana Cloud, operator dashboards |
 | PostHog | nullable client, product events only | product analytics |
 | Postgres | per-run execution telemetry + billing counters in `src/agentsfleetd/state/` | the money system of record |
 
-**One process, one namespace.** Every metric family carries the `agentsfleet_`
-prefix. `semantic_schema_test.zig` renders the body and fails on any family
-outside it. `fleet_id`, log event names, `EventKind` tags, and the Redis
-consumer group keep their old spelling; the namespace rule covers only what
-`/metrics` renders.
+**One process, one registry.** Every runtime family carries the `agentsfleet_`
+prefix; the evented cost families use the dotted OpenTelemetry
+semantic-convention names listed at the end of this file.
+`otel_metrics_families.zig` declares every exported name, and the namespace
+guard fails on any family outside the registry. `fleet_id`, log event names,
+`EventKind` tags, and the Redis consumer group keep their old spelling; the
+namespace rule covers only exported metric families.
+
+**One registry row is the whole family.** Beside its wire identity, each
+family declares its label dimensions — the closed enum per label key, plus an
+at-most-one dynamic dimension (request model, runner identifier) — in
+`otel_metrics_dims.zig`, the registry's sibling. The instrument layer
+(`otel_instruments.zig`) generates everything downstream from that one table
+at compile time: the flat atomic storage cells (one per label combination), a
+typed writer whose label struct makes a wrong or missing dimension a compile
+error, snapshot reads, and the flush-time collect loop that emits every cell —
+zero values included — into the aggregator. Sources that cannot be storage
+cells (the Redis pool snapshot, the resident-set probe, flush-thread liveness)
+are `live_read` hooks the collect loop runs after the cells; their absence
+keeps the family out of the window rather than faking a zero. Labels are
+interned to comptime indices, so a sample is a fixed ≤128-byte value and the
+aggregator locates a series by open-addressed hash instead of a linear scan.
+Adding a family is one registry row plus one writer call; everything else —
+storage, collection, series ceiling, census membership — derives from the
+declaration, so there is no second copy to drift.
 
 Runtime deployment carries no dashboard files. Grafana dashboard and alert
 definitions live under
@@ -62,6 +81,10 @@ the milestone name.
 
 ## Metric family census — what to watch, and what it means
 
+This table is the complete export: every family the daemon pushes over OTLP
+appears exactly once, pinned against the declared registry in
+`otel_metrics_families.zig`.
+
 Category legend: **latency** (how slow), **traffic** (how much), **errors**
 (what failed), **saturation** (how full), **health** (is the plumbing itself
 working). Improve latency by finding the slow stage; errors by rate per cause;
@@ -70,6 +93,11 @@ the workload.
 
 | Family | Labels | Category | Watch for |
 |---|---|---|---|
+| `gen_ai.invoke_agent.duration` | bounded cost attribution | latency | runner wall time per invocation |
+| `agentsfleet.invoke_agent.token.usage` | bounded cost attribution | traffic | token spend per invocation, by `gen_ai.token.type` |
+| `agentsfleet.invoke_agent.cache_read.token.usage` | bounded cost attribution | traffic | cache-read subset of input tokens |
+| `agentsfleet.billing.credit.consumed` | bounded cost attribution | traffic | nanocredit spend by charge class |
+| `agentsfleet.telemetry.samples_dropped` | none | health | exporter self-observability: ring + aggregation loss |
 | `agentsfleet_api_in_flight_requests` | none | saturation | approaching `api_max_in_flight_requests` |
 | `agentsfleet_api_backpressure_rejections_total` | none | errors | any growth: requests shed at the cap |
 | `agentsfleet_sse_in_flight_streams` | none | saturation | approaching the stream cap |
@@ -83,6 +111,9 @@ the workload.
 | `agentsfleet_lease_poll_db_roundtrips_total` | none | latency | rate ÷ polls = DB cost per poll; idle polls must add zero |
 | `agentsfleet_fleet_ready_depth` | none | saturation | readiness backlog (not summable across replicas) |
 | `agentsfleet_fleet_ready_write_failures_total` | none | errors | Redis index writes failing |
+| `agentsfleet_runner_retention_swept_total` | none | traffic | retention pruning throughput |
+| `agentsfleet_runner_retention_sweep_failures_total` | none | errors | retention sweeps failing |
+| `agentsfleet_account_teardown_unregister_failures_total` | none | errors | teardown purges failing to unregister |
 | `agentsfleet_library_stage_duration_seconds_total` | `surface`,`stage` | latency | ÷ observations = mean stage cost |
 | `agentsfleet_library_stage_observations_total` | `surface`,`stage` | latency | the denominator above |
 | `agentsfleet_library_read_outcome_total` | `surface`,`outcome` | errors | non-`ok` outcomes per surface |
@@ -96,23 +127,31 @@ the workload.
 | `agentsfleet_runner_last_seen_seconds` | `runner_id` | health | a runner going quiet |
 | `agentsfleet_runner_active_leases` | `runner_id` | saturation | best-effort; self-heals on restart |
 | `agentsfleet_memory_entries_captured_total` | none | traffic | durable-memory write volume |
-| `agentsfleet_memory_capture_skipped_total` / `_truncated_total` | none | errors | captures lost or clipped |
+| `agentsfleet_memory_capture_skipped_total` | none | errors | captures lost to validation |
+| `agentsfleet_memory_capture_truncated_total` | none | errors | captures clipped at the push byte budget |
 | `agentsfleet_memory_push_failures_total` | none | errors | memory writes failing |
 | `agentsfleet_memory_hydration_window_entries` | none | saturation | hydration window fill |
-| `agentsfleet_memory_hydration_dropped_{entries,bytes}_total` | none | errors | hydration overflow |
+| `agentsfleet_memory_hydration_dropped_entries_total` | none | errors | hydration overflow (entries) |
+| `agentsfleet_memory_hydration_dropped_bytes_total` | none | errors | hydration overflow (bytes) |
 | `agentsfleet_memory_cap_evictions_total` | none | health | cap pressure on stored memory |
 | `agentsfleet_memory_search_zero_hits_total` | none | health | searches finding nothing |
-| `agentsfleet_signup_bootstrapped_total` / `_replayed_total` | none | traffic | signup funnel |
+| `agentsfleet_signup_bootstrapped_total` | none | traffic | signup funnel: fresh accounts |
+| `agentsfleet_signup_replayed_total` | none | traffic | signup funnel: idempotent replays |
 | `agentsfleet_signup_failed_total` | `reason` | errors | rejected signups per cause |
-| `agentsfleet_sensitive_{request,response}_erased_bytes_total` | none | health | plaintext-erasure proof; no labels by design |
+| `agentsfleet_sensitive_request_erased_bytes_total` | none | health | plaintext-erasure proof; no labels by design |
+| `agentsfleet_sensitive_response_erased_bytes_total` | none | health | plaintext-erasure proof; no labels by design |
 | `agentsfleet_sensitive_response_write_failures_total` | none | errors | sensitive writes failing |
 | `agentsfleet_http_trace_suppressed_total` | `reason` | health | span budget shedding; storms stay visible |
 | `agentsfleet_otlp_queue_depth` | `signal` | saturation | exporter ring fill per signal |
-| `agentsfleet_otlp_entries_discarded_total` | `signal`,`reason` | errors | telemetry loss, visible even when OTLP is dark |
+| `agentsfleet_otlp_entries_discarded_total` | `signal`,`reason` | errors | telemetry loss counted at the source |
 | `agentsfleet_otel_attribute_omitted_total` | `attribute`,`reason` | health | model attribution gaps (never faked) |
-| `agentsfleet_redis_pool_active` / `_idle` | none | saturation | pool utilisation |
-| `agentsfleet_redis_pool_dials_total` / `_overflow_dials_total` | none | health | burst dialing past `max_idle` |
-| `agentsfleet_redis_pool_reconnects_total` / `_poisoned_connections_total` / `_forced_closes_total` | none | health | transport churn |
+| `agentsfleet_redis_pool_active` | none | saturation | pool utilisation (leased) |
+| `agentsfleet_redis_pool_idle` | none | saturation | pool utilisation (ready) |
+| `agentsfleet_redis_pool_dials_total` | none | health | dial volume |
+| `agentsfleet_redis_pool_overflow_dials_total` | none | health | burst dialing past `max_idle` |
+| `agentsfleet_redis_pool_reconnects_total` | none | health | transport churn: retry-layer redials |
+| `agentsfleet_redis_pool_poisoned_connections_total` | none | health | transport churn: in-flight transport errors |
+| `agentsfleet_redis_pool_forced_closes_total` | none | health | transport churn: over-cap releases |
 | `agentsfleet_redis_pool_acquire_timeouts_total` | none | errors | currently always 0; acquires never block |
 | `agentsfleet_process_resident_memory_bytes` | none | saturation | process RSS |
 
@@ -134,7 +173,7 @@ agentsfleet-runner
   │                         └─ optional host collector ──► Loki
   │                            (direct; never through agentsfleetd)
   └─ lease / heartbeat / renew / activity / report ──► agentsfleetd
-                                                        ├─ /metrics
+                                                        ├─ runtime metric families (OTLP push)
                                                         ├─ selected run span
                                                         └─ selected PostHog event
 
@@ -161,11 +200,11 @@ and retry limits plus the allowlist proof.
 | Signal | Producer / owner | Path | Bound and loss |
 |---|---|---|---|
 | runner logs | runner logfmt; host owns retention | none by default; optional collector direct to Loki | host policy caps disk; loss never blocks a run |
-| runner semantic metrics | `agentsfleetd`, from accepted fleet verbs | Prometheus pulls `agentsfleetd` | 4096 runner slots; overflow → `_other` |
+| runner semantic metrics | `agentsfleetd`, from accepted fleet verbs | OTLP push (streamed per-runner families) | 4096 runner slots; overflow → `_other` |
 | runner host metrics | node exporter, if operators want it | direct to metrics backend | outside the runner API |
 | runner traces | none | none | correlate logs via `event_id` + `lease_id` |
 | control-plane logs | structured logger | stderr + OTLP to Loki | 2047 queued records; enqueue never blocks |
-| control-plane metrics | Prometheus families + selected OTLP samples | pull `/metrics`; OTLP push where configured | fixed labels or explicit caps |
+| control-plane metrics | runtime + cost families | one OTLP push; no pull endpoint | fixed labels or explicit caps |
 | control-plane traces | HTTP ingress + settled delivery | OTLP to Tempo | route policy keeps output under the budget |
 | product analytics | PostHog client | batched capture | selected business events only |
 
@@ -215,7 +254,7 @@ Why it matters: idle heartbeats alone are one matched request per runner per
 10 s. Unfiltered, 100 idle runners consumed the exporter's whole steady drain
 budget. The ceiling is now fixed at any fleet size.
 
-## Library read stages are Prometheus, not spans
+## Library read stages are metrics, not spans
 
 The authenticated library reads (tenant model registry, global catalogue,
 Fleet gallery) record stage timing as fixed-cardinality families in
@@ -228,7 +267,7 @@ what a metric is for. The trace half is unchanged: `traceparent` in, one
 
 Label members live in the label registry below. Series are fixed at compile
 time: 102 total, asserted at comptime, so a new enum member fails the build
-instead of growing the scrape.
+instead of growing the export.
 
 | Family | Labels | Series |
 |---|---|---|
@@ -258,7 +297,7 @@ Design points, each load-bearing:
   the lifecycle; the default outcome is `internal_error`, so an unclassified
   path surfaces as something to investigate, never as `ok`.
 
-**The scrape is the evidence, and nothing gates on a percentile.** A latency
+**The exported series are the evidence, and nothing gates on a percentile.** A latency
 threshold in a universal check fails on a noisy runner, gets widened until it
 cannot fail, then reports success forever. Percentile comparison needs a
 provisioned environment with pinned pool size, warm state, and concurrency.
@@ -343,7 +382,7 @@ benchmarks.
 |---|---:|---|---|
 | logs | 2047 records; body truncated at 512 B | wake at 50 or 5 s; drain the cycle-start backlog in 50-record batches | ring drops export as `ring_full` |
 | traces | 1023 spans; 12 attributes each | same as logs | same |
-| OTLP metrics | 1023 samples; ≤ 256 coalesced series | wake at 768 or 5 s; coalesce label sets | overflow series export as `aggregate_cap` |
+| OTLP metrics | 1023 samples; derived series ceiling (256 cost + runtime worst case) | wake at 768 or 5 s; coalesce label sets | overflow series export as `aggregate_cap` |
 | PostHog | 1000/side, ≤ 2000 resident | 20 events or 10 s; 3 retries | full side drops the new event |
 
 Scenario model: `R` runners, `B` billed debits/s, `C` accepted reports/s, `L`
@@ -362,12 +401,17 @@ variables; the architecture bounds what the application owns.
 | traces | fleet growth | heartbeat input grows with `R`; output does not | 10 generic spans/s process-wide |
 
 Metric coalescing happens after ring admission, so it reduces wire series, not
-enqueue pressure. The aggregator admits ≤ 256 distinct label sets per flush.
+enqueue pressure. The aggregator's series ceiling is derived in
+`otel_metrics_families.zig`: the 256-series cost sub-budget plus the declared
+runtime families' comptime worst case, so adding a family grows the ceiling
+instead of evicting cost attribution.
 `agentsfleet.telemetry.samples_dropped` covers ring and aggregation loss but
-only arrives if a later export succeeds; the Prometheus
+only arrives if a later export succeeds; the
 `agentsfleet_otlp_entries_discarded_total{signal,reason}` counter and
-`agentsfleet_otlp_queue_depth` gauge keep local loss visible even when OTLP is
-dark.
+`agentsfleet_otlp_queue_depth` gauge count local loss at the source. They ride
+the same push, so a dead pipe is caught store-side by the
+`metrics-exporter-dead` absence rule, never by the process reporting on
+itself.
 
 ### Label registry — money stays in Postgres
 
@@ -419,8 +463,10 @@ transaction commits, so the exporter can never block or fail a debit):
 | `agentsfleet.telemetry.samples_dropped` | sum | exporter self-observability |
 
 Every committed debit emits once; uncommitted, stale-fenced, or replayed
-operations emit nothing. Flush coalesces into one **delta** dataPoint per
-(metric, labelset); Mimir needs a `deltatocumulative` processor, and none is
-provisioned today, so the OTLP metric path is prepared rather than proven. The
-scraped `agentsfleet_*` families are unaffected and remain the reliable
-operator signal.
+operations emit nothing. Flush coalesces the evented cost families into one
+**delta** dataPoint per (metric, labelset), converted to cumulative
+downstream; the runtime snapshot counters are natively cumulative and need no
+conversion (`otel_metrics_families.zig` documents the temporality split). With
+the pull endpoint retired, this push is the one metrics egress — when the pipe
+itself dies, the store-side `metrics-exporter-dead` absence rule is the
+watchdog.

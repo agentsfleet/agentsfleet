@@ -19,21 +19,30 @@ const BillingRow = struct {
     }
 };
 
+/// Returns true when a row was inserted; false means the tenant already had a
+/// wallet and the ON CONFLICT DO NOTHING left it — and its balance — untouched.
 pub fn insertIfAbsent(
     conn: *pg.Conn,
     tenant_id: []const u8,
     balance_nanos: i64,
     grant_source: []const u8,
-) !void {
+) !bool {
     const now_ms = clock.nowMillis();
     // The wallet belongs to `billing_runtime` (schema/700). Inside the signup
-    // bootstrap's transaction the callback brackets just the starter-grant
+    // bootstrap's transaction the scope brackets just the starter-grant
     // INSERT, so the tenant-create statements around it keep running as
     // `api_runtime`.
+    //
+    // The affected-row count is read INSIDE the scope and returned after the
+    // commit. `healStarterGrant` reaches the wallet only through here, so it
+    // inherits the elevation rather than needing its own — an unelevated
+    // INSERT on this table is refused by PostgreSQL, and the replay path that
+    // calls it would fail at runtime rather than at compile time.
     var scope = try pool_elevation.begin(conn, .billing);
     defer scope.deinit();
-    _ = try scope.conn.exec(sql.INSERT_TENANT_BILLING, .{ tenant_id, balance_nanos, grant_source, now_ms });
+    const affected = try scope.conn.exec(sql.INSERT_TENANT_BILLING, .{ tenant_id, balance_nanos, grant_source, now_ms });
     try scope.commit();
+    return (affected orelse 0) > 0;
 }
 
 pub const DebitResult = struct { balance_nanos: i64, updated_at_ms: i64 };

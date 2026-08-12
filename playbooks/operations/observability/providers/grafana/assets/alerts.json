@@ -1,13 +1,13 @@
 [
   {
-    "name": "metrics-scrape-missing",
-    "title": "Control-plane metrics missing",
+    "name": "metrics-exporter-dead",
+    "title": "Runtime metrics absent from the store",
     "severity": "critical",
     "for": "2m",
     "noDataState": "Alerting",
     "execErrState": "Alerting",
     "expr": "absent(agentsfleet_api_in_flight_requests)",
-    "summary": "Prometheus cannot see the agentsfleetd metrics endpoint.",
+    "summary": "The daemon's OTLP metrics exporter has stopped delivering runtime series; this store-side absence check is deliberately independent of the exporter it watches.",
     "panelId": 1
   },
   {

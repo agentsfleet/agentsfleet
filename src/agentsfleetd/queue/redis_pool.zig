@@ -10,7 +10,9 @@
 //! roles (Invariants 8, 9).
 //!
 //! Slice 1 lays the shape down. The Client façade rewire + retry loop land
-//! in slice 3; `/metrics` export of `PoolStats` lands in slice 7.
+//! in slice 3; `PoolStats` export rides the OTLP flush collector
+//! (`otel_metrics_runtime.zig` pulls `stats()` through the
+//! `metrics_redis_pool` seam once per flush window).
 
 const Self = @This();
 
@@ -319,7 +321,7 @@ pub fn stats(self: *Self) PoolStats {
         .idle = self.idle_count,
         .dials_total = self.dials_total,
         .overflow_dials_total = self.overflow_dials_total,
-        .acquire_wait_ns_p99 = 0, // sliding histogram wires in slice 7 alongside /metrics
+        .acquire_wait_ns_p99 = 0, // sliding histogram wires in slice 7 alongside the OTLP flush collector
         .poisoned_connections_total = self.poisoned_connections_total,
         .reconnects_total = self.reconnects_total,
         .forced_closes_total = self.forced_closes_total,

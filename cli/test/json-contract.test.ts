@@ -3,13 +3,33 @@
 // envelope shape is stable, and removed v1 routes (run/runs/spec/specs)
 // surface UNKNOWN_COMMAND instead of resolving silently.
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { Command } from "commander";
 import { makeBufferStream, ui } from "./helpers.ts";
 import { runCli } from "../src/cli.ts";
 import { writeError } from "../src/program/io.ts";
 import { buildProgram } from "../src/program/cli-tree.ts";
 import type { CommandHandlerFn, Handlers } from "../src/program/cli-tree-types.ts";
+
+// `runCli` honours `io.env` for environment reads, but the credential store
+// resolves from `process.env.AGENTSFLEET_STATE_DIR` (or HOME) inside
+// `loadCredentials`, which `io.env` never reaches. Without this, a developer
+// who has logged in hands real credentials to the auth-required cases below:
+// green on a clean runner, red on any working machine.
+let prevStateDir: string | undefined;
+
+beforeAll(() => {
+  prevStateDir = process.env.AGENTSFLEET_STATE_DIR;
+  process.env.AGENTSFLEET_STATE_DIR = mkdtempSync(path.join(os.tmpdir(), "agentsfleet-json-contract-"));
+});
+
+afterAll(() => {
+  if (prevStateDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+  else process.env.AGENTSFLEET_STATE_DIR = prevStateDir;
+});
 
 function tryParseJson(str: string): unknown {
   try {

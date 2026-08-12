@@ -15,7 +15,7 @@ import {
   Spinner,
   Textarea,
 } from "@agentsfleet/design-system";
-import { createSecretAction } from "../actions";
+import { replaceSecretAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
 import { SECRET_DATA_REENTER_REQUIRED, parseSecretDataObject } from "../lib/secret-data";
 
@@ -28,10 +28,11 @@ export type EditSecretDialogProps = {
 };
 
 /**
- * Rotate a stored secret: re-store its value under the same name (the create
- * upsert overwrites in place). The vault never returns plaintext, so the value
- * is always re-entered. This dialog has one job — renaming lives in its own
- * RenameSecretDialog, reached from the Name column.
+ * Rotate a stored secret: replace its whole body under the same name via PUT
+ * on the named secret (creation claims a free name and 409s on a held one).
+ * The vault never returns plaintext, so the value is always re-entered. This
+ * dialog has one job — renaming lives in its own RenameSecretDialog, reached
+ * from the Name column.
  */
 export default function EditSecretDialog({
   workspaceId,
@@ -66,12 +67,12 @@ export default function EditSecretDialog({
     }
 
     startTransition(async () => {
-      const created = await createSecretAction(workspaceId, { name, data: parsed.data });
-      if (!created.ok) {
+      const replaced = await replaceSecretAction(workspaceId, name, parsed.data);
+      if (!replaced.ok) {
         setError(
           presentErrorString({
-            errorCode: created.errorCode,
-            message: created.error,
+            errorCode: replaced.errorCode,
+            message: replaced.error,
             action: "rotate the secret",
           }),
         );

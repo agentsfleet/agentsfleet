@@ -20,10 +20,13 @@
 const std = @import("std");
 const common = @import("common");
 const semconv = @import("semconv.zig");
-const aggregate = @import("otel_metrics_aggregate.zig");
+const families = @import("otel_metrics_families.zig");
 
 /// Distinct (provider, model) pairs that may carry exact model attribution.
-pub const ATTRIBUTION_CAP: usize = semconv.modelAttributionCap(aggregate.MAX_SERIES);
+/// Derived from the COST sub-budget, not the whole aggregator ceiling: the
+/// runtime families occupy their own declared share of the ceiling, so adding
+/// one can never shrink this cap (the arithmetic the derived-ceiling tests pin).
+pub const ATTRIBUTION_CAP: usize = semconv.modelAttributionCap(families.COST_SERIES_BUDGET);
 
 comptime {
     // A zero cap would silently drop model attribution everywhere, which is the
