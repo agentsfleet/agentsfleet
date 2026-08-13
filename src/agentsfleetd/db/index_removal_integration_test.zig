@@ -138,8 +138,10 @@ test "the composite still covers the fleet filter after the drop" {
     // Drop the parent fleets with their workspace, then re-analyze: deleting the
     // rows leaves the planner's estimates behind, and sibling suites assert which
     // index `core.fleets` reads pick.
-    defer _ = db.conn.exec("ANALYZE core.fleets", .{}) catch |err|
-        std.log.warn("analyze ignored: {s}", .{@errorName(err)});
+    // VACUUM, not a bare ANALYZE: ANALYZE fixes `reltuples` but leaves the pages
+    // the deleted parents occupied, and the planner costs from `relpages`.
+    defer _ = db.conn.exec("VACUUM ANALYZE core.fleets", .{}) catch |err|
+        std.log.warn("vacuum ignored: {s}", .{@errorName(err)});
     defer base.teardownWorkspace(db.conn, WS_MEM);
 
     // Parents first. The spread below derives its fleet ids arithmetically, so
