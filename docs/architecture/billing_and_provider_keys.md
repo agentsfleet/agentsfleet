@@ -18,7 +18,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Currency unit | nanos — 1 USD = 1,000,000,000 | `core.tenant_billing.balance_nanos BIGINT CHECK (>= 0)`; i64 caps one tenant at ~$9.2B | §2 |
+| Currency unit | nanos — 1 USD = 1,000,000,000 | `billing.tenant_wallet.balance_nanos BIGINT CHECK (>= 0)`; i64 caps one tenant at ~$9.2B | §2 |
 | Postures | exactly 2, tenant-scoped | `core.tenant_model_selection.mode` ∈ {`platform`, `self_managed`}; a missing row means `platform` | §1 |
 | Debit points | 2 per event | receive (`EVENT_NANOS`, posture-independent today) + run (metered per `/renew`, settled at report — M80_010) | §3 |
 | Run slice charge | `run_fee + token_cost` | `run_fee = elapsed_ms × RUN_NANOS_PER_SEC / 1000`; platform adds the three-tier Δ-token cost; self-managed records tokens but never charges them | §3, §4.2 |
@@ -34,7 +34,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Credential list | metadata projection | `kind` ∈ {`provider_key`, `custom_endpoint`, `custom_secret`}; `api_key` structurally absent (no field to leak) | §8.3 |
 | Model registry | one row per `(model_id, secret_ref)` | `core.tenant_model_entries`, `UNIQUE (tenant_id, model_id, secret_ref)`; entries reference keys, never own material | §8.4 |
 | Rate lookup | generation-validated process cache | entry accepted only at the observed `core.model_catalogue_revision` or later; a miss loads the row | §4.2, §10 |
-| Unknown model on platform | `std.debug.panic` | an unpriced model reaching the charge path is an internal inconsistency, never a default rate | §4.2 |
+| Unknown model on platform | `error.ModelNotPriced` | never a default rate: renew and settle fail closed on it, the lease-estimate gate fails open because an estimate is not a charge | §2.3, §4.2 |
 | Catalogue read | `GET /v1/models`, bearer-authed | the public `cap.json` route is retired — `404`, no alias | §10 |
 | Plan tiers | none in the cost function | future paid plans manifest as grants or top-ups, never a `compute_charge` branch | §2.4 |
 | Posture switch | claim-time snapshot wins | posture resolved once, at gate time, before the receive deduct | §7 |
@@ -101,7 +101,7 @@ The posture flip lives in `core.tenant_model_selection.mode` (`platform` or `sel
 
 ## 2. Pure credits, one-time starter grant
 
-Every tenant has exactly one balance: `core.tenant_billing.balance_nanos` (`BIGINT NOT NULL CHECK (balance_nanos >= 0)`, holds 9 decimal places of USD precision; i64 caps a single tenant at ~$9.2B, headroom for sub-cent rates without another unit change). The gate compares this column against the estimated event cost. Deductions are SQL `UPDATE … SET balance_nanos = balance_nanos - <nanos>`. There is no second column for "free vs paid," no replenishing bucket, no included-events quota. One number, drains over time, refills only when the user buys credits.
+Every tenant has exactly one balance: `billing.tenant_wallet.balance_nanos` (`BIGINT NOT NULL CHECK (balance_nanos >= 0)`, holds 9 decimal places of USD precision; i64 caps a single tenant at ~$9.2B, headroom for sub-cent rates without another unit change). The gate compares this column against the estimated event cost. Deductions are SQL `UPDATE … SET balance_nanos = balance_nanos - <nanos>`. There is no second column for "free vs paid," no replenishing bucket, no included-events quota. One number, drains over time, refills only when the user buys credits.
 
 ### 2.1 The starter grant
 
@@ -126,7 +126,7 @@ Two properties fall out of the removal, both load-bearing:
 
 Metering itself is unchanged and never stopped: telemetry rows INSERT with posture and token counts regardless of what is charged. What changed is that `credit_deducted_nanos` now carries the catalogue's number instead of zero.
 
-How free usage is presented is canonical on [`agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing). `GET /v1/tenants/me/billing` carries `balance_nanos`, `is_exhausted`, and `exhausted_at` — the whole state a client needs. It carries no `free_trial` member; that removal is breaking and is recorded in the changelog.
+How free usage is presented is canonical on [`agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing). `GET /v1/tenants/me/billing` carries exactly four members — `balance_nanos`, `updated_at`, `is_exhausted`, and `exhausted_at` — which is the whole state a client needs. It carries no `free_trial` member; that removal is breaking and is recorded in the changelog. The set is pinned by an integration test rather than described only here, so a member arriving or departing fails the suite instead of silently dating this page.
 
 ### 2.4 Plan tiers
 
@@ -234,8 +234,13 @@ pub fn computeStageCharge(
     // self_managed prices with NO statement at all. Only the platform branch
     // consults the catalogue, and it prices against the generation `conn`
     // observes. No clock is involved at any point.
+    // An uncatalogued model is an OPERATIONAL state, not a programmer bug: an
+    // admin can DELETE a rate row while a tenant still names that model. This
+    // used to panic, which aborted the whole replica for one fleet's stale
+    // model, on every replica that picked the fleet up. It returns an error so
+    // each caller takes its own documented posture — see §2.3.
     const rates = (try resolveRenewSliceRates(conn, provider, posture, model)) orelse
-        std.debug.panic("compute_stage_charge: model '{s}' (provider '{s}') not in the priced catalogue", .{ model, provider });
+        return error.ModelNotPriced;
     // ms-precision: divide AFTER multiplying, so a 20_500 ms slice bills the full
     // 20.5 s, not a second-truncated 20 s (the per-slice debits then sum to the
     // real runtime × rate — never under-bill across N renewals).
@@ -255,7 +260,9 @@ Rates come from a process-local cache in front of `core.model_library` (`state/m
 
 Every admin mutation runs inside the generation transaction: lock the singleton row `FOR UPDATE`, change the catalogue, increment the generation, commit. The rows and the generation describing them therefore become visible together, and a replica that never saw the mutation still cannot serve the old rate — its entry carries the old generation and every charge compares it.
 
-`std.debug.panic` under platform is correct: a model that's not in the catalogue should never reach the lease path's billing — it would have been rejected at `tenant provider create` time (`400 model_not_in_caps_catalogue`) or when the bundle's frontmatter was authored. Reaching `computeStageCharge` with an unknown model is an internal inconsistency; we want `agentsfleetd` to fail the lease loudly, alert, and investigate, not silently use a default.
+`error.ModelNotPriced` under platform, not a panic and never a default rate. The upstream validators do reject an uncatalogued model — at `tenant provider create` time (`400 model_not_in_caps_catalogue`) and when the bundle's frontmatter is authored — but the catalogue can move after they ran: an admin `DELETE` of a non-default row leaves any tenant still naming that model reaching this resolve and getting a database answer of "no row".
+
+That is an operational state, not a programmer bug, which is why this used to be `std.debug.panic` and is not any more. A panic aborted the whole replica for one fleet's stale model, on every replica that picked the fleet up — one tenant's stale configuration taking down the daemon for everyone. The error lets each caller take its own documented posture instead: renew and settle fail closed, and the lease-estimate gate fails open, because an estimate is not a charge.
 
 ### 4.3 What an event costs — by shape, not by number
 
@@ -324,7 +331,7 @@ The balance gate above bounds what a **tenant** may spend: one credit pool, one 
 
 | | Balance gate | Budget gate |
 |---|---|---|
-| Scope | tenant (`core.tenant_billing.balance_nanos`) | one fleet (`core.fleets.config_json` → `x-agentsfleet.budget`) |
+| Scope | tenant (`billing.tenant_wallet.balance_nanos`) | one fleet (`core.fleets.config_json` → `x-agentsfleet.budget`) |
 | Question | "can this tenant afford one more event?" | "has this fleet spent its own allowance?" |
 | Pre-run refusal | `gate_blocked` + `balance_exhausted` | `gate_blocked` + `budget_breach` |
 | Mid-run refusal | `/renew` → `UZ-RUN-012` → `renewal_terminate` | `/renew` → `UZ-RUN-015` → `budget_breach` |
@@ -443,7 +450,7 @@ Both endpoints honour §8.2: the metadata is a read-time *projection*, not a new
 
 ### 8.4 The tenant model registry — many entries, one shared key (M121)
 
-The 4-fixed-slot Models page (Default / Anthropic / Other provider / Custom) could not represent a real tenant's model set: every Anthropic key past the first was hidden, every non-Anthropic provider piled into one bucket row, and the same model on two hosts (e.g. GLM 5.2 on `fireworks.ai` vs `wafers.ai`) had nowhere to live. `core.tenant_model_entries` (schema/027) adds the missing noun: one row per configured `(model_id, secret_ref)` pair, so N model rows can reference the same vault credential.
+The 4-fixed-slot Models page (Default / Anthropic / Other provider / Custom) could not represent a real tenant's model set: every Anthropic key past the first was hidden, every non-Anthropic provider piled into one bucket row, and the same model on two hosts (e.g. GLM 5.2 on `fireworks.ai` vs `wafers.ai`) had nowhere to live. `core.tenant_model_entries` (`schema/440_tenant_model_entries.sql`) adds the missing noun: one row per configured `(model_id, secret_ref)` pair, so N model rows can reference the same vault credential.
 
 ```sql
 core.tenant_model_entries (id, tenant_id, model_id, secret_ref, created_at, updated_at)
@@ -552,7 +559,7 @@ Hidden entirely in v2.0. Re-introduced in v2.1 alongside Stripe.
 ### 11.4 What gets read by this page
 
 Everything on the page is sourced from rows the runtime already writes:
-- `core.tenant_billing.balance_nanos` for the headline.
+- `billing.tenant_wallet.balance_nanos` for the headline.
 - `billing.usage_ledger` (filtered by tenant_id, with the `charge_type` discriminator) for the Usage tab.
 - No Stripe, no purchase tables, no invoicing tables — those land in v2.1.
 
