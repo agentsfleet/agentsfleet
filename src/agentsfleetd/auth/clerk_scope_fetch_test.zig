@@ -10,6 +10,7 @@ const std = @import("std");
 const testing = std.testing;
 
 const fetch = @import("clerk_scope_fetch.zig");
+const clerk_backend = @import("clerk_backend.zig");
 
 const SUBJECT = "user_2aXyTest";
 
@@ -110,7 +111,7 @@ test "an absent or blank backend secret refuses before any network call" {
     for (blank_cases) |secret| {
         try testing.expectError(
             fetch.FetchError.MissingSecret,
-            fetch.fetchScopeClaim(testing.allocator, secret, SUBJECT),
+            fetch.fetchScopeClaim(testing.allocator, secret, clerk_backend.API_BASE, SUBJECT),
         );
     }
 }

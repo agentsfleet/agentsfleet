@@ -36,6 +36,8 @@ const cmd_common = @import("common.zig");
 const db = @import("../db/pool.zig");
 const queue_redis = @import("../queue/redis.zig");
 const api_key = @import("../auth/api_key.zig");
+const auth_scopes = @import("../auth/scopes.zig");
+const clerk_backend = @import("../auth/clerk_backend.zig");
 const tenant_api_key = @import("../auth/middleware/tenant_api_key.zig");
 const base = @import("../db/test_fixtures.zig");
 const test_port = @import("../http/test_port.zig");
@@ -102,11 +104,83 @@ const FLEET_NAME = "lifecycle-fleet";
 const FLEET_CONFIG_JSON = "{}";
 const FLEET_SOURCE_MD = "";
 const TENANT_KEY_BODY_CHARS: usize = 48;
-// Tenant API key (agt_t…) — resolved by the real serve.run's DB-backed
+// Tenant API key (agt_t…) — authenticated by the real serve.run's DB-backed
 // api_key_lookup, so no JSON Web Key Set (JWKS) fetch is needed to authenticate
-// the SSE stream (the workspace fleet-events route needs only FLEET_READ, which
-// the tenant key bundle carries).
+// the SSE stream. Under the resolved model the key's CAPABILITIES come from the
+// identity provider via the creator in `created_by`; this offline lane answers
+// that resolve from the loopback `FakeClerk` below.
 const AGT_T_KEY = tenant_api_key.TENANT_KEY_PREFIX ++ "d" ** TENANT_KEY_BODY_CHARS;
+
+// ── Fake identity-provider backend for the creator scope resolve. Not a secret:
+// a fixture string handed to the daemon so the resolver's secret gate passes.
+const CLERK_TEST_SECRET = "lifecycle-clerk-backend-fixture";
+// The stub answers every subject with the claim a real signup provisions for
+// the owner; only `public_metadata.scopes` is read by the resolver.
+const FAKE_CLERK_USER_BODY = std.fmt.comptimePrint(
+    \\{{"public_metadata":{{"scopes":"{s}"}}}}
+, .{auth_scopes.SIGNUP_OWNER_CLAIM});
+const FAKE_CLERK_RESPONSE = std.fmt.comptimePrint(
+    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {d}\r\nconnection: close\r\n\r\n{s}",
+    .{ FAKE_CLERK_USER_BODY.len, FAKE_CLERK_USER_BODY },
+);
+// "http://127.0.0.1:65535" is 22 bytes; headroom doubles it.
+const FAKE_CLERK_BASE_BUF: usize = 44;
+
+/// Loopback stand-in for the provider backend API: serves every connection the
+/// same 200 user document until stopped. Shutdown follows the Linux-safe
+/// pattern (write_zig §Listener Shutdown Must Wake accept()): set stop, poke
+/// one loopback connect to wake the blocked accept(), join, and only THEN
+/// deinit the listener.
+const FakeClerk = struct {
+    loopback: test_port.Loopback,
+    stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    thread: ?std.Thread = null,
+
+    fn init(io: std.Io) !FakeClerk {
+        return .{ .loopback = try test_port.listenLoopback(io) };
+    }
+
+    /// Caller keeps `self` address-stable until `shutdown` returns.
+    fn start(self: *FakeClerk) !void {
+        self.thread = try std.Thread.spawn(.{}, serveLoop, .{self});
+    }
+
+    fn serveLoop(self: *FakeClerk) void {
+        const io = common.globalIo();
+        while (true) {
+            const conn = self.loopback.server.accept(io) catch return;
+            defer conn.close(io);
+            // safe because: shutdown()'s release-store pairs with this acquire-load.
+            if (self.stop.load(.acquire)) return;
+            var rbuf: [2048]u8 = undefined;
+            _ = std.posix.read(conn.socket.handle, &rbuf) catch continue;
+            var sent: usize = 0;
+            while (sent < FAKE_CLERK_RESPONSE.len) {
+                const rc = std.posix.system.write(conn.socket.handle, FAKE_CLERK_RESPONSE[sent..].ptr, FAKE_CLERK_RESPONSE.len - sent);
+                if (std.posix.errno(rc) != .SUCCESS) break;
+                sent += @intCast(rc);
+            }
+        }
+    }
+
+    fn shutdown(self: *FakeClerk) void {
+        const io = common.globalIo();
+        // safe because: paired with the acquire-load in serveLoop.
+        self.stop.store(true, .release);
+        wakeAccept(self.loopback.port, io);
+        if (self.thread) |t| t.join();
+        self.thread = null;
+        self.loopback.server.deinit(io);
+    }
+
+    /// One throwaway connect: `deinit` alone does not wake a blocked
+    /// `accept()` on Linux, so the acceptor is woken explicitly before join.
+    fn wakeAccept(port: u16, io: std.Io) void {
+        var addr = std.Io.net.IpAddress.parseIp4("127.0.0.1", port) catch return;
+        const stream = addr.connect(io, .{ .mode = .stream }) catch return;
+        stream.close(io);
+    }
+};
 
 const BootOutcome = enum { served, died_early, timed_out };
 
@@ -144,6 +218,14 @@ test "integration: daemon boot -> SIGTERM -> drain runs the real teardown clean"
     const redis_url = common.env.testLiveValue(OS_REDIS_TLS_URL_ENV) orelse return error.SkipZigTest;
     const ca_cert = common.env.testLiveValue(OS_REDIS_CA_CERT_ENV) orelse return error.SkipZigTest;
 
+    // ── Creator scope resolve: the agt_t SSE auth asks the provider backend for the
+    // key creator's claim; this lane is offline, so a loopback stub answers.
+    var fake_clerk = try FakeClerk.init(io);
+    try fake_clerk.start();
+    defer fake_clerk.shutdown();
+    var clerk_base_buf: [FAKE_CLERK_BASE_BUF]u8 = undefined;
+    const clerk_api_base = try std.fmt.bufPrint(&clerk_base_buf, "http://127.0.0.1:{d}", .{fake_clerk.loopback.port});
+
     var env_map = try common.env.fromPairs(alloc, &.{
         .{ db.roleEnvVarName(.api), db_url },
         .{ REDIS_URL_API_ENV, redis_url },
@@ -154,6 +236,8 @@ test "integration: daemon boot -> SIGTERM -> drain runs the real teardown clean"
         .{ "ENCRYPTION_MASTER_KEY", ENCRYPTION_MASTER_KEY },
         .{ "AUTH_SESSION_CODE_PEPPER", SESSION_PEPPER },
         .{ "AUDIT_LOG_PEPPER", AUDIT_PEPPER },
+        .{ clerk_backend.SECRET_ENV_VAR, CLERK_TEST_SECRET },
+        .{ clerk_backend.API_BASE_ENV_VAR, clerk_api_base },
     });
     defer env_map.deinit();
 

@@ -28,6 +28,10 @@ pub const SECRET_ENV_VAR = "CLERK_SECRET_KEY";
 /// `/users/{id}` from the same base — one spelling of the host for every
 /// backend call, so a deployment pointed at a different base moves both.
 pub const API_BASE = "https://api.clerk.com/v1";
+/// Boot-time override for `API_BASE` — resolved once alongside the secret,
+/// never read per request. Exists for deployments (and the boot-drain lane)
+/// that answer the backend API from somewhere other than the vendor host.
+pub const API_BASE_ENV_VAR = "CLERK_API_BASE";
 
 /// HTTP method used for the metadata-merge endpoint. Exposed as a const so
 /// a unit test can assert it without standing up a mock HTTP server. Clerk's
@@ -57,20 +61,22 @@ pub const PatchError = error{
 /// admin dashboard) survive.
 pub fn patchUserPublicMetadata(
     secret: ?[]const u8,
+    api_base: []const u8,
     alloc: std.mem.Allocator,
     user_id: []const u8,
     tenant_id: ?[]const u8,
     scopes: ?[]const u8,
 ) PatchError!void {
     // Borrowed from the boot-resolved Context secret (CLERK_SECRET_KEY) — no
-    // per-request env read, no free here.
+    // per-request env read, no free here. `api_base` rides the same contract,
+    // so a CLERK_API_BASE override moves the writes with the scope reads.
     const clerk_secret = secret orelse return PatchError.MissingSecret;
     if (std.mem.trim(u8, clerk_secret, " \t\r\n").len == 0) return PatchError.MissingSecret;
 
     const payload = try renderMetadataPayload(alloc, tenant_id, scopes);
     defer alloc.free(payload);
 
-    const url = try std.fmt.allocPrint(alloc, "{s}/users/{s}/metadata", .{ API_BASE, user_id });
+    const url = try std.fmt.allocPrint(alloc, "{s}/users/{s}/metadata", .{ api_base, user_id });
     defer alloc.free(url);
 
     const auth_header = try std.fmt.allocPrint(alloc, "Bearer {s}", .{clerk_secret});

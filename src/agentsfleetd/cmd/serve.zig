@@ -9,6 +9,7 @@ const audit_events = @import("../auth/audit_events.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const api_key_lookup = @import("api_key_lookup.zig");
 const cli_credential_lookup = @import("cli_credential_lookup.zig");
+const clerk_backend = @import("../auth/clerk_backend.zig");
 const clerk_scope_resolver = @import("../auth/clerk_scope_resolver.zig");
 const serve_runner_lookup = @import("serve_runner_lookup.zig");
 const metrics = @import("../observability/metrics.zig");
@@ -123,6 +124,13 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     defer serve_shutdown.awaitInstallWorkers(&install_wg);
 
     defer serve_caches.deinit();
+    // Boot-resolved provider base: one value feeds the handler Context (the
+    // signup metadata writer) and the scope resolver below, so an override
+    // moves every backend call together rather than splitting the host.
+    const clerk_api_base_env = try common.env.owned(env_map, alloc, clerk_backend.API_BASE_ENV_VAR);
+    defer if (clerk_api_base_env) |v| alloc.free(v);
+    const clerk_api_base = clerk_api_base_env orelse clerk_backend.API_BASE;
+
     var ctx = http_handler.Context{
         .model_library_cache = serve_caches.init(alloc),
         .pool = api_pool,
@@ -134,6 +142,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         .clerk_webhook_secret = secrets.clerk_webhook_secret,
         .approval_signing_secret = secrets.approval_signing_secret,
         .clerk_secret_key = secrets.clerk_secret_key,
+        .clerk_api_base = clerk_api_base,
         .oidc = null,
         .r2 = if (r2_store) |*c| c else null,
         .auth_sessions = &sessions,
@@ -191,6 +200,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     // which of the two happened).
     var scope_resolver = clerk_scope_resolver.ScopeResolver.init(alloc, .{
         .secret = secrets.clerk_secret_key,
+        .api_base = clerk_api_base,
     });
     defer scope_resolver.deinit();
 
