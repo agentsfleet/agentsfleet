@@ -63,7 +63,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/http/handlers/auth/cli_credentials.zig` | CREATE | Mint, list, and revoke endpoints |
 | `src/agentsfleetd/http/middleware/authenticate.zig` | EDIT | The credential joins the accepted principal set, resolving to a user rather than a tenant |
 | `src/agentsfleetd/errors/error_registry.zig` | EDIT | Registered codes for exchange failure, deployment mismatch, and revoked credential |
-| `src/agentsfleetd/errors/error_entries_runtime.zig` | EDIT | Runtime entries for the new codes |
+| `src/agentsfleetd/errors/error_entries.zig` | EDIT | User-facing entries for the new codes. Corrected at EXECUTE from `error_entries_runtime.zig`, which the drafted table named: `UZ-AUTH-023`/`024` live here, so their sibling does too |
 | `src/agentsfleetd/db/index_usage_integration_test.zig` | EDIT | Declares the two indexes `250` creates; the suite refuses an undeclared index |
 | `src/agentsfleetd/queue/redis_pool_test.zig` | EDIT | Out of scope, folded in on Indy's Aug 12 call (see Discovery): the acquire-overshoot bound is sized by the bug it guards, so a loaded machine stops failing a correct pool |
 | `cli/src/commands/login.ts` | EDIT | Step 6 exchanges the session token before anything is persisted |
@@ -74,6 +74,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/src/services/config.ts` | EDIT | The stored deployment joins the target ladder, below the flag and the environment variable |
 | `cli/src/services/http-client.ts` | EDIT | A request refuses a credential minted against another deployment |
 | `cli/src/lib/api-paths.ts` | EDIT | The credential paths join the centralised map |
+| `cli/src/constants/cli-credential.ts` | CREATE | The prefixes, the credential's declared shape, and the machine-name grammar — single-sourced here because the client and the daemon must agree on them byte-for-byte (RULE UFS) |
+| `cli/src/cli.ts` | EDIT | The empty-credentials literal moves to `state.ts`; it existed in three places and each gained a field |
+| `cli/test/login-exchange.unit.test.ts` | CREATE | The load-shape refusals, the machine-name grammar, and the orphan sweep |
+| `cli/test/login.acceptance.spec.ts` | EDIT | The mint is stubbed in the device-flow fixture; the persistence assertions flip from the session token to the credential |
+| `cli/test/{api-url-resolution,config-precedence,connector,coverage-fill,services-coverage-fillers}` | EDIT | Fixtures seeded a JWT-shaped value into the credential field, which the load check now refuses — each reseeded with a well-formed credential |
 | `cli/test/acceptance/fixtures/state-dir.ts` | EDIT | Adds the empty-state-dir fixture, the inverse of the stubbed one |
 | `cli/test/acceptance/help-and-errors.spec.ts` | EDIT | Isolates `AGENTSFLEET_STATE_DIR`, so the auth-guard assertions stop reading the developer's real login |
 | `cli/test/acceptance/flags-and-env.spec.ts` | EDIT | Same isolation; this workstream changes the persisted shape these specs observe |
@@ -126,7 +131,7 @@ The platform issues exactly one durable credential today and it belongs to a ten
 - **Dimension 1.1** — a credential resolves to the user who created it, never to a tenant-wide principal → Test `test_credential_resolves_to_its_user` — **DONE**
 - **Dimension 1.2** — two live credentials for one `(user, machine)` cannot be created → Test `test_second_live_credential_per_machine_is_refused` — **DONE**
 - **Dimension 1.3** — only a hash is stored; the credential itself is unreadable from the row → Test `test_row_holds_no_recoverable_credential` — **DONE**
-- **Dimension 1.4** — a value lacking the credential prefix is refused on load rather than sent → Test `test_non_prefixed_value_is_refused_on_load`
+- **Dimension 1.4** — a value lacking the credential prefix is refused on load rather than sent → Test `test_non_prefixed_value_is_refused_on_load` — **DONE**
 - **Dimension 1.5** — a revoked credential authenticates nothing → Test `test_revoked_credential_is_refused` — **DONE**
 - **Dimension 1.6** — the row records the machine and address that minted it, written once at mint and never on the authenticate path → Test `test_mint_records_attribution_and_auth_path_writes_nothing` — **DONE**
 
@@ -134,11 +139,11 @@ The platform issues exactly one durable credential today and it belongs to a ten
 
 The recovered session token is valid for roughly one minute — ample for exactly one call. That call mints the §1 credential, and the credential, not the session token, is what reaches disk. **Implementation default:** the exchange completes before anything is persisted, so a failed mint leaves the operator logged out and told why, rather than logged in with a credential already dead. *(Use case 1: CLI login.)*
 
-- **Dimension 2.1** — the value written by login is a §1 credential, and no session token reaches disk → Test `test_login_persists_credential_not_session_token`
+- **Dimension 2.1** — the value written by login is a §1 credential, and no session token reaches disk → Test `test_login_persists_credential_not_session_token` — **DONE**
 - **Dimension 2.2** — a credential written by login authenticates a call issued after the session token's own lifetime has elapsed → Test `test_credential_outlives_the_session_window`
-- **Dimension 2.3** — the mint endpoint accepts the session token as its authorisation, so the exchange is possible within the window → Test `test_mint_accepts_session_token_auth`
-- **Dimension 2.4** — a failed exchange persists nothing and reports a registered code, never falling back to the short-lived token → Test `test_failed_exchange_persists_nothing`
-- **Dimension 2.5** — the retired session-token persistence path has no remaining caller → Test `test_session_token_persistence_has_no_caller`
+- **Dimension 2.3** — the mint endpoint accepts the session token as its authorisation, so the exchange is possible within the window → Test `test_mint_accepts_session_token_auth` — **DONE**
+- **Dimension 2.4** — a failed exchange persists nothing and reports a registered code, never falling back to the short-lived token → Test `test_failed_exchange_persists_nothing` — **DONE**
+- **Dimension 2.5** — the retired session-token persistence path has no remaining caller → Test `test_session_token_persistence_has_no_caller` — **DONE**
 - **Dimension 2.6** — after login, listing fleets succeeds using the stored credential → Test `test_login_then_list_fleets_succeeds` *(use case 5)*
 
 ### §3 — One machine, one live credential; logout ends it

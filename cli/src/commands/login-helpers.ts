@@ -298,6 +298,9 @@ export const saveDirectToken = (
       token: redacted,
       sessionId: null,
       apiUrl: config.apiUrl,
+      // This client did not mint the supplied value and holds no identifier
+      // for it, so there is nothing for a later logout to revoke by name.
+      credentialId: null,
     });
     yield* hydrateWorkspacesAfterLogin(redacted);
     yield* captureLoginCompleted("", rawToken, FIELD_TOKEN);

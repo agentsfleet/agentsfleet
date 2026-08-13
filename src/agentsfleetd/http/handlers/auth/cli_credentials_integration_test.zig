@@ -245,3 +245,55 @@ test "integration: test_tenant_key_refused_on_user_scoped_route — an organisat
 
     fixtures.cleanup(h);
 }
+
+test "integration: test_credential_cannot_mint_another_credential — a credential is not a key to more credentials" {
+    const h = fixtures.seededHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    // A real, live credential for this person's own machine. It authenticates,
+    // so every assertion below is about what it is permitted to DO — a value
+    // that failed to authenticate would answer 401 and prove nothing.
+    const conn = try h.acquireConn();
+    const owned = try fixtures.mintDirect(conn, fixtures.OWNER_USER_ID, fixtures.MACHINE_NAME);
+    defer owned.deinit(ALLOC);
+    h.releaseConn(conn);
+
+    // Minting under a machine name of the caller's choosing is the step that
+    // would turn one stolen credential into an unbounded, self-renewing
+    // supply: each mint yields the next, revoking any single row leaves its
+    // siblings live, and the person holding the account cannot tell how many
+    // exist. The browser sign-in is the cost an attacker cannot replay, so
+    // minting keeps it and a credential is refused here.
+    const body = "{\"machine_name\":\"" ++ fixtures.OTHER_MACHINE_NAME ++ "\"}";
+    {
+        const r = try (try (try h.post(PATH).bearer(owned.secret)).json(body)).send();
+        defer r.deinit();
+        try r.expectStatus(.forbidden);
+        try r.expectErrorCode(ec.ERR_FORBIDDEN);
+    }
+
+    {
+        // The refusal wrote nothing: the second machine holds no live row, so
+        // the chain does not start even once.
+        const c = try h.acquireConn();
+        defer h.releaseConn(c);
+        try std.testing.expectEqual(
+            @as(i64, 0),
+            try fixtures.liveCountForMachine(c, fixtures.OWNER_USER_ID, fixtures.OTHER_MACHINE_NAME),
+        );
+    }
+
+    // The same credential still manages its own existence. Listing stays open
+    // precisely so a terminal can see and end its own access without opening a
+    // browser; narrowing the mint must not have narrowed that too.
+    {
+        const r = try (try h.get(PATH).bearer(owned.secret)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+    }
+
+    fixtures.cleanup(h);
+}

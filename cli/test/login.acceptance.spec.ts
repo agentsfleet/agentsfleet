@@ -33,7 +33,13 @@ import {
   telemetryRuntimeFromValuesLayer,
 } from "../src/services/telemetry/runtime.service.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
+import { CLI_CREDENTIALS_PATH } from "../src/lib/api-paths.ts";
 import {
+  CLI_CREDENTIAL_BODY_LEN,
+  CLI_CREDENTIAL_PREFIX,
+} from "../src/constants/cli-credential.ts";
+import {
+  AuthError,
   MeValidationError,
   NetworkError,
   ServerError,
@@ -43,6 +49,13 @@ import {
 const SESSION_ID = "sess_acceptance_e2e";
 const VERIFICATION_CODE = "424242";
 const TEST_JWT = "eyJhbGciOiJIUzI1NiJ9.acceptance-payload.sig";
+
+// What the mint hands back. Shaped the way the client validates on load —
+// the afc_ prefix and a 64-character lower-case hex body — and built by
+// repetition so this file carries no high-entropy literal.
+const MINTED_BODY_CHAR = "b";
+const MINTED_CREDENTIAL = `${CLI_CREDENTIAL_PREFIX}${MINTED_BODY_CHAR.repeat(CLI_CREDENTIAL_BODY_LEN)}`;
+const MINTED_CREDENTIAL_ID = "cli_cred_acceptance";
 
 interface Recorder {
   readonly stdout: string[];
@@ -95,11 +108,19 @@ const exportSpkiBase64Url = async (publicKey: CryptoKey): Promise<string> => {
 interface DeviceFlowFixture {
   readonly capturedCliPubKey: { value: string | null };
   readonly verifyCalls: { count: number };
+  // The exchange login makes with the recovered session token. Counted so a
+  // test can prove it happened exactly once, and that its authorization was
+  // the session token rather than anything read from disk.
+  readonly mintCalls: { count: number; authorization: string | null; machineName: string | null };
 }
 
 const httpLayer = (
   fixture: DeviceFlowFixture,
-  opts: { billingFails?: boolean; firstVerifyFails?: boolean } = {},
+  opts: {
+    billingFails?: boolean;
+    firstVerifyFails?: boolean;
+    mintFails?: boolean;
+  } = {},
 ): Layer.Layer<HttpClient> =>
   Layer.succeed(HttpClient, {
     request: <T>(input: HttpRequestInput): Effect.Effect<T, NetworkError | ServerError> => {
@@ -150,6 +171,31 @@ const httpLayer = (
             nonce: enc.nonceBase64Url,
           } as T;
         });
+      }
+      if (method === "POST" && path === CLI_CREDENTIALS_PATH) {
+        const body = input.body as { machine_name: string };
+        fixture.mintCalls.count += 1;
+        fixture.mintCalls.machineName = body.machine_name;
+        fixture.mintCalls.authorization = input.token
+          ? Redacted.value(input.token)
+          : null;
+        if (opts.mintFails) {
+          return Effect.fail(
+            new ServerError({
+              detail: "session expired before the exchange",
+              suggestion: "sign in again",
+              code: "UZ-AUTH-006",
+              status: 401,
+              requestId: "req_mint_1",
+            }),
+          );
+        }
+        return Effect.succeed({
+          id: MINTED_CREDENTIAL_ID,
+          credential: MINTED_CREDENTIAL,
+          machine_name: body.machine_name,
+          deployment: "https://api.test.local",
+        } as T);
       }
       if (
         method === "GET" &&
@@ -300,6 +346,7 @@ describe("login acceptance — full device flow end-to-end", () => {
     const fixture: DeviceFlowFixture = {
       capturedCliPubKey: { value: null },
       verifyCalls: { count: 0 },
+      mintCalls: { count: 0, authorization: null, machineName: null },
     };
 
     const program = loginEffect({
@@ -327,7 +374,10 @@ describe("login acceptance — full device flow end-to-end", () => {
       throw new Error(`expected success, got: ${Cause.pretty(exit.cause)}`);
     }
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(rec.savedToken).toBe(TEST_JWT);
+    expect(rec.savedToken).toBe(MINTED_CREDENTIAL);
+    // The session token bought the credential and was then discarded;
+    // what reaches disk outlives the minute that token had left.
+    expect(rec.savedToken).not.toBe(TEST_JWT);
     expect(rec.savedSessionId).toBe(SESSION_ID);
     expect(rec.promptsAsked).toBe(1);
     expect(fixture.verifyCalls.count).toBe(1);
@@ -345,7 +395,12 @@ describe("login acceptance — full device flow end-to-end", () => {
 const runLogin = (
   rec: Recorder,
   fixture: DeviceFlowFixture,
-  opts: { jsonMode?: boolean; billingFails?: boolean; firstVerifyFails?: boolean } = {},
+  opts: {
+    jsonMode?: boolean;
+    billingFails?: boolean;
+    firstVerifyFails?: boolean;
+    mintFails?: boolean;
+  } = {},
 ): Effect.Effect<void, CliError, never> =>
   loginEffect({
     noOpen: true,
@@ -358,6 +413,7 @@ const runLogin = (
       httpLayer(fixture, {
         billingFails: opts.billingFails ?? false,
         firstVerifyFails: opts.firstVerifyFails ?? false,
+        mintFails: opts.mintFails ?? false,
       }),
     ),
     Effect.provide(inputLayer(rec, VERIFICATION_CODE)),
@@ -374,6 +430,7 @@ const runLogin = (
 const freshFixture = (): DeviceFlowFixture => ({
   capturedCliPubKey: { value: null },
   verifyCalls: { count: 0 },
+  mintCalls: { count: 0, authorization: null, machineName: null },
 });
 
 describe("login acceptance — jsonMode rendering + rollback", () => {
@@ -381,7 +438,10 @@ describe("login acceptance — jsonMode rendering + rollback", () => {
     const rec = makeRecorder();
     const exit = await Effect.runPromiseExit(runLogin(rec, freshFixture(), { jsonMode: true }));
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(rec.savedToken).toBe(TEST_JWT);
+    expect(rec.savedToken).toBe(MINTED_CREDENTIAL);
+    // The session token bought the credential and was then discarded;
+    // what reaches disk outlives the minute that token had left.
+    expect(rec.savedToken).not.toBe(TEST_JWT);
     expect(rec.stdout.some((l) => l.includes('"status":"complete"'))).toBe(true);
     expect(rec.stdout.some((l) => l.includes('"token_saved":true'))).toBe(true);
     expect(rec.stdout.some((l) => l.includes("login complete"))).toBe(false);
@@ -397,7 +457,10 @@ describe("login acceptance — jsonMode rendering + rollback", () => {
     expect(err).toBeInstanceOf(MeValidationError);
     // The token was persisted moments before validation failed; rollback
     // must wipe it so subsequent commands don't reuse a dead-on-arrival token.
-    expect(rec.savedToken).toBe(TEST_JWT);
+    expect(rec.savedToken).toBe(MINTED_CREDENTIAL);
+    // The session token bought the credential and was then discarded;
+    // what reaches disk outlives the minute that token had left.
+    expect(rec.savedToken).not.toBe(TEST_JWT);
     expect(rec.cleared).toBe(true);
   });
 
@@ -411,9 +474,60 @@ describe("login acceptance — jsonMode rendering + rollback", () => {
       throw new Error(`expected retry success, got: ${Cause.pretty(exit.cause)}`);
     }
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(rec.savedToken).toBe(TEST_JWT);
+    expect(rec.savedToken).toBe(MINTED_CREDENTIAL);
+    // The session token bought the credential and was then discarded;
+    // what reaches disk outlives the minute that token had left.
+    expect(rec.savedToken).not.toBe(TEST_JWT);
     // Prompted twice (first attempt + retry), called /verify twice.
     expect(rec.promptsAsked).toBe(2);
     expect(fixture.verifyCalls.count).toBe(2);
+  });
+});
+
+describe("login acceptance — the credential exchange", () => {
+  test("test_login_persists_credential_not_session_token — the session token authorises one mint and is then discarded", async () => {
+    const rec = makeRecorder();
+    const fixture = freshFixture();
+    const exit = await Effect.runPromiseExit(runLogin(rec, fixture));
+    expect(Exit.isSuccess(exit)).toBe(true);
+
+    // Spent exactly once, and spent as the authorization — the whole point
+    // of the sixty-second window is that it buys one durable thing.
+    expect(fixture.mintCalls.count).toBe(1);
+    expect(fixture.mintCalls.authorization).toBe(TEST_JWT);
+
+    // The label is hostname-derived and inside the server's grammar. A
+    // platform label ("macos-cli") would make every Mac claim one row, so
+    // asserting the grammar also guards the machine-per-row key.
+    expect(fixture.mintCalls.machineName).toMatch(/^[a-zA-Z0-9._-]{1,64}$/);
+
+    // What survives on disk is the credential, and the session token
+    // appears nowhere in the persisted record.
+    expect(rec.savedToken).toBe(MINTED_CREDENTIAL);
+    expect(rec.savedToken).not.toBe(TEST_JWT);
+  });
+
+  test("test_failed_exchange_persists_nothing — a refused mint writes nothing and reports why the daemon refused", async () => {
+    const rec = makeRecorder();
+    const fixture = freshFixture();
+    const exit = await Effect.runPromiseExit(
+      runLogin(rec, fixture, { mintFails: true }),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+
+    // The exchange was attempted and refused, and nothing reached disk —
+    // not the credential, and above all not the session token the flow was
+    // still holding at that moment.
+    expect(fixture.mintCalls.count).toBe(1);
+    expect(rec.savedToken).toBeNull();
+
+    const err = Exit.isFailure(exit)
+      ? Option.getOrNull(Cause.findErrorOption(exit.cause))
+      : null;
+    expect(err).toBeInstanceOf(AuthError);
+    // The daemon named the cause (an expired session). That code survives
+    // instead of being flattened into the client's generic one, so the
+    // operator is told which failure happened.
+    expect((err as InstanceType<typeof AuthError>).code).toBe("UZ-AUTH-006");
   });
 });

@@ -32,6 +32,20 @@ import path from "node:path";
 import { Writable } from "node:stream";
 
 import { saveCredentials, saveWorkspaces } from "../src/lib/state.ts";
+import {
+  CLI_CREDENTIAL_BODY_LEN,
+  CLI_CREDENTIAL_PREFIX,
+} from "../src/constants/cli-credential.ts";
+
+// A credential shaped the way services/credentials.ts validates on load: the
+// afc_ prefix and a 64-character lower-case hex body. Built by repetition
+// rather than written out, so this file carries no high-entropy literal for a
+// secret scanner to flag, and so nobody mistakes it for a real credential.
+// A seeded value that fails the load check would read as logged-out and every
+// authed fixture would bounce off the auth guard.
+const FIXTURE_BODY_CHAR = "a";
+export const FIXTURE_CREDENTIAL = `${CLI_CREDENTIAL_PREFIX}${FIXTURE_BODY_CHAR.repeat(CLI_CREDENTIAL_BODY_LEN)}`;
+export const FIXTURE_CREDENTIAL_ID = "cli_cred_fixture";
 
 const STATE_DIR_ENV = "AGENTSFLEET_STATE_DIR";
 const TMP_PREFIX = "agentsfleet-test-";
@@ -143,7 +157,7 @@ export async function withAuthedStateDir<T>(
     workspaceId,
     workspaceName = "test-ws",
     sessionId = "sess_test",
-    token = "header.payload.sig",
+    token = FIXTURE_CREDENTIAL,
     apiUrl = null,
   } = opts;
   return withFreshStateDir(async (dir) => {
@@ -152,6 +166,7 @@ export async function withAuthedStateDir<T>(
       saved_at: Date.now(),
       session_id: sessionId,
       api_url: apiUrl,
+      credential_id: FIXTURE_CREDENTIAL_ID,
     });
     await saveWorkspaces({
       current_workspace_id: workspaceId,

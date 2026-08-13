@@ -14,12 +14,19 @@ import {
   clearCredentials as clearCredsRaw,
 } from "../lib/state.ts";
 import type { Credentials as CredentialsRecord } from "../commands/types.ts";
+import {
+  CLI_CREDENTIAL_PATTERN,
+  TENANT_KEY_PREFIX,
+} from "../constants/cli-credential.ts";
 import { UnexpectedError } from "../errors/index.ts";
 
 export interface SaveAccessTokenInput {
   readonly token: Redacted.Redacted<string>;
   readonly sessionId: string | null;
   readonly apiUrl: string | undefined;
+  // Identifier of the minted credential, or null when this client did not
+  // mint it (a directly supplied tenant key).
+  readonly credentialId: string | null;
 }
 
 export interface CredentialsShape {
@@ -46,10 +53,27 @@ const unexpected = (op: string) =>
 const loadRecord = (): Effect.Effect<CredentialsRecord, UnexpectedError> =>
   Effect.tryPromise({ try: () => loadCredsRaw(), catch: unexpected("load") });
 
+// Refused on load, not merely on save. A session token written into this
+// field by a regression is dropped at read and never carried on a request —
+// the check has to live on the read path to catch a value some other code
+// path already wrote.
+//
+// The two credential classes are checked to different depths on purpose. A
+// minted credential is matched against its full declared shape, mirroring
+// looksWellFormed in src/agentsfleetd/auth/cli_credential.zig, so a
+// truncated paste fails here rather than at the server. A tenant key is
+// matched on its prefix alone: its shape is owned by the tenant-key module
+// and is not mirrored here, and a second copy of a shape we do not generate
+// would be a fact free to drift.
+const isPersistable = (token: string): boolean =>
+  CLI_CREDENTIAL_PATTERN.test(token) || token.startsWith(TENANT_KEY_PREFIX);
+
 const makeLive = (): CredentialsShape => ({
   getAccessToken: loadRecord().pipe(
     Effect.map((rec) =>
-      rec.token ? Option.some(Redacted.make(rec.token)) : Option.none<Redacted.Redacted<string>>(),
+      rec.token && isPersistable(rec.token)
+        ? Option.some(Redacted.make(rec.token))
+        : Option.none<Redacted.Redacted<string>>(),
     ),
   ),
   getSavedAt: loadRecord().pipe(Effect.map((rec) => rec.saved_at ?? null)),
@@ -63,6 +87,7 @@ const makeLive = (): CredentialsShape => ({
           saved_at: Date.now(),
           session_id: input.sessionId,
           api_url: input.apiUrl ?? null,
+          credential_id: input.credentialId,
         }),
       catch: unexpected("save"),
     }),

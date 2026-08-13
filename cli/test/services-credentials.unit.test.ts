@@ -10,6 +10,14 @@ import { Cause, Effect, Exit, Option, Redacted } from "effect";
 import { Credentials, credentialsLayer } from "../src/services/credentials.ts";
 import { UnexpectedError } from "../src/errors/index.ts";
 import { useFreshStateDir } from "./helpers-cli-state.ts";
+import {
+  CLI_CREDENTIAL_BODY_LEN,
+  CLI_CREDENTIAL_PREFIX,
+} from "../src/constants/cli-credential.ts";
+
+// A value the load check accepts, so the roundtrip proves storage rather
+// than tripping the shape refusal.
+const ROUNDTRIP_CREDENTIAL = `${CLI_CREDENTIAL_PREFIX}${"d".repeat(CLI_CREDENTIAL_BODY_LEN)}`;
 
 const stateDir = useFreshStateDir();
 
@@ -32,16 +40,17 @@ describe("Credentials service", () => {
       Effect.gen(function* () {
         const c = yield* Credentials;
         yield* c.saveAccessToken({
-          token: Redacted.make("tok-1"),
+          token: Redacted.make(ROUNDTRIP_CREDENTIAL),
           sessionId: "sess-1",
           apiUrl: "https://api.test.local",
+          credentialId: null,
         });
         return yield* c.getAccessToken;
       }),
     );
     expect(Option.isSome(result)).toBe(true);
     if (Option.isSome(result)) {
-      expect(Redacted.value(result.value)).toBe("tok-1");
+      expect(Redacted.value(result.value)).toBe(ROUNDTRIP_CREDENTIAL);
     }
   });
   test("getSavedAt + getSessionId + getApiUrl return persisted values", async () => {
@@ -49,9 +58,10 @@ describe("Credentials service", () => {
       Effect.gen(function* () {
         const c = yield* Credentials;
         yield* c.saveAccessToken({
-          token: Redacted.make("tok-1"),
+          token: Redacted.make(ROUNDTRIP_CREDENTIAL),
           sessionId: "sess-1",
           apiUrl: "https://api.test.local",
+          credentialId: null,
         });
         return {
           savedAt: yield* c.getSavedAt,
@@ -72,6 +82,7 @@ describe("Credentials service", () => {
           token: Redacted.make("tok-2"),
           sessionId: "sess-2",
           apiUrl: "https://x",
+          credentialId: null,
         });
         yield* c.clearAccessToken;
         return {
@@ -91,6 +102,7 @@ describe("Credentials service", () => {
           token: Redacted.make("tok-3"),
           sessionId: null,
           apiUrl: undefined,
+          credentialId: null,
         });
         return yield* c.getApiUrl;
       }),

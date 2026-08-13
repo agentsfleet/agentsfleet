@@ -2,9 +2,13 @@
  * Stubbed `AGENTSFLEET_STATE_DIR` for tests that need the CLI's auth-guard
  * and workspace-context layers to pass WITHOUT hitting a real API.
  *
- * The token is a syntactically-valid 3-segment string; the workspace is
- * a deterministic stub id. Per-call: each invocation gets its own tmpdir,
- * cleaned up by the returned `cleanup` callback.
+ * The token is a well-formed command-line credential — the `afc_` prefix and
+ * a 64-character lower-case hexadecimal body — because the credential service
+ * validates that shape on load and reads anything else as logged out. A
+ * three-segment session-token stub used to serve here and no longer loads,
+ * which is the whole point of the check. The workspace is a deterministic
+ * stub id. Per-call: each invocation gets its own tmpdir, cleaned up by the
+ * returned `cleanup` callback.
  *
  * Use cases:
  *   - unknown-subcommand sweep: needs to reach the per-group dispatcher,
@@ -18,8 +22,15 @@ import fs from "node:fs/promises";
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import {
+  CLI_CREDENTIAL_BODY_LEN,
+  CLI_CREDENTIAL_PREFIX,
+} from "../../../src/constants/cli-credential.ts";
 
-const STUB_TOKEN = "header.payload.sig";
+// Built by repetition rather than written out, so this file carries no
+// high-entropy literal for a secret scanner to flag.
+export const STUB_TOKEN = `${CLI_CREDENTIAL_PREFIX}${"e".repeat(CLI_CREDENTIAL_BODY_LEN)}`;
+const STUB_CREDENTIAL_ID = "cli_cred_acceptance_stub";
 
 export interface StubbedStateDirOptions {
   readonly workspaceId?: string;
@@ -70,6 +81,7 @@ export async function makeStubbedStateDir(opts?: StubbedStateDirOptions): Promis
       saved_at: Date.now(),
       session_id: opts?.sessionId ?? "sess_acceptance_stub",
       api_url: opts?.apiUrl ?? null,
+      credential_id: STUB_CREDENTIAL_ID,
     }),
     { mode: 0o600 },
   );
