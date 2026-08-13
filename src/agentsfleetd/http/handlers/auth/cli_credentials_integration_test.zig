@@ -12,6 +12,10 @@
 //! here is for: same tenant, no token, and a credential the owner must not be
 //! able to see or retire.
 //!
+//! Who these routes admit in the first place is the sibling suite,
+//! `cli_credentials_admission_integration_test.zig`. Everything below has
+//! already cleared those guards.
+//!
 //! Requires TEST_DATABASE_URL — skipped gracefully otherwise.
 
 const std = @import("std");
@@ -23,10 +27,7 @@ const ec = @import("../../../errors/error_registry.zig");
 
 const ALLOC = fixtures.ALLOC;
 const PATH = fixtures.PATH;
-
-fn revokePath(credential_id: []const u8) ![]const u8 {
-    return std.fmt.allocPrint(ALLOC, "{s}/{s}", .{ PATH, credential_id });
-}
+const revokePath = fixtures.revokePath;
 
 test "integration: test_credential_resolves_to_its_user — a credential reaches its own person's rows and no one else's" {
     const h = fixtures.seededHarness() catch |err| switch (err) {
@@ -234,133 +235,6 @@ test "integration: test_revoked_credential_is_refused — a retired credential a
         defer r.deinit();
         try r.expectStatus(.not_found);
         try r.expectErrorCode(ec.ERR_CLI_CREDENTIAL_NOT_FOUND);
-    }
-
-    fixtures.cleanup(h);
-}
-
-test "integration: an unsupported method on either credential route answers 405, not 404 or 500" {
-    // The collection accepts POST and GET; the item form accepts only DELETE.
-    // Both refusals live in the invoke dispatch, past routing and past auth, so
-    // this also proves the router reached the right handler: a matcher that
-    // claimed the wrong shape would answer 404 here instead.
-    const h = fixtures.seededHarness() catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer h.deinit();
-
-    {
-        const r = try (try (try h.put(PATH).bearer(fixtures.TOKEN_OWNER)).json("{}")).send();
-        defer r.deinit();
-        try r.expectStatus(.method_not_allowed);
-    }
-    {
-        // A syntactically valid identifier, so the refusal is about the method
-        // rather than the shape of the path segment.
-        const path = try revokePath(fixtures.OWNER_USER_ID);
-        defer ALLOC.free(path);
-        const r = try (try (try h.post(path).bearer(fixtures.TOKEN_OWNER)).json("{}")).send();
-        defer r.deinit();
-        try r.expectStatus(.method_not_allowed);
-    }
-
-    fixtures.cleanup(h);
-}
-
-test "integration: test_tenant_key_refused_on_user_scoped_route — an organisation cannot act as a person" {
-    const h = fixtures.seededHarness() catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer h.deinit();
-
-    // The tenant key authenticates — it is a real, active key — and is then
-    // refused on principal MODE. That ordering is the test: a key that failed
-    // to authenticate would answer 401 and prove nothing about the guard.
-    const body = "{\"machine_name\":\"" ++ fixtures.MACHINE_NAME ++ "\"}";
-    {
-        const r = try (try (try h.post(PATH).bearer(fixtures.TENANT_KEY)).json(body)).send();
-        defer r.deinit();
-        try r.expectStatus(.forbidden);
-        try r.expectErrorCode(ec.ERR_FORBIDDEN);
-    }
-    {
-        const r = try (try h.get(PATH).bearer(fixtures.TENANT_KEY)).send();
-        defer r.deinit();
-        try r.expectStatus(.forbidden);
-        try r.expectErrorCode(ec.ERR_FORBIDDEN);
-    }
-    {
-        const path = try revokePath(fixtures.OWNER_USER_ID);
-        defer ALLOC.free(path);
-        const r = try (try h.delete(path).bearer(fixtures.TENANT_KEY)).send();
-        defer r.deinit();
-        try r.expectStatus(.forbidden);
-        try r.expectErrorCode(ec.ERR_FORBIDDEN);
-    }
-
-    {
-        // The refused mint wrote nothing. A 403 that still inserted would make
-        // the audit trail name a person for an organisation's action.
-        const conn = try h.acquireConn();
-        defer h.releaseConn(conn);
-        try std.testing.expectEqual(
-            @as(i64, 0),
-            try fixtures.liveCountForMachine(conn, fixtures.OWNER_USER_ID, fixtures.MACHINE_NAME),
-        );
-    }
-
-    fixtures.cleanup(h);
-}
-
-test "integration: test_credential_cannot_mint_another_credential — a credential is not a key to more credentials" {
-    const h = fixtures.seededHarness() catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer h.deinit();
-
-    // A real, live credential for this person's own machine. It authenticates,
-    // so every assertion below is about what it is permitted to DO — a value
-    // that failed to authenticate would answer 401 and prove nothing.
-    const conn = try h.acquireConn();
-    const owned = try fixtures.mintDirect(conn, fixtures.OWNER_USER_ID, fixtures.MACHINE_NAME);
-    defer owned.deinit(ALLOC);
-    h.releaseConn(conn);
-
-    // Minting under a machine name of the caller's choosing is the step that
-    // would turn one stolen credential into an unbounded, self-renewing
-    // supply: each mint yields the next, revoking any single row leaves its
-    // siblings live, and the person holding the account cannot tell how many
-    // exist. The browser sign-in is the cost an attacker cannot replay, so
-    // minting keeps it and a credential is refused here.
-    const body = "{\"machine_name\":\"" ++ fixtures.OTHER_MACHINE_NAME ++ "\"}";
-    {
-        const r = try (try (try h.post(PATH).bearer(owned.secret)).json(body)).send();
-        defer r.deinit();
-        try r.expectStatus(.forbidden);
-        try r.expectErrorCode(ec.ERR_FORBIDDEN);
-    }
-
-    {
-        // The refusal wrote nothing: the second machine holds no live row, so
-        // the chain does not start even once.
-        const c = try h.acquireConn();
-        defer h.releaseConn(c);
-        try std.testing.expectEqual(
-            @as(i64, 0),
-            try fixtures.liveCountForMachine(c, fixtures.OWNER_USER_ID, fixtures.OTHER_MACHINE_NAME),
-        );
-    }
-
-    // The same credential still manages its own existence. Listing stays open
-    // precisely so a terminal can see and end its own access without opening a
-    // browser; narrowing the mint must not have narrowed that too.
-    {
-        const r = try (try h.get(PATH).bearer(owned.secret)).send();
-        defer r.deinit();
-        try r.expectStatus(.ok);
     }
 
     fixtures.cleanup(h);
