@@ -10,16 +10,31 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { Effect, Option } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { Credentials, credentialsLayer } from "../src/services/credentials.ts";
 import { saveCredentials } from "../src/lib/state.ts";
-import { machineName } from "../src/commands/login-exchange.ts";
+import {
+  ERR_CLI_CREDENTIAL_EXCHANGE_FAILED,
+  exchangeForCredential,
+  machineName,
+} from "../src/commands/login-exchange.ts";
 import {
   CLI_CREDENTIAL_BODY_LEN,
   CLI_CREDENTIAL_PREFIX,
   MAX_MACHINE_NAME_LEN,
   TENANT_KEY_PREFIX,
 } from "../src/constants/cli-credential.ts";
+import { CLI_CREDENTIALS_PATH } from "../src/lib/api-paths.ts";
+import {
+  HttpClient,
+  type HttpRequestInput,
+} from "../src/services/http-client.ts";
+import {
+  AuthError,
+  type CliError,
+  type NetworkError,
+  type ServerError,
+} from "../src/errors/index.ts";
 import { useFreshStateDir } from "./helpers-cli-state.ts";
 
 useFreshStateDir();
@@ -119,6 +134,80 @@ describe("machineName", () => {
         new RegExp(`^[a-zA-Z0-9._-]{1,${MAX_MACHINE_NAME_LEN}}$`),
       );
     }
+  });
+});
+
+// The other side of the same boundary. Here the server answered 200, but what
+// it sent back is not a credential — a truncated body, a field of the wrong
+// type, or the session token echoed straight back. Each shape decodes to
+// nothing usable and fails the exchange with a registered code, so login has
+// no value to persist. The exchange performs no writes itself, which is why
+// "nothing reached disk" is structural rather than asserted here.
+describe("test_unusable_mint_response_fails_the_exchange", () => {
+  const MINT_METHOD = "POST" as const;
+  const CREDENTIAL_ID = "cred_2a9f";
+
+  const mintReturning = (body: unknown): Layer.Layer<HttpClient> =>
+    Layer.succeed(HttpClient, {
+      request: <T>(
+        input: HttpRequestInput,
+      ): Effect.Effect<T, NetworkError | ServerError> => {
+        if (
+          input.method === MINT_METHOD &&
+          input.path === CLI_CREDENTIALS_PATH
+        ) {
+          return Effect.succeed(body as T);
+        }
+        return Effect.die(`unexpected ${input.method ?? "GET"} ${input.path}`);
+      },
+    });
+
+  const exchange = (body: unknown) =>
+    Effect.runPromiseExit(
+      exchangeForCredential(Redacted.make(SESSION_TOKEN)).pipe(
+        Effect.provide(mintReturning(body)),
+      ),
+    );
+
+  const failureValue = <T>(exit: Exit.Exit<T, CliError>): CliError | null =>
+    Exit.isFailure(exit)
+      ? Option.getOrNull(Cause.findErrorOption(exit.cause))
+      : null;
+
+  const UNUSABLE: readonly (readonly [string, unknown])[] = [
+    ["a null body", null],
+    ["a body that is not an object at all", WELL_FORMED],
+    ["no id field", { credential: WELL_FORMED }],
+    ["a non-string id", { id: 7, credential: WELL_FORMED }],
+    ["an empty id", { id: "", credential: WELL_FORMED }],
+    ["a non-string credential", { id: CREDENTIAL_ID, credential: 7 }],
+    [
+      "the session token echoed back in the credential field",
+      { id: CREDENTIAL_ID, credential: SESSION_TOKEN },
+    ],
+    [
+      "the right prefix over a malformed body",
+      { id: CREDENTIAL_ID, credential: `${CLI_CREDENTIAL_PREFIX}nope` },
+    ],
+  ];
+
+  for (const [label, body] of UNUSABLE) {
+    test(`${label} fails the exchange with the registered code`, async () => {
+      const failure = failureValue(await exchange(body));
+      expect(failure).toBeInstanceOf(AuthError);
+      expect((failure as InstanceType<typeof AuthError>).code).toBe(
+        ERR_CLI_CREDENTIAL_EXCHANGE_FAILED,
+      );
+    });
+  }
+
+  test("a well-formed mint response returns the credential redacted, so a stray log cannot spill it", async () => {
+    const exit = await exchange({ id: CREDENTIAL_ID, credential: WELL_FORMED });
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (!Exit.isSuccess(exit)) return;
+    expect(exit.value.id).toBe(CREDENTIAL_ID);
+    expect(String(exit.value.credential)).not.toContain(WELL_FORMED);
+    expect(Redacted.value(exit.value.credential)).toBe(WELL_FORMED);
   });
 });
 
