@@ -129,11 +129,9 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
 
     test_fixtures.resetBillingFor(db_ctx.conn, TEST_TENANT_ID);
     try tenant_billing.insertStarterGrant(db_ctx.conn, TEST_TENANT_ID);
-    // §7: a tenant's trial is open-ended by default, and an open trial prices
-    // every stage charge to zero — which would leave the drained-balance
-    // refusal below permanently unprovable, and silently so. Closing THIS
-    // tenant's boundary is what arms it. No wall-clock date to wait for and
-    // none that can retire the assertion later.
+    // An unrated model prices every stage charge to zero, which would leave the
+    // drained-balance refusal below permanently unprovable, and silently so.
+    // Seeding the rate is what arms it.
     try seedModelRate(db_ctx.conn);
     defer teardownModelRate(db_ctx.conn);
 
@@ -226,6 +224,43 @@ test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=false,
     try r.expectStatus(.ok);
     try std.testing.expect(r.bodyContains("\"is_exhausted\":false"));
     try std.testing.expect(r.bodyContains("\"exhausted_at\":null"));
+}
+
+test "integration: GET /v1/tenants/me/billing carries no promotional-window member" {
+    const alloc = std.testing.allocator;
+    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    const now_ms = clock.nowMillis();
+    try seedTenantAndWorkspace(conn, TOKEN_TENANT_ID, now_ms);
+    defer teardown(conn, TOKEN_TENANT_ID);
+
+    _ = try conn.exec(
+        \\INSERT INTO billing.tenant_wallet
+        \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
+        \\VALUES ($1, $3, 'billing_handler_test', $2, $2)
+        \\ON CONFLICT (tenant_id) DO UPDATE
+        \\SET balance_nanos = EXCLUDED.balance_nanos,
+        \\    updated_at = EXCLUDED.updated_at
+    , .{ TOKEN_TENANT_ID, now_ms, TEST_BALANCE_NANOS });
+
+    const r = try (try h.get("/v1/tenants/me/billing").bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+
+    // Non-vacuous first: a 200 with an empty or error body would satisfy the
+    // absence check below while proving nothing about the payload's shape.
+    try std.testing.expect(r.bodyContains("\"balance_nanos\""));
+
+    // A published response member is removed by deleting the field, and re-added
+    // just as easily. The greps that verified the deletion only describe the
+    // tree as it stands today; this fails if the member comes back.
+    try std.testing.expect(!r.bodyContains("free_trial"));
 }
 
 test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=true + exhausted_at=<ms> on an exhausted tenant" {

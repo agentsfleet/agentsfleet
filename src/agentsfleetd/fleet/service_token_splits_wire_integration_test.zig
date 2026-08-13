@@ -179,8 +179,8 @@ fn arrange(cursor_in: i64, cursor_cached: i64, cursor_out: i64) !Setup {
     try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "service-splits-fleet", "{}", "# z");
     try seedRunner(conn);
     try seedBalance(conn);
-    // §7: an open trial prices every slice to zero; close this tenant's
-    // boundary so the wire proof carries the seeded registry rates.
+    // Without rates the registry prices every slice to zero and the wire proof
+    // below would assert nothing; these are what make it carry real money.
     try seedModelRates(conn);
     const last_metered = clock.nowMillis() - CURSOR_AGE_MS;
     try seedAffinity(conn, cursor_in, cursor_cached, cursor_out, last_metered);
@@ -303,9 +303,8 @@ test "integration: wire renew bills the body's splits, advances the cursor, and 
     try std.testing.expectEqual(@as(i64, CUM_OUT), stage1.t_out);
     const token_cost1 = stage1.charged - expectedRunFee(s.conn, stage1.wall); // no clamp at BIG_BALANCE
     try std.testing.expectEqual(try expectedTokenCost(s.conn, CUM_IN, CUM_CACHED, CUM_OUT), token_cost1);
-    // The registry prices these deltas non-zero — the spec's wire proof arm.
-    // `arrange` closed this tenant's trial boundary, so it asserts here
-    // unconditionally rather than waiting on a build-time window to lapse.
+    // The registry prices these deltas non-zero — the wire proof arm. `arrange`
+    // seeded the rates, so this asserts unconditionally.
     try std.testing.expect(token_cost1 > 0);
 
     // The affinity cursor advanced to the reported cumulatives.

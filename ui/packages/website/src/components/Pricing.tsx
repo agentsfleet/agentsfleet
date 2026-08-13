@@ -115,7 +115,7 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
 
       {plan.id === TRIAL_PLAN_ID ? (
         <p className="font-sans text-body-sm leading-body-sm text-text-muted m-0">
-          Includes {RATES_DISPLAY.STARTER_CREDIT} starter credit after the trial.
+          Includes {RATES_DISPLAY.STARTER_CREDIT} starter credit.
         </p>
       ) : null}
 
