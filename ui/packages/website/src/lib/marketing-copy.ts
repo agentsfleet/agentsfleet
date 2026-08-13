@@ -265,7 +265,6 @@ export const PRICING_PLANS = [
     id: "trial",
     name: "Free trial",
     price: "$0",
-    suffix: "until Jul 31",
     features: ["Every event free", "Every run free", "Starter credit included", "Full product access"],
     cta: "Start free",
     featured: false,

@@ -123,10 +123,8 @@ test "integration: should refuse to price an uncatalogued model with error.Model
     // leaves behind for any tenant still naming that model. This used to panic
     // and abort the replica; it must be an error the caller's posture absorbs.
     //
-    // Reachable now without arranging anything. It previously needed an injected
-    // post-trial clock, because the promotional window answered ahead of the
-    // catalogue and priced this pair at zero rather than refusing it — the
-    // refusal existed but no tenant could ever hit it.
+    // Reachable with no arrangement at all: the catalogue lookup is the only
+    // thing standing between the caller and the refusal.
     try std.testing.expectError(error.ModelNotPriced, billing_rates.computeStageCharge(
         db_ctx.conn,
         "no-such-provider",

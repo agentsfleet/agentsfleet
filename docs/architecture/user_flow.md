@@ -40,7 +40,7 @@ Every row is extracted from the §-numbered sections below; the owner column nam
 Each trap is enforced in its owner section; this list is the index.
 
 - The §-numbered subsections are stable anchors — never rename them without sweeping cross-references (preamble).
-- Doctor carries no provider or trial posture; read `tenant provider show` and `billing show` separately once health passes (§8.2.2).
+- Doctor carries no provider or billing posture; read `tenant provider show` and `billing show` separately once health passes (§8.2.2).
 - Omitting `repositories` on a GitHub App trigger is fail-closed — no delivery, never every repository (§8.3).
 - The fleet's in-run loop never branches on actor; SKILL.md prose dictates behaviour (§8.3).
 - Never resolve context caps at trigger time (§8.7).

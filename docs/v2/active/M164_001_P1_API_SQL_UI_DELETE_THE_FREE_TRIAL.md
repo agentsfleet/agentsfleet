@@ -72,8 +72,20 @@ Discovery grep, from the repository root:
 | `src/agentsfleetd/fleet/service_renew_integration_test.zig` | EDIT | Fixture and call sites |
 | `src/agentsfleetd/fleet/service_token_splits_wire_integration_test.zig` | EDIT | Two resolver call sites |
 | `src/agentsfleetd/fleet/budget_gate_integration_test.zig` | EDIT | Fixture reference |
+| `src/agentsfleetd/fleet/service_report.zig` | EDIT | Call site loses the window argument |
+| `src/agentsfleetd/fleet/credit_metric_reconciliation_integration_test.zig` | EDIT | Fixture stops closing the window; the rationale comments naming it go with it |
+| `src/agentsfleetd/fleet/event_lifecycle_integration_test.zig` | EDIT | Fixture reference |
+| `src/agentsfleetd/fleet_runtime/metering_integration_test.zig` | EDIT | Fixture stops closing the window |
+| `src/agentsfleetd/http/handlers/tenant_billing_integration_test.zig` | EDIT | Fixture stops closing the window; adds the Dimension 1.6 test asserting the response has no `free_trial` member |
+| `src/agentsfleetd/db/schema_shape_integration_test.zig` | EDIT | Adds the Dimension 1.1 test — the wallet carries no window column, asserted against the live catalogue |
 | `src/agentsfleetd/db/test_fixtures.zig` | EDIT | Deletes the window fixture constants and the column write — the repository's only writer |
 | `src/agentsfleetd/memory/fleet_memory_integration_test.zig` | EDIT | §2 — the foreign key's behavioural tests |
+| `src/agentsfleetd/db/index_usage_integration_test.zig` | EDIT | §2 — its memory fixture spreads rows across ~181 synthetic fleet ids; the foreign key needs a parent per id |
+| `src/agentsfleetd/db/index_removal_integration_test.zig` | EDIT | §2 — same fixture shape, same parent requirement |
+| `src/agentsfleetd/http/test_harness.zig` | EDIT | §3 — bounds the stop→join teardown so a stalled shutdown reports instead of parking the binary |
+| `src/agentsfleetd/http/test_harness_server.zig` | EDIT | §3 — `listen_returned` signal plus the bounded teardown both call sites use |
+| `src/agentsfleetd/http/test_harness_teardown_integration_test.zig` | NEW | §3 — the teardown's own coverage |
+| `src/agentsfleetd/http/server.zig` | EDIT | §3 — registers the new suite in the discovery block |
 | `public/openapi.json` | EDIT | Drops `free_trial` from the schema **and from its `required` list** |
 | `public/openapi/paths/billing.yaml` | EDIT | Same, in the source document the bundle is generated from |
 | `cli/src/constants/billing.ts` | EDIT | Drops the Command-Line Interface (CLI) mirror of the field |
@@ -81,11 +93,19 @@ Discovery grep, from the repository root:
 | `ui/packages/app/tests/billing-card.test.ts` | EDIT | Response fixture |
 | `ui/packages/app/tests/fleets.test.ts` | EDIT | Response fixture |
 | `ui/packages/website/src/lib/rates.ts` | EDIT | Drops the pricing gate; the marketing copy constants stay (see §1 default) |
-| `ui/packages/website/src/lib/rates.test.ts` | EDIT | Drops the gate's cases |
+| `ui/packages/website/src/lib/rates.test.ts` | EDIT | Drops the gate's cases; extends the no-calendar-date guard to the pricing plans and widens it to abbreviated months |
+| `ui/packages/website/src/lib/marketing-copy.ts` | EDIT | The pricing card drops its dated `until Jul 31` suffix; the card itself stays (Indy) |
+| `ui/packages/website/src/pages/Terms.tsx` | EDIT | Drops the clause promising a per-account trial end date in the Dashboard — the panel it names stops carrying one |
+| `ui/packages/website/src/components/Pricing.tsx` | EDIT | Drops "after the trial" from the starter-credit line — the credit is the free allowance, not what follows it |
 | `docs/architecture/billing_and_provider_keys.md` | EDIT | Describes the window as live |
 | `docs/architecture/runner_fleet.md` | EDIT | Two references |
 | `docs/architecture/README.md` | EDIT | One reference |
 | `docs/architecture/memory.md` | EDIT | §2 — currently documents the absence of the foreign key as deliberate |
+| `docs/architecture/user_flow.md` | EDIT | One reference to the window |
+| `public/agentsfleet-manifest.json` | EDIT | Drops the field from the published manifest |
+| `playbooks/operations/m164_free_trial_removal/apply.sql` | NEW | Hand-migration for a database that is not rebuilt from the slots, with an orphan preflight |
+| `playbooks/operations/m164_free_trial_removal/verify.sql` | NEW | Post-migration assertions for the same database |
+| `docs/v2/active/M164_001_P1_API_SQL_UI_DELETE_THE_FREE_TRIAL.md` | EDIT | This spec — lifecycle status, Dimension grading, and this table |
 
 ## Applicable Rules
 
@@ -123,12 +143,12 @@ The promotional window disappears from the schema, the pricing path, and the pub
 
 **Implementation default:** the website copy constants (`FREE_TRIAL_PILL` and the sentence beside it in `ui/packages/website/src/lib/rates.ts`) **stay**. They read "Free during early access", which describes the starter grant and remains true. Only the pricing gate above them goes. Their names become inaccurate once the window is gone — propose the rename to Indy in Discovery and take his answer; do not rename unilaterally, because the strings are consumed by four component tests and one end-to-end scenario.
 
-- **Dimension 1.1** — The wallet no longer has a window column, and the wallet read no longer selects one → Test `test_wallet_row_has_no_trial_column`
+- **Dimension 1.1** — The wallet no longer has a window column, and the wallet read no longer selects one → Test `the wallet carries no promotional-window column` (`schema_shape_integration_test.zig`, asserted against the live catalogue)
 - **Dimension 1.2** — No rate resolver accepts a time parameter; the time-injected sibling is gone → Test `test_rate_resolvers_take_no_clock`
 - **Dimension 1.3** — A metered platform stage charges the catalogue rate rather than zero → Test `test_metered_platform_stage_charges_catalogue_rate`
 - **Dimension 1.4** — A platform stage naming a model the catalogue does not price fails closed instead of pricing at zero → Test `test_uncatalogued_platform_model_is_refused`
 - **Dimension 1.5** — A `self_managed` stage still charges the run rate only, token tiers recorded and not charged → Test `test_self_managed_charges_run_rate_only`
-- **Dimension 1.6** — `GET /v1/tenants/me/billing` returns no `free_trial` member, and the published schema does not list it as required → Test `test_billing_response_omits_free_trial`
+- **Dimension 1.6** — `GET /v1/tenants/me/billing` returns no `free_trial` member, and the published schema does not list it as required → Test `GET /v1/tenants/me/billing carries no promotional-window member` (response body; the published schema half is R4)
 - **Dimension 1.7** — The starter grant and `balance_exhausted_at` remain the only free-usage boundary, unchanged by this diff → Test `test_starter_grant_still_bounds_free_usage`
 
 ### §2 — The memory rows gain a parent
@@ -146,6 +166,19 @@ This slice is **separable**: it shares no code with §1 and rides along only bec
 - **Dimension 2.1** — Deleting a fleet erases its memory, performed by a role holding no grant on the memory table → Test `test_fleet_delete_cascades_memory`
 - **Dimension 2.2** — A memory write naming a fleet that does not exist is refused rather than orphaned, and the session survives the refusal → Test `test_memory_write_for_absent_fleet_is_refused`
 - **Dimension 2.3** — The writing role still holds no grant on `core`, and the write still resolves the reference → Test `test_memory_write_holds_no_core_grant`
+
+### §3 — The test harness stops hanging the suite
+
+`TestHarness.start` tears down through `errdefer { server.stop(); thread.join(); }`. `return error.SkipZigTest` on the Redis path is an error return, so that errdefer runs; if `stop()` does not wake `accept()`, the join never returns and every test that would have run afterwards is lost with no output naming the cause. Observed in this workstream: a lane parked for 38 minutes at 0% CPU, diagnosed only by sampling the process.
+
+**Folded in on Indy's call** rather than filed separately, because the hang blocks this workstream's own §2 verification — the lane it parks is the one that proves the foreign key.
+
+**Implementation default:** bound the wait, do not detach. `std.Thread` has no timed join, and detaching is worse than the hang — the caller frees the server immediately after, so a live accept loop would read freed memory. `serverThread` signals `listen_returned` on every exit path; teardown polls it and panics with the stage name on expiry. A loud abort beats a silent park, and beats a use-after-free.
+
+- **Dimension 3.1** — The accept loop signals its exit, so teardown can tell "joinable" from "not yet woken"; the flag reads false while the server is live → Test `the accept loop reports itself running, then exits on teardown`
+- **Dimension 3.2** — Teardown that completes normally still joins, well inside the timeout rather than passing by luck near it → Test `the accept loop reports itself running, then exits on teardown` (same test, second assertion)
+
+**Not covered by a test, stated rather than implied:** the `listen()`-error exit path signals through the same `defer`, but forcing a bind failure on demand needs a port-race harness this workstream does not build. The `defer` placement is the guarantee; a test would be asserting Zig's semantics.
 
 ## Interfaces
 
@@ -227,7 +260,7 @@ The charge itself is already carried by the existing ledger row and the wallet d
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | A metered platform stage charges the catalogue rate (§1) | `zig build test -Dtest-filter="charges catalogue rate"` | `Build Summary` reports all tests passed | P0 | |
+| R1 | A metered platform stage charges the catalogue rate (§1) | `zig build test-integration -Dtest-filter="wire renew bills the body's splits" --summary all` | `Build Summary` reports a **non-zero** passed count and 0 failed. A zero passed count means the filter matched no test and the row is ungraded, not green. Needs a live database — the test self-skips without one | P0 | |
 | R2 | No rate resolver reads a clock (§1) | `grep -cE 'now_ms\|clock\.nowMillis' src/agentsfleetd/state/tenant_billing_rates.zig` | `0` | P0 | |
 | R3 | The window has no survivors anywhere (§1) | `git grep -rn -wE 'free_trial\|freeTrial\|isFreeTrialActive\|trial_ends_at_ms' -- src schema cli ui public \| wc -l` | `0` | P0 | |
 | R4 | The published schema drops the member and its required entry (§1) | `make check-openapi && grep -c 'free_trial' public/openapi.json` | exit 0 then `0` | P0 | |

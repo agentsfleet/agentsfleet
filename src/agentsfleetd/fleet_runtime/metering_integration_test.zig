@@ -136,10 +136,10 @@ test "integration: balanceCoversEstimate blocks when stop policy AND balance bel
     // platform: receive = EVENT_NANOS (0), stage = token-floor cost (run fee is
     // 0 at issue). Balance 0 < est_total → blocked. seedPlatformProvider just
     // granted the starter balance onto this suite's tenant and provision is
-    // idempotent — reset so the 0 actually lands. An open trial prices every
-    // stage charge to 0, leaving `balance < est_total` unreachable — so this
-    // tenant's own boundary is closed (§7: the trial is a tenant fact) and the
-    // refusal asserts unconditionally at any clock position.
+    // idempotent — reset so the 0 actually lands. `seedRatedModel` above is what
+    // keeps the estimate non-zero; an unrated model would price the stage at 0
+    // and leave `balance < est_total` unreachable, so the refusal below could
+    // never fire.
     base.resetBillingFor(db_ctx.conn, TENANT_ID);
     try tenant_billing.provision(db_ctx.conn, TENANT_ID, 0, "test_block");
 
