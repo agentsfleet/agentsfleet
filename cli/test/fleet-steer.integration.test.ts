@@ -88,6 +88,7 @@ export const makeLayer = (
       getSavedAt: Effect.sync(() => null),
       getSessionId: Effect.sync(() => null),
       getApiUrl: Effect.sync(() => null),
+      getCredentialId: Effect.succeed(null),
       saveAccessToken: () => Effect.void,
       clearAccessToken: Effect.void,
     }),

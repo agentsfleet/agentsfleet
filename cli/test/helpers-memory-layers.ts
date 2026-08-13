@@ -72,6 +72,7 @@ export const credentialsLayer = (): Layer.Layer<Credentials> =>
     getSavedAt: Effect.die("should not be called"),
     getSessionId: Effect.die("should not be called"),
     getApiUrl: Effect.die("should not be called"),
+    getCredentialId: Effect.succeed(null),
     saveAccessToken: () => Effect.die("should not be called"),
     clearAccessToken: Effect.die("should not be called"),
   });

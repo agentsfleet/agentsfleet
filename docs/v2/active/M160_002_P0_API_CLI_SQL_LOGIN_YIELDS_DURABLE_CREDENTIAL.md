@@ -155,11 +155,11 @@ Minting per login accumulates credentials — the defect the reference implement
 
 - **Dimension 3.1** — a second login from the same machine leaves exactly one live credential for it → Test `test_relogin_leaves_one_live_credential` *(use case 3)*
 - **Dimension 3.2** — a login on one machine leaves another machine's credential live → Test `test_other_machines_credential_survives_login`
-- **Dimension 3.3** — logout revokes this machine's credential server-side and clears local state → Test `test_logout_revokes_and_clears` *(use case 2)*
-- **Dimension 3.4** — logout leaves browser sessions untouched → Test `test_logout_does_not_revoke_browser_session` *(use case 7)*
-- **Dimension 3.5** — logout with no stored credential reports it and exits zero → Test `test_logout_when_logged_out_is_idempotent` *(use case 4)*
+- **Dimension 3.3** — logout revokes this machine's credential server-side and clears local state → Test `test_logout_revokes_and_clears` *(use case 2)* — **DONE**
+- **Dimension 3.4** — logout leaves browser sessions untouched → Test `test_logout_does_not_revoke_browser_session` *(use case 7)* — **DONE**
+- **Dimension 3.5** — logout with no stored credential reports it and exits zero → Test `test_logout_when_logged_out_is_idempotent` *(use case 4)* — **DONE**
 - **Dimension 3.6** — after logout, listing fleets refuses locally without a network call → Test `test_list_after_logout_refuses_locally` *(use case 6)*
-- **Dimension 3.7** — a revoke that fails does not abort login; the orphaned identifier is reported → Test `test_failed_revoke_reports_and_continues`
+- **Dimension 3.7** — a revoke that fails does not abort login; the orphaned identifier is reported → Test `test_failed_revoke_reports_and_continues` — **DONE**
 - **Dimension 3.8** — `agentsfleet login --token` is gone; the flag is refused as an unknown option rather than silently ignored → Test `test_token_flag_is_no_longer_accepted` — **DONE**
 - **Dimension 3.9** — piped-stdin seeding goes with it: a non-TTY login with no `AGENTSFLEET_API_KEY` fails fast and names the environment variable → Test `test_non_tty_login_without_env_key_names_the_env_var` — **DONE**
 - **Dimension 3.10** — an unattended caller reaches the API with `AGENTSFLEET_API_KEY` alone, writing nothing to disk → Test `test_env_key_authenticates_without_persistence` — **DONE**

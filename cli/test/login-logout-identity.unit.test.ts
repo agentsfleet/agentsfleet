@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { captureLoginCompleted } from "../src/commands/login-helpers.ts";
-import { logoutEffect } from "../src/commands/auth.ts";
+import { logoutEffect } from "../src/commands/auth-logout.ts";
 import { Analytics } from "../src/services/telemetry/analytics.service.ts";
 import {
   TelemetryRuntime,
@@ -97,6 +97,7 @@ const credentialsLayer = (rec: IdentityRecorder): Layer.Layer<Credentials> => {
     getSavedAt: Effect.sync(() => state.savedAt),
     getSessionId: Effect.sync(() => state.sessionId),
     getApiUrl: Effect.sync(() => state.apiUrl),
+    getCredentialId: Effect.succeed(null),
     saveAccessToken: (input) =>
       Effect.sync(() => {
         state.token = Option.some(input.token);

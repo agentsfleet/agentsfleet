@@ -29,6 +29,12 @@ import { AuthError, type CliError } from "../errors/index.ts";
 export const ERR_CLI_CREDENTIAL_EXCHANGE_FAILED = "UZ-AUTH-025" as const;
 
 const SIGN_IN_AGAIN = "run `agentsfleet login` again" as const;
+// Stands in for a server code when the request never reached one, so a caller
+// rendering the outcome has a single string-or-null shape to handle.
+const NETWORK_FAILURE = "network" as const;
+// The transport's error tag. Named once because both the mint and the revoke
+// branch on it to tell a refusal the server explained from one it did not.
+const TAG_SERVER_ERROR = "ServerError" as const;
 const TYPE_STRING = "string" as const;
 const isString = (value: unknown): value is string =>
   typeof value === TYPE_STRING;
@@ -95,7 +101,7 @@ export const exchangeForCredential = (
         Effect.mapError((err) =>
           exchangeFailed(
             `credential exchange failed: ${err.detail}`,
-            err._tag === "ServerError" ? err : undefined,
+            err._tag === TAG_SERVER_ERROR ? err : undefined,
           ),
         ),
       );
@@ -107,4 +113,35 @@ export const exchangeForCredential = (
       );
     }
     return minted;
+  });
+
+// Ends this terminal's credential at the server, by identifier rather than by
+// listing everything its owner holds — a terminal knows which row is its own
+// and needs no view of the others.
+//
+// Best-effort on purpose, and the direction matters: logout clears local state
+// whatever happens here, because a terminal that cannot reach the API must
+// still be able to stop using a credential. Refusing to log out until a server
+// call succeeds would strand exactly the operator most likely to want out. The
+// failure is returned rather than swallowed, so the caller can say the row may
+// still be live and point at the dashboard.
+export const revokeCredential = (
+  credentialId: string,
+  credential: Redacted.Redacted<string>,
+): Effect.Effect<string | null, never, HttpClient> =>
+  Effect.gen(function* () {
+    const http = yield* HttpClient;
+    return yield* http
+      .request<unknown>({
+        path: `${CLI_CREDENTIALS_PATH}/${credentialId}`,
+        method: "DELETE",
+        token: credential,
+      })
+      .pipe(
+        Effect.match({
+          onSuccess: () => null,
+          onFailure: (err) =>
+            err._tag === TAG_SERVER_ERROR ? err.code : NETWORK_FAILURE,
+        }),
+      );
   });

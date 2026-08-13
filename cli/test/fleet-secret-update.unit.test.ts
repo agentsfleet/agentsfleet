@@ -61,6 +61,7 @@ const makeCredsLayer = (): Layer.Layer<Credentials> =>
     getSavedAt: Effect.succeed(Date.now()),
     getSessionId: Effect.succeed("sess_test"),
     getApiUrl: Effect.succeed(null),
+    getCredentialId: Effect.succeed(null),
     saveAccessToken: () => Effect.void,
     clearAccessToken: Effect.void,
   });

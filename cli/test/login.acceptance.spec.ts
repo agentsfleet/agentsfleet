@@ -270,6 +270,7 @@ const credentialsLayer = (rec: Recorder): Layer.Layer<Credentials> =>
     getSavedAt: Effect.sync(() => null),
     getSessionId: Effect.sync(() => null),
     getApiUrl: Effect.sync(() => null),
+    getCredentialId: Effect.succeed(null),
     saveAccessToken: (input) =>
       Effect.sync(() => {
         rec.savedToken = Redacted.value(input.token);
