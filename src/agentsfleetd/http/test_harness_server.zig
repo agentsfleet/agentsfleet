@@ -19,7 +19,12 @@ pub fn defaultRegistry(h: *TestHarness, cfg: Config) auth_mw.MiddlewareRegistry 
     return .{
         .bearer_or_api_key = .{ .verifier = &h.verifier },
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
-        .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantApiKey },
+        .tenant_api_key_mw = .{
+            .host = undefined,
+            .lookup = stubTenantApiKey,
+            .scope_host = undefined,
+            .resolveScopes = stubResolveScopes,
+        },
         // SAFETY: both stubs ignore their host pointers; an `afc_` value is
         // simply unknown in this harness, so it 401s like any other.
         .cli_credential_mw = .{

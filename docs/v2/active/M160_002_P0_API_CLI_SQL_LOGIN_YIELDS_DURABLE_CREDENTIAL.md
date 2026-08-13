@@ -196,12 +196,12 @@ Nothing needs to be stored to fix it. `240_api_keys.sql` already holds `created_
 
 **A key inherits its creator's set exactly — no ceiling, no subtraction (Indy, Aug 13).** The compiled-in bundle was the owner's grant minus `approval:resolve`, on the argument that a Fleet holding a key could approve its own gate. That subtraction goes: the rule is what Clerk holds for that person, and a machine credential is no longer a distinct grant shape. `TENANT_API_KEY_GRANT` therefore has no remaining caller and is removed rather than left as an unread default.
 
-- **Dimension 6.1** — an `agt_t` key's capabilities are the ones Clerk holds for the subject in `created_by`, not a compiled-in set → Test `test_tenant_key_scopes_come_from_clerk`
-- **Dimension 6.2** — narrowing that person at the provider narrows every key they minted, on the next request past the cache window → Test `test_narrowing_the_creator_narrows_the_key`
-- **Dimension 6.3** — a creator the provider no longer knows resolves to no capability and every gate refuses by scope, rather than a retry the caller cannot win → Test `test_unknown_creator_yields_no_capability`
-- **Dimension 6.4** — an unreachable provider past the staleness ceiling is unavailable, never a silent empty grant → Test `test_tenant_key_provider_outage_is_unavailable`
-- **Dimension 6.5** — a creator holding `approval:resolve` mints a key that holds it too, the machine-versus-human subtraction having been retired deliberately → Test `test_creator_approval_capability_reaches_the_key`
-- **Dimension 6.6** — the retired compiled-in grant has no remaining caller → Test `test_tenant_api_key_grant_has_no_caller`
+- **Dimension 6.1** — an `agt_t` key's capabilities are the ones Clerk holds for the subject in `created_by`, not a compiled-in set → Test `test_tenant_key_scopes_come_from_clerk` — **DONE**
+- **Dimension 6.2** — narrowing that person at the provider narrows every key they minted, on the next request past the cache window → Test `test_narrowing_the_creator_narrows_the_key` — **DONE**
+- **Dimension 6.3** — a creator the provider no longer knows resolves to no capability and every gate refuses by scope, rather than a retry the caller cannot win → Test `test_unknown_creator_yields_no_capability` — **DONE**
+- **Dimension 6.4** — an unreachable provider past the staleness ceiling is unavailable, never a silent empty grant → Test `test_tenant_key_provider_outage_is_unavailable` — **DONE**
+- **Dimension 6.5** — a creator holding `approval:resolve` mints a key that holds it too, the machine-versus-human subtraction having been retired deliberately → Test `test_creator_approval_capability_reaches_the_key` — **DONE**
+- **Dimension 6.6** — the retired compiled-in grant has no remaining caller → Test `test_tenant_api_key_grant_has_no_caller` — **DONE**
 
 ## Interfaces
 

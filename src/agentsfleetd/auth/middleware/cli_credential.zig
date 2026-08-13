@@ -78,19 +78,6 @@ pub const LookupFn = *const fn (
     credential_hash_hex: []const u8,
 ) anyerror!?LookupResult;
 
-/// Host-supplied callback answering "what may this subject do, now?" with the
-/// identity provider's space-delimited scope claim — the same string shape the
-/// JWT path receives in `verified.scopes`, so both feed one `parseClaim`.
-///
-/// Injected rather than called directly for the same reason `LookupFn` is: it
-/// reaches the network, and the middleware's branches must be provable without
-/// one. The caller owns the returned slice.
-pub const ScopeFn = *const fn (
-    scope_host: *anyopaque,
-    alloc: std.mem.Allocator,
-    oidc_subject: []const u8,
-) anyerror![]const u8;
-
 pub const CliCredential = struct {
     const Self = @This();
 
@@ -100,7 +87,7 @@ pub const CliCredential = struct {
     /// owns a provider client and its cache. Different lifetimes, different
     /// failure modes, so they are not conflated behind one pointer.
     scope_host: *anyopaque,
-    resolveScopes: ScopeFn,
+    resolveScopes: scopes.ScopeFn,
 
     pub fn middleware(self: *Self) chain.Middleware(AuthCtx) {
         return .{ .ptr = self, .execute_fn = executeTypeErased };

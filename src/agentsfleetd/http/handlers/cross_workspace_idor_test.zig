@@ -287,7 +287,12 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     srv.registry = .{
         .bearer_or_api_key = .{ .verifier = &srv.verifier },
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
-        .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantApiKeyLookup },
+        .tenant_api_key_mw = .{
+            .host = undefined,
+            .lookup = stubTenantApiKeyLookup,
+            .scope_host = undefined,
+            .resolveScopes = stubResolveScopes,
+        },
         // SAFETY: both stubs ignore their host pointers; this suite drives the
         // JWT path, so an `afc_` value is simply unknown here.
         .cli_credential_mw = .{

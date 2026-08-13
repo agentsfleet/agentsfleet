@@ -280,7 +280,12 @@ test "initChains connects the credential path into the bearer router" {
         .bearer_or_api_key = .{ .verifier = &verifier },
         // SAFETY: every stub below ignores its host pointer and returns null,
         // so none of these is ever dereferenced.
-        .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantLookup },
+        .tenant_api_key_mw = .{
+            .host = undefined,
+            .lookup = stubTenantLookup,
+            .scope_host = undefined,
+            .resolveScopes = stubResolveScopes,
+        },
         // SAFETY: as above — neither host pointer is read.
         .cli_credential_mw = .{
             .host = undefined,

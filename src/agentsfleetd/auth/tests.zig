@@ -39,6 +39,7 @@ test {
     _ = @import("middleware/bearer_or_api_key_test.zig");
     _ = @import("middleware/cli_credential.zig");
     _ = @import("middleware/cli_credential_test.zig");
+    _ = @import("middleware/tenant_api_key_test.zig");
     _ = @import("middleware/tenant_api_key.zig");
     _ = @import("middleware/trusted_client_ip.zig");
     _ = @import("middleware/require_scope.zig");

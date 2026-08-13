@@ -8,7 +8,7 @@ const std = @import("std");
 const testing = std.testing;
 
 const resolver_mod = @import("clerk_scope_resolver.zig");
-const cli_credential_mw = @import("middleware/cli_credential.zig");
+const scopes_mod = @import("scopes.zig");
 
 const SUBJECT = "user_2aXyTest";
 
@@ -16,7 +16,7 @@ test "the exported adapter satisfies the middleware's injected scope callback" {
     // A compile-time proof, not a formality: the middleware takes this by
     // function pointer, so a signature drift would otherwise surface only when
     // the boot host is wired — long after this module looked finished.
-    const injected: cli_credential_mw.ScopeFn = resolver_mod.resolveScopes;
+    const injected: scopes_mod.ScopeFn = resolver_mod.resolveScopes;
     try testing.expect(injected == resolver_mod.resolveScopes);
 }
 

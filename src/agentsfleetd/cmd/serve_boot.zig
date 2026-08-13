@@ -145,6 +145,11 @@ pub fn buildRegistry(deps: RegistryDeps) auth_mw.MiddlewareRegistry {
         .tenant_api_key_mw = .{
             .host = deps.api_key_lookup_ctx,
             .lookup = api_key_lookup.lookup,
+            // The same resolver instance the credential path holds, so both
+            // credential classes answer from one cache rather than each paying
+            // its own provider round trip for the same subject.
+            .scope_host = deps.scope_resolver,
+            .resolveScopes = clerk_scope_resolver.resolveScopes,
         },
         .cli_credential_mw = .{
             .host = deps.cli_credential_lookup_ctx,

@@ -120,7 +120,14 @@ pub fn configureRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anye
         .resolveScopes = resolveScopes,
     };
     tenant_key_ctx = .{ .pool = h.pool };
-    reg.tenant_api_key_mw = .{ .host = &tenant_key_ctx, .lookup = api_key_lookup.lookup };
+    reg.tenant_api_key_mw = .{
+        .host = &tenant_key_ctx,
+        .lookup = api_key_lookup.lookup,
+        // Since §6 a tenant key resolves its creator's capabilities; without a
+        // resolver the key authenticates and then fails every gate behind it.
+        .scope_host = &tenant_key_ctx,
+        .resolveScopes = scope_fixtures.ownerScopes,
+    };
 }
 
 /// Start a harness with the credential path wired and the rows seeded.
