@@ -119,6 +119,11 @@ pub const TestHarness = struct {
     /// `bringUpServer` retries on a fresh port instead of the thread panicking
     /// the whole process.
     bind_failed: std.atomic.Value(bool) = .{ .raw = false },
+    /// Set by `serverThread` when `listen()` returns, so teardown can tell
+    /// "the accept loop has exited and joining is safe" from "stop() has not
+    /// woken it yet". Without the distinction a join is unbounded, and a
+    /// `stop()` that fails to wake `accept()` parks the whole test binary.
+    listen_returned: std.atomic.Value(bool) = .{ .raw = false },
     /// Drains detached install-progression workers (spawned by fleet create)
     /// before `deinit()` frees the pool + queue they hold. Without it a worker
     /// mid-`flipToActive` calls `pool.acquire()` on a freed pool → segfault — a
@@ -290,10 +295,7 @@ pub const TestHarness = struct {
         // (mirrors deinit()'s order). Re-stopping a stopped server double-writes
         // httpz's close_fd → segfault, so these never overlap a manual stop.
         errdefer h.server.deinit();
-        errdefer {
-            h.server.stop();
-            h.thread.join();
-        }
+        errdefer server_bringup.stopAndJoinBounded(h, "start/bring-up-failed");
         // Wire the queue upfront so handlers that publish (PATCH agent
         // status, webhooks, approvals, etc.) don't dereference undefined
         // memory. Three-way split:
@@ -328,8 +330,10 @@ pub const TestHarness = struct {
     }
 
     pub fn deinit(self: *TestHarness) void {
-        self.server.stop();
-        self.thread.join();
+        // Bounded on the success path too: a stalled shutdown here parks the
+        // binary just as thoroughly as one during bring-up, and reports itself
+        // just as poorly.
+        server_bringup.stopAndJoinBounded(self, "deinit");
         self.server.deinit();
         // Stream teardown choreography (mirrors serve.zig): drain shuts the
         // client sockets (wakes write-blocked threads), hub.stop's close
