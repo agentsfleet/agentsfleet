@@ -1,18 +1,17 @@
-//! Store for `core.repair_pr_links` — the incident → repair PR → deploy-result
-//! linkage. Insert-only by schema trigger; the deploy stamp is the single
-//! permitted mutation. This table is the deferred verifier member reduced to
-//! data: "did the fix work" is a column, not a model run.
+//! Store for `core.repair_pr_links`: one provenance-checked incident to repair
+//! Pull Request linkage, with GitHub's exact merged commit recorded once.
 
 const std = @import("std");
 const pg = @import("pg");
 const clock = @import("common").clock;
-const sql = @import("sql.zig");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const sql = @import("repair_sql.zig");
 const id_format = @import("../types/id_format.zig");
 
-/// `deploy_status` vocabulary (RULE STS — app-enforced, no CHECK in DDL).
-pub const DEPLOY_STATUS_PENDING = "pending";
-pub const DEPLOY_STATUS_OK = "deploy_ok";
-pub const DEPLOY_STATUS_FAILED = "deploy_failed";
+/// Slot 830 requires an initial value. Slot 832 permits only a rolling old
+/// daemon's deploy-status stamp; current verification ignores that field and
+/// uses append-only production-result rows instead.
+const INITIAL_DEPLOY_STATUS_PENDING = "pending";
 
 pub const InsertOutcome = enum { inserted, duplicate };
 
@@ -33,36 +32,42 @@ pub fn insert(alloc: std.mem.Allocator, conn: *pg.Conn, link: NewLink) !InsertOu
     const row_id = try id_format.generateActivityEventId(alloc);
     defer alloc.free(row_id);
     const affected = try conn.exec(sql.INSERT_REPAIR_PR_LINK, .{
-        row_id,                link.workspace_id, link.fleet_id,  link.event_id,
-        link.repository,       link.branch,       link.pr_number, link.pr_url,
-        DEPLOY_STATUS_PENDING, clock.nowMillis(),
+        row_id,                        link.workspace_id, link.fleet_id,  link.event_id,
+        link.repository,               link.branch,       link.pr_number, link.pr_url,
+        INITIAL_DEPLOY_STATUS_PENDING, clock.nowMillis(),
     });
     return if ((affected orelse 0) > 0) .inserted else .duplicate;
 }
 
-/// Stamp the deploy result for the linked branch in `repository`. Returns
-/// whether a row was stamped — an unknown (repository, branch) is the caller's
-/// no-op, not an error. The repository is matched, never assumed: branch names
-/// collide across repositories and a fleet may hear from several.
-pub fn stampDeploy(
+pub const MergeOutcome = enum { recorded, same, ignored };
+
+/// Record the exact provider merge hash once. Closed-unmerged, hashless, replayed,
+/// or non-matching Pull Requests change nothing.
+pub fn recordMerged(
     conn: *pg.Conn,
     fleet_id: []const u8,
     repository: []const u8,
     branch: []const u8,
-    status: []const u8,
-) !bool {
-    const affected = try conn.exec(sql.STAMP_REPAIR_PR_DEPLOY, .{
-        fleet_id, branch, repository, status, clock.nowMillis(),
+    pr_number: i64,
+    merged_commit_sha: []const u8,
+    merged_at: i64,
+) !MergeOutcome {
+    const affected = try conn.exec(sql.RECORD_REPAIR_PR_MERGE, .{
+        fleet_id, repository, branch, pr_number, merged_commit_sha, merged_at,
     });
-    return (affected orelse 0) > 0;
+    if ((affected orelse 0) > 0) return .recorded;
+    var q = PgQuery.from(try conn.query(sql.SELECT_REPAIR_PR_MERGE_MATCH, .{
+        fleet_id,
+        repository,
+        branch,
+        pr_number,
+        merged_commit_sha,
+    }));
+    defer q.deinit();
+    const row = try q.next();
+    return if (row != null) .same else .ignored;
 }
 
-// No read surface here yet, deliberately: nothing in production reads a
-// linkage row back. The operator-facing reader arrives with the dashboard that
-// displays it (RULE NDC — a `pub` function whose only caller is a test is dead
-// code that rots before its first real use). Until then the integration test
-// asserts the stored row with its own query.
-//
-// DB-backed behaviour (insert/duplicate/stamp/immutability) is proven in
+// Database (DB)-backed behaviour (insert/duplicate/merge/immutability) is proven in
 // `http/webhook_http_integration_test.zig` beside the arms that drive it —
 // the state-layer convention (see `fleet_events_store_test.zig`).

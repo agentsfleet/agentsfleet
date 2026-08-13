@@ -84,6 +84,5 @@ test "GitHub App ingress normalizer ignores unsupported event" {
     );
     defer empty.deinit();
 
-    const maybe = try subject.normalizeForIngress(std.testing.allocator, "issues", empty.value.object, 0);
-    try std.testing.expectEqual(@as(?[]const u8, null), maybe);
+    try std.testing.expect((try subject.normalizeForIngress(std.testing.allocator, "issues", empty.value.object, 0)) == null);
 }

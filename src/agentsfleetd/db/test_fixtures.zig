@@ -345,21 +345,22 @@ pub fn storeVaultJson(
 // of the rendered `indexdef` (skewed by INCLUDE columns or a parenthesised
 // predicate). One catalog-truth helper each, used by every suite, closes both.
 
-/// Canonical `"col1, col2 DESC"` for `schema.name`'s KEY columns, in index
-/// order, read from `pg_index`/`pg_attribute` — INCLUDE columns (`indnkeyatts`
-/// bounds the key), a `WHERE` predicate (`indpred`, not `indkey`), and a
-/// same-named index in another schema (`nspname` filter) cannot skew it.
+/// Canonical `"col1, lower(col2) DESC"` for `schema.name`'s KEY columns, in
+/// index order. `pg_get_indexdef` preserves an expression key, while INCLUDE
+/// columns (`indnkeyatts` bounds the key), a `WHERE` predicate (`indpred`, not
+/// `indkey`), and a same-named index in another schema (`nspname` filter) cannot
+/// skew it.
 /// Ascending is implicit; only DESC is suffixed, matching how the suites spell
 /// their expected shape. Caller owns the returned slice; `error.IndexMissing`
 /// when no such index exists in `schema`.
 pub fn indexKeyColumns(alloc: std.mem.Allocator, conn: *pg.Conn, schema: []const u8, name: []const u8) ![]u8 {
     var q = PgQuery.from(try conn.query(
-        \\SELECT a.attname, (idx.indoption[k.i] & 1) = 1 AS is_desc
+        \\SELECT pg_get_indexdef(idx.indexrelid, k.i + 1, true),
+        \\       (idx.indoption[k.i] & 1) = 1 AS is_desc
         \\FROM pg_index idx
         \\JOIN pg_class ic ON ic.oid = idx.indexrelid
         \\JOIN pg_namespace n ON n.oid = ic.relnamespace
         \\CROSS JOIN generate_subscripts(idx.indkey, 1) AS k(i)
-        \\JOIN pg_attribute a ON a.attrelid = idx.indrelid AND a.attnum = idx.indkey[k.i]
         \\WHERE ic.relname = $1 AND n.nspname = $2 AND k.i < idx.indnkeyatts
         \\ORDER BY k.i
     , .{ name, schema }));

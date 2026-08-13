@@ -13,45 +13,58 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-
 const config_types = @import("config_types.zig");
 const config_gates = @import("config_gates.zig");
 const helpers = @import("config_helpers.zig");
 const validate = @import("config_validate.zig");
 const config_repositories = @import("config_repositories.zig");
+const config_context = @import("config_context.zig");
 
 const FleetConfig = config_types.FleetConfig;
 const FleetConfigError = config_types.FleetConfigError;
 const FleetTrigger = config_types.FleetTrigger;
 const FleetNetwork = config_types.FleetNetwork;
 const FleetBudget = config_types.FleetBudget;
-const FleetContextBudget = config_types.FleetContextBudget;
 
 const freeStringSlice = config_types.freeStringSlice;
 const freeFleetTrigger = config_types.freeFleetTrigger;
 
-/// Parse `config_json` into a FleetConfig. Caller owns the result and
-/// must call `.deinit(alloc)`. On failure, every field allocated up to
-/// the failure point is freed via the errdefer chain.
+/// Parse `config_json` into an owned FleetConfig. The errdefer chain frees
+/// every field allocated before a failure.
 const S_CONTEXT = "context";
-const S_CONTEXT_CAP_TOKENS = "context_cap_tokens";
 const S_NETWORK = "network";
 const S_TRIGGERS = "triggers";
 const S_SKILL = "skill";
 const S_BUDGET = "budget";
 const S_GATES = "gates";
-const S_MEMORY_CHECKPOINT_EVERY = "memory_checkpoint_every";
 const S_TOOLS = "tools";
 const S_CREDENTIALS = "credentials";
-const S_STAGE_CHUNK_THRESHOLD = "stage_chunk_threshold";
-const S_TOOL_WINDOW = "tool_window";
 const S_MODEL = "model";
 const S_REPOSITORIES = config_repositories.S_REPOSITORIES;
 const S_REPOSITORY_ACCESS = config_repositories.S_REPOSITORY_ACCESS;
+const S_REPOSITORY_BASE = config_repositories.S_REPOSITORY_BASE;
 
 pub fn parseFleetConfig(
     alloc: Allocator,
     config_json: []const u8,
+) (Allocator.Error || FleetConfigError)!FleetConfig {
+    return parseConfig(alloc, config_json, .authoring);
+}
+
+/// Parse a persisted config. This differs from authoring only for write
+/// bindings saved before `repository_base` existed: the incomplete binding is
+/// retained so lease preflight can record a typed, actionable refusal.
+pub fn parseStoredFleetConfig(
+    alloc: Allocator,
+    config_json: []const u8,
+) (Allocator.Error || FleetConfigError)!FleetConfig {
+    return parseConfig(alloc, config_json, .stored);
+}
+
+fn parseConfig(
+    alloc: Allocator,
+    config_json: []const u8,
+    mode: config_repositories.ParseMode,
 ) (Allocator.Error || FleetConfigError)!FleetConfig {
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, config_json, .{}) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
@@ -84,14 +97,20 @@ pub fn parseFleetConfig(
     errdefer freeStringSlice(alloc, credentials);
 
     const network = try parseNetworkField(alloc, runtime);
-    errdefer if (network) |net| freeStringSlice(alloc, net.allow);
+    errdefer if (network) |net| {
+        freeStringSlice(alloc, net.allow);
+        freeStringSlice(alloc, net.read_post_paths);
+    };
 
     const budget = try parseBudgetField(runtime);
     const gates = try parseGatesField(alloc, runtime);
     errdefer if (gates) |g| config_gates.freeGatePolicy(alloc, g);
 
-    const repository_binding = try config_repositories.parse(alloc, runtime);
-    errdefer if (repository_binding) |b| freeStringSlice(alloc, b.repositories);
+    const repository_binding = try config_repositories.parse(alloc, runtime, mode);
+    errdefer if (repository_binding) |b| {
+        freeStringSlice(alloc, b.repositories);
+        if (b.base_branch) |base| alloc.free(base);
+    };
 
     try validate.validateCredentials(credentials);
 
@@ -100,7 +119,7 @@ pub fn parseFleetConfig(
 
     const model = try parseModelField(alloc, runtime);
     errdefer if (model) |s| alloc.free(s);
-    const ctx = try parseContextField(runtime);
+    const ctx = try config_context.parse(runtime, S_CONTEXT);
 
     return FleetConfig{
         .name = name,
@@ -126,9 +145,9 @@ pub fn parseFleetConfig(
 /// no error surfaced).
 fn ensureRuntimeKeysNotAtTopLevel(root: std.json.ObjectMap) FleetConfigError!void {
     const forbidden = [_][]const u8{
-        S_TRIGGERS,          S_TOOLS, S_CREDENTIALS, S_NETWORK, S_BUDGET,
-        S_GATES,             S_SKILL, S_MODEL,       S_CONTEXT, S_REPOSITORIES,
-        S_REPOSITORY_ACCESS,
+        S_TRIGGERS,          S_TOOLS,           S_CREDENTIALS, S_NETWORK, S_BUDGET,
+        S_GATES,             S_SKILL,           S_MODEL,       S_CONTEXT, S_REPOSITORIES,
+        S_REPOSITORY_ACCESS, S_REPOSITORY_BASE,
     };
     for (forbidden) |k| {
         if (root.get(k) != null) return FleetConfigError.RuntimeKeysOutsideBlock;
@@ -150,9 +169,9 @@ fn extractRuntimeBlock(root: std.json.ObjectMap) FleetConfigError!std.json.Objec
 /// authoring error. Typos must fail loud.
 fn ensureKnownRuntimeKeys(runtime: std.json.ObjectMap) FleetConfigError!void {
     const known = [_][]const u8{
-        S_TRIGGERS,          S_TOOLS, S_CREDENTIALS, S_NETWORK, S_BUDGET,
-        S_GATES,             S_SKILL, S_MODEL,       S_CONTEXT, S_REPOSITORIES,
-        S_REPOSITORY_ACCESS,
+        S_TRIGGERS,          S_TOOLS,           S_CREDENTIALS, S_NETWORK, S_BUDGET,
+        S_GATES,             S_SKILL,           S_MODEL,       S_CONTEXT, S_REPOSITORIES,
+        S_REPOSITORY_ACCESS, S_REPOSITORY_BASE,
     };
     var it = runtime.iterator();
     while (it.next()) |entry| {
@@ -277,69 +296,4 @@ fn parseModelField(
     };
     if (s.len == 0) return null;
     return try alloc.dupe(u8, s);
-}
-
-/// Optional `x-agentsfleet.context:` block. Every field zero-defaults so the
-/// runner's `ContextBudget.applyDefaults` can substitute auto-sentinel values.
-/// Absent block → null; present-but-empty block → all-zero struct (still
-/// gets defaulted downstream — same observable behaviour).
-fn parseContextField(runtime: std.json.ObjectMap) FleetConfigError!?FleetContextBudget {
-    const val = runtime.get(S_CONTEXT) orelse return null;
-    const obj = switch (val) {
-        .object => |o| o,
-        else => return FleetConfigError.InvalidFieldType,
-    };
-    try ensureKnownContextKeys(obj);
-    return FleetContextBudget{
-        .context_cap_tokens = try readU32(obj, S_CONTEXT_CAP_TOKENS),
-        .tool_window = try readU32(obj, S_TOOL_WINDOW),
-        .memory_checkpoint_every = try readU32(obj, S_MEMORY_CHECKPOINT_EVERY),
-        .stage_chunk_threshold = try readF32(obj, S_STAGE_CHUNK_THRESHOLD),
-    };
-}
-
-/// Same rigid contract as `ensureKnownRuntimeKeys` but for the nested
-/// `x-agentsfleet.context:` object. Without this, a typo like
-/// `tool_windw: 30` silently falls through to the zero auto-sentinel
-/// and the operator's intended override is dropped at runtime — the
-/// failure is invisible until somebody traces a confusing budget at
-/// runtime back to a misspelled key in frontmatter.
-fn ensureKnownContextKeys(ctx: std.json.ObjectMap) FleetConfigError!void {
-    const known = [_][]const u8{
-        S_CONTEXT_CAP_TOKENS,      S_TOOL_WINDOW,
-        S_MEMORY_CHECKPOINT_EVERY, S_STAGE_CHUNK_THRESHOLD,
-    };
-    var it = ctx.iterator();
-    while (it.next()) |entry| {
-        var found = false;
-        for (known) |k| if (std.mem.eql(u8, k, entry.key_ptr.*)) {
-            found = true;
-            break;
-        };
-        if (!found) return FleetConfigError.UnknownRuntimeKey;
-    }
-}
-
-fn readU32(obj: std.json.ObjectMap, key: []const u8) FleetConfigError!u32 {
-    const v = obj.get(key) orelse return 0;
-    return switch (v) {
-        .integer => |i| blk: {
-            if (i < 0 or i > std.math.maxInt(u32)) return FleetConfigError.InvalidFieldType;
-            break :blk @intCast(i);
-        },
-        // Authoring convenience: `tool_window: auto` (bare YAML string) maps to
-        // the zero-value auto-sentinel. Same observable behaviour as omitting
-        // the key, but keeps the template self-documenting.
-        .string => |s| if (std.mem.eql(u8, s, "auto")) 0 else return FleetConfigError.InvalidFieldType,
-        else => return FleetConfigError.InvalidFieldType,
-    };
-}
-
-fn readF32(obj: std.json.ObjectMap, key: []const u8) FleetConfigError!f32 {
-    const v = obj.get(key) orelse return 0.0;
-    return switch (v) {
-        .float => |f| @floatCast(f),
-        .integer => |i| @floatFromInt(i),
-        else => return FleetConfigError.InvalidFieldType,
-    };
 }

@@ -204,23 +204,37 @@ test "test_mixed_kinds_fold_independently" {
 // runtime term is re-derived here independently from the same declarations,
 // so changing any declaration changes the ceiling with it.
 test "test_series_ceiling_is_derived_from_declarations" {
-    try std.testing.expectEqual(families.COST_SERIES_BUDGET + families.RUNTIME_FIXED_SERIES, families.MAX_SERIES);
+    try std.testing.expectEqual(families.COST_SERIES_BUDGET + families.RUNTIME_EVENTED_SERIES + families.RUNTIME_FIXED_SERIES, families.MAX_SERIES);
     try std.testing.expectEqual(families.MAX_SERIES, aggregate.MAX_SERIES);
 
     // Independent recomputation of the runtime term from the registry.
     const recomputed = comptime blk: {
+        @setEvalBranchQuota(10_000);
         var total: usize = 0;
         for (0..families.METRIC_ID_COUNT) |i| {
             const meta = families.metaFor(@enumFromInt(i));
-            if (!meta.cost and !meta.streamed) total += meta.max_series;
+            if (!meta.evented and !meta.streamed) total += meta.max_series;
         }
         break :blk total;
     };
     try std.testing.expectEqual(recomputed, families.RUNTIME_FIXED_SERIES);
     try std.testing.expect(recomputed > 0);
 
+    const recomputed_evented = comptime blk: {
+        @setEvalBranchQuota(10_000);
+        var total: usize = 0;
+        for (0..families.METRIC_ID_COUNT) |i| {
+            const meta = families.metaFor(@enumFromInt(i));
+            if (meta.evented and !meta.cost) total += meta.max_series;
+        }
+        break :blk total;
+    };
+    try std.testing.expectEqual(recomputed_evented, families.RUNTIME_EVENTED_SERIES);
+    try std.testing.expect(recomputed_evented > 0);
+
     // The streamed term reuses the slot table's own capacity as its bound.
     const recomputed_streamed = comptime blk: {
+        @setEvalBranchQuota(10_000);
         var total: usize = 0;
         for (0..families.METRIC_ID_COUNT) |i| {
             const meta = families.metaFor(@enumFromInt(i));
@@ -251,11 +265,10 @@ test "test_declared_worst_case_fits_under_ceiling" {
 test "test_attribution_budget_survives_family_growth" {
     try std.testing.expectEqual(semconv.modelAttributionCap(families.COST_SERIES_BUDGET), cardinality.ATTRIBUTION_CAP);
     try std.testing.expect(cardinality.ATTRIBUTION_CAP > 0);
-    // The derivation's input is the cost sub-budget alone: RUNTIME_FIXED_SERIES
-    // does not appear in it, so the cap computed from the pre-widening budget
-    // and the post-widening budget are the same number.
+    // The derivation's input is the cost sub-budget alone: neither runtime
+    // term appears in it, so registry growth cannot shrink attribution.
     try std.testing.expectEqual(
-        semconv.modelAttributionCap(families.MAX_SERIES - families.RUNTIME_FIXED_SERIES),
+        semconv.modelAttributionCap(families.MAX_SERIES - families.RUNTIME_FIXED_SERIES - families.RUNTIME_EVENTED_SERIES),
         cardinality.ATTRIBUTION_CAP,
     );
 }

@@ -200,7 +200,7 @@ pub fn xgroupCreateCalls(h: *TestHarness) !u64 {
 
 /// One lease poll; returns true when a lease was issued.
 pub fn pollLease(h: *TestHarness) !bool {
-    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(RUNNER_TOKEN)).json("{}");
+    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(RUNNER_TOKEN)).json(protocol.LEASE_REQUEST_CURRENT_JSON);
     const resp = try req.send();
     defer resp.deinit();
     try resp.expectStatus(.ok);

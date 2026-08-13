@@ -22,7 +22,6 @@
 //! reclaimed when the request ends — `assign` already freed the decoded stream
 //! event (owned by the Redis client's allocator) before returning.
 
-const std = @import("std");
 const logging = @import("log");
 
 const hx_mod = @import("../http/handlers/hx.zig");
@@ -30,6 +29,7 @@ const common = @import("../http/handlers/common.zig");
 const ec = @import("../errors/error_registry.zig");
 const wire = @import("contract");
 const protocol = wire.protocol;
+const protocol_v1 = wire.protocol_lease_v1;
 const constants = @import("common");
 const id_format = @import("../types/id_format.zig");
 const assign = @import("assign.zig");
@@ -37,17 +37,15 @@ const affinity = @import("affinity.zig");
 const billing = @import("service_billing.zig");
 const lease_row = @import("service_lease_row.zig");
 const FleetSession = @import("fleet_session.zig");
+const fleet_config = @import("../fleet_runtime/config.zig");
 const secrets_resolve = @import("secrets_resolve.zig");
 const grant_lookup = @import("../state/integration_grant_lookup.zig");
-const integration = @import("../credentials/integration.zig");
-const service_endpoint = @import("service_endpoint.zig");
-const service_repository = @import("service_repository.zig");
-const context_resolve = @import("context_resolve.zig");
+const service_execution_policy = @import("service_execution_policy.zig");
 const rows = @import("event_rows.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 const metrics_runner = @import("../observability/metrics_runner.zig");
+const repair_trusted_context = @import("../git/repair_trusted_context.zig");
 const event_envelope = wire.event_envelope;
-const execution_policy = wire.execution_policy;
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_lease);
@@ -61,7 +59,7 @@ const Billed = lease_row.Billed;
 /// (sticky-preferred), bill it (or reuse a reclaim's billing), and hand back the
 /// work + resolved policy. Always 200: a `LeasePayload` when there is work, else
 /// `lease=null` + a backoff hint.
-pub fn leaseNext(hx: Hx) void {
+pub fn leaseNext(hx: Hx, wire_version: u16) void {
     const runner_id = hx.principal.runner_id orelse {
         hx.fail(ec.ERR_RUN_INVALID_RUNNER_TOKEN, "runner identity required");
         return;
@@ -75,12 +73,31 @@ pub fn leaseNext(hx: Hx) void {
     };
     defer session.deinit(hx.alloc);
 
+    if (needsRepositoryBaseUpgrade(&session.config)) {
+        log.warn("lease_repository_base_required", .{ .fleet_id = acq.fleet_id, .event_id = acq.event_id });
+        billing.refuseStoredConfig(
+            hx,
+            &session,
+            acq,
+            rows.LABEL_REPOSITORY_BASE_REQUIRED,
+            rows.DETAIL_REPOSITORY_BASE_REQUIRED,
+        );
+        releaseClaim(hx, acq.fleet_id, acq.fencing_token);
+        return replyNoWork(hx);
+    }
+
+    if (wire_version < protocol.LEASE_WIRE_VERSION_CURRENT and requiresLeaseWireV2(&session.config)) {
+        log.info("lease_waiting_for_runner_wire_upgrade", .{ .fleet_id = acq.fleet_id, .event_id = acq.event_id, .wire_version = wire_version });
+        releaseClaim(hx, acq.fleet_id, acq.fencing_token);
+        return replyNoWork(hx);
+    }
+
     const billed = billing.resolveBilling(hx, &session, acq) orelse {
         releaseClaim(hx, acq.fleet_id, acq.fencing_token);
         return replyNoWork(hx);
     };
 
-    issueLease(hx, runner_id, &session, acq, billed) catch |err| {
+    issueLease(hx, runner_id, &session, acq, billed, wire_version) catch |err| {
         log.err("lease_issue_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = acq.fleet_id, .err = @errorName(err) });
         common.internalDbError(hx.res, hx.req_id);
     };
@@ -88,7 +105,7 @@ pub fn leaseNext(hx: Hx) void {
 
 /// Build the lease payload + persist the `fleet.runner_leases` row (with the
 /// durable envelope + the claim's fencing token), then 200.
-fn issueLease(hx: Hx, runner_id: []const u8, session: *FleetSession, acq: assign.Acquired, billed: Billed) !void {
+fn issueLease(hx: Hx, runner_id: []const u8, session: *FleetSession, acq: assign.Acquired, billed: Billed, wire_version: u16) !void {
     // Provider key for the lease: a FRESH lease carried it from billing (bill key
     // == deliver key, no second resolve); a reclaim has no billing pass, so
     // re-resolve now (the key is never persisted to the lease row). deinit
@@ -145,7 +162,7 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *FleetSession, acq: assign
     // Resolved BEFORE the lease row is written: a credential with no approved
     // grant parks the event, and parking must not leave a `fleet.runner_leases`
     // row behind for a lease that was never handed out.
-    const policy = switch (resolveExecutionPolicy(hx, session, resolved, secret_entries, approved_services)) {
+    var policy = switch (service_execution_policy.resolve(hx, session, resolved, secret_entries, approved_services)) {
         .parked => |p| {
             log.warn("lease_parked_on_missing_grant", .{ .error_code = ec.ERR_GRANT_NOT_FOUND, .fleet_id = acq.fleet_id, .event_id = acq.event_id, .name = p.credential, .integration = p.service });
             releaseClaim(hx, acq.fleet_id, acq.fencing_token);
@@ -154,12 +171,17 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *FleetSession, acq: assign
         .ready => |p| p,
     };
 
+    const trusted_context = repair_trusted_context.resolve(hx, session, acq) orelse {
+        releaseClaim(hx, acq.fleet_id, acq.fencing_token);
+        return replyNoWork(hx);
+    };
+    policy.http_origin_policies = trusted_context.http_origin_policies;
     const lease_id = try id_format.generateRunnerLeaseId(hx.alloc);
     try lease_row.insertLeaseRow(hx, runner_id, acq, billed, lease_id);
     metrics_runner.incRunnerActiveLeases(runner_id); // in-memory gauge; decremented on the runner's report
 
     log.debug("lease_issued", .{ .fleet_id = acq.fleet_id, .event_id = acq.event_id, .lease_id = lease_id, .fencing_token = acq.fencing_token, .runner_id = runner_id, .kind = @tagName(acq.kind) });
-    hx.okSensitive(.ok, protocol.LeaseResponse{
+    const response = protocol.LeaseResponse{
         .lease = .{
             .lease_id = lease_id,
             .fencing_token = acq.fencing_token,
@@ -171,12 +193,17 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *FleetSession, acq: assign
             // delivers it to NullClaw. `claimFleet` resolves the session before the
             // fresh/reclaim split, so this is set identically on both paths. Borrowed
             // from `session`, which lives until the response serialises (deinit defer).
-            .instructions = session.instructions,
+            .instructions = trusted_context.instructions,
             // Bundle-backed fleets carry the content hash so the runner downloads +
             // materializes the canonical snapshot; null for paste-installed fleets.
             .bundle = if (session.bundle_content_hash) |hash| .{ .content_hash = hash } else null,
         },
-    });
+    };
+    if (wire_version < protocol.LEASE_WIRE_VERSION_CURRENT) {
+        hx.okSensitive(.ok, protocol_v1.fromCurrent(response));
+    } else {
+        hx.okSensitive(.ok, response);
+    }
 }
 
 /// The fleet's approved integration-grant services, one batch read per lease
@@ -213,110 +240,6 @@ fn resolveProviderForLease(hx: Hx, tenant_id: []const u8) ?tenant_provider.Resol
     };
 }
 
-/// `secrets_map` (inline, pre-resolved parsed bodies from `issueLease`) +
-/// context budget + the resolved provider+key — the resolution
-/// `executeInSandbox` does per execution, lifted onto the lease wire. Secret
-/// bodies and the provider key are arena-scoped and serialized synchronously
-/// by `hx.ok`; they are never logged (Invariant: no secret bytes in logs).
-/// `resolved` is owned by the caller and outlives `hx.ok`. Resolution failures
-/// refused the lease upstream — by here `entries` is complete or absent.
-/// A declared credential resolved to a mintable handle whose fleet holds no
-/// approved grant. Carries both names so the log says which credential is
-/// blocked and which decision is outstanding.
-const ParkedOnGrant = struct { credential: []const u8, service: []const u8 };
-
-/// Either the policy to ship on the lease, or the grant decision that has to
-/// land before any lease can be issued for this event.
-///
-/// Parking replaced a silent drop. The dropped credential left the mintable off
-/// BOTH surfaces and issued the lease anyway, so the runner received work it
-/// could never mint for: the run failed at the far end, and nothing anywhere
-/// recorded that a decision was owed. Parking keeps the delivery leasable, so
-/// the next poll re-evaluates it and an approval takes effect with no redeploy.
-const PolicyOutcome = union(enum) {
-    ready: execution_policy.ExecutionPolicy,
-    parked: ParkedOnGrant,
-};
-
-/// `classifyCredentials` split into its own outcome so the park can travel out
-/// of the loop without a sentinel — the classification is the only step that
-/// can decide the lease must not be issued.
-const ClassifiedCredentials = union(enum) {
-    ready: struct { secrets_map: ?std.json.Value, mintable: []const execution_policy.Mintable },
-    parked: ParkedOnGrant,
-};
-
-/// Classify each resolved credential (M102 §4): an on-demand mintable handle
-/// contributes id-ONLY to the typed `mintable` list (the App/installation config
-/// never reaches the child, VLT); a static one keeps its stored value in
-/// `secrets_map`. Keeping mintables out of `secrets_map` means the redaction set
-/// derives from `secrets_map` alone — no "github" literal to scrub, no drift.
-///
-/// Grant gate: a mintable is emitted ONLY when the fleet's grant is approved.
-/// An ungranted one parks the whole lease rather than falling through to
-/// `secrets_map`, which would ship the raw handle config to the child
-/// (Invariant 3, VLT).
-fn classifyCredentials(
-    alloc: std.mem.Allocator,
-    entries: ?[]secrets_resolve.ResolvedSecret,
-    approved_services: []const []const u8,
-) ClassifiedCredentials {
-    const list = entries orelse return .{ .ready = .{ .secrets_map = null, .mintable = &.{} } };
-    var obj: std.json.ObjectMap = .empty;
-    var mints: std.ArrayList(execution_policy.Mintable) = .empty;
-    for (list) |entry| {
-        if (secrets_resolve.mintableId(entry.parsed.value)) |id| {
-            // `id.toString()` (not `@tagName`) is the audited enum→service
-            // string, comptime-proven to match the DB `service` column.
-            const service = integration.toString(id);
-            if (!grant_lookup.contains(approved_services, service)) {
-                return .{ .parked = .{ .credential = entry.name, .service = service } };
-            }
-            // `entry.name` is arena-owned and outlives the hx.ok
-            // serialization; `service` is a static const — both safe.
-            mints.append(alloc, .{ .name = entry.name, .integration = service }) catch |err|
-                log.warn("lease_secret_mintable_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
-        } else {
-            obj.put(alloc, entry.name, entry.parsed.value) catch |err|
-                log.warn("lease_secret_put_failed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
-        }
-    }
-    return .{ .ready = .{
-        .secrets_map = if (obj.count() > 0) .{ .object = obj } else null,
-        .mintable = mints.toOwnedSlice(alloc) catch &.{},
-    } };
-}
-
-fn resolveExecutionPolicy(hx: Hx, session: *FleetSession, resolved: ?tenant_provider.ResolvedProvider, entries: ?[]secrets_resolve.ResolvedSecret, approved_services: []const []const u8) PolicyOutcome {
-    const alloc = hx.alloc;
-    // Lease-time overlay (see user_flow.md): sentinel frontmatter (cap 0 /
-    // model "") inherits the cap+model the control plane resolved into
-    // tenant_model_selection; a real frontmatter value wins. `resolved` outlives the
-    // hx.ok serialization (deinit deferred in issueLease), so the borrowed model
-    // is valid for the response. No resolved provider ⇒ 0/"" ⇒ overlay no-op.
-    const budget = context_resolve.resolveContextBudget(
-        session.config.context,
-        session.config.model,
-        if (resolved) |r| r.context_cap_tokens else 0,
-        if (resolved) |r| r.model else "",
-    );
-    const classified = switch (classifyCredentials(alloc, entries, approved_services)) {
-        .parked => |p| return .{ .parked = p },
-        .ready => |r| r,
-    };
-    const endpoint = service_endpoint.customEndpoint(alloc, resolved);
-    return .{ .ready = .{
-        .secrets_map = classified.secrets_map,
-        .mintable = classified.mintable,
-        .context = budget,
-        .provider = endpoint.provider,
-        .api_key = if (resolved) |r| r.api_key else "",
-        .inference_host = endpoint.inference_host,
-        .base_url = endpoint.base_url,
-        .repository_binding = service_repository.wireRepositoryBinding(session.config.repository_binding),
-    } };
-}
-
 /// Free the affinity claim won by `assign` when this lease cannot be issued
 /// (claim/billing failure), so the fleet is not stuck claimed until its TTL.
 /// Token-guarded: frees the slot only while this claim's token is still live.
@@ -332,11 +255,13 @@ fn replyNoWork(hx: Hx) void {
     hx.ok(.ok, protocol.LeaseResponse{ .lease = null, .retry_after_ms = constants.NO_WORK_RETRY_AFTER_MS });
 }
 
-test {
-    _ = service_endpoint; // pull the split module's tests into discovery
-    _ = service_repository;
+fn requiresLeaseWireV2(config: *const fleet_config.FleetConfig) bool {
+    if (config.repository_binding != null) return true;
+    const network = config.network orelse return false;
+    return network.read_only or network.read_post_paths.len > 0;
 }
 
-test "FleetSession size pinned at 368 bytes (pin relocated beside its consumer)" {
-    try std.testing.expectEqual(@as(usize, 368), @sizeOf(FleetSession));
+fn needsRepositoryBaseUpgrade(config: *const fleet_config.FleetConfig) bool {
+    const binding = config.repository_binding orelse return false;
+    return binding.access == .write and binding.base_branch == null;
 }

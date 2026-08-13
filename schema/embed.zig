@@ -73,6 +73,11 @@ pub const migrations = [_]MigrationEntry{
     .{ .version = 811, .sql = @embedFile("811_fleet_approval_gates_event_binding.sql") },
     .{ .version = 820, .sql = @embedFile("820_memory_entries.sql") },
     .{ .version = 830, .sql = @embedFile("830_repair_pr_links.sql") },
+    .{ .version = 831, .sql = @embedFile("831_repair_run_results.sql") },
+    .{ .version = 832, .sql = @embedFile("832_repair_pr_merge_correlation.sql") },
+    .{ .version = 833, .sql = @embedFile("833_fleet_approval_gates_spend.sql") },
+    .{ .version = 834, .sql = @embedFile("834_repair_production_results.sql") },
+    .{ .version = 835, .sql = @embedFile("835_repair_verifications.sql") },
     .{ .version = 880, .sql = @embedFile("880_fleet_activity_counters.sql") },
     .{ .version = 890, .sql = @embedFile("890_fleet_activity_counter_triggers.sql") },
 };

@@ -176,7 +176,8 @@ pub const INSERT_FLEET_EVENT =
 /// late writer cannot overwrite an already-settled outcome.
 pub const UPDATE_FLEET_EVENT_FAILURE =
     \\UPDATE core.fleet_events
-    \\SET status = $3, failure_label = $4, updated_at = $5
+    \\SET status = $3, failure_label = $4, updated_at = $5,
+    \\    failure_detail = NULLIF($7, '')
     \\WHERE fleet_id = $1::uuid AND event_id = $2 AND status = $6
 ;
 
