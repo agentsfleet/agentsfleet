@@ -23,6 +23,7 @@ pub fn wireRepositoryBinding(authored: ?integration.RepositoryBinding) ?executio
             .read => .read,
             .write => .write,
         },
+        .base_branch = binding.base_branch,
     };
 }
 
@@ -32,10 +33,11 @@ test "the authored repository binding reaches the lease unchanged, and an absent
     // other half: that the two enums SPELL the same values, which is what makes
     // the runner's refusal and the mint's scoping agree about one binding.
     const repos = [_][]const u8{ "acme/payments", "acme/ledger" };
-    const carried = wireRepositoryBinding(.{ .repositories = &repos, .access = .write }).?;
+    const carried = wireRepositoryBinding(.{ .repositories = &repos, .access = .write, .base_branch = "main" }).?;
     try std.testing.expectEqual(@as(usize, 2), carried.repositories.len);
     try std.testing.expectEqualStrings("acme/payments", carried.repositories[0]);
     try std.testing.expectEqual(execution_policy.RepositoryAccess.write, carried.access);
+    try std.testing.expectEqualStrings("main", carried.base_branch.?);
     try std.testing.expectEqualStrings(
         @tagName(integration.RepositoryAccess.read),
         @tagName(execution_policy.RepositoryAccess.read),

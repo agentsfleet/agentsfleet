@@ -11,10 +11,11 @@
 //! on the wire without being declared — and neither the ceiling arithmetic nor
 //! the storage layout can drift from what is actually exported.
 //!
-//! Collection shapes: `cost` — evented samples through the lock-free ring,
-//! budgeted by `COST_SERIES_BUDGET` so runtime growth can never shrink model
-//! attribution; `streamed` — pre-aggregated per-runner families serialized
-//! straight from the slot table, never entering the Aggregator; `live_read` —
+//! Collection shapes: `evented` — samples through the lock-free ring, with
+//! `cost` families separately budgeted by `COST_SERIES_BUDGET` so runtime
+//! growth can never shrink model attribution; `streamed` — pre-aggregated
+//! per-runner families serialized straight from the slot table, never entering
+//! the Aggregator; `live_read` —
 //! read at flush time by an explicit collect hook (pool stats, resident-set
 //! probe, flush-thread liveness), no generated cell so absence semantics stay
 //! with the source; none of the above — fixed-label families stored in the
@@ -22,6 +23,7 @@
 
 const std = @import("std");
 const semconv = @import("semconv.zig");
+const meta_mod = @import("otel_metric_meta.zig");
 const dims = @import("otel_metrics_dims.zig");
 const mot = @import("metrics_otel.zig");
 const mc = @import("metrics_counters.zig");
@@ -29,40 +31,13 @@ const mr = @import("metrics_runner.zig");
 const mm = @import("metrics_memory.zig");
 const msm = @import("metrics_sensitive_memory.zig");
 const mt = @import("metrics_trace.zig");
+const mrv = @import("metrics_repair_verification.zig");
 const ls = @import("library_stages.zig");
 
-pub const MetricKind = enum { sum, histogram, gauge };
-
-/// OTLP AggregationTemporality for sums: evented families export the window's
-/// delta (a Fly-deployed collector converts to cumulative); snapshot counters
-/// are natively cumulative and export as such, needing no per-flush memo.
-pub const Temporality = enum { delta, cumulative };
-
-/// Unit conversion applied at serialization. Observations stay integer in
-/// their source unit; the printer emits the declared unit exactly (no float
-/// arithmetic anywhere).
-pub const Scale = enum { none, millis_to_seconds, nanos_to_seconds };
-
-pub const MetricMeta = struct {
-    name: []const u8,
-    unit: []const u8,
-    kind: MetricKind,
-    monotonic: bool = false,
-    temporality: Temporality = .delta,
-    /// Explicit bucket bounds in the metric's *observation* unit; empty for
-    /// sums and gauges.
-    bounds: []const u64 = &.{},
-    scale: Scale = .none,
-    /// Worst-case distinct label sets this family can carry in one flush.
-    /// Derived from `dimsFor` for fixed-label families — never hand-set there.
-    max_series: usize = 1,
-    /// Serialized from a pre-aggregated source; never enters the Aggregator.
-    streamed: bool = false,
-    /// Evented cost family riding the ring; budgeted by COST_SERIES_BUDGET.
-    cost: bool = false,
-    /// Collected by an explicit flush-time hook; no generated storage cell.
-    live_read: bool = false,
-};
+pub const MetricKind = meta_mod.MetricKind;
+pub const Temporality = meta_mod.Temporality;
+pub const Scale = meta_mod.Scale;
+pub const MetricMeta = meta_mod.MetricMeta;
 
 pub const MetricId = enum {
     // Evented cost families (delta, through the ring).
@@ -71,6 +46,9 @@ pub const MetricId = enum {
     cache_read_token_usage,
     credit_consumed,
     samples_dropped,
+    // Evented repair-verification latency families.
+    repair_production_to_queue,
+    repair_queue_to_completion,
     // API / SSE guardrails + worker liveness.
     api_backpressure_rejections,
     api_in_flight_requests,
@@ -100,6 +78,15 @@ pub const MetricId = enum {
     runner_retention_swept,
     runner_retention_sweep_failures,
     account_teardown_unregister_failures,
+    // Production-repair verification.
+    repair_provider_results,
+    repair_correlations,
+    repair_verification_intents_created,
+    repair_dispatch_retried,
+    repair_synthetic_events,
+    repair_verifier_runs,
+    repair_dispatch_due_batch,
+    repair_dispatch_oldest_age,
     // Library read evidence.
     library_stage_duration,
     library_stage_observations,
@@ -140,37 +127,13 @@ pub const MetricId = enum {
     runner_active_leases,
 };
 
-/// Cumulative monotonic count sum. Series width comes from `dimsFor`.
-fn cum(name: []const u8) MetricMeta {
-    return .{ .name = name, .unit = semconv.UNIT_COUNT, .kind = .sum, .monotonic = true, .temporality = .cumulative };
-}
-
-fn gauge(name: []const u8, unit: []const u8) MetricMeta {
-    return .{ .name = name, .unit = unit, .kind = .gauge };
-}
-
-fn cumBytes(name: []const u8) MetricMeta {
-    return .{ .name = name, .unit = semconv.UNIT_BYTES, .kind = .sum, .monotonic = true, .temporality = .cumulative };
-}
-
-fn liveRead(base: MetricMeta) MetricMeta {
-    var meta = base;
-    meta.live_read = true;
-    return meta;
-}
-
-fn streamedMeta(base: MetricMeta, worst_case: usize) MetricMeta {
-    var meta = base;
-    meta.streamed = true;
-    meta.max_series = worst_case;
-    return meta;
-}
-
-fn costMeta(base: MetricMeta) MetricMeta {
-    var meta = base;
-    meta.cost = true;
-    return meta;
-}
+const cum = meta_mod.cumulative;
+const gauge = meta_mod.gauge;
+const cumBytes = meta_mod.cumulativeBytes;
+const liveRead = meta_mod.liveRead;
+const streamedMeta = meta_mod.streamed;
+const costMeta = meta_mod.cost;
+const eventedMeta = meta_mod.evented;
 
 // Operator help prose (the retired Prometheus HELP knowledge) rides the
 // family rows below, beside the wire identity it describes.
@@ -182,6 +145,8 @@ fn buildMeta(id: MetricId) MetricMeta {
         .cache_read_token_usage => costMeta(.{ .name = semconv.METRIC_INVOKE_AGENT_CACHE_READ, .unit = semconv.UNIT_TOKENS, .kind = .histogram, .bounds = &semconv.TOKEN_BUCKET_BOUNDS }),
         .credit_consumed => costMeta(.{ .name = semconv.METRIC_BILLING_CREDIT_CONSUMED, .unit = semconv.UNIT_NANOCREDITS, .kind = .sum, .monotonic = true }),
         .samples_dropped => costMeta(.{ .name = semconv.METRIC_SAMPLES_DROPPED, .unit = semconv.UNIT_COUNT, .kind = .sum, .monotonic = true }),
+        .repair_production_to_queue => eventedMeta(.{ .name = mrv.PRODUCTION_TO_QUEUE_NAME, .unit = semconv.UNIT_SECONDS, .kind = .histogram, .bounds = &mrv.HISTOGRAM_BOUNDS_MS, .scale = .millis_to_seconds }),
+        .repair_queue_to_completion => eventedMeta(.{ .name = mrv.QUEUE_TO_COMPLETE_NAME, .unit = semconv.UNIT_SECONDS, .kind = .histogram, .bounds = &mrv.HISTOGRAM_BOUNDS_MS, .scale = .millis_to_seconds }),
         .api_backpressure_rejections => cum(semconv.METRIC_API_BACKPRESSURE_REJECTIONS),
         .api_in_flight_requests => gauge(semconv.METRIC_API_IN_FLIGHT_REQUESTS, semconv.UNIT_REQUESTS),
         .sse_backpressure_rejections => cum(semconv.METRIC_SSE_BACKPRESSURE_REJECTIONS),
@@ -218,6 +183,14 @@ fn buildMeta(id: MetricId) MetricMeta {
         .runner_retention_sweep_failures => cum(mc.RETENTION_SWEEP_FAILURES_NAME),
         // Unregister calls that failed during an account purge — an erased tenant may still have a firing timer.
         .account_teardown_unregister_failures => cum(mc.TEARDOWN_UNREGISTER_FAILURES_NAME),
+        .repair_provider_results => cum(mrv.PROVIDER_NAME),
+        .repair_correlations => cum(mrv.CORRELATION_NAME),
+        .repair_verification_intents_created => cum(mrv.INTENTS_CREATED_NAME),
+        .repair_dispatch_retried => cum(mrv.DISPATCH_RETRIED_NAME),
+        .repair_synthetic_events => cum(mrv.EVENT_NAME),
+        .repair_verifier_runs => cum(mrv.VERIFIER_NAME),
+        .repair_dispatch_due_batch => gauge(mrv.DUE_BATCH_NAME, semconv.UNIT_ENTRIES),
+        .repair_dispatch_oldest_age => gauge(mrv.BACKLOG_AGE_NAME, semconv.UNIT_SECONDS),
         // Seconds in one library read stage; divide by the observations counter for mean cost.
         .library_stage_duration => .{ .name = ls.STAGE_DURATION_NAME, .unit = semconv.UNIT_SECONDS, .kind = .sum, .monotonic = true, .temporality = .cumulative, .scale = .nanos_to_seconds },
         // Completed library read stages — the denominator for the duration sum.
@@ -295,7 +268,16 @@ pub const COST_SERIES_BUDGET: usize = 256;
 pub const RUNTIME_FIXED_SERIES: usize = blk: {
     var total: usize = 0;
     for (METAS) |meta| {
-        if (!meta.cost and !meta.streamed) total += meta.max_series;
+        if (!meta.evented and !meta.streamed) total += meta.max_series;
+    }
+    break :blk total;
+};
+
+/// Comptime sum of non-cost evented runtime families' worst case.
+pub const RUNTIME_EVENTED_SERIES: usize = blk: {
+    var total: usize = 0;
+    for (METAS) |meta| {
+        if (meta.evented and !meta.cost) total += meta.max_series;
     }
     break :blk total;
 };
@@ -303,7 +285,7 @@ pub const RUNTIME_FIXED_SERIES: usize = blk: {
 /// The aggregator's derived distinct-series ceiling: the cost sub-budget plus
 /// exactly what the declared runtime families can occupy. A new family grows
 /// this ceiling instead of silently evicting cost attribution.
-pub const MAX_SERIES: usize = COST_SERIES_BUDGET + RUNTIME_FIXED_SERIES;
+pub const MAX_SERIES: usize = COST_SERIES_BUDGET + RUNTIME_EVENTED_SERIES + RUNTIME_FIXED_SERIES;
 
 /// Upper bound on the aggregator's static accumulator array — a memory bound
 /// on a small machine, not a tuning knob. A declaration set whose worst case
@@ -337,7 +319,7 @@ comptime {
         for (dims.dimsFor(id)) |dim| {
             // Storage cells exist only for closed dimensions; a dynamic
             // dimension on a cell-stored family would have unbounded cells.
-            if (!meta.cost and !meta.streamed) std.debug.assert(dim == .fixed);
+            if (!meta.evented and !meta.streamed) std.debug.assert(dim == .fixed);
             // Hooked families read live state; declared dimensions would
             // promise cells the hook never fills.
             if (meta.live_read) std.debug.assert(false);

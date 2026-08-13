@@ -63,7 +63,7 @@ pub fn resolveLeaseScope(hx: Hx, conn: *pg.Conn, runner_id: []const u8, lease_id
 /// released with the request, so `FleetConfig.deinit` is deliberately not called:
 /// the row-backed slices it would free belong to the arena, not to us.
 fn repositoryBinding(hx: Hx, config_json: []const u8) ?integration.RepositoryBinding {
-    const cfg = fleet_config.parseFleetConfig(hx.alloc, config_json) catch |err| {
+    const cfg = fleet_config.parseStoredFleetConfig(hx.alloc, config_json) catch |err| {
         log.warn("credential_mint_config_unparsed", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
         return null;
     };

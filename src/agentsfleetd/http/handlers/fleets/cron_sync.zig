@@ -63,7 +63,7 @@ pub fn syncStoredFleet(hx: Hx, workspace_id: []const u8, fleet_id: []const u8) R
         return .internal;
     } orelse return .not_found;
     defer hx.alloc.free(stored.config_json);
-    var config = fleet_config.parseFleetConfig(hx.alloc, stored.config_json) catch {
+    var config = fleet_config.parseStoredFleetConfig(hx.alloc, stored.config_json) catch {
         return .invalid;
     };
     defer config.deinit(hx.alloc);

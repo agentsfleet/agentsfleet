@@ -12,6 +12,16 @@ const common = @import("common");
 const client = @import("control_plane_client.zig");
 const dts = @import("deadline_test_support.zig");
 
+test "lease parsing ignores additive fields from a newer daemon" {
+    const body =
+        \\{"lease":{"lease_id":"lease-1","fencing_token":7,"lease_expires_at":1900000000000,"secret_delivery":"inline","event":{"event_id":"1-0","fleet_id":"fleet-1","workspace_id":"workspace-1","actor":"system:test","event_type":"chat","request_json":"{}","created_at":1700000000000},"policy":{"future_policy_field":{"enabled":true}},"future_lease_field":"new"},"retry_after_ms":null,"future_response_field":42}
+    ;
+    const parsed = try client.parseLeaseResponse(testing.allocator, body);
+    defer parsed.deinit();
+    try testing.expectEqualStrings("lease-1", parsed.value.lease.?.lease_id);
+    try testing.expectEqual(@as(u64, 7), parsed.value.lease.?.fencing_token);
+}
+
 test "classifyRenew: a 2xx parses the new kill deadline into renewed" {
     const out = try client.classifyRenew(testing.allocator, 200, "{\"lease_expires_at\":1900000000123}");
     try testing.expectEqual(client.RenewResult{ .renewed = 1_900_000_000_123 }, out);
@@ -284,6 +294,49 @@ const RenewBodyStub = struct {
     }
 };
 
+const LEASE_NO_WORK_BODY = "{\"lease\":null,\"retry_after_ms\":1000}";
+
+const LeaseBodyStub = struct {
+    io: std.Io,
+    listener: *std.Io.net.Server,
+    body_buf: [128]u8 = [_]u8{0} ** 128,
+    body_len: usize = 0,
+
+    fn run(self: *LeaseBodyStub) void {
+        const conn = self.listener.accept(self.io) catch return;
+        defer conn.close(self.io);
+        var request_buf: [2048]u8 = undefined;
+        var total: usize = 0;
+        var header_end: usize = 0;
+        while (true) {
+            if (std.mem.indexOf(u8, request_buf[0..total], "\r\n\r\n")) |index| {
+                header_end = index + 4;
+                break;
+            }
+            const read = std.posix.read(conn.socket.handle, request_buf[total..]) catch return;
+            if (read == 0) return;
+            total += read;
+            if (total == request_buf.len) return;
+        }
+        const content_len = parseContentLength(request_buf[0..header_end]) orelse 0;
+        while (total < header_end + content_len) {
+            const read = std.posix.read(conn.socket.handle, request_buf[total..]) catch return;
+            if (read == 0) return;
+            total += read;
+        }
+        const body = request_buf[header_end .. header_end + content_len];
+        @memcpy(self.body_buf[0..body.len], body);
+        self.body_len = body.len;
+        var response_buf: [256]u8 = undefined;
+        var writer = conn.writer(self.io, &response_buf);
+        writer.interface.print(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {d}\r\nConnection: close\r\n\r\n{s}",
+            .{ LEASE_NO_WORK_BODY.len, LEASE_NO_WORK_BODY },
+        ) catch return;
+        writer.interface.flush() catch return;
+    }
+};
+
 fn parseContentLength(headers: []const u8) ?usize {
     var it = std.mem.splitSequence(u8, headers, "\r\n");
     while (it.next()) |line| {
@@ -327,6 +380,27 @@ test "renew puts the cumulative splits on the wire as the POST body (production 
     try testing.expectEqual(@as(u32, 100), parsed.value.input_tokens);
     try testing.expectEqual(@as(u32, 0), parsed.value.cached_input_tokens);
     try testing.expectEqual(@as(u32, 40), parsed.value.output_tokens);
+}
+
+test "new runner sends the current lease wire version" {
+    const alloc = testing.allocator;
+    const io = common.globalIo();
+    var address = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 0);
+    var listener = address.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = boundPort(listener.socket.handle) catch return error.SkipZigTest;
+    var stub = LeaseBodyStub{ .io = io, .listener = &listener };
+    const responder = std.Thread.spawn(.{}, LeaseBodyStub.run, .{&stub}) catch return error.SkipZigTest;
+    var url_buf: [48]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}", .{port});
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var control = client.init(alloc, io, try deadlines.start(alloc), url);
+    defer control.deinit();
+    const response = try control.lease(alloc, "agt_rtest", DEADLINE_PROBE_MS);
+    defer response.deinit();
+    responder.join();
+    try testing.expectEqualStrings(@import("contract").protocol.LEASE_REQUEST_CURRENT_JSON, stub.body_buf[0..stub.body_len]);
 }
 
 // §4 / Dimension 4.1 — post()/get() build an Allocating response writer

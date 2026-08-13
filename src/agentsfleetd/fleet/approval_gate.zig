@@ -216,6 +216,7 @@ fn parkWriteKind(
     defer built.deinit(alloc);
     built.detail.gate_kind = gate_constants.GATE_KIND_REPOSITORY_WRITE;
     built.detail.blast_radius = gate_constants.GATE_BLAST_RADIUS_REPOSITORY_WRITE;
+    built.detail.spend_ceiling = gate_constants.REPOSITORY_WRITE_SPEND_CEILING;
     return parkOutcomeToResult(park.parkEvent(alloc, session, event, pool, redis, built.detail));
 }
 

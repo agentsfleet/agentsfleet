@@ -119,6 +119,10 @@ const MALFORMED_TRIGGER_MD =
 const NEW_TRIGGER_JSON = jsonEscape(NEW_TRIGGER_MD_WITH_CRON);
 const NEW_SOURCE_JSON = jsonEscape(NEW_SOURCE_MD);
 const MALFORMED_TRIGGER_JSON = jsonEscape(MALFORMED_TRIGGER_MD);
+const WRITE_WITHOUT_BASE_CONFIG =
+    \\{"name":"patch-bot","x-agentsfleet":{"triggers":[{"type":"webhook","source":"github"}],"tools":["http_request"],"budget":{"daily_dollars":5.0},"repositories":["acme/payments"],"repository_access":"write"}}
+;
+const WRITE_WITHOUT_BASE_JSON = jsonEscape(WRITE_WITHOUT_BASE_CONFIG);
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
@@ -436,6 +440,42 @@ test "integration: PATCH malformed trigger_markdown — 400, next PATCH on same 
     const c = try h.acquireConn();
     defer h.releaseConn(c);
     cleanup(c);
+}
+
+test "integration: PATCH rejects write config without trusted repository base" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    test_qstash.attachSuccess(h);
+
+    const url = try patchUrl();
+    defer ALLOC.free(url);
+    const before = blk: {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        break :blk try readRow(conn);
+    };
+    defer freeRow(before);
+
+    const body = "{\"config_json\":" ++ WRITE_WITHOUT_BASE_JSON ++ "}";
+    const response = try (try (try h.request(.PATCH, url).bearer(TOKEN_USER)).json(body)).send();
+    defer response.deinit();
+    try response.expectStatus(.bad_request);
+
+    const after = blk: {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        break :blk try readRow(conn);
+    };
+    defer freeRow(after);
+    try std.testing.expectEqualStrings(before.config_json, after.config_json);
+    try std.testing.expectEqual(before.updated_at, after.updated_at);
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    cleanup(conn);
 }
 
 // The config-reload seam test that lived here drove the worker-only

@@ -132,6 +132,18 @@ test "isUuid accepts any canonical uuid; isUuidV7 accepts only what we mint" {
     try std.testing.expect(!id.isUuid("0195b4ba8d3a7f138abc2b3e1e0a6f99"));
 }
 
+test "should round trip canonical UUIDv7 bytes and reject invalid byte shapes" {
+    const text = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
+    const raw = id.uuidV7ToBytes(text).?;
+    const round_trip = id.uuidV7FromBytes(raw).?;
+    try std.testing.expectEqualStrings(text, &round_trip);
+
+    try std.testing.expect(id.uuidV7ToBytes("0195B4BA-8D3A-7F13-8ABC-2B3E1E0A6F99") == null);
+    var wrong_version = raw;
+    wrong_version[6] = (wrong_version[6] & 0x0f) | 0x60;
+    try std.testing.expect(id.uuidV7FromBytes(wrong_version) == null);
+}
+
 test "an uppercase spelling of a valid id is rejected, not normalized" {
     // Postgres folds these to one row on ::uuid; Redis dedupe keys, cache keys
     // and std.mem.eql see two. Accepting both spellings is the aliasing bug.
@@ -199,6 +211,8 @@ const LIVE_GENERATORS = .{
     id.generateFleetBundleId,
     id.generateTenantModelEntryId,
     id.generateScheduleId,
+    id.generateRepairProductionResultId,
+    id.generateRepairVerificationId,
 };
 
 test "all live id generators produce valid uuidv7 of the canonical length" {
