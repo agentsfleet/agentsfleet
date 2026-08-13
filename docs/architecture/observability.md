@@ -98,6 +98,8 @@ the workload.
 | `agentsfleet.invoke_agent.cache_read.token.usage` | bounded cost attribution | traffic | cache-read subset of input tokens |
 | `agentsfleet.billing.credit.consumed` | bounded cost attribution | traffic | nanocredit spend by charge class |
 | `agentsfleet.telemetry.samples_dropped` | none | health | exporter self-observability: ring + aggregation loss |
+| `agentsfleet_repair_production_to_queue_seconds` | none | latency | provider completion to proof-qualified verifier queueing |
+| `agentsfleet_repair_queue_to_completion_seconds` | none | latency | proof-qualified verifier queueing to completed Fleet report |
 | `agentsfleet_api_in_flight_requests` | none | saturation | approaching `api_max_in_flight_requests` |
 | `agentsfleet_api_backpressure_rejections_total` | none | errors | any growth: requests shed at the cap |
 | `agentsfleet_sse_in_flight_streams` | none | saturation | approaching the stream cap |
@@ -114,6 +116,14 @@ the workload.
 | `agentsfleet_runner_retention_swept_total` | none | traffic | retention pruning throughput |
 | `agentsfleet_runner_retention_sweep_failures_total` | none | errors | retention sweeps failing |
 | `agentsfleet_account_teardown_unregister_failures_total` | none | errors | teardown purges failing to unregister |
+| `agentsfleet_repair_provider_results_total` | `outcome` | traffic | accepted, replayed, or refused production evidence |
+| `agentsfleet_repair_correlations_total` | `outcome` | errors | exact, missed, and ambiguous repair correlations |
+| `agentsfleet_repair_verification_intents_created_total` | none | traffic | durable verifier intents created after exact correlation |
+| `agentsfleet_repair_dispatch_retried_total` | none | errors | failed verifier dispatch attempts awaiting retry |
+| `agentsfleet_repair_synthetic_events_total` | `outcome` | traffic | emitted and idempotently replayed proof-qualified events |
+| `agentsfleet_repair_verifier_runs_total` | `outcome` | traffic | queued and completed verifier Fleet runs |
+| `agentsfleet_repair_dispatch_due_batch` | none | saturation | due verifier sample capped at the dispatcher batch limit |
+| `agentsfleet_repair_dispatch_oldest_age_seconds` | none | saturation | age of the oldest due verifier intent |
 | `agentsfleet_library_stage_duration_seconds_total` | `surface`,`stage` | latency | ÷ observations = mean stage cost |
 | `agentsfleet_library_stage_observations_total` | `surface`,`stage` | latency | the denominator above |
 | `agentsfleet_library_read_outcome_total` | `surface`,`outcome` | errors | non-`ok` outcomes per surface |

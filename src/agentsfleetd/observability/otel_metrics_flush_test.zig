@@ -143,6 +143,7 @@ test "ring overflow surfaces the samples_dropped self-metric" {
 /// Fixed-label series the redis-pool families would occupy — subtracted from
 /// the expected runtime count when no Pool is registered in this process.
 const REDIS_POOL_SERIES: usize = blk: {
+    @setEvalBranchQuota(10_000);
     var total: usize = 0;
     for (0..families.METRIC_ID_COUNT) |i| {
         const meta = families.metaFor(@enumFromInt(i));

@@ -141,7 +141,7 @@ fn parseLease(alloc: std.mem.Allocator, body: []const u8) !LeaseView {
 }
 
 fn leaseAs(h: *TestHarness, token: []const u8) !LeaseView {
-    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json("{}");
+    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json(protocol.LEASE_REQUEST_CURRENT_JSON);
     const resp = try req.send();
     defer resp.deinit();
     try resp.expectStatus(.ok);

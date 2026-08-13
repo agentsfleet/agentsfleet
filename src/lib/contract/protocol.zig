@@ -26,6 +26,16 @@ const reports = @import("protocol_report.zig");
 const memory = @import("protocol_memory.zig");
 const credentials = @import("protocol_credentials.zig");
 
+pub const LEASE_WIRE_VERSION_V1: u16 = 1;
+pub const LEASE_WIRE_VERSION_CURRENT: u16 = 2;
+pub const LEASE_REQUEST_CURRENT_JSON = "{\"wire_version\":2}";
+
+/// Empty or malformed bodies are treated as version one by the handler. New
+/// runners advertise the current version so newer enforcement may be issued.
+pub const LeaseRequest = struct {
+    wire_version: u16 = LEASE_WIRE_VERSION_V1,
+};
+
 // ── Wire paths ──────────────────────────────────────────────────────────────
 // Single-sourced (RULE UFS) so the router and the future TS client share them
 // verbatim. Identity is the Bearer token, so the self-plane is `me` — no
@@ -263,16 +273,16 @@ pub const LeasePayload = struct {
     /// installed behaviour and not a generic chat. Soft reasoning input —
     /// hard tool/secret policy stays in `policy`. Additive + defaulted so a
     /// mixed-version fleet is safe: a new runner reading an older lease that
-    /// omits the field gets `""` (rollout is runners-first — an older runner
-    /// reading a newer lease rejects the unknown field and runs no work).
+    /// omits the field gets `""`. An older runner negotiates the frozen
+    /// version-one response and never receives newer fields.
     instructions: []const u8 = "",
     /// Content-addressed reference to the installed Fleet Bundle's canonical
     /// snapshot in object storage. Present only when the fleet was created from a
     /// bundle; the runner GETs `/v1/runners/me/bundles/{content_hash}` to
     /// materialize support files into the sandbox workspace. Additive + defaulted
     /// with the same rollout-safety as `instructions`: a new runner reading an
-    /// older lease gets null and skips the download (an older runner reading a
-    /// newer lease rejects the unknown field — runners-first rollout).
+    /// older lease gets null and skips the download. An older runner receives
+    /// the frozen version-one response.
     bundle: ?BundleManifest = null,
 };
 

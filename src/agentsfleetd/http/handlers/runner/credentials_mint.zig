@@ -52,6 +52,7 @@ const S_GRANT_REQUIRED = "No approved integration grant for this fleet and integ
 // Write-gate refusals — the human's answer is what a write mint spends.
 const S_WRITE_UNAPPROVED = "No approved repository-write gate for this lease's event";
 const S_BINDING_DRIFT = "Fleet repository binding changed since the approval was answered";
+const S_WRITE_SPEND_EXHAUSTED = "Approved write-credential request allowance is exhausted";
 // Rotated-refresh write-back observability (RULE OBS): one event, three
 // outcomes. No token bytes ever ride these lines (VLT).
 const EVT_REFRESH_ROTATED = "refresh_rotated";
@@ -225,16 +226,12 @@ fn loadMintInputs(hx: Hx, runner_id: []const u8, mint_req: protocol.MintCredenti
         }
     }
 
-    // Write-gate invariant: a WRITE-access binding mints only against an
-    // approved repository-write gate for THIS lease's event whose recorded
-    // binding still matches the current one. Checked before the vault load so
-    // an unapproved write request never touches handle bytes; a DB failure
-    // fails CLOSED like the grant gate above.
-    // Scoped to GitHub: the binding governs repository reach only, so a write
-    // fleet minting Slack or Zoho has no repository write for this gate to hold.
+    // A write binding mints only against this lease's approved gate and
+    // unchanged recorded reach. This runs before the vault read and fails closed.
+    // Scoped to GitHub; other integrations have no repository write to hold.
     if (scope.repository_binding) |b| {
         if (b.access == .write and integration.idFromString(mint_req.integration) == integration.Id.github) {
-            const verdict = write_gate.verifyWriteApproval(hx, conn, scope.fleet_id, scope.event_id, b) catch {
+            const verdict = write_gate.reserveWriteApproval(hx.alloc, conn, scope.fleet_id, scope.event_id, b) catch {
                 common.internalDbError(hx.res, hx.req_id);
                 return null;
             };
@@ -246,6 +243,10 @@ fn loadMintInputs(hx: Hx, runner_id: []const u8, mint_req: protocol.MintCredenti
                 },
                 .binding_drift => {
                     hx.fail(ec.ERR_REPAIR_BINDING_DRIFT, S_BINDING_DRIFT);
+                    return null;
+                },
+                .exhausted => {
+                    hx.fail(ec.ERR_REPAIR_SPEND_EXHAUSTED, S_WRITE_SPEND_EXHAUSTED);
                     return null;
                 },
             }
