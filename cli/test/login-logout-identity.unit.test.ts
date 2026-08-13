@@ -185,7 +185,7 @@ describe("captureLoginCompleted", () => {
       }),
     );
     const exit = await Effect.runPromiseExit(
-      captureLoginCompleted("sess_xyz", tokenWithoutSub(), "token").pipe(
+      captureLoginCompleted("sess_xyz", tokenWithoutSub(), "browser").pipe(
         Effect.provide(analyticsLayer(rec)),
         Effect.provide(telemetryRuntime),
       ),

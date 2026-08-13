@@ -176,13 +176,11 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
       (frame) => {
         const opts = frame.parsed.options;
         const tokenNameOpt = opts["tokenName"] ?? opts["token-name"];
-        const tokenOpt = opts["token"];
         return loginEffectFromFlags({
           noOpen: opts["open"] === false || opts["noOpen"] === true || opts["no-open"] === true,
           noInput: opts["input"] === false || opts["noInput"] === true || opts["no-input"] === true,
           force: opts["force"] === true,
           tokenName: isString(tokenNameOpt) ? tokenNameOpt : undefined,
-          tokenFlag: isString(tokenOpt) ? tokenOpt : undefined,
         });
       },
       lifecycle,

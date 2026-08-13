@@ -126,3 +126,49 @@ test("AGENTSFLEET_API_KEY is sent as Authorization: Bearer on Effect-path reques
     assert.equal(authHeader, "Bearer sk-branded-works", `expected the api key on the wire; stderr=${err.read()}`);
   });
 });
+
+// With `--token` removed, the environment
+// variable is the whole unattended story, so the property that makes it
+// usable in a container has to be pinned: it authenticates a real request
+// and leaves nothing on disk for the caller to clean up or leak. The two
+// halves matter together — a key that authenticated but persisted itself
+// would have re-created the seeding path the flag's removal deleted.
+test("AGENTSFLEET_API_KEY authenticates a request and writes no credentials file", async () => {
+  await withEmptyStateDir(async (dir) => {
+    const out = bufferStream();
+    const err = bufferStream();
+    await fs.writeFile(
+      path.join(dir, "workspaces.json"),
+      `${JSON.stringify({ current_workspace_id: "ws_test", items: [{ workspace_id: "ws_test" }] })}\n`,
+      "utf8",
+    );
+    let authHeader: string | undefined;
+    const fetchImpl = asFetchOverride(async (url, init): Promise<ResponseLike> => {
+      if (url.includes("/fleets")) {
+        const headers = init?.headers as Record<string, string> | undefined;
+        authHeader = headers?.Authorization;
+      }
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        headers: makeHeaders([]),
+        text: async () => JSON.stringify({ items: [] }),
+      };
+    });
+    await runCli(["--json", "list"], {
+      env: envWith({ AGENTSFLEET_API_KEY: `agt_t${"b".repeat(48)}` }),
+      stdout: out.stream,
+      stderr: err.stream,
+      fetchImpl,
+    });
+    assert.ok(authHeader?.startsWith("Bearer agt_t"), `env key must reach the wire; got ${authHeader}`);
+
+    const credentialsWritten = await fs
+      .access(path.join(dir, "credentials.json"))
+      .then(() => true)
+      .catch(() => false);
+    assert.equal(credentialsWritten, false,
+      "an env-key request must persist nothing — that is what makes it safe in a container");
+  });
+});

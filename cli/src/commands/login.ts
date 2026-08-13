@@ -22,11 +22,11 @@
 // on the error channel; the dispatcher's exit-code map keys all of them
 // to 1 (130 for interrupted).
 
-import { Effect, Option, Redacted } from "effect";
+import { Effect, Redacted } from "effect";
 import { Analytics } from "../services/telemetry/analytics.service.ts";
 import { TelemetryRuntime } from "../services/telemetry/runtime.service.ts";
 import { Browser } from "../services/browser.service.ts";
-import { CliConfig } from "../services/config.ts";
+import { AGENTSFLEET_API_KEY_ENV, CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Input } from "../services/input.ts";
@@ -35,6 +35,7 @@ import { Stdin } from "../services/stdin.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import {
   AuthError,
+  InterruptedError,
   MeValidationError,
   type CliError,
 } from "../errors/index.ts";
@@ -49,8 +50,6 @@ import {
 import {
   captureLoginCompleted,
   hydrateWorkspacesAfterLogin,
-  resolveDirectToken,
-  saveDirectToken,
   withSigintAbort,
 } from "./login-helpers.ts";
 import {
@@ -64,8 +63,6 @@ export interface LoginFlags {
   readonly noInput: boolean;
   readonly force: boolean;
   readonly tokenName: string | undefined;
-  // --token <pat>; non-interactive direct-token source (no browser).
-  readonly tokenFlag: string | undefined;
 }
 
 export interface LoginFlagsRaw {
@@ -73,7 +70,6 @@ export interface LoginFlagsRaw {
   readonly noInput: boolean | undefined;
   readonly force: boolean | undefined;
   readonly tokenName: string | undefined;
-  readonly tokenFlag: string | undefined;
 }
 
 const announceSession = Effect.fnUntraced(function* (
@@ -188,29 +184,25 @@ const loginCore = Effect.fnUntraced(function* (flags: LoginFlags) {
 
   // Pre-flight (D20). idempotencyCheck refuses to overwrite an existing
   // credential without --force or a Y/yes prompt; --no-input aborts loudly
-  // instead of prompting so scripts don't silently clobber a token. A
-  // non-TTY stdin is a pipe carrying a token (resolveDirectToken's
-  // lowest-priority source), never a Y/n answer — treat it like --no-input
-  // so the piped token is never consumed as the replace-prompt response.
+  // instead of prompting so scripts don't silently clobber a credential. A
+  // non-TTY stdin carries no answer worth reading, so it is treated like
+  // --no-input rather than consuming whatever was piped as a Y/n response.
   const noInput = flags.noInput || !stdin.isTTY;
   yield* idempotencyCheck({ force: flags.force, noInput });
 
-  // Non-interactive resolve (--token > piped stdin) ahead of the browser
-  // device flow. A directly-supplied token is validated + persisted with no
-  // browser; `none` falls through to the device flow below.
-  const direct = yield* resolveDirectToken({
-    tokenFlag: flags.tokenFlag,
-  });
-  if (Option.isSome(direct)) {
-    if (flags.tokenName !== undefined && !config.jsonMode) {
-      const output = yield* Output;
-      yield* output.info(
-        "--token-name is ignored with a direct token (no browser session to label)",
-      );
-    }
-    yield* saveDirectToken(direct.value);
-    yield* renderSuccess(null);
-    return;
+  // Since §3 retired direct-token seeding, the device flow is the only path
+  // that writes a credential — and it needs a human to read a verification
+  // code off the screen and type it back. A non-TTY shell cannot do that, so
+  // it fails here naming the environment variable that serves unattended
+  // callers, rather than announcing a session nothing will ever approve.
+  if (!stdin.isTTY) {
+    return yield* Effect.fail(
+      new InterruptedError({
+        detail:
+          "`agentsfleet login` needs an interactive terminal — a human types the device flow's verification code",
+        suggestion: `set ${AGENTSFLEET_API_KEY_ENV} to a tenant API key for unattended use`,
+      }),
+    );
   }
 
   const keypair = yield* generateKeypair;
@@ -278,6 +270,5 @@ export const loginEffectFromFlags = (
     noInput: raw.noInput ?? false,
     force: raw.force ?? false,
     tokenName: raw.tokenName,
-    tokenFlag: raw.tokenFlag,
   });
 const BROWSER_NOT_OPENED_MESSAGE = "browser: not opened (open URL manually)" as const;
