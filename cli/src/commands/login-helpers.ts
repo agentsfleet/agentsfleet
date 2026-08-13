@@ -22,10 +22,12 @@ import { TENANT_WORKSPACES_PATH } from "../lib/api-paths.ts";
 import { SIGINT } from "../constants/signals.ts";
 import { decodeWorkspacePage } from "./workspace-response-decoders.ts";
 import {
+  reasonOf,
   UnexpectedError,
   type NetworkError,
   type ServerError,
 } from "../errors/index.ts";
+import { emptyWorkspaces } from "../lib/state.ts";
 
 const SIGN_IN_AGAIN = "sign in again" as const;
 
@@ -33,23 +35,15 @@ const invalidWorkspacePage = (detail: string): UnexpectedError =>
   new UnexpectedError({ detail, suggestion: SIGN_IN_AGAIN });
 // login_method analytics dimension. It once separated the interactive device
 // flow from a directly-supplied token; seeding is retired, so the device flow
-// is the only method that writes credentials. Kept as a named type, and still
-// sent on the event, so the analytics field holds its shape for existing
-// queries rather than disappearing from the payload.
-export type LoginMethod = "browser";
+// is the only method minted. Still sent on the event so the analytics field
+// holds its shape for existing queries rather than disappearing.
+const LOGIN_METHOD_BROWSER = "browser" as const;
 
 type HydrationError = NetworkError | ServerError | UnexpectedError;
 
 // Render any underlying error as a single-line stderr warn so login still
 // exits 0 — workspace hydration is best-effort, not a login dependency.
 // The operator can recover by signing in again to repeat hydration.
-const reasonOf = (err: HydrationError): string =>
-  err._tag === "ServerError"
-    ? err.code
-    : err._tag === "NetworkError"
-      ? "network"
-      : "unexpected";
-
 const warnHydrationFailure = (
   err: HydrationError,
 ): Effect.Effect<void, never, Output> =>
@@ -142,45 +136,25 @@ export const hydrateWorkspacesAfterLogin = (
     if (!response.ok) return yield* warnHydrationFailure(response.err);
 
     const items = response.value.items;
-    const previous = yield* workspaces.load.pipe(
-      Effect.orElseSucceed(() => ({
-        tenant_id: null,
-        current_workspace_id: null,
-        items: [],
-      })),
-    );
     const tenantId = response.value.tenant_id;
-    if (items.length === 0) {
-      const saveResult: SaveOutcome = yield* workspaces
-        .save({
-          tenant_id: tenantId,
-          current_workspace_id: null,
-          items: [],
-        })
-        .pipe(
-          Effect.match({
-            onSuccess: (): SaveOutcome => ({ ok: true }),
-            onFailure: (err): SaveOutcome => ({ ok: false, err }),
-          }),
-        );
-      if (!saveResult.ok) return yield* warnHydrationFailure(saveResult.err);
-      return;
-    }
-
+    const previous = yield* workspaces.load.pipe(
+      Effect.orElseSucceed(() => emptyWorkspaces()),
+    );
+    // Keep the previously-current workspace only when it still exists under
+    // the same tenant; otherwise fall to the first item, or null when the
+    // tenant has no workspaces at all. One save path for every case.
     const sameTenant = previous.tenant_id === tenantId;
-    const persistedItems = items;
-    const existingCurrent = persistedItems.find(
+    const existingCurrent = items.find(
       (item) =>
         sameTenant && item.workspace_id === previous.current_workspace_id,
     );
-    const firstItem = persistedItems[0];
-    if (!firstItem) return;
-    const current = existingCurrent?.workspace_id ?? firstItem.workspace_id;
+    const current =
+      existingCurrent?.workspace_id ?? items[0]?.workspace_id ?? null;
     const saveResult: SaveOutcome = yield* workspaces
       .save({
         tenant_id: tenantId,
         current_workspace_id: current,
-        items: persistedItems,
+        items,
       })
       .pipe(
         Effect.match({
@@ -219,7 +193,6 @@ export const withSigintAbort = <A, E, R>(
 export const captureLoginCompleted = (
   sessionId: string,
   token: string,
-  method: LoginMethod,
 ): Effect.Effect<void, never, Analytics | TelemetryRuntime> =>
   Effect.gen(function* () {
     const analytics = yield* Analytics;
@@ -236,7 +209,7 @@ export const captureLoginCompleted = (
     yield* analytics.capture(EVT_USER_AUTHENTICATED, { command: "login" });
     yield* analytics.capture(EVT_LOGIN_COMPLETED, {
       session_id: sessionId,
-      login_method: method,
+      login_method: LOGIN_METHOD_BROWSER,
     });
   });
 

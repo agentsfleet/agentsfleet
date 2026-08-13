@@ -267,10 +267,7 @@ const inputLayer = (rec: Recorder, code: string): Layer.Layer<Input> =>
 const credentialsLayer = (rec: Recorder): Layer.Layer<Credentials> =>
   Layer.succeed(Credentials, {
     getAccessToken: Effect.sync(() => Option.none<Redacted.Redacted<string>>()),
-    getSavedAt: Effect.sync(() => null),
-    getSessionId: Effect.sync(() => null),
-    getApiUrl: Effect.sync(() => null),
-    getCredentialId: Effect.succeed(null),
+    snapshot: Effect.succeed({ accessToken: Option.none(), savedAt: null, sessionId: null, credentialId: null }),
     saveAccessToken: (input) =>
       Effect.sync(() => {
         rec.savedToken = Redacted.value(input.token);

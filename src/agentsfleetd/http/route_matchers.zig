@@ -133,14 +133,19 @@ pub fn matchAuthSessionVerify(p: Path) ?[]const u8 {
     return matchAuthSessionAction(p, S_VERIFY);
 }
 
+/// `/{collection}/{param}` — the shared two-segment item shape (the bare
+/// collection is exact-matched in router.match()). The three-segment admin
+/// sibling lives in route_matchers_billing.zig with its callers.
+pub fn matchCollectionItem(p: Path, collection: []const u8) ?[]const u8 {
+    if (p.segs.len != 2) return null;
+    if (!p.eq(0, collection)) return null;
+    return p.param(1);
+}
+
 // ── /cli-credentials/{id} ──────────────────────────────────────────────────
-// The bare collection is exact-matched in router.match(); only the item form
-// needs a matcher, because only it carries a parameter.
 
 pub fn matchCliCredentialById(p: Path) ?[]const u8 {
-    if (p.segs.len != 2) return null;
-    if (!p.eq(0, S_CLI_CREDENTIALS)) return null;
-    return p.param(1);
+    return matchCollectionItem(p, S_CLI_CREDENTIALS);
 }
 
 // Tenant + admin billing matchers (/admin/platform-keys, /api-keys,

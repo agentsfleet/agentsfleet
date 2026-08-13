@@ -781,9 +781,6 @@ const DECLARED_INDEXES = [_]DeclaredIndex{
     .{ .schema = "billing", .name = "idx_usage_ledger_tenant_id_created_at_id" },
     .{ .schema = "billing", .name = "idx_usage_ledger_workspace_id" },
     .{ .schema = "core", .name = "idx_api_keys_tenant_id_active" },
-    // Reader: a user's own credential list, and the revoke-on-relogin lookup
-    // that reads by user before minting a replacement.
-    .{ .schema = "core", .name = "idx_cli_credentials_user_id_revoked_at" },
     .{ .schema = "core", .name = "idx_connector_channels_fleet_id" },
     .{ .schema = "core", .name = "idx_connector_installs_workspace_id" },
     .{ .schema = "core", .name = "idx_fleet_approval_gates_action_id" },

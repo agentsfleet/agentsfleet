@@ -4,6 +4,7 @@
 
 import { Option, Redacted, type Effect } from "effect";
 import { runEffect, type MainLayerServices } from "../lib/run-effect.ts";
+import { isString } from "../lib/guards.ts";
 import type { FetchImpl } from "../lib/http.ts";
 import { mainLayerFor } from "../runtime/main-layer.ts";
 import { withCommandInstrumentation } from "../services/telemetry/command-instrumentation.ts";
@@ -33,9 +34,6 @@ import type { ActionFrame, CommandHandlerFn, Handlers } from "./cli-tree-types.t
 import { readStringOpt as optString, type CommandCtx, type CommandDeps, type Workspaces } from "../commands/types.ts";
 
 const CTX = "ctx" as const;
-const TYPE_STRING = "string" as const;
-
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 export interface Lifecycle {
   ctx: CommandCtx;

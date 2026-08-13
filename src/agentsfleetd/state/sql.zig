@@ -143,8 +143,13 @@ pub const INSERT_CLI_CREDENTIAL =
 /// on `credential_hash` is the whole access path — and returns revocation state
 /// for the caller to judge, so a revoked credential is refused with its own
 /// code rather than being indistinguishable from an unknown one.
+///
+/// `u.tenant_id`, not `c.tenant_id`: the joined user row is the authoritative
+/// tenant, so the principal carries the same value the authz layer would
+/// otherwise re-fetch per request — the mint-time snapshot on the credential
+/// row is provenance, never authority.
 pub const SELECT_CLI_CREDENTIAL_BY_HASH =
-    \\SELECT c.id::text, c.user_id::text, c.tenant_id::text, c.deployment,
+    \\SELECT c.id::text, c.user_id::text, u.tenant_id::text, c.deployment,
     \\       c.revoked_at, u.oidc_subject
     \\FROM core.cli_credentials c
     \\JOIN core.users u ON u.id = c.user_id

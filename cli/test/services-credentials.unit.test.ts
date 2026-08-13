@@ -13,11 +13,18 @@ import { useFreshStateDir } from "./helpers-cli-state.ts";
 import {
   CLI_CREDENTIAL_BODY_LEN,
   CLI_CREDENTIAL_PREFIX,
+  CLI_CREDENTIAL_TOTAL_LEN,
 } from "../src/constants/cli-credential.ts";
 
 // A value the load check accepts, so the roundtrip proves storage rather
 // than tripping the shape refusal.
 const ROUNDTRIP_CREDENTIAL = `${CLI_CREDENTIAL_PREFIX}${"d".repeat(CLI_CREDENTIAL_BODY_LEN)}`;
+
+test("the mirrored total-length constant matches the shape it claims to mirror", () => {
+  // CLI_CREDENTIAL_TOTAL_LEN mirrors src/agentsfleetd/auth/cli_credential.zig;
+  // without this pin it is a drift obligation nothing enforces.
+  expect(CLI_CREDENTIAL_TOTAL_LEN).toBe(ROUNDTRIP_CREDENTIAL.length);
+});
 
 const stateDir = useFreshStateDir();
 
@@ -53,26 +60,28 @@ describe("Credentials service", () => {
       expect(Redacted.value(result.value)).toBe(ROUNDTRIP_CREDENTIAL);
     }
   });
-  test("getSavedAt + getSessionId + getApiUrl return persisted values", async () => {
-    const { savedAt, sessionId, apiUrl } = await provideEffect(
+  test("snapshot returns every persisted field from one read", async () => {
+    const snap = await provideEffect(
       Effect.gen(function* () {
         const c = yield* Credentials;
         yield* c.saveAccessToken({
           token: Redacted.make(ROUNDTRIP_CREDENTIAL),
           sessionId: "sess-1",
           apiUrl: "https://api.test.local",
-          credentialId: null,
+          credentialId: "cred-row-1",
         });
-        return {
-          savedAt: yield* c.getSavedAt,
-          sessionId: yield* c.getSessionId,
-          apiUrl: yield* c.getApiUrl,
-        };
+        return yield* c.snapshot;
       }),
     );
-    expect(typeof savedAt).toBe("number");
-    expect(sessionId).toBe("sess-1");
-    expect(apiUrl).toBe("https://api.test.local");
+    expect(typeof snap.savedAt).toBe("number");
+    expect(snap.sessionId).toBe("sess-1");
+    expect(snap.credentialId).toBe("cred-row-1");
+    expect(Option.isSome(snap.accessToken)).toBe(true);
+    if (Option.isSome(snap.accessToken)) {
+      expect(Redacted.value(snap.accessToken.value)).toBe(
+        ROUNDTRIP_CREDENTIAL,
+      );
+    }
   });
   test("clearAccessToken clears token + sessionId", async () => {
     const { tokenAfter, sessionAfter } = await provideEffect(
@@ -85,9 +94,10 @@ describe("Credentials service", () => {
           credentialId: null,
         });
         yield* c.clearAccessToken;
+        const snap = yield* c.snapshot;
         return {
-          tokenAfter: yield* c.getAccessToken,
-          sessionAfter: yield* c.getSessionId,
+          tokenAfter: snap.accessToken,
+          sessionAfter: snap.sessionId,
         };
       }),
     );
@@ -95,7 +105,7 @@ describe("Credentials service", () => {
     expect(sessionAfter).toBeNull();
   });
   test("saveAccessToken accepts apiUrl undefined", async () => {
-    const result = await provideEffect(
+    const snap = await provideEffect(
       Effect.gen(function* () {
         const c = yield* Credentials;
         yield* c.saveAccessToken({
@@ -104,10 +114,11 @@ describe("Credentials service", () => {
           apiUrl: undefined,
           credentialId: null,
         });
-        return yield* c.getApiUrl;
+        return yield* c.snapshot;
       }),
     );
-    expect(result).toBeNull();
+    expect(snap.sessionId).toBeNull();
+    expect(snap.credentialId).toBeNull();
   });
   // Deterministic load-error path: a directory where credentials.json is
   // expected makes readFile throw EISDIR (non-ENOENT, non-SyntaxError),

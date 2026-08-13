@@ -49,10 +49,7 @@ const makeLayer = (
     }),
     Layer.succeed(Credentials, {
       getAccessToken: Effect.sync(() => Option.some(Redacted.make(TOKEN))),
-      getSavedAt: Effect.sync(() => null),
-      getSessionId: Effect.sync(() => null),
-      getApiUrl: Effect.sync(() => null),
-      getCredentialId: Effect.succeed(null),
+      snapshot: Effect.succeed({ accessToken: Option.none(), savedAt: null, sessionId: null, credentialId: null }),
       saveAccessToken: () => Effect.void,
       clearAccessToken: Effect.void,
     }),

@@ -106,17 +106,16 @@ const maybeOpenBrowser = Effect.fnUntraced(function* (
   return opened;
 });
 
-// Success rendering for both paths (direct token + device flow). Every
-// non-success path is an Effect failure routed through the dispatcher's
-// exit-code map, so this only handles "complete". `sessionId` is null for
-// the direct-token path (no device-flow session to report).
-const renderSuccess = Effect.fnUntraced(function* (sessionId: string | null) {
+// Success rendering. Every non-success path is an Effect failure routed
+// through the dispatcher's exit-code map, so this only handles "complete".
+// The device flow is the only login path, so a session id always exists.
+const renderSuccess = Effect.fnUntraced(function* (sessionId: string) {
   const config = yield* CliConfig;
   const output = yield* Output;
   if (config.jsonMode) {
     yield* output.printJson({
       status: "complete",
-      session_id: sessionId ?? "",
+      session_id: sessionId,
       token_saved: true,
       api_url: config.apiUrl,
     });
@@ -169,7 +168,7 @@ const completeVerificationBranch = Effect.fnUntraced(function* (
   const redacted = yield* persistSuccess(sessionId, minted);
   yield* pingMe(redacted).pipe(Effect.catchTag("MeValidationError", rollbackOnMeFailure));
   yield* hydrateWorkspacesAfterLogin(redacted);
-  yield* captureLoginCompleted(sessionId, token, "browser");
+  yield* captureLoginCompleted(sessionId, token);
 });
 
 // Login surface rule: every failure exits 1. Transport / server

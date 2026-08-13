@@ -66,12 +66,12 @@ pub fn resolvePrincipalTenant(
     tenant_buf: []u8,
 ) !?[]const u8 {
     switch (principal.mode) {
-        .api_key => return principal.tenant_id,
+        // A CLI credential's tenant is already authoritative: its auth lookup
+        // joins core.users and puts u.tenant_id on the principal, so re-reading
+        // the same user row here would be a second round trip for the same value.
+        .api_key, .cli_credential => return principal.tenant_id,
         .runner => return null,
-        // A CLI credential is a person, so it resolves the same way a browser
-        // session does — through the authoritative user row rather than the
-        // tenant its credential recorded at mint.
-        .jwt_oidc, .cli_credential => {},
+        .jwt_oidc => {},
     }
     if (principal.user_id) |subject| {
         var q = PgQuery.from(try conn.query(

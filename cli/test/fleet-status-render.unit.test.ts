@@ -67,10 +67,7 @@ const workspacesLayer = (): Layer.Layer<Workspaces> =>
 const credentialsLayer = (): Layer.Layer<Credentials> =>
   Layer.succeed(Credentials, {
     getAccessToken: Effect.succeed(Option.some(Redacted.make("test-token"))),
-    getSavedAt: Effect.die("unused"),
-    getSessionId: Effect.die("unused"),
-    getApiUrl: Effect.die("unused"),
-    getCredentialId: Effect.succeed(null),
+    snapshot: Effect.succeed({ accessToken: Option.none(), savedAt: null, sessionId: null, credentialId: null }),
     saveAccessToken: () => Effect.die("unused"),
     clearAccessToken: Effect.die("unused"),
   });

@@ -29,16 +29,23 @@ export interface SaveAccessTokenInput {
   readonly credentialId: string | null;
 }
 
+// Every persisted field of the record, materialized from ONE disk read. The
+// single-field accessors each re-read credentials.json, so a command that
+// needs several fields pays several reads — and worse, reads that can span a
+// concurrent write. `credentialId` is the server-side identifier of the
+// stored credential (null when this client did not mint the stored value — a
+// supplied tenant key), kept in the same snapshot as the token so logout can
+// never revoke an id from a different record than the token it just used.
+export interface CredentialsSnapshot {
+  readonly accessToken: Option.Option<Redacted.Redacted<string>>;
+  readonly savedAt: number | null;
+  readonly sessionId: string | null;
+  readonly credentialId: string | null;
+}
+
 export interface CredentialsShape {
   readonly getAccessToken: Effect.Effect<Option.Option<Redacted.Redacted<string>>, UnexpectedError>;
-  readonly getSavedAt: Effect.Effect<number | null, UnexpectedError>;
-  readonly getSessionId: Effect.Effect<string | null, UnexpectedError>;
-  readonly getApiUrl: Effect.Effect<string | null, UnexpectedError>;
-  // The server-side identifier of the stored credential, so logout can revoke
-  // this terminal's own credential by name rather than listing every
-  // credential its owner holds. Null when this client did not mint the stored
-  // value — a supplied tenant key — in which case there is nothing to revoke.
-  readonly getCredentialId: Effect.Effect<string | null, UnexpectedError>;
+  readonly snapshot: Effect.Effect<CredentialsSnapshot, UnexpectedError>;
   readonly saveAccessToken: (input: SaveAccessTokenInput) => Effect.Effect<void, UnexpectedError>;
   readonly clearAccessToken: Effect.Effect<void, UnexpectedError>;
 }
@@ -73,22 +80,27 @@ const loadRecord = (): Effect.Effect<CredentialsRecord, UnexpectedError> =>
 const isPersistable = (token: string): boolean =>
   CLI_CREDENTIAL_PATTERN.test(token) || token.startsWith(TENANT_KEY_PREFIX);
 
+// The token gate shared by the single accessor and the snapshot: only a
+// well-shaped credential is ever surfaced as usable material.
+const tokenOf = (
+  rec: CredentialsRecord,
+): Option.Option<Redacted.Redacted<string>> =>
+  rec.token && isPersistable(rec.token)
+    ? Option.some(Redacted.make(rec.token))
+    : Option.none<Redacted.Redacted<string>>();
+
 const makeLive = (): CredentialsShape => ({
-  getAccessToken: loadRecord().pipe(
-    Effect.map((rec) =>
-      rec.token && isPersistable(rec.token)
-        ? Option.some(Redacted.make(rec.token))
-        : Option.none<Redacted.Redacted<string>>(),
-    ),
-  ),
-  getSavedAt: loadRecord().pipe(Effect.map((rec) => rec.saved_at ?? null)),
-  getSessionId: loadRecord().pipe(Effect.map((rec) => rec.session_id ?? null)),
-  getApiUrl: loadRecord().pipe(Effect.map((rec) => rec.api_url ?? null)),
-  // Read straight from the record without the shape check `getAccessToken`
-  // applies: an identifier is not credential material, and a record whose
-  // token is unusable still names a row worth revoking.
-  getCredentialId: loadRecord().pipe(
-    Effect.map((rec) => rec.credential_id ?? null),
+  getAccessToken: loadRecord().pipe(Effect.map(tokenOf)),
+  // `credential_id` deliberately skips the shape check: an identifier is not
+  // credential material, and a record whose token is unusable still names a
+  // row worth revoking.
+  snapshot: loadRecord().pipe(
+    Effect.map((rec) => ({
+      accessToken: tokenOf(rec),
+      savedAt: rec.saved_at ?? null,
+      sessionId: rec.session_id ?? null,
+      credentialId: rec.credential_id ?? null,
+    })),
   ),
   saveAccessToken: (input) =>
     Effect.tryPromise({
