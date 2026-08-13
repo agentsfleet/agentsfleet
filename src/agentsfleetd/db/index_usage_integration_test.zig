@@ -29,6 +29,7 @@ const fleet_sql = @import("../fleet/sql.zig");
 const operator_sql = @import("../http/handlers/fleet/sql.zig");
 const retention_sweeper = @import("../fleet/retention_sweeper.zig");
 const telemetry_store = @import("../state/fleet_telemetry_store.zig");
+const repair_sql = @import("../state/repair_sql.zig");
 const PgQuery = @import("pg_query.zig").PgQuery;
 
 /// A minimal legible fixture. Fitness is checked with `enable_seqscan = off`, so
@@ -374,6 +375,7 @@ const EVENT_PAGE_LIMIT: i64 = 25;
 /// rows it would return, is under test.
 const DETAIL_PROBE_NOW_MS: i64 = 1_750_000_000_000;
 const SEQ_SCAN_LEASES_MARKER = "Seq Scan on runner_leases";
+const REPAIR_VERIFICATION_LOOKUP_INDEX = "idx_repair_verifications_verifier_event";
 
 /// Mixed event history for one runner: the per-lease bulk plus a sprinkle of
 /// rare lifecycle tags, mirroring the real table's distribution in miniature.
@@ -409,6 +411,86 @@ fn wipeRunnerEvents(conn: *pg.Conn) void {
     // The runner delete cascades the seeded events with it.
     _ = conn.exec("DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_EVENTS}) catch |err|
         std.log.warn("events probe wipe ignored: {s}", .{@errorName(err)});
+}
+
+test "repair production correlation and due indexes match the read" {
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+
+    try expectIndexShape(
+        alloc,
+        db.conn,
+        "core",
+        "idx_repair_production_results_workspace_repo_commit",
+        "workspace_id, lower(repository), commit_sha, id",
+    );
+    try expectIndexShape(
+        alloc,
+        db.conn,
+        "core",
+        "idx_repair_pr_links_workspace_repository_merged_commit",
+        "workspace_id, lower(repository), merged_commit_sha",
+    );
+    try expectIndexShape(
+        alloc,
+        db.conn,
+        "core",
+        "idx_repair_verifications_due",
+        "verify_after, id",
+    );
+    try expectIndexShape(
+        alloc,
+        db.conn,
+        "core",
+        "idx_repair_verifications_redis_cleanup",
+        "updated_at, id",
+    );
+    try expectIndexShape(
+        alloc,
+        db.conn,
+        "core",
+        REPAIR_VERIFICATION_LOOKUP_INDEX,
+        "verifier_fleet_id, verifier_event_id",
+    );
+    try expectIndexShape(alloc, db.conn, "core", "idx_fleets_workspace_status_id", "workspace_id, status, id");
+    try expectIndexShape(alloc, db.conn, "core", "idx_repair_run_results_workspace", "workspace_id");
+    try expectIndexShape(alloc, db.conn, "core", "idx_repair_run_results_fleet_event", "fleet_id, event_id");
+    try expectIndexShape(alloc, db.conn, "core", "idx_repair_verifications_workspace", "workspace_id");
+    try expectIndexShape(alloc, db.conn, "core", "idx_repair_verifications_repair_link", "repair_link_id");
+    try expectIndexShape(alloc, db.conn, "core", "idx_repair_verifications_verifier_fleet", "verifier_fleet_id");
+    const link_args = .{
+        "0195c102-7000-7000-8000-000000000001",
+        "AgentsFleet/AgentsFleet",
+        "exact-merge-hash",
+    };
+    try expectServesFilter(alloc, db.conn, repair_sql.SELECT_REPAIR_LINKS_FOR_CORRELATION, link_args, "idx_repair_pr_links_workspace_repository_merged_commit");
+    const page_args = .{
+        "0195c102-7000-7000-8000-000000000001",
+        "AgentsFleet/AgentsFleet",
+        "exact-merge-hash",
+        "production",
+        "success",
+        "active",
+        "github",
+        @as(i64, 900000),
+        "approved",
+        "webhook",
+        "repair_production_result",
+        "0195c102-7000-7000-8000-000000000002",
+        false,
+        "00000000-0000-0000-0000-000000000000",
+        false,
+        "00000000-0000-0000-0000-000000000000",
+        "00000000-0000-0000-0000-000000000000",
+        @as(i64, 100),
+    };
+    try expectServesFilter(alloc, db.conn, repair_sql.SELECT_REPAIR_VERIFICATION_CANDIDATE_PAGE, page_args, "idx_repair_production_results_workspace_repo_commit");
+    try expectServesFilter(alloc, db.conn, repair_sql.SELECT_REPAIR_VERIFICATION_CANDIDATE_PAGE, page_args, "idx_fleets_workspace_status_id");
+    try expectServesFilter(alloc, db.conn, repair_sql.SELECT_REPAIR_VERIFICATION_QUEUED_AT, .{
+        "0195c102-7000-7000-8000-000000000003",
+        "1770000000000-0",
+    }, REPAIR_VERIFICATION_LOOKUP_INDEX);
 }
 
 test "counter and retention slots are registered in the migration array" {
@@ -710,8 +792,26 @@ const DECLARED_INDEXES = [_]DeclaredIndex{
     .{ .schema = "core", .name = "idx_fleet_approval_gates_fleet_id_status" },
     .{ .schema = "core", .name = "idx_fleet_approval_gates_timeout_at_pending" },
     .{ .schema = "core", .name = "idx_fleet_approval_gates_workspace_id_status_created_at" },
+    // Reader: keyset verifier candidate pages within one workspace and status.
+    .{ .schema = "core", .name = "idx_fleets_workspace_status_id" },
     // Reader: the deploy-stamp webhook arm, keyed by the repair branch.
     .{ .schema = "core", .name = "idx_repair_pr_links_fleet_id_branch" },
+    // Reader: exact merged repair to production-result correlation.
+    .{ .schema = "core", .name = "idx_repair_pr_links_workspace_repository_merged_commit" },
+    // Reader: exact production result to merged repair correlation.
+    .{ .schema = "core", .name = "idx_repair_production_results_workspace_repo_commit" },
+    // Readers: parent cascades across append-only repair workflow evidence.
+    .{ .schema = "core", .name = "idx_repair_run_results_fleet_event" },
+    .{ .schema = "core", .name = "idx_repair_run_results_workspace" },
+    // Reader: bounded verifier dispatch scan after the evidence window.
+    .{ .schema = "core", .name = "idx_repair_verifications_due" },
+    // Reader: durable Redis enqueue-once cleanup after event completion.
+    .{ .schema = "core", .name = "idx_repair_verifications_redis_cleanup" },
+    .{ .schema = "core", .name = "idx_repair_verifications_repair_link" },
+    .{ .schema = "core", .name = "idx_repair_verifications_verifier_fleet" },
+    .{ .schema = "core", .name = "idx_repair_verifications_workspace" },
+    // Reader: Fleet-report correlation back to a completed verifier intent.
+    .{ .schema = "core", .name = REPAIR_VERIFICATION_LOOKUP_INDEX },
     .{ .schema = "core", .name = "idx_fleet_events_fleet_id_created_at_event_id" },
     .{ .schema = "core", .name = "idx_fleet_events_fleet_id_resumes_event_id" },
     .{ .schema = "core", .name = "idx_fleet_events_workspace_id_created_at_event_id" },

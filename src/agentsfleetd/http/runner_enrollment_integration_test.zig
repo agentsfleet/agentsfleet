@@ -349,7 +349,7 @@ fn deleteMemoRunnerRow(h: *TestHarness) !void {
 }
 
 fn pollAsMemoRunner(h: *TestHarness) !harness_mod.Response {
-    return (try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(MEMO_RAW_TOKEN)).json("{}")).send();
+    return (try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(MEMO_RAW_TOKEN)).json(protocol.LEASE_REQUEST_CURRENT_JSON)).send();
 }
 
 test "a deleted runner is refused on its very next request, with no window" {

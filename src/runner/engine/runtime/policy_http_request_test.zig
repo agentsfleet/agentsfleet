@@ -42,13 +42,8 @@ fn buildSecretsMap(arena: std.mem.Allocator) !std.json.Value {
 }
 
 fn freeResult(allocator: std.mem.Allocator, r: ToolResult) void {
-    // ToolResult.error_msg is heap-owned only when the tool used
-    // `allocPrint`; bare `ToolResult.fail("literal")` returns a literal
-    // pointer that must NOT be freed. Our tool's only allocPrint path
-    // emits `host_not_allowed: <host>` — the rest of our messages and
-    // every NullClaw-side message in this test are literals.
-    const m = r.error_msg orelse return;
-    if (std.mem.startsWith(u8, m, "host_not_allowed:")) allocator.free(m);
+    _ = allocator;
+    _ = r;
 }
 
 fn newPolicy(allow: []const []const u8, secrets: ?std.json.Value) context_budget.ExecutionPolicy {
@@ -86,7 +81,7 @@ test "host not in allowlist returns host_not_allowed" {
     defer freeResult(alloc, r);
     try std.testing.expect(!r.success);
     try std.testing.expect(r.error_msg != null);
-    try std.testing.expect(std.mem.startsWith(u8, r.error_msg.?, "host_not_allowed:"));
+    try std.testing.expectEqualStrings("host_not_allowed", r.error_msg.?);
 }
 
 test "host in allowlist (global IP) passes through to inner tool" {
@@ -181,8 +176,8 @@ test "substituted host is what the allowlist sees" {
     const r = try t.execute(alloc, args);
     defer freeResult(alloc, r);
     try std.testing.expect(!r.success);
-    try std.testing.expect(std.mem.startsWith(u8, r.error_msg.?, "host_not_allowed:"));
-    try std.testing.expect(std.mem.indexOf(u8, r.error_msg.?, "api.fly.dev") != null);
+    try std.testing.expectEqualStrings("host_not_allowed", r.error_msg.?);
+    try std.testing.expect(std.mem.indexOf(u8, r.error_msg.?, "api.fly.dev") == null);
 }
 
 test "missing secret fails closed before allowlist check" {
@@ -282,7 +277,7 @@ test "empty allowlist denies every host" {
     const r = try t.execute(alloc, args);
     defer freeResult(alloc, r);
     try std.testing.expect(!r.success);
-    try std.testing.expect(std.mem.startsWith(u8, r.error_msg.?, "host_not_allowed:"));
+    try std.testing.expectEqualStrings("host_not_allowed", r.error_msg.?);
 }
 
 test "tenant host resolving to a private/link-local IP is rejected (M100)" {
@@ -335,7 +330,7 @@ test "wildcard allowlist entry cannot widen the exact-match gate (M100)" {
         const r = try t.execute(alloc, args);
         defer freeResult(alloc, r);
         try std.testing.expect(!r.success);
-        try std.testing.expect(std.mem.startsWith(u8, r.error_msg.?, "host_not_allowed:"));
+        try std.testing.expectEqualStrings("host_not_allowed", r.error_msg.?);
     }
 }
 

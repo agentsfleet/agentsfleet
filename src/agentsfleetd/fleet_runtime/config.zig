@@ -41,6 +41,7 @@ pub const firstInvalidGateCondition = config_gates.firstInvalidCondition;
 
 // Entry points.
 pub const parseFleetConfig = config_parser.parseFleetConfig;
+pub const parseStoredFleetConfig = config_parser.parseStoredFleetConfig;
 pub const parseTriggerMarkdownWithJson = config_markdown.parseTriggerMarkdownWithJson;
 pub const parseSkillMetadata = config_markdown.parseSkillMetadata;
 pub const ParsedTrigger = config_markdown.ParsedTrigger;

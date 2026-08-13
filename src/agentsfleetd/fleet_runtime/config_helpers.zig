@@ -22,6 +22,7 @@ const FleetBudget = config_types.FleetBudget;
 const FleetConfigError = config_types.FleetConfigError;
 const WebhookSignatureConfig = config_types.WebhookSignatureConfig;
 const MAX_SIGNATURE_HEADER_LEN = config_types.MAX_SIGNATURE_HEADER_LEN;
+const freeStringSlice = config_types.freeStringSlice;
 
 // Trigger array + event allow-list bounds. Local to the parser so the
 // type module stays free of validation knobs; tests reach in via the
@@ -275,12 +276,27 @@ fn optionalString(alloc: Allocator, obj: std.json.ObjectMap, key: []const u8) !?
 }
 
 pub fn parseFleetNetwork(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.Error || FleetConfigError)!FleetNetwork {
-    const allow_val = obj.get("allow") orelse return FleetNetwork{ .allow = &.{} };
-    const allow_arr = switch (allow_val) {
-        .array => |a| a,
-        else => return FleetConfigError.MissingRequiredField,
-    };
-    return FleetNetwork{ .allow = try dupeStringArray(alloc, allow_arr.items) };
+    const allow = if (obj.get("allow")) |allow_val| blk: {
+        const allow_arr = switch (allow_val) {
+            .array => |a| a,
+            else => return FleetConfigError.MissingRequiredField,
+        };
+        break :blk try dupeStringArray(alloc, allow_arr.items);
+    } else try alloc.alloc([]const u8, 0);
+    errdefer freeStringSlice(alloc, allow);
+    const read_only = if (obj.get("read_only")) |value| switch (value) {
+        .bool => |enabled| enabled,
+        else => return FleetConfigError.InvalidFieldType,
+    } else false;
+    const read_post_paths = if (obj.get("read_post_paths")) |path_val| blk: {
+        const paths = switch (path_val) {
+            .array => |items| items,
+            else => return FleetConfigError.InvalidFieldType,
+        };
+        break :blk try dupeStringArray(alloc, paths.items);
+    } else try alloc.alloc([]const u8, 0);
+    errdefer freeStringSlice(alloc, read_post_paths);
+    return FleetNetwork{ .allow = allow, .read_only = read_only, .read_post_paths = read_post_paths };
 }
 
 pub fn parseFleetBudget(obj: std.json.ObjectMap) FleetConfigError!FleetBudget {
