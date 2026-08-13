@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M154
 **Workstream:** 002
 **Date:** Aug 01, 2026
-**Status:** IN_PROGRESS
+**Status:** DEFERRED — parked in `docs/v2/done/`; re-activates on the login-role edge (see Parked below)
 **Priority:** P1 — a security boundary that exists in prose and not in grants
 **Categories:** API, SQL
 **Batch:** B1 — its own Pull Request, both halves together; the grants live in slots M154_001 authors
@@ -25,6 +25,81 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Depends on:** M154_001 (merged first) — the grants land in the slots it re-authors, so those slots must exist for this to apply. Its §1 revoke and §2 elevation ship together or not at all: the revoke alone refuses every signup, because the starter grant is written inside the tenant-create transaction
 **Provenance:** LLM-drafted (Claude Opus 5, Aug 01, 2026), from a grant-level audit of the shipped schema
 **Canonical architecture:** `docs/architecture/runner_fleet.md` §the control-plane/data-plane split · `docs/AUTH.md`
+
+---
+
+## Parked (Aug 13, 2026) — read this before reactivating
+
+**The work in this spec is sound and it is not wired.** Every grant it moves
+governs an identity that no statement in the running system ever assumes, so
+merging it as authored would change nothing in production. It is parked here
+whole, with the missing edge identified and proved, rather than shipped as a
+boundary that cannot fail.
+
+> Indy (2026-08-13): "i want only the removal of free trial in this PR other
+> grant and role related commits are not needed? I find it an over kill for this
+> stage." … "we can design and add it better"
+
+**The defect, from source.** `schema/110:38` creates every role `NOLOGIN`,
+`api_runtime` included, so nothing can authenticate as it. The only `SET ROLE`
+in production code is `SET ROLE memory_runtime`
+(`http/handlers/memory/helpers.zig:92`) — nothing ever executes
+`SET ROLE api_runtime`. Both halves together mean no production statement has
+ever run as `api_runtime`, on `main` or on this branch. The note previously
+recorded in Discovery ("in force only if that login role is the restricted one")
+understated it: as the schema stands, the login role *cannot* be `api_runtime`.
+
+This is also why §5's privilege defect ran green for the life of the branch.
+`db/schema_privilege_integration_test.zig:216` sets `SET ROLE api_runtime` and
+calls the purge, but the test login is a superuser (`usesuper = t` on the compose
+role), so the first elevation's `SET LOCAL ROLE NONE` reverted to `session_user`
+— the superuser — and widened every statement after it. The suite could not fail.
+
+**The missing edge, proved live against the m154 container.** With a
+non-superuser login granted `api_runtime` membership and
+`ALTER ROLE <login> SET role = 'api_runtime'`:
+
+| Probe | Result |
+|---|---|
+| On connect | `current_user=api_runtime`, `session_user=<login>` |
+| `SELECT FROM vault.secrets`, unelevated | permission denied |
+| Same, after `SET LOCAL ROLE vault_runtime` | permitted |
+| `DELETE FROM fleet.runner_affinity` | permission denied |
+| `DELETE FROM core.fleets / workspaces / tenants` | permitted |
+| `SET LOCAL ROLE NONE` | → `<login>` — the footgun survives |
+| `SET LOCAL role = DEFAULT` | → `api_runtime` |
+| `RESET ROLE` | → `api_runtime` |
+
+Two consequences for whoever picks this up:
+
+1. **`ALTER ROLE <login> SET role = 'api_runtime'` is line one of the design, not
+   an afterthought.** No application code, no password in a migration, and it is
+   what turns every grant in this spec from decorative into enforced. The test
+   harness must reproduce the same shape — the precedent is
+   `scripts/check-migrate-unprivileged.sh`, which models PlanetScale's managed
+   migrator role for exactly this reason.
+2. **The deferred `SET LOCAL ROLE NONE` milestone is one word, not a milestone.**
+   Discovery below states the fix needs "either a captured `current_user` (a round
+   trip per scope) or a `poison`-style method on the vendored `pg` fork". It needs
+   neither: `SET LOCAL role = DEFAULT` steps down to the role's configured
+   default. That Discovery entry is superseded by this one.
+
+**Carved out and shipped separately.** The free-trial deletion folded into this
+milestone is independent of every role change and fixes a live revenue defect —
+`isFreeTrialActive(null, _)` returns `true` (`state/tenant_billing.zig:107-108`
+on `main`), `free_trial_ends_at` carries no `DEFAULT` and has one writer in the
+repository (a test fixture), so every tenant priced to zero. It leaves this spec
+for its own milestone rather than waiting on a boundary that is not wired.
+
+**Also unresolved, and now the higher-value gap.** Row-level tenant isolation
+does not exist: application `WHERE` clauses are the only tenant boundary, and no
+grant in this spec catches a missing predicate. `docs/architecture/runner_fleet.md:254`
+already names it as its own workstream. Worth designing together with the roles.
+
+**Reactivation condition:** a decision on how the deployed API assumes
+`api_runtime` — which requires knowing the login role inside
+`op://ZMB_CD_PROD/planetscale-prod/api-connection-string`, a value that lives in
+the vault and not in this repository.
 
 ---
 
