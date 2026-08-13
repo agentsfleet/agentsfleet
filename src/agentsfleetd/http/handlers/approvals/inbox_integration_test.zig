@@ -10,7 +10,8 @@
 
 const std = @import("std");
 const scope_fixtures = @import("../../test_scope_tokens.zig");
-const clock = @import("common").clock;
+const constants_common = @import("common");
+const clock = constants_common.clock;
 const pg = @import("pg");
 
 const harness_mod = @import("../../test_harness.zig");
@@ -670,32 +671,38 @@ test "integration: sweeper transitions expired pending row to timed_out + system
     const gid = "01999999-aaaa-7000-8000-000000000001";
     // timeout_at well in the past — sweeper picks this up immediately.
     try insertGate(conn, .{ .gate_id = gid, .action_id = "act-sweep-1", .timeout_at = 1 });
+    defer delDecisionKey(&h.queue, "act-sweep-1");
 
-    // Drive a single sweep cycle synchronously without spinning the long-lived
-    // thread — the public `run` loop is for production; tests reach in.
+    // The REAL sweeper thread, exactly as the worker spawns it at boot: its
+    // first sweep runs before any sleep, so an expired row is picked up on
+    // entry and the test never waits on the scan interval. An earlier revision
+    // hand-drove `resolve` here and proved the core while leaving the sweeper's
+    // own loop, batch fetch, and shutdown wake unexecuted.
     {
-        const conn2 = try h.acquireConn();
-        defer h.releaseConn(conn2);
-        var outcome = try @import("../../../fleet_runtime/approval_gate.zig").resolve(h.pool, &h.queue, ALLOC, .{
-            .action_id = "act-sweep-1",
-            .outcome = .timed_out,
-            .by = "system:timeout",
-            .reason = "auto-timeout",
+        var shutdown = std.atomic.Value(bool).init(false);
+        const sweeper = try std.Thread.spawn(.{}, approval_gate_sweeper.run, .{
+            h.pool, &h.queue, ALLOC, &shutdown,
         });
-        defer switch (outcome) {
-            .resolved => |*r| @constCast(r).deinit(ALLOC),
-            .already_resolved => |*r| @constCast(r).deinit(ALLOC),
-            .not_found => {},
-        };
-        try std.testing.expect(outcome == .resolved);
+        // The row flips within the first sweep; poll briefly rather than
+        // sleeping a fixed amount so the fast case stays fast.
+        var waited_ms: u64 = 0;
+        const poll_ms = 50;
+        const budget_ms = 10_000;
+        while (waited_ms < budget_ms) : (waited_ms += poll_ms) {
+            const s = try statusOf(conn, ALLOC, gid);
+            defer ALLOC.free(s);
+            if (std.mem.eql(u8, s, "timed_out")) break;
+            constants_common.sleepNanos(poll_ms * std.time.ns_per_ms);
+        }
+        // Shutdown wake: the interruptible sleep polls its flag every second,
+        // so the join below is also the proof a SIGTERM never waits a cycle.
+        shutdown.store(true, .release);
+        sweeper.join();
     }
 
     const status = try statusOf(conn, ALLOC, gid);
     defer ALLOC.free(status);
     try std.testing.expectEqualStrings("timed_out", status);
-
-    // Suppress unused-import warning for the sweeper module the test exercises.
-    _ = approval_gate_sweeper;
 }
 
 // ── Cross-fleet defense ────────────────────────────────────────────────

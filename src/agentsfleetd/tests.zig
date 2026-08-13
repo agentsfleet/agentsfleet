@@ -262,5 +262,6 @@ test {
     _ = @import("cmd/doctor_args.zig");
     _ = @import("cmd/doctor_render.zig");
     _ = @import("cmd/preflight_test.zig");
+    _ = @import("cmd/serve_boot_test.zig");
     _ = @import("cmd/serve_shutdown.zig");
 }
