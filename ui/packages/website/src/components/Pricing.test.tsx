@@ -35,10 +35,10 @@ describe("Pricing component", () => {
     analytics.trackSignupStarted.mockReset();
   });
 
-  it("leads with the free-trial banner from RATES_DISPLAY", () => {
+  it("leads with the early-access banner from RATES_DISPLAY", () => {
     renderPricing();
-    const banner = screen.getByTestId("pricing-free-trial-banner");
-    expect(banner).toHaveTextContent(RATES_DISPLAY.FREE_TRIAL_PILL);
+    const banner = screen.getByTestId("pricing-early-access-banner");
+    expect(banner).toHaveTextContent(RATES_DISPLAY.EARLY_ACCESS_PILL);
     expect(banner).toHaveTextContent(/Free during early access/);
   });
 
@@ -128,9 +128,9 @@ describe("Pricing component", () => {
     expect(screen.queryByRole("link", { name: /upgrade/i })).not.toBeInTheDocument();
   });
 
-  it("routes the free-trial Start-free CTA to the waitlist too", () => {
+  it("routes the early-access Start-free call-to-action to the waitlist too", () => {
     renderPricing();
-    const cta = screen.getByTestId("pricing-cta-trial");
+    const cta = screen.getByTestId("pricing-cta-early-access");
     expect(cta.tagName).toBe("A");
     expect(cta).toHaveAttribute("href", WAITLIST_URL);
     expect(cta.textContent).toMatch(/start free/i);

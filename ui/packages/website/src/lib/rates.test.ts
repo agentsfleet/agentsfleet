@@ -93,30 +93,30 @@ describe("RATES_DISPLAY format contract (shipped to Mintlify snippet, OpenAPI, s
   });
 });
 
-describe("free-trial display strings (open-ended trial — the copy names no date)", () => {
-  // pin test: literal is the contract
-  it("FREE_TRIAL_PILL renders the short pill string", () => {
-    expect(RATES_DISPLAY.FREE_TRIAL_PILL).toBe("Free during early access");
+describe("early-access display strings (the copy names no date)", () => {
+  // pin test: the literal is the published value
+  it("EARLY_ACCESS_PILL renders the short pill string", () => {
+    expect(RATES_DISPLAY.EARLY_ACCESS_PILL).toBe("Free during early access");
   });
 
-  it("FREE_TRIAL_BANNER opens with the phrase the pill uses", () => {
-    expect(RATES_DISPLAY.FREE_TRIAL_BANNER).toMatch(/^Free during early access — /);
+  it("EARLY_ACCESS_BANNER opens with the phrase the pill uses", () => {
+    expect(RATES_DISPLAY.EARLY_ACCESS_BANNER).toMatch(/^Free during early access — /);
   });
 
   // Drift catcher, replacing the shared-date pin these two strings used to
-  // carry. The trial boundary is a per-tenant column now (NULL = open-ended),
-  // so this static page has no date it could state truthfully. It shipped
-  // "Free until July 31, 2026" and went on saying it after that date passed —
-  // any calendar date reappearing in this copy is that bug coming back.
+  // carry. There is no end date to state: the free allowance is the starter
+  // grant, which ends when the balance does, not on a calendar. This copy
+  // shipped "Free until July 31, 2026" and went on saying it after that date
+  // passed — any calendar date reappearing here is that bug coming back.
   it("neither string states an end date", () => {
-    expect(RATES_DISPLAY.FREE_TRIAL_PILL).not.toMatch(A_CALENDAR_DATE);
-    expect(RATES_DISPLAY.FREE_TRIAL_BANNER).not.toMatch(A_CALENDAR_DATE);
+    expect(RATES_DISPLAY.EARLY_ACCESS_PILL).not.toMatch(A_CALENDAR_DATE);
+    expect(RATES_DISPLAY.EARLY_ACCESS_BANNER).not.toMatch(A_CALENDAR_DATE);
   });
 
   // The guard above covered only these two constants, so the pricing card kept
   // its own copy of the bug: it shipped a "$0 until Jul 31" suffix and went on
-  // rendering it after the date passed. The card is a trial claim like the pill
-  // is, so it answers to the same invariant.
+  // rendering it after the date passed. The card makes the same free-usage
+  // claim the pill does, so it answers to the same invariant.
   it("no pricing plan states an end date", () => {
     for (const plan of PRICING_PLANS) {
       expect(`${plan.name} ${plan.price}`).not.toMatch(A_CALENDAR_DATE);
