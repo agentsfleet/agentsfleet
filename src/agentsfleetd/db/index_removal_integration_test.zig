@@ -31,6 +31,11 @@ const KEPT_INDEX = IndexRef{ .schema = "memory", .name = "idx_memory_entries_fle
 const KEY_PREFIX = "rmprobe-key-";
 const MEM_KEY_PREFIX = "rmprobe-mem-";
 const FLEET_PROBE = "0195b4ba-8d3a-7f13-8abc-0000000e0001";
+/// `memory_entries.fleet_id` REFERENCES `core.fleets`, so the spread below needs
+/// a parent row per distinct id. This workspace owns them and nothing else; its
+/// teardown cascades to the fleets and their memory rows in one step.
+const WS_MEM = "0195b4ba-8d3a-7f13-8abc-0000000e0000";
+const MEM_FLEET_NAME_PREFIX = "rmprobe-fleet-";
 const SEED_ROWS: i32 = 200;
 const MEM_SEED_ROWS: i32 = 200;
 const PROBE_FLEET_ROWS: i32 = 20;
@@ -130,6 +135,31 @@ test "the composite still covers the fleet filter after the drop" {
     defer db.close();
     defer _ = db.conn.exec("DELETE FROM memory.memory_entries WHERE key LIKE $1", .{MEM_KEY_PREFIX ++ "%"}) catch |err|
         std.log.warn("memory teardown ignored: {s}", .{@errorName(err)});
+    // Drop the parent fleets with their workspace, so a few hundred fixture
+    // fleets do not shift `core.fleets` statistics under the next test.
+    defer base.teardownWorkspace(db.conn, WS_MEM);
+
+    // Parents first. The spread below derives its fleet ids arithmetically, so
+    // the parents derive theirs from the same expression over the same series —
+    // a hand-listed set would drift the moment the spread's modulus changed.
+    //
+    // Both spell the id through the same `overlay(... placing '7' from 15 for 1)`
+    // because `core.fleets` carries `ck_fleets_id_uuidv7`: a bare md5 digest is
+    // not UUIDv7-shaped and the check refuses it. The two expressions must stay
+    // character-identical or the child rows point at parents that do not exist.
+    try base.seedTenant(db.conn);
+    try base.seedWorkspace(db.conn, WS_MEM);
+    try base.seedFleet(db.conn, FLEET_PROBE, WS_MEM, MEM_FLEET_NAME_PREFIX ++ "probe", "{}", "");
+    _ = try db.conn.exec(
+        \\INSERT INTO core.fleets
+        \\  (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\SELECT overlay(md5((g % 200)::text)::uuid::text placing '7' from 15 for 1)::uuid,
+        \\       w.id, w.tenant_id,
+        \\       $2 || (g % 200)::text, '', '{}'::jsonb, 'active', 0, 0
+        \\FROM generate_series(1, $3::int) g
+        \\CROSS JOIN core.workspaces w WHERE w.id = $1::uuid
+        \\ON CONFLICT DO NOTHING
+    , .{ WS_MEM, MEM_FLEET_NAME_PREFIX, MEM_SEED_ROWS });
 
     _ = try db.conn.exec(
         \\INSERT INTO memory.memory_entries
@@ -137,7 +167,7 @@ test "the composite still covers the fleet filter after the drop" {
         \\SELECT overlay(md5('rm' || g)::uuid::text placing '7' from 15 for 1)::uuid,
         \\       $1 || g, 'content', 'core',
         \\       CASE WHEN g <= $3::int THEN $2::uuid
-        \\            ELSE md5((g % 200)::text)::uuid END,
+        \\            ELSE overlay(md5((g % 200)::text)::uuid::text placing '7' from 15 for 1)::uuid END,
         \\       g, g
         \\FROM generate_series(1, $4::int) g
         \\ON CONFLICT DO NOTHING
