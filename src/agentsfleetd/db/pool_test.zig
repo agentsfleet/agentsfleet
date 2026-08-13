@@ -728,6 +728,10 @@ const ROLE_PRIVILEGE_MATRIX = [_]RolePrivilege{
     // No DELETE on the ledger: a charge leaves only with the tenant that paid,
     // through the cascade. Nothing else in the system may erase one.
     .{ .role = "api_runtime", .table = "billing.usage_ledger", .select = true, .insert = true, .update = true, .delete = false },
+    // Production evidence is append-only; only the durable verifier fence may
+    // complete its initially-null event link.
+    .{ .role = "api_runtime", .table = "core.repair_production_results", .select = true, .insert = true, .update = false, .delete = false },
+    .{ .role = "api_runtime", .table = "core.repair_verifications", .select = true, .insert = true, .update = true, .delete = false },
     // Memory is behind `memory_runtime`; api_runtime must SET ROLE to reach it.
     .{ .role = "api_runtime", .table = "memory.memory_entries", .select = false, .insert = false, .update = false, .delete = false },
 

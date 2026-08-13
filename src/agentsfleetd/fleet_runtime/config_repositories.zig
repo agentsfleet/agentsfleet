@@ -14,8 +14,14 @@ const helpers = @import("config_helpers.zig");
 
 const FleetConfigError = config_types.FleetConfigError;
 
+/// Authoring rejects incomplete write reach. Stored parsing admits only the
+/// one pre-base shape so the daemon can surface a durable upgrade refusal.
+pub const ParseMode = enum { authoring, stored };
+
 pub const S_REPOSITORIES = "repositories";
 pub const S_REPOSITORY_ACCESS = "repository_access";
+pub const S_REPOSITORY_BASE = "repository_base";
+const MAX_BASE_BRANCH_LEN: usize = 255;
 
 /// Parse the top-level repository EGRESS binding — `repositories` plus
 /// `repository_access` — into a single optional. Both keys are optional, but
@@ -28,10 +34,12 @@ pub const S_REPOSITORY_ACCESS = "repository_access";
 pub fn parse(
     alloc: Allocator,
     runtime: std.json.ObjectMap,
+    mode: ParseMode,
 ) (Allocator.Error || FleetConfigError)!?config_types.RepositoryBinding {
     const repos_val = runtime.get(S_REPOSITORIES);
     const access_val = runtime.get(S_REPOSITORY_ACCESS);
-    if (repos_val == null and access_val == null) return null;
+    const base_val = runtime.get(S_REPOSITORY_BASE);
+    if (repos_val == null and access_val == null and base_val == null) return null;
     if (repos_val == null or access_val == null) return FleetConfigError.MissingRequiredField;
 
     const arr = switch (repos_val.?) {
@@ -47,6 +55,41 @@ pub fn parse(
         else => return FleetConfigError.MissingRequiredField,
     };
 
+    const base_branch = try parseBaseBranch(alloc, access, base_val, mode);
+    errdefer if (base_branch) |base| alloc.free(base);
     const repositories = try helpers.dupeStringArray(alloc, arr.items);
-    return .{ .repositories = repositories, .access = access };
+    return .{ .repositories = repositories, .access = access, .base_branch = base_branch };
+}
+
+fn parseBaseBranch(
+    alloc: Allocator,
+    access: config_types.RepositoryAccess,
+    value: ?std.json.Value,
+    mode: ParseMode,
+) (Allocator.Error || FleetConfigError)!?[]const u8 {
+    if (access == .read) {
+        if (value != null) return FleetConfigError.InvalidFieldType;
+        return null;
+    }
+    if (value == null and mode == .stored) return null;
+    const field = value orelse return FleetConfigError.MissingRequiredField;
+    const base = switch (field) {
+        .string => |text| text,
+        else => return FleetConfigError.InvalidFieldType,
+    };
+    if (!validBaseBranch(base)) return FleetConfigError.InvalidFieldType;
+    return try alloc.dupe(u8, base);
+}
+
+fn validBaseBranch(base: []const u8) bool {
+    if (base.len == 0 or base.len > MAX_BASE_BRANCH_LEN) return false;
+    if (base[0] == '/' or base[base.len - 1] == '/' or base[base.len - 1] == '.') return false;
+    if (std.mem.indexOf(u8, base, "..") != null or
+        std.mem.indexOf(u8, base, "//") != null or
+        std.mem.indexOf(u8, base, "@{") != null or
+        std.mem.endsWith(u8, base, ".lock")) return false;
+    for (base) |byte| {
+        if (byte < 0x21 or byte == 0x7f or std.mem.indexOfScalar(u8, "~^:?*[\\", byte) != null) return false;
+    }
+    return true;
 }

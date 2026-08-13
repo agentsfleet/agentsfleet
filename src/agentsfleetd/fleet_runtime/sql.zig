@@ -75,12 +75,26 @@ pub const SELECT_GATE_STATUS =
     \\ORDER BY created_at DESC LIMIT 1
 ;
 
+/// The approved write gate whose compact identifier becomes the daemon-authored
+/// repair branch. The caller performs semantic binding equality because
+/// repository case and order are intentionally insignificant.
+pub const SELECT_APPROVED_WRITE_GATE_ID =
+    \\SELECT id::text, stated_binding::text FROM core.fleet_approval_gates
+    \\WHERE fleet_id = $1::uuid AND event_id = $2 AND gate_kind = $3
+    \\  AND status = $4 AND updated_at IS NOT NULL AND updated_at <= timeout_at
+    \\  AND stated_binding IS NOT NULL
+    \\  AND spend_count IS NOT NULL AND spend_ceiling = $5
+    \\ORDER BY created_at DESC, id DESC
+    \\LIMIT 1
+;
+
 pub const INSERT_GATE =
     \\INSERT INTO core.fleet_approval_gates
     \\  (id, fleet_id, workspace_id, action_id, tool_name, action_name,
     \\   gate_kind, proposed_action, evidence, blast_radius, timeout_at,
-    \\   resolved_by, status, detail, created_at, event_id, stated_binding)
-    \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, '', $12, '', $13, $14, $15::jsonb)
+    \\   resolved_by, status, detail, created_at, event_id, stated_binding,
+    \\   spend_count, spend_ceiling)
+    \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, '', $12, '', $13, $14, $15::jsonb, $16, $17)
 ;
 
 /// One keyset page of pending gates for a workspace. The cursor compares the

@@ -24,6 +24,40 @@ pub const CUSTOM_PROVIDER_PREFIX: []const u8 = "custom:";
 /// least one entry in `allow` (exact hostname match). Empty `allow` = deny-all.
 pub const NetworkPolicy = struct {
     allow: []const []const u8 = &.{},
+    /// Restrict `http_request` to safe reads and prevent a credential from
+    /// crossing to a host other than its own declared endpoint.
+    read_only: bool = false,
+    /// Exact HTTPS prefixes where a read-only tool may use POST for a query.
+    read_post_paths: []const []const u8 = &.{},
+};
+
+/// HTTP methods expressible by daemon-authored request rules.
+pub const HttpMethod = enum { get, head, post };
+
+/// Whether a request path must equal the authored bytes or begin with them.
+pub const HttpPathMatch = enum { exact, prefix };
+
+/// One required top-level JSON field. Exactly one expected-value field is set.
+pub const HttpJsonFieldRule = struct {
+    name: []const u8,
+    string_value: ?[]const u8 = null,
+    boolean_value: ?bool = null,
+};
+
+/// One method and path admitted at an origin. JSON rules lock selected fields;
+/// additional fields remain available for request-specific content.
+pub const HttpRequestRule = struct {
+    method: HttpMethod,
+    path: []const u8,
+    path_match: HttpPathMatch = .exact,
+    json_fields: []const HttpJsonFieldRule = &.{},
+};
+
+/// Provider-neutral request boundary for one exact HTTPS host.
+pub const HttpOriginPolicy = struct {
+    host: []const u8,
+    credential_names: []const []const u8 = &.{},
+    requests: []const HttpRequestRule = &.{},
 };
 
 /// One on-demand mintable credential the lease grants (M102 §4). The lease carries
@@ -147,6 +181,9 @@ pub const ExecutionPolicy = struct {
     /// deserializes to `null` — backward-compatible with in-flight leases, and
     /// fail-closed: no binding means no fetch, exactly as it means no mint.
     repository_binding: ?RepositoryBinding = null,
+    /// Daemon-authored, provider-neutral request rules. A host named here is
+    /// fail-closed: every request to it must match one rule.
+    http_origin_policies: []const HttpOriginPolicy = &.{},
     context: ContextBudget = .{},
 };
 
@@ -169,6 +206,7 @@ pub const RepositoryAccess = enum { read, write };
 pub const RepositoryBinding = struct {
     repositories: []const []const u8,
     access: RepositoryAccess,
+    base_branch: ?[]const u8 = null,
 };
 
 /// Extract the bare host from a provider base URL (`https://api.fireworks.ai/

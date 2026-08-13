@@ -172,6 +172,20 @@ describe("outcomeFor", () => {
     ).toBe("Timed out");
   });
 
+  it("shows a terminal gate refusal and its recovery instruction", () => {
+    expect(
+      outcomeFor(
+        row({
+          status: EVENT_STATUS.GATE_BLOCKED,
+          failure_label: "repository_base_required",
+          failure_detail: "Add x-agentsfleet.repository_base to TRIGGER.md, save the fleet, then retry the event.",
+        }),
+      ),
+    ).toBe(
+      "Fleet repository base is missing — Add x-agentsfleet.repository_base to TRIGGER.md, save the fleet, then retry the event.",
+    );
+  });
+
   it("appends the recorded cause line after the failure sentence", () => {
     expect(
       outcomeFor(

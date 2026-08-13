@@ -13,6 +13,7 @@
 //!   * `report_mapping`   — the one conversion between that result and the report wire.
 
 pub const protocol = @import("protocol.zig");
+pub const protocol_lease_v1 = @import("protocol_lease_v1.zig");
 pub const event_envelope = @import("event_envelope.zig");
 pub const execution_policy = @import("execution_policy.zig");
 pub const activity = @import("activity.zig");
@@ -24,6 +25,7 @@ pub const report_mapping = @import("report_mapping.zig");
 // agentsfleetd/runner consumers never see.
 test {
     _ = @import("protocol_test.zig");
+    _ = protocol_lease_v1;
     _ = @import("event_envelope_test.zig");
     // Module-backed members reference their pub const (no re-spelled @import
     // path — RULE UFS); test-only files keep their direct import.

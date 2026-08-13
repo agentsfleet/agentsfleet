@@ -26,6 +26,7 @@ const builtin = @import("builtin");
 const clock = @import("common").clock;
 const contract = @import("contract");
 const metrics_memory = @import("metrics_memory.zig");
+const metrics_repair_verification = @import("metrics_repair_verification.zig");
 const FailureClass = contract.execution_result.FailureClass;
 const Outcome = contract.protocol.Outcome;
 
@@ -322,4 +323,5 @@ pub fn resetForTest() void {
     g_claim_barrier_target = 0; // a barrier left armed would deadlock the next single-threaded claim
     g_claim_barrier_arrivals.store(0, .release);
     metrics_memory.resetForTest();
+    metrics_repair_verification.resetForTest();
 }
