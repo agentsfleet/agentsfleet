@@ -85,9 +85,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_cli_credentials_user_machine_live
 -- path and no second index on that column is warranted. Revocation is checked
 -- from the row once it is found.
 
--- A user's own credential list, for display and for the revoke-on-relogin
--- lookup, which reads by user and machine.
-CREATE INDEX IF NOT EXISTS idx_cli_credentials_user_id_revoked_at
-    ON core.cli_credentials (user_id, revoked_at);
+-- No second (user_id, revoked_at) index: both remaining readers — the live
+-- credential list and the revoke-on-relogin lookup — filter `revoked_at IS
+-- NULL`, which the partial unique index above already serves on its leading
+-- column and predicate. A second index would be write amplification on every
+-- mint for no read it improves.
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON core.cli_credentials TO api_runtime;

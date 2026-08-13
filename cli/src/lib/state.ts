@@ -73,6 +73,18 @@ export function emptyCredentials(): Credentials {
   };
 }
 
+// Same contract as `emptyCredentials`: one definition for every site that
+// needs the signed-out workspaces record, so a field added to `Workspaces`
+// cannot drift at one of them (the entry-point fallback had already lost
+// `tenant_id` before this existed).
+export function emptyWorkspaces(): Workspaces {
+  return {
+    tenant_id: null,
+    current_workspace_id: null,
+    items: [],
+  };
+}
+
 async function ensureBaseDir(): Promise<void> {
   const { baseDir } = resolveStatePaths();
   await fs.mkdir(baseDir, { recursive: true });
@@ -119,11 +131,7 @@ export async function clearCredentials(): Promise<void> {
 
 export async function loadWorkspaces(): Promise<Workspaces> {
   const { workspacesPath } = resolveStatePaths();
-  return readJson<Workspaces>(workspacesPath, {
-    tenant_id: null,
-    current_workspace_id: null,
-    items: [],
-  });
+  return readJson<Workspaces>(workspacesPath, emptyWorkspaces());
 }
 
 export async function saveWorkspaces(next: Workspaces): Promise<void> {

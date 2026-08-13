@@ -90,10 +90,7 @@ const credentialsLayer = (
   const state: { token: Option.Option<Redacted.Redacted<string>> } = { token: initial };
   return Layer.succeed(Credentials, {
     getAccessToken: Effect.sync(() => state.token),
-    getSavedAt: Effect.sync(() => null),
-    getSessionId: Effect.sync(() => null),
-    getApiUrl: Effect.sync(() => null),
-    getCredentialId: Effect.succeed(null),
+    snapshot: Effect.succeed({ accessToken: Option.none(), savedAt: null, sessionId: null, credentialId: null }),
     saveAccessToken: (input) =>
       Effect.sync(() => {
         state.token = Option.some(input.token);
@@ -319,10 +316,7 @@ describe("loginEffect — cancel at the code prompt", () => {
     let saves = 0;
     const recordingCreds: Layer.Layer<Credentials> = Layer.succeed(Credentials, {
       getAccessToken: Effect.sync(() => Option.none()),
-      getSavedAt: Effect.sync(() => null),
-      getSessionId: Effect.sync(() => null),
-      getApiUrl: Effect.sync(() => null),
-      getCredentialId: Effect.succeed(null),
+      snapshot: Effect.succeed({ accessToken: Option.none(), savedAt: null, sessionId: null, credentialId: null }),
       saveAccessToken: () => Effect.sync(() => { saves += 1; }),
       clearAccessToken: Effect.void,
     });
@@ -380,10 +374,7 @@ describe("loginEffect — a terminal is required", () => {
     return {
       layer: Layer.succeed(Credentials, {
         getAccessToken: Effect.sync(() => state.token),
-        getSavedAt: Effect.sync(() => null),
-        getSessionId: Effect.sync(() => null),
-        getApiUrl: Effect.sync(() => null),
-        getCredentialId: Effect.succeed(null),
+        snapshot: Effect.succeed({ accessToken: Option.none(), savedAt: null, sessionId: null, credentialId: null }),
         saveAccessToken: (input) =>
           Effect.sync(() => {
             state.token = Option.some(input.token);

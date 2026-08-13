@@ -8,15 +8,15 @@ import { openUrl } from "./lib/browser.ts";
 import {
   clearCredentials,
   emptyCredentials,
+  emptyWorkspaces,
   loadCredentials,
   loadWorkspaces,
   saveCredentials,
   saveWorkspaces,
-  type Workspaces,
 } from "./lib/state.ts";
 import { Effect } from "effect";
 import { runCommanderParse } from "./lib/commander-bridge.ts";
-import { extractRoleFromToken } from "./program/auth-token.ts";
+import { isString } from "./lib/guards.ts";
 import { resolveApiKeyFromEnv } from "./services/config.ts";
 import { printJson, writeError, writeLine } from "./program/io.ts";
 import { printVersion } from "./program/banner.ts";
@@ -30,7 +30,6 @@ import {
 import { buildProgram } from "./program/cli-tree.ts";
 import { buildHandlers, type Lifecycle } from "./program/handlers-bind.ts";
 import { detectTokenInArgv } from "./lib/argv-redact.ts";
-import { ROLE_ADMIN } from "./constants/auth-roles.ts";
 import type { ProgramState } from "./program/cli-tree-types.ts";
 import type { CommandCtx, CommandDeps } from "./commands/types.ts";
 import type { WritableStreamLike } from "./output/capability.ts";
@@ -50,10 +49,6 @@ export const VERSION: string = pkgJson.version;
 const AUTH_EXEMPT: ReadonlySet<string> = new Set(["login"]);
 const FLAG = "--" as const;
 const FLAG_API = "--api=" as const;
-const TYPE_STRING = "string" as const;
-
-const isString = (value: unknown): value is string =>
-  typeof value === TYPE_STRING;
 
 export interface RunCliIo {
   stdout?: WritableStreamLike;
@@ -224,8 +219,6 @@ function applyOutputToTree(
   for (const sub of cmd.commands) applyOutputToTree(sub, stdout, stderr);
 }
 
-const EMPTY_WORKSPACES: Workspaces = { current_workspace_id: null, items: [] };
-
 export async function runCli(
   argv: readonly string[],
   io: RunCliIo = {},
@@ -250,22 +243,17 @@ export async function runCli(
 
   const [creds, workspaces] = await Promise.all([
     loadCredentials().catch(() => emptyCredentials()),
-    loadWorkspaces().catch(() => EMPTY_WORKSPACES),
+    loadWorkspaces().catch(() => emptyWorkspaces()),
   ]);
   // Session identity is read and bumped through `telemetry.json`.
   const stdinSrc = io.stdin ?? process.stdin;
-  // Two credential slots: the stored login JWT (file slot, from
+  // Two credential slots: the stored login credential (file slot, from
   // credentials.json) and the service API key (env slot). The api key wins
-  // at the wire (resolveToken's env-first precedence), so an exported key
-  // grants the admin role-gate; otherwise the role comes from the login
-  // JWT's claims. resolveApiKeyFromEnv trims, so a whitespace-only key is
-  // treated as absent everywhere (guard + wire) rather than sending a blank
-  // `Authorization: Bearer`.
+  // at the wire (resolveToken's env-first precedence). resolveApiKeyFromEnv
+  // trims, so a whitespace-only key is treated as absent everywhere
+  // (guard + wire) rather than sending a blank `Authorization: Bearer`.
   const storedToken = creds.token ?? null;
   const resolvedApiKey = resolveApiKeyFromEnv(env);
-  const resolvedAuthRole = resolvedApiKey
-    ? ROLE_ADMIN
-    : extractRoleFromToken(storedToken);
 
   const explicitApi = resolveGlobalApiUrl(argv, env);
   const apiUrl = normalizeApiUrl(
@@ -276,7 +264,6 @@ export async function runCli(
     dashboardUrl: resolveDashboardUrl(apiUrl, env.AGENTSFLEET_DASHBOARD_URL),
     token: storedToken,
     apiKey: resolvedApiKey,
-    authRole: resolvedAuthRole,
     jsonMode,
     noOpen: false,
     noInput: false,

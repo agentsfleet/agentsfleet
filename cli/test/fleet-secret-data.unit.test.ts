@@ -49,10 +49,7 @@ const makeConfigLayer = (jsonMode = false): Layer.Layer<CliConfig> =>
 const makeCredsLayer = (): Layer.Layer<Credentials> =>
   Layer.succeed(Credentials, {
     getAccessToken: Effect.succeed(Option.some(Redacted.make("header.payload.sig"))),
-    getSavedAt: Effect.succeed(Date.now()),
-    getSessionId: Effect.succeed("sess_test"),
-    getApiUrl: Effect.succeed(null),
-    getCredentialId: Effect.succeed(null),
+    snapshot: Effect.succeed({ accessToken: Option.none(), savedAt: null, sessionId: null, credentialId: null }),
     saveAccessToken: () => Effect.void,
     clearAccessToken: Effect.void,
   });

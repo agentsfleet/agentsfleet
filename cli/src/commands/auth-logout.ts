@@ -21,7 +21,7 @@ import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
 import { AUTH_SESSIONS_PATH } from "../lib/api-paths.ts";
-import { ValidationError, type CliError } from "../errors/index.ts";
+import { reasonOf, ValidationError, type CliError } from "../errors/index.ts";
 import { EVT_LOGOUT_COMPLETED } from "../constants/analytics-events.ts";
 import { revokeCredential } from "./login-exchange.ts";
 export interface LogoutFlags {
@@ -48,8 +48,7 @@ interface RevokeOutcome {
 
 // Best-effort server-side revoke. The local clear runs unconditionally
 // afterwards; this call's failure becomes a stderr warn so the operator
-// knows the dashboard may still show the session as active. Reason
-// extraction mirrors hydrateWorkspacesAfterLogin (login-helpers.ts).
+// knows the dashboard may still show the session as active.
 const revokeAllSessions = (
   token: Redacted.Redacted<string>,
 ): Effect.Effect<RevokeOutcome, never, HttpClient> =>
@@ -71,7 +70,7 @@ const revokeAllSessions = (
           }),
           onFailure: (err): RevokeOutcome => ({
             aborted_count: null,
-            serverError: err._tag === "ServerError" ? err.code : "network",
+            serverError: reasonOf(err),
             credentialError: null,
           }),
         }),
@@ -137,8 +136,11 @@ export const logoutEffect = (
     const analytics = yield* Analytics;
     const configDir = yield* getConfigDir;
 
-    const existing = yield* credentials.getAccessToken;
-    const credentialId = yield* credentials.getCredentialId;
+    // ONE record snapshot: the token that authorises the revoke and the
+    // identifier being revoked can never come from two different reads.
+    const stored = yield* credentials.snapshot;
+    const existing = stored.accessToken;
+    const credentialId = stored.credentialId;
     const sessions: RevokeOutcome = Option.isSome(existing)
       ? yield* revokeAllSessions(existing.value)
       : { aborted_count: null, serverError: null, credentialError: null };

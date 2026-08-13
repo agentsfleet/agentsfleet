@@ -94,10 +94,12 @@ const credentialsLayer = (rec: IdentityRecorder): Layer.Layer<Credentials> => {
   };
   return Layer.succeed(Credentials, {
     getAccessToken: Effect.sync(() => state.token),
-    getSavedAt: Effect.sync(() => state.savedAt),
-    getSessionId: Effect.sync(() => state.sessionId),
-    getApiUrl: Effect.sync(() => state.apiUrl),
-    getCredentialId: Effect.succeed(null),
+    snapshot: Effect.sync(() => ({
+      accessToken: state.token,
+      savedAt: state.savedAt,
+      sessionId: state.sessionId,
+      credentialId: null,
+    })),
     saveAccessToken: (input) =>
       Effect.sync(() => {
         state.token = Option.some(input.token);
@@ -156,7 +158,7 @@ describe("captureLoginCompleted", () => {
   test("token with sub claim → alias + identify + saveDistinctId writes telemetry.json", async () => {
     const rec = makeRecorder();
     const exit = await Effect.runPromiseExit(
-      captureLoginCompleted("sess_abc", tokenWithSub("user-distinct-9"), "browser").pipe(
+      captureLoginCompleted("sess_abc", tokenWithSub("user-distinct-9")).pipe(
         Effect.provide(analyticsLayer(rec)),
         Effect.provide(telemetryRuntime),
       ),
@@ -186,7 +188,7 @@ describe("captureLoginCompleted", () => {
       }),
     );
     const exit = await Effect.runPromiseExit(
-      captureLoginCompleted("sess_xyz", tokenWithoutSub(), "browser").pipe(
+      captureLoginCompleted("sess_xyz", tokenWithoutSub()).pipe(
         Effect.provide(analyticsLayer(rec)),
         Effect.provide(telemetryRuntime),
       ),

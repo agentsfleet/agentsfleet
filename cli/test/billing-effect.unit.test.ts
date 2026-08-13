@@ -58,10 +58,7 @@ const outputLayer = (rec: Recorder): Layer.Layer<Output> =>
 const credentialsLayer = (): Layer.Layer<Credentials> =>
   Layer.succeed(Credentials, {
     getAccessToken: Effect.succeed(Option.some(Redacted.make("test-token"))),
-    getSavedAt: Effect.succeed(null),
-    getSessionId: Effect.succeed(null),
-    getApiUrl: Effect.succeed(null),
-    getCredentialId: Effect.succeed(null),
+    snapshot: Effect.succeed({ accessToken: Option.none(), savedAt: null, sessionId: null, credentialId: null }),
     saveAccessToken: () => Effect.void,
     clearAccessToken: Effect.void,
   });

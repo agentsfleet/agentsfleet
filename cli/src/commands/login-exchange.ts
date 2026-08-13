@@ -22,22 +22,17 @@ import {
   MACHINE_NAME_REPLACEMENT,
   MAX_MACHINE_NAME_LEN,
 } from "../constants/cli-credential.ts";
-import { AuthError, type CliError } from "../errors/index.ts";
+import { AuthError, reasonOf, type CliError } from "../errors/index.ts";
+import { isString } from "../lib/guards.ts";
 
 // Mirrors ERR_CLI_CREDENTIAL_EXCHANGE_FAILED in
 // src/agentsfleetd/errors/error_registry.zig.
 export const ERR_CLI_CREDENTIAL_EXCHANGE_FAILED = "UZ-AUTH-025" as const;
 
 const SIGN_IN_AGAIN = "run `agentsfleet login` again" as const;
-// Stands in for a server code when the request never reached one, so a caller
-// rendering the outcome has a single string-or-null shape to handle.
-const NETWORK_FAILURE = "network" as const;
-// The transport's error tag. Named once because both the mint and the revoke
-// branch on it to tell a refusal the server explained from one it did not.
+// The transport's error tag. Named once because the mint branches on it to
+// tell a refusal the server explained from one it did not.
 const TAG_SERVER_ERROR = "ServerError" as const;
-const TYPE_STRING = "string" as const;
-const isString = (value: unknown): value is string =>
-  typeof value === TYPE_STRING;
 
 export interface MintedCredential {
   readonly id: string;
@@ -140,8 +135,7 @@ export const revokeCredential = (
       .pipe(
         Effect.match({
           onSuccess: () => null,
-          onFailure: (err) =>
-            err._tag === TAG_SERVER_ERROR ? err.code : NETWORK_FAILURE,
+          onFailure: (err) => reasonOf(err),
         }),
       );
   });

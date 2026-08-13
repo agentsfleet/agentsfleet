@@ -80,10 +80,12 @@ const credentialsLayer = (
 ): Layer.Layer<Credentials> =>
   Layer.succeed(Credentials, {
     getAccessToken: Effect.sync(() => state.token),
-    getSavedAt: Effect.sync(() => state.savedAt),
-    getSessionId: Effect.sync(() => state.sessionId),
-    getApiUrl: Effect.sync(() => state.apiUrl),
-    getCredentialId: Effect.succeed(null),
+    snapshot: Effect.sync(() => ({
+      accessToken: state.token,
+      savedAt: state.savedAt,
+      sessionId: state.sessionId,
+      credentialId: null,
+    })),
     saveAccessToken: (input) =>
       Effect.sync(() => {
         state.token = Option.some(input.token);

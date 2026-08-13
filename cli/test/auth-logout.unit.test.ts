@@ -75,13 +75,18 @@ const credentialsLayer = (
         ? Option.none<Redacted.Redacted<string>>()
         : Option.some(Redacted.make(opts.token)),
     ),
-    getSavedAt: Effect.succeed(null),
-    getSessionId: Effect.succeed(null),
-    getApiUrl: Effect.succeed(null),
-    getCredentialId: Effect.succeed(opts.credentialId),
+    snapshot: Effect.sync(() => ({
+      accessToken:
+        opts.token === null
+          ? Option.none<Redacted.Redacted<string>>()
+          : Option.some(Redacted.make(opts.token)),
+      savedAt: null,
+      sessionId: null,
+      credentialId: opts.credentialId,
+    })),
     saveAccessToken: () => Effect.void,
     clearAccessToken: Effect.sync(() => void rec.cleared.push("clear")),
-  } as unknown as Credentials);
+  });
 
 // Records every request, and lets a chosen path fail, so a test can prove
 // both what was called and what happened when one leg refused.
