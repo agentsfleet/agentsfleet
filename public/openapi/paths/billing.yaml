@@ -4,7 +4,7 @@
     summary: Read the tenant balance
     description: >
       Returns the balance shared by every workspace in the tenant. The response
-      also shows whether the balance is empty and whether a free trial is active.
+      also shows whether the balance is empty, and when it first ran out.
     tags:
     - Billing
     responses:
@@ -19,7 +19,6 @@
               - updated_at
               - is_exhausted
               - exhausted_at
-              - free_trial
               properties:
                 balance_nanos:
                   type: integer
@@ -37,28 +36,6 @@
                   format: int64
                   nullable: true
                   description: Time of the first zero balance in Unix milliseconds. Null until then.
-                free_trial:
-                  type: object
-                  description: >
-                    This tenant's free-trial state. The end time is a property of
-                    the account, not a platform-wide date, so two tenants can be
-                    on different footings.
-                  required:
-                  - active
-                  - ends_at_ms
-                  properties:
-                    active:
-                      type: boolean
-                      description: True while the free trial is active.
-                    ends_at_ms:
-                      type: integer
-                      format: int64
-                      nullable: true
-                      description: >
-                        Free-trial end time in Unix milliseconds, or null when
-                        the trial is open-ended and has no end time set. Null is
-                        the default for a new tenant and means the trial does not
-                        lapse on its own — it is not a missing value.
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
 /v1/tenants/me/billing/charges:
