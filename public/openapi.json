@@ -3262,7 +3262,7 @@
       "get": {
         "operationId": "get_tenant_billing",
         "summary": "Read the tenant balance",
-        "description": "Returns the balance shared by every workspace in the tenant. The response also shows whether the balance is empty and whether a free trial is active.\n",
+        "description": "Returns the balance shared by every workspace in the tenant. The response also shows whether the balance is empty.\n",
         "tags": [
           "Billing"
         ],
@@ -3277,8 +3277,7 @@
                     "balance_nanos",
                     "updated_at",
                     "is_exhausted",
-                    "exhausted_at",
-                    "free_trial"
+                    "exhausted_at"
                   ],
                   "properties": {
                     "balance_nanos": {
@@ -3300,26 +3299,6 @@
                       "format": "int64",
                       "nullable": true,
                       "description": "Time of the first zero balance in Unix milliseconds. Null until then."
-                    },
-                    "free_trial": {
-                      "type": "object",
-                      "description": "This tenant's free-trial state. The end time is a property of the account, not a platform-wide date, so two tenants can be on different footings.\n",
-                      "required": [
-                        "active",
-                        "ends_at_ms"
-                      ],
-                      "properties": {
-                        "active": {
-                          "type": "boolean",
-                          "description": "True while the free trial is active."
-                        },
-                        "ends_at_ms": {
-                          "type": "integer",
-                          "format": "int64",
-                          "nullable": true,
-                          "description": "Free-trial end time in Unix milliseconds, or null when the trial is open-ended and has no end time set. Null is the default for a new tenant and means the trial does not lapse on its own — it is not a missing value.\n"
-                        }
-                      }
                     }
                   }
                 }

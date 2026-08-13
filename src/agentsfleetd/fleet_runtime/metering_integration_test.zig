@@ -4,9 +4,8 @@
 // integration root (`integration_tests.zig`), where the canonical lanes
 // actually provide one; parked in the unit root they executed in no lane.
 //
-// The trial boundary is a tenant fact (§7): the block test closes its own
-// tenant's boundary via `base.endFreeTrialFor`, so the refusal asserts
-// unconditionally at any clock position.
+// Nothing here arranges a clock. Pricing resolves from the catalogue and the
+// posture alone, so the refusal asserts unconditionally at any clock position.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -143,7 +142,6 @@ test "integration: balanceCoversEstimate blocks when stop policy AND balance bel
     // refusal asserts unconditionally at any clock position.
     base.resetBillingFor(db_ctx.conn, TENANT_ID);
     try tenant_billing.provision(db_ctx.conn, TENANT_ID, 0, "test_block");
-    try base.endFreeTrialFor(db_ctx.conn, TENANT_ID);
 
     try std.testing.expect(!metering.balanceCoversEstimate(
         db_ctx.pool,

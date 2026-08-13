@@ -25,11 +25,10 @@
 // first renewal that created it and `last_charged_at` the settle that wrote it
 // last, which pins exactly the window the budget apportionment reads.
 //
-// Free-trial note: the boundary is a tenant fact (§7), so arrange() closes this
-// suite's tenant's trial and raises the fixture pair's token rates above zero —
-// the reconciliation identity therefore carries real money unconditionally, and
-// the strict non-zero arm asserts at any clock position. The zero arms (replay,
-// lost fence, failed settle) stay zero for their own reasons, which is the point.
+// Rate note: arrange() raises the fixture pair's token rates above zero, so the
+// reconciliation identity carries real money unconditionally and the strict
+// non-zero arm asserts at any clock position. The zero arms (replay, lost fence,
+// failed settle) stay zero for their own reasons, which is the point.
 // Requires LIVE_DB + Redis; skipped when either is missing.
 
 const std = @import("std");
@@ -191,7 +190,6 @@ fn arrange() !Setup {
     // §7: an open trial prices every slice to zero, which would let the
     // reconciliation identity pass by agreeing on nothing. Close this tenant's
     // boundary so the identity carries real money at any clock position.
-    try base.endFreeTrialFor(conn, base.TEST_TENANT_ID);
     try seedRunner(conn);
     try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, FLEET_NAME, CONFIG_NO_GATES, SOURCE_MD);
     try base.seedFleetSession(conn, FLEET_ID, "{}");

@@ -48,13 +48,10 @@ test "computeReceiveCharge: zero both postures" {
     try std.testing.expectEqual(@as(i64, 0), tenant_billing.computeReceiveCharge(.self_managed));
 }
 
-// `computeStageCharge` reads the system clock. While `now_ms <
-// FREE_TRIAL_END_MS` (2026-08-01T00:00:00Z) it short-circuits to zero
-// regardless of posture / model / tokens — the rate-math tests live
-// inline in `tenant_billing.zig` so they have access to the private
-// time-injected `computeStageChargeAt` for deterministic pre/mid/post
-// trial coverage. This file's remaining tests don't depend on the
-// clock-gated cost function.
+// `computeStageCharge` reads no clock: a rate is a property of the catalogue and
+// the posture, never of when it is asked for. The rate-math tests live inline in
+// `tenant_billing_rates.zig`, where they reach the private catalogue-free
+// branch. Nothing in this file depends on the cost function.
 
 test "provision inserts one row and replay is a no-op" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;

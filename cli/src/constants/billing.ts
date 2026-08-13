@@ -28,15 +28,6 @@ export const EVENT_NANOS = 0;
 // per-stage fees.
 export const RUN_NANOS_PER_SEC = 100_000;
 
-// Per-stage charge while a tenant's free trial is open: the server's
-// `compute_stage_charge` returns this regardless of posture / model / tokens.
-//
-// The trial's END is deliberately NOT a constant here. It is a per-tenant fact
-// (`billing.tenant_wallet.free_trial_ends_at`, NULL = open-ended), served on
-// `GET /v1/tenants/me/billing` as `free_trial.ends_at_ms` — null for an
-// open-ended trial. No CLI command reads that field today; a constant here
-// could only ever disagree with the account it claims to describe.
-export const FREE_TRIAL_STAGE_NANOS = 0;
 
 // Two-to-four decimal places — cents granularity, with sub-cent precision
 // when the per-second run rate ($0.0001/sec) needs it.

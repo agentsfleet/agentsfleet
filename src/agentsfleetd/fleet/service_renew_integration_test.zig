@@ -11,13 +11,11 @@
 // test sets ctx.balance_policy = .stop on the harness directly (explicit, so the
 // assertion is independent of the configured default).
 // Requires LIVE_DB=1; skipped when TEST_DATABASE_URL is unset. The refusal
-// needs a non-zero stage charge to be a refusal at all, so the suite makes both
-// halves of that itself: it ends its own tenant's free trial (§7 — the boundary
-// is a tenant fact now, so no wall-clock date can leave the assertion asleep)
-// and seeds a priced catalogue row for the lease's (provider, model) pair.
-// Without the rate row the gate hits `error.ModelNotPriced` and fails OPEN by
-// design, which reads as "the tenant could pay" — see the free-trial section in
-// billing_and_provider_keys.md.
+// needs a non-zero stage charge to be a refusal at all, so the suite seeds a
+// priced catalogue row for the lease's (provider, model) pair. Without the rate
+// row the gate hits `error.ModelNotPriced` and fails OPEN by design, which reads
+// as "the tenant could pay" — see the free-usage section of
+// docs/architecture/billing_and_provider_keys.md.
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -198,20 +196,18 @@ test "integration: renew refused with UZ-RUN-012 on an exhausted tenant, deadlin
     try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, "service-renew-fleet", "{}", "# z");
     try seedRunner(conn);
     try exhaustBalance(conn); // 0 balance → under .stop the gate refuses the renewal charge
-    // An open trial prices every posture's stage charge to 0, so a 0 balance
-    // would still "cover" and the gate could not refuse. The boundary is this
-    // tenant's own row now, so the suite closes it rather than waiting for a
-    // date — and the assertion below can never fall asleep again.
-    try base.endFreeTrialFor(conn, base.TEST_TENANT_ID);
     const deadline = clock.nowMillis() + 60_000;
     try seedActiveLease(conn, deadline);
     defer teardown(conn);
 
-    // The trial is shut and the charge is priced: the tenant is genuinely broke
-    // against a real estimate, which is the only state this refusal is about.
+    // The tenant is genuinely broke against a real estimate, which is the only
+    // state this refusal is about. This used to need the suite to close a
+    // promotional window first: while one was open every posture priced to zero,
+    // so a zero balance still "covered" the charge and the gate could not refuse
+    // at all. Nothing to arrange now — the estimate is the catalogue's.
     const billing = (try tenant_billing.getBilling(conn, ALLOC, base.TEST_TENANT_ID)).?;
     defer ALLOC.free(@constCast(billing.grant_source));
-    try std.testing.expect(!billing.free_trial_active);
+    try std.testing.expectEqual(@as(i64, 0), billing.balance_nanos);
 
     // Credit gate sits after the ownership + active-status checks, so an owned,
     // active lease reaches it; the broke tenant is refused.

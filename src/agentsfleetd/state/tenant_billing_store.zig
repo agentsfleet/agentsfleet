@@ -12,8 +12,6 @@ const BillingRow = struct {
     grant_source: []u8,
     updated_at_ms: i64,
     exhausted_at_ms: ?i64,
-    /// NULL in the column means the trial is open-ended for this tenant.
-    free_trial_ends_at_ms: ?i64,
 
     pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
         alloc.free(self.grant_source);
@@ -70,16 +68,6 @@ fn rowExists(conn: *pg.Conn, tenant_id: []const u8) !bool {
     return (try q.next()) != null;
 }
 
-/// This tenant's free-trial boundary, or null when open-ended. Also null when
-/// the tenant has no billing row at all — a tenant that was never granted a
-/// balance is not mid-trial, and the metering path treats both the same.
-pub fn loadTrialBoundary(conn: *pg.Conn, tenant_id: []const u8) !?i64 {
-    var q = PgQuery.from(try conn.query(sql.SELECT_TENANT_TRIAL_BOUNDARY, .{tenant_id}));
-    defer q.deinit();
-    const row = (try q.next()) orelse return null;
-    return try row.get(?i64, 0);
-}
-
 pub fn loadByTenant(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
@@ -93,13 +81,11 @@ pub fn loadByTenant(
     errdefer alloc.free(grant_source);
     const ts = try row.get(i64, 2);
     const exhausted_at_ms = try row.get(?i64, 3);
-    const free_trial_ends_at_ms = try row.get(?i64, 4);
     return .{
         .balance_nanos = bal,
         .grant_source = grant_source,
         .updated_at_ms = ts,
         .exhausted_at_ms = exhausted_at_ms,
-        .free_trial_ends_at_ms = free_trial_ends_at_ms,
     };
 }
 

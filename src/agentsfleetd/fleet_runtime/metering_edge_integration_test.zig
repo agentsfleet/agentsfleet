@@ -2,10 +2,8 @@
 // balanceCoversEstimate stop-gate boundary (the one-shot stage debit retired
 // with incremental metering; the gate is what remains at issue).
 //
-// The trial boundary is a tenant fact (§7): each test closes its own tenant's
-// boundary via `base.endFreeTrialFor`, so the platform token-cost and
-// stop-gate-block assertions run unconditionally at any clock position — no
-// wall-clock date can put them to sleep.
+// Nothing here arranges a clock. Pricing resolves from the catalogue and the
+// posture alone, so these assertions run unconditionally at any clock position.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -78,8 +76,8 @@ test "integration: should pass the stop gate for self_managed at zero balance (n
     // receive (EVENT_NANOS=0) plus runFee(0)=0; tokens land on the user's own
     // provider. So a freshly provisioned zero balance still clears the gate; the
     // run fee is metered per renewal and refused at the next renewal once credit
-    // runs out. The trial is closed for this tenant so the zero comes from the
-    // self_managed branch genuinely, not from the trial short-circuit.
+    // runs out. The zero comes from the self_managed branch genuinely — it is
+    // now the only branch that prices without the catalogue.
     const est_total = tenant_billing.computeReceiveCharge(.self_managed) +
         try billing_rates.computeStageCharge(
             db_ctx.conn,
@@ -90,11 +88,9 @@ test "integration: should pass the stop gate for self_managed at zero balance (n
             tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
             0,
             tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
-            base.TRIAL_ENDED_AT_MS, // closed boundary — the zero must be self_managed's own
         );
     try std.testing.expectEqual(@as(i64, 0), est_total);
     try tenant_billing.provision(db_ctx.conn, TENANT_ID, est_total, "test_gate_exact");
-    try base.endFreeTrialFor(db_ctx.conn, TENANT_ID);
 
     // balance == est_total == 0 → gate passes (>= comparison, not strict).
     try std.testing.expect(metering.balanceCoversEstimate(
@@ -135,16 +131,12 @@ test "integration: should block the stop gate when balance is one nano below the
             tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
             0,
             tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
-            base.TRIAL_ENDED_AT_MS, // the boundary this tenant's row carries below
         );
     try std.testing.expect(est_total > 0);
-    // Provision the exact estimate, then close this tenant's trial (§7 — the
-    // boundary is a tenant fact, so the refusal asserts at any clock position).
-    // seedPlatformProvider granted the starter balance and provision is
-    // idempotent — reset so est_total actually lands.
+    // Provision the exact estimate. seedPlatformProvider granted the starter
+    // balance and provision is idempotent — reset so est_total actually lands.
     base.resetBillingFor(db_ctx.conn, TENANT_ID);
     try tenant_billing.provision(db_ctx.conn, TENANT_ID, est_total, "test_gate_under");
-    try base.endFreeTrialFor(db_ctx.conn, TENANT_ID);
 
     // Drop exactly one nano below the estimate so the stop gate must refuse.
     _ = try tenant_billing.debit(db_ctx.conn, TENANT_ID, 1);
