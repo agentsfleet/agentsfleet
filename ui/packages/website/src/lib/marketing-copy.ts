@@ -274,7 +274,6 @@ export const PRICING_PLANS = [
     name: "Usage",
     badge: "Team",
     price: "metered",
-    suffix: "per second",
     features: ["Starter credit included", "Events always free", "Metered only while running", "Pay as you go"],
     cta: HERO_PRIMARY_LABEL,
     featured: true,

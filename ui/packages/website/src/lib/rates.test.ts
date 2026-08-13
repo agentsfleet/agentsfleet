@@ -119,8 +119,7 @@ describe("free-trial display strings (open-ended trial — the copy names no dat
   // is, so it answers to the same invariant.
   it("no pricing plan states an end date", () => {
     for (const plan of PRICING_PLANS) {
-      const suffix = "suffix" in plan ? plan.suffix : "";
-      expect(`${plan.name} ${plan.price} ${suffix}`).not.toMatch(A_CALENDAR_DATE);
+      expect(`${plan.name} ${plan.price}`).not.toMatch(A_CALENDAR_DATE);
       for (const feature of plan.features) expect(feature).not.toMatch(A_CALENDAR_DATE);
     }
   });
