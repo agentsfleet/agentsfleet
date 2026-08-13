@@ -43,7 +43,7 @@ const scopes = @import("../../../auth/scopes.zig");
 /// drops it, so approving an action stays something only a person can do. The
 /// value is persisted per user at signup, so a change here reaches new owners
 /// only — existing owners keep whatever was written for them.
-const DEFAULT_SIGNUP_SCOPES = scopes.defaultClaim(.tenant_owner);
+const DEFAULT_SIGNUP_SCOPES = scopes.SIGNUP_OWNER_CLAIM;
 
 const log = logging.scoped(.auth_identity_events);
 

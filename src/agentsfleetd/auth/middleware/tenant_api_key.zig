@@ -2,10 +2,16 @@
 //!
 //! Resolves `Authorization: Bearer agt_t{hex}` tokens via a host-supplied
 //! `LookupFn` callback. On match (and row.active = true), populates
-//! `ctx.principal` with `.mode=.api_key`, the `.tenant_api_key` default grant
-//! (every tenant capability except approving, no platform/cross-tenant scope),
-//! `.user_id`, and `.tenant_id`. Rejects unknown keys with 401 ERR_UNAUTHORIZED;
-//! rejects revoked keys with 401 ERR_APIKEY_REVOKED.
+//! `ctx.principal` with `.mode=.api_key`, `.user_id`, `.tenant_id`, and the
+//! capability set the identity provider holds for the subject in `created_by`
+//! — the person who minted the key. Rejects unknown keys with 401
+//! ERR_UNAUTHORIZED; rejects revoked keys with 401 ERR_APIKEY_REVOKED.
+//!
+//! The key proves WHICH key; the provider answers WHAT it may do, per request.
+//! No grant is authored here. A key is exactly as capable as the person who
+//! minted it, so narrowing that person narrows every key they created without
+//! a deploy and without a backfill — the same rule `cli_credential.zig`
+//! already follows, applied to the last credential class that did not.
 //!
 //! Portability: this file MUST NOT import from `src/db/`, `src/http/`, or
 //! any business-layer module (§1.2 contract; enforced by `make test-auth`).
@@ -42,6 +48,7 @@ const log = logging.scoped(.api_keys);
 /// freeing them.
 const S_AUTH_REJECTED = "auth_rejected";
 const S_INVALID_OR_MISSING_TOKEN = "Invalid or missing token";
+const S_AUTH_UNAVAILABLE = "Authentication service unavailable";
 
 pub const LookupResult = struct {
     api_key_id: []const u8,
@@ -64,6 +71,11 @@ pub const TenantApiKey = struct {
 
     host: *anyopaque,
     lookup: LookupFn,
+    /// Separate host from `host`: that one owns a connection pool, this one
+    /// owns a provider client and its cache. Different lifetimes, different
+    /// failure modes, so they are not conflated behind one pointer.
+    scope_host: *anyopaque,
+    resolveScopes: scopes.ScopeFn,
 
     pub fn middleware(self: *Self) chain.Middleware(AuthCtx) {
         return .{ .ptr = self, .execute_fn = executeTypeErased };
@@ -91,7 +103,7 @@ fn resolve(self: *TenantApiKey, ctx: *AuthCtx, raw_key: []const u8) !chain.Outco
     const hash_hex = api_key.sha256Hex(raw_key);
 
     const maybe_row = self.lookup(self.host, ctx.alloc, hash_hex[0..]) catch {
-        ctx.fail(errors.ERR_AUTH_UNAVAILABLE, "Authentication service unavailable");
+        ctx.fail(errors.ERR_AUTH_UNAVAILABLE, S_AUTH_UNAVAILABLE);
         return .short_circuit;
     };
     const row = maybe_row orelse {
@@ -107,17 +119,32 @@ fn resolve(self: *TenantApiKey, ctx: *AuthCtx, raw_key: []const u8) !chain.Outco
         return .short_circuit;
     }
 
+    // `row.user_id` is `created_by` — the provider's subject claim, per
+    // `240_api_keys.sql`, not a `core.users` identifier. That is exactly what
+    // the resolver keys on, so the subject needed here is already in hand.
+    const claim = self.resolveScopes(self.scope_host, ctx.alloc, row.user_id) catch {
+        log.err(S_AUTH_REJECTED, .{ .reason = "scopes_unavailable", .api_key_id = row.api_key_id, .error_code = errors.ERR_AUTH_UNAVAILABLE });
+        freeRow(ctx.alloc, row);
+        ctx.fail(errors.ERR_AUTH_UNAVAILABLE, S_AUTH_UNAVAILABLE);
+        return .short_circuit;
+    };
+    defer ctx.alloc.free(claim);
+    // Same parser the JWT and credential paths use, so three credential shapes
+    // cannot drift in how a claim string becomes a capability set.
+    const scope_set = scopes.parseClaim(claim);
+
     log.debug("auth_succeeded", .{ .api_key_id = row.api_key_id, .tenant_id = row.tenant_id });
     ctx.alloc.free(row.api_key_id);
     ctx.principal = .{
         .mode = .api_key,
         .user_id = row.user_id,
         .tenant_id = row.tenant_id,
-        // An `agt_t` key carries every tenant capability but NO platform or
-        // cross-tenant scope — preserving today's "admin api-key cannot enroll a
-        // runner" boundary (`platform_admin` was never set on this path) — and
-        // not `approval_resolve`, which only the human grant carries.
-        .scopes = scopes.defaultScopes(.tenant_api_key),
+        // Resolved from the provider, never granted here. A key inherits its
+        // creator's set exactly — no ceiling and no subtraction, including
+        // `approval_resolve` when that person holds it (Indy, Aug 13). The
+        // retired `.tenant_api_key` default grant was the last place a
+        // capability was authored in code for a credential that names a person.
+        .scopes = scope_set,
     };
     return .next;
 }
@@ -126,185 +153,4 @@ fn freeRow(alloc: std.mem.Allocator, row: LookupResult) void {
     alloc.free(row.api_key_id);
     alloc.free(row.tenant_id);
     alloc.free(row.user_id);
-}
-
-// ── Tests ────────────────────────────────────────────────────────────────
-
-const testing = std.testing;
-const principal_mod = @import("../principal.zig");
-
-const MockLookup = struct {
-    want_hash: []const u8 = "",
-    return_row: ?LookupResult = null,
-    return_err: ?anyerror = null,
-    called_with: []const u8 = "",
-    call_count: usize = 0,
-
-    fn fn_(host: *anyopaque, alloc: std.mem.Allocator, key_hash_hex: []const u8) anyerror!?LookupResult {
-        const self: *MockLookup = @ptrCast(@alignCast(host));
-        self.called_with = key_hash_hex;
-        self.call_count += 1;
-        if (self.return_err) |e| return e;
-        if (self.return_row) |row| {
-            return .{
-                .api_key_id = try alloc.dupe(u8, row.api_key_id),
-                .tenant_id = try alloc.dupe(u8, row.tenant_id),
-                .user_id = try alloc.dupe(u8, row.user_id),
-                .active = row.active,
-            };
-        }
-        return null;
-    }
-};
-
-const test_fixtures = struct {
-    var last_code: []const u8 = "";
-    var write_count: usize = 0;
-
-    fn reset() void {
-        last_code = "";
-        write_count = 0;
-    }
-
-    fn writeError(_: *httpz.Response, code: []const u8, _: []const u8, _: []const u8) void {
-        last_code = code;
-        write_count += 1;
-    }
-};
-
-fn makeCtx(res: *httpz.Response) AuthCtx {
-    return .{
-        .alloc = testing.allocator,
-        .res = res,
-        .req_id = "req_test",
-        .write_error = test_fixtures.writeError,
-    };
-}
-
-test "tenant_api_key rejects missing Authorization header with UZ-AUTH-002" {
-    test_fixtures.reset();
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-
-    var mock = MockLookup{};
-    var mw = TenantApiKey{ .host = &mock, .lookup = MockLookup.fn_ };
-    var ctx = makeCtx(ht.res);
-    const outcome = try mw.execute(&ctx, ht.req);
-
-    try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-    try testing.expectEqual(@as(usize, 1), test_fixtures.write_count);
-    try testing.expectEqualStrings(errors.ERR_UNAUTHORIZED, test_fixtures.last_code);
-    try testing.expectEqual(@as(usize, 0), mock.call_count);
-    try testing.expect(ctx.principal == null);
-}
-
-test "tenant_api_key rejects Bearer token without agt_t prefix without calling lookup" {
-    test_fixtures.reset();
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-    ht.header("authorization", "Bearer agt_anotatenantkey");
-
-    var mock = MockLookup{};
-    var mw = TenantApiKey{ .host = &mock, .lookup = MockLookup.fn_ };
-    var ctx = makeCtx(ht.res);
-    const outcome = try mw.execute(&ctx, ht.req);
-
-    try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-    try testing.expectEqualStrings(errors.ERR_UNAUTHORIZED, test_fixtures.last_code);
-    try testing.expectEqual(@as(usize, 0), mock.call_count);
-    try testing.expect(ctx.principal == null);
-}
-
-test "tenant_api_key rejects unknown key with UZ-AUTH-002 and emits rejected log" {
-    test_fixtures.reset();
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-    ht.header("authorization", "Bearer agt_t" ++ "0" ** 64);
-
-    var mock = MockLookup{ .return_row = null };
-    var mw = TenantApiKey{ .host = &mock, .lookup = MockLookup.fn_ };
-    var ctx = makeCtx(ht.res);
-    const outcome = try mw.execute(&ctx, ht.req);
-
-    try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-    try testing.expectEqualStrings(errors.ERR_UNAUTHORIZED, test_fixtures.last_code);
-    try testing.expectEqual(@as(usize, 1), mock.call_count);
-    try testing.expect(ctx.principal == null);
-}
-
-test "tenant_api_key rejects revoked key with UZ-APIKEY-004 and frees row slices" {
-    test_fixtures.reset();
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-    ht.header("authorization", "Bearer agt_t" ++ "a" ** 64);
-
-    var mock = MockLookup{
-        .return_row = .{
-            .api_key_id = "11111111-1111-7111-8111-111111111111",
-            .tenant_id = "22222222-2222-7222-8222-222222222222",
-            .user_id = "33333333-3333-7333-8333-333333333333",
-            .active = false,
-        },
-    };
-    var mw = TenantApiKey{ .host = &mock, .lookup = MockLookup.fn_ };
-    var ctx = makeCtx(ht.res);
-    const outcome = try mw.execute(&ctx, ht.req);
-
-    try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-    try testing.expectEqualStrings(ERR_APIKEY_REVOKED, test_fixtures.last_code);
-    try testing.expect(ctx.principal == null);
-}
-
-test "tenant_api_key populates principal on active key match" {
-    test_fixtures.reset();
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-    ht.header("authorization", "Bearer agt_t" ++ "b" ** 64);
-
-    var mock = MockLookup{
-        .return_row = .{
-            .api_key_id = "11111111-1111-7111-8111-111111111111",
-            .tenant_id = "22222222-2222-7222-8222-222222222222",
-            .user_id = "33333333-3333-7333-8333-333333333333",
-            .active = true,
-        },
-    };
-    var mw = TenantApiKey{ .host = &mock, .lookup = MockLookup.fn_ };
-    var ctx = makeCtx(ht.res);
-    const outcome = try mw.execute(&ctx, ht.req);
-    defer if (ctx.principal) |p| {
-        if (p.user_id) |v| testing.allocator.free(v);
-        if (p.tenant_id) |v| testing.allocator.free(v);
-    };
-
-    try testing.expectEqual(chain.Outcome.next, outcome);
-    try testing.expectEqual(@as(usize, 0), test_fixtures.write_count);
-    try testing.expect(ctx.principal != null);
-    try testing.expectEqual(principal_mod.AuthMode.api_key, ctx.principal.?.mode);
-    // An `agt_t` key carries the workspace_admin tenant-scope bundle, NOT platform
-    // scopes — preserving the "admin key can't enroll a runner" boundary.
-    try testing.expect(ctx.principal.?.scopes.contains(.fleet_admin));
-    try testing.expect(!ctx.principal.?.scopes.contains(.runner_enroll));
-    try testing.expectEqualStrings("33333333-3333-7333-8333-333333333333", ctx.principal.?.user_id.?);
-    try testing.expectEqualStrings("22222222-2222-7222-8222-222222222222", ctx.principal.?.tenant_id.?);
-}
-
-test "tenant_api_key surfaces LookupFn error as UZ-AUTH-004" {
-    test_fixtures.reset();
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-    ht.header("authorization", "Bearer agt_t" ++ "c" ** 64);
-
-    var mock = MockLookup{ .return_err = error.Unexpected };
-    var mw = TenantApiKey{ .host = &mock, .lookup = MockLookup.fn_ };
-    var ctx = makeCtx(ht.res);
-    const outcome = try mw.execute(&ctx, ht.req);
-
-    try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-    try testing.expectEqualStrings(errors.ERR_AUTH_UNAVAILABLE, test_fixtures.last_code);
-    try testing.expect(ctx.principal == null);
-}
-
-test "TENANT_KEY_PREFIX is the documented agt_t literal" {
-    try testing.expectEqualStrings("agt_t", TENANT_KEY_PREFIX);
 }

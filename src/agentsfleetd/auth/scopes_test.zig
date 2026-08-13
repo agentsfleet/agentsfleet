@@ -108,9 +108,11 @@ test "test_require_scope_any_of_with_hierarchy" {
 // ── Dimension 1.4 — default grants provision explicit scopes; never enforced ──
 
 test "test_default_grants_provision_and_are_not_enforced" {
-    // .tenant_owner = the Clerk signup-owner grant: every tenant capability,
-    // NO platform / cross-tenant scope.
-    const owner = scopes.defaultScopes(.tenant_owner);
+    // The signup-owner seed, asked as the owner will actually hold it: through
+    // `parseClaim`, the same round trip the provider's answer takes on every
+    // request. Asserting the pre-parse list instead would prove the constant
+    // and not the capability.
+    const owner = scopes.parseClaim(scopes.SIGNUP_OWNER_CLAIM);
     try testing.expect(owner.contains(.fleet_admin));
     try testing.expect(owner.contains(.fleet_read)); // closure
     try testing.expect(owner.contains(.schedule_write));
@@ -125,7 +127,7 @@ test "test_default_grants_provision_and_are_not_enforced" {
 
     // The IdP writeback string carries the minimal (pre-closure) scopes and NO
     // platform/cross-tenant scope — the signup owner never gets `workspace:any`.
-    const wire = scopes.defaultClaim(.tenant_owner);
+    const wire = scopes.SIGNUP_OWNER_CLAIM;
     try testing.expect(std.mem.indexOf(u8, wire, "fleet:admin") != null);
     try testing.expect(std.mem.indexOf(u8, wire, "schedule:write") != null);
     try testing.expect(std.mem.indexOf(u8, wire, "workspace:admin") != null);
@@ -133,72 +135,46 @@ test "test_default_grants_provision_and_are_not_enforced" {
     try testing.expect(std.mem.indexOf(u8, wire, "runner:enroll") == null);
 
     // .runner = self-plane only.
-    const r = scopes.defaultScopes(.runner);
+    const r = scopes.RUNNER_SCOPES;
     try testing.expectEqual(@as(usize, 1), r.count());
     try testing.expect(r.contains(.runner_self));
 
-    // Gate signature rejects a DefaultGrant at compile time: satisfiesAny takes
-    // []const Scope, never DefaultGrant. The following would not compile —
-    //   scopes.satisfiesAny(held, &[_]scopes.DefaultGrant{.tenant_owner});
-    // (documented here; enforced by the type system, Invariant 10).
+    // Invariant 10 is now enforced by there being nothing else to pass:
+    // `satisfiesAny` takes `[]const Scope`, and since §6 removed `DefaultGrant`
+    // no grant-shaped type survives that a caller could hand a gate by mistake.
 }
 
-// ── approving is a human act: the machine grant cannot resolve a gate ──
+// ── no capability is authored in code for a credential that names a person ──
 
-test "test_machine_grant_excludes_approval_resolve" {
-    const machine = scopes.defaultScopes(.tenant_api_key);
+test "test_tenant_api_key_grant_has_no_caller" {
+    // A compile-time sweep, not a behaviour assertion: `defaultScopes` and the
+    // `DefaultGrant` enum were the mechanism by which an `agt_t` key received a
+    // set decided here rather than at the provider. They are removed,
+    // and this is what stops them coming back by accident — a reintroduced
+    // helper would be a second authority sitting beside the provider, which is
+    // the exact condition §5 and §6 exist to make impossible.
+    try testing.expect(!@hasDecl(scopes, "defaultScopes"));
+    try testing.expect(!@hasDecl(scopes, "defaultClaim"));
+    try testing.expect(!@hasDecl(scopes, "DefaultGrant"));
 
-    // The capability an `agt_t` key must never hold. A key is how an automation
-    // — including a Fleet running in the sandbox — reaches the API, so holding
-    // this would let it approve the gate guarding its own next action.
-    try testing.expect(!machine.contains(.approval_resolve));
-
-    // `approval:read` goes with it. The ladder runs resolve → read, so dropping
-    // resolve drops the closure, and nothing re-grants read independently: a
-    // machine credential reaches no part of the approval surface. Restoring
-    // inbox-read for a machine is a one-line addition when a caller needs it.
-    try testing.expect(!machine.contains(.approval_read));
-
-    // Every other tenant capability survives — this narrows one capability, it
-    // does not downgrade the credential.
-    try testing.expect(machine.contains(.fleet_admin));
-    try testing.expect(machine.contains(.fleet_read)); // closure
-    try testing.expect(machine.contains(.schedule_write));
-    try testing.expect(machine.contains(.secret_write));
-    try testing.expect(machine.contains(.apikey_admin));
-    try testing.expect(machine.contains(.grant_write));
-    try testing.expect(machine.contains(.connector_write));
-    try testing.expect(machine.contains(.billing_read));
-    try testing.expect(machine.contains(.workspace_admin));
-    try testing.expect(machine.contains(.library_write));
-
-    // Same platform boundary as the owner grant.
-    try testing.expect(!machine.contains(.platform_library_write));
-    try testing.expect(!machine.contains(.runner_enroll));
-    try testing.expect(!machine.contains(.workspace_any));
+    // What survives, and why each one does: a seed WRITTEN to the provider at
+    // signup, and the runner set — the only credential class with no identity
+    // at the provider to resolve against.
+    try testing.expect(@hasDecl(scopes, "SIGNUP_OWNER_CLAIM"));
+    try testing.expect(@hasDecl(scopes, "RUNNER_SCOPES"));
 }
 
 test "test_signup_claim_retains_approval_resolve" {
-    // The human half of the split. This string is written to Clerk
-    // publicMetadata at signup and read back as the owner's `scopes` claim — if
-    // it loses this scope, the dashboard approval inbox stops working for every
-    // new owner, which is the failure this test exists to catch.
-    const wire = scopes.defaultClaim(.tenant_owner);
+    // This string is written to Clerk publicMetadata at signup and read back as
+    // the owner's `scopes` claim — if it loses this scope, the dashboard
+    // approval inbox stops working for every new owner, which is the failure
+    // this test exists to catch.
+    const wire = scopes.SIGNUP_OWNER_CLAIM;
     try testing.expect(std.mem.indexOf(u8, wire, "approval:resolve") != null);
 
-    // The machine claim must not carry it, in the wire form as well as the set
-    // form — the two are built from the same members, so a drift in one is a
-    // drift in both.
-    const machine_wire = scopes.defaultClaim(.tenant_api_key);
-    try testing.expect(std.mem.indexOf(u8, machine_wire, "approval:resolve") == null);
-
-    // The two grants differ by one granted member, which the ladder expands to
-    // two set entries (resolve closes over read). Derivation makes this true by
-    // construction; asserting it catches a future edit that adds `approval_resolve`
-    // back into the shared base list rather than to the owner's side alone.
-    const owner = scopes.defaultScopes(.tenant_owner);
-    const machine = scopes.defaultScopes(.tenant_api_key);
-    try testing.expectEqual(machine.count() + 2, owner.count());
+    // And it survives the round trip, closure included: the ladder runs
+    // resolve → read, so an owner reaches the whole approval surface.
+    const owner = scopes.parseClaim(wire);
     try testing.expect(owner.contains(.approval_resolve));
     try testing.expect(owner.contains(.approval_read));
 }
