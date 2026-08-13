@@ -106,6 +106,7 @@ test "test_no_name_declaring_source_carries_a_superseded_family_prefix" {
         @embedFile("metrics_runner.zig"),
         @embedFile("metrics_otel.zig"),
         @embedFile("metrics_trace.zig"),
+        @embedFile("metrics_repair_verification.zig"),
         @embedFile("library_stages.zig"),
     };
     // A family name always reaches a declaration as a quoted literal, so the

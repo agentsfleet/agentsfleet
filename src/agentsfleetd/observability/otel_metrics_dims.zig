@@ -18,6 +18,7 @@ const mot = @import("metrics_otel.zig");
 const mc = @import("metrics_counters.zig");
 const mr = @import("metrics_runner.zig");
 const mt = @import("metrics_trace.zig");
+const mrv = @import("metrics_repair_verification.zig");
 const ls = @import("library_stages.zig");
 const Mode = @import("../state/tenant_provider.zig").Mode;
 
@@ -99,6 +100,10 @@ pub fn dimsFor(comptime id: families.MetricId) []const LabelDim {
         .otlp_entries_discarded => &.{ .{ .fixed = .{ .key = LABEL_SIGNAL, .Enum = mot.Signal } }, .{ .fixed = .{ .key = LABEL_REASON, .Enum = mot.DiscardReason } } },
         .otel_attribute_omitted => &.{ .{ .fixed = .{ .key = LABEL_ATTRIBUTE, .Enum = mot.OmittedAttribute } }, .{ .fixed = .{ .key = LABEL_REASON, .Enum = mot.OmissionReason } } },
         .signup_failed => &.{.{ .fixed = .{ .key = LABEL_REASON, .Enum = mc.SignupFailReason } }},
+        .repair_provider_results => &.{.{ .fixed = .{ .key = LABEL_OUTCOME, .Enum = mrv.ProviderResult } }},
+        .repair_correlations => &.{.{ .fixed = .{ .key = LABEL_OUTCOME, .Enum = mrv.Correlation } }},
+        .repair_synthetic_events => &.{.{ .fixed = .{ .key = LABEL_OUTCOME, .Enum = mrv.EventOutcome } }},
+        .repair_verifier_runs => &.{.{ .fixed = .{ .key = LABEL_OUTCOME, .Enum = mrv.VerifierOutcome } }},
         .library_stage_duration, .library_stage_observations => &.{ .{ .fixed = .{ .key = ls.LABEL_SURFACE, .Enum = ls.Surface } }, .{ .fixed = .{ .key = ls.LABEL_STAGE, .Enum = ls.Stage } } },
         .library_read_outcome => &.{ .{ .fixed = .{ .key = ls.LABEL_SURFACE, .Enum = ls.Surface } }, .{ .fixed = .{ .key = ls.LABEL_OUTCOME, .Enum = ls.Outcome } } },
         .library_pool_result => &.{.{ .fixed = .{ .key = ls.LABEL_POOL_RESULT, .Enum = ls.PoolResult } }},

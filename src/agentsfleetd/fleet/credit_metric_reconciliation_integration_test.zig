@@ -222,7 +222,7 @@ const LeaseView = struct {
 };
 
 fn leaseOne(h: *TestHarness) !LeaseView {
-    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(RUNNER_TOKEN)).json("{}");
+    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(RUNNER_TOKEN)).json(protocol.LEASE_REQUEST_CURRENT_JSON);
     const resp = try req.send();
     defer resp.deinit();
     try resp.expectStatus(.ok);

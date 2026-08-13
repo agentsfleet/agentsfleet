@@ -18,10 +18,11 @@ const payload = @import("otel_metrics_payload.zig");
 const wire = @import("otel_metrics_wire.zig");
 const aggregate = @import("otel_metrics_aggregate.zig");
 const cardinality = @import("otel_metrics_cardinality.zig");
+const families = @import("otel_metrics_families.zig");
+const attribution = @import("otel_metrics_attribution.zig");
 const runtime = @import("otel_metrics_runtime.zig");
 const semconv = @import("semconv.zig");
 const dims = @import("otel_metrics_dims.zig");
-const Mode = @import("../state/tenant_provider.zig").Mode;
 
 const OTLP_METRICS_PATH = "/v1/metrics";
 const BUFFER_CAPACITY: usize = 1024;
@@ -64,44 +65,7 @@ fn currentNanos() u64 {
 // Callers invoke these AFTER the money transaction commits.
 // ---------------------------------------------------------------------------
 
-/// The identity dimensions every run metric shares. `provider` and `model` are
-/// the raw stored values; this module decides whether either can be exported
-/// as a standard attribute. Workspace and tenant are deliberately absent — they
-/// never reach a metric.
-pub const Attribution = struct {
-    /// Closed by type. Parsed at the Postgres boundary, where billing also
-    /// resolves it, so the metric reports the posture the system charged against.
-    posture: Mode,
-    provider: []const u8,
-    model: []const u8,
-};
-
-/// Attach `gen_ai.provider.name` and `gen_ai.request.model` when each can be
-/// represented safely, counting every omission. An unrepresentable value is
-/// dropped, never truncated or coerced: a truncated model reads as a different
-/// model, and a private spelling under a standard key claims interoperability
-/// it does not have. The budget keys on the identity the wire carries — since
-/// normalization folds case, two spellings of one provider export as a single
-/// series and must not spend two attribution slots.
-fn appendProviderAndModel(sample: *Sample, attr: Attribution) void {
-    var keyed = attr.provider;
-    if (semconv.providerOrdinal(attr.provider)) |ordinal| {
-        _ = payload.addLabelAtIndex(sample, semconv.ATTR_PROVIDER_NAME, dims.providerValueIndex(ordinal));
-        keyed = semconv.WELL_KNOWN_PROVIDERS[ordinal];
-    } else {
-        health.recordAttributeOmission(.provider_name, .unmapped_provider);
-    }
-    if (attr.model.len == 0) return;
-    if (!payload.valueFits(attr.model)) {
-        health.recordAttributeOmission(.request_model, .value_too_long);
-        return;
-    }
-    if (!cardinality.admitModel(keyed, attr.model)) {
-        health.recordAttributeOmission(.request_model, .budget_exhausted);
-        return;
-    }
-    _ = payload.setDynamicLabel(sample, semconv.ATTR_REQUEST_MODEL, attr.model);
-}
+pub const Attribution = attribution.Attribution;
 
 /// Record a committed credit debit (nanocredits) under its fixed charge class.
 /// Every caller invokes this strictly after its money write commits, so a
@@ -112,7 +76,7 @@ pub fn recordCreditConsumed(nanos: i64, charge: semconv.ChargeClass, attr: Attri
     var s = payload.newSample(.credit_consumed, nanos);
     _ = payload.addClosedLabel(&s, semconv.ATTR_CHARGE_TYPE, charge);
     _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
-    appendProviderAndModel(&s, attr);
+    attribution.appendProviderAndModel(&s, attr);
     enqueueSample(s);
 }
 
@@ -126,7 +90,7 @@ pub fn observeTokenUsage(count: i64, token_type: semconv.TokenType, attr: Attrib
     _ = payload.addInternedLabel(&s, semconv.ATTR_OPERATION_NAME, semconv.OPERATION_INVOKE_AGENT);
     _ = payload.addClosedLabel(&s, semconv.ATTR_TOKEN_TYPE, token_type);
     _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
-    appendProviderAndModel(&s, attr);
+    attribution.appendProviderAndModel(&s, attr);
     enqueueSample(s);
 }
 
@@ -136,7 +100,7 @@ pub fn observeCacheReadTokens(count: i64, attr: Attribution) void {
     if (count == 0) return;
     var s = payload.newSample(.cache_read_token_usage, count);
     _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
-    appendProviderAndModel(&s, attr);
+    attribution.appendProviderAndModel(&s, attr);
     enqueueSample(s);
 }
 
@@ -148,8 +112,19 @@ pub fn observeInvokeAgentDuration(wall_ms: i64, error_type: ?semconv.ErrorType, 
     var s = payload.newSample(.invoke_agent_duration, wall_ms);
     _ = payload.addClosedLabel(&s, semconv.ATTR_EXECUTION_POSTURE, attr.posture);
     if (error_type) |value| _ = payload.addClosedLabel(&s, semconv.ATTR_ERROR_TYPE, value);
-    appendProviderAndModel(&s, attr);
+    attribution.appendProviderAndModel(&s, attr);
     enqueueSample(s);
+}
+
+/// Observe one label-free runtime histogram value through the bounded event
+/// ring. The registry owns its bounds, scale, and fixed series ceiling.
+pub fn observeRuntimeHistogram(comptime id: families.MetricId, value: i64) void {
+    const meta = comptime families.metaFor(id);
+    comptime std.debug.assert(meta.evented and !meta.cost);
+    comptime std.debug.assert(meta.kind == .histogram);
+    comptime std.debug.assert(dims.dimsFor(id).len == 0);
+    if (!isInstalled()) return;
+    enqueueSample(payload.newSample(id, @max(0, value)));
 }
 
 fn enqueueSample(sample: Sample) void {

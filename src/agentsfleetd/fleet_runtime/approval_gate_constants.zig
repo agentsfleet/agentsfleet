@@ -42,10 +42,17 @@ pub const GATE_EVIDENCE_SERVICE_KEY = "service";
 /// rules ride `config_json` (PATCHable under the same `fleet:write` scope that
 /// wakes the fleet) and `.auto_approve` is their no-match fallthrough.
 pub const GATE_KIND_REPOSITORY_WRITE = "repository_write";
-/// The write-kind card's blast radius, stated as a daemon fact beside the
-/// token-reach line. The repairer bundle instructs the same bound in prose;
-/// this spelling is the daemon's own.
-pub const GATE_BLAST_RADIUS_REPOSITORY_WRITE = "pushes at most one branch and opens at most one draft Pull Request in the bound repository";
+const std = @import("std");
+
+/// One approval funds this many write-credential requests. Requests spend
+/// before vault or provider access, including cached and failed mints.
+pub const REPOSITORY_WRITE_SPEND_CEILING: i64 = 32;
+/// The write-kind card's blast radius, derived from the same ceiling stored on
+/// the gate row so the human and the enforcement path cannot drift.
+pub const GATE_BLAST_RADIUS_REPOSITORY_WRITE: []const u8 = std.fmt.comptimePrint(
+    "up to {d} write-credential requests, one branch, and one draft Pull Request in the bound repository",
+    .{REPOSITORY_WRITE_SPEND_CEILING},
+);
 
 // Gate activity event types
 pub const GATE_EVENT_REQUIRED = "gate_approval_required";

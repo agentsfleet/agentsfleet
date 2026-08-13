@@ -9,7 +9,7 @@
 //! tests and regenerated module snapshots, and the flush-time collect loop
 //! that emits one sample per cell into the aggregator.
 //!
-//! Families the registry marks `cost` (evented ring), `streamed` (per-runner
+//! Families the registry marks `evented` (bounded ring), `streamed` (per-runner
 //! slot table), or `live_read` (flush-time hooks) have no cells here; the
 //! collect loop runs the caller's hooks after the generated cells so hooked
 //! families join the same flush window.
@@ -24,7 +24,7 @@ const MetricId = families.MetricId;
 
 fn isCellFamily(comptime id: MetricId) bool {
     const meta = families.metaFor(id);
-    return !meta.cost and !meta.streamed and !meta.live_read;
+    return !meta.evented and !meta.streamed and !meta.live_read;
 }
 
 /// Total generated cells: every cell family's dimension product, summed.

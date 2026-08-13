@@ -96,9 +96,6 @@ fn benchActivityChunkEncode(allocator: std.mem.Allocator) void {
     std.mem.doNotOptimizeAway(bench_chunk_scratch.written().ptr);
 }
 
-// The progress_frame_decode bench mirrored the pre-cutover in-process transport
-// decode, removed at the M80 cutover when execution moved to the runner.
-
 // ── credential_broker_cache_hit ─ the mint hot path
 // A token is minted once and then served from cache on every tool call for the
 // lease's life, so the CACHE HIT is the hot path. This measures the lock-free
@@ -118,7 +115,7 @@ var bench_broker: credential_broker = undefined;
 var bench_handle: std.json.Parsed(std.json.Value) = undefined;
 
 fn benchBrokerCacheHit(allocator: std.mem.Allocator) void {
-    const r = bench_broker.mint(allocator, BENCH_WS, BENCH_STATIC_ID, bench_handle.value, 0) catch @panic("broker mint failed");
+    const r = bench_broker.mint(allocator, BENCH_WS, BENCH_STATIC_ID, bench_handle.value, 0, null) catch @panic("broker mint failed");
     if (r != .ok) @panic("broker cache-hit not ok");
     allocator.free(r.ok.token);
 }
@@ -172,7 +169,7 @@ pub fn main() !void {
     defer bench_handle.deinit();
     // Warm the cache once so broker_cache_hit measures the HIT (the hot path).
     {
-        const warm = try bench_broker.mint(alloc, BENCH_WS, BENCH_STATIC_ID, bench_handle.value, 0);
+        const warm = try bench_broker.mint(alloc, BENCH_WS, BENCH_STATIC_ID, bench_handle.value, 0, null);
         if (warm == .ok) alloc.free(warm.ok.token);
     }
 

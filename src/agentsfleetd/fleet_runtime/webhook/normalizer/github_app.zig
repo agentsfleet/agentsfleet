@@ -3,7 +3,7 @@
 //! headers, databases, or secrets.
 
 const std = @import("std");
-const common_c = @import("common");
+const repair_branch = @import("../../../git/repair_branch.zig");
 const workflow = @import("github.zig");
 
 pub const EVENT_PULL_REQUEST = "pull_request";
@@ -115,11 +115,11 @@ fn normalizePullRequest(alloc: std.mem.Allocator, root: std.json.ObjectMap, rece
 
 /// True when a branch belongs to the repairer's own output. Traffic on one is
 /// the crew hearing itself: waking a fleet on its own failed repair sets it
-/// investigating what it just wrote, one approval card per cycle. The per-fleet
-/// webhook route intercepts these to record incident → Pull Request linkage;
-/// this route has no linkage arm yet, so it drops them rather than ingest them.
+/// investigating what it just wrote, one approval card per cycle. Both GitHub
+/// routes intercept these to record repair evidence before normalization; this
+/// fallback keeps a missed interception from waking a fleet.
 fn isRepairBranch(ref: ?[]const u8) bool {
-    return std.mem.startsWith(u8, ref orelse return false, common_c.REPAIR_BRANCH_PREFIX);
+    return std.mem.startsWith(u8, ref orelse return false, repair_branch.PREFIX);
 }
 
 fn objectField(obj: std.json.ObjectMap, key: []const u8) ?std.json.ObjectMap {

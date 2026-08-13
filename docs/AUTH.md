@@ -1002,6 +1002,20 @@ Order is load-bearing:
 
 Pull Request events and completed failed `workflow_run` events are normalized into the ordinary webhook event envelope. Receiving the event does not disclose credentials. A later GitHub API tool call still crosses the runner-token mint boundary and rechecks the fleet's approved integration grant.
 
+Terminal `deployment_status` deliveries take a narrower path. The handler first
+stores signed production evidence, then requires the same workspace,
+repository, and exact merged repair commit before it creates a
+`repair_production_result` event. A deployment status never routes directly to
+a verifier Fleet. The GitHub App must subscribe to **Deployment status** and
+hold **Deployments: read-only** permission. Vercel is supported only when it
+reports that deployment through GitHub. The signature proves a mapped GitHub
+delivery; it does not prove that Vercel created the status. GitHub permits every
+push-capable identity to create deployment statuses, so each such identity in a
+mapped repository is within this first spine's trusted producer boundary. The
+daemon does not yet enforce creator or App identity. The GitHub App playbook
+records the expected integration, received creator identity, and development
+proof in Pull Request (PR) Session Notes.
+
 ### Signed events ingress (`POST /v1/connectors/slack/events`)
 
 Slack posts channel mentions here. This is **not** the fleet-trigger webhook path: it is registered with the `none` middleware and verifies **in the handler** (`connectors/slack/slack_sig.zig`), because the signing secret is the *platform-app* secret, not a per-fleet workspace credential. Order of operations (`connectors/slack/events.zig`):

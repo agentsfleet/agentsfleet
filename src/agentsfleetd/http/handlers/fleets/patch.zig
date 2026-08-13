@@ -160,7 +160,7 @@ fn resolveOutcome(hx: Hx, fleet_id: []const u8, outcome: patch_txn.TxnOutcome) ?
         },
         .not_found => hx.fail(ec.ERR_AGENTSFLEET_NOT_FOUND, ec.MSG_AGENTSFLEET_NOT_FOUND),
         .invalid_transition => hx.fail(ec.ERR_AGENTSFLEET_ALREADY_TERMINAL, "Status transition not allowed from current state"),
-        .invalid_trigger_markdown, .invalid_source_markdown => hx.fail(ec.ERR_AGENTSFLEET_INVALID_CONFIG, ec.MSG_AGENTSFLEET_INVALID_CONFIG),
+        .invalid_config, .invalid_trigger_markdown, .invalid_source_markdown => hx.fail(ec.ERR_AGENTSFLEET_INVALID_CONFIG, ec.MSG_AGENTSFLEET_INVALID_CONFIG),
         .invalid_gate_condition => hx.fail(ec.ERR_APPROVAL_CONDITION_INVALID, ec.MSG_APPROVAL_CONDITION_INVALID),
         .invalid_required_tags => hx.fail(ec.ERR_INVALID_REQUEST, "required tags: max 32 tags, each 1..64 chars"),
         .name_mismatch => hx.fail(ec.ERR_AGENTSFLEET_NAME_MISMATCH, ec.MSG_AGENTSFLEET_NAME_MISMATCH),

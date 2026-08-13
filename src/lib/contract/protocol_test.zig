@@ -166,6 +166,20 @@ test "lease response — work payload round-trips (fencing + event + policy)" {
                 .network_policy = .{ .allow = &.{"api.example.com"} },
                 .tools = &.{"bash"},
                 .secrets_map = null,
+                .repository_binding = .{
+                    .repositories = &.{"acme/payments"},
+                    .access = .write,
+                    .base_branch = "main",
+                },
+                .http_origin_policies = &.{.{
+                    .host = "api.code.example",
+                    .credential_names = &.{"source_control"},
+                    .requests = &.{.{
+                        .method = .post,
+                        .path = "/projects/acme/payments/reviews",
+                        .json_fields = &.{.{ .name = "draft", .boolean_value = true }},
+                    }},
+                }},
                 .context = .{
                     .tool_window = 20,
                     .memory_checkpoint_every = 5,
@@ -177,6 +191,42 @@ test "lease response — work payload round-trips (fencing + event + policy)" {
         },
         .retry_after_ms = null,
     });
+}
+
+test "lease read-only HTTP restrictions survive the runner wire" {
+    const a = std.testing.allocator;
+    const response = protocol.LeaseResponse{
+        .lease = .{
+            .lease_id = "lease_0190aaaa",
+            .fencing_token = 184,
+            .lease_expires_at = 1700000030000,
+            .secret_delivery = .@"inline",
+            .event = .{
+                .event_id = "1700000000000-0",
+                .fleet_id = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee",
+                .workspace_id = "0190cccc-dddd-7eee-8fff-aaaaaaaaaaaa",
+                .actor = "system:repair-verifier",
+                .event_type = .webhook,
+                .request_json = "{}",
+                .created_at = 1700000000000,
+            },
+            .policy = .{
+                .network_policy = .{
+                    .allow = &.{ "api.github.com", "elastic.example.com" },
+                    .read_only = true,
+                    .read_post_paths = &.{"https://elastic.example.com/_query"},
+                },
+            },
+        },
+    };
+    const json = try std.json.Stringify.valueAlloc(a, response, .{});
+    defer a.free(json);
+    const parsed = try std.json.parseFromSlice(protocol.LeaseResponse, a, json, .{});
+    defer parsed.deinit();
+    const policy = parsed.value.lease.?.policy.network_policy;
+    try std.testing.expect(policy.read_only);
+    try std.testing.expectEqual(@as(usize, 1), policy.read_post_paths.len);
+    try std.testing.expectEqualStrings("https://elastic.example.com/_query", policy.read_post_paths[0]);
 }
 
 test "lease response — no-work carries a backoff hint" {
