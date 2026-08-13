@@ -140,11 +140,11 @@ The platform issues exactly one durable credential today and it belongs to a ten
 The recovered session token is valid for roughly one minute — ample for exactly one call. That call mints the §1 credential, and the credential, not the session token, is what reaches disk. **Implementation default:** the exchange completes before anything is persisted, so a failed mint leaves the operator logged out and told why, rather than logged in with a credential already dead. *(Use case 1: CLI login.)*
 
 - **Dimension 2.1** — the value written by login is a §1 credential, and no session token reaches disk → Test `test_login_persists_credential_not_session_token` — **DONE**
-- **Dimension 2.2** — a credential written by login authenticates a call issued after the session token's own lifetime has elapsed → Test `test_credential_outlives_the_session_window`
+- **Dimension 2.2** — a credential written by login authenticates a call issued after the session token's own lifetime has elapsed → Test `test_credential_outlives_the_session_window` — **DONE**
 - **Dimension 2.3** — the mint endpoint accepts the session token as its authorisation, so the exchange is possible within the window → Test `test_mint_accepts_session_token_auth` — **DONE**
 - **Dimension 2.4** — a failed exchange persists nothing and reports a registered code, never falling back to the short-lived token → Test `test_failed_exchange_persists_nothing` — **DONE**
 - **Dimension 2.5** — the retired session-token persistence path has no remaining caller → Test `test_session_token_persistence_has_no_caller` — **DONE**
-- **Dimension 2.6** — after login, listing fleets succeeds using the stored credential → Test `test_login_then_list_fleets_succeeds` *(use case 5)*
+- **Dimension 2.6** — after login, listing fleets succeeds using the stored credential → Test `test_login_then_list_fleets_succeeds` *(use case 5)* — **DONE**
 
 ### §3 — One machine, one live credential; logout ends it
 

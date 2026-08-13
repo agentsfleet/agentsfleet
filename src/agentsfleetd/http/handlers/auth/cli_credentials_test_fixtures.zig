@@ -76,6 +76,15 @@ const TENANT_KEY_ROW_ID = FIXTURE_ID ++ "21";
 pub const MACHINE_NAME = "indy-macbook.local";
 pub const OTHER_MACHINE_NAME = "indy-desktop.local";
 
+/// A workspace holding one fleet, so a credential can be pointed at an
+/// ordinary business route rather than only at the credential routes it
+/// manages. Listing fleets is the first thing a terminal does after logging
+/// in, and it is the assertion that catches a credential which authenticates
+/// its own endpoints but resolves to nothing usable anywhere else.
+pub const WORKSPACE_ID = FIXTURE_ID ++ "31";
+pub const FLEET_ID = FIXTURE_ID ++ "41";
+pub const FLEET_NAME = "cli-credential-fleet";
+
 /// What the stubbed resolver answers. The credential routes require no scope
 /// (a tenant key already holds every scope they could name, so the refusal
 /// that matters is on principal mode), which is why a fixed claim is enough
@@ -170,6 +179,19 @@ fn seed(conn: *pg.Conn) !void {
     try seedUser(conn, OWNER_USER_ID, OWNER_SUBJECT, "owner@cli-credential.test", now_ms);
     try seedUser(conn, PEER_USER_ID, PEER_SUBJECT, "peer@cli-credential.test", now_ms);
     _ = try conn.exec(DELETE_SUITE_CREDENTIALS, .{ OWNER_USER_ID, PEER_USER_ID });
+    _ = try conn.exec(
+        \\INSERT INTO core.workspaces (id, tenant_id, created_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::bigint)
+        \\ON CONFLICT (id) DO NOTHING
+    , .{ WORKSPACE_ID, TENANT_ID, now_ms });
+    _ = try conn.exec(
+        \\INSERT INTO core.fleets
+        \\  (id, workspace_id, tenant_id, name, source_markdown, trigger_markdown,
+        \\   config_json, status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, '# test', '# test',
+        \\        '{}'::jsonb, 'active', $5::bigint, $5::bigint)
+        \\ON CONFLICT (id) DO NOTHING
+    , .{ FLEET_ID, WORKSPACE_ID, TENANT_ID, FLEET_NAME, now_ms });
     const key_hash = api_key.sha256Hex(TENANT_KEY);
     _ = try conn.exec(
         \\INSERT INTO core.api_keys
@@ -270,6 +292,26 @@ pub fn wholeRow(h: *TestHarness, credential_id: []const u8) ![]const u8 {
     defer q.deinit();
     const row = (try q.next()) orelse return error.RowMissing;
     return ALLOC.dupe(u8, try row.get([]u8, 0));
+}
+
+/// Columns on the credential table whose name suggests a clock that could
+/// retire a row. The durability claim rests on there being none: revocation is
+/// the only thing that ends a credential, and it is always somebody's
+/// deliberate act. Asked of the live schema rather than asserted in prose, so
+/// a future column named for an expiry fails here and has to be argued for
+/// rather than landing quietly.
+const SELECT_EXPIRY_LIKE_COLUMNS =
+    \\SELECT COUNT(*)::bigint FROM information_schema.columns
+    \\ WHERE table_schema = 'core' AND table_name = 'cli_credentials'
+    \\   AND (column_name LIKE '%expire%' OR column_name LIKE '%expiry%'
+    \\        OR column_name LIKE '%ttl%' OR column_name LIKE '%valid_until%')
+;
+
+pub fn expiryLikeColumnCount(conn: *pg.Conn) !i64 {
+    var q = PgQuery.from(try conn.query(SELECT_EXPIRY_LIKE_COLUMNS, .{}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.RowMissing;
+    return row.get(i64, 0);
 }
 
 /// How many live credentials one user holds for one machine. The question the
