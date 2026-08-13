@@ -85,6 +85,74 @@ test "integration: test_credential_resolves_to_its_user — a credential reaches
     fixtures.cleanup(h);
 }
 
+test "integration: test_credential_outlives_the_session_window — nothing on the row can retire it, so no elapsed time does" {
+    const h = fixtures.seededHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    // Minted inside the session's own window, the way login mints it.
+    const minted = try fixtures.mint(h, fixtures.TOKEN_OWNER, fixtures.MACHINE_NAME);
+    defer minted.deinit();
+
+    {
+        // Presented alone, carrying no session token at all — which is every
+        // command after login, once the browser session is consumed. The
+        // request resolves because the authenticate path never consults it.
+        // Persisting the session token is precisely what made this fail after
+        // about a minute.
+        const r = try (try h.get(PATH).bearer(minted.secret)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        try std.testing.expect(r.bodyContains(minted.id));
+    }
+
+    {
+        // The structural half of the claim. A test cannot wait out a real
+        // token lifetime, so it asks the schema the question that decides the
+        // outcome: is there any column a clock could act on? Revocation is
+        // somebody's deliberate act; an expiry would not be.
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try std.testing.expectEqual(
+            @as(i64, 0),
+            try fixtures.expiryLikeColumnCount(conn),
+        );
+    }
+
+    fixtures.cleanup(h);
+}
+
+test "integration: test_login_then_list_fleets_succeeds — the credential works on an ordinary route, not only on its own" {
+    const h = fixtures.seededHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const minted = try fixtures.mint(h, fixtures.TOKEN_OWNER, fixtures.MACHINE_NAME);
+    defer minted.deinit();
+
+    // The first thing a terminal does after logging in. A credential that
+    // satisfies its own management routes but resolves to nothing usable
+    // anywhere else would pass every other test in this file and still leave
+    // the operator unable to do any work.
+    const path = try std.fmt.allocPrint(
+        ALLOC,
+        "/v1/workspaces/{s}/fleets",
+        .{fixtures.WORKSPACE_ID},
+    );
+    defer ALLOC.free(path);
+
+    const r = try (try h.get(path).bearer(minted.secret)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains(fixtures.FLEET_NAME));
+
+    fixtures.cleanup(h);
+}
+
 test "integration: test_row_holds_no_recoverable_credential — the stored row cannot reconstruct what was issued" {
     const h = fixtures.seededHarness() catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
