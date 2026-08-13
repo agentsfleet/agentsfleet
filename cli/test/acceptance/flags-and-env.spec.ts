@@ -22,7 +22,11 @@ import { helpTail } from "../../src/program/cli-tree-help.ts";
 import { runFleetctl, spawnFleetctl, composeEnv } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
-import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
+import {
+  makeStubbedStateDir,
+  STUB_TOKEN,
+  type StubbedStateDir,
+} from "./fixtures/state-dir.ts";
 import { resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 
@@ -184,7 +188,7 @@ describe("non-TTY login fast-fails", () => {
       .catch(() => null);
     if (credsRaw) {
       const parsed = JSON.parse(credsRaw) as { token: string };
-      assert.equal(parsed.token, "header.payload.sig", `fast-fail wrote a token: ${credsRaw}`);
+      assert.equal(parsed.token, STUB_TOKEN, `fast-fail wrote a token: ${credsRaw}`);
     }
   });
 });

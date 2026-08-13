@@ -14,7 +14,9 @@
 //! names a person, so these routes admit only the principal classes that ARE a
 //! person: the browser-issued session token (which is how login's exchange
 //! authorises itself, inside its own short window) and an existing command-line
-//! credential (which is how a logged-in terminal manages its own). A tenant
+//! credential (which is how a logged-in terminal manages its own). Minting is
+//! narrower still and takes the session token alone, so that a credential
+//! cannot mint its own successor — see `requireFreshSessionSubject`. A tenant
 //! `agt_t` key is refused here, and a required scope could not express that —
 //! a tenant key carries the whole tenant grant, so it already holds every scope
 //! these routes could ask for. The refusal is on principal MODE because that is
@@ -50,6 +52,8 @@ const S_MACHINE_NAME_INVALID =
 const S_PERSON_REQUIRED =
     "A command-line credential belongs to a person; a tenant API key cannot manage one";
 const S_UNKNOWN_SUBJECT = "Authenticated subject has no user record";
+const S_SESSION_REQUIRED =
+    "Minting a command-line credential requires a browser sign-in; an existing credential cannot mint another";
 
 const EV_MINTED = "credential_minted";
 const EV_REVOKED = "credential_revoked";
@@ -85,6 +89,26 @@ fn requirePersonSubject(hx: Hx) ?[]const u8 {
         return null;
     }
     return subject;
+}
+
+/// Minting additionally refuses `.cli_credential`, though listing and revoking
+/// accept it.
+///
+/// A credential that can mint another credential is a self-renewing one: each
+/// mints the next under a machine name of the caller's choosing, revoking any
+/// single row leaves its siblings live, and the person holding the account
+/// cannot tell how many exist. That turns one compromised login — a session
+/// token good for about a minute — into permanent access that outlives every
+/// remedy short of deleting the user. Minting therefore costs a browser
+/// session every time, which is the one step a stolen credential cannot
+/// replay. Listing and revoking stay open to a credential because a terminal
+/// must be able to see and end its own access without a browser.
+fn requireFreshSessionSubject(hx: Hx) ?[]const u8 {
+    if (hx.principal.mode != .jwt_oidc) {
+        hx.fail(ec.ERR_FORBIDDEN, S_SESSION_REQUIRED);
+        return null;
+    }
+    return requirePersonSubject(hx);
 }
 
 /// Resolve the subject to its user row. Null after the refusal is written.
@@ -139,7 +163,7 @@ const MintBody = struct {
 /// `POST /v1/cli-credentials` — mint this machine's credential, revoking
 /// whatever the same machine left behind. The raw value is returned once.
 pub fn innerMintCliCredential(hx: Hx, req: *httpz.Request) void {
-    const subject = requirePersonSubject(hx) orelse return;
+    const subject = requireFreshSessionSubject(hx) orelse return;
 
     const raw_body = req.body() orelse {
         hx.fail(ec.ERR_INVALID_REQUEST, S_BODY_REQUIRED);

@@ -14,6 +14,9 @@ export const WEBHOOKS_PATH = "/v1/webhooks/";
 // CLI mirror.
 export const HEALTHZ_PATH = "/healthz";
 export const AUTH_SESSIONS_PATH = "/v1/auth/sessions";
+// Durable per-user credential minted by `login` from the recovered session
+// token. Mirrors the daemon's S_CLI_CREDENTIALS (http/route_matchers.zig).
+export const CLI_CREDENTIALS_PATH = "/v1/cli-credentials";
 export const WORKSPACES_COLLECTION_PATH = "/v1/workspaces";
 export const TENANT_API_KEYS_PATH = "/v1/api-keys";
 export const TENANT_BILLING_PATH = "/v1/tenants/me/billing";

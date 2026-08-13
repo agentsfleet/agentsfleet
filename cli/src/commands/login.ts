@@ -9,8 +9,13 @@
 //   5. CLI polls GET /v1/auth/sessions/{id} until status is
 //      verification_pending; prompts the operator for the displayed
 //      code; POSTs to /verify; receives the ciphertext; decrypts.
-//   6. CLI persists the recovered JWT to credentials.json, then hydrates
-//      workspaces + captures the login-completed analytics event.
+//   6. CLI spends the recovered JWT on POST /v1/cli-credentials and persists
+//      the durable credential that comes back. The JWT never reaches disk —
+//      it is valid for about a minute, so persisting it is what made a
+//      terminal go stale while the operator was still using it.
+//   7. CLI hydrates workspaces + captures the login-completed analytics
+//      event. Telemetry still reads the JWT's claims for the distinct id,
+//      because the credential is opaque and carries none.
 //
 // SIGINT during the poll or prompt aborts cleanly via the existing
 // AbortController pattern. Failures route through one AuthError taxonomy
@@ -48,6 +53,10 @@ import {
   saveDirectToken,
   withSigintAbort,
 } from "./login-helpers.ts";
+import {
+  exchangeForCredential,
+  type MintedCredential,
+} from "./login-exchange.ts";
 import { pingMe } from "../lib/me-ping.ts";
 
 export interface LoginFlags {
@@ -122,17 +131,17 @@ const renderSuccess = Effect.fnUntraced(function* (sessionId: string | null) {
 
 const persistSuccess = Effect.fnUntraced(function* (
   sessionId: string,
-  token: string,
+  minted: MintedCredential,
 ) {
   const config = yield* CliConfig;
   const credentials = yield* Credentials;
-  const redacted = Redacted.make(token);
   yield* credentials.saveAccessToken({
-    token: redacted,
+    token: minted.credential,
     sessionId,
     apiUrl: config.apiUrl,
+    credentialId: minted.id,
   });
-  return redacted;
+  return minted.credential;
 });
 
 // /me ping failure → wipe credentials.json before propagating the error.
@@ -157,7 +166,11 @@ const completeVerificationBranch = Effect.fnUntraced(function* (
   signal: AbortSignal,
 ) {
   const token = yield* verifyAndDecryptWithRetry(sessionId, keypair, { noInput, signal });
-  const redacted = yield* persistSuccess(sessionId, token);
+  // The exchange completes before anything is persisted. A failure here
+  // leaves credentials.json untouched and reports a registered code, so a
+  // failed login never leaves a dead-on-arrival value on disk.
+  const minted = yield* exchangeForCredential(Redacted.make(token));
+  const redacted = yield* persistSuccess(sessionId, minted);
   yield* pingMe(redacted).pipe(Effect.catchTag("MeValidationError", rollbackOnMeFailure));
   yield* hydrateWorkspacesAfterLogin(redacted);
   yield* captureLoginCompleted(sessionId, token, "browser");

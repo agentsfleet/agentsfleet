@@ -7,11 +7,11 @@ import { type Command, CommanderError } from "commander";
 import { openUrl } from "./lib/browser.ts";
 import {
   clearCredentials,
+  emptyCredentials,
   loadCredentials,
   loadWorkspaces,
   saveCredentials,
   saveWorkspaces,
-  type Credentials,
   type Workspaces,
 } from "./lib/state.ts";
 import { Effect } from "effect";
@@ -224,12 +224,6 @@ function applyOutputToTree(
   for (const sub of cmd.commands) applyOutputToTree(sub, stdout, stderr);
 }
 
-const EMPTY_CREDS: Credentials = {
-  token: null,
-  saved_at: null,
-  session_id: null,
-  api_url: null,
-};
 const EMPTY_WORKSPACES: Workspaces = { current_workspace_id: null, items: [] };
 
 export async function runCli(
@@ -255,7 +249,7 @@ export async function runCli(
   const effectiveArgv = argv.length === 0 ? ["--help"] : [...argv];
 
   const [creds, workspaces] = await Promise.all([
-    loadCredentials().catch(() => EMPTY_CREDS),
+    loadCredentials().catch(() => emptyCredentials()),
     loadWorkspaces().catch(() => EMPTY_WORKSPACES),
   ]);
   // Session identity is read and bumped through `telemetry.json`.

@@ -25,6 +25,12 @@ export interface Credentials {
   saved_at: number | null;
   session_id: string | null;
   api_url: string | null;
+  // Server-side identifier of the credential in `token`, returned once at
+  // mint. Kept so this terminal can revoke its own credential by name
+  // without listing every credential the person owns. Null for a record
+  // written before the credential exchange shipped, and for a directly
+  // supplied tenant key, which this client never minted and cannot revoke.
+  credential_id: string | null;
 }
 
 export interface WorkspaceItem {
@@ -49,6 +55,21 @@ function resolveStatePaths(): StatePaths {
     baseDir,
     credentialsPath: path.join(baseDir, "credentials.json"),
     workspacesPath: path.join(baseDir, "workspaces.json"),
+  };
+}
+
+// The logged-out record. Returned fresh on each call rather than shared, so a
+// caller that mutates what it read cannot corrupt the next reader's fallback.
+// One definition for all three sites — the read fallback, what `clear`
+// writes, and the entry point's default — so a field added to `Credentials`
+// cannot be forgotten at one of them.
+export function emptyCredentials(): Credentials {
+  return {
+    token: null,
+    saved_at: null,
+    session_id: null,
+    api_url: null,
+    credential_id: null,
   };
 }
 
@@ -78,12 +99,7 @@ async function writeJson(filePath: string, value: unknown): Promise<void> {
 
 export async function loadCredentials(): Promise<Credentials> {
   const { credentialsPath } = resolveStatePaths();
-  return readJson<Credentials>(credentialsPath, {
-    token: null,
-    saved_at: null,
-    session_id: null,
-    api_url: null,
-  });
+  return readJson<Credentials>(credentialsPath, emptyCredentials());
 }
 
 export async function saveCredentials(next: Credentials): Promise<void> {
@@ -93,11 +109,11 @@ export async function saveCredentials(next: Credentials): Promise<void> {
 
 export async function clearCredentials(): Promise<void> {
   const { credentialsPath } = resolveStatePaths();
+  // `saved_at` records when the clear happened, so the record is the empty
+  // one with that single field stamped.
   await writeJson(credentialsPath, {
-    token: null,
+    ...emptyCredentials(),
     saved_at: Date.now(),
-    session_id: null,
-    api_url: null,
   });
 }
 
