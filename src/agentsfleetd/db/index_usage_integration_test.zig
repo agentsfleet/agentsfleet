@@ -15,7 +15,9 @@
 //!
 //! The fleet-scoped indexes (affinity, leases, events) are covered by the
 //! sibling `index_usage_fleet_integration_test.zig`, which needs a tenant ->
-//! workspace -> fleet graph this file's tables do not.
+//! workspace -> fleet graph. The memory probe here needs one too, since
+//! `memory_entries.fleet_id` references `core.fleets` — `seedMemory` builds and
+//! tears down its own, scoped to a workspace nothing else uses.
 //!
 //! `LIVE_DB=1` + `TEST_DATABASE_URL` (set by `make test-integration-db`);
 //! self-skips otherwise.
@@ -182,11 +184,15 @@ fn seedMemory(conn: *pg.Conn, rows: u32) !void {
 fn wipeMemory(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM memory.memory_entries WHERE key LIKE $1", .{MEM_KEY_PREFIX ++ "%"}) catch |err|
         std.log.warn("memory wipe ignored: {s}", .{@errorName(err)});
-    // Drop the parent fleets with their workspace. This matters beyond
-    // tidiness: the sibling tests in this file plan against `core.fleets`, and
-    // leaving a few hundred fixture fleets behind would shift that table's
-    // statistics under whichever test ran next.
+    // Drop the parent fleets with their workspace, then re-analyze. This matters
+    // beyond tidiness: sibling tests in this file assert which index the planner
+    // picks on `core.fleets`, and that choice is made from statistics. Deleting
+    // the rows is not enough — the estimates survive the delete, so a later plan
+    // would still be costed against a few hundred fleets that no longer exist
+    // and could reach for the primary key instead of the index under test.
     base.teardownWorkspace(conn, WS_MEM);
+    _ = conn.exec("ANALYZE core.fleets", .{}) catch |err|
+        std.log.warn("analyze ignored: {s}", .{@errorName(err)});
 }
 
 /// One runner holding `rows` settled leases against one fleet. `runner_leases`

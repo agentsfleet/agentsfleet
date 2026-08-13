@@ -70,7 +70,6 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
   // The Enterprise mailto stays same-tab (a new tab for a mailto is pointless).
   const ctaExternal = ctaHref === WAITLIST_URL;
   const badge = "badge" in plan ? plan.badge : undefined;
-  const suffix = "suffix" in plan ? plan.suffix : undefined;
   const testId = `pricing-card-${plan.id}`;
 
   return (
@@ -94,12 +93,9 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
             <span data-testid="pricing-rate-run-hourly">{RATES_DISPLAY.RUN_RATE_PER_HOUR}</span>
           </>
         ) : (
-          <>
-            {plan.price}
-            {suffix ? (
-              <span className="text-body text-text-muted"> / {suffix}</span>
-            ) : null}
-          </>
+          // Only the usage plan carries a per-unit rate, and it renders through
+          // the arm above; every other plan states a bare price.
+          <>{plan.price}</>
         )}
       </div>
 

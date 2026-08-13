@@ -135,8 +135,11 @@ test "the composite still covers the fleet filter after the drop" {
     defer db.close();
     defer _ = db.conn.exec("DELETE FROM memory.memory_entries WHERE key LIKE $1", .{MEM_KEY_PREFIX ++ "%"}) catch |err|
         std.log.warn("memory teardown ignored: {s}", .{@errorName(err)});
-    // Drop the parent fleets with their workspace, so a few hundred fixture
-    // fleets do not shift `core.fleets` statistics under the next test.
+    // Drop the parent fleets with their workspace, then re-analyze: deleting the
+    // rows leaves the planner's estimates behind, and sibling suites assert which
+    // index `core.fleets` reads pick.
+    defer _ = db.conn.exec("ANALYZE core.fleets", .{}) catch |err|
+        std.log.warn("analyze ignored: {s}", .{@errorName(err)});
     defer base.teardownWorkspace(db.conn, WS_MEM);
 
     // Parents first. The spread below derives its fleet ids arithmetically, so
