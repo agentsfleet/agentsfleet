@@ -104,7 +104,7 @@ export default function Hero() {
           <span className="rounded-full bg-evidence text-background px-2 py-0.5 text-xs uppercase tracking-eyebrow font-medium">
             Promo
           </span>
-          {RATES_DISPLAY.FREE_TRIAL_PILL}
+          {RATES_DISPLAY.EARLY_ACCESS_PILL}
           <span aria-hidden="true">→</span>
         </Link>
 

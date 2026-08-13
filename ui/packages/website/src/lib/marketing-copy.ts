@@ -251,7 +251,7 @@ export const CAPABILITY_ITEMS = [
 ] as const;
 
 export const PRICING_COPY = {
-  trialSuffix: "events and runtime on us",
+  earlyAccessSuffix: "events and runtime on us",
   headline: "Start free. Pay only while it runs.",
   lede:
     "Usage is metered per second — no seats, no tiers tax. Enterprise adds the controls large teams need.",
@@ -262,8 +262,8 @@ export const PRICING_COPY = {
 
 export const PRICING_PLANS = [
   {
-    id: "trial",
-    name: "Free trial",
+    id: "early-access",
+    name: "Early access",
     price: "$0",
     features: ["Every event free", "Every run free", "Starter credit included", "Full product access"],
     cta: "Start free",

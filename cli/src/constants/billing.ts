@@ -28,7 +28,6 @@ export const EVENT_NANOS = 0;
 // per-stage fees.
 export const RUN_NANOS_PER_SEC = 100_000;
 
-
 // Two-to-four decimal places — cents granularity, with sub-cent precision
 // when the per-second run rate ($0.0001/sec) needs it.
 const USD_FORMATTER = new Intl.NumberFormat("en-US", {

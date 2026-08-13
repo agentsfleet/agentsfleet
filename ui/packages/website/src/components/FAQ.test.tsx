@@ -102,7 +102,7 @@ describe("FAQ", { timeout: FAQ_TEST_TIMEOUT_MS }, () => {
     render(<FAQ />);
     await user.click(screen.getByText("What am I actually paying for?"));
     const answer = screen.getByText(escapedPattern(RATES_DISPLAY.RUN_RATE_PER_SEC)).textContent ?? "";
-    expect(answer).toContain(RATES_DISPLAY.FREE_TRIAL_PILL);
+    expect(answer).toContain(RATES_DISPLAY.EARLY_ACCESS_PILL);
     expect(answer).toContain(RATES_DISPLAY.RUN_RATE_PER_SEC);
     expect(answer).toContain(RATES_DISPLAY.RUN_RATE_PER_HOUR);
     expect(answer).toContain(RATES_DISPLAY.EVENT_RATE);
