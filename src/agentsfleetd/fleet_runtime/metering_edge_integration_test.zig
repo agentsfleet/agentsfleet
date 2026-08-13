@@ -95,7 +95,6 @@ test "integration: should pass the stop gate for self_managed at zero balance (n
     // balance == est_total == 0 → gate passes (>= comparison, not strict).
     try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
-        ALLOC,
         TENANT_ID,
         .self_managed,
         "self-managed-test",
@@ -143,7 +142,6 @@ test "integration: should block the stop gate when balance is one nano below the
 
     try std.testing.expect(!metering.balanceCoversEstimate(
         db_ctx.pool,
-        ALLOC,
         TENANT_ID,
         .platform,
         RATE_PROVIDER,

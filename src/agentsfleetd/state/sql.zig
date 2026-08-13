@@ -38,7 +38,7 @@ pub const SELECT_TENANT_BILLING_EXISTS =
 ;
 
 pub const SELECT_TENANT_BALANCE =
-    \\SELECT balance_nanos, grant_source, updated_at, balance_exhausted_at
+    \\SELECT balance_nanos, updated_at, balance_exhausted_at
     \\FROM billing.tenant_wallet
     \\WHERE tenant_id = $1::uuid
     \\LIMIT 1

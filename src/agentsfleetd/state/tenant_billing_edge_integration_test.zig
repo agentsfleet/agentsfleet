@@ -154,8 +154,7 @@ test "integration: should succeed with zero balance when debit exactly covers th
     const after = try tenant_billing.debit(db_ctx.conn, TENANT_ID, balance);
     try std.testing.expectEqual(@as(i64, 0), after.balance_nanos);
 
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.grant_source));
+    const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
     try std.testing.expectEqual(@as(i64, 0), row.balance_nanos);
     // A zero-balance debit-to-exact must NOT stamp the exhausted gate.
     try std.testing.expect(row.exhausted_at_ms == null);
@@ -179,8 +178,7 @@ test "integration: should return CreditExhausted and leave balance unchanged whe
         tenant_billing.debit(db_ctx.conn, TENANT_ID, balance + 1),
     );
 
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.grant_source));
+    const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
     try std.testing.expectEqual(balance, row.balance_nanos);
 }
 
@@ -198,8 +196,7 @@ test "integration: the starter grant is the whole free allowance a fresh tenant 
     // balance, not a date: positive on arrival, and bounded by that number
     // rather than by a clock nobody set. Its exhaustion mark starts clear —
     // `balance_exhausted_at` is now the only signal that free usage ran out.
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.grant_source));
+    const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
 
     try std.testing.expect(row.balance_nanos > 0);
     try std.testing.expect(row.exhausted_at_ms == null);

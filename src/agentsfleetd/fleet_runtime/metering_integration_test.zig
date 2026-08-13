@@ -108,7 +108,6 @@ test "integration: balanceCoversEstimate returns true under non-stop policies re
 
     try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
-        ALLOC,
         TENANT_ID,
         .self_managed,
         "self-managed-test",
@@ -145,7 +144,6 @@ test "integration: balanceCoversEstimate blocks when stop policy AND balance bel
 
     try std.testing.expect(!metering.balanceCoversEstimate(
         db_ctx.pool,
-        ALLOC,
         TENANT_ID,
         .platform,
         RATE_PROVIDER,
@@ -168,7 +166,6 @@ test "integration: balanceCoversEstimate passes when stop policy AND balance cov
     // EVENT_NANOS (0) and the issue-time run fee is 0, so est_total is 0.
     try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
-        ALLOC,
         TENANT_ID,
         .self_managed,
         "self-managed-test",
@@ -204,8 +201,7 @@ test "integration: debitReceive self-managed EVENT_NANOS=0 charge writes telemet
     }
 
     // Balance unchanged — receive charges EVENT_NANOS (zero) under both postures.
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.grant_source));
+    const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
     try std.testing.expectEqual(tenant_billing.STARTER_CREDIT_NANOS, row.balance_nanos);
 
     // Telemetry row must exist with charge_type='receive'.

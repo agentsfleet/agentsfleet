@@ -205,8 +205,7 @@ test "integration: renew refused with UZ-RUN-012 on an exhausted tenant, deadlin
     // promotional window first: while one was open every posture priced to zero,
     // so a zero balance still "covered" the charge and the gate could not refuse
     // at all. Nothing to arrange now — the estimate is the catalogue's.
-    const billing = (try tenant_billing.getBilling(conn, ALLOC, base.TEST_TENANT_ID)).?;
-    defer ALLOC.free(@constCast(billing.grant_source));
+    const billing = (try tenant_billing.getBilling(conn, base.TEST_TENANT_ID)).?;
     try std.testing.expectEqual(@as(i64, 0), billing.balance_nanos);
 
     // Credit gate sits after the ownership + active-status checks, so an owned,

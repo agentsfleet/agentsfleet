@@ -3,6 +3,7 @@
 const std = @import("std");
 const pg = @import("pg");
 
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const tenant_billing = @import("tenant_billing.zig");
 const base = @import("../db/test_fixtures.zig");
 const RUN_NANOS_PER_SEC_EXPECTED = 100_000;
@@ -66,10 +67,19 @@ test "provision inserts one row and replay is a no-op" {
     // Second call must be idempotent.
     try tenant_billing.insertStarterGrant(db_ctx.conn, TENANT_ID);
 
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.grant_source));
+    const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
     try std.testing.expectEqual(@as(i64, 5_000_000_000), row.balance_nanos);
-    try std.testing.expectEqualStrings("bootstrap_starter_grant", row.grant_source);
+
+    // Asserted against the stored column: the billing read stopped carrying
+    // `grant_source` once it was found that no consumer read it, but WHY a
+    // tenant holds a balance is still recorded, and the starter grant stamping
+    // it correctly is still this test's claim.
+    var q = PgQuery.from(try db_ctx.conn.query(
+        \\SELECT grant_source FROM billing.tenant_wallet WHERE tenant_id = $1::uuid
+    , .{TENANT_ID}));
+    defer q.deinit();
+    const stored = (try q.next()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("bootstrap_starter_grant", try stored.get([]const u8, 0));
 }
 
 test "debit decrements atomically; 0-row UPDATE returns CreditExhausted" {
@@ -90,8 +100,7 @@ test "debit decrements atomically; 0-row UPDATE returns CreditExhausted" {
     // Exhaust: try to debit more than remaining (well above current balance).
     try std.testing.expectError(error.CreditExhausted, tenant_billing.debit(db_ctx.conn, TENANT_ID, 6_000_000_000));
 
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.grant_source));
+    const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
     try std.testing.expectEqual(@as(i64, 5_000_000_000 - TEST_CHARGE_NANOS), row.balance_nanos);
 }
 
@@ -136,8 +145,7 @@ test "clearExhausted + debit together: replenishment path resets the stop gate" 
     // And the billing row reflects the clear — covers the "stop gate is a
     // one-way door" follow-up when admin credit lands without a matching
     // debit.
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.grant_source));
+    const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
     try std.testing.expect(row.exhausted_at_ms == null);
 }
 
@@ -158,8 +166,7 @@ test "debit on an exhausted row auto-clears balance_exhausted_at on success" {
     const after = try tenant_billing.debit(db_ctx.conn, TENANT_ID, 1_000_000);
     try std.testing.expectEqual(@as(i64, 5_000_000_000 - TEST_CHARGE_NANOS), after.balance_nanos);
 
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.grant_source));
+    const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
     try std.testing.expect(row.exhausted_at_ms == null);
 }
 
@@ -176,16 +183,14 @@ test "markExhausted: first call transitions, second call is a no-op" {
 
     // Fresh row: exhausted_at is NULL.
     {
-        const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-        defer ALLOC.free(@constCast(row.grant_source));
+        const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
         try std.testing.expect(row.exhausted_at_ms == null);
     }
 
     // First mark transitions.
     try std.testing.expect(try tenant_billing.markExhausted(db_ctx.conn, TENANT_ID));
     const first_ts = blk: {
-        const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-        defer ALLOC.free(@constCast(row.grant_source));
+        const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
         try std.testing.expect(row.exhausted_at_ms != null);
         break :blk row.exhausted_at_ms.?;
     };
@@ -193,8 +198,7 @@ test "markExhausted: first call transitions, second call is a no-op" {
     // Second call is a no-op; timestamp unchanged.
     try std.testing.expect(!(try tenant_billing.markExhausted(db_ctx.conn, TENANT_ID)));
     {
-        const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-        defer ALLOC.free(@constCast(row.grant_source));
+        const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
         try std.testing.expectEqual(first_ts, row.exhausted_at_ms.?);
     }
 }
