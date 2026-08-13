@@ -154,7 +154,7 @@ agentsfleet connector status github --json
 ### §8.2.2 Per-Fleet create flow
 
 1. The user picks a catalogue library entry (`agentsfleet install --library <id>`) or authors `SKILL.md` and `TRIGGER.md` for a local bundle (§8.0) — optionally with a coding agent (Claude Code, Amp, Codex CLI, OpenCode) helping draft the markdown.
-2. **`agentsfleet doctor --json` runs first** as the deterministic readiness gate after login. Doctor is fast and verifies connectivity + workspace health only — `server_reachable`, `workspace_selected`, and `workspace_binding_valid`. It does **not** carry provider or trial posture; that lives in `agentsfleet tenant provider show --json` (mode/provider/model/context cap) and `agentsfleet billing show` (free-trial state), read separately once health passes. The CLI (and any caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface for health — no parallel `preflight` command exists.
+2. **`agentsfleet doctor --json` runs first** as the deterministic readiness gate after login. Doctor is fast and verifies connectivity + workspace health only — `server_reachable`, `workspace_selected`, and `workspace_binding_valid`. It does **not** carry provider posture or balance; those live in `agentsfleet tenant provider show --json` (mode/provider/model/context cap) and `agentsfleet billing show` (balance and exhaustion state), read separately once health passes. The CLI (and any caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface for health — no parallel `preflight` command exists.
 3. The user (or coding agent) creates the Fleet from an onboarded library entry:
    - **Platform library entry** — `POST /v1/workspaces/{ws}/fleets` with `{platform_library_id, name?}`.
    - **Tenant library entry** — `POST /v1/workspaces/{ws}/fleets` with `{tenant_library_id, name?}` after the local/GitHub source has been onboarded through `POST /v1/workspaces/{ws}/fleet-libraries` or the dashboard.
@@ -253,7 +253,7 @@ Later, other entrypoints exist (the dashboard chat widget, direct API calls). Bu
 
 Two things travel together: the **model** the runner's fleet invokes, and the **`context_cap_tokens`** L3 run chunking uses. They originate from different places under platform-managed and self-managed postures, and the control plane's overlay logic is what reconciles them at lease time.
 
-The install flow is the same shape in both postures: **run `agentsfleet doctor --json` for connectivity + workspace health, then read the active provider posture from `agentsfleet tenant provider show --json` and branch on `mode`. The bundle's frontmatter carries resolved-or-sentinel model/cap values.** Doctor is the sanctioned health check. It verifies `server_reachable`, `workspace_selected`, and `workspace_binding_valid`; it does **not** carry provider or trial posture. If a health check fails (or the CLI is not authenticated) the CLI prints the `agentsfleet login` hint and stops; `tenant provider show` is only meaningful once health passes. Free-trial state comes from `agentsfleet billing show`. The CLI never reads the model library directly — `tenant provider show` always carries resolved values (synth-default for tenants with no row, real values for tenants with an explicit row).
+The install flow is the same shape in both postures: **run `agentsfleet doctor --json` for connectivity + workspace health, then read the active provider posture from `agentsfleet tenant provider show --json` and branch on `mode`. The bundle's frontmatter carries resolved-or-sentinel model/cap values.** Doctor is the sanctioned health check. It verifies `server_reachable`, `workspace_selected`, and `workspace_binding_valid`; it does **not** carry provider posture or balance. If a health check fails (or the CLI is not authenticated) the CLI prints the `agentsfleet login` hint and stops; `tenant provider show` is only meaningful once health passes. Balance and exhaustion state come from `agentsfleet billing show`. The CLI never reads the model library directly — `tenant provider show` always carries resolved values (synth-default for tenants with no row, real values for tenants with an explicit row).
 
 ```
                      PLATFORM-MANAGED (John Doe)                self-managed (John Doe, post-flip)
@@ -268,7 +268,7 @@ install flow   →   doctor --json (health)                  doctor --json (heal
                     {mode=platform,                        {mode=self_managed,
                      model=accounts/fireworks/models/kimi-k2.6,                provider=fireworks,
                      context_cap_tokens=256000}              model=accounts/.../kimi-k2.6,
-                  (billing show → free-trial state)         context_cap_tokens=256000}
+                  (billing show → balance state)              context_cap_tokens=256000}
                   branch on mode → write frontmatter      branch on mode → write frontmatter
                   pin into frontmatter (resolved):        pin into frontmatter (sentinels):
                     model: accounts/fireworks/models/kimi-k2.6                model: ""

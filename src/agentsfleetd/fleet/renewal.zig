@@ -27,7 +27,7 @@
 //! renewal charges ≈0 (cumulative-diff idempotency). The four per-unit rates are
 //! resolved in Zig (`tenant_billing_rates.resolveRenewSliceRates`) and passed in, so
 //! the slice math here is the SAME as `computeStageCharge` — SQL==Zig by
-//! construction (free-trial / self_managed / platform are all encoded as rates).
+//! construction (self_managed and platform are both encoded as rates).
 //!
 //! Runs on a caller-supplied pooled connection (drained via PgQuery).
 
@@ -41,7 +41,6 @@ const id_format = @import("../types/id_format.zig");
 const telemetry = @import("../state/fleet_telemetry_store.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const billing_rates = @import("../state/tenant_billing_rates.zig");
-const billing_store = @import("../state/tenant_billing_store.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 
 const log = logging.scoped(.fleet_metering);
@@ -51,8 +50,8 @@ const TOKENS_PER_MTOK: i64 = 1000000;
 /// The runner's cumulative token counts + the resolved per-unit slice rates for
 /// this renewal. Cumulatives are diffed against the lease's metering cursor IN
 /// the CTE (this struct never carries deltas — no double-count). Rates already
-/// encode posture + free-trial (all-zero during the trial; token tiers zero
-/// under self_managed), so the SQL applies them uniformly.
+/// encode posture (token tiers zero under self_managed), so the SQL applies them
+/// uniformly.
 pub const MeterInputs = struct {
     cumulative_input: i64 = 0,
     cumulative_cached: i64 = 0,
@@ -63,25 +62,28 @@ pub const MeterInputs = struct {
     output_nanos_per_mtok: i64 = 0,
 };
 
-/// Resolve the four slice rates (free-trial / posture aware) and pair them with
+/// Resolve the four slice rates (posture aware) and pair them with
 /// the runner's cumulative token counts. Shared by `renew` (service_renew) and
 /// `settle` (service_report) so both meter at the identical rates.
 ///
 /// Takes the caller's already-acquired connection: the platform branch prices
 /// against the catalogue generation that connection observes, so a slice
-/// can never be metered at a rate the catalogue has moved past. Free-trial and
-/// self-managed slices issue no statement — they never reach the catalogue.
+/// can never be metered at a rate the catalogue has moved past. Self-managed
+/// slices issue no statement — they never reach the catalogue.
+///
+/// Takes no tenant and no clock. Rates are a property of the catalogue and the
+/// posture, never of who is asking or when — the promotional window that once
+/// made both necessary is gone, and with it the failure where a rate resolved
+/// from the clock rather than from a published price.
 ///
 /// Never panics and never propagates: both a generation that cannot be verified
 /// and a model the catalogue does not carry meter run-fee-only and log. See the
 /// body for why those two are logged apart.
 pub fn buildMeterInputs(
     conn: *pg.Conn,
-    tenant_id: []const u8,
     provider: []const u8,
     posture: tenant_provider.Mode,
     model: []const u8,
-    now_ms: i64,
     cum_input: u32,
     cum_cached: u32,
     cum_output: u32,
@@ -99,12 +101,8 @@ pub fn buildMeterInputs(
     // alternative — refusing the renewal — kills a live agent mid-run over a
     // transient database fault, which is the posture `budgetRefusal` already
     // rejected for exactly this trade.
-    // The tenant's own trial boundary. A lookup failure prices as open-ended
-    // rather than refusing the renewal: the same posture the two branches below
-    // take, and the cheaper error for a live agent mid-run.
-    const trial_ends_at_ms: ?i64 = billing_store.loadTrialBoundary(conn, tenant_id) catch null;
     const resolved: ?billing_rates.SliceRates =
-        billing_rates.resolveRenewSliceRates(conn, provider, posture, model, trial_ends_at_ms, now_ms) catch |err| unverified: {
+        billing_rates.resolveRenewSliceRates(conn, provider, posture, model) catch |err| unverified: {
             log.warn("meter_rate_generation_unverified_run_fee_only", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .provider = provider, .model = model, .err = @errorName(err) });
             break :unverified null;
         };

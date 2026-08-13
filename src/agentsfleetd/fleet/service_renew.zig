@@ -123,14 +123,12 @@ fn parseMeterBody(hx: Hx, req: *httpz.Request) protocol.RenewRequest {
 /// cumulative token counts. Delegates to `renewal.buildMeterInputs`, the shared
 /// source `service_report`'s settle uses too, so renew and settle meter at the
 /// identical rates.
-fn buildMeter(conn: *pg.Conn, lease: Lease, body: protocol.RenewRequest, now_ms: i64) renewal.MeterInputs {
+fn buildMeter(conn: *pg.Conn, lease: Lease, body: protocol.RenewRequest) renewal.MeterInputs {
     return renewal.buildMeterInputs(
         conn,
-        lease.tenant_id,
         lease.provider,
         parsePosture(lease.posture, lease.fleet_id),
         lease.model,
-        now_ms,
         body.input_tokens,
         body.cached_input_tokens,
         body.output_tokens,
@@ -177,7 +175,7 @@ fn runRenew(hx: Hx, lease_id: []const u8, runner_id: []const u8, lease: Lease, b
     // rate and the renewal it feeds observe one database session.
     const conn = try hx.ctx.pool.acquire();
     defer hx.ctx.pool.release(conn);
-    const meter = buildMeter(conn, lease, body, now_ms);
+    const meter = buildMeter(conn, lease, body);
     return renewal.renew(conn, lease_id, runner_id, now_ms, meter);
 }
 

@@ -134,7 +134,6 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
     // refusal below permanently unprovable, and silently so. Closing THIS
     // tenant's boundary is what arms it. No wall-clock date to wait for and
     // none that can retire the assertion later.
-    try test_fixtures.endFreeTrialFor(db_ctx.conn, TEST_TENANT_ID);
     try seedModelRate(db_ctx.conn);
     defer teardownModelRate(db_ctx.conn);
 
