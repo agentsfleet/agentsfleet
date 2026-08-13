@@ -217,11 +217,11 @@ const testing = std.testing;
 
 // Forces semantic analysis of every declaration above.
 //
-// Nothing in the tree calls this module yet, and Zig only analyses a function
-// body once something references it — so `zig build` reported success over a
-// `copyListed` that could not compile. A bare `_ = @import(...)` in
-// `tests.zig` does not close that hole: it evaluates the module, not its
-// bodies. This reference does, and must stay until real call sites exist.
+// Zig only analyses a function body once something references it, so before
+// the handlers landed, `zig build` reported success over a `copyListed` that
+// could not compile. The handlers reference everything now; this stays as the
+// cheap guarantee that a helper orphaned by a future refactor still has to
+// compile rather than rotting silently.
 test {
     testing.refAllDecls(@This());
 }
