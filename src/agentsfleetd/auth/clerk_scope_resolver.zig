@@ -8,31 +8,30 @@
 //! claim onto the credential row would make this a second store of a fact the
 //! provider owns, frozen at issue time.
 //!
-//! The cache is a latency optimisation and nothing else. It holds no
-//! authority: it is in memory, it never outlives the process, and every entry
-//! self-heals toward the provider within the freshness window — so there is
-//! no projection to backfill, order, or reconcile.
+//! The cache is a latency optimisation and nothing else: in-memory, never
+//! outlives the process, and every entry self-heals toward the provider
+//! within the freshness window — no projection to backfill or reconcile.
 //!
-//! Behaviour under a provider outage mirrors what the token path already does
-//! when a key-set fetch fails. A warm entry is served up to a hard ceiling far
-//! above the freshness window, because refusing every terminal during a vendor
-//! blip is worse than acting on capabilities that are minutes old. Past the
-//! ceiling, or with nothing cached, the caller is told authentication is
-//! unavailable rather than handed an empty set that would read as "you were
-//! demoted".
+//! Under a provider outage, a warm entry is served up to a hard ceiling far
+//! above the freshness window — refusing every terminal during a vendor blip
+//! is worse than acting on capabilities minutes old. Past the ceiling, or
+//! with nothing cached, the caller is told authentication is unavailable
+//! rather than handed an empty set that would read as "you were demoted".
 //!
-//! Not single-flighted, deliberately. The token path carries single-flight
-//! machinery because a key-set miss can stampede every request at once; here
-//! the fan-out is per person, the window is a minute, and concurrency is
-//! already bounded by the server's worker count. The machinery would cost more
-//! than it saves, and it can be added behind this same surface if a deployment
-//! ever proves otherwise.
+//! Not single-flighted, deliberately. The token path carries that machinery
+//! because a key-set miss stampedes every request at once; here the fan-out
+//! is per subject and the window is a minute. One caveat now that tenant keys
+//! resolve through this same cache: automation traffic rides ONE creator
+//! subject at machine rates, so at TTL expiry its in-flight requests fetch
+//! concurrently — the first place to add per-subject single-flight if
+//! provider-call volume ever shows up in ops.
 
 const std = @import("std");
 const common = @import("common");
 const clock = common.clock;
 const logging = @import("log");
 const ec = @import("auth_codes");
+const clerk_backend = @import("clerk_backend.zig");
 const clerk_scope_fetch = @import("clerk_scope_fetch.zig");
 
 const log = logging.scoped(.clerk_scopes);
@@ -46,10 +45,8 @@ const MS_PER_MINUTE = 60 * MS_PER_SECOND;
 /// the resolved model exists to keep.
 pub const DEFAULT_TTL_MS: i64 = 60 * MS_PER_SECOND;
 
-/// Hard age limit on serving a cached claim when the provider cannot be
-/// reached. Past this an outage stops being something to ride out: the answer
-/// is old enough that acting on it could contradict a revocation nobody can
-/// confirm, so the request is refused instead.
+/// Hard age limit on serving a cached claim through an outage: past this the
+/// answer could contradict a revocation nobody can confirm, so refuse.
 pub const DEFAULT_STALE_CEILING_MS: i64 = 15 * MS_PER_MINUTE;
 
 /// Distinct subjects held at once. Sized well above any deployment's
@@ -74,10 +71,11 @@ const Entry = struct {
 };
 
 pub const Config = struct {
-    /// Borrowed from the boot-resolved provider secret. Absent means the
-    /// deployment cannot resolve capabilities at all, which is an outage
-    /// rather than an empty grant — every resolve refuses.
+    /// Borrowed boot-resolved provider secret. Absent = capabilities cannot
+    /// resolve at all — an outage, not an empty grant; every resolve refuses.
     secret: ?[]const u8,
+    /// Borrowed boot-resolved base (`clerk_backend.API_BASE_ENV_VAR` override).
+    api_base: []const u8 = clerk_backend.API_BASE,
     ttl_ms: i64 = DEFAULT_TTL_MS,
     stale_ceiling_ms: i64 = DEFAULT_STALE_CEILING_MS,
 };
@@ -89,15 +87,19 @@ pub const ScopeResolver = struct {
 
     alloc: std.mem.Allocator,
     secret: ?[]const u8,
+    api_base: []const u8,
     ttl_ms: i64,
     stale_ceiling_ms: i64,
-    mutex: common.Mutex = .{},
+    // RwLock: cache hits are the request path for both resolved credential
+    // classes and must not serialize; `store`/`deinit` take exclusive.
+    mutex: common.RwLock = .{},
     cache: std.StringHashMap(Entry),
 
     pub fn init(alloc: std.mem.Allocator, cfg: Config) Self {
         return .{
             .alloc = alloc,
             .secret = cfg.secret,
+            .api_base = cfg.api_base,
             .ttl_ms = cfg.ttl_ms,
             .stale_ceiling_ms = cfg.stale_ceiling_ms,
             .cache = std.StringHashMap(Entry).init(alloc),
@@ -124,20 +126,20 @@ pub const ScopeResolver = struct {
     ) ResolveError![]const u8 {
         var stale: ?[]const u8 = null;
         {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+            // Shared section; the dupe stays inside it so nothing borrows a
+            // map value a concurrent exclusive `store` could free mid-fetch.
+            self.mutex.lockShared();
+            defer self.mutex.unlockShared();
             if (self.cache.get(oidc_subject)) |entry| {
                 const age_ms = clock.nowMillis() - entry.fetched_at_ms;
                 if (age_ms <= self.ttl_ms) {
                     return alloc.dupe(u8, entry.claim) catch ResolveError.OutOfMemory;
                 }
-                // Copied under the lock so nothing borrows a map value that a
-                // concurrent store could free while the fetch is in flight.
                 if (age_ms <= self.stale_ceiling_ms) stale = alloc.dupe(u8, entry.claim) catch null;
             }
         }
 
-        const fresh = clerk_scope_fetch.fetchScopeClaim(alloc, self.secret, oidc_subject) catch |err| {
+        const fresh = clerk_scope_fetch.fetchScopeClaim(alloc, self.secret, self.api_base, oidc_subject) catch |err| {
             return self.onFetchFailed(alloc, err, stale);
         };
         if (stale) |s| alloc.free(s);

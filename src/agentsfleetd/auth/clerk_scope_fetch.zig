@@ -24,7 +24,6 @@ const std = @import("std");
 const common = @import("common");
 const logging = @import("log");
 const ec = @import("auth_codes");
-const clerk_backend = @import("clerk_backend.zig");
 const jwks_standard_claims = @import("jwks_standard_claims.zig");
 
 const log = logging.scoped(.clerk_scopes);
@@ -66,6 +65,10 @@ pub const FetchError = error{
 /// Fetch the space-delimited capability claim provisioned for `oidc_subject`.
 /// The caller owns the returned bytes and frees them with `alloc`.
 ///
+/// `api_base` is the boot-resolved provider base (`clerk_backend.API_BASE`
+/// unless the deployment overrode it), borrowed like the secret — no
+/// per-request environment read here.
+///
 /// Returns `UNPROVISIONED_CLAIM` (duplicated, so ownership is uniform) when the
 /// user exists but carries no scope provisioning. `NotFound` is reserved for a
 /// subject the provider does not know at all, which means the local row and the
@@ -73,6 +76,7 @@ pub const FetchError = error{
 pub fn fetchScopeClaim(
     alloc: std.mem.Allocator,
     secret: ?[]const u8,
+    api_base: []const u8,
     oidc_subject: []const u8,
 ) FetchError![]const u8 {
     // Borrowed from the boot-resolved secret, exactly as the metadata writer
@@ -80,7 +84,7 @@ pub fn fetchScopeClaim(
     const backend_secret = secret orelse return FetchError.MissingSecret;
     if (std.mem.trim(u8, backend_secret, " \t\r\n").len == 0) return FetchError.MissingSecret;
 
-    const url = try std.fmt.allocPrint(alloc, "{s}/users/{s}", .{ clerk_backend.API_BASE, oidc_subject });
+    const url = try std.fmt.allocPrint(alloc, "{s}/users/{s}", .{ api_base, oidc_subject });
     defer alloc.free(url);
 
     const auth_header = try std.fmt.allocPrint(alloc, "Bearer {s}", .{backend_secret});

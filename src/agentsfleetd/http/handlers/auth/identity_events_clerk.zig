@@ -287,7 +287,7 @@ fn runBootstrap(hx: Hx, oidc_subject: []const u8, email: []const u8, display_nam
 }
 
 fn writePublicMetadata(hx: Hx, oidc_subject: []const u8, tenant_id: []const u8) void {
-    clerk_backend.patchUserPublicMetadata(hx.ctx.clerk_secret_key, hx.alloc, oidc_subject, tenant_id, DEFAULT_SIGNUP_SCOPES) catch |err| {
+    clerk_backend.patchUserPublicMetadata(hx.ctx.clerk_secret_key, hx.ctx.clerk_api_base, hx.alloc, oidc_subject, tenant_id, DEFAULT_SIGNUP_SCOPES) catch |err| {
         log.warn(
             "metadata_writeback_failed",
             .{
