@@ -30,7 +30,13 @@ fn envOf(pairs: []const [2][]const u8) !common.env.Map {
     return common.env.fromPairs(std.testing.allocator, pairs);
 }
 
-test "ServeConfig.load accepts custom provider" {
+test "test_retired_provider_refused_at_boot — a gone provider fails loudly, not quietly" {
+    // `custom` used to select a second claim-reading ladder shaped for another
+    // identity provider. It is gone, and this asserts its name is now refused
+    // rather than quietly accepted and mapped onto the surviving one — a
+    // deployment still naming it must fail loudly at boot, because the
+    // alternative is a daemon that starts and reads tenant and capability
+    // claims from keys nothing writes.
     var env_map = try envOf(&.{
         .{ "OIDC_JWKS_URL", test_jwks_url },
         .{ "OIDC_ISSUER", test_issuer },
@@ -41,12 +47,26 @@ test "ServeConfig.load accepts custom provider" {
     });
     defer env_map.deinit();
 
+    try std.testing.expectError(ValidationError.InvalidOidcProvider, ServeConfig.load(&env_map, std.testing.allocator));
+}
+
+test "test_supported_provider_still_loads — no deployment workflow needs editing" {
+    var env_map = try envOf(&.{
+        .{ "OIDC_JWKS_URL", test_jwks_url },
+        .{ "OIDC_ISSUER", test_issuer },
+        .{ "OIDC_PROVIDER", "clerk" },
+        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "AUTH_SESSION_CODE_PEPPER", test_session_code_pepper },
+        .{ "AUDIT_LOG_PEPPER", test_audit_log_pepper },
+    });
+    defer env_map.deinit();
+
     var cfg = try ServeConfig.load(&env_map, std.testing.allocator);
     defer cfg.deinit();
 
     try std.testing.expect(cfg.oidc_enabled);
-    try std.testing.expectEqual(oidc.Provider.custom, cfg.oidc_provider);
-    // custom provider keeps its non-standard JWKS path: explicit override wins.
+    try std.testing.expectEqual(oidc.Provider.clerk, cfg.oidc_provider);
+    // An explicit JWKS override still wins over the issuer-derived path.
     try std.testing.expectEqualStrings(test_jwks_url, cfg.oidc_jwks_url.?);
 }
 
@@ -67,8 +87,10 @@ test "ServeConfig.load rejects invalid provider deterministically" {
 test "ServeConfig.load rejects an OIDC slate with a provider but no issuer" {
     // The enable-gate is the issuer now: a provider (or any OIDC var) without
     // OIDC_ISSUER is rejected — issuer is the single source of identity truth.
+    // The provider named here is the supported one on purpose, so the refusal
+    // can only be about the missing issuer.
     var env_map = try envOf(&.{
-        .{ "OIDC_PROVIDER", "custom" },
+        .{ "OIDC_PROVIDER", "clerk" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
         .{ "AUTH_SESSION_CODE_PEPPER", test_session_code_pepper },
         .{ "AUDIT_LOG_PEPPER", test_audit_log_pepper },
