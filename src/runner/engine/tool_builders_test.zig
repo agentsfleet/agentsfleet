@@ -69,10 +69,7 @@ fn runBuilt(
 }
 
 fn freeResult(r: tools_mod.ToolResult) void {
-    const m = r.error_msg orelse return;
-    // Only our outer `host_not_allowed: <host>` message is heap-owned; every
-    // inner NullClaw message in these tests is a string literal.
-    if (std.mem.startsWith(u8, m, "host_not_allowed:")) std.testing.allocator.free(m);
+    _ = r;
 }
 
 test "buildHttpRequest (policy path) rejects a tenant private-IP host end-to-end" {
@@ -115,7 +112,7 @@ test "buildHttpRequest (policy path) denies an off-allowlist host at the outer g
     const r = try runBuilt(arena, &policy, "https://1.1.1.1/v1/apps");
     defer freeResult(r);
     try std.testing.expect(!r.success);
-    try std.testing.expect(std.mem.startsWith(u8, r.error_msg.?, "host_not_allowed:"));
+    try std.testing.expectEqualStrings("host_not_allowed", r.error_msg.?);
 }
 
 // ── Every builder in the registry ──────────────────────────────────────────

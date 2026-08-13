@@ -41,6 +41,8 @@ const outbound = @import("service_report_outbound.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 const activity_publisher = @import("../fleet_runtime/activity_publisher.zig");
 const metrics_runner = @import("../observability/metrics_runner.zig");
+const metrics_repair_verification = @import("../observability/metrics_repair_verification.zig");
+const repair_verifications = @import("../state/repair_verifications.zig");
 const otel_metrics = @import("../observability/otel_metrics.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const runner_events = @import("runner_events.zig");
@@ -56,6 +58,7 @@ const Lease = struct {
     workspace_id: []const u8,
     tenant_id: []const u8,
     event_id: []const u8,
+    actor: []const u8,
     posture: []const u8,
     provider: []const u8,
     model: []const u8,
@@ -124,7 +127,24 @@ pub fn report(hx: Hx, req: *httpz.Request) void {
     metrics_runner.observeRunnerExecution(runner_id, body.outcome);
     metrics_runner.decRunnerActiveLeases(runner_id);
     if (body.outcome == .fleet_error) metrics_runner.incRunnerFailure(runner_id, body.failure_reason);
+    observeVerifierCompletion(hx, lease);
     hx.ok(.ok, protocol.ReportResponse{ .ok = true });
+}
+
+fn observeVerifierCompletion(hx: Hx, lease: Lease) void {
+    if (!repair_verifications.isVerifierEventActor(lease.actor)) return;
+    const conn = hx.ctx.pool.acquire() catch return;
+    defer hx.ctx.pool.release(conn);
+    const queued_at = repair_verifications.verifierQueuedAt(conn, lease.fleet_id, lease.event_id) catch |err| {
+        log.warn("repair_verification_completion_metric_failed", .{
+            .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+            .fleet_id = lease.fleet_id,
+            .event_id = lease.event_id,
+            .err = @errorName(err),
+        });
+        return;
+    };
+    if (queued_at) |at| metrics_repair_verification.observeVerifierCompleted(at, clock.nowMillis());
 }
 
 fn captureCompletion(hx: Hx, lease: Lease, body: protocol.ReportRequest) void {
@@ -189,7 +209,7 @@ fn loadLeaseInner(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
     defer hx.ctx.pool.release(conn);
     var q = PgQuery.from(try conn.query(
         \\SELECT fleet_id::text, workspace_id::text, tenant_id::text,
-        \\       event_id, posture, provider, model, fencing_token
+        \\       event_id, actor, posture, provider, model, fencing_token
         \\FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::uuid
     , .{ lease_id, runner_id }));
     defer q.deinit();
@@ -200,10 +220,11 @@ fn loadLeaseInner(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
         .workspace_id = try hx.alloc.dupe(u8, try row.get([]const u8, 1)),
         .tenant_id = try hx.alloc.dupe(u8, try row.get([]const u8, 2)),
         .event_id = try hx.alloc.dupe(u8, try row.get([]const u8, 3)),
-        .posture = try hx.alloc.dupe(u8, try row.get([]const u8, 4)),
-        .provider = try hx.alloc.dupe(u8, try row.get([]const u8, 5)),
-        .model = try hx.alloc.dupe(u8, try row.get([]const u8, 6)),
-        .fencing_token = @intCast(try row.get(i64, 7)),
+        .actor = try hx.alloc.dupe(u8, try row.get([]const u8, 4)),
+        .posture = try hx.alloc.dupe(u8, try row.get([]const u8, 5)),
+        .provider = try hx.alloc.dupe(u8, try row.get([]const u8, 6)),
+        .model = try hx.alloc.dupe(u8, try row.get([]const u8, 7)),
+        .fencing_token = @intCast(try row.get(i64, 8)),
     };
 }
 

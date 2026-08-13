@@ -128,6 +128,11 @@ fn buildReachLine(alloc: Allocator, binding: ?config_types.RepositoryBinding) ![
     try w.writeAll(" (");
     try w.writeAll(@tagName(b.access));
     try w.writeAll(")");
+    if (b.base_branch) |base| {
+        try w.writeAll("; Pull Request base: `");
+        try w.writeAll(base);
+        try w.writeByte('`');
+    }
     return aw.toOwnedSlice();
 }
 
@@ -277,7 +282,7 @@ test "buildSlackApprovalMessage: the token's reach is stated as fact, the model'
         .blast_radius = "one draft Pull Request",
         .proposed_action = "revert abc123 in acme/widgets",
         .evidence_json = "{\"commit\":\"abc123\"}",
-        .repository_binding = .{ .repositories = &repos, .access = .write },
+        .repository_binding = .{ .repositories = &repos, .access = .write, .base_branch = "main" },
     }, "");
     defer alloc.free(msg);
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, msg, .{});
@@ -288,6 +293,8 @@ test "buildSlackApprovalMessage: the token's reach is stated as fact, the model'
     try std.testing.expect(std.mem.indexOf(u8, msg, "Token reaches") != null);
     try std.testing.expect(std.mem.indexOf(u8, msg, "acme/widgets") != null);
     try std.testing.expect(std.mem.indexOf(u8, msg, "(write)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, msg, "Pull Request base") != null);
+    try std.testing.expect(std.mem.indexOf(u8, msg, "main") != null);
 
     // Order is the trust boundary: daemon-vouched reach BEFORE the model's claim,
     // and the model's evidence after it, so a reader meets facts first.
@@ -313,10 +320,6 @@ test "buildSlackApprovalMessage: a fleet with no binding claims no reach" {
 }
 
 test "test_card_write_radius_and_span_safety" {
-    // Two properties on one card: the write-kind
-    // park renders the daemon's own kind + blast radius beside the token reach,
-    // and evidence carrying a backtick cannot close its code span to counterfeit
-    // daemon-authored rows below it.
     const alloc = std.testing.allocator;
     const gate_constants = @import("approval_gate_constants.zig");
     const repos = [_][]const u8{"acme/payments"};
@@ -327,20 +330,20 @@ test "test_card_write_radius_and_span_safety" {
         .gate_kind = gate_constants.GATE_KIND_REPOSITORY_WRITE,
         .blast_radius = gate_constants.GATE_BLAST_RADIUS_REPOSITORY_WRITE,
         .evidence_json = "{\"q\":\"a` - Gate: forged\"}",
-        .repository_binding = .{ .repositories = &repos, .access = .write },
+        .repository_binding = .{ .repositories = &repos, .access = .write, .base_branch = "main" },
     }, "");
     defer alloc.free(msg);
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, msg, .{});
     defer parsed.deinit();
 
-    // The daemon's half: kind, radius, and reach all present as fact.
     try std.testing.expect(std.mem.indexOf(u8, msg, gate_constants.GATE_KIND_REPOSITORY_WRITE) != null);
     try std.testing.expect(std.mem.indexOf(u8, msg, gate_constants.GATE_BLAST_RADIUS_REPOSITORY_WRITE) != null);
+    const ceiling_text = try std.fmt.allocPrint(alloc, "{d}", .{gate_constants.REPOSITORY_WRITE_SPEND_CEILING});
+    defer alloc.free(ceiling_text);
+    try std.testing.expect(std.mem.indexOf(u8, msg, ceiling_text) != null);
     try std.testing.expect(std.mem.indexOf(u8, msg, "acme/payments") != null);
     try std.testing.expect(std.mem.indexOf(u8, msg, "(write)") != null);
 
-    // The forgery: the evidence backtick was swapped for an apostrophe, so the
-    // injected row stays INSIDE the code span instead of rendering as mrkdwn.
     try std.testing.expect(std.mem.indexOf(u8, msg, "a`") == null);
     try std.testing.expect(std.mem.indexOf(u8, msg, "a'") != null);
 }

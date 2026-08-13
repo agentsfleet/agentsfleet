@@ -45,6 +45,7 @@ pub const TxnOutcome = union(enum) {
     stale_etag: []const u8,
     not_found,
     invalid_transition,
+    invalid_config,
     invalid_trigger_markdown,
     invalid_gate_condition,
     invalid_source_markdown,
@@ -129,14 +130,18 @@ pub fn patchFleetInTxn(
 
     const new_config_json: ?[]const u8 = if (parsed_trigger) |pt| pt.config_json else body.config_json;
 
-    // Reject a malformed gate condition on the to-be-persisted config_json
-    // (markdown or direct path); lenient parse, non-gate fall-through.
+    // Validate the exact config that will be persisted. Direct JSON updates and
+    // markdown-derived updates share the authoring parser, so neither can save
+    // an incomplete repository-write binding.
     if (new_config_json) |cj| {
         if (fleet_config.parseFleetConfig(alloc, cj)) |cfg| {
             defer cfg.deinit(alloc);
             if (cfg.gates) |g| if (fleet_config.firstInvalidGateCondition(g.rules) != null)
                 return .{ .invalid_gate_condition = {} };
-        } else |err| if (err == error.OutOfMemory) return err;
+        } else |err| {
+            if (err == error.OutOfMemory) return err;
+            return .{ .invalid_config = {} };
+        }
     }
 
     const new_name: ?[]const u8 = if (parsed_trigger) |pt| pt.config.name else null;

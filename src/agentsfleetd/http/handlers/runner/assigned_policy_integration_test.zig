@@ -197,7 +197,7 @@ fn heartbeat(h: *TestHarness, token: []const u8, body: []const u8) !harness_mod.
 }
 
 fn leaseOnce(h: *TestHarness, token: []const u8) !harness_mod.Response {
-    return (try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json(HB_EMPTY)).send();
+    return (try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json(protocol.LEASE_REQUEST_CURRENT_JSON)).send();
 }
 
 /// The stored verdict + capability columns, duped for the caller.

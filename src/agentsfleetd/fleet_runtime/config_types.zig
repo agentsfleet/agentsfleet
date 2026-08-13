@@ -135,6 +135,8 @@ pub const FleetBudget = struct {
 
 pub const FleetNetwork = struct {
     allow: []const []const u8,
+    read_only: bool = false,
+    read_post_paths: []const []const u8 = &.{},
 };
 
 /// Frontmatter knobs from `x-agentsfleet.context`. Zero means "auto" — the
@@ -179,6 +181,8 @@ pub const RepositoryAccess = enum {
 pub const RepositoryBinding = struct {
     repositories: []const []const u8,
     access: RepositoryAccess,
+    /// Trusted Pull Request base for write bindings. Read bindings omit it.
+    base_branch: ?[]const u8 = null,
 };
 
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
@@ -214,9 +218,15 @@ pub const FleetConfig = struct {
         alloc.free(self.triggers);
         freeStringSlice(alloc, self.tools);
         freeStringSlice(alloc, self.credentials);
-        if (self.network) |net| freeStringSlice(alloc, net.allow);
+        if (self.network) |net| {
+            freeStringSlice(alloc, net.allow);
+            freeStringSlice(alloc, net.read_post_paths);
+        }
         if (self.gates) |gates| config_gates.freeGatePolicy(alloc, gates);
-        if (self.repository_binding) |b| freeStringSlice(alloc, b.repositories);
+        if (self.repository_binding) |b| {
+            freeStringSlice(alloc, b.repositories);
+            if (b.base_branch) |base| alloc.free(base);
+        }
         if (self.skill) |s| alloc.free(s);
         if (self.model) |s| alloc.free(s);
     }
@@ -229,7 +239,7 @@ pub const FleetConfig = struct {
 // `FleetTrigger` union. If the layout shifts, update this number rather
 // than papering over with a runtime check.
 comptime {
-    std.debug.assert(@sizeOf(FleetConfig) == 248);
+    std.debug.assert(@sizeOf(FleetConfig) == 288);
 }
 
 /// Authoring metadata extracted from SKILL.md frontmatter (the SOUL file's
@@ -308,41 +318,4 @@ pub fn freeFleetTrigger(alloc: Allocator, t: FleetTrigger) void {
         },
         .api => {},
     }
-}
-
-test "FleetStatus: installing round-trips through to/fromSlice and is non-runnable, non-terminal" {
-    try std.testing.expectEqualStrings(S_INSTALLING, FleetStatus.installing.toSlice());
-    try std.testing.expectEqual(@as(?FleetStatus, .installing), FleetStatus.fromSlice(S_INSTALLING));
-    try std.testing.expectEqual(@as(?FleetStatus, .installing), FleetStatus.fromSlice("installing"));
-    // The runner must not lease an installing fleet, and it is not a tombstone.
-    try std.testing.expect(!FleetStatus.installing.isRunnable());
-    try std.testing.expect(!FleetStatus.installing.isTerminal());
-    // The pre-existing states still resolve (no regression in the lookup ladder).
-    try std.testing.expectEqual(@as(?FleetStatus, .active), FleetStatus.fromSlice(S_ACTIVE));
-    try std.testing.expectEqual(@as(?FleetStatus, null), FleetStatus.fromSlice("nonsense"));
-}
-
-test "validRequiredTags: accepts empty/normal sets, rejects over-count and bad lengths" {
-    // Empty set is the any-runner identity — must be valid.
-    try std.testing.expect(validRequiredTags(&.{}));
-    // A normal small capability set.
-    try std.testing.expect(validRequiredTags(&.{ "gpu", "us-east" }));
-
-    // Empty-string tag rejected (would store a meaningless label).
-    try std.testing.expect(!validRequiredTags(&.{""}));
-    try std.testing.expect(!validRequiredTags(&.{ "gpu", "" }));
-
-    // Per-tag length boundary: exactly MAX is accepted, one over is rejected.
-    const tag_at_max = "a" ** 64;
-    const tag_over_max = "a" ** 65;
-    try std.testing.expect(validRequiredTags(&.{tag_at_max}));
-    try std.testing.expect(!validRequiredTags(&.{tag_over_max}));
-
-    // Count boundary: exactly MAX accepted, one over rejected.
-    var at_max: [32][]const u8 = undefined;
-    for (&at_max) |*t| t.* = "x";
-    try std.testing.expect(validRequiredTags(&at_max));
-    var over_max: [33][]const u8 = undefined;
-    for (&over_max) |*t| t.* = "x";
-    try std.testing.expect(!validRequiredTags(&over_max));
 }

@@ -195,11 +195,3 @@ pub const CONNECTOR_CHANNEL_KIND_RESIDENT = "resident";
 /// shape. The signature-only ingress has no OIDC principal, so the actor is
 /// free-form provenance, never an authorization subject.
 pub const SLACK_ACTOR_PREFIX = "slack:";
-
-/// Branch-name prefix for a repair the incident-repairer fleet ships:
-/// `agentsfleet-repair/<incident event id>`. One spelling across three
-/// surfaces (RULE UFS): the bundle's push instruction, the webhook arm that
-/// links an opened repair Pull Request back to its incident, and their tests.
-/// Deriving the name from the event id is the duplicate refusal — a replayed
-/// approval finds the ref already taken and reports instead of pushing twice.
-pub const REPAIR_BRANCH_PREFIX = "agentsfleet-repair/";

@@ -19,6 +19,7 @@ x-agentsfleet:
   repositories:
     - agentsfleet/agentsfleet
   repository_access: write
+  repository_base: main
   network:
     allow:
       - api.github.com

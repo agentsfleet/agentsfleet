@@ -71,6 +71,10 @@ pub const ENTRIES_RUNTIME = [_]Entry{
         "Re-raise the approval so a human sees the current reach; the mint refuses rather than widening a decided answer."), // reachable: no — runner-plane refusal, surfaced through the activity stream
     e("UZ-REPAIR-012", .ok, "Duplicate repair link refused", "A repair Pull Request already links this incident, so a second one is acknowledged and not recorded. " ++
         "The first shipped repair is the record; close the surplus Pull Request on GitHub."), // reachable: no — logged on the webhook arm; the delivery itself answers 200-ignored
+    e("UZ-REPAIR-013", .forbidden, "Write request allowance exhausted", "This approval already funded 32 write-credential requests. " ++
+        "Answer a new repository-write approval before another write-scoped token request."), // reachable: no — runner-plane refusal, surfaced through event history
+    e("UZ-REPAIR-014", .ok, "Repair provenance refused", "The repair branch did not resolve to an approved write gate with the same workspace, Fleet, event, installation, repository, and App author. " ++
+        "The delivery is acknowledged without recording a link or waking a Fleet."), // reachable: no — signed webhook delivery returns a named ignore reason
     e("UZ-GRANT-001", .forbidden, "No integration grant for service", "This fleet has no approved grant for the target service. " ++
         "A grant is seeded when the fleet is installed, from the credentials its bundle declares; it becomes usable once its approval gate is resolved. " ++
         "Check the grant with: `GET /v1/workspaces/{ws}/fleets/{id}/integration-grants`"), // reachable: no — runner-only mint/lease gate, not fetched by ui/packages/app

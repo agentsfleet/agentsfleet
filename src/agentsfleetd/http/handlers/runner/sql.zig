@@ -93,11 +93,21 @@ pub const SELECT_LEASE_SCOPE_FOR_MINT =
 /// human already gave. `id DESC` settles a same-millisecond `created_at` tie,
 /// which a re-park after a lost Redis ref can produce.
 pub const SELECT_WRITE_GATE_FOR_MINT =
-    \\SELECT status, stated_binding::text, timeout_at, updated_at
+    \\SELECT id::text, status, stated_binding::text, timeout_at, updated_at,
+    \\       spend_count, spend_ceiling
     \\FROM core.fleet_approval_gates
     \\WHERE fleet_id = $1::uuid AND event_id = $2 AND gate_kind = $3
     \\ORDER BY created_at DESC, id DESC
     \\LIMIT 1
+    \\FOR UPDATE
+;
+
+pub const SPEND_WRITE_GATE_FOR_MINT =
+    \\UPDATE core.fleet_approval_gates
+    \\SET spend_count = spend_count + 1
+    \\WHERE id = $1::uuid AND status = $2
+    \\  AND spend_count IS NOT NULL AND spend_ceiling IS NOT NULL
+    \\  AND spend_count < spend_ceiling
 ;
 
 /// Heartbeat: bump liveness, and emit a `runner_online` event only on a real

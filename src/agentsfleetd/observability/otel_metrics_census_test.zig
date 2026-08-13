@@ -29,6 +29,8 @@ const CENSUS_PIN = [_][]const u8{
     "agentsfleet.invoke_agent.cache_read.token.usage",
     "agentsfleet.billing.credit.consumed",
     "agentsfleet.telemetry.samples_dropped",
+    "agentsfleet_repair_production_to_queue_seconds",
+    "agentsfleet_repair_queue_to_completion_seconds",
     "agentsfleet_api_backpressure_rejections_total",
     "agentsfleet_api_in_flight_requests",
     "agentsfleet_sse_backpressure_rejections_total",
@@ -52,6 +54,14 @@ const CENSUS_PIN = [_][]const u8{
     "agentsfleet_runner_retention_swept_total",
     "agentsfleet_runner_retention_sweep_failures_total",
     "agentsfleet_account_teardown_unregister_failures_total",
+    "agentsfleet_repair_provider_results_total",
+    "agentsfleet_repair_correlations_total",
+    "agentsfleet_repair_verification_intents_created_total",
+    "agentsfleet_repair_dispatch_retried_total",
+    "agentsfleet_repair_synthetic_events_total",
+    "agentsfleet_repair_verifier_runs_total",
+    "agentsfleet_repair_dispatch_due_batch",
+    "agentsfleet_repair_dispatch_oldest_age_seconds",
     "agentsfleet_library_stage_duration_seconds_total",
     "agentsfleet_library_stage_observations_total",
     "agentsfleet_library_read_outcome_total",
@@ -241,7 +251,7 @@ test "test_rebuilt_suite_covers_every_previously_rendered_family" {
 
 // And the live half of Dimension 5.2: one flush window carries every
 // fixed-label family this process can produce — a name mentioned in a test is
-// also a series that actually reaches the wire. Evented cost families need a
+// also a series that actually reaches the wire. Evented families need a
 // recorded sample and streamed runner families a live slot; both are driven
 // and asserted by their own suites (otel_metrics_test / metrics_runner_test).
 test "the full fixed-label census is live in one flush window" {
@@ -253,7 +263,7 @@ test "the full fixed-label census is live in one flush window" {
     const rss_reported = common.rss.currentBytes() != null;
     for (0..families.METRIC_ID_COUNT) |i| {
         const meta = families.metaFor(@as(families.MetricId, @enumFromInt(i)));
-        if (meta.cost or meta.streamed) continue;
+        if (meta.evented or meta.streamed) continue;
         if (!pool_registered and std.mem.startsWith(u8, meta.name, "agentsfleet_redis_pool_")) continue;
         if (!rss_reported and std.mem.eql(u8, meta.name, "agentsfleet_process_resident_memory_bytes")) continue;
         window.expectFamilySample(body, meta.name) catch |err| {

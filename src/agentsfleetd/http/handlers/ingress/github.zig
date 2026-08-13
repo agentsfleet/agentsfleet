@@ -25,6 +25,10 @@ const grant_lookup = @import("../../../state/integration_grant_lookup.zig");
 const EventEnvelope = @import("contract").event_envelope;
 const github_spec = @import("../connectors/github/spec.zig");
 const github_sql = @import("../connectors/github/sql.zig");
+const github_filter = @import("../webhooks/github_filter.zig");
+const repair_link = @import("github/repair_link.zig");
+const deployment_result = @import("github/deployment_result.zig");
+const production_repair_result = @import("github/production_repair_result.zig");
 
 const log = logging.scoped(.app_ingress);
 const Hx = hx_mod.Hx;
@@ -41,6 +45,7 @@ const LOG_INGRESS_REJECTED = "ingress_rejected";
 const LOG_INGRESS_SECRET_LOAD_FAILED = "ingress_secret_load_failed";
 const EVENT_PING = "ping";
 const STATUS_PONG = "pong";
+const STATUS_IGNORED = "ignored";
 const S_PROVIDER_SECRET_MISSING = "Provider App webhook secret is not configured";
 const S_PROVIDER_SECRET_LOAD_FAILED = "Failed to load provider App webhook secret";
 
@@ -82,25 +87,16 @@ pub fn innerGithubAppIngress(hx: Hx, req: *httpz.Request, provider: []const u8) 
         hx.ok(.ok, .{ .status = STATUS_PONG });
         return;
     }
-    const replay_id = authenticatedReplayId(body);
+    if (!github_filter.isSupportedEvent(event) and
+        !std.mem.eql(u8, event, deployment_result.EVENT_DEPLOYMENT_STATUS))
+    {
+        hx.ok(.ok, .{ .status = STATUS_IGNORED });
+        return;
+    }
     const routing_key = extractOwnedScalar(hx.alloc, root, ingress.routing_key_path, MAX_ROUTING_KEY_LEN) catch return malformed(hx);
     defer hx.alloc.free(routing_key);
     const repository = extractString(root, ingress.repository_path, MAX_REPOSITORY_LEN) orelse return malformed(hx);
-    const normalized = ingress.normalize(hx.alloc, event, root, clock.nowSeconds()) catch {
-        malformed(hx);
-        return;
-    };
-    const request_json = normalized orelse {
-        hx.ok(.ok, .{ .status = "ignored" });
-        return;
-    };
-    defer hx.alloc.free(request_json);
-
-    routeNormalized(hx, &conn_slot, ingress, provider, event, delivery, &replay_id, routing_key, repository, request_json);
-}
-
-fn routeNormalized(hx: Hx, conn_slot: *?*pg.Conn, ingress: webhook_verify.IngressConfig, provider: []const u8, event: []const u8, delivery: []const u8, replay_id: []const u8, routing_key: []const u8, repository: []const u8, request_json: []const u8) void {
-    const resolved_workspace = resolveWorkspace(hx.alloc, conn_slot.*.?, provider, routing_key) catch {
+    const resolved_workspace = resolveWorkspace(hx.alloc, conn_slot.?, provider, routing_key) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
@@ -110,6 +106,28 @@ fn routeNormalized(hx: Hx, conn_slot: *?*pg.Conn, ingress: webhook_verify.Ingres
         return;
     };
     defer hx.alloc.free(workspace_id);
+    switch (repair_link.interceptIngress(hx, conn_slot.?, event, root, workspace_id, routing_key, repository)) {
+        .handled => return,
+        .not_repair => {},
+    }
+    if (std.mem.eql(u8, event, deployment_result.EVENT_DEPLOYMENT_STATUS)) {
+        production_repair_result.intercept(hx, conn_slot.?, root, workspace_id, repository);
+        return;
+    }
+    const request_json = ingress.normalize(hx.alloc, event, root, clock.nowSeconds()) catch {
+        malformed(hx);
+        return;
+    } orelse {
+        hx.ok(.ok, .{ .status = STATUS_IGNORED });
+        return;
+    };
+    defer hx.alloc.free(request_json);
+    const replay_id = authenticatedReplayId(body);
+
+    routeNormalized(hx, &conn_slot, ingress, provider, event, delivery, &replay_id, workspace_id, repository, request_json);
+}
+
+fn routeNormalized(hx: Hx, conn_slot: *?*pg.Conn, ingress: webhook_verify.IngressConfig, provider: []const u8, event: []const u8, delivery: []const u8, replay_id: []const u8, workspace_id: []const u8, repository: []const u8, request_json: []const u8) void {
     const targets = findTargets(hx.alloc, conn_slot.*.?, workspace_id, provider, repository, event) catch |err| {
         log.err("ingress_target_lookup_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .provider = provider, .err = @errorName(err) });
         common.internalDbError(hx.res, hx.req_id);

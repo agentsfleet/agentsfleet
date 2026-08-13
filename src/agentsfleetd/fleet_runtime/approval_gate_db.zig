@@ -220,6 +220,30 @@ pub fn readTerminalDecision(pool: *pg.Pool, action_id: []const u8) !?GateStatus 
     return null;
 }
 
+/// Return the approved write gate that may author the lease's repair branch.
+/// Caller owns the identifier.
+pub fn approvedWriteGateId(
+    pool: *pg.Pool,
+    alloc: Allocator,
+    fleet_id: []const u8,
+    event_id: []const u8,
+    binding: @import("config_types.zig").RepositoryBinding,
+) !?[]u8 {
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+    var q = PgQuery.from(try conn.query(sql.SELECT_APPROVED_WRITE_GATE_ID, .{
+        fleet_id,
+        event_id,
+        gate_constants.GATE_KIND_REPOSITORY_WRITE,
+        APPROVED_STATUS,
+        gate_constants.REPOSITORY_WRITE_SPEND_CEILING,
+    }));
+    defer q.deinit();
+    const row = try q.next() orelse return null;
+    if (!binding_json.matches(alloc, try row.get([]const u8, 1), binding)) return null;
+    return try alloc.dupe(u8, try row.get([]const u8, 0));
+}
+
 // ── Internals ───────────────────────────────────────────────────────────
 
 fn insertPendingRow(
@@ -244,10 +268,11 @@ fn insertPendingRow(
 
     const now_ms = clock.nowMillis();
     const timeout_at = now_ms +| detail.timeout_ms;
+    const spend_count: ?i64 = if (detail.spend_ceiling != null) 0 else null;
     _ = try conn.exec(sql.INSERT_GATE, .{
-        gate_id,          fleet_id,               workspace_id,         action_id,           detail.tool, detail.action,
-        detail.gate_kind, detail.proposed_action, detail.evidence_json, detail.blast_radius, timeout_at,  PENDING_STATUS,
-        now_ms,           event_id,               stated_binding,
+        gate_id,          fleet_id,               workspace_id,         action_id,           detail.tool,          detail.action,
+        detail.gate_kind, detail.proposed_action, detail.evidence_json, detail.blast_radius, timeout_at,           PENDING_STATUS,
+        now_ms,           event_id,               stated_binding,       spend_count,         detail.spend_ceiling,
     });
 }
 
