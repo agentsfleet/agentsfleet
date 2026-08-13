@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M154
 **Workstream:** 002
 **Date:** Aug 01, 2026
-**Status:** DONE
+**Status:** IN_PROGRESS
 **Priority:** P1 — a security boundary that exists in prose and not in grants
 **Categories:** API, SQL
 **Batch:** B1 — its own Pull Request, both halves together; the grants live in slots M154_001 authors
@@ -86,6 +86,22 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/check-migrate-unprivileged.sh` | EDIT | Its pre-existing-role list mirrors the ADMIN OPTION a managed migrator holds from having created each role. The three new elevation roles belong in it, or slot 110's membership GRANT is refused with 42501 (CI discovery; Indy-approved) |
 | `scripts/check_migrate_role_parity.sh` | CREATE | Static gate: the lane's `APP_ROLES` must equal the roles `schema/` creates. Turns a twelve-minute coverage-lane 42501 into a one-second failure naming the omitted role |
 | `make/check-safety-gates.mk`, `make/quality.mk` | EDIT | The parity gate joins the file's other static tree checks and `lint-all`'s prerequisites |
+
+**Amended at §5 — reopened after CHORE(close) by the owed `/review` (Indy-directed).** Three defects the review found plus the one its fix exposed; all inside this milestone's own blast radius:
+
+| File | Action | Why |
+|------|--------|-----|
+| `schema/821_memory_entries_fleet_fk.sql` | CREATE | The referential edge that makes memory erasure exact rather than racy (§5.2). Additive slot, not an edit to 820: `embed.zig` versions are skipped once recorded, so an in-place edit would silently no-op on any database that already applied it |
+| `schema/embed.zig` | EDIT | Registers slot 821 |
+| `src/agentsfleetd/db/pool.zig` | EDIT | `markForDiscard` — the only write to pg's `_state` in the repository, beside the release that reads it (§5.1) |
+| `src/agentsfleetd/http/handlers/memory/helpers.zig` | EDIT | A failed `RESET ROLE` marks the connection instead of logging a discard that never happened (§5.1) |
+| `src/agentsfleetd/errors/error_entries.zig` | EDIT | `UZ-INTERNAL-005` was orphaned by the elevation refactor while the dirty release logged under `004`; prose rewritten to the condition that now emits it |
+| `src/agentsfleetd/state/account_teardown.zig` | EDIT | Three sweeps `api_runtime` may not execute deleted in favour of the `core.fleets` cascade; the memory delete moved after it; header claim that those children lack `ON DELETE CASCADE` corrected (§5.5) |
+| `src/agentsfleetd/fleet_runtime/sql.zig`, `approval_gate_db.zig` | EDIT | `SET_GATE_PURGE_BYPASS_SQL` moved to the domain `sql.zig` per RULE SQLMOD, with `GATE_PURGE_SETTING` extracted so the name can be pinned (§5.6) |
+| `src/agentsfleetd/http/handlers/fleets/delete.zig`, `create_grants_integration_test.zig`, `http/webhook_test_fixtures.zig`, `webhook_http_integration_test.zig` | EDIT | Call sites repointed; the two that retyped the literal now use the constant |
+| `src/agentsfleetd/fleet_runtime/approval_gate_pins_test.zig` | EDIT | The slot-grep pin for the gate-purge setting (§5.6) |
+| `src/agentsfleetd/db/pool_test.zig`, `memory/fleet_memory_integration_test.zig` | EDIT | Tests for §5.1–5.4 |
+| `src/agentsfleetd/db/index_usage_integration_test.zig`, `index_removal_integration_test.zig` | EDIT | Fallout of the new edge: both fabricated ~200 fleet ids with no parent row. Neither assertion depended on that spread — both force the index — so each now seeds one real fleet |
 
 **Amended — free-trial removal folded in (Indy-directed, see Discovery).** Removing the mechanism retires the merge-blocker below rather than guarding it, so the two land together:
 
@@ -169,6 +185,23 @@ The mechanism is redundant, which is why deleting beats guarding. `tenant_billin
 - **Dimension 4.3** — a fresh tenant holds exactly the starter grant, and it is positive → Test `test_fresh_tenant_funded_by_starter_grant_alone` — **DONE**
 - **Dimension 4.4** — the billing response no longer carries `free_trial`, and the typed dashboard surface matches → Test `test_billing_response_has_no_free_trial` — **DONE**
 
+### §5 — The boundary holds where the role outlives the statement
+
+Reopened after CHORE(close), from the `/review` pass owed on the elevation refactor. The review found three defects and the fix for one of them exposed a fourth; all four are the same shape — a privilege that survives longer than the code assumes.
+
+**The pooled connection.** `handlers/memory/helpers.zig` elevates with session-scoped `SET ROLE`, which the server does not revert at COMMIT. Its paired `RESET ROLE` swallowed failure with a hint naming a discard that never happened: a failed reset outside a transaction is answered with `ReadyForQuery('I')`, so pg leaves `_state = .idle`, the release backstop sees a clean connection, and the next borrower inherits `memory_runtime`. `db.markForDiscard` forces `.fail` — chosen over `conn.begin()` because a failing begin recovers through `Conn.read` and can land back on `.idle`, pooling the very connection it meant to discard.
+
+**Erasure exactness.** `memory.memory_entries` carried its fleet id as a bare value, so an account purge's frozen id array was its only eraser and a capture landing after that statement outlived the erasure permanently. `schema/821` adds `REFERENCES core.fleets ON DELETE CASCADE`: a racing capture either commits before the fleet row goes and cascades away, or blocks on that row and fails closed. `ADD CONSTRAINT` validates existing rows, so the migration applying cleanly is also the proof that no orphan was already present.
+
+**The purge could not run as its own role.** Moving the memory delete after `DELETE FROM core.fleets` removed an accidental escalation nobody knew was load-bearing: `SET LOCAL ROLE NONE` resets to `session_user`, not to the role that was current, so the first elevation's step-down had been silently widening every statement after it. With the memory elevation at statement 1 that covered the whole purge. `api_runtime` is granted SELECT/INSERT/UPDATE and deliberately **not** DELETE on `fleet.runner_affinity`, `core.fleet_approval_gates` and `core.fleet_sessions` (schema/630, /810, /510), so the three explicit sweeps were unrunnable under the role the purge actually holds. They are deleted rather than granted: each cascades from `core.fleets`, and a referential action runs with the table owner's authority. The underlying `SET LOCAL ROLE NONE` semantics are **not** changed here — named in Discovery as the remaining footgun.
+
+- **Dimension 5.1** — a connection whose session role could not be reset is destroyed rather than pooled, so no borrower inherits it → Test `test_discarded_connection_drops_session_role`
+- **Dimension 5.2** — an erased fleet leaves no memory row behind, by referential action rather than by a statement remembering to sweep → Test `test_fleet_delete_cascades_memory`
+- **Dimension 5.3** — a memory write naming a fleet that does not exist is refused, not orphaned → Test `test_absent_fleet_write_refused`
+- **Dimension 5.4** — the new edge grants `memory_runtime` no reach into `core`: it cannot read the parent it references, and the write still resolves → Test `test_memory_write_holds_no_core_grant`
+- **Dimension 5.5** — the account purge completes under `api_runtime`, with no grant widened and no reliance on a session-role reset → Test `test_erasure_elevates_for_secrets_and_wallet`
+- **Dimension 5.6** — the gate-purge bypass setting cannot drift between the Zig constant and the two slots whose triggers read it → Test `test_gate_purge_setting_pinned_to_slots`
+
 ## Interfaces
 
 ```
@@ -231,6 +264,12 @@ INTERNAL   pool release gains a base-role assertion. A connection whose
 | 3.2 | integration | `test_connection_returns_to_base_role` | After an elevated transaction commits, the same connection serves an unelevated read |
 | regression | integration | `test_no_endpoint_behaviour_changed` | Billing, secret and model endpoints return identical shapes and codes to before |
 | regression | integration | `test_memory_elevation_still_works` | The pre-existing memory role path is unaffected by the new helper |
+| 5.1 | integration | `test_discarded_connection_drops_session_role` | On a size-1 pool: `SET ROLE memory_runtime`, mark the connection, release, re-acquire — `current_role` is not `memory_runtime`. Pool size 1 is load-bearing; a larger pool could hand back a different connection and pass vacuously |
+| 5.2 | integration | `test_fleet_delete_cascades_memory` | Store a memory row, delete its fleet as the **base** role (which holds no grant on `memory.memory_entries`), count returns 0 — proving the cascade runs with the owner's authority |
+| 5.3 | integration | `test_absent_fleet_write_refused` | `storeEntry` for a fleet id never seeded raises `error.PG` (23503) and the count stays 0; the session survives the refusal and remains usable |
+| 5.4 | integration | `test_memory_write_holds_no_core_grant` | As `memory_runtime`: a direct `SELECT … FROM core.fleets` is refused (no USAGE on the schema), yet `storeEntry` against the FK still succeeds |
+| 5.5 | integration | `test_erasure_elevates_for_secrets_and_wallet` | The existing erasure test, now load-bearing: it runs the purge under a session-level `SET ROLE api_runtime`, so it fails if any purge statement needs a grant that role lacks |
+| 5.6 | unit | `test_gate_purge_setting_pinned_to_slots` | `GATE_PURGE_SETTING` appears verbatim in embedded slots 810 and 830, and the composed bypass statement sets exactly that name to the value those triggers compare against |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -298,6 +337,12 @@ N/A — no files deleted.
   > Indy (2026-08-01): "go" — acks building the wallet half in full via the composite `metering_runtime` role rather than deferring it, after a second-model advisory review (Fable) rejected all three options the prior agent had framed. Nothing is deferred out of this workstream.
 
 - **Consult — the fenced statement, second-model review (2026-08-01).** The prior agent's premise that the settle statement's fencing might be redundant (that `ON CONFLICT … DO UPDATE` already made it idempotent) was **refuted from the code**: the ledger arm is a deliberate accumulator (`credit_deducted_nanos = existing + EXCLUDED`), so replay *adds*. Idempotency comes from cursor-diffing against `runner_affinity` — deltas computed as `GREATEST(0, $n - last_metered_at)` while the same statement advances that cursor. That is only sound if the charge and the cursor advance commit together, so the statement cannot be split. It is not modified by this workstream.
+
+- **Discovery — `SET LOCAL ROLE NONE` resets to `session_user`, not to the prior role (2026-08-13).** Not fixed here, and the largest remaining footgun in this area. Every elevated scope steps down with `SET LOCAL ROLE NONE`; PostgreSQL defines that as reverting to the **session** user, so on a connection whose session role was set by something other than login, the step-down *widens* privilege rather than restoring it. With the memory elevation as purge statement 1, that had been silently granting statements 2–12 the session role's authority for the life of this branch, which is why §5's privilege defect had no failing test. Production is unaffected only while the API connection's login role equals its intended runtime role. A correct step-down restores the role that was current before elevation; doing that needs either a captured `current_user` (a round trip per scope) or a `poison`-style method on the vendored `pg` fork. Deliberately out of scope at the end of a long session — it deserves its own milestone.
+
+  > Indy (2026-08-13): "prod connect as api_runtime (ignore)" — asked, and dropped, whether the deployed `api-connection-string` logs in as `api_runtime`. Recorded because it decides whether §5's purge defect was live or latent, and because **no production code executes `SET ROLE api_runtime`**: the grants this milestone tightened are in force only if that login role is the restricted one. Not verifiable from the repository; the value lives in 1Password.
+
+- **Discovery — both SQL rules are write-time only (2026-08-13).** RULE STS fired correctly when `schema/821` was authored; its wording simply did not reach `current_setting()`, and it has been widened in dotfiles `6a9b421`. RULE SQLMOD's check *does* match `SET_GATE_PURGE_BYPASS_SQL`, but `write_zig.sh` invokes it `--staged`, so a misplaced SQL constant sat in `approval_gate_db.zig` unflagged until asked about. Neither rule sweeps the tree, so pre-existing violations stay invisible by design. A full-tree STS audit is the missing half; `sql-mod.sh --all` currently reports 47 findings on this repository, heavily false-positive (names merely ending `_QUERY`; the exemption matches only the literal filename `sql.zig`, so `gallery_sql.zig` and `sql_budget_drain.zig` are wrongly flagged), so such a check needs a real carve-out mechanism before it is wired.
 
 - **Reversal — slot 890 stays.** The prior agent recommended deleting `schema/890_fleet_activity_counter_triggers.sql` and inlining the counter arms, on the premise that the triggers would need an elevated function. They do not: both trigger functions are already `SECURITY DEFINER` with a pinned `search_path` (890:31, 890:65), so they are unaffected by elevation. Inlining would have been a regression — `schema/880` grants `api_runtime` SELECT only, and inline arms would require handing write grants on the counter table back to every writing role. No change to either file.
 
