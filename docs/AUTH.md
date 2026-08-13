@@ -13,34 +13,38 @@ Authorization: Bearer <…>
             │                                                              │
             │  WHO IS THE ACTOR?                                           │
             │                                                              │
-            │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
-            │  │ A human at a │    │ A human in a │    │ A machine    │  │
-            │  │ terminal     │    │ browser tab  │    │ (script/bot) │  │
-            │  └──────┬───────┘    └──────┬───────┘    └──────┬───────┘  │
-            │         │                   │                   │           │
-            │         ▼                   ▼                   ▼           │
-            │   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    │
-            │   │   FLOW 1    │    │   FLOW 2    │    │   FLOW 3    │    │
-            │   │             │    │             │    │             │    │
-            │   │ agentsfleet   │    │ Dashboard   │    │ Tenant API  │    │
-            │   │ login       │    │ sign-in     │    │ key         │    │
-            │   │             │    │             │    │ agt_t…     │    │
-            │   │ verification│    │ Clerk       │    │ static hash │    │
-            │   │ code + ECDH │    │ __session   │    │ in DB       │    │
-            │   │ + 5-min TTL │    │ cookie →    │    │ long-lived  │    │
-            │   │             │    │ getToken    │    │ revocable   │    │
-            │   │             │    │ ({api})     │    │             │    │
-            │   └──────┬──────┘    └──────┬──────┘    └──────┬──────┘    │
-            │          │                  │                  │            │
-            │          └──────────────────┴──────────────────┘            │
-            │                             │                                │
-            │                             ▼                                │
+            │   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
+            │   │A human at a │  │A human in a │  │A machine    │          │
+            │   │terminal     │  │browser tab  │  │(script/bot) │          │
+            │   └──────┬──────┘  └──────┬──────┘  └──────┬──────┘          │
+            │          │                │                │                 │
+            │          ▼                ▼                ▼                 │
+            │   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
+            │   │   FLOW 1    │  │   FLOW 2    │  │   FLOW 3    │          │
+            │   │             │  │             │  │             │          │
+            │   │ agentsfleet │  │  Dashboard  │  │ Tenant API  │          │
+            │   │ login       │  │  sign-in    │  │ key agt_t…  │          │
+            │   │             │  │             │  │             │          │
+            │   │ verification│  │ Clerk       │  │ static hash │          │
+            │   │ code + ECDH │  │ __session   │  │ in DB       │          │
+            │   │ 5-min       │  │ cookie →    │  │             │          │
+            │   │ HANDSHAKE   │  │ getToken    │  │ long-lived  │          │
+            │   │   ↓ mints   │  │ ({api})     │  │ revocable   │          │
+            │   │ afc_… cred  │  │ ~60s, auto- │  │             │          │
+            │   │ NO EXPIRY   │  │ refreshed   │  │             │          │
+            │   └──────┬──────┘  └──────┬──────┘  └──────┬──────┘          │
+            │          │                │                │                 │
+            │          └────────────────┴────────────────┘                 │
+            │                           │                                  │
+            │                           ▼                                  │
             │              Authorization: Bearer <…>                       │
-            │                             │                                │
-            │                             ▼                                │
-            │              bearer_or_api_key middleware                    │
-            │              (agt_t*  → DB hash lookup)                     │
-            │              (anything → JWKS verify)                        │
+            │                           │                                  │
+            │                           ▼                                  │
+            │        bearer_or_api_key middleware — routes by prefix:      │
+            │          afc_*  → DB lookup + live scope resolve  (a person) │
+            │          agt_t* → DB hash lookup                  (a tenant) │
+            │          agt_r* → runner-token lookup             (a machine)│
+            │          else   → Clerk JWKS verify               (dashboard)│
             │                                                              │
             └──────────────────────────────────────────────────────────────┘
 ```
@@ -48,7 +52,7 @@ Authorization: Bearer <…>
 | When to use which | Flow 1 | Flow 2 | Flow 3 |
 |---|---|---|---|
 | Human present at the keyboard? | ✅ required (5-min interactive flow) | ✅ required | ❌ |
-| Long-lived credential? | ❌ JWT expires ~15 min; CLI re-runs `login` on 401 | ❌ minted per request | ✅ until explicitly revoked |
+| Long-lived credential? | ✅ the `afc_` credential has no expiry — it ends by explicit revoke (M160_002 §3 wires `logout` to it) | ❌ minted per request | ✅ until explicitly revoked |
 | Provisioned via | `agentsfleet login` | Clerk sign-in form | dashboard "Create API Key" surface |
 | Right answer for | a developer on a workstation; Cursor/Claude Code running locally with the developer present | someone using `app.agentsfleet.net` in a browser | n8n / Zapier / cron jobs / CI runners / Kubernetes / scheduled background work |
 | Wrong answer for | unattended CI / cron / K8s / hosted-fleet platforms — see [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) *Human-led-only invariant* | none — this is the only browser path | interactive humans (`agt_t` long-lived keys carry too much standing privilege for a workstation) |
@@ -70,17 +74,17 @@ Both paths resolve to the same `AuthPrincipal` struct (`src/agentsfleetd/auth/pr
 
 ## Auth model in one screen
 
-Six principal surfaces, one wire shape (`Authorization: Bearer …`), and a prefix that routes to the right validator.
+Five principal surfaces, one wire shape (`Authorization: Bearer …`), and a prefix that routes to the right validator.
 
 | Principal | Credential | Issuer | Validation | Middleware |
 |---|---|---|---|---|
-| Human at a terminal (CLI) | Clerk JWT (`api` template) | Clerk | JWKS verify + `aud`/`iss`/`exp` | `bearer_or_api_key` → OIDC |
+| Human at a terminal (CLI) | `afc_<hex>` CLI credential | backend (`POST /v1/cli-credentials`, paid for with a Clerk api-template JWT) | SHA-256 hash lookup + revocation check; scopes resolved live from Clerk on `oidc_subject` | `bearer_or_api_key` → `cli_credential` |
 | Human in a browser (dashboard) | Clerk session JWT | Clerk | JWKS verify + `aud` | `bearer_or_api_key` → OIDC |
 | Service / automation | `agt_t<hex>` tenant api key | backend | SHA-256 hash lookup | `bearer_or_api_key` → `tenant_api_key` |
 | Host runner (machine) | `agt_r<hex>` runner token | backend (via `register`) | SHA-256 hash lookup in `fleet.runners` | `runnerBearer` on `/v1/runners/me/*` |
 | Inbound webhook (provider) | HMAC signature (no Bearer) | provider | per-provider HMAC | `webhook_sig` |
 
-Routing in `bearer_or_api_key.zig`: `agt_t` → tenant-key DB lookup; anything else → OIDC/JWKS verify; no token → 401. The runner plane is deliberately a separate middleware (`runnerBearer`, `agt_r` only) so a runner token cannot satisfy a tenant route and vice versa.
+Routing in `bearer_or_api_key.zig`, in order: `agt_t` → tenant-key DB lookup; `afc_` → CLI-credential DB lookup, then live scope resolution for the owning user; else if a verifier is configured → OIDC/JWKS verify; else → 401. Both prefixed branches sit ahead of the verifier check on purpose — each is a self-contained credential class, so a deployment with no identity provider configured still authenticates them instead of 401-ing a credential it could have resolved. The runner plane is deliberately a separate middleware (`runnerBearer`, `agt_r` only) so a runner token cannot satisfy a tenant route and vice versa.
 
 Authorization is **scope-based** (M104_001). Every capability is an explicit `resource:action` scope carried on the verified token's `scopes` claim and surfaced as `principal.scopes` (a bitset). Two independent axes decide a request:
 
@@ -180,7 +184,7 @@ Bearer afc_… → SHA-256 → core.cli_credentials row (JOIN core.users)
 
 **Why it differs from `agt_t`.** An `agt_t` key is a *tenant* credential, deliberately decoupled from its creator: `240_api_keys.sql` makes `created_by` a plain string rather than a foreign key precisely so a key outlives the admin who minted it, because erasing a departed admin must not revoke working automation. Binding it to that admin's live scopes would resurrect exactly the coupling that decision removed. An `afc_` credential is the opposite — it *is* a person, so it must track that person.
 
-**What a fixed grant would have cost.** Today a CLI session carries a Clerk JWT, so a read-only collaborator's terminal is genuinely read-only. Replacing that JWT with a durable credential and a code-applied grant would silently widen them to the full grant on their next `login` — a privilege escalation introduced by the durability, not inherited from anywhere. Resolving the claim keeps parity with the dashboard.
+**What a fixed grant would have cost.** Before this workstream a CLI session carried a Clerk JWT, so a read-only collaborator's terminal was genuinely read-only. Replacing that JWT with a durable credential and a code-applied grant would have silently widened them to the full grant on their next `login` — a privilege escalation introduced by the durability, not inherited from anywhere. Resolving the claim keeps parity with the dashboard.
 
 **Why the claim is not stored on the row.** Snapshotting it at mint would make `core.cli_credentials` a second store of a fact Clerk owns, and it would freeze at issuance; a Postgres projection fed by `user.updated` webhooks would add backfill, ordering, and reconciliation to operate. The resolver holds an in-memory TTL cache instead — a latency optimisation with no persistence, so there is nothing to reconcile and staleness self-heals toward Clerk within the TTL.
 
@@ -605,7 +609,8 @@ Every named credential / token / identifier in the auth surface, with sensitivit
 | Item | Class | Lifetime | Acceptable surfaces | Forbidden surfaces |
 |---|---|---|---|---|
 | `__session` cookie (Token A) | secret | session-bound (Clerk-managed) | dashboard origin (`app.agentsfleet.net`) only | any other origin · server logs · client logs · URLs |
-| Clerk-signed JWT (Token B, `api` template) | secret | ~15 min | `Authorization: Bearer …` header on `/v1/*` calls | logs · query strings · client-side storage beyond the React closure that minted it · disk (the CLI's `credentials.json` is the one exception, mode 0o600) |
+| Clerk-signed JWT (Token B, `api` template) | secret | ~60s (current template setting) | `Authorization: Bearer …` header on `/v1/*` calls; the CLI's single mint call | logs · query strings · client-side storage beyond the React closure that minted it · **disk — no exception since M160_002, which spends this token on a mint instead of persisting it** |
+| `afc_*` CLI credential (Flow 1) | secret | until revoked — no expiry | `Authorization: Bearer …` header on `/v1/*` calls; the CLI's `credentials.json` (mode 0o600) | logs · query strings · process lists · shell history · client-side storage · screenshots · any disk location other than that file |
 | `agt_t*` tenant API key | secret | until explicitly revoked | `Authorization: Bearer …` header on `/v1/*` calls; vault items; operator's password manager | logs · process lists · shell history · client-side storage · disk except a secrets manager · screenshots |
 | `CLERK_SECRET_KEY` | secret (catastrophic) | until rotated | Vercel runtime env · Fly runtime env · `~/Projects/agentsfleet/.env` (gitignored, operator laptop only) · CI runners (GitHub Actions secret) · 1Password vaults | client bundle (a rename to `NEXT_PUBLIC_*` would be a P0 incident) · logs · error bodies |
 | `session_id` (M74_002 device-flow session ID) | sensitive ephemeral capability — treat as password-reset token | 5 min (or terminal state) | the API-generated `login_url` (`https://app.agentsfleet.net/cli-auth/{session_id}`) · API route paths that consume it (`/v1/auth/sessions/{id}{,/approve,/verify}`) | `.auth` log scope at info/warn/error (use `redactSessionId()` to 8-hex-prefix) · analytics · telemetry · metrics labels · secondary URLs (deep links, redirect targets, "share this page") · error response bodies routed to non-trusted surfaces · copied diagnostic bundles · support tickets |
@@ -840,7 +845,7 @@ Stages 1 and 2 are dashboard browser-session cleanup. They are NOT finished plat
 
 | # | Smell | Why it survives Stages 1+2 |
 |---|---|---|
-| 1 | **The CLI's stored credential is a human session artifact.** agentsfleet's `credentials.json` holds a Clerk-issued api-template JWT — a browser-originated, human-session-bound token used as a machine credential. Adequate for human-led local development; wrong primitive for service principals, automation, robot accounts, offline auth, long-running fleet delegation, scoped execution tokens, and revocable capabilities. | The carve-out preserves the api template specifically because the customized session token's ~60s TTL + browser-refresh coupling doesn't fit the CLI. Stages 1+2 hide the smell better; they don't fix it. |
+| 1 | ~~**The CLI's stored credential is a human session artifact.**~~ **Fixed by M160_002 — outside Stages 1+2.** `credentials.json` now holds an `afc_` credential the backend minted and can revoke, not a browser-originated Clerk JWT used as a machine credential. What survives of the original smell is narrower: no per-install scope ceiling (the credential resolves the person's own scopes), and the dashboard still brokers the api-template JWT for the handoff itself. | Stages 1+2 would never have fixed this — it needed its own milestone, which is what it got. |
 | 2 | **Clerk semantics still leak through the BFF.** At Stage 2, `/api/*` route handlers mint Clerk-issued tokens via `auth().getToken()`; agentsfleetd's verifier trusts Clerk's JWKS directly via `iss=https://clerk.dev.agentsfleet.net`. The platform's control-plane trust is anchored at an external SaaS identity provider. | Stages 1+2 collapse Token A/B into one Clerk token; they don't replace Clerk as the issuer. |
 | 3 | **No agentsfleet-native capability layer.** The platform has no opinion of its own about credential shape, scope, delegation, or revocation — every authentication path inherits whatever Clerk decides. | Out of scope for browser-session cleanup. |
 
@@ -860,7 +865,7 @@ agentsfleet-issued capability token
 agentsfleetd verifier
 ```
 
-At that point: agentsfleetd stops trusting Clerk's JWKS directly. The CLI's stored credential is an agentsfleet capability token (revocable server-side, scoped per install, decoupled from any human's Clerk session lifecycle). The dashboard's BFF mints agentsfleet capabilities, not Clerk JWTs. Clerk reduces to identity verification at sign-in.
+**One clause of this arrived early, in M160_002.** The CLI's stored credential is already an agentsfleet capability token — revocable server-side and decoupled from any human's Clerk session lifetime — though not yet scoped per install. Still outstanding at that point: agentsfleetd stops trusting Clerk's JWKS directly, the dashboard's BFF mints agentsfleet capabilities rather than Clerk JWTs, and Clerk reduces to identity verification at sign-in.
 
 That work is the v3 trajectory and is not bundled with the Flow 2 cleanup. Stage 1 + Stage 2 explicitly do NOT preclude it — they are intermediate states on the path to it. Treat them as such; do not fossilize "Clerk JWTs everywhere" as the destination.
 
