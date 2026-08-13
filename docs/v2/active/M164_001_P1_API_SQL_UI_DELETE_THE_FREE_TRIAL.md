@@ -47,7 +47,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 1. `src/agentsfleetd/state/tenant_billing_rates.zig` — the whole pricing path lives here. `sliceRatesWithoutCatalogue` is where the window short-circuits ahead of the posture switch; `resolveRenewSliceRates` and the `computeStageCharge` / `computeStageChargeAt` pair are what collapse once it is gone. Read the doc comments before editing: they state why the short-circuit sits where it does, and that reason is what this workstream removes.
 2. `docs/v2/done/M154_002_P1_API_SQL_PRIVILEGE_BOUNDARIES_SECRETS_WALLET.md` — the parked milestone this is carved out of. Its "Parked" section explains why none of its role work ships. Do not carry any of it across; the two overlap only in files, never in behaviour.
 3. `docs/architecture/billing_and_provider_keys.md` — the canonical description of how a stage is priced and charged. It documents the window, so it changes with the code.
-4. `~/Projects/dotfiles/docs/SCHEMA_CONVENTIONS.md` — a column drop and a new slot are both schema edits; the Schema Table Removal Guard fires on the first.
+4. `~/Projects/dotfiles/docs/SCHEMA_CONVENTIONS.md` and `dispatch/write_sql.md` §Schema Table Removal Guard — read the guard's **pre-v2.0.0** branch before touching either schema file. `cat VERSION` first; it decides whether a change is an edit to an existing slot or a new `ALTER` migration, and here it is the former.
 
 ## Files Changed (blast radius)
 
@@ -57,8 +57,7 @@ Discovery grep, from the repository root:
 | File | Action | Why |
 |------|--------|-----|
 | `schema/700_tenant_wallet.sql` | EDIT | Drops the `free_trial_ends_at` column from the wallet |
-| `schema/821_memory_entries_fleet_fk.sql` | CREATE | §2 — the memory rows gain a parent so erasure reaches them |
-| `schema/embed.zig` | EDIT | Registers slot 821 |
+| `schema/820_memory_entries.sql` | EDIT | §2 — `fleet_id` gains its referential edge inline, so erasure reaches the memory rows |
 | `src/agentsfleetd/state/tenant_billing.zig` | EDIT | Deletes the window predicate and the two struct fields projecting it |
 | `src/agentsfleetd/state/tenant_billing_rates.zig` | EDIT | Deletes the short-circuit branch; the resolvers lose their window and clock parameters |
 | `src/agentsfleetd/state/tenant_billing_store.zig` | EDIT | Stops reading the dropped column |
@@ -91,7 +90,7 @@ Discovery grep, from the repository root:
 ## Applicable Rules
 
 - **`~/Projects/dotfiles/docs/greptile-learnings/RULES.md`** — **NDC** (the deletion leaves no dead branch behind), **ORP** (orphan sweep: the window constants and the predicate must have zero remaining references), **NLR** (touch-it-fix-it on the doc comments that describe the window as live), **UFS** (the website copy constants that survive are named, not retyped), **FLL** (`tenant_billing.zig` shrinks; no file approaches the cap).
-- **`~/Projects/dotfiles/docs/SCHEMA_CONVENTIONS.md`** — a column drop plus a new slot; slot numbering and the embed registration follow the existing order.
+- **`~/Projects/dotfiles/docs/SCHEMA_CONVENTIONS.md`** and **`dispatch/write_sql.md`** §Schema Table Removal Guard — two edits to existing slots under the pre-v2.0.0 teardown-rebuild path. **RULE STS** (no static strings in schema) and **RULE SGR** (migrations carry their grants) apply to both; neither change adds a literal or a grant.
 - **`~/Projects/dotfiles/docs/REST_API_DESIGN_GUIDELINES.md`** — the billing response is a published surface and this removes a required member from it.
 - **`dispatch/write_zig.md`** — every edited `*.zig` file; the drain rule applies to the store read that loses a column.
 - **`dispatch/write_ts_adhere_bun.md`** — `cli/`, `ui/packages/app`, `ui/packages/website`.
@@ -106,11 +105,12 @@ Discovery grep, from the repository root:
 | UFS (repeated/semantic literals) | yes — the surviving website copy constants | Keep them named in `rates.ts`; no literal is retyped at a call site |
 | UI Substitution / DESIGN TOKEN | no — no markup or styling changes | Type and constant edits only |
 | LOGGING / LIFECYCLE / ERROR REGISTRY | no | No log line, lifecycle pair, or error code is added or removed |
-| SCHEMA (Schema Table Removal Guard) | yes — a column drop and a new slot | The guard fires on `schema/700`; the drop is a column, not a table, and slot 821 is additive |
+| SCHEMA (Schema Table Removal Guard) | yes — two schema edits | `VERSION=0.26.2`, so the teardown-rebuild path governs: both changes edit the slot that creates the object. `schema/700` loses a column; `schema/820` gains a `REFERENCES` clause. No `ALTER TABLE`, no `DROP TABLE`, no new slot, no `schema/embed.zig` change. Guard output printed before the first schema edit |
 
 ## Prior-Art / Reference Implementations
 
-- **Reference:** the parked `M154_002` branch, pushed at `8ff760da6` — it performed this exact deletion once already, inside a much larger diff. It is a **reference to read, not a branch to cherry-pick**: the commit carrying the deletion (`de16e9783`) also rewrites the elevation machinery across forty files, which is why this workstream re-authors against `main` instead. Read its `schema/821` verbatim — that file is self-contained and correct.
+- **Reference:** the parked `M154_002` branch, pushed at `8ff760da6` — it performed this exact deletion once already, inside a much larger diff. It is a **reference to read, not a branch to cherry-pick**: the commit carrying the deletion (`de16e9783`) also rewrites the elevation machinery across forty files, which is why this workstream re-authors against `main` instead. Its `schema/821` carries the reasoning for the foreign key and is worth reading for that, but **not its shape** — see §2's second implementation default.
+- **Reference:** `schema/820_memory_entries.sql` itself — every other column in the repository that references a parent declares it inline at the `CREATE TABLE`; that is the form §2 matches.
 - **Reference:** `~/Projects/dotfiles/docs/REST_API_DESIGN_GUIDELINES.md` plus the sibling handlers under `src/agentsfleetd/http/handlers/` — for how a published response member is removed.
 
 ## Sections (implementation slices)
@@ -133,11 +133,13 @@ The promotional window disappears from the schema, the pricing path, and the pub
 
 ### §2 — The memory rows gain a parent
 
-`memory.memory_entries.fleet_id` is a bare identifier with no referential edge, so deleting a fleet leaves its memory behind. Every sweep that could remove those rows is scoped by a fleet the caller enumerated, so a row whose fleet is already gone is unreachable by any of them — an erased account keeps its memory permanently. Slot 821 adds the edge with `ON DELETE CASCADE`.
+`memory.memory_entries.fleet_id` is a bare identifier with no referential edge, so deleting a fleet leaves its memory behind. Every sweep that could remove those rows is scoped by a fleet the caller enumerated, so a row whose fleet is already gone is unreachable by any of them — an erased account keeps its memory permanently. `schema/820` gains the edge with `ON DELETE CASCADE`, declared on the column it already creates.
 
-This slice is **separable**: it shares no code with §1 and rides along only because both are carve-outs of the same parked milestone. If Indy prefers a single-purpose Pull Request, §2 moves to its own workstream without touching §1.
+This slice is **separable**: it shares no code with §1 and rides along only because both are carve-outs of the same parked milestone. Indy confirmed it stays here (Discovery).
 
-**Implementation default:** the edge, not a sweep. A sweep would need a second scoping mechanism for rows whose parent is gone — which is the state that produced the gap. `ADD CONSTRAINT` validates every existing row, so the migration applying cleanly is itself the proof that no orphan is already present.
+**Implementation default:** the edge, not a sweep. A sweep would need a second scoping mechanism for rows whose parent is gone — which is the state that produced the gap.
+
+**Implementation default:** the edge is declared **inline on `schema/820`'s existing `fleet_id` column, not as a new `ALTER TABLE` slot.** `VERSION` is `0.26.2`, which puts this repository in the Schema Table Removal Guard's teardown-rebuild era, where `ALTER TABLE` is a forbidden construct and a schema change is made by editing the slot that creates the object. The parked milestone authored this as `schema/821_memory_entries_fleet_fk.sql`; that shape belongs to the v2.0.0+ path and is deliberately not carried across. `schema/811` is the repository's single pre-existing `ALTER` slot and is treated as the exception, not the pattern.
 
 **This changes documented behaviour.** `docs/architecture/memory.md` states that the table carries no foreign key and survives workspace destruction by design, with the role boundary as the isolation. The role boundary is unchanged — a referential action runs with the table owner's authority, so `memory_runtime` gains no reach into `core` — but "survives workspace destruction" stops being true and the doc says so.
 
@@ -185,7 +187,7 @@ Internal signatures — the window and clock parameters are removed, not default
 | Uncatalogued model, platform posture | The catalogue has no row for `(provider, model)`; previously the window branch returned zero rates ahead of the lookup | `error.ModelNotPriced`. Renew and settle fail closed; the lease-estimate gate fails open, since an estimate is not a charge. This behaviour exists on `main` but is unreachable while the window is open — the deletion is what exposes it |
 | Catalogue unreachable | The rate read errors rather than returning "no row" | Unchanged — the caller fails closed rather than pricing from a stale value |
 | Client still reads `free_trial` | A consumer pinned to the old response shape | The member is absent. Documented as a breaking change in the changelog and the published schema; the app never rendered it, and the CLI mirror is removed in the same diff |
-| Migration re-applied | Slot 821 re-runs against a database that already has the constraint | `embed.zig` skips a recorded slot version, so re-application is unreachable from any lane; the slot's own `DROP … IF EXISTS` covers a hand-applied re-run |
+| Schema re-applied | `schema/820` runs against a database that already has the table | `CREATE TABLE IF NOT EXISTS` skips it, exactly as it does today — the inline edge adds no new re-application path, which is one reason it is preferred over an `ALTER` slot here |
 | Memory write races an erasure | A capture commits while the fleet row is being deleted | Either it commits before the parent goes and cascades away, or it blocks on that row's lock and fails closed on the missing parent. Both states are the foreign key's definition; neither leaves a row behind |
 
 ## Invariants
@@ -193,7 +195,7 @@ Internal signatures — the window and clock parameters are removed, not default
 1. **Pricing is clock-independent.** No function in `tenant_billing_rates.zig` takes a time parameter or reads the clock — enforced by Dimension 1.2's grep assertion, which fails on any reintroduced `now_ms` or `clock.nowMillis()` in that file.
 2. **The window has no survivors.** No identifier matching the discovery grep remains in `src/`, `schema/`, `cli/`, `ui/`, or `public/` — enforced by the Dead Code Sweep greps as rubric rows, not by review.
 3. **The published schema and the handler agree.** `make check-openapi` fails if the response and the document diverge — this is the check that caught the `required` list on the parked branch only after a follow-up commit.
-4. **Memory reachability.** Every row in `memory.memory_entries` has a live parent in `core.fleets` — enforced by the foreign key itself, and validated across existing rows by `ADD CONSTRAINT` at migration time.
+4. **Memory reachability.** Every row in `memory.memory_entries` has a live parent in `core.fleets` — enforced by the foreign key itself, from the moment the table is created. On a rebuilt database there are no pre-existing rows to validate, which is what makes the inline declaration sufficient.
 
 ## Metrics & Observability
 
@@ -306,6 +308,14 @@ The charge itself is already carried by the existing ledger row and the wallet d
   > Indy (2026-08-13): "docs PR#171 close and reopen" — context: `agentsfleet/docs` #171 covered "privilege boundaries and the free-trial removal", half of which now ships nowhere. Closed; the replacement is authored under this workstream at DOCUMENT, when the code it describes is final.
 
   > Indy (2026-08-13): "Since M164 PR carries it ignore main" — context: local `main` carries spec commits not yet on `origin/main`, so this branch's Pull Request diff includes them. Accepted rather than pushing `main` first.
+
+- **Gate-flag triage — SCHEMA GUARD, raised at EXECUTE start and resolved before the first edit.** The spec's original §2 prescribed `schema/821_memory_entries_fleet_fk.sql`, an `ALTER TABLE … ADD CONSTRAINT`, carried over from the parked milestone. `cat VERSION` returns `0.26.2`, which puts this repository on the guard's **pre-v2.0.0 teardown-rebuild** path, where `ALTER TABLE` is a forbidden construct and a schema change is made by editing the slot that creates the object. The parked branch's slot passed Continuous Integration because this guard is agent-facing judgment rather than a script, so nothing mechanical caught it there.
+
+  Surfaced rather than auto-applied, because it changes §2's shape and because `schema/811_fleet_approval_gates_event_binding.sql` is a pre-existing `ALTER` slot that could have signalled an accepted local pattern. It is the repository's only one, and is treated as the exception.
+
+  > Indy (2026-08-13): "okay amdend the spec" — context: fix-or-defer on the above. §2 now declares the edge inline on `schema/820`'s existing `fleet_id` column; slot 821 and the `schema/embed.zig` registration leave the Files Changed table. The three Dimensions and their tests are unchanged — only the declaration site moves.
+
+  Per `AGENTS.md`, the spec is the instance and the rule is the constant: the spec was amended rather than the guard overridden.
 
 - **Metrics review** — No analytics or funnel playbook update required: the diff removes a response member and a pricing branch, and adds, renames, and removes no event. The charge amount changes; whether a charge is recorded does not.
 
