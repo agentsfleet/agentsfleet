@@ -6,7 +6,11 @@ The one credential path humans use from a terminal: a browser-mediated device fl
 
 ## Non-interactive token seeding (no device flow)
 
-When a usable bearer token already exists, `agentsfleet login` can persist it directly, skipping the browser entirely. The resolution order is `--token <pat>` → piped stdin (non-TTY); the first hit is validated against the same `/v1/me` ping the device flow uses and, **only on success**, written to `credentials.json` (`0o600`, `session_id: null`) — an invalid token leaves the file untouched. This is the only login path available without an interactive terminal (a non-TTY context — Continuous Integration runners, containers): the verification code requires a human at the keyboard, so a non-TTY shell with no token fails fast rather than hanging. **The device flow itself is unchanged and terminal-only** — this path does not mint a new credential, it only stores one the caller already holds, so the human-led binding of the device flow is untouched. Since M160_002 §1 the two shapes worth seeding are a Flow 3 tenant key (`agt_t…`) and an `afc_` credential minted earlier: those are what the credential loader accepts (`isPersistable`, `services/credentials.ts`). A raw Clerk session token is no longer usable here — it passes the `/v1/me` ping and is written, then reads back as logged-out on the next command, because the load-shape check refuses it. The write path does not yet reject it up front; see M160_002 for the open question.
+**Removed in M160_002 §3.** `agentsfleet login` used to accept an already-held bearer token directly — `--token <pat>`, falling back to piped stdin on a non-TTY — validate it against `/v1/me`, and write it to `credentials.json`. Both sources are gone, and `login` now has no non-interactive path at all.
+
+The reason is that it never had a job of its own. `AGENTSFLEET_API_KEY` already carries an `agt_t` tenant key on every request and **outranks the stored credential**, so an unattended caller was always served by the environment variable; the flag only added a second way to reach the same place, by way of a file the caller then had to manage. It was also the one path that could write a value the credential loader would later refuse: the write checked only whether the token *authenticated*, while every subsequent read checks whether it is *well-formed* (`isPersistable`, `services/credentials.ts`, accepting `afc_` and `agt_t` alone). Seeding a Clerk session token therefore reported success and then read back as logged-out on the next command — a failure that surfaced one command after the mistake.
+
+What replaces it is one rule with no overlap: **interactive is the device flow, unattended is `AGENTSFLEET_API_KEY`.** A non-TTY `login` now fails immediately and names that variable, rather than announcing a session no human is present to approve.
 
 ## Where the JWT lives in plaintext (data lifecycle)
 
@@ -74,21 +78,13 @@ sequenceDiagram
     participant API as Zig backend<br/>(api.agentsfleet.net)
     participant Clerk
 
-    User->>CLI: agentsfleet login [--token <pat>] [--token-name LABEL]
-    Note over CLI: idempotencyCheck — refuse to overwrite an existing<br/>credential without --force. A non-TTY stdin counts as<br/>--no-input: it fails loudly rather than consuming a piped<br/>token as the replace-prompt answer.
+    User->>CLI: agentsfleet login [--token-name LABEL]
+    Note over CLI: idempotencyCheck — refuse to overwrite an existing<br/>credential without --force. A non-TTY stdin counts as<br/>--no-input, so nothing piped is read as the replace-prompt answer.
 
-    alt direct token — resolveDirectToken: --token flag > piped stdin (non-TTY)
-        Note over CLI: first source wins; no browser, no session_id
-        CLI->>API: GET /v1/me   (validate-first — before any write)
-        alt token valid
-            API-->>CLI: 200
-            CLI->>CLI: write { token, credential_id: null } → credentials.json<br/>(0o600, session_id: null)<br/>credential_id is null — this client did not mint it, so it cannot revoke it
-            CLI-->>User: "logged in" (no browser)
-        else token invalid
-            API-->>CLI: 4xx
-            CLI-->>User: error — exit ≠ 0, credentials.json untouched
-        end
-    else interactive device flow — TTY, no direct token
+    alt non-TTY shell (M160_002 §3)
+        Note over CLI: no direct-token path exists any more — the verification<br/>code needs a human, so this cannot proceed
+        CLI-->>User: error — exit ≠ 0, "set AGENTSFLEET_API_KEY for unattended use"<br/>credentials.json untouched
+    else interactive device flow — TTY
         Note over CLI: generate (cli_priv, cli_pub) via crypto.subtle<br/>default token_name = platform family<br/>("macos-cli" / "linux-cli" / "windows-cli")
 
         CLI->>API: POST /v1/auth/sessions<br/>{ public_key: cli_pub, token_name }

@@ -32,7 +32,6 @@ import { Workspaces } from "../src/services/workspaces.ts";
 import {
   AuthError,
   InterruptedError,
-  MeValidationError,
   NetworkError,
   ServerError,
   type CliError,
@@ -44,7 +43,6 @@ const DEFAULT_FLAGS: LoginFlags = {
   noInput: true,
   force: false,
   tokenName: undefined,
-  tokenFlag: undefined,
 };
 
 interface Rec {
@@ -351,42 +349,12 @@ describe("loginEffect — cancel at the code prompt", () => {
   });
 });
 
-describe("loginEffect — non-interactive direct-token path", () => {
-  const BILLING_PATH = "/v1/tenants/me/billing";
-  const WORKSPACES_PATH = "/v1/tenants/me/workspaces?limit=100";
-  const DIRECT_TENANT_ID = "tenant_direct";
-
-  // Answers the validate (GET billing) + hydrate (GET workspaces) probes;
-  // dies on the device-flow POST so any test that fell through to the
-  // browser flow crashes loudly instead of passing by accident.
-  const directHttp = (validateOk: boolean): Layer.Layer<HttpClient> =>
-    Layer.succeed(HttpClient, {
-      request: <T>(input: HttpRequestInput): Effect.Effect<T, NetworkError | ServerError> => {
-        const { path, method = "GET" } = input;
-        if (method === "GET" && path === BILLING_PATH) {
-          return validateOk
-            ? Effect.succeed({} as T)
-            : Effect.fail(
-                new ServerError({
-                  detail: "unauthorized",
-                  suggestion: "re-login",
-                  code: "UZ-AUTH-001",
-                  status: 401,
-                  requestId: null,
-                }),
-              );
-        }
-        if (method === "GET" && path === WORKSPACES_PATH) {
-          return Effect.succeed({
-            items: [],
-            tenant_id: DIRECT_TENANT_ID,
-            total: null,
-            next_cursor: null,
-          } as T);
-        }
-        return Effect.die(`direct-token path must not reach ${method} ${path}`);
-      },
-    });
+describe("loginEffect — a terminal is required", () => {
+  // Direct-token seeding was retired. AGENTSFLEET_API_KEY
+  // already carries a tenant key on every request and outranks the stored
+  // credential, so `login` has no non-interactive path left at all. What
+  // matters now is that a non-TTY shell is told so, rather than announcing a
+  // device-flow session no human is present to approve.
 
   const recordingBrowser = (): { readonly layer: Layer.Layer<Browser>; readonly opens: () => number } => {
     let opens = 0;
@@ -426,97 +394,42 @@ describe("loginEffect — non-interactive direct-token path", () => {
     };
   };
 
-  const run = (
-    rec: Rec,
-    flags: LoginFlags,
-    layers: {
-      readonly http: Layer.Layer<HttpClient>;
-      readonly stdin: Layer.Layer<Stdin>;
-      readonly browser: Layer.Layer<Browser>;
-      readonly creds: Layer.Layer<Credentials>;
-    },
-  ) =>
-    Effect.runPromiseExit(
-      loginEffect(flags).pipe(
-        Effect.provide(layers.http),
+  const nonTty = async (piped: string) => {
+    const rec = makeRec();
+    const browser = recordingBrowser();
+    const creds = recordingCreds();
+    const exit = await Effect.runPromiseExit(
+      loginEffect({ ...DEFAULT_FLAGS, force: true }).pipe(
+        Effect.provide(noNetworkHttp),
         Effect.provide(inputAlwaysEmpty),
         Effect.provide(outputLayer(rec)),
-        Effect.provide(layers.creds),
-        Effect.provide(layers.browser),
+        Effect.provide(creds.layer),
+        Effect.provide(browser.layer),
         Effect.provide(workspacesLayer),
         Effect.provide(analyticsLayer),
         Effect.provide(configLayer),
         Effect.provide(telemetryLayer),
-        Effect.provide(layers.stdin),
+        Effect.provide(stdinPiped(piped)),
       ) as Effect.Effect<void, CliError, never>,
     );
+    return { exit, browser, creds };
+  };
 
-  test("--token validates + persists with no browser opened", async () => {
-    const rec = makeRec();
-    const browser = recordingBrowser();
-    const creds = recordingCreds();
-    const exit = await run(
-      rec,
-      { ...DEFAULT_FLAGS, force: true, tokenFlag: "direct-token" },
-      { http: directHttp(true), stdin: stdinTty, browser: browser.layer, creds: creds.layer },
-    );
-    expect(Exit.isSuccess(exit)).toBe(true);
+  test("a non-TTY login fails fast and names the environment variable that serves unattended callers", async () => {
+    const { exit, browser, creds } = await nonTty("");
+    const failure = failureValue(exit);
+    expect(failure).toBeInstanceOf(InterruptedError);
+    expect(
+      (failure as InstanceType<typeof InterruptedError>).suggestion,
+    ).toContain("AGENTSFLEET_API_KEY");
     expect(browser.opens()).toBe(0);
-    expect(creds.saves()).toBe(1);
-  });
-
-  test("--token-name alongside --token emits the ignored note (not silently swallowed)", async () => {
-    const rec = makeRec();
-    const browser = recordingBrowser();
-    const creds = recordingCreds();
-    const exit = await run(
-      rec,
-      { ...DEFAULT_FLAGS, force: true, tokenFlag: "direct-token", tokenName: "my-laptop" },
-      { http: directHttp(true), stdin: stdinTty, browser: browser.layer, creds: creds.layer },
-    );
-    expect(Exit.isSuccess(exit)).toBe(true);
-    expect(rec.stdout.some((l) => l.includes("--token-name is ignored"))).toBe(true);
-  });
-
-  test("invalid --token fails validation and persists nothing", async () => {
-    const rec = makeRec();
-    const browser = recordingBrowser();
-    const creds = recordingCreds();
-    const exit = await run(
-      rec,
-      { ...DEFAULT_FLAGS, force: true, tokenFlag: "bad-token" },
-      { http: directHttp(false), stdin: stdinTty, browser: browser.layer, creds: creds.layer },
-    );
-    expect(failureValue(exit)).toBeInstanceOf(MeValidationError);
     expect(creds.saves()).toBe(0);
-    expect(browser.opens()).toBe(0);
   });
 
-  test("piped stdin (non-TTY) resolves the token with no browser opened", async () => {
-    const rec = makeRec();
-    const browser = recordingBrowser();
-    const creds = recordingCreds();
-    const exit = await run(
-      rec,
-      { ...DEFAULT_FLAGS, force: true },
-      { http: directHttp(true), stdin: stdinPiped("  piped-token\n"), browser: browser.layer, creds: creds.layer },
-    );
-    expect(Exit.isSuccess(exit)).toBe(true);
-    expect(browser.opens()).toBe(0);
-    expect(creds.saves()).toBe(1);
-  });
-
-  test("non-TTY + empty stdin + no token fails fast, nothing persisted, no browser", async () => {
-    const rec = makeRec();
-    const browser = recordingBrowser();
-    const creds = recordingCreds();
-    const exit = await run(
-      rec,
-      { ...DEFAULT_FLAGS, force: true },
-      { http: noNetworkHttp, stdin: stdinPiped(""), browser: browser.layer, creds: creds.layer },
-    );
+  test("a piped value is no longer read as a credential — it seeds nothing and opens nothing", async () => {
+    const { exit, browser, creds } = await nonTty("  agt_tpiped-value\n");
     expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
-    expect(browser.opens()).toBe(0);
     expect(creds.saves()).toBe(0);
+    expect(browser.opens()).toBe(0);
   });
 });

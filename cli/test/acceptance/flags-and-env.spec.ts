@@ -170,10 +170,14 @@ describe("non-TTY login fast-fails", () => {
     return child;
   }
 
-  it("exits non-zero with token guidance and never opens a browser", async () => {
+  // Since direct-token seeding was retired, the guidance a non-TTY
+  // shell gets must name the environment variable rather than the removed
+  // flag — otherwise the fast-fail points at something that no longer exists.
+  it("exits non-zero naming AGENTSFLEET_API_KEY and never opens a browser", async () => {
     const result = await waitForExit(spawnNonTtyLogin());
     assert.notEqual(result.code, 0, `expected fast-fail, got ${result.code}; stderr=${result.stderr}`);
-    assert.match(result.stderr, /--token/, `expected token guidance: ${result.stderr}`);
+    assert.match(result.stderr, /AGENTSFLEET_API_KEY/, `expected env-var guidance: ${result.stderr}`);
+    assert.doesNotMatch(result.stderr, /--token\b/, `must not point at the removed flag: ${result.stderr}`);
     assert.ok(
       !/login_url|127\.0\.0\.1/i.test(result.stdout),
       `device flow must not start: ${result.stdout}`,

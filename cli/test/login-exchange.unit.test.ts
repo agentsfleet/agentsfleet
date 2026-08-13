@@ -230,10 +230,12 @@ describe("test_session_token_persistence_has_no_caller", () => {
       path.join(import.meta.dir, "..", "src", "commands", "login-helpers.ts"),
       "utf8",
     );
-    // saveDirectToken is the only other persistence path and must stay a
-    // pass-through for a supplied key: it mints nothing, so it holds no
-    // identifier to revoke later.
     expect(loginHelpers).not.toContain("machine_name");
-    expect(loginHelpers).toContain("credentialId: null");
+    // Stronger than it used to be. This file once held saveDirectToken, the
+    // second path that wrote credentials.json; §3 removed it, so the device
+    // flow is now the only writer and the helpers persist nothing at all.
+    // A new `saveAccessToken` call appearing here would be a second writer
+    // reintroduced, which is the regression this line exists to catch.
+    expect(loginHelpers).not.toContain("saveAccessToken");
   });
 });

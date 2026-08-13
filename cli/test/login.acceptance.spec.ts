@@ -354,7 +354,6 @@ describe("login acceptance — full device flow end-to-end", () => {
       noInput: false,
       force: true,
       tokenName: undefined,
-      tokenFlag: undefined,
     }).pipe(
       Effect.provide(httpLayer(fixture)),
       Effect.provide(inputLayer(rec, VERIFICATION_CODE)),
@@ -407,7 +406,6 @@ const runLogin = (
     noInput: false,
     force: true,
     tokenName: undefined,
-    tokenFlag: undefined,
   }).pipe(
     Effect.provide(
       httpLayer(fixture, {
