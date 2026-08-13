@@ -76,11 +76,11 @@ Discovery grep, from the repository root:
 | `src/agentsfleetd/fleet/credit_metric_reconciliation_integration_test.zig` | EDIT | Fixture stops closing the window; the rationale comments naming it go with it |
 | `src/agentsfleetd/fleet/event_lifecycle_integration_test.zig` | EDIT | Fixture reference |
 | `src/agentsfleetd/fleet_runtime/metering_integration_test.zig` | EDIT | Fixture stops closing the window |
-| `src/agentsfleetd/http/handlers/tenant_billing_integration_test.zig` | EDIT | Fixture stops closing the window; adds the Dimension 1.6 test asserting the response has no `free_trial` member |
+| `src/agentsfleetd/http/handlers/tenant_billing_integration_test.zig` | EDIT | Fixture stops closing the window; adds the Dimension 1.6 test, which pins the response's published member set (§4.3 — it asserts absence without naming the removed field) |
 | `src/agentsfleetd/db/schema_shape_integration_test.zig` | EDIT | Adds the Dimension 1.1 test — the wallet carries no window column, asserted against the live catalogue |
 | `src/agentsfleetd/db/test_fixtures.zig` | EDIT | Deletes the window fixture constants and the column write — the repository's only writer |
 | `src/agentsfleetd/memory/fleet_memory_integration_test.zig` | EDIT | §2 — the foreign key's behavioural tests |
-| `src/agentsfleetd/db/index_usage_integration_test.zig` | EDIT | §2 — its memory fixture spreads rows across ~181 synthetic fleet ids; the foreign key needs a parent per id |
+| `src/agentsfleetd/db/index_usage_integration_test.zig` | EDIT | §2 — its memory fixture spreads rows across synthetic fleet ids and the foreign key needs a parent per id; §5.2 cuts that spread to four parents so the fixture stops bloating shared `core.fleets` |
 | `src/agentsfleetd/db/index_removal_integration_test.zig` | EDIT | §2 — same fixture shape, same parent requirement |
 | `src/agentsfleetd/http/test_harness.zig` | EDIT | §3 — bounds the stop→join teardown so a stalled shutdown reports instead of parking the binary |
 | `src/agentsfleetd/http/test_harness_server.zig` | EDIT | §3 — `listen_returned` signal plus the bounded teardown both call sites use |
@@ -106,6 +106,28 @@ Discovery grep, from the repository root:
 | `playbooks/operations/m164_free_trial_removal/apply.sql` | NEW | Hand-migration for a database that is not rebuilt from the slots, with an orphan preflight |
 | `playbooks/operations/m164_free_trial_removal/verify.sql` | NEW | Post-migration assertions for the same database |
 | `docs/v2/active/M164_001_P1_API_SQL_UI_DELETE_THE_FREE_TRIAL.md` | EDIT | This spec — lifecycle status, Dimension grading, and this table |
+
+**Added during EXECUTE (Indy-approved, §4 and §5).** The rename and the
+performance pass were authorised in-session; the entries below are the files
+they reach that the original blast radius did not name.
+
+| File | Action | Why |
+|------|--------|-----|
+| `ui/packages/website/src/lib/rates.ts` | EDIT | §4 — `FREE_TRIAL_{PILL,BANNER}` → `EARLY_ACCESS_*` (already listed above for the gate removal) |
+| `ui/packages/website/src/components/FAQ.tsx` | EDIT | §4 — the last user-visible promise of an ending: "trial details. After the trial, hosted execution is metered". Not in the original radius; the same claim was stripped from `Pricing.tsx` and missed here |
+| `ui/packages/website/src/components/FAQ.test.tsx` | EDIT | §4 — asserts the answer contains the renamed constant |
+| `ui/packages/website/src/components/Hero.tsx` | EDIT | §4 — renders the pill constant |
+| `ui/packages/website/src/components/Hero.test.tsx` | EDIT | §4 — test name and the comment naming the source constant |
+| `ui/packages/website/src/components/Pricing.test.tsx` | EDIT | §4 — the banner test identifier and the plan's call-to-action identifier |
+| `ui/packages/website/src/pages/Terms.test.tsx` | EDIT | §4 — test name; the assertion's copy was already correct |
+| `ui/packages/website/tests/e2e/home.spec.ts` | EDIT | §4 — comment naming the constant |
+| `ui/packages/website/tests/e2e/smoke.spec.ts` | EDIT | §4 — `pricing-card-trial` → `pricing-card-early-access`, derived from the plan id |
+| `src/agentsfleetd/fleet/service_billing.zig` | EDIT | §5 — `balanceCoversEstimate` call site loses its allocator argument |
+| `src/agentsfleetd/fleet_runtime/metering_idempotent_test.zig` | EDIT | §5 — asserts the stamped `grant_source` against the stored column instead of a response member |
+| `src/agentsfleetd/fleet_runtime/metering_concurrency_test.zig` | EDIT | §5 — `getBilling` call sites |
+| `docs/AUTH.md` | EDIT | §6 — cited the retired `schema/033_hot_path_indexes.sql` |
+| `docs/architecture/scaling.md` | EDIT | §6 — same retired citation |
+| `docs/architecture/scenarios/README.md` | EDIT | §6 — cited `core.tenant_billing`, a table that does not exist |
 
 ## Applicable Rules
 
@@ -143,13 +165,13 @@ The promotional window disappears from the schema, the pricing path, and the pub
 
 **Implementation default:** the website copy constants (`FREE_TRIAL_PILL` and the sentence beside it in `ui/packages/website/src/lib/rates.ts`) **stay**. They read "Free during early access", which describes the starter grant and remains true. Only the pricing gate above them goes. Their names become inaccurate once the window is gone — propose the rename to Indy in Discovery and take his answer; do not rename unilaterally, because the strings are consumed by four component tests and one end-to-end scenario.
 
-- **Dimension 1.1** — The wallet no longer has a window column, and the wallet read no longer selects one → Test `the wallet carries no promotional-window column` (`schema_shape_integration_test.zig`, asserted against the live catalogue)
-- **Dimension 1.2** — No rate resolver accepts a time parameter; the time-injected sibling is gone → Test `test_rate_resolvers_take_no_clock`
-- **Dimension 1.3** — A metered platform stage charges the catalogue rate rather than zero → Test `test_metered_platform_stage_charges_catalogue_rate`
-- **Dimension 1.4** — A platform stage naming a model the catalogue does not price fails closed instead of pricing at zero → Test `test_uncatalogued_platform_model_is_refused`
-- **Dimension 1.5** — A `self_managed` stage still charges the run rate only, token tiers recorded and not charged → Test `test_self_managed_charges_run_rate_only`
-- **Dimension 1.6** — `GET /v1/tenants/me/billing` returns no `free_trial` member, and the published schema does not list it as required → Test `GET /v1/tenants/me/billing carries no promotional-window member` (response body; the published schema half is R4)
-- **Dimension 1.7** — The starter grant and `balance_exhausted_at` remain the only free-usage boundary, unchanged by this diff → Test `test_starter_grant_still_bounds_free_usage`
+- **Dimension 1.1 — DONE** — The wallet no longer has a window column, and the wallet read no longer selects one → Test `the wallet carries no promotional-window column` (`schema_shape_integration_test.zig`, asserted against the live catalogue)
+- **Dimension 1.2 — DONE** — No rate resolver accepts a time parameter; the time-injected sibling is gone → Test `test_rate_resolvers_take_no_clock`
+- **Dimension 1.3 — DONE** — A metered platform stage charges the catalogue rate rather than zero → Test `test_metered_platform_stage_charges_catalogue_rate`
+- **Dimension 1.4 — DONE** — A platform stage naming a model the catalogue does not price fails closed instead of pricing at zero → Test `test_uncatalogued_platform_model_is_refused`
+- **Dimension 1.5 — DONE** — A `self_managed` stage still charges the run rate only, token tiers recorded and not charged → Test `test_self_managed_charges_run_rate_only`
+- **Dimension 1.6 — DONE** — `GET /v1/tenants/me/billing` returns no `free_trial` member, and the published schema does not list it as required → Test `GET /v1/tenants/me/billing carries no promotional-window member` (response body; the published schema half is R4)
+- **Dimension 1.7 — DONE** — The starter grant and `balance_exhausted_at` remain the only free-usage boundary, unchanged by this diff → Test `test_starter_grant_still_bounds_free_usage`
 
 ### §2 — The memory rows gain a parent
 
@@ -163,9 +185,9 @@ This slice is **separable**: it shares no code with §1 and rides along only bec
 
 **This changes documented behaviour.** `docs/architecture/memory.md` states that the table carries no foreign key and survives workspace destruction by design, with the role boundary as the isolation. The role boundary is unchanged — a referential action runs with the table owner's authority, so `memory_runtime` gains no reach into `core` — but "survives workspace destruction" stops being true and the doc says so.
 
-- **Dimension 2.1** — Deleting a fleet erases its memory, performed by a role holding no grant on the memory table → Test `test_fleet_delete_cascades_memory`
-- **Dimension 2.2** — A memory write naming a fleet that does not exist is refused rather than orphaned, and the session survives the refusal → Test `test_memory_write_for_absent_fleet_is_refused`
-- **Dimension 2.3** — The writing role still holds no grant on `core`, and the write still resolves the reference → Test `test_memory_write_holds_no_core_grant`
+- **Dimension 2.1 — DONE** — Deleting a fleet erases its memory, performed by a role holding no grant on the memory table → Test `test_fleet_delete_cascades_memory`
+- **Dimension 2.2 — DONE** — A memory write naming a fleet that does not exist is refused rather than orphaned, and the session survives the refusal → Test `test_memory_write_for_absent_fleet_is_refused`
+- **Dimension 2.3 — DONE** — The writing role still holds no grant on `core`, and the write still resolves the reference → Test `test_memory_write_holds_no_core_grant`
 
 ### §3 — The test harness stops hanging the suite
 
@@ -175,10 +197,40 @@ This slice is **separable**: it shares no code with §1 and rides along only bec
 
 **Implementation default:** bound the wait, do not detach. `std.Thread` has no timed join, and detaching is worse than the hang — the caller frees the server immediately after, so a live accept loop would read freed memory. `serverThread` signals `listen_returned` on every exit path; teardown polls it and panics with the stage name on expiry. A loud abort beats a silent park, and beats a use-after-free.
 
-- **Dimension 3.1** — The accept loop signals its exit, so teardown can tell "joinable" from "not yet woken"; the flag reads false while the server is live → Test `the accept loop reports itself running, then exits on teardown`
-- **Dimension 3.2** — Teardown that completes normally still joins, well inside the timeout rather than passing by luck near it → Test `the accept loop reports itself running, then exits on teardown` (same test, second assertion)
+- **Dimension 3.1 — DONE** — The accept loop signals its exit, so teardown can tell "joinable" from "not yet woken"; the flag reads false while the server is live → Test `the accept loop reports itself running, then exits on teardown`
+- **Dimension 3.2 — DONE** — Teardown that completes normally still joins, well inside the timeout rather than passing by luck near it → Test `the accept loop reports itself running, then exits on teardown` (same test, second assertion)
 
 **Not covered by a test, stated rather than implied:** the `listen()`-error exit path signals through the same `defer`, but forcing a bind failure on demand needs a port-race harness this workstream does not build. The `defer` placement is the guarantee; a test would be asserting Zig's semantics.
+
+### §4 — The copy names early access, not a trial
+
+Authorised in-session, after the §1 default deferred the rename to Indy: *"yes your suggest is good to change as early access, and delete A, keep B and C untouched, fix the FAQ sentence and rename all of D's identifiers to the early-access naming -- approved."*
+
+A global scan for every spelling of the word returned 31 hits in four classes. One was a code corpse (the response test spelling `free_trial` to assert its absence), five were the hand-migration that must name the column it drops, two were architecture history worth keeping, and twenty-three were website copy and identifiers. The website class contained a **live defect the original radius missed**: `FAQ.tsx` still told users "trial details. After the trial, hosted execution is metered" — the same claim §1 stripped from `Pricing.tsx`.
+
+- **Dimension 4.1 — DONE** — No shipping source outside the migration playbook names a trial; the identifiers read `EARLY_ACCESS_*` and the plan is `early-access` → Test `early-access display strings (the copy names no date)` plus the rubric's R3 grep
+- **Dimension 4.2 — DONE** — The Frequently Asked Questions (FAQ) answer promises no ending → Test `keeps FAQ rate answers byte-equal to RATES_DISPLAY`
+- **Dimension 4.3 — DONE** — The billing response test proves absence by pinning the published member set, naming no removed field → Test `integration: GET /v1/tenants/me/billing carries exactly its published members`
+
+### §5 — The billing read stops paying for a column no one reads
+
+Authorised in-session as a free-hand performance pass over the diff. `SELECT_TENANT_BALANCE` fetched `grant_source`, `loadByTenant` duplicated it onto the heap, and both callers freed it unread — on every `GET /v1/tenants/me/billing` and every metered stage's pre-claim gate. It is published nowhere: not `public/openapi.json`, not the app's `TenantBilling`, not the Command-Line Interface (CLI).
+
+**Implementation default:** drop the READ, keep the WRITE. The column records why a tenant holds a balance, which is audit data worth keeping; nothing consumed it at read time. The two tests asserting the stamped value now read the column directly, the way `signup_bootstrap_test` already did — coverage of the claim is preserved, not deleted with the field.
+
+- **Dimension 5.1 — DONE** — The wallet read carries no member no consumer wants, and the path allocates nothing: `loadByTenant`, `getBilling`, and `balanceCoversEstimate` take no allocator → Test `provision inserts one row and replay is a no-op` (stored-column assertion)
+- **Dimension 5.2 — DONE** — The index fixture no longer perturbs shared `core.fleets`: `index_usage` seeds four parents and needs no `VACUUM`, because its fitness probe runs under `enable_seqscan = off` and is size-independent by the file's own header → Test `the memory index serves its fleet filter`
+- **Dimension 5.3 — DONE** — `index_removal` keeps the wide spread and its `VACUUM`, because its claim is planner PREFERENCE and selectivity across ~200 fleets is the thing under test → Test `the composite still covers the fleet filter after the drop`
+
+### §6 — The architecture docs stop contradicting the source
+
+Authorised in-session: *"review all the docs/AUTH*.md, docs/architecture/*.md ... ensure its got the correct information"*, with *"no new spec for the above"* and *"just update in this PR"*.
+
+Correctness first, verified against source rather than against another document. `billing_and_provider_keys.md` claimed in three places that an uncatalogued platform model panics — the behaviour removed because it aborted the whole replica for one fleet's stale model — while its own §2.3 already described the error return.
+
+- **Dimension 6.1 — DONE** — No live architecture doc describes the panic, and none cites a table or schema slot that does not exist → Verified by the rubric's R7 and R8 audits
+
+**Structural finding, surfaced rather than actioned:** the house template (`Facts · Traps · Topology · Decisions · Detail`) is applied in full by five files, partially by five, and not at all by six. `AUTH.md` also carries a 252-line roadmap section mid-document while `architecture/roadmap.md` tracks the same item. Both are judgment calls about document architecture, not defects, so they are recorded here for Indy rather than actioned unilaterally.
 
 ## Interfaces
 
@@ -260,19 +312,21 @@ The charge itself is already carried by the existing ledger row and the wallet d
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | A metered platform stage charges the catalogue rate (§1) | `zig build test-integration -Dtest-filter="wire renew bills the body's splits" --summary all` | `Build Summary` reports a **non-zero** passed count and 0 failed. A zero passed count means the filter matched no test and the row is ungraded, not green. Needs a live database — the test self-skips without one | P0 | |
-| R2 | No rate resolver reads a clock (§1) | `grep -cE 'now_ms\|clock\.nowMillis' src/agentsfleetd/state/tenant_billing_rates.zig` | `0` | P0 | |
-| R3 | The window has no survivors anywhere (§1) | `git grep -rn -wE 'free_trial\|freeTrial\|isFreeTrialActive\|trial_ends_at_ms' -- src schema cli ui public \| wc -l` | `0` | P0 | |
-| R4 | The published schema drops the member and its required entry (§1) | `make check-openapi && grep -c 'free_trial' public/openapi.json` | exit 0 then `0` | P0 | |
-| R5 | A fleet delete erases its memory (§2) | `zig build test -Dtest-filter="cascades its memory"` | `Build Summary` reports all tests passed | P0 | |
-| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit lanes pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S5 | No leaks | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S9 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | |
+| R1 | A metered platform stage charges the catalogue rate (§1) | `zig build test-integration -Dtest-filter="wire renew bills the body's splits" --summary all` | `Build Summary` reports a **non-zero** passed count and 0 failed. A zero passed count means the filter matched no test and the row is ungraded, not green. Needs a live database — the test self-skips without one | P0 | ✅ graded from the unfiltered lane instead, per the trap below: `869 passed; 7 skipped; 0 failed.` A `-Dtest-filter` run reports `N/N passed` even when it matches nothing, so the filter cannot grade this row |
+| R2 | No rate resolver reads a clock (§1) | `grep -cE 'now_ms\|clock\.nowMillis' src/agentsfleetd/state/tenant_billing_rates.zig` | `0` | P0 | ✅ `0` |
+| R3 | The window has no survivors anywhere (§1) | `git grep -rn -wE 'free_trial\|freeTrial\|isFreeTrialActive\|trial_ends_at_ms' -- src schema cli ui public \| wc -l` | `0` | P0 | ✅ `0` — reached only after §4. The row read `1` while the Dimension 1.6 test spelled `free_trial` to assert its absence, which made the criterion unsatisfiable by construction; pinning the member set instead removed the last occurrence |
+| R4 | The published schema drops the member and its required entry (§1) | `make check-openapi && grep -c 'free_trial' public/openapi.json` | exit 0 then `0` | P0 | ✅ exit 0 (`74 served /v1 routes, all documented`) then `0` |
+| R5 | A fleet delete erases its memory (§2) | `zig build test -Dtest-filter="cascades its memory"` | `Build Summary` reports all tests passed | P0 |  ✅ graded from the unfiltered lane, same trap as R1: `869 passed; 7 skipped; 0 failed.` |
+| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ `0` undeclared, after the §4/§5/§6 additions were declared. Excludes the M154/M160/M163 spec files, which reach the diff because the branch was cut from a local `main` holding six unpushed docs commits — see Session Notes |
+| R7 | Every schema slot the docs cite exists (§6) | `grep -ohE 'schema/[0-9]{2,3}[a-z_]*' docs/AUTH*.md docs/architecture/*.md docs/architecture/scenarios/*.md \| sort -u` then `ls schema/<n>_*` for each | every citation resolves | P0 | ✅ 4 distinct citations, all resolve (`440`, `600`, `820`, `820_memory_entries`) |
+| R8 | No live architecture doc contradicts the resolver (§6) | `grep -rn 'debug.panic\|core\.tenant_billing' docs/architecture/` | `0` matches | P0 | ✅ `0` — three panic claims and five `core.tenant_billing` citations corrected |
+| S1 | Unit lanes pass | `make test-unit-all` | exit 0 | P0 |  ✅ exit 0 — Zig `2167`/`433`/`91`/`36`/`32` passed, 0 failed; app `2249`; agentsfleet `501`; website `174`; merged Zig line coverage `87.60% >= 83%` |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 |  ✅ exit 0 (run as `env -u AGENTSFLEET_API_URL` — see Session Notes) |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 |  ✅ exit 0 — `Full integration suite passed` |
+| S5 | No leaks | `make memleak` | exit 0 | P0 |  ✅ exit 0 — all lanes plus `boot→SIGTERM→drain ran leak-clean under the gate` |
+| S6 | Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 |  ✅ both targets exit 0 |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 |  ✅ `4335 commits scanned` · `no leaks found` |
+| S9 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 |  ✅ `0` — §5 removed three further orphans the sweep did not name: `BillingRow.deinit` (no caller), the `grant_source` read, and the allocator parameters it forced through `loadByTenant` / `getBilling` / `balanceCoversEstimate` |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
