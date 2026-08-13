@@ -70,6 +70,7 @@ const credentialsLayer = (): Layer.Layer<Credentials> =>
     getSavedAt: Effect.die("unused"),
     getSessionId: Effect.die("unused"),
     getApiUrl: Effect.die("unused"),
+    getCredentialId: Effect.succeed(null),
     saveAccessToken: () => Effect.die("unused"),
     clearAccessToken: Effect.die("unused"),
   });

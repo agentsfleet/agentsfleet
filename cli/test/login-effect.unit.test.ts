@@ -93,6 +93,7 @@ const credentialsLayer = (
     getSavedAt: Effect.sync(() => null),
     getSessionId: Effect.sync(() => null),
     getApiUrl: Effect.sync(() => null),
+    getCredentialId: Effect.succeed(null),
     saveAccessToken: (input) =>
       Effect.sync(() => {
         state.token = Option.some(input.token);
@@ -321,6 +322,7 @@ describe("loginEffect — cancel at the code prompt", () => {
       getSavedAt: Effect.sync(() => null),
       getSessionId: Effect.sync(() => null),
       getApiUrl: Effect.sync(() => null),
+      getCredentialId: Effect.succeed(null),
       saveAccessToken: () => Effect.sync(() => { saves += 1; }),
       clearAccessToken: Effect.void,
     });
@@ -381,6 +383,7 @@ describe("loginEffect — a terminal is required", () => {
         getSavedAt: Effect.sync(() => null),
         getSessionId: Effect.sync(() => null),
         getApiUrl: Effect.sync(() => null),
+        getCredentialId: Effect.succeed(null),
         saveAccessToken: (input) =>
           Effect.sync(() => {
             state.token = Option.some(input.token);

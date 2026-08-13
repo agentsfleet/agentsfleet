@@ -61,6 +61,7 @@ const credentialsLayer = (): Layer.Layer<Credentials> =>
     getSavedAt: Effect.succeed(null),
     getSessionId: Effect.succeed(null),
     getApiUrl: Effect.succeed(null),
+    getCredentialId: Effect.succeed(null),
     saveAccessToken: () => Effect.void,
     clearAccessToken: Effect.void,
   });

@@ -8,7 +8,8 @@ import type { FetchImpl } from "../lib/http.ts";
 import { mainLayerFor } from "../runtime/main-layer.ts";
 import { withCommandInstrumentation } from "../services/telemetry/command-instrumentation.ts";
 
-import { authStatusEffect, logoutEffect } from "../commands/auth.ts";
+import { authStatusEffect } from "../commands/auth.ts";
+import { logoutEffect } from "../commands/auth-logout.ts";
 import { loginEffectFromFlags } from "../commands/login.ts";
 import type { CliError } from "../errors/index.ts";
 import { doctorEffect } from "../commands/core-ops.ts";

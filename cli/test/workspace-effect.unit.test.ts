@@ -109,6 +109,7 @@ const credentialsLayer = (state: FakeCredsState): Layer.Layer<Credentials> =>
     getSavedAt: Effect.sync(() => null),
     getSessionId: Effect.sync(() => null),
     getApiUrl: Effect.sync(() => null),
+    getCredentialId: Effect.succeed(null),
     saveAccessToken: () => Effect.void,
     clearAccessToken: Effect.void,
   });

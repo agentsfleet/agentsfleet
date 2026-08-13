@@ -8,7 +8,8 @@
 
 import { describe, test, expect } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
-import { authStatusEffect, logoutEffect } from "../src/commands/auth.ts";
+import { authStatusEffect } from "../src/commands/auth.ts";
+import { logoutEffect } from "../src/commands/auth-logout.ts";
 import { Analytics } from "../src/services/telemetry/analytics.service.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
@@ -82,6 +83,7 @@ const credentialsLayer = (
     getSavedAt: Effect.sync(() => state.savedAt),
     getSessionId: Effect.sync(() => state.sessionId),
     getApiUrl: Effect.sync(() => state.apiUrl),
+    getCredentialId: Effect.succeed(null),
     saveAccessToken: (input) =>
       Effect.sync(() => {
         state.token = Option.some(input.token);

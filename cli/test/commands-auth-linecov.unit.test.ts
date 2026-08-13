@@ -77,6 +77,7 @@ const credentialsLayer = (
     getSavedAt: Effect.succeed(FIXED_SAVED_AT),
     getSessionId: Effect.succeed(SESSION_ID),
     getApiUrl: Effect.succeed(API_URL),
+    getCredentialId: Effect.succeed(null),
     saveAccessToken: () => Effect.void,
     clearAccessToken: Effect.void,
   });

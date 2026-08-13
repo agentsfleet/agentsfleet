@@ -34,6 +34,11 @@ export interface CredentialsShape {
   readonly getSavedAt: Effect.Effect<number | null, UnexpectedError>;
   readonly getSessionId: Effect.Effect<string | null, UnexpectedError>;
   readonly getApiUrl: Effect.Effect<string | null, UnexpectedError>;
+  // The server-side identifier of the stored credential, so logout can revoke
+  // this terminal's own credential by name rather than listing every
+  // credential its owner holds. Null when this client did not mint the stored
+  // value — a supplied tenant key — in which case there is nothing to revoke.
+  readonly getCredentialId: Effect.Effect<string | null, UnexpectedError>;
   readonly saveAccessToken: (input: SaveAccessTokenInput) => Effect.Effect<void, UnexpectedError>;
   readonly clearAccessToken: Effect.Effect<void, UnexpectedError>;
 }
@@ -79,6 +84,12 @@ const makeLive = (): CredentialsShape => ({
   getSavedAt: loadRecord().pipe(Effect.map((rec) => rec.saved_at ?? null)),
   getSessionId: loadRecord().pipe(Effect.map((rec) => rec.session_id ?? null)),
   getApiUrl: loadRecord().pipe(Effect.map((rec) => rec.api_url ?? null)),
+  // Read straight from the record without the shape check `getAccessToken`
+  // applies: an identifier is not credential material, and a record whose
+  // token is unusable still names a row worth revoking.
+  getCredentialId: loadRecord().pipe(
+    Effect.map((rec) => rec.credential_id ?? null),
+  ),
   saveAccessToken: (input) =>
     Effect.tryPromise({
       try: () =>
