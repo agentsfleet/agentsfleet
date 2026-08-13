@@ -57,6 +57,15 @@ fn expectErrorCode(ht: anytype, expected: []const u8) !void {
     try testing.expectEqualStrings(expected, json.object.get("error_code").?.string);
 }
 
+/// The RFC 7807 `detail` from the written problem body. Needed wherever two
+/// distinct refusals share one error code: the code alone cannot say which
+/// guard answered, so a test asserting only the code passes even after the
+/// guard it names is deleted.
+fn expectDetail(ht: anytype, expected: []const u8) !void {
+    const json = try ht.getJson();
+    try testing.expectEqualStrings(expected, json.object.get("detail").?.string);
+}
+
 // ── Invariant 1: a credential names a person ────────────────────────────────
 
 test "a tenant API key is refused from minting a credential in a person's name" {
@@ -150,6 +159,25 @@ test "a session token is admitted past the guard and stopped by the next check" 
     handler.innerMintCliCredential(hx, ht.req);
 
     try expectErrorCode(&ht, ec.ERR_INVALID_REQUEST);
+}
+
+test "a command-line credential is refused from minting another, by the freshness guard specifically" {
+    // The self-renewing-supply invariant, and the one assertion on this surface
+    // that must name its guard. A credential IS a person, so it clears the
+    // person check and is stopped only by the freshness check beside it — and
+    // both refusals answer ERR_FORBIDDEN. A test asserting the code alone
+    // therefore cannot distinguish the invariant it claims to pin from the
+    // weaker neighbour, which is how this arrived at review green and
+    // unfalsified. The detail is the only observable that separates them.
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+    const hx = buildHx(ht.res, personPrincipal(.cli_credential));
+
+    handler.innerMintCliCredential(hx, ht.req);
+
+    try ht.expectStatus(403);
+    try expectErrorCode(&ht, ec.ERR_FORBIDDEN);
+    try expectDetail(&ht, handler.S_SESSION_REQUIRED);
 }
 
 test "a command-line credential is admitted to manage its own person's credentials" {

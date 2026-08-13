@@ -52,7 +52,13 @@ const S_MACHINE_NAME_INVALID =
 const S_PERSON_REQUIRED =
     "A command-line credential belongs to a person; a tenant API key cannot manage one";
 const S_UNKNOWN_SUBJECT = "Authenticated subject has no user record";
-const S_SESSION_REQUIRED =
+/// `pub` for the tests alone, and deliberately so. Both refusals on this
+/// surface answer `ERR_FORBIDDEN`, so a test asserting the code cannot tell
+/// "not a fresh session" from "not a person" — it passes either way, including
+/// when the freshness guard is gone. Asserting this exact detail is what pins
+/// the guard uniquely; re-spelling the literal in the test would let the two
+/// drift and restore the same blind spot (RULE UFS).
+pub const S_SESSION_REQUIRED =
     "Minting a command-line credential requires a browser sign-in; an existing credential cannot mint another";
 
 const EV_MINTED = "credential_minted";
