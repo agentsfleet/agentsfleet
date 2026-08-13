@@ -195,12 +195,12 @@ Reopened after CHORE(close), from the `/review` pass owed on the elevation refac
 
 **The purge could not run as its own role.** Moving the memory delete after `DELETE FROM core.fleets` removed an accidental escalation nobody knew was load-bearing: `SET LOCAL ROLE NONE` resets to `session_user`, not to the role that was current, so the first elevation's step-down had been silently widening every statement after it. With the memory elevation at statement 1 that covered the whole purge. `api_runtime` is granted SELECT/INSERT/UPDATE and deliberately **not** DELETE on `fleet.runner_affinity`, `core.fleet_approval_gates` and `core.fleet_sessions` (schema/630, /810, /510), so the three explicit sweeps were unrunnable under the role the purge actually holds. They are deleted rather than granted: each cascades from `core.fleets`, and a referential action runs with the table owner's authority. The underlying `SET LOCAL ROLE NONE` semantics are **not** changed here — named in Discovery as the remaining footgun.
 
-- **Dimension 5.1** — a connection whose session role could not be reset is destroyed rather than pooled, so no borrower inherits it → Test `test_discarded_connection_drops_session_role`
-- **Dimension 5.2** — an erased fleet leaves no memory row behind, by referential action rather than by a statement remembering to sweep → Test `test_fleet_delete_cascades_memory`
-- **Dimension 5.3** — a memory write naming a fleet that does not exist is refused, not orphaned → Test `test_absent_fleet_write_refused`
-- **Dimension 5.4** — the new edge grants `memory_runtime` no reach into `core`: it cannot read the parent it references, and the write still resolves → Test `test_memory_write_holds_no_core_grant`
-- **Dimension 5.5** — the account purge completes under `api_runtime`, with no grant widened and no reliance on a session-role reset → Test `test_erasure_elevates_for_secrets_and_wallet`
-- **Dimension 5.6** — the gate-purge bypass setting cannot drift between the Zig constant and the two slots whose triggers read it → Test `test_gate_purge_setting_pinned_to_slots`
+- **Dimension 5.1** — a connection whose session role could not be reset is destroyed rather than pooled, so no borrower inherits it → Test `test_discarded_connection_drops_session_role` — **DONE**
+- **Dimension 5.2** — an erased fleet leaves no memory row behind, by referential action rather than by a statement remembering to sweep → Test `test_fleet_delete_cascades_memory` — **DONE**
+- **Dimension 5.3** — a memory write naming a fleet that does not exist is refused, not orphaned → Test `test_absent_fleet_write_refused` — **DONE**
+- **Dimension 5.4** — the new edge grants `memory_runtime` no reach into `core`: it cannot read the parent it references, and the write still resolves → Test `test_memory_write_holds_no_core_grant` — **DONE**
+- **Dimension 5.5** — the account purge completes under `api_runtime`, with no grant widened and no reliance on a session-role reset → Test `test_erasure_elevates_for_secrets_and_wallet` — **DONE**
+- **Dimension 5.6** — the gate-purge bypass setting cannot drift between the Zig constant and the two slots whose triggers read it → Test `test_gate_purge_setting_pinned_to_slots` — **DONE**
 
 ## Interfaces
 

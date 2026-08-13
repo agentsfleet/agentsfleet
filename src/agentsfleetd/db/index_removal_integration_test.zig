@@ -31,9 +31,9 @@ const KEPT_INDEX = IndexRef{ .schema = "memory", .name = "idx_memory_entries_fle
 const KEY_PREFIX = "rmprobe-key-";
 const MEM_KEY_PREFIX = "rmprobe-mem-";
 const FLEET_PROBE = "0195b4ba-8d3a-7f13-8abc-0000000e0001";
+const WS_PROBE = "0195b4ba-8d3a-7f13-8abc-0000000e0002";
 const SEED_ROWS: i32 = 200;
 const MEM_SEED_ROWS: i32 = 200;
-const PROBE_FLEET_ROWS: i32 = 20;
 
 // Shared setup + EXPLAIN reader live in test_fixtures.zig (Dimension 6.3).
 const TestDb = base.TestDb;
@@ -130,18 +130,27 @@ test "the composite still covers the fleet filter after the drop" {
     defer db.close();
     defer _ = db.conn.exec("DELETE FROM memory.memory_entries WHERE key LIKE $1", .{MEM_KEY_PREFIX ++ "%"}) catch |err|
         std.log.warn("memory teardown ignored: {s}", .{@errorName(err)});
+    // The workspace cascades to its fleet, and schema/821 cascades the fleet to
+    // any memory row the prefix delete above did not match.
+    defer base.teardownWorkspace(db.conn, WS_PROBE);
 
+    // Every row hangs off one real fleet: schema/821 gave
+    // `memory_entries.fleet_id` a REFERENCES to `core.fleets`, so a fabricated id
+    // has no parent to point at. The assertions below are size independent (shape
+    // from the catalog, then a forced-index plan), so the spread this fixture used
+    // to build bought selectivity neither of them reads.
+    try base.seedTenant(db.conn);
+    try base.seedWorkspace(db.conn, WS_PROBE);
+    try base.seedFleet(db.conn, FLEET_PROBE, WS_PROBE, "index-removal-probe", "{}", "# SKILL");
     _ = try db.conn.exec(
         \\INSERT INTO memory.memory_entries
         \\  (id, key, content, category, fleet_id, created_at, updated_at)
         \\SELECT overlay(md5('rm' || g)::uuid::text placing '7' from 15 for 1)::uuid,
-        \\       $1 || g, 'content', 'core',
-        \\       CASE WHEN g <= $3::int THEN $2::uuid
-        \\            ELSE md5((g % 200)::text)::uuid END,
+        \\       $1 || g, 'content', 'core', $2::uuid,
         \\       g, g
-        \\FROM generate_series(1, $4::int) g
+        \\FROM generate_series(1, $3::int) g
         \\ON CONFLICT DO NOTHING
-    , .{ MEM_KEY_PREFIX, FLEET_PROBE, PROBE_FLEET_ROWS, MEM_SEED_ROWS });
+    , .{ MEM_KEY_PREFIX, FLEET_PROBE, MEM_SEED_ROWS });
     _ = try db.conn.exec("ANALYZE memory.memory_entries", .{});
 
     // "The drop is safe" reduces to: with the narrow index gone, an index still

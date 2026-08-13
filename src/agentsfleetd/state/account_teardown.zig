@@ -1,14 +1,18 @@
 //! Hard-purge of a personal account, triggered by a Clerk `user.deleted`
 //! webhook (`identity_events_clerk.runDelete`).
 //!
-//! Deletes the subject's tenant and every dependent row in foreign-key order.
-//! `core.fleets`, `vault.secrets`, `core.platform_provider_defaults`,
-//! `core.fleet_sessions`, and `core.fleet_approval_gates` reference
-//! `workspaces`/`fleets` WITHOUT `ON DELETE CASCADE`, so the workspace and
-//! tenant deletes hit an FK violation — 500 the webhook and make Clerk retry
-//! forever — unless their children go first. Cascade-backed children
-//! (fleet_events, integration_grants, api_keys, tenant_billing,
-//! tenant_model_selection) drop with their parent.
+//! Deletes the subject's tenant and every dependent row in foreign-key order:
+//! `core.fleets` and `core.platform_provider_defaults` reference
+//! `workspaces`/`fleets` without `ON DELETE CASCADE`, so the workspace and tenant
+//! deletes hit an FK violation — 500 the webhook and make Clerk retry forever —
+//! unless their children go first.
+//!
+//! Everything cascade-backed is left to its parent rather than swept here, and
+//! that is a privilege requirement, not a tidiness preference. `api_runtime` is
+//! granted SELECT/INSERT/UPDATE and deliberately NOT DELETE on
+//! `fleet.runner_affinity`, `core.fleet_approval_gates` and
+//! `core.fleet_sessions`; a referential action runs with the table owner's
+//! authority, so the cascade erases what this role may not touch directly.
 //!
 //! Per-fleet Redis event streams (`fleet:{id}:events`) are left to expire via
 //! their TTL — the same fallback the per-fleet delete path documents when
@@ -20,7 +24,7 @@ const logging = @import("log");
 
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const pool_elevation = @import("../db/pool_elevation.zig");
-const approval_gate_db = @import("../fleet_runtime/approval_gate_db.zig");
+const gate_sql = @import("../fleet_runtime/sql.zig");
 
 const log = logging.scoped(.account_teardown);
 
@@ -29,8 +33,6 @@ const S_COMMIT = "COMMIT";
 
 /// Workspaces owned by the tenant. `$1` = tenant_id.
 const WS_OF_TENANT = "(SELECT id FROM core.workspaces WHERE tenant_id = $1::uuid)";
-/// Fleet ids in those workspaces.
-const AGENTS_OF_TENANT = "(SELECT id FROM core.fleets WHERE workspace_id IN " ++ WS_OF_TENANT ++ ")";
 
 /// One purge statement: its SQL and the role whose grants it needs. `null`
 /// runs as the connection's own `api_runtime`; a named role is elevated for
@@ -55,21 +57,36 @@ const PURGE_STATEMENTS = [_]PurgeStatement{
     // reachable from here may delete a charge any other way (schema/710 grants
     // no DELETE at all, to anyone). An explicit sweep would fail closed on
     // privilege rather than tidy up.
-    // Keyed, no FK — memory fleet_id is the owning fleet UUID (schema/820).
-    .{ .sql = "DELETE FROM memory.memory_entries WHERE fleet_id = ANY($1::uuid[])", .role = .memory, .bind = .fleet_ids },
-    // `fleet.metering_periods` is gone: derived per-renewal detail
-    // with no product consumer, deleted rather than carried. runner_leases and
-    // runner_affinity carry an ON DELETE CASCADE FK to core.fleets but stay
-    // swept explicitly here — before core.fleets below — so an erased account
-    // leaves no identifying rows behind, not only whatever the cascade catches.
+    // `fleet.metering_periods` is gone: derived per-renewal detail with no
+    // product consumer, deleted rather than carried.
+    //
+    // Leases are swept by tenant rather than left to the fleet cascade: the FK
+    // is `ON DELETE CASCADE` from `core.fleets`, so a lease whose fleet column
+    // is null would survive it, and `api_runtime` holds DELETE here.
     .{ .sql = "DELETE FROM fleet.runner_leases WHERE tenant_id = $1::uuid" },
-    .{ .sql = "DELETE FROM fleet.runner_affinity WHERE fleet_id IN " ++ AGENTS_OF_TENANT },
-    // Gates are append-only by trigger; the purge transaction opts out via
-    // SET_GATE_PURGE_BYPASS_SQL below. Deleted by workspace OR fleet so a
-    // row referencing either parent cannot strand the erasure on its FK.
-    .{ .sql = "DELETE FROM core.fleet_approval_gates WHERE workspace_id IN " ++ WS_OF_TENANT ++ " OR fleet_id IN " ++ AGENTS_OF_TENANT },
-    .{ .sql = "DELETE FROM core.fleet_sessions WHERE fleet_id IN " ++ AGENTS_OF_TENANT },
+    // No explicit sweep of `fleet.runner_affinity`, `core.fleet_approval_gates`
+    // or `core.fleet_sessions`. Each carries `ON DELETE CASCADE` from
+    // `core.fleets` (gates from `core.workspaces` too), so the fleet delete
+    // below erases exactly the rows those statements named — and it does it with
+    // the table owner's authority, which is the point: `api_runtime` is granted
+    // SELECT/INSERT/UPDATE and deliberately NOT DELETE on all three
+    // (schema/630, schema/810, schema/510). Sweeping them explicitly made the
+    // purge unrunnable under the role it runs as, and only appeared to work
+    // because an earlier elevation's `SET LOCAL ROLE NONE` reset to the SESSION
+    // role and silently widened everything after it.
+    //
+    // The cascade still fires the gates' BEFORE DELETE trigger, so
+    // SET_GATE_PURGE_BYPASS_SQL above remains load-bearing — it is now the only
+    // thing standing between this delete and the append-only exception.
     .{ .sql = "DELETE FROM core.fleets WHERE workspace_id IN " ++ WS_OF_TENANT },
+    // Belt-and-braces, like the vault sweep below: `memory_entries.fleet_id`
+    // REFERENCES core.fleets ON DELETE CASCADE (schema/821), so the fleet delete
+    // above has already erased these rows and a capture racing the purge either
+    // cascades away or fails closed on the missing parent. This binds the frozen
+    // array and needs no `core` row to still exist, so it runs after that delete
+    // rather than with the fleet-scoped children — leaving nothing behind even if
+    // the cascade is ever weakened.
+    .{ .sql = "DELETE FROM memory.memory_entries WHERE fleet_id = ANY($1::uuid[])", .role = .memory, .bind = .fleet_ids },
     .{ .sql = "DELETE FROM vault.secrets WHERE workspace_id = ANY($1::uuid[])", .role = .vault, .bind = .workspace_ids },
     .{ .sql = "DELETE FROM core.platform_provider_defaults WHERE source_workspace_id IN " ++ WS_OF_TENANT },
     .{ .sql = "DELETE FROM core.workspaces WHERE tenant_id = $1::uuid" },
@@ -208,7 +225,7 @@ pub fn purgeByOidcSubject(
     // execIgnoringState specifically for this case (signup_bootstrap.zig
     // precedent).
     errdefer conn.rollback() catch |err| log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
-    _ = try conn.exec(approval_gate_db.SET_GATE_PURGE_BYPASS_SQL, .{});
+    _ = try conn.exec(gate_sql.SET_GATE_PURGE_BYPASS_SQL, .{});
     // Read inside the transaction, before anything is deleted: this is the
     // authoritative view of what the purge is about to erase, and the only
     // place a fleet created after the caller's enumeration becomes visible.

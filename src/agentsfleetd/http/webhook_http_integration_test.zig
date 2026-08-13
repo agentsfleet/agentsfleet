@@ -17,6 +17,7 @@ const serve_webhook_lookup = @import("../cmd/serve_webhook_lookup.zig");
 
 const harness_mod = @import("test_harness.zig");
 const fx_mod = @import("webhook_test_fixtures.zig");
+const gate_sql = @import("../fleet_runtime/sql.zig");
 const signers = @import("webhook_test_signers.zig");
 const whc = @import("../fleet_runtime/webhook_constants.zig");
 const redis_fleet = @import("../queue/redis_fleet.zig");
@@ -780,7 +781,7 @@ fn purgeRepairLinks(s: *Setup) void {
     const conn = s.h.acquireConn() catch return;
     defer s.h.releaseConn(conn);
     _ = conn.exec("BEGIN", .{}) catch return;
-    _ = conn.exec("SET LOCAL fleet.allow_gate_purge = 'on'", .{}) catch |err|
+    _ = conn.exec(gate_sql.SET_GATE_PURGE_BYPASS_SQL, .{}) catch |err|
         std.log.warn("repair link purge ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.repair_pr_links WHERE fleet_id = $1::uuid", .{s.fx.fleet_id}) catch |err|
         std.log.warn("repair link purge ignored: {s}", .{@errorName(err)});

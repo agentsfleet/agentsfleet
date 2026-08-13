@@ -10,6 +10,7 @@ const clock = @import("common").clock;
 const pg = @import("pg");
 const vault = @import("../state/vault.zig");
 const crypto_primitives = @import("../secrets/crypto_primitives.zig");
+const gate_sql = @import("../fleet_runtime/sql.zig");
 const IGNORED_ERROR_FMT = "ignored: {s}";
 
 /// Set `ENCRYPTION_MASTER_KEY` so `crypto_store.store/load` can operate.
@@ -117,7 +118,7 @@ fn purgeExec(conn: *pg.Conn, sql_text: []const u8, args: anytype) void {
         std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
         return;
     };
-    _ = conn.exec("SET LOCAL fleet.allow_gate_purge = 'on'", .{}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
+    _ = conn.exec(gate_sql.SET_GATE_PURGE_BYPASS_SQL, .{}) catch |err| std.log.warn(IGNORED_ERROR_FMT, .{@errorName(err)});
     var failed = false;
     _ = conn.exec(sql_text, args) catch |err| {
         failed = true;

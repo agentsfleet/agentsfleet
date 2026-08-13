@@ -96,8 +96,8 @@ pub const ENTRIES = [_]Entry{
         "If the error continues, check service connectivity and run 'agentsfleetd doctor'."), // reachable: no — deliberately generic catch-all; a specific dashboard-reachable failure gets promoted out of this bucket instead
     e("UZ-INTERNAL-004", .internal_server_error, S_TITLE_REQUEST_FAILED, "A database role elevation was refused: the connection is already elevated, or SET ROLE failed. " ++
         "The role= field names the role that was requested; the fix is to elevate, not to widen a grant."), // reachable: no — internal privilege-boundary refusal, surfaced to operators via logs
-    e("UZ-INTERNAL-005", .internal_server_error, S_TITLE_REQUEST_FAILED, "A pooled connection was refused at release because it still held an elevated role; the connection was destroyed instead of reused. " ++
-        "An elevation scope failed to end with its transaction — check the role= field and the elevated-release counter."), // reachable: no — pool-release backstop, surfaced to operators via logs
+    e("UZ-INTERNAL-005", .internal_server_error, S_TITLE_REQUEST_FAILED, "A pooled connection was handed back in a non-idle state and was destroyed instead of reused: a transaction outlived its scope, or a session role could not be reset. " ++
+        "The conn_state= field names the state it arrived in; the preceding record for the same connection carries the cause."), // reachable: no — pool-release backstop, surfaced to operators via logs
     // ── REQUEST ──────────────────────────────────────────────────────────────
     eu("UZ-REQ-001", .bad_request, "Invalid request", "The request body or parameters are invalid. Check the API documentation.", "That request wasn't valid. Double-check the values you entered and try again."),
     e("UZ-REQ-002", .payload_too_large, "Payload too large", "Request body exceeds the maximum allowed size."), // reachable: no — CLI/API request-size guard, never a dashboard-fetch path

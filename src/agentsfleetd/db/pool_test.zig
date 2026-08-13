@@ -992,3 +992,57 @@ test "integration: probeAvailable detects contention and never leaks the lock" {
     try migration_lock.acquireBounded(a.conn, 3, 5);
     migration_lock.release(a.conn);
 }
+
+// ── markForDiscard: the session-role escape hatch ────────────────────────────
+//
+// `SET LOCAL ROLE` (db/pool_elevation.zig) is reverted by the server when the
+// transaction ends, so release's `_state` test covers it. The session-scoped
+// `SET ROLE` in http/handlers/memory/helpers.zig is not: only `RESET ROLE`
+// clears it, and when that reset fails PostgreSQL answers with ReadyForQuery
+// carrying transaction-status 'I', which pg's `Conn.read` turns back into
+// `_state = .idle`. The connection is then indistinguishable from a clean one
+// while still running as memory_runtime. `markForDiscard` is the only thing
+// between that failed reset and the next borrower inheriting the role.
+//
+// The pool is built here rather than through `openIntegrationTestConn` for two
+// reasons: that helper swallows every open error into a skip, and size=1 is what
+// gives the assertion teeth — with a larger pool the re-acquire could hand back a
+// different connection and pass without proving anything.
+test "integration: a discarded connection does not carry its session role to the next borrower" {
+    if (env.testLiveValue("LIVE_DB") == null) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const url = env.testLiveValue("TEST_DATABASE_URL") orelse return error.SkipZigTest;
+
+    var opts = try parseUrl(std.heap.page_allocator, url);
+    opts.size = 1;
+    const inner = try pg.Pool.init(@import("common").globalIo(), alloc, opts);
+    const pool = try db.adopt(inner, alloc);
+    defer pool.deinit();
+
+    {
+        const conn = try pool.acquire();
+        _ = try conn.exec("SET ROLE memory_runtime", .{});
+
+        // Idle while elevated is the whole problem: a failed `RESET ROLE` outside
+        // a transaction is answered with ReadyForQuery('I'), so nothing about the
+        // connection distinguishes it from a clean one.
+        try std.testing.expect(conn._state == .idle);
+
+        // Stands in for that failed reset — the role is still set, and
+        // helpers.zig's resetRole marks the connection on exactly this path.
+        db.markForDiscard(conn);
+
+        // Non-idle is the mechanism: what our release reports on, and what the
+        // vendored release destroys instead of returning to the pool.
+        try std.testing.expect(conn._state != .idle);
+        pool.release(conn);
+    }
+
+    const fresh = try pool.acquire();
+    defer pool.release(fresh);
+    var q = PgQuery.from(try fresh.query("SELECT current_role::text", .{}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.NoRowReturned;
+    const role = try row.get([]u8, 0);
+    try std.testing.expect(!std.mem.eql(u8, role, "memory_runtime"));
+}

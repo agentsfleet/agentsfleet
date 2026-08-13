@@ -45,24 +45,22 @@ pub const Pool = struct {
 
     /// Release with the dirty-connection backstop.
     ///
-    /// Elevation is `SET LOCAL ROLE` (pool_elevation.zig), which PostgreSQL
-    /// reverts at COMMIT or ROLLBACK — so a connection with no open
-    /// transaction CANNOT still be elevated, and `_state` is the whole test.
-    /// It is also a strictly wider one: a connection handed back
-    /// mid-transaction is dirty whether or not it was ever elevated.
+    /// `SET LOCAL ROLE` elevation (pool_elevation.zig) is reverted by the
+    /// server at COMMIT or ROLLBACK, so a scope that ended cannot leave an
+    /// elevated connection behind and `_state` covers it. Session-scoped
+    /// `SET ROLE` does NOT self-revert; the one path that uses it,
+    /// `http/handlers/memory/helpers.zig`, calls `markForDiscard` when its
+    /// `RESET ROLE` fails, which is what brings that path under this test.
     ///
-    /// Enforcement is pg's, not ours — the vendored release destroys and
+    /// Destruction is pg's, not ours — the vendored release destroys and
     /// replaces any non-idle connection rather than pooling it. What this adds
     /// is the report, so a leaked scope is visible to an operator instead of
-    /// being silently absorbed as connection churn. The previous form asked a
-    /// side table instead and then called `begin()` to manufacture the very
-    /// non-idle state it was detecting; on a stale mark that poisoned a
-    /// connection the server had already reverted.
+    /// being silently absorbed as connection churn.
     pub fn release(self: *Pool, conn: *Conn) void {
         if (conn._state != .idle) {
             log.err(EVENT_DIRTY_RELEASE, .{
                 .conn_state = @tagName(conn._state),
-                .error_code = error_codes.ERR_INTERNAL_DB_ELEVATION_REFUSED,
+                .error_code = error_codes.ERR_INTERNAL_DB_ELEVATED_RELEASE,
             });
         }
         self.inner.release(conn);
@@ -75,6 +73,19 @@ pub const Pool = struct {
         alloc.destroy(self);
     }
 };
+
+/// Force `conn` to be destroyed at its next release instead of pooled. For a
+/// connection whose session role could not be reset: the role outlives the
+/// transaction, so reuse would hand the next borrower that role.
+///
+/// The only write to pg's `_state` in this repository, kept beside the release
+/// that reads it. `.fail` rather than `begin()` because it is never `.idle` on
+/// any path — a failing `begin` recovers through `Conn.read`, which reassigns
+/// `_state` from the server's transaction-status byte and can land back on
+/// `.idle`, pooling the very connection it was meant to discard.
+pub fn markForDiscard(conn: *Conn) void {
+    conn._state = .fail;
+}
 
 // Pool sizing + acquire-timeout knobs (env-tunable, role-aware).
 //

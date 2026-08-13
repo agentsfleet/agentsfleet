@@ -5,6 +5,7 @@ const std = @import("std");
 const logging = @import("log");
 const pg = @import("pg");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const db = @import("../../../db/pool.zig");
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
@@ -93,14 +94,18 @@ pub fn setMemoryRole(conn: *pg.Conn) bool {
 }
 
 /// RESET ROLE. Call via defer after setMemoryRole succeeds.
-/// On failure, the connection is unusable (still running as memory_runtime) —
-/// log.err so operators can see pool poisoning in logs before the pool reaps it.
+///
+/// The role here is session-scoped, so unlike a `SET LOCAL ROLE` scope it
+/// survives COMMIT and ROLLBACK: a failed reset leaves the connection running
+/// as memory_runtime with nothing about its state to show it. `markForDiscard`
+/// is what makes the pool destroy it rather than hand it to the next borrower.
 pub fn resetRole(conn: *pg.Conn) void {
     _ = conn.exec("RESET ROLE", .{}) catch |err| {
+        db.markForDiscard(conn);
         log.err("reset_role_failed", .{
             .error_code = ec.ERR_INTERNAL_DB_QUERY,
             .err = @errorName(err),
-            .hint = "connection_will_be_discarded_by_pool",
+            .hint = "connection_marked_for_discard",
         });
     };
 }

@@ -6,6 +6,23 @@
 //! serves both the fleet-scoped and workspace-wide callers, so the two can
 //! never drift apart.
 
+/// The session setting the append-only triggers read to permit a DELETE, and the
+/// value they compare against. Named separately from the statement below because
+/// SQL cannot import either: `schema/810`'s gates trigger and `schema/830`'s
+/// repair-links trigger both spell this name themselves, so
+/// `approval_gate_pins_test.zig` holds the three copies together. A rename that
+/// misses a slot leaves that trigger reading a setting nobody sets —
+/// `current_setting` yields NULL rather than the value, the guard stops guarding,
+/// and an account purge raises instead of erasing.
+pub const GATE_PURGE_SETTING = "fleet.allow_gate_purge";
+pub const GATE_PURGE_ON = "on";
+
+/// Opt the current transaction out of the append-only guard. Transaction-scoped,
+/// so it also covers rows the `core.fleets` cascade deletes rather than only the
+/// ones a statement names directly.
+pub const SET_GATE_PURGE_BYPASS_SQL =
+    "SET LOCAL " ++ GATE_PURGE_SETTING ++ " = '" ++ GATE_PURGE_ON ++ "'";
+
 /// Gates past their deadline, oldest first. Bounded so a sweep cycle costs the
 /// batch rather than the backlog; `idx_fleet_approval_gates_timeout_at_pending`
 /// is partial on the pending status, which keeps the index small.

@@ -2,8 +2,9 @@
 //! `storeEntry` / `enforceCap` / `listAll` need a live Postgres and the
 //! `memory_runtime` role. Mirrors `fleet_memory_role_test.zig`'s harness —
 //! `LIVE_DB=1` + `TEST_DATABASE_URL` (set by `make test-integration-db`);
-//! self-skips otherwise. `memory.memory_entries` carries no FK to `core.fleets`
-//! (role isolation is the boundary), so a synthetic `fleet_id` needs no seed.
+//! self-skips otherwise. `memory_entries.fleet_id` REFERENCES `core.fleets`
+//! (schema/821), so every fleet below is a real row seeded by `TestDb.open`
+//! before it elevates — `memory_runtime` holds no `core` grant of its own.
 
 const std = @import("std");
 const common = @import("common");
@@ -24,6 +25,25 @@ const ZID_HEADLINE = "0195b4ba-8d3a-7f13-8abc-00000000a006";
 const ZID_SWEEP_A = "0195b4ba-8d3a-7f13-8abc-00000000a007";
 const ZID_SWEEP_B = "0195b4ba-8d3a-7f13-8abc-00000000a008";
 const ZID_TS = "0195b4ba-8d3a-7f13-8abc-00000000a009";
+const ZID_CASCADE = "0195b4ba-8d3a-7f13-8abc-00000000a00a";
+
+/// Deliberately absent from `PROBE_FLEETS`: the fleet is never seeded, so this id
+/// has no parent row for the FK to resolve. Naming it here keeps the "no parent"
+/// property explicit rather than an accident of which ids the seed loop covers.
+const ZID_ABSENT = "0195b4ba-8d3a-7f13-8abc-00000000afff";
+
+/// The one workspace every probe fleet hangs off. Its teardown cascades to the
+/// fleets, and each fleet cascades to its memory rows (schema/821).
+const WS_MEM = "0195b4ba-8d3a-7f13-8abc-00000000a000";
+
+/// Every id above, in one place, so the seed cannot drift from the constants the
+/// tests bind. `uq_fleets_workspace_id_name` is UNIQUE per workspace, so each
+/// fleet is named from its index rather than sharing one label — a duplicate name
+/// would be swallowed by the seed's ON CONFLICT and leave the FK unsatisfied.
+const PROBE_FLEETS = [_][]const u8{
+    ZID_PERSIST,  ZID_CAP,     ZID_ISO_A,   ZID_ISO_B, ZID_TIER,
+    ZID_HEADLINE, ZID_SWEEP_A, ZID_SWEEP_B, ZID_TS,    ZID_CASCADE,
+};
 
 // Sweep-age fixture instants (epoch ms): rows at T_AGED are older than the
 // CUTOFF; rows at T_YOUNG are newer. CUTOFF_ALL is far future — at that cutoff
@@ -40,12 +60,25 @@ const TestDb = struct {
     fn open(alloc: std.mem.Allocator) !?TestDb {
         if (common.env.testLiveValue("LIVE_DB") == null) return null;
         const ctx = (try base.openTestConn(alloc)) orelse return null;
+        // Parents first, while the connection is still the base role:
+        // `memory_runtime` holds no `core` grant, so it could not seed these
+        // itself, and the FK refuses every insert below without them.
+        try base.seedTenant(ctx.conn);
+        try base.seedWorkspace(ctx.conn, WS_MEM);
+        for (PROBE_FLEETS, 0..) |fleet_id, i| {
+            var name_buf: [32]u8 = undefined;
+            const name = try std.fmt.bufPrint(&name_buf, "memory-probe-{d}", .{i});
+            try base.seedFleet(ctx.conn, fleet_id, WS_MEM, name, "{}", "# SKILL");
+        }
         _ = try ctx.conn.exec("SET ROLE memory_runtime", .{});
         return .{ .pool = ctx.pool, .conn = ctx.conn };
     }
 
     fn close(self: TestDb) void {
         _ = self.conn.exec("RESET ROLE", .{}) catch |err| std.log.warn("reset role ignored: {s}", .{@errorName(err)});
+        // Base role again: the workspace cascades to its fleets and each fleet
+        // cascades to its memory rows, so a re-run starts clean.
+        base.teardownWorkspace(self.conn, WS_MEM);
         self.pool.release(self.conn);
         self.pool.deinit();
     }
@@ -350,4 +383,82 @@ test "integration: listAll is scoped per fleet — no cross-fleet bleed" {
     defer freeDeltas(alloc, rows_a);
     try std.testing.expectEqual(@as(usize, 1), rows_a.len);
     try std.testing.expectEqualStrings("alpha", rows_a[0].content); // never beta
+}
+
+// ── The fleet foreign key (schema/821) ──────────────────────────────────────
+//
+// The edge exists so an erased fleet cannot leave memory behind. These three
+// pin the parts that are ours to get wrong: that adding it did NOT hand
+// `memory_runtime` a reach into `core`, that a write with no parent fails closed
+// instead of orphaning, and that the cascade actually fires.
+
+test "integration: memory_runtime writes under the fleet FK while holding no core grant" {
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    db.wipe(ZID_PERSIST);
+    defer db.wipe(ZID_PERSIST);
+
+    // The claim schema/821 rests on: PostgreSQL evaluates a foreign-key check
+    // with the table owner's authority, not the inserting role's. Without that,
+    // the edge would force a `core` grant onto memory_runtime and undo the
+    // boundary this milestone built. Asserted rather than assumed, because if it
+    // ever stops holding the symptom is every memory write failing, not a subtle
+    // erasure gap.
+    {
+        var q = PgQuery.from(try db.conn.query("SELECT current_role::text", .{}));
+        defer q.deinit();
+        const row = try q.next() orelse return error.NoRowReturned;
+        try std.testing.expectEqualStrings("memory_runtime", try row.get([]u8, 0));
+    }
+
+    // Stronger than "holds no SELECT": this role cannot even NAME the parent
+    // table, because it has no USAGE on schema `core`. (`has_table_privilege`
+    // is no good here for the same reason — resolving the argument is itself
+    // refused.) Whatever resolves the reference below, it is not the caller.
+    try std.testing.expectError(
+        error.PG,
+        db.conn.exec("SELECT 1 FROM core.fleets LIMIT 1", .{}),
+    );
+
+    // No reach into `core` at all, and the insert still resolves the reference.
+    try adapter.storeEntry(db.conn, ZID_PERSIST, "deploy_target", "fly", adapter.CATEGORY_CORE, T_AGED);
+    try std.testing.expectEqual(@as(usize, 1), try db.count(ZID_PERSIST));
+}
+
+test "integration: a memory write for a fleet that does not exist is refused, not orphaned" {
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+
+    // Before schema/821 this insert succeeded and left a row keyed to a fleet
+    // that never existed — unreachable by every sweep, since each one is scoped
+    // by a fleet the caller enumerated. Now it fails closed.
+    try std.testing.expectError(
+        error.PG,
+        adapter.storeEntry(db.conn, ZID_ABSENT, "orphan", "should not land", adapter.CATEGORY_CORE, T_AGED),
+    );
+    // The session survives the refusal: the statement failed outside a
+    // transaction, so the connection is still usable for the next caller.
+    try std.testing.expectEqual(@as(usize, 0), try db.count(ZID_ABSENT));
+}
+
+test "integration: deleting a fleet cascades its memory away with no elevation" {
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+    db.wipe(ZID_CASCADE);
+
+    try adapter.storeEntry(db.conn, ZID_CASCADE, "goal", "outlive nothing", adapter.CATEGORY_CORE, T_AGED);
+    try std.testing.expectEqual(@as(usize, 1), try db.count(ZID_CASCADE));
+
+    // Delete the parent as the BASE role, which holds no grant on
+    // memory.memory_entries at all. The rows still go: a referential action runs
+    // with the owner's authority, the same reason schema/700 and schema/710 can
+    // erase the wallet and the ledger without a billing elevation.
+    _ = try db.conn.exec("RESET ROLE", .{});
+    _ = try db.conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{ZID_CASCADE});
+    _ = try db.conn.exec("SET ROLE memory_runtime", .{});
+
+    try std.testing.expectEqual(@as(usize, 0), try db.count(ZID_CASCADE));
 }

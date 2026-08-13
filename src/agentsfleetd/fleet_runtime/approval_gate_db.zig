@@ -24,7 +24,6 @@ const binding_json = @import("repository_binding_json.zig");
 /// execute this, immediately after BEGIN — SET LOCAL dies with the
 /// transaction, so the bypass can never leak to a pooled connection's next
 /// acquirer. Every other DELETE on the gates table still raises.
-pub const SET_GATE_PURGE_BYPASS_SQL = "SET LOCAL fleet.allow_gate_purge = 'on'";
 const logging = @import("log");
 const ec = @import("../errors/error_registry.zig");
 

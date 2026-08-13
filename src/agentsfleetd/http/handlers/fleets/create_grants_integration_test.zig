@@ -29,7 +29,7 @@ const id_format = @import("../../../types/id_format.zig");
 const vault = @import("../../../state/vault.zig");
 const crypto_primitives = @import("../../../secrets/crypto_primitives.zig");
 const gate_constants = @import("../../../fleet_runtime/approval_gate_constants.zig");
-const approval_gate_db = @import("../../../fleet_runtime/approval_gate_db.zig");
+const gate_sql = @import("../../../fleet_runtime/sql.zig");
 const grant_lookup = @import("../../../state/integration_grant_lookup.zig");
 const fleet_config = @import("../../../fleet_runtime/config.zig");
 const create_grants = @import("create_grants.zig");
@@ -104,7 +104,7 @@ fn purgeFleet(conn: *pg.Conn, fleet_id: []const u8) void {
     defer {
         _ = conn.exec("COMMIT", .{}) catch |err| warnPurge("commit", err);
     }
-    _ = conn.exec(approval_gate_db.SET_GATE_PURGE_BYPASS_SQL, .{}) catch |err| return warnPurge("bypass", err);
+    _ = conn.exec(gate_sql.SET_GATE_PURGE_BYPASS_SQL, .{}) catch |err| return warnPurge("bypass", err);
     _ = conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{fleet_id}) catch |err| warnPurge("delete", err);
 }
 

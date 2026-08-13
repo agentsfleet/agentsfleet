@@ -26,7 +26,7 @@ const pg = @import("pg");
 const logging = @import("log");
 
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
-const approval_gate_db = @import("../../../fleet_runtime/approval_gate_db.zig");
+const gate_sql = @import("../../../fleet_runtime/sql.zig");
 const common = @import("../common.zig");
 const CronStore = @import("../../../cron/Store.zig");
 const cron_sync = @import("cron_sync.zig");
@@ -140,7 +140,7 @@ fn purgeFleetOnConn(conn: *pg.Conn, workspace_id: []const u8, fleet_id: []const 
     // FAIL-state connection after a statement error, leaving the session
     // stuck in the aborted transaction (signup_bootstrap.zig precedent).
     errdefer conn.rollback() catch |err| log.warn(EVENT_IGNORED_ERROR, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
-    _ = try conn.exec(approval_gate_db.SET_GATE_PURGE_BYPASS_SQL, .{});
+    _ = try conn.exec(gate_sql.SET_GATE_PURGE_BYPASS_SQL, .{});
 
     // No ledger delete. Deleting a fleet is routine; erasing a charge the wallet
     // has already been debited for is not, and doing it would falsify the
