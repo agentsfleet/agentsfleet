@@ -157,12 +157,12 @@ The recovered session token is valid for roughly one minute — ample for exactl
 
 Minting per login accumulates credentials — the defect the reference implementation ships. Because the credential is now durable, an orphaned one is live indefinitely rather than for a minute. A login revokes what the same machine left behind; a logout revokes this terminal's credential and deliberately leaves browser sessions alone, because the browser holds a different credential class that refreshes through Clerk and signing out of a terminal must not sign a person out of the dashboard they are reading. **Implementation default:** revoke-then-mint rather than reuse, because a credential's secret is returned once at creation and cannot be recovered later.
 
-- **Dimension 3.1** — a second login from the same machine leaves exactly one live credential for it → Test `test_relogin_leaves_one_live_credential` *(use case 3)*
-- **Dimension 3.2** — a login on one machine leaves another machine's credential live → Test `test_other_machines_credential_survives_login`
+- **Dimension 3.1** — a second login from the same machine leaves exactly one live credential for it → Test `test_relogin_leaves_one_live_credential` *(use case 3)* — **DONE**
+- **Dimension 3.2** — a login on one machine leaves another machine's credential live → Test `test_other_machines_credential_survives_login` — **DONE**
 - **Dimension 3.3** — logout revokes this machine's credential server-side and clears local state → Test `test_logout_revokes_and_clears` *(use case 2)* — **DONE**
 - **Dimension 3.4** — logout leaves browser sessions untouched → Test `test_logout_does_not_revoke_browser_session` *(use case 7)* — **DONE**
 - **Dimension 3.5** — logout with no stored credential reports it and exits zero → Test `test_logout_when_logged_out_is_idempotent` *(use case 4)* — **DONE**
-- **Dimension 3.6** — after logout, listing fleets refuses locally without a network call → Test `test_list_after_logout_refuses_locally` *(use case 6)*
+- **Dimension 3.6** — after logout, listing fleets refuses locally without a network call → Test `test_list_after_logout_refuses_locally` *(use case 6)* — **DONE**
 - **Dimension 3.7** — a revoke that fails does not abort login; the orphaned identifier is reported → Test `test_failed_revoke_reports_and_continues` — **DONE**
 - **Dimension 3.8** — `agentsfleet login --token` is gone; the flag is refused as an unknown option rather than silently ignored → Test `test_token_flag_is_no_longer_accepted` — **DONE**
 - **Dimension 3.9** — piped-stdin seeding goes with it: a non-TTY login with no `AGENTSFLEET_API_KEY` fails fast and names the environment variable → Test `test_non_tty_login_without_env_key_names_the_env_var` — **DONE**
@@ -187,6 +187,21 @@ Out of scope as drafted, folded in on Indy's Aug 13 call (see Discovery). `clerk
 - **Dimension 5.3** — `workspaceId` yields no workspace narrowing, the authz input having had no writer → Test `test_retired_workspace_spelling_is_unread` — DONE
 - **Dimension 5.4** — `OIDC_PROVIDER=custom` is refused at boot rather than mapped onto the survivor → Test `test_retired_provider_refused_at_boot` — DONE
 - **Dimension 5.5** — `OIDC_PROVIDER=clerk` still loads, so no deployment workflow needs editing → Test `test_supported_provider_still_loads` — DONE
+
+### §6 — A tenant key carries its creator's capabilities, resolved from the one authority
+
+Out of scope as drafted, folded in on Indy's Aug 13 call. §5 established that each claim is read from exactly one key; this is the same rule applied one level up, to the one credential class that never asks. An `agt_t` key's capabilities are `scopes.defaultScopes(.tenant_api_key)` — a nine-entry array compiled into the binary — so every key in the fleet carries an identical grant that no operator can narrow and no deploy-free edit can change. Clerk is already the single authority for the `afc_` class and for every JSON Web Token (JWT); the tenant key is the exception that makes "one authority" false.
+
+Nothing needs to be stored to fix it. `240_api_keys.sql` already holds `created_by`, documented as the identity provider's subject claim of the admin who minted the key; `cmd/api_key_lookup.zig` already selects it and already hands it to the middleware as `LookupResult.user_id`. The subject the resolver keys on is in hand at the exact line that discards it in favour of the constant. **Implementation default:** the capability set is resolved through the existing `clerk_scope_resolver`, sharing its cache and its failure modes, because a second resolver would be a second authority with a second staleness story.
+
+**A key inherits its creator's set exactly — no ceiling, no subtraction (Indy, Aug 13).** The compiled-in bundle was the owner's grant minus `approval:resolve`, on the argument that a Fleet holding a key could approve its own gate. That subtraction goes: the rule is what Clerk holds for that person, and a machine credential is no longer a distinct grant shape. `TENANT_API_KEY_GRANT` therefore has no remaining caller and is removed rather than left as an unread default.
+
+- **Dimension 6.1** — an `agt_t` key's capabilities are the ones Clerk holds for the subject in `created_by`, not a compiled-in set → Test `test_tenant_key_scopes_come_from_clerk`
+- **Dimension 6.2** — narrowing that person at the provider narrows every key they minted, on the next request past the cache window → Test `test_narrowing_the_creator_narrows_the_key`
+- **Dimension 6.3** — a creator the provider no longer knows resolves to no capability and every gate refuses by scope, rather than a retry the caller cannot win → Test `test_unknown_creator_yields_no_capability`
+- **Dimension 6.4** — an unreachable provider past the staleness ceiling is unavailable, never a silent empty grant → Test `test_tenant_key_provider_outage_is_unavailable`
+- **Dimension 6.5** — a creator holding `approval:resolve` mints a key that holds it too, the machine-versus-human subtraction having been retired deliberately → Test `test_creator_approval_capability_reaches_the_key`
+- **Dimension 6.6** — the retired compiled-in grant has no remaining caller → Test `test_tenant_api_key_grant_has_no_caller`
 
 ## Interfaces
 
@@ -215,7 +230,11 @@ NEW  DELETE /v1/cli-credentials/{id}     revoke one of this user's credentials
 
 UNCHANGED  POST /v1/auth/sessions, GET /v1/auth/sessions/{id},
            POST /v1/auth/sessions/{id}/verify — the handshake is untouched.
-UNCHANGED  /v1/api-keys — tenant keys keep their meaning and their callers.
+UNCHANGED  /v1/api-keys — the routes, the mint, and the stored row are
+           untouched. §6 changes only where an `agt_t` key's capabilities are
+           read from: the provider, keyed on the `created_by` subject the row
+           already holds, instead of a set compiled into the binary. No column
+           is added, renamed, or backfilled.
 
 PERSISTED  credentials.json carries the credential, its identifier, and the
            deployment that minted it. Mode stays 0600. The session token is
