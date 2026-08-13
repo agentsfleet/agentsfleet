@@ -191,8 +191,14 @@ fn wipeMemory(conn: *pg.Conn) void {
     // would still be costed against a few hundred fleets that no longer exist
     // and could reach for the primary key instead of the index under test.
     base.teardownWorkspace(conn, WS_MEM);
-    _ = conn.exec("ANALYZE core.fleets", .{}) catch |err|
-        std.log.warn("analyze ignored: {s}", .{@errorName(err)});
+    // VACUUM, not a bare ANALYZE. ANALYZE corrects `reltuples` but cannot
+    // reclaim the pages the deleted rows occupied, and the planner costs a scan
+    // from `relpages`: measured here, seeding and dropping these parents takes
+    // `core.fleets` from 1 page to 4 and leaves it there. That is enough for a
+    // sibling test's `core.fleets` read to switch from the index it asserts to
+    // the primary key. VACUUM returns it to 1.
+    _ = conn.exec("VACUUM ANALYZE core.fleets", .{}) catch |err|
+        std.log.warn("vacuum ignored: {s}", .{@errorName(err)});
 }
 
 /// One runner holding `rows` settled leases against one fleet. `runner_leases`
