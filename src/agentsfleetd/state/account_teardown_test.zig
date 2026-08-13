@@ -5,17 +5,20 @@
 //! `openTestConn` gate). The test conn is the DB superuser, so the purge's
 //! cross-schema DELETEs and the memory seed/count run directly without SET ROLE.
 //!
-//! Regression target: `memory.memory_entries` carries no FK to `core.fleets`,
-//! so a seeded memory row survives the workspace/fleet deletes and is removed
-//! ONLY by the teardown's explicit `DELETE ... WHERE fleet_id IN (...)`. That
-//! DELETE keys on `fleet_id` (UUID) after the `instance_id` column was dropped;
-//! a stale-column DELETE would error the whole purge (returns error, not true).
+//! Regression target: the purge deletes far less than it used to. Three sweeps
+//! it once issued explicitly (`fleet.runner_affinity`,
+//! `core.fleet_approval_gates`, `core.fleet_sessions`) are gone, because
+//! `api_runtime` holds no DELETE on any of them and each cascades from
+//! `core.fleets` instead; `memory.memory_entries` gained its own cascade in
+//! schema/821. Erasure therefore rests on referential actions that no statement
+//! here names, which is what the catalogue sweeps below exist to pin.
 
 const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const base = @import("../db/test_fixtures.zig");
 const teardown = @import("account_teardown.zig");
+const gate_sql = @import("../fleet_runtime/sql.zig");
 const store = @import("fleet_telemetry_store.zig");
 
 // Distinct `c...` suffixes so this fixture never collides with the signup /
@@ -421,12 +424,31 @@ const SELECT_TENANT_SCOPED_TABLES =
     \\ORDER BY table_schema, table_name
 ;
 
+/// The same sweep one level down. A tenant-scoped sweep cannot see the tables
+/// this milestone stopped deleting from: `fleet.runner_affinity`,
+/// `core.fleet_approval_gates` and `core.fleet_sessions` are keyed by fleet and
+/// carry no `tenant_id` column at all, so every one of them was invisible to the
+/// guard above while their explicit DELETEs were being removed.
+///
+/// Unlike the tenant sweep this one can fail today, and that is the point: the
+/// purge no longer names these tables, so an `ON DELETE CASCADE` weakened to
+/// `SET NULL` — a one-word schema edit — reopens a permanent erasure gap in
+/// silence. RESTRICT would at least raise; SET NULL just leaves the rows.
+const SELECT_FLEET_SCOPED_TABLES =
+    \\SELECT table_schema, table_name
+    \\FROM information_schema.columns
+    \\WHERE column_name = 'fleet_id'
+    \\  AND table_schema NOT IN ('pg_catalog', 'information_schema')
+    \\ORDER BY table_schema, table_name
+;
+
 const ERASURE_OIDC: []const u8 = "oidc-account-teardown-erasure-01";
 const ERASURE_TENANT: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000101";
 const ERASURE_USER: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000102";
 const ERASURE_WORKSPACE: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000103";
 const ERASURE_FLEET: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000104";
 const ERASURE_RUNNER: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000105";
+const ERASURE_GATE: []const u8 = "0195b4ba-8d3a-7f13-8abc-c00000000106";
 const ERASURE_LEDGER_EVENT: []const u8 = "evt-teardown-erasure-01";
 
 fn seedErasureAccount(conn: *pg.Conn) !void {
@@ -483,6 +505,33 @@ fn seedErasureAccount(conn: *pg.Conn) !void {
         \\        'metered', 'anthropic', 'claude', 0, 0, 0, 0, 1, 0, 'reported', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ ERASURE_RUNNER, ERASURE_FLEET, ERASURE_WORKSPACE, ERASURE_TENANT, ERASURE_LEDGER_EVENT });
+
+    // The three tables this milestone stopped sweeping. Each is reached only by
+    // the `core.fleets` cascade now, so without a row here the fleet-scoped
+    // sweep runs over empty tables and proves nothing about any of them.
+    _ = try conn.exec(
+        \\INSERT INTO fleet.runner_affinity
+        \\  (fleet_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens,
+        \\   last_metered_at, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, 1, 0, 0, 0, 0, 0, 0, 0)
+        \\ON CONFLICT DO NOTHING
+    , .{ ERASURE_FLEET, ERASURE_RUNNER });
+    // A gate row earns its place twice over. It is the only fixture that makes
+    // the purge's `SET LOCAL fleet.allow_gate_purge` load-bearing: the cascade
+    // from `core.fleets` fires this table's BEFORE DELETE append-only trigger,
+    // so without the bypass the whole purge raises rather than erasing.
+    _ = try conn.exec(
+        \\INSERT INTO core.fleet_approval_gates
+        \\  (id, fleet_id, workspace_id, action_id, tool_name, action_name,
+        \\   gate_kind, proposed_action, evidence, blast_radius, timeout_at,
+        \\   resolved_by, status, detail, created_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 'act-teardown-erasure', 'shell',
+        \\        'run', 'command', 'echo erasure', '{}'::jsonb, 'low', 0, '',
+        \\        'pending', '', 0)
+        \\ON CONFLICT DO NOTHING
+    , .{ ERASURE_GATE, ERASURE_FLEET, ERASURE_WORKSPACE });
+    try base.seedFleetSession(conn, ERASURE_FLEET, "{}");
 }
 
 fn cleanupErasureAccount(conn: *pg.Conn) void {
@@ -495,11 +544,35 @@ fn cleanupErasureAccount(conn: *pg.Conn) void {
         std.log.warn("erasure lease cleanup ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM fleet.runners WHERE id = $1::uuid", .{ERASURE_RUNNER}) catch |err|
         std.log.warn("erasure runner cleanup ignored: {s}", .{@errorName(err)});
+    // Gates need the same transaction-scoped bypass the purge uses, for the same
+    // reason as the lease above: when the purge is the thing under mutation, this
+    // has to clear what it failed to erase, or the tenant DELETE below cascades
+    // into the append-only trigger and the next run starts dirty.
+    clearErasureGates(conn);
     _ = conn.exec("DELETE FROM core.tenants WHERE id = $1::uuid", .{ERASURE_TENANT}) catch |err|
         std.log.warn("erasure tenant cleanup ignored: {s}", .{@errorName(err)});
 }
 
-test "integration: erasing a tenant leaves no row behind in any tenant-scoped table" {
+/// Delete the fixture's gate rows through the append-only guard. Its own
+/// transaction because the bypass is `SET LOCAL`: outside one it would be
+/// discarded with a warning, and a session-scoped `SET` would ride the pooled
+/// connection into whatever runs next.
+fn clearErasureGates(conn: *pg.Conn) void {
+    _ = conn.exec("BEGIN", .{}) catch |err| {
+        std.log.warn("erasure gate cleanup ignored: {s}", .{@errorName(err)});
+        return;
+    };
+    _ = conn.exec(gate_sql.SET_GATE_PURGE_BYPASS_SQL, .{}) catch |err|
+        std.log.warn("erasure gate bypass ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.fleet_approval_gates WHERE fleet_id = $1::uuid", .{ERASURE_FLEET}) catch |err|
+        std.log.warn("erasure gate cleanup ignored: {s}", .{@errorName(err)});
+    // Committing a transaction that already failed rolls it back, which is the
+    // right outcome — but the connection must not be left inside one either way.
+    _ = conn.exec("COMMIT", .{}) catch |err|
+        std.log.warn("erasure gate commit ignored: {s}", .{@errorName(err)});
+}
+
+test "integration: erasing a tenant leaves no row behind in any tenant- or fleet-scoped table" {
     const db_ctx = (try base.openTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -513,16 +586,41 @@ test "integration: erasing a tenant leaves no row behind in any tenant-scoped ta
     // These prove the fixture actually reached the tables the sweep will check —
     // without them it could pass on a tenant that never had rows to erase, which
     // is the failure mode this whole test is most exposed to.
-    try std.testing.expectEqual(@as(i64, 1), try countTenantRows(conn, "billing", "tenant_wallet"));
-    try std.testing.expectEqual(@as(i64, 1), try countTenantRows(conn, "billing", "usage_ledger"));
-    try std.testing.expectEqual(@as(i64, 1), try countTenantRows(conn, "fleet", "runner_leases"));
+    try std.testing.expectEqual(@as(i64, 1), try countScopedRows(conn, "billing", "tenant_wallet", COL_TENANT, ERASURE_TENANT));
+    try std.testing.expectEqual(@as(i64, 1), try countScopedRows(conn, "billing", "usage_ledger", COL_TENANT, ERASURE_TENANT));
+    try std.testing.expectEqual(@as(i64, 1), try countScopedRows(conn, "fleet", "runner_leases", COL_TENANT, ERASURE_TENANT));
+    // And the three the purge stopped naming, which only the cascade now reaches.
+    try std.testing.expectEqual(@as(i64, 1), try countScopedRows(conn, "fleet", "runner_affinity", COL_FLEET, ERASURE_FLEET));
+    try std.testing.expectEqual(@as(i64, 1), try countScopedRows(conn, "core", "fleet_approval_gates", COL_FLEET, ERASURE_FLEET));
+    try std.testing.expectEqual(@as(i64, 1), try countScopedRows(conn, "core", "fleet_sessions", COL_FLEET, ERASURE_FLEET));
 
     const result = try teardown.purgeByOidcSubject(conn, alloc, ERASURE_OIDC, &.{ERASURE_FLEET});
     try std.testing.expect(result.purged);
 
-    // Every tenant-scoped table, swept from the catalogue. A survivor here is
-    // either a missing cascade or a delete the purge forgot — both of which mean
-    // an erased account left data behind.
+    // Both scopes, swept from the catalogue. A survivor is either a missing
+    // cascade or a delete the purge forgot — both of which mean an erased
+    // account left data behind.
+    const by_tenant = try sweepScope(conn, alloc, SELECT_TENANT_SCOPED_TABLES, COL_TENANT, ERASURE_TENANT);
+    const by_fleet = try sweepScope(conn, alloc, SELECT_FLEET_SCOPED_TABLES, COL_FLEET, ERASURE_FLEET);
+    try std.testing.expectEqual(@as(usize, 0), by_tenant + by_fleet);
+}
+
+const COL_TENANT = "tenant_id";
+const COL_FLEET = "fleet_id";
+
+/// Sweep every table the catalogue query names, counting rows still keyed to
+/// `id`. Returns how many tables kept at least one, printing each so a failure
+/// names the table rather than only the count.
+///
+/// The catalogue read is scoped so it is fully drained before the per-table
+/// counts reuse the connection.
+fn sweepScope(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    catalogue_sql: []const u8,
+    column: []const u8,
+    id: []const u8,
+) !usize {
     var tables: std.ArrayList([2][]u8) = .empty;
     defer {
         for (tables.items) |t| {
@@ -531,44 +629,52 @@ test "integration: erasing a tenant leaves no row behind in any tenant-scoped ta
         }
         tables.deinit(alloc);
     }
-    var q = PgQuery.from(try conn.query(SELECT_TENANT_SCOPED_TABLES, .{}));
-    defer q.deinit();
-    while (try q.next()) |row| {
-        const schema_name = try alloc.dupe(u8, try row.get([]const u8, 0));
-        errdefer alloc.free(schema_name);
-        const table_name = try alloc.dupe(u8, try row.get([]const u8, 1));
-        errdefer alloc.free(table_name);
-        try tables.append(alloc, .{ schema_name, table_name });
+    {
+        var q = PgQuery.from(try conn.query(catalogue_sql, .{}));
+        defer q.deinit();
+        while (try q.next()) |row| {
+            const schema_name = try alloc.dupe(u8, try row.get([]const u8, 0));
+            errdefer alloc.free(schema_name);
+            const table_name = try alloc.dupe(u8, try row.get([]const u8, 1));
+            errdefer alloc.free(table_name);
+            try tables.append(alloc, .{ schema_name, table_name });
+        }
     }
     try std.testing.expect(tables.items.len > 0);
 
     var survivors: usize = 0;
     for (tables.items) |t| {
-        const remaining = try countTenantRows(conn, t[0], t[1]);
+        const remaining = try countScopedRows(conn, t[0], t[1], column, id);
         if (remaining != 0) {
             survivors += 1;
             std.debug.print(
-                "\nERASURE LEAK: {s}.{s} still holds {d} row(s) for the purged tenant\n",
-                .{ t[0], t[1], remaining },
+                "\nERASURE LEAK: {s}.{s} still holds {d} row(s) for the purged {s}\n",
+                .{ t[0], t[1], remaining, column },
             );
         }
     }
-    try std.testing.expectEqual(@as(usize, 0), survivors);
+    return survivors;
 }
 
-/// Count rows for the erasure fixture's tenant in one table. The identifier is
-/// interpolated because a table name cannot be a bind parameter; both parts come
-/// from `information_schema`, never from input, and the tenant itself still
-/// binds.
-fn countTenantRows(conn: *pg.Conn, schema_name: []const u8, table_name: []const u8) !i64 {
+/// Count rows still keyed to `id` in one table. Both identifiers are
+/// interpolated because neither a table nor a column name can be a bind
+/// parameter; all three come from `information_schema` or a constant above,
+/// never from input, and the id itself still binds.
+fn countScopedRows(
+    conn: *pg.Conn,
+    schema_name: []const u8,
+    table_name: []const u8,
+    column: []const u8,
+    id: []const u8,
+) !i64 {
     const alloc = std.testing.allocator;
     const sql = try std.fmt.allocPrint(
         alloc,
-        "SELECT count(*)::bigint FROM {s}.{s} WHERE tenant_id = $1::uuid",
-        .{ schema_name, table_name },
+        "SELECT count(*)::bigint FROM {s}.{s} WHERE {s} = $1::uuid",
+        .{ schema_name, table_name, column },
     );
     defer alloc.free(sql);
-    var q = PgQuery.from(try conn.query(sql, .{ERASURE_TENANT}));
+    var q = PgQuery.from(try conn.query(sql, .{id}));
     defer q.deinit();
     const row = (try q.next()) orelse return 0;
     return row.get(i64, 0);
