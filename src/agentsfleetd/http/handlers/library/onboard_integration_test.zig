@@ -289,9 +289,9 @@ fn crewFolderBody(alloc: std.mem.Allocator, slug: []const u8) ![]const u8 {
     }, .{});
 }
 
-test "test_crew_folder_two_member_onboard" {
+test "test_crew_folder_three_member_onboard" {
     // Dimension 3.3 — installing the crew IS this pipeline run once per
-    // subfolder: the two SHIPPED bundles, read from `library/` exactly as the
+    // subfolder: the three SHIPPED bundles, read from `library/` exactly as the
     // folder picker hands them up, each onboard through the tenant endpoint
     // into their own catalog rows. No crew schema, no new daemon concept —
     // two members are two uploads.
@@ -308,7 +308,7 @@ test "test_crew_folder_two_member_onboard" {
     const url = try tenantUrl(alloc, http_auth.WS_PRIMARY);
     defer alloc.free(url);
 
-    const members = [_][]const u8{ "incident-responder", "incident-repairer" };
+    const members = [_][]const u8{ "incident-responder", "incident-repairer", "incident-verifier" };
     var ids: [members.len][]const u8 = undefined;
     var stored: usize = 0;
     defer for (ids[0..stored]) |id| alloc.free(id);
@@ -322,9 +322,10 @@ test "test_crew_folder_two_member_onboard" {
         stored = i + 1;
     }
 
-    // Two members, two rows, two distinct entries.
+    // Three members, three rows, three distinct entries.
     try std.testing.expect(!std.mem.eql(u8, ids[0], ids[1]));
-    try std.testing.expectEqual(@as(i64, 2), try tenantCount(conn));
+    try std.testing.expect(!std.mem.eql(u8, ids[1], ids[2]));
+    try std.testing.expectEqual(@as(i64, 3), try tenantCount(conn));
 }
 
 /// A crew-shaped upload: BOTH markdown bodies, the way `library/incident-*/`
@@ -374,6 +375,7 @@ const CREW_TRIGGER_WRITE =
     \\  repositories:
     \\    - acme/payments
     \\  repository_access: write
+    \\  repository_base: main
     \\---
 ;
 
@@ -631,7 +633,7 @@ test "test_import_manifest_survives_store_round_trip" {
 // ── Dimension 5.3 — the SHIPPED crew reaches a workspace ────────────────────
 
 const LIBRARY_BASE = "library";
-const CREW_SLUGS = [_][]const u8{"incident-responder"};
+const CREW_SLUGS = [_][]const u8{ "incident-responder", "incident-repairer", "incident-verifier" };
 const MAX_BUNDLE_BYTES = 64 * 1024;
 
 fn loadBundleFile(alloc: std.mem.Allocator, slug: []const u8, file: []const u8) ![]u8 {

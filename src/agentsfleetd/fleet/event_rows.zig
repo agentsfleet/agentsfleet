@@ -47,6 +47,8 @@ pub const LABEL_TENANT_RESOLVE_FAILED = "tenant_resolve_failed";
 pub const LABEL_SECRET_MISSING = "secret_missing";
 pub const LABEL_APPROVAL_DENIED = "approval_denied";
 pub const LABEL_APPROVAL_EXPIRED = "approval_expired";
+pub const LABEL_REPOSITORY_BASE_REQUIRED = "repository_base_required";
+pub const DETAIL_REPOSITORY_BASE_REQUIRED = "Add x-agentsfleet.repository_base to TRIGGER.md, save the fleet, then retry the event.";
 /// The FLEET's own `daily_dollars`/`monthly_dollars` ceiling is reached. Spelt
 /// identically to `contract.execution_result.FailureClass.budget_breach`, which
 /// carries the same verdict for the mid-run kill — one label, two gates, so an
@@ -116,6 +118,18 @@ pub fn markBlocked(
     event_id: []const u8,
     failure_label: []const u8,
 ) !i64 {
+    return markBlockedWithDetail(pool, fleet_id, event_id, failure_label, "");
+}
+
+/// Terminal refusal with an operator-readable recovery instruction. Empty
+/// detail preserves the established blocked-row shape for existing callers.
+pub fn markBlockedWithDetail(
+    pool: *pg.Pool,
+    fleet_id: []const u8,
+    event_id: []const u8,
+    failure_label: []const u8,
+    failure_detail: []const u8,
+) !i64 {
     const conn = try pool.acquire();
     defer pool.release(conn);
     const affected = try conn.exec(sql.UPDATE_FLEET_EVENT_FAILURE, .{
@@ -125,6 +139,7 @@ pub fn markBlocked(
         failure_label,
         clock.nowMillis(),
         STATUS_RECEIVED,
+        failure_detail,
     });
     return affected orelse 0;
 }

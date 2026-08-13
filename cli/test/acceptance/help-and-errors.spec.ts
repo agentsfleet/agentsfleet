@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import { createServer } from "node:http";
 import type { Socket } from "node:net";
+import os from "node:os";
 import path from "node:path";
 import url from "node:url";
 
@@ -90,15 +91,24 @@ interface ValidateModule {
 
 let pkgVersion: string;
 let validateModule: ValidateModule;
+let unauthenticatedStateDir: string;
 
 beforeAll(async () => {
   const pkgRaw = await fs.readFile(path.join(CLI_ROOT, "package.json"), "utf8");
   pkgVersion = (JSON.parse(pkgRaw) as { version: string }).version;
   validateModule = await import(path.join(CLI_ROOT, "src/program/validators.ts")) as ValidateModule;
+  unauthenticatedStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-unauth-"));
 });
 
+afterAll(async () => fs.rm(unauthenticatedStateDir, { recursive: true, force: true }));
+
 function emptyEnv(extra?: Record<string, string>): Record<string, string> {
-  return composeEnv({ AGENTSFLEET_API_URL: UNROUTABLE_API_URL, NO_COLOR: "1", ...(extra ?? {}) });
+  return composeEnv({
+    AGENTSFLEET_API_URL: UNROUTABLE_API_URL,
+    AGENTSFLEET_STATE_DIR: unauthenticatedStateDir,
+    NO_COLOR: "1",
+    ...(extra ?? {}),
+  });
 }
 
 describe("help triplet", () => {

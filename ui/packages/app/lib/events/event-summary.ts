@@ -143,6 +143,7 @@ const FAILURE_PRESENTATION: Record<string, EventFailurePresentation> = {
   landlock_deny: { label: "Blocked by the sandbox policy", guidance: null },
   lease_expired: { label: "The run's lease expired", guidance: null },
   renewal_terminate: { label: "Stopped by lease renewal policy", guidance: null },
+  repository_base_required: { label: "Fleet repository base is missing", guidance: null },
 };
 
 export function failurePresentationFor(tag: string): EventFailurePresentation {
@@ -189,7 +190,6 @@ export function outcomeFor(
   row: Pick<EventRow, "status" | "failure_label"> & Partial<Pick<EventRow, "failure_detail">>,
 ): string {
   if (row.status === EVENT_STATUS.RECEIVED) return OUTCOME.WORKING;
-  if (row.status === EVENT_STATUS.GATE_BLOCKED) return OUTCOME.WAITING_APPROVAL;
   if (row.failure_label) {
     const sentence = failureSentenceFor(row.failure_label);
     const detail = (row.failure_detail ?? "").trim();
@@ -198,6 +198,7 @@ export function outcomeFor(
     if (detail.length > 0 && detail !== sentence) return `${sentence}${CAUSE_SEPARATOR}${detail}`;
     return sentence;
   }
+  if (row.status === EVENT_STATUS.GATE_BLOCKED) return OUTCOME.WAITING_APPROVAL;
   if (row.status === EVENT_STATUS.FLEET_ERROR) return OUTCOME.FAILED;
   return OUTCOME.NO_REPLY;
 }

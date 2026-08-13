@@ -86,6 +86,8 @@ pub const ActionDetail = struct {
     /// Null when the fleet declares none, which fails the mint closed, so there
     /// is no reach to state.
     repository_binding: ?config_types.RepositoryBinding = null,
+    /// Present only for a bounded approval whose requests consume spend.
+    spend_ceiling: ?i64 = null,
     timeout_ms: i64 = 24 * 60 * 60 * MS_PER_SECOND,
 };
 

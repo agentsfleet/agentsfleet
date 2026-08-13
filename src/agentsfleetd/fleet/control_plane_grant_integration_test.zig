@@ -53,7 +53,7 @@ fn setGithubGrant(conn: *pg.Conn, fleet_id: []const u8, status: grant_lookup.Gra
 }
 
 fn leaseBodyAs(h: anytype, token: []const u8) ![]u8 {
-    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json("{}");
+    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json(protocol.LEASE_REQUEST_CURRENT_JSON);
     const resp = try req.send();
     defer resp.deinit();
     try resp.expectStatus(.ok);

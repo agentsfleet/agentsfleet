@@ -40,6 +40,8 @@ const cred_testing = @import("../../../credentials/testing.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const gate_constants = @import("../../../fleet_runtime/approval_gate_constants.zig");
 const approval_gate_rt = @import("../../../fleet_runtime/approval_gate.zig");
+const approval_gate_db = @import("../../../fleet_runtime/approval_gate_db.zig");
+const write_gate = @import("credentials_mint_write_gate.zig");
 
 const GrantStatus = grant_lookup.GrantStatus;
 
@@ -68,7 +70,7 @@ const FLEET_OWNER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1c01";
 /// `repository_access` are optional TOGETHER — one without the other is an
 /// authoring error, not a half-binding.
 const CONFIG_WITH_BINDING =
-    \\{"name":"cred-owner","x-agentsfleet":{"triggers":[{"type":"webhook","source":"github"}],"credentials":["github"],"tools":["git"],"budget":{"daily_dollars":1.0},"repositories":["acme/payments"],"repository_access":"write"}}
+    \\{"name":"cred-owner","x-agentsfleet":{"triggers":[{"type":"webhook","source":"github"}],"credentials":["github"],"tools":["git"],"budget":{"daily_dollars":1.0},"repositories":["acme/payments"],"repository_access":"write","repository_base":"main"}}
 ;
 /// The same binding, as a slice — a fake GitHub has to state the reach this
 /// fleet declared or the mint refuses the token it returns (RULE UFS: one
@@ -82,8 +84,14 @@ const LEASE_STALE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e03";
 // table makes rows for a shared event permanent across the whole suite run.
 const LEASE_WRITE_UNAPPROVED = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e04";
 const LEASE_WRITE_DRIFT = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e05";
+const LEASE_WRITE_FAILURE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e06";
+const LEASE_WRITE_CEILING = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e07";
+const LEASE_WRITE_CONCURRENT = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1e08";
 const EVENT_WRITE_UNAPPROVED = "evt-cred-write-unappr";
 const EVENT_WRITE_DRIFT = "evt-cred-write-drift";
+const EVENT_WRITE_FAILURE = "evt-cred-write-failure";
+const EVENT_WRITE_CEILING = "evt-cred-write-ceiling";
+const EVENT_WRITE_CONCURRENT = "evt-cred-write-concurrent";
 const GRANT_OWNER = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1f01";
 // A lease_expires_at in the distant past (1970) — guaranteed < the handler's
 // wall-clock now, so the live-lease gate must reject it regardless of run date.
@@ -201,9 +209,9 @@ fn seedGithubHandle(conn: *pg.Conn, workspace_id: []const u8) !void {
 /// The stated binding the write-kind park would have recorded for
 /// CONFIG_WITH_BINDING — what the approval card told the human (RULE UFS: the
 /// one JSON spelling `repository_binding_json.serialize` produces).
-const STATED_BINDING_OWNER = "{\"repositories\":[\"acme/payments\"],\"access\":\"write\"}";
+const STATED_BINDING_OWNER = "{\"repositories\":[\"acme/payments\"],\"access\":\"write\",\"base\":\"main\"}";
 /// A stated binding naming a DIFFERENT repository — the drift fixture.
-const STATED_BINDING_DRIFTED = "{\"repositories\":[\"acme/other\"],\"access\":\"write\"}";
+const STATED_BINDING_DRIFTED = "{\"repositories\":[\"acme/other\"],\"access\":\"write\",\"base\":\"main\"}";
 
 // v7-shaped gate row ids (the schema CHECK pins the version nibble). The table
 // is APPEND-ONLY — no DELETE ever, UPDATE only while pending — so every seed
@@ -213,6 +221,13 @@ const STATED_BINDING_DRIFTED = "{\"repositories\":[\"acme/other\"],\"access\":\"
 const GATE_ROW_RECHECKS = "0195c9db-4a01-7f13-8abc-2b3e1e0d7e01";
 const GATE_ROW_PENDING = "0195c9db-4a01-7f13-8abc-2b3e1e0d7e02";
 const GATE_ROW_DRIFTED = "0195c9db-4a01-7f13-8abc-2b3e1e0d7e03";
+const GATE_ROW_FAILURE = "0195c9db-4a01-7f13-8abc-2b3e1e0d7e04";
+const GATE_ROW_CEILING = "0195c9db-4a01-7f13-8abc-2b3e1e0d7e05";
+const GATE_ROW_CONCURRENT = "0195c9db-4a01-7f13-8abc-2b3e1e0d7e06";
+const GATE_ROW_SEMANTIC_BINDING = "0195c9db-4a01-7f13-8abc-2b3e1e0d7e08";
+const EVENT_WRITE_SEMANTIC_BINDING = "evt-cred-write-semantic";
+const CONCURRENT_WRITE_REQUESTS = 100;
+const MIN_SERVER_PEAK = 2;
 
 /// Seed a gate row of the given kind/status for (fleet, event) — what the
 /// write-kind park writes, reduced to the columns the write mint reads.
@@ -221,17 +236,54 @@ fn seedGateRow(conn: *pg.Conn, gate_id: []const u8, fleet_id: []const u8, worksp
         \\INSERT INTO core.fleet_approval_gates
         \\  (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_kind,
         \\   proposed_action, evidence, blast_radius, timeout_at, resolved_by, status,
-        \\   detail, created_at, event_id, stated_binding)
+        \\   detail, created_at, updated_at, event_id, stated_binding,
+        \\   spend_count, spend_ceiling)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, 'act-' || $4, 'webhook', 'webhook:github', $5,
         \\        '', '{}'::jsonb, '', 9999999999999, '', $6,
-        \\        '', 1, $4, $7::jsonb)
+        \\        '', 1, CASE WHEN $6 = $9 THEN 1 ELSE NULL END,
+        \\        $4, $7::jsonb, 0, $8)
         \\ON CONFLICT (id) DO NOTHING
-    , .{ gate_id, fleet_id, workspace_id, event_id, gate_kind, status, stated_binding });
+    , .{
+        gate_id,
+        fleet_id,
+        workspace_id,
+        event_id,
+        gate_kind,
+        status,
+        stated_binding,
+        gate_constants.REPOSITORY_WRITE_SPEND_CEILING,
+        approval_gate_rt.GateStatus.approved.toSlice(),
+    });
 }
 
 /// The approved repository-write gate the write mint requires.
 fn seedApprovedWriteGate(conn: *pg.Conn, gate_id: []const u8, fleet_id: []const u8, workspace_id: []const u8, event_id: []const u8, stated_binding: []const u8) !void {
     try seedGateRow(conn, gate_id, fleet_id, workspace_id, event_id, gate_constants.GATE_KIND_REPOSITORY_WRITE, approval_gate_rt.GateStatus.approved.toSlice(), stated_binding);
+}
+
+fn seedSpendFixture(h: *TestHarness, lease_id: []const u8, event_id: []const u8, gate_id: []const u8) !void {
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    teardown(conn);
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_OWNER);
+    try base.seedFleet(conn, FLEET_OWNER, WORKSPACE_OWNER, "cred-owner", CONFIG_WITH_BINDING, "# z");
+    try seedRunner(conn, RUNNER_OWNER, TOKEN_OWNER);
+    try seedLeaseForEvent(conn, lease_id, RUNNER_OWNER, FLEET_OWNER, WORKSPACE_OWNER, event_id);
+    try setGrantStatus(conn, FLEET_OWNER, INTEGRATION_GITHUB, .approved);
+    try seedApprovedWriteGate(conn, gate_id, FLEET_OWNER, WORKSPACE_OWNER, event_id, STATED_BINDING_OWNER);
+}
+
+fn gateSpendCount(h: *TestHarness, gate_id: []const u8) !i64 {
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    var q = PgQuery.from(try conn.query(
+        "SELECT spend_count FROM core.fleet_approval_gates WHERE id = $1::uuid",
+        .{gate_id},
+    ));
+    defer q.deinit();
+    const row = try q.next() orelse return error.TestUnexpectedResult;
+    return try row.get(i64, 0);
 }
 
 fn mintBodyFor(lease_id: []const u8, integration_id: []const u8) ![]u8 {
@@ -252,7 +304,7 @@ fn teardown(conn: *pg.Conn) void {
     // (schema trigger refuses DELETE), so the write-gate fixtures use unique
     // ids + per-test event ids and re-seed idempotently instead.
     execIgnore(conn, "DELETE FROM core.integration_grants WHERE fleet_id IN ($1::uuid, $2::uuid)", .{ FLEET_OWNER, FLEET_FOREIGN });
-    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id IN ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid)", .{ LEASE_OWNER, LEASE_FOREIGN, LEASE_STALE, LEASE_WRITE_UNAPPROVED, LEASE_WRITE_DRIFT });
+    execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE fleet_id IN ($1::uuid, $2::uuid)", .{ FLEET_OWNER, FLEET_FOREIGN });
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id IN ($1::uuid, $2::uuid)", .{ RUNNER_OWNER, RUNNER_ATTACKER });
     execIgnore(conn, "DELETE FROM vault.secrets WHERE workspace_id = $1", .{WORKSPACE_OWNER});
     execIgnore(conn, "DELETE FROM vault.secrets WHERE workspace_id = $1", .{WORKSPACE_FOREIGN});
@@ -668,6 +720,8 @@ test "integration: test_mint_rechecks_revoked_grant" {
         try resp.expectStatus(.ok);
         try std.testing.expect(resp.bodyContains(GITHUB_MINTED));
     }
+    try std.testing.expectEqual(@as(i64, 2), try gateSpendCount(h, GATE_ROW_RECHECKS));
+    try std.testing.expectEqual(@as(usize, 1), gh.calls);
 }
 
 test "integration: test_write_mint_refuses_unapproved" {
@@ -782,6 +836,170 @@ test "integration: test_write_mint_refuses_binding_drift" {
         try std.testing.expect(!resp.bodyContains(GITHUB_MINTED));
     }
     try std.testing.expectEqual(@as(usize, 0), gh.calls);
+}
+
+test "integration: semantic repository equality spends approved write gate" {
+    const h = startHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    teardown(conn);
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_OWNER);
+    try base.seedFleet(conn, FLEET_OWNER, WORKSPACE_OWNER, "cred-owner", CONFIG_WITH_BINDING, "# z");
+    const stated = "{\"repositories\":[\"ACME/WIDGETS\",\"Acme/Payments\"],\"access\":\"write\",\"base\":\"main\"}";
+    try seedApprovedWriteGate(
+        conn,
+        GATE_ROW_SEMANTIC_BINDING,
+        FLEET_OWNER,
+        WORKSPACE_OWNER,
+        EVENT_WRITE_SEMANTIC_BINDING,
+        stated,
+    );
+    const repositories = [_][]const u8{ "acme/payments", "acme/widgets" };
+    const branch_gate_id = try approval_gate_db.approvedWriteGateId(
+        h.ctx.pool,
+        ALLOC,
+        FLEET_OWNER,
+        EVENT_WRITE_SEMANTIC_BINDING,
+        .{ .repositories = &repositories, .access = .write, .base_branch = "main" },
+    ) orelse return error.TestUnexpectedResult;
+    defer ALLOC.free(branch_gate_id);
+    try std.testing.expectEqualStrings(GATE_ROW_SEMANTIC_BINDING, branch_gate_id);
+    try std.testing.expectEqual(write_gate.WriteApproval.approved, try write_gate.reserveWriteApproval(
+        ALLOC,
+        conn,
+        FLEET_OWNER,
+        EVENT_WRITE_SEMANTIC_BINDING,
+        .{ .repositories = &repositories, .access = .write, .base_branch = "main" },
+    ));
+    var query = PgQuery.from(try conn.query(
+        "SELECT spend_count FROM core.fleet_approval_gates WHERE id = $1::uuid",
+        .{GATE_ROW_SEMANTIC_BINDING},
+    ));
+    defer query.deinit();
+    const row = try query.next() orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(@as(i64, 1), try row.get(i64, 0));
+}
+
+test "integration: test_failed_write_request_still_spends" {
+    crypto_primitives.setTestKek();
+    const h = startHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    var broker = try CredentialBroker.init(ALLOC, integration.REGISTRY, integration.nullDeps());
+    defer broker.deinit();
+    h.ctx.broker = &broker;
+    try seedSpendFixture(h, LEASE_WRITE_FAILURE, EVENT_WRITE_FAILURE, GATE_ROW_FAILURE);
+    defer cleanupAll(h);
+
+    const body = try githubMintBody(LEASE_WRITE_FAILURE);
+    defer ALLOC.free(body);
+    const response = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
+    defer response.deinit();
+    try response.expectStatus(.not_found);
+    try std.testing.expect(response.bodyContains(ec.ERR_CRED_INTEGRATION_NOT_CONNECTED));
+    try std.testing.expectEqual(@as(i64, 1), try gateSpendCount(h, GATE_ROW_FAILURE));
+}
+
+test "integration: test_write_request_past_ceiling_refuses" {
+    crypto_primitives.setTestKek();
+    const h = startHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    var broker = try CredentialBroker.init(ALLOC, integration.REGISTRY, integration.nullDeps());
+    defer broker.deinit();
+    h.ctx.broker = &broker;
+    try seedSpendFixture(h, LEASE_WRITE_CEILING, EVENT_WRITE_CEILING, GATE_ROW_CEILING);
+    defer cleanupAll(h);
+
+    const body = try githubMintBody(LEASE_WRITE_CEILING);
+    defer ALLOC.free(body);
+    for (0..gate_constants.REPOSITORY_WRITE_SPEND_CEILING) |_| {
+        const spent = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
+        defer spent.deinit();
+        try spent.expectStatus(.not_found);
+    }
+    const refused = try (try (try h.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER)).json(body)).send();
+    defer refused.deinit();
+    try refused.expectStatus(.forbidden);
+    try std.testing.expect(refused.bodyContains(ec.ERR_REPAIR_SPEND_EXHAUSTED));
+    try std.testing.expectEqual(gate_constants.REPOSITORY_WRITE_SPEND_CEILING, try gateSpendCount(h, GATE_ROW_CEILING));
+}
+
+test "integration: test_concurrent_write_requests_hold_ceiling" {
+    crypto_primitives.setTestKek();
+    const h = startHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    var broker = try CredentialBroker.init(ALLOC, integration.REGISTRY, integration.nullDeps());
+    defer broker.deinit();
+    h.ctx.broker = &broker;
+    try seedSpendFixture(h, LEASE_WRITE_CONCURRENT, EVENT_WRITE_CONCURRENT, GATE_ROW_CONCURRENT);
+    defer cleanupAll(h);
+
+    const original_limit = h.ctx.api_max_in_flight_requests;
+    h.ctx.api_max_in_flight_requests = CONCURRENT_WRITE_REQUESTS;
+    defer h.ctx.api_max_in_flight_requests = original_limit;
+    var server_peak = std.atomic.Value(u32).init(0);
+    h.ctx.api_peak_in_flight_probe = &server_peak;
+    defer h.ctx.api_peak_in_flight_probe = null;
+    const body = try githubMintBody(LEASE_WRITE_CONCURRENT);
+    defer ALLOC.free(body);
+    var threads: [CONCURRENT_WRITE_REQUESTS]std.Thread = undefined;
+    var statuses: [CONCURRENT_WRITE_REQUESTS]u16 = .{0} ** CONCURRENT_WRITE_REQUESTS;
+    var exhausted: [CONCURRENT_WRITE_REQUESTS]bool = .{false} ** CONCURRENT_WRITE_REQUESTS;
+    var ready = std.atomic.Value(usize).init(0);
+    var gate = std.atomic.Value(bool).init(false);
+    const Worker = struct {
+        fn run(harness: *TestHarness, request_body: []const u8, status: *u16, was_exhausted: *bool, ready_count: *std.atomic.Value(usize), start_gate: *std.atomic.Value(bool)) void {
+            _ = ready_count.fetchAdd(1, .acq_rel);
+            while (!start_gate.load(.acquire)) std.atomic.spinLoopHint();
+            const request = (harness.post(protocol.PATH_RUNNER_CREDENTIALS_MINT).bearer(TOKEN_OWNER) catch return).json(request_body) catch return;
+            const response = request.send() catch return;
+            defer response.deinit();
+            status.* = response.status;
+            was_exhausted.* = response.bodyContains(ec.ERR_REPAIR_SPEND_EXHAUSTED);
+        }
+    };
+    var spawned: usize = 0;
+    errdefer {
+        gate.store(true, .release);
+        for (threads[0..spawned]) |thread| thread.join();
+    }
+    for (&threads, 0..) |*thread, index| {
+        thread.* = try std.Thread.spawn(.{}, Worker.run, .{ h, body, &statuses[index], &exhausted[index], &ready, &gate });
+        spawned += 1;
+    }
+    while (ready.load(.acquire) != CONCURRENT_WRITE_REQUESTS) std.atomic.spinLoopHint();
+    gate.store(true, .release);
+    for (threads) |thread| thread.join();
+    spawned = 0;
+
+    var spent_count: usize = 0;
+    var refused_count: usize = 0;
+    for (statuses, exhausted) |status, was_exhausted| {
+        if (status == @intFromEnum(std.http.Status.not_found)) {
+            spent_count += 1;
+        } else if (status == @intFromEnum(std.http.Status.forbidden) and was_exhausted) {
+            refused_count += 1;
+        } else {
+            return error.UnexpectedMintStatus;
+        }
+    }
+    try std.testing.expectEqual(@as(usize, @intCast(gate_constants.REPOSITORY_WRITE_SPEND_CEILING)), spent_count);
+    try std.testing.expectEqual(CONCURRENT_WRITE_REQUESTS - spent_count, refused_count);
+    try std.testing.expect(server_peak.load(.acquire) >= MIN_SERVER_PEAK);
+    try std.testing.expectEqual(gate_constants.REPOSITORY_WRITE_SPEND_CEILING, try gateSpendCount(h, GATE_ROW_CONCURRENT));
 }
 
 test "integration: test_mint_persists_rotated_refresh_token" {

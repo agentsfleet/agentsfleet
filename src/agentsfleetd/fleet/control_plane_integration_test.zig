@@ -169,18 +169,22 @@ fn parseLease(alloc: std.mem.Allocator, body: []const u8) !LeaseView {
 }
 
 pub fn leaseAs(h: *TestHarness, token: []const u8) !LeaseView {
-    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json("{}");
+    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json(protocol.LEASE_REQUEST_CURRENT_JSON);
     const resp = try req.send();
     defer resp.deinit();
     try resp.expectStatus(.ok);
     return parseLease(ALLOC, resp.body);
 }
 
+fn leaseAsVersionOne(h: *TestHarness, token: []const u8) !harness_mod.Response {
+    return (try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json("")).send();
+}
+
 /// Lease as `token` and assert the issued lease's policy carries a non-empty
 /// provider and the exact `expect_api_key`. Self-contained (no LeaseView dup) so
 /// it leaves the shared parseLease path untouched.
 pub fn expectLeasePolicyKey(h: *TestHarness, token: []const u8, expect_api_key: []const u8) !void {
-    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json("{}");
+    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json(protocol.LEASE_REQUEST_CURRENT_JSON);
     const resp = try req.send();
     defer resp.deinit();
     try resp.expectStatus(.ok);
@@ -199,7 +203,7 @@ pub fn expectLeasePolicyKey(h: *TestHarness, token: []const u8, expect_api_key: 
 /// the control plane resolved into tenant_model_selection reaches the budget the
 /// runner receives, and drives the auto tool_window tiering (capabilities.md §4).
 pub fn expectLeasePolicyContext(h: *TestHarness, token: []const u8, expect_cap: i64, expect_tool_window: i64, expect_model: []const u8) !void {
-    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json("{}");
+    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json(protocol.LEASE_REQUEST_CURRENT_JSON);
     const resp = try req.send();
     defer resp.deinit();
     try resp.expectStatus(.ok);
@@ -214,7 +218,7 @@ pub fn expectLeasePolicyContext(h: *TestHarness, token: []const u8, expect_cap: 
 }
 
 pub fn expectLeaseInstructions(h: *TestHarness, token: []const u8, expect_substr: []const u8) !void {
-    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json("{}");
+    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json(protocol.LEASE_REQUEST_CURRENT_JSON);
     const resp = try req.send();
     defer resp.deinit();
     try resp.expectStatus(.ok);
@@ -324,4 +328,28 @@ test "integration: runner control plane — lease assigns across active fleets, 
     const third = try leaseAs(h, RUNNER_A_TOKEN);
     defer if (third.fleet_id) |z| ALLOC.free(z);
     try std.testing.expect(!third.present);
+}
+
+test "integration: version-one runner receives the frozen ordinary lease shape" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAll(h, conn);
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
+    try fundLargeBalance(conn);
+    try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN);
+    try seedActiveFleet(conn, AGENTSFLEET_1_ID, "cp-fleet-v1");
+    try publishFreshEvent(h, AGENTSFLEET_1_ID);
+    const response = try leaseAsVersionOne(h, RUNNER_A_TOKEN);
+    defer response.deinit();
+    try response.expectStatus(.ok);
+    const strict = try std.json.parseFromSlice(@import("contract").protocol_lease_v1.LeaseResponse, ALLOC, response.body, .{});
+    defer strict.deinit();
+    try std.testing.expect(strict.value.lease != null);
+    try std.testing.expect(std.mem.indexOf(u8, response.body, "http_origin_policies") == null);
+    try std.testing.expect(std.mem.indexOf(u8, response.body, "read_only") == null);
+    try std.testing.expect(std.mem.indexOf(u8, response.body, "base_branch") == null);
 }
