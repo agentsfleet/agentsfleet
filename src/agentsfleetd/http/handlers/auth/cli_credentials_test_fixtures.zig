@@ -1,9 +1,10 @@
 //! Shared fixtures for the command-line credential integration suites.
 //!
-//! Two suites consume this: `cli_credentials_integration_test.zig` drives the
-//! three endpoints over the real router, and
-//! `cli_credentials_index_integration_test.zig` proves what the DATABASE
-//! refuses. Both need the same three things, so they live here rather than
+//! Three suites consume this: `cli_credentials_integration_test.zig` drives
+//! what a credential reaches over the real router,
+//! `cli_credentials_admission_integration_test.zig` proves who those routes
+//! admit, and `cli_credentials_index_integration_test.zig` proves what the
+//! DATABASE refuses. All need the same things, so they live here rather than
 //! being copied: the registry wiring that makes an `afc_` bearer resolvable,
 //! the tenant and user rows the credential's foreign keys require, and the
 //! mint helper that captures the raw value returned exactly once.
@@ -39,6 +40,13 @@ pub const TestHarness = harness_mod.TestHarness;
 pub const ALLOC = std.testing.allocator;
 
 pub const PATH = "/v1/cli-credentials";
+
+/// The item-form path for a revoke. Caller frees. Shared rather than copied:
+/// both router-driven suites build it, and two spellings of one route are how
+/// a path change fixes half the tests and silently strands the other half.
+pub fn revokePath(credential_id: []const u8) ![]const u8 {
+    return std.fmt.allocPrint(ALLOC, "{s}/{s}", .{ PATH, credential_id });
+}
 
 /// Shared namespace for every identifier this suite owns. Single-sourced so
 /// the fixtures cannot drift onto a neighbouring suite's rows — and so no line

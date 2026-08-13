@@ -100,6 +100,7 @@ test {
     _ = @import("http/handlers/auth/identity_events_clerk_integration_test.zig");
     _ = @import("http/handlers/auth/sessions_integration_test.zig");
     _ = @import("http/handlers/auth/cli_credentials_integration_test.zig");
+    _ = @import("http/handlers/auth/cli_credentials_admission_integration_test.zig");
     _ = @import("http/handlers/auth/cli_credentials_index_integration_test.zig");
     _ = @import("http/handlers/webhooks/approval_integration_test.zig");
     _ = @import("http/handlers/fleets/messages_integration_test.zig");
