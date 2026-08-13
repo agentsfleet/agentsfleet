@@ -135,11 +135,18 @@ test "the composite still covers the fleet filter after the drop" {
     defer db.close();
     defer _ = db.conn.exec("DELETE FROM memory.memory_entries WHERE key LIKE $1", .{MEM_KEY_PREFIX ++ "%"}) catch |err|
         std.log.warn("memory teardown ignored: {s}", .{@errorName(err)});
-    // Drop the parent fleets with their workspace, then re-analyze: deleting the
-    // rows leaves the planner's estimates behind, and sibling suites assert which
-    // index `core.fleets` reads pick.
-    // VACUUM, not a bare ANALYZE: ANALYZE fixes `reltuples` but leaves the pages
-    // the deleted parents occupied, and the planner costs from `relpages`.
+    // This suite keeps the wide spread ON PURPOSE, unlike `index_usage`, which
+    // now seeds four parents. The claim here is that the planner PREFERS the
+    // composite once the narrow index is dropped, and preference is costed from
+    // selectivity: across ~200 fleets one fleet is a 0.5% slice and the index
+    // wins; across four it is 25% and a scan is the honest choice. Shrink this
+    // fixture and the test stops asserting what it says it asserts.
+    //
+    // The cleanup below is the price of that scale. VACUUM, not a bare ANALYZE:
+    // ANALYZE fixes `reltuples` but leaves the pages the deleted parents
+    // occupied, and the planner costs a scan from `relpages` — measured, the
+    // table stays at 4 pages after ANALYZE and returns to 1 only after VACUUM,
+    // which is enough to flip a sibling suite's asserted index to `fleets_pkey`.
     defer _ = db.conn.exec("VACUUM ANALYZE core.fleets", .{}) catch |err|
         std.log.warn("vacuum ignored: {s}", .{@errorName(err)});
     defer base.teardownWorkspace(db.conn, WS_MEM);

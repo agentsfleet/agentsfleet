@@ -40,7 +40,6 @@ pub const ESTIMATE_FLOOR_OUTPUT_TOKENS: u32 = 100;
 
 pub const Billing = struct {
     balance_nanos: i64,
-    grant_source: []const u8,
     updated_at_ms: i64,
     exhausted_at_ms: ?i64,
 };
@@ -102,17 +101,13 @@ pub fn clearExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
     return store.clearExhausted(conn, tenant_id);
 }
 
-/// Caller owns the grant_source slice. Surface for both
-/// `GET /v1/tenants/me/billing` and `agentsfleet doctor --json`.
-pub fn getBilling(
-    conn: *pg.Conn,
-    alloc: std.mem.Allocator,
-    tenant_id: []const u8,
-) !?Billing {
-    const row = (try store.loadByTenant(conn, alloc, tenant_id)) orelse return null;
+/// Allocation-free: every member is a scalar the row already carries, so the
+/// caller has nothing to release. Surface for both `GET /v1/tenants/me/billing`
+/// and `agentsfleet doctor --json`.
+pub fn getBilling(conn: *pg.Conn, tenant_id: []const u8) !?Billing {
+    const row = (try store.loadByTenant(conn, tenant_id)) orelse return null;
     return .{
         .balance_nanos = row.balance_nanos,
-        .grant_source = row.grant_source,
         .updated_at_ms = row.updated_at_ms,
         .exhausted_at_ms = row.exhausted_at_ms,
     };

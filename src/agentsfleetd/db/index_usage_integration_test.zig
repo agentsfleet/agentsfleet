@@ -39,6 +39,16 @@ const PgQuery = @import("pg_query.zig").PgQuery;
 /// table — a few rows per fleet is enough for the plan to form.
 const MEM_SEED_ROWS: u32 = 200;
 const PROBE_FLEET_ROWS: i32 = 20;
+/// How many parent fleets the spread lands on. The probe filters ONE fleet with
+/// `enable_seqscan = off`, so what the spread has to prove is that the index is
+/// not degenerate — several distinct `fleet_id`s, not several hundred. It used to
+/// create one parent per seeded row, which put ~200 rows through `core.fleets`
+/// per run; deleting them left the table at 4 pages instead of 1, and because the
+/// planner costs a scan from `relpages` a SIBLING suite's read then switched off
+/// the index it asserts onto `fleets_pkey`. Only `VACUUM` reclaims those pages,
+/// so the fixture was paying for a `VACUUM ANALYZE` to undo damage it had no
+/// reason to do. Four keeps `core.fleets` inside one page.
+const MEM_PARENT_FLEETS: i32 = 4;
 
 const FLEET_MEM = "0195b4ba-8d3a-7f13-8abc-0000000b0002";
 const MEM_KEY_PREFIX = "idxprobe-mem-";
@@ -148,57 +158,50 @@ fn expectPlanOmits(alloc: std.mem.Allocator, conn: *pg.Conn, sql: []const u8, ar
 fn seedMemory(conn: *pg.Conn, rows: u32) !void {
     // Parents first. The spread below derives its fleet ids arithmetically, so
     // the parents derive theirs from the same expression over the same series —
-    // a hand-listed set would drift the moment the spread's modulus changed.
+    // a hand-listed set would drift the moment the spread's modulus changed. The
+    // modulus is passed as a PARAMETER to both statements rather than spelled as
+    // a literal in each, so the two expressions cannot drift apart at all.
     //
     // Both spell the id through the same `overlay(... placing '7' from 15 for 1)`
     // because `core.fleets` carries `ck_fleets_id_uuidv7`: a bare md5 digest is
-    // not UUIDv7-shaped and the check refuses it. The two expressions must stay
-    // character-identical or the child rows point at parents that do not exist.
+    // not UUIDv7-shaped and the check refuses it.
     try base.seedTenant(conn);
     try base.seedWorkspace(conn, WS_MEM);
     try base.seedFleet(conn, FLEET_MEM, WS_MEM, MEM_FLEET_NAME_PREFIX ++ "probe", "{}", "");
     _ = try conn.exec(
         \\INSERT INTO core.fleets
         \\  (id, workspace_id, tenant_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\SELECT overlay(md5((g % 200)::text)::uuid::text placing '7' from 15 for 1)::uuid,
+        \\SELECT overlay(md5((g % $3::int)::text)::uuid::text placing '7' from 15 for 1)::uuid,
         \\       w.id, w.tenant_id,
-        \\       $2 || (g % 200)::text, '', '{}'::jsonb, 'active', 0, 0
+        \\       $2 || (g % $3::int)::text, '', '{}'::jsonb, 'active', 0, 0
         \\FROM generate_series(1, $3::int) g
         \\CROSS JOIN core.workspaces w WHERE w.id = $1::uuid
         \\ON CONFLICT DO NOTHING
-    , .{ WS_MEM, MEM_FLEET_NAME_PREFIX, @as(i32, @intCast(rows)) });
+    , .{ WS_MEM, MEM_FLEET_NAME_PREFIX, MEM_PARENT_FLEETS });
     _ = try conn.exec(
         \\INSERT INTO memory.memory_entries
         \\  (id, key, content, category, fleet_id, created_at, updated_at)
         \\SELECT overlay(gen_random_uuid()::text placing '7' from 15 for 1)::uuid,
         \\       $1 || g, 'content', 'core',
         \\       CASE WHEN g <= $3::int THEN $2::uuid
-        \\            ELSE overlay(md5((g % 200)::text)::uuid::text placing '7' from 15 for 1)::uuid END,
+        \\            ELSE overlay(md5((g % $5::int)::text)::uuid::text placing '7' from 15 for 1)::uuid END,
         \\       1750000000000 + g, 1750000000000 + g
         \\FROM generate_series(1, $4::int) g
         \\ON CONFLICT DO NOTHING
-    , .{ MEM_KEY_PREFIX, FLEET_MEM, @as(i32, PROBE_FLEET_ROWS), @as(i32, @intCast(rows)) });
+    , .{ MEM_KEY_PREFIX, FLEET_MEM, @as(i32, PROBE_FLEET_ROWS), @as(i32, @intCast(rows)), MEM_PARENT_FLEETS });
     _ = try conn.exec("ANALYZE memory.memory_entries", .{});
 }
 
 fn wipeMemory(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM memory.memory_entries WHERE key LIKE $1", .{MEM_KEY_PREFIX ++ "%"}) catch |err|
         std.log.warn("memory wipe ignored: {s}", .{@errorName(err)});
-    // Drop the parent fleets with their workspace, then re-analyze. This matters
-    // beyond tidiness: sibling tests in this file assert which index the planner
-    // picks on `core.fleets`, and that choice is made from statistics. Deleting
-    // the rows is not enough — the estimates survive the delete, so a later plan
-    // would still be costed against a few hundred fleets that no longer exist
-    // and could reach for the primary key instead of the index under test.
+    // Drop the parent fleets with their workspace. Sibling tests in this file
+    // assert which index the planner picks on `core.fleets`, and that choice is
+    // costed from the table's page count — so what matters is that this fixture
+    // never grew the table enough to move it. `MEM_PARENT_FLEETS` keeps the seed
+    // inside one page, which is why no VACUUM or ANALYZE follows this delete: a
+    // table that was never bloated has nothing to reclaim.
     base.teardownWorkspace(conn, WS_MEM);
-    // VACUUM, not a bare ANALYZE. ANALYZE corrects `reltuples` but cannot
-    // reclaim the pages the deleted rows occupied, and the planner costs a scan
-    // from `relpages`: measured here, seeding and dropping these parents takes
-    // `core.fleets` from 1 page to 4 and leaves it there. That is enough for a
-    // sibling test's `core.fleets` read to switch from the index it asserts to
-    // the primary key. VACUUM returns it to 1.
-    _ = conn.exec("VACUUM ANALYZE core.fleets", .{}) catch |err|
-        std.log.warn("vacuum ignored: {s}", .{@errorName(err)});
 }
 
 /// One runner holding `rows` settled leases against one fleet. `runner_leases`

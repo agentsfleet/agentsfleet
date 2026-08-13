@@ -183,7 +183,7 @@ fn runRenew(hx: Hx, lease_id: []const u8, runner_id: []const u8, lease: Lease, b
 /// renewal and issue share one credit policy. Policy is resolved once at
 /// startup and carried on the request context (not re-read from the env here).
 fn creditsCover(hx: Hx, lease: Lease) bool {
-    return metering.balanceCoversEstimate(hx.ctx.pool, hx.alloc, lease.tenant_id, parsePosture(lease.posture, lease.fleet_id), lease.provider, lease.model, hx.ctx.balance_policy);
+    return metering.balanceCoversEstimate(hx.ctx.pool, lease.tenant_id, parsePosture(lease.posture, lease.fleet_id), lease.provider, lease.model, hx.ctx.balance_policy);
 }
 
 /// The fleet's own spend ceiling. Returns the breach verdict when the run must
