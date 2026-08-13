@@ -12,12 +12,12 @@ Every memory row belongs to **one fleet**, keyed by the column **`fleet_id`** (U
 
 | Fact | Where it's enforced |
 |---|---|
-| Store column is `fleet_id`; the upsert key is the unique index `(key, fleet_id)` | `schema/013_memory_entries.sql` (`fleet_id UUID NOT NULL`; `idx_memory_entries_key_fleet_id`) |
+| Store column is `fleet_id`; the upsert key is the unique index `(key, fleet_id)` | `schema/820_memory_entries.sql` (`fleet_id UUID NOT NULL REFERENCES core.fleets`; `idx_memory_entries_key_fleet_id`) |
 | Every read/write scopes `WHERE fleet_id = $1` (never a fetch-all + in-memory filter) | `src/agentsfleetd/memory/fleet_memory.zig` — the only `INSERT`/cap/sweep/list path |
 | `fleet_id` is **server-derived from the lease**, never client-supplied (Insecure-Direct-Object-Reference guard) | `src/agentsfleetd/http/handlers/runner/memory.zig` (`lease.fleet_id == {fleet_id}`) |
 | Two fleets never share a namespace — Fleet A cannot read Fleet B's memory | role isolation (§2) + the `(key, fleet_id)` key |
 
-> **Terminology.** The scope column is `fleet_id`. The legacy NullClaw name **`instance_id`** (and the interim `zombie_id`) are **retired** — `schema/013` says so explicitly (*"no legacy instance_id prefix"*). Any doc or spec that still says `instance_id` is stale; the column, the wire path, and the code are `fleet_id` end to end.
+> **Terminology.** The scope column is `fleet_id`. The legacy NullClaw name **`instance_id`** (and the interim `zombie_id`) are **retired** — `schema/820` says so explicitly (*"no legacy instance_id prefix"*). Any doc or spec that still says `instance_id` is stale; the column, the wire path, and the code are `fleet_id` end to end.
 
 ## 2. Isolation — a Postgres role, not the workspace
 
