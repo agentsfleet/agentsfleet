@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M164
 **Workstream:** 001
 **Date:** Aug 13, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — stage billing has never charged anyone; the gate is open for every tenant that exists
 **Categories:** API, SQL, UI
 **Batch:** B1 — its own Pull Request; nothing else depends on it
 **Branch:** feat/m164-delete-the-free-trial
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Test Baseline:** unit=3556 integration=588
 **Depends on:** none. Carved out of M154_002, which is parked in `docs/v2/done/` — this workstream shares no code with the privilege boundary that parked
 **Provenance:** LLM-drafted (Claude Opus 5, Aug 13, 2026), from a source read of the pricing path on `main`
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` · `docs/architecture/memory.md`
@@ -267,7 +267,7 @@ The charge itself is already carried by the existing ledger row and the wallet d
 
 - **Every role and grant change from M154_002.** Parked in `docs/v2/done/`; it ships nowhere until the deployed Application Programming Interface assumes the runtime role. Nothing in this workstream depends on it.
 - **Row-level tenant isolation.** Application predicates remain the only tenant boundary. Named as its own workstream in `docs/architecture/runner_fleet.md`, and the higher-value neighbour of the parked privilege work.
-- **Renaming the surviving website copy constants.** Proposed to Indy in Discovery; if he takes it, it lands here, otherwise it becomes a follow-up.
+- **Renaming the surviving website copy constants.** Decided against — Indy confirmed the copy is accurate, so the constants stay exactly as they are, names included. See Discovery.
 - **Backfilling a real promotional window.** Rejected in §1 — it would start charging on an unchosen date and keep a clock in the pricing path.
 
 ---
@@ -299,9 +299,13 @@ The charge itself is already carried by the existing ledger row and the wallet d
 
   > Indy (2026-08-13): "we can design and add it better" — context: the privilege boundary returns as its own design, starting from the login-role edge rather than from the grants.
 
-  **Open for Indy:** the website copy constants `FREE_TRIAL_PILL` and its sentence survive this deletion and keep accurate text under an inaccurate name. Rename in this workstream, or leave and follow up? Four component tests and one end-to-end scenario consume them.
+  > Indy (2026-08-13): "web site is true" — context: asked whether the surviving website copy constants (`FREE_TRIAL_PILL` and the sentence beside it) should be renamed once the window is gone, since the text stays accurate under a name that no longer is. The copy is true of the starter grant, so both the strings and their names stay untouched. No rename lands in this workstream and none is queued.
 
-  **Open for Indy:** §2 (the memory foreign key) is separable from §1. Keep both here, or split §2 into its own workstream for a single-purpose Pull Request?
+  > Indy (2026-08-13): "memory foreign key scan be added in this PR of M164_001" — context: asked whether §2 should split into its own workstream for a single-purpose Pull Request. It stays here.
+
+  > Indy (2026-08-13): "docs PR#171 close and reopen" — context: `agentsfleet/docs` #171 covered "privilege boundaries and the free-trial removal", half of which now ships nowhere. Closed; the replacement is authored under this workstream at DOCUMENT, when the code it describes is final.
+
+  > Indy (2026-08-13): "Since M164 PR carries it ignore main" — context: local `main` carries spec commits not yet on `origin/main`, so this branch's Pull Request diff includes them. Accepted rather than pushing `main` first.
 
 - **Metrics review** — No analytics or funnel playbook update required: the diff removes a response member and a pricing branch, and adds, renames, and removes no event. The charge amount changes; whether a charge is recorded does not.
 
