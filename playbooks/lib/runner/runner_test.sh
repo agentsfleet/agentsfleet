@@ -84,7 +84,10 @@ cgroup_fixture="$work_dir/cgroup"
 mkdir -p "$cgroup_fixture"
 run_script() {
   : >"$calls"
-  env \
+  # -u AGENTSFLEET_API_URL: a developer shell exporting the dev URL would trip
+  # the prod-endpoint guard in common.sh; the harness supplies every input a
+  # case needs, never the ambient shell.
+  env -u AGENTSFLEET_API_URL \
     PATH="$stub_dir:$PATH" \
     CALLS="$calls" \
     RUNNER_BINARY="$runner_binary" \

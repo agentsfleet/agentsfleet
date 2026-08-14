@@ -83,6 +83,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/test/helpers-cli-state.ts` | EDIT | Direct store calls gain the env argument; new `stateDirEnv()` call-time helper for injected-env suites; header updated — its "clean fix at that point" note described §3, which now exists |
 | ~24 further `cli/test/**` files | EDIT | Mechanical, one shape: direct store calls gain `process.env` as the env argument, and `runCli` env literals gain `...stateDirEnv()` so the injected environment points at the directory the fixture seeded. Repo `tsc --noEmit` covers `test/`, so `make lint-*` enumerates every site — none can be missed silently |
 | `cli/test/auth-guard.test.ts` | EDIT | `guardCommand`'s three refusal arms become direct contract tests (errorCode + commanderCode + message). Its DEPLOYMENT_UNKNOWN arm had only incidental coverage through command suites; the env conversion rerouted that path and the 100% line floor caught the gap (`auth-guard.ts:103-106`) |
+| `playbooks/lib/runner/runner_test.sh` | EDIT | Indy-acked fold-in at VERIFY: the harness leaked the ambient `AGENTSFLEET_API_URL` into the prod-selection case, so `make check-playbooks` was red on every developer shell (and on `main`); `run_script` now sanitises it — the harness supplies every input a case needs |
 
 **Spec bookkeeping carried by this branch** (no source change; listed so rubric R5 grades a complete diff):
 
@@ -237,7 +238,7 @@ process.env argument (unchanged behaviour for its Effect consumers).
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 49 paths, 0 missing from the tables |
 | R6 | The environment-key literal has one src declaration site (§3, Dimension 3.4) | `grep -rn 'AGENTSFLEET_STATE_DIR' cli/src/ \| grep -v 'lib/config-dir.ts'` | no output | P0 | ✅ no output |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ composite from solo clean runs: three Zig unit lanes + `test-coverage-all` exit 0 (zig merged 88.30% ≥ 83%; app 2249; website 173; cli 501 with the 100% line floor PASS). First attempt failed only on the floor — `auth-guard.ts:103-106`, fixed by the guardCommand contract tests |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ⚠️ every lane this diff owns is green (oxlint+tsc+audits ✅); the one red is `check-playbooks` — pre-existing on `main`, an ambient-env leak in `runner_test.sh` (green under `env -u AGENTSFLEET_API_URL`, green in CI); one-line harness fix awaits Indy fix-here-vs-separate |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `make lint-all` fully green after the Indy-acked fold-in: `run_script` in `runner_test.sh` sanitises the ambient `AGENTSFLEET_API_URL` (the red was pre-existing on `main`, green in CI, red on any dev shell) |
 | S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ exit 0 from clean state, run solo (tier 3); two earlier reds (10, then a different 9) were cross-suite pollution from concurrently driven datastores — failure sets shifted between runs and vanished solo |
 | S4 | End-to-end walks the user path | `make cli-acceptance` | exit 0. Runs the deterministic lane then the live lane; this milestone's new case is in the deterministic half, so a failure there is this diff's and a live-lane failure is not | P0 | ✅ deterministic 95/95 (owns this diff's case) · ⚠️ live lane skipped per environment constraint (AGENTSFLEET_ACCEPTANCE_TARGET unset locally; runs in CI cli-acceptance-{dev,prod}) |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` (170.43 MB scanned) |
@@ -333,6 +334,13 @@ N/A — no files deleted.
   remaining old-signature site, which were then converted in one pass. Lesson:
   after changing an exported signature, run the repo-wide typecheck before
   running any test suite.
+- **VERIFY, Aug 14, 2026 — three Indy decisions in one message.**
+  > Indy (2026-08-14 ~22:5x): "go for gstack /review · go for yes cross repo
+  > update docs · go for yes fold here on check-playbooks one-liner change"
+  (1) REVIEW proceeds via gstack `/review`. (2) The `~/Projects/docs` branch for
+  the `--provider` page + changelog is authorized this session (rubric R4).
+  (3) The `runner_test.sh` ambient-env fix folds into this PR despite sitting
+  outside the authored Files Changed — recorded as its own table row.
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
