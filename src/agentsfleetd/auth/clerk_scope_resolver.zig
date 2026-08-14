@@ -1,30 +1,25 @@
 //! Answers "what may this person do, right now?" for the durable command-line
 //! credential, by asking the identity provider and caching the answer briefly.
 //!
-//! This is the one credential source whose capabilities are not authored in
-//! `scopes.zig`. The credential proves identity; the provider owns capability.
-//! `docs/AUTH.md` records why — a fixed grant would widen a narrowly-
-//! provisioned collaborator the moment they ran `login`, and snapshotting the
-//! claim onto the credential row would make this a second store of a fact the
-//! provider owns, frozen at issue time.
+//! The one credential source whose capabilities are not authored in
+//! `scopes.zig`: the credential proves identity; the provider owns capability
+//! (`docs/AUTH.md` records why — a fixed grant would widen a narrow
+//! collaborator, and a row snapshot would be a second store, frozen at issue).
 //!
 //! The cache is a latency optimisation and nothing else: in-memory, never
 //! outlives the process, and every entry self-heals toward the provider
 //! within the freshness window — no projection to backfill or reconcile.
 //!
-//! Under a provider outage, a warm entry is served up to a hard ceiling far
-//! above the freshness window — refusing every terminal during a vendor blip
-//! is worse than acting on capabilities minutes old. Past the ceiling, or
-//! with nothing cached, the caller is told authentication is unavailable
-//! rather than handed an empty set that would read as "you were demoted".
+//! Under a provider outage a warm entry is served up to a hard ceiling —
+//! refusing every terminal during a vendor blip is worse than acting on
+//! capabilities minutes old. Past it, or cold, the caller is told auth is
+//! unavailable, never handed an empty set that reads "you were demoted".
 //!
-//! Not single-flighted, deliberately. The token path carries that machinery
-//! because a key-set miss stampedes every request at once; here the fan-out
-//! is per subject and the window is a minute. One caveat now that tenant keys
-//! resolve through this same cache: automation traffic rides ONE creator
-//! subject at machine rates, so at TTL expiry its in-flight requests fetch
-//! concurrently — the first place to add per-subject single-flight if
-//! provider-call volume ever shows up in ops.
+//! Not single-flighted, deliberately: the fan-out is per subject and the
+//! window is a minute. Caveat — tenant keys ride ONE creator subject at
+//! machine rates, so at expiry their in-flight requests fetch concurrently;
+//! that is the first place to add per-subject single-flight if provider-call
+//! volume ever shows up in ops.
 
 const std = @import("std");
 const common = @import("common");
@@ -39,22 +34,16 @@ const log = logging.scoped(.clerk_scopes);
 const MS_PER_SECOND = 1000;
 const MS_PER_MINUTE = 60 * MS_PER_SECOND;
 
-/// How long a fetched claim is served without asking again. A revocation in
-/// the provider's dashboard reaches a terminal within this window, which is
-/// the same order as the dashboard's own session-token refresh — the parity
-/// the resolved model exists to keep.
+/// How long a fetched claim is served without asking again — the same order
+/// as the dashboard's own session-token refresh, the parity this model keeps.
 pub const DEFAULT_TTL_MS: i64 = 60 * MS_PER_SECOND;
 
-/// Hard age limit on serving a cached claim through an outage: past this the
-/// answer could contradict a revocation nobody can confirm, so refuse.
+/// Outage ceiling: past this a claim could contradict an unconfirmable revocation — refuse.
 pub const DEFAULT_STALE_CEILING_MS: i64 = 15 * MS_PER_MINUTE;
 
-/// Distinct subjects held at once. Sized well above any deployment's
-/// concurrently-active operator count; reaching it means the process has seen
-/// far more people than it is serving, so the whole map is dropped and rebuilt
-/// rather than left to grow. Dropping costs one cold round of fetches and
-/// restores full caching immediately — refusing new entries instead would
-/// leave every newly-seen person permanently uncached.
+/// Distinct subjects held at once — far above any real operator count.
+/// At the bound the whole map is dropped and rebuilt (one cold round of
+/// fetches) rather than refusing new subjects caching forever.
 pub const MAX_CACHED_SUBJECTS: usize = 4096;
 
 const EV_SERVED_STALE = "scopes_served_stale";
@@ -64,10 +53,11 @@ const EV_CACHE_RESET = "scopes_cache_reset_at_bound";
 
 pub const ResolveError = error{ ScopesUnavailable, OutOfMemory };
 
-/// One cached answer. `claim` is owned by the resolver's allocator.
+/// One cached answer; `claim` owned by the resolver's allocator.
 const Entry = struct {
     claim: []const u8,
     fetched_at_ms: i64,
+    seq: u64,
 };
 
 pub const Config = struct {
@@ -80,8 +70,8 @@ pub const Config = struct {
     stale_ceiling_ms: i64 = DEFAULT_STALE_CEILING_MS,
 };
 
-/// Stored allocator: this type owns every cached key and claim for the life of
-/// the process, so `deinit` frees without a second allocator to get wrong.
+/// Stored allocator: owns every cached key and claim for the process's life,
+/// so `deinit` frees without a second allocator to get wrong.
 pub const ScopeResolver = struct {
     const Self = @This();
 
@@ -90,9 +80,11 @@ pub const ScopeResolver = struct {
     api_base: []const u8,
     ttl_ms: i64,
     stale_ceiling_ms: i64,
-    // RwLock: cache hits are the request path for both resolved credential
-    // classes and must not serialize; `store`/`deinit` take exclusive.
+    // RwLock: hits are both credential classes' request path and must not
+    // serialize; `store`/`deinit` take exclusive.
     mutex: common.RwLock = .{},
+    // Monotonic fetch ordering — clock stamps tie within a millisecond.
+    fetch_seq: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
     cache: std.StringHashMap(Entry),
 
     pub fn init(alloc: std.mem.Allocator, cfg: Config) Self {
@@ -113,12 +105,9 @@ pub const ScopeResolver = struct {
         self.cache.deinit();
     }
 
-    /// Resolve the capability claim for `oidc_subject`. The caller owns the
-    /// returned bytes and frees them with `alloc` — the SAME allocator passed
-    /// in, never the resolver's.
-    ///
-    /// The provider round trip happens with the lock RELEASED, so a request
-    /// answered from cache never queues behind a slow provider.
+    /// Resolve the capability claim for `oidc_subject`. Caller owns the bytes
+    /// and frees them with `alloc` (never the resolver's). The provider round
+    /// trip runs with the lock RELEASED, so hits never queue behind it.
     pub fn resolve(
         self: *Self,
         alloc: std.mem.Allocator,
@@ -126,8 +115,8 @@ pub const ScopeResolver = struct {
     ) ResolveError![]const u8 {
         var stale: ?[]const u8 = null;
         {
-            // Shared section; the dupe stays inside it so nothing borrows a
-            // map value a concurrent exclusive `store` could free mid-fetch.
+            // Dupe stays inside the shared section so nothing borrows a map
+            // value a concurrent exclusive `store` could free mid-fetch.
             self.mutex.lockShared();
             defer self.mutex.unlockShared();
             if (self.cache.get(oidc_subject)) |entry| {
@@ -139,20 +128,21 @@ pub const ScopeResolver = struct {
             }
         }
 
+        // safe because: .monotonic — the counter only orders fetches; the
+        // cache mutex publishes the data.
+        const seq = self.fetch_seq.fetchAdd(1, .monotonic);
         const fresh = clerk_scope_fetch.fetchScopeClaim(alloc, self.secret, self.api_base, oidc_subject) catch |err| {
             return self.onFetchFailed(alloc, err, stale);
         };
         if (stale) |s| alloc.free(s);
-        self.store(oidc_subject, fresh);
+        self.store(oidc_subject, fresh, seq);
         return fresh;
     }
 
-    /// A subject the provider has never heard of resolves to no capabilities
-    /// rather than to an outage: the person behind the credential is gone, and
-    /// every gate should refuse them by name instead of telling their terminal
-    /// to try again later. Deliberately not cached — a deletion is permanent
-    /// and needs no cache, while anything transient must not blank a live
-    /// operator for a full freshness window.
+    /// An unknown subject resolves to NO capabilities rather than an outage —
+    /// the person is gone; every gate refuses by name, not "try again".
+    /// Deliberately uncached: a deletion is permanent, while anything
+    /// transient must not blank a live operator for a freshness window.
     fn onFetchFailed(
         self: *Self,
         alloc: std.mem.Allocator,
@@ -180,9 +170,12 @@ pub const ScopeResolver = struct {
     /// Record a freshly-fetched claim. Best-effort by design: a cache write
     /// that cannot allocate costs the next request one round trip and nothing
     /// else, so it is never worth failing an authenticated request over.
-    fn store(self: *Self, oidc_subject: []const u8, claim: []const u8) void {
-        // Duplicated BEFORE the swap so a failure leaves the existing entry
-        // intact rather than freeing it and leaving a dangling value.
+    fn store(self: *Self, oidc_subject: []const u8, claim: []const u8, seq: u64) void {
+        // Dupe BEFORE the swap so a failure leaves the existing entry intact.
+        // A stale writer yields by SEQUENCE, not clock (stamps tie within a
+        // millisecond): a slow out-of-order response must never overwrite the
+        // answer of a fetch that asked the provider later — it would resurrect
+        // a pre-revocation claim re-aged as fresh.
         const owned_claim = self.alloc.dupe(u8, claim) catch return;
         const fetched_at_ms = clock.nowMillis();
 
@@ -190,8 +183,12 @@ pub const ScopeResolver = struct {
         defer self.mutex.unlock();
 
         if (self.cache.getEntry(oidc_subject)) |existing| {
+            if (existing.value_ptr.seq > seq) {
+                self.alloc.free(owned_claim);
+                return;
+            }
             self.alloc.free(existing.value_ptr.claim);
-            existing.value_ptr.* = .{ .claim = owned_claim, .fetched_at_ms = fetched_at_ms };
+            existing.value_ptr.* = .{ .claim = owned_claim, .fetched_at_ms = fetched_at_ms, .seq = seq };
             return;
         }
         if (self.cache.count() >= MAX_CACHED_SUBJECTS) {
@@ -205,7 +202,7 @@ pub const ScopeResolver = struct {
             self.alloc.free(owned_claim);
             return;
         };
-        self.cache.put(owned_key, .{ .claim = owned_claim, .fetched_at_ms = fetched_at_ms }) catch {
+        self.cache.put(owned_key, .{ .claim = owned_claim, .fetched_at_ms = fetched_at_ms, .seq = seq }) catch {
             self.alloc.free(owned_key);
             self.alloc.free(owned_claim);
         };
@@ -259,7 +256,7 @@ fn testResolver(ttl_ms: i64, stale_ceiling_ms: i64) ScopeResolver {
 test "a fresh entry is served without asking the provider" {
     var resolver = testResolver(DEFAULT_TTL_MS, DEFAULT_STALE_CEILING_MS);
     defer resolver.deinit();
-    resolver.store(SUBJECT, CLAIM);
+    resolver.store(SUBJECT, CLAIM, 0);
 
     // No secret is configured, so any fetch would fail. Getting the claim back
     // proves the freshness window answered on its own.
@@ -271,7 +268,7 @@ test "a fresh entry is served without asking the provider" {
 test "a stale entry within the ceiling survives a provider outage" {
     var resolver = testResolver(ALWAYS_EXPIRED_MS, DEFAULT_STALE_CEILING_MS);
     defer resolver.deinit();
-    resolver.store(SUBJECT, CLAIM);
+    resolver.store(SUBJECT, CLAIM, 0);
 
     // Refusing every terminal during a vendor blip is worse than acting on
     // capabilities that are minutes old.
@@ -283,7 +280,7 @@ test "a stale entry within the ceiling survives a provider outage" {
 test "past the ceiling the caller is refused, never handed an empty set" {
     var resolver = testResolver(ALWAYS_EXPIRED_MS, ALWAYS_EXPIRED_MS);
     defer resolver.deinit();
-    resolver.store(SUBJECT, CLAIM);
+    resolver.store(SUBJECT, CLAIM, 0);
 
     // An empty set here would read to the operator as a demotion they never
     // received; an outage says what actually happened.
@@ -317,8 +314,11 @@ test "a subject the provider does not know resolves to no capabilities" {
 test "re-storing a subject replaces its claim without leaking the previous one" {
     var resolver = testResolver(DEFAULT_TTL_MS, DEFAULT_STALE_CEILING_MS);
     defer resolver.deinit();
-    resolver.store(SUBJECT, CLAIM);
-    resolver.store(SUBJECT, "fleet:admin");
+    resolver.store(SUBJECT, CLAIM, 0);
+    resolver.store(SUBJECT, "fleet:admin", 1);
+    // An out-of-order writer with an older sequence yields: a slow
+    // pre-revocation response must not overwrite the newer answer.
+    resolver.store(SUBJECT, CLAIM, 0);
 
     try testing.expectEqual(@as(usize, 1), resolver.cache.count());
     const claim = try resolver.resolve(testing.allocator, SUBJECT);
@@ -334,7 +334,7 @@ test "the cache is dropped rather than grown past its bound" {
     while (i <= MAX_CACHED_SUBJECTS) : (i += 1) {
         var key_buf: [32]u8 = undefined;
         const key = try std.fmt.bufPrint(&key_buf, "user_{d}", .{i});
-        resolver.store(key, CLAIM);
+        resolver.store(key, CLAIM, 0);
     }
     // The bound holds, and the leak detector proves the drop freed every key
     // and claim it discarded rather than orphaning them.

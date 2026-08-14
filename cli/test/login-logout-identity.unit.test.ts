@@ -98,6 +98,7 @@ const credentialsLayer = (rec: IdentityRecorder): Layer.Layer<Credentials> => {
       accessToken: state.token,
       savedAt: state.savedAt,
       sessionId: state.sessionId,
+      apiUrl: null,
       credentialId: null,
     })),
     saveAccessToken: (input) =>

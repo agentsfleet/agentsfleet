@@ -40,6 +40,7 @@ export interface CredentialsSnapshot {
   readonly accessToken: Option.Option<Redacted.Redacted<string>>;
   readonly savedAt: number | null;
   readonly sessionId: string | null;
+  readonly apiUrl: string | null;
   readonly credentialId: string | null;
 }
 
@@ -99,6 +100,7 @@ const makeLive = (): CredentialsShape => ({
       accessToken: tokenOf(rec),
       savedAt: rec.saved_at ?? null,
       sessionId: rec.session_id ?? null,
+      apiUrl: rec.api_url ?? null,
       credentialId: rec.credential_id ?? null,
     })),
   ),

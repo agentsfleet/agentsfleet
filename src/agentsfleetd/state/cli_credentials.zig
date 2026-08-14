@@ -105,6 +105,7 @@ pub fn mint(alloc: std.mem.Allocator, conn: *pg.Conn, new: NewCredential) !Minte
     errdefer conn.rollback() catch |err|
         log.warn(logging.EVENT_IGNORED_ERROR, .{ .err = @errorName(err) });
 
+    _ = try conn.exec(sql.LOCK_CLI_CREDENTIAL_MINT, .{ new.user_id, new.machine_name });
     _ = try revokeForMachine(conn, new.user_id, new.machine_name);
     _ = try conn.exec(sql.INSERT_CLI_CREDENTIAL, .{
         row_id,

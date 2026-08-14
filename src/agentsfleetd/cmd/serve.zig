@@ -129,7 +129,14 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     // moves every backend call together rather than splitting the host.
     const clerk_api_base_env = try common.env.owned(env_map, alloc, clerk_backend.API_BASE_ENV_VAR);
     defer if (clerk_api_base_env) |v| alloc.free(v);
-    const clerk_api_base = clerk_api_base_env orelse clerk_backend.API_BASE;
+    const clerk_api_base = clerk_backend.resolveApiBase(clerk_api_base_env) catch {
+        log.err("startup.clerk_api_base_invalid", .{
+            .error_code = error_codes.ERR_STARTUP_ENV_CHECK,
+            .hint = "CLERK_API_BASE must be https:// (or http://127.0.0.1 / http://localhost for an offline lane)",
+        });
+        std.process.exit(1);
+    };
+    if (clerk_api_base_env != null) log.info("startup.clerk_api_base_override", .{ .base = clerk_api_base });
 
     var ctx = http_handler.Context{
         .model_library_cache = serve_caches.init(alloc),

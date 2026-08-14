@@ -81,7 +81,7 @@ const credsWith = (
 ): Layer.Layer<Credentials> =>
   Layer.succeed(Credentials, {
     getAccessToken: Effect.sync(() => token),
-    snapshot: Effect.succeed({ accessToken: Option.none(), savedAt: null, sessionId: null, credentialId: null }),
+    snapshot: Effect.succeed({ accessToken: Option.none(), savedAt: null, sessionId: null, apiUrl: null, credentialId: null }),
     saveAccessToken: () => Effect.void,
     clearAccessToken: Effect.void,
   });
