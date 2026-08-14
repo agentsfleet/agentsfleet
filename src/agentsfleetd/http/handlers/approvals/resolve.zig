@@ -147,7 +147,11 @@ fn parseReason(hx: hx_mod.Hx, req: *httpz.Request) ?[]const u8 {
 fn formatResolverAttribution(hx: hx_mod.Hx) ![]const u8 {
     const subject = hx.principal.user_id orelse "unknown";
     return switch (hx.principal.mode) {
-        .jwt_oidc => resolver.user(hx.alloc, subject),
+        // A terminal holding an `afc_` credential is the human who minted it,
+        // so an approval resolved from the CLI is attributed to that person —
+        // the same record a browser resolve would leave. Naming it as a key
+        // would lose the human decision the gate exists to capture.
+        .jwt_oidc, .cli_credential => resolver.user(hx.alloc, subject),
         .api_key => resolver.apiKey(hx.alloc, subject),
         // A runner principal never reaches a tenant approval route —
         // runnerBearer guards only /v1/runners/me/*. Traps in ReleaseSafe.

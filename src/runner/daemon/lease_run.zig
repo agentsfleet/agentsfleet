@@ -239,3 +239,90 @@ pub fn cleanupWorkspace(io: std.Io, path: []const u8) void {
 fn sleepMs(io: std.Io, ms: u64) void {
     io.sleep(std.Io.Duration.fromMilliseconds(@intCast(ms)), .awake) catch return;
 }
+
+// ── Tests ────────────────────────────────────────────────────────────────
+// The full lifecycle needs a control plane and a sandboxed child; what is
+// provable here is the workspace half — the filesystem contract every lease
+// passes through before and after execution — and the no-bundle early return.
+
+const testing = std.testing;
+
+/// Absolute scratch base, per the sibling `bundle_extract_test.zig` pattern:
+/// `prepareWorkspace` builds absolute paths, so a relative tmp dir cannot
+/// stand in for the base.
+const TEST_WS_BASE = "/tmp/agentsfleet-lease-run-test";
+
+test "prepareWorkspace creates the lease directory and survives re-preparation" {
+    const io = testing.io;
+    std.Io.Dir.createDirAbsolute(io, TEST_WS_BASE, .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+    defer std.Io.Dir.cwd().deleteTree(io, TEST_WS_BASE) catch {};
+
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
+    const path = prepareWorkspace(io, &buf, TEST_WS_BASE, "lease-workspace-test") orelse
+        return error.TestExpectedEqual;
+    try testing.expect(std.mem.endsWith(u8, path, "lease-workspace-test"));
+
+    // A redelivered lease prepares the same path again; PathAlreadyExists is
+    // absorbed rather than failing the lease.
+    var buf2: [std.fs.max_path_bytes]u8 = undefined;
+    _ = prepareWorkspace(io, &buf2, TEST_WS_BASE, "lease-workspace-test") orelse
+        return error.TestExpectedEqual;
+
+    cleanupWorkspace(io, path);
+    try testing.expectError(
+        error.FileNotFound,
+        std.Io.Dir.cwd().access(io, TEST_WS_BASE ++ "/lease-workspace-test", .{}),
+    );
+}
+
+test "prepareWorkspace refuses a path past the buffer instead of truncating" {
+    // A truncated path would be PREPARED — just somewhere else — and the child
+    // would then run in a directory nothing cleans up. Refusal is the contract.
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
+    const base = "x" ** (std.fs.max_path_bytes - 8);
+    try testing.expectEqual(
+        @as(?[]const u8, null),
+        prepareWorkspace(testing.io, &buf, base, "lease-overflow-probe"),
+    );
+}
+
+test "cleanupWorkspace tolerates a workspace that is already gone" {
+    // Reaching the return is the assertion — the warn branch must swallow the
+    // miss, because cleanup runs on every exit path including the ones where
+    // preparation itself failed.
+    cleanupWorkspace(testing.io, "/nonexistent/agentsfleet-lease-test");
+}
+
+test "materializeBundle is a no-op for a lease without a bundle" {
+    // The early return: no bundle manifest means proceed without touching the
+    // network. cp is never dereferenced on this path, so a placeholder works.
+    const payload = protocol.LeasePayload{
+        .lease_id = "lease-no-bundle",
+        .fencing_token = 1,
+        .lease_expires_at = 1_700_000_120_000,
+        .secret_delivery = .@"inline",
+        .event = .{
+            .event_id = "1700000000000-0",
+            .fleet_id = "0190aaaa-bbbb-7ccc-8ddd-000000000001",
+            .workspace_id = "0190cccc-dddd-7eee-8fff-aaaaaaaaaaaa",
+            .actor = "steer:test",
+            .event_type = .chat,
+            .request_json = "{}",
+            .created_at = 1_700_000_000_000,
+        },
+        .policy = .{},
+    };
+    var cp: client_mod = undefined;
+    try testing.expect(materializeBundle(
+        testing.io,
+        testing.allocator,
+        &cp,
+        "agt_r-test-token",
+        undefined,
+        "/tmp/unused",
+        payload,
+    ));
+}

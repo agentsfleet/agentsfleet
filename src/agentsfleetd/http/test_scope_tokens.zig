@@ -40,3 +40,21 @@ pub const PLATFORM_ADMIN =
 /// Persona — see scopes in the module header. Minted by scripts/mint-scope-personas.mjs.
 pub const NO_TENANT =
     "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9.eyJzdWIiOiJ1c2VyX20xMV8wMDYiLCJpc3MiOiJodHRwczovL2NsZXJrLnRlc3QuYWdlbnRzZmxlZXQubmV0IiwiYXVkIjoiaHR0cHM6Ly9hcGkuYWdlbnRzZmxlZXQubmV0IiwiZXhwIjo0MTAyNDQ0ODAwLCJzY29wZXMiOiJmbGVldDphZG1pbiBzY2hlZHVsZTp3cml0ZSBzZWNyZXQ6d3JpdGUgYXBpa2V5OmFkbWluIGZsZWV0a2V5OndyaXRlIGdyYW50OndyaXRlIGNvbm5lY3Rvcjp3cml0ZSBiaWxsaW5nOnJlYWQgYXBwcm92YWw6cmVzb2x2ZSB3b3Jrc3BhY2U6YWRtaW4gbGlicmFyeTp3cml0ZSIsIm1ldGFkYXRhIjp7fX0.fBvldEHIeE2YeYytAyhwg75jZ05Z7NtjKp-TobIN1x0bLhPoA3lWveTU9sjo6Y2aYzMUqa53H3buSFBF8c6GrfiJvKDMODSNflcee0CMK0d_LlmPpCvR3h92kAKEB6d8v6MIBgK0GGI842O4vXjvR3LqlLTRF_1hqO0ztO28WQLj2GCMbh5vmcRfC-PWrqalRbFd2TWosfAjCCLBqRTcwOlgCbDivSuXJy3CyEBuqmFQ87YNgxqHOAN-vdfzvWUnFYp2O9nJ3mXpKVZ9lEPnVkMJzRLq27efp9oXwFwz23aPW3VNsa0Vby2zy3ENTE7m_04-H7P68IlVnrGAZw3PAw";
+
+/// Stands in for the identity provider on the `agt_t` path.
+///
+/// Needed since tenant keys resolve rather than grant: capabilities come from the
+/// person named in `created_by` rather than granted from a compiled-in bundle,
+/// so a fixture that wires no resolver would authenticate its key and then fail
+/// every scope gate behind it. Answers the tenant-owner claim for any subject,
+/// which is what these suites seed their key's creator as.
+///
+/// One stub rather than a copy per suite: six identical closures would be six
+/// places to edit when the seeded persona changes, and five of them would be
+/// missed.
+pub fn ownerScopes(_: *anyopaque, alloc: std.mem.Allocator, _: []const u8) anyerror![]const u8 {
+    return alloc.dupe(u8, scopes.SIGNUP_OWNER_CLAIM);
+}
+
+const std = @import("std");
+const scopes = @import("../auth/scopes.zig");

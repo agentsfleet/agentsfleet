@@ -1,0 +1,234 @@
+//! The command-line credential endpoints, driven over the real router.
+//!
+//! The unit suite beside the handler proves its pure decisions — which
+//! principal modes are admitted, and what a machine name may look like. Every
+//! one of those tests stops at a guard that returns before any datastore work,
+//! deliberately, because a stubbed connection cannot check a WHERE clause.
+//!
+//! This suite is where the WHERE clauses are checked. The ownership predicates
+//! live inside the statements rather than in a handler branch, so the only way
+//! to prove them is to put two people's rows in one table under one tenant and
+//! confirm that each reaches exactly their own. That is what the peer seeded
+//! here is for: same tenant, no token, and a credential the owner must not be
+//! able to see or retire.
+//!
+//! Who these routes admit in the first place is the sibling suite,
+//! `cli_credentials_admission_integration_test.zig`. Everything below has
+//! already cleared those guards.
+//!
+//! Requires TEST_DATABASE_URL — skipped gracefully otherwise.
+
+const std = @import("std");
+
+const fixtures = @import("cli_credentials_test_fixtures.zig");
+const api_key = @import("../../../auth/api_key.zig");
+const cli_credential = @import("../../../auth/cli_credential.zig");
+const ec = @import("../../../errors/error_registry.zig");
+
+const ALLOC = fixtures.ALLOC;
+const revokePath = fixtures.revokePath;
+
+test "integration: test_credential_resolves_to_its_user — a credential reaches its own person's rows and no one else's" {
+    const h = fixtures.seededHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const minted = try fixtures.mint(h, fixtures.TOKEN_OWNER, fixtures.MACHINE_NAME);
+    defer minted.deinit();
+
+    // The peer holds a credential under the SAME tenant. A principal resolved
+    // tenant-wide would reach it; one resolved to a person cannot.
+    const peer = blk: {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        break :blk try fixtures.mintDirect(conn, fixtures.PEER_USER_ID, fixtures.MACHINE_NAME);
+    };
+    defer peer.deinit(ALLOC);
+
+    {
+        // The credential authenticates as its person on an ordinary route.
+        const r = try (try h.get(fixtures.PROBE_PATH).bearer(minted.secret)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+    }
+
+    {
+        // Nor may it retire the peer's credential. The refusal is not-found
+        // rather than forbidden — telling the two apart would confirm that
+        // somebody else's credential exists to whoever guessed its identifier.
+        const path = try revokePath(peer.id);
+        defer ALLOC.free(path);
+        const r = try (try h.delete(path).bearer(minted.secret)).send();
+        defer r.deinit();
+        try r.expectStatus(.not_found);
+        try r.expectErrorCode(ec.ERR_CLI_CREDENTIAL_NOT_FOUND);
+    }
+
+    {
+        // And the peer's credential is still live afterwards — the refusal was
+        // a refusal, not a silent revoke that reported not-found.
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try std.testing.expectEqual(
+            @as(i64, 1),
+            try fixtures.liveCountForMachine(conn, fixtures.PEER_USER_ID, fixtures.MACHINE_NAME),
+        );
+    }
+
+    fixtures.cleanup(h);
+}
+
+test "integration: test_credential_outlives_the_session_window — nothing on the row can retire it, so no elapsed time does" {
+    const h = fixtures.seededHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    // Minted inside the session's own window, the way login mints it.
+    const minted = try fixtures.mint(h, fixtures.TOKEN_OWNER, fixtures.MACHINE_NAME);
+    defer minted.deinit();
+
+    {
+        // Presented alone, carrying no session token at all — which is every
+        // command after login, once the browser session is consumed. The
+        // request resolves because the authenticate path never consults it.
+        // Persisting the session token is precisely what made this fail after
+        // about a minute.
+        const r = try (try h.get(fixtures.PROBE_PATH).bearer(minted.secret)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+    }
+
+    {
+        // The structural half of the claim. A test cannot wait out a real
+        // token lifetime, so it asks the schema the question that decides the
+        // outcome: is there any column a clock could act on? Revocation is
+        // somebody's deliberate act; an expiry would not be.
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        try std.testing.expectEqual(
+            @as(i64, 0),
+            try fixtures.expiryLikeColumnCount(conn),
+        );
+    }
+
+    fixtures.cleanup(h);
+}
+
+test "integration: test_login_then_list_fleets_succeeds — the credential works on an ordinary route, not only on its own" {
+    const h = fixtures.seededHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const minted = try fixtures.mint(h, fixtures.TOKEN_OWNER, fixtures.MACHINE_NAME);
+    defer minted.deinit();
+
+    // The first thing a terminal does after logging in. A credential that
+    // satisfies its own management routes but resolves to nothing usable
+    // anywhere else would pass every other test in this file and still leave
+    // the operator unable to do any work.
+    const path = try std.fmt.allocPrint(
+        ALLOC,
+        "/v1/workspaces/{s}/fleets",
+        .{fixtures.WORKSPACE_ID},
+    );
+    defer ALLOC.free(path);
+
+    const r = try (try h.get(path).bearer(minted.secret)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains(fixtures.FLEET_NAME));
+
+    fixtures.cleanup(h);
+}
+
+test "integration: test_row_holds_no_recoverable_credential — the stored row cannot reconstruct what was issued" {
+    const h = fixtures.seededHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const minted = try fixtures.mint(h, fixtures.TOKEN_OWNER, fixtures.MACHINE_NAME);
+    defer minted.deinit();
+
+    const row = try fixtures.wholeRow(h, minted.id);
+    defer ALLOC.free(row);
+
+    // Every column, in one string: the raw value appears in none of them.
+    try std.testing.expect(std.mem.indexOf(u8, row, minted.secret) == null);
+    // What IS stored is a digest OF it — present, and not the value itself.
+    const digest = api_key.sha256Hex(minted.secret);
+    try std.testing.expect(std.mem.indexOf(u8, row, digest[0..]) != null);
+    // The display fragment is stored, and is a strict prefix — recognisable in
+    // a list, useless as a credential.
+    const shown = cli_credential.displayPrefix(minted.secret);
+    try std.testing.expect(std.mem.indexOf(u8, row, shown) != null);
+    try std.testing.expect(shown.len < minted.secret.len);
+
+    {
+        // The digest is not a bearer token. Presenting it hashes it a second
+        // time, which matches nothing — so reading the row grants nothing.
+        const r = try (try h.get(fixtures.PROBE_PATH).bearer(digest[0..])).send();
+        defer r.deinit();
+        try r.expectStatus(.unauthorized);
+    }
+    {
+        // Neither is the display fragment, the recognisable part of the row.
+        const r = try (try h.get(fixtures.PROBE_PATH).bearer(shown)).send();
+        defer r.deinit();
+        try r.expectStatus(.unauthorized);
+        try r.expectErrorCode(ec.ERR_UNAUTHORIZED);
+    }
+
+    fixtures.cleanup(h);
+}
+
+test "integration: test_revoked_credential_is_refused — a retired credential answers its own code, not a generic refusal" {
+    const h = fixtures.seededHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const minted = try fixtures.mint(h, fixtures.TOKEN_OWNER, fixtures.MACHINE_NAME);
+    defer minted.deinit();
+
+    {
+        const r = try (try h.get(fixtures.PROBE_PATH).bearer(minted.secret)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+    }
+
+    const path = try revokePath(minted.id);
+    defer ALLOC.free(path);
+    {
+        const r = try (try h.delete(path).bearer(fixtures.TOKEN_OWNER)).send();
+        defer r.deinit();
+        try r.expectStatus(.no_content);
+        try std.testing.expectEqual(@as(usize, 0), r.body.len);
+    }
+    {
+        // The distinction that matters to an operator: this credential was
+        // retired, not mistyped. A generic 401 would send them hunting for a
+        // typo instead of running login again.
+        const r = try (try h.get(fixtures.PROBE_PATH).bearer(minted.secret)).send();
+        defer r.deinit();
+        try r.expectErrorCode(ec.ERR_CLI_CREDENTIAL_REVOKED);
+    }
+    {
+        // Revoking it twice does not re-revoke: the statement only touches live
+        // rows, so the original revocation timestamp survives.
+        const r = try (try h.delete(path).bearer(fixtures.TOKEN_OWNER)).send();
+        defer r.deinit();
+        try r.expectStatus(.not_found);
+        try r.expectErrorCode(ec.ERR_CLI_CREDENTIAL_NOT_FOUND);
+    }
+
+    fixtures.cleanup(h);
+}

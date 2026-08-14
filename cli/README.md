@@ -38,9 +38,9 @@ agentsfleet doctor
 
 | Command | Description |
 |---------|-------------|
-| `login [--token <token>] [--token-name <label>] [--force] [--no-open]` | Authenticate via browser (or pass a token directly; prefer piped stdin to keep it out of shell history) |
+| `login [--token-name <label>] [--force] [--no-open]` | Authenticate via browser (the device flow is the only login path) |
 | `logout` | Sign out — revoke every active session on this account and clear local credentials |
-| `auth status` | Show active token source, claims, and server-side validity |
+| `auth status` | Show active credential source and server-side validity |
 | `workspace create <name>` | Create a new workspace |
 | `workspace list` | List workspaces |
 | `workspace use <workspace_id>` | Set the active workspace |

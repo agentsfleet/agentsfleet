@@ -9,19 +9,24 @@
 //   5. CLI polls GET /v1/auth/sessions/{id} until status is
 //      verification_pending; prompts the operator for the displayed
 //      code; POSTs to /verify; receives the ciphertext; decrypts.
-//   6. CLI persists the recovered JWT to credentials.json, then hydrates
-//      workspaces + captures the login-completed analytics event.
+//   6. CLI spends the recovered JWT on POST /v1/cli-credentials and persists
+//      the durable credential that comes back. The JWT never reaches disk —
+//      it is valid for about a minute, so persisting it is what made a
+//      terminal go stale while the operator was still using it.
+//   7. CLI hydrates workspaces + captures the login-completed analytics
+//      event. Telemetry still reads the JWT's claims for the distinct id,
+//      because the credential is opaque and carries none.
 //
 // SIGINT during the poll or prompt aborts cleanly via the existing
 // AbortController pattern. Failures route through one AuthError taxonomy
 // on the error channel; the dispatcher's exit-code map keys all of them
 // to 1 (130 for interrupted).
 
-import { Effect, Option, Redacted } from "effect";
+import { Effect, Redacted } from "effect";
 import { Analytics } from "../services/telemetry/analytics.service.ts";
 import { TelemetryRuntime } from "../services/telemetry/runtime.service.ts";
 import { Browser } from "../services/browser.service.ts";
-import { CliConfig } from "../services/config.ts";
+import { AGENTSFLEET_API_KEY_ENV, CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Input } from "../services/input.ts";
@@ -30,6 +35,7 @@ import { Stdin } from "../services/stdin.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import {
   AuthError,
+  InterruptedError,
   MeValidationError,
   type CliError,
 } from "../errors/index.ts";
@@ -44,10 +50,12 @@ import {
 import {
   captureLoginCompleted,
   hydrateWorkspacesAfterLogin,
-  resolveDirectToken,
-  saveDirectToken,
   withSigintAbort,
 } from "./login-helpers.ts";
+import {
+  exchangeForCredential,
+  type MintedCredential,
+} from "./login-exchange.ts";
 import { pingMe } from "../lib/me-ping.ts";
 
 export interface LoginFlags {
@@ -55,8 +63,6 @@ export interface LoginFlags {
   readonly noInput: boolean;
   readonly force: boolean;
   readonly tokenName: string | undefined;
-  // --token <pat>; non-interactive direct-token source (no browser).
-  readonly tokenFlag: string | undefined;
 }
 
 export interface LoginFlagsRaw {
@@ -64,7 +70,6 @@ export interface LoginFlagsRaw {
   readonly noInput: boolean | undefined;
   readonly force: boolean | undefined;
   readonly tokenName: string | undefined;
-  readonly tokenFlag: string | undefined;
 }
 
 const announceSession = Effect.fnUntraced(function* (
@@ -101,17 +106,16 @@ const maybeOpenBrowser = Effect.fnUntraced(function* (
   return opened;
 });
 
-// Success rendering for both paths (direct token + device flow). Every
-// non-success path is an Effect failure routed through the dispatcher's
-// exit-code map, so this only handles "complete". `sessionId` is null for
-// the direct-token path (no device-flow session to report).
-const renderSuccess = Effect.fnUntraced(function* (sessionId: string | null) {
+// Success rendering. Every non-success path is an Effect failure routed
+// through the dispatcher's exit-code map, so this only handles "complete".
+// The device flow is the only login path, so a session id always exists.
+const renderSuccess = Effect.fnUntraced(function* (sessionId: string) {
   const config = yield* CliConfig;
   const output = yield* Output;
   if (config.jsonMode) {
     yield* output.printJson({
       status: "complete",
-      session_id: sessionId ?? "",
+      session_id: sessionId,
       token_saved: true,
       api_url: config.apiUrl,
     });
@@ -122,17 +126,17 @@ const renderSuccess = Effect.fnUntraced(function* (sessionId: string | null) {
 
 const persistSuccess = Effect.fnUntraced(function* (
   sessionId: string,
-  token: string,
+  minted: MintedCredential,
 ) {
   const config = yield* CliConfig;
   const credentials = yield* Credentials;
-  const redacted = Redacted.make(token);
   yield* credentials.saveAccessToken({
-    token: redacted,
+    token: minted.credential,
     sessionId,
     apiUrl: config.apiUrl,
+    credentialId: minted.id,
   });
-  return redacted;
+  return minted.credential;
 });
 
 // /me ping failure → wipe credentials.json before propagating the error.
@@ -157,10 +161,14 @@ const completeVerificationBranch = Effect.fnUntraced(function* (
   signal: AbortSignal,
 ) {
   const token = yield* verifyAndDecryptWithRetry(sessionId, keypair, { noInput, signal });
-  const redacted = yield* persistSuccess(sessionId, token);
+  // The exchange completes before anything is persisted. A failure here
+  // leaves credentials.json untouched and reports a registered code, so a
+  // failed login never leaves a dead-on-arrival value on disk.
+  const minted = yield* exchangeForCredential(Redacted.make(token));
+  const redacted = yield* persistSuccess(sessionId, minted);
   yield* pingMe(redacted).pipe(Effect.catchTag("MeValidationError", rollbackOnMeFailure));
   yield* hydrateWorkspacesAfterLogin(redacted);
-  yield* captureLoginCompleted(sessionId, token, "browser");
+  yield* captureLoginCompleted(sessionId, token);
 });
 
 // Login surface rule: every failure exits 1. Transport / server
@@ -175,29 +183,25 @@ const loginCore = Effect.fnUntraced(function* (flags: LoginFlags) {
 
   // Pre-flight (D20). idempotencyCheck refuses to overwrite an existing
   // credential without --force or a Y/yes prompt; --no-input aborts loudly
-  // instead of prompting so scripts don't silently clobber a token. A
-  // non-TTY stdin is a pipe carrying a token (resolveDirectToken's
-  // lowest-priority source), never a Y/n answer — treat it like --no-input
-  // so the piped token is never consumed as the replace-prompt response.
+  // instead of prompting so scripts don't silently clobber a credential. A
+  // non-TTY stdin carries no answer worth reading, so it is treated like
+  // --no-input rather than consuming whatever was piped as a Y/n response.
   const noInput = flags.noInput || !stdin.isTTY;
   yield* idempotencyCheck({ force: flags.force, noInput });
 
-  // Non-interactive resolve (--token > piped stdin) ahead of the browser
-  // device flow. A directly-supplied token is validated + persisted with no
-  // browser; `none` falls through to the device flow below.
-  const direct = yield* resolveDirectToken({
-    tokenFlag: flags.tokenFlag,
-  });
-  if (Option.isSome(direct)) {
-    if (flags.tokenName !== undefined && !config.jsonMode) {
-      const output = yield* Output;
-      yield* output.info(
-        "--token-name is ignored with a direct token (no browser session to label)",
-      );
-    }
-    yield* saveDirectToken(direct.value);
-    yield* renderSuccess(null);
-    return;
+  // Since §3 retired direct-token seeding, the device flow is the only path
+  // that writes a credential — and it needs a human to read a verification
+  // code off the screen and type it back. A non-TTY shell cannot do that, so
+  // it fails here naming the environment variable that serves unattended
+  // callers, rather than announcing a session nothing will ever approve.
+  if (!stdin.isTTY) {
+    return yield* Effect.fail(
+      new InterruptedError({
+        detail:
+          "`agentsfleet login` needs an interactive terminal — a human types the device flow's verification code",
+        suggestion: `set ${AGENTSFLEET_API_KEY_ENV} to a tenant API key for unattended use`,
+      }),
+    );
   }
 
   const keypair = yield* generateKeypair;
@@ -265,6 +269,5 @@ export const loginEffectFromFlags = (
     noInput: raw.noInput ?? false,
     force: raw.force ?? false,
     tokenName: raw.tokenName,
-    tokenFlag: raw.tokenFlag,
   });
 const BROWSER_NOT_OPENED_MESSAGE = "browser: not opened (open URL manually)" as const;

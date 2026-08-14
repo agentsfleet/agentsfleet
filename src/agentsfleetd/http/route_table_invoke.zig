@@ -10,6 +10,7 @@ const hx_mod = @import("handlers/hx.zig");
 const health = @import("handlers/health.zig");
 const model_library_h = @import("handlers/model_library.zig");
 const auth_sessions = @import("handlers/auth/sessions.zig");
+const cli_credentials = @import("handlers/auth/cli_credentials.zig");
 const fleet_api = @import("handlers/fleets/api.zig");
 const fleet_secrets = @import("handlers/fleets/secrets.zig");
 const ws_lifecycle = @import("handlers/workspaces/lifecycle.zig");
@@ -105,6 +106,19 @@ pub fn invokeDeleteAllAuthSessions(hx: *Hx, req: *httpz.Request, route: router.R
     _ = route;
     if (!common.requireMethod(hx.res, req.method, .DELETE)) return;
     auth_sessions.innerDeleteAllAuthSessions(hx.*, req);
+}
+
+// ── Command-line credentials ──────────────────────────────────────────────
+
+pub fn invokeCliCredentials(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
+    cli_credentials.innerMintCliCredential(hx.*, req);
+}
+
+pub fn invokeCliCredentialById(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (!common.requireMethod(hx.res, req.method, .DELETE)) return;
+    cli_credentials.innerRevokeCliCredential(hx.*, route.cli_credential_by_id);
 }
 
 // ── Workspace lifecycle ───────────────────────────────────────────────────

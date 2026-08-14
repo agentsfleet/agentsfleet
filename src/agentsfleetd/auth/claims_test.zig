@@ -7,7 +7,6 @@ const claims = @import("claims.zig");
 
 const IdentityClaims = claims.IdentityClaims;
 const extractClerkClaims = claims.extractClerkClaims;
-const extractCustomClaims = claims.extractCustomClaims;
 
 fn freeClaims(result: IdentityClaims) void {
     if (result.tenant_id) |v| std.testing.allocator.free(v);
@@ -17,9 +16,15 @@ fn freeClaims(result: IdentityClaims) void {
     if (result.scopes) |v| std.testing.allocator.free(v);
 }
 
-test "extractClerkClaims from metadata.tenant_id + space-delimited scope claim" {
+test "extractClerkClaims from metadata.tenant_id + space-delimited scopes claim" {
+    // The canonical shape: `metadata.tenant_id` nested, `scopes` at top level,
+    // exactly as the session-token claim customization projects it
+    // (docs/AUTH.md §Clerk org config). This fixture used to spell the claim
+    // `scope`, the OAuth2 key nothing here writes, and passed anyway on the
+    // since-removed fallback ladder — the suite's own happy path was proving a
+    // shape production never sends.
     const json =
-        \\{"sub":"user_1","iss":"https://clerk.example.com","aud":"https://api.agentsfleet.net","scope":"fleet:read secret:write","exp":9999999999,"org_id":"org_1","metadata":{"tenant_id":"tenant_a","workspace_id":"ws_a"}}
+        \\{"sub":"user_1","iss":"https://clerk.example.com","aud":"https://api.agentsfleet.net","scopes":"fleet:read secret:write","exp":9999999999,"org_id":"org_1","metadata":{"tenant_id":"tenant_a","workspace_id":"ws_a"}}
     ;
     const result = try extractClerkClaims(std.testing.allocator, json);
     defer freeClaims(result);
@@ -56,68 +61,6 @@ test "extractClerkClaims with no tenant or org yields all-null" {
     try std.testing.expect(result.scopes == null);
 }
 
-test "extractClerkClaims reads the camel workspace key" {
-    const json =
-        \\{"sub":"user_6","iss":"https://clerk.example.com","exp":9999999999,"workspaceId":"ws_camel"}
-    ;
-    const result = try extractClerkClaims(std.testing.allocator, json);
-    defer freeClaims(result);
-    try std.testing.expectEqualStrings("ws_camel", result.workspace_id.?);
-}
-
-test "extractCustomClaims normalizes namespaced claims and aud array; scp array → space-joined" {
-    const json =
-        \\{"sub":"user_2","iss":"https://idp.example.com/","aud":["https://api.agentsfleet.net","https://userinfo.example.com"],"scp":["fleet:read","fleet:write"],"organization_id":"org_custom_ns","https://agentsfleet.net/tenant_id":"tenant_custom_ns","https://agentsfleet.net/workspace_id":"ws_custom_ns"}
-    ;
-    const result = try extractCustomClaims(std.testing.allocator, json);
-    defer freeClaims(result);
-    try std.testing.expectEqualStrings("tenant_custom_ns", result.tenant_id.?);
-    try std.testing.expectEqualStrings("org_custom_ns", result.org_id.?);
-    try std.testing.expectEqualStrings("ws_custom_ns", result.workspace_id.?);
-    try std.testing.expectEqualStrings("https://api.agentsfleet.net", result.audience.?);
-    try std.testing.expectEqualStrings("fleet:read fleet:write", result.scopes.?);
-}
-
-test "extractCustomClaims normalizes nested custom_claims payload + scopes array" {
-    const json =
-        \\{"sub":"user_3","iss":"https://idp.example.com","aud":"https://api.agentsfleet.net","custom_claims":{"tenant_id":"tenant_custom","workspaceId":"ws_custom","organization_id":"org_custom"},"scopes":["fleet:read","workspace:admin"]}
-    ;
-    const result = try extractCustomClaims(std.testing.allocator, json);
-    defer freeClaims(result);
-    try std.testing.expectEqualStrings("tenant_custom", result.tenant_id.?);
-    try std.testing.expectEqualStrings("org_custom", result.org_id.?);
-    try std.testing.expectEqualStrings("ws_custom", result.workspace_id.?);
-    try std.testing.expectEqualStrings("https://api.agentsfleet.net", result.audience.?);
-    try std.testing.expectEqualStrings("fleet:read workspace:admin", result.scopes.?);
-}
-
-test "extractCustomClaims joins only string scopes from mixed arrays" {
-    const json =
-        \\{"sub":"user_7","iss":"https://idp.example.com","scp":["fleet:read",3,"workspace:admin",true]}
-    ;
-    const result = try extractCustomClaims(std.testing.allocator, json);
-    defer freeClaims(result);
-    try std.testing.expectEqualStrings("fleet:read workspace:admin", result.scopes.?);
-}
-
-test "extractCustomClaims returns null scopes for empty scp array" {
-    const json =
-        \\{"sub":"user_12","iss":"https://idp.example.com","scp":[]}
-    ;
-    const result = try extractCustomClaims(std.testing.allocator, json);
-    defer freeClaims(result);
-    try std.testing.expect(result.scopes == null);
-}
-
-test "extractCustomClaims returns null scopes for non-string array elements" {
-    const json =
-        \\{"sub":"user_13","iss":"https://idp.example.com","scp":[1,2,false]}
-    ;
-    const result = try extractCustomClaims(std.testing.allocator, json);
-    defer freeClaims(result);
-    try std.testing.expect(result.scopes == null);
-}
-
 test "extractClerkClaims handles metadata that is not an object" {
     const json =
         \\{"sub":"user_11","iss":"https://clerk.example.com","exp":9999999999,"metadata":"not_an_object"}
@@ -138,20 +81,13 @@ test "extractClerkClaims rejects non-JSON / non-object / scalar JSON" {
     try std.testing.expectError(jwks.VerifyError.TokenMalformed, extractClerkClaims(std.testing.allocator, "\"just a string\""));
 }
 
-test "extractCustomClaims rejects malformed and non-object JSON" {
-    try std.testing.expectError(jwks.VerifyError.TokenMalformed, extractCustomClaims(std.testing.allocator, ""));
-    try std.testing.expectError(jwks.VerifyError.TokenMalformed, extractCustomClaims(std.testing.allocator, "not json"));
-    try std.testing.expectError(jwks.VerifyError.TokenMalformed, extractCustomClaims(std.testing.allocator, "[1,2,3]"));
-    try std.testing.expectError(jwks.VerifyError.TokenMalformed, extractCustomClaims(std.testing.allocator, "null"));
-}
-
 test "claim materialization survives allocation failure without leaking" {
     // checkAllAllocationFailures fails each internal allocation in turn and
     // asserts the error return leaks nothing — the deterministic proof that
     // duplicateClaims' errdefer ladder frees every earlier dupe (and the
     // scopes slice) when a later dupe fails.
     const json =
-        \\{"sub":"user_1","tenant_id":"tenant_a","org_id":"org_1","workspaceId":"ws_a","aud":"https://api.agentsfleet.net","scope":"fleet:read secret:write"}
+        \\{"sub":"user_1","tenant_id":"tenant_a","org_id":"org_1","workspace_id":"ws_a","aud":"https://api.agentsfleet.net","scopes":"fleet:read secret:write"}
     ;
     const Probe = struct {
         fn freeAll(alloc: std.mem.Allocator, c: IdentityClaims) void {
@@ -164,9 +100,57 @@ test "claim materialization survives allocation failure without leaking" {
         fn run(alloc: std.mem.Allocator, payload: []const u8) !void {
             const clerk = try extractClerkClaims(alloc, payload);
             freeAll(alloc, clerk);
-            const custom = try extractCustomClaims(alloc, payload);
-            freeAll(alloc, custom);
         }
     };
     try std.testing.checkAllAllocationFailures(std.testing.allocator, Probe.run, .{json});
+}
+
+// ── The capability claim is read from one key ───────────────────────────────
+
+test "test_oauth2_scope_cannot_displace_provisioned_scopes — one key carries capability" {
+    // The regression this file exists to hold. The reader used to try `scope`
+    // BEFORE `scopes`, so a token carrying both resolved to the one we neither
+    // write nor provision — silently swapping the caller's capability set on
+    // the authorisation path. `scopes` is what the session-token template
+    // projects and what renderMetadataPayload writes, so `scopes` is what wins.
+    const json =
+        \\{"sub":"user_20","iss":"https://clerk.example.com","scope":"workspace:any platform-key:admin","scopes":"fleet:read"}
+    ;
+    const result = try extractClerkClaims(std.testing.allocator, json);
+    defer freeClaims(result);
+    try std.testing.expectEqualStrings("fleet:read", result.scopes.?);
+}
+
+test "test_retired_scope_spellings_are_unread — no capability beats the wrong capability" {
+    // `scope` (OAuth2) and `scp` (Azure/Auth0) are other providers' keys.
+    // Nothing writes them here, so a token carrying only one carries no
+    // capability — every gate then refuses it, which is the fail-closed
+    // direction. Read as a fallback they would have been the fail-open one.
+    const cases = [_][]const u8{
+        \\{"sub":"user_21","iss":"https://clerk.example.com","scope":"workspace:any"}
+        ,
+        \\{"sub":"user_22","iss":"https://clerk.example.com","scp":"workspace:any"}
+        ,
+        \\{"sub":"user_23","iss":"https://clerk.example.com","scp":["workspace:any","fleet:admin"]}
+        ,
+    };
+    for (cases) |json| {
+        const result = try extractClerkClaims(std.testing.allocator, json);
+        defer freeClaims(result);
+        try std.testing.expect(result.scopes == null);
+    }
+}
+
+test "test_retired_workspace_spelling_is_unread — an authz input needs a writer" {
+    // Nothing ever wrote `workspace_id` into the provider's metadata in any
+    // spelling — renderMetadataPayload writes `tenant_id` and `scopes` only —
+    // so the camelCase alias had no writer. It mattered because a workspace id
+    // NARROWS authorisation (common_authz.zig), and a narrowing input read
+    // from a key nobody controls is one an attacker gets to choose.
+    const json =
+        \\{"sub":"user_24","iss":"https://clerk.example.com","workspaceId":"ws_camel"}
+    ;
+    const result = try extractClerkClaims(std.testing.allocator, json);
+    defer freeClaims(result);
+    try std.testing.expect(result.workspace_id == null);
 }

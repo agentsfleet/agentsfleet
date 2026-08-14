@@ -29,6 +29,9 @@ const S_BUNDLES = "bundles";
 pub const S_PREFERENCES = "preferences";
 const S_AUTH = "auth";
 const S_SESSIONS = "sessions";
+/// Shared with the router: the collection form is exact-matched there, the item
+/// form goes through matchCliCredentialById, and the two must name one segment.
+pub const S_CLI_CREDENTIALS = "cli-credentials";
 const S_ALL = "all";
 const S_APPROVE = "approve";
 const S_VERIFY = "verify";
@@ -128,6 +131,21 @@ pub fn matchAuthSessionApprove(p: Path) ?[]const u8 {
 
 pub fn matchAuthSessionVerify(p: Path) ?[]const u8 {
     return matchAuthSessionAction(p, S_VERIFY);
+}
+
+/// `/{collection}/{param}` — the shared two-segment item shape (the bare
+/// collection is exact-matched in router.match()). The three-segment admin
+/// sibling lives in route_matchers_billing.zig with its callers.
+pub fn matchCollectionItem(p: Path, collection: []const u8) ?[]const u8 {
+    if (p.segs.len != 2) return null;
+    if (!p.eq(0, collection)) return null;
+    return p.param(1);
+}
+
+// ── /cli-credentials/{id} ──────────────────────────────────────────────────
+
+pub fn matchCliCredentialById(p: Path) ?[]const u8 {
+    return matchCollectionItem(p, S_CLI_CREDENTIALS);
 }
 
 // Tenant + admin billing matchers (/admin/platform-keys, /api-keys,

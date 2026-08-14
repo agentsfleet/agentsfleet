@@ -6,19 +6,16 @@
 // pointed at an empty tmpdir so credentials read as "not signed in").
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { buildHandlers, type Lifecycle } from "../src/program/handlers-bind.ts";
 import type { ActionFrame } from "../src/program/cli-tree-types.ts";
 import type { CommandCtx, CommandDeps, Workspaces } from "../src/commands/types.ts";
+import { useFreshStateDir } from "./helpers-cli-state.ts";
 
 const minimalCtx = (): CommandCtx => ({
   apiUrl: "https://api.test.local",
   dashboardUrl: "https://dash.test.local",
   token: null,
   apiKey: null,
-  authRole: null,
   jsonMode: true,
   noOpen: true,
   noInput: true,
@@ -53,24 +50,20 @@ const lifecycleFor = (): Lifecycle => {
   };
 };
 
-let stateDir: string;
-let prevStateDir: string | undefined;
+// State dir isolation comes from the shared helper; only the telemetry knob
+// is this file's own concern.
+useFreshStateDir();
+
 let prevTelemetryDisabled: string | undefined;
 
 beforeEach(() => {
-  stateDir = mkdtempSync(join(tmpdir(), "agentsfleet-wrap-effect-"));
-  prevStateDir = process.env.AGENTSFLEET_STATE_DIR;
   prevTelemetryDisabled = process.env.AGENTSFLEET_TELEMETRY_DISABLED;
-  process.env.AGENTSFLEET_STATE_DIR = stateDir;
   process.env.AGENTSFLEET_TELEMETRY_DISABLED = "1";
 });
 
 afterEach(() => {
-  if (prevStateDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
-  else process.env.AGENTSFLEET_STATE_DIR = prevStateDir;
   if (prevTelemetryDisabled === undefined) delete process.env.AGENTSFLEET_TELEMETRY_DISABLED;
   else process.env.AGENTSFLEET_TELEMETRY_DISABLED = prevTelemetryDisabled;
-  rmSync(stateDir, { recursive: true, force: true });
 });
 
 describe("wrapEffect inner handler", () => {

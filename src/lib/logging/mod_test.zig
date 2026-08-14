@@ -200,30 +200,65 @@ test "logfmt: a line past the buffer is truncated with a marker, never silently 
     try expectContains(out, "truncated=true");
 }
 
-// The remaining `scoped(...)` levels. Only `info` was exercised above, so the
-// other three method bodies — and the level argument they hand `emit` — were
-// never executed. They are not interchangeable: the level is what a log query
-// filters on, and a method wired to the wrong one is invisible until an
-// incident search comes back empty.
-
-test "logfmt: every severity reaches the sink under its own level" {
+test "logfmt: every level reaches the sink under its own name" {
+    // The four scoped wrappers are one-line trampolines, but each is its own
+    // comptime instantiation — a wrapper that routed to the wrong level would
+    // pass every single-level test while misfiling records in production.
     const emitAll = struct {
         fn call() void {
             const log = logging.scoped(SCOPE_UNDER_TEST);
-            log.err("probe_err", .{ .seq = 1 });
-            log.warn("probe_warn", .{ .seq = 2 });
-            log.info("probe_info", .{ .seq = 3 });
-            log.debug("probe_debug", .{ .seq = 4 });
+            log.err("level_probe_err", .{});
+            log.warn("level_probe_warn", .{});
+            log.info("level_probe_info", .{});
+            log.debug("level_probe_debug", .{});
         }
     }.call;
 
     const out = try capture(emitAll);
     defer ALLOC.free(out);
 
-    try expectContains(out, "event=probe_err seq=1");
-    try expectContains(out, "event=probe_warn seq=2");
-    try expectContains(out, "event=probe_info seq=3");
-    try expectContains(out, "event=probe_debug seq=4");
+    try expectContains(out, "event=level_probe_err");
+    try expectContains(out, "event=level_probe_warn");
+    try expectContains(out, "event=level_probe_info");
+    try expectContains(out, "event=level_probe_debug");
+}
+
+test "logfmt: a non-string pointer and a struct fall back to generic formatting" {
+    // The fallback arms exist so an unanticipated type still logs SOMETHING
+    // rather than failing the build at an incident's worst moment. What they
+    // must never do is crash or render nothing.
+    const emitOne = struct {
+        fn call() void {
+            const log = logging.scoped(SCOPE_UNDER_TEST);
+            var n: u32 = 7;
+            log.info("fallbacks", .{
+                .number_ptr = &n,
+                .pair = .{ .a = 1, .b = 2 },
+                .int_array = [_]u8{ 1, 2, 3 } ++ [_]u8{4} ** 0,
+                .word_array = [_]u16{ 10, 20 },
+            });
+        }
+    }.call;
+
+    const out = try capture(emitOne);
+    defer ALLOC.free(out);
+
+    try expectContains(out, "event=fallbacks");
+    try expectContains(out, "number_ptr=");
+    try expectContains(out, "pair=");
+    // A u8 array renders as text; a wider array takes the generic arm.
+    try expectContains(out, "word_array=");
+}
+
+test "fatalStderr formats and writes without the logger" {
+    // Pre-init path: no sink, no logger, just a bounded stderr write. The
+    // observable claim is "does not crash, truncates instead of overflowing" —
+    // stderr itself is not captured here, and does not need to be: a bufPrint
+    // failure returns silently, and that is the branch the oversized call pins.
+    logging.fatalStderr("startup probe: {s}\n", .{"ok"});
+    const oversized = "y" ** 4096;
+    logging.fatalStderr("{s}", .{oversized}); // > 2 KiB cap — returns, no write
+    logging.writeStderrLine("");
 }
 
 test "logfmt: a scope is carried per logger, not shared across them" {
@@ -245,18 +280,3 @@ test "logfmt: a scope is carried per logger, not shared across them" {
 // has no sink to assert against — these call it for real to prove the format
 // and the truncation guard do not crash, which is the only failure mode that
 // matters when the process is already on its way out.
-
-test "fatalStderr formats and writes without a logger installed" {
-    logging.fatalStderr("startup_failed reason={s}\n", .{"probe"});
-}
-
-test "fatalStderr drops a message that overruns its 2 KiB budget" {
-    // bufPrint fails, the `catch return` fires, and nothing is written. The
-    // process is exiting either way; crashing here would mask the real fault.
-    const oversized: []const u8 = "x" ** 4096;
-    logging.fatalStderr("{s}\n", .{oversized});
-}
-
-test "writeStderrLine emits a pre-formatted line" {
-    logging.writeStderrLine("probe_write_stderr_line\n");
-}

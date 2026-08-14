@@ -90,6 +90,9 @@ describe("HttpClient", () => {
       const fail = Option.getOrNull(Cause.findErrorOption(cause));
       expect(fail?._tag).toBe("ServerError");
       expect(fail?.message).toContain("re-authenticate");
+      // A 401 is as likely a wrong target server as a bad credential — the
+      // suggestion must name the API URL knobs, not only re-login.
+      expect(fail?.message).toContain("AGENTSFLEET_API_URL");
     }
   });
   test("ServerError carries 5xx hint", async () => {

@@ -66,7 +66,7 @@ const apiErrorSuggestion = (cause: ApiError, status: number): string => {
     return WORKSPACE_NAME_EXISTS_SUGGESTION;
   }
   return status === 401 || status === 403
-    ? "re-authenticate with `agentsfleet login`"
+    ? "re-authenticate with `agentsfleet login`; if you logged into a different server, check the target API URL (--api / AGENTSFLEET_API_URL)"
     : "verify the request payload and retry";
 };
 
