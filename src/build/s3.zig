@@ -57,6 +57,11 @@ pub fn addTestStep(
     });
     b.step("test-s3", "Compile + test the R2/z3 wrapper standalone")
         .dependOn(&b.addRunArtifact(s3_tests).step);
+    // The coverage lane runs kcov over already-installed binaries, so a test
+    // compilation nothing installs cannot be measured. Without this, r2.zig sat
+    // at 0/34 carrying a passing test that no lane ever ran.
+    b.step("test-s3-bin", "Install the R2/z3 test binary for the coverage lane")
+        .dependOn(&b.addInstallArtifact(s3_tests, .{}).step);
     test_list.addLane(b, list_step, S3_TESTS, s3_tests.root_module, R2_ROOT_DIR);
 }
 
