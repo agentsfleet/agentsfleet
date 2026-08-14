@@ -199,3 +199,64 @@ test "logfmt: a line past the buffer is truncated with a marker, never silently 
     // is a logfmt field rather than a glyph so a query can filter on it.
     try expectContains(out, "truncated=true");
 }
+
+// The remaining `scoped(...)` levels. Only `info` was exercised above, so the
+// other three method bodies — and the level argument they hand `emit` — were
+// never executed. They are not interchangeable: the level is what a log query
+// filters on, and a method wired to the wrong one is invisible until an
+// incident search comes back empty.
+
+test "logfmt: every severity reaches the sink under its own level" {
+    const emitAll = struct {
+        fn call() void {
+            const log = logging.scoped(SCOPE_UNDER_TEST);
+            log.err("probe_err", .{ .seq = 1 });
+            log.warn("probe_warn", .{ .seq = 2 });
+            log.info("probe_info", .{ .seq = 3 });
+            log.debug("probe_debug", .{ .seq = 4 });
+        }
+    }.call;
+
+    const out = try capture(emitAll);
+    defer ALLOC.free(out);
+
+    try expectContains(out, "event=probe_err seq=1");
+    try expectContains(out, "event=probe_warn seq=2");
+    try expectContains(out, "event=probe_info seq=3");
+    try expectContains(out, "event=probe_debug seq=4");
+}
+
+test "logfmt: a scope is carried per logger, not shared across them" {
+    const emitTwoScopes = struct {
+        fn call() void {
+            logging.scoped(.scope_alpha).info("from_alpha", .{});
+            logging.scoped(.scope_beta).info("from_beta", .{});
+        }
+    }.call;
+
+    const out = try capture(emitTwoScopes);
+    defer ALLOC.free(out);
+
+    try expectContains(out, "event=from_alpha");
+    try expectContains(out, "event=from_beta");
+}
+
+// The pre-init stderr path. `fatalStderr` runs before the logger exists, so it
+// has no sink to assert against — these call it for real to prove the format
+// and the truncation guard do not crash, which is the only failure mode that
+// matters when the process is already on its way out.
+
+test "fatalStderr formats and writes without a logger installed" {
+    logging.fatalStderr("startup_failed reason={s}\n", .{"probe"});
+}
+
+test "fatalStderr drops a message that overruns its 2 KiB budget" {
+    // bufPrint fails, the `catch return` fires, and nothing is written. The
+    // process is exiting either way; crashing here would mask the real fault.
+    const oversized: []const u8 = "x" ** 4096;
+    logging.fatalStderr("{s}\n", .{oversized});
+}
+
+test "writeStderrLine emits a pre-formatted line" {
+    logging.writeStderrLine("probe_write_stderr_line\n");
+}
