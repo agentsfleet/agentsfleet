@@ -2,11 +2,15 @@
 
 > Relocated from [`AUTH.md`](./AUTH.md) so the canonical auth reference stays the *model*, not the depth. This is the M74_002 device-flow security design: data lifecycle, sequence, threat model, pinned crypto, the non-interactive token-seeding path, deploy rules, and the human-led invariant. For the auth model overview and the other principals, start at [`AUTH.md`](./AUTH.md) → *Flow 1*.
 
-The one credential path humans use from a terminal: a browser-mediated device flow with a **verification code** binding the human approving in the browser to the human typing into the terminal, and **ECDH P-256 transport encryption** that keeps the minted JWT off every server-side surface but process memory. Bounded at five minutes; unfinished sessions expire. Once `credentials.json` (mode `0o600`) exists, the CLI carries the JWT on every request — same as a Flow 2 browser call after `getToken({template:"api"})`; on `401 token_expired` it re-runs `agentsfleet login`.
+The one credential path humans use from a terminal: a browser-mediated device flow with a **verification code** binding the human approving in the browser to the human typing into the terminal, and **ECDH P-256 transport encryption** that keeps the minted JWT off every server-side surface but process memory. Bounded at five minutes; unfinished sessions expire. The recovered session token is spent immediately on `POST /v1/cli-credentials` and is never written to disk — what `credentials.json` (mode `0o600`) holds is the durable `afc_` credential that mint returns, and that is what the CLI carries on every subsequent request. The credential does not expire, so there is no `401 token_expired` re-login cycle.
 
 ## Non-interactive token seeding (no device flow)
 
-When a usable bearer token already exists, `agentsfleet login` can persist it directly, skipping the browser entirely. The resolution order is `--token <pat>` → piped stdin (non-TTY); the first hit is validated against the same `/v1/me` ping the device flow uses and, **only on success**, written to `credentials.json` (`0o600`, `session_id: null`) — an invalid token leaves the file untouched. This is the only login path available without an interactive terminal (a non-TTY context — Continuous Integration runners, containers): the verification code requires a human at the keyboard, so a non-TTY shell with no token fails fast rather than hanging. **The device flow itself is unchanged and terminal-only** — this path does not mint a new credential, it only stores one the caller already holds (a Flow 3 tenant key or a previously-minted JWT), so the human-led binding of the device flow is untouched.
+**Removed in M160_002 §3.** `agentsfleet login` used to accept an already-held bearer token directly — `--token <pat>`, falling back to piped stdin on a non-TTY — validate it against `/v1/me`, and write it to `credentials.json`. Both sources are gone, and `login` now has no non-interactive path at all.
+
+The reason is that it never had a job of its own. `AGENTSFLEET_API_KEY` already carries an `agt_t` tenant key on every request and **outranks the stored credential**, so an unattended caller was always served by the environment variable; the flag only added a second way to reach the same place, by way of a file the caller then had to manage. It was also the one path that could write a value the credential loader would later refuse: the write checked only whether the token *authenticated*, while every subsequent read checks whether it is *well-formed* (`isPersistable`, `services/credentials.ts`, accepting `afc_` and `agt_t` alone). Seeding a Clerk session token therefore reported success and then read back as logged-out on the next command — a failure that surfaced one command after the mistake.
+
+What replaces it is one rule with no overlap: **interactive is the device flow, unattended is `AGENTSFLEET_API_KEY`.** A non-TTY `login` now fails immediately and names that variable, rather than announcing a session no human is present to approve.
 
 ## Where the JWT lives in plaintext (data lifecycle)
 
@@ -19,7 +23,7 @@ This view points in the *opposite* direction from the temporal sequence below, b
 │   ┌─────────────────────────────────────────────────────────────┐  │
 │   │   Clerk mints user-JWT  ─►  AES-256-GCM encrypt(JWT)        │  │
 │   │   (via FAPI /tokens)         under HKDF-SHA256-derived key  │  │
-│   │                              from ECDH(dash_priv, cli_pub)   │  │
+│   │                              from ECDH(dash_priv, cli_pub)  │  │
 │   └─────────────────────────────────────────────────────────────┘  │
 │                              │                                     │
 │              PATCH /v1/auth/sessions/{id}/approve                  │
@@ -29,7 +33,7 @@ This view points in the *opposite* direction from the temporal sequence below, b
 │                                       discards plaintext)          │
 │                              │                                     │
 │                              ▼                                     │
-│  API process (agentsfleetd) + Redis                                     │
+│  API process (agentsfleetd) + Redis                                │
 │   ┌─────────────────────────────────────────────────────────────┐  │
 │   │   Redis row stores:                                         │  │
 │   │     status, cli_public_key, dashboard_public_key,           │  │
@@ -39,21 +43,23 @@ This view points in the *opposite* direction from the temporal sequence below, b
 │   │     created_at_ms, expires_at_ms      PEPPER,               │  │
 │   │   ────────────────────────────         session_id ‖ code)   │  │
 │   │   Nothing in this row decrypts the JWT.                     │  │
-│   │   Pepper lives in agentsfleetd process memory only — never disk. │  │
+│   │   Pepper lives in agentsfleetd memory only — never disk.    │  │
 │   └─────────────────────────────────────────────────────────────┘  │
 │                              │                                     │
-│              POST /v1/auth/sessions/{id}/verify { code }            │
+│              POST /v1/auth/sessions/{id}/verify { code }           │
 │              (only after CLI presents the matching code; atomic    │
 │               verification_pending → consumed in a single Lua-EVAL │
 │               write that also returns the ciphertext payload)      │
 │                              │                                     │
 │                              ▼                                     │
-│  CLI process (agentsfleet)                                           │
+│  CLI process (agentsfleet)                                         │
 │   ┌─────────────────────────────────────────────────────────────┐  │
 │   │   shared = ECDH(cli_priv, dashboard_public_key)             │  │
 │   │   key    = HKDF-SHA256(shared, info="m74-002-v1")           │  │
 │   │   JWT    = AES-256-GCM-decrypt(ciphertext, key, nonce)      │  │
-│   │   write { token, token_name } → credentials.json (0o600)    │  │
+│   │   POST /v1/cli-credentials (Bearer JWT) → afc_ credential   │  │
+│   │   write { token, credential_id } → credentials.json (0o600) │  │
+│   │      ↑ the afc_ credential, never the decrypted JWT         │  │
 │   │   GET /v1/me  (validation ping; deletes credential on 401)  │  │
 │   └─────────────────────────────────────────────────────────────┘  │
 │                                                                    │
@@ -72,21 +78,13 @@ sequenceDiagram
     participant API as Zig backend<br/>(api.agentsfleet.net)
     participant Clerk
 
-    User->>CLI: agentsfleet login [--token <pat>] [--token-name LABEL]
-    Note over CLI: idempotencyCheck — refuse to overwrite an existing<br/>credential without --force. A non-TTY stdin counts as<br/>--no-input: it fails loudly rather than consuming a piped<br/>token as the replace-prompt answer.
+    User->>CLI: agentsfleet login [--token-name LABEL]
+    Note over CLI: idempotencyCheck — refuse to overwrite an existing<br/>credential without --force. A non-TTY stdin counts as<br/>--no-input, so nothing piped is read as the replace-prompt answer.
 
-    alt direct token — resolveDirectToken: --token flag > piped stdin (non-TTY)
-        Note over CLI: first source wins; no browser, no session_id
-        CLI->>API: GET /v1/me   (validate-first — before any write)
-        alt token valid
-            API-->>CLI: 200
-            CLI->>CLI: write { token, token_name } → credentials.json<br/>(0o600, session_id: null)
-            CLI-->>User: "logged in" (no browser)
-        else token invalid
-            API-->>CLI: 4xx
-            CLI-->>User: error — exit ≠ 0, credentials.json untouched
-        end
-    else interactive device flow — TTY, no direct token
+    alt non-TTY shell (M160_002 §3)
+        Note over CLI: no direct-token path exists any more — the verification<br/>code needs a human, so this cannot proceed
+        CLI-->>User: error — exit ≠ 0, "set AGENTSFLEET_API_KEY for unattended use"<br/>credentials.json untouched
+    else interactive device flow — TTY
         Note over CLI: generate (cli_priv, cli_pub) via crypto.subtle<br/>default token_name = platform family<br/>("macos-cli" / "linux-cli" / "windows-cli")
 
         CLI->>API: POST /v1/auth/sessions<br/>{ public_key: cli_pub, token_name }
@@ -119,7 +117,10 @@ sequenceDiagram
 
         Note over CLI: shared = cli_priv × dashboard_public_key<br/>key = HKDF-SHA256(shared, info="m74-002-v1")<br/>jwt = AES-256-GCM-decrypt(ciphertext, key, nonce)
 
-        CLI->>CLI: write { token, token_name } → credentials.json (0o600)
+        CLI->>API: POST /v1/cli-credentials<br/>Authorization: Bearer &lt;decrypted session JWT&gt;<br/>{ machine_name }
+        Note over CLI,API: the session JWT is spent here and discarded.<br/>Its ~60s lifetime only has to cover this one call.
+        API-->>CLI: 201 { id, credential }   (afc_…, no expiry)
+        CLI->>CLI: write { token, credential_id } → credentials.json (0o600)<br/>token = the afc_ credential, never the JWT
         CLI->>API: GET /v1/me   (post-write validation ping)
         alt ping ok
             API-->>CLI: 200
@@ -134,7 +135,7 @@ sequenceDiagram
 
 Two facts the diagram pins:
 1. **The CLI is the initiator.** Every interaction with the UI, API, or Clerk is downstream of `agentsfleet login`. The user typing the verification code closes the loop back to the CLI.
-2. **Clerk is involved at exactly one step** (`POST /tokens`). The API server never talks to Clerk in this flow — Clerk's involvement is JWKS-only when the CLI later uses the minted JWT against normal API endpoints.
+2. **Clerk is involved at exactly one step of this flow** (`POST /tokens`). The API server never talks to Clerk while the device flow is running. It does afterwards, but differently than it once did: since M160_002 the CLI presents an `afc_` credential rather than the JWT, so Clerk is not consulted for JWKS on those calls — it is consulted by the scope resolver, which fetches the owning user's capabilities per request behind a short cache. Verification moved from "is this signature valid" to "who is this row, and what may they do right now."
 
 ## Session state machine
 
@@ -222,7 +223,7 @@ Each line names the attack and points at where its closure lives (or why it cann
 | # | Threat | Why not — and where closure lives |
 |---|---|---|
 | 1 | **Compromised browser session** — XSS on the dashboard, malicious browser extension, session-cookie theft, injected analytics, compromised NPM dependency in the dashboard bundle. | The plaintext JWT lives momentarily in the dashboard JS process before encryption. Anything with execution access to that process sees the JWT; ECDH does not help. Future hardening: SRI + CSP + dependency supply-chain pinning (separate spec). |
-| 2 | **Malware on the CLI host** — compromised `agentsfleet` machine, malicious user-space process, memory scraping. | `cli_priv` lives in CLI process memory during the flow; the decrypted JWT lives in `credentials.json` after. Local malware reads either. No future milestone closes this without hardware-backed key storage (TPM / Secure Enclave) — a separate downstream spec. |
+| 2 | **Malware on the CLI host** — compromised `agentsfleet` machine, malicious user-space process, memory scraping. | `cli_priv` and the decrypted session JWT live in CLI process memory during the flow; the durable `afc_` credential lives in `credentials.json` after. Local malware reads either. Durability raises the stakes here: the stolen JWT expired in about a minute, whereas a stolen credential works until it is revoked — `DELETE /v1/cli-credentials/{id}` is the response, and it is what makes theft recoverable at all. No future milestone closes the read itself without hardware-backed key storage (TPM / Secure Enclave) — a separate downstream spec. |
 | 3 | **Attacker with simultaneous browser + terminal access** — user runs attacker-supplied software ("paste this curl into your terminal"). | The verification code cannot defend against the user actively typing the code into the attacker's tool. The human-led-only invariant is the only defense, and it is documentation, not code. |
 | 4 | **Device impersonation / fake `agentsfleet` binaries** — any actor can generate a valid ECDH keypair using publicly known math; any actor can ship a binary called `agentsfleet`. | Possessing a valid public key proves nothing about identity. Closure: **M75_xxx Agent Identity** (persistent device keypair) or a binary-signing spec — both to be authored. |
 | 5 | **Autonomous-agent authentication** — CI runners, Kubernetes workloads, hosted agent platforms calling our API. | Out of trust model. A human MUST be present at flow time to type the verification code; remove the human and the verification code property collapses into theatre. Closure: **M75_xxx Agent Identity** (persistent keypair + signed challenges + scoped credentials + server-side agent inventory). |
@@ -264,23 +265,25 @@ The `.auth_audit` log sink MUST be routed to a destination distinct from custome
 
 ## Every subsequent CLI call
 
-Once `credentials.json` exists, the CLI carries the JWT on every request — same as a Flow 2 browser call after `getToken({template:"api"})`.
+Once `credentials.json` exists, the CLI carries the `afc_` credential on every request. This is where Flow 1 stops resembling a Flow 2 browser call: the dashboard rides a Clerk-refreshed session token, while the terminal rides a credential the API itself minted and can revoke.
 
 ```mermaid
 sequenceDiagram
     participant CLI as agentsfleet
     participant API as Zig backend
 
-    CLI->>API: GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events<br/>Authorization: Bearer <user-jwt>
-    Note over API: bearer_or_api_key:<br/>JWKS verify (cached 6h),<br/>iss + aud + exp checks,<br/>→ AuthPrincipal{ mode=jwt_oidc, user_id, tenant_id, … }
+    CLI->>API: GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events<br/>Authorization: Bearer afc_…
+    Note over API: bearer_or_api_key:<br/>SHA-256 → core.cli_credentials row (JOIN core.users),<br/>revoked? → UZ-AUTH-023,<br/>scopes resolved from the provider on oidc_subject (cached),<br/>→ AuthPrincipal{ mode=cli_credential, user_id, tenant_id, … }
     API-->>CLI: 200 events
 
-    CLI->>API: GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream<br/>Authorization: Bearer <user-jwt><br/>Accept: text/event-stream
+    CLI->>API: GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream<br/>Authorization: Bearer afc_…<br/>Accept: text/event-stream
     API-->>CLI: 200 text/event-stream (long-lived)
     Note over CLI,API: server PUBLISH frames →<br/>SSE events for the lifetime of the connection
 ```
 
-On `401 token_expired`, the CLI re-runs `agentsfleet login`. Clerk JWTs are short-lived (~15 min); JWT revocation is **not** done by `agentsfleet logout` (Clerk admin API would be required; see [`AUTH.md`](./AUTH.md) → *What's not in this doc*).
+The credential does not expire, so there is no `token_expired` re-login cycle — a 401 here means the row was revoked (`UZ-AUTH-023`) or never existed. Capabilities are *not* frozen at mint: the scope claim is resolved from the identity provider per request behind a short cache, so narrowing someone in Clerk narrows every terminal holding their credential within the cache window. See [`AUTH.md`](./AUTH.md) → *CLI credential — resolved, not granted* for the full model and its failure modes.
+
+Server-side revocation exists (`DELETE /v1/cli-credentials/{id}`) but `agentsfleet logout` does not yet call it — that is M160_002 §3. Until it lands, logout clears local state only, and credentials accumulate one per login.
 
 ---
 

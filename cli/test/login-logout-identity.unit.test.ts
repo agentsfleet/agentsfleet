@@ -5,14 +5,13 @@
 // effects against in-memory layers and assert on the recorded
 // side-effects + the on-disk telemetry.json state.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Layer, Option, Redacted } from "effect";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 import { captureLoginCompleted } from "../src/commands/login-helpers.ts";
-import { logoutEffect } from "../src/commands/auth.ts";
+import { logoutEffect } from "../src/commands/auth-logout.ts";
 import { Analytics } from "../src/services/telemetry/analytics.service.ts";
 import {
   TelemetryRuntime,
@@ -23,6 +22,7 @@ import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Output } from "../src/services/output.ts";
 import type { TelemetryConfig } from "../src/services/telemetry/types.ts";
+import { useFreshStateDir } from "./helpers-cli-state.ts";
 
 interface IdentityRecorder {
   readonly alias: Array<{ distinctId: string; deviceId: string }>;
@@ -94,9 +94,13 @@ const credentialsLayer = (rec: IdentityRecorder): Layer.Layer<Credentials> => {
   };
   return Layer.succeed(Credentials, {
     getAccessToken: Effect.sync(() => state.token),
-    getSavedAt: Effect.sync(() => state.savedAt),
-    getSessionId: Effect.sync(() => state.sessionId),
-    getApiUrl: Effect.sync(() => state.apiUrl),
+    snapshot: Effect.sync(() => ({
+      accessToken: state.token,
+      savedAt: state.savedAt,
+      sessionId: state.sessionId,
+      apiUrl: null,
+      credentialId: null,
+    })),
     saveAccessToken: (input) =>
       Effect.sync(() => {
         state.token = Option.some(input.token);
@@ -149,27 +153,13 @@ const readTelemetryFile = (configDir: string): TelemetryConfig | null => {
   return JSON.parse(fs.readFileSync(fp, "utf8")) as TelemetryConfig;
 };
 
-let tempStateDir: string | null = null;
-let prevStateDir: string | undefined = undefined;
-
-beforeEach(() => {
-  prevStateDir = process.env.AGENTSFLEET_STATE_DIR;
-  tempStateDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentsfleet-identity-"));
-  process.env.AGENTSFLEET_STATE_DIR = tempStateDir;
-});
-
-afterEach(() => {
-  if (tempStateDir) fs.rmSync(tempStateDir, { recursive: true, force: true });
-  tempStateDir = null;
-  if (prevStateDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
-  else process.env.AGENTSFLEET_STATE_DIR = prevStateDir;
-});
+const stateDir = useFreshStateDir();
 
 describe("captureLoginCompleted", () => {
   test("token with sub claim → alias + identify + saveDistinctId writes telemetry.json", async () => {
     const rec = makeRecorder();
     const exit = await Effect.runPromiseExit(
-      captureLoginCompleted("sess_abc", tokenWithSub("user-distinct-9"), "browser").pipe(
+      captureLoginCompleted("sess_abc", tokenWithSub("user-distinct-9")).pipe(
         Effect.provide(analyticsLayer(rec)),
         Effect.provide(telemetryRuntime),
       ),
@@ -179,7 +169,7 @@ describe("captureLoginCompleted", () => {
       { distinctId: "user-distinct-9", deviceId: "device-fixture-7" },
     ]);
     expect(rec.identify).toEqual([{ distinctId: "user-distinct-9" }]);
-    const persisted = readTelemetryFile(tempStateDir!);
+    const persisted = readTelemetryFile(stateDir());
     expect(persisted?.distinct_id).toBe("user-distinct-9");
     const events = rec.captured.map((c) => c.event);
     expect(events).toContain("user_authenticated");
@@ -189,7 +179,7 @@ describe("captureLoginCompleted", () => {
   test("token without sub claim → clearDistinctId, no alias/identify", async () => {
     const rec = makeRecorder();
     fs.writeFileSync(
-      path.join(tempStateDir!, "telemetry.json"),
+      path.join(stateDir(), "telemetry.json"),
       JSON.stringify({
         consent: "granted",
         device_id: "device-fixture-7",
@@ -199,7 +189,7 @@ describe("captureLoginCompleted", () => {
       }),
     );
     const exit = await Effect.runPromiseExit(
-      captureLoginCompleted("sess_xyz", tokenWithoutSub(), "token").pipe(
+      captureLoginCompleted("sess_xyz", tokenWithoutSub()).pipe(
         Effect.provide(analyticsLayer(rec)),
         Effect.provide(telemetryRuntime),
       ),
@@ -207,7 +197,7 @@ describe("captureLoginCompleted", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(rec.alias).toEqual([]);
     expect(rec.identify).toEqual([]);
-    const persisted = readTelemetryFile(tempStateDir!);
+    const persisted = readTelemetryFile(stateDir());
     expect(persisted?.distinct_id).toBeUndefined();
   });
 });
@@ -226,7 +216,7 @@ describe("logoutEffect", () => {
   test("clears credentials, clears distinct_id from telemetry.json, captures logout_completed", async () => {
     const rec = makeRecorder();
     fs.writeFileSync(
-      path.join(tempStateDir!, "telemetry.json"),
+      path.join(stateDir(), "telemetry.json"),
       JSON.stringify({
         consent: "granted",
         device_id: "device-fixture-7",
@@ -247,7 +237,7 @@ describe("logoutEffect", () => {
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(rec.credentialOps).toContain("clear");
-    const persisted = readTelemetryFile(tempStateDir!);
+    const persisted = readTelemetryFile(stateDir());
     expect(persisted?.distinct_id).toBeUndefined();
     expect(rec.captured.map((c) => c.event)).toContain("logout_completed");
     expect(rec.stdout.some((l) => l.includes("logout complete"))).toBe(true);

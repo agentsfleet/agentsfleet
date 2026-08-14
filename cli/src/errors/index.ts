@@ -130,6 +130,22 @@ export type CliError =
   | UnexpectedError
   | AuthFlowError;
 
+// One operator-facing reason string for a failed daemon call: the server's
+// own code when it answered, "network" when it never did, "unexpected"
+// otherwise. Shared so the same failure renders the same word in every
+// command instead of each site hand-rolling the mapping.
+export const FAILURE_REASON = {
+  network: "network",
+  unexpected: "unexpected",
+} as const;
+
+export const reasonOf = (err: CliError): string =>
+  err._tag === CLI_ERROR_TAG.server
+    ? err.code
+    : err._tag === CLI_ERROR_TAG.network
+      ? FAILURE_REASON.network
+      : FAILURE_REASON.unexpected;
+
 // Exit-code mapping. The dispatcher's exhaustive switch on `_tag`
 // references this; any new variant must add a row here or the
 // type-checker rejects the dispatcher.

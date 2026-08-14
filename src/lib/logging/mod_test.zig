@@ -199,3 +199,64 @@ test "logfmt: a line past the buffer is truncated with a marker, never silently 
     // is a logfmt field rather than a glyph so a query can filter on it.
     try expectContains(out, "truncated=true");
 }
+
+test "logfmt: every level reaches the sink under its own name" {
+    // The four scoped wrappers are one-line trampolines, but each is its own
+    // comptime instantiation — a wrapper that routed to the wrong level would
+    // pass every single-level test while misfiling records in production.
+    const emitAll = struct {
+        fn call() void {
+            const log = logging.scoped(SCOPE_UNDER_TEST);
+            log.err("level_probe_err", .{});
+            log.warn("level_probe_warn", .{});
+            log.info("level_probe_info", .{});
+            log.debug("level_probe_debug", .{});
+        }
+    }.call;
+
+    const out = try capture(emitAll);
+    defer ALLOC.free(out);
+
+    try expectContains(out, "event=level_probe_err");
+    try expectContains(out, "event=level_probe_warn");
+    try expectContains(out, "event=level_probe_info");
+    try expectContains(out, "event=level_probe_debug");
+}
+
+test "logfmt: a non-string pointer and a struct fall back to generic formatting" {
+    // The fallback arms exist so an unanticipated type still logs SOMETHING
+    // rather than failing the build at an incident's worst moment. What they
+    // must never do is crash or render nothing.
+    const emitOne = struct {
+        fn call() void {
+            const log = logging.scoped(SCOPE_UNDER_TEST);
+            var n: u32 = 7;
+            log.info("fallbacks", .{
+                .number_ptr = &n,
+                .pair = .{ .a = 1, .b = 2 },
+                .int_array = [_]u8{ 1, 2, 3 } ++ [_]u8{4} ** 0,
+                .word_array = [_]u16{ 10, 20 },
+            });
+        }
+    }.call;
+
+    const out = try capture(emitOne);
+    defer ALLOC.free(out);
+
+    try expectContains(out, "event=fallbacks");
+    try expectContains(out, "number_ptr=");
+    try expectContains(out, "pair=");
+    // A u8 array renders as text; a wider array takes the generic arm.
+    try expectContains(out, "word_array=");
+}
+
+test "fatalStderr formats and writes without the logger" {
+    // Pre-init path: no sink, no logger, just a bounded stderr write. The
+    // observable claim is "does not crash, truncates instead of overflowing" —
+    // stderr itself is not captured here, and does not need to be: a bufPrint
+    // failure returns silently, and that is the branch the oversized call pins.
+    logging.fatalStderr("startup probe: {s}\n", .{"ok"});
+    const oversized = "y" ** 4096;
+    logging.fatalStderr("{s}", .{oversized}); // > 2 KiB cap — returns, no write
+    logging.writeStderrLine("");
+}

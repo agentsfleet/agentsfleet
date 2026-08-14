@@ -2,7 +2,11 @@ import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
 import { saveCredentials } from "../src/lib/state.ts";
-import { bufferStream, withFreshStateDir } from "./helpers-cli-state.ts";
+import {
+  bufferStream,
+  FIXTURE_CREDENTIAL,
+  withFreshStateDir,
+} from "./helpers-cli-state.ts";
 
 const SESSION_ID = "sess_test_url_resolution";
 const API_URL_DEV = "https://api-dev.agentsfleet.net";
@@ -197,10 +201,11 @@ describe("api url resolution drives every fetch from runCli", () => {
     // that drives fetch.
     await withFreshStateDir(async () => {
       await saveCredentials({
-        token: "header.payload.sig",
+        token: FIXTURE_CREDENTIAL,
         saved_at: Date.now(),
         session_id: "sess_persisted",
         api_url: "http://localhost:3000",
+        credential_id: null,
       });
 
       const out = bufferStream();
@@ -284,10 +289,11 @@ describe("api url resolution drives every fetch from runCli", () => {
       test(`${label} → ${c.expected}`, async () => {
         await withFreshStateDir(async () => {
           await saveCredentials({
-            token: "header.payload.sig",
+            token: FIXTURE_CREDENTIAL,
             saved_at: Date.now(),
             session_id: "sess_matrix",
             api_url: c.set.creds === 1 ? CREDS : null,
+            credential_id: null,
           });
           const env: NodeJS.ProcessEnv = {};
           if (c.set.zenv === 1) env.AGENTSFLEET_API_URL = ZENV;

@@ -1,4 +1,20 @@
-//! Provider-specific claim normalization from verified JWT payloads.
+//! Claim normalization from verified JWT payloads.
+//!
+//! **One writer, one spelling.** `clerk_metadata_payload.zig` is the only thing
+//! that ever writes our `public_metadata`, and it writes exactly two keys:
+//! `tenant_id` and `scopes`. The identity provider's session-token claim
+//! customization then projects `metadata.tenant_id` and a top-level `scopes`
+//! (docs/AUTH.md §Clerk org config). Every reader below accepts precisely those
+//! shapes and nothing else.
+//!
+//! It used to accept more — a second ladder for a `custom` provider reading
+//! `custom_claims` / `app_metadata` / namespaced `https://agentsfleet.net/…`,
+//! a `workspaceId` camelCase alias, and three spellings of the scope claim.
+//! Nothing wrote any of them. The scope ladder was the dangerous one: it tried
+//! OAuth2's `scope` BEFORE our own `scopes`, so a token carrying a standard
+//! `scope` claim would have silently supplied a different capability set on the
+//! authorisation path. A claim reader that accepts a fact from wherever it
+//! might appear cannot say which value it trusted; these read one place each.
 
 const std = @import("std");
 const jwks = @import("jwks.zig");
@@ -6,9 +22,7 @@ const logging = @import("log");
 
 const log = logging.scoped(.auth);
 
-const S_CUSTOM_CLAIMS = "custom_claims";
 const S_METADATA = "metadata";
-const S_APP_METADATA = "app_metadata";
 const S_MISSING = "missing";
 
 pub const IdentityClaims = struct {
@@ -23,25 +37,15 @@ pub const IdentityClaims = struct {
 };
 
 const ClerkClaims = IdentityClaims;
-const CustomClaims = IdentityClaims;
 
 const CLAIM_TENANT_ID = "tenant_id";
 const CLAIM_ORG_ID = "org_id";
-const CLAIM_ORGANIZATION_ID = "organization_id";
 const CLAIM_WORKSPACE_ID = "workspace_id";
-const CLAIM_WORKSPACE_CAMEL = "workspaceId";
-const CLAIM_SCOPE = "scope";
 const CLAIM_SCOPES = "scopes";
-const CLAIM_SCP = "scp";
 const CLAIM_AUD = "aud";
 
-// JWT claim namespace prefix — must match the identity provider's custom
-// claim configuration (Clerk/Auth0). Not user-configurable. One value for
-// every environment (the former DEV/PROD pair were identical).
-const CLAIM_NAMESPACE = "https://agentsfleet.net/";
-
-/// Extract Clerk-specific claims from a verified JWT payload.
-/// Looks for `org_id` at top level and `tenant_id`/`workspace_id`
+/// Extract Clerk claims from a verified JWT payload.
+/// Looks for `org_id` and `scopes` at top level, and `tenant_id`/`workspace_id`
 /// at top level or nested under `metadata`.
 pub fn extractClerkClaims(alloc: std.mem.Allocator, claims_json: []const u8) !ClerkClaims {
     const parsed = try parseClaimsObject(alloc, claims_json);
@@ -58,28 +62,6 @@ pub fn extractClerkClaims(alloc: std.mem.Allocator, claims_json: []const u8) !Cl
         .tenant_id = tenant_id,
         .org_id = org_id,
         .workspace_id = getClerkWorkspaceId(parsed.value.object),
-        .audience = getAudience(parsed.value.object),
-        .scopes = try getScopesOwned(alloc, parsed.value.object),
-    });
-}
-
-/// Extract claims from a custom OIDC provider. This path accepts the common
-/// top-level form plus nested `metadata`, `app_metadata`, or `custom_claims`.
-pub fn extractCustomClaims(alloc: std.mem.Allocator, claims_json: []const u8) !CustomClaims {
-    const parsed = try parseClaimsObject(alloc, claims_json);
-    defer parsed.deinit();
-
-    const tenant_id = getCustomTenantId(parsed.value.object);
-    const org_id = getCustomOrgId(parsed.value.object);
-    log.debug("custom_claims_extracted", .{
-        .tenant_id = if (tenant_id) |v| v else S_MISSING,
-        .org_id = if (org_id) |v| v else S_MISSING,
-    });
-
-    return duplicateClaims(alloc, .{
-        .tenant_id = tenant_id,
-        .org_id = org_id,
-        .workspace_id = getCustomWorkspaceId(parsed.value.object),
         .audience = getAudience(parsed.value.object),
         .scopes = try getScopesOwned(alloc, parsed.value.object),
     });
@@ -141,54 +123,10 @@ fn getClerkOrgId(obj: std.json.ObjectMap) ?[]const u8 {
 
 fn getClerkWorkspaceId(obj: std.json.ObjectMap) ?[]const u8 {
     if (jwks.getString(obj, CLAIM_WORKSPACE_ID)) |v| return v;
-    if (jwks.getString(obj, CLAIM_WORKSPACE_CAMEL)) |v| return v;
 
     const metadata = obj.get(S_METADATA) orelse return null;
     if (metadata != .object) return null;
-    if (jwks.getString(metadata.object, CLAIM_WORKSPACE_ID)) |v| return v;
-    return jwks.getString(metadata.object, CLAIM_WORKSPACE_CAMEL);
-}
-
-fn getCustomTenantId(obj: std.json.ObjectMap) ?[]const u8 {
-    return getFirstValue(obj, &.{
-        CLAIM_TENANT_ID,
-        CLAIM_NAMESPACE ++ CLAIM_TENANT_ID,
-    }, &.{ S_CUSTOM_CLAIMS, S_METADATA, S_APP_METADATA });
-}
-
-fn getCustomOrgId(obj: std.json.ObjectMap) ?[]const u8 {
-    return getFirstValue(obj, &.{
-        CLAIM_ORG_ID,
-        CLAIM_ORGANIZATION_ID,
-        CLAIM_NAMESPACE ++ CLAIM_ORGANIZATION_ID,
-    }, &.{ S_CUSTOM_CLAIMS, S_METADATA, S_APP_METADATA });
-}
-
-fn getCustomWorkspaceId(obj: std.json.ObjectMap) ?[]const u8 {
-    return getFirstValue(obj, &.{
-        CLAIM_WORKSPACE_ID,
-        CLAIM_WORKSPACE_CAMEL,
-        CLAIM_NAMESPACE ++ CLAIM_WORKSPACE_ID,
-        CLAIM_NAMESPACE ++ CLAIM_WORKSPACE_CAMEL,
-    }, &.{ S_CUSTOM_CLAIMS, S_METADATA, S_APP_METADATA });
-}
-
-fn getFirstValue(
-    obj: std.json.ObjectMap,
-    direct_keys: []const []const u8,
-    nested_objects: []const []const u8,
-) ?[]const u8 {
-    for (direct_keys) |key| {
-        if (jwks.getString(obj, key)) |v| return v;
-    }
-    for (nested_objects) |nested| {
-        const child = obj.get(nested) orelse continue;
-        if (child != .object) continue;
-        for (direct_keys) |key| {
-            if (jwks.getString(child.object, key)) |v| return v;
-        }
-    }
-    return null;
+    return jwks.getString(metadata.object, CLAIM_WORKSPACE_ID);
 }
 
 fn getAudience(obj: std.json.ObjectMap) ?[]const u8 {
@@ -202,17 +140,22 @@ fn getAudience(obj: std.json.ObjectMap) ?[]const u8 {
     };
 }
 
+/// The capability claim, read from `scopes` and nowhere else.
+///
+/// The space-delimited string is what the session-token template projects, and
+/// what `defaultClaim` writes. The array form is accepted because a template
+/// can be configured to emit one and the two mean the same thing — but it is
+/// still the same single key, so there is never a question of which spelling
+/// won.
 fn getScopesOwned(alloc: std.mem.Allocator, obj: std.json.ObjectMap) !?[]u8 {
-    if (jwks.getString(obj, CLAIM_SCOPE)) |v| return try alloc.dupe(u8, v);
     if (jwks.getString(obj, CLAIM_SCOPES)) |v| return try alloc.dupe(u8, v);
-    if (jwks.getString(obj, CLAIM_SCP)) |v| return try alloc.dupe(u8, v);
 
-    const scp = obj.get(CLAIM_SCP) orelse obj.get(CLAIM_SCOPES) orelse return null;
-    if (scp != .array) return null;
+    const raw = obj.get(CLAIM_SCOPES) orelse return null;
+    if (raw != .array) return null;
 
     var buf: std.ArrayList(u8) = .empty;
     errdefer buf.deinit(alloc);
-    for (scp.array.items) |item| {
+    for (raw.array.items) |item| {
         if (item != .string or item.string.len == 0) continue;
         if (buf.items.len > 0) try buf.append(alloc, ' ');
         try buf.appendSlice(alloc, item.string);

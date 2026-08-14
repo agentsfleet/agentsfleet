@@ -76,22 +76,33 @@ fn allOk(checks: []const Check) bool {
     return true;
 }
 
+/// Pure render of the JSON verdict envelope; null on OOM. Split from `emit`
+/// so tests can cover rendering without writing to stdout (the test runner's
+/// stdout is the build-protocol channel — a printing test hangs the lane).
+fn renderJson(alloc: std.mem.Allocator, checks: []const Check) ?[]u8 {
+    return std.json.Stringify.valueAlloc(alloc, .{ .ok = allOk(checks), .checks = checks }, .{}) catch null;
+}
+
+/// Pure render of one human-audience line into the caller's buffer.
+fn renderHumanLine(buf: []u8, c: Check) []const u8 {
+    const mark = if (c.ok) "OK" else "!!";
+    return std.fmt.bufPrint(buf, "[{s}] {s}: {s}\n", .{ mark, c.name, c.detail }) catch LITERAL;
+}
+
 fn emit(a: output.Audience, alloc: std.mem.Allocator, checks: []const Check) u8 {
-    const ok = allOk(checks);
     switch (a) {
         .json => {
-            const s = std.json.Stringify.valueAlloc(alloc, .{ .ok = ok, .checks = checks }, .{}) catch return 1;
+            const s = renderJson(alloc, checks) orelse return 1;
             defer alloc.free(s);
             output.writeOut(s);
             output.writeOut(LITERAL);
         },
         .human => for (checks) |c| {
             var buf: [256]u8 = undefined;
-            const mark = if (c.ok) "OK" else "!!";
-            output.writeOut(std.fmt.bufPrint(&buf, "[{s}] {s}: {s}\n", .{ mark, c.name, c.detail }) catch LITERAL);
+            output.writeOut(renderHumanLine(&buf, c));
         },
     }
-    return if (ok) 0 else 1;
+    return if (allOk(checks)) 0 else 1;
 }
 
 test "envChecks flags missing api + token, passes a valid pair" {
@@ -109,4 +120,41 @@ test "doctor verdict is non-zero iff any check failed (exit-code contract)" {
     try std.testing.expect(allOk(&.{ ok_check, ok_check })); // all pass → 0
     try std.testing.expect(!allOk(&.{ ok_check, bad_check })); // one fail → non-zero
     try std.testing.expect(allOk(&.{})); // vacuously true
+}
+
+test "render arms cover both audiences and the reach probe reports itself skipped" {
+    // The reach probe's early guard IS the unit-safe path: with api or token
+    // unset it must answer a failed check without constructing a client, and a
+    // probe that touched the network here would be the bug. The scheduler
+    // pointer is never read on that path, so a placeholder suffices.
+    // SAFETY: never dereferenced — the guard returns before any use.
+    var sched_unused: call_deadline.ProcessScheduler = undefined;
+    const skipped = reachCheck(
+        std.testing.io,
+        std.testing.allocator,
+        &sched_unused,
+        null,
+        null,
+    );
+    try std.testing.expect(!skipped.ok);
+    try std.testing.expect(std.mem.indexOf(u8, skipped.detail, "skipped") != null);
+
+    // Render helpers, not emit(): emit writes to stdout, and under
+    // `zig build test` stdout is the build-runner protocol stream — a test
+    // that prints there deadlocks the whole lane.
+    const checks = [_]Check{
+        .{ .name = "api_url", .ok = true, .detail = "set" },
+        .{ .name = "runner_token", .ok = false, .detail = "unset" },
+    };
+    const s = renderJson(std.testing.allocator, &checks) orelse return error.OutOfMemory;
+    defer std.testing.allocator.free(s);
+    try std.testing.expect(std.mem.indexOf(u8, s, "\"ok\":false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, s, "\"name\":\"runner_token\"") != null);
+
+    var bad_buf: [256]u8 = undefined;
+    const bad_line = renderHumanLine(&bad_buf, checks[1]);
+    try std.testing.expect(std.mem.indexOf(u8, bad_line, "[!!] runner_token: unset") != null);
+    var ok_buf: [256]u8 = undefined;
+    const ok_line = renderHumanLine(&ok_buf, checks[0]);
+    try std.testing.expect(std.mem.indexOf(u8, ok_line, "[OK] api_url: set") != null);
 }

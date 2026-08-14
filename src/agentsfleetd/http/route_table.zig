@@ -155,6 +155,13 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .tenant_api_keys => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantApiKeys },
         .tenant_api_key_by_id => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantApiKeyById },
 
+        // Command-line credentials — the bearer chain accepts a session token
+        // (which is how login's exchange authorises itself) and an `afc_`
+        // credential alike; the handler refuses every principal that is not a
+        // person. No scope gates them (route_scopes).
+        .cli_credentials => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeCliCredentials },
+        .cli_credential_by_id => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeCliCredentialById },
+
         // Runner control plane. Enrollment mints a `agt_r` that joins the shared
         // fleet receiving every tenant's inline secrets, so it requires the
         // distinct `runner:enroll` scope — held only by platform operators and

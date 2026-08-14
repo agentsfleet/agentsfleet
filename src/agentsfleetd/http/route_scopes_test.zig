@@ -99,22 +99,23 @@ test "test_no_machine_approval_callers" {
     const required = route_scopes.requiredScopes(resolve, .POST);
     try testing.expectEqual(scopes.Scope.approval_resolve, onlyScope(required).?);
 
-    // The composition that makes the human gate true, stated where both halves
-    // are visible: the route demands approval:resolve, and no machine credential
-    // is provisioned it. Asserting "no caller does this today" would go stale
-    // the moment someone writes one — this holds no matter who calls.
-    try testing.expect(!scopes.satisfiesAny(scopes.defaultScopes(.tenant_api_key), required));
-    try testing.expect(scopes.satisfiesAny(scopes.defaultScopes(.tenant_owner), required));
+    // A signup owner reaches it. There is no longer a separate
+    // machine grant to contrast against: an `agt_t` key resolves whatever the
+    // provider holds for the person who minted it, so what reaches this gate is
+    // decided per person at the provider, not per credential class here.
+    const owner = scopes.parseClaim(scopes.SIGNUP_OWNER_CLAIM);
+    try testing.expect(scopes.satisfiesAny(owner, required));
 
-    // The runner credential is self-plane only and reaches no tenant route.
-    try testing.expect(!scopes.satisfiesAny(scopes.defaultScopes(.runner), required));
+    // The runner credential is self-plane only and reaches no tenant route. It
+    // is the one class still resolved in code, having no identity to ask about.
+    try testing.expect(!scopes.satisfiesAny(scopes.RUNNER_SCOPES, required));
 
-    // Viewing the inbox is the lower rung of the same ladder. A machine fails it
-    // too, because dropping resolve drops the closure that would have granted it.
+    // Viewing the inbox is the lower rung of the same ladder, reached by the
+    // closure rather than granted separately.
     const inbox = route_scopes.requiredScopes(.{ .workspace_approvals = "ws1" }, .GET);
     try testing.expectEqual(scopes.Scope.approval_read, onlyScope(inbox).?);
-    try testing.expect(!scopes.satisfiesAny(scopes.defaultScopes(.tenant_api_key), inbox));
-    try testing.expect(scopes.satisfiesAny(scopes.defaultScopes(.tenant_owner), inbox));
+    try testing.expect(scopes.satisfiesAny(owner, inbox));
+    try testing.expect(!scopes.satisfiesAny(scopes.RUNNER_SCOPES, inbox));
 }
 
 fn router_fleet() @import("router.zig").Route {
@@ -148,8 +149,10 @@ test "test_fleet_write_can_blank_gate_policy" {
     // doors, so holding the wake implies holding the rewrite.
     try testing.expectEqual(onlyScope(wake).?, onlyScope(reconfigure).?);
 
-    // And a tenant api-key holds it — the machine grant kept every capability
-    // except approval, which is exactly why this gap survives §1.
-    try testing.expect(scopes.satisfiesAny(scopes.defaultScopes(.tenant_api_key), wake));
-    try testing.expect(scopes.satisfiesAny(scopes.defaultScopes(.tenant_api_key), reconfigure));
+    // And an ordinary tenant person holds it, so any credential resolving to
+    // that person — their terminal or a key they minted — opens both doors.
+    // That is why this gap survives §1.
+    const owner = scopes.parseClaim(scopes.SIGNUP_OWNER_CLAIM);
+    try testing.expect(scopes.satisfiesAny(owner, wake));
+    try testing.expect(scopes.satisfiesAny(owner, reconfigure));
 }

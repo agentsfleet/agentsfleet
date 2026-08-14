@@ -6,7 +6,9 @@ import { makeStubbedStateDir } from "./fixtures/state-dir.ts";
 const WORKSPACE_ID = "01910000-0000-7000-8000-000000a6e711";
 const FLEET_ID = "01910000-0000-7000-8000-000000a67e57";
 const EVENT_ID = "1729874000000-acceptance";
-const TEST_TOKEN = "header.payload.signature";
+// A well-formed command-line credential: the load check refuses anything
+// else, so a session-token-shaped stub reads as logged out.
+const TEST_TOKEN = `afc_${"f".repeat(64)}`;
 const STEER_COMMAND = "steer";
 const JSON_FLAG = "--json";
 const TEST_MESSAGE = "return one short acknowledgement";

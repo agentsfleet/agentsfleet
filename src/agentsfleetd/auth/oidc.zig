@@ -1,5 +1,5 @@
-//! Vendor-neutral OIDC verifier facade.
-//! Supported adapters: Clerk and custom OIDC claim mappings.
+//! OIDC verifier facade.
+//! One adapter: the Clerk claim mapping. See `Provider` for why it is alone.
 
 const std = @import("std");
 const jwks = @import("jwks.zig");
@@ -10,23 +10,34 @@ const MS_PER_SECOND = 1000;
 
 const log = logging.scoped(.auth);
 
+/// One variant, deliberately. `custom` existed beside it and selected a second
+/// claim-reading ladder shaped for a different identity provider — nothing
+/// deployed ever dialled it (both workflows set `OIDC_PROVIDER="clerk"`), and
+/// an untested tenant-resolution path one environment typo away is worse than
+/// no path at all. The enum survives the removal so `OIDC_PROVIDER` keeps
+/// being validated at boot rather than ignored: a deployment that still names
+/// something else now fails loudly instead of silently reading claims from
+/// places nothing writes.
 pub const Provider = enum {
     clerk,
-    custom,
 };
 
 const ParseProviderError = error{
     InvalidProvider,
 };
 
+/// The one accepted `OIDC_PROVIDER` value. Single-sourced because the parser
+/// and the list shown in the boot-failure message must never disagree about
+/// what is accepted (RULE UFS).
+const PROVIDER_CLERK = "clerk";
+
 pub fn parseProvider(raw: []const u8) ParseProviderError!Provider {
-    if (std.ascii.eqlIgnoreCase(raw, "clerk")) return .clerk;
-    if (std.ascii.eqlIgnoreCase(raw, "custom")) return .custom;
+    if (std.ascii.eqlIgnoreCase(raw, PROVIDER_CLERK)) return .clerk;
     return ParseProviderError.InvalidProvider;
 }
 
 pub fn supportedProviderList() []const u8 {
-    return "clerk, custom";
+    return PROVIDER_CLERK;
 }
 
 const S_T_R_N = " \t\r\n";
@@ -132,7 +143,6 @@ pub const Verifier = struct {
 
         const normalized = switch (self.provider) {
             .clerk => try claims.extractClerkClaims(alloc, verified.claims_json),
-            .custom => try claims.extractCustomClaims(alloc, verified.claims_json),
         };
         alloc.free(verified.claims_json);
 
@@ -160,7 +170,7 @@ const TEST_JWKS = test_fx.TEST_JWKS;
 const TEST_VALID_TOKEN = test_fx.TEST_VALID_TOKEN;
 
 test "verifyAuthorization happy path via vendor-neutral oidc facade" {
-    const providers = [_]Provider{ .clerk, .custom };
+    const providers = [_]Provider{.clerk};
     for (providers) |provider| {
         var verifier = try Verifier.init(std.testing.allocator, .{
             .provider = provider,
@@ -203,7 +213,6 @@ test "verifyAuthorization rejects invalid jwt_oidc token" {
 
 test "parseProvider accepts supported adapters" {
     try std.testing.expectEqual(Provider.clerk, try parseProvider("clerk"));
-    try std.testing.expectEqual(Provider.custom, try parseProvider("custom"));
 }
 
 test "parseProvider rejects invalid provider" {
@@ -212,12 +221,11 @@ test "parseProvider rejects invalid provider" {
 
 test "parseProvider is case-insensitive and supportedProviderList is stable" {
     try std.testing.expectEqual(Provider.clerk, try parseProvider("CLERK"));
-    try std.testing.expectEqual(Provider.custom, try parseProvider("Custom"));
-    try std.testing.expectEqualStrings("clerk, custom", supportedProviderList());
+    try std.testing.expectEqualStrings("clerk", supportedProviderList());
 }
 
 test "verifyAuthorization returns null scopes when token has no scope claim" {
-    const providers = [_]Provider{ .clerk, .custom };
+    const providers = [_]Provider{.clerk};
     for (providers) |provider| {
         var verifier = try Verifier.init(std.testing.allocator, .{
             .provider = provider,

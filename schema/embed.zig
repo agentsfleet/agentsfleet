@@ -32,6 +32,7 @@ pub const migrations = [_]MigrationEntry{
     .{ .version = 220, .sql = @embedFile("220_users.sql") },
     .{ .version = 230, .sql = @embedFile("230_memberships.sql") },
     .{ .version = 240, .sql = @embedFile("240_api_keys.sql") },
+    .{ .version = 250, .sql = @embedFile("250_cli_credentials.sql") },
 
     // ── 3xx secrets ────────────────────────────────────────────────────────
     .{ .version = 300, .sql = @embedFile("300_vault_secrets.sql") },

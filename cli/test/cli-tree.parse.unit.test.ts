@@ -17,12 +17,23 @@ import type { Handlers } from "../src/program/cli-tree-types.ts";
 
 // ── User commands ───────────────────────────────────────────────────────
 
-test("login dispatches and propagates --token", async () => {
+// --token is removed. Rejection has to be at the parser, not a
+// silently ignored option: a login that accepted the flag and then wrote
+// nothing would look like it worked.
+test("login rejects the removed --token flag rather than ignoring it", async () => {
   const { handlers, calls } = makeSpyTree();
-  await dispatch(["login", "--token", "pat_abc123"], handlers);
+  await expect(
+    dispatch(["login", "--token", "pat_abc123"], handlers),
+  ).rejects.toThrow(/unknown option/i);
+  expect(calls).toHaveLength(0);
+});
+
+test("login still dispatches with --token-name", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await dispatch(["login", "--token-name", "my-laptop"], handlers);
   expect(calls).toHaveLength(1);
   expect(calls[0]?.name).toBe("login");
-  expect(calls[0]?.frame.parsed.options.token).toBe("pat_abc123");
+  expect(calls[0]?.frame.parsed.options.tokenName).toBe("my-laptop");
 });
 
 test("logout dispatches with no options", async () => {

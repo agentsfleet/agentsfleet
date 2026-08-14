@@ -1,20 +1,20 @@
-// auth status + logout. login sits in ./login.ts (split for file-length
-// cap). The Effect dispatcher is `runEffect` in lib/run-effect.ts; the
+// `auth status`. Logout lives in ./auth-logout.ts and login in ./login.ts,
+// both split out under the file-length cap. The Effect dispatcher is `runEffect` in lib/run-effect.ts; the
 // services consumed below come from src/services/* via MainLayer.
 
 import { Effect, Option, Redacted } from "effect";
-import { Analytics } from "../services/telemetry/analytics.service.ts";
-import { getConfigDir } from "../services/telemetry/consent.ts";
-import { clearDistinctId } from "../services/telemetry/identity.ts";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
-import { AUTH_SESSIONS_PATH, TENANT_BILLING_PATH } from "../lib/api-paths.ts";
-import { AuthError, ServerError, ValidationError, type CliError } from "../errors/index.ts";
+import { TENANT_BILLING_PATH } from "../lib/api-paths.ts";
+import {
+  AuthError,
+  FAILURE_REASON,
+  ServerError,
+  type CliError,
+} from "../errors/index.ts";
 import { ERR_UNAUTHORIZED } from "../errors/auth.ts";
-import { EVT_LOGOUT_COMPLETED } from "../constants/analytics-events.ts";
-import { decodeTokenPayload } from "../program/auth-token.ts";
 
 // Server-side auth codes from src/errors/error_registry.zig. The CLI
 // branches on these to surface re-auth prompts; they are the only
@@ -26,27 +26,20 @@ const ERR_TOKEN_EXPIRED = "UZ-AUTH-003";
 type TokenSource = "file" | "env" | "none";
 type ProbeStatus = "valid" | "unauthorized" | "unreachable";
 
-// A JWT decodes to readable claims; an opaque api key (agt_t…) does not. Track
-// which kind authenticated so `auth status` renders the api key honestly
-// instead of a panel of empty JWT-claim rows.
-const CREDENTIAL_KIND = { jwt: "jwt", apiKey: "api_key" } as const;
-type CredentialKind = (typeof CREDENTIAL_KIND)[keyof typeof CREDENTIAL_KIND];
 const DASH = "—";
-const API_KEY_CREDENTIAL = "api key (opaque; scope resolved server-side)";
+// Both credential classes the CLI can hold — the minted afc_ file credential
+// and the agt_t service key — are opaque: no readable claims, capability
+// resolved server-side from the record the credential names.
+const OPAQUE_CREDENTIAL = "opaque credential (scope resolved server-side)";
+
+// Plain-ASCII only (output.ts header rule): human render is TTY-only, so
+// piped/JSON output never carries these.
+const ART_AUTHENTICATED = "\\o/  agentsfleet knows you";
+const ART_REJECTED = "(x_x)  the door stays shut";
 
 interface ProbeResult {
   readonly status: ProbeStatus;
   readonly error: string | null;
-}
-
-interface TokenSummary {
-  readonly iss: string | null;
-  readonly aud: string | null;
-  readonly sub: string | null;
-  readonly tenant_id: string | null;
-  readonly role: string | null;
-  readonly exp_at: string | null;
-  readonly expired: boolean | null;
 }
 
 interface AuthStatusResult {
@@ -55,45 +48,13 @@ interface AuthStatusResult {
   readonly api_url: string;
   readonly saved_at: number | null;
   readonly session_id: string | null;
-  readonly token: TokenSummary | null;
-  readonly credential_kind: CredentialKind;
   readonly server_check: ProbeResult;
 }
 
 const formatTs = (ms: number | null | undefined): string =>
-  typeof ms === "number" && Number.isFinite(ms) ? new Date(ms).toISOString() : "—";
-
-const deriveTokenSummary = (token: string | null): TokenSummary | null => {
-  if (!token) return null;
-  const payload = decodeTokenPayload(token);
-  if (!payload) return null;
-  const expSec =
-    typeof payload.exp === "number" && Number.isFinite(payload.exp)
-      ? payload.exp
-      : null;
-  const nowSec = Math.floor(Date.now() / 1000);
-  const metadata =
-    payload.metadata && typeof payload.metadata === "object"
-      ? (payload.metadata as Record<string, unknown>)
-      : null;
-  return {
-    iss: typeof payload.iss === "string" ? payload.iss : null,
-    aud: typeof payload.aud === "string" ? payload.aud : null,
-    sub: typeof payload.sub === "string" ? payload.sub : null,
-    tenant_id:
-      (metadata?.["tenant_id"] as string | null | undefined) ??
-      (typeof (payload as Record<string, unknown>)["tenant_id"] === "string"
-        ? ((payload as Record<string, unknown>)["tenant_id"] as string)
-        : null),
-    role:
-      (metadata?.["role"] as string | null | undefined) ??
-      (typeof (payload as Record<string, unknown>)["role"] === "string"
-        ? ((payload as Record<string, unknown>)["role"] as string)
-        : null),
-    exp_at: expSec ? new Date(expSec * MS_PER_SECOND).toISOString() : null,
-    expired: expSec ? expSec <= nowSec : null,
-  };
-};
+  typeof ms === "number" && Number.isFinite(ms)
+    ? new Date(ms).toISOString()
+    : DASH;
 
 const classifyProbeError = (err: ServerError): ProbeResult => {
   if (
@@ -119,7 +80,7 @@ const probe = (
         onFailure: (err): ProbeResult =>
           err._tag === "ServerError"
             ? classifyProbeError(err)
-            : { status: "unreachable", error: "network" },
+            : { status: "unreachable", error: FAILURE_REASON.network },
       }),
     );
   });
@@ -130,38 +91,24 @@ const renderHuman = (
   Effect.gen(function* () {
     const output = yield* Output;
     yield* output.printSection("Authentication");
-    // An opaque api key carries no readable claims, so show it as one line
-    // rather than four "—" JWT-claim rows that read like a broken session.
-    const claims =
-      result.credential_kind === CREDENTIAL_KIND.apiKey
-        ? { credential: API_KEY_CREDENTIAL }
-        : {
-            tenant_id: result.token?.tenant_id ?? DASH,
-            role: result.token?.role ?? DASH,
-            expires_at: result.token?.exp_at ?? DASH,
-            expired:
-              result.token?.expired === true
-                ? "yes"
-                : result.token?.expired === false
-                  ? "no"
-                  : DASH,
-          };
     yield* output.printKeyValue({
       source: result.source,
       api_url: result.api_url,
       saved_at: formatTs(result.saved_at),
-      ...claims,
+      credential: OPAQUE_CREDENTIAL,
       server_check: result.server_check.error
         ? `${result.server_check.status} (${result.server_check.error})`
         : result.server_check.status,
     });
     if (result.server_check.status === "unauthorized") {
+      yield* output.info(ART_REJECTED);
       yield* output.error(
-        result.credential_kind === CREDENTIAL_KIND.apiKey
+        result.source === "env"
           ? "server rejected AGENTSFLEET_API_KEY — check the key or mint a new one"
-          : "server rejected the current token — re-run `agentsfleet login`",
+          : "server rejected the current token — re-run `agentsfleet login`, or check the target API URL (--api / AGENTSFLEET_API_URL) matches the server you logged into",
       );
     } else {
+      yield* output.info(ART_AUTHENTICATED);
       yield* output.success("authenticated");
     }
   });
@@ -175,12 +122,15 @@ export const authStatusEffect: Effect.Effect<
   const credentials = yield* Credentials;
   const output = yield* Output;
 
-  const fileToken = yield* credentials.getAccessToken;
+  // ONE disk read for every stored field this command needs — token,
+  // saved_at, and session_id all come from the same record snapshot.
+  const stored = yield* credentials.snapshot;
+  const fileToken = stored.accessToken;
   const envToken = config.accessToken;
 
   // Env-first, matching the wire precedence (resolveToken): an exported
-  // service API key wins over a stored login JWT. `env` here means the
-  // AGENTSFLEET_API_KEY credential; `file` means the login session on disk.
+  // service API key wins over a stored login credential. `env` here means
+  // the AGENTSFLEET_API_KEY credential; `file` means the login on disk.
   const source: TokenSource = Option.isSome(envToken)
     ? "env"
     : Option.isSome(fileToken)
@@ -211,19 +161,14 @@ export const authStatusEffect: Effect.Effect<
   const activeToken = Option.getOrElse(envToken, () =>
     Option.getOrThrow(fileToken),
   );
-  const savedAt = source === "file" ? yield* credentials.getSavedAt : null;
-  const sessionId = source === "file" ? yield* credentials.getSessionId : null;
   const probeResult = yield* probe(activeToken);
-  const tokenSummary = deriveTokenSummary(Redacted.value(activeToken));
 
   const result: AuthStatusResult = {
     authenticated: probeResult.status !== "unauthorized",
     source,
     api_url: config.apiUrl,
-    saved_at: savedAt,
-    session_id: sessionId,
-    token: tokenSummary,
-    credential_kind: tokenSummary ? CREDENTIAL_KIND.jwt : CREDENTIAL_KIND.apiKey,
+    saved_at: source === "file" ? stored.savedAt : null,
+    session_id: source === "file" ? stored.sessionId : null,
     server_check: probeResult,
   };
 
@@ -243,107 +188,3 @@ export const authStatusEffect: Effect.Effect<
     );
   }
 });
-
-export interface LogoutFlags {
-  readonly all: boolean;
-}
-
-const ALL_SESSIONS_PATH = `${AUTH_SESSIONS_PATH}/all`;
-
-interface RevokeOutcome {
-  readonly aborted_count: number | null;
-  readonly serverError: string | null;
-}
-
-// Best-effort server-side revoke. The local clear runs unconditionally
-// afterwards; this call's failure becomes a stderr warn so the operator
-// knows the dashboard may still show the session as active. Reason
-// extraction mirrors hydrateWorkspacesAfterLogin (login-helpers.ts).
-const revokeAllSessions = (
-  token: Redacted.Redacted<string>,
-): Effect.Effect<RevokeOutcome, never, HttpClient> =>
-  Effect.gen(function* () {
-    const http = yield* HttpClient;
-    return yield* http
-      .request<{ aborted_count?: number }>({
-        path: ALL_SESSIONS_PATH,
-        method: "DELETE",
-        token,
-      })
-      .pipe(
-        Effect.match({
-          onSuccess: (body): RevokeOutcome => ({
-            aborted_count:
-              typeof body.aborted_count === "number" ? body.aborted_count : 0,
-            serverError: null,
-          }),
-          onFailure: (err): RevokeOutcome => ({
-            aborted_count: null,
-            serverError: err._tag === "ServerError" ? err.code : "network",
-          }),
-        }),
-      );
-  });
-
-const renderLogoutOutcome = (
-  outcome: RevokeOutcome,
-): Effect.Effect<void, never, CliConfig | Output> =>
-  Effect.gen(function* () {
-    const config = yield* CliConfig;
-    const output = yield* Output;
-    if (config.jsonMode) {
-      yield* output.printJson({
-        status: "ok",
-        logged_out: true,
-        aborted_count: outcome.aborted_count,
-        server_revoke: outcome.serverError ? "failed" : "ok",
-      });
-      return;
-    }
-    if (outcome.serverError) {
-      yield* output.warn(
-        `server-side session revocation failed (${outcome.serverError}) — local credentials cleared`,
-      );
-    }
-    const tail = outcome.aborted_count !== null && outcome.aborted_count > 0
-      ? ` (revoked ${outcome.aborted_count} active session${outcome.aborted_count === 1 ? "" : "s"})`
-      : "";
-    yield* output.success(`logout complete${tail}`);
-  });
-
-// `--all` is rejected with prose pointing at the new behavior. Default
-// logout already revokes every active session on the account; the flag
-// is not needed.
-const rejectAllFlag: Effect.Effect<never, ValidationError, never> = Effect.fail(
-  new ValidationError({
-    detail: "`--all` is not accepted",
-    suggestion:
-      "`agentsfleet logout` revokes every active session on this account by default — drop the flag",
-  }),
-);
-
-export const logoutEffect = (
-  flags: LogoutFlags = { all: false },
-): Effect.Effect<
-  void,
-  CliError,
-  CliConfig | Credentials | HttpClient | Output | Analytics
-> =>
-  Effect.gen(function* () {
-    if (flags.all) return yield* rejectAllFlag;
-    const credentials = yield* Credentials;
-    const analytics = yield* Analytics;
-    const configDir = yield* getConfigDir;
-
-    const existing = yield* credentials.getAccessToken;
-    const outcome: RevokeOutcome = Option.isSome(existing)
-      ? yield* revokeAllSessions(existing.value)
-      : { aborted_count: null, serverError: null };
-
-    yield* credentials.clearAccessToken;
-    yield* clearDistinctId(configDir);
-    yield* analytics.capture(EVT_LOGOUT_COMPLETED);
-
-    yield* renderLogoutOutcome(outcome);
-  });
-const MS_PER_SECOND = 1000 as const;

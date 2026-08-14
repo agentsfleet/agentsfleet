@@ -111,7 +111,7 @@ fn resolve(self: *RunnerBearer, ctx: *AuthCtx, raw_token: []const u8) !chain.Out
         .runner_id = row.runner_id,
         .tenant_id = null,
         // Self-plane only — a runner holds no tenant authority of its own.
-        .scopes = scopes.defaultScopes(.runner),
+        .scopes = scopes.RUNNER_SCOPES,
     };
     return .next;
 }
