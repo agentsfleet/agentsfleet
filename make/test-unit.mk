@@ -79,6 +79,19 @@ test-coverage-all: test-coverage-zig  ## Run coverage gates across Zig, app, web
 	@cd ui/packages/design-system && bun run test:coverage
 	@echo "✓ All package coverage gates passed"
 
+# What a failing component's log is grepped for when the gate reports it. The
+# Zig test runner puts its verdict on its OWN line — `FAIL (TestExpectedEqual)`
+# — while the test's name and the assertion message sit on the line ABOVE, so
+# the match is taken with `grep -B 1` or the report names nothing. Every other
+# alternative is anchored: an unanchored `panic` matched the *passing* test
+# "…instead of @intCast-panicking" and printed it as the failure for a whole
+# round of red Continuous Integration (CI).
+ZIG_TEST_FAILURE_GREP = (^|\.\.\.)FAIL\b|^error: .* failed:|error return trace|^thread [0-9]+ panic|^panic:
+# Dropped before the `-B 1` window is taken: valgrind writes its own commentary
+# (`--PID-- …`, `==PID== …`) into the same stream, and a single interleaved
+# warning is enough to push the failing test's name out of the window.
+ZIG_TEST_LOG_NOISE = ^--[0-9]+--|^==[0-9]+==
+
 # Coverage measures the codebase, not a lane. The unit binaries and the
 # integration binary cover largely DISJOINT code — the unit lanes never reach an
 # HTTP handler or a store, because reaching one needs a live Postgres and Redis,
@@ -217,7 +230,8 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	   if [ "$$rc" -ne 0 ]; then \
 	     echo "✗ Zig coverage component $$name exited $$rc"; \
 	     echo "--- failing tests (component=$$name) ---"; \
-	     grep -E '\.\.\.FAIL|failed:|panic|error return trace|test command failed|expected ' ".tmp/kcov-$$name.log" | head -n 60 || true; \
+	     grep -v -E '$(ZIG_TEST_LOG_NOISE)' ".tmp/kcov-$$name.log" \
+	       | grep -B 1 -E '$(ZIG_TEST_FAILURE_GREP)' | head -n 60 || true; \
 	     echo "--- tally (component=$$name) ---"; \
 	     grep -E '^[0-9]+ passed;' ".tmp/kcov-$$name.log" | tail -n 1 || true; \
 	     echo "--- last 40 lines (component=$$name) ---"; \
@@ -237,7 +251,8 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	 if [ -n "$$suite_failed" ] && [ "$$suite_failed" -ne 0 ]; then \
 	   echo "✗ the integration suite reported $$suite_failed failing test(s) — coverage over a failing suite is not a measurement"; \
 	   echo "--- failing tests (component=integration) ---"; \
-	   grep -E '\.\.\.FAIL|^error: .*failed:' ".tmp/kcov-integration.log" | head -n 60 || true; \
+	   grep -v -E '$(ZIG_TEST_LOG_NOISE)' ".tmp/kcov-integration.log" \
+	     | grep -B 1 -E '$(ZIG_TEST_FAILURE_GREP)' | head -n 60 || true; \
 	   exit 1; \
 	 fi; \
 	 echo "✓ [zig] integration suite executed ($$summary)"; \

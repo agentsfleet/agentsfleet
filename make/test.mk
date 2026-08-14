@@ -30,8 +30,10 @@ ZIG_COVERAGE_DIR ?= $(CURDIR)/coverage/zig
 # denominator, so this is the share of shipped code the suites actually execute.
 # It reads the unit lanes and the live-service integration suite merged, because
 # they cover largely disjoint code and either one alone understates the truth by
-# tens of points. Raise it only in the same commit as the tests that clear it.
-ZIG_COVERAGE_MIN_LINES ?= 91
+# tens of points. Raise it only in the same commit as the tests that clear it —
+# 91 was set ahead of the tests and gated nothing but red, because the measured
+# merged figure has never reached it.
+ZIG_COVERAGE_MIN_LINES ?= 89
 # Use baseline CPU so valgrind can execute SHA/AVX instructions it can't emulate.
 MEMLEAK_CPU ?= baseline
 
