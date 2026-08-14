@@ -70,16 +70,25 @@ test "provision inserts one row and replay is a no-op" {
     const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
     try std.testing.expectEqual(@as(i64, 5_000_000_000), row.balance_nanos);
 
-    // Asserted against the stored column: the billing read stopped carrying
-    // `grant_source` once it was found that no consumer read it, but WHY a
-    // tenant holds a balance is still recorded, and the starter grant stamping
-    // it correctly is still this test's claim.
+    // Asserted against the stored columns. Two claims ride on this one read:
+    //
+    //   `grant_source` — the billing read stopped carrying it once it was found
+    //   that no consumer read it, but WHY a tenant holds a balance is still
+    //   recorded, and the starter grant stamping it correctly is still a claim.
+    //
+    //   `updated_at` — removing `grant_source` from `SELECT_TENANT_BALANCE`
+    //   shifted every column after it one position left, and `loadByTenant`
+    //   reads by ORDINAL. `balance_nanos` above and `exhausted_at_ms` below
+    //   bracket a single-position slip, but nothing pinned the middle member to
+    //   the column it comes from — a wrong-but-plausible i64 would pass the
+    //   whole suite. This ties the projected value to the stored one.
     var q = PgQuery.from(try db_ctx.conn.query(
-        \\SELECT grant_source FROM billing.tenant_wallet WHERE tenant_id = $1::uuid
+        \\SELECT grant_source, updated_at FROM billing.tenant_wallet WHERE tenant_id = $1::uuid
     , .{TENANT_ID}));
     defer q.deinit();
     const stored = (try q.next()) orelse return error.TestUnexpectedResult;
     try std.testing.expectEqualStrings("bootstrap_starter_grant", try stored.get([]const u8, 0));
+    try std.testing.expectEqual(try stored.get(i64, 1), row.updated_at_ms);
 }
 
 test "debit decrements atomically; 0-row UPDATE returns CreditExhausted" {
