@@ -13,6 +13,16 @@ import { PRICING_COPY, PRICING_PLANS, type PricingPlan } from "../lib/marketing-
 import { RATES_DISPLAY } from "../lib/rates";
 
 const PRICING_TRACKING_SOURCE_PREFIX = "pricing_";
+
+/// PostHog property values are snake_case — `pricing_trial`, `pricing_usage`,
+/// `pricing_enterprise` — while DOM identifiers are kebab-case. One plan id
+/// carries a hyphen (`early-access`), so the two conventions have to be bridged
+/// somewhere. Doing it here keeps `plan.id` the single source of truth for the
+/// card's `data-testid` AND its analytics source, instead of a second field that
+/// can drift from the first.
+function trackingSourceFor(planId: string): string {
+  return `${PRICING_TRACKING_SOURCE_PREFIX}${planId.replace(/-/g, "_")}`;
+}
 const ENTERPRISE_PLAN_ID = "enterprise";
 const EARLY_ACCESS_PLAN_ID = "early-access";
 const USAGE_PLAN_ID = "usage";
@@ -134,7 +144,7 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
           data-testid={`pricing-cta-${plan.id}`}
           onClick={() =>
             trackSignupStarted({
-              source: `${PRICING_TRACKING_SOURCE_PREFIX}${plan.id}`,
+              source: trackingSourceFor(plan.id),
               surface: "pricing",
               mode: "humans",
             })
@@ -155,7 +165,7 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
             className="text-text hover:underline"
             onClick={() =>
               trackSignupStarted({
-                source: `${PRICING_TRACKING_SOURCE_PREFIX}${ENTERPRISE_PLAN_ID}_email`,
+                source: `${trackingSourceFor(ENTERPRISE_PLAN_ID)}_email`,
                 surface: "pricing",
                 mode: "humans",
               })

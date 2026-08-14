@@ -136,6 +136,21 @@ describe("Pricing component", () => {
     expect(cta.textContent).toMatch(/start free/i);
   });
 
+  // The sibling sources were pinned; this one was not, which is how a plan-id
+  // rename reached a PostHog property unnoticed. The card's DOM id is
+  // kebab-case (`pricing-cta-early-access`) and its analytics source is
+  // snake_case, so this asserts the bridge between the two conventions rather
+  // than assuming they agree.
+  it("reports the early-access signup source in PostHog's snake_case convention", () => {
+    renderPricing();
+    fireEvent.click(screen.getByTestId("pricing-cta-early-access"));
+    expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
+      source: "pricing_early_access",
+      surface: "pricing",
+      mode: "humans",
+    });
+  });
+
   it("pricing CTAs stretch inside their plan cards", () => {
     renderPricing();
     expect(screen.getByTestId("pricing-cta-usage").className).toMatch(/\bw-full\b/);
