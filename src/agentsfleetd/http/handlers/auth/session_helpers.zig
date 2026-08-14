@@ -19,8 +19,6 @@ const session_store = @import("../../../session/session_store_redis.zig");
 const log = logging.scoped(.auth);
 const Sha256 = std.crypto.hash.sha2.Sha256;
 
-pub const HDR_XFF = "X-Forwarded-For";
-pub const HDR_FLY = "Fly-Client-IP";
 pub const HDR_USER_AGENT = "user-agent";
 pub const S_USER_AGENT_UNKNOWN = "unknown";
 
@@ -41,7 +39,10 @@ pub const RequestScratch = struct {
 
 pub fn buildScratch(scratch: *RequestScratch, req: *httpz.Request) void {
     const peer = formatIpOnly(&scratch.ip_buf, req.address);
-    scratch.derived = trusted_ip.deriveClientIp(peer, req.header(HDR_XFF), req.header(HDR_FLY));
+    // The forwarding-header names belong to `trusted_ip`, which owns the trust
+    // model they implement; a handler that spelled them itself would be the
+    // only thing checking the spelling.
+    scratch.derived = trusted_ip.fromRequest(peer, req);
     scratch.user_agent = req.header(HDR_USER_AGENT) orelse S_USER_AGENT_UNKNOWN;
 }
 
@@ -240,6 +241,10 @@ pub fn failFromStoreError(hx: hx_mod.Hx, err: anyerror, session_id: ?[]const u8)
 // ── Tests ────────────────────────────────────────────────────────────────
 
 const testing = std.testing;
+
+test {
+    _ = @import("session_helpers_test.zig");
+}
 
 test "formatIpOnly strips port from an IPv4 address" {
     var buf: [IP_BUF_LEN]u8 = undefined;
