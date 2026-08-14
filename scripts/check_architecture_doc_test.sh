@@ -287,6 +287,41 @@ test_arch_doc_section_anchors_resolve() {
   ok "$name"
 }
 
+# A punctuated anchor (`§C. EXECUTE`) used to truncate to `C` and then match any
+# heading containing that letter, so the assertion reported green on a pointer it
+# never checked. The anchor must survive extraction whole, and must match at the
+# START of a heading rather than anywhere inside it.
+test_arch_doc_punctuated_anchor_is_checked() {
+  local name="test_arch_doc_punctuated_anchor_is_checked"
+  local spec_root="$WORK_DIR/specs"
+  build_spec_root "$spec_root"
+
+  local dir="$WORK_DIR/anchor_punct"
+  mkdir -p "$dir"
+  printf '# Target\n\n## C. EXECUTE (lease to report)\n\nBody.\n' >"$dir/target.md"
+
+  printf '# Source\n\nSee [`target.md`](./target.md) §"C. EXECUTE".\n' >"$dir/direction.md"
+  if ! run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a quoted punctuated anchor naming a real heading was rejected"
+    return
+  fi
+
+  # The regression: truncation left `C`, which matched the heading as a substring.
+  printf '# Source\n\nSee [`target.md`](./target.md) §"C. DESTROY".\n' >"$dir/direction.md"
+  if run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a punctuated anchor naming no heading passed — truncated to its first token again"
+    return
+  fi
+
+  # Substring matching would also accept an anchor buried mid-heading.
+  printf '# Source\n\nSee [`target.md`](./target.md) §"EXECUTE (lease to report)".\n' >"$dir/direction.md"
+  if run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a mid-heading substring passed — the match is not prefix-anchored"
+    return
+  fi
+  ok "$name"
+}
+
 test_arch_doc_validates_all_m_ids
 test_arch_doc_roadmap_resolves_pending
 test_arch_doc_unresolved_ref_names_the_milestone
@@ -307,6 +342,7 @@ test_arch_doc_cited_tables_exist
 test_arch_doc_cited_make_targets_exist
 test_arch_doc_section_anchors_resolve
 test_arch_doc_no_retired_slot_numbers
+test_arch_doc_punctuated_anchor_is_checked
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]

@@ -1,6 +1,6 @@
 # Memory — scope, isolation, and durability
 
-> Parent: [`README.md`](./README.md) · Transport mechanics: [`runner_fleet.md`](./runner_fleet.md) §Memory continuity · In-run tools + lifecycle: [`capabilities.md`](./capabilities.md) §4 · User-facing: `docs.agentsfleet.net` → Memory.
+> Parent: [`README.md`](./README.md) · Transport mechanics: [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity" · In-run tools + lifecycle: [`capabilities.md`](./capabilities.md) §4 · User-facing: `docs.agentsfleet.net` → Memory.
 
 What a fleet *learned* from prior events, so it behaves like a teammate who's been here before. This file is the canonical answer to **"what is memory keyed by, what's isolated, and what survives"** — the facts other docs and specs cite. The deep hydrate/capture transport lives in `runner_fleet.md`; the categories/selection/tools live in `capabilities.md` and the user docs.
 
