@@ -32,6 +32,11 @@ const DASH = "—";
 // resolved server-side from the record the credential names.
 const OPAQUE_CREDENTIAL = "opaque credential (scope resolved server-side)";
 
+// Plain-ASCII only (output.ts header rule): human render is TTY-only, so
+// piped/JSON output never carries these.
+const ART_AUTHENTICATED = "\\o/  agentsfleet knows you";
+const ART_REJECTED = "(x_x)  the door stays shut";
+
 interface ProbeResult {
   readonly status: ProbeStatus;
   readonly error: string | null;
@@ -96,12 +101,14 @@ const renderHuman = (
         : result.server_check.status,
     });
     if (result.server_check.status === "unauthorized") {
+      yield* output.info(ART_REJECTED);
       yield* output.error(
         result.source === "env"
           ? "server rejected AGENTSFLEET_API_KEY — check the key or mint a new one"
-          : "server rejected the current token — re-run `agentsfleet login`",
+          : "server rejected the current token — re-run `agentsfleet login`, or check the target API URL (--api / AGENTSFLEET_API_URL) matches the server you logged into",
       );
     } else {
+      yield* output.info(ART_AUTHENTICATED);
       yield* output.success("authenticated");
     }
   });
