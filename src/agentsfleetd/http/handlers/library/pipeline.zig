@@ -67,3 +67,7 @@ pub fn failImport(hx: Hx, err: anyerror) void {
         else => common.internalOperationError(hx.res, "bundle import failed", hx.req_id),
     }
 }
+
+test {
+    _ = @import("pipeline_test.zig");
+}
