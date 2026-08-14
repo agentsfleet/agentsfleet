@@ -114,7 +114,14 @@ Replay the exact delivery only after recording original event and review identif
 - **Dimension 4.1** — replay creates no second fleet event → Test `test_github_replay_no_event`
 - **Dimension 4.2** — replay creates no second review and only then closes the architecture marker → Test `test_github_replay_no_review`
 
-### §5 — The real reviewer proves the Live Wall
+### §5 — The real reviewer proves the Live Wall — PARKED
+
+> **PARKED (Indy, Aug 14, 2026, verbatim):** "just make it parked i will ask
+> another agent after this PR is merged to implement/execute/ run the scenario
+> via playwright, so record in your dimension towards that effect". No §5 code
+> or tests ride this PR; Dimensions 5.1–5.4 below stay specified as the
+> follow-up agent's work order, to be driven end to end via Playwright against
+> the merged branch.
 
 Use the same `github-pr-reviewer` Fleet and delivery from §3 rather than synthetic wall-only data. Record the workspace's live count before installation, after the reviewer becomes active, after the first delivery, and after replay.
 
