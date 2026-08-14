@@ -16,7 +16,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M136
 **Workstream:** 001
 **Date:** Jul 20, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE — closed with the live proof deferred, on Indy's Aug 14, 2026 call ("I cant keep in active M136_001 - move it to Done"; §4: "i want to take it later")
+
+> **Disposition at close.** **Delivered:** the acceptance harness (green locally), the deployed provider prerequisites, and a unit-coverage batch. **Deferred: §1–§5 entire** — no Dimension marked DONE and no Acceptance Rubric row graded, because the live pass (Slack mention, GitHub delivery, replay, Live Wall) never ran. §4 replays §3's exact delivery, so the five sections are one execution and move together to the follow-up agent; the work-order prompt is in PR #600's Session notes.
 **Priority:** P0 — the flagship reviewer scenario remains incomplete until real provider authorization and replay safety pass.
 **Categories:** DOCS, INFRA
 **Batch:** B1 — starts after the development runner is online
