@@ -82,9 +82,26 @@ runner_binary="$work_dir/agentsfleet-runner"
 printf 'runner\n' >"$runner_binary"
 cgroup_fixture="$work_dir/cgroup"
 mkdir -p "$cgroup_fixture"
+# Every variable the runner library reads, cleared before each case sets its own.
+# The library resolves deployment inputs from the environment, so a developer who
+# has any of these exported gets a result the test never asked for. The repository
+# encourages exactly that: `.githooks/post-checkout` links `.env.runner.local`,
+# which carries `AGENTSFLEET_API_URL`, so an ambient dev endpoint failed the prod
+# case on a workstation while Continuous Integration — with a bare environment —
+# passed. The test must supply its whole world.
+readonly RUNNER_ENV_INPUTS=(
+  AGENTSFLEET_API_URL ENV RUNNER_API_URL RUNNER_HOST RUNNER_ITEM RUNNER_TARGET
+  RUNNER_TOKEN RUNNER_USER RUNNER_VAULT VAULT_DEV VAULT_PROD WORKER_ITEM
+)
+
 run_script() {
   : >"$calls"
-  env \
+  local -a unset_args=()
+  local var
+  for var in "${RUNNER_ENV_INPUTS[@]}"; do
+    unset_args+=(-u "$var")
+  done
+  env "${unset_args[@]}" \
     PATH="$stub_dir:$PATH" \
     CALLS="$calls" \
     RUNNER_BINARY="$runner_binary" \
