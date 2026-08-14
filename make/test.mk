@@ -31,13 +31,9 @@ ZIG_COVERAGE_DIR ?= $(CURDIR)/coverage/zig
 # It reads the unit lanes and the live-service integration suite merged, because
 # they cover largely disjoint code and either one alone understates the truth by
 # tens of points. Raise it only in the same commit as the tests that clear it.
-ZIG_COVERAGE_MIN_LINES ?= 83
-BENCH_MODE ?= bench
-# Use native target for memleak — avoids cross-compile dynamic linker mismatch
-# when OpenSSL is linked. Valgrind needs the system's ld-linux, not Zig's bundled one.
+ZIG_COVERAGE_MIN_LINES ?= 91
 # Use baseline CPU so valgrind can execute SHA/AVX instructions it can't emulate.
-MEMLEAK_TARGET ?=
-MEMLEAK_CPU    ?= baseline
+MEMLEAK_CPU ?= baseline
 
 .PHONY: test-unit-all
 
