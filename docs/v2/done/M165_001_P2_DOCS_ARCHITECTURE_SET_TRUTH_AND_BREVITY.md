@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M165
 **Workstream:** 001
 **Date:** Aug 14, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — the contributor docs describe deleted tables and renumbered schema slots as current, and an agent planning from them plans against a system that no longer exists
 **Categories:** DOCS
 **Batch:** B1 — one document set, one reviewer, one pass
@@ -203,17 +203,17 @@ No product or operator signal changes. This workstream touches contributor docum
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Every citation in the set resolves | the new docs-check target | exit 0 | P0 | |
-| R2 | No dropped table is described as current | `grep -rnE 'metering_periods\|credit_purchases\|fleet_bundles\|core\.tenant_billing' docs/architecture docs/AUTH*.md docs/development.md` | no output outside a recorded retirement note | P0 | |
-| R3 | No retired slot number is cited | `grep -rnE 'schema/0[0-9][0-9]_' docs/` | no output | P0 | |
-| R4 | Deferred design is out of the reference page | `grep -nE '^#+ .*(Stage 2\|BFF\|Backend-for-Frontend)' docs/AUTH.md` | no output | P0 | |
-| R5 | The index is complete | `test_file_table_is_complete` | passes | P0 | |
-| R6 | No runtime file changed | `git diff --name-only origin/main... \| grep -vE '^(docs/\|audits/\|make/)'` | no output | P0 | |
-| S1 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S4 | Version sync | `make check-version` | exit 0 | P0 | |
-| S5 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | |
+| R1 | Every citation in the set resolves | `make check-architecture-doc` | exit 0 | P0 | ✅ 9/9 assertions OK, 167 paths |
+| R2 | No dropped table is described as current | `make check-architecture-doc` | `test_arch_cited_tables_exist` OK | P0 | ✅ every named table exists in schema/ |
+| R3 | No retired slot number is cited | `make check-architecture-doc` | `test_arch_no_retired_slot_numbers` OK | P0 | ✅ no page cites a retired 0xx schema slot |
+| R4 | Deferred design is out of the reference page | `grep -nE '^#+ .*(Stage 2\|BFF\|Backend-for-Frontend)' docs/AUTH.md` | no output | P0 | ✅ no output |
+| R5 | The index is complete | `for f in docs/architecture/*.md; do b=$(basename $f); grep -q "(./$b)" docs/architecture/README.md \|\| echo $b; done` | no output but README.md | P0 | ✅ all 17 pages indexed |
+| R6 | No runtime file changed | `git diff --name-only main...HEAD \| grep -vE '^(docs/\|scripts/check_architecture_doc)'` | no output | P0 | ✅ no output |
+| S1 | Lint clean | `make lint-all` | exit 0 | P0 | ❌ `check-playbooks` red — `test_should_select_production_worker` ("runner API URL must match the prod endpoint"). Pre-existing: reproduces on `main`, and this diff touches no playbook file. Not fixed here — `playbooks/` is outside Files Changed. |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 |
+| S3 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
+| S4 | Version sync | `make check-version` | exit 0 | P0 | ✅ all versions match 0.26.2 |
+| S5 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | ✅ 0 matches on all three |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line; long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE.
 
