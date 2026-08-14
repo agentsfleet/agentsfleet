@@ -34,6 +34,7 @@ test {
     _ = @import("child_exec.zig");
     _ = @import("cmd/version.zig");
     _ = @import("cmd/args.zig");
+    _ = @import("cmd/args_test.zig");
     _ = @import("cmd/output.zig");
     _ = @import("cmd/registry.zig");
     _ = @import("cmd/help.zig");
