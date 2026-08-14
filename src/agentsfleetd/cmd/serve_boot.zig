@@ -165,7 +165,3 @@ pub fn buildRegistry(deps: RegistryDeps) auth_mw.MiddlewareRegistry {
         .webhook_hmac_mw = .{ .secret = deps.approval_signing_secret },
     };
 }
-
-test {
-    _ = @import("serve_boot_test.zig");
-}
