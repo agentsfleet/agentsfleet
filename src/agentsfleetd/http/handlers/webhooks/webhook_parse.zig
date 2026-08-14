@@ -145,3 +145,7 @@ test "svixEventType reads top-level type, falls back to default" {
     defer scalar.deinit();
     try std.testing.expectEqualStrings(SVIX_DEFAULT_TYPE, svixEventType(scalar.value));
 }
+
+test {
+    _ = @import("webhook_parse_test.zig");
+}

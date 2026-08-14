@@ -221,3 +221,7 @@ fn decodeStart(
     }
     return .{ .created_at = cursor.created_at, .tier_rank = cursor.tier_rank, .id = cursor.id };
 }
+
+test {
+    _ = @import("gallery_test.zig");
+}
