@@ -14,7 +14,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
+import { bufferStream, withAuthedStateDir, stateDirEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 import {
   OPENAI_COMPATIBLE_PROVIDER,
@@ -57,7 +57,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
             "--model", MODEL,
             "--json",
           ],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const parsed = JSON.parse(out.read()) as { status?: string; name?: string };
@@ -103,7 +103,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
             "--api-key", API_KEY,
             "--json",
           ],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         // Commander maps InvalidArgumentError to exit 2 (usage error).
         expect(code).not.toBe(0);
@@ -136,7 +136,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
             "--api-key", API_KEY,
             "--json",
           ],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         expect(calls).toHaveLength(0);
@@ -157,7 +157,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
           "--api-key", API_KEY,
           "--json",
         ],
-        { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: "http://127.0.0.1:1/" } },
+        { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: "http://127.0.0.1:1/" } },
       );
       expect(code).not.toBe(0);
       const text = out.read() + err.read();
@@ -184,7 +184,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
             "--model", MODEL,
             "--json",
           ],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const post = calls.find((c) => c.method === "POST");
@@ -209,7 +209,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
           "--model", MODEL,
           "--json",
         ],
-        { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: "http://127.0.0.1:1/" } },
+        { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: "http://127.0.0.1:1/" } },
       );
       expect(code).not.toBe(0);
       const text = out.read() + err.read();
@@ -229,7 +229,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
           "--api-key", API_KEY,
           "--json",
         ],
-        { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: "http://127.0.0.1:1/" } },
+        { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: "http://127.0.0.1:1/" } },
       );
       expect(code).not.toBe(0);
       const text = out.read() + err.read();
@@ -249,7 +249,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
           "--api-key", API_KEY,
           "--json",
         ],
-        { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: "http://127.0.0.1:1/" } },
+        { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: "http://127.0.0.1:1/" } },
       );
       expect(code).not.toBe(0);
       const text = out.read() + err.read();
@@ -271,7 +271,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
           "--model", MODEL,
           "--json",
         ],
-        { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: "http://127.0.0.1:1/" } },
+        { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: "http://127.0.0.1:1/" } },
       );
       expect(code).not.toBe(0);
       const text = out.read() + err.read();
@@ -295,7 +295,7 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
           "--data", '{"x":1}',
           "--json",
         ],
-        { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: "http://127.0.0.1:1/" } },
+        { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: "http://127.0.0.1:1/" } },
       );
       expect(code).not.toBe(0);
       const text = out.read() + err.read();
@@ -326,7 +326,7 @@ describe("secret create — provider catalogue closure", () => {
             "--model", MODEL,
             "--json",
           ],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(2);
         expect(calls).toHaveLength(0);
@@ -356,7 +356,7 @@ describe("secret create — provider catalogue closure", () => {
             "--model", MODEL,
             "--json",
           ],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const post = calls.find((c) => c.method === "POST");
@@ -383,7 +383,7 @@ describe("secret create — provider catalogue closure", () => {
             "--data", '{"provider":"notaprovider","model":"m"}',
             "--json",
           ],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const post = calls.find((c) => c.method === "POST");

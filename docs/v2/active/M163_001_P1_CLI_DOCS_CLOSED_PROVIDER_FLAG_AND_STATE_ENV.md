@@ -74,6 +74,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/test/json-contract.test.ts` | EDIT | Drops the inline state-directory guard now that the caller's environment reaches the store |
 | `cli/test/acceptance/help-and-errors.spec.ts` | EDIT | End-to-end: a subprocess invocation with an unknown provider exits 2 and issues no request. This file is in `DETERMINISTIC_ACCEPTANCE_FILES`, so the case grades without live credentials — correct, because the behaviour under test makes no network call. `secret-vault.spec.ts` is deliberately not used: it sits in `LIVE_ACCEPTANCE_FILES` and would gate a hermetic assertion behind a live deployment |
 
+**Amended at EXECUTE — blast radius the authoring pass under-counted** (each a discovery, none opportunistic):
+
+| File | Action | Why |
+|------|--------|-----|
+| `cli/src/runtime/main-layer.ts` | EDIT | The hop the table missed: this file wires the two store layers, so it gains an `env` input (default: the process environment, mirroring `runCli`'s own fallback) |
+| `cli/src/program/handlers-bind.ts` | EDIT | The second missed hop: composes the layer per invocation and now forwards `ctx.env` — the value `runCli` already resolved |
+| `cli/test/helpers-cli-state.ts` | EDIT | Direct store calls gain the env argument; new `stateDirEnv()` call-time helper for injected-env suites; header updated — its "clean fix at that point" note described §3, which now exists |
+| ~24 further `cli/test/**` files | EDIT | Mechanical, one shape: direct store calls gain `process.env` as the env argument, and `runCli` env literals gain `...stateDirEnv()` so the injected environment points at the directory the fixture seeded. Repo `tsc --noEmit` covers `test/`, so `make lint-*` enumerates every site — none can be missed silently |
+
 **Spec bookkeeping carried by this branch** (no source change; listed so rubric R5 grades a complete diff):
 
 | File | Action | Why |
@@ -135,10 +144,10 @@ A rejected provider must cost nothing and explain itself. The user sees the valu
 
 The resolution expression itself is currently written twice — `lib/state.ts:50-54` and `services/telemetry/consent.ts:21-26` are the same three lines — so fixing only the state copy would leave the twin standing (RULE UFS). Both resolve through one shared `resolveConfigDir(env)` in `lib/config-dir.ts`. `consent.ts` passes `process.env` explicitly at its single call site, because its three `getConfigDir` consumers (`login-helpers.ts:200`, `auth-logout.ts:137`, `runtime.layer.ts:92`) have no environment in scope — threading one through the telemetry Effect graph is the M75 follow-up its header already names, and stays out of scope here.
 
-- **Dimension 3.1** — State path resolution takes the environment from its caller; the credential and workspace store functions accept and forward it → Test `test_state_paths_resolve_from_supplied_env`
-- **Dimension 3.2** — `runCli({ env })` with a state directory set in that environment and the process variable unset reads and writes under the supplied directory → Test `test_run_cli_env_reaches_credential_store`
-- **Dimension 3.3** — `json-contract.test.ts` isolates through the injected environment and no longer mutates the process environment (RULE NLR) → Test `test_json_contract_suite_has_no_process_env_mutation`
-- **Dimension 3.4** — The config-directory resolution has one declaration site: neither `state.ts` nor `consent.ts` names the environment key or the home-default tuple after the change → Test `test_config_dir_resolution_has_one_declaration_site`
+- **Dimension 3.1** — State path resolution takes the environment from its caller; the credential and workspace store functions accept and forward it → Test `test_state_paths_resolve_from_supplied_env` — **DONE**
+- **Dimension 3.2** — `runCli({ env })` with a state directory set in that environment and the process variable unset reads and writes under the supplied directory → Test `test_run_cli_env_reaches_credential_store` — **DONE**
+- **Dimension 3.3** — `json-contract.test.ts` isolates through the injected environment and no longer mutates the process environment (RULE NLR) → Test `test_json_contract_suite_has_no_process_env_mutation` — **DONE**
+- **Dimension 3.4** — The config-directory resolution has one declaration site: neither `state.ts` nor `consent.ts` names the environment key or the home-default tuple after the change → Test `test_config_dir_resolution_has_one_declaration_site` — **DONE**
 
 ## Interfaces
 
@@ -310,6 +319,19 @@ N/A — no files deleted.
   Amended in this pass: Files Changed (+3 rows), §3 (+Dimension 3.4), Interfaces,
   Invariant 3, rubric R3 widened + R6 added, Test Specification (+2 rows), Dead
   Code Sweep (+2 rows).
+- **EXECUTE §3, Aug 14, 2026 — incident: one old-signature test call clobbered the
+  developer's real credential file.** `state.ts` signatures changed (env first),
+  and `bun test` transpiles without typechecking, so a not-yet-converted
+  `saveCredentials(record)` bound the record as the environment, resolved to the
+  home default, and wrote the string `undefined` over
+  `~/.config/agentsfleet/credentials.json`. Caught within the same run; the file
+  was restored to a valid logged-out record; Indy re-logs-in with
+  `agentsfleet login`. `workspaces.json` was untouched (the auth guard failed
+  the case before its write). Preventive fact, verified: repo `tsc --noEmit`
+  covers `cli/test/**`, and `make lint-cli` runs it — 47 errors enumerated every
+  remaining old-signature site, which were then converted in one pass. Lesson
+  recorded in `SOUL_LOG.md` P21: after changing an exported signature, run the
+  repo-wide typecheck before running any test suite.
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).

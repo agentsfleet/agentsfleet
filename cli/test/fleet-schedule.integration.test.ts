@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
+import { bufferStream, withAuthedStateDir, stateDirEnv } from "./helpers-cli-state.ts";
 import { jsonResponse, type MockRoutes, withMockApi } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000000011";
@@ -48,7 +48,7 @@ describe("schedule commands", () => {
             "--message",
             "summarize",
           ],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(out.read()).toContain(SCHEDULE_ID);
@@ -75,7 +75,7 @@ describe("schedule commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["schedule", "list", FLEET_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(JSON.parse(out.read())).toEqual(envelope);
@@ -97,14 +97,14 @@ describe("schedule commands", () => {
         const err = bufferStream();
         const updateCode = await runCli(
           ["schedule", "update", FLEET_ID, SCHEDULE_ID, "--status", "paused"],
-          { stdout: updateOut.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: updateOut.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(updateCode).toBe(0);
         const rmOut = bufferStream();
         rmOut.stream.isTTY = true;
         const rmCode = await runCli(
           ["schedule", "rm", FLEET_ID, SCHEDULE_ID],
-          { stdout: rmOut.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: rmOut.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(rmCode).toBe(0);
         expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
@@ -129,12 +129,12 @@ describe("schedule commands", () => {
         const err = bufferStream();
         const statusCode = await runCli(
           ["schedule", "status", FLEET_ID, SCHEDULE_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(statusCode).toBe(0);
         const syncCode = await runCli(
           ["schedule", "sync", FLEET_ID, SCHEDULE_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(syncCode).toBe(0);
         expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([

@@ -35,23 +35,28 @@ const unexpected =
   (cause: unknown): UnexpectedError =>
     new UnexpectedError({
       detail: `workspaces ${op} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-      suggestion: "check ~/.agentsfleet/ permissions and disk space",
+      suggestion: "check the CLI config directory permissions and disk space",
     });
 
-export const workspacesLayer: Layer.Layer<Workspaces> = Layer.succeed(
-  Workspaces,
-  Workspaces.of({
-    load: Effect.tryPromise({
-      try: () => loadWorkspacesRaw(),
-      catch: unexpected("load"),
-    }),
-    save: (next) =>
-      Effect.tryPromise({
-        try: () => saveWorkspacesRaw(next),
-        catch: unexpected("save"),
+// A factory for the same reason as credentialsLayer: the composition root
+// supplies the environment; this module never reads the process environment.
+export const workspacesLayer = (
+  env: NodeJS.ProcessEnv,
+): Layer.Layer<Workspaces> =>
+  Layer.succeed(
+    Workspaces,
+    Workspaces.of({
+      load: Effect.tryPromise({
+        try: () => loadWorkspacesRaw(env),
+        catch: unexpected("load"),
       }),
-  }),
-);
+      save: (next) =>
+        Effect.tryPromise({
+          try: () => saveWorkspacesRaw(env, next),
+          catch: unexpected("save"),
+        }),
+    }),
+  );
 
 export const workspacesFromValueLayer = (
   initial: WorkspacesValue,

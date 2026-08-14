@@ -79,7 +79,7 @@ describe("Credentials error path", () => {
             credentialId: null,
           });
         }),
-        credentialsLayer,
+        credentialsLayer(process.env),
       ),
     );
     // On platforms where the chmod doesn't enforce (root/CI) the test

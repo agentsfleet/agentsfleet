@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
+import { bufferStream, withAuthedStateDir, stateDirEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-00000010c105";
@@ -21,7 +21,7 @@ describe("logs (paginated event tail)", () => {
         const err = bufferStream();
         const code = await runCli(
           ["logs", FLEET_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(out.read()).toMatch(/no events yet/i);
@@ -52,7 +52,7 @@ describe("logs (paginated event tail)", () => {
         const err = bufferStream();
         const code = await runCli(
           ["logs", FLEET_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const text = out.read();
@@ -91,7 +91,7 @@ describe("logs (paginated event tail)", () => {
         const err = bufferStream();
         const code = await runCli(
           ["logs", FLEET_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         // The command completed cleanly instead of throwing.
         expect(code).toBe(0);
@@ -117,7 +117,7 @@ describe("logs (paginated event tail)", () => {
         const err = bufferStream();
         const code = await runCli(
           ["logs"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         // Effect-shape contract: ValidationError → exit 4 (EXIT_CODE.ValidationError).
         // The pre-Effect path returned 2 via writeError(MISSING_ARGUMENT, …); the

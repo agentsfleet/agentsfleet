@@ -7,6 +7,7 @@ import {
   FIXTURE_CREDENTIAL,
   withAuthedStateDir,
   withFreshStateDir,
+  stateDirEnv,
 } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
@@ -41,7 +42,7 @@ describe("connector commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["connector", "list", "--workspace", WS_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
 
         expect(code).toBe(0);
@@ -76,7 +77,7 @@ describe("connector commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["connector", "status", "slack", "--workspace", WS_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
 
         expect(code).toBe(0);
@@ -110,7 +111,7 @@ describe("connector commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["connector", "status", "slack", "--workspace", WS_ID, "--json"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
 
         expect(code).toBe(0);
@@ -133,7 +134,7 @@ describe("connector commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["connector", "status", "Slack/Bad", "--workspace", WS_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
 
         expect(code).not.toBe(0);
@@ -145,20 +146,20 @@ describe("connector commands", () => {
 
   test("connector list requires a workspace context before any API request", async () => {
     await withFreshStateDir(async () => {
-      await saveCredentials({
+      await saveCredentials(process.env, {
         token: FIXTURE_CREDENTIAL,
         saved_at: Date.now(),
         session_id: "sess_connector_no_workspace",
         api_url: null,
         credential_id: null,
       });
-      await saveWorkspaces({ current_workspace_id: null, items: [] });
+      await saveWorkspaces(process.env, { current_workspace_id: null, items: [] });
       await withMockApi({}, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
           ["connector", "list"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
 
         expect(code).not.toBe(0);
@@ -181,7 +182,7 @@ describe("connector commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["connector", "status", "github", "--workspace", WS_ID, "--json"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         expect(JSON.parse(out.read())).toMatchObject({
@@ -205,7 +206,7 @@ describe("connector commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["connector", "list", "--workspace", WS_ID, "--json"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         expect(err.read()).toContain("UZ-INTERNAL-002");

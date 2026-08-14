@@ -19,10 +19,12 @@
 // If that assumption ever changes — e.g., a `--parallel` flag is enabled,
 // or a shard runner forks — two tests could trample each other's
 // AGENTSFLEET_STATE_DIR mid-flight and one test would see the other's
-// pre-seeded credentials. The clean fix at that point is to thread
-// AGENTSFLEET_STATE_DIR through `runCli`'s `io` param (a one-line change in
-// state.ts to read from caller-provided env first) instead of relying
-// on the process-global. Until then this comment is the warning sign.
+// pre-seeded credentials. The clean fix exists: the store reads the
+// environment `runCli` is handed, so a test that injects
+// `{ ...stateDirEnv(), … }` (or its own directory) is immune to the
+// process-global entirely. These mutation-scoped helpers remain for suites
+// still seeding through the process environment; converting them wholesale
+// belongs to the `useFreshStateDir` conversion stream.
 
 import { afterEach, beforeEach } from "bun:test";
 import fs from "node:fs/promises";
@@ -32,6 +34,7 @@ import path from "node:path";
 import { Writable } from "node:stream";
 
 import { saveCredentials, saveWorkspaces } from "../src/lib/state.ts";
+import { STATE_DIR_ENV } from "../src/lib/config-dir.ts";
 import {
   CLI_CREDENTIAL_BODY_LEN,
   CLI_CREDENTIAL_PREFIX,
@@ -47,8 +50,18 @@ const FIXTURE_BODY_CHAR = "a";
 export const FIXTURE_CREDENTIAL = `${CLI_CREDENTIAL_PREFIX}${FIXTURE_BODY_CHAR.repeat(CLI_CREDENTIAL_BODY_LEN)}`;
 export const FIXTURE_CREDENTIAL_ID = "cli_cred_fixture";
 
-const STATE_DIR_ENV = "AGENTSFLEET_STATE_DIR";
 const TMP_PREFIX = "agentsfleet-test-";
+
+/**
+ * The current process state-dir as an injectable env fragment, read at call
+ * time because withFreshStateDir / withAuthedStateDir swap the directory per
+ * case. Spread it into a runCli `io.env` so the injected environment reaches
+ * the store pointing at the same directory the fixture seeded:
+ * `env: { ...stateDirEnv(), AGENTSFLEET_API_URL: url }`.
+ */
+export function stateDirEnv(): NodeJS.ProcessEnv {
+  return { [STATE_DIR_ENV]: process.env[STATE_DIR_ENV] };
+}
 
 // Mirror of helpers.ts:TestStream — Writable + optional isTTY so tests
 // can flip TTY-dependent code paths without an `as` cast at every site.
@@ -161,14 +174,14 @@ export async function withAuthedStateDir<T>(
     apiUrl = null,
   } = opts;
   return withFreshStateDir(async (dir) => {
-    await saveCredentials({
+    await saveCredentials(process.env, {
       token,
       saved_at: Date.now(),
       session_id: sessionId,
       api_url: apiUrl,
       credential_id: FIXTURE_CREDENTIAL_ID,
     });
-    await saveWorkspaces({
+    await saveWorkspaces(process.env, {
       current_workspace_id: workspaceId,
       items: [{ workspace_id: workspaceId, name: workspaceName, created_at: Date.now() }],
     });

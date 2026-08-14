@@ -6,7 +6,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
+import { bufferStream, withAuthedStateDir, stateDirEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "ws_cred_ext_test";
@@ -29,7 +29,7 @@ describe("secret show", () => {
         const err = bufferStream();
         const code = await runCli(
           ["secret", "show", "github"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const text = out.read();
@@ -54,7 +54,7 @@ describe("secret show", () => {
         const err = bufferStream();
         const code = await runCli(
           ["secret", "show", "slack", "--json"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const parsed = JSON.parse(out.read()) as {
@@ -80,7 +80,7 @@ describe("secret show", () => {
         const err = bufferStream();
         const code = await runCli(
           ["secret", "show", "missing-key"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         expect(out.read() + err.read()).toMatch(/not found/i);
@@ -99,7 +99,7 @@ describe("secret show", () => {
         const err = bufferStream();
         const code = await runCli(
           ["secret", "show", "missing-key", "--json"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         const parsed = JSON.parse(out.read()) as { name?: string; exists?: boolean };
@@ -120,7 +120,7 @@ describe("secret show", () => {
         const err = bufferStream();
         const code = await runCli(
           ["secret", "show", "bare"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const text = out.read();
@@ -147,7 +147,7 @@ describe("secret delete", () => {
         const err = bufferStream();
         const code = await runCli(
           ["secret", "delete", "github"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const text = out.read();
@@ -171,7 +171,7 @@ describe("secret delete", () => {
         const err = bufferStream();
         const code = await runCli(
           ["secret", "delete", "slack", "--json"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const parsed = JSON.parse(out.read()) as { status?: string; name?: string };
@@ -188,7 +188,7 @@ describe("secret delete", () => {
         const err = bufferStream();
         const code = await runCli(
           ["secret", "delete", "no-such"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
       });
@@ -216,7 +216,7 @@ describe("secret list extra branches", () => {
           const err = bufferStream();
           const code = await runCli(
             ["secret", "list", "--json"],
-            { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+            { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
           );
           expect(code).toBe(0);
           const parsed = JSON.parse(out.read()) as typeof payload;
@@ -236,7 +236,7 @@ describe("secret list extra branches", () => {
           const err = bufferStream();
           const code = await runCli(
             ["secret", "list"],
-            { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+            { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
           );
           expect(code).toBe(0);
           expect(out.read()).toMatch(/no secrets/i);
@@ -262,7 +262,7 @@ describe("secret list extra branches", () => {
           const err = bufferStream();
           const code = await runCli(
             ["secret", "list"],
-            { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+            { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
           );
           expect(code).toBe(0);
           const text = out.read();
@@ -293,7 +293,7 @@ describe("secret create already-exists human mode", () => {
         const err = bufferStream();
         const code = await runCli(
           ["secret", "create", "existing", `--data={"token":"x"}`],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
         const text = out.read();

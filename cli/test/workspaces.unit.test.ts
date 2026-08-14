@@ -48,7 +48,7 @@ async function runLoad(stateDir: string): Promise<WorkspacesValue> {
   void stateDir; // AGENTSFLEET_STATE_DIR already set by withFreshStateDir
   return Effect.runPromise(
     Effect.flatMap(Workspaces, (svc) => svc.load).pipe(
-      Effect.provide(workspacesLayer),
+      Effect.provide(workspacesLayer(process.env)),
     ),
   );
 }
@@ -60,7 +60,7 @@ async function runSave(
   void stateDir;
   return Effect.runPromise(
     Effect.flatMap(Workspaces, (svc) => svc.save(next)).pipe(
-      Effect.provide(workspacesLayer),
+      Effect.provide(workspacesLayer(process.env)),
     ),
   );
 }
@@ -121,7 +121,7 @@ describe("workspacesLayer — load error path", () => {
       await fs.mkdir(path.join(dir, "workspaces.json"));
       return Effect.runPromiseExit(
         Effect.flatMap(Workspaces, (svc) => svc.load).pipe(
-          Effect.provide(workspacesLayer),
+          Effect.provide(workspacesLayer(process.env)),
         ),
       );
     });
@@ -150,7 +150,7 @@ describe("workspacesLayer — save error path (lines 30-35)", () => {
       try {
         return await Effect.runPromiseExit(
           Effect.flatMap(Workspaces, (svc) => svc.save(EMPTY_WS)).pipe(
-            Effect.provide(workspacesLayer),
+            Effect.provide(workspacesLayer(process.env)),
           ),
         );
       } finally {

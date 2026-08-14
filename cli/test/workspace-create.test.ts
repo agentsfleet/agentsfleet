@@ -53,7 +53,7 @@ test("workspace create does not persist local state when API create fails", asyn
     assert.match(err.read(), /INTERNAL_ERROR/);
     assert.match(err.read(), /request_id: req_abc123/);
 
-    const workspaces = await loadWorkspaces();
+    const workspaces = await loadWorkspaces(process.env);
     assert.equal(workspaces.current_workspace_id, null);
     assert.deepEqual(workspaces.items, []);
   });
@@ -82,7 +82,7 @@ test("workspace create reconciles once without replaying an uncertain POST", asy
 
     assert.notEqual(code, 0);
     assert.equal(requestCount, 2);
-    const workspaces = await loadWorkspaces();
+    const workspaces = await loadWorkspaces(process.env);
     assert.equal(workspaces.current_workspace_id, null);
     assert.deepEqual(workspaces.items, []);
   });
@@ -153,7 +153,7 @@ test("workspace create rejects an overlong name before dispatch", async () => {
     assert.equal(code, 4);
     assert.match(err.read(), /128 characters or fewer/);
     assert.equal(requestCount, 0);
-    const workspaces = await loadWorkspaces();
+    const workspaces = await loadWorkspaces(process.env);
     assert.equal(workspaces.current_workspace_id, null);
     assert.deepEqual(workspaces.items, []);
   });
@@ -250,7 +250,7 @@ test("workspace create persists backend workspace_id in json mode", async () => 
     assert.equal(parsed.workspace_id, "ws_123456789abc");
     assert.equal(parsed.name, "jolly-harbor-482");
 
-    const workspaces = await loadWorkspaces();
+    const workspaces = await loadWorkspaces(process.env);
     assert.equal(workspaces.tenant_id, "tenant_123");
     assert.equal(workspaces.current_workspace_id, "ws_123456789abc");
     assert.equal(workspaces.items.length, 1);

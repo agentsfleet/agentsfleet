@@ -92,6 +92,11 @@ export interface MainLayerInput {
   // one invocation. handlers-bind.ts generates one per wrap call.
   // Defaults to crypto.randomUUID() per mainLayerFor call.
   readonly commandRunId?: string;
+  // The invocation's resolved environment (runCli's `io.env ?? process.env`,
+  // carried on ctx). The credentials + workspaces stores resolve their state
+  // directory from it. Defaults to process.env for callers with no injected
+  // environment (the commander-parse layer, layer-less tests).
+  readonly env?: NodeJS.ProcessEnv | undefined;
 }
 
 export const mainLayerFor = (
@@ -115,14 +120,15 @@ export const mainLayerFor = (
     Layer.provide(configBase),
   );
   const tracing = tracingLayer.pipe(Layer.provide(telemetryRuntimeLayer));
+  const envBase = input.env ?? process.env;
 
   return Layer.mergeAll(
     configBase,
     telemetryRuntimeLayer,
     outputBase,
-    credentialsLayer,
+    credentialsLayer(envBase),
     browserLayer,
-    workspacesLayer,
+    workspacesLayer(envBase),
     inputLayer,
     stdinBase,
     commandRuntime,
