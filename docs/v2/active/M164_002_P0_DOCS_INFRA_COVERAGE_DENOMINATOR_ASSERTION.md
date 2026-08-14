@@ -16,11 +16,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M164
 **Workstream:** 002
 **Date:** Aug 14, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — the Continuous Integration (CI) coverage gate currently passes over 2.7% of the codebase, so every floor it claims to enforce is unenforced.
 **Categories:** DOCS, INFRA
 **Batch:** B1 — sequential with M164_001 on the same branch; no parallel workstream.
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Test Baseline:** unit=3717 integration=619
 **Branch:** feat/m164-delete-the-free-trial — shared with M164_001; no new worktree, no new Pull Request (PR).
 **Depends on:** M164_001 (same branch and PR; its 91% floor is the defect this workstream corrects)
 **Provenance:** LLM-drafted (Claude Opus 5 (1M context), Aug 14, 2026) — evidence is a direct comparison of the CI coverage artifact against a local run on the same commit.
