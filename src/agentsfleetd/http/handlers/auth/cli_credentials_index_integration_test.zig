@@ -130,7 +130,7 @@ test "integration: test_mint_records_attribution_and_auth_path_writes_nothing â€
 
     var i: usize = 0;
     while (i < AUTH_REQUESTS) : (i += 1) {
-        const r = try (try h.get(PATH).bearer(minted.secret)).send();
+        const r = try (try h.get(fixtures.PROBE_PATH).bearer(minted.secret)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
     }

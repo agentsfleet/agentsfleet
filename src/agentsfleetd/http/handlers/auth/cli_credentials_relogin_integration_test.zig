@@ -22,7 +22,6 @@ const api_key = @import("../../../auth/api_key.zig");
 const cli_credential_lookup = @import("../../../cmd/cli_credential_lookup.zig");
 
 const ALLOC = fixtures.ALLOC;
-const PATH = fixtures.PATH;
 
 test "integration: test_relogin_leaves_one_live_credential — logging in twice holds one credential, not two" {
     const h = fixtures.seededHarness() catch |err| switch (err) {
@@ -37,7 +36,7 @@ test "integration: test_relogin_leaves_one_live_credential — logging in twice 
     // Established BEFORE the second login, so the refusal at the end is the
     // re-login's doing rather than a credential that never worked at all.
     {
-        const r = try (try h.get(PATH).bearer(first.secret)).send();
+        const r = try (try h.get(fixtures.PROBE_PATH).bearer(first.secret)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
     }
@@ -63,7 +62,7 @@ test "integration: test_relogin_leaves_one_live_credential — logging in twice 
     // The count alone would pass if the SURVIVOR were the wrong row. The
     // terminal walked away holding `second`, so that is the one that must work.
     {
-        const r = try (try h.get(PATH).bearer(second.secret)).send();
+        const r = try (try h.get(fixtures.PROBE_PATH).bearer(second.secret)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
     }
@@ -71,7 +70,7 @@ test "integration: test_relogin_leaves_one_live_credential — logging in twice 
     // And the superseded credential is refused with the code that tells the
     // operator to log in again, not a generic refusal they cannot act on.
     {
-        const r = try (try h.get(PATH).bearer(first.secret)).send();
+        const r = try (try h.get(fixtures.PROBE_PATH).bearer(first.secret)).send();
         defer r.deinit();
         try r.expectErrorCode(ec.ERR_CLI_CREDENTIAL_REVOKED);
     }
@@ -121,7 +120,7 @@ test "integration: test_other_machines_credential_survives_login — the desktop
     // The claim in the operator's terms. A row that survives but no longer
     // authenticates is not survival, so the assertion is a real request.
     {
-        const r = try (try h.get(PATH).bearer(desktop.secret)).send();
+        const r = try (try h.get(fixtures.PROBE_PATH).bearer(desktop.secret)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
     }
@@ -191,7 +190,7 @@ test "integration: test_principal_tenant_is_the_users_row — a divergent mint s
 
     // And the full request path still authorizes under the user's tenant.
     {
-        const r = try (try h.get(PATH).bearer(minted.secret)).send();
+        const r = try (try h.get(fixtures.PROBE_PATH).bearer(minted.secret)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
     }
