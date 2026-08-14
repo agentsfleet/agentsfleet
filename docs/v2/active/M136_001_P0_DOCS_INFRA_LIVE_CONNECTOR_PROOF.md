@@ -107,7 +107,16 @@ Use the existing installation, selected proof repository, installed fleet, and a
 - **Dimension 3.1** — one signed delivery creates one fleet event and one fleet-authored review through a short-lived installation token → Test `test_github_reviewer_posts_once`
 - **Dimension 3.2** — the fleet receives no Slack material because its trigger does not declare Slack → Test `test_reviewer_declared_connectors_only`
 
-### §4 — Replay closes the architecture marker
+### §4 — Replay closes the architecture marker — PARKED
+
+> **PARKED (Indy, Aug 14, 2026, verbatim):** "i want to take it later". Joins
+> §5 in the follow-up agent's work order.
+>
+> **§4 cannot be run standalone.** It replays *the exact delivery* from §3 and
+> needs the event and review identifiers recorded during that run, so it is the
+> back half of one live execution, not an independent slice. §1–§3 are in the
+> same unrun state, so the follow-up prompt covers §1→§5 as a single live pass
+> against the deployed development environment.
 
 Replay the exact delivery only after recording original event and review identifiers.
 
