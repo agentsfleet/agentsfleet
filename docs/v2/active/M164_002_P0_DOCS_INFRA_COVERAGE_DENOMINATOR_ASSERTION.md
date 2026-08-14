@@ -103,7 +103,8 @@ The union already fails a component contributing literally nothing. A component 
 
 - **Dimension 2.1** — A component whose measured-file or measured-line count falls below its declared minimum fails, naming component, measured, and minimum → Test `test_component_denominator_floor_enforced`
 - **Dimension 2.2** — A union missing any declared product root fails naming the absent root, however high its rate → Test `test_absent_product_root_fails_despite_high_rate`
-- **Dimension 2.3** — The union's own measured-file and measured-line counts are published alongside the rate → Test `test_union_denominator_published`
+- **Dimension 2.3** — DONE — The union's own measured-file and measured-line counts are published alongside the rate → Test `test_summary_file_publishes_the_denominator_and_the_component_counts`
+- **Dimension 2.4** — DONE — kcov captures two of the eight components on Linux, so the gate grades the union of those that did collect, states `measured over N of M components` naming every component that captured nothing on success and failure alike, and fails when a component named in `ZIG_COVERAGE_REQUIRED_COMPONENTS` contributes nothing → Tests `test_unrequired_empty_component_is_graded_over_what_collected`, `test_required_component_contributing_nothing_fails_the_gate`, `test_scope_line_names_every_component_that_captured_nothing`, `test_every_component_empty_leaves_nothing_to_grade`
 
 ### §3 — Floors bind per folder, targets stay visible
 
@@ -128,7 +129,7 @@ The coverage work itself, folded in on Indy's direction: walk the ranked dark-li
 
 `docs/architecture/testing.md` §Coverage still says five binaries, a 60% floor against a 61.40% baseline, and "each binary must produce a non-empty Cobertura report" — the weakest assertion in the lane and the one §2 replaces. It also predates the union, the `s3` component, and the runner integration component. A stale canonical doc is how the next agent reintroduces all of it.
 
-- **Dimension 5.1** — §Coverage records the current component set, the union, the denominator assertions, the per-folder floors and their targets, and the raise-only ratchet rule, with no surviving reference to five binaries, a 60% floor, or a non-empty-report check → Test `test_architecture_doc_matches_gate_values`
+- **Dimension 5.1** — PARTIAL — §Coverage now records the eight-component set, the union, the kcov Linux capture gap and its evidence, the required-component regression signal, the published key surface, and the warning that the Linux rate flatters; the non-empty-report claim and the stale floor value are gone. The per-folder floors and the ratchet rule are not yet written because §3 has not landed → Test `test_architecture_doc_matches_gate_values` (pending §3)
 
 ## Interfaces
 
@@ -279,6 +280,15 @@ Regression rows: the guards already on this branch must keep firing — `test_ze
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
   > Indy (2026-08-14 14:04): "I think you have to go and the check the files in runner/ and agentsfleetd/ individually with lower coverage and improve the tests. You shouldnt just sit and check the mergeable changed or modified new file in the PR" — context: folds the unit-lane coverage lifts (formerly Out of Scope follow-on) into this workstream as §4; targets stay 91/95/95.
+  > Indy (2026-08-15): "Make the union script grade honestly" — context: chosen over reverting the gate to the branch point or parking the check, after the measurement below showed the union could not publish at all on Linux.
+
+- **Measurement that changed the design** — every per-folder number in this spec was taken on macOS, and the platform the gate runs on cannot reproduce them. kcov 43 collects the product line tables of only `runner` and `lib` on Linux; the other six components yield a Cobertura report with no classes at all. It is a kcov defect, not a filter or path error, on three counts: a kcov run with **no** include or exclude filter returns nothing but `/opt/zig/lib/compiler_rt/*` for the affected binaries; `readelf` shows their product units carrying `DW_AT_comp_dir` values under `src/`, squarely inside the include path; and the same sources measure every component on macOS. Which components collect is stable across every Continuous Integration (CI) run inspected. The subset also **flatters** — `runner` + `lib` grade 94.06% where all seven macOS components measure 90.26% over 565 files — which is why the pre-existing `kcov --merge` gate could report 93.70% and look healthy.
+
+- **Consequences for this spec, not yet dispositioned by Indy:**
+  - §2 Dimension 2.2 (a union missing a declared product root fails) cannot be satisfied on Linux as written: `agentsfleetd/` contributes no measured line there, so the assertion would fail every run.
+  - §3's per-folder floors for `agentsfleetd/` are unenforceable in CI for the same reason — there is no daemon rate to grade. The 67.48% figure the floors are seeded from is a macOS measurement.
+  - §4's daemon coverage lifts remain worth doing and are still measurable on macOS, but CI cannot prove them.
+  - Fixing kcov collection is the unblocker for all three. The narrowed lead: kcov reads the DWARF 4 `compiler_rt` unit and drops the DWARF 5 units Zig emits for product code in these binaries, and the `DW_AT_stmt_list` offsets in the affected binaries are not monotonic in compilation-unit order, unlike the two that collect. Building a kcov newer than 43 in the CI image is the first thing to try.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
