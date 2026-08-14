@@ -43,6 +43,11 @@ const EXIT_NOT_ENFORCED: u8 = 92;
 const EXIT_CONTROL_DENIED: u8 = 93;
 const CGROUP_MOUNT = "/sys/fs/cgroup";
 const CGROUP_PROC_PATH = "/proc/self/cgroup";
+const PROC_STATUS_PATH = "/proc/self/status";
+/// The field naming the attached tracer's process id, or 0 when untraced.
+const TRACER_PID_FIELD = "TracerPid:";
+/// `/proc/self/status` runs ~1.3 KB and carries TracerPid in its first lines.
+const MAX_PROC_STATUS_BYTES = 4096;
 const S_CGROUP_CONTROLLERS = "{s}{s}/cgroup.controllers";
 const UNIFIED_RUNNER_PLACEMENT = "0::/system.slice/agentsfleet-runner.service/runner\n";
 const ROOT_CGROUP_PLACEMENT = "0::/\n";
@@ -110,10 +115,35 @@ fn tryCreateWrite(path: [*:0]const u8) bool {
     return wrote == 1;
 }
 
+/// True when a debugger or a ptrace-based profiler is attached to this process.
+/// `/proc/self/status` reports `TracerPid: 0` when nothing is tracing us.
+fn tracedByAnotherProcess() bool {
+    var buf: [MAX_PROC_STATUS_BYTES]u8 = undefined;
+    const fd: isize = @bitCast(linux.openat(linux.AT.FDCWD, PROC_STATUS_PATH, .{ .ACCMODE = .RDONLY }, 0));
+    if (fd < 0) return false;
+    const n: isize = @bitCast(linux.read(@intCast(fd), &buf, buf.len));
+    _ = linux.close(@intCast(fd));
+    if (n <= 0) return false;
+
+    const status = buf[0..@intCast(n)];
+    const field = std.mem.indexOf(u8, status, TRACER_PID_FIELD) orelse return false;
+    const rest = status[field + TRACER_PID_FIELD.len ..];
+    const line = rest[0 .. std.mem.indexOfScalar(u8, rest, '\n') orelse rest.len];
+    const tracer = std.fmt.parseInt(std.posix.pid_t, std.mem.trim(u8, line, " \t"), 10) catch return false;
+    return tracer != 0;
+}
+
 // ── seccomp: a denied syscall traps the walled child ─────────────────────────
 
 test "integration: seccomp filter traps a denied syscall to the violation exit code" {
     if (builtin.os.tag != .linux) return error.SkipZigTest;
+    // A tracer owns signal delivery: SIGSYS stops the child for the tracer, which
+    // resumes it without redelivering, so the handler never runs and the child
+    // falls through to EXIT_NOT_ENFORCED — a wall that held, reported as broken.
+    // The kernel lane (`make test-integration-kernel`) runs this binary untraced
+    // and is where the proof binds; the coverage lane runs the same binary under
+    // kcov, whose instrumentation IS ptrace, so the answer there means nothing.
+    if (tracedByAnotherProcess()) return error.SkipZigTest;
 
     const pid = try forkOrError();
     if (pid == 0) {
