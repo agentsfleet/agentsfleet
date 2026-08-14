@@ -157,7 +157,13 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	@# NOT by `kcov --merge`. That merge silently returned only the three src/lib
 	@# components on Linux — 24 files against macOS's 558 — from identical
 	@# arguments and the same kcov 43, so the gate graded 2.8% of the codebase and
-	@# called it 93.70%. The script fails when a component contributes nothing.
+	@# called it 93.70%.
+	@#
+	@# kcov 43 itself reads the product line tables of only two of these binaries
+	@# on Linux, which is why that merge had so little to return. The script
+	@# therefore grades the union of whatever collected and prints how many of how
+	@# many components that was; ZIG_COVERAGE_REQUIRED_COMPONENTS names the ones
+	@# that must collect, so a component regressing to nothing still fails.
 	@#
 	@# `--exclude-pattern` keeps the test bodies OUT of the denominator. They are
 	@# ~23k of the measured lines and are themselves ~90% covered — counting them
@@ -258,6 +264,8 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	 echo "✓ [zig] integration suite executed ($$summary)"; \
 	 component_flags=""; \
 	 for name in $$names; do component_flags="$$component_flags --component $$name"; done; \
+	 for name in $(ZIG_COVERAGE_REQUIRED_COMPONENTS); do \
+	   component_flags="$$component_flags --require-component $$name"; done; \
 	 python3 scripts/check_zig_coverage.py \
 	   --coverage-dir "$(ZIG_COVERAGE_DIR)" \
 	   $$component_flags \

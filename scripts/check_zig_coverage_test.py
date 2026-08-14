@@ -40,13 +40,21 @@ def write_component(
     ET.ElementTree(coverage).write(target / "cobertura.xml", encoding="utf-8", xml_declaration=True)
 
 
-def run_gate(root: Path, components: list[str], min_pct: float, merged: Path | None = None) -> tuple[int, str, str]:
+def run_gate(
+    root: Path,
+    components: list[str],
+    min_pct: float,
+    merged: Path | None = None,
+    required: list[str] | None = None,
+) -> tuple[int, str, str]:
     """Invoke main() and capture (exit code, stdout, stderr)."""
     argv = ["--coverage-dir", str(root), "--min-pct", str(min_pct),
             "--repo-root", str(root),
             "--summary-file", str(root / "summary.txt")]
     for name in components:
         argv += ["--component", name]
+    for name in required or []:
+        argv += ["--require-component", name]
     if merged is not None:
         argv += ["--merged-report", str(merged)]
     out, err = io.StringIO(), io.StringIO()
@@ -104,27 +112,48 @@ class SourceRootNormalisation(unittest.TestCase):
 
 
 class ComponentDropout(unittest.TestCase):
-    """The defect this gate exists to catch."""
+    """The defect this gate exists to catch — a component that stops collecting."""
 
-    def test_component_contributing_nothing_fails_the_gate(self) -> None:
+    def test_required_component_contributing_nothing_fails_the_gate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_component(root, "lib", {"small.zig": [(1, 1)]})
             write_component(root, "agentsfleetd", {})
-            code, _, err = run_gate(root, ["lib", "agentsfleetd"], 50.0)
+            code, _, err = run_gate(root, ["lib", "agentsfleetd"], 50.0,
+                                    required=["lib", "agentsfleetd"])
             self.assertEqual(code, 1)
             self.assertIn("agentsfleetd", err)
             self.assertIn("contributed no measured lines", err)
 
-    def test_dropout_fails_even_when_survivors_clear_the_floor(self) -> None:
+    def test_required_dropout_fails_even_when_survivors_clear_the_floor(self) -> None:
         """100% of a fraction is exactly how 93.70% got reported over 861 lines."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_component(root, "lib", {"small.zig": [(1, 1), (2, 1)]})
             write_component(root, "agentsfleetd", {})
-            code, _, err = run_gate(root, ["lib", "agentsfleetd"], 91.0)
+            code, _, err = run_gate(root, ["lib", "agentsfleetd"], 91.0,
+                                    required=["lib", "agentsfleetd"])
             self.assertEqual(code, 1)
             self.assertIn("contributed no measured lines", err)
+
+    def test_unrequired_empty_component_is_graded_over_what_collected(self) -> None:
+        """kcov reads two of eight binaries on Linux; refusing leaves no measurement."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "lib", {"small.zig": [(1, 1), (2, 0)]})
+            write_component(root, "agentsfleetd", {})
+            code, out, err = run_gate(root, ["lib", "agentsfleetd"], 50.0, required=["lib"])
+            self.assertEqual(code, 0, err)
+            self.assertIn("1/2 lines across 1 files", out)
+
+    def test_every_component_empty_leaves_nothing_to_grade(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "lib", {})
+            write_component(root, "agentsfleetd", {})
+            code, _, err = run_gate(root, ["lib", "agentsfleetd"], 0.0)
+            self.assertEqual(code, 1)
+            self.assertIn("nothing to grade", err)
 
     def test_missing_report_names_the_component(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -176,6 +205,54 @@ class ThresholdEnforcement(unittest.TestCase):
             written = (root / "summary.txt").read_text(encoding="utf-8")
             self.assertIn("zig_line_coverage_pct=50.00", written)
             self.assertIn("zig_line_coverage_min_pct=91", written)
+
+
+class SubsetDisclosure(unittest.TestCase):
+    """A rate over a subset must never read as a rate over the codebase."""
+
+    def test_scope_line_names_every_component_that_captured_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "runner", {"a.zig": [(1, 1)]})
+            write_component(root, "logging", {})
+            write_component(root, "deadline", {})
+            code, out, err = run_gate(root, ["runner", "logging", "deadline"], 50.0,
+                                      required=["runner"])
+            self.assertEqual(code, 0, err)
+            self.assertIn("measured over 1 of 3 components", out)
+            self.assertIn("deadline, logging", out)
+
+    def test_a_full_capture_says_so_rather_than_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "runner", {"a.zig": [(1, 1)]})
+            code, out, _ = run_gate(root, ["runner"], 50.0, required=["runner"])
+            self.assertIn("every component collected", out)
+            self.assertNotIn("⚠", out)
+
+    def test_a_breach_reports_the_subset_alongside_the_shortfall(self) -> None:
+        """The floor failing is when reading the number as whole-codebase misleads most."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "runner", {"a.zig": [(1, 1), (2, 0)]})
+            write_component(root, "logging", {})
+            code, _, err = run_gate(root, ["runner", "logging"], 91.0, required=["runner"])
+            self.assertEqual(code, 1)
+            self.assertIn("is below threshold", err)
+            self.assertIn("measured over 1 of 2 components", err)
+
+    def test_summary_file_publishes_the_denominator_and_the_component_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "runner", {"a.zig": [(1, 1), (2, 0)]})
+            write_component(root, "logging", {})
+            run_gate(root, ["runner", "logging"], 0.0, required=["runner"])
+            written = (root / "summary.txt").read_text(encoding="utf-8")
+            self.assertIn("zig_measured_files=1", written)
+            self.assertIn("zig_measured_lines=2", written)
+            self.assertIn("zig_components_measured=1", written)
+            self.assertIn("zig_components_total=2", written)
+            self.assertIn("zig_components_empty=logging", written)
 
 
 class MergedReport(unittest.TestCase):

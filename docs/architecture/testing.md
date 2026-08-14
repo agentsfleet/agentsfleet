@@ -49,28 +49,59 @@ after the component lanes converge.
 
 ## Coverage
 
-`make test-coverage-zig` installs and runs six binaries under kcov:
+`make test-coverage-zig` installs and runs eight component binaries under kcov:
 
 - daemon unit tests;
 - runner unit tests;
 - shared library tests;
 - logging tests;
 - call-deadline tests;
+- object-store tests;
+- the runner integration suite (Linux only);
 - the daemon integration suite, against live datastores, serially.
 
-Each binary must produce a non-empty Cobertura report. `scripts/check_zig_coverage.py`
-unions those reports — a line counts as covered when any component executed it,
-because the unit lanes and the integration suite reach largely disjoint code —
-publishes the union to `coverage/zig/merged`, and enforces
-`ZIG_COVERAGE_MIN_LINES`. The floor is 91%.
+`scripts/check_zig_coverage.py` unions those reports — a line counts as covered
+when any component executed it, because the unit lanes and the integration
+suites reach largely disjoint code — publishes the union to
+`coverage/zig/merged`, and enforces `ZIG_COVERAGE_MIN_LINES`. The floor is 89%.
 
 The union is deliberately not `kcov --merge`. That command returned only the
 three `src/lib` components on Linux — 24 files, 861 lines — against 558 files
 and 31,259 lines from the identical invocation on macOS, same kcov 43. The gate
 read the result without checking what it covered, so it graded 2.8% of the
-codebase and reported 93.70%. The script fails when any named component
-contributes no measured lines, which is what that failure looked like from
-outside.
+codebase and reported 93.70%.
+
+### kcov reads two of the eight components on Linux
+
+kcov 43 collects the product line tables of only `runner` and `lib` on Linux.
+The other six yield a Cobertura report with no classes in it at all. This is a
+kcov defect and not a filter or path mistake, on three pieces of evidence: a
+kcov run with no `--include-pattern` or `--exclude-pattern` returns nothing but
+`/opt/zig/lib/compiler_rt/*` for the affected binaries; their debug information
+carries product units rooted inside the include path, which `readelf` shows as
+`DW_AT_comp_dir` values under `src/`; and the same sources measure all seven
+macOS components. Which components collect is stable run to run.
+
+So the gate grades the union of the components that did collect and states
+`measured over N of M components`, naming every component that captured
+nothing, on success and on failure alike. `ZIG_COVERAGE_REQUIRED_COMPONENTS`
+(`make/test.mk`, one definition site per platform) names those that must
+collect; a required component contributing nothing fails the build, which is
+the regression the earlier blanket refusal was written to catch.
+
+**The Linux figure is not a whole-codebase figure, and it flatters.** The two
+components Linux can read grade about 94%, where all seven macOS components
+measure about 90% over 565 files. Read the published rate together with
+`zig_components_measured` and `zig_measured_files`; a rise in the rate that
+comes with a fall in the file count is a capture regression, not progress.
+Until kcov collects the remaining components, per-folder floors for
+`agentsfleetd/` cannot be enforced in Continuous Integration (CI) at all,
+because that tree contributes no measured line there.
+
+The checker writes these keys to `.tmp/zig-coverage.txt` for the CI job summary:
+`zig_line_coverage_pct`, `zig_line_coverage_min_pct`, `zig_measured_files`,
+`zig_measured_lines`, `zig_components_measured`, `zig_components_total`, and
+`zig_components_empty`.
 
 ## Adding a component
 
