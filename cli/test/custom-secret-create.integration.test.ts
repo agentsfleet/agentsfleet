@@ -23,6 +23,7 @@ import {
   SECRET_FIELD_BASE_URL,
   SECRET_FIELD_MODEL,
 } from "../src/constants/custom-endpoint.ts";
+import { PROVIDER_IDS } from "../src/constants/providers.ts";
 
 const WS_ID = "ws_custom_cred_test";
 const SECRET_NAME = "vllm-gateway";
@@ -299,6 +300,96 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
       expect(code).not.toBe(0);
       const text = out.read() + err.read();
       expect(text).toMatch(/--data|both/i);
+    });
+  });
+});
+
+describe("secret create — provider catalogue closure", () => {
+  test("an unknown provider exits 2 naming the value and the accepted set, with ZERO requests", async () => {
+    await authedScope(async () => {
+      // Every route is registered, so ANY request would land in `calls`. The
+      // catalogue parser must reject at parse time → calls stays empty.
+      const routes: MockRoutes = {
+        [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
+          jsonResponse(200, { secrets: [] }),
+        [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
+          jsonResponse(201, { name: SECRET_NAME }),
+      };
+      await withMockApi(routes, async (apiUrl, calls) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          [
+            "secret", "create", SECRET_NAME,
+            "--provider", "notaprovider",
+            "--api-key", API_KEY,
+            "--model", MODEL,
+            "--json",
+          ],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+        );
+        expect(code).toBe(2);
+        expect(calls).toHaveLength(0);
+        const text = out.read() + err.read();
+        expect(text).toContain("notaprovider");
+        expect(text).toContain(`must be one of: ${PROVIDER_IDS.join(", ")}`);
+      });
+    });
+  });
+
+  test("a mixed-case catalogue member succeeds and the POSTed body carries the canonical spelling", async () => {
+    await authedScope(async () => {
+      const routes: MockRoutes = {
+        [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
+          jsonResponse(200, { secrets: [] }),
+        [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
+          jsonResponse(201, { name: SECRET_NAME }),
+      };
+      await withMockApi(routes, async (apiUrl, calls) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          [
+            "secret", "create", SECRET_NAME,
+            "--provider", "Anthropic",
+            "--api-key", API_KEY,
+            "--model", MODEL,
+            "--json",
+          ],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+        );
+        expect(code).toBe(0);
+        const post = calls.find((c) => c.method === "POST");
+        const sent = JSON.parse(post?.body ?? "{}") as { data?: Record<string, unknown> };
+        expect(sent.data?.[SECRET_FIELD_PROVIDER]).toBe("anthropic");
+      });
+    });
+  });
+
+  test("the generic --data form remains unconstrained: an out-of-catalogue provider posts verbatim", async () => {
+    await authedScope(async () => {
+      const routes: MockRoutes = {
+        [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
+          jsonResponse(200, { secrets: [] }),
+        [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
+          jsonResponse(201, { name: SECRET_NAME }),
+      };
+      await withMockApi(routes, async (apiUrl, calls) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          [
+            "secret", "create", SECRET_NAME,
+            "--data", '{"provider":"notaprovider","model":"m"}',
+            "--json",
+          ],
+          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+        );
+        expect(code).toBe(0);
+        const post = calls.find((c) => c.method === "POST");
+        const sent = JSON.parse(post?.body ?? "{}") as { data?: Record<string, unknown> };
+        expect(sent.data?.[SECRET_FIELD_PROVIDER]).toBe("notaprovider");
+      });
     });
   });
 });

@@ -15,9 +15,11 @@ import {
   parseIdOption,
   parsePathOption,
   parseStringOption,
+  parseEnumOption,
   parseHttpsUrlOption,
 } from "./validators.ts";
 import { OPENAI_COMPATIBLE_PROVIDER } from "../constants/custom-endpoint.ts";
+import { PROVIDER_IDS } from "../constants/providers.ts";
 import type {
   ActionDispatch,
   Handlers,
@@ -135,10 +137,12 @@ export function buildFleetTree(
   // <url> --api-key <key> [--model <m>]`) that compose the same JSON object.
   // `--base-url` runs parseHttpsUrlOption at PARSE time, so a non-https URL
   // exits non-zero with NO network call (full SSRF check stays server-side).
+  // `--provider` parses through PROVIDER_IDS the same way — an undialable id
+  // exits 2 before any request; `--data` stays unconstrained (generic blob).
   secret.command("create <name>")
     .description("Store a secret JSON object")
     .option(FLAG_DATA_JSON, "Secret JSON object, or @- to read stdin")
-    .option(FLAG_PROVIDER, `Provider id (use '${OPENAI_COMPATIBLE_PROVIDER}' for a custom endpoint)`, parseStringOption)
+    .option(FLAG_PROVIDER, DESC_PROVIDER, parseEnumOption(PROVIDER_IDS, { foldCase: true }))
     .option(FLAG_BASE_URL, DESC_BASE_URL, parseHttpsUrlOption)
     .option(FLAG_API_KEY, DESC_API_KEY)
     .option(FLAG_MODEL_OPT, DESC_MODEL_OPT, parseStringOption)
@@ -151,7 +155,7 @@ export function buildFleetTree(
   secret.command("update <name>")
     .description("Replace a secret's stored body without releasing the name")
     .option(FLAG_DATA_JSON, "Replacement JSON object, or @- to read stdin")
-    .option(FLAG_PROVIDER, `Provider id (use '${OPENAI_COMPATIBLE_PROVIDER}' for a custom endpoint)`, parseStringOption)
+    .option(FLAG_PROVIDER, DESC_PROVIDER, parseEnumOption(PROVIDER_IDS, { foldCase: true }))
     .option(FLAG_BASE_URL, DESC_BASE_URL, parseHttpsUrlOption)
     .option(FLAG_API_KEY, DESC_API_KEY)
     .option(FLAG_MODEL_OPT, DESC_MODEL_OPT, parseStringOption)
@@ -183,6 +187,7 @@ const FLAG_LIMIT_N = "--limit <n>" as const;
 const PAGE_SIZE = "Page size" as const;
 const SKILL_BUNDLE_PATH = "Skill bundle path" as const;
 const FLAG_DATA_JSON = "--data <json>" as const;
+const DESC_PROVIDER = `Provider id, one of: ${PROVIDER_IDS.join(", ")} (use '${OPENAI_COMPATIBLE_PROVIDER}' for a custom endpoint)`;
 const DESC_BASE_URL = "Custom endpoint base URL (https; required for a custom-endpoint provider)" as const;
 const DESC_API_KEY = "Provider API key for the typed custom-endpoint form" as const;
 const DESC_MODEL_OPT = "Default model identifier for the typed custom-endpoint form" as const;

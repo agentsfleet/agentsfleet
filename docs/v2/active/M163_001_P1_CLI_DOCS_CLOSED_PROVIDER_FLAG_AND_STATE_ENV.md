@@ -112,9 +112,9 @@ Today `--provider` takes any non-empty string, so the CLI is the entry point for
 
 **Implementation default:** the catalogue holds the dial names in `docs/architecture/billing_and_provider_keys.md` §9 plus `OPENAI_COMPATIBLE_PROVIDER`, because `openai-compatible` is agentsfleet's own custom-endpoint sentinel rather than a NullClaw dial target, and the typed form must keep accepting it.
 
-- **Dimension 1.1** — A constants module declares the accepted ids as a single readonly catalogue, importing `OPENAI_COMPATIBLE_PROVIDER` rather than restating it → Test `test_catalogue_has_one_declaration_site`
-- **Dimension 1.2** — `parseEnumOption` accepts an opt-in case-folding option; its existing exact-match callers keep exact-match behaviour → Test `test_enum_option_folds_case_only_when_asked`
-- **Dimension 1.3** — `--provider` on `secret create` and on `secret update` parses through the catalogue; a canonical id passes and a mixed-case spelling of one normalises to the canonical form → Test `test_provider_flag_accepts_catalogue_and_normalises_case`
+- **Dimension 1.1** — A constants module declares the accepted ids as a single readonly catalogue, importing `OPENAI_COMPATIBLE_PROVIDER` rather than restating it → Test `test_catalogue_has_one_declaration_site` — **DONE**
+- **Dimension 1.2** — `parseEnumOption` accepts an opt-in case-folding option; its existing exact-match callers keep exact-match behaviour → Test `test_enum_option_folds_case_only_when_asked` — **DONE**
+- **Dimension 1.3** — `--provider` on `secret create` and on `secret update` parses through the catalogue; a canonical id passes and a mixed-case spelling of one normalises to the canonical form → Test `test_provider_flag_accepts_catalogue_and_normalises_case` — **DONE**
 
 ### §2 — Rejection is immediate, legible, and makes no network call
 
@@ -122,10 +122,10 @@ A rejected provider must cost nothing and explain itself. The user sees the valu
 
 **Implementation default:** rejection travels commander's `InvalidArgumentError` (exit 2), matching `parseHttpsUrlOption`, because introducing a second rejection path for one flag would leave the two flags on the same command behaving differently.
 
-- **Dimension 2.1** — An unknown provider exits 2 before any request is issued, and the message names both the rejected value and the accepted set → Test `test_unknown_provider_exits_two_without_request`
-- **Dimension 2.2** — An empty or whitespace-only `--provider` is rejected with the same code, not treated as absent → Test `test_blank_provider_is_rejected`
-- **Dimension 2.3** — `--help` for both secret verbs lists the accepted set, so the valid values are discoverable without reading documentation → Test `test_secret_help_lists_accepted_providers`
-- **Dimension 2.4** — The generic `--data` form still accepts any body, including one whose `provider` field is outside the catalogue → Test `test_data_form_remains_unconstrained`
+- **Dimension 2.1** — An unknown provider exits 2 before any request is issued, and the message names both the rejected value and the accepted set → Test `test_unknown_provider_exits_two_without_request` — **DONE**
+- **Dimension 2.2** — An empty or whitespace-only `--provider` is rejected with the same code, not treated as absent → Test `test_blank_provider_is_rejected` — **DONE**
+- **Dimension 2.3** — `--help` for both secret verbs lists the accepted set, so the valid values are discoverable without reading documentation → Test `test_secret_help_lists_accepted_providers` — **DONE**
+- **Dimension 2.4** — The generic `--data` form still accepts any body, including one whose `provider` field is outside the catalogue → Test `test_data_form_remains_unconstrained` — **DONE**
 
 ### §3 — The credential store reads the caller's environment
 
