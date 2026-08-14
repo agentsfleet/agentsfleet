@@ -341,7 +341,7 @@ test "UZ-PROVIDER-003 hint states api_key is conditional, not unconditionally re
     const hint = reg.lookup(reg.ERR_PROVIDER_SECRET_DATA_MALFORMED).hint;
     // Positive: the conditional rule the validator enforces.
     try std.testing.expect(std.mem.indexOf(u8, hint, "required for a named provider") != null);
-    try std.testing.expect(std.mem.indexOf(u8, hint, "optional for an `openai-compatible`") != null);
+    try std.testing.expect(std.mem.indexOf(u8, hint, "optional for `openai-compatible`") != null);
     // Negative: the old unconditional triplet-required phrasing must be gone.
     try std.testing.expect(std.mem.indexOf(u8, hint, "`provider`, `api_key`, and `model`") == null);
 }

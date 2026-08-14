@@ -97,8 +97,7 @@ fn requirePersonSubject(hx: Hx) ?[]const u8 {
     return subject;
 }
 
-/// Minting additionally refuses `.cli_credential`, though listing and revoking
-/// accept it.
+/// Minting additionally refuses `.cli_credential`, though revoking accepts it.
 ///
 /// A credential that can mint another credential is a self-renewing one: each
 /// mints the next under a machine name of the caller's choosing, revoking any
@@ -107,8 +106,8 @@ fn requirePersonSubject(hx: Hx) ?[]const u8 {
 /// token good for about a minute — into permanent access that outlives every
 /// remedy short of deleting the user. Minting therefore costs a browser
 /// session every time, which is the one step a stolen credential cannot
-/// replay. Listing and revoking stay open to a credential because a terminal
-/// must be able to see and end its own access without a browser.
+/// replay. Revoking stays open to a credential because a terminal must be
+/// able to end its own access without a browser.
 fn requireFreshSessionSubject(hx: Hx) ?[]const u8 {
     if (hx.principal.mode != .jwt_oidc) {
         hx.fail(ec.ERR_FORBIDDEN, S_SESSION_REQUIRED);
@@ -232,27 +231,6 @@ pub fn innerMintCliCredential(hx: Hx, req: *httpz.Request) void {
         .machine_name = parsed.value.machine_name,
         .deployment = hx.ctx.api_url,
     });
-}
-
-/// `GET /v1/cli-credentials` — this user's live credentials. Never returns
-/// anything that authenticates; `prefix` is a display fragment only.
-pub fn innerListCliCredentials(hx: Hx) void {
-    const subject = requirePersonSubject(hx) orelse return;
-
-    var db = hx.db() catch return;
-    defer db.end();
-
-    const user = resolveUser(hx, db.conn, subject) orelse return;
-    defer hx.alloc.free(user.id);
-    defer hx.alloc.free(user.tenant_id);
-
-    const rows = store.listForUser(hx.alloc, db.conn, user.id) catch {
-        hx.fail(ec.ERR_INTERNAL_OPERATION_FAILED, "Could not list command-line credentials");
-        return;
-    };
-    defer store.deinitList(hx.alloc, rows);
-
-    hx.ok(.ok, .{ .credentials = rows });
 }
 
 /// `DELETE /v1/cli-credentials/{id}` — revoke one of this user's credentials.
