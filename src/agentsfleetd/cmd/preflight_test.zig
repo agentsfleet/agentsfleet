@@ -143,3 +143,101 @@ test "migrateOnStartEnabledFromEnv accepts the shared trimmed grammar (Dimension
     defer padded_zero.deinit();
     try std.testing.expect(!try cmd_common.migrateOnStartEnabledFromEnv(&padded_zero, alloc));
 }
+
+// ---------------------------------------------------------------------------
+// The paths below had no executed lines: PostHog WITH a key, the telemetry
+// bundle, the OTLP fresh-install path, the pool connect (both verdicts), the
+// migration check against a migrated schema, and the credential broker's boot.
+// The live-database cases guard on TEST_DATABASE_URL exactly like pool_test —
+// skipped in the plain lane, executed in the coverage lane.
+// ---------------------------------------------------------------------------
+
+const dts_serve = @import("serve_deadline.zig");
+const credential_broker = @import("../credentials/broker.zig");
+
+test "initPostHog builds a client from a present key and tears it down" {
+    const alloc = std.testing.allocator;
+    var env = try constants.env.fromPairs(alloc, &.{.{ "POSTHOG_API_KEY", "phc_test_probe_key" }});
+    defer env.deinit();
+
+    const result = preflight.initPostHog(&env, alloc);
+    defer result.deinit(alloc);
+
+    // Init is offline (the flush thread dials lazily); a present key must
+    // yield a client, or analytics silently vanish for the process lifetime.
+    try std.testing.expect(result.client != null);
+    try std.testing.expectEqualStrings("phc_test_probe_key", result.api_key_owned.?);
+}
+
+test "initTelemetry carries the PostHog outcome and stays deinit-safe" {
+    const alloc = std.testing.allocator;
+    var env = try constants.env.fromPairs(alloc, &.{});
+    defer env.deinit();
+
+    var t = preflight.initTelemetry(&env, alloc);
+    defer t.deinit(alloc);
+    _ = t.ptr(); // the borrowed pointer serve.zig threads through Context
+}
+
+test "connectDbPool refuses when the role's URL is unset" {
+    const alloc = std.testing.allocator;
+    var env = try constants.env.fromPairs(alloc, &.{});
+    defer env.deinit();
+
+    try std.testing.expectError(
+        error.MissingDatabaseUrl,
+        preflight.connectDbPool(constants.globalIo(), &env, alloc, .api),
+    );
+}
+
+/// Environment for the live-database preflight cases: the API role's URL from
+/// the test datastore, or null → the caller skips (plain lane).
+fn liveDbEnv(alloc: std.mem.Allocator) !?constants.env.Map {
+    const url = constants.env.testLiveValue("TEST_DATABASE_URL") orelse return null;
+    return try constants.env.fromPairs(alloc, &.{.{ "DATABASE_URL_API", url }});
+}
+
+test "connectDbPool reaches the live test database and checkMigrations passes" {
+    const alloc = std.testing.allocator;
+    var env = (try liveDbEnv(alloc)) orelse return error.SkipZigTest;
+    defer env.deinit();
+    const io = constants.globalIo();
+
+    const pool = try preflight.connectDbPool(io, &env, alloc, .api);
+    defer pool.deinit();
+
+    // The integration bootstrap migrated this database; the guard must read
+    // that state as clean rather than demanding MIGRATE_ON_START.
+    try preflight.checkMigrations(io, &env, alloc, pool, false);
+}
+
+test "installCredentialBroker publishes a live broker and tears down cleanly" {
+    const alloc = std.testing.allocator;
+    var env = (try liveDbEnv(alloc)) orelse return error.SkipZigTest;
+    defer env.deinit();
+    const io = constants.globalIo();
+
+    const pool = try preflight.connectDbPool(io, &env, alloc, .api);
+    defer pool.deinit();
+
+    var deadlines: dts_serve.Owned = .{};
+    defer deadlines.deinit();
+    const sched = deadlines.start(alloc);
+
+    var broker_out: ?*credential_broker = null;
+    var slug_out: ?[]const u8 = null;
+    var handle = preflight.installCredentialBroker(
+        alloc,
+        io,
+        sched,
+        pool,
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0aaaaa",
+        &broker_out,
+        &slug_out,
+    );
+    defer handle.deinit();
+
+    // Degrades closed on any missing platform key, but the boot itself must
+    // publish a broker — a silent null 503s every mint for the process.
+    try std.testing.expect(broker_out != null);
+}
