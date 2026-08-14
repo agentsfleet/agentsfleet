@@ -13,20 +13,22 @@ report and OR the hit counts per (file, line), so a line covered by any one
 component counts once.
 
 What a component contributes is not, however, ours to control. kcov 43 reads the
-product line tables of only two of the eight component binaries on Linux. That is
-a kcov defect, not a misconfiguration: a run with no include or exclude filter at
-all returns nothing but `/opt/zig/lib/compiler_rt/*` for the rest, while their
-debug info carries product units rooted squarely inside the include path, and the
-same sources measure every component on macOS. Refusing to publish under that
-defect left the lane with no measurement at all, so the gate instead grades the
-union of the components that did collect and states on every run how many of how
-many that was. The `required` set is the regression signal — a component that
-collects today and stops fails the build, which is the case the refusal was
-written to catch.
+product line tables of only `runner` and `lib` of the eight component binaries on
+Linux. That is a kcov defect, not a misconfiguration: a run with no include or
+exclude filter at all returns nothing but `/opt/zig/lib/compiler_rt/*` for the
+rest, while their debug info carries product units rooted squarely inside the
+include path, and the same sources measure every component on macOS. Refusing to
+publish under that defect left the lane with no measurement at all, so the gate
+instead grades the union of the components that did collect and states on every
+run how many of how many that was. The `required` set is the regression signal —
+a component that collects today and stops fails the build, which is the case the
+refusal was written to catch. It holds only the components that have collected
+every run; `deadline` and `s3` come and go between runs from identical sources,
+which is why a flickering component must not be able to fail the build.
 
 A rate over a subset is not a rate over the codebase. Every surface this writes
-says so, because the subset flatters: the two components Linux can read grade
-~94% where the whole codebase measures ~90%.
+says so, because the subset flatters: what Linux reads grades around 92% where
+the whole codebase measures around 90%.
 """
 
 from __future__ import annotations
