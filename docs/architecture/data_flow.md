@@ -365,7 +365,7 @@ The runner lease carries no second copy either. It used to hold its own `request
 
 ## Two streams + one pub/sub channel — and the one that retired
 
-Before the cutover there were three Redis surfaces. The split kept two and retired one.
+Two Redis surfaces carry a fleet's work: a durable stream for ingress, and an ephemeral pub/sub channel for the live tail. A third, `fleet:control`, was removed at the cutover and the last row records why.
 
 | Redis surface | Type | Cardinality | Purpose | Volume |
 |---|---|---|---|---|
