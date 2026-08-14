@@ -58,8 +58,9 @@ after the component lanes converge.
 
 Each binary must produce a non-empty Cobertura report. kcov merges the component
 reports into `coverage/zig/merged`, and the merged line rate must meet
-`ZIG_COVERAGE_MIN_LINES`. The initial floor is 60% against a measured 61.40%
-baseline. Raise the floor as production-path tests land.
+`ZIG_COVERAGE_MIN_LINES`, which `make/test.mk` sets. Read the floor there rather
+than from this page — it is raised as production-path tests land, and a number
+copied here goes stale the first time it moves.
 
 ## Adding a component
 
