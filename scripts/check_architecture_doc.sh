@@ -297,13 +297,23 @@ while IFS= read -r entry; do
   anchor="${rest##*::}"
   target_path="$(dirname "$src")/$target"
   [ -f "$target_path" ] || continue
-  grep -qiE "^#+ .*$(printf '%s' "$anchor" | sed 's/[][(){}|+?\\.*^$/]/\\&/g')" "$target_path" && continue
+  # Prefix-anchored, not substring. A pointer names the heading's opening words,
+  # so `^#+ <anchor>` is the true test. Substring matching let a short anchor —
+  # `§C. EXECUTE` truncated to `C` — match any heading on the page and report
+  # green, which is the silent pass this assertion exists to prevent.
+  grep -qiE "^#+[[:space:]]+$(printf '%s' "$anchor" | sed 's/[][(){}|+?\\.*^$/]/\\&/g')" "$target_path" && continue
   err "test_arch_section_anchors_resolve: $src points at $target §$anchor, which is not a heading there"
   broken_anchors=$((broken_anchors + 1))
 done < <(doc_files | while IFS= read -r f; do
-  grep -oE '\]\(\.\.?/[A-Za-z0-9_/-]+\.md\)[[:space:]]*§"?[A-Za-z][^",.;·|)]*' "$f" 2>/dev/null \
-    | sed -E 's|\]\(\.\.?/([A-Za-z0-9_/-]+\.md)\)[[:space:]]*§"?|::\1::|' \
-    | sed -E 's/[[:space:]]+$//' | sort -u | sed "s|^|$f|" || true
+  # Two pointer spellings, both captured. Quoted (`§"C. EXECUTE"`) runs to the
+  # closing quote, so internal punctuation survives. Unquoted runs to a comma,
+  # semicolon, pipe, paren or end of line, then loses a sentence-final period.
+  {
+    grep -oE '\]\(\.\.?/[A-Za-z0-9_/-]+\.md\)[[:space:]]*§"[^"]+"' "$f" 2>/dev/null \
+      | sed -E 's|\]\(\.\.?/([A-Za-z0-9_/-]+\.md)\)[[:space:]]*§"([^"]+)"|::\1::\2|' || true
+    grep -oE '\]\(\.\.?/[A-Za-z0-9_/-]+\.md\)[[:space:]]*§[A-Za-z][^,;|)"]*' "$f" 2>/dev/null \
+      | sed -E 's|\]\(\.\.?/([A-Za-z0-9_/-]+\.md)\)[[:space:]]*§|::\1::|' || true
+  } | sed -E 's/[[:space:]]*\.?[[:space:]]*$//' | sort -u | sed "s|^|$f|" || true
 done)
 [ "$broken_anchors" = 0 ] && ok "test_arch_section_anchors_resolve: every cross-page section anchor resolves"
 

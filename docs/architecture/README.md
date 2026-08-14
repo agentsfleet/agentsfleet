@@ -30,13 +30,13 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | What network can a sandboxed fleet reach? | [`runner_fleet.md`](./runner_fleet.md) §Egress model |
 | Which sandbox tier may run whose work? | [`runner_fleet.md`](./runner_fleet.md) §Sandbox tiers |
 | How do steer, kill, and pause propagate? | [`runner_fleet.md`](./runner_fleet.md) §Steer, kill, pause |
-| Where does a webhook / steer / cron fire end up? | [`data_flow.md`](./data_flow.md) §B. TRIGGER |
+| Where does a webhook / steer / cron fire end up? | [`data_flow.md`](./data_flow.md) §"B. TRIGGER" |
 | What does one event write, in what order? | [`data_flow.md`](./data_flow.md) §Steer flow end-to-end |
 | Which table answers "what did this fleet do"? | [`data_flow.md`](./data_flow.md) §The three durable stores |
 | How does the live tail work — and can it lose frames? | [`data_flow.md`](./data_flow.md) §D. WATCH |
 | What happens if Redis blips during install? | [`data_flow.md`](./data_flow.md) §The install failure scenario, visually |
-| Why was my webhook rejected, and what do I fix? | [`data_flow.md`](./data_flow.md) §B. TRIGGER (webhook auth taxonomy) |
-| Who owns cron scheduling? | [`data_flow.md`](./data_flow.md) §B. TRIGGER — QStash owns the clock |
+| Why was my webhook rejected, and what do I fix? | [`data_flow.md`](./data_flow.md) §"B. TRIGGER" — the webhook auth taxonomy |
+| Who owns cron scheduling? | [`data_flow.md`](./data_flow.md) §"B. TRIGGER" — QStash owns the clock |
 | What is memory keyed by, and what survives? | [`memory.md`](./memory.md) §1 |
 | How does memory travel between runs? | [`runner_fleet.md`](./runner_fleet.md) §Memory continuity |
 | What should a fleet store so it survives hydration? | [`capabilities.md`](./capabilities.md) §4 — memory hygiene |
