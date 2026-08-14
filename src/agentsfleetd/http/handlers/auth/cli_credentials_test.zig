@@ -83,17 +83,6 @@ test "a tenant API key is refused from minting a credential in a person's name" 
     try expectErrorCode(&ht, ec.ERR_FORBIDDEN);
 }
 
-test "a tenant API key cannot list another principal class's credentials" {
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-    const hx = buildHx(ht.res, tenantKeyPrincipal());
-
-    handler.innerListCliCredentials(hx);
-
-    try ht.expectStatus(403);
-    try expectErrorCode(&ht, ec.ERR_FORBIDDEN);
-}
-
 test "a tenant API key cannot revoke a person's credential" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
@@ -221,18 +210,10 @@ test "the admitted principal classes are exactly the two that name a person" {
     }
 }
 
-test "the owner-scoped statements cannot be satisfied by identifier alone" {
+test "the owner-scoped statement cannot be satisfied by identifier alone" {
     // The ownership predicate lives in the statement, not in a handler branch a
     // future edit could reorder past the write.
     try testing.expect(std.mem.indexOf(u8, sql.REVOKE_CLI_CREDENTIAL_BY_ID, "user_id = $2::uuid") != null);
-    try testing.expect(std.mem.indexOf(u8, sql.SELECT_LIVE_CLI_CREDENTIALS_FOR_USER, "user_id = $1::uuid") != null);
-}
-
-test "the list statement returns no column that could authenticate" {
-    // `credential_prefix` is a display fragment; `credential_hash` is the
-    // digest that guards the real value and must never leave the datastore.
-    try testing.expect(std.mem.indexOf(u8, sql.SELECT_LIVE_CLI_CREDENTIALS_FOR_USER, "credential_hash") == null);
-    try testing.expect(std.mem.indexOf(u8, sql.SELECT_LIVE_CLI_CREDENTIALS_FOR_USER, "credential_prefix") != null);
 }
 
 test "the subject lookup does not require an ownership role or a workspace" {

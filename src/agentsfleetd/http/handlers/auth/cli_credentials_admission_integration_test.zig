@@ -71,12 +71,6 @@ test "integration: test_tenant_key_refused_on_user_scoped_route — an organisat
         try r.expectErrorCode(ec.ERR_FORBIDDEN);
     }
     {
-        const r = try (try h.get(PATH).bearer(fixtures.TENANT_KEY)).send();
-        defer r.deinit();
-        try r.expectStatus(.forbidden);
-        try r.expectErrorCode(ec.ERR_FORBIDDEN);
-    }
-    {
         const path = try revokePath(fixtures.OWNER_USER_ID);
         defer ALLOC.free(path);
         const r = try (try h.delete(path).bearer(fixtures.TENANT_KEY)).send();
@@ -144,11 +138,11 @@ test "integration: test_credential_cannot_mint_another_credential — a credenti
         );
     }
 
-    // The same credential still manages its own existence. Listing stays open
-    // precisely so a terminal can see and end its own access without opening a
-    // browser; narrowing the mint must not have narrowed that too.
+    // The same credential still authenticates ordinary work. Narrowing the
+    // mint must not have narrowed that too — revoking likewise stays open to
+    // a credential, so a terminal can end its own access without a browser.
     {
-        const r = try (try h.get(PATH).bearer(owned.secret)).send();
+        const r = try (try h.get(fixtures.PROBE_PATH).bearer(owned.secret)).send();
         defer r.deinit();
         try r.expectStatus(.ok);
     }
