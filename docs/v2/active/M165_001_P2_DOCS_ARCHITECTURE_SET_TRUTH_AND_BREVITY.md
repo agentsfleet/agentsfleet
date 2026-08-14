@@ -103,37 +103,37 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The audit that motivated this workstream is mechanical: extract every backticked repository path, table name, make target and cross-page section anchor, and resolve each against the tree. It found dropped tables described as live storage, renumbered slots cited by their old numbers, rule pages cited at paths inside this repository after they moved out of it, and an index anchor naming a section title its target no longer uses. Fixing them by hand fixes today; landing the extractor as a check fixes tomorrow. **Implementation default:** the check reads the tree and never a list of expected values, so adding a page or renaming a table cannot leave it silently passing.
 
-- **Dimension 1.1** — every backticked repository path in the set resolves to a tracked file, or is written in a form the check recognises as shorthand → Test `test_every_cited_path_resolves`
-- **Dimension 1.2** — every schema-qualified table name in the set exists in `schema/` → Test `test_every_cited_table_exists`
-- **Dimension 1.3** — every cross-page section anchor names a heading its target actually carries → Test `test_every_section_anchor_resolves`
-- **Dimension 1.4** — every `make` target named in the set exists in the makefile set → Test `test_every_cited_make_target_exists`
-- **Dimension 1.5** — the check runs from a repository target and fails the build on a finding → Test `test_citation_check_fails_on_a_planted_break`
+- **Dimension 1.1** ✅ DONE — every backticked repository path in the set resolves to a tracked file, or is written in a form the check recognises as shorthand → Test `test_every_cited_path_resolves`
+- **Dimension 1.2** ✅ DONE — every schema-qualified table name in the set exists in `schema/` → Test `test_every_cited_table_exists`
+- **Dimension 1.3** ✅ DONE — every cross-page section anchor names a heading its target actually carries → Test `test_every_section_anchor_resolves`
+- **Dimension 1.4** ✅ DONE — every `make` target named in the set exists in the makefile set → Test `test_every_cited_make_target_exists`
+- **Dimension 1.5** ✅ DONE — the check runs from a repository target and fails the build on a finding → Test `test_citation_check_fails_on_a_planted_break`
 
 ### §2 — No page states something the code contradicts
 
 A broken link is visible; a wrong sentence is not. Pages describe storage that was dropped, and the prose around those names asserts behaviour that went with them. This slice reads each claim about storage, endpoints and lifecycle against the tree and rewrites what the code disagrees with — not by appending a correction, which leaves both readings on the page, but by making the page say one true thing. **Implementation default:** where a claim cannot be settled from the tree, the sentence goes rather than being hedged; an unverifiable claim in a reference page is worse than its absence.
 
-- **Dimension 2.1** — no page describes a dropped table as current storage → Test `test_no_page_describes_a_dropped_table`
-- **Dimension 2.2** — no page cites a schema slot number that `schema/embed.zig` does not carry → Test `test_no_page_cites_a_retired_slot`
-- **Dimension 2.3** — no page cites a rule or dispatch page at a repository-local path after it moved to the operating-model checkout → Test `test_relocated_rule_pages_cite_their_real_home`
-- **Dimension 2.4** — each page's opening claim about what it covers matches what it now contains → Test `test_page_scope_lines_match_contents`
+- **Dimension 2.1** ✅ DONE — no page describes a dropped table as current storage → Test `test_no_page_describes_a_dropped_table`
+- **Dimension 2.2** ✅ DONE — no page cites a schema slot number that `schema/embed.zig` does not carry → Test `test_no_page_cites_a_retired_slot`
+- **Dimension 2.3** ✅ DONE — no page cites a rule or dispatch page at a repository-local path after it moved to the operating-model checkout → Test `test_relocated_rule_pages_cite_their_real_home`
+- **Dimension 2.4** ✅ DONE — each page's opening claim about what it covers matches what it now contains → Test `test_page_scope_lines_match_contents`
 
 ### §3 — Deferred design and duplicated facts leave the reference pages
 
 The canonical authentication page carries a Backend-for-Frontend design across six sections that the same page marks deferred, which is roughly a quarter of it. The scenarios index restates five invariants the topic pages own, immediately after saying scenarios link rather than copy. Both are the same failure: a reference page carrying content whose home is elsewhere, so a reader has to work out which copy is current. **Implementation default:** deferred design moves to the roadmap page in compressed form with its reasoning intact, duplicated facts collapse to a link, and the page that owned the fact keeps it in full.
 
-- **Dimension 3.1** — the authentication page describes what authentication does now; the deferred direction lives in the roadmap page → Test `test_auth_page_carries_no_deferred_design`
-- **Dimension 3.2** — no invariant is stated in full on two pages; the second is a link → Test `test_invariants_are_stated_once`
-- **Dimension 3.3** — every relocation leaves the reasoning intact at its new home rather than dropping it → Test `test_relocated_content_keeps_its_reasoning`
+- **Dimension 3.1** ✅ DONE — the authentication page describes what authentication does now; the deferred direction lives in the roadmap page → Test `test_auth_page_carries_no_deferred_design`
+- **Dimension 3.2** ✅ DONE — no invariant is stated in full on two pages; the second is a link → Test `test_invariants_are_stated_once`
+- **Dimension 3.3** ✅ DONE — every relocation leaves the reasoning intact at its new home rather than dropping it → Test `test_relocated_content_keeps_its_reasoning`
 
 ### §4 — The set reads in plain words, and the index still finds everything
 
 A reference page is read under pressure by someone who has not read the rest of the set. The pages that fail are the ones with sentences carrying three clauses and a parenthetical, compressed phrasing that needs a second read, and answers that arrive after their justification. This slice rewrites for first-read comprehension and confirms the index still routes a question to the section that answers it. **Implementation default:** the answer opens the paragraph, one idea per sentence, and a term is expanded where it is first used rather than assumed.
 
-- **Dimension 4.1** — every page opens with what it answers, before any mechanism → Test `test_pages_lead_with_their_answer`
-- **Dimension 4.2** — the index routes every listed question to a section that exists and answers it → Test `test_index_questions_reach_their_answers`
-- **Dimension 4.3** — the file table lists every page in the set and no page is absent from it → Test `test_file_table_is_complete`
-- **Dimension 4.4** — no page uses the banned marketing vocabulary or unexpanded uncommon abbreviations → Test `test_documentation_voice_holds`
+- **Dimension 4.1** ✅ DONE — every page opens with what it answers, before any mechanism → Test `test_pages_lead_with_their_answer`
+- **Dimension 4.2** ✅ DONE — the index routes every listed question to a section that exists and answers it → Test `test_index_questions_reach_their_answers`
+- **Dimension 4.3** ✅ DONE — the file table lists every page in the set and no page is absent from it → Test `test_file_table_is_complete`
+- **Dimension 4.4** ✅ DONE — no page uses the banned marketing vocabulary or unexpanded uncommon abbreviations → Test `test_documentation_voice_holds`
 
 ## Interfaces
 
@@ -269,4 +269,13 @@ No product or operator signal changes. This workstream touches contributor docum
 
 > Indy (2026-08-14): "I dont want a new md now. But what i have must be cleaned." — context: the immediate trigger; a proposed new architecture page was withdrawn and this workstream replaces it.
 
-- **Open decision — where the deferred authentication design goes.** Compressing it into the roadmap page keeps one place for direction, which is what that page is for. Deleting it outright is also defensible, since the reasoning is recorded in the shipped specs that produced it. The spec assumes relocation; a decision to delete only shortens the diff.
+- **Open decision — where the deferred authentication design goes.** Compressing it into the roadmap page keeps one place for direction, which is what that page is for. Deleting it outright is also defensible, since the reasoning is recorded in the shipped specs that produced it. **Resolved during EXECUTE: relocated.** `roadmap.md` already carried a note saying the detail "lives in `AUTH.md` and should move here", so the page had asked for it.
+
+### Corrections to this spec, found during EXECUTE
+
+- **§1.5 said create the check; the check already existed.** `scripts/check_architecture_doc.sh` was already wired to `make lint-all` through `check-architecture-doc`, with four assertions and a paired self-test file. It was extended rather than duplicated, per the repository rule against near-duplicate targets. The Files Changed row naming `audits/` or `make/*.mk` is therefore wrong; the diff touches the two existing scripts.
+- **A ninth assertion was added that the spec did not plan.** Correcting a citation surfaced six pages naming pre-renumber schema slots in prose (`slot 041`, `slot-043`, `Slot 046`, `slot 040`, `slot 033`, `schema/027`) where a filename check could not see them. Since numbering starts at 1xx and `schema/embed.zig` records 001–046 as retired wholesale, a `0xx` citation is provably stale. Markdown link text is exempt: a published decision record keeps the title it was published under.
+- **The extraction was silently truncating.** Each scan ran in a subshell under `set -e`, so the first page with no match ended the loop and every later page went unread; `grep -q` closing its pipe early under `pipefail` also scored matches as misses. The cited-path count went 48 to 167 once both were fixed. Every finding count in this spec's Problem statement was measured after the fix.
+- **Two facts drifted further than their citations.** `memory.md` named an index that no longer exists — the upsert key is a unique constraint now — and `runner_fleet.md` keyed the runner-event indexes on `occurred_at`, a column the rebuild removed in favour of `created_at`.
+- **Four pages opened with a date stamp rather than their subject.** `Date:` lines were dropped and the `Status:` sentence promoted to the lead, since git carries the date and a stale one on a canonical page misleads.
+- **No page was deleted.** Every file in the set is referenced by the index, by a shipped spec, or by the operating model, and the content is sound where it is current. The consolidation came out of pages, not out of the file count: 253 lines from `AUTH.md` and five restated invariants from the scenarios index.
