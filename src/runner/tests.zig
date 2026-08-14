@@ -82,4 +82,5 @@ test {
     _ = @import("daemon/loop_heartbeat_seq_test.zig");
     _ = @import("child_supervisor_prefork_test.zig");
     _ = @import("engine/runner_execute_test.zig");
+    _ = @import("runner_tail_coverage_test.zig");
 }
