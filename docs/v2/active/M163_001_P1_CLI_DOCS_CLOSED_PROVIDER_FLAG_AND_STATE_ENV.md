@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M163
 **Workstream:** 001
 **Date:** Aug 12, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — a Command-Line Interface (CLI) user can save a credential naming a provider the runner cannot dial; the save reports success and the failure surfaces later as a fleet that cannot reach any inference host
 **Categories:** CLI, DOCS
 **Batch:** B1 — §3 is independent of §1/§2 and may land in either order within the same branch
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m163-closed-provider-flag
+**Test Baseline:** unit=3743 integration=630
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-opus-5[1m], Aug 12, 2026), verified against source on `main` @ `b941fabf6`
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` §9 — Provider routing
@@ -69,6 +69,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/test/state.unit.test.ts` | EDIT | Store resolves from caller-supplied environment with the process variable unset |
 | `cli/test/json-contract.test.ts` | EDIT | Drops the inline state-directory guard now that the caller's environment reaches the store |
 | `cli/test/acceptance/help-and-errors.spec.ts` | EDIT | End-to-end: a subprocess invocation with an unknown provider exits 2 and issues no request. This file is in `DETERMINISTIC_ACCEPTANCE_FILES`, so the case grades without live credentials — correct, because the behaviour under test makes no network call. `secret-vault.spec.ts` is deliberately not used: it sits in `LIVE_ACCEPTANCE_FILES` and would gate a hermetic assertion behind a live deployment |
+
+**Spec bookkeeping carried by this branch** (no source change; listed so rubric R5 grades a complete diff):
+
+| File | Action | Why |
+|------|--------|-----|
+| `docs/v2/active/M163_001_….md` | MOVE | This spec, `pending/` → `active/` at CHORE(open) |
+| `docs/v2/done/M154_002_….md` | MOVE | At Indy's request. PR #598 closed unmerged on Aug 13, 2026, so the park it recorded never reached `main` and the milestone still reads `PENDING` there. The branch copy — `Status: DEFERRED`, the Parked section with Indy's ack quote, the live role-probe table, and the `SET LOCAL role = DEFAULT` finding that supersedes a deferred milestone — lands here verbatim from `origin/feat/m154-privilege-boundaries`, and the stale `pending/` copy is deleted. Spec only: the unmerged grant code stays unmerged, which is what parking means |
 
 ## Applicable Rules
 
@@ -254,6 +261,22 @@ N/A — no files deleted.
 
 ## Discovery (consult log)
 
+- **CHORE(open), Aug 14, 2026 — the second production reader of `AGENTSFLEET_STATE_DIR`.**
+  §3 as authored scopes the environment threading to `cli/src/lib/state.ts`, and
+  Invariant 3 plus rubric R3 grep only that file. Source says there are **two**
+  production readers, and they are the same fallback expression written twice:
+  `state.ts:50-54` (`resolveStatePaths`) and
+  `cli/src/services/telemetry/consent.ts:21-26` (`getConfigDirSync`). Repository-wide
+  the variable has 140 occurrences — 2 production reads, 1 documented row in
+  `cli/README.md`, and ~137 test sites; nothing under `.github/`, `scripts/`,
+  `Makefile`, `make/`, or any Dockerfile sets it, so the test suite is its
+  dominant consumer, using a public user knob in place of dependency injection
+  (`cli/test/helpers-cli-state.ts:21` records tests clobbering each other's state
+  directory as the cost). Fixing `state.ts` alone leaves the duplicate literal
+  standing, which is the UFS violation this milestone otherwise closes.
+  **Open for Indy at PLAN:** fold `consent.ts` into §3, or record it in Out of
+  Scope with a reason. Not decided unilaterally — it widens the blast radius past
+  the authored Files Changed table.
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
