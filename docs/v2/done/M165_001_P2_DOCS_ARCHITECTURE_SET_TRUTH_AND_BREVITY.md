@@ -70,7 +70,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `docs/AUTH.md` | EDIT | Deferred design leaves the canonical reference; shorthand paths resolved |
 | `docs/AUTH_DEVICE_LOGIN.md` | EDIT | Citation repair and readability |
 | `docs/development.md` | EDIT | Citation repair and readability |
-| `audits/` or `make/*.mk` | CREATE or EDIT | The citation check, wired to a target so it runs without being remembered |
+| `scripts/check_architecture_doc.sh`, `scripts/check_architecture_doc_test.sh` | EDIT | The citation assertions and their planted-break self-tests, on the gate already wired to `make lint-all` |
+| `playbooks/lib/runner/runner_test.sh` | EDIT | Scope addition (see Discovery) — the test harness leaked the caller's environment into cases that assert on environment-derived behaviour |
 
 ## Applicable Rules
 
@@ -209,7 +210,7 @@ No product or operator signal changes. This workstream touches contributor docum
 | R4 | Deferred design is out of the reference page | `grep -nE '^#+ .*(Stage 2\|BFF\|Backend-for-Frontend)' docs/AUTH.md` | no output | P0 | ✅ no output |
 | R5 | The index is complete | `for f in docs/architecture/*.md; do b=$(basename $f); grep -q "(./$b)" docs/architecture/README.md \|\| echo $b; done` | no output but README.md | P0 | ✅ all 17 pages indexed |
 | R6 | No runtime file changed | `git diff --name-only main...HEAD \| grep -vE '^(docs/\|scripts/check_architecture_doc)'` | no output | P0 | ✅ no output |
-| S1 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ green in Continuous Integration, which runs `make check-playbooks` (`.github/workflows/lint.yml`). Red on this workstation only: `test_should_select_production_worker` fails on a local environment dependency, and it fails identically on `main`. Not a repository failure and not this diff. |
+| S1 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ exit 0, all lint checks passed (two `flock`-dependent deploy cases skip by design) |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 |
 | S3 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
 | S4 | Version sync | `make check-version` | exit 0 | P0 | ✅ all versions match 0.26.2 |
@@ -274,6 +275,7 @@ No product or operator signal changes. This workstream touches contributor docum
 ### Corrections to this spec, found during EXECUTE
 
 - **Greptile caught a silent pass in the anchor assertion, and it was right.** A punctuated pointer (`§C. EXECUTE`) truncated to `C`, which then matched any heading containing that letter as a substring — the assertion reported green on three pointers it never checked. The extractor now reads quoted anchors whole and the match is prefix-anchored to the heading. Tightening it surfaced three further pointers that named sub-topics rather than headings. A self-test covers all three regressions.
+- **Scope addition, on Indy's instruction: `playbooks/lib/runner/runner_test.sh`.** `make lint-all` was red locally on `test_should_select_production_worker`. It was neither a pre-existing repository failure nor an environment quirk, though it was reported as each in turn. `run_script` invoked `env` without clearing the caller's environment, so ambient variables reached cases that assert on environment-derived behaviour. `common.sh` resolves `AGENTSFLEET_API_URL` and refuses a mismatch against the target environment — correct and protective — and `.githooks/post-checkout` links `.env.runner.local`, which sets that variable. So the repository's own setup made the test fail for any developer who ran the hook, while Continuous Integration's bare environment passed. The harness now clears the twelve variables the runner library reads. Verified both ways: 17/17 with a clean environment, and 17/17 with the polluting variable explicitly set.
 - **§1.5 said create the check; the check already existed.** `scripts/check_architecture_doc.sh` was already wired to `make lint-all` through `check-architecture-doc`, with four assertions and a paired self-test file. It was extended rather than duplicated, per the repository rule against near-duplicate targets. The Files Changed row naming `audits/` or `make/*.mk` is therefore wrong; the diff touches the two existing scripts.
 - **A ninth assertion was added that the spec did not plan.** Correcting a citation surfaced six pages naming pre-renumber schema slots in prose (`slot 041`, `slot-043`, `Slot 046`, `slot 040`, `slot 033`, `schema/027`) where a filename check could not see them. Since numbering starts at 1xx and `schema/embed.zig` records 001–046 as retired wholesale, a `0xx` citation is provably stale. Markdown link text is exempt: a published decision record keeps the title it was published under.
 - **The extraction was silently truncating.** Each scan ran in a subshell under `set -e`, so the first page with no match ended the loop and every later page went unread; `grep -q` closing its pipe early under `pipefail` also scored matches as misses. The cited-path count went 48 to 167 once both were fixed. Every finding count in this spec's Problem statement was measured after the fix.
