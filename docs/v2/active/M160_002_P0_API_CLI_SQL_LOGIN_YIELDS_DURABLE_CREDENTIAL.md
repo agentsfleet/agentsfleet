@@ -192,8 +192,26 @@ Minting per login accumulates credentials — the defect the reference implement
 > and target explicitly), and `logout` — which should instead pin its revoke
 > calls to the STORED `api_url` outright, since a revoke must reach the server
 > that minted the credential. The refusal names both URLs and the three exits
-> (matching `--api`, unset env, or re-login). Tests: the five dimensions below,
+> (matching `--api`, unset env, or re-login). Tests: the six dimensions below,
 > where 4.1/4.3/4.4/4.5 pin behavior that already exists.
+>
+> **The unbound record closes the guard's own hole (Indy, Aug 14, 2026).** The
+> guard above fires only when `api_url` is stored, so a record carrying `afc_`
+> with `api_url` null slips past it and falls to the production default — the
+> exact bug, surviving in the one case it can still occur. Refuse that record
+> at READ instead, beside the existing shape check in
+> `cli/src/services/credentials.ts`: `isPersistable` stays untouched (it takes
+> a token and mirrors `looksWellFormed` in
+> `src/agentsfleetd/auth/cli_credential.zig`), and a record-level `isBound`
+> joins it inside `tokenOf`, which `getAccessToken` and `snapshot` both already
+> route through — so there is no second site to keep in sync. A tenant key is
+> exempt: this client never minted it, and the supported unattended path is
+> `AGENTSFLEET_API_KEY`, read from the environment. Nothing is stranded —
+> `snapshot` reads `credential_id` and `api_url` raw, deliberately outside the
+> token gate, so an unbound credential stays revocable by `logout`. The caller
+> sees the existing `AUTH_FAIL_MESSAGE` (*"not authenticated — run
+> `agentsfleet login` first"*), which names the one repair without inventing a
+> second vocabulary for it.
 
 Stored state records the credential and the workspaces and nothing about where either came from, so the base URL is re-resolved from the environment every invocation and falls back to production. An operator who logs into a development deployment and runs any later command reaches production with a credential it never issued. A durable credential makes this strictly worse, because the mismatch stops self-correcting after sixty seconds. **Implementation default:** the deployment is stored beside the credential and compared before a request leaves, because a credential and the deployment that minted it are one fact.
 
@@ -202,6 +220,7 @@ Stored state records the credential and the workspaces and nothing about where e
 - **Dimension 4.3** — the target ladder keeps its order: flag, then environment variable, then stored deployment, then built-in default → Test `test_target_ladder_order_unchanged`
 - **Dimension 4.4** — the credential ladder keeps its order: `AGENTSFLEET_API_KEY`, then the stored credential → Test `test_credential_ladder_order_unchanged`
 - **Dimension 4.5** — logout clears the stored deployment with the credential → Test `test_logout_clears_stored_deployment`
+- **Dimension 4.6** — a stored `afc_` credential carrying no `api_url` is not loadable: the caller is told it is not authenticated rather than being dialed at the production default, while a tenant key with no `api_url` still loads and the unbound record stays revocable → Test `test_unbound_credential_is_not_loadable`
 
 ### §5 — One writer, one spelling: the claim readers stop guessing — DONE
 
