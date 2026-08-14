@@ -27,7 +27,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Log envelope | 4 KiB buffer, `truncated=true` on overflow | exporter-internal scopes stay stderr-only so a failing exporter cannot feed itself | §The shared logging module |
 | Performance gating | nothing gates on a percentile | the exported series are the evidence; a threshold that cannot fail reports success forever | §Library read stages are metrics, not spans |
 | The M61 naming trap | the live OTel export survived `OTEL_EXPORT_REMOVAL` | check `otel_logs.zig` / `otel_traces.zig` + the `GRAFANA_OTLP_*` gate, never the milestone name | §The M61 naming trap |
-| Production wiring truth | dated table, Jul 23, 2026 | per-surface state with code evidence | §Signal routing |
+| Production wiring truth | per-surface state, each row with its code evidence | re-read the evidence column rather than trusting the row | §Signal routing |
 
 ## The three signal paths
 
@@ -218,7 +218,7 @@ and retry limits plus the allowlist proof.
 | control-plane traces | HTTP ingress + settled delivery | OTLP to Tempo | route policy keeps output under the budget |
 | product analytics | PostHog client | batched capture | selected business events only |
 
-### Production wiring truth — Jul 23, 2026
+### Production wiring truth
 
 | Surface | State | Evidence |
 |---|---|---|
@@ -383,7 +383,7 @@ Decision records:
   The scoped fix: shut the pinned socket down at the deadline via the
   scheduler, after reordering boot.
 
-### Capacity and loss audit — Jul 23, 2026
+### Capacity and loss audit
 
 Usable capacity: the ring keeps one slot empty. Rates are ceilings, not
 benchmarks.
