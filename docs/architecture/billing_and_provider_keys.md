@@ -262,7 +262,7 @@ Every admin mutation runs inside the generation transaction: lock the singleton 
 
 `error.ModelNotPriced` under platform, not a panic and never a default rate. The upstream validators do reject an uncatalogued model — at `tenant provider create` time (`400 model_not_in_caps_catalogue`) and when the bundle's frontmatter is authored — but the catalogue can move after they ran: an admin `DELETE` of a non-default row leaves any tenant still naming that model reaching this resolve and getting a database answer of "no row".
 
-That is an operational state, not a programmer bug, which is why this used to be `std.debug.panic` and is not any more. A panic aborted the whole replica for one fleet's stale model, on every replica that picked the fleet up — one tenant's stale configuration taking down the daemon for everyone. The error lets each caller take its own documented posture instead: renew and settle fail closed, and the lease-estimate gate fails open, because an estimate is not a charge.
+That is an operational state, not a programmer bug, which is why this path used to panic and does not any more. A panic aborted the whole replica for one fleet's stale model, on every replica that picked the fleet up — one tenant's stale configuration taking down the daemon for everyone. The error lets each caller take its own documented posture instead: renew and settle fail closed, and the lease-estimate gate fails open, because an estimate is not a charge.
 
 ### 4.3 What an event costs — by shape, not by number
 
