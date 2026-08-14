@@ -46,14 +46,36 @@ def find_report(component_dir: Path) -> Path:
     return reports[0]
 
 
-def read_component(report: Path) -> dict[tuple[str, int], bool]:
-    """Parse one Cobertura report into {(file, line): covered}."""
+def source_root(root_element: ET.Element) -> Path | None:
+    """The directory a report's filenames are relative to.
+
+    Components root at different depths — the daemon's report is relative to
+    `src/`, the lib lane's to `src/lib/` — so the same file arrives as
+    `lib/common/backoff.zig` from one and `common/backoff.zig` from the other.
+    Left unnormalised they union as two files, one of them looking untested.
+    """
+    element = root_element.find("sources/source")
+    if element is None or not element.text:
+        return None
+    return Path(element.text.strip())
+
+
+def read_component(report: Path, repo_root: Path) -> dict[tuple[str, int], bool]:
+    """Parse one Cobertura report into {(repo-relative file, line): covered}."""
     with report.open("rb") as handle:
         root = ET.parse(handle).getroot()
+    base = source_root(root)
     lines: dict[tuple[str, int], bool] = {}
     for class_element in root.iter("class"):
-        filename = class_element.get("filename")
-        if filename is None or not is_product_source(filename):
+        raw = class_element.get("filename")
+        if raw is None:
+            continue
+        resolved = (base / raw) if base is not None else Path(raw)
+        try:
+            filename = resolved.relative_to(repo_root).as_posix()
+        except ValueError:
+            filename = resolved.as_posix()
+        if not is_product_source(filename):
             continue
         container = class_element.find("lines")
         if container is None:
@@ -68,12 +90,12 @@ def read_component(report: Path) -> dict[tuple[str, int], bool]:
     return lines
 
 
-def union_components(coverage_dir: Path, names: list[str]) -> dict[tuple[str, int], bool]:
+def union_components(coverage_dir: Path, names: list[str], repo_root: Path) -> dict[tuple[str, int], bool]:
     """Union every named component, failing loudly when one contributes nothing."""
     merged: dict[tuple[str, int], bool] = {}
     empty: list[str] = []
     for name in names:
-        component = read_component(find_report(coverage_dir / name))
+        component = read_component(find_report(coverage_dir / name), repo_root)
         files = len({filename for filename, _ in component})
         print(f"→ [zig] component={name} files={files} lines={len(component)}")
         if not component:
@@ -151,13 +173,14 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--min-pct", type=float, required=True)
     parser.add_argument("--summary-file", type=Path, required=True)
     parser.add_argument("--merged-report", type=Path, default=None)
+    parser.add_argument("--repo-root", type=Path, required=True)
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        merged = union_components(args.coverage_dir, args.components)
+        merged = union_components(args.coverage_dir, args.components, args.repo_root.resolve())
     except (FileNotFoundError, ValueError, ET.ParseError) as error:
         print(f"✗ Zig coverage merge failed: {error}", file=sys.stderr)
         return 1

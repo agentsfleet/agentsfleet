@@ -235,4 +235,5 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	   $$component_flags \
 	   --min-pct "$(ZIG_COVERAGE_MIN_LINES)" \
 	   --merged-report "$(ZIG_COVERAGE_DIR)/merged" \
+	   --repo-root "$(CURDIR)" \
 	   --summary-file .tmp/zig-coverage.txt
