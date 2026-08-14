@@ -342,7 +342,7 @@ become PostHog events.
   failing exporter cannot enqueue its own warnings forever.
 
 Any `log.scoped(...)` call site is conformant by construction. Field rules:
-`docs/LOGGING_STANDARD.md` (a tracked symlink into the dotfiles; open it
+`~/Projects/dotfiles/docs/LOGGING_STANDARD.md` (a tracked symlink into the dotfiles; open it
 locally).
 
 ## The OTLP exporter substrate

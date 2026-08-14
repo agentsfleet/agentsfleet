@@ -10,7 +10,7 @@ split). Channel and stream **names** are canonical in `data_flow.md`; this file
 owns the thread/lock/shutdown layer on top of them.
 
 The Allocator and concurrency rules `A1–A6` / `C1–C5` live in the Zig discipline
-façade (`dispatch/write_zig.md`); this doc is where the `C`-rules become the
+façade (`~/Projects/dotfiles/dispatch/write_zig.md`); this doc is where the `C`-rules become the
 system's concrete invariants, and it is the seed the discipline roster
 (`audits/zig-discipline-roster.txt`) expands against.
 
@@ -236,7 +236,7 @@ The rules above are enforced in code across the folders listed in
 phrase (A5); outside, the same findings warn.
 
 **Adding the next folder is one line.** Append its path prefix to the roster, run
-`make lint`, fix what the check surfaces, and commit — no code change is needed
+`make lint-all`, fix what the check surfaces, and commit — no code change is needed
 for the scope to grow, because enforcement scope is data, not logic. Until a
 folder joins the roster, RULE NLR (touch-it-fix-it) owns cleanup of its
 individual files.

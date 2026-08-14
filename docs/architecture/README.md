@@ -58,7 +58,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | What drives the idle Upstash bill? | [`scaling.md`](./scaling.md) §Per-request volume |
 | Which knob do I turn, and when? | [`scaling.md`](./scaling.md) §Tuneup knobs |
 | Where is the next bottleneck? | [`scaling.md`](./scaling.md) §Where the next ceiling actually lives |
-| Where does a signal go, and who owns it? | [`observability.md`](./observability.md) §The four signal paths |
+| Where does a signal go, and who owns it? | [`observability.md`](./observability.md) §The three signal paths |
 | What does metric family X mean? | [`observability.md`](./observability.md) §Metric family census |
 | Which locks exist, and what does each protect? | [`concurrency.md`](./concurrency.md) §Lock-invariant registry |
 | What order does shutdown happen in? | [`concurrency.md`](./concurrency.md) §Shutdown choreography |

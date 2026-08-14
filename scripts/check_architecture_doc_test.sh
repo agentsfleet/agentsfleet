@@ -209,12 +209,94 @@ test_arch_doc_real_corpus_resolves() {
   ok "$name"
 }
 
+# ── The citation assertions catch a planted break ───────────────────────────
+#
+# One fixture per assertion, each planting exactly one bad citation in an
+# otherwise-clean doc, so a non-zero exit can only come from that assertion. The
+# gate must run against the repository root: the path, table and make-target
+# checks read `git ls-files`, `schema/` and `make/`.
+
+# Runs the gate from the repo root with a fixture ARCH_DIR and no extra doc set,
+# so the live pages are never graded by a fixture case.
+run_gate_from_root() {
+  local arch_dir="$1" spec_root="$2"
+  (cd "$REPO_ROOT" && ARCH_DIR="$arch_dir" SPEC_ROOT="$spec_root" DOC_SET_EXTRA="" \
+    bash "$GATE" >/dev/null 2>&1)
+}
+
+# Asserts a clean body passes and a broken body fails, for one citation shape.
+assert_citation_shape() {
+  local name="$1" slug="$2" good_body="$3" bad_body="$4"
+  local spec_root="$WORK_DIR/specs"
+  build_spec_root "$spec_root"
+
+  local clean broken
+  clean="$(build_arch_dir "$WORK_DIR/${slug}_ok" direction.md "$good_body")"
+  if ! run_gate_from_root "$clean" "$spec_root"; then
+    bad "$name" "a resolvable citation was rejected: $good_body"
+    return
+  fi
+  broken="$(build_arch_dir "$WORK_DIR/${slug}_bad" direction.md "$bad_body")"
+  if run_gate_from_root "$broken" "$spec_root"; then
+    bad "$name" "an unresolvable citation passed: $bad_body"
+    return
+  fi
+  ok "$name"
+}
+
+test_arch_doc_cited_paths_resolve() {
+  # The shorthand form (leading directories dropped) must keep resolving — the
+  # pages use it throughout, and rejecting it would be a rewrite, not a check.
+  assert_citation_shape test_arch_doc_cited_paths_resolve paths \
+    'Reads `http/router.zig` and `schema/embed.zig`.' \
+    'Reads `http/router_that_never_existed.zig`.'
+}
+
+test_arch_doc_cited_tables_exist() {
+  assert_citation_shape test_arch_doc_cited_tables_exist tables \
+    'Rows land in `core.fleet_events`.' \
+    'Rows land in `core.table_that_never_existed`.'
+}
+
+test_arch_doc_cited_make_targets_exist() {
+  assert_citation_shape test_arch_doc_cited_make_targets_exist targets \
+    'Run `make lint-all`.' \
+    'Run `make target-that-never-existed`.'
+}
+
+test_arch_doc_section_anchors_resolve() {
+  local name="test_arch_doc_section_anchors_resolve"
+  local spec_root="$WORK_DIR/specs"
+  build_spec_root "$spec_root"
+
+  # Both fixture pages live in the same dir so the relative link resolves; the
+  # target carries one heading, and only the second pointer names a missing one.
+  local dir="$WORK_DIR/anchors"
+  mkdir -p "$dir"
+  printf '# Target\n\n## Real Section\n\nBody.\n' >"$dir/target.md"
+  printf '# Source\n\nSee [`target.md`](./target.md) §Real Section.\n' >"$dir/direction.md"
+  if ! run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a pointer at an existing heading was rejected"
+    return
+  fi
+  printf '# Source\n\nSee [`target.md`](./target.md) §Absent Section.\n' >"$dir/direction.md"
+  if run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a pointer at a heading the target lacks passed"
+    return
+  fi
+  ok "$name"
+}
+
 test_arch_doc_validates_all_m_ids
 test_arch_doc_roadmap_resolves_pending
 test_arch_doc_unresolved_ref_names_the_milestone
 test_arch_doc_missing_dir_fails_loud
 test_arch_doc_wired_into_lint_all
 test_arch_doc_real_corpus_resolves
+test_arch_doc_cited_paths_resolve
+test_arch_doc_cited_tables_exist
+test_arch_doc_cited_make_targets_exist
+test_arch_doc_section_anchors_resolve
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]
