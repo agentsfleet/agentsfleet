@@ -10,17 +10,17 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
   sequencing signal. A section that contradicts these rules loses — delete it.
 -->
 
-# M164_001: The docs set says what the code does, in words a reader gets first time
+# M165_001: The docs set says what the code does, in words a reader gets first time
 
 **Prototype:** v2.0.0
-**Milestone:** M164
+**Milestone:** M165
 **Workstream:** 001
 **Date:** Aug 14, 2026
 **Status:** IN_PROGRESS
 **Priority:** P2 — the contributor docs describe deleted tables and renumbered schema slots as current, and an agent planning from them plans against a system that no longer exists
 **Categories:** DOCS
 **Batch:** B1 — one document set, one reviewer, one pass
-**Branch:** feat/m164-docs-truth-brevity
+**Branch:** feat/m165-docs-truth-brevity
 **Test Baseline:** unit=3743 integration=630
 **Depends on:** none — the set is self-contained and no code changes
 **Provenance:** LLM-drafted (Claude Opus 5, Aug 14, 2026), from a mechanical citation audit of all 23 files plus a read of the set
