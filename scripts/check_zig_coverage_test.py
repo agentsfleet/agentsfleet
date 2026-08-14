@@ -18,11 +18,18 @@ from pathlib import Path
 import check_zig_coverage as gate
 
 
-def write_component(root: Path, name: str, files: dict[str, list[tuple[int, int]]]) -> None:
+def write_component(
+    root: Path,
+    name: str,
+    files: dict[str, list[tuple[int, int]]],
+    source_root: str | None = None,
+) -> None:
     """Lay out one component's kcov output: <root>/<name>/<binary>.<hash>/cobertura.xml."""
     target = root / name / f"{name}-tests.abc123"
     target.mkdir(parents=True, exist_ok=True)
     coverage = ET.Element("coverage")
+    if source_root is not None:
+        ET.SubElement(ET.SubElement(coverage, "sources"), "source").text = source_root
     classes = ET.SubElement(ET.SubElement(coverage, "packages"), "package")
     container = ET.SubElement(classes, "classes")
     for filename, lines in files.items():
@@ -36,6 +43,7 @@ def write_component(root: Path, name: str, files: dict[str, list[tuple[int, int]
 def run_gate(root: Path, components: list[str], min_pct: float, merged: Path | None = None) -> tuple[int, str, str]:
     """Invoke main() and capture (exit code, stdout, stderr)."""
     argv = ["--coverage-dir", str(root), "--min-pct", str(min_pct),
+            "--repo-root", str(root),
             "--summary-file", str(root / "summary.txt")]
     for name in components:
         argv += ["--component", name]
@@ -66,6 +74,33 @@ class UnionSemantics(unittest.TestCase):
             code, out, err = run_gate(root, ["unit", "integration"], 40.0)
             self.assertEqual(code, 0, err)
             self.assertIn("across 2 files", out)
+
+
+class SourceRootNormalisation(unittest.TestCase):
+    """Components root at different depths and must still name the same file once."""
+
+    def test_same_file_from_two_source_roots_counts_once(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # The daemon lane reports relative to src/; the lib lane to src/lib/.
+            write_component(root, "daemon", {"lib/common/backoff.zig": [(1, 0), (2, 0)]},
+                            source_root=str(root / "src"))
+            write_component(root, "lib", {"common/backoff.zig": [(1, 1), (2, 1)]},
+                            source_root=str(root / "src" / "lib"))
+            code, out, err = run_gate(root, ["daemon", "lib"], 100.0)
+            self.assertEqual(code, 0, err)
+            self.assertIn("2/2 lines across 1 files", out)
+
+    def test_unnormalised_paths_would_have_halved_the_rate(self) -> None:
+        """Without normalisation this reads 2/4 across 2 files — the defect."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "daemon", {"lib/common/backoff.zig": [(1, 0), (2, 0)]},
+                            source_root=str(root / "src"))
+            write_component(root, "lib", {"common/backoff.zig": [(1, 1), (2, 1)]},
+                            source_root=str(root / "src" / "lib"))
+            _, out, _ = run_gate(root, ["daemon", "lib"], 0.0)
+            self.assertNotIn("across 2 files", out)
 
 
 class ComponentDropout(unittest.TestCase):
