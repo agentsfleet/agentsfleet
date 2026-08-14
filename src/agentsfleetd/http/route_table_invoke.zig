@@ -112,11 +112,8 @@ pub fn invokeDeleteAllAuthSessions(hx: *Hx, req: *httpz.Request, route: router.R
 
 pub fn invokeCliCredentials(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
-    switch (req.method) {
-        .POST => cli_credentials.innerMintCliCredential(hx.*, req),
-        .GET => cli_credentials.innerListCliCredentials(hx.*),
-        else => common.respondMethodNotAllowed(hx.res),
-    }
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
+    cli_credentials.innerMintCliCredential(hx.*, req);
 }
 
 pub fn invokeCliCredentialById(hx: *Hx, req: *httpz.Request, route: router.Route) void {

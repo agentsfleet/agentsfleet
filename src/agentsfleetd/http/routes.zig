@@ -134,7 +134,7 @@ pub const Route = union(enum) {
     // the tenant-key routes above: those name a tenant, these name a person,
     // and only a person may hold one (enforced on principal mode in-handler,
     // because a tenant key already holds every scope a gate could require).
-    cli_credentials, // POST|GET /v1/cli-credentials
+    cli_credentials, // POST /v1/cli-credentials
     cli_credential_by_id: []const u8, // DELETE /v1/cli-credentials/{id}
     // Runner control plane — POST-only, identity from the Bearer token. register
     // is admin-gated; the self-plane verbs (heartbeat/lease/report/activity) are
