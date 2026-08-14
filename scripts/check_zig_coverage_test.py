@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""Self-tests for check_zig_coverage.py.
+
+The gate this replaces reported 93.70% while grading 24 of 577 files, because it
+trusted `kcov --merge` and never asked what came back. So the tests that matter
+here are the ones proving the union refuses to produce a number when a component
+drops out, and that a line covered by any one component counts as covered.
+
+Run: python3 -m unittest discover -s scripts -t scripts -p 'check_zig_coverage*_test.py'
+"""
+import io
+import tempfile
+import unittest
+import xml.etree.ElementTree as ET
+from contextlib import redirect_stdout, redirect_stderr
+from pathlib import Path
+
+import check_zig_coverage as gate
+
+
+def write_component(root: Path, name: str, files: dict[str, list[tuple[int, int]]]) -> None:
+    """Lay out one component's kcov output: <root>/<name>/<binary>.<hash>/cobertura.xml."""
+    target = root / name / f"{name}-tests.abc123"
+    target.mkdir(parents=True, exist_ok=True)
+    coverage = ET.Element("coverage")
+    classes = ET.SubElement(ET.SubElement(coverage, "packages"), "package")
+    container = ET.SubElement(classes, "classes")
+    for filename, lines in files.items():
+        class_element = ET.SubElement(container, "class", {"filename": filename})
+        line_container = ET.SubElement(class_element, "lines")
+        for number, hits in lines:
+            ET.SubElement(line_container, "line", {"number": str(number), "hits": str(hits)})
+    ET.ElementTree(coverage).write(target / "cobertura.xml", encoding="utf-8", xml_declaration=True)
+
+
+def run_gate(root: Path, components: list[str], min_pct: float, merged: Path | None = None) -> tuple[int, str, str]:
+    """Invoke main() and capture (exit code, stdout, stderr)."""
+    argv = ["--coverage-dir", str(root), "--min-pct", str(min_pct),
+            "--summary-file", str(root / "summary.txt")]
+    for name in components:
+        argv += ["--component", name]
+    if merged is not None:
+        argv += ["--merged-report", str(merged)]
+    out, err = io.StringIO(), io.StringIO()
+    with redirect_stdout(out), redirect_stderr(err):
+        code = gate.main(argv)
+    return code, out.getvalue(), err.getvalue()
+
+
+class UnionSemantics(unittest.TestCase):
+    def test_a_line_covered_by_any_component_counts_as_covered(self) -> None:
+        """The unit lanes and the integration suite cover disjoint code."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "unit", {"handler.zig": [(1, 0), (2, 1)]})
+            write_component(root, "integration", {"handler.zig": [(1, 5), (2, 0)]})
+            code, out, _ = run_gate(root, ["unit", "integration"], 100.0)
+            self.assertEqual(code, 0, out)
+            self.assertIn("2/2 lines", out)
+
+    def test_disjoint_files_are_summed_not_replaced(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "unit", {"a.zig": [(1, 1)]})
+            write_component(root, "integration", {"b.zig": [(1, 0)]})
+            code, out, err = run_gate(root, ["unit", "integration"], 40.0)
+            self.assertEqual(code, 0, err)
+            self.assertIn("across 2 files", out)
+
+
+class ComponentDropout(unittest.TestCase):
+    """The defect this gate exists to catch."""
+
+    def test_component_contributing_nothing_fails_the_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "lib", {"small.zig": [(1, 1)]})
+            write_component(root, "agentsfleetd", {})
+            code, _, err = run_gate(root, ["lib", "agentsfleetd"], 50.0)
+            self.assertEqual(code, 1)
+            self.assertIn("agentsfleetd", err)
+            self.assertIn("contributed no measured lines", err)
+
+    def test_dropout_fails_even_when_survivors_clear_the_floor(self) -> None:
+        """100% of a fraction is exactly how 93.70% got reported over 861 lines."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "lib", {"small.zig": [(1, 1), (2, 1)]})
+            write_component(root, "agentsfleetd", {})
+            code, _, err = run_gate(root, ["lib", "agentsfleetd"], 91.0)
+            self.assertEqual(code, 1)
+            self.assertIn("contributed no measured lines", err)
+
+    def test_missing_report_names_the_component(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "lib", {"small.zig": [(1, 1)]})
+            (root / "runner").mkdir()
+            code, _, err = run_gate(root, ["lib", "runner"], 50.0)
+            self.assertEqual(code, 1)
+            self.assertIn("no non-empty cobertura.xml", err)
+
+
+class TestBodiesExcluded(unittest.TestCase):
+    def test_test_files_leave_both_numerator_and_denominator(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "unit", {
+                "product.zig": [(1, 0), (2, 0)],
+                "product_test.zig": [(1, 1), (2, 1), (3, 1), (4, 1)],
+                "tests.zig": [(1, 1), (2, 1)],
+            })
+            code, out, err = run_gate(root, ["unit"], 0.0)
+            self.assertEqual(code, 0, err)
+            self.assertIn("0/2 lines across 1 files", out)
+
+
+class ThresholdEnforcement(unittest.TestCase):
+    def test_below_floor_exits_one_and_reports_both_numbers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "unit", {"a.zig": [(1, 1), (2, 0)]})
+            code, _, err = run_gate(root, ["unit"], 91.0)
+            self.assertEqual(code, 1)
+            self.assertIn("50.00% is below threshold 91.00%", err)
+
+    def test_exactly_at_the_floor_passes(self) -> None:
+        """Floating point must not turn an exact 50.00 into a failure."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "unit", {"a.zig": [(1, 1), (2, 0)]})
+            code, out, err = run_gate(root, ["unit"], 50.0)
+            self.assertEqual(code, 0, err)
+            self.assertIn("50.00%", out)
+
+    def test_summary_file_records_measured_and_required(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "unit", {"a.zig": [(1, 1), (2, 0)]})
+            run_gate(root, ["unit"], 91.0)
+            written = (root / "summary.txt").read_text(encoding="utf-8")
+            self.assertIn("zig_line_coverage_pct=50.00", written)
+            self.assertIn("zig_line_coverage_min_pct=91", written)
+
+
+class MergedReport(unittest.TestCase):
+    def test_published_report_agrees_with_the_enforced_number(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            merged = root / "merged"
+            write_component(root, "unit", {"a.zig": [(1, 1), (2, 0)]})
+            run_gate(root, ["unit"], 0.0, merged=merged)
+            published = ET.parse(merged / "cobertura.xml").getroot()
+            self.assertEqual(published.get("lines-covered"), "1")
+            self.assertEqual(published.get("lines-valid"), "2")
+            self.assertIn("50.00%", (merged / "summary.txt").read_text(encoding="utf-8"))
+
+    def test_stale_contents_are_cleared_before_publishing(self) -> None:
+        """kcov's old merge output must not ship beside ours disagreeing."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            merged = root / "merged"
+            (merged / "kcov-merged").mkdir(parents=True)
+            (merged / "kcov-merged" / "cobertura.xml").write_text("<coverage/>", encoding="utf-8")
+            write_component(root, "unit", {"a.zig": [(1, 1)]})
+            run_gate(root, ["unit"], 0.0, merged=merged)
+            self.assertFalse((merged / "kcov-merged").exists())
+            self.assertTrue((merged / "cobertura.xml").exists())
+
+
+if __name__ == "__main__":
+    unittest.main()
