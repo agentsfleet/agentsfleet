@@ -438,7 +438,7 @@ Both endpoints honour §8.2: the metadata is a read-time *projection*, not a new
 
 ### 8.4 The tenant model registry — many entries, one shared key (M121)
 
-The 4-fixed-slot Models page (Default / Anthropic / Other provider / Custom) could not represent a real tenant's model set: every Anthropic key past the first was hidden, every non-Anthropic provider piled into one bucket row, and the same model on two hosts (e.g. GLM 5.2 on `fireworks.ai` vs `wafers.ai`) had nowhere to live. `core.tenant_model_entries` (schema/027) adds the missing noun: one row per configured `(model_id, secret_ref)` pair, so N model rows can reference the same vault credential.
+The 4-fixed-slot Models page (Default / Anthropic / Other provider / Custom) could not represent a real tenant's model set: every Anthropic key past the first was hidden, every non-Anthropic provider piled into one bucket row, and the same model on two hosts (e.g. GLM 5.2 on `fireworks.ai` vs `wafers.ai`) had nowhere to live. `core.tenant_model_entries` (`schema/440_tenant_model_entries.sql`) adds the missing noun: one row per configured `(model_id, secret_ref)` pair, so N model rows can reference the same vault credential.
 
 ```sql
 core.tenant_model_entries (id, tenant_id, model_id, secret_ref, created_at, updated_at)
