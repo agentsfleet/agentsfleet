@@ -23,6 +23,7 @@ import {
   AUTH_REQUIRED_REPRESENTATIVE,
 } from "./fixtures/command-matrix.ts";
 import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
+import { PROVIDER_IDS } from "../../src/constants/providers.ts";
 import { runFleetctl, composeEnv } from "./fixtures/cli.js";
 import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
 import {
@@ -207,6 +208,24 @@ describe("unknown commands", () => {
 // "missing argument". The lifecycle suite has a workspace context naturally,
 // so the missing-arg sweep runs there. The dispatcher ordering itself is a
 // Discovery item for a follow-on CLI hygiene PR.
+
+describe("provider catalogue closes --provider (real binary)", () => {
+  // The API URL is unroutable, so reaching the network would surface as a
+  // connection error, not commander's usage error: exit 2 + the enum message
+  // prove the rejection happened at parse time.
+  it("an unknown provider exits 2 naming the value and the accepted set", async () => {
+    const r = await runFleetctl(
+      ["secret", "create", "t", "--provider", "notaprovider", "--api-key", "k", "--model", "m"],
+      { env: emptyEnv() },
+    );
+    assert.equal(r.code, 2, `expected exit 2; got ${r.code}; stderr=${r.stderr}`);
+    assert.match(r.stderr, /notaprovider/);
+    assert.ok(
+      r.stderr.includes(`must be one of: ${PROVIDER_IDS.join(", ")}`),
+      `stderr missing the accepted set: ${r.stderr}`,
+    );
+  });
+});
 
 describe("auth guard short-circuits before any network call", () => {
   for (const args of AUTH_REQUIRED_REPRESENTATIVE) {

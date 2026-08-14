@@ -165,6 +165,15 @@ describe("parseEnumOption", () => {
   test("constructor rejects non-array allowed", () => {
     expect(() => parseEnumOption("not-array" as unknown as readonly string[])).toThrow("non-empty allowed array");
   });
+
+  test("folds case only when asked, returning the canonical spelling", () => {
+    const exact = parseEnumOption(["dev", "prod"]);
+    expect(() => exact("DEV")).toThrow(InvalidArgumentError);
+    const folding = parseEnumOption(["dev", "prod"], { foldCase: true });
+    expect(folding("DEV")).toBe("dev");
+    expect(folding("prod")).toBe("prod");
+    expect(() => folding("staging")).toThrow("must be one of: dev, prod");
+  });
 });
 
 describe("parsePathOption", () => {

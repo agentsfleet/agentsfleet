@@ -67,6 +67,13 @@ export interface JsonObjectOptions {
   maxBytes?: number | undefined;
 }
 
+export interface EnumOptions {
+  // Accept a case variant of a member and return the canonical spelling
+  // (`Anthropic` → `anthropic`). Off by default so exact-match callers
+  // (`--sort`) keep rejecting case drift.
+  foldCase?: boolean | undefined;
+}
+
 export type CommanderParser<T> = (value: unknown) => T;
 
 export function parseStringOption(value: unknown): string {
@@ -118,15 +125,23 @@ export function parseIdOption(value: unknown): string {
   return value;
 }
 
-export function parseEnumOption<T extends string>(allowed: readonly T[]): CommanderParser<T> {
+export function parseEnumOption<T extends string>(
+  allowed: readonly T[],
+  { foldCase = false }: EnumOptions = {},
+): CommanderParser<T> {
   if (!Array.isArray(allowed) || allowed.length === 0) {
     throw new Error("parseEnumOption requires a non-empty allowed array");
   }
   return (value: unknown): T => {
-    if (!isString(value) || !allowed.includes(value as T)) {
-      throw new InvalidArgumentError(`must be one of: ${allowed.join(", ")}`);
+    if (isString(value)) {
+      if (allowed.includes(value as T)) return value as T;
+      if (foldCase) {
+        const folded = value.toLowerCase();
+        const canonical = allowed.find((member) => member === folded);
+        if (canonical !== undefined) return canonical;
+      }
     }
-    return value as T;
+    throw new InvalidArgumentError(`must be one of: ${allowed.join(", ")}`);
   };
 }
 
