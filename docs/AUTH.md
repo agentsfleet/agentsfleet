@@ -1,10 +1,33 @@
 # Authentication
 
-Three principal types reach the Zig backend. All three converge on a single credential shape at the wire:
+Five principal surfaces reach the Zig backend. The three credential flows for people and services converge on a single shape at the wire:
 
 ```
 Authorization: Bearer <…>
 ```
+
+## Question → anchor index
+
+Find the question, jump to the one §-section that answers it. Do not read the whole file to answer one question. (User-facing auth usage — logging in, creating an API key — is published at [docs.agentsfleet.net](https://docs.agentsfleet.net); this file is the contributor-facing model.)
+
+| Question | Where |
+|---|---|
+| Which validator handles my route's credential? | §Auth model in one screen |
+| What scope does a route require? | `http/route_scopes.zig` (declaration) + §Scope catalogue (meaning) |
+| Where do a principal's scopes come from, per credential? | §Scope catalogue → §CLI credential — resolved, not granted |
+| How does `agentsfleet login` work, and its threat model? | §Flow 1 + [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) |
+| Why does the dashboard send Bearer, never the cookie? | §Flow 2 → §Where the cookie lives |
+| How is the SSE stream authenticated? | §SSE stream — Next Route Handler injects Bearer |
+| How is an `agt_t` tenant key checked? | §Flow 3 — Tenant API key |
+| What can a runner token reach — and never reach? | §Runner token → §Least privilege |
+| Who can mint Token B, and where do secrets live? | §Security model |
+| Where may `CLERK_SECRET_KEY` be *sent*? | §Where the secret is sent — `CLERK_API_BASE` |
+| How do I rotate `CLERK_SECRET_KEY`? | §Rotation procedure |
+| Signed in, but nothing loads (`503 UZ-AUTH-004`)? | §How the key set is fetched |
+| May field X appear in a log / metric / error body? | §Sensitive-data classification |
+| How is a manual fleet webhook authenticated? | §Manual fleet-webhook auth |
+| How does an OAuth connector mint and refresh? | §OAuth connectors |
+| Which inbound surfaces are signature-verified? | §The three signed inbound surfaces |
 
 ## The three flows at a glance
 
@@ -59,7 +82,7 @@ Authorization: Bearer <…>
 
 A fourth surface — **inbound webhooks** — does not use Bearer at all (HMAC-signed by the provider). See *Webhook auth*.
 
-A sixth surface — the **runner token** (`agt_r`) — is the first *machine* principal: a host-resident `agentsfleet-runner` that holds no tenant identity at all. Same Bearer wire shape and DB-hash lookup, but a separate middleware and trust plane. See *Runner token* below.
+A fifth surface — the **runner token** (`agt_r`) — is the first *machine* principal: a host-resident `agentsfleet-runner` that holds no tenant identity at all. Same Bearer wire shape and DB-hash lookup, but a separate middleware and trust plane. See *Runner token* below.
 
 Cookies **never reach the Zig backend**. The Clerk `__session` cookie lives on the dashboard's own host (`app.agentsfleet.net`) — written by the Clerk SDK on the page after sign-in. Same-origin policy means it only attaches on requests back to the dashboard, never to `api-dev.agentsfleet.net`. See *Flow 2 — UI* below for the cookie-vs-Bearer picture.
 
@@ -99,7 +122,7 @@ Everything below is per-surface detail. For the CLI device-flow threat model + c
 
 ## Scope catalogue
 
-The complete capability vocabulary (`src/agentsfleetd/auth/scopes.zig`). Scope strings are the JWT `scopes` claim values — matched **verbatim** in the Clerk session-token template (RULE UFS). The `read < write < admin` ladder is stored as data: holding a higher scope satisfies a lower requirement (a `fleet:admin` holder passes a `fleet:read` gate), expanded at parse time.
+The complete capability vocabulary. The enum in `src/agentsfleetd/auth/scopes.zig` is canon; this table restates it for reading, and drift between the two is a bug. The user-mintable subset (what a tenant API key can carry) is published separately at [docs.agentsfleet.net/api-reference/scopes](https://docs.agentsfleet.net/api-reference/scopes) — operator and platform scopes stay out of that page on purpose. Scope strings are the JWT `scopes` claim values — matched **verbatim** in the Clerk session-token template (RULE UFS). The `read < write < admin` ladder is stored as data: holding a higher scope satisfies a lower requirement (a `fleet:admin` holder passes a `fleet:read` gate), expanded at parse time.
 
 **Laddered resources** (`read < write < admin`):
 
