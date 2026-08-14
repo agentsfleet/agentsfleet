@@ -168,7 +168,32 @@ Minting per login accumulates credentials — the defect the reference implement
 - **Dimension 3.9** — piped-stdin seeding goes with it: a non-TTY login with no `AGENTSFLEET_API_KEY` fails fast and names the environment variable → Test `test_non_tty_login_without_env_key_names_the_env_var` — **DONE**
 - **Dimension 3.10** — an unattended caller reaches the API with `AGENTSFLEET_API_KEY` alone, writing nothing to disk → Test `test_env_key_authenticates_without_persistence` — **DONE**
 
-### §4 — A credential remembers which deployment minted it
+### §4 — A credential remembers which deployment minted it — PARKED
+
+> **PARKED (Indy, Aug 14, 2026, verbatim):** "Yes think park this, the error
+> will say it to check the api_url as well when it fails is the simple fix
+> here." The simple fix landed on this branch: every command's 401/403
+> suggestion and `auth status`'s rejection line now also point at the target
+> API URL (`--api` / `AGENTSFLEET_API_URL`).
+>
+> **State when parked:** more of this section exists than its premise below
+> suggests — login already stores `api_url` beside the credential, the target
+> ladder already prefers it (4.1/4.3), the credential ladder holds (4.4), and
+> logout already clears it (4.5). The open remainder is Dimension 4.2 plus the
+> five pin tests.
+>
+> **Work order for the follow-up agent (the guard, as designed):** one pure
+> check beside `requireAuth` in `cli/src/program/auth-guard.ts`, run from the
+> same preAction hook after the target ladder resolves. Refuse (exit 1,
+> nothing dialed) exactly when the credential about to be used is the STORED
+> `afc_` one AND `credentials.json.api_url` is non-null AND the normalized
+> resolved target differs from the normalized stored `api_url`. Exemptions:
+> `login` (mints anew), an env `AGENTSFLEET_API_KEY` (the operator paired key
+> and target explicitly), and `logout` — which should instead pin its revoke
+> calls to the STORED `api_url` outright, since a revoke must reach the server
+> that minted the credential. The refusal names both URLs and the three exits
+> (matching `--api`, unset env, or re-login). Tests: the five dimensions below,
+> where 4.1/4.3/4.4/4.5 pin behavior that already exists.
 
 Stored state records the credential and the workspaces and nothing about where either came from, so the base URL is re-resolved from the environment every invocation and falls back to production. An operator who logs into a development deployment and runs any later command reaches production with a credential it never issued. A durable credential makes this strictly worse, because the mismatch stops self-correcting after sixty seconds. **Implementation default:** the deployment is stored beside the credential and compared before a request leaves, because a credential and the deployment that minted it are one fact.
 
