@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
+import { bufferStream, withAuthedStateDir, stateDirEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000a91eaf";
@@ -30,7 +30,7 @@ describe("api-key commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["api-key", "create", "--name", "ci-runner", "--description", "build automation"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
 
         expect(code).toBe(0);
@@ -86,7 +86,7 @@ describe("api-key commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["api-key", "list"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
 
         expect(code).toBe(0);
@@ -111,7 +111,7 @@ describe("api-key commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["api-key", "list", "--sort", "key_name"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
 
         expect(code).toBe(0);
@@ -129,7 +129,7 @@ describe("api-key commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["--json", "api-key", "list"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
 
         expect(code).toBe(0);
@@ -160,13 +160,13 @@ describe("api-key commands", () => {
         const revokeErr = bufferStream();
         const revokeCode = await runCli(
           ["api-key", "revoke", KEY_ID],
-          { stdout: revokeOut.stream, stderr: revokeErr.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: revokeOut.stream, stderr: revokeErr.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         const deleteOut = bufferStream();
         const deleteErr = bufferStream();
         const deleteCode = await runCli(
           ["api-key", "delete", KEY_ID],
-          { stdout: deleteOut.stream, stderr: deleteErr.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: deleteOut.stream, stderr: deleteErr.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
 
         expect(revokeCode).toBe(0);
@@ -195,7 +195,7 @@ describe("api-key commands", () => {
           const code = await runCli(argv, {
             stdout: out.stream,
             stderr: err.stream,
-            env: { AGENTSFLEET_API_URL: apiUrl },
+            env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl },
           });
 
           expect(code).not.toBe(0);

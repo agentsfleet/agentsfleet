@@ -6,6 +6,7 @@ import {
   bufferStream,
   FIXTURE_CREDENTIAL,
   withFreshStateDir,
+  stateDirEnv,
 } from "./helpers-cli-state.ts";
 
 const SESSION_ID = "sess_test_url_resolution";
@@ -72,7 +73,7 @@ describe("api url resolution drives every fetch from runCli", () => {
       const { calls, fetchImpl } = makeFetchRecorder();
       const code = await runCli(
         ["login", "--no-open", "--no-input"],
-        { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: {}, fetchImpl: asFetchOverride(fetchImpl) },
+        { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: { ...stateDirEnv() }, fetchImpl: asFetchOverride(fetchImpl) },
       );
       // --no-input aborts at the verify prompt → exit 130, but only AFTER
       // createSession's POST has gone out to the resolved base URL (no poll).
@@ -89,7 +90,7 @@ describe("api url resolution drives every fetch from runCli", () => {
       const { calls, fetchImpl } = makeFetchRecorder();
       const code = await runCli(
         ["--api=http://localhost:4100", "login", "--no-open", "--no-input"],
-        { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: {}, fetchImpl: asFetchOverride(fetchImpl) },
+        { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: { ...stateDirEnv() }, fetchImpl: asFetchOverride(fetchImpl) },
       );
       expect(code).toBe(130);
       expect(calls[0]).toEqual({ url: "http://localhost:4100/v1/auth/sessions", method: "POST" });
@@ -107,7 +108,7 @@ describe("api url resolution drives every fetch from runCli", () => {
           stdout: out.stream,
           stderr: err.stream,
           stdin: ttyStdin,
-          env: { AGENTSFLEET_API_URL: "http://localhost:3000" },
+          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: "http://localhost:3000" },
           fetchImpl: asFetchOverride(fetchImpl),
         },
       );
@@ -130,7 +131,7 @@ describe("api url resolution drives every fetch from runCli", () => {
           stdout: out.stream,
           stderr: err.stream,
           stdin: ttyStdin,
-          env: { AGENTSFLEET_API_URL: "http://localhost:3000" },
+          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: "http://localhost:3000" },
           fetchImpl: asFetchOverride(fetchImpl),
         },
       );
@@ -154,7 +155,7 @@ describe("api url resolution drives every fetch from runCli", () => {
           stdout: out.stream,
           stderr: err.stream,
           stdin: ttyStdin,
-          env: { AGENTSFLEET_DASHBOARD_URL: `${DASHBOARD_URL_OVERRIDE}/` },
+          env: { ...stateDirEnv(), AGENTSFLEET_DASHBOARD_URL: `${DASHBOARD_URL_OVERRIDE}/` },
           fetchImpl: asFetchOverride(fetchImpl),
         },
       );
@@ -179,7 +180,7 @@ describe("api url resolution drives every fetch from runCli", () => {
           stdout: out.stream,
           stderr: err.stream,
           stdin: ttyStdin,
-          env: { AGENTSFLEET_DASHBOARD_URL: `${DASHBOARD_URL_OVERRIDE}/` },
+          env: { ...stateDirEnv(), AGENTSFLEET_DASHBOARD_URL: `${DASHBOARD_URL_OVERRIDE}/` },
           fetchImpl: asFetchOverride(fetchImpl),
         },
       );
@@ -200,7 +201,7 @@ describe("api url resolution drives every fetch from runCli", () => {
     // the saved api_url and prove it survives end-to-end as the ctx.apiUrl
     // that drives fetch.
     await withFreshStateDir(async () => {
-      await saveCredentials({
+      await saveCredentials(process.env, {
         token: FIXTURE_CREDENTIAL,
         saved_at: Date.now(),
         session_id: "sess_persisted",
@@ -223,7 +224,7 @@ describe("api url resolution drives every fetch from runCli", () => {
       await runCli(["doctor"], {
         stdout: out.stream,
         stderr: err.stream,
-        env: {},
+        env: { ...stateDirEnv() },
         fetchImpl: asFetchOverride(fetchImpl),
       });
 
@@ -288,14 +289,14 @@ describe("api url resolution drives every fetch from runCli", () => {
       const label = setNames.length === 0 ? "nothing set" : setNames.join(" + ");
       test(`${label} → ${c.expected}`, async () => {
         await withFreshStateDir(async () => {
-          await saveCredentials({
+          await saveCredentials(process.env, {
             token: FIXTURE_CREDENTIAL,
             saved_at: Date.now(),
             session_id: "sess_matrix",
             api_url: c.set.creds === 1 ? CREDS : null,
             credential_id: null,
           });
-          const env: NodeJS.ProcessEnv = {};
+          const env: NodeJS.ProcessEnv = { ...stateDirEnv() };
           if (c.set.zenv === 1) env.AGENTSFLEET_API_URL = ZENV;
           if (c.set.aenv === 1) env.API_URL = AENV;
           const argv = c.set.flag === 1 ? ["--api", FLAG, "doctor"] : ["doctor"];
@@ -331,7 +332,7 @@ describe("api url resolution drives every fetch from runCli", () => {
           "--api", "https://api.agentsfleet.net//",
           "login", "--no-open", "--no-input",
         ],
-        { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: {}, fetchImpl: asFetchOverride(fetchImpl) },
+        { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: { ...stateDirEnv() }, fetchImpl: asFetchOverride(fetchImpl) },
       );
       expect(code).toBe(130);
       expect(calls[0]?.url).toBe("https://api.agentsfleet.net/v1/auth/sessions");

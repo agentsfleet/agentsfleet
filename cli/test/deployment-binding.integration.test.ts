@@ -12,6 +12,7 @@ import {
   bufferStream,
   withAuthedStateDir,
   withFreshStateDir,
+  stateDirEnv,
 } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 import {
@@ -39,36 +40,36 @@ const inferredTarget = (storedApiUrl: string | null): string =>
 describe("scenario 3 — logout forgets the deployment, so the next bare login is production", () => {
   test("logout clears the stored deployment", async () => {
     await withFreshStateDir(async () => {
-      await saveCredentials({
+      await saveCredentials(process.env, {
         token: CRED,
         saved_at: Date.now(),
         session_id: "sess_dev",
         api_url: DEV,
         credential_id: "cred_dev",
       });
-      expect((await loadCredentials()).api_url).toBe(DEV);
+      expect((await loadCredentials(process.env)).api_url).toBe(DEV);
 
-      await clearCredentials();
-      expect((await loadCredentials()).api_url).toBeNull();
+      await clearCredentials(process.env);
+      expect((await loadCredentials(process.env)).api_url).toBeNull();
     });
   });
 
   test("with the deployment forgotten, an un-flagged invocation resolves to production", async () => {
     await withFreshStateDir(async () => {
-      await saveCredentials({
+      await saveCredentials(process.env, {
         token: CRED,
         saved_at: Date.now(),
         session_id: "sess_dev",
         api_url: DEV,
         credential_id: "cred_dev",
       });
-      await clearCredentials();
+      await clearCredentials(process.env);
 
       // This is what the next bare `agentsfleet login` would dial: nothing
       // names a target and nothing is stored, so the ladder falls to the
       // built-in default. Intended — logout is a full reset, not a
       // deployment-preserving sign-out.
-      const stored = (await loadCredentials()).api_url;
+      const stored = (await loadCredentials(process.env)).api_url;
       expect(inferredTarget(stored)).toBe(DEFAULT_API_URL);
     });
   });
@@ -77,7 +78,7 @@ describe("scenario 3 — logout forgets the deployment, so the next bare login i
 describe("scenario 4 — switching deployments replaces the whole record", () => {
   test("a second login overwrites token, deployment and credential id together", async () => {
     await withFreshStateDir(async () => {
-      await saveCredentials({
+      await saveCredentials(process.env, {
         token: CRED,
         saved_at: Date.now(),
         session_id: "sess_prod",
@@ -86,7 +87,7 @@ describe("scenario 4 — switching deployments replaces the whole record", () =>
       });
 
       // What `login --api <dev>` persists on success.
-      await saveCredentials({
+      await saveCredentials(process.env, {
         token: CRED_2,
         saved_at: Date.now(),
         session_id: "sess_dev",
@@ -94,7 +95,7 @@ describe("scenario 4 — switching deployments replaces the whole record", () =>
         credential_id: "cred_dev",
       });
 
-      const after = await loadCredentials();
+      const after = await loadCredentials(process.env);
       expect(after.token).toBe(CRED_2);
       expect(after.api_url).toBe(DEV);
       // KNOWN GAP, pinned deliberately: `cred_prod` is still live on the
@@ -109,14 +110,14 @@ describe("scenario 4 — switching deployments replaces the whole record", () =>
 
   test("after the switch, an un-flagged invocation follows the new deployment", async () => {
     await withFreshStateDir(async () => {
-      await saveCredentials({
+      await saveCredentials(process.env, {
         token: CRED_2,
         saved_at: Date.now(),
         session_id: "sess_dev",
         api_url: DEV,
         credential_id: "cred_dev",
       });
-      const stored = (await loadCredentials()).api_url;
+      const stored = (await loadCredentials(process.env)).api_url;
       expect(inferredTarget(stored)).toBe(DEV);
     });
   });
@@ -141,7 +142,7 @@ describe("scenario 5 — a named target wins, and a wrong pair fails at the serv
           const code = await runCli(["events", FLEET_ID, "--api", apiUrl], {
             stdout: out.stream,
             stderr: err.stream,
-            env: {},
+            env: { ...stateDirEnv() },
           });
 
           // The guard does NOT refuse: the operator named the target, so the

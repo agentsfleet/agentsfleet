@@ -32,7 +32,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
+import { bufferStream, withAuthedStateDir, stateDirEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000fa17e1" as const;
@@ -82,7 +82,7 @@ describe("read-path failures — server 5xx boundedness", () => {
         const code = await runCli(["list"], {
           stdout: out.stream,
           stderr: err.stream,
-          env: { AGENTSFLEET_API_URL: apiUrl },
+          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl },
         });
         expect(code).toBe(EXIT_SERVER_ERROR);
         const text = err.read();
@@ -107,7 +107,7 @@ describe("read-path failures — server 5xx boundedness", () => {
         const code = await runCli(["list"], {
           stdout: out.stream,
           stderr: err.stream,
-          env: { AGENTSFLEET_API_URL: apiUrl },
+          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl },
         });
         expect(code).toBe(EXIT_SERVER_ERROR);
         const text = err.read();
@@ -136,7 +136,7 @@ describe("read-path failures — 429 rate limit boundedness", () => {
         const code = await runCli(["list"], {
           stdout: out.stream,
           stderr: err.stream,
-          env: { AGENTSFLEET_API_URL: apiUrl },
+          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl },
         });
         expect(code).toBe(EXIT_SERVER_ERROR);
         const text = err.read();
@@ -174,7 +174,7 @@ describe("read-path failures — request timeout boundedness", () => {
         stdout: out.stream,
         stderr: err.stream,
         // apiUrl is irrelevant — abortingFetch never reaches the network.
-        env: { AGENTSFLEET_API_URL: "http://127.0.0.1:1/v1" },
+        env: { ...stateDirEnv(), AGENTSFLEET_API_URL: "http://127.0.0.1:1/v1" },
         fetchImpl: abortingFetch,
       });
       expect(code).toBe(EXIT_SERVER_ERROR);
@@ -201,7 +201,7 @@ describe("read-path failures — connection refused vs auth-required disambiguat
         stdout: out.stream,
         stderr: err.stream,
         // Real globalThis.fetch (no fetchImpl) against a refused port.
-        env: { AGENTSFLEET_API_URL: "http://127.0.0.1:1" },
+        env: { ...stateDirEnv(), AGENTSFLEET_API_URL: "http://127.0.0.1:1" },
       });
       // NetworkError → exit 2, distinct from AuthError's exit 1.
       expect(code).toBe(EXIT_NETWORK_ERROR);

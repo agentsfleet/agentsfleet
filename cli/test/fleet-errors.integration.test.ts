@@ -5,7 +5,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
+import { bufferStream, withAuthedStateDir, stateDirEnv } from "./helpers-cli-state.ts";
 import { withMockApi } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000b00b01";
@@ -25,7 +25,7 @@ describe("fleet id validation — invalid format", () => {
         const err = bufferStream();
         const code = await runCli(
           ["stop", "not-a-uuid"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         expect(err.read()).toContain("fleet_id");
@@ -41,7 +41,7 @@ describe("fleet id validation — invalid format", () => {
         const err = bufferStream();
         const code = await runCli(
           ["resume", "bad-id-string"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         expect(err.read()).toContain("fleet_id");
@@ -57,7 +57,7 @@ describe("fleet id validation — invalid format", () => {
         const err = bufferStream();
         const code = await runCli(
           ["kill", "12345-not-valid"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         expect(calls).toHaveLength(0);
@@ -72,7 +72,7 @@ describe("fleet id validation — invalid format", () => {
         const err = bufferStream();
         const code = await runCli(
           ["delete", "garbage-id"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
         );
         expect(code).not.toBe(0);
         expect(calls).toHaveLength(0);

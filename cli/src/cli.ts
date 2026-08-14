@@ -111,17 +111,20 @@ function resolveGlobalApiUrl(
   return api || env.AGENTSFLEET_API_URL || null;
 }
 
-function buildDeps(): CommandDeps {
+// Binds the invocation's resolved environment onto the state functions at
+// the composition root, so the CommandDeps shape (and every handler behind
+// it) stays environment-free while the store reads the caller's environment.
+function buildDeps(env: NodeJS.ProcessEnv): CommandDeps {
   return {
-    clearCredentials,
-    loadCredentials,
+    clearCredentials: () => clearCredentials(env),
+    loadCredentials: () => loadCredentials(env),
     openUrl,
     printJson,
     printKeyValue,
     printSection,
     printTable,
-    saveCredentials,
-    saveWorkspaces,
+    saveCredentials: (next) => saveCredentials(env, next),
+    saveWorkspaces: (next) => saveWorkspaces(env, next),
     ui,
     writeLine,
     writeError,
@@ -240,8 +243,8 @@ export async function runCli(
   const effectiveArgv = argv.length === 0 ? ["--help"] : [...argv];
 
   const [creds, workspaces] = await Promise.all([
-    loadCredentials().catch(() => emptyCredentials()),
-    loadWorkspaces().catch(() => emptyWorkspaces()),
+    loadCredentials(env).catch(() => emptyCredentials()),
+    loadWorkspaces(env).catch(() => emptyWorkspaces()),
   ]);
   // Session identity is read and bumped through `telemetry.json`.
   const stdinSrc = io.stdin ?? process.stdin;
@@ -282,7 +285,7 @@ export async function runCli(
   const lifecycle: Lifecycle = {
     ctx,
     workspaces,
-    deps: buildDeps(),
+    deps: buildDeps(env),
     lastCommand: null,
   };
 

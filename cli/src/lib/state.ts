@@ -1,10 +1,15 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 
-// On-disk state shapes. All files live under `$AGENTSFLEET_STATE_DIR` (or
-// `~/.config/agentsfleet`) at mode 0o600. JSON is parsed permissively —
-// missing files return the fallback, corrupt files raise.
+import { resolveConfigDir } from "./config-dir.ts";
+
+// On-disk state shapes. All files live under the directory `config-dir.ts`
+// resolves from the caller-supplied environment, at mode 0o600. JSON is
+// parsed permissively — missing files return the fallback, corrupt files
+// raise. No function here reads the process environment: `runCli` resolves
+// its io environment (falling back to the process one) exactly once and
+// threads it down, so an injected environment reaches the store instead of
+// silently losing to a global.
 //
 // Session identity (`device_id`, `session_id`, `session_last_active`)
 // lives in `telemetry.json` under `src/services/telemetry/`, mirroring
@@ -47,10 +52,8 @@ export interface Workspaces {
   items: WorkspaceItem[];
 }
 
-function resolveStatePaths(): StatePaths {
-  const baseDir =
-    process.env.AGENTSFLEET_STATE_DIR ||
-    path.join(os.homedir(), ".config", "agentsfleet");
+function resolveStatePaths(env: NodeJS.ProcessEnv): StatePaths {
+  const baseDir = resolveConfigDir(env);
   return {
     baseDir,
     credentialsPath: path.join(baseDir, "credentials.json"),
@@ -85,8 +88,8 @@ export function emptyWorkspaces(): Workspaces {
   };
 }
 
-async function ensureBaseDir(): Promise<void> {
-  const { baseDir } = resolveStatePaths();
+async function ensureBaseDir(env: NodeJS.ProcessEnv): Promise<void> {
+  const { baseDir } = resolveStatePaths(env);
   await fs.mkdir(baseDir, { recursive: true });
 }
 
@@ -103,40 +106,50 @@ async function readJson<T>(filePath: string, fallback: T): Promise<T> {
   }
 }
 
-async function writeJson(filePath: string, value: unknown): Promise<void> {
-  await ensureBaseDir();
+async function writeJson(
+  env: NodeJS.ProcessEnv,
+  filePath: string,
+  value: unknown,
+): Promise<void> {
+  await ensureBaseDir(env);
   const body = `${JSON.stringify(value, null, 2)}\n`;
   await fs.writeFile(filePath, body, { mode: STATE_FILE_MODE });
 }
 
-export async function loadCredentials(): Promise<Credentials> {
-  const { credentialsPath } = resolveStatePaths();
+export async function loadCredentials(env: NodeJS.ProcessEnv): Promise<Credentials> {
+  const { credentialsPath } = resolveStatePaths(env);
   return readJson<Credentials>(credentialsPath, emptyCredentials());
 }
 
-export async function saveCredentials(next: Credentials): Promise<void> {
-  const { credentialsPath } = resolveStatePaths();
-  await writeJson(credentialsPath, next);
+export async function saveCredentials(
+  env: NodeJS.ProcessEnv,
+  next: Credentials,
+): Promise<void> {
+  const { credentialsPath } = resolveStatePaths(env);
+  await writeJson(env, credentialsPath, next);
 }
 
-export async function clearCredentials(): Promise<void> {
-  const { credentialsPath } = resolveStatePaths();
+export async function clearCredentials(env: NodeJS.ProcessEnv): Promise<void> {
+  const { credentialsPath } = resolveStatePaths(env);
   // `saved_at` records when the clear happened, so the record is the empty
   // one with that single field stamped.
-  await writeJson(credentialsPath, {
+  await writeJson(env, credentialsPath, {
     ...emptyCredentials(),
     saved_at: Date.now(),
   });
 }
 
-export async function loadWorkspaces(): Promise<Workspaces> {
-  const { workspacesPath } = resolveStatePaths();
+export async function loadWorkspaces(env: NodeJS.ProcessEnv): Promise<Workspaces> {
+  const { workspacesPath } = resolveStatePaths(env);
   return readJson<Workspaces>(workspacesPath, emptyWorkspaces());
 }
 
-export async function saveWorkspaces(next: Workspaces): Promise<void> {
-  const { workspacesPath } = resolveStatePaths();
-  await writeJson(workspacesPath, next);
+export async function saveWorkspaces(
+  env: NodeJS.ProcessEnv,
+  next: Workspaces,
+): Promise<void> {
+  const { workspacesPath } = resolveStatePaths(env);
+  await writeJson(env, workspacesPath, next);
 }
 
 export const stateInternals = {
