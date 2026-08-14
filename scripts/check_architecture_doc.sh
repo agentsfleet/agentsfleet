@@ -307,6 +307,28 @@ done < <(doc_files | while IFS= read -r f; do
 done)
 [ "$broken_anchors" = 0 ] && ok "test_arch_section_anchors_resolve: every cross-page section anchor resolves"
 
+# ---------------------------------------------------------------------------
+# 9. test_arch_no_retired_slot_numbers
+#    Slot numbering starts at 1xx: `schema/embed.zig` records that 001–046 are
+#    retired wholesale, so no new slot can reuse one. A page citing a `0xx` slot
+#    is therefore describing a schema that no longer exists, whether it writes
+#    the number as a filename or as prose.
+# ---------------------------------------------------------------------------
+# Link text is stripped first: a published decision record keeps the title it was
+# published under, and renaming it in a citation would point at the wrong thing.
+retired_slot_hits=""
+while IFS= read -r f; do
+  hits="$(sed -E 's/\[[^]]*\]\([^)]*\)//g' "$f" \
+    | grep -nEo '([Ss]lots?[- ]`?|schema/)0[0-9][0-9]' 2>/dev/null || true)"
+  [ -n "$hits" ] && retired_slot_hits="$retired_slot_hits$f:$hits"$'\n'
+done < <(doc_files)
+if [ -n "${retired_slot_hits// /}" ]; then
+  err "test_arch_no_retired_slot_numbers: pages cite schema slots retired by the renumbering:"
+  printf "%s" "$retired_slot_hits" >&2
+else
+  ok "test_arch_no_retired_slot_numbers: no page cites a retired 0xx schema slot"
+fi
+
 # A pattern that silently matches nothing reports clean forever. Against the real
 # corpus the citation count is in the hundreds; a collapse to zero means the
 # extraction broke, not that the pages stopped citing anything.

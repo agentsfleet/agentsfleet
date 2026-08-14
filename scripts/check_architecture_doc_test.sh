@@ -293,10 +293,20 @@ test_arch_doc_unresolved_ref_names_the_milestone
 test_arch_doc_missing_dir_fails_loud
 test_arch_doc_wired_into_lint_all
 test_arch_doc_real_corpus_resolves
+test_arch_doc_no_retired_slot_numbers() {
+  local name="test_arch_doc_no_retired_slot_numbers"
+  # A published decision record keeps its own title, so link text is exempt while
+  # the same number in prose is not. Both halves are asserted.
+  assert_citation_shape "$name" slots \
+    'Indexes live in `schema/620_runner_lease_indexes.sql`, per [Index audit — slots 033 & 034](https://example.invalid/a).' \
+    'Indexes live in slot 033.'
+}
+
 test_arch_doc_cited_paths_resolve
 test_arch_doc_cited_tables_exist
 test_arch_doc_cited_make_targets_exist
 test_arch_doc_section_anchors_resolve
+test_arch_doc_no_retired_slot_numbers
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]
