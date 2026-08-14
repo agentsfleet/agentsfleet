@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M164
 **Workstream:** 001
 **Date:** Aug 13, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — stage billing has never charged anyone; the gate is open for every tenant that exists
 **Categories:** API, SQL, UI
 **Batch:** B1 — its own Pull Request; nothing else depends on it
