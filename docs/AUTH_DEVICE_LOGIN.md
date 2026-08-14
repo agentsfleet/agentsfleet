@@ -294,7 +294,7 @@ Flow 1's protocol assumes the following deploy rules. Diverging from these turns
 | Requirement | Detail |
 |---|---|
 | **HTTPS-only** for `/v1/auth/*` | Load balancer / reverse proxy enforces. HTTP requests promoted via HTTP 308 to HTTPS. `api.agentsfleet.net` already enforces this in prod. |
-| **HSTS** header on every API response | `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`. Source: load balancer only — the in-app `security_headers.zig` middleware was removed as dead code in M83 (`1d793867`). |
+| **HSTS** header on every API response | `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`. The load balancer is the only source; `agentsfleetd` sets no security headers of its own. |
 | **TLS ≥ 1.2** (1.3 preferred) | Load balancer config. |
 | **Redis required** | `REDIS_URL` env must resolve to a single-node Redis reachable from every API pod (acceptable for dev / single-region prod) OR a Redis Sentinel / Cluster with ≥1 reachable primary per pod. In-memory session storage is **not** acceptable under any multi-pod topology. agentsfleetd fails fast on boot if `REDIS_URL` is unset. |
 | `maxmemory-policy allkeys-lfu` (recommended) | Under memory pressure, least-frequently-accessed session keys evict first. Deploy-time config, not enforced by code. |

@@ -26,7 +26,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Per-host concurrency | assigned `worker_count` = 1 (dashboard, per runner) | a capacity knob that widens the failure domain to N in-flight runs on host loss | §Tuneup knobs, §Runner host loss |
 | Admission ceiling | `API_MAX_IN_FLIGHT_REQUESTS` = 256, api-class only | ops routes (`/healthz`, `/readyz`, `/metrics`) are NEVER shed | §Tuneup knobs |
 | The binding constraint | `agentsfleetd` replicas + Postgres writes | both horizontally scalable; the hot path is shardable per fleet | §Where the next ceiling actually lives |
-| Recurring-read indexes | schema slot `033`, plan-asserted | idle Postgres cost tracks work, not accumulated rows; liveness batch = 6 buffer hits at 20,000 runners | §Which recurring Postgres reads are index-served |
+| Recurring-read indexes | one slot per table, plan-asserted | idle Postgres cost tracks work, not accumulated rows; liveness batch = 6 buffer hits at 20,000 runners | §Which recurring Postgres reads are index-served |
 | Idle pickup latency floor | ≤ `NO_WORK_RETRY_AFTER_MS` | a runner already mid-poll picks up immediately | §Event-delivery latency |
 | Outbound-answer consumer | non-blocking, `IDLE_POLL_MS` = 250 | rides the shared pool — adds requests, never connections | §Tuneup knobs |
 | Failover storm | bounded by 9·R re-dials | pool re-dials; the hub redials once and replays its SUBSCRIBEs | §Upstash failover |
@@ -150,10 +150,10 @@ it commits.
 
 Sizing consequence: at the 1 s default the auth read tracks the lease-poll rate
 above (`R_runners × 3600` per hour), against a `fleet.runners` table whose pages
-stay resident. At the ~100 runners `schema/033_hot_path_indexes.sql` assumes that is
-a few hundred index probes a second. Revisit when runner count or poll rate makes
-that measurable — AUTH.md records the replacement design (a short-lived signed
-credential verified locally) and the condition it must meet.
+stay resident. At a hundred runners that is a few hundred index probes a second.
+Revisit when runner count or poll rate makes it measurable — AUTH.md records the
+replacement design (a short-lived signed credential verified locally) and the
+condition it must meet.
 
 For a 20-runner fleet at the 1 s default: ~72,000 idle `lease` requests/hour. Doubling `NO_WORK_RETRY_AFTER_MS` to 2 s halves it; the trade is idle pickup latency, not event-delivery latency for a busy fleet. Active traffic (XADD ingress, PUBLISH activity ~5/event, XACK on report) sits on top, scaling with event throughput as before.
 
@@ -176,7 +176,7 @@ Watch `agentsfleet_lease_poll_candidates_scanned_total / agentsfleet_lease_polls
 
 #### Which recurring Postgres reads are index-served
 
-The Redis figures above are only half the idle bill. The other half is Postgres, and it used to scale with *accumulated rows* rather than with work — an account that had been running a year cost more at idle than a fresh one, for no reason a user asked for. Schema slot `033` closes that: every recurring control-plane read below is now served by an index, and each index is asserted against the query **plan**, not merely created.
+The Redis figures above are only half the idle bill. The other half is Postgres, and it used to scale with *accumulated rows* rather than with work — an account that had been running a year cost more at idle than a fresh one, for no reason a user asked for. Each table's own index slot closes that: every recurring control-plane read below is served by an index, and each index is asserted against the query **plan**, not merely created.
 
 | Recurring read | Was | Now |
 |---|---|---|

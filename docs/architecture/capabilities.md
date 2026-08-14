@@ -192,7 +192,7 @@ Eighty percent of users use the defaults forever and never see context errors. T
 
 ### Memory hygiene — what to store so it survives
 
-Durable memory is selected, not searched: hydration pins the `core` category first (newest-first, within the byte budget), fills the remaining budget with the newest non-core entries, and cap eviction takes non-core rows before any `core` row (see [*Memory continuity*](./runner_fleet.md) §Selection policy). Four habits make that selection work for the fleet instead of against it:
+Durable memory is selected, not searched: hydration pins the `core` category first (newest-first, within the byte budget), fills the remaining budget with the newest non-core entries, and cap eviction takes non-core rows before any `core` row (see [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity"). Four habits make that selection work for the fleet instead of against it:
 
 - **Store load-bearing facts as `core`.** Owner, deploy target, customer plan, standing constraints — anything the fleet must still know at entry 1001 belongs in `core`. `daily`, `conversation`, and any custom category are windowed by recency and are the first to age out of hydration. `daily` additionally expires outright: rows older than the 72-hour retention window are deleted on the fleet's next capture push (only `daily` — every other category persists until cap eviction or an explicit `memory_forget`).
 - **Reuse stable keys.** Re-storing a key is an upsert — it refreshes the entry instead of duplicating it. `deploy_target` beats a dated `deploy_target_jun12`.

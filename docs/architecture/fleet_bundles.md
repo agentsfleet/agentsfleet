@@ -123,7 +123,7 @@ Caps (`importer.zig`): **32 support files · 64 KiB per file · 256 KiB total.**
 At lease time (see [`data_flow.md` §C](./data_flow.md)):
 
 - **SKILL.md / TRIGGER.md** → from the **lease** (`instructions`/`policy`, resolved from `core.fleets` fresh per lease, so they reflect any PATCH). The runner **ignores** the SKILL.md/TRIGGER.md copies inside the tar.
-- **Support files** → the runner downloads the tar via `GET /v1/runners/me/bundles/{content_hash}` (daemon proxies `r2.get`; cached at `.bundle-cache/{hash}.tar`), and untars the support files into the per-lease sandbox workspace **before** the child forks. `SKILL.md` can then reference them (`review.sh`, playbooks, …).
+- **Support files** → the runner downloads the tar via `GET /v1/runners/me/bundles/{content_hash}` (daemon proxies `r2.get`; cached at `.bundle-cache/{hash}.tar`), and untars the support files into the per-lease sandbox workspace **before** the child forks. `SKILL.md` can then reference them — a review script, a playbook, whatever the bundle shipped.
 
 ## Update + sync
 

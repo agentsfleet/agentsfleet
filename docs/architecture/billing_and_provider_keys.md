@@ -18,7 +18,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Currency unit | nanos — 1 USD = 1,000,000,000 | `core.tenant_billing.balance_nanos BIGINT CHECK (>= 0)`; i64 caps one tenant at ~$9.2B | §2 |
+| Currency unit | nanos — 1 USD = 1,000,000,000 | `billing.tenant_wallet.balance_nanos BIGINT CHECK (>= 0)`; i64 caps one tenant at ~$9.2B | §2 |
 | Postures | exactly 2, tenant-scoped | `core.tenant_model_selection.mode` ∈ {`platform`, `self_managed`}; a missing row means `platform` | §1 |
 | Debit points | 2 per event | receive (`EVENT_NANOS`, posture-independent today) + run (metered per `/renew`, settled at report — M80_010) | §3 |
 | Run slice charge | `run_fee + token_cost` | `run_fee = elapsed_ms × RUN_NANOS_PER_SEC / 1000`; platform adds the three-tier Δ-token cost; self-managed records tokens but never charges them | §3, §4.2 |
@@ -39,7 +39,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Plan tiers | none in the cost function | future paid plans manifest as grants or top-ups, never a `compute_charge` branch | §2.4 |
 | Posture switch | claim-time snapshot wins | posture resolved once, at gate time, before the receive deduct | §7 |
 | Blocked rows | terminal | no automatic replay after top-up; resume writes a continuation event | §6 |
-| Live dollar values | never in this doc | canonical on `agentsfleet.net/#pricing`; constants pinned across 4 files by `audits/cross-tier-rates.sh` | preamble, §4.2 |
+| Live dollar values | never in this doc | canonical on `agentsfleet.net/#pricing`; constants pinned across 4 files by `~/Projects/dotfiles/audits/cross-tier-rates.sh` | preamble, §4.2 |
 
 ## Traps
 
@@ -101,7 +101,7 @@ The posture flip lives in `core.tenant_model_selection.mode` (`platform` or `sel
 
 ## 2. Pure credits, one-time starter grant
 
-Every tenant has exactly one balance: `core.tenant_billing.balance_nanos` (`BIGINT NOT NULL CHECK (balance_nanos >= 0)`, holds 9 decimal places of USD precision; i64 caps a single tenant at ~$9.2B, headroom for sub-cent rates without another unit change). The gate compares this column against the estimated event cost. Deductions are SQL `UPDATE … SET balance_nanos = balance_nanos - <nanos>`. There is no second column for "free vs paid," no replenishing bucket, no included-events quota. One number, drains over time, refills only when the user buys credits.
+Every tenant has exactly one balance: `billing.tenant_wallet.balance_nanos` (`BIGINT NOT NULL CHECK (balance_nanos >= 0)`, holds 9 decimal places of USD precision; i64 caps a single tenant at ~$9.2B, headroom for sub-cent rates without another unit change). The gate compares this column against the estimated event cost. Deductions are SQL `UPDATE … SET balance_nanos = balance_nanos - <nanos>`. There is no second column for "free vs paid," no replenishing bucket, no included-events quota. One number, drains over time, refills only when the user buys credits.
 
 ### 2.1 The starter grant
 
@@ -240,7 +240,7 @@ pub fn computeStageCharge(
 
 One named constant drives the run fee — `RUN_NANOS_PER_SEC`, in `src/agentsfleetd/state/tenant_billing.zig`, applied identically to **both** postures. Under platform: the run fee plus a three-tier per-token component (input / cached-input / output) from the model-library rate cache (§10). Under self-managed: the run fee only — we did not pay for the tokens, only for running the fleet.
 
-Posture changes only whether the per-token component is added (platform) or not (self-managed); the run fee is the same. That gradient is the friction-reducing signal: on-ramp on platform without a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. `RUN_NANOS_PER_SEC` is pinned across the four rate files (`tenant_billing.zig` + `rates.ts` + `app/lib/types.ts` + `cli/src/constants/billing.ts`) by `audits/cross-tier-rates.sh` so a bump surfaces immediately.
+Posture changes only whether the per-token component is added (platform) or not (self-managed); the run fee is the same. That gradient is the friction-reducing signal: on-ramp on platform without a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. `RUN_NANOS_PER_SEC` is pinned across the four rate files (`tenant_billing.zig` + `rates.ts` + `app/lib/types.ts` + `cli/src/constants/billing.ts`) by `~/Projects/dotfiles/audits/cross-tier-rates.sh` so a bump surfaces immediately.
 
 Rates come from a process-local cache in front of `core.model_library` (`state/model_rate_cache.zig`), on the shared `common.CacheTable` primitive. The table is the single source of truth; the cache exists to keep the charge path off it in the common case.
 
@@ -319,7 +319,7 @@ The balance gate above bounds what a **tenant** may spend: one credit pool, one 
 
 | | Balance gate | Budget gate |
 |---|---|---|
-| Scope | tenant (`core.tenant_billing.balance_nanos`) | one fleet (`core.fleets.config_json` → `x-agentsfleet.budget`) |
+| Scope | tenant (`billing.tenant_wallet.balance_nanos`) | one fleet (`core.fleets.config_json` → `x-agentsfleet.budget`) |
 | Question | "can this tenant afford one more event?" | "has this fleet spent its own allowance?" |
 | Pre-run refusal | `gate_blocked` + `balance_exhausted` | `gate_blocked` + `budget_breach` |
 | Mid-run refusal | `/renew` → `UZ-RUN-012` → `renewal_terminate` | `/renew` → `UZ-RUN-015` → `budget_breach` |
@@ -451,9 +451,7 @@ core.tenant_model_entries (id, tenant_id, model_id, secret_ref, created_at, upda
 
 **Guards.** POST/PATCH validate `secret_ref` names an existing vault secret (`UZ-MODELS-002` 404 otherwise) and refuse an exact `(model_id, secret_ref)` duplicate (`UZ-MODELS-003` 409). DELETE refuses the entry backing the tenant's active selection (`UZ-MODELS-001` 409) — the UI pre-disables Remove on that row rather than round-tripping the guard. The existing secret-delete path (`DELETE /v1/workspaces/{ws}/secrets/{name}`) is extended symmetrically: deleting a secret still referenced by ≥1 entry is refused, naming the reference count, so a credential can never be deleted out from under a live entry.
 
-**Table renames (same milestone, no behaviour change).** `platform_llm_keys` → `core.platform_provider_defaults` and `tenant_providers` → `core.tenant_model_selection` — both were singular-sounding names that no longer read clearly next to the new plural `tenant_model_entries`. Every reader/writer (state, handlers, fixtures, billing) was repointed at the new table names in the same diff; no column or behaviour changed.
-
-**Vault key-name convention (adjacent cleanup, same milestone).** While wiring the entry-create guard's secret-existence check, a `fleet:`-prefix convention on dashboard-created secret names (`fleet_runtime/credential_key.zig`) turned out to discriminate nothing — every current writer already applied it. It is removed repo-wide: every `vault.secrets` writer and reader now uses the raw user-chosen name directly, and `secret_list.zig`'s `LIKE 'fleet:%'` filter + display-prefix-stripping are gone as dead code. No live data needed migrating.
+**Vault key names.** A secret is stored under the raw name the user chose. There is no prefix convention, so a reader looks up exactly what the writer wrote.
 
 ---
 
@@ -547,7 +545,7 @@ Hidden entirely in v2.0. Re-introduced in v2.1 alongside Stripe.
 ### 11.4 What gets read by this page
 
 Everything on the page is sourced from rows the runtime already writes:
-- `core.tenant_billing.balance_nanos` for the headline.
+- `billing.tenant_wallet.balance_nanos` for the headline.
 - `billing.usage_ledger` (filtered by tenant_id, with the `charge_type` discriminator) for the Usage tab.
 - No Stripe, no purchase tables, no invoicing tables — those land in v2.1.
 
@@ -582,7 +580,7 @@ When the gate trips, every event-emitting CLI command (e.g. `agentsfleet steer`)
 
 ## 13. Open questions deferred to v2.1+ and v3
 
-- **Stripe Purchase Credits flow.** v2.1. Adds `core.credit_purchases` table, Stripe webhook handler, dashboard button enablement, CLI subcommand if/when warranted.
+- **Stripe Purchase Credits flow.** v2.1. Adds a credit-purchases table, a Stripe webhook handler, the dashboard button, and a command-line subcommand if one is warranted.
 - **Auto Top Up.** v2.1, alongside Stripe. Adds threshold + reload-amount config on the tenant.
 - **Plan tiers as recurring grants.** v2.1+ if onboarding metrics suggest it. Encoded as recurring Stripe charges that top up `balance_nanos`, not as branches in `compute_charge`.
 - **Refund-on-actual-tokens.** **Superseded by M80_010** (incremental per-renewal metering). The run debit follows the real run via per-`/renew` deltas + a settle at report, so the credit drained equals actual runtime × rate + actual tokens — there is nothing to reconcile or refund after the fact.

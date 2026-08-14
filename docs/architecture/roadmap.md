@@ -19,7 +19,8 @@ One row per item, so an agent can check a status without reading the ledger; eac
 | Security Reviewer prebuilt fleet | forward-looking, unspecced | §Security Reviewer |
 | Slack consumption ladder | Rung 0 ✅ (M106_001); Rung 1 is direction, not a commitment | §Slack-resident surface |
 | Bastion | post-MVP shape, documented so specs don't foreclose it | §Bastion |
-| Payload offload + durable stream | specced, not started (M155_001, `docs/v2/pending/`) | §Payload offload and the durable stream |
+| Payload offload + charge breakdown | specced, not started (M155_001, `docs/v2/pending/`) | §Payload offload and the durable stream |
+| Dashboard Backend-for-Frontend | deferred — build with the v3 capability tokens | §Dashboard Backend-for-Frontend |
 
 ## v2.1 — authorization
 
@@ -30,7 +31,7 @@ Authorization is now **scope-based**. The role ladder (`AuthRole = user < operat
 ## v2.1+ — other deferred items
 
 - **Flow-1 active-MITM closure** — URL-fragment public-key binding + HKDF transcript binding. See [`../AUTH.md`](../AUTH.md) *threats this flow does NOT close*.
-- **Dashboard token model** — the Backend-For-Frontend (BFF) direction. Deferred; detail currently lives in `AUTH.md` and should move here or into its own spec when revisited.
+- **Dashboard token model** — the Backend-for-Frontend direction. Deferred; see §Dashboard Backend-for-Frontend below.
 - **Open fleet (mode C)** — self-enrolling runners. See [`runner_fleet.md`](./runner_fleet.md).
 - **Label-scoped sticky affinity — ✅ DELIVERED (M85_001).** The first eligibility gate shipped: `core.fleets.required_tags <@ runner.labels` filters the candidate set before `fleet.runner_affinity.last_runner_id` is applied as a sticky preference. A sticky runner that no longer satisfies a fleet's tags cannot win; the eligible runner wins instead. See `src/agentsfleetd/fleet/assign.zig` and the `sticky hint never overrides eligibility` / `unsatisfiable tags hold then schedule` tests in `placement_eligibility_test.zig`.
 - **Trust-scoped sticky affinity** — still deferred. Once runners can be local / low-trust (laptops, untrusted hosts), affinity selection must add **trust class + scope** (allowed tenants/workspaces) and sandbox-tier eligibility before the sticky preference — "prefer the last runner *among the eligible set*," never an override of eligibility. M85_001 intentionally shipped labels only; the trust/scope/tier funnel remains its own security workstream.
@@ -66,7 +67,7 @@ Where the human front door points after the CLI/dashboard wedge. Rung 0 shipped 
 
 The product is reached through a two-rung ladder whose boundary is **agency, not memory**:
 
-- **Rung 0 — channel-resident reactive bot — ✅ DELIVERED (M106_001).** A first-party multi-tenant `@agentsfleet` Slack app: one OAuth (Open Authorization) install per Slack workspace (`team_id → workspace`). In any channel it's invited to, an `@mention` is answered in-thread, read-only, mention-only — and the bot **learns that channel** over time. The memory namespace is a **per-channel resident fleet** (memory is keyed by `fleet_id`, not workspace), so memory persists across threads because the fleet, not the thread, owns it (reuses the [`runner_fleet.md`](./runner_fleet.md) §Memory-continuity loop verbatim). It never acts unattended.
+- **Rung 0 — channel-resident reactive bot — ✅ DELIVERED (M106_001).** A first-party multi-tenant `@agentsfleet` Slack app: one OAuth (Open Authorization) install per Slack workspace (`team_id → workspace`). In any channel it's invited to, an `@mention` is answered in-thread, read-only, mention-only — and the bot **learns that channel** over time. The memory namespace is a **per-channel resident fleet** (memory is keyed by `fleet_id`, not workspace), so memory persists across threads because the fleet, not the thread, owns it (reuses the [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity" verbatim). It never acts unattended.
 - **Rung 1 — hired durable teammates (follow-on).** From the same Slack surface, a recurring need converts into a durable teammate that subscribes to a real source (e.g. Zoho Desk), wakes unattended, and takes **gated** write actions with approval — the existing event-driven runtime. The Slack surface adds library-install + per-integration OAuth connectors + the Slack-user → `approval:resolve` allowlist. Depends on M103 (Fleet library) + M105 (schedules).
 
 **Why this is not "a chat UI over tools"** ([`high_level.md`](./high_level.md) §1): Rung 0 is the acquisition on-ramp, deliberately reactive — its job is to be useful enough to convert to the durable teammate. The durable runtime is still the product; agency (acting unattended) is what the operator hires and what a reactive channel bot structurally cannot do. Memory is free at both rungs.
@@ -101,13 +102,47 @@ gate, which `billing.usage_ledger`'s span columns (`created_at`,
 the window. Revenue-by-charge-type stays a one-line query against the ledger.
 
 What is no longer answerable from Postgres is the **slice-by-slice accrual
-detail** — the per-renewal audit trail. That is a durable-stream concern rather
-than a money-table one: it is high-volume, append-only, read rarely, and never
-needed transactionally alongside the wallet. Rebuilding it as a Postgres table
-would reintroduce exactly the growth M154 removed. M155_001 §2 emits it to the
-durable event stream instead.
+detail** — the per-renewal audit trail. The Usage tab still shows what an event
+cost; what it cannot show is how that total accrued, because every renewal folds
+into one accumulated row.
 
-The distinction that makes this safe: **enforcement** (does this run have budget?)
-is answered from the ledger inside the transaction, and **audit** (what did each
-slice cost?) is answered from the stream, after the fact. Only the first needs to
-be correct synchronously.
+M155_001 proposes fixed-width time buckets accumulated in place, keyed on the
+event. Bucket width is a constant, so rows per event are bounded by maximum
+runtime divided by that width rather than by how often a runner renews — which is
+the growth that made the old table untenable. An exporter-backed stream was
+considered and rejected: the export ring drops under load, so the breakdown would
+be thinnest exactly when a run is busiest, and it would put an external service on
+a page a paying customer loads.
+
+The distinction that makes either shape safe: **enforcement** (does this run have
+budget?) is answered from the ledger inside the transaction, and **audit** (what
+did each slice cost?) is answered afterwards. Only the first has to be correct
+synchronously.
+
+## Dashboard Backend-for-Frontend — deferred
+
+The dashboard rides one Clerk session token today, and the browser still holds it
+in memory to send as a Bearer. The end shape routes every dashboard read through
+`/api/*` route handlers on the Next.js server, so the browser carries only the
+`__session` cookie and never a token. `AUTH.md` §"Why the dashboard rides one
+token" describes what ships now.
+
+It is deferred, for three reasons.
+
+1. **Its value is not needed yet.** What a Backend-for-Frontend buys is one
+   audited boundary and a home for rate limiting. Neither is pressing.
+2. **A dashboard-only boundary is the wrong home for an authorization audit.**
+   `agentsfleetd` sees the command-line, dashboard and tenant-key flows; an
+   `/api` layer sees one of the three.
+3. **It would be rebuilt immediately.** The v3 direction stops `agentsfleetd`
+   trusting Clerk's key set directly and has `agentsfleet` mint scoped,
+   revocable capability tokens of its own. Building the boundary now means
+   building it around a token shape that work replaces.
+
+Build it with the v3 capability-token migration, so the boundary is built once
+around the final token shape.
+
+It also does not close token secrecy. Even behind a Backend-for-Frontend, a
+compromised page can call `getToken()` and get a token. Closing that is a
+Content-Security-Policy and Subresource-Integrity concern, and its own piece of
+work.
