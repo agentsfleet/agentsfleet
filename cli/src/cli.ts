@@ -7,20 +7,20 @@ import { type Command, CommanderError } from "commander";
 import { openUrl } from "./lib/browser.ts";
 import {
   clearCredentials,
+  emptyCredentials,
+  emptyWorkspaces,
   loadCredentials,
   loadWorkspaces,
   saveCredentials,
   saveWorkspaces,
-  type Credentials,
-  type Workspaces,
 } from "./lib/state.ts";
 import { Effect } from "effect";
 import { runCommanderParse } from "./lib/commander-bridge.ts";
-import { extractRoleFromToken } from "./program/auth-token.ts";
+import { isString } from "./lib/guards.ts";
 import { resolveApiKeyFromEnv } from "./services/config.ts";
 import { printJson, writeError, writeLine } from "./program/io.ts";
 import { printVersion } from "./program/banner.ts";
-import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.ts";
+import { guardCommand } from "./program/auth-guard.ts";
 import { ui, printKeyValue, printSection, printTable } from "./output/index.ts";
 import {
   DEFAULT_API_URL,
@@ -30,7 +30,6 @@ import {
 import { buildProgram } from "./program/cli-tree.ts";
 import { buildHandlers, type Lifecycle } from "./program/handlers-bind.ts";
 import { detectTokenInArgv } from "./lib/argv-redact.ts";
-import { ROLE_ADMIN } from "./constants/auth-roles.ts";
 import type { ProgramState } from "./program/cli-tree-types.ts";
 import type { CommandCtx, CommandDeps } from "./commands/types.ts";
 import type { WritableStreamLike } from "./output/capability.ts";
@@ -46,14 +45,8 @@ const pkgJson = JSON.parse(readFileSync(PKG_JSON_PATH, "utf8")) as {
 };
 export const VERSION: string = pkgJson.version;
 
-// Only `login` skips the preAction auth guard; every other root inherits it.
-const AUTH_EXEMPT: ReadonlySet<string> = new Set(["login"]);
 const FLAG = "--" as const;
 const FLAG_API = "--api=" as const;
-const TYPE_STRING = "string" as const;
-
-const isString = (value: unknown): value is string =>
-  typeof value === TYPE_STRING;
 
 export interface RunCliIo {
   stdout?: WritableStreamLike;
@@ -157,20 +150,20 @@ function installPreAction(
       );
     }
 
-    // Auth-guard: walk to the top-level command and exempt `login` only.
+    // Walk to the top-level command; auth-guard.ts owns which roots are
+    // exempt from which question.
     let root: Command = actionCommand;
     while (root.parent && root.parent.name() !== "agentsfleet")
       root = root.parent;
-    if (AUTH_EXEMPT.has(root.name())) return;
-    const auth = requireAuth(ctx);
-    if (!auth.ok) {
+    const refusal = guardCommand(root.name(), ctx);
+    if (refusal) {
       state.exitCode = 1;
-      writeError(ctx, "AUTH_REQUIRED", AUTH_FAIL_MESSAGE, {
+      writeError(ctx, refusal.errorCode, refusal.message, {
         printJson,
         writeLine,
         ui,
       });
-      throw new CommanderError(1, "auth.required", AUTH_FAIL_MESSAGE);
+      throw new CommanderError(1, refusal.commanderCode, refusal.message);
     }
   });
 }
@@ -224,14 +217,6 @@ function applyOutputToTree(
   for (const sub of cmd.commands) applyOutputToTree(sub, stdout, stderr);
 }
 
-const EMPTY_CREDS: Credentials = {
-  token: null,
-  saved_at: null,
-  session_id: null,
-  api_url: null,
-};
-const EMPTY_WORKSPACES: Workspaces = { current_workspace_id: null, items: [] };
-
 export async function runCli(
   argv: readonly string[],
   io: RunCliIo = {},
@@ -255,23 +240,18 @@ export async function runCli(
   const effectiveArgv = argv.length === 0 ? ["--help"] : [...argv];
 
   const [creds, workspaces] = await Promise.all([
-    loadCredentials().catch(() => EMPTY_CREDS),
-    loadWorkspaces().catch(() => EMPTY_WORKSPACES),
+    loadCredentials().catch(() => emptyCredentials()),
+    loadWorkspaces().catch(() => emptyWorkspaces()),
   ]);
   // Session identity is read and bumped through `telemetry.json`.
   const stdinSrc = io.stdin ?? process.stdin;
-  // Two credential slots: the stored login JWT (file slot, from
+  // Two credential slots: the stored login credential (file slot, from
   // credentials.json) and the service API key (env slot). The api key wins
-  // at the wire (resolveToken's env-first precedence), so an exported key
-  // grants the admin role-gate; otherwise the role comes from the login
-  // JWT's claims. resolveApiKeyFromEnv trims, so a whitespace-only key is
-  // treated as absent everywhere (guard + wire) rather than sending a blank
-  // `Authorization: Bearer`.
+  // at the wire (resolveToken's env-first precedence). resolveApiKeyFromEnv
+  // trims, so a whitespace-only key is treated as absent everywhere
+  // (guard + wire) rather than sending a blank `Authorization: Bearer`.
   const storedToken = creds.token ?? null;
   const resolvedApiKey = resolveApiKeyFromEnv(env);
-  const resolvedAuthRole = resolvedApiKey
-    ? ROLE_ADMIN
-    : extractRoleFromToken(storedToken);
 
   const explicitApi = resolveGlobalApiUrl(argv, env);
   const apiUrl = normalizeApiUrl(
@@ -279,10 +259,11 @@ export async function runCli(
   );
   const ctx: CommandCtx = {
     apiUrl,
+    storedApiUrl: creds.api_url ?? null,
+    targetIsExplicit: Boolean(explicitApi),
     dashboardUrl: resolveDashboardUrl(apiUrl, env.AGENTSFLEET_DASHBOARD_URL),
     token: storedToken,
     apiKey: resolvedApiKey,
-    authRole: resolvedAuthRole,
     jsonMode,
     noOpen: false,
     noInput: false,

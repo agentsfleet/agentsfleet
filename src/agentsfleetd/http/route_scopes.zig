@@ -92,6 +92,12 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         .approve_auth_session,
         .delete_auth_session,
         .delete_all_auth_sessions,
+        // Command-line credentials are self-service: a person manages their own.
+        // No capability scope gates them, and none could — a tenant key holds
+        // every scope this family might name, so the refusal that matters is on
+        // principal mode and lives in the handler beside the ownership check.
+        .cli_credentials,
+        .cli_credential_by_id,
         // The model library catalogue is global, non-secret data — any
         // authenticated tenant may read it; no capability scope gates it.
         .model_library,

@@ -23,6 +23,7 @@ pub const AuthCtx = auth_ctx.AuthCtx;
 
 const bearer_or_api_key = @import("bearer_or_api_key.zig");
 pub const tenant_api_key = @import("tenant_api_key.zig");
+pub const cli_credential = @import("cli_credential.zig");
 pub const runner_bearer = @import("runner_bearer.zig");
 const require_scope = @import("require_scope.zig");
 const webhook_hmac = @import("webhook_hmac.zig");
@@ -31,6 +32,7 @@ pub const svix_signature_mod = @import("svix_signature.zig");
 
 const BearerOrApiKey = bearer_or_api_key.BearerOrApiKey;
 const TenantApiKey = tenant_api_key.TenantApiKey;
+const CliCredential = cli_credential.CliCredential;
 const RunnerBearer = runner_bearer.RunnerBearer;
 const RequireScope = require_scope.RequireScope;
 const WebhookHmac = webhook_hmac.WebhookHmac;
@@ -49,6 +51,10 @@ pub const MiddlewareRegistry = struct {
     // ── Concrete middleware instances ─────────────────────────────────────
     bearer_or_api_key: BearerOrApiKey,
     tenant_api_key_mw: TenantApiKey,
+    /// The person-scoped credential class. Held beside the tenant key rather
+    /// than folded into it: they resolve different principal types, and a
+    /// user-scoped route must be able to refuse one while accepting the other.
+    cli_credential_mw: CliCredential,
     runner_bearer_mw: RunnerBearer,
     // One capability gate for every authenticated route. The
     // route's required scopes ride `AuthCtx.required_scopes`, set per-request by
@@ -84,6 +90,9 @@ pub const MiddlewareRegistry = struct {
         // Wire the tenant-key pointer into bearer_or_api_key so `agt_t`-
         // prefixed tokens delegate to the DB-backed lookup path.
         self.bearer_or_api_key.tenant_api_key = &self.tenant_api_key_mw;
+        // Same wiring, one prefix along: `afc_` tokens delegate to the
+        // credential path instead of the tenant path.
+        self.bearer_or_api_key.cli_credential = &self.cli_credential_mw;
         self._bearer_chain = .{
             self.bearer_or_api_key.middleware(),
             self.require_scope_mw.middleware(),

@@ -112,7 +112,6 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
   program
     .command(COMMAND_LOGIN)
     .description("Authenticate via browser")
-    .option("--token <token>", "Authenticate with this token directly, no browser (prefer piped stdin to keep it out of shell history)")
     .option("--token-name <label>", "Label for this session, shown on the approval page and in `auth status` (default: platform family)")
     .option("--force", "Skip the existing-credential prompt and overwrite", false)
     .action(actionFor(COMMAND_LOGIN, (frame) => runHandler(state, frame, handlers.login)));
@@ -129,7 +128,7 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
   const auth = program.command("auth").description("Inspect authentication state");
   auth
     .command("status")
-    .description("Show active token source, claims, and server-side validity")
+    .description("Show active credential source and server-side validity")
     .action(actionFor("auth.status", (frame) => runHandler(state, frame, handlers.auth.status)));
 
   program

@@ -49,6 +49,8 @@ pub fn templateFor(route: router.Route) []const u8 {
         .tenant_model_entry_by_id => "/v1/tenants/me/models/{id}",
         .tenant_api_keys => "/v1/api-keys",
         .tenant_api_key_by_id => "/v1/api-keys/{id}",
+        .cli_credentials => "/v1/cli-credentials",
+        .cli_credential_by_id => "/v1/cli-credentials/{id}",
 
         .admin_fleet_library => "/v1/admin/fleet-libraries",
         .admin_fleet_library_by_id => "/v1/admin/fleet-libraries/{id}",

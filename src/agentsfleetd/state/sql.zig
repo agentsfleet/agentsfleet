@@ -125,3 +125,86 @@ pub const INSERT_WORKSPACE =
     \\VALUES ($1::uuid, $2::uuid, $3, $4, $5)
     \\ON CONFLICT (tenant_id, name) WHERE name IS NOT NULL DO NOTHING
 ;
+
+// ── CLI credentials (`state/cli_credentials.zig`) ───────────────────────────
+
+/// Transaction-scoped advisory lock serializing mint per (user, machine).
+/// Two concurrent logins can both run the revoke before either insert is
+/// visible; the loser then dies on the partial unique index below. With the
+/// lock, the second mint waits and cleanly revokes the first's fresh row.
+pub const LOCK_CLI_CREDENTIAL_MINT =
+    \\SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text, 0))
+;
+
+/// Mint a credential. The partial unique index on (user_id, machine_name)
+/// WHERE revoked_at IS NULL is the guard: if a caller inserts without first
+/// revoking this machine's live row, the insert fails here rather than leaving
+/// two live credentials an operator cannot tell apart.
+pub const INSERT_CLI_CREDENTIAL =
+    \\INSERT INTO core.cli_credentials
+    \\    (id, user_id, tenant_id, machine_name, credential_hash,
+    \\     credential_prefix, deployment, created_from_address, created_at)
+    \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9)
+;
+
+/// The authentication lookup. Filters the digest alone — the unique constraint
+/// on `credential_hash` is the whole access path — and returns revocation state
+/// for the caller to judge, so a revoked credential is refused with its own
+/// code rather than being indistinguishable from an unknown one.
+///
+/// `u.tenant_id`, not `c.tenant_id`: the joined user row is the authoritative
+/// tenant, so the principal carries the same value the authz layer would
+/// otherwise re-fetch per request — the mint-time snapshot on the credential
+/// row is provenance, never authority.
+pub const SELECT_CLI_CREDENTIAL_BY_HASH =
+    \\SELECT c.id::text, c.user_id::text, u.tenant_id::text, c.deployment,
+    \\       c.revoked_at, u.oidc_subject
+    \\FROM core.cli_credentials c
+    \\JOIN core.users u ON u.id = c.user_id
+    \\WHERE c.credential_hash = $1
+    \\LIMIT 1
+;
+
+/// Revoke this machine's live credential ahead of minting its replacement.
+/// Scoped to one (user, machine): another machine's credential is untouched,
+/// which is what lets a second laptop keep working across a re-login.
+pub const REVOKE_CLI_CREDENTIAL_FOR_MACHINE =
+    \\UPDATE core.cli_credentials
+    \\SET revoked_at = $3
+    \\WHERE user_id = $1::uuid AND machine_name = $2 AND revoked_at IS NULL
+;
+
+/// Revoke one credential by id, scoped to its owner so a caller cannot revoke
+/// a credential belonging to somebody else by guessing an identifier.
+pub const REVOKE_CLI_CREDENTIAL_BY_ID =
+    \\UPDATE core.cli_credentials
+    \\SET revoked_at = $3
+    \\WHERE id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL
+;
+
+/// Resolve an authenticated subject to the user row these endpoints write
+/// against. `core.cli_credentials.user_id` is a foreign key to `core.users(id)`,
+/// but a principal carries the identity provider's subject, so the two are one
+/// lookup apart.
+///
+/// Deliberately narrower than `SELECT_BOOTSTRAP_IDENTITY`, which joins
+/// memberships on the owner role and requires a named workspace: a read-only
+/// collaborator satisfies neither and would resolve nothing. A collaborator
+/// minting a credential for their own terminal is precisely the case the
+/// resolved-capability model exists to keep working.
+pub const SELECT_USER_IDENTITY_BY_SUBJECT =
+    \\SELECT id::text, tenant_id::text
+    \\FROM core.users
+    \\WHERE oidc_subject = $1
+    \\LIMIT 1
+;
+
+/// A user's live credentials, newest first. `credential_prefix` is the only
+/// credential-shaped column returned, and it does not authenticate.
+pub const SELECT_LIVE_CLI_CREDENTIALS_FOR_USER =
+    \\SELECT id::text, machine_name, credential_prefix, deployment,
+    \\       created_from_address, created_at
+    \\FROM core.cli_credentials
+    \\WHERE user_id = $1::uuid AND revoked_at IS NULL
+    \\ORDER BY created_at DESC
+;

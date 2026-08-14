@@ -227,3 +227,38 @@ test "matchWorkspaceApprovalGate: bare gate id" {
     try std.testing.expectEqualStrings("01999999-9999-7999-9999-999999999999", r.gate_id);
     try std.testing.expect(matchers.matchWorkspaceApprovalGate(parse("/v1/workspaces/ws_1/approvals/abc:approve", &buf)) == null);
 }
+
+test "matchCliCredentialById: only the item form matches, and an empty id is refused" {
+    var b: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
+
+    const id = "01920000-0000-7000-8000-000000000001";
+    try std.testing.expectEqualStrings(
+        id,
+        matchers.matchCliCredentialById(parse("/v1/cli-credentials/" ++ id, &b)).?,
+    );
+
+    // The bare collection is exact-matched in `router.match()`. If this matcher
+    // claimed it too, POST and GET would reach the item handler — which only
+    // accepts DELETE — and minting would answer 405.
+    try std.testing.expect(matchers.matchCliCredentialById(parse("/v1/cli-credentials", &b)) == null);
+
+    // `/cli-credentials/` parses to an empty second segment. `param()` refuses
+    // it at the matcher boundary, so the handler never receives an empty
+    // identifier and never has to decide what one means.
+    try std.testing.expect(matchers.matchCliCredentialById(parse("/v1/cli-credentials/", &b)) == null);
+
+    // Anything deeper belongs to no route in this family.
+    try std.testing.expect(matchers.matchCliCredentialById(parse("/v1/cli-credentials/" ++ id ++ "/extra", &b)) == null);
+
+    // A neighbouring two-segment collection must not be captured — both are
+    // `{collection}/{id}` and only the first segment tells them apart.
+    try std.testing.expect(matchers.matchCliCredentialById(parse("/v1/api-keys/" ++ id, &b)) == null);
+
+    // The segment is returned verbatim: shape-checking an identifier is the
+    // handler's job, where it answers a typed refusal. A matcher that
+    // pre-filtered it would turn a malformed id into a 404 instead.
+    try std.testing.expectEqualStrings(
+        "not-a-uuid",
+        matchers.matchCliCredentialById(parse("/v1/cli-credentials/not-a-uuid", &b)).?,
+    );
+}

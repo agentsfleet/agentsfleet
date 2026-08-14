@@ -41,6 +41,10 @@ import { runCli } from "../src/cli.ts";
 import { saveCredentials, saveWorkspaces } from "../src/lib/state.ts";
 import { bufferStream, withAuthedStateDir, withFreshStateDir } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
+import {
+  CLI_CREDENTIAL_BODY_LEN,
+  CLI_CREDENTIAL_PREFIX,
+} from "../src/constants/cli-credential.ts";
 
 // `list` (top-level, cli-tree-fleet.ts) is the authed, workspace-scoped
 // surface under test — it GETs /v1/workspaces/<wsId>/fleets with a Bearer
@@ -55,7 +59,10 @@ const FLAG_WORKSPACE_ID = "--workspace-id" as const;
 const WS_PERSISTED = "01900000-0000-7000-8000-0000000ab1de";
 const WS_OVERRIDE = "01900000-0000-7000-8000-0000000fffff";
 
-const DISK_TOKEN = "disk.payload.sig";
+// The on-disk value is a minted credential, so it carries the afc_ shape
+// services/credentials.ts validates on load. Built by repetition so this
+// file holds no high-entropy literal.
+const DISK_TOKEN = `${CLI_CREDENTIAL_PREFIX}${"c".repeat(CLI_CREDENTIAL_BODY_LEN)}`;
 const ENV_API_KEY = "agt_t_envkey";
 
 // A creds.api_url that can never answer: if a precedence rung wrongly lets it
@@ -97,6 +104,7 @@ async function seedCreds(apiUrl: string | null, sessionId: string): Promise<void
     saved_at: Date.now(),
     session_id: sessionId,
     api_url: apiUrl,
+    credential_id: null,
   });
 }
 

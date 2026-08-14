@@ -16,6 +16,7 @@ import {
   verifyAndDecryptWithRetry,
 } from "../src/commands/login-device-flow.ts";
 import { generateCliKeypair } from "../src/lib/cli-flow.ts";
+import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
 import { Input } from "../src/services/input.ts";
@@ -78,14 +79,26 @@ const inputSequence = (answers: ReadonlyArray<string | null>): Layer.Layer<Input
 
 const credsWith = (
   token: Option.Option<Redacted.Redacted<string>>,
+  apiUrl: string | null = null,
 ): Layer.Layer<Credentials> =>
   Layer.succeed(Credentials, {
     getAccessToken: Effect.sync(() => token),
-    getSavedAt: Effect.sync(() => null),
-    getSessionId: Effect.sync(() => null),
-    getApiUrl: Effect.sync(() => null),
+    // snapshot mirrors the token so the replace-prompt path, which reads the
+    // stored deployment alongside it, sees a coherent record.
+    snapshot: Effect.succeed({ accessToken: token, savedAt: null, sessionId: null, apiUrl, credentialId: null }),
     saveAccessToken: () => Effect.void,
     clearAccessToken: Effect.void,
+  });
+
+const configAt = (apiUrl: string): Layer.Layer<CliConfig> =>
+  Layer.succeed(CliConfig, {
+    apiUrl,
+    dashboardUrl: "https://app.example",
+    accessToken: Option.none(),
+    jsonMode: false,
+    noOpen: true,
+    telemetryPosthogKey: "",
+    telemetryPosthogHost: "",
   });
 
 // Every request fails with the given status/code — enough to drive the
@@ -220,9 +233,31 @@ describe("idempotencyCheck — interactive replace prompt (D20)", () => {
         Effect.provide(credsWith(Option.some(Redacted.make("existing")))),
         Effect.provide(inputReturning("y")),
         Effect.provide(outputNoop),
+        Effect.provide(configAt("https://api.example")),
       ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
+  });
+
+  test("replacing a credential from ANOTHER deployment names both, and says the old one stays live", async () => {
+    const rec = { warnings: [] as string[] };
+    await Effect.runPromiseExit(
+      idempotencyCheck({ force: false, noInput: false }).pipe(
+        Effect.provide(
+          credsWith(
+            Option.some(Redacted.make("existing")),
+            "https://api-dev.example",
+          ),
+        ),
+        Effect.provide(inputReturning("y")),
+        Effect.provide(outputRecording(rec)),
+        Effect.provide(configAt("https://api.example")),
+      ),
+    );
+    const warning = rec.warnings.join(" ");
+    expect(warning).toContain("https://api-dev.example");
+    expect(warning).toContain("https://api.example");
+    expect(warning).toContain("LEAVES IT LIVE");
   });
 
   test("existing credential + interactive 'n' aborts as InterruptedError", async () => {
@@ -231,6 +266,7 @@ describe("idempotencyCheck — interactive replace prompt (D20)", () => {
         Effect.provide(credsWith(Option.some(Redacted.make("existing")))),
         Effect.provide(inputReturning("n")),
         Effect.provide(outputNoop),
+        Effect.provide(configAt("https://api.example")),
       ),
     );
     expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
@@ -251,6 +287,7 @@ describe("promptYesNo — input normalization (driven via idempotencyCheck)", ()
           Effect.provide(credsWith(Option.some(Redacted.make("existing")))),
           Effect.provide(inputReturning(ans)),
           Effect.provide(outputNoop),
+          Effect.provide(configAt("https://api.example")),
         ),
       );
       expect(Exit.isSuccess(exit)).toBe(true);
@@ -264,6 +301,7 @@ describe("promptYesNo — input normalization (driven via idempotencyCheck)", ()
           Effect.provide(credsWith(Option.some(Redacted.make("existing")))),
           Effect.provide(inputReturning(ans)),
           Effect.provide(outputNoop),
+          Effect.provide(configAt("https://api.example")),
         ),
       );
       expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
@@ -278,6 +316,7 @@ describe("idempotencyCheck — early-return guards", () => {
         Effect.provide(credsWith(Option.some(Redacted.make("existing")))),
         Effect.provide(inputReturning("n")),
         Effect.provide(outputNoop),
+        Effect.provide(configAt("https://api.example")),
       ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -289,6 +328,7 @@ describe("idempotencyCheck — early-return guards", () => {
         Effect.provide(credsWith(Option.none())),
         Effect.provide(inputReturning("n")),
         Effect.provide(outputNoop),
+        Effect.provide(configAt("https://api.example")),
       ),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -334,6 +374,7 @@ describe("verifyAndDecryptWithRetry — prompt, validation, retry", () => {
         Effect.provide(http.layer),
         Effect.provide(inputSequence(["abc", "12345", "", "1234567", "12 34 56"])),
         Effect.provide(outputNoop),
+        Effect.provide(configAt("https://api.example")),
       ),
     );
     expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
@@ -348,6 +389,7 @@ describe("verifyAndDecryptWithRetry — prompt, validation, retry", () => {
         Effect.provide(http.layer),
         Effect.provide(inputSequence([])),
         Effect.provide(outputNoop),
+        Effect.provide(configAt("https://api.example")),
       ),
     );
     expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
@@ -362,6 +404,7 @@ describe("verifyAndDecryptWithRetry — prompt, validation, retry", () => {
         Effect.provide(http.layer),
         Effect.provide(inputReturning("424242")),
         Effect.provide(outputNoop),
+        Effect.provide(configAt("https://api.example")),
       ),
     );
     expect(failureValue(exit)).toBeInstanceOf(InterruptedError);

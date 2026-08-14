@@ -87,9 +87,7 @@ const configLayer = (
 // the env token surfaced via CliConfig.accessToken above.
 const credentialsLayer: Layer.Layer<Credentials> = Layer.succeed(Credentials, {
   getAccessToken: Effect.succeed(Option.none()),
-  getSavedAt: Effect.succeed(null),
-  getSessionId: Effect.succeed(null),
-  getApiUrl: Effect.succeed(null),
+  snapshot: Effect.succeed({ accessToken: Option.none(), savedAt: null, sessionId: null, apiUrl: null, credentialId: null }),
   saveAccessToken: () => Effect.void,
   clearAccessToken: Effect.void,
 });

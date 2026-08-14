@@ -69,9 +69,7 @@ export const workspacesLayer = (): Layer.Layer<Workspaces> =>
 export const credentialsLayer = (): Layer.Layer<Credentials> =>
   Layer.succeed(Credentials, {
     getAccessToken: Effect.succeed(Option.none()),
-    getSavedAt: Effect.die("should not be called"),
-    getSessionId: Effect.die("should not be called"),
-    getApiUrl: Effect.die("should not be called"),
+    snapshot: Effect.succeed({ accessToken: Option.none(), savedAt: null, sessionId: null, apiUrl: null, credentialId: null }),
     saveAccessToken: () => Effect.die("should not be called"),
     clearAccessToken: Effect.die("should not be called"),
   });

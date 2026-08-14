@@ -17,42 +17,26 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-import { Writable } from "node:stream";
+import { bufferStream, withFreshStateDir as withEmptyStateDir } from "./helpers-cli-state.ts";
 
 import { runCli } from "../src/cli.ts";
 import { asFetchOverride, makeHeaders, type ResponseLike } from "./helpers.ts";
 
-function bufferStream(): { stream: Writable; read: () => string } {
-  let data = "";
-  return {
-    stream: new Writable({
-      write(chunk, _enc, cb) {
-        data += String(chunk);
-        cb();
-      },
-    }),
-    read: () => data,
-  };
-}
 
+/** Fresh state dir pre-seeded with a workspace, so workspace-scoped commands
+ *  resolve a context. Credentials stay absent on purpose — these tests prove
+ *  `AGENTSFLEET_API_KEY` alone clears the guard. */
 async function withFreshStateDir<T>(fn: () => Promise<T>): Promise<T> {
-  const previous = process.env.AGENTSFLEET_STATE_DIR;
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-apikey-"));
-  process.env.AGENTSFLEET_STATE_DIR = dir;
-  await fs.writeFile(
-    path.join(dir, "workspaces.json"),
-    `${JSON.stringify({ current_workspace_id: "ws_test", items: [{ workspace_id: "ws_test" }] })}\n`,
-    "utf8",
-  );
-  try {
+  return withEmptyStateDir(async (dir) => {
+    await fs.writeFile(
+      path.join(dir, "workspaces.json"),
+      `${JSON.stringify({ current_workspace_id: "ws_test", items: [{ workspace_id: "ws_test" }] })}
+`,
+      "utf8",
+    );
     return await fn();
-  } finally {
-    if (previous === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
-    else process.env.AGENTSFLEET_STATE_DIR = previous;
-    await fs.rm(dir, { recursive: true, force: true });
-  }
+  });
 }
 
 // Clean env with every auth source stripped, then exactly one key set.
@@ -140,5 +124,51 @@ test("AGENTSFLEET_API_KEY is sent as Authorization: Bearer on Effect-path reques
     // credential — proving the Effect-path propagation fix, not just that the
     // local guard accepted it.
     assert.equal(authHeader, "Bearer sk-branded-works", `expected the api key on the wire; stderr=${err.read()}`);
+  });
+});
+
+// With `--token` removed, the environment
+// variable is the whole unattended story, so the property that makes it
+// usable in a container has to be pinned: it authenticates a real request
+// and leaves nothing on disk for the caller to clean up or leak. The two
+// halves matter together — a key that authenticated but persisted itself
+// would have re-created the seeding path the flag's removal deleted.
+test("AGENTSFLEET_API_KEY authenticates a request and writes no credentials file", async () => {
+  await withEmptyStateDir(async (dir) => {
+    const out = bufferStream();
+    const err = bufferStream();
+    await fs.writeFile(
+      path.join(dir, "workspaces.json"),
+      `${JSON.stringify({ current_workspace_id: "ws_test", items: [{ workspace_id: "ws_test" }] })}\n`,
+      "utf8",
+    );
+    let authHeader: string | undefined;
+    const fetchImpl = asFetchOverride(async (url, init): Promise<ResponseLike> => {
+      if (url.includes("/fleets")) {
+        const headers = init?.headers as Record<string, string> | undefined;
+        authHeader = headers?.Authorization;
+      }
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        headers: makeHeaders([]),
+        text: async () => JSON.stringify({ items: [] }),
+      };
+    });
+    await runCli(["--json", "list"], {
+      env: envWith({ AGENTSFLEET_API_KEY: `agt_t${"b".repeat(48)}` }),
+      stdout: out.stream,
+      stderr: err.stream,
+      fetchImpl,
+    });
+    assert.ok(authHeader?.startsWith("Bearer agt_t"), `env key must reach the wire; got ${authHeader}`);
+
+    const credentialsWritten = await fs
+      .access(path.join(dir, "credentials.json"))
+      .then(() => true)
+      .catch(() => false);
+    assert.equal(credentialsWritten, false,
+      "an env-key request must persist nothing — that is what makes it safe in a container");
   });
 });

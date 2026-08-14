@@ -26,6 +26,7 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     if (std.mem.eql(u8, path, "/v1/admin/platform-keys")) return .admin_platform_keys;
     if (std.mem.eql(u8, path, "/v1/admin/models")) return .admin_models;
     if (std.mem.eql(u8, path, "/v1/api-keys")) return .tenant_api_keys;
+    if (std.mem.eql(u8, path, "/v1/" ++ matchers.S_CLI_CREDENTIALS)) return .cli_credentials;
     // Clerk user.created signup event — internal auth-plane path. Exact-match.
     if (std.mem.eql(u8, path, "/v1/auth/identity-events/clerk")) return .auth_identity_event_clerk;
     // Runner control plane — static exact-match paths (method-agnostic here;
@@ -116,6 +117,9 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
 
     // ── Tenant API key by id ──────────────────────────────────────────────
     if (matchers.matchTenantApiKeyById(p)) |id| return .{ .tenant_api_key_by_id = id };
+
+    // ── Command-line credential by id ─────────────────────────────────────
+    if (matchers.matchCliCredentialById(p)) |id| return .{ .cli_credential_by_id = id };
 
     // ── Tenant model registry entry by id (M121) ──────────────────────────
     if (matchers.matchTenantModelEntryById(p)) |id| return .{ .tenant_model_entry_by_id = id };

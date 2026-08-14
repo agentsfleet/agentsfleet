@@ -2,16 +2,12 @@
 // 350-line cap. Owns the workspace-hydration, spinner-handle, and
 // SIGINT-abort plumbing that the main login orchestrator calls into.
 
-import { Effect, Option, Redacted } from "effect";
+import { Effect, Redacted } from "effect";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
-import { CliConfig } from "../services/config.ts";
-import { Credentials } from "../services/credentials.ts";
-import { Stdin } from "../services/stdin.ts";
 import { Workspaces, type WorkspaceItem } from "../services/workspaces.ts";
 import { Analytics } from "../services/telemetry/analytics.service.ts";
 import { TelemetryRuntime } from "../services/telemetry/runtime.service.ts";
-import { pingMe } from "../lib/me-ping.ts";
 import { getConfigDir } from "../services/telemetry/consent.ts";
 import {
   clearDistinctId,
@@ -26,34 +22,28 @@ import { TENANT_WORKSPACES_PATH } from "../lib/api-paths.ts";
 import { SIGINT } from "../constants/signals.ts";
 import { decodeWorkspacePage } from "./workspace-response-decoders.ts";
 import {
-  InterruptedError,
+  reasonOf,
   UnexpectedError,
-  type CliError,
   type NetworkError,
   type ServerError,
 } from "../errors/index.ts";
+import { emptyWorkspaces } from "../lib/state.ts";
 
-const FIELD_TOKEN = "token" as const;
 const SIGN_IN_AGAIN = "sign in again" as const;
 
 const invalidWorkspacePage = (detail: string): UnexpectedError =>
   new UnexpectedError({ detail, suggestion: SIGN_IN_AGAIN });
-// login_method analytics dimension — distinguishes the interactive browser
-// device flow from a directly-supplied token (--token / env / piped stdin).
-export type LoginMethod = "browser" | typeof FIELD_TOKEN;
+// login_method analytics dimension. It once separated the interactive device
+// flow from a directly-supplied token; seeding is retired, so the device flow
+// is the only method minted. Still sent on the event so the analytics field
+// holds its shape for existing queries rather than disappearing.
+const LOGIN_METHOD_BROWSER = "browser" as const;
 
 type HydrationError = NetworkError | ServerError | UnexpectedError;
 
 // Render any underlying error as a single-line stderr warn so login still
 // exits 0 — workspace hydration is best-effort, not a login dependency.
 // The operator can recover by signing in again to repeat hydration.
-const reasonOf = (err: HydrationError): string =>
-  err._tag === "ServerError"
-    ? err.code
-    : err._tag === "NetworkError"
-      ? "network"
-      : "unexpected";
-
 const warnHydrationFailure = (
   err: HydrationError,
 ): Effect.Effect<void, never, Output> =>
@@ -146,45 +136,25 @@ export const hydrateWorkspacesAfterLogin = (
     if (!response.ok) return yield* warnHydrationFailure(response.err);
 
     const items = response.value.items;
-    const previous = yield* workspaces.load.pipe(
-      Effect.orElseSucceed(() => ({
-        tenant_id: null,
-        current_workspace_id: null,
-        items: [],
-      })),
-    );
     const tenantId = response.value.tenant_id;
-    if (items.length === 0) {
-      const saveResult: SaveOutcome = yield* workspaces
-        .save({
-          tenant_id: tenantId,
-          current_workspace_id: null,
-          items: [],
-        })
-        .pipe(
-          Effect.match({
-            onSuccess: (): SaveOutcome => ({ ok: true }),
-            onFailure: (err): SaveOutcome => ({ ok: false, err }),
-          }),
-        );
-      if (!saveResult.ok) return yield* warnHydrationFailure(saveResult.err);
-      return;
-    }
-
+    const previous = yield* workspaces.load.pipe(
+      Effect.orElseSucceed(() => emptyWorkspaces()),
+    );
+    // Keep the previously-current workspace only when it still exists under
+    // the same tenant; otherwise fall to the first item, or null when the
+    // tenant has no workspaces at all. One save path for every case.
     const sameTenant = previous.tenant_id === tenantId;
-    const persistedItems = items;
-    const existingCurrent = persistedItems.find(
+    const existingCurrent = items.find(
       (item) =>
         sameTenant && item.workspace_id === previous.current_workspace_id,
     );
-    const firstItem = persistedItems[0];
-    if (!firstItem) return;
-    const current = existingCurrent?.workspace_id ?? firstItem.workspace_id;
+    const current =
+      existingCurrent?.workspace_id ?? items[0]?.workspace_id ?? null;
     const saveResult: SaveOutcome = yield* workspaces
       .save({
         tenant_id: tenantId,
         current_workspace_id: current,
-        items: persistedItems,
+        items,
       })
       .pipe(
         Effect.match({
@@ -223,7 +193,6 @@ export const withSigintAbort = <A, E, R>(
 export const captureLoginCompleted = (
   sessionId: string,
   token: string,
-  method: LoginMethod,
 ): Effect.Effect<void, never, Analytics | TelemetryRuntime> =>
   Effect.gen(function* () {
     const analytics = yield* Analytics;
@@ -240,65 +209,13 @@ export const captureLoginCompleted = (
     yield* analytics.capture(EVT_USER_AUTHENTICATED, { command: "login" });
     yield* analytics.capture(EVT_LOGIN_COMPLETED, {
       session_id: sessionId,
-      login_method: method,
+      login_method: LOGIN_METHOD_BROWSER,
     });
   });
 
-const trimToUndefined = (value: string | undefined): string | undefined => {
-  if (typeof value !== "string") return undefined;
-  const t = value.trim();
-  return t.length > 0 ? t : undefined;
-};
-
-// Non-interactive token resolution: --token flag → piped stdin (non-TTY).
-// `none` means "no direct token" → the caller falls through to the browser
-// device flow. A non-TTY shell with no token cannot complete the device
-// flow (the verification code is typed by a human), so it fails fast with
-// the same advice supabase's NoTtyError carries.
-export const resolveDirectToken = (opts: {
-  readonly tokenFlag: string | undefined;
-}): Effect.Effect<Option.Option<string>, CliError, Stdin> =>
-  Effect.gen(function* () {
-    const flag = trimToUndefined(opts.tokenFlag);
-    if (flag !== undefined) return Option.some(flag);
-    const stdin = yield* Stdin;
-    if (stdin.isTTY) return Option.none();
-    const piped = trimToUndefined(yield* stdin.readToEnd);
-    if (piped !== undefined) return Option.some(piped);
-    return yield* Effect.fail(
-      new InterruptedError({
-        detail: "no token provided and stdin is not a terminal",
-        suggestion: "pass --token or pipe the token on stdin",
-      }),
-    );
-  });
-
-// Direct-token login: validate against the API, then persist — never the
-// other way round, so an invalid token leaves credentials.json untouched.
-// No browser, no session_id (there is no device-flow session to label).
-export const saveDirectToken = (
-  rawToken: string,
-): Effect.Effect<
-  void,
-  CliError,
-  | Analytics
-  | CliConfig
-  | Credentials
-  | HttpClient
-  | Output
-  | TelemetryRuntime
-  | Workspaces
-> =>
-  Effect.gen(function* () {
-    const config = yield* CliConfig;
-    const credentials = yield* Credentials;
-    const redacted = Redacted.make(rawToken);
-    yield* pingMe(redacted);
-    yield* credentials.saveAccessToken({
-      token: redacted,
-      sessionId: null,
-      apiUrl: config.apiUrl,
-    });
-    yield* hydrateWorkspacesAfterLogin(redacted);
-    yield* captureLoginCompleted("", rawToken, FIELD_TOKEN);
-  });
+// Direct-token seeding lived here until it was removed. `AGENTSFLEET_API_KEY`
+// already carries a tenant key on every request and outranks the stored
+// credential, so the flag was a second path to the same outcome — and the
+// only one that could write a value the credential loader would later
+// refuse. Unattended callers use the environment variable; the device flow
+// is the only thing that writes `credentials.json`.
