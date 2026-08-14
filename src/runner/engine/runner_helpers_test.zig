@@ -88,3 +88,73 @@ test "applyFleetConfig clamps out-of-range max_tokens instead of @intCast-panick
     try std.testing.expectEqual(@as(?u32, 2048), try applyMaxTokens(alloc, "{\"max_tokens\": 2048}"));
     try std.testing.expectEqual(@as(?u32, 4294967295), try applyMaxTokens(alloc, "{\"max_tokens\": 4294967295}"));
 }
+
+// ── provider injection (§ensureProviderEntry) ────────────────────────────────
+// Neither injector had a single executed line. They are the only path by which
+// the lease-delivered key and custom endpoint reach nullclaw's provider table;
+// a regression here silently falls back to the process environment — the exact
+// trust boundary the injectors exist to close.
+
+test "injectProviderApiKey prepends an entry when the provider table is empty" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var cfg = Config{ .workspace_dir = "", .config_path = "", .allocator = arena.allocator() };
+    cfg.default_provider = "openai";
+
+    try runner_helpers.injectProviderApiKey(&cfg, "sk-lease-delivered");
+
+    try std.testing.expectEqual(@as(usize, 1), cfg.providers.len);
+    try std.testing.expectEqualStrings("openai", cfg.providers[0].name);
+    try std.testing.expectEqualStrings("sk-lease-delivered", cfg.providers[0].api_key.?);
+}
+
+test "injectProviderApiKey overwrites the existing entry rather than growing the table" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var cfg = Config{ .workspace_dir = "", .config_path = "", .allocator = arena.allocator() };
+    cfg.default_provider = "openai";
+
+    try runner_helpers.injectProviderApiKey(&cfg, "sk-first");
+    try runner_helpers.injectProviderApiKey(&cfg, "sk-rotated");
+
+    try std.testing.expectEqual(@as(usize, 1), cfg.providers.len);
+    try std.testing.expectEqualStrings("sk-rotated", cfg.providers[0].api_key.?);
+}
+
+test "injectProviderBaseUrl lands on the SAME entry as the api key" {
+    // The daemon sets default_provider to `custom:<url>`; key and URL must ride
+    // one entry or nullclaw dials the custom endpoint without the credential.
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var cfg = Config{ .workspace_dir = "", .config_path = "", .allocator = arena.allocator() };
+    cfg.default_provider = "custom:https://llm.internal";
+
+    try runner_helpers.injectProviderApiKey(&cfg, "sk-lease");
+    try runner_helpers.injectProviderBaseUrl(&cfg, "https://llm.internal/v1");
+
+    try std.testing.expectEqual(@as(usize, 1), cfg.providers.len);
+    try std.testing.expectEqualStrings("sk-lease", cfg.providers[0].api_key.?);
+    try std.testing.expectEqualStrings("https://llm.internal/v1", cfg.providers[0].base_url.?);
+}
+
+test "applyFleetConfig applies an in-range max_tokens and temperature" {
+    // The clamp test above pins the rejects; this pins the accepts — a wire
+    // value that IS valid must actually land, or every fleet runs on defaults.
+    const alloc = std.testing.allocator;
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        alloc,
+        "{\"temperature\":0.25,\"max_tokens\":2048}",
+        .{},
+    );
+    defer parsed.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var cfg = Config{ .workspace_dir = "", .config_path = "", .allocator = arena.allocator() };
+    applyFleetConfig(&cfg, parsed.value);
+
+    try std.testing.expectEqual(@as(u32, 2048), cfg.max_tokens.?);
+    try std.testing.expectEqual(@as(f64, 0.25), cfg.temperature);
+    try std.testing.expectEqual(@as(f64, 0.25), cfg.default_temperature);
+}

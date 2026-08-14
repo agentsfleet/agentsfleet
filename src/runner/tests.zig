@@ -35,10 +35,13 @@ test {
     _ = @import("cmd/version.zig");
     _ = @import("cmd/args.zig");
     _ = @import("cmd/args_test.zig");
+    _ = @import("engine/runner_progress_lifecycle_test.zig");
     _ = @import("cmd/output.zig");
+    _ = @import("cmd/output_test.zig");
     _ = @import("cmd/registry.zig");
     _ = @import("cmd/help.zig");
     _ = @import("cmd/status.zig");
+    _ = @import("cmd/plane_stub_test.zig");
     _ = @import("cmd/doctor.zig");
     _ = @import("sandbox_args.zig");
     _ = @import("bundle_extract.zig");

@@ -219,6 +219,10 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	   fi; \
 	   report=$$(find "$(ZIG_COVERAGE_DIR)/$$name" -name cobertura.xml -type f -size +0c -print -quit); \
 	   test -n "$$report" || { echo "✗ Zig coverage component $$name produced no Cobertura report"; failed=1; }; \
+	   if [ -n "$$report" ] && ! grep -q '<class' "$$report"; then \
+	     echo "⚠ component $$name captured ZERO classes — kcov log tail follows (capture failed, not the tests):"; \
+	     tail -n 25 ".tmp/kcov-$$name.log"; \
+	   fi; \
 	 done; \
 	 [ "$$failed" -eq 0 ] || exit 1; \
 	 summary=$$(grep -E '^[0-9]+ passed;' ".tmp/kcov-integration.log" | tail -n 1); \
