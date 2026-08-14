@@ -126,9 +126,15 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	@# Each component directory is REMOVED, not just `--clean`ed. kcov names its
 	@# output subdirectory after a hash of the binary, and `--clean` only resets
 	@# the directory for the hash it is writing — a rebuilt binary lands beside
-	@# its predecessor rather than replacing it. `kcov --merge` is handed the
-	@# parent, so every stale sibling silently rejoined the merge; a run whose
-	@# suite never executed kept dragging the figure down for days after.
+	@# its predecessor rather than replacing it, and a stale sibling would rejoin
+	@# the union below; a run whose suite never executed kept dragging the figure
+	@# down for days after.
+	@#
+	@# The per-component reports are unioned by `scripts/check_zig_coverage.py`,
+	@# NOT by `kcov --merge`. That merge silently returned only the three src/lib
+	@# components on Linux — 24 files against macOS's 558 — from identical
+	@# arguments and the same kcov 43, so the gate graded 2.8% of the codebase and
+	@# called it 93.70%. The script fails when a component contributes nothing.
 	@#
 	@# `--exclude-pattern` keeps the test bodies OUT of the denominator. They are
 	@# ~23k of the measured lines and are themselves ~90% covered — counting them
@@ -153,7 +159,7 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	 db_url="$${TEST_DATABASE_URL:-$(TEST_DATABASE_URL_LOCAL)}"; \
 	 redis_url="$${TEST_REDIS_TLS_URL:-$(TEST_REDIS_TLS_URL_LOCAL)}"; \
 	 components="agentsfleetd:agentsfleetd-tests runner:agentsfleet-runner-tests lib:agentsfleet-lib-tests logging:agentsfleet-logging-tests deadline:agentsfleet-call-deadline-tests"; \
-	 inputs=""; names=""; \
+	 names=""; \
 	 for component in $$components; do \
 	   name=$${component%%:*}; binary=$${component#*:}; output="$(ZIG_COVERAGE_DIR)/$$name"; \
 	   echo "→ [zig] kcov component=$$name binary=$$binary"; \
@@ -172,7 +178,6 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	       "$$output" "zig-out/bin/$$binary" \
 	       >".tmp/kcov-$$name.log" 2>&1; echo $$? >".tmp/kcov-$$name.rc" ) & \
 	   names="$$names $$name"; \
-	   inputs="$$inputs $$output"; \
 	 done; \
 	 wait; \
 	 integration_output="$(ZIG_COVERAGE_DIR)/integration"; \
@@ -192,7 +197,6 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	     "$$integration_output" "zig-out/bin/agentsfleetd-integration-tests" \
 	     >".tmp/kcov-integration.log" 2>&1; echo $$? >".tmp/kcov-integration.rc" ); \
 	 names="$$names integration"; \
-	 inputs="$$inputs $$integration_output"; \
 	 failed=0; \
 	 for name in $$names; do \
 	   rc=$$(cat ".tmp/kcov-$$name.rc" 2>/dev/null || echo 1); \
@@ -224,14 +228,11 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	   exit 1; \
 	 fi; \
 	 echo "✓ [zig] integration suite executed ($$summary)"; \
-	 merged="$(ZIG_COVERAGE_DIR)/merged"; \
-	 rm -rf "$$merged"; \
-	 kcov --merge "$$merged" $$inputs >/dev/null; \
-	 merged_report=$$(find "$$merged" -name cobertura.xml -type f -size +0c -print -quit); \
-	 test -n "$$merged_report" || { echo "✗ merged Zig coverage produced no Cobertura report"; exit 1; }; \
-	 line_rate=$$(sed -n 's/.*line-rate="\([0-9.]*\)".*/\1/p' "$$merged_report" | head -n 1); \
-	 if [ -z "$$line_rate" ]; then echo "✗ failed to parse Zig line-rate from $$merged_report"; exit 1; fi; \
-	 line_pct=$$(awk -v r="$$line_rate" 'BEGIN { printf "%.2f", r * 100 }'); \
-	 printf 'zig_line_coverage_pct=%s\nzig_line_coverage_min_pct=%s\n' "$$line_pct" "$(ZIG_COVERAGE_MIN_LINES)" | tee .tmp/zig-coverage.txt >/dev/null; \
-	 awk -v got="$$line_pct" -v min="$(ZIG_COVERAGE_MIN_LINES)" 'BEGIN { if ((got + 0) < (min + 0)) { printf "✗ Zig line coverage %.2f%% is below threshold %.2f%%\n", got, min; exit 1 } }'; \
-	 echo "✓ [zig] merged line coverage passed ($$line_pct% >= $(ZIG_COVERAGE_MIN_LINES)%; report=$$merged/index.html)"
+	 component_flags=""; \
+	 for name in $$names; do component_flags="$$component_flags --component $$name"; done; \
+	 python3 scripts/check_zig_coverage.py \
+	   --coverage-dir "$(ZIG_COVERAGE_DIR)" \
+	   $$component_flags \
+	   --min-pct "$(ZIG_COVERAGE_MIN_LINES)" \
+	   --merged-report "$(ZIG_COVERAGE_DIR)/merged" \
+	   --summary-file .tmp/zig-coverage.txt

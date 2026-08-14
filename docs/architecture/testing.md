@@ -49,19 +49,28 @@ after the component lanes converge.
 
 ## Coverage
 
-`make test-coverage-zig` installs and runs five binaries under kcov:
+`make test-coverage-zig` installs and runs six binaries under kcov:
 
 - daemon unit tests;
 - runner unit tests;
 - shared library tests;
 - logging tests;
-- call-deadline tests.
+- call-deadline tests;
+- the daemon integration suite, against live datastores, serially.
 
-Each binary must produce a non-empty Cobertura report. kcov merges the component
-reports into `coverage/zig/merged`, and the merged line rate must meet
-`ZIG_COVERAGE_MIN_LINES`. The floor is 91% against a measured 92.40% on `main`.
-Raise the floor as production-path tests land, in the same commit as the tests
-that clear it.
+Each binary must produce a non-empty Cobertura report. `scripts/check_zig_coverage.py`
+unions those reports — a line counts as covered when any component executed it,
+because the unit lanes and the integration suite reach largely disjoint code —
+publishes the union to `coverage/zig/merged`, and enforces
+`ZIG_COVERAGE_MIN_LINES`. The floor is 91%.
+
+The union is deliberately not `kcov --merge`. That command returned only the
+three `src/lib` components on Linux — 24 files, 861 lines — against 558 files
+and 31,259 lines from the identical invocation on macOS, same kcov 43. The gate
+read the result without checking what it covered, so it graded 2.8% of the
+codebase and reported 93.70%. The script fails when any named component
+contributes no measured lines, which is what that failure looked like from
+outside.
 
 ## Adding a component
 

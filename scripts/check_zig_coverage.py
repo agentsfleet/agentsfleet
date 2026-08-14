@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""Merge per-component kcov Cobertura reports and gate the merged line rate.
+
+`kcov --merge` is a black box that fails silently. On Linux it returned a report
+containing only the three `src/lib` components — 24 files, 861 lines — while the
+same command on macOS merged all six for 558 files and 31,259 lines. Both ran
+kcov 43 with identical arguments. The gate read whatever came back and never
+asked whether it covered the codebase, so Continuous Integration graded 2.8% of
+the product and reported 93.70%.
+
+This replaces the merge with a union we own: parse each component's Cobertura
+report, OR the hit counts per (file, line), and refuse to emit a number when a
+component contributes nothing. A component that silently drops out now fails the
+build instead of quietly shrinking the denominator.
+"""
+
+from __future__ import annotations
+
+import argparse
+import shutil
+import sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+# kcov already drops `*_test.zig` via --exclude-pattern. Test roots reach the
+# report under a different spelling, so they are dropped here for the same
+# reason: a gate satisfiable by writing more test files measures the wrong thing.
+TEST_ROOT_NAMES = frozenset({"tests.zig", "test.zig"})
+
+
+def is_product_source(filename: str) -> bool:
+    """True when a reported path is shipped code rather than a test body."""
+    basename = filename.rsplit("/", 1)[-1]
+    return not (basename.endswith("_test.zig") or basename in TEST_ROOT_NAMES)
+
+
+def find_report(component_dir: Path) -> Path:
+    """Return the component's Cobertura report.
+
+    kcov writes exactly one, under a `<binary>.<hash>/` subdirectory. Sorting
+    keeps the choice deterministic if a stale sibling ever survives the rm -rf.
+    """
+    reports = sorted(p for p in component_dir.rglob("cobertura.xml") if p.stat().st_size > 0)
+    if not reports:
+        raise FileNotFoundError(f"no non-empty cobertura.xml under {component_dir}")
+    return reports[0]
+
+
+def read_component(report: Path) -> dict[tuple[str, int], bool]:
+    """Parse one Cobertura report into {(file, line): covered}."""
+    with report.open("rb") as handle:
+        root = ET.parse(handle).getroot()
+    lines: dict[tuple[str, int], bool] = {}
+    for class_element in root.iter("class"):
+        filename = class_element.get("filename")
+        if filename is None or not is_product_source(filename):
+            continue
+        container = class_element.find("lines")
+        if container is None:
+            continue
+        for line in container.findall("line"):
+            number = line.get("number")
+            if number is None:
+                continue
+            key = (filename, int(number))
+            covered = int(line.get("hits", "0")) > 0
+            lines[key] = lines.get(key, False) or covered
+    return lines
+
+
+def union_components(coverage_dir: Path, names: list[str]) -> dict[tuple[str, int], bool]:
+    """Union every named component, failing loudly when one contributes nothing."""
+    merged: dict[tuple[str, int], bool] = {}
+    empty: list[str] = []
+    for name in names:
+        component = read_component(find_report(coverage_dir / name))
+        files = len({filename for filename, _ in component})
+        print(f"→ [zig] component={name} files={files} lines={len(component)}")
+        if not component:
+            empty.append(name)
+            continue
+        for key, covered in component.items():
+            merged[key] = merged.get(key, False) or covered
+    if empty:
+        raise ValueError(
+            "components contributed no measured lines: "
+            + ", ".join(empty)
+            + " — the merged figure would describe a fraction of the codebase"
+        )
+    return merged
+
+
+def summarise(merged: dict[tuple[str, int], bool]) -> tuple[int, int, int, float]:
+    """Return (files, covered, valid, percentage) for the merged union."""
+    files = len({filename for filename, _ in merged})
+    valid = len(merged)
+    covered = sum(1 for hit in merged.values() if hit)
+    percentage = (covered / valid * 100) if valid else 0.0
+    return files, covered, valid, percentage
+
+
+def write_merged_report(target: Path, merged: dict[tuple[str, int], bool]) -> None:
+    """Write the union as Cobertura XML so the published artefact matches the gate.
+
+    The workflow uploads this directory with `if-no-files-found: error`. It used
+    to hold kcov's merge output, which is the report that lied; writing our own
+    keeps the artefact and makes it agree with the number the gate enforces.
+    """
+    by_file: dict[str, list[tuple[int, bool]]] = {}
+    for (filename, number), covered in merged.items():
+        by_file.setdefault(filename, []).append((number, covered))
+
+    files, covered_count, valid, percentage = summarise(merged)
+    coverage = ET.Element(
+        "coverage",
+        {
+            "line-rate": f"{percentage / 100:.6f}",
+            "lines-covered": str(covered_count),
+            "lines-valid": str(valid),
+            "branch-rate": "0.0",
+            "version": "1.9",
+        },
+    )
+    packages = ET.SubElement(coverage, "packages")
+    package = ET.SubElement(packages, "package", {"name": "zig", "line-rate": f"{percentage / 100:.6f}"})
+    classes = ET.SubElement(package, "classes")
+    for filename in sorted(by_file):
+        class_element = ET.SubElement(
+            classes, "class", {"name": filename, "filename": filename}
+        )
+        lines = ET.SubElement(class_element, "lines")
+        for number, covered in sorted(by_file[filename]):
+            ET.SubElement(lines, "line", {"number": str(number), "hits": "1" if covered else "0"})
+
+    # Cleared, not overwritten: the directory previously held kcov's merge
+    # output, and leaving that beside ours would publish two reports disagreeing
+    # about the same run.
+    shutil.rmtree(target, ignore_errors=True)
+    target.mkdir(parents=True, exist_ok=True)
+    ET.ElementTree(coverage).write(target / "cobertura.xml", encoding="utf-8", xml_declaration=True)
+    (target / "summary.txt").write_text(
+        f"{covered_count}/{valid} lines covered across {files} files ({percentage:.2f}%)\n",
+        encoding="utf-8",
+    )
+
+
+def parse_args(argv: list[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--coverage-dir", type=Path, required=True)
+    parser.add_argument("--component", action="append", required=True, dest="components")
+    parser.add_argument("--min-pct", type=float, required=True)
+    parser.add_argument("--summary-file", type=Path, required=True)
+    parser.add_argument("--merged-report", type=Path, default=None)
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    try:
+        merged = union_components(args.coverage_dir, args.components)
+    except (FileNotFoundError, ValueError, ET.ParseError) as error:
+        print(f"✗ Zig coverage merge failed: {error}", file=sys.stderr)
+        return 1
+
+    files, covered, valid, percentage = summarise(merged)
+    if args.merged_report is not None:
+        write_merged_report(args.merged_report, merged)
+    args.summary_file.parent.mkdir(parents=True, exist_ok=True)
+    args.summary_file.write_text(
+        f"zig_line_coverage_pct={percentage:.2f}\n"
+        f"zig_line_coverage_min_pct={args.min_pct:g}\n",
+        encoding="utf-8",
+    )
+
+    if percentage + 1e-9 < args.min_pct:
+        print(
+            f"✗ Zig line coverage {percentage:.2f}% is below threshold "
+            f"{args.min_pct:.2f}% ({covered}/{valid} lines across {files} files)",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(
+        f"✓ [zig] merged line coverage passed ({percentage:.2f}% >= {args.min_pct:g}%; "
+        f"{covered}/{valid} lines across {files} files)"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
