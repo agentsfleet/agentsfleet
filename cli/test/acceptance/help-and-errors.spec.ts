@@ -220,6 +220,43 @@ describe("auth guard short-circuits before any network call", () => {
   }
 });
 
+// The sweep above starts from a state directory that was never logged in.
+// This one starts from a credential on disk and ends at the same refusal,
+// which is the only arrangement that can prove logout actually erased it: a
+// logout that reported success and left the file behind passes every
+// assertion above while stranding a live credential on the machine.
+describe("after logout, an authenticated command refuses from disk", () => {
+  it("`list` exits 1 with \"not authenticated\" and never reaches the network", async () => {
+    const state = await makeStubbedStateDir();
+    const env = composeEnv({
+      AGENTSFLEET_API_URL: UNROUTABLE_API_URL,
+      AGENTSFLEET_STATE_DIR: state.dir,
+      NO_COLOR: "1",
+    });
+    try {
+      // The server-side revoke cannot land against an unroutable address, and
+      // that is the point: logout clears local state unconditionally
+      // afterwards, so a terminal that cannot reach the API can still stop
+      // using its credential. The warning it prints is not what is under test.
+      const loggedOut = await runFleetctl(["logout"], { env });
+      assert.equal(
+        loggedOut.code,
+        0,
+        `logout should exit 0 even when the revoke cannot land; got ${loggedOut.code}; stderr=${loggedOut.stderr}`,
+      );
+
+      const result = await runFleetctl(["list"], { env });
+      assert.equal(result.code, 1, `expected exit 1; got ${result.code}; stderr=${result.stderr}`);
+      const merged = `${result.stderr}\n${result.stdout}`.toLowerCase();
+      assert.match(merged, /not authenticated|authentication required|please.*log/);
+      // Refused by reading disk, not by a request that failed to connect.
+      assertNoConnectionError(result, ["list"]);
+    } finally {
+      await state.cleanup();
+    }
+  });
+});
+
 describe("validate.js error stem", () => {
   // "abc def" fails the current validator because spaces aren't allowed
   // in SAFE_ID_RE. "not-a-uuid" actually passes today (matches SAFE_ID_RE);

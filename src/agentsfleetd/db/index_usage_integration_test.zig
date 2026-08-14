@@ -866,6 +866,10 @@ const DECLARED_INDEXES = [_]DeclaredIndex{
     .{ .schema = "core", .name = "idx_tenant_model_entries_tenant_id_created_at" },
     .{ .schema = "core", .name = "idx_users_tenant_id" },
     .{ .schema = "core", .name = "idx_workspaces_tenant_id_created_at_id" },
+    // Reader: none by query — this partial unique index is the enforcement of
+    // one live credential per (user, machine). A re-login that skipped the
+    // revoke fails its insert here rather than leaving two live credentials.
+    .{ .schema = "core", .name = "uq_cli_credentials_user_machine_live" },
     .{ .schema = "core", .name = "uq_users_oidc_subject" },
     .{ .schema = "core", .name = "uq_workspaces_tenant_id_name" },
     .{ .schema = "fleet", .name = "idx_runner_affinity_last_runner_id_leased_until" },

@@ -130,6 +130,12 @@ pub const Route = union(enum) {
     // Tenant API key CRUD.
     tenant_api_keys, // POST|GET /v1/api-keys
     tenant_api_key_by_id: []const u8, // PATCH|DELETE /v1/api-keys/{id}
+    // Command-line credential management. Its own family rather than a shape of
+    // the tenant-key routes above: those name a tenant, these name a person,
+    // and only a person may hold one (enforced on principal mode in-handler,
+    // because a tenant key already holds every scope a gate could require).
+    cli_credentials, // POST /v1/cli-credentials
+    cli_credential_by_id: []const u8, // DELETE /v1/cli-credentials/{id}
     // Runner control plane — POST-only, identity from the Bearer token. register
     // is admin-gated; the self-plane verbs (heartbeat/lease/report/activity) are
     // gated by runnerBearer. `activity` is the only one with a path param

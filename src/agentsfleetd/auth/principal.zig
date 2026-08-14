@@ -16,6 +16,16 @@ pub const AuthMode = enum {
     /// Host-resident `agentsfleet-runner`, authed by a `agt_r` runner token via
     /// `runnerBearer`. Carries no tenant identity (`tenant_id == null`).
     runner,
+    /// A person's terminal, authed by an `afc_` credential minted by
+    /// `agentsfleet login`. Resolves to the user who created it, never to a
+    /// tenant-wide principal — which is what lets a user-scoped route refuse a
+    /// tenant key while accepting this.
+    ///
+    /// Unlike every other source, its capabilities are not granted in code:
+    /// the credential proves identity only, and the scope claim is resolved
+    /// from the identity provider at request time, so a scope edit reaches a
+    /// terminal the same way it reaches the dashboard.
+    cli_credential,
 };
 
 pub const AuthPrincipal = struct {

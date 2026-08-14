@@ -35,6 +35,48 @@ test "PostHogResult deinit is safe when both fields are null" {
     result.deinit(std.testing.allocator);
 }
 
+test "initPostHog builds a client when the key is present, and deinit owns both" {
+    // No event is ever captured, so the flush thread has nothing to send and
+    // the network is never touched — construction and teardown are the claim.
+    const alloc = std.testing.allocator;
+    var env = try constants.env.fromPairs(alloc, &.{.{ "POSTHOG_API_KEY", "phc_test_key" }});
+    defer env.deinit();
+
+    const result = preflight.initPostHog(&env, alloc);
+    defer result.deinit(alloc);
+
+    try std.testing.expect(result.client != null);
+    try std.testing.expect(result.api_key_owned != null);
+}
+
+test "initTelemetry carries the PostHog client and exposes a stable pointer" {
+    const alloc = std.testing.allocator;
+    var env = try constants.env.fromPairs(alloc, &.{});
+    defer env.deinit();
+
+    var result = preflight.initTelemetry(&env, alloc);
+    defer result.deinit(alloc);
+
+    // Unconfigured: prod telemetry with no client — the pointer is what the
+    // handler layer stores, so it must address this result's own field.
+    try std.testing.expectEqual(&result.telemetry, result.ptr());
+}
+
+// ---------------------------------------------------------------------------
+// Database pool
+// ---------------------------------------------------------------------------
+
+test "connectDbPool refuses an environment with no database URL" {
+    const alloc = std.testing.allocator;
+    var env = try constants.env.fromPairs(alloc, &.{});
+    defer env.deinit();
+
+    try std.testing.expectError(
+        error.MissingDatabaseUrl,
+        preflight.connectDbPool(constants.globalIo(), &env, alloc, .api),
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Migration parse
 // ---------------------------------------------------------------------------
@@ -51,6 +93,42 @@ test "parseMigrateOnStart returns false for '0'" {
     var env = try constants.env.fromPairs(alloc, &.{.{ "MIGRATE_ON_START", "0" }});
     defer env.deinit();
     try std.testing.expect(!try preflight.parseMigrateOnStart(&env, alloc));
+}
+
+test "parseMigrateOnStart surfaces a value outside the boolean grammar" {
+    const alloc = std.testing.allocator;
+    var env = try constants.env.fromPairs(alloc, &.{.{ "MIGRATE_ON_START", "maybe" }});
+    defer env.deinit();
+    try std.testing.expectError(cmd_common.MigrationGuardError.InvalidMigrateOnStart, preflight.parseMigrateOnStart(&env, alloc));
+}
+
+// ---------------------------------------------------------------------------
+// Credential broker handle ownership
+// ---------------------------------------------------------------------------
+
+test "CredentialBrokerHandle deinit frees a partially-built install" {
+    // The degrade-closed contract: whatever subset of fields an aborted install
+    // managed to set, deinit frees exactly that subset. The leak detector on
+    // testing.allocator is the assertion.
+    const alloc = std.testing.allocator;
+    var handle = preflight.CredentialBrokerHandle{
+        .alloc = alloc,
+        .github_app = .{
+            .app_id = try alloc.dupe(u8, "12345"),
+            .private_key_pem = try alloc.dupe(u8, "-----BEGIN TEST KEY-----"),
+            .app_slug = try alloc.dupe(u8, "agentsfleet-test"),
+        },
+        .zoho_app = .{
+            .client_id = try alloc.dupe(u8, "zoho-client"),
+            .client_secret = try alloc.dupe(u8, "zoho-secret-fixture"),
+        },
+    };
+    handle.deinit();
+}
+
+test "CredentialBrokerHandle deinit is safe on the nothing-built handle" {
+    var handle = preflight.CredentialBrokerHandle{ .alloc = std.testing.allocator };
+    handle.deinit();
 }
 
 // ---------------------------------------------------------------------------

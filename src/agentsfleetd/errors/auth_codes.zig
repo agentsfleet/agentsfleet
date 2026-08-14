@@ -16,6 +16,11 @@ pub const ERR_UNAUTHORIZED = "UZ-AUTH-002";
 pub const ERR_TOKEN_EXPIRED = "UZ-AUTH-003";
 pub const ERR_AUTH_UNAVAILABLE = "UZ-AUTH-004";
 pub const ERR_INSUFFICIENT_SCOPE = "UZ-AUTH-022";
+/// A Command-Line Interface credential that resolved to a row whose
+/// `revoked_at` is set. Distinct from `ERR_UNAUTHORIZED` on purpose: an
+/// operator whose credential was retired elsewhere needs to be told to log in
+/// again, not left guessing whether they mistyped something.
+pub const ERR_CLI_CREDENTIAL_REVOKED = "UZ-AUTH-023";
 pub const ERR_APPROVAL_INVALID_SIGNATURE = "UZ-APPROVAL-003";
 // Generic webhook signature codes — one set for every HMAC-style webhook.
 pub const ERR_WEBHOOK_SIG_INVALID = "UZ-WH-010";

@@ -76,22 +76,33 @@ fn allOk(checks: []const Check) bool {
     return true;
 }
 
+/// Pure render of the JSON verdict envelope; null on OOM. Split from `emit`
+/// so tests can cover rendering without writing to stdout (the test runner's
+/// stdout is the build-protocol channel — a printing test hangs the lane).
+fn renderJson(alloc: std.mem.Allocator, checks: []const Check) ?[]u8 {
+    return std.json.Stringify.valueAlloc(alloc, .{ .ok = allOk(checks), .checks = checks }, .{}) catch null;
+}
+
+/// Pure render of one human-audience line into the caller's buffer.
+fn renderHumanLine(buf: []u8, c: Check) []const u8 {
+    const mark = if (c.ok) "OK" else "!!";
+    return std.fmt.bufPrint(buf, "[{s}] {s}: {s}\n", .{ mark, c.name, c.detail }) catch LITERAL;
+}
+
 fn emit(a: output.Audience, alloc: std.mem.Allocator, checks: []const Check) u8 {
-    const ok = allOk(checks);
     switch (a) {
         .json => {
-            const s = std.json.Stringify.valueAlloc(alloc, .{ .ok = ok, .checks = checks }, .{}) catch return 1;
+            const s = renderJson(alloc, checks) orelse return 1;
             defer alloc.free(s);
             output.writeOut(s);
             output.writeOut(LITERAL);
         },
         .human => for (checks) |c| {
             var buf: [256]u8 = undefined;
-            const mark = if (c.ok) "OK" else "!!";
-            output.writeOut(std.fmt.bufPrint(&buf, "[{s}] {s}: {s}\n", .{ mark, c.name, c.detail }) catch LITERAL);
+            output.writeOut(renderHumanLine(&buf, c));
         },
     }
-    return if (ok) 0 else 1;
+    return if (allOk(checks)) 0 else 1;
 }
 
 test "envChecks flags missing api + token, passes a valid pair" {
@@ -112,10 +123,12 @@ test "doctor verdict is non-zero iff any check failed (exit-code contract)" {
 }
 
 // ---------------------------------------------------------------------------
-// The paths above these lines had no executed lines: `run` itself, `emit` in
-// both audiences, and every arm of `reachCheck`. Doctor is what an operator
-// trusts before blaming the network, so each verdict string is pinned against
-// a scripted control plane rather than assumed.
+// Doctor is what an operator trusts before blaming the network, so each verdict
+// is pinned rather than assumed. Rendering is proven through the render helpers,
+// never `emit`/`run`: those write to stdout, and under `zig build test` stdout
+// is the build-runner protocol stream — printing there deadlocks the lane.
+// `reachCheck` returns a value and prints nothing, so its arms are driven
+// against a scripted control plane.
 // ---------------------------------------------------------------------------
 
 const common_test = @import("common");
@@ -146,35 +159,41 @@ fn probePlane(status: plane_stub.StubStatus) !Check {
     return reachCheck(io, alloc, try deadlines.start(alloc), url, "agt_rtest");
 }
 
-test "doctor exits non-zero with every check reported when the env is empty" {
-    const alloc = std.testing.allocator;
-    var map = try common_test.env.fromPairs(alloc, &.{});
-    defer map.deinit();
-    const argv = [_][:0]const u8{ "agentsfleet-runner", "doctor" };
-    var deadlines: runner_deadline.Owned = .{};
-    defer deadlines.deinit();
+test "render arms cover both audiences and the reach probe reports itself skipped" {
+    // The reach probe's early guard IS the unit-safe path: with api or token
+    // unset it must answer a failed check without constructing a client, and a
+    // probe that touched the network here would be the bug. The scheduler
+    // pointer is never read on that path, so a placeholder suffices.
+    // SAFETY: never dereferenced — the guard returns before any use.
+    var sched_unused: call_deadline.ProcessScheduler = undefined;
+    const skipped = reachCheck(
+        std.testing.io,
+        std.testing.allocator,
+        &sched_unused,
+        null,
+        null,
+    );
+    try std.testing.expect(!skipped.ok);
+    try std.testing.expect(std.mem.indexOf(u8, skipped.detail, "skipped") != null);
 
-    // No api and no token: the reach check must self-report as skipped rather
-    // than dial anywhere, and the process verdict is failure.
-    var muted = try plane_stub.MutedStdout.mute();
-    defer muted.restore();
-    try std.testing.expectEqual(@as(u8, 1), run(&argv, &map, common_test.globalIo(), alloc, &deadlines));
-}
-
-test "emit renders every check in both audiences and keeps the verdict" {
-    const alloc = std.testing.allocator;
+    // Render helpers, not emit(): emit writes to stdout, and under
+    // `zig build test` stdout is the build-runner protocol stream — a test
+    // that prints there deadlocks the whole lane.
     const checks = [_]Check{
         .{ .name = "api_url", .ok = true, .detail = "set" },
-        .{ .name = "runner_token", .ok = false, .detail = "missing" },
+        .{ .name = "runner_token", .ok = false, .detail = "unset" },
     };
-    var muted = try plane_stub.MutedStdout.mute();
-    defer muted.restore();
-    try std.testing.expectEqual(@as(u8, 1), emit(.json, alloc, &checks));
-    try std.testing.expectEqual(@as(u8, 1), emit(.human, alloc, &checks));
+    const s = renderJson(std.testing.allocator, &checks) orelse return error.OutOfMemory;
+    defer std.testing.allocator.free(s);
+    try std.testing.expect(std.mem.indexOf(u8, s, "\"ok\":false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, s, "\"name\":\"runner_token\"") != null);
 
-    const all_ok = [_]Check{.{ .name = "api_url", .ok = true, .detail = "set" }};
-    try std.testing.expectEqual(@as(u8, 0), emit(.json, alloc, &all_ok));
-    try std.testing.expectEqual(@as(u8, 0), emit(.human, alloc, &all_ok));
+    var bad_buf: [256]u8 = undefined;
+    const bad_line = renderHumanLine(&bad_buf, checks[1]);
+    try std.testing.expect(std.mem.indexOf(u8, bad_line, "[!!] runner_token: unset") != null);
+    var ok_buf: [256]u8 = undefined;
+    const ok_line = renderHumanLine(&ok_buf, checks[0]);
+    try std.testing.expect(std.mem.indexOf(u8, ok_line, "[OK] api_url: set") != null);
 }
 
 test "reachCheck: a healthy plane reads reachable with a valid token" {

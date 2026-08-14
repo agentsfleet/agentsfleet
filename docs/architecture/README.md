@@ -16,7 +16,7 @@ inside it. Do not read the whole directory to answer one question.
 
 ## Question → anchor index
 
-Start here: find the question, jump to the one §-section that answers it. Every target file front-loads a Facts table, so the answer is usually in the first screen.
+Start here: find the question, jump to the one §-section that answers it. The larger topic files front-load a Facts table, so the answer is usually in the first screen; the short files (roadmap, direction, testing, web_app, product_analytics) are one screen already.
 
 | Question | Where |
 |---|---|
@@ -101,7 +101,7 @@ After that, dip into whichever of these matches the change you're making:
 | [`scenarios/github-pr-reviewer.md`](./scenarios/github-pr-reviewer.md) | Install `github-pr-reviewer`, connect GitHub, and receive review comments. |
 | [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md) | Diagnose a failed deployment and show the unproven steps needed for a draft Pull Request (PR). |
 | [`roadmap.md`](./roadmap.md) | Deferred / forward-looking direction: v2.1 scope-based auth, the bastion post-MVP shape, open-fleet (mode C). Direction, not commitment. |
-| [`../AUTH.md`](../AUTH.md) | The principal model (CLI, UI, tenant api key, fleet key, and the `agt_r` runner machine principal), the bearer-routing middleware, and the per-flow detail. The canonical reference any time auth is in scope. |
+| [`../AUTH.md`](../AUTH.md) | The principal model (CLI `afc_` credential, UI, tenant api key, and the `agt_r` runner machine principal), the bearer-routing middleware, and the per-flow detail. The canonical reference any time auth is in scope. |
 
 ---
 

@@ -1,11 +1,10 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-import { Writable } from "node:stream";
 import { runCli } from "../src/cli.ts";
 import { asFetchOverride, makeHeaders, type ResponseLike } from "./helpers.ts";
+import { bufferStream, withFreshStateDir } from "./helpers-cli-state.ts";
 
 interface DoctorCheck {
   name: string;
@@ -19,27 +18,12 @@ interface DoctorResult {
   checks: DoctorCheck[];
 }
 
-function bufferStream(): { stream: Writable; read: () => string } {
-  let data = "";
-  return {
-    stream: new Writable({
-      write(chunk, _enc, cb) {
-        data += String(chunk);
-        cb();
-      },
-    }),
-    read: () => data,
-  };
-}
 
 async function withStateDir<T>(
   opts: { workspace?: string },
   fn: () => Promise<T>,
 ): Promise<T> {
-  const previous = process.env.AGENTSFLEET_STATE_DIR;
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-doctor-"));
-  process.env.AGENTSFLEET_STATE_DIR = dir;
-  try {
+  return withFreshStateDir(async (dir) => {
     if (opts.workspace) {
       await fs.writeFile(
         path.join(dir, "workspaces.json"),
@@ -48,11 +32,7 @@ async function withStateDir<T>(
       );
     }
     return await fn();
-  } finally {
-    if (previous === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
-    else process.env.AGENTSFLEET_STATE_DIR = previous;
-    await fs.rm(dir, { recursive: true, force: true });
-  }
+  });
 }
 
 function jsonResponse(body: unknown, status = 200): ResponseLike {

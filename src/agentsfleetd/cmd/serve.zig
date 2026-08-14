@@ -8,6 +8,9 @@ const session_store_redis = @import("../session/session_store_redis.zig");
 const audit_events = @import("../auth/audit_events.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const api_key_lookup = @import("api_key_lookup.zig");
+const cli_credential_lookup = @import("cli_credential_lookup.zig");
+const clerk_backend = @import("../auth/clerk_backend.zig");
+const clerk_scope_resolver = @import("../auth/clerk_scope_resolver.zig");
 const serve_runner_lookup = @import("serve_runner_lookup.zig");
 const metrics = @import("../observability/metrics.zig");
 const logging = @import("log");
@@ -121,6 +124,20 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     defer serve_shutdown.awaitInstallWorkers(&install_wg);
 
     defer serve_caches.deinit();
+    // Boot-resolved provider base: one value feeds the handler Context (the
+    // signup metadata writer) and the scope resolver below, so an override
+    // moves every backend call together rather than splitting the host.
+    const clerk_api_base_env = try common.env.owned(env_map, alloc, clerk_backend.API_BASE_ENV_VAR);
+    defer if (clerk_api_base_env) |v| alloc.free(v);
+    const clerk_api_base = clerk_backend.resolveApiBase(clerk_api_base_env) catch {
+        log.err("startup.clerk_api_base_invalid", .{
+            .error_code = error_codes.ERR_STARTUP_ENV_CHECK,
+            .hint = "CLERK_API_BASE must be https:// (or http://127.0.0.1 / http://localhost for an offline lane)",
+        });
+        std.process.exit(1);
+    };
+    if (clerk_api_base_env != null) log.info("startup.clerk_api_base_override", .{ .base = clerk_api_base });
+
     var ctx = http_handler.Context{
         .model_library_cache = serve_caches.init(alloc),
         .pool = api_pool,
@@ -132,6 +149,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         .clerk_webhook_secret = secrets.clerk_webhook_secret,
         .approval_signing_secret = secrets.approval_signing_secret,
         .clerk_secret_key = secrets.clerk_secret_key,
+        .clerk_api_base = clerk_api_base,
         .oidc = null,
         .r2 = if (r2_store) |*c| c else null,
         .auth_sessions = &sessions,
@@ -182,8 +200,25 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
 
     var api_key_lookup_ctx = api_key_lookup.Ctx{ .pool = ctx.pool };
     var runner_lookup_ctx = serve_runner_lookup.Ctx{ .pool = ctx.pool };
+    var cli_credential_lookup_ctx = cli_credential_lookup.Ctx{ .pool = ctx.pool };
+    // Borrows the boot-resolved provider secret, so no request pays a getenv.
+    // Missing → every command-line credential is refused as unavailable rather
+    // than resolved to an empty capability set (fail closed, and honest about
+    // which of the two happened).
+    var scope_resolver = clerk_scope_resolver.ScopeResolver.init(alloc, .{
+        .secret = secrets.clerk_secret_key,
+        .api_base = clerk_api_base,
+    });
+    defer scope_resolver.deinit();
 
-    var registry = serve_boot.buildRegistry(ctx.oidc, &api_key_lookup_ctx, &runner_lookup_ctx, approval_signing_secret);
+    var registry = serve_boot.buildRegistry(.{
+        .verifier = ctx.oidc,
+        .api_key_lookup_ctx = &api_key_lookup_ctx,
+        .cli_credential_lookup_ctx = &cli_credential_lookup_ctx,
+        .scope_resolver = &scope_resolver,
+        .runner_lookup_ctx = &runner_lookup_ctx,
+        .approval_signing_secret = approval_signing_secret,
+    });
     // Construct the generic WebhookSig with concrete *pg.Pool type.
     // Must be declared before initChains() so the pointer is stable, but
     // the chain is set via setWebhookSig() after initChains().

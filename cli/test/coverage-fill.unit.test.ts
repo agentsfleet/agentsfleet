@@ -61,6 +61,7 @@ test("save/load/clear Credentials roundtrip writes mode 0600 and clears to nulls
       saved_at: 1,
       session_id: "sess",
       api_url: "https://api.example",
+      credential_id: null,
     });
     const after = await loadCredentials();
     expect(after.token).toBe("tok_abc");
@@ -103,6 +104,7 @@ test("loadCredentials returns the default shape when no file exists", async () =
       saved_at: null,
       session_id: null,
       api_url: null,
+      credential_id: null,
     });
   } finally {
     delete process.env.AGENTSFLEET_STATE_DIR;
