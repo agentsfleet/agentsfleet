@@ -13,6 +13,8 @@ test {
     _ = @import("daemon/control_plane_client.zig");
     _ = @import("daemon/control_plane_client_mint.zig");
     _ = @import("daemon/control_plane_client_test.zig");
+    _ = @import("daemon/control_plane_verbs_test.zig");
+    _ = @import("daemon/lease_run_workspace_test.zig");
     _ = @import("daemon/config.zig");
     _ = @import("daemon/StorageHome.zig");
     _ = @import("daemon/loop.zig");
