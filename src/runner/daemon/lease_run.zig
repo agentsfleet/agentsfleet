@@ -207,7 +207,8 @@ fn reportStartupFailure(alloc: std.mem.Allocator, cp: *client_mod, runner_token:
 
 /// Create a per-lease workspace directory. Writes into caller-owned `buf`; returns
 /// a slice into `buf` (valid for caller's stack frame) or null on error.
-fn prepareWorkspace(io: std.Io, buf: *[std.fs.max_path_bytes]u8, base: []const u8, lease_id: []const u8) ?[]const u8 {
+/// `pub` for the sibling `lease_run_workspace_test.zig`.
+pub fn prepareWorkspace(io: std.Io, buf: *[std.fs.max_path_bytes]u8, base: []const u8, lease_id: []const u8) ?[]const u8 {
     const path = std.fmt.bufPrint(buf, "{s}/{s}", .{ base, lease_id }) catch {
         log.err("workspace_path_fmt_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .lease_id = lease_id });
         return null;
@@ -223,7 +224,8 @@ fn prepareWorkspace(io: std.Io, buf: *[std.fs.max_path_bytes]u8, base: []const u
 }
 
 /// Delete the per-lease workspace directory tree; failure is logged and ignored.
-fn cleanupWorkspace(io: std.Io, path: []const u8) void {
+/// `pub` for the sibling `lease_run_workspace_test.zig`.
+pub fn cleanupWorkspace(io: std.Io, path: []const u8) void {
     std.Io.Dir.cwd().deleteTree(io, path) catch |err| {
         log.warn("workspace_cleanup_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .path = path, .err = @errorName(err) });
     };
