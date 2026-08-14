@@ -90,15 +90,32 @@ def read_component(report: Path, repo_root: Path) -> dict[tuple[str, int], bool]
     return lines
 
 
+def raw_class_names(report: Path, limit: int = 8) -> list[str]:
+    """The class filenames a report carries BEFORE any filtering — evidence for
+    diagnosing a component whose product view is empty. On Linux, Continuous
+    Integration produced reports for a varying subset of components whose
+    product view was zero while the file itself was not; this names what kcov
+    actually wrote so the failure says which shape it took."""
+    with report.open("rb") as handle:
+        root = ET.parse(handle).getroot()
+    names = [c.get("filename", "?") for c in root.iter("class")]
+    shown = names[:limit]
+    if len(names) > limit:
+        shown.append(f"... +{len(names) - limit} more")
+    return shown
+
+
 def union_components(coverage_dir: Path, names: list[str], repo_root: Path) -> dict[tuple[str, int], bool]:
     """Union every named component, failing loudly when one contributes nothing."""
     merged: dict[tuple[str, int], bool] = {}
     empty: list[str] = []
     for name in names:
-        component = read_component(find_report(coverage_dir / name), repo_root)
+        report = find_report(coverage_dir / name)
+        component = read_component(report, repo_root)
         files = len({filename for filename, _ in component})
         print(f"→ [zig] component={name} files={files} lines={len(component)}")
         if not component:
+            print(f"    raw classes in {report}: {raw_class_names(report)}")
             empty.append(name)
             continue
         for key, covered in component.items():
