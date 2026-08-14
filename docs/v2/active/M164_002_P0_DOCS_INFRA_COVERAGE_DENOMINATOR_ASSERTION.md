@@ -59,6 +59,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `make/test-unit.mk` | EDIT | Passes the new floors, targets, roots, and denominator minimums to the checker. |
 | `make/test.mk` | EDIT | Defines the per-folder floors and targets and the denominator minimums as named variables, one definition site each. |
 | `docs/architecture/testing.md` | EDIT | §Coverage records the component set, the per-folder floors and targets, the denominator assertions, and the raise-only ratchet rule. |
+| `src/runner/**/*_test.zig` | CREATE/EDIT | Unit-lane tests lifting the runner's four worst files and the tail to the 95% target. |
+| `src/agentsfleetd/**/*_test.zig` | CREATE/EDIT | Live-harness unit tests for the zero-percent handlers and near-zero stores, descending dark order. |
+| `src/agentsfleetd/tests.zig`, `src/runner/tests.zig` (test roots) | EDIT | New test files registered by explicit import, per the repository's test-discovery rule. |
 | `docs/v2/active/M164_002_P0_DOCS_INFRA_COVERAGE_DENOMINATOR_ASSERTION.md` | EDIT | This spec; Dimensions marked DONE alongside their code. |
 
 ## Applicable Rules
@@ -112,11 +115,20 @@ One merged figure cannot bind two trees moving in opposite directions: 67.48% an
 - **Dimension 3.4** — Each scope's gap to target is computed and published, and a floor above its own target is a usage error → Test `test_gap_to_target_published_and_bounded`
 - **Dimension 3.5** — The merged floor on this branch is reconciled to a value the measured figure clears, so a red gate means a regression → Test `test_merged_floor_clears_measured_figure`
 
-### §4 — The architecture doc describes the instrument that exists
+### §4 — The lanes rise file by file, lowest first
+
+The coverage work itself, folded in on Indy's direction: walk the ranked dark-line list per folder and add unit-lane tests to the worst files individually, not merely the files this branch's diff touches. The runner is finishable — 188 of its 362 dark lines sit in four files — so it goes first and lands at its 95% target. The daemon's dark mass is zero-percent HTTP handlers; each gets driven through the in-process harness against live datastores, biggest first, and the daemon floor ratchets to whatever the landed tests measure. **Implementation default:** target files in descending dark-line order within each folder; a file is done when its dark remainder is unreachable-by-design (fatal paths, OS-specific branches) and that remainder is named in the test file.
+
+- **Dimension 4.1** — `runner/` unit lane reaches its 95% target: `daemon/lease_run.zig`, `child_supervisor.zig`, `engine/runner.zig`, `daemon/loop.zig`, then the tail until the folder rate clears 95 → Tests per file, `test_…` per behaviour
+- **Dimension 4.2** — the daemon's zero-percent handler files gain live-harness unit tests in descending dark order (`schedules/api.zig`, `fleets/cron_sync.zig`, `auth/identity_events_clerk.zig`, `tenant_workspaces.zig`, `fleet/runner_patch.zig`, `library/onboard.zig`, continuing down the ranking) → Tests per handler verb, success and failure halves
+- **Dimension 4.3** — the daemon's near-zero store and session files (`session/session_store_redis.zig`, `state/fleet_events_store.zig`) gain live-datastore tests → Tests per store operation
+- **Dimension 4.4** — the `agentsfleetd/` floor is raised in the same commit as the tests that clear the new value, never ahead → Test `test_enforced_floors_clear_measured_values` (re-graded)
+
+### §5 — The architecture doc describes the instrument that exists
 
 `docs/architecture/testing.md` §Coverage still says five binaries, a 60% floor against a 61.40% baseline, and "each binary must produce a non-empty Cobertura report" — the weakest assertion in the lane and the one §2 replaces. It also predates the union, the `s3` component, and the runner integration component. A stale canonical doc is how the next agent reintroduces all of it.
 
-- **Dimension 4.1** — §Coverage records the current component set, the union, the denominator assertions, the per-folder floors and their targets, and the raise-only ratchet rule, with no surviving reference to five binaries, a 60% floor, or a non-empty-report check → Test `test_architecture_doc_matches_gate_values`
+- **Dimension 5.1** — §Coverage records the current component set, the union, the denominator assertions, the per-folder floors and their targets, and the raise-only ratchet rule, with no surviving reference to five binaries, a 60% floor, or a non-empty-report check → Test `test_architecture_doc_matches_gate_values`
 
 ## Interfaces
 
@@ -193,7 +205,11 @@ The CI job summary gains per-folder rows by reading additional keys from the exi
 | 3.3 | unit | `test_enforced_floors_clear_measured_values` | each seeded floor against its measured value → floor lower or equal in all three scopes |
 | 3.4 | unit | `test_gap_to_target_published_and_bounded` | daemon at 67.48% with target 95 → published gap 27.52; floor 96 with target 95 → exit 1 |
 | 3.5 | unit | `test_merged_floor_clears_measured_figure` | merged floor against the measured merged rate → floor is the lower value |
-| 4.1 | unit | `test_architecture_doc_matches_gate_values` | grep `docs/architecture/testing.md` → zero matches for "five binaries", a 60% floor, or "non-empty Cobertura"; the component set and ratchet rule present |
+| 4.1 | unit | runner file tests (per behaviour) | `runner/` unit-lane rate ≥ 95% measured by the gate over the product-only denominator |
+| 4.2 | unit | daemon handler tests (per verb) | each targeted handler leaves 0%; success and failure halves asserted through the in-process harness |
+| 4.3 | unit | store tests (per operation) | `session_store_redis.zig` and `fleet_events_store.zig` exercised against live datastores |
+| 4.4 | unit | `test_enforced_floors_clear_measured_values` | re-graded after each ratchet: every floor at or below its newly measured value |
+| 5.1 | unit | `test_architecture_doc_matches_gate_values` | grep `docs/architecture/testing.md` → zero matches for "five binaries", a 60% floor, or "non-empty Cobertura"; the component set and ratchet rule present |
 
 Regression rows: the guards already on this branch must keep firing — `test_zero_contribution_component_still_fails`, `test_source_roots_still_normalised`, `test_union_report_still_written`. Idempotency: `test_checker_is_pure_over_repeat_invocation` — grading the same reports twice yields identical output and exit code.
 
@@ -233,8 +249,7 @@ Regression rows: the guards already on this branch must keep firing — `test_ze
 
 ## Out of Scope
 
-- The unit-lane coverage work itself — roughly 7,100 daemon lines and 200 runner lines to reach the 95% targets. Follow-on workstreams under a later milestone; this workstream makes the measurement bind per folder and publishes the remaining gap every run.
-- Raising any floor above its seeded value. The ratchet is follow-on activity, gated on the tests that clear it.
+- Raising any floor beyond the value the newly landed tests measurably clear. Floors ratchet with evidence in the same commit, never ahead of it.
 - `.github/workflows/test.yml` changes. The summary step already reads `.tmp/zig-coverage.txt`, so new keys surface without touching a workflow, and workflow edits are approval-gated.
 - The app, website, agentsfleet, and design-system coverage gates. Different tooling, separate floors, untouched by this diff.
 - Re-examining the union that replaced `kcov --merge`. Already landed on this branch and verified; it is read-first context, not scope.
@@ -263,6 +278,7 @@ Regression rows: the guards already on this branch must keep firing — `test_ze
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
+  > Indy (2026-08-14 14:04): "I think you have to go and the check the files in runner/ and agentsfleetd/ individually with lower coverage and improve the tests. You shouldnt just sit and check the mergeable changed or modified new file in the PR" — context: folds the unit-lane coverage lifts (formerly Out of Scope follow-on) into this workstream as §4; targets stay 91/95/95.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
