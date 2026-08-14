@@ -1,41 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { Writable } from "node:stream";
 import { runCli, VERSION } from "../src/cli.ts";
-
-function bufferStream(): { stream: Writable; read: () => string } {
-  let data = "";
-  return {
-    stream: new Writable({
-      write(chunk, _enc, cb) {
-        data += String(chunk);
-        cb();
-      },
-    }),
-    read: () => data,
-  };
-}
-
-async function withIsolatedStateDir<T>(
-  run: (stateDir: string) => Promise<T>,
-): Promise<T> {
-  const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-help-"));
-  const previousStateDir = process.env.AGENTSFLEET_STATE_DIR;
-  process.env.AGENTSFLEET_STATE_DIR = stateDir;
-  try {
-    return await run(stateDir);
-  } finally {
-    if (previousStateDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
-    else process.env.AGENTSFLEET_STATE_DIR = previousStateDir;
-    await fs.rm(stateDir, { recursive: true, force: true });
-  }
-}
+import { bufferStream, withFreshStateDir } from "./helpers-cli-state.ts";
 
 describe("help output", () => {
   test("--help output contains all user commands", async () => {
-    await withIsolatedStateDir(async () => {
+    await withFreshStateDir(async () => {
       const out = bufferStream();
       const err = bufferStream();
       const code = await runCli(["--help"], {

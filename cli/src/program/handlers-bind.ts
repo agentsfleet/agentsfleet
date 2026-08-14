@@ -4,11 +4,13 @@
 
 import { Option, Redacted, type Effect } from "effect";
 import { runEffect, type MainLayerServices } from "../lib/run-effect.ts";
+import { isString } from "../lib/guards.ts";
 import type { FetchImpl } from "../lib/http.ts";
 import { mainLayerFor } from "../runtime/main-layer.ts";
 import { withCommandInstrumentation } from "../services/telemetry/command-instrumentation.ts";
 
-import { authStatusEffect, logoutEffect } from "../commands/auth.ts";
+import { authStatusEffect } from "../commands/auth.ts";
+import { logoutEffect } from "../commands/auth-logout.ts";
 import { loginEffectFromFlags } from "../commands/login.ts";
 import type { CliError } from "../errors/index.ts";
 import { doctorEffect } from "../commands/core-ops.ts";
@@ -32,9 +34,6 @@ import type { ActionFrame, CommandHandlerFn, Handlers } from "./cli-tree-types.t
 import { readStringOpt as optString, type CommandCtx, type CommandDeps, type Workspaces } from "../commands/types.ts";
 
 const CTX = "ctx" as const;
-const TYPE_STRING = "string" as const;
-
-const isString = (value: unknown): value is string => typeof value === TYPE_STRING;
 
 export interface Lifecycle {
   ctx: CommandCtx;
@@ -176,13 +175,11 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
       (frame) => {
         const opts = frame.parsed.options;
         const tokenNameOpt = opts["tokenName"] ?? opts["token-name"];
-        const tokenOpt = opts["token"];
         return loginEffectFromFlags({
           noOpen: opts["open"] === false || opts["noOpen"] === true || opts["no-open"] === true,
           noInput: opts["input"] === false || opts["noInput"] === true || opts["no-input"] === true,
           force: opts["force"] === true,
           tokenName: isString(tokenNameOpt) ? tokenNameOpt : undefined,
-          tokenFlag: isString(tokenOpt) ? tokenOpt : undefined,
         });
       },
       lifecycle,

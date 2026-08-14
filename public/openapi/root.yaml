@@ -72,6 +72,10 @@ tags:
   description: Manage tenant admin API keys
   x-mintlify:
     navigation: API Keys
+- name: CLI Credentials
+  description: Manage the durable credentials your terminals sign in with
+  x-mintlify:
+    navigation: CLI Credentials
 - name: Webhooks
   description: Receive signed events and approval decisions
   x-mintlify:
@@ -179,6 +183,10 @@ paths:
     $ref: ./paths/api-keys.yaml#/~1v1~1api-keys
   /v1/api-keys/{id}:
     $ref: ./paths/api-keys.yaml#/~1v1~1api-keys~1{id}
+  /v1/cli-credentials:
+    $ref: ./paths/cli-credentials.yaml#/~1v1~1cli-credentials
+  /v1/cli-credentials/{id}:
+    $ref: ./paths/cli-credentials.yaml#/~1v1~1cli-credentials~1{id}
   /v1/workspaces/{workspace_id}/fleets:
     $ref: ./paths/fleets.yaml#/~1v1~1workspaces~1{workspace_id}~1fleets
   /v1/fleets/bundles:

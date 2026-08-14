@@ -57,9 +57,7 @@ const unusedWorkspacesLayer = (): Layer.Layer<Workspaces> =>
 const unusedCredentialsLayer = (): Layer.Layer<Credentials> =>
   Layer.succeed(Credentials, {
     getAccessToken: Effect.die("should not be called"),
-    getSavedAt: Effect.die("should not be called"),
-    getSessionId: Effect.die("should not be called"),
-    getApiUrl: Effect.die("should not be called"),
+    snapshot: Effect.succeed({ accessToken: Option.none(), savedAt: null, sessionId: null, apiUrl: null, credentialId: null }),
     saveAccessToken: () => Effect.die("should not be called"),
     clearAccessToken: Effect.die("should not be called"),
   });

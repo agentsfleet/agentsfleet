@@ -3,11 +3,11 @@
 // process.env, no environment introspection — so it's trivially testable
 // and safe to call before any logging/output service is wired.
 //
-// `agentsfleet login --token <pat>` is an accepted, non-interactive auth
-// path — but the secret still lands in shell history and process lists.
-// We emit this caveat whenever `--token` appears in argv, then let the
-// command proceed (the flag works); the message just nudges operators
-// toward piped stdin, which doesn't leak.
+// `login --token` was removed (the parser now refuses it as an unknown
+// option), but the warning outlives the flag on purpose: by the time argv
+// reaches this process the secret is ALREADY in shell history and process
+// lists, and the refusal alone would not tell the operator that. The nudge
+// points at `AGENTSFLEET_API_KEY`, the one unattended path that remains.
 //
 // Detection rules (POSIX-faithful):
 //   - `--` ends the option-scanning window (anything after it is a
@@ -19,7 +19,7 @@
 //     flag) is harmless — there's nothing for the shell to capture.
 
 export const TOKEN_LEAK_WARNING =
-  "warning: --token leaks into shell history and process lists; prefer piped stdin.";
+  "warning: --token leaks into shell history and process lists; the flag was removed — set AGENTSFLEET_API_KEY instead.";
 
 const TOKEN_FLAG = "--token";
 const TOKEN_EQ_PREFIX = "--token=";

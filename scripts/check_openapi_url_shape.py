@@ -50,6 +50,7 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     "runners",           # core runner fleet — enrollment (POST /v1/runners) + operator plane (GET /v1/fleets/runners)
     "leases",            # fleet.runner_leases — per-runner lease history (GET /v1/fleets/runners/{id}/leases)
     "api-keys",          # api keys collection
+    "cli-credentials",   # core.cli_credentials — a person's durable per-machine terminal credentials
     "fleet-keys",        # fleet keys collection
     "platform-keys",     # admin platform keys
     "sessions",          # auth sessions

@@ -12,11 +12,16 @@
 //! the tag (`fleet_read`) and the wire value (`fleet:read`) are paired in the
 //! comptime table and validated total over the enum.
 //!
-//! `DefaultGrant` maps a credential source (`tenant_owner` / `tenant_api_key` /
-//! `runner`) to the explicit
-//! scope set provisioned onto its principal at construction — PROVISIONING ONLY,
-//! no gate ever checks a grant (Invariant 10); gates take `Scope` values.
-//! Operator/collaborator scope sets are provisioned manually at the IdP
+//! Two scope sets are still named in code, and they are named for opposite
+//! reasons. `SIGNUP_OWNER_CLAIM` is WRITTEN to the identity provider once by
+//! the `user.created` writeback and never read back from here — the provider
+//! owns the value from that instant. `RUNNER_SCOPES` is READ at principal
+//! construction, and only because a runner credential names a machine that has
+//! no identity at the provider to ask. Every credential that names a person
+//! resolves its capabilities from the provider per request.
+//!
+//! Neither is a gate: no gate checks a grant (Invariant 10); gates take `Scope`
+//! values. Operator/collaborator scope sets are provisioned manually at the IdP
 //! (documented in docs/AUTH.md), so they are documentation, not code.
 //!
 //! Portability: like every `src/auth/**` file this imports only `std`.
@@ -81,21 +86,17 @@ pub const Scope = enum {
 /// so `satisfies` is a single membership test.
 pub const Set = std.EnumSet(Scope);
 
-/// Credential sources that receive a default scope grant at principal
-/// construction. Keyed by *where the principal comes from* (the real axis), not
-/// a role name — the provisioning twin of `route_scopes.zig`. `defaultScopes` /
-/// `defaultClaim` are NEVER consulted at a gate (gates take `Scope`, not a
-/// grant — Invariant 10). Operator/collaborator grants are provisioned manually
-/// at the IdP (see docs/AUTH.md); nothing in code expands them.
-pub const DefaultGrant = enum { tenant_owner, tenant_api_key, runner };
-
-/// Every tenant capability a machine credential may hold. `approval_resolve` is
-/// deliberately absent: an `agt_t` key is how an automation reaches the API —
-/// including a Fleet running in the sandbox — so a holder able to resolve an
-/// approval could approve the gate guarding its own next action, and the human
-/// decision the gate represents would not be one. Approving stays a person's
-/// act; see docs/AUTH.md §Provisioning grants.
-const TENANT_API_KEY_GRANT = [_]Scope{
+/// The tenant owner's grant, written to the provider once at signup by the
+/// `user.created` writeback. NO platform or cross-tenant scope — that is what
+/// preserves "an admin cannot enroll a runner".
+///
+/// There is deliberately no machine twin of this list. An `agt_t` key used to
+/// carry its own compiled-in grant — this set minus `approval_resolve` — now
+/// retired: a key resolves the capabilities the provider
+/// holds for the person named in `created_by`, exactly as an `afc_` credential
+/// does. A key is as capable as its creator, no more and no less, so there is
+/// no second set here to drift from this one.
+const TENANT_OWNER_GRANT = [_]Scope{
     .fleet_admin,
     .schedule_write,
     .secret_write,
@@ -105,53 +106,37 @@ const TENANT_API_KEY_GRANT = [_]Scope{
     .billing_read,
     .workspace_admin,
     .library_write,
+    .approval_resolve,
 };
 
-/// The human tenant owner's grant: the machine set plus the one capability a
-/// person must hold and a credential must not. Derived rather than restated so
-/// the two sets cannot drift apart by more than this line.
-const TENANT_OWNER_GRANT = TENANT_API_KEY_GRANT ++ [_]Scope{.approval_resolve};
+/// The runner plane's capability, expanded through the hierarchy.
+///
+/// This is the one set still decided in code at principal construction, and it
+/// is decided here because a runner has no identity at the provider to ask: an
+/// `agt_r` credential is host-resident and names a machine, not a person. Every
+/// credential that names a person — `afc_`, `agt_t`, and any JSON Web Token —
+/// resolves its capabilities from the provider instead.
+pub const RUNNER_SCOPES: Set = blk: {
+    @setEvalBranchQuota(2_000);
+    var set = Set.initEmpty();
+    insertWithClosure(&set, .runner_self);
+    break :blk set;
+};
 
-/// The minimal scopes provisioned to `src` (before hierarchy closure).
-fn grantMembers(src: DefaultGrant) []const Scope {
-    return switch (src) {
-        // Clerk signup owner, via the `user.created` writeback. NO platform or
-        // cross-tenant scope (preserves "an admin api-key cannot enroll a runner").
-        .tenant_owner => &TENANT_OWNER_GRANT,
-        // `agt_t` tenant api-key — the owner's capabilities minus approval.
-        .tenant_api_key => &TENANT_API_KEY_GRANT,
-        // Host-resident runner credential — self-plane only.
-        .runner => &.{.runner_self},
-    };
-}
-
-/// The hierarchy-expanded scope set provisioned to `src` — written onto the
-/// principal at construction (`tenant_api_key`, `runner_bearer`).
-pub fn defaultScopes(comptime src: DefaultGrant) Set {
-    // Comptime-pinned: the grant + hierarchy are statically known, so each
-    // credential source resolves to a constant Set inlined at the call site —
-    // no per-request closure walk, and the set can't be silently widened.
-    return comptime blk: {
-        @setEvalBranchQuota(2_000);
-        var set = Set.initEmpty();
-        for (grantMembers(src)) |s| insertWithClosure(&set, s);
-        break :blk set;
-    };
-}
-
-/// The space-delimited wire string provisioned to `src` — the exact value
-/// written into the IdP's `public_metadata.scopes` and read back into the
-/// `scopes` claim. Comptime-built; the parser expands the hierarchy on read, so
-/// lower rungs are omitted here.
-pub fn defaultClaim(comptime src: DefaultGrant) []const u8 {
-    return comptime blk: {
-        var s: []const u8 = "";
-        for (grantMembers(src), 0..) |scope, i| {
-            s = s ++ (if (i == 0) "" else " ") ++ scope.wire();
-        }
-        break :blk s;
-    };
-}
+/// The space-delimited claim seeded into a new owner's `public_metadata.scopes`
+/// by the `user.created` writeback — a WRITE, not a read. Once it lands, the
+/// provider owns the value and every later request reads it from there, so an
+/// operator who edits it wins permanently. Nothing consults this at a gate.
+///
+/// Comptime-built; the parser expands the hierarchy on read, so lower rungs are
+/// omitted here.
+pub const SIGNUP_OWNER_CLAIM: []const u8 = blk: {
+    var s: []const u8 = "";
+    for (TENANT_OWNER_GRANT, 0..) |scope, i| {
+        s = s ++ (if (i == 0) "" else " ") ++ scope.wire();
+    }
+    break :blk s;
+};
 
 // ── Wire strings (RULE UFS — the claim values shared verbatim with Clerk) ────────────────
 
@@ -275,6 +260,25 @@ pub fn satisfiesAny(held: Set, required: []const Scope) bool {
 
 const std = @import("std");
 const common = @import("common");
+
+/// Host-supplied callback answering "what may this subject do, now?" with the
+/// identity provider's space-delimited scope claim — the same string shape the
+/// JWT path receives in `verified.scopes`, so all three feed one `parseClaim`.
+///
+/// Injected rather than called directly for the same reason a row lookup is: it
+/// reaches the network, and a middleware's branches must be provable without
+/// one. The caller owns the returned slice.
+///
+/// Declared here rather than on either middleware because both the command-line
+/// credential and the tenant api-key paths take the same seam and are wired to
+/// the same resolver instance at boot. Two identical declarations would be two
+/// places for the signature to drift, and the middleware that imported the
+/// other's copy would depend on a sibling it has nothing else to say to.
+pub const ScopeFn = *const fn (
+    scope_host: *anyopaque,
+    alloc: std.mem.Allocator,
+    oidc_subject: []const u8,
+) anyerror![]const u8;
 
 // docs/AUTH.md's Scope catalogue must list every wire string
 // this file defines (found missing: platform-library:write, now added).

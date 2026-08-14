@@ -22,7 +22,11 @@ import { helpTail } from "../../src/program/cli-tree-help.ts";
 import { runFleetctl, spawnFleetctl, composeEnv } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
-import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
+import {
+  makeStubbedStateDir,
+  STUB_TOKEN,
+  type StubbedStateDir,
+} from "./fixtures/state-dir.ts";
 import { resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 
@@ -47,7 +51,11 @@ beforeAll(async () => {
 });
 
 function emptyEnv(extra?: Record<string, string>): Record<string, string> {
-  return composeEnv({ AGENTSFLEET_API_URL: UNROUTABLE_API_URL, NO_COLOR: "1", ...(extra ?? {}) });
+  return composeEnv({
+    AGENTSFLEET_API_URL: UNROUTABLE_API_URL,
+    NO_COLOR: "1",
+    ...(extra ?? {}),
+  });
 }
 
 function waitForExit(child: ChildProcessWithoutNullStreams): Promise<ExitResult> {
@@ -162,10 +170,14 @@ describe("non-TTY login fast-fails", () => {
     return child;
   }
 
-  it("exits non-zero with token guidance and never opens a browser", async () => {
+  // Since direct-token seeding was retired, the guidance a non-TTY
+  // shell gets must name the environment variable rather than the removed
+  // flag — otherwise the fast-fail points at something that no longer exists.
+  it("exits non-zero naming AGENTSFLEET_API_KEY and never opens a browser", async () => {
     const result = await waitForExit(spawnNonTtyLogin());
     assert.notEqual(result.code, 0, `expected fast-fail, got ${result.code}; stderr=${result.stderr}`);
-    assert.match(result.stderr, /--token/, `expected token guidance: ${result.stderr}`);
+    assert.match(result.stderr, /AGENTSFLEET_API_KEY/, `expected env-var guidance: ${result.stderr}`);
+    assert.doesNotMatch(result.stderr, /--token\b/, `must not point at the removed flag: ${result.stderr}`);
     assert.ok(
       !/login_url|127\.0\.0\.1/i.test(result.stdout),
       `device flow must not start: ${result.stdout}`,
@@ -180,7 +192,7 @@ describe("non-TTY login fast-fails", () => {
       .catch(() => null);
     if (credsRaw) {
       const parsed = JSON.parse(credsRaw) as { token: string };
-      assert.equal(parsed.token, "header.payload.sig", `fast-fail wrote a token: ${credsRaw}`);
+      assert.equal(parsed.token, STUB_TOKEN, `fast-fail wrote a token: ${credsRaw}`);
     }
   });
 });

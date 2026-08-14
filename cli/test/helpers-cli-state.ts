@@ -24,12 +24,31 @@
 // state.ts to read from caller-provided env first) instead of relying
 // on the process-global. Until then this comment is the warning sign.
 
+import { afterEach, beforeEach } from "bun:test";
 import fs from "node:fs/promises";
+import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Writable } from "node:stream";
 
 import { saveCredentials, saveWorkspaces } from "../src/lib/state.ts";
+import {
+  CLI_CREDENTIAL_BODY_LEN,
+  CLI_CREDENTIAL_PREFIX,
+} from "../src/constants/cli-credential.ts";
+
+// A credential shaped the way services/credentials.ts validates on load: the
+// afc_ prefix and a 64-character lower-case hex body. Built by repetition
+// rather than written out, so this file carries no high-entropy literal for a
+// secret scanner to flag, and so nobody mistakes it for a real credential.
+// A seeded value that fails the load check would read as logged-out and every
+// authed fixture would bounce off the auth guard.
+const FIXTURE_BODY_CHAR = "a";
+export const FIXTURE_CREDENTIAL = `${CLI_CREDENTIAL_PREFIX}${FIXTURE_BODY_CHAR.repeat(CLI_CREDENTIAL_BODY_LEN)}`;
+export const FIXTURE_CREDENTIAL_ID = "cli_cred_fixture";
+
+const STATE_DIR_ENV = "AGENTSFLEET_STATE_DIR";
+const TMP_PREFIX = "agentsfleet-test-";
 
 // Mirror of helpers.ts:TestStream — Writable + optional isTTY so tests
 // can flip TTY-dependent code paths without an `as` cast at every site.
@@ -61,16 +80,59 @@ export function bufferStream(): { stream: TestStream; read: () => string } {
 export async function withFreshStateDir<T>(
   fn: (stateDir: string) => Promise<T>,
 ): Promise<T> {
-  const previous = process.env.AGENTSFLEET_STATE_DIR;
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-test-"));
-  process.env.AGENTSFLEET_STATE_DIR = dir;
+  const previous = process.env[STATE_DIR_ENV];
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), TMP_PREFIX));
+  process.env[STATE_DIR_ENV] = dir;
   try {
     return await fn(dir);
   } finally {
-    if (previous === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
-    else process.env.AGENTSFLEET_STATE_DIR = previous;
+    if (previous === undefined) delete process.env[STATE_DIR_ENV];
+    else process.env[STATE_DIR_ENV] = previous;
     await fs.rm(dir, { recursive: true, force: true });
   }
+}
+
+/**
+ * Hook-scoped sibling of `withFreshStateDir`, for files that want the isolated
+ * directory to span a whole describe block instead of one call. Registers
+ * `beforeEach`/`afterEach` at the calling scope and returns an accessor for the
+ * directory belonging to the running test.
+ *
+ *     const stateDir = useFreshStateDir();
+ *     test("...", async () => { await Bun.write(`${stateDir()}/x.json`, "…"); });
+ */
+export function useFreshStateDir(): () => string {
+  let dir = "";
+  let previous: string | undefined;
+  beforeEach(() => {
+    previous = process.env[STATE_DIR_ENV];
+    dir = mkdtempSync(path.join(os.tmpdir(), TMP_PREFIX));
+    process.env[STATE_DIR_ENV] = dir;
+  });
+  afterEach(() => {
+    if (previous === undefined) delete process.env[STATE_DIR_ENV];
+    else process.env[STATE_DIR_ENV] = previous;
+    rmSync(dir, { recursive: true, force: true });
+  });
+  return () => dir;
+}
+
+/**
+ * Save/restore only — no directory is created. For files whose individual tests
+ * assign their own state dir because they seed its contents before the CLI
+ * reads it (the telemetry suites write `telemetry.json` first). Those tests own
+ * the directory; this only guarantees the environment variable is put back, so
+ * one file cannot leak its state dir into the next.
+ */
+export function preserveStateDirEnv(): void {
+  let previous: string | undefined;
+  beforeEach(() => {
+    previous = process.env[STATE_DIR_ENV];
+  });
+  afterEach(() => {
+    if (previous === undefined) delete process.env[STATE_DIR_ENV];
+    else process.env[STATE_DIR_ENV] = previous;
+  });
 }
 
 export interface AuthedStateDirOpts {
@@ -95,7 +157,7 @@ export async function withAuthedStateDir<T>(
     workspaceId,
     workspaceName = "test-ws",
     sessionId = "sess_test",
-    token = "header.payload.sig",
+    token = FIXTURE_CREDENTIAL,
     apiUrl = null,
   } = opts;
   return withFreshStateDir(async (dir) => {
@@ -104,6 +166,7 @@ export async function withAuthedStateDir<T>(
       saved_at: Date.now(),
       session_id: sessionId,
       api_url: apiUrl,
+      credential_id: FIXTURE_CREDENTIAL_ID,
     });
     await saveWorkspaces({
       current_workspace_id: workspaceId,

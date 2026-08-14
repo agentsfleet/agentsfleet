@@ -1,6 +1,8 @@
 // Bun test preload — runs once before any test file (see bunfig.toml).
 import { setDefaultTimeout } from "bun:test";
 
+import { makeEmptyStateDirSync } from "./acceptance/fixtures/state-dir.ts";
+
 // Acceptance specs spawn the real CLI as a child process and await its
 // exit. Under `bun test --coverage` the parent runner is instrumented,
 // so spawn-and-await occasionally exceeds bun's 5000ms default per-test
@@ -23,4 +25,23 @@ setDefaultTimeout(SPAWN_TEST_TIMEOUT_MS);
 // clean child env via `composeEnv`, which injects the same knob directly.
 if (process.env.AGENTSFLEET_TELEMETRY_DISABLED === undefined) {
   process.env.AGENTSFLEET_TELEMETRY_DISABLED = "1";
+}
+
+// Credentials resolve through `resolveStatePaths()` (src/lib/state.ts), which
+// reads `process.env.AGENTSFLEET_STATE_DIR` directly — NOT the `env` handed to
+// `runCli`, because `loadCredentials()` runs before that env is consulted. With
+// the var unset it falls back to `~/.config/agentsfleet`, so an in-process
+// "auth required" assertion held only while whoever ran the suite happened to
+// be logged out; on a machine with a real login it failed with the operator's
+// own workspace id in the diff. Continuous Integration (CI) has no such
+// directory, so it passed throughout and never flagged this.
+//
+// Default the runner to an empty state dir so logged-out is the baseline. A
+// test wanting stored state sets its own (see `makeStubbedStateDir`), and an
+// already-exported value is left alone.
+//
+// The spawned-CLI acceptance specs do NOT inherit this — they compose a clean
+// child env via `composeEnv`, so they inject the same knob directly.
+if (process.env.AGENTSFLEET_STATE_DIR === undefined) {
+  process.env.AGENTSFLEET_STATE_DIR = makeEmptyStateDirSync();
 }

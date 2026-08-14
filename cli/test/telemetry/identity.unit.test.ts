@@ -3,8 +3,9 @@
 // `~/Projects/oss/cli/apps/cli/src/shared/telemetry/identity.ts`).
 // Tests redirect AGENTSFLEET_STATE_DIR to a per-case temp directory.
 
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { Effect } from "effect";
+import { preserveStateDirEnv } from "../helpers-cli-state.ts";
 import {
   existsSync,
   mkdirSync,
@@ -37,16 +38,9 @@ function readTelemetry(dir: string): TelemetryConfig {
   return JSON.parse(readFileSync(path.join(dir, "telemetry.json"), "utf8"));
 }
 
-const SAVED_ENV: { AGENTSFLEET_STATE_DIR?: string | undefined } = {};
-
-beforeEach(() => {
-  SAVED_ENV.AGENTSFLEET_STATE_DIR = process.env.AGENTSFLEET_STATE_DIR;
-});
-
-afterEach(() => {
-  if (SAVED_ENV.AGENTSFLEET_STATE_DIR === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
-  else process.env.AGENTSFLEET_STATE_DIR = SAVED_ENV.AGENTSFLEET_STATE_DIR;
-});
+// Each test assigns its own dir (it seeds telemetry.json before the code
+// reads it); this only guarantees the variable is put back afterwards.
+preserveStateDirEnv();
 
 describe("resolveIdentity", () => {
   it("generates a fresh device_id (UUID) on first run", async () => {

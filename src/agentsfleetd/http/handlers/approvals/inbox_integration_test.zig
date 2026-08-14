@@ -10,13 +10,16 @@
 
 const std = @import("std");
 const scope_fixtures = @import("../../test_scope_tokens.zig");
-const clock = @import("common").clock;
+const constants_common = @import("common");
+const clock = constants_common.clock;
 const pg = @import("pg");
 
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 const api_key_lookup = @import("../../../cmd/api_key_lookup.zig");
+const api_key_mod = @import("../../../auth/api_key.zig");
+const scopes_mod = @import("../../../auth/scopes.zig");
 const error_codes = @import("../../../errors/error_registry.zig");
 const approval_gate = @import("../../../fleet_runtime/approval_gate.zig");
 const approval_gate_db = @import("../../../fleet_runtime/approval_gate_db.zig");
@@ -52,6 +55,25 @@ const TOKEN_OPERATOR = scope_fixtures.TENANT_ADMIN;
 // drift between the two would 409 every run after the first.
 const MACHINE_KEY_NAME = "approval-machine-probe";
 
+// A creator the provider holds a narrow claim for — no approval capability.
+// Their key row is seeded directly (no token exists for them, deliberately:
+// what matters is the row's `created_by`, which is all the middleware reads).
+const NARROW_SUBJECT = "user_approval_narrow_creator";
+const NARROW_KEY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa7aa";
+const NARROW_KEY_NAME = "approval-narrow-probe";
+const NARROW_KEY = "agt_t" ++ "9" ** 48;
+
+/// The provider, answering per subject: the narrow creator resolves to a claim
+/// with no approval capability, everyone else to the signup-owner claim. This
+/// is the §6 mechanism under test — the key row carries no capability at all,
+/// so which claim comes back is decided entirely by WHO minted the key.
+fn creatorScopes(_: *anyopaque, alloc: std.mem.Allocator, oidc_subject: []const u8) anyerror![]const u8 {
+    if (std.mem.eql(u8, oidc_subject, NARROW_SUBJECT)) {
+        return alloc.dupe(u8, "billing:read");
+    }
+    return alloc.dupe(u8, scopes_mod.SIGNUP_OWNER_CLAIM);
+}
+
 // Real DB-backed api-key lookup, so the probe authenticates as the principal
 // production builds rather than a hand-assembled scope set. Parked at module
 // scope because the ctx must outlive the middleware chain; `zig build test`
@@ -61,7 +83,16 @@ var api_key_ctx: api_key_lookup.Ctx = undefined;
 
 fn configureRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void {
     api_key_ctx = .{ .pool = h.pool };
-    reg.tenant_api_key_mw = .{ .host = &api_key_ctx, .lookup = api_key_lookup.lookup };
+    reg.tenant_api_key_mw = .{
+        .host = &api_key_ctx,
+        .lookup = api_key_lookup.lookup,
+        // Since §6 a tenant key resolves its creator's capabilities; without a
+        // resolver the key authenticates and then fails every gate behind it.
+        // Subject-aware rather than the blanket owner stub: the capability
+        // test below needs two creators the provider answers differently.
+        .scope_host = &api_key_ctx,
+        .resolveScopes = creatorScopes,
+    };
 }
 
 fn parseJsonString(alloc: std.mem.Allocator, body: []const u8, field: []const u8) !?[]const u8 {
@@ -119,6 +150,7 @@ fn cleanupTestData(conn: *pg.Conn) void {
     // Before the workspace/tenant rows it depends on. Runs unconditionally so a
     // failed probe can't leave a row that 409s the next run on the name unique.
     _ = conn.exec("DELETE FROM core.api_keys WHERE tenant_id = $1::uuid AND key_name = $2", .{ TEST_TENANT_ID, MACHINE_KEY_NAME }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.api_keys WHERE tenant_id = $1::uuid AND key_name = $2", .{ TEST_TENANT_ID, NARROW_KEY_NAME }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleet_approval_gates WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleet_approval_gates WHERE workspace_id = $1::uuid", .{OTHER_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec("DELETE FROM core.fleets WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
@@ -639,32 +671,38 @@ test "integration: sweeper transitions expired pending row to timed_out + system
     const gid = "01999999-aaaa-7000-8000-000000000001";
     // timeout_at well in the past — sweeper picks this up immediately.
     try insertGate(conn, .{ .gate_id = gid, .action_id = "act-sweep-1", .timeout_at = 1 });
+    defer delDecisionKey(&h.queue, "act-sweep-1");
 
-    // Drive a single sweep cycle synchronously without spinning the long-lived
-    // thread — the public `run` loop is for production; tests reach in.
+    // The REAL sweeper thread, exactly as the worker spawns it at boot: its
+    // first sweep runs before any sleep, so an expired row is picked up on
+    // entry and the test never waits on the scan interval. An earlier revision
+    // hand-drove `resolve` here and proved the core while leaving the sweeper's
+    // own loop, batch fetch, and shutdown wake unexecuted.
     {
-        const conn2 = try h.acquireConn();
-        defer h.releaseConn(conn2);
-        var outcome = try @import("../../../fleet_runtime/approval_gate.zig").resolve(h.pool, &h.queue, ALLOC, .{
-            .action_id = "act-sweep-1",
-            .outcome = .timed_out,
-            .by = "system:timeout",
-            .reason = "auto-timeout",
+        var shutdown = std.atomic.Value(bool).init(false);
+        const sweeper = try std.Thread.spawn(.{}, approval_gate_sweeper.run, .{
+            h.pool, &h.queue, ALLOC, &shutdown,
         });
-        defer switch (outcome) {
-            .resolved => |*r| @constCast(r).deinit(ALLOC),
-            .already_resolved => |*r| @constCast(r).deinit(ALLOC),
-            .not_found => {},
-        };
-        try std.testing.expect(outcome == .resolved);
+        // The row flips within the first sweep; poll briefly rather than
+        // sleeping a fixed amount so the fast case stays fast.
+        var waited_ms: u64 = 0;
+        const poll_ms = 50;
+        const budget_ms = 10_000;
+        while (waited_ms < budget_ms) : (waited_ms += poll_ms) {
+            const s = try statusOf(conn, ALLOC, gid);
+            defer ALLOC.free(s);
+            if (std.mem.eql(u8, s, "timed_out")) break;
+            constants_common.sleepNanos(poll_ms * std.time.ns_per_ms);
+        }
+        // Shutdown wake: the interruptible sleep polls its flag every second,
+        // so the join below is also the proof a SIGTERM never waits a cycle.
+        shutdown.store(true, .release);
+        sweeper.join();
     }
 
     const status = try statusOf(conn, ALLOC, gid);
     defer ALLOC.free(status);
     try std.testing.expectEqualStrings("timed_out", status);
-
-    // Suppress unused-import warning for the sweeper module the test exercises.
-    _ = approval_gate_sweeper;
 }
 
 // ── Cross-fleet defense ────────────────────────────────────────────────
@@ -898,7 +936,7 @@ test "integration: evaluateRef stays pending when the DB row is unresolved and R
     try std.testing.expectEqual(approval_gate_async.PendingEval.pending, eval);
 }
 
-test "test_api_key_cannot_resolve_approval" {
+test "test_narrowing_the_creator_narrows_the_key" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -910,8 +948,8 @@ test "test_api_key_cannot_resolve_approval" {
     defer cleanupTestData(conn);
 
     // Mint a real `agt_t` key the way an operator would, so the principal under
-    // test is the one the middleware actually builds — not a scope set assembled
-    // by hand, which would prove nothing about the provisioning path.
+    // test is the one the middleware actually builds. Its `created_by` is the
+    // admin persona's subject, which the provider answers the owner claim for.
     const create = try (try (try h.post("/v1/api-keys").bearer(TOKEN_OPERATOR))
         .json("{\"key_name\":\"" ++ MACHINE_KEY_NAME ++ "\"}")).send();
     defer create.deinit();
@@ -919,13 +957,26 @@ test "test_api_key_cannot_resolve_approval" {
     const raw_key = (try parseJsonString(ALLOC, create.body, "key")) orelse return error.TestExpectedEqual;
     defer ALLOC.free(raw_key);
 
+    // A second key, seeded as a person the provider holds a NARROW claim for.
+    // Inserted directly because no token exists for this person on purpose —
+    // `created_by` is the only thing the middleware reads, and this row differs
+    // from the minted one in nothing else.
+    const narrow_hash = api_key_mod.sha256Hex(NARROW_KEY);
+    _ = try conn.exec(
+        \\INSERT INTO core.api_keys
+        \\  (id, tenant_id, key_name, description, key_hash, created_by, active, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, '', $4::text, $5, TRUE, $6::bigint, $6::bigint)
+        \\ON CONFLICT (key_hash) DO NOTHING
+    , .{ NARROW_KEY_ID, TEST_TENANT_ID, NARROW_KEY_NAME, narrow_hash[0..], NARROW_SUBJECT, clock.nowMillis() });
+
     // Unique per run, unlike this file's other gates. Alone among them this test
-    // drives a gate to a terminal state and then needs it *unresolved*, so a row
-    // surviving the run answers 409 "already resolved" before the handler ever
-    // consults the credential — and rows do survive: cleanupTestData's DELETE is
-    // not permitted (api_runtime holds arw, not d, on core.fleet_approval_gates),
-    // so every integration target drops schemas first to compensate. A fixed id
-    // would therefore pass the gate run and fail under KEEP_TEST_STATE.
+    // drives a gate to a terminal state and then needs it *unresolved* first —
+    // a row surviving the run answers 409 "already resolved" before the handler
+    // ever consults the credential — and rows do survive: cleanupTestData's
+    // DELETE is not permitted (api_runtime holds arw, not d, on
+    // core.fleet_approval_gates), so every integration target drops schemas
+    // first to compensate. A fixed id would pass the gate run and fail under
+    // KEEP_TEST_STATE.
     var gid_buf: [40]u8 = undefined;
     var aid_buf: [48]u8 = undefined;
     const now_ms = clock.nowMillis();
@@ -934,24 +985,26 @@ test "test_api_key_cannot_resolve_approval" {
     try insertGate(conn, .{ .gate_id = gid, .action_id = action_id });
 
     // The Redis decision mirror is keyed on action_id and outlives the row, so
-    // clear it on the way out — the human leg below writes one.
+    // clear it on the way out — the approving leg below writes one.
     defer delDecisionKey(&h.queue, action_id);
 
     const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/approvals/{s}:approve", .{ TEST_WORKSPACE_ID, gid });
     defer ALLOC.free(url);
 
-    // The machine credential authenticates fine and is refused on scope. This is
-    // what makes the gate a human gate: a Fleet reaches the API with a key like
-    // this one, so a key able to resolve could approve the gate guarding its own
-    // next action.
-    const as_machine = try (try (try (h.post(url)).bearer(raw_key)).json("{}")).send();
-    defer as_machine.deinit();
-    try as_machine.expectStatus(.forbidden);
-    try as_machine.expectErrorCode(error_codes.ERR_INSUFFICIENT_SCOPE);
+    // The narrow creator's key authenticates fine and is refused on scope —
+    // same gate, same request. Since §6 the refusal is about the PERSON the
+    // key inherits from, not about the credential being a machine: narrowing
+    // the creator at the provider narrowed this key with no deploy (6.2).
+    const as_narrow = try (try (try (h.post(url)).bearer(NARROW_KEY)).json("{}")).send();
+    defer as_narrow.deinit();
+    try as_narrow.expectStatus(.forbidden);
+    try as_narrow.expectErrorCode(error_codes.ERR_INSUFFICIENT_SCOPE);
 
-    // Same gate, same request, human token — so the refusal above is about the
-    // credential class and not about the gate being unresolvable.
-    const as_human = try (try (try (h.post(url)).bearer(TOKEN_OPERATOR)).json("{}")).send();
-    defer as_human.deinit();
-    try as_human.expectStatus(.ok);
+    // And the reversal §6 chose, pinned live (6.5): the owner-created key
+    // carries the owner's `approval:resolve`, so it resolves the gate the older
+    // compiled-in grant existed to keep machines out of. Deliberate — a key is
+    // exactly as capable as its creator (Indy, Aug 13).
+    const as_owner_key = try (try (try (h.post(url)).bearer(raw_key)).json("{}")).send();
+    defer as_owner_key.deinit();
+    try as_owner_key.expectStatus(.ok);
 }

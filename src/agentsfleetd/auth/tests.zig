@@ -14,6 +14,11 @@ test {
     _ = @import("clerk_backend.zig");
     _ = @import("clerk_fetch_worker.zig");
     _ = @import("clerk_metadata_payload.zig");
+    _ = @import("clerk_scope_fetch.zig");
+    _ = @import("clerk_scope_fetch_test.zig");
+    _ = @import("clerk_scope_resolver.zig");
+    _ = @import("clerk_scope_resolver_test.zig");
+    _ = @import("cli_credential.zig");
     _ = @import("cross_tenant_audit.zig");
     _ = @import("jwks.zig");
     _ = @import("jwks_test_fixtures.zig");
@@ -31,6 +36,10 @@ test {
     _ = @import("middleware/bearer.zig");
     _ = @import("middleware/errors.zig");
     _ = @import("middleware/bearer_or_api_key.zig");
+    _ = @import("middleware/bearer_or_api_key_test.zig");
+    _ = @import("middleware/cli_credential.zig");
+    _ = @import("middleware/cli_credential_test.zig");
+    _ = @import("middleware/tenant_api_key_test.zig");
     _ = @import("middleware/tenant_api_key.zig");
     _ = @import("middleware/trusted_client_ip.zig");
     _ = @import("middleware/require_scope.zig");

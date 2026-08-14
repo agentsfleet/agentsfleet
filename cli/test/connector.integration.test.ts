@@ -2,7 +2,12 @@ import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
 import { saveCredentials, saveWorkspaces } from "../src/lib/state.ts";
-import { bufferStream, withAuthedStateDir, withFreshStateDir } from "./helpers-cli-state.ts";
+import {
+  bufferStream,
+  FIXTURE_CREDENTIAL,
+  withAuthedStateDir,
+  withFreshStateDir,
+} from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000c011ec";
@@ -141,10 +146,11 @@ describe("connector commands", () => {
   test("connector list requires a workspace context before any API request", async () => {
     await withFreshStateDir(async () => {
       await saveCredentials({
-        token: "header.payload.sig",
+        token: FIXTURE_CREDENTIAL,
         saved_at: Date.now(),
         session_id: "sess_connector_no_workspace",
         api_url: null,
+        credential_id: null,
       });
       await saveWorkspaces({ current_workspace_id: null, items: [] });
       await withMockApi({}, async (apiUrl, calls) => {
