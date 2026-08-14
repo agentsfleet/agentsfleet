@@ -41,7 +41,9 @@ const DETAIL_BUNDLE_MATERIALIZE = "fleet bundle download or extraction failed be
 
 /// Fans the supervisor's renewal tick out to the periodic work that rides it:
 /// the activity batch's staleness flush, then the renewal decision itself.
-const TickFanout = struct {
+/// `pub` for the sibling `lease_run_exec_test.zig` (the fork boundary keeps the
+/// full `executeAndReport` arc in the integration lane; the fanout is proven here).
+pub const TickFanout = struct {
     forwarder: *forwarders.ActivityForwarder,
     driver: *RenewDriver,
 
@@ -51,7 +53,7 @@ const TickFanout = struct {
         return self.driver.tick(now_ms, usage);
     }
 
-    fn hook(self: *TickFanout) child_supervisor.RenewHook {
+    pub fn hook(self: *TickFanout) child_supervisor.RenewHook {
         return .{ .ctx = self, .onTick = onTick, .tick_ms = constants.RENEWAL_TICK_MS };
     }
 };
@@ -61,7 +63,9 @@ const TickFanout = struct {
 /// child-supplied workspace is impossible — `cp.mint` sends only `lease_id`, and
 /// the daemon derives the workspace from it (Invariant 2). The minted token is
 /// duped into the read loop's `alloc` and freed there after it frames the reply.
-const MintForwarder = struct {
+/// `pub` so `credential_mint_e2e_test.zig` drives the PRODUCTION forwarder over
+/// the real control plane instead of a private re-implementation of it.
+pub const MintForwarder = struct {
     cp: *client_mod,
     runner_token: []const u8,
     lease_id: []const u8,
@@ -75,7 +79,7 @@ const MintForwarder = struct {
         };
     }
 
-    fn hook(self: *MintForwarder) child_supervisor.MintHook {
+    pub fn hook(self: *MintForwarder) child_supervisor.MintHook {
         return .{ .ctx = self, .onMint = onMint };
     }
 };
