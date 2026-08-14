@@ -90,7 +90,10 @@ const credentialsLayer = (
   const state: { token: Option.Option<Redacted.Redacted<string>> } = { token: initial };
   return Layer.succeed(Credentials, {
     getAccessToken: Effect.sync(() => state.token),
-    snapshot: Effect.succeed({ accessToken: Option.none(), savedAt: null, sessionId: null, apiUrl: null, credentialId: null }),
+    // Mirrors getAccessToken: the replace-prompt reads the record through
+    // snapshot (one read for token + deployment), so a double whose snapshot
+    // disagrees with its accessor would silently skip the prompt.
+    snapshot: Effect.sync(() => ({ accessToken: state.token, savedAt: null, sessionId: null, apiUrl: null, credentialId: null })),
     saveAccessToken: (input) =>
       Effect.sync(() => {
         state.token = Option.some(input.token);
