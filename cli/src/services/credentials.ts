@@ -82,7 +82,10 @@ const isPersistable = (token: string): boolean =>
   CLI_CREDENTIAL_PATTERN.test(token) || token.startsWith(TENANT_KEY_PREFIX);
 
 // The token gate shared by the single accessor and the snapshot: only a
-// well-shaped credential is ever surfaced as usable material.
+// well-shaped credential is ever surfaced as usable material. Whether that
+// credential may be dialled at the resolved target is a separate question,
+// owned by `program/auth-guard.ts` — this module knows the record, not the
+// invocation that is about to use it.
 const tokenOf = (
   rec: CredentialsRecord,
 ): Option.Option<Redacted.Redacted<string>> =>

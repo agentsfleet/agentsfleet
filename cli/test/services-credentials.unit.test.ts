@@ -60,6 +60,29 @@ describe("Credentials service", () => {
       expect(Redacted.value(result.value)).toBe(ROUNDTRIP_CREDENTIAL);
     }
   });
+  // An unbound record still LOADS here: this module answers "is the token
+  // well-shaped", not "may it be dialled at this target". The deployment
+  // question belongs to program/auth-guard.ts, which sees the invocation.
+  // Pinned so the two never quietly merge.
+  test("an unbound record still loads — binding is the guard's question", async () => {
+    const snap = await provideEffect(
+      Effect.gen(function* () {
+        const c = yield* Credentials;
+        yield* c.saveAccessToken({
+          token: Redacted.make(ROUNDTRIP_CREDENTIAL),
+          sessionId: "sess-unbound",
+          apiUrl: undefined, // the pre-binding record shape
+          credentialId: "cred-unbound",
+        });
+        return yield* c.snapshot;
+      }),
+    );
+    expect(Option.isSome(snap.accessToken)).toBe(true);
+    expect(snap.apiUrl).toBeNull();
+    // The record still names a row worth revoking, so `logout` can end it.
+    expect(snap.credentialId).toBe("cred-unbound");
+  });
+
   test("snapshot returns every persisted field from one read", async () => {
     const snap = await provideEffect(
       Effect.gen(function* () {

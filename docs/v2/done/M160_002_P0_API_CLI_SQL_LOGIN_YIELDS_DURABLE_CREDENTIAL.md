@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M160
 **Workstream:** 002
 **Date:** Aug 11, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — the documented front door to the Command-Line Interface (CLI) yields a credential that dies in under a minute, so every command after `login` fails
 **Categories:** API, CLI, SQL
 **Batch:** B1 — §1 and §2 are the defect and ship together; §3 and §4 are the two failures a durable credential introduces and cannot ship later
@@ -168,59 +168,39 @@ Minting per login accumulates credentials — the defect the reference implement
 - **Dimension 3.9** — piped-stdin seeding goes with it: a non-TTY login with no `AGENTSFLEET_API_KEY` fails fast and names the environment variable → Test `test_non_tty_login_without_env_key_names_the_env_var` — **DONE**
 - **Dimension 3.10** — an unattended caller reaches the API with `AGENTSFLEET_API_KEY` alone, writing nothing to disk → Test `test_env_key_authenticates_without_persistence` — **DONE**
 
-### §4 — A credential remembers which deployment minted it — PARKED
+### §4 — A credential remembers which deployment minted it — DONE
 
-> **PARKED (Indy, Aug 14, 2026, verbatim):** "Yes think park this, the error
-> will say it to check the api_url as well when it fails is the simple fix
-> here." The simple fix landed on this branch: every command's 401/403
-> suggestion and `auth status`'s rejection line now also point at the target
-> API URL (`--api` / `AGENTSFLEET_API_URL`).
+> **UN-PARKED and landed (Indy, Aug 14, 2026).** The section shipped after the
+> park note above: login already stored `api_url` beside the credential
+> (4.1/4.3/4.4/4.5), and the remaining guard landed as one check rather than
+> the two originally designed.
 >
-> **State when parked:** more of this section exists than its premise below
-> suggests — login already stores `api_url` beside the credential, the target
-> ladder already prefers it (4.1/4.3), the credential ladder holds (4.4), and
-> logout already clears it (4.5). The open remainder is Dimension 4.2 plus the
-> five pin tests.
+> **What the design became, and why it shrank.** Dimension 4.2 was specified as
+> "refuse when the resolved target differs from the stored one". Running it
+> proved that refusal unreachable: when nothing names a target the ladder
+> resolves *to* the stored deployment, so the two cannot disagree. What remains
+> is the case where the ladder would have to guess — no stored deployment AND
+> no named target — which is exactly the leg that reached production in
+> silence. Indy's call on the alternative, verbatim: *"yes b is fine"* —
+> a named `--api` / `AGENTSFLEET_API_URL` always wins, because the operator
+> said where to go and a wrong pair now fails at the server with a 401 that
+> names the API URL (the simple fix already on this branch).
 >
-> **Work order for the follow-up agent (the guard, as designed):** one pure
-> check beside `requireAuth` in `cli/src/program/auth-guard.ts`, run from the
-> same preAction hook after the target ladder resolves. Refuse (exit 1,
-> nothing dialed) exactly when the credential about to be used is the STORED
-> `afc_` one AND `credentials.json.api_url` is non-null AND the normalized
-> resolved target differs from the normalized stored `api_url`. Exemptions:
-> `login` (mints anew), an env `AGENTSFLEET_API_KEY` (the operator paired key
-> and target explicitly), and `logout` — which should instead pin its revoke
-> calls to the STORED `api_url` outright, since a revoke must reach the server
-> that minted the credential. The refusal names both URLs and the three exits
-> (matching `--api`, unset env, or re-login). Tests: the six dimensions below,
-> where 4.1/4.3/4.4/4.5 pin behavior that already exists.
->
-> **The unbound record closes the guard's own hole (Indy, Aug 14, 2026).** The
-> guard above fires only when `api_url` is stored, so a record carrying `afc_`
-> with `api_url` null slips past it and falls to the production default — the
-> exact bug, surviving in the one case it can still occur. Refuse that record
-> at READ instead, beside the existing shape check in
-> `cli/src/services/credentials.ts`: `isPersistable` stays untouched (it takes
-> a token and mirrors `looksWellFormed` in
-> `src/agentsfleetd/auth/cli_credential.zig`), and a record-level `isBound`
-> joins it inside `tokenOf`, which `getAccessToken` and `snapshot` both already
-> route through — so there is no second site to keep in sync. A tenant key is
-> exempt: this client never minted it, and the supported unattended path is
-> `AGENTSFLEET_API_KEY`, read from the environment. Nothing is stranded —
-> `snapshot` reads `credential_id` and `api_url` raw, deliberately outside the
-> token gate, so an unbound credential stays revocable by `logout`. The caller
-> sees the existing `AUTH_FAIL_MESSAGE` (*"not authenticated — run
-> `agentsfleet login` first"*), which names the one repair without inventing a
-> second vocabulary for it.
+> `logout` and `doctor` are exempt from the deployment question while still
+> requiring a credential: a revoke must reach the deployment that minted it,
+> and `doctor` is the diagnostic an operator runs *because* their target is
+> wrong — refusing it would withhold the tool that explains the refusal.
+> `guardCommand` in `cli/src/program/auth-guard.ts` owns the whole policy, so
+> `cli.ts` carries no exemption lists.
 
 Stored state records the credential and the workspaces and nothing about where either came from, so the base URL is re-resolved from the environment every invocation and falls back to production. An operator who logs into a development deployment and runs any later command reaches production with a credential it never issued. A durable credential makes this strictly worse, because the mismatch stops self-correcting after sixty seconds. **Implementation default:** the deployment is stored beside the credential and compared before a request leaves, because a credential and the deployment that minted it are one fact.
 
-- **Dimension 4.1** — after login, a command with no flag and no environment variable reaches the deployment that was logged into → Test `test_stored_deployment_is_the_default`
-- **Dimension 4.2** — a credential is refused against another deployment before the request leaves the process → Test `test_credential_refused_against_other_deployment`
-- **Dimension 4.3** — the target ladder keeps its order: flag, then environment variable, then stored deployment, then built-in default → Test `test_target_ladder_order_unchanged`
-- **Dimension 4.4** — the credential ladder keeps its order: `AGENTSFLEET_API_KEY`, then the stored credential → Test `test_credential_ladder_order_unchanged`
-- **Dimension 4.5** — logout clears the stored deployment with the credential → Test `test_logout_clears_stored_deployment`
-- **Dimension 4.6** — a stored `afc_` credential carrying no `api_url` is not loadable: the caller is told it is not authenticated rather than being dialed at the production default, while a tenant key with no `api_url` still loads and the unbound record stays revocable → Test `test_unbound_credential_is_not_loadable`
+- **Dimension 4.1** — after login, a command with no flag and no environment variable reaches the deployment that was logged into → Test `test_stored_deployment_is_the_default` — **DONE**
+- **Dimension 4.2** — an inferred target can never disagree with a stored deployment, because the ladder resolves to it → Test `a stored deployment IS what the ladder resolved, so it cannot disagree` — **DONE**
+- **Dimension 4.3** — the target ladder keeps its order: flag, then environment variable, then stored deployment, then built-in default → Test `test_target_ladder_order_unchanged` — **DONE**
+- **Dimension 4.4** — the credential ladder keeps its order: `AGENTSFLEET_API_KEY`, then the stored credential → Test `test_credential_ladder_order_unchanged` — **DONE**
+- **Dimension 4.5** — logout clears the stored deployment with the credential → Test `test_logout_clears_stored_deployment` — **DONE**
+- **Dimension 4.6** — a stored credential with no `api_url` and no named target is refused before anything is dialed, naming all three exits; a named target proceeds; `logout` and `doctor` stay reachable → Test `test_unbound_credential_refused_when_target_is_inferred` — **DONE**
 
 ### §5 — One writer, one spelling: the claim readers stop guessing — DONE
 
