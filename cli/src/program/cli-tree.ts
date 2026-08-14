@@ -128,7 +128,7 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
   const auth = program.command("auth").description("Inspect authentication state");
   auth
     .command("status")
-    .description("Show active token source, claims, and server-side validity")
+    .description("Show active credential source and server-side validity")
     .action(actionFor("auth.status", (frame) => runHandler(state, frame, handlers.auth.status)));
 
   program
