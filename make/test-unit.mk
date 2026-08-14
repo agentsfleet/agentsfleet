@@ -217,7 +217,7 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	   if [ "$$rc" -ne 0 ]; then \
 	     echo "✗ Zig coverage component $$name exited $$rc"; \
 	     echo "--- failing tests (component=$$name) ---"; \
-	     grep -E '\.\.\.FAIL|^error: .*failed:' ".tmp/kcov-$$name.log" | head -n 60 || true; \
+	     grep -E '\.\.\.FAIL|failed:|panic|error return trace|test command failed|expected ' ".tmp/kcov-$$name.log" | head -n 60 || true; \
 	     echo "--- tally (component=$$name) ---"; \
 	     grep -E '^[0-9]+ passed;' ".tmp/kcov-$$name.log" | tail -n 1 || true; \
 	     echo "--- last 40 lines (component=$$name) ---"; \
