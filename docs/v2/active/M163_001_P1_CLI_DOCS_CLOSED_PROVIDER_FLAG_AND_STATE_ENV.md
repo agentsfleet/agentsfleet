@@ -23,7 +23,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Branch:** feat/m163-closed-provider-flag
 **Test Baseline:** unit=3743 integration=630
 **Depends on:** none
-**Provenance:** LLM-drafted (claude-opus-5[1m], Aug 12, 2026), verified against source on `main` @ `b941fabf6`
+**Provenance:** LLM-drafted (claude-opus-5[1m], Aug 12, 2026), verified against source on `main` @ `b941fabf6`; amended and re-verified at PLAN (claude-fable-5, Aug 14, 2026) — every cited path, line, and lane membership re-checked in the worktree
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` §9 — Provider routing
 
 ---
@@ -34,7 +34,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Problem:** A user can store a credential naming a provider that has no dial target. Nothing rejects it — the flag takes any non-empty string, the vault stores it, and the command reports success. The failure surfaces later, at the first event, as a fleet that cannot reach an inference host, with nothing pointing back at the typo that caused it. The dashboard has never had this hole: it offers a fixed provider set plus a deliberate custom-endpoint option, so the CLI is the only surface through which an undialable provider enters the system.
 
-**Solution summary:** The accepted provider ids become a named catalogue declared once in the CLI, mirroring the dial names NullClaw's provider factory recognises plus the `openai-compatible` custom-endpoint sentinel. `--provider` on `secret create` and `secret update` parses through that catalogue instead of accepting free text, so rejection happens in commander before any network call, exactly as `--base-url` already rejects a non-https URL. Separately, `resolveStatePaths` stops reading `process.env` directly and takes the environment the caller already resolved — closing the one gap where `runCli`'s `io.env` does not reach, which is why an in-process test must mutate the real process environment to isolate credentials.
+**Solution summary:** The accepted provider ids become a named catalogue declared once in the CLI, mirroring the dial names NullClaw's provider factory recognises plus the `openai-compatible` custom-endpoint sentinel. `--provider` on `secret create` and `secret update` parses through that catalogue instead of accepting free text, so rejection happens in commander before any network call, exactly as `--base-url` already rejects a non-https URL. Separately, `resolveStatePaths` stops reading `process.env` directly and takes the environment the caller already resolved — closing the one gap where `runCli`'s `io.env` does not reach, which is why an in-process test must mutate the real process environment to isolate credentials. The config-directory expression that `lib/state.ts` and `services/telemetry/consent.ts` each carried verbatim becomes one shared resolver, so the environment key and the home-directory default have a single declaration site.
 
 **Cross-repository note:** `--provider` is a public flag, so its behaviour change requires a matching branch in `~/Projects/docs`. That repository is never edited through this worktree.
 
@@ -51,6 +51,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 3. `docs/architecture/billing_and_provider_keys.md` §9 — the dial catalogue table (provider name → endpoint → wire format) and §8.2, which derives a stored credential's `kind` from its `provider` field.
 4. `cli/src/cli.ts` around `runCli` — `io.env ?? process.env` is already resolved once and placed on the context; §3 threads that value the last hop rather than introducing a new source of environment.
 5. `schema/400_model_library.sql` header — records that provider values are app-enforced named constants and never a SQL `CHECK` (RULE STS). This milestone supplies the app enforcement that comment assumes.
+6. `cli/src/services/telemetry/consent.ts:1-13` — the header records why telemetry reads `process.env` directly (no `CliConfig` environment field yet — the M75 follow-up) and the supabase precedent it mirrors. §3's dedupe gives its `getConfigDir` the shared resolver with an explicit `process.env` argument; it does not thread the environment through the telemetry Effect graph — that is M75's work.
 
 ## Files Changed (blast radius)
 
@@ -59,7 +60,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/src/constants/providers.ts` | CREATE | Single declaration site for the provider ids the CLI accepts |
 | `cli/src/program/validators.ts` | EDIT | `parseEnumOption` gains opt-in case folding so no near-duplicate validator is added |
 | `cli/src/program/cli-tree-fleet.ts` | EDIT | `--provider` on `secret create` / `secret update` parses through the catalogue; help text names the accepted set |
+| `cli/src/lib/config-dir.ts` | CREATE | One declaration site for the config-directory resolution — the environment key and the home default; both prior copies resolve through it |
 | `cli/src/lib/state.ts` | EDIT | State paths resolve from a caller-supplied environment instead of reading the process environment |
+| `cli/src/services/telemetry/consent.ts` | EDIT | `getConfigDir` resolves through `config-dir.ts` with an explicit `process.env` argument at its single call site; its private copy of the expression is deleted |
 | `cli/src/services/credentials.ts` | EDIT | Threads the resolved environment into credential store calls |
 | `cli/src/services/workspaces.ts` | EDIT | Threads the resolved environment into workspace store calls |
 | `cli/src/cli.ts` | EDIT | Passes the already-resolved environment down to the state layer |
@@ -67,6 +70,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/test/cli-tree.fleet.unit.test.ts` | EDIT | Parse-time rejection of an unknown provider on both secret verbs |
 | `cli/test/custom-secret-create.integration.test.ts` | EDIT | Typed-form regression under the closed catalogue |
 | `cli/test/state.unit.test.ts` | EDIT | Store resolves from caller-supplied environment with the process variable unset |
+| `cli/test/config-dir.unit.test.ts` | CREATE | Sibling test: supplied-environment override honoured, home fallback when unset or empty, declaration-site grep |
 | `cli/test/json-contract.test.ts` | EDIT | Drops the inline state-directory guard now that the caller's environment reaches the store |
 | `cli/test/acceptance/help-and-errors.spec.ts` | EDIT | End-to-end: a subprocess invocation with an unknown provider exits 2 and issues no request. This file is in `DETERMINISTIC_ACCEPTANCE_FILES`, so the case grades without live credentials — correct, because the behaviour under test makes no network call. `secret-vault.spec.ts` is deliberately not used: it sits in `LIVE_ACCEPTANCE_FILES` and would gate a hermetic assertion behind a live deployment |
 
@@ -129,9 +133,12 @@ A rejected provider must cost nothing and explain itself. The user sees the valu
 
 **Implementation default:** the environment is a parameter threaded from the existing context value, not a new module-level accessor, because a second source of environment would reintroduce the divergence this slice removes.
 
+The resolution expression itself is currently written twice — `lib/state.ts:50-54` and `services/telemetry/consent.ts:21-26` are the same three lines — so fixing only the state copy would leave the twin standing (RULE UFS). Both resolve through one shared `resolveConfigDir(env)` in `lib/config-dir.ts`. `consent.ts` passes `process.env` explicitly at its single call site, because its three `getConfigDir` consumers (`login-helpers.ts:200`, `auth-logout.ts:137`, `runtime.layer.ts:92`) have no environment in scope — threading one through the telemetry Effect graph is the M75 follow-up its header already names, and stays out of scope here.
+
 - **Dimension 3.1** — State path resolution takes the environment from its caller; the credential and workspace store functions accept and forward it → Test `test_state_paths_resolve_from_supplied_env`
 - **Dimension 3.2** — `runCli({ env })` with a state directory set in that environment and the process variable unset reads and writes under the supplied directory → Test `test_run_cli_env_reaches_credential_store`
 - **Dimension 3.3** — `json-contract.test.ts` isolates through the injected environment and no longer mutates the process environment (RULE NLR) → Test `test_json_contract_suite_has_no_process_env_mutation`
+- **Dimension 3.4** — The config-directory resolution has one declaration site: neither `state.ts` nor `consent.ts` names the environment key or the home-default tuple after the change → Test `test_config_dir_resolution_has_one_declaration_site`
 
 ## Interfaces
 
@@ -150,6 +157,14 @@ State layer (cli/src/lib/state.ts) — every exported store function takes the
 caller's environment; no function in the module reads the process environment.
 The exported shapes (Credentials, Workspaces, WorkspaceItem, StatePaths) and
 the on-disk file names, locations, and 0o600 mode are unchanged.
+
+Config-dir resolution (cli/src/lib/config-dir.ts) —
+  resolveConfigDir(env: NodeJS.ProcessEnv): string
+  STATE_DIR_ENV = "AGENTSFLEET_STATE_DIR"
+The one declaration site for the environment key and the ~/.config/agentsfleet
+default. state.ts resolves through it with its caller's environment;
+telemetry/consent.ts's getConfigDir resolves through it with an explicit
+process.env argument (unchanged behaviour for its Effect consumers).
 ```
 
 ## Failure Modes
@@ -168,7 +183,7 @@ the on-disk file names, locations, and 0o600 mode are unchanged.
 
 1. Every provider id has exactly one declaration site — enforced by the UFS end-of-turn literal audit over the diff, and by tests importing the catalogue rather than restating ids (RULE TFX).
 2. `--provider` cannot carry a value outside the catalogue past the parse layer — enforced by the commander parser, which throws before any handler runs; the handler never re-checks and cannot be reached with an unaccepted value.
-3. No function in `cli/src/lib/state.ts` reads the process environment — enforced by a test that greps the module for `process.env` and asserts zero matches, so a future reintroduction fails the suite rather than review.
+3. No function in `cli/src/lib/state.ts` or `cli/src/lib/config-dir.ts` reads the process environment, and the state-directory resolution — the environment key plus the home default — has exactly one declaration site, `config-dir.ts` — enforced by tests that grep both modules for `process.env` (zero matches) and grep `cli/src/` for the environment-key literal outside `config-dir.ts` (zero matches), so a future reintroduction fails the suite rather than review. `consent.ts` keeps `process.env` as an explicit argument at its single `getConfigDir` call site until M75 threads the environment through the telemetry graph.
 4. Adding a provider requires no new function and no new switch arm — enforced by RULE CFG's shape: the catalogue is data, and the parser is generic over it.
 
 ## Metrics & Observability
@@ -193,7 +208,9 @@ the on-disk file names, locations, and 0o600 mode are unchanged.
 | 3.1 | unit | `test_state_paths_resolve_from_supplied_env` | A supplied environment naming a temporary directory yields credential and workspace paths under it while the process variable is unset |
 | 3.2 | integration | `test_run_cli_env_reaches_credential_store` | `runCli({ env })` with credentials seeded in the supplied directory authenticates; with an empty supplied directory the same command reports unauthenticated, process environment untouched throughout |
 | 3.3 | unit | `test_json_contract_suite_has_no_process_env_mutation` | Reading `cli/test/json-contract.test.ts` yields zero assignments to `process.env` |
-| — | unit | `test_state_module_never_reads_process_env` | Reading `cli/src/lib/state.ts` yields zero `process.env` occurrences (Invariant 3) |
+| — | unit | `test_state_module_never_reads_process_env` | Reading `cli/src/lib/state.ts` and `cli/src/lib/config-dir.ts` yields zero `process.env` occurrences (Invariant 3) |
+| 3.4 | unit | `test_config_dir_resolution_has_one_declaration_site` | Reading `cli/src/lib/state.ts` and `cli/src/services/telemetry/consent.ts` yields zero occurrences of the environment-key literal and zero of the home-default tuple; `config-dir.ts` declares each exactly once |
+| 3.4 | unit | `test_resolve_config_dir_honours_env_and_falls_back` | `resolveConfigDir({ [STATE_DIR_ENV]: "/x" })` → `/x`; `resolveConfigDir({})` and `resolveConfigDir({ [STATE_DIR_ENV]: "" })` → the home default |
 | — | unit | `test_absent_state_dir_falls_back_to_home` | A supplied environment with no state directory set yields paths under the home-directory default; no throw, no empty base directory |
 | — | integration | `test_unwritable_state_dir_surfaces_write_error` | A read-only supplied directory produces the same write failure and exit code as `main` does today; the environment parameter adds no new failure class |
 | — | integration | `test_custom_endpoint_pairing_rules_unchanged` | Regression: the four existing pairing errors (missing key, missing base URL, base URL on a named provider, missing model) produce identical messages and exit codes to `main` |
@@ -205,9 +222,10 @@ the on-disk file names, locations, and 0o600 mode are unchanged.
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | An unknown provider is rejected before any network call (§1, §2) | `cd cli && bun run build && bun ./dist/bin/agentsfleet.js secret create t --provider notaprovider --api-key k --model m; echo "exit=$?"` | `exit=2` and stderr contains `must be one of:` | P0 | |
 | R2 | The generic `--data` escape hatch is untouched (§2) | `grep -c 'FLAG_PROVIDER.*parseEnumOption' cli/src/program/cli-tree-fleet.ts` | exactly `2` — the two `--provider` sites; `FLAG_DATA_JSON` never pairs with a parser | P1 | |
-| R3 | The state module never reads the process environment (§3, Invariant 3) | `grep -c 'process\.env' cli/src/lib/state.ts` | `0` | P0 | |
+| R3 | The state modules never read the process environment (§3, Invariant 3) | `grep -c 'process\.env' cli/src/lib/state.ts cli/src/lib/config-dir.ts` | both lines end `:0` | P0 | |
 | R4 | The public flag change has a documentation branch | `git -C ~/Projects/docs diff --name-only main...HEAD` | at least 1 path, covering the page documenting `secret create --provider` | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R6 | The environment-key literal has one src declaration site (§3, Dimension 3.4) | `grep -rn 'AGENTSFLEET_STATE_DIR' cli/src/ \| grep -v 'lib/config-dir.ts'` | no output | P0 | |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
 | S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
@@ -228,8 +246,9 @@ N/A — no files deleted.
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
-| inline state-directory guard in the JSON suite | `grep -n 'prevStateDir' cli/test/json-contract.test.ts` | 0 matches |
-| now-unused imports left by that removal | `grep -nE 'mkdtempSync\|node:os\|node:path' cli/test/json-contract.test.ts` | 0 matches |
+| inline state-directory guard in the JSON suite | `grep -nE 'prevStateDir\|process\.env\.AGENTSFLEET_STATE_DIR' cli/test/json-contract.test.ts` | 0 matches |
+| `getConfigDirSync` (consent.ts's private copy of the expression) | `grep -rn 'getConfigDirSync' cli/src/` | 0 matches |
+| `node:os` imports orphaned by the shared resolver | `grep -n 'node:os' cli/src/lib/state.ts cli/src/services/telemetry/consent.ts` | 0 matches |
 
 ## Out of Scope
 
@@ -237,6 +256,7 @@ N/A — no files deleted.
 - **Constraining the `provider` field inside `--data`.** That form is the generic secret blob; §8.2 of the architecture derives `custom_secret` from a missing or non-string provider, so constraining it would break generic secret storage.
 - **Server-side rejection of an unaccepted provider.** The dashboard and the CLI are the two write surfaces and both would then be constrained, but a server-side closed set changes an API error surface and deserves its own milestone.
 - **Adopting m136's hook-scoped state-directory helper across the suite.** `feat/m136-live-connector-proof` adds `useFreshStateDir`; converting files to it belongs to that stream. §3 removes the *cause* of the inline guard rather than restyling it.
+- **Threading the caller's environment through the telemetry Effect graph.** `consent.ts:1-2` names it the M75 follow-up — a `CliConfig` environment field its three `getConfigDir` consumers would draw from. §3's dedupe leaves `getConfigDir` passing `process.env` explicitly at one visible call site; converting the consumers is that milestone's work.
 
 ---
 
@@ -246,7 +266,7 @@ N/A — no files deleted.
 2. **Preserved user behaviour** — Every existing correct invocation keeps working unchanged: the `--data` form in both spellings including stdin, the typed custom-endpoint form, all four pairing errors, `secret update` replacement semantics, and the home-directory default for the state directory.
 3. **Optimal-way check** — The most direct shape would be a catalogue served from the API so a new provider needs no CLI release. That costs a network round-trip on a parse-time check and a fallback for the offline case, to remove a release step that happens rarely. The declared mirror is the accepted gap; `custom-endpoint.ts` already records why this repository mirrors backend literals rather than fetching them.
 4. **Rebuild-vs-iterate** — Iterate. The parse layer, the enum factory, and the mirror pattern all exist; this slots into all three. Nothing about it trades away run-to-run determinism.
-5. **What we build** — One constants module, one opt-in option on an existing validator, two flag declarations repointed, one environment parameter threaded through the state layer, and their tests.
+5. **What we build** — One constants module, one opt-in option on an existing validator, two flag declarations repointed, one environment parameter threaded through the state layer, one shared config-directory resolver replacing the twin copies in `state.ts` and `consent.ts`, and their tests.
 6. **What we do NOT build** — No served catalogue, no server-side provider rejection, no change to the `--data` form, no OpenTelemetry reconciliation, no did-you-mean suggestion beyond listing the accepted set.
 7. **Fit with existing features** — Compounds with the typed custom-endpoint form and with `tenant provider create`, which resolves against the model library. It must not destabilise the custom-endpoint path: `openai-compatible` is a catalogue member, and the existing pairing rules run unchanged after membership passes.
 8. **Surface order** — CLI-only. The dashboard already constrains provider selection, so this closes the gap rather than opening a new surface.
@@ -277,6 +297,19 @@ N/A — no files deleted.
   **Open for Indy at PLAN:** fold `consent.ts` into §3, or record it in Out of
   Scope with a reason. Not decided unilaterally — it widens the blast radius past
   the authored Files Changed table.
+- **PLAN, Aug 14, 2026 — resolved: dedupe the expression, do not thread telemetry.**
+  > Indy (2026-08-14 19:2x): "Yes plan, but i dont understand this? if its a
+  > duplicate use one of them that helps and move on?" — context: the twin
+  > config-dir expressions above; decision is the dedupe, not a menu.
+  Shape: one shared `resolveConfigDir(env)` in `cli/src/lib/config-dir.ts`; both
+  modules resolve through it. `consent.ts` keeps a single explicit `process.env`
+  argument at `getConfigDir`, because its three consumers
+  (`login-helpers.ts:200`, `auth-logout.ts:137`, `runtime.layer.ts:92`) have no
+  environment in scope — threading one through the telemetry Effect graph is the
+  M75 follow-up `consent.ts:2` already names, now recorded in Out of Scope.
+  Amended in this pass: Files Changed (+3 rows), §3 (+Dimension 3.4), Interfaces,
+  Invariant 3, rubric R3 widened + R6 added, Test Specification (+2 rows), Dead
+  Code Sweep (+2 rows).
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
