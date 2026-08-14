@@ -592,16 +592,31 @@ Three mint paths exist for Token B (the api-template JWT that agentsfleetd accep
 
 Compromise of `CLERK_SECRET_KEY` is total: anyone holding it can mint Token B for any user, modify any user's `publicMetadata` (which controls `tenant_id` + the `scopes` claim), and impersonate the entire user base.
 
+### Where the secret is sent — `CLERK_API_BASE`
+
+`agentsfleetd` resolves the Clerk Backend API root **once at boot** and hands the same value to every backend call (`auth/clerk_backend_config.zig`). The default is the compiled-in `https://api.clerk.com/v1`; `CLERK_API_BASE` overrides it.
+
+| Value | Verdict |
+|---|---|
+| unset / blank | compiled-in vendor default |
+| `https://…` | accepted |
+| `http://127.0.0.1…` · `http://localhost…` | accepted for offline and boot-drain lanes — **only** when the loopback hostname terminates at end-of-string, a path, or a digits-only port |
+| anything else | **refuses boot**, `ERR_STARTUP_ENV_CHECK` |
+
+An override that is accepted is logged once at boot as `startup.clerk_api_base_override`, so the resolved root is always readable from the first page of daemon logs.
+
+The termination rule on the loopback carve-out is the part worth reading twice. `http://127.0.0.1.attacker.example` and `http://localhost@evil.example` both *start with* a loopback prefix while naming a remote host, and both read as harmless in a manifest review or a log scan. A prefix-only check accepts them, and the daemon then sends `CLERK_SECRET_KEY` in cleartext on every scope-cache miss — see the compromise scope directly above. So this rule does not defend against an attacker who already writes the daemon's environment (they can read the secret anyway); it defends against a config change that a human waves through because it looks like localhost.
+
 ### Rotation procedure
 
 Rotation does NOT invalidate existing user JWTs (Clerk signs those with its own private key, fronted by JWKS — the secret key plays no part). It DOES revoke admin-API access for any holder of the old key. So normal-rotation order:
 
 1. Generate the new key in Clerk dashboard. Keep the old key active until step 4.
 2. Update vault — `op item edit ZMB_CD_DEV/clerk-dev secret-key=<new>` (DEV) and `ZMB_CD_PROD/clerk` (PROD). One vault update per environment.
-3. Redeploy consumers in this order: **Vercel** first (Next.js Server Actions + Route Handlers do server-side `getToken({template:"api"})`); **Fly** second (agentsfleetd does NOT use the secret directly today, but pick up if the rotated bundle includes other secrets); **CI** last (GitHub Actions secret mirror, used for e2e fixture mint).
+3. Redeploy consumers in this order: **Vercel** first (Next.js Server Actions + Route Handlers do server-side `getToken({template:"api"})`); **Fly** second — `agentsfleetd` presents the secret on two live backend-API paths, scope resolution (`auth/clerk_scope_fetch.zig`, on every authenticated command-line request that misses the scope cache) and the signup metadata merge (`http/handlers/auth/identity_events_clerk.zig`); **CI** last (GitHub Actions secret mirror, used for e2e fixture mint).
 4. Revoke the old key in Clerk dashboard once all consumers report green.
 
-If rotated under suspected compromise, skip the gradual revoke — invalidate the old key immediately at step 1. Users stay signed in (their JWTs remain valid until natural expiry); admin tooling fails until step 3 completes.
+If rotated under suspected compromise, skip the gradual revoke — invalidate the old key immediately at step 1. Browser users stay signed in (their JWTs remain valid until natural expiry). Admin tooling fails until step 3 completes, and so does the daemon: durable command-line credentials keep working only while their scope-cache entries stay warm, then fail closed as "auth unavailable". Step 3 is the clock on that window, not a housekeeping step.
 
 ---
 

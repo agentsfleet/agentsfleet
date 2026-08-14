@@ -128,6 +128,14 @@ pub const INSERT_WORKSPACE =
 
 // ── CLI credentials (`state/cli_credentials.zig`) ───────────────────────────
 
+/// Transaction-scoped advisory lock serializing mint per (user, machine).
+/// Two concurrent logins can both run the revoke before either insert is
+/// visible; the loser then dies on the partial unique index below. With the
+/// lock, the second mint waits and cleanly revokes the first's fresh row.
+pub const LOCK_CLI_CREDENTIAL_MINT =
+    \\SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text, 0))
+;
+
 /// Mint a credential. The partial unique index on (user_id, machine_name)
 /// WHERE revoked_at IS NULL is the guard: if a caller inserts without first
 /// revoking this machine's live row, the insert fails here rather than leaving

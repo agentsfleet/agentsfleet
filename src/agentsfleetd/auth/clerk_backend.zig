@@ -20,18 +20,18 @@ const constants = @import("common");
 const logging = @import("log");
 const ec = @import("auth_codes");
 const worker_slots = @import("clerk_fetch_worker.zig");
+const config = @import("clerk_backend_config.zig");
 
 const log = logging.scoped(.clerk_backend);
 
 pub const SECRET_ENV_VAR = "CLERK_SECRET_KEY";
-/// Root of the provider's backend API. Public because the scope resolver reads
-/// `/users/{id}` from the same base — one spelling of the host for every
-/// backend call, so a deployment pointed at a different base moves both.
-pub const API_BASE = "https://api.clerk.com/v1";
-/// Boot-time override for `API_BASE` — resolved once alongside the secret,
-/// never read per request. Exists for deployments (and the boot-drain lane)
-/// that answer the backend API from somewhere other than the vendor host.
-pub const API_BASE_ENV_VAR = "CLERK_API_BASE";
+
+// The base URL and its `CLERK_API_BASE` validation live in the config module;
+// re-exported because `clerk_backend` is the public API every caller spells —
+// the scope resolver and the handler Context read the same resolved base.
+pub const API_BASE = config.API_BASE;
+pub const API_BASE_ENV_VAR = config.API_BASE_ENV_VAR;
+pub const resolveApiBase = config.resolveApiBase;
 
 /// HTTP method used for the metadata-merge endpoint. Exposed as a const so
 /// a unit test can assert it without standing up a mock HTTP server. Clerk's

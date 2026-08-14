@@ -152,8 +152,12 @@ const FakeClerk = struct {
             defer conn.close(io);
             // safe because: shutdown()'s release-store pairs with this acquire-load.
             if (self.stop.load(.acquire)) return;
+            // Bounded read: a peer that connected and died must not park this
+            // thread in read() forever — that would wedge shutdown's join.
+            setReadTimeout(conn.socket.handle, HEALTHZ_READ_MS);
             var rbuf: [2048]u8 = undefined;
-            _ = std.posix.read(conn.socket.handle, &rbuf) catch continue;
+            const n = std.posix.read(conn.socket.handle, &rbuf) catch continue;
+            if (n == 0) continue; // peer closed; writing would only raise SIGPIPE
             var sent: usize = 0;
             while (sent < FAKE_CLERK_RESPONSE.len) {
                 const rc = std.posix.system.write(conn.socket.handle, FAKE_CLERK_RESPONSE[sent..].ptr, FAKE_CLERK_RESPONSE.len - sent);
@@ -167,7 +171,10 @@ const FakeClerk = struct {
         const io = common.globalIo();
         // safe because: paired with the acquire-load in serveLoop.
         self.stop.store(true, .release);
-        wakeAccept(self.loopback.port, io);
+        var attempt: usize = 0;
+        var woken = false;
+        while (attempt < 3 and !woken) : (attempt += 1) woken = wakeAccept(self.loopback.port, io);
+        if (!woken) @panic("FakeClerk wake failed — acceptor cannot be joined");
         if (self.thread) |t| t.join();
         self.thread = null;
         self.loopback.server.deinit(io);
@@ -175,10 +182,11 @@ const FakeClerk = struct {
 
     /// One throwaway connect: `deinit` alone does not wake a blocked
     /// `accept()` on Linux, so the acceptor is woken explicitly before join.
-    fn wakeAccept(port: u16, io: std.Io) void {
-        var addr = std.Io.net.IpAddress.parseIp4("127.0.0.1", port) catch return;
-        const stream = addr.connect(io, .{ .mode = .stream }) catch return;
+    fn wakeAccept(port: u16, io: std.Io) bool {
+        var addr = std.Io.net.IpAddress.parseIp4("127.0.0.1", port) catch return false;
+        const stream = addr.connect(io, .{ .mode = .stream }) catch return false;
         stream.close(io);
+        return true;
     }
 };
 

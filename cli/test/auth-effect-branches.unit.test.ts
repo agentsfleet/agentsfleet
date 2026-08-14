@@ -53,6 +53,7 @@ const credentialsLayer = (
       accessToken: token,
       savedAt,
       sessionId,
+      apiUrl: null,
       credentialId: null,
     })),
     saveAccessToken: () => Effect.void,

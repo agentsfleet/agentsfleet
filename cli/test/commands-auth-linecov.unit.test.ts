@@ -70,6 +70,7 @@ const credentialsLayer = (
       accessToken: token,
       savedAt: FIXED_SAVED_AT,
       sessionId: SESSION_ID,
+      apiUrl: null,
       credentialId: null,
     }),
     saveAccessToken: () => Effect.void,

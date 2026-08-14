@@ -82,6 +82,7 @@ const credentialsLayer = (
           : Option.some(Redacted.make(opts.token)),
       savedAt: null,
       sessionId: null,
+      apiUrl: null,
       credentialId: opts.credentialId,
     })),
     saveAccessToken: () => Effect.void,

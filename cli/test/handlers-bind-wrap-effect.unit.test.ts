@@ -16,7 +16,6 @@ const minimalCtx = (): CommandCtx => ({
   dashboardUrl: "https://dash.test.local",
   token: null,
   apiKey: null,
-  authRole: null,
   jsonMode: true,
   noOpen: true,
   noInput: true,

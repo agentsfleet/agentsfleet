@@ -68,6 +68,9 @@ test "loadServeConfigOrExit loads the minimal valid environment" {
     try testing.expectEqualStrings(VALID_KEK_HEX, cfg.encryption_master_key);
 }
 
+// NOTE: setKekOrExit writes the PROCESS-GLOBAL key-encryption key; any
+// sibling unit test asserting unset-KEK behavior would become ordering-
+// dependent on this one (no reset primitive exists today).
 test "setKekOrExit accepts a well-formed key" {
     // Reaching the return is the assertion; a malformed key exits the process.
     serve_boot.setKekOrExit(VALID_KEK_HEX);

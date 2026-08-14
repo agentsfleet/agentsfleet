@@ -118,3 +118,36 @@ test "patchUserPublicMetadata: missing CLERK_SECRET_KEY returns MissingSecret" {
         cb.patchUserPublicMetadata(null, cb.API_BASE, std.testing.allocator, "user_test", "t_abc", "operator"),
     );
 }
+
+test "resolveApiBase: absent or blank falls to the vendor default" {
+    try std.testing.expectEqualStrings(cb.API_BASE, try cb.resolveApiBase(null));
+    try std.testing.expectEqualStrings(cb.API_BASE, try cb.resolveApiBase(""));
+    try std.testing.expectEqualStrings(cb.API_BASE, try cb.resolveApiBase("  \t\n"));
+}
+
+test "resolveApiBase: https and loopback http pass trimmed; a cleartext remote refuses boot" {
+    // A non-TLS remote base would carry the provider ADMIN secret in
+    // cleartext; garbage would boot into a total auth outage. Both refuse.
+    try std.testing.expectEqualStrings(
+        "https://clerk.example.test/v1",
+        try cb.resolveApiBase("https://clerk.example.test/v1\n"),
+    );
+    try std.testing.expectEqualStrings("http://127.0.0.1:8443", try cb.resolveApiBase("http://127.0.0.1:8443"));
+    try std.testing.expectEqualStrings("http://localhost:9", try cb.resolveApiBase("http://localhost:9"));
+    try std.testing.expectError(error.InvalidApiBase, cb.resolveApiBase("http://api.clerk.com/v1"));
+    try std.testing.expectError(error.InvalidApiBase, cb.resolveApiBase("ftp://x"));
+    try std.testing.expectError(error.InvalidApiBase, cb.resolveApiBase("not a url"));
+}
+
+test "resolveApiBase: loopback look-alikes cannot smuggle a remote host" {
+    // Prefix-match bypasses: each of these STARTS with a loopback prefix but
+    // names a remote host — accepting any of them ships the admin secret in
+    // cleartext to that host.
+    try std.testing.expectError(error.InvalidApiBase, cb.resolveApiBase("http://127.0.0.1.attacker.example/v1"));
+    try std.testing.expectError(error.InvalidApiBase, cb.resolveApiBase("http://localhost@evil.example/v1"));
+    try std.testing.expectError(error.InvalidApiBase, cb.resolveApiBase("http://localhost:9@evil.example/v1"));
+    try std.testing.expectError(error.InvalidApiBase, cb.resolveApiBase("http://localhost:"));
+    // And the legitimate shapes stay legitimate.
+    try std.testing.expectEqualStrings("http://127.0.0.1:8443/v1", try cb.resolveApiBase("http://127.0.0.1:8443/v1"));
+    try std.testing.expectEqualStrings("http://localhost/v1", try cb.resolveApiBase("http://localhost/v1"));
+}
