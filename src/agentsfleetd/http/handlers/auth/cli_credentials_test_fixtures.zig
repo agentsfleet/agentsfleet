@@ -41,6 +41,12 @@ pub const ALLOC = std.testing.allocator;
 
 pub const PATH = "/v1/cli-credentials";
 
+/// The authenticated probe every suite shares: an ordinary tenant route that
+/// answers 200 for a live credential. The credential family has no GET of its
+/// own — the list endpoint was removed as unused surface — so "does this
+/// bearer authenticate, and as whom" is asked of a route real work uses.
+pub const PROBE_PATH = "/v1/workspaces/" ++ WORKSPACE_ID ++ "/fleets";
+
 /// The item-form path for a revoke. Caller frees. Shared rather than copied:
 /// both router-driven suites build it, and two spellings of one route are how
 /// a path change fixes half the tests and silently strands the other half.

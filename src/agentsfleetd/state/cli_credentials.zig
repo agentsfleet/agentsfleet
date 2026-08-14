@@ -19,7 +19,6 @@ const sql = @import("sql.zig");
 const cli_credential = @import("../auth/cli_credential.zig");
 const api_key = @import("../auth/api_key.zig");
 const id_format = @import("../types/id_format.zig");
-const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const log = logging.scoped(.cli_credentials);
 
@@ -47,25 +46,6 @@ pub const NewCredential = struct {
     machine_name: []const u8,
     deployment: []const u8,
     created_from_address: []const u8,
-};
-
-/// One row of a user's live credential list. Carries `prefix` — the non-secret
-/// display fragment — and never anything that authenticates.
-pub const Listed = struct {
-    id: []const u8,
-    machine_name: []const u8,
-    prefix: []const u8,
-    deployment: []const u8,
-    created_from_address: []const u8,
-    created_at: i64,
-
-    pub fn deinit(self: Listed, alloc: std.mem.Allocator) void {
-        alloc.free(self.id);
-        alloc.free(self.machine_name);
-        alloc.free(self.prefix);
-        alloc.free(self.deployment);
-        alloc.free(self.created_from_address);
-    }
 };
 
 /// Revoke this machine's live credential, then mint its replacement — as one
@@ -151,87 +131,17 @@ pub fn revokeById(
     return (affected orelse 0) > 0;
 }
 
-/// A user's live credentials, newest first. Caller owns the slice and every
-/// row in it; `deinitList` frees both.
-pub fn listForUser(
-    alloc: std.mem.Allocator,
-    conn: *pg.Conn,
-    user_id: []const u8,
-) ![]Listed {
-    var q = PgQuery.from(try conn.query(sql.SELECT_LIVE_CLI_CREDENTIALS_FOR_USER, .{user_id}));
-    defer q.deinit();
-
-    var rows: std.ArrayList(Listed) = .empty;
-    errdefer {
-        for (rows.items) |r| r.deinit(alloc);
-        rows.deinit(alloc);
-    }
-
-    while (try q.next()) |row| {
-        try rows.append(alloc, try copyListed(alloc, row));
-    }
-    return rows.toOwnedSlice(alloc);
-}
-
-/// Free a slice returned by `listForUser`, rows included.
-pub fn deinitList(alloc: std.mem.Allocator, rows: []Listed) void {
-    for (rows) |r| r.deinit(alloc);
-    alloc.free(rows);
-}
-
-/// Takes `pg.Row` concretely, never `anytype` — an `anytype` row parameter is
-/// only analysed when something instantiates it, so a column-shape mistake in
-/// here would compile clean until the first caller appeared. `pg.Row.get`
-/// returns an error union in `.safe` mode; each read translates to
-/// `error.DbRowShape` exactly as `cmd/api_key_lookup.zig` does.
-fn copyListed(alloc: std.mem.Allocator, row: pg.Row) !Listed {
-    const id_raw = row.get([]u8, 0) catch return error.DbRowShape;
-    const machine_name_raw = row.get([]u8, 1) catch return error.DbRowShape;
-    const prefix_raw = row.get([]u8, 2) catch return error.DbRowShape;
-    const deployment_raw = row.get([]u8, 3) catch return error.DbRowShape;
-    const created_from_address_raw = row.get([]u8, 4) catch return error.DbRowShape;
-    const created_at = row.get(i64, 5) catch return error.DbRowShape;
-
-    const id = try alloc.dupe(u8, id_raw);
-    errdefer alloc.free(id);
-    const machine_name = try alloc.dupe(u8, machine_name_raw);
-    errdefer alloc.free(machine_name);
-    const prefix = try alloc.dupe(u8, prefix_raw);
-    errdefer alloc.free(prefix);
-    const deployment = try alloc.dupe(u8, deployment_raw);
-    errdefer alloc.free(deployment);
-    const created_from_address = try alloc.dupe(u8, created_from_address_raw);
-
-    return .{
-        .id = id,
-        .machine_name = machine_name,
-        .prefix = prefix,
-        .deployment = deployment,
-        .created_from_address = created_from_address,
-        .created_at = created_at,
-    };
-}
-
 // ── Tests ────────────────────────────────────────────────────────────────
 
 const testing = std.testing;
 
 // Forces semantic analysis of every declaration above.
 //
-// Zig only analyses a function body once something references it, so before
-// the handlers landed, `zig build` reported success over a `copyListed` that
-// could not compile. The handlers reference everything now; this stays as the
-// cheap guarantee that a helper orphaned by a future refactor still has to
-// compile rather than rotting silently.
+// Zig only analyses a function body once something references it, so a helper
+// orphaned by a future refactor still has to compile rather than rotting
+// silently.
 test {
     testing.refAllDecls(@This());
-}
-
-test "listing a user's credentials returns nothing that authenticates" {
-    // Dimension 1.3 — only a hash is stored and the row must not surrender it.
-    // Asserted against the statement text so it holds without a datastore.
-    try testing.expect(std.mem.indexOf(u8, sql.SELECT_LIVE_CLI_CREDENTIALS_FOR_USER, "credential_hash") == null);
-    try testing.expect(std.mem.indexOf(u8, sql.SELECT_LIVE_CLI_CREDENTIALS_FOR_USER, "credential_prefix") != null);
 }
 
 test "both revoke statements are owner-scoped" {
