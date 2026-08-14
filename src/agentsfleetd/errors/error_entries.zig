@@ -124,9 +124,9 @@ pub const ENTRIES = [_]Entry{
         "Run `agentsfleet login` to mint a new one."), // reachable: no — CLI authenticate path
     // Revoked and someone-else's answer alike on purpose, so an identifier
     // cannot be probed for whose it is. The published detail says the two are
-    // indistinguishable without spelling out the probe it defeats.
-    e("UZ-AUTH-024", .not_found, "Command-line credential not found", "No live credential of yours has that identifier. It may be revoked, or it may belong to someone else; the two answer alike on purpose. " ++
-        "List your live ones with `GET /v1/cli-credentials`."), // reachable: no — CLI credential management
+    // indistinguishable without spelling out the probe it defeats, and points
+    // at no enumeration — there is deliberately no way to list credentials.
+    e("UZ-AUTH-024", .not_found, "Command-line credential not found", "No live credential of yours has that identifier. It may be revoked, or it may belong to someone else; the two answer alike on purpose."), // reachable: no — CLI credential management
     e("UZ-AUTH-025", .unauthorized, "Credential exchange failed", "Login recovered a browser session but could not exchange it for a durable credential, so nothing was saved. " ++
         "The session lasts about a minute, so this usually means it expired before the exchange. Run `agentsfleet login` again."), // reachable: no — produced by the command-line client during login's exchange, never emitted by the daemon
     // ── API (serving-plane backpressure) ─────────────────────────────────────

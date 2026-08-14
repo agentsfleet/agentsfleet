@@ -198,13 +198,3 @@ pub const SELECT_USER_IDENTITY_BY_SUBJECT =
     \\WHERE oidc_subject = $1
     \\LIMIT 1
 ;
-
-/// A user's live credentials, newest first. `credential_prefix` is the only
-/// credential-shaped column returned, and it does not authenticate.
-pub const SELECT_LIVE_CLI_CREDENTIALS_FOR_USER =
-    \\SELECT id::text, machine_name, credential_prefix, deployment,
-    \\       created_from_address, created_at
-    \\FROM core.cli_credentials
-    \\WHERE user_id = $1::uuid AND revoked_at IS NULL
-    \\ORDER BY created_at DESC
-;
