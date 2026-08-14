@@ -35,9 +35,13 @@ const FLEET_CONFIG_JSON =
 const SECRETS_MAP_JSON =
     \\{"github":{"token":"ghs_tok","user":"octo"}}
 ;
-/// One-worker assignment in the wire shape `AppliedPolicy.apply` decodes.
+/// One-worker assignment in the wire shape `AppliedPolicy.apply` decodes. The
+/// tier is incidental to the arms below, but it cannot be `dev_none`:
+/// `policy_apply.devNoneForbidden` refuses that tier in every build mode except
+/// Debug, so the holder would clear instead of applying under the Valgrind lane
+/// (`scripts/run-zig-memleak-lane.sh` pins `-Doptimize=ReleaseSafe`).
 const POLICY_JSON =
-    \\{"sandbox_tier":"dev_none","network_policy":"deny_all_egress","registry_allowlist":[],"worker_count":1}
+    \\{"sandbox_tier":"landlock_full","network_policy":"deny_all_egress","registry_allowlist":[],"worker_count":1}
 ;
 /// A path no daemon could open — the parent is a char device, so the open
 /// itself fails rather than the canonicalize below it.

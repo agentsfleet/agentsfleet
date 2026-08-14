@@ -18,8 +18,13 @@ const ALLOC = testing.allocator;
 
 const RUNNER_TOKEN = protocol.RUNNER_TOKEN_PREFIX ++ "a" ** 64;
 const STORAGE_BASE = "/tmp/agentsfleet-m164-loop-seq-test";
+/// The assigned tier must not be `dev_none`: `policy_apply.devNoneForbidden`
+/// refuses it outside Debug, and a refused assignment clears the holder — the
+/// pool would never come up under the Valgrind lane's ReleaseSafe build and the
+/// script would stall on beat one. No lease is ever handed out here, so a real
+/// tier costs nothing: the worker polls, idles, and never establishes a cage.
 const POLICY_JSON =
-    \\{"sandbox_tier":"dev_none","network_policy":"deny_all_egress","registry_allowlist":[],"worker_count":1}
+    \\{"sandbox_tier":"landlock_full","network_policy":"deny_all_egress","registry_allowlist":[],"worker_count":1}
 ;
 const BEAT_OK_WITH_POLICY = "{\"status\":\"ok\",\"assigned_policy\":" ++ POLICY_JSON ++ "}";
 const BEAT_OK_DEGRADED = "{\"status\":\"ok\",\"degraded\":true,\"assigned_policy\":" ++ POLICY_JSON ++ "}";
