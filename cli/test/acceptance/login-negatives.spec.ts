@@ -9,8 +9,10 @@
  *      returns 400 UZ-AUTH-011 (retryable). The CLI warns and re-prompts;
  *      the real code then completes the flow (exit 0, credentials.json).
  *   2. SIGINT at the code prompt (pty Ctrl-C) → exit 130, nothing persisted.
- *   3. `login --token <jwt>` direct path → persists, no browser.
- *   4. piped-stdin token (`login` with stdin carrying the JWT) → persists.
+ *   3. `login --token` → rejected as an unknown option (the flag is gone;
+ *      AGENTSFLEET_API_KEY serves unattended callers).
+ *   4. piped-stdin seeding → also removed; a non-TTY login fails fast and
+ *      names the environment variable.
  *   5. `login --no-input` while already authed → aborts loudly (exit 130),
  *      existing credential untouched.
  *   6. `logout` after a token login → a subsequent read command is
@@ -127,6 +129,28 @@ if (!isLive) {
       await fs.rm(credentialsPath, { force: true });
     }
 
+    // Seeds a persisted credential without going through `login`. The
+    // scenarios below used to reach this state with `login --token <jwt>`;
+    // that flag is gone, and the device flow needs a human, so the file is
+    // written directly. The value is well-formed for
+    // the loader's shape check — these scenarios assert what happens to a
+    // credential that is *present*, never that this one authenticates.
+    async function seedCredential(): Promise<string> {
+      const seeded = `afc_${"a".repeat(64)}`;
+      await fs.writeFile(
+        credentialsPath,
+        JSON.stringify({
+          token: seeded,
+          saved_at: Date.now(),
+          session_id: null,
+          api_url: apiUrl,
+          credential_id: null,
+        }),
+        { mode: 0o600 },
+      );
+      return seeded;
+    }
+
     beforeAll(async () => {
       apiUrl = resolveAcceptanceEnv().apiUrl;
       dashboardUrl = resolveDashboardUrl(apiUrl);
@@ -142,9 +166,9 @@ if (!isLive) {
         AGENTSFLEET_API_URL: apiUrl,
         AGENTSFLEET_STATE_DIR: stateDir,
         NO_COLOR: "1",
-        // No env API key (AGENTSFLEET_API_KEY) — the token-path scenarios
-        // supply a credential explicitly (--token / piped stdin) and the rest
-        // prove credentials.json is the load-bearing auth source.
+        // No env API key (AGENTSFLEET_API_KEY) — these scenarios seed
+        // credentials.json directly and prove it is the load-bearing auth
+        // source, so an env key would mask exactly what they assert.
       });
     });
 
@@ -168,22 +192,18 @@ if (!isLive) {
       });
     });
 
-    // 3 — direct `--token <jwt>` path: persists, no browser session.
-    describe("login --token (direct path)", () => {
+    // 3 — the retired direct path. `--token` is removed, so the flag must
+    // now be refused as an unknown option rather than parsed and ignored,
+    // which would look like a successful login that wrote nothing.
+    describe("login --token (removed)", () => {
       beforeEach(freshStateDir);
 
-      it("persists credentials.json without a device-flow session", async () => {
-        const result = await spawn([CMD_LOGIN, FLAG_TOKEN, sessionJwt, FLAG_JSON]);
-        assert.equal(result.code, 0, `login --token exited ${result.code}: ${result.stderr}`);
-        const persisted = await assertPersistedCredential(credentialsPath);
-        assert.equal(persisted, sessionJwt, "persisted token must equal the supplied --token value");
-        const record = await readCredentials(credentialsPath);
-        // Direct token has no device-flow session to label — `saveDirectToken`
-        // writes session_id:null (on-disk key is snake_case session_id).
-        assert.ok(!record?.session_id, `direct token must persist with no session_id; got ${record?.session_id}`);
-        // No browser-session URL announced on the direct path.
-        assert.equal(extractLoginUrl(result.stdout), null,
-          `direct path must not announce a login_url: ${result.stdout}`);
+      it("is rejected as an unknown option and persists nothing", async () => {
+        const result = await spawn([CMD_LOGIN, FLAG_TOKEN, "afc_whatever", FLAG_JSON]);
+        assert.notEqual(result.code, 0, `removed flag must not succeed: ${result.stdout}`);
+        assert.match(result.stderr, /unknown option/i, `expected an unknown-option error: ${result.stderr}`);
+        assert.equal(await credentialsExist(credentialsPath), false,
+          "a rejected flag must leave no credential behind");
       });
     });
 
@@ -192,8 +212,7 @@ if (!isLive) {
       beforeEach(freshStateDir);
 
       it("auth status --json → authenticated:true, source file", async () => {
-        const login = await spawn([CMD_LOGIN, FLAG_TOKEN, sessionJwt, FLAG_JSON]);
-        assert.equal(login.code, 0, `precondition login exited ${login.code}: ${login.stderr}`);
+        await seedCredential();
         const result = await spawn([CMD_AUTH, SUB_STATUS, FLAG_JSON]);
         assert.equal(result.code, 0, `auth status exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim()) as { authenticated?: boolean; source?: string };
@@ -202,15 +221,18 @@ if (!isLive) {
       });
     });
 
-    // 4 — piped-stdin token: a non-TTY stdin carrying the JWT persists it.
-    describe("login with piped-stdin token", () => {
+    // 4 — piped stdin was the second seeding source and went with the flag.
+    // A non-TTY login now fails fast pointing at the environment variable.
+    describe("login with piped-stdin token (removed)", () => {
       beforeEach(freshStateDir);
 
-      it("persists credentials.json from the piped token", async () => {
+      it("seeds nothing and names AGENTSFLEET_API_KEY instead", async () => {
         const result = await spawn([CMD_LOGIN, FLAG_JSON], { stdin: sessionJwt });
-        assert.equal(result.code, 0, `piped login exited ${result.code}: ${result.stderr}`);
-        const persisted = await assertPersistedCredential(credentialsPath);
-        assert.equal(persisted, sessionJwt, "persisted token must equal the piped stdin value");
+        assert.notEqual(result.code, 0, `piped seeding must not succeed: ${result.stdout}`);
+        assert.match(`${result.stderr}${result.stdout}`, /AGENTSFLEET_API_KEY/,
+          `expected env-var guidance: ${result.stderr}`);
+        assert.equal(await credentialsExist(credentialsPath), false,
+          "a refused login must leave no credential behind");
       });
     });
 
@@ -219,8 +241,7 @@ if (!isLive) {
       beforeEach(freshStateDir);
 
       it("aborts non-zero and leaves the existing credential untouched", async () => {
-        const seed = await spawn([CMD_LOGIN, FLAG_TOKEN, sessionJwt, FLAG_JSON]);
-        assert.equal(seed.code, 0, `seed login exited ${seed.code}: ${seed.stderr}`);
+        await seedCredential();
         const before = await readCredentials(credentialsPath);
         assert.ok(before?.token, "precondition: a credential must be persisted before the abort test");
 
@@ -240,8 +261,7 @@ if (!isLive) {
       beforeEach(freshStateDir);
 
       it("workspace list --json fails auth-required after logout", async () => {
-        const login = await spawn([CMD_LOGIN, FLAG_TOKEN, sessionJwt, FLAG_JSON]);
-        assert.equal(login.code, 0, `precondition login exited ${login.code}: ${login.stderr}`);
+        await seedCredential();
 
         const logout = await spawn([CMD_LOGOUT, FLAG_JSON]);
         assert.equal(logout.code, 0, `logout exited ${logout.code}: ${logout.stderr}`);

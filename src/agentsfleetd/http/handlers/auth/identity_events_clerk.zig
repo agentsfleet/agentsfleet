@@ -43,7 +43,7 @@ const scopes = @import("../../../auth/scopes.zig");
 /// drops it, so approving an action stays something only a person can do. The
 /// value is persisted per user at signup, so a change here reaches new owners
 /// only — existing owners keep whatever was written for them.
-const DEFAULT_SIGNUP_SCOPES = scopes.defaultClaim(.tenant_owner);
+const DEFAULT_SIGNUP_SCOPES = scopes.SIGNUP_OWNER_CLAIM;
 
 const log = logging.scoped(.auth_identity_events);
 
@@ -287,7 +287,7 @@ fn runBootstrap(hx: Hx, oidc_subject: []const u8, email: []const u8, display_nam
 }
 
 fn writePublicMetadata(hx: Hx, oidc_subject: []const u8, tenant_id: []const u8) void {
-    clerk_backend.patchUserPublicMetadata(hx.ctx.clerk_secret_key, hx.alloc, oidc_subject, tenant_id, DEFAULT_SIGNUP_SCOPES) catch |err| {
+    clerk_backend.patchUserPublicMetadata(hx.ctx.clerk_secret_key, hx.ctx.clerk_api_base, hx.alloc, oidc_subject, tenant_id, DEFAULT_SIGNUP_SCOPES) catch |err| {
         log.warn(
             "metadata_writeback_failed",
             .{

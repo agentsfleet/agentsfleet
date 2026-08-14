@@ -29,6 +29,7 @@ import {
   type CliKeypair,
 } from "../lib/cli-flow.ts";
 import { AUTH_SESSIONS_PATH } from "../lib/api-paths.ts";
+import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Input } from "../services/input.ts";
@@ -86,26 +87,34 @@ const promptYesNo = (
     return trimmed === "" || trimmed === "y" || trimmed === "yes";
   });
 
+// Names the deployment being replaced when it differs from the one being
+// logged into. Without it the operator is told only that "a credential" is
+// being replaced, and a dev-to-production switch reads identically to a
+// re-login against the same server — while the credential left behind stays
+// live on the deployment that minted it, reachable only from its dashboard.
+const replacementWarning = (stored: string | null, target: string): string =>
+  stored && stored !== target
+    ? `an existing credential for ${stored} is already saved on this machine — logging into ${target} replaces it locally and LEAVES IT LIVE on ${stored}, revocable only from that deployment's dashboard`
+    : "an existing credential is already saved on this machine";
+
 // D20 — abort if an existing credential is present and the operator
 // hasn't passed --force. --no-input + no --force aborts loudly so
 // scripts don't silently overwrite tokens. Interactive mode prompts.
 export const idempotencyCheck = (
   opts: { readonly force: boolean; readonly noInput: boolean },
-): Effect.Effect<void, CliError, Credentials | Input | Output> =>
+): Effect.Effect<void, CliError, CliConfig | Credentials | Input | Output> =>
   Effect.gen(function* () {
     if (opts.force) return;
     const credentials = yield* Credentials;
-    const existing = yield* credentials.getAccessToken;
-    if (Option.isNone(existing)) return;
+    const snapshot = yield* credentials.snapshot;
+    if (Option.isNone(snapshot.accessToken)) return;
+    const config = yield* CliConfig;
+    const warning = replacementWarning(snapshot.apiUrl, config.apiUrl);
     if (opts.noInput) {
-      return yield* Effect.fail(
-        noInputAbort("an existing credential is already saved"),
-      );
+      return yield* Effect.fail(noInputAbort(warning));
     }
     const output = yield* Output;
-    yield* output.warn(
-      "an existing credential is already saved on this machine",
-    );
+    yield* output.warn(warning);
     const proceed = yield* promptYesNo("Replace it?");
     if (!proceed) {
       return yield* Effect.fail(

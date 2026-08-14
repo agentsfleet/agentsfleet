@@ -1,38 +1,9 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { Writable } from "node:stream";
 import { runCli } from "../src/cli.ts";
 import { loadWorkspaces, saveWorkspaces } from "../src/lib/state.ts";
 import { asFetchOverride, makeHeaders, type ResponseLike } from "./helpers.ts";
-
-function bufferStream(): { stream: Writable; read: () => string } {
-  let data = "";
-  return {
-    stream: new Writable({
-      write(chunk, _enc, cb) {
-        data += String(chunk);
-        cb();
-      },
-    }),
-    read: () => data,
-  };
-}
-
-async function withStateDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
-  const old = process.env.AGENTSFLEET_STATE_DIR;
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-align-"));
-  process.env.AGENTSFLEET_STATE_DIR = dir;
-  try {
-    return await fn(dir);
-  } finally {
-    if (old === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
-    else process.env.AGENTSFLEET_STATE_DIR = old;
-    await fs.rm(dir, { recursive: true, force: true });
-  }
-}
+import { bufferStream, withFreshStateDir } from "./helpers-cli-state.ts";
 
 // ── --help surfaces the fleet group + new workspace subcommands ─────────
 
@@ -98,7 +69,7 @@ test("--help lists the memory group; its read verbs appear under `memory --help`
 // ── workspace use <id> persists active workspace ─────────────────────────
 
 test("workspace use <id> writes current_workspace_id to state", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
       items: [
@@ -121,7 +92,7 @@ test("workspace use <id> writes current_workspace_id to state", async () => {
 });
 
 test("workspace use rejects a workspace not in the local list", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
       items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: 1 }],
@@ -141,7 +112,7 @@ test("workspace use rejects a workspace not in the local list", async () => {
 });
 
 test("workspace use --json emits {active: <id>}", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: null,
       items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: 1 }],
@@ -161,7 +132,7 @@ test("workspace use --json emits {active: <id>}", async () => {
 // ── workspace show mirrors the /settings page ────────────────────────────
 
 test("workspace show prints current workspace details", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
       items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: "jolly-harbor-482", created_at: 1 }],
@@ -181,7 +152,7 @@ test("workspace show prints current workspace details", async () => {
 });
 
 test("workspace show --json returns the full detail object", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
       items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: "jolly-harbor-482", created_at: 1 }],
@@ -201,7 +172,7 @@ test("workspace show --json returns the full detail object", async () => {
 });
 
 test("workspace show errors when no active workspace and no --workspace-id", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     await saveWorkspaces({ current_workspace_id: null, items: [] });
     const out = bufferStream();
     const err = bufferStream();
@@ -218,7 +189,7 @@ test("workspace show errors when no active workspace and no --workspace-id", asy
 // ── workspace secrets redirect ───────────────────────────────────────
 
 test("workspace secrets prints the redirect message", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
     const code = await runCli(["workspace", "secrets"], {
@@ -234,7 +205,7 @@ test("workspace secrets prints the redirect message", async () => {
 });
 
 test("workspace secrets --json returns status=redirect", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
     await runCli(["--json", "workspace", "secrets"], {
@@ -251,7 +222,7 @@ test("workspace secrets --json returns status=redirect", async () => {
 // ── fleet list: paginated list with starting-after/limit flags ──────────
 
 test("fleet list calls the paginated endpoint and prints rows", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
       items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: 1 }],
@@ -293,7 +264,7 @@ test("fleet list calls the paginated endpoint and prints rows", async () => {
 });
 
 test("fleet list --json returns the raw envelope incl. next_cursor", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
       items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: 1 }],
@@ -319,7 +290,7 @@ test("fleet list --json returns the raw envelope incl. next_cursor", async () =>
 });
 
 test("fleet list honors --workspace-id override over current_workspace_id", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
       items: [
@@ -351,7 +322,7 @@ test("fleet list honors --workspace-id override over current_workspace_id", asyn
 });
 
 test("fleet list errors with ConfigError when no active workspace and no --workspace-id", async () => {
-  await withStateDir(async () => {
+  await withFreshStateDir(async () => {
     await saveWorkspaces({ current_workspace_id: null, items: [] });
     const out = bufferStream();
     const err = bufferStream();

@@ -17,6 +17,7 @@ import {
   UnexpectedError,
   ValidationError,
   VerificationFailedError,
+  reasonOf,
   type CliError,
 } from "../src/errors/index.ts";
 
@@ -212,5 +213,26 @@ describe("auth-flow tagged error specializations", () => {
   test("explicit null requestId is accepted (re-wrapping path)", () => {
     const err = new ExpiredSessionError({ detail, suggestion, requestId: null });
     expect((err as { requestId?: string | null }).requestId).toBeNull();
+  });
+});
+
+describe("reasonOf — the one operator-facing failure word", () => {
+  test("should surface the server's own code when it answered", () => {
+    const err = new ServerError({
+      detail,
+      suggestion,
+      code: "UZ-AUTH-002",
+      status: 401,
+      requestId: null,
+    });
+    expect(reasonOf(err)).toBe("UZ-AUTH-002");
+  });
+  test("should say network when the server never answered", () => {
+    const err = new NetworkError({ detail, suggestion, url: "https://x" });
+    expect(reasonOf(err)).toBe("network");
+  });
+  test("should say unexpected for every other failure class", () => {
+    const err = new UnexpectedError({ detail, suggestion });
+    expect(reasonOf(err)).toBe("unexpected");
   });
 });

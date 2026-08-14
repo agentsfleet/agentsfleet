@@ -45,6 +45,14 @@ export interface CommandCtx {
   token?: string | null;
   apiKey?: string | null;
   apiUrl: string;
+  // The deployment the stored credential was minted against, read from
+  // `credentials.json`. Distinct from `apiUrl`, which is where THIS
+  // invocation resolved to — the guard refuses when the two disagree.
+  storedApiUrl?: string | null;
+  // True when this invocation named its target (`--api` / AGENTSFLEET_API_URL)
+  // rather than inheriting one. An unbound credential is only refused when
+  // nothing named the target.
+  targetIsExplicit?: boolean;
   dashboardUrl: string;
   jsonMode?: boolean;
   noOpen?: boolean;

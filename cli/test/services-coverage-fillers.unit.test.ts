@@ -76,6 +76,7 @@ describe("Credentials error path", () => {
             token: Redacted.make("tok"),
             sessionId: "sess",
             apiUrl: "https://x",
+            credentialId: null,
           });
         }),
         credentialsLayer,

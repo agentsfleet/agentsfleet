@@ -15,7 +15,9 @@ that checkout. This file carries only project facts.
   equivalents.** CONFORM → `make harness-verify` · lint → `make lint-all` ·
   unit → `make test-unit-all` · integration → `make test-integration` ·
   leaks → `make memleak` · version → `make check-version` · dry lanes →
-  `make dry-app` / `make dry` · drain audit → `make check-pg-drain`. A
+  `make dry-app` / `make dry` · drain audit + convention gates →
+  `make lint-governance` (it wraps `_lint_zig_pg_drain`, the drain check
+  itself). A
   package-scoped runner (`cd ui/packages/app && bun run test`, `zig build
   test`, …) is inner-loop iteration; it proves a package, not the
   repository, and never satisfies a VERIFY row or a "tests pass" claim.

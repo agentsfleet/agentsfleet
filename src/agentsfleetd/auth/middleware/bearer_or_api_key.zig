@@ -10,8 +10,14 @@
 //! Resolution order:
 //!   1. Bearer token is parsed.
 //!   2. If prefixed `agt_t` → DB-backed tenant_api_key lookup.
-//!   3. Else if `verifier` is configured → JWT verification path.
-//!   4. Else → 401.
+//!   3. If prefixed `afc_`  → DB-backed cli_credential lookup (a person).
+//!   4. Else if `verifier` is configured → JWT verification path.
+//!   5. Else → 401.
+//!
+//! The two prefixed branches sit ahead of the verifier check on purpose: both
+//! are self-contained credential classes, so a deployment with no identity
+//! provider configured still authenticates them rather than answering 401 to
+//! a credential it could have resolved.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -22,11 +28,12 @@ const bearer = @import("bearer.zig");
 const errors = @import("errors.zig");
 const oidc = @import("../oidc.zig");
 const scopes = @import("../scopes.zig");
-const principal_mod = @import("../principal.zig");
 const tenant_api_key_mod = @import("tenant_api_key.zig");
+const cli_credential_mod = @import("cli_credential.zig");
 
 pub const AuthCtx = auth_ctx.AuthCtx;
 pub const TenantApiKey = tenant_api_key_mod.TenantApiKey;
+pub const CliCredential = cli_credential_mod.CliCredential;
 
 const S_INVALID_OR_MISSING_TOKEN = "Invalid or missing token";
 
@@ -49,6 +56,11 @@ pub const BearerOrApiKey = struct {
     /// lookup is wired. When set, any `agt_t`-prefixed Bearer token is
     /// routed to the tenant-key path (DB-backed lookup via host callback).
     tenant_api_key: ?*TenantApiKey = null,
+    /// Populated by MiddlewareRegistry.initChains() when the command-line
+    /// credential lookup is wired. When set, any `afc_`-prefixed Bearer token
+    /// is routed to the credential path, which resolves a USER principal —
+    /// the difference that lets a user-scoped route refuse a tenant key.
+    cli_credential: ?*CliCredential = null,
 
     pub fn middleware(self: *Self) chain.Middleware(AuthCtx) {
         return .{ .ptr = self, .execute_fn = executeTypeErased };
@@ -68,6 +80,12 @@ pub const BearerOrApiKey = struct {
         if (self.tenant_api_key) |tapi| {
             if (std.mem.startsWith(u8, provided, tenant_api_key_mod.TENANT_KEY_PREFIX)) {
                 return tapi.execute(ctx, req);
+            }
+        }
+
+        if (self.cli_credential) |cli| {
+            if (std.mem.startsWith(u8, provided, cli_credential_mod.CLI_CREDENTIAL_PREFIX)) {
+                return cli.execute(ctx, req);
             }
         }
 
@@ -107,119 +125,9 @@ pub const BearerOrApiKey = struct {
     }
 };
 
-// ── Tests ────────────────────────────────────────────────────────────────
-
-const testing = std.testing;
-
-// Single-sourced in ../jwks_test_fixtures.zig (Dimension 6.4).
-const test_fx = @import("../jwks_test_fixtures.zig");
-const TEST_JWKS = test_fx.TEST_JWKS;
-const TEST_VALID_TOKEN = test_fx.TEST_VALID_TOKEN;
-
-const test_fixtures = struct {
-    var last_code: []const u8 = "";
-    var write_count: usize = 0;
-
-    fn reset() void {
-        last_code = "";
-        write_count = 0;
-    }
-
-    fn writeError(_: *httpz.Response, code: []const u8, _: []const u8, _: []const u8) void {
-        last_code = code;
-        write_count += 1;
-    }
-};
-
-fn makeVerifier() error{OutOfMemory}!oidc.Verifier {
-    return oidc.Verifier.init(testing.allocator, .{
-        .provider = .clerk,
-        .jwks_url = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json",
-        .issuer = "https://clerk.dev.agentsfleet.net",
-        .audience = "https://api.agentsfleet.net",
-        .inline_jwks_json = TEST_JWKS,
-    });
-}
-
-fn runOne(mw: *BearerOrApiKey, ht: anytype) !struct { outcome: chain.Outcome, ctx: AuthCtx } {
-    var ctx = AuthCtx{
-        .alloc = testing.allocator,
-        .res = ht.res,
-        .req_id = "req_test",
-        .write_error = test_fixtures.writeError,
-    };
-    const outcome = try mw.execute(&ctx, ht.req);
-    return .{ .outcome = outcome, .ctx = ctx };
-}
-
-test "bearer_or_api_key routes a valid JWT to the OIDC path" {
-    test_fixtures.reset();
-    var verifier = try makeVerifier();
-    defer verifier.deinit();
-
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-    ht.header("authorization", "Bearer " ++ TEST_VALID_TOKEN);
-
-    var mw = BearerOrApiKey{ .verifier = &verifier };
-    const result = try runOne(&mw, &ht);
-    defer if (result.ctx.principal) |p| {
-        if (p.user_id) |v| testing.allocator.free(v);
-        if (p.tenant_id) |v| testing.allocator.free(v);
-        if (p.workspace_scope_id) |v| testing.allocator.free(v);
-    };
-
-    try testing.expectEqual(chain.Outcome.next, result.outcome);
-    try testing.expect(result.ctx.principal != null);
-    try testing.expectEqual(principal_mod.AuthMode.jwt_oidc, result.ctx.principal.?.mode);
-    try testing.expectEqualStrings("user_test", result.ctx.principal.?.user_id.?);
-}
-
-test "bearer_or_api_key short-circuits with 401 when Authorization header is missing" {
-    test_fixtures.reset();
-    var verifier = try makeVerifier();
-    defer verifier.deinit();
-
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-
-    var mw = BearerOrApiKey{ .verifier = &verifier };
-    const result = try runOne(&mw, &ht);
-
-    try testing.expectEqual(chain.Outcome.short_circuit, result.outcome);
-    try testing.expectEqualStrings(errors.ERR_UNAUTHORIZED, test_fixtures.last_code);
-}
-
-test "bearer_or_api_key short-circuits with 401 when no verifier is configured" {
-    test_fixtures.reset();
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-    ht.header("authorization", "Bearer something-else");
-
-    var mw = BearerOrApiKey{ .verifier = null };
-    const result = try runOne(&mw, &ht);
-
-    try testing.expectEqual(chain.Outcome.short_circuit, result.outcome);
-    try testing.expectEqualStrings(errors.ERR_UNAUTHORIZED, test_fixtures.last_code);
-}
-
-test "bearer_or_api_key short-circuits with 503 when JWKS fetch fails" {
-    test_fixtures.reset();
-    var verifier = try oidc.Verifier.init(testing.allocator, .{
-        .provider = .clerk,
-        .jwks_url = "http://127.0.0.1:1/unreachable.json",
-        .issuer = "https://clerk.dev.agentsfleet.net",
-        .audience = "https://api.agentsfleet.net",
-    });
-    defer verifier.deinit();
-
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-    ht.header("authorization", "Bearer " ++ TEST_VALID_TOKEN);
-
-    var mw = BearerOrApiKey{ .verifier = &verifier };
-    const result = try runOne(&mw, &ht);
-
-    try testing.expectEqual(chain.Outcome.short_circuit, result.outcome);
-    try testing.expectEqualStrings(errors.ERR_AUTH_UNAVAILABLE, test_fixtures.last_code);
+test {
+    // Keeps every declaration analysed; behavioural coverage lives in the
+    // sibling test file, which the length cap moved out of this one.
+    std.testing.refAllDecls(@This());
+    _ = @import("bearer_or_api_key_test.zig");
 }

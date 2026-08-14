@@ -4,6 +4,7 @@ const call_deadline = @import("call_deadline");
 const httpz = @import("httpz");
 const pg = @import("pg");
 const R2 = @import("s3");
+const clerk_backend = @import("../../auth/clerk_backend.zig");
 const oidc = @import("../../auth/oidc.zig");
 const session_store_redis = @import("../../session/session_store_redis.zig");
 const audit_events = @import("../../auth/audit_events.zig");
@@ -102,6 +103,10 @@ pub const Context = struct {
     /// owner frees via `deinitSlackSigningSecretCache`.
     connector_slack_signing_secret_cache: std.atomic.Value(?*const SlackSigningSecret) = .init(null),
     clerk_secret_key: ?[]const u8,
+    /// Boot-resolved provider backend base — the vendor host unless
+    /// CLERK_API_BASE overrode it. Rides beside the secret so the scope
+    /// resolver and the metadata writer can never disagree on the host.
+    clerk_api_base: []const u8 = clerk_backend.API_BASE,
     oidc: ?*oidc.Verifier,
     /// Cloudflare R2 client for Fleet Bundle canonical-tar storage, resolved once
     /// at boot. Null when R2 credentials are unset (local dev / paste-only) — the

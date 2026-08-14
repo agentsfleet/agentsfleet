@@ -20,11 +20,18 @@ const constants = @import("common");
 const logging = @import("log");
 const ec = @import("auth_codes");
 const worker_slots = @import("clerk_fetch_worker.zig");
+const config = @import("clerk_backend_config.zig");
 
 const log = logging.scoped(.clerk_backend);
 
 pub const SECRET_ENV_VAR = "CLERK_SECRET_KEY";
-const API_BASE = "https://api.clerk.com/v1";
+
+// The base URL and its `CLERK_API_BASE` validation live in the config module;
+// re-exported because `clerk_backend` is the public API every caller spells —
+// the scope resolver and the handler Context read the same resolved base.
+pub const API_BASE = config.API_BASE;
+pub const API_BASE_ENV_VAR = config.API_BASE_ENV_VAR;
+pub const resolveApiBase = config.resolveApiBase;
 
 /// HTTP method used for the metadata-merge endpoint. Exposed as a const so
 /// a unit test can assert it without standing up a mock HTTP server. Clerk's
@@ -54,20 +61,22 @@ pub const PatchError = error{
 /// admin dashboard) survive.
 pub fn patchUserPublicMetadata(
     secret: ?[]const u8,
+    api_base: []const u8,
     alloc: std.mem.Allocator,
     user_id: []const u8,
     tenant_id: ?[]const u8,
     scopes: ?[]const u8,
 ) PatchError!void {
     // Borrowed from the boot-resolved Context secret (CLERK_SECRET_KEY) — no
-    // per-request env read, no free here.
+    // per-request env read, no free here. `api_base` rides the same contract,
+    // so a CLERK_API_BASE override moves the writes with the scope reads.
     const clerk_secret = secret orelse return PatchError.MissingSecret;
     if (std.mem.trim(u8, clerk_secret, " \t\r\n").len == 0) return PatchError.MissingSecret;
 
     const payload = try renderMetadataPayload(alloc, tenant_id, scopes);
     defer alloc.free(payload);
 
-    const url = try std.fmt.allocPrint(alloc, "{s}/users/{s}/metadata", .{ API_BASE, user_id });
+    const url = try std.fmt.allocPrint(alloc, "{s}/users/{s}/metadata", .{ api_base, user_id });
     defer alloc.free(url);
 
     const auth_header = try std.fmt.allocPrint(alloc, "Bearer {s}", .{clerk_secret});
