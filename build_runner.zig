@@ -223,5 +223,10 @@ pub fn build(b: *std.Build) void {
     // resolve here too, not just in the unit lane.
     buildpkg.fixtures.addRunner(b, runner_integration_tests.root_module);
     b.step("test-integration", "Run agentsfleet-runner integration tests (real-process sandbox proofs + worker-pool concurrency, Linux)").dependOn(&b.addRunArtifact(runner_integration_tests).step);
+    // The coverage lane runs kcov over installed binaries; without an install
+    // step the fork-path lines this suite executes (forkExec, kill-tree, the
+    // worker pool's real children) are invisible to the measurement.
+    b.step("test-integration-bin", "Install the runner integration test binary for the coverage lane")
+        .dependOn(&b.addInstallArtifact(runner_integration_tests, .{}).step);
     buildpkg.test_list.addLane(b, list_step, S_RUNNER_INTEGRATION_TESTS, runner_integration_tests.root_module, S_RUNNER_ROOT_DIR);
 }

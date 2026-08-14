@@ -110,6 +110,9 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 zig build test-s3-bin
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 zig build --build-file build_runner.zig test-integration-bin
 	@# The integration suite execs the runner binary and reads a migrated
 	@# database; `install` builds the daemon exe that performs the migration.
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
@@ -166,6 +169,9 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	 db_url="$${TEST_DATABASE_URL:-$(TEST_DATABASE_URL_LOCAL)}"; \
 	 redis_url="$${TEST_REDIS_TLS_URL:-$(TEST_REDIS_TLS_URL_LOCAL)}"; \
 	 components="agentsfleetd:agentsfleetd-tests runner:agentsfleet-runner-tests lib:agentsfleet-lib-tests logging:agentsfleet-logging-tests deadline:agentsfleet-call-deadline-tests s3:agentsfleet-s3-tests"; \
+	 if [ "$$(uname -s)" = Linux ]; then \
+	   components="$$components runner_integration:agentsfleet-runner-integration-tests"; \
+	 fi; \
 	 names=""; \
 	 for component in $$components; do \
 	   name=$${component%%:*}; binary=$${component#*:}; output="$(ZIG_COVERAGE_DIR)/$$name"; \
