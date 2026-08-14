@@ -205,7 +205,7 @@ Bearer afc_… → SHA-256 → core.cli_credentials row (JOIN core.users)
 
 **How `agt_t` relates (M160_002 §6).** A tenant key now takes the same path, keyed on the creator's subject in `created_by`. That reverses an earlier position on this page which held the two apart so a key would outlive the admin who minted it — superseded by Indy's Aug 13, 2026 decision: one authority, the key follows its person. The consequence is deliberate and fail-closed: erase a key's creator at the provider and the key resolves to no capability on its next uncached request — it authenticates and is refused at every gate, exactly as a deleted person's terminal credential is. A key that must survive personnel change belongs to a person-shaped service identity at the provider, not to a carve-out in code.
 
-**What a fixed grant would have cost.** Start from what a normal account actually holds: a self-serve signup is written the full `.tenant_owner` set at `user.created` (`identity_events_clerk.zig`, `DEFAULT_SIGNUP_SCOPES`), so the ordinary CLI user is a tenant admin in the terminal for the same reason they are one in the dashboard — Clerk says so. A narrower person is not what signup produces; they exist only where an operator hand-wrote a smaller set onto `public_metadata.scopes` (see *Manually-provisioned scope sets*).
+**What a fixed grant would have cost.** Start from what a normal account holds. A self-serve signup is written the full `.tenant_owner` set at `user.created` (`identity_events_clerk.zig`, `DEFAULT_SIGNUP_SCOPES`). So the ordinary command-line user is a tenant admin in the terminal for the same reason they are one in the dashboard: Clerk says so. A narrower person is not what signup produces. They exist only where an operator hand-wrote a smaller set onto `public_metadata.scopes` (see *Manually-provisioned scope sets*).
 
 That is exactly who a code-applied grant would have harmed. A grant authored in code is keyed by *credential source*, not by person, so a CLI entry would have had to name one fixed set applied to every terminal — and the only sensible candidates are the tenant sets. A hand-narrowed collaborator would then have been widened back to that set on their next `login`, silently, by the credential change alone. Resolving the claim avoids authoring a grant at all: the terminal cannot disagree with the dashboard, and narrowing someone in Clerk reaches every terminal they hold within the cache window instead of requiring a hunt for credentials to revoke.
 
@@ -223,7 +223,9 @@ That is exactly who a code-applied grant would have harmed. A grant authored in 
 { "tenant_id": "<their-tenant-uuid>", "scopes": "runner:read model:read" }
 ```
 
-This requires the Clerk **session-token template** to project `public_metadata.scopes` → the top-level `scopes` claim (and `public_metadata.tenant_id` → `tenant_id`) — setting Public metadata alone does nothing if the JWT template doesn't map it. Only grant the full platform-operator bundle (`runner:enroll runner:write stream:read model:admin platform-key:admin platform-library:write workspace:any`, shown in the table above) to a dev user who genuinely needs to exercise write/admin actions — it carries `platform-key:admin` (can rotate the platform LLM key) and `workspace:any` (cross-tenant workspace access), so it is not the right default for "just let me see the page."
+This requires the Clerk **session-token template** to project `public_metadata.scopes` into the top-level `scopes` claim, and `public_metadata.tenant_id` into `tenant_id`. Setting Public metadata alone does nothing if the template does not map it.
+
+Grant the full platform-operator bundle only to a dev user who genuinely needs write and admin actions. The bundle is `runner:enroll runner:write stream:read model:admin platform-key:admin platform-library:write workspace:any`, shown in the table above. It carries `platform-key:admin`, which can rotate the platform language-model key, and `workspace:any`, which reaches across tenants. Neither belongs in a "just let me see the page" default.
 
 ---
 
@@ -231,7 +233,9 @@ This requires the Clerk **session-token template** to project `public_metadata.s
 
 The one credential path humans use from a terminal: a browser-mediated device flow with a **verification code** binding the human approving in the browser to the human typing into the terminal, and **ECDH P-256 transport encryption** that keeps the minted JWT off every server-side surface but process memory. Bounded at five minutes; unfinished sessions expire. The recovered session token is spent immediately on `POST /v1/cli-credentials` and is never written to disk — what `credentials.json` (mode `0o600`) holds is the durable `afc_` credential that mint returns, and that is what the CLI carries on every subsequent request. The credential does not expire, so there is no `401 token_expired` re-login cycle; a 401 means the credential was revoked (`UZ-AUTH-023`) or is unknown. See [§CLI credential — resolved, not granted](#cli-credential--resolved-not-granted) for how it authenticates.
 
-There is no non-interactive login. M160_002 §3 removed the `--token` flag and its piped-stdin fallback: `AGENTSFLEET_API_KEY` already carries an `agt_t…` tenant key on every request and **takes precedence over the stored credential**, so the flag was a second route to the same place — and the only one that could write a value the credential loader later refuses. Unattended contexts (Continuous Integration runners, containers) set the environment variable, which persists nothing; a non-TTY `login` fails immediately and says so. One rule, no overlap: interactive is the device flow, unattended is the environment variable.
+There is no non-interactive login. M160_002 §3 removed the `--token` flag and its piped-stdin fallback. `AGENTSFLEET_API_KEY` already carries an `agt_t…` tenant key on every request and **takes precedence over the stored credential**, so the flag was a second route to the same place — and the only one that could write a value the credential loader later refuses.
+
+Unattended contexts, meaning Continuous Integration runners and containers, set the environment variable, which persists nothing. A non-TTY `login` fails immediately and says why. One rule, no overlap: interactive is the device flow, unattended is the environment variable.
 
 The full data lifecycle, sequence, session state machine, threat model, pinned crypto primitives, the non-interactive token-seeding path, deploy rules, and the human-led-only invariant live in **[`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md)**.
 
@@ -417,7 +421,11 @@ Flows 1–3 all act *on behalf of* a human or a tenant. The **runner token** is 
 
 ### Provisioning (register)
 
-A runner has no credential until an **agentsfleet platform operator** mints one from the **dashboard "Add runner"** action (a session-authed server action — M84_001 retired the `register --token` CLI, so no identity credential ever reaches a shell). Enrollment is the trust decision — a runner that joins the shared fleet receives every tenant's inline `secrets_map` via the leases it is placed — so the endpoint that mints a `agt_r` (`POST /v1/runners`) requires the `runner:enroll` scope, a discrete capability held only by platform operators and independently revocable from `runner:read`/`runner:write` (separation of duties). A tenant-scoped JWT (no `runner:enroll`) and any `agt_t` api_key are rejected `403 UZ-AUTH-022`; an empty scope set fails closed. There is no open enrollment token. The operator plane has its own scopes: `runner:read` fronts the fleet list `GET /v1/fleets/runners` (M84_001) and event history `GET /v1/fleets/runners/{id}/events` (M84_002); `runner:write` fronts the operator-plane mutation `PATCH /v1/fleets/runners/{id}`.
+A runner has no credential until an **agentsfleet platform operator** mints one from the dashboard's **Add runner** action. That is a session-authed server action; M84_001 retired the `register --token` command, so no identity credential ever reaches a shell.
+
+Enrollment is the trust decision. A runner that joins the shared fleet receives every tenant's inline `secrets_map` through the leases placed on it. So the endpoint that mints an `agt_r` (`POST /v1/runners`) requires the `runner:enroll` scope — a discrete capability held only by platform operators, revocable independently of `runner:read` and `runner:write`. A tenant-scoped JWT without it, and any `agt_t` api_key, are rejected `403 UZ-AUTH-022`. An empty scope set fails closed. There is no open enrollment token.
+
+The operator plane has its own scopes. `runner:read` fronts the fleet list `GET /v1/fleets/runners` and event history `GET /v1/fleets/runners/{id}/events`; `runner:write` fronts the mutation `PATCH /v1/fleets/runners/{id}`.
 
 The host **never self-registers** (Option B, the GitLab-16 "create runner → authentication token" model): the operator pre-mints the `agt_r` and installs it on the host as `AGENTSFLEET_RUNNER_TOKEN`; the daemon validates the `agt_r` prefix at boot and goes straight to the heartbeat/lease loop. No host ever holds an enrollment-grade credential.
 
@@ -452,7 +460,9 @@ SELECT id, admin_state FROM fleet.runners WHERE token_hash = sha256(token)   (ti
 
 This is the deliberate exception to "new principal types need no new middleware." A runner token must never satisfy a tenant route, and a user/tenant token must never satisfy a runner route — so the runner plane gets its own middleware rather than a `agt_r` branch in `bearer_or_api_key`. The boundary is enforced by *which middleware guards the route*, not by per-handler checks. The lookup is read-only; liveness (`last_seen_at`) is written by the heartbeat handler, not on every call.
 
-**Every call reads `fleet.runners`. There is no memoized verdict** (`cmd/serve_runner_lookup.zig`). An `agt_r` is opaque, so unlike the JWT plane it cannot be verified without going to look — and that lookup is where a cordon, drain, revoke, or delete takes effect, because **admin-state transitions have no other delivery channel**: the heartbeat reply is unconditionally `.ok` (`handlers/runner/heartbeat.zig`), so auth rejection is the only way a runner learns it is out of service.
+**Every call reads `fleet.runners`. There is no memoized verdict** (`cmd/serve_runner_lookup.zig`). An `agt_r` is opaque, so unlike the JWT plane it cannot be verified without going to look.
+
+That lookup is where a cordon, drain, revoke or delete takes effect, because **admin-state transitions have no other delivery channel**. The heartbeat reply is unconditionally `.ok` (`handlers/runner/heartbeat.zig`), so auth rejection is the only way a runner learns it is out of service.
 
 A per-process memo used to front this read, with entries living at most `HEARTBEAT_INTERVAL_MS`. It was removed in M143_001 because it made revocation deterministic only on the machine that served the operator's write: every *other* control-plane machine kept authenticating the runner until its own entry expired. Reading the row every time means a runner taken out of service authenticates **nowhere, immediately**, with no window to reason about and no per-machine state to reconcile.
 
@@ -584,7 +594,9 @@ Templates can also be scope-gated (e.g. "only users whose `scopes` claim carries
 
 ## Why all three flows use Bearer
 
-The wire shape is deliberately uniform: one credential header, one middleware, two payload branches. New **outbound** principal types plug in by issuing a JWT with the right `aud` or by minting a new prefixed API key — no new auth middleware required. **Inbound provider traffic is a separate story and never uses Bearer**: fleet-trigger webhooks (§Webhook auth) and OAuth connectors (§OAuth connectors) authenticate by signature — an HMAC over the raw body, or a signed single-use `state` on the OAuth callback — verified against a vault-held secret, not a token the caller presents.
+The wire shape is deliberately uniform: one credential header, one middleware, two payload branches. New **outbound** principal types plug in by issuing a JWT with the right `aud`, or by minting a new prefixed API key. No new auth middleware is required.
+
+**Inbound provider traffic is a separate story and never uses Bearer.** Fleet-trigger webhooks (§Webhook auth) and OAuth connectors (§OAuth connectors) authenticate by signature. That is a keyed hash over the raw body, or a signed single-use `state` on the callback. Either is verified against a vault-held secret, not against a token the caller presents.
 
 Cookie handling stays inside Clerk and Next.js. The Zig backend is a stateless JWT/key validator.
 
@@ -637,7 +649,10 @@ Rotation does NOT invalidate existing user JWTs (Clerk signs those with its own 
 
 1. Generate the new key in Clerk dashboard. Keep the old key active until step 4.
 2. Update vault — `op item edit ZMB_CD_DEV/clerk-dev secret-key=<new>` (DEV) and `ZMB_CD_PROD/clerk` (PROD). One vault update per environment.
-3. Redeploy consumers in this order: **Vercel** first (Next.js Server Actions + Route Handlers do server-side `getToken({template:"api"})`); **Fly** second — `agentsfleetd` presents the secret on two live backend-API paths, scope resolution (`auth/clerk_scope_fetch.zig`, on every authenticated command-line request that misses the scope cache) and the signup metadata merge (`http/handlers/auth/identity_events_clerk.zig`); **CI** last (GitHub Actions secret mirror, used for e2e fixture mint).
+3. Redeploy consumers in this order.
+   - **Vercel** first. Next.js Server Actions and Route Handlers do server-side `getToken({template:"api"})`.
+   - **Fly** second. `agentsfleetd` presents the secret on two live backend paths: scope resolution (`auth/clerk_scope_fetch.zig`, on every authenticated command-line request that misses the scope cache) and the signup metadata merge (`http/handlers/auth/identity_events_clerk.zig`).
+   - **Continuous Integration** last. The GitHub Actions secret mirror is used for the end-to-end fixture mint.
 4. Revoke the old key in Clerk dashboard once all consumers report green.
 
 If rotated under suspected compromise, skip the gradual revoke — invalidate the old key immediately at step 1. Browser users stay signed in (their JWTs remain valid until natural expiry). Admin tooling fails until step 3 completes, and so does the daemon: durable command-line credentials keep working only while their scope-cache entries stay warm, then fail closed as "auth unavailable". Step 3 is the clock on that window, not a housekeeping step.
@@ -805,7 +820,7 @@ The dashboard's **connectors** (GitHub App, Slack, and every future registry pro
 - **Slack** is a real OAuth-2.0 code exchange: the callback trades the `code` for a bot token using the platform app's `client_id`/`client_secret`, then writes **two** rows — the per-install vault handle and the `core.connector_installs` routing row.
 - **GitHub** is a GitHub App installation with a user-authorization proof: its callback requires `installation_id`, one-time `code`, and signed `state`; exchanges the code using the platform client credentials; and asks GitHub whether that user token can access the claimed installation. Only then does it write the encrypted workspace vault handle and non-secret `core.connector_installs` route. A provider denial or a routing row owned by another workspace returns 403 `UZ-CONN-008`; neither workspace changes. The request-local user token is discarded after the probe.
 - **Zoho Desk, Jira, Linear** (M108) are OAuth-2.0 code exchanges that issue a **refresh token**: the callback trades the `code` for `{access_token, refresh_token, expires_in}` and vaults a refresh handle. Jira's hook additionally resolves the Atlassian **cloud id** via the accessible-resources probe (bounded); Zoho captures its data-center label. The broker later mints fresh access tokens from the refresh handle (see *Broker refresh-mint* below) — the runner never sees the refresh token.
-- **Datadog, Grafana, Fly are not connectors.** A registry shape for operator-pasted vendor keys was considered for these three and dropped (M108_002, `connectors.md:52` — no such archetype ships): a static vendor key is just a workspace secret, not a connector — there is no registry entry, no connect/callback round-trip, and no platform app bag to protect. The operator adds the key directly as a plain workspace secret (`agentsfleet secret create <name>` — see the docs site's Secrets guide) and it is referenced from `TRIGGER.md` as `${secrets.<name>.<field>}` like any other tool secret — never through this connect/callback surface.
+- **Datadog, Grafana, Fly are not connectors.** A registry shape for operator-pasted vendor keys was considered for these three and dropped (M108_002; no such archetype ships). A static vendor key is a workspace secret, not a connector: there is no registry entry, no connect/callback round-trip, and no platform app bag to protect. The operator adds the key as a plain workspace secret with `agentsfleet secret create <name>`, and `TRIGGER.md` references it as `${secrets.<name>.<field>}` like any other tool secret. It never touches the connect/callback surface.
 
 The rows themselves:
 
@@ -814,7 +829,11 @@ The rows themselves:
 
 ### Platform app secrets (`<provider>-app`, admin workspace)
 
-The provider app is **one per connector, shared across every tenant**. Its secrets live in the **admin-workspace** vault under `<provider>-app` (`connectors/oauth2.zig` `APP_VAULT_KEY_SUFFIX = "-app"`), keyed by `Context.platform_admin_workspace_id`. The bag is per-provider: `slack-app` holds `{client_id, client_secret, signing_secret}`; `github-app` holds `{app_id, private_key_pem, app_slug, webhook_secret, client_id, client_secret}` — the private key signs outbound App identity, the webhook secret verifies inbound deliveries, and the client credentials exchange the one-time user-authorization code; the Open Authorization 2.0 (OAuth 2.0) refresh connectors `zoho-app`/`jira-app`/`linear-app` hold `{client_id, client_secret}`. Datadog, Grafana, and Fly are not connectors and have no `<provider>-app` bag. Catastrophic fields never touch a per-tenant surface.
+The provider app is **one per connector, shared across every tenant**. Its secrets live in the **admin-workspace** vault under `<provider>-app` (`connectors/oauth2.zig`, `APP_VAULT_KEY_SUFFIX = "-app"`), keyed by `Context.platform_admin_workspace_id`.
+
+The bag is per-provider. `slack-app` holds `{client_id, client_secret, signing_secret}`. `github-app` holds `{app_id, private_key_pem, app_slug, webhook_secret, client_id, client_secret}`: the private key signs outbound App identity, the webhook secret verifies inbound deliveries, and the client credentials exchange the one-time user-authorization code. The Open Authorization 2.0 (OAuth 2.0) refresh connectors `zoho-app`, `jira-app` and `linear-app` hold `{client_id, client_secret}`.
+
+Datadog, Grafana and Fly are not connectors and have no `<provider>-app` bag. Catastrophic fields never touch a per-tenant surface.
 
 ### Integration-grant gate on every mint (restores M102_001 Invariant 3)
 
@@ -822,7 +841,9 @@ A connected integration alone does not authorize a fleet to use it. Every `POST 
 
 ### Broker refresh-mint (M108 — Zoho, Jira, Linear)
 
-The credential broker (`credentials/`) resolves a workspace's `<provider>` refresh handle to a short-lived access token on demand: it posts a `grant_type=refresh_token` form to the provider token endpoint using the `<provider>-app` client id/secret, caches the result until expiry-minus-skew (mirroring the GitHub installation-token mint), and degrades to `reconnect_required` on a revoked token (`invalid_grant`) — never a crash, never a raw refresh-token egress to the runner. The exchange is **deadline-armed** (`serve_broker.HttpClientExchange`, a per-call `call_deadline` watchdog): a hung vendor token endpoint fails closed, never stalls the broker. The runner-facing mint response carries only the access token + its expiry.
+The credential broker (`credentials/`) resolves a workspace's `<provider>` refresh handle to a short-lived access token on demand. It posts a `grant_type=refresh_token` form to the provider's token endpoint using the `<provider>-app` client id and secret, then caches the result until expiry minus skew, mirroring the GitHub installation-token mint. A revoked token (`invalid_grant`) degrades to `reconnect_required` — never a crash, and never a raw refresh token reaching the runner.
+
+The exchange is **deadline-armed** (`serve_broker.HttpClientExchange`, a per-call `call_deadline` watchdog), so a hung vendor endpoint fails closed rather than stalling the broker. The runner-facing mint response carries only the access token and its expiry.
 
 ### GitHub App events ingress (`POST /v1/ingress/github`)
 

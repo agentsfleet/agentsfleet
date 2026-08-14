@@ -1,7 +1,6 @@
 # Concurrency architecture — threads, channels, locks, shutdown
 
-Date: Jul 11, 2026
-Status: Canonical concurrency model for `agentsfleetd` (control plane) and
+Canonical concurrency model for `agentsfleetd` (control plane) and
 `agentsfleet-runner` (execution plane). This is the file the `name_architecture`
 dispatch consults before naming a thread, channel, or lock, or asserting a
 shutdown ordering. Sibling of [`data_flow.md`](./data_flow.md) (the same runtime

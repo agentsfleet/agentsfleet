@@ -1,7 +1,6 @@
 # Zig test architecture
 
-Date: Jul 26, 2026
-Status: Canonical component ownership and verification topology.
+Canonical component ownership and verification topology.
 
 ---
 

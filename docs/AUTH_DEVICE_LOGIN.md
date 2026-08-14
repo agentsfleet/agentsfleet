@@ -135,7 +135,7 @@ sequenceDiagram
 
 Two facts the diagram pins:
 1. **The CLI is the initiator.** Every interaction with the UI, API, or Clerk is downstream of `agentsfleet login`. The user typing the verification code closes the loop back to the CLI.
-2. **Clerk is involved at exactly one step of this flow** (`POST /tokens`). The API server never talks to Clerk while the device flow is running. It does afterwards, but differently than it once did: since M160_002 the CLI presents an `afc_` credential rather than the JWT, so Clerk is not consulted for JWKS on those calls — it is consulted by the scope resolver, which fetches the owning user's capabilities per request behind a short cache. Verification moved from "is this signature valid" to "who is this row, and what may they do right now."
+2. **Clerk is involved at exactly one step of this flow** (`POST /tokens`). The API server never talks to Clerk while the device flow is running. It does afterwards, but differently than it once did. Since M160_002 the command-line interface presents an `afc_` credential rather than the JWT, so Clerk is not consulted for its key set on those calls. It is consulted by the scope resolver, which fetches the owning user's capabilities per request behind a short cache. Verification moved from "is this signature valid" to "who is this row, and what may they do right now."
 
 ## Session state machine
 
