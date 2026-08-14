@@ -201,3 +201,38 @@ test "integration: the starter grant is the whole free allowance a fresh tenant 
     try std.testing.expect(row.balance_nanos > 0);
     try std.testing.expect(row.exhausted_at_ms == null);
 }
+
+/// Abort the transaction so every subsequent statement on this connection
+/// errors. Same mechanism `budget_integration_test` uses to prove its own
+/// fail-open branch is reachable.
+fn poisonTransaction(conn: *pg.Conn) !void {
+    _ = try conn.exec("BEGIN", .{});
+    try std.testing.expectError(error.PG, conn.exec("SELECT 1/0", .{}));
+}
+
+fn healTransaction(conn: *pg.Conn) void {
+    _ = conn.exec("ROLLBACK", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+}
+
+test "integration: a wallet read on a faulted connection errors rather than answering" {
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    // Both consumers of `getBilling` route a read failure somewhere specific —
+    // the billing handler answers `internalDbUnavailable`, and the pre-claim
+    // metering gate fails OPEN so a database blip cannot refuse every lease. Both
+    // of those branches are `catch` arms, and a `catch` arm nothing can reach is
+    // dead code wearing a safety label. This proves the arm is live: the read
+    // genuinely errors on a faulted connection rather than returning null, which
+    // would read as "this tenant has no wallet" and take the wrong path entirely.
+    //
+    // The exact error variant is driver-drain dependent and immaterial — both
+    // call sites swallow any of them with `catch`.
+    try poisonTransaction(db_ctx.conn);
+    defer healTransaction(db_ctx.conn);
+
+    if (tenant_billing.getBilling(db_ctx.conn, TENANT_ID)) |_| {
+        return error.TestExpectedWalletReadToFailOnPoisonedTxn;
+    } else |_| {}
+}
