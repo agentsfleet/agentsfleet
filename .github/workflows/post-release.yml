@@ -191,3 +191,46 @@ jobs:
           | Production CLI acceptance | ${{ needs.cli-acceptance-prod.result }} |
           | npm latest promotion | ${{ needs.promote-latest.result }} |
           EOF
+
+      - uses: actions/checkout@v6
+
+      # This summary only ever reached the run page, so a failed prod
+      # verification was invisible unless someone opened Actions.
+      - name: Compose verdict
+        id: verdict
+        env:
+          VERSION: ${{ needs.resolve-release.outputs.version || 'unresolved' }}
+          NPM_RESULT: ${{ needs.verify-npm.result }}
+          CLI_RESULT: ${{ needs.cli-acceptance-prod.result }}
+          PROMOTE_RESULT: ${{ needs.promote-latest.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          LINE="installs: ${NPM_RESULT} | cli-acceptance: ${CLI_RESULT} | npm latest: ${PROMOTE_RESULT}"
+
+          # cli-acceptance-prod is gated by PROD_WORKER_READY, so skipped is allowed.
+          ok=1
+          [ "$NPM_RESULT" = success ] || ok=0
+          [ "$PROMOTE_RESULT" = success ] || ok=0
+          case "$CLI_RESULT" in success|skipped) ;; *) ok=0 ;; esac
+
+          if [ "$ok" = 1 ]; then
+            STATUS=success
+            MESSAGE="✅ PROD verified \`$VERSION\`\\n$LINE"
+          else
+            STATUS=failure
+            MESSAGE="❌ PROD verification failed \`$VERSION\`\\n$LINE\\nCheck: ${RUN_URL}"
+          fi
+
+          # printf, not echo: the \n markers must reach the action as literal
+          # backslash-n for its printf %b to expand. echo's handling varies.
+          printf 'status=%s\n' "$STATUS" >>"$GITHUB_OUTPUT"
+          printf 'message=%s\n' "$MESSAGE" >>"$GITHUB_OUTPUT"
+
+      - name: Notify Discord
+        if: always()
+        uses: ./.github/actions/notify-discord
+        with:
+          status: ${{ steps.verdict.outputs.status }}
+          message: ${{ steps.verdict.outputs.message || '❌ PROD verification verdict could not be computed — inspect the summary job' }}
+          op-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          vault: ${{ vars.VAULT_PROD }}
