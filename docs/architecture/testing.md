@@ -56,7 +56,8 @@ after the component lanes converge.
 - `logging` — logging tests;
 - `deadline` — call-deadline tests;
 - `s3` — object-store tests;
-- `runner_integration` — the runner integration suite (Linux only);
+- `runner_integration` — the runner integration suite, whose worker-pool tests
+  fork the real stub child on Linux and macOS alike;
 - `integration` — the daemon integration suite, against live datastores, serially;
 - `lifecycle` — the boot to SIGTERM to drain proof, alone in its own process
   against live datastores.
@@ -100,8 +101,8 @@ now has its own.
 | Scope | Enforced floor | Target |
 |---|---|---|
 | merged | 89 | 95 |
-| `agentsfleetd` | 88 | 95 |
-| `runner` | 91 | 95 |
+| `agentsfleetd` | 89 | 95 |
+| `runner` | 92 | 95 |
 | `lib` | 93 | 95 |
 
 Floors are enforced and **raise-only**: move one in the same commit as the tests

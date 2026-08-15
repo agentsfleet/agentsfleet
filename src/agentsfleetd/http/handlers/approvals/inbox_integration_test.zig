@@ -365,6 +365,86 @@ test "integration: approvals GET — evidence JSONB roundtrips as object" {
 
 // ── Detail + 404 boundaries ─────────────────────────────────────────────
 
+test "integration: approvals GET detail — seeded gate returns every spec field with evidence as an object" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupTestData(conn);
+
+    const gid = "01999999-6666-7000-8000-000000000001";
+    try insertGate(conn, .{
+        .gate_id = gid,
+        .action_id = "act-detail-1",
+        .evidence_json = "{\"files\":[\"src/detail.zig\"],\"loc\":7}",
+    });
+
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/approvals/{s}", .{ TEST_WORKSPACE_ID, gid });
+    defer ALLOC.free(url);
+    const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    // The dashboard detail page reads every one of these; a dropped field is a
+    // blank cell there, not a type error here.
+    try std.testing.expect(std.mem.indexOf(u8, r.body, "\"gate_id\":\"" ++ gid ++ "\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, r.body, "\"action_id\":\"act-detail-1\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, r.body, "\"fleet_name\":\"approvals-a\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, r.body, "\"tool_name\":\"write_repo\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, r.body, "\"gate_kind\":\"destructive_action\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, r.body, "\"blast_radius\":\"single repo branch\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, r.body, "\"status\":\"pending\"") != null);
+    // The evidence JSONB comes back as the object it was stored as, not a string.
+    try std.testing.expect(std.mem.indexOf(u8, r.body, "\"evidence\":{") != null);
+    try std.testing.expect(std.mem.indexOf(u8, r.body, "\"loc\":7") != null);
+}
+
+test "integration: approvals GET detail — malformed gate_id → 400 naming the format" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupTestData(conn);
+
+    // Validation must refuse before any pool acquire — a garbage id is a client
+    // error, never a database round-trip.
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/approvals/not-a-uuid", .{TEST_WORKSPACE_ID});
+    defer ALLOC.free(url);
+    const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.bad_request);
+    try std.testing.expect(std.mem.indexOf(u8, r.body, "gate_id must be a UUIDv7") != null);
+}
+
+test "integration: approvals GET detail — cross-workspace gate reads as 404, not 403" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupTestData(conn);
+
+    // Seeded under the OTHER workspace; read from the token's workspace. The
+    // response must be indistinguishable from "never existed" — a 403 here
+    // would confirm the gate id to a cross-tenant prober.
+    const gid = "01999999-6666-7000-8000-000000000002";
+    try insertGate(conn, .{ .gate_id = gid, .action_id = "act-detail-x", .workspace_id = OTHER_WORKSPACE_ID });
+
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/approvals/{s}", .{ TEST_WORKSPACE_ID, gid });
+    defer ALLOC.free(url);
+    const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.not_found);
+    try r.expectErrorCode("UZ-APPROVAL-002");
+}
+
 test "integration: approvals GET detail — unknown gate_id → 404" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,

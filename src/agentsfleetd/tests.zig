@@ -69,6 +69,7 @@ test {
     _ = @import("http/handlers/connectors/state.zig");
     _ = @import("http/handlers/connectors/oauth2.zig");
     _ = @import("http/handlers/connectors/oauth_status.zig");
+    _ = @import("http/handlers/connectors/oauth_status_test.zig");
     _ = @import("http/handlers/connectors/registry.zig");
     _ = @import("http/handlers/connectors/slack/callback.zig");
     _ = @import("http/handlers/connectors/oauth_refresh.zig");
@@ -163,6 +164,7 @@ test {
     _ = @import("cmd/serve_boot_resolution_test.zig");
     _ = @import("cmd/serve_boot_test.zig");
     _ = @import("config/env_resolve_test.zig");
+    _ = @import("config/runtime_validate_test.zig");
     _ = @import("queue/redis.zig");
     _ = @import("queue/redis_pool_test.zig");
     _ = @import("queue/redis_pool_concurrency_test.zig");

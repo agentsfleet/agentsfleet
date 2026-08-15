@@ -67,11 +67,12 @@ ZIG_COVERAGE_TARGET_PCT ?= 95
 # Per-folder enforced floors. Measured on the union at the time each was set;
 # they ratchet toward the targets below as tests land.
 #
-# Raised from 87/91/92 (merged 88) by the run that added the `lifecycle`
-# component: measured 89.19 merged, 88.78 agentsfleetd, 91.18 runner, 93.32 lib
-# over 8 of 8 components. Every floor here sits below its measured value, which
-# is the only condition under which one may move.
-ZIG_COVERAGE_FOLDER_FLOORS ?= agentsfleetd=88 runner=91 lib=93
+# Raised from 88/91/93 by the run that added the `runner_integration` component
+# to the macOS lane and the daemon tests below: measured 89.53 merged, 89.02
+# agentsfleetd, 92.24 runner, 93.89 lib over 9 of 9 components. `lib` holds at
+# 93 because 93.89 does not clear 94. Every floor here sits below its measured
+# value, which is the only condition under which one may move.
+ZIG_COVERAGE_FOLDER_FLOORS ?= agentsfleetd=89 runner=92 lib=93
 # The quality bar for every product folder.
 ZIG_COVERAGE_FOLDER_TARGETS ?= agentsfleetd=95 runner=95 lib=95
 # One floor under the shape of the whole report, deliberately NOT one per
@@ -106,12 +107,15 @@ ZIG_COVERAGE_REQUIRED_ROOTS ?= agentsfleetd runner lib
 ifeq ($(shell uname -s),Linux)
 ZIG_COVERAGE_REQUIRED_COMPONENTS ?= agentsfleetd runner lib logging deadline s3 runner_integration integration
 else
-# `lifecycle` is required here and not above for the reason this list states:
-# evidence, in the commit it arrives. A macOS run showed it collecting 21,686
-# lines over 446 files. It joins the Linux list on the CI run that shows the
-# same. The run-marker assertion in the recipe is the other half — it proves the
-# test executed, where this proves the report carried lines.
-ZIG_COVERAGE_REQUIRED_COMPONENTS ?= agentsfleetd runner lib logging deadline s3 integration lifecycle
+# `lifecycle` and `runner_integration` are required here and not above for the
+# reason this list states: evidence, in the commit it arrives. A macOS run
+# showed lifecycle collecting 21,686 lines over 446 files, and the runner
+# integration suite — long marked Linux-only, though its worker-pool fork tests
+# run fine on macOS — 305 passed with the real fork→execute→report path
+# collected. Each joins the Linux list on the CI run that shows the same. The
+# run-marker assertion in the recipe is the other half — it proves the
+# lifecycle test executed, where this proves the report carried lines.
+ZIG_COVERAGE_REQUIRED_COMPONENTS ?= agentsfleetd runner lib logging deadline s3 integration lifecycle runner_integration
 endif
 # The boot -> SIGTERM -> drain proof is the only test that drives the real
 # `serve.run`, and it is far too invasive to interleave with the ~2000 tests in

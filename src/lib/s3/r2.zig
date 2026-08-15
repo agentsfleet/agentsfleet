@@ -111,6 +111,50 @@ pub fn get(self: *R2, alloc: std.mem.Allocator, key: []const u8) Error![]u8 {
     return alloc.dupe(u8, resp.body) catch return Error.R2GetFailed;
 }
 
+test "init survives an allocation failure at every step without leaking" {
+    // Walk the multi-step init's whole errdefer ladder: fail the Nth allocation
+    // for every N until init succeeds. Each iteration that fails mid-ladder
+    // must free exactly what it had acquired — the FailingAllocator wraps the
+    // testing allocator, which reports any leak as a test failure.
+    var fail_index: usize = 0;
+    while (fail_index < 64) : (fail_index += 1) {
+        var fa = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
+        var r2 = R2.init(fa.allocator(), std.testing.io, .{
+            .account_id = "acct-ladder",
+            .access_key_id = "ak-ladder",
+            .secret_access_key = "sk-ladder",
+            .bucket = "bkt-ladder",
+        }) catch |err| {
+            // Only the two named outcomes are acceptable: the allocator's own
+            // OOM surfacing verbatim, or z3's init failure mapped to the error
+            // this module's callers switch on.
+            try std.testing.expect(err == error.OutOfMemory or err == Error.R2InitFailed);
+            continue;
+        };
+        r2.deinit();
+        return; // the ladder is exhausted — every prior index failed cleanly
+    }
+    return error.TestUnexpectedResult; // init never succeeded: not a ladder proof
+}
+
+test "init builds the account-scoped endpoint and dupes every credential" {
+    var r2 = try R2.init(std.testing.allocator, std.testing.io, .{
+        .account_id = "megam-acct",
+        .access_key_id = "ak",
+        .secret_access_key = "sk",
+        .bucket = "snapshots",
+    });
+    defer r2.deinit();
+
+    try std.testing.expectEqualStrings("https://megam-acct.r2.cloudflarestorage.com", r2.endpoint);
+    try std.testing.expectEqualStrings("snapshots", r2.bucket);
+    // Owned copies, not borrows of the caller's cfg — the caller may free its
+    // strings the moment init returns.
+    try std.testing.expectEqualStrings("megam-acct", r2.account_id);
+    try std.testing.expectEqualStrings("ak", r2.access_key_id);
+    try std.testing.expectEqualStrings("sk", r2.secret_access_key);
+}
+
 test "R2 disables idle HTTP connection reuse" {
     var r2 = try R2.init(std.testing.allocator, std.testing.io, .{
         .account_id = "",

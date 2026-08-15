@@ -67,6 +67,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/tests.zig`, `src/runner/tests.zig` (test roots) | EDIT | New test files registered by explicit import, per the repository's test-discovery rule. |
 | `docs/v2/active/M164_002_P0_DOCS_INFRA_COVERAGE_DENOMINATOR_ASSERTION.md` | EDIT | This spec; Dimensions marked DONE alongside their code. |
 | `src/lib/**/*_test.zig` | CREATE/EDIT | Unit-lane tests lifting `lib/` to its 95% target. |
+| `src/lib/s3/r2.zig` | EDIT | Inline `test` blocks only, in the shape the file already carried: a failing-allocator ladder over the multi-step `init` and its endpoint/credential assertions. The module has no `_test.zig` sibling, so its tests live beside it. |
 | `README.md` | EDIT | The badge row gains one Codecov badge per measured surface — `zig`, `app`, `website`, `cli` (§6). |
 | `scripts/publish_coverage_badge.py` | DELETE | Written for the superseded `badges` branch; Codecov hosts the number, so this is dead (RULE NDC). |
 | `scripts/publish_coverage_badge_test.py` | DELETE | Its ten tests go with it. |
@@ -74,7 +75,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/check_zig_test_lanes_test.py` | EDIT | The stubbed kcov emits the lifecycle run marker the recipe now greps; one test asserts a skipped proof fails the lane. |
 | `scripts/check_lane_concurrency_test.py` | EDIT | The pinned status-file path moved under `ZIG_COVERAGE_DIR`. |
 | `make/bench.mk` | EDIT | The boot-drain lane reads the lifecycle filter, marker and isolation variable from their one definition site. |
-| `.github/workflows/test.yml` | EDIT | Four Codecov upload steps, one per flag — **approval-gated, diff shown to Indy before it lands** (§6). |
+| `.github/workflows/test.yml` | EDIT | Four Codecov upload steps, one per flag. Approval-gated; Indy saw the diff and approved it Aug 15, 2026, confirming `CODECOV_TOKEN` is provisioned (§6). |
+| `scripts/check_readme_badges_test.py` | CREATE | Parity self-tests: every README flag against the upload that feeds it, and the Zig upload against the merged report path (§6). |
 | `playbooks/operations/m164_free_trial_removal/` | DELETE | One-shot hand-migration for M164_001, already applied; ephemeral by nature and referenced by nothing but M164_001's own record (§7). |
 | `docs/v2/done/M155_001_P1_API_OBS_UI_CHARGE_SLICE_BREAKDOWN.md` | RENAME | Carried over from `main`: M155_001 parked, moved `pending/` → `done/`. Bookkeeping only, no code. |
 
@@ -89,8 +91,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| ZIG GATE | no — no `*.zig` source changes | N/A |
-| PUB / Struct-Shape | no — no Zig pub surface | N/A |
+| ZIG GATE | yes — `*.zig` files are edited, though every added line is a `test` block or a `_test.zig` file | Allocator lifetimes paired with `defer`/`errdefer` in each test; `std.testing.allocator` reports any leak; the `r2.zig` ladder asserts the whole `init` errdefer path frees what it acquired. |
+| PUB / Struct-Shape | no — no Zig pub surface changes; tests add no `pub` declarations | N/A |
 | File & Function Length (≤350/≤50/≤70) | yes — checker at 231 lines, new sibling module | Floor and target grading lands in `check_zig_coverage_floors.py`; every new function stays single-assertion and under the function cap. |
 | UFS (repeated/semantic literals) | yes — floors, targets, naming forms, root names | Defined once in `make/test.mk` and passed as arguments; naming forms and root names as module-level frozensets in the checker. |
 | UI Substitution / DESIGN TOKEN | no — no UI surface | N/A |
@@ -162,9 +164,9 @@ lot of apparatus for four integers. Codecov gives four direct URLs and hosts
 nothing in this repository, so the publisher and its ten tests are deleted
 (RULE NDC) rather than extended.
 
-- **Dimension 6.1** — DONE —  the README carries one badge per measured surface — `zig`, `app`, `website`, `cli` — each a direct Codecov URL with no repository-hosted state behind it → Test `test_every_readme_flag_has_an_upload` (pending the workflow edit)
-- **Dimension 6.2** — BLOCKED (approval-gated `.github/workflows/test.yml` edit + `CODECOV_TOKEN`) —  the Zig badge equals the number the gate enforced, because CI uploads `coverage/zig/merged/cobertura.xml` — the union with this spec's denominator rules already applied — and never the raw per-component kcov reports, which would let Codecov build its own union roughly two points higher → Test `test_zig_upload_names_the_merged_report`
-- **Dimension 6.3** — BLOCKED (same edit) —  every flag the README names has an upload step that produces it, so no badge can render `unknown`, and the row stays one coherent row beside the Continuous Integration (CI), Zig, Docs and License badges → Test `test_readme_badge_row_is_well_formed`
+- **Dimension 6.1** — DONE —  the README carries one badge per measured surface — `zig`, `app`, `website`, `cli` — each a direct Codecov URL with no repository-hosted state behind it → Tests `test_every_readme_flag_has_an_upload`, `test_every_upload_disables_report_search` (`scripts/check_readme_badges_test.py`)
+- **Dimension 6.2** — DONE (Indy approved the workflow edit Aug 15, 2026 and confirmed `CODECOV_TOKEN` is provisioned) —  the Zig badge equals the number the gate enforced, because CI uploads `coverage/zig/merged/cobertura.xml` — the union with this spec's denominator rules already applied — and never the raw per-component kcov reports, which would let Codecov build its own union roughly two points higher → Test `test_zig_upload_names_the_merged_report`
+- **Dimension 6.3** — DONE (same edit) —  every flag the README names has an upload step that produces it, so no badge can render `unknown`, and the row stays one coherent row beside the Continuous Integration (CI), Zig, Docs and License badges → Test `test_readme_badge_row_is_well_formed`
 
 ### §7 — The one-shot M164 playbook leaves the tree
 
@@ -423,6 +425,24 @@ commit, each below its measured figure:
 
 The `runner/` figure is unchanged because the boot sequence is the daemon's; the
 `lib/` rise is `logging/mod.zig`, which the booted daemon exercises for real.
+
+**After `runner_integration` joined the macOS lane** (9 of 9 components, every
+one collecting; `make test-coverage-zig` green). The runner integration suite
+was marked Linux-only for as long as the lane has existed, and its worker-pool
+fork tests run on macOS unchanged — 305 passed with the real fork→execute→report
+path collected. Floors ratcheted to these values in the same commit:
+
+| Scope | Measured | Floor | Target | Gap | Covered lines still owed |
+|---|---|---|---|---|---|
+| merged | **89.53%** — 23094/25794, 531 files | 89 | 95 | 5.47 | +1,411 |
+| `agentsfleetd/` | **89.02%** — 19700/22130, 440 files | 89 | 95 | 5.98 | +1,324 |
+| `runner/` | **92.24%** — 2579/2796, 66 files | 92 | 95 | 2.76 | +78 |
+| `lib/` | **93.89%** — 815/868, 25 files | 93 | 95 | 1.11 | +10 |
+
+`lib/`'s floor holds at 93 because 93.89 does not clear 94; the other two move.
+The denominator grew by 19 lines against the previous run — `runner_integration`
+carries 67 files the unit runner lane does not — which is why `runner/` rose
+2,532/2,777 → 2,579/2,796 rather than by the +47 covered alone.
 
 **A 99% target is not reachable on this instrument for every folder.** kcov
 attributes no instructions to a function signature, a parameter line, a closing
