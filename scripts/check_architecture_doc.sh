@@ -13,10 +13,10 @@
 #   * test_arch_cited_tables_exist       — every named table is defined in schema/
 #   * test_arch_cited_make_targets_exist — every named make target is declared
 #   * test_arch_section_anchors_resolve  — every cross-page §anchor names a heading
+#   * test_arch_no_retired_slot_numbers  — no page cites a retired 0xx schema slot
 #
-# ARCH_DIR, SPEC_ROOT and DOC_SET_EXTRA are overridable so
-# check_architecture_doc_test.sh can point the gate at fixtures. Nothing else
-# sets them.
+# ARCH_DIR, SPEC_ROOT and DOC_SET_EXTRA are overridable so the self-tests can
+# point the gate at fixtures. Nothing else sets them.
 #
 # Exits 0 on success, 1 on the first failing assertion (with diagnostic).
 
@@ -289,9 +289,8 @@ done)
 # ---------------------------------------------------------------------------
 # 8. test_arch_section_anchors_resolve
 #    The file check above proves the page exists; this proves the section does.
-#    `check_architecture_doc_anchors.sh` owns the pointer spellings — the
-#    section may sit after the link or inside its text, quoted or bare — and
-#    hands back `src::target::anchor` triples for this loop to resolve.
+#    `check_architecture_doc_anchors.sh` owns the pointer spellings and hands
+#    back `src::target::anchor` triples for this loop to resolve.
 # ---------------------------------------------------------------------------
 broken_anchors=0
 while IFS= read -r entry; do
@@ -302,12 +301,17 @@ while IFS= read -r entry; do
   anchor="${rest##*::}"
   target_path="$(dirname "$src")/$target"
   [ -f "$target_path" ] || continue
-  # Prefix-anchored, not substring. A pointer names the heading's opening words,
-  # so `^#+ <anchor>` is the true test. Substring matching let a short anchor —
-  # `§C. EXECUTE` truncated to `C` — match any heading on the page and report
-  # green, which is the silent pass this assertion exists to prevent.
-  grep -qiE "^#+[[:space:]]+$(printf '%s' "$anchor" | sed 's/[][(){}|+?\\.*^$/]/\\&/g')" "$target_path" && continue
-  err "test_arch_section_anchors_resolve: $src points at $target §$anchor, which is not a heading there"
+  # Exactly one match, prefix-anchored. A pointer names a heading's opening
+  # words, so `^#+ <anchor>` is the test — substring matching let `§C` match
+  # any heading containing that letter. Several matches prove nothing either:
+  # `§C` prefix-matches `## Config`, `## Connection topology` and `## Concrete
+  # example` alike, naming none of them. Both are the silent pass this exists
+  # to prevent, and both have the same fix — quote the full heading text.
+  hits="$(grep -ciE "^#+[[:space:]]+$(printf '%s' "$anchor" | sed 's/[][(){}|+?\\.*^$/]/\\&/g')" "$target_path" || true)"
+  [ "$hits" = 1 ] && continue
+  [ "$hits" = 0 ] \
+    && err "test_arch_section_anchors_resolve: $src points at $target §$anchor, which is not a heading there" \
+    || err "test_arch_section_anchors_resolve: $src points at $target §$anchor, which prefix-matches $hits headings — quote the full heading text"
   broken_anchors=$((broken_anchors + 1))
 done < <(doc_files | bash "$SCRIPT_DIR/check_architecture_doc_anchors.sh")
 [ "$broken_anchors" = 0 ] && ok "test_arch_section_anchors_resolve: every cross-page section anchor resolves"

@@ -364,6 +364,69 @@ test_arch_doc_inside_link_anchor_is_checked() {
   ok "$name"
 }
 
+# One link can carry several sections — §"B. TRIGGER" and §"C. EXECUTE" — and a
+# section can point across directories with `../`. Grepping for a link with one
+# anchor attached read the first and skipped the rest, and dropping the `../`
+# resolved the target to a path that does not exist, which the gate skipped
+# rather than checked. A too-short anchor is the third hole: it prefix-matches
+# several headings, naming none of them, so ambiguity has to fail on its own.
+test_arch_doc_multi_anchor_and_sibling_dir_are_checked() {
+  local name="test_arch_doc_multi_anchor_and_sibling_dir_are_checked"
+  local spec_root="$WORK_DIR/specs"
+  build_spec_root "$spec_root"
+
+  # `sibling.md` sits one level up from the architecture dir, reached by `../`.
+  local root="$WORK_DIR/anchor_multi"
+  local dir="$root/arch"
+  mkdir -p "$dir"
+  printf '# Sibling\n\n## Runner token (`agt_r`)\n\nBody.\n' >"$root/sibling.md"
+  printf '# Target\n\n## B. TRIGGER\n\n## C. EXECUTE\n\n## Config\n\n## Connection topology\n\nBody.\n' >"$dir/target.md"
+
+  printf '# Source\n\nSee [`target.md`](./target.md) §"B. TRIGGER" and §"C. EXECUTE".\n' >"$dir/direction.md"
+  if ! run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a second anchor on one link was rejected though both headings exist"
+    return
+  fi
+
+  # The regression: the second anchor went unread, so a missing heading passed.
+  printf '# Source\n\nSee [`target.md`](./target.md) §"B. TRIGGER" and §"D. REPORT".\n' >"$dir/direction.md"
+  if run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a second anchor naming no heading passed — only the first was read"
+    return
+  fi
+
+  # `§C` prefix-matches C. EXECUTE, Config and Connection topology: names none.
+  printf '# Source\n\nSee [`target.md`](./target.md) §C.\n' >"$dir/direction.md"
+  if run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "an anchor matching three headings passed — ambiguity is not a resolution"
+    return
+  fi
+
+  printf '# Source\n\nSee [`../sibling.md`](../sibling.md) §"Runner token".\n' >"$dir/direction.md"
+  if ! run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a sibling-directory anchor at a real heading was rejected"
+    return
+  fi
+
+  # The regression: `../` was dropped, the target resolved nowhere, and the
+  # gate skipped the entry instead of failing on the missing heading.
+  printf '# Source\n\nSee [`../sibling.md`](../sibling.md) §"Absent heading".\n' >"$dir/direction.md"
+  if run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a sibling-directory anchor naming no heading passed — target resolved nowhere"
+    return
+  fi
+
+  # A bare anchor must stop at a following link rather than swallowing it:
+  # `§Flow 1 + [`x.md`](./x.md)` names a section here and a page there.
+  printf '# Target\n\n## B. TRIGGER\n\n## C. EXECUTE\n\n## Config\n\n## Connection topology\n\nBody.\n' >"$dir/target.md"
+  printf '# Source\n\n## Flow 1\n\nSee §Flow 1 + [`target.md`](./target.md) §"C. EXECUTE".\n' >"$dir/direction.md"
+  if ! run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a bare anchor swallowed the link that followed it"
+    return
+  fi
+  ok "$name"
+}
+
 test_arch_doc_validates_all_m_ids
 test_arch_doc_roadmap_resolves_pending
 test_arch_doc_unresolved_ref_names_the_milestone
@@ -386,6 +449,7 @@ test_arch_doc_section_anchors_resolve
 test_arch_doc_no_retired_slot_numbers
 test_arch_doc_punctuated_anchor_is_checked
 test_arch_doc_inside_link_anchor_is_checked
+test_arch_doc_multi_anchor_and_sibling_dir_are_checked
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]

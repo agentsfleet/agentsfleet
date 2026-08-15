@@ -1,45 +1,77 @@
 #!/usr/bin/env bash
 # Cross-page section-pointer extraction for check_architecture_doc.sh (§8).
 #
-# Reads doc paths on stdin, writes one `src::target.md::anchor` triple per
-# pointer to stdout. It lives beside the gate rather than inside it so the
-# pointer spellings have one home, and so both files stay inside the 350-line
-# cap (RULE FLL).
+# Reads doc paths on stdin, writes one `src::target::anchor` triple per pointer
+# to stdout. It lives beside the gate rather than inside it so the pointer
+# spellings have one home, and so both files stay inside the 350-line cap.
 #
-# Four spellings are live in the corpus, and all four are read. The section can
-# sit AFTER the link — `[`page.md`](./page.md) §Section` — or INSIDE its text —
-# `[`page.md` §Section](./page.md)`. Either position can quote the anchor.
+# A pointer is a link plus a section. The section can sit after the link —
+# `[`page.md`](./page.md) §Section` — or inside its text —
+# `[`page.md` §Section](./page.md)` — and one link can carry several sections:
+# `[`page.md`](./page.md) §"B. TRIGGER" and §"C. EXECUTE"`. So this is a
+# left-to-right scan per line, not a set of independent greps: a link sets the
+# current target, and each section that follows resolves against it. Greps
+# keyed on the link alone read the first section of a line and miss the rest.
 #
-# Quoting is what carries punctuation: a quoted anchor runs to the closing
-# quote, so `§"C. EXECUTE"` survives whole. The unquoted form stops at the first
-# comma, semicolon, pipe, paren or closing bracket, and drops a sentence-final
-# period. An anchor that needs any of those characters must be quoted; the gate
-# matches on the heading's opening words, so a truncated anchor is what silently
-# points at the wrong heading.
+# Quoting is what carries punctuation. A quoted anchor runs to the closing
+# quote, so `§"C. EXECUTE"` survives whole; unquoted stops at the first comma,
+# semicolon, pipe, paren or bracket. Brackets end it because a bare anchor sits
+# next to links it must not swallow — `§Flow 1 + [`page.md`](./page.md)` names
+# a section on the current page and a different page after it, not one pointer.
+# An anchor needing any of those characters must be quoted: the gate matches on
+# a heading's opening words, so a truncated anchor is what silently matches the
+# wrong heading. The gate rejects an anchor matching more than one heading,
+# which is how a truncated-to-ambiguous one gets caught rather than passing.
+#
+# The target keeps its `./` or `../` prefix: the gate joins it to the source's
+# directory, and dropping `../` resolved a sibling-directory pointer to a path
+# that does not exist, which the gate skipped rather than checked.
 
 set -euo pipefail
 
-# The link destination, matched once and captured once. Both spellings share it.
-readonly LINK='\]\(\.\.?/[A-Za-z0-9_/-]+\.md\)'
-readonly LINK_CAP='\]\(\.\.?/([A-Za-z0-9_/-]+\.md)\)'
-
 while IFS= read -r f; do
   [ -f "$f" ] || continue
-  {
-    # After the link, quoted.
-    grep -oE "${LINK}[[:space:]]*§\"[^\"]+\"" "$f" 2>/dev/null \
-      | sed -E "s|${LINK_CAP}[[:space:]]*§\"([^\"]+)\"|::\1::\2|" || true
-    # After the link, unquoted. `[A-Za-z]` skips a numeric anchor (`§4`), which
-    # names a heading the page numbers itself rather than repeating in its text.
-    grep -oE "${LINK}[[:space:]]*§[A-Za-z][^,;|)\"]*" "$f" 2>/dev/null \
-      | sed -E "s|${LINK_CAP}[[:space:]]*§|::\1::|" || true
-    # Inside the link text, quoted. The anchor precedes the destination here, so
-    # the capture groups come out reversed and the replacement swaps them back.
-    grep -oE "\[[^]]*§\"[^\"]+\"${LINK}" "$f" 2>/dev/null \
-      | sed -E "s|\[[^]]*§\"([^\"]+)\"${LINK_CAP}|::\2::\1|" || true
-    # Inside the link text, unquoted. Link text cannot contain `]`, so the
-    # closing bracket terminates the anchor on its own.
-    grep -oE "\[[^]]*§[A-Za-z][^],;|\"]*${LINK}" "$f" 2>/dev/null \
-      | sed -E "s|\[[^]]*§([^]]*)${LINK_CAP}|::\2::\1|" || true
-  } | sed -E 's/[[:space:]]*\.?[[:space:]]*$//' | sort -u | sed "s|^|$f|" || true
+  awk -v src="$f" '
+    BEGIN {
+      # Ordered most-specific first: an inside-link pointer starts at the `[`
+      # that opens the link text, so it wins over the bare link on the left.
+      LINK = "\\]\\(\\.\\.?/[^)]*\\.md\\)"
+      PAT  = "\\[[^]]*§\"[^\"]+\"" LINK \
+             "|\\[[^]]*§[A-Za-z][^]\"]*" LINK \
+             "|" LINK \
+             "|§\"[^\"]+\"" \
+             "|§[A-Za-z][^],;|()\"[]*"
+    }
+    function pathof(tok,   p) {
+      p = substr(tok, index(tok, "](") + 2)
+      sub(/\)$/, "", p)
+      return p
+    }
+    function anchorof(tok,   a, i) {
+      a = tok
+      sub(/\][(][^)]*[)]$/, "", a)   # an inside-link anchor sheds its link
+      i = index(a, "§")
+      a = substr(a, i + length("§"))
+      sub(/^[[:space:]]+/, "", a)
+      sub(/[[:space:]]*\.?[[:space:]]*$/, "", a)
+      gsub(/^"|"$/, "", a)
+      return a
+    }
+    {
+      rest = $0
+      target = ""
+      while (match(rest, PAT)) {
+        tok  = substr(rest, RSTART, RLENGTH)
+        rest = substr(rest, RSTART + RLENGTH)
+        if (substr(tok, 1, 1) == "]") {        # a link on its own: sets context
+          target = pathof(tok)
+        } else if (index(tok, "](") > 0) {     # link and section together
+          target = pathof(tok)
+          print src "::" target "::" anchorof(tok)
+        } else if (target != "") {             # a section against the last link
+          print src "::" target "::" anchorof(tok)
+        }
+      }
+    }
+  ' "$f" | sort -u
 done
