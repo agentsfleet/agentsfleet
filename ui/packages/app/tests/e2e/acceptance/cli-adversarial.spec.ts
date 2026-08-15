@@ -15,6 +15,7 @@ const WORKSPACE_NAME = "cli-adversarial";
 const CORRUPT_CREDENTIALS = "{";
 const UNREACHABLE_API_URL = "http://127.0.0.1:1";
 const NO_RETRY = "1";
+const WELL_SHAPED_INACTIVE_CREDENTIAL = `afc_${"a".repeat(64)}`;
 
 function encodeJwtPart(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -77,7 +78,15 @@ test.describe("command line adversarial reads", () => {
       expect(await fs.readFile(credentialsPath, "utf8")).toBe(CORRUPT_CREDENTIALS);
       expectNoRuntimeDump(malformedOutput);
 
-      await writeCliState(stateDir, workspaceId, expired, apiUrl, WORKSPACE_NAME);
+      // A syntactically valid credential gets past the local credential gate,
+      // so this branch tests transport failure rather than authentication.
+      await writeCliState(
+        stateDir,
+        workspaceId,
+        WELL_SHAPED_INACTIVE_CREDENTIAL,
+        apiUrl,
+        WORKSPACE_NAME,
+      );
       const unreachable = await spawnAgentsfleet(
         ["list", "--workspace-id", workspaceId, "--limit", "1"],
         cliEnv({
