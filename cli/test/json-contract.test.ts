@@ -42,7 +42,7 @@ function makeStubHandlers(): Handlers {
     tenant:    { provider: { show: noop, create: noop, delete: noop } },
     billing:   { show: noop },
     fleet: {
-      library: noop,
+      library: noop, models: noop,
       install: noop, update: noop, list: noop, status: noop, stop: noop, resume: noop,
       kill: noop, delete: noop, logs: noop, events: noop, steer: noop,
       secret: { create: noop, update: noop, show: noop, list: noop, delete: noop },

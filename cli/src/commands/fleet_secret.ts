@@ -27,6 +27,34 @@ import {
   resolveSecretBody,
   type SecretAddFlags,
 } from "./fleet_secret_body.ts";
+import { resolveCatalogueProvider } from "../lib/model-catalogue.ts";
+import { SECRET_FIELD_PROVIDER } from "../constants/custom-endpoint.ts";
+import type { Redacted } from "effect/Redacted";
+
+// Reject a provider this server's catalogue does not price, and normalise its
+// spelling to the catalogue's. Cannot run at parse time: the accepted set is a
+// property of the server, not of the binary.
+//
+// Runs AFTER the body composes, never before. Every pairing rule in
+// fleet_secret_body.ts is local and free, so a caller who passed `--data`
+// alongside the typed flags must hear that without a round-trip first — an
+// error the CLI can raise offline should never cost a network call.
+//
+// Keyed off `flags.provider`, so only the typed form is checked. A `--data`
+// blob is an opaque object that may not be a model credential at all, and
+// stays unconstrained by design.
+const withCatalogueProvider = (
+  flags: SecretAddFlags,
+  data: Record<string, unknown>,
+  token: Redacted<string> | undefined,
+): Effect.Effect<Record<string, unknown>, CliError, HttpClient> =>
+  Effect.gen(function* () {
+    const provider = flags.provider?.trim();
+    if (!provider) return data;
+    const resolved = yield* resolveCatalogueProvider(provider, token);
+    return { ...data, [SECRET_FIELD_PROVIDER]: resolved };
+  });
+
 const TYPE_STRING = "string" as const;
 const METHOD_PUT = "PUT" as const;
 const STATUS_UPDATED = "updated" as const;
@@ -99,9 +127,10 @@ export const secretAddEffectFromFlags = (
       flags.name,
       "agentsfleet secret create <name> --data='<json-object>'",
     );
-    const data = yield* resolveSecretBody(flags);
+    const body = yield* resolveSecretBody(flags);
 
     const token = yield* resolveAuthToken;
+    const data = yield* withCatalogueProvider(flags, body, token);
     // The server decides whether the name was free, so there is no preflight
     // read: a check here would be a check-then-write over exactly the window
     // `UZ-VAULT-005` exists to close, and two concurrent creates would both
@@ -169,9 +198,10 @@ export const secretUpdateEffectFromFlags = (
     );
     // Resolved before the token so a malformed invocation costs no round-trip
     // and never reaches the vault.
-    const data = yield* resolveSecretBody(flags);
+    const body = yield* resolveSecretBody(flags);
 
     const token = yield* resolveAuthToken;
+    const data = yield* withCatalogueProvider(flags, body, token);
     yield* http.request<unknown>({
       path: wsSecretPath(wsId, name),
       method: METHOD_PUT,

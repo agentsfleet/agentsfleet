@@ -11,7 +11,7 @@ import {
   dispatch,
   buildSilent,
 } from "./helpers-cli-tree.ts";
-import { PROVIDER_EXAMPLES, PROVIDER_IDS } from "../src/constants/providers.ts";
+
 import { OPENAI_COMPATIBLE_PROVIDER } from "../src/constants/custom-endpoint.ts";
 
 test("install accepts --library <id> and --name <name>", async () => {
@@ -177,13 +177,11 @@ test("secret create rejects a non-https --base-url at parse time (no dispatch)",
   expect(calls).toHaveLength(0);
 });
 
-test("the provider catalogue carries the sentinel without restating its literal", async () => {
-  expect(PROVIDER_IDS).toContain(OPENAI_COMPATIBLE_PROVIDER);
-  const source = await Bun.file(new URL("../src/constants/providers.ts", import.meta.url)).text();
-  expect(source).not.toContain(`"${OPENAI_COMPATIBLE_PROVIDER}"`);
-});
-
-test("secret create and update accept a catalogue provider and normalise its case", async () => {
+// `--provider` no longer parses through a vendored enum, so these assertions
+// moved down a layer: the tree must PASS THE VALUE THROUGH untouched, and the
+// catalogue check happens in the handler against GET /v1/models
+// (model-catalogue.unit.test.ts covers the accept/reject/fold rules).
+test("secret create and update pass --provider through to the handler verbatim", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch([
     "secret", "create", "prod-key",
@@ -192,7 +190,9 @@ test("secret create and update accept a catalogue provider and normalise its cas
     "--model", "claude-opus-5",
   ], handlers);
   expect(calls[0]?.name).toBe("fleet.secret.create");
-  expect(calls[0]?.frame.parsed.options.provider).toBe("anthropic");
+  // Verbatim, including case: the catalogue owns canonicalisation now, because
+  // only it knows how this server spells the id.
+  expect(calls[0]?.frame.parsed.options.provider).toBe("Anthropic");
   await dispatch([
     "secret", "update", "prod-key",
     "--provider", "anthropic",
@@ -203,57 +203,53 @@ test("secret create and update accept a catalogue provider and normalise its cas
   expect(calls[1]?.frame.parsed.options.provider).toBe("anthropic");
 });
 
-test("secret create and update reject an unknown provider at parse time (no dispatch)", async () => {
+// The parse-time gate is gone by design: an id this server serves cannot be
+// known before the server is asked. Dispatch must therefore REACH the handler
+// even for a value no catalogue would accept — the rejection is the handler's.
+test("an unknown provider now reaches the handler instead of dying at parse time", async () => {
   const { handlers, calls } = makeSpyTree();
   for (const verb of ["create", "update"]) {
-    await expect(
-      dispatch([
-        "secret", verb, "prod-key",
-        "--provider", "notaprovider",
-        "--api-key", "sk-named",
-        "--model", "m",
-      ], handlers),
-    ).rejects.toThrow("must be one of");
+    await dispatch([
+      "secret", verb, "prod-key",
+      "--provider", "notaprovider",
+      "--api-key", "sk-named",
+      "--model", "m",
+    ], handlers);
   }
-  expect(calls).toHaveLength(0);
+  expect(calls).toHaveLength(2);
+  expect(calls[0]?.frame.parsed.options.provider).toBe("notaprovider");
 });
 
-test("secret create rejects a blank --provider rather than treating it as absent", async () => {
-  const { handlers, calls } = makeSpyTree();
-  for (const blank of ["", "  "]) {
-    await expect(
-      dispatch([
-        "secret", "create", "prod-key",
-        "--provider", blank,
-        "--api-key", "sk-named",
-        "--model", "m",
-      ], handlers),
-    ).rejects.toThrow("must be one of");
-  }
-  expect(calls).toHaveLength(0);
-});
-
-test("secret create and update --help name the examples and the true count, not the wall", () => {
+test("secret create and update --help point at `agentsfleet models`, not a wall of ids", () => {
   const { handlers } = makeSpyTree();
   const { program } = buildSilent({ handlers });
   const secret = program.commands.find((c) => c.name() === "secret");
   for (const verb of ["create", "update"]) {
     const sub = secret?.commands.find((c) => c.name() === verb);
-    const help = sub?.helpInformation() ?? "";
-    for (const id of PROVIDER_EXAMPLES) {
-      // Boundary-anchored: bare `toContain` cannot catch a dropped short id
-      // whose longer sibling contains it (kimi ⊂ kimi-intl).
-      expect(help).toMatch(new RegExp(`(?<![\\w-])${id}(?![\\w-])`));
-    }
     // Commander wraps descriptions at column width, so assert on a
-    // whitespace-normalized view — the count may straddle a line break.
-    const flat = help.replace(/\s+/g, " ");
-    // The count is live, so a catalogue change cannot leave help lying about
-    // the size of the accepted set…
-    expect(flat).toContain(`${PROVIDER_IDS.length} accepted`);
-    // …and the full wall stays out of help; the unknown-value error carries it.
-    expect(flat).not.toContain(PROVIDER_IDS.slice(0, 8).join(", "));
+    // whitespace-normalized view — the phrase may straddle a line break.
+    const flat = (sub?.helpInformation() ?? "").replace(/\s+/g, " ");
+    // Help names the discovery command instead of a count that was only ever
+    // true for the binary, never for the server it was pointed at.
+    expect(flat).toContain("agentsfleet models");
+    expect(flat).toContain(OPENAI_COMPATIBLE_PROVIDER);
+    expect(flat).not.toContain("accepted");
   }
+});
+
+test("`models` is registered top-level and carries the --provider filter", () => {
+  const { handlers } = makeSpyTree();
+  const { program } = buildSilent({ handlers });
+  const models = program.commands.find((c) => c.name() === "models");
+  expect(models).toBeDefined();
+  expect(models?.options.some((o) => o.long === "--provider")).toBe(true);
+});
+
+test("`models` dispatches with the provider filter it was given", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await dispatch(["models", "--provider", "anthropic"], handlers);
+  expect(calls[0]?.name).toBe("fleet.models");
+  expect(calls[0]?.frame.parsed.options.provider).toBe("anthropic");
 });
 
 test("secret show / list / delete each dispatch with the right shape", async () => {

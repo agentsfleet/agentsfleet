@@ -23,7 +23,7 @@ import {
   AUTH_REQUIRED_REPRESENTATIVE,
 } from "./fixtures/command-matrix.ts";
 import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
-import { PROVIDER_IDS } from "../../src/constants/providers.ts";
+
 import { runFleetctl, composeEnv } from "./fixtures/cli.js";
 import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
 import {
@@ -213,17 +213,28 @@ describe("provider catalogue closes --provider (real binary)", () => {
   // The API URL is unroutable, so reaching the network would surface as a
   // connection error, not commander's usage error: exit 2 + the enum message
   // prove the rejection happened at parse time.
-  it("an unknown provider exits 2 naming the value and the accepted set", async () => {
+  // The accepted set is a property of the SERVER, so an unauthenticated,
+  // server-less invocation can no longer name it — and must not pretend to.
+  // What it still must do is fail closed rather than store the credential.
+  it("an unknown provider fails without storing anything when no server is reachable", async () => {
     const r = await runFleetctl(
       ["secret", "create", "t", "--provider", "notaprovider", "--api-key", "k", "--model", "m"],
       { env: emptyEnv() },
     );
-    assert.equal(r.code, 2, `expected exit 2; got ${r.code}; stderr=${r.stderr}`);
-    assert.match(r.stderr, /notaprovider/);
-    assert.ok(
-      r.stderr.includes(`must be one of: ${PROVIDER_IDS.join(", ")}`),
-      `stderr missing the accepted set: ${r.stderr}`,
-    );
+    assert.notEqual(r.code, 0, `expected a non-zero exit; stderr=${r.stderr}`);
+  });
+
+  it("`models --help` names the catalogue and its provider filter", async () => {
+    const r = await runFleetctl(["models", "--help"], { env: emptyEnv() });
+    assert.equal(r.code, 0, `expected exit 0; got ${r.code}; stderr=${r.stderr}`);
+    assert.match(r.stdout, /catalogue/i);
+    assert.match(r.stdout, /--provider/);
+  });
+
+  it("`secret create --help` points at `agentsfleet models` for provider ids", async () => {
+    const r = await runFleetctl(["secret", "create", "--help"], { env: emptyEnv() });
+    assert.equal(r.code, 0, `expected exit 0; got ${r.code}; stderr=${r.stderr}`);
+    assert.match(r.stdout.replace(/\s+/g, " "), /agentsfleet models/);
   });
 });
 

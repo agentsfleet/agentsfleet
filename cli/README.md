@@ -32,133 +32,29 @@ agentsfleet workspace create my-workspace
 agentsfleet doctor
 ```
 
-## Commands
+## Usage
 
-### User
+The full command reference lives at **[docs.agentsfleet.net](https://docs.agentsfleet.net)**
+and is versioned with each release:
 
-| Command | Description |
-|---------|-------------|
-| `login [--token-name <label>] [--force] [--no-open]` | Authenticate via browser (the device flow is the only login path) |
-| `logout` | Sign out — revoke every active session on this account and clear local credentials |
-| `auth status` | Show active credential source and server-side validity |
-| `workspace create <name>` | Create a new workspace |
-| `workspace list` | List workspaces |
-| `workspace use <workspace_id>` | Set the active workspace |
-| `workspace show [<workspace_id>]` | Show workspace details (defaults to the active workspace) |
-| `workspace secrets` | Open the workspace secret vault |
-| `workspace delete <workspace_id>` | Delete a workspace (irreversible) |
-| `doctor` | Diagnose CLI configuration and connectivity |
+| Page | Covers |
+|------|--------|
+| [Install](https://docs.agentsfleet.net/cli/install) | Install, upgrade, supported runtimes |
+| [Commands](https://docs.agentsfleet.net/cli/agentsfleet) | Every command and its flags |
+| [Global flags](https://docs.agentsfleet.net/cli/flags) | `--api`, `--json`, `--no-input`, `--no-open` |
+| [Configuration](https://docs.agentsfleet.net/cli/configuration) | Environment variables, config paths, precedence |
 
-### Fleet keys
+`agentsfleet --help` and `agentsfleet <command> --help` print the same surface
+from the binary you actually have installed.
 
-| Command | Description |
-|---------|-------------|
-| `fleet-key create [--workspace <id>] [--fleet <id>] [--name <name>]` | Mint a Fleet API key for the workspace |
-| `fleet-key list [--workspace <id>]` | List Fleet API keys |
-| `fleet-key delete <fleet_key_id> [--workspace <id>]` | Revoke a Fleet API key |
+This file deliberately carries no command tables. It used to mirror all four
+pages above, which made every flag change two edits — and the copy that drifted
+was the one shipped to npm, where nobody could see the original to compare.
 
-### Integration grants
+## Development
 
-| Command | Description |
-|---------|-------------|
-| `grant list [--fleet <id>]` | List integration grants for a Fleet |
-| `grant delete <grant_id> [--fleet <id>]` | Revoke an integration grant |
-
-### Tenant provider
-
-| Command | Description |
-|---------|-------------|
-| `tenant provider show` | Show the active provider config |
-| `tenant provider create --secret <name> [--model <name>]` | Use a self-managed secret |
-| `tenant provider delete` | Reset to the platform default |
-
-### Billing
-
-| Command | Description |
-|---------|-------------|
-| `billing show [--limit <n>] [--cursor <token>]` | Plan, balance, and recent events |
-
-### Fleets
-
-| Command | Description |
-|---------|-------------|
-| `library` | Browse the first-party Fleet library gallery |
-| `install --library <id> [--name <name>]` | Install a Fleet from an onboarded library entry |
-| `list [--cursor <token>] [--limit <n>] [--workspace-id <id>]` | List Fleets (paginated) |
-| `status [<fleet_id>]` | Show Fleet status (workspace-wide if no id) |
-| `stop <fleet_id>` | Halt the session (resumable) |
-| `resume <fleet_id>` | Resume from stopped or auto-paused |
-| `kill <fleet_id>` | Mark terminal (irreversible) |
-| `delete <fleet_id>` | Hard-delete a killed Fleet |
-| `logs [<fleet_id>] [--limit <n>] [--cursor <token>]` | Tail Fleet activity |
-| `events <fleet_id> [--since <when>] [--actor <glob>] [--limit <n>] [--cursor <token>]` | Page through historical events |
-| `steer <fleet_id> "<msg>"` | Send a message; stream response |
-| `fleet update <fleet_id> --from <path>` | Re-parse and PATCH a Fleet's TRIGGER.md + SKILL.md from a local bundle |
-
-### Memory (read-only)
-
-Inspect a Fleet's durable memory — newest-first, raw entries (the reader judges relevance; there is no ranking). A terminal gets an aligned table with content previews; piped or `--json` output is the server envelope verbatim with full content. Empty results exit 0.
-
-| Command | Description |
-|---------|-------------|
-| `memory list --fleet <id> [--category <name>] [--limit <n>]` | List entries newest-first |
-| `memory search --fleet <id> <query> [--limit <n>]` | Substring-search keys and content |
-
-Both verbs accept `--workspace <id>` to override the active workspace. The server caps `--limit` at 100 (defaults: 100 for list, 20 for search). There are no write verbs — durable memory is written only by the runner plane.
-
-### Workspace secrets
-
-Workspace-scoped tool secrets live in the vault (Slack, GitHub, Fly, Upstash, etc.), alongside model-provider credentials for `tenant provider create`. Secret bytes are never echoed back.
-
-| Command | Description |
-|---------|-------------|
-| `secret create <name> --provider <id> --api-key <key> --model <m>` | Store a model-provider credential; `--provider` accepts only ids the runtime can dial (unknown ids exit 2 listing the accepted set). An inline `--api-key` is visible in `ps` and shell history — see the note below |
-| `secret create <name> --provider openai-compatible --base-url <url> --model <m> [--api-key <key>]` | Store a custom OpenAI-compatible endpoint (https only; key optional for keyless gateways) |
-| `secret create <name> --data=@-` | Create a free-form secret (pipe JSON on stdin; skip if exists) |
-| `secret update <name> --data=@-` | Replace an existing secret |
-| `secret create <name> --data='<json>'` | Create a secret (inline JSON, exposes secret to shell history) |
-| `secret show <name>` | Check existence and `created_at` (never echoes secret) |
-| `secret list` | List workspace secrets |
-| `secret delete <name>` | Remove a workspace secret |
-
-The typed `--provider` form requires all its flags spelled out — omitting `--provider` while passing `--api-key`/`--model` is refused before any request, so a credential naming no provider can never be stored. `secret update` accepts the same typed flags.
-
-A key passed as `--api-key <key>` is an argv token: it appears in `ps`, in `/proc/<pid>/cmdline`, in shell history, and in any CI log running under `set -x`. The `--data=@-` form reads the whole body from stdin and keeps it out of all four.
-
-## Global flags
-
-| Flag | Description |
-|------|-------------|
-| `--api <url>` | API base URL |
-| `--json` | Machine-readable JSON output |
-| `--no-input` | Disable interactive prompts |
-| `--no-open` | Skip auto-opening browser on `login` |
-| `--version` | Show version and exit |
-| `--help`, `-h` | Show help text |
-
-## Environment variables
-
-| Variable | Description |
-|----------|-------------|
-| `AGENTSFLEET_API_URL` | API base URL (overridden by `--api`) |
-| `AGENTSFLEET_DASHBOARD_URL` | Dashboard base URL (login verify page) |
-| `AGENTSFLEET_API_KEY` | Service API key; overrides a stored `login` session |
-| `AGENTSFLEET_STATE_DIR` | Override the config directory (default `~/.config/agentsfleet`) |
-| `NO_COLOR` | Any non-empty value disables color |
-| `AGENTSFLEET_TELEMETRY_DISABLED` | Set to `1` to opt out of analytics + tracing |
-| `DO_NOT_TRACK` | Industry-standard opt-out signal |
-| `AGENTSFLEET_TELEMETRY_POSTHOG_KEY` | Override the PostHog project key |
-| `AGENTSFLEET_TELEMETRY_POSTHOG_HOST` | Override the PostHog ingest host |
-| `AGENTSFLEET_TELEMETRY_DEBUG` | Set to `1` to log span summaries to stderr |
-
-## Configuration
-
-| Item | Path |
-|------|------|
-| Credentials | `~/.config/agentsfleet/credentials.json` |
-| Workspaces | `~/.config/agentsfleet/workspaces.json` |
-
-Precedence for API base URL: `--api` flag → `AGENTSFLEET_API_URL` → saved credentials → default (`https://api.agentsfleet.net`).
+Building, testing, and the repository layout: [`docs/DEVELOPMENT.md`](https://github.com/agentsfleet/agentsfleet/blob/main/docs/DEVELOPMENT.md).
+Contribution workflow for this package: [`cli/CONTRIBUTING.md`](https://github.com/agentsfleet/agentsfleet/blob/main/cli/CONTRIBUTING.md).
 
 ## Links
 

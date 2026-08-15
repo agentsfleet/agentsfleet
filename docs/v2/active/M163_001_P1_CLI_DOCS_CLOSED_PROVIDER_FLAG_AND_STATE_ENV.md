@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M163
 **Workstream:** 001
 **Date:** Aug 12, 2026
-**Status:** DONE
+**Status:** IN_PROGRESS
 **Priority:** P1 — a Command-Line Interface (CLI) user can save a credential naming a provider the runner cannot dial; the save reports success and the failure surfaces later as a fleet that cannot reach any inference host
 **Categories:** CLI, DOCS
 **Batch:** B1 — §3 is independent of §1/§2 and may land in either order within the same branch
 **Branch:** feat/m163-closed-provider-flag
 **Test Baseline:** unit=3743 integration=630
-**Test Delta (VERIFY):** the Zig depth gate reads `unit=3907 integration=638`, but that **+164 unit / +8 integration is M164's, arriving through the `origin/main` merge** — this diff contains zero Zig (`git diff --name-only origin/main...HEAD | grep '\.zig$'` is empty). This diff's own growth is the Bun `cli` suite: **1471 → 1495, +24** (the closed catalogue and its anchored fixture parity, the typed-form `--provider` requirement, the CLI-engine refusal, `parseEnumOption`'s refusal option and its shadow-drop, the api-key trim, the usage-per-shape pin, the injected-env divergence proof, the unreadable-store warning on both arms, and `cliEnv()`'s own guard).
+**Test Delta (VERIFY):** the Zig depth gate reads `unit=3907 integration=638`, but that **+164 unit / +8 integration is M164's, arriving through the `origin/main` merge** — this diff contains zero Zig (`git diff --name-only origin/main...HEAD | grep '\.zig$'` is empty). This diff's own growth is the Bun `cli` suite: **1471 → 1505, +34** (the closed catalogue and its anchored fixture parity, the typed-form `--provider` requirement, the CLI-engine refusal, `parseEnumOption`'s refusal option and its shadow-drop, the api-key trim, the usage-per-shape pin, the injected-env divergence proof, the unreadable-store warning on both arms, and `cliEnv()`'s own guard). **§4 re-cut that total:** the parity suite and its fixture generator went out with `constants/providers.ts` (-14), and `model-catalogue.unit.test.ts` plus the catalogue integration and tree cases came in (+24) — net **1495 → 1505**.
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-opus-5[1m], Aug 12, 2026), verified against source on `main` @ `b941fabf6`; amended and re-verified at PLAN (claude-fable-5, Aug 14, 2026) — every cited path, line, and lane membership re-checked in the worktree
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` §9 — Provider routing
@@ -176,6 +176,48 @@ The resolution expression itself is currently written twice — `lib/state.ts:50
 - **Dimension 3.2** — `runCli({ env })` with a state directory set in that environment and the process variable unset reads and writes under the supplied directory → Test `test_run_cli_env_reaches_credential_store` — **DONE**
 - **Dimension 3.3** — `json-contract.test.ts` isolates through the injected environment and no longer mutates the process environment (RULE NLR) → Test `test_json_contract_suite_has_no_process_env_mutation` — **DONE**
 - **Dimension 3.4** — The config-directory resolution has one declaration site: neither `state.ts` nor `consent.ts` names the environment key or the home-default tuple after the change → Test `test_config_dir_resolution_has_one_declaration_site` — **DONE**
+
+### §4 — The catalogue is the model library, and the CLI reads it (folded at REVIEW)
+
+**§1 and §2 are SUPERSEDED by this slice.** Their dimensions shipped and are
+retained above as the authoring record; the code they describe is deleted.
+
+§1 solved the wrong problem correctly. It made the CLI's copy of NullClaw's dial
+tables accurate and added a parity test to keep it accurate. But the dashboard
+never had that copy: `AddModelEntryDialog.tsx:78` builds its provider dropdown
+from `uniqueProviders(models)` over `GET /v1/models`. So the CLI accepted 116
+ids while the dashboard offered 16, and a parity test guarded the copy rather
+than removing the reason for one. Indy's direction: *"the `--provider` user
+experience must match the UI"*, and *"the CLI will need ability to pull the
+model_library api, not its own littered provider*ts and keep saying cli
+drifted"*.
+
+Two surfaces now answer from the same bytes. A provider becomes available by
+being seeded into `core.model_library`, never by editing TypeScript or shipping
+a release.
+
+**The catalogue grows to the dial set rather than the flag shrinking to the
+catalogue** (Indy, Aug 15 2026: *"i want to keep the 116 and have the model
+allowlist.json to be updated with accuracy"*). `scripts/model-library-allowlist.json`
+goes 16 → 103 providers, its skeleton derived from the vendored source rather
+than hand-copied, so a dependency bump regenerates instead of drifting.
+
+**Invariant (Indy, Aug 15 2026):** *"allowlist will not have a provider that
+nullclaw cannot dial"*. Two dial routes satisfy it — `native` (NullClaw resolves
+the name) and `endpoint` (it does not, so a `base_url` is mandatory and the
+name is never offered as a credential provider id). `pioneer` is the only
+`endpoint` provider; its rows stay priced because
+`core.platform_provider_defaults` carries a restricting foreign key onto
+`(provider, model_id)` and the platform default reaches it by `base_url`.
+
+- **Dimension 4.1** — `scripts/gen-provider-skeleton.mjs` derives provider id, aliases, dial route, `base_url`, and display label from `factory.zig` + `provider_names.zig`, preserving every curated rate by canonical id, and refuses to write if it altered data, lost a provider, or found a non-dialable provider with no `base_url` → Test `test_skeleton_generation_is_byte_stable_and_preserves_rates` — **DONE**
+- **Dimension 4.2** — `cli/src/constants/providers.ts`, its parity test, `gen-provider-fixture.ts`, and `fixtures/nullclaw-providers.json` are deleted; no CLI source names a provider id outside `custom-endpoint.ts`'s sentinel → Test `test_cli_carries_no_provider_catalogue` — **DONE**
+- **Dimension 4.3** — `--provider` is validated against `GET /v1/models`, following `next_cursor` so a catalogue larger than one page is not silently truncated → Test `test_fetch_catalogue_follows_every_page` — **DONE**
+- **Dimension 4.4** — The catalogue owns case-folding and returns its own spelling, so a stored credential always carries the bytes the resolver compares → Test `test_provider_folds_to_catalogue_spelling` — **DONE**
+- **Dimension 4.5** — An unreachable OR empty catalogue accepts the provider and lets the server arbitrate, matching the dashboard's free-text degrade; a fresh environment stays usable before the catalogue is primed → Test `test_catalogue_degrades_open_when_absent` — **DONE**
+- **Dimension 4.6** — Catalogue validation runs after body composition, so a locally-detectable error (`--data` with typed flags) costs no round-trip; the custom-endpoint sentinel short-circuits without a read at all → Test `test_local_errors_precede_any_catalogue_read` — **DONE**
+- **Dimension 4.7** — `agentsfleet models [--provider <id>]` lists the catalogue the dashboard picker shows, so `--provider` and `--model` are discoverable instead of guessed → Test `test_models_command_lists_catalogue` — **DONE**
+- **Dimension 4.8** — A CLI-engine name keeps its specific refusal, and that refusal does NOT offer the custom-endpoint route, which cannot reach a provider that spawns a binary and has no HTTP endpoint → Test `test_cli_engine_refusal_omits_endpoint_route` — **DONE**
 
 ## Interfaces
 
