@@ -36,6 +36,7 @@ pub fn addTestStep(
     list_step: *std.Build.Step,
 ) void {
     const lib_tests = b.addTest(.{
+        .use_llvm = shared.TEST_USE_LLVM,
         .name = S_LIB_TESTS,
         .root_module = b.createModule(.{
             .root_source_file = b.path(S_LIB_TESTS_ROOT),
@@ -45,6 +46,7 @@ pub fn addTestStep(
         .filters = test_filters,
     });
     const logging_tests = b.addTest(.{
+        .use_llvm = shared.TEST_USE_LLVM,
         .name = S_LOGGING_TESTS,
         .root_module = b.createModule(.{
             .root_source_file = b.path(S_LOGGING_ROOT),
@@ -57,6 +59,7 @@ pub fn addTestStep(
         .filters = test_filters,
     });
     const call_deadline_tests = b.addTest(.{
+        .use_llvm = shared.TEST_USE_LLVM,
         .name = S_CALL_DEADLINE_TESTS,
         .root_module = b.createModule(.{
             .root_source_file = b.path(S_CALL_DEADLINE_ROOT),

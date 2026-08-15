@@ -68,7 +68,6 @@ describe("exhaustion components", () => {
           updated_at: 0,
           is_exhausted: false,
           exhausted_at: null,
-          free_trial: { active: false, ends_at_ms: 1_785_542_400_000 },
         },
       }),
     );
@@ -86,7 +85,6 @@ describe("exhaustion components", () => {
           updated_at: 1713700000000,
           is_exhausted: true,
           exhausted_at: 1713700400000,
-          free_trial: { active: false, ends_at_ms: 1_785_542_400_000 },
         },
       }),
     );
@@ -108,7 +106,6 @@ describe("exhaustion components", () => {
           updated_at: 0,
           is_exhausted: true,
           exhausted_at: null,
-          free_trial: { active: false, ends_at_ms: 1_785_542_400_000 },
         },
       }),
     );

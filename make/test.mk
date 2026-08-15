@@ -30,14 +30,33 @@ ZIG_COVERAGE_DIR ?= $(CURDIR)/coverage/zig
 # denominator, so this is the share of shipped code the suites actually execute.
 # It reads the unit lanes and the live-service integration suite merged, because
 # they cover largely disjoint code and either one alone understates the truth by
-# tens of points. Raise it only in the same commit as the tests that clear it.
-ZIG_COVERAGE_MIN_LINES ?= 83
-BENCH_MODE ?= bench
-# Use native target for memleak — avoids cross-compile dynamic linker mismatch
-# when OpenSSL is linked. Valgrind needs the system's ld-linux, not Zig's bundled one.
+# tens of points. Raise it only in the same commit as the tests that clear it —
+# 91 was set ahead of the tests and gated nothing but red, because the measured
+# merged figure has never reached it.
+ZIG_COVERAGE_MIN_LINES ?= 89
+# Components whose reports MUST carry measured lines, one definition site per
+# platform. A component that collects today and stops fails the gate, instead of
+# quietly shrinking the denominator.
+#
+# Linux carried a short list while Zig's self-hosted backend emitted debug info
+# libdw refuses. Test binaries now compile through LLVM, which fixes it at the
+# source (docs/architecture/testing.md §Coverage). The list ratchets on evidence:
+# add a component in the commit where a green run shows it collecting.
+#
+# Ratcheted to the full Linux set on the run that earned it — job 94963891177
+# reported `measured over 8 of 8 components — every component collected`, every
+# one carrying lines (agentsfleetd 26392, integration 23104, runner 4588,
+# runner_integration 4136, deadline 307, lib 594, logging 276, s3 28). Naming
+# all eight is what keeps the LLVM fix honest: with only `runner lib` required,
+# the six that were silently dark could go dark again and the gate would stay
+# green. runner_integration is Linux-only, which is why this list is longer.
+ifeq ($(shell uname -s),Linux)
+ZIG_COVERAGE_REQUIRED_COMPONENTS ?= agentsfleetd runner lib logging deadline s3 runner_integration integration
+else
+ZIG_COVERAGE_REQUIRED_COMPONENTS ?= agentsfleetd runner lib logging deadline s3 integration
+endif
 # Use baseline CPU so valgrind can execute SHA/AVX instructions it can't emulate.
-MEMLEAK_TARGET ?=
-MEMLEAK_CPU    ?= baseline
+MEMLEAK_CPU ?= baseline
 
 .PHONY: test-unit-all
 

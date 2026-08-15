@@ -78,9 +78,10 @@ pub const DebitOutcome = union(enum) {
 ///
 /// Any DB failure returns true (fail-open) so the gate never turns into an
 /// availability incident.
+/// Takes no allocator: the balance read it performs is allocation-free since
+/// the wallet row stopped carrying `grant_source`, a column no reader consumed.
 pub fn balanceCoversEstimate(
     pool: *pg.Pool,
-    alloc: Allocator,
     tenant_id: []const u8,
     posture: tenant_provider.Mode,
     provider: []const u8,
@@ -95,11 +96,10 @@ pub fn balanceCoversEstimate(
     };
     defer pool.release(conn);
 
-    const billing = (tenant_billing.getBilling(conn, alloc, tenant_id) catch |err| {
+    const billing = (tenant_billing.getBilling(conn, tenant_id) catch |err| {
         log.warn("gate_billing_load_fail", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .tenant_id = tenant_id, .err = @errorName(err) });
         return true;
     }) orelse return true;
-    defer alloc.free(@constCast(billing.grant_source));
 
     const receive = tenant_billing.computeReceiveCharge(posture);
     // Prices the estimate on the connection this gate already holds, so the
@@ -119,9 +119,6 @@ pub fn balanceCoversEstimate(
         tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
         0,
         tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
-        // This tenant's own trial boundary, already loaded above — pricing is
-        // per tenant, so one account's trial ending cannot change another's gate.
-        billing.free_trial_ends_at_ms,
     ) catch |err| {
         log.warn("gate_stage_estimate_fail", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .tenant_id = tenant_id, .err = @errorName(err) });
         return true;

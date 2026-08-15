@@ -17,6 +17,15 @@ const std = @import("std");
 const NULLCLAW_CHANNELS = "none";
 const NULLCLAW_ENGINES = "base,sqlite";
 
+/// Test binaries compile through LLVM. Zig 0.16's self-hosted x86_64 backend
+/// emits DWARF 5 line programs libdw rejects: `invalid .debug_line section`.
+/// kcov skips such units silently, so six of eight coverage components measured
+/// nothing. LLVM's debug info parses.
+///
+/// Test binaries only; shipped binaries keep the faster default backend.
+/// Why, and what else was tried: docs/architecture/testing.md §Coverage.
+pub const TEST_USE_LLVM: bool = true;
+
 // Module import names used internally below — must match the module's `@import`
 // sites (the binding names are applied by each graph's `.imports`).
 const S_COMMON = "common";

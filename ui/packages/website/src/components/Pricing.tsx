@@ -13,12 +13,22 @@ import { PRICING_COPY, PRICING_PLANS, type PricingPlan } from "../lib/marketing-
 import { RATES_DISPLAY } from "../lib/rates";
 
 const PRICING_TRACKING_SOURCE_PREFIX = "pricing_";
+
+/// PostHog property values are snake_case — `pricing_trial`, `pricing_usage`,
+/// `pricing_enterprise` — while DOM identifiers are kebab-case. One plan id
+/// carries a hyphen (`early-access`), so the two conventions have to be bridged
+/// somewhere. Doing it here keeps `plan.id` the single source of truth for the
+/// card's `data-testid` AND its analytics source, instead of a second field that
+/// can drift from the first.
+function trackingSourceFor(planId: string): string {
+  return `${PRICING_TRACKING_SOURCE_PREFIX}${planId.replace(/-/g, "_")}`;
+}
 const ENTERPRISE_PLAN_ID = "enterprise";
-const TRIAL_PLAN_ID = "trial";
+const EARLY_ACCESS_PLAN_ID = "early-access";
 const USAGE_PLAN_ID = "usage";
 
 /*
- * Pricing — one simple story: free during the trial, then a single
+ * Pricing — one simple story: free during early access, then a single
  * usage-based run rate billed by the second only while a Fleet is actually
  * working (same rate on the platform or your own provider key), and the model
  * bill is always yours. No struck-through gradient, no staged billing grid,
@@ -32,10 +42,10 @@ export default function Pricing() {
       <div className="wrap flex flex-col items-center gap-6 text-center">
         <SectionLabel className="mb-0">pricing</SectionLabel>
         <p
-          data-testid="pricing-free-trial-banner"
+          data-testid="pricing-early-access-banner"
           className="font-mono text-label uppercase tracking-label text-text-muted border border-border-strong rounded-sm px-md py-sm m-0"
         >
-          {RATES_DISPLAY.FREE_TRIAL_PILL} — {PRICING_COPY.trialSuffix}
+          {RATES_DISPLAY.EARLY_ACCESS_PILL} — {PRICING_COPY.earlyAccessSuffix}
         </p>
         <DisplayLG>
           {PRICING_COPY.headline}
@@ -59,7 +69,7 @@ export default function Pricing() {
 }
 
 function PricingPlanCard({ plan }: { plan: PricingPlan }) {
-  // Pre-launch: both the free-trial ("Start free") and usage ("Get early
+  // Pre-launch: both the early-access ("Start free") and usage ("Get early
   // access") CTAs route to the waitlist; only Enterprise stays a contact mailto.
   const ctaHref =
     plan.id === ENTERPRISE_PLAN_ID
@@ -70,7 +80,6 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
   // The Enterprise mailto stays same-tab (a new tab for a mailto is pointless).
   const ctaExternal = ctaHref === WAITLIST_URL;
   const badge = "badge" in plan ? plan.badge : undefined;
-  const suffix = "suffix" in plan ? plan.suffix : undefined;
   const testId = `pricing-card-${plan.id}`;
 
   return (
@@ -94,12 +103,9 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
             <span data-testid="pricing-rate-run-hourly">{RATES_DISPLAY.RUN_RATE_PER_HOUR}</span>
           </>
         ) : (
-          <>
-            {plan.price}
-            {suffix ? (
-              <span className="text-body text-text-muted"> / {suffix}</span>
-            ) : null}
-          </>
+          // Only the usage plan carries a per-unit rate, and it renders through
+          // the arm above; every other plan states a bare price.
+          <>{plan.price}</>
         )}
       </div>
 
@@ -113,9 +119,9 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
         </p>
       ) : null}
 
-      {plan.id === TRIAL_PLAN_ID ? (
+      {plan.id === EARLY_ACCESS_PLAN_ID ? (
         <p className="font-sans text-body-sm leading-body-sm text-text-muted m-0">
-          Includes {RATES_DISPLAY.STARTER_CREDIT} starter credit after the trial.
+          Includes {RATES_DISPLAY.STARTER_CREDIT} starter credit.
         </p>
       ) : null}
 
@@ -138,7 +144,7 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
           data-testid={`pricing-cta-${plan.id}`}
           onClick={() =>
             trackSignupStarted({
-              source: `${PRICING_TRACKING_SOURCE_PREFIX}${plan.id}`,
+              source: trackingSourceFor(plan.id),
               surface: "pricing",
               mode: "humans",
             })
@@ -159,7 +165,7 @@ function PricingPlanCard({ plan }: { plan: PricingPlan }) {
             className="text-text hover:underline"
             onClick={() =>
               trackSignupStarted({
-                source: `${PRICING_TRACKING_SOURCE_PREFIX}${ENTERPRISE_PLAN_ID}_email`,
+                source: `${trackingSourceFor(ENTERPRISE_PLAN_ID)}_email`,
                 surface: "pricing",
                 mode: "humans",
               })

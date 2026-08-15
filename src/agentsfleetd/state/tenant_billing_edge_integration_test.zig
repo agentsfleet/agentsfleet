@@ -1,12 +1,11 @@
 // Edge / boundary tests for src/agentsfleetd/state/tenant_billing.zig.
 //
-// The free-trial gate and its connection-free rate math are tested inline in
-// tenant_billing_rates.zig (they need the time-injected private siblings).
-// This file exercises the DB-backed surface: the debit boundary rules, the
-// free_trial_active projection on the Billing struct, and the platform pricing
-// paths. The trial boundary is a parameter (§7 — a tenant fact, not a clock
-// fact), so every pricing assertion passes a closed boundary and runs
-// unconditionally; no wall-clock date can put one to sleep.
+// The connection-free rate math is tested inline in tenant_billing_rates.zig,
+// where the private catalogue-free branch is reachable. This file exercises the
+// DB-backed surface: the debit boundary rules, the starter grant as the whole
+// free allowance, and the platform pricing paths. Nothing here arranges a clock
+// — pricing reads the catalogue and the posture, so every assertion runs
+// unconditionally.
 
 const std = @import("std");
 const clock = @import("common").clock;
@@ -33,19 +32,12 @@ fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
     base.teardownTenantById(conn, TENANT_ID);
 }
 
-/// One second past the promotional window — any post-trial instant works; the
-/// clock-injected charge paths below need one that is deterministic today.
-/// A boundary these tests choose, so post-trial pricing is provable without
-/// waiting for any real date to arrive.
-const TRIAL_ENDS_AT_MS: i64 = 1_785_542_400_000;
-const POST_TRIAL_NOW_MS: i64 = TRIAL_ENDS_AT_MS + std.time.ms_per_s;
-
 // Segment 5 (aa06xx) identifies this file's workspaces; easy to grep + clean.
 const WS_PLATFORM_ZERO = "0195b4ba-8d3a-7f13-8abc-aa0600000001";
 const WS_PLATFORM_LARGE = "0195b4ba-8d3a-7f13-8abc-aa0600000002";
 const WS_DEBIT_EXACT = "0195b4ba-8d3a-7f13-8abc-aa0600000003";
 const WS_DEBIT_OVER = "0195b4ba-8d3a-7f13-8abc-aa0600000004";
-const WS_TRIAL = "0195b4ba-8d3a-7f13-8abc-aa0600000005";
+const WS_STARTER_GRANT = "0195b4ba-8d3a-7f13-8abc-aa0600000005";
 
 // Suite-private (provider, model) pair with real token rates for the overflow
 // test — the fixture platform pair's zero rates would multiply the near-max
@@ -91,10 +83,9 @@ test "integration: should charge the run fee for platform runtime with zero toke
 
     // Platform posture, zero tokens, 10s of runtime: the charge is exactly the
     // run fee. The fixture platform pair's token rates are zero by design, so
-    // pricing THAT pair keeps the expected value the run fee alone; the closed
-    // boundary keeps the trial short-circuit out of the way at any clock.
+    // pricing THAT pair keeps the expected value the run fee alone.
     const elapsed_ms: i64 = 10_000;
-    const charge = try billing_rates.computeStageCharge(db_ctx.conn, base.TEST_PROVIDER_NAME, .platform, base.TEST_PLATFORM_MODEL, elapsed_ms, 0, 0, 0, base.TRIAL_ENDED_AT_MS);
+    const charge = try billing_rates.computeStageCharge(db_ctx.conn, base.TEST_PROVIDER_NAME, .platform, base.TEST_PLATFORM_MODEL, elapsed_ms, 0, 0, 0);
     // Replicate runFee via the pinned per-second rate (runFee is private).
     const expected_run_fee = @divTrunc(elapsed_ms * tenant_billing.RUN_NANOS_PER_SEC, 1000);
     try std.testing.expectEqual(expected_run_fee, charge);
@@ -117,7 +108,7 @@ test "integration: should not overflow when platform token counts approach u32 m
     // Near-u32-max token counts plus an hour of runtime: rate math widens to
     // i64 internally, so the result must be a finite positive i64, no overflow.
     const big: u32 = std.math.maxInt(u32) - 1;
-    const charge = try billing_rates.computeStageCharge(db_ctx.conn, RATE_PROVIDER, .platform, RATE_MODEL, 3_600_000, big, big, big, base.TRIAL_ENDED_AT_MS);
+    const charge = try billing_rates.computeStageCharge(db_ctx.conn, RATE_PROVIDER, .platform, RATE_MODEL, 3_600_000, big, big, big);
     try std.testing.expect(charge > 0);
     try std.testing.expect(charge < std.math.maxInt(i64));
 }
@@ -131,9 +122,10 @@ test "integration: should refuse to price an uncatalogued model with error.Model
     // catalogue has no row for — the state an admin DELETE of a non-default row
     // leaves behind for any tenant still naming that model. This used to panic
     // and abort the replica; it must be an error the caller's posture absorbs.
-    // The injected post-trial clock makes it deterministic while the
-    // promotional window is still open on the real one.
-    try std.testing.expectError(error.ModelNotPriced, billing_rates.computeStageChargeAt(
+    //
+    // Reachable with no arrangement at all: the catalogue lookup is the only
+    // thing standing between the caller and the refusal.
+    try std.testing.expectError(error.ModelNotPriced, billing_rates.computeStageCharge(
         db_ctx.conn,
         "no-such-provider",
         .platform,
@@ -142,8 +134,6 @@ test "integration: should refuse to price an uncatalogued model with error.Model
         0,
         0,
         0,
-        TRIAL_ENDS_AT_MS,
-        POST_TRIAL_NOW_MS,
     ));
 }
 
@@ -164,8 +154,7 @@ test "integration: should succeed with zero balance when debit exactly covers th
     const after = try tenant_billing.debit(db_ctx.conn, TENANT_ID, balance);
     try std.testing.expectEqual(@as(i64, 0), after.balance_nanos);
 
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.grant_source));
+    const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
     try std.testing.expectEqual(@as(i64, 0), row.balance_nanos);
     // A zero-balance debit-to-exact must NOT stamp the exhausted gate.
     try std.testing.expect(row.exhausted_at_ms == null);
@@ -189,31 +178,61 @@ test "integration: should return CreditExhausted and leave balance unchanged whe
         tenant_billing.debit(db_ctx.conn, TENANT_ID, balance + 1),
     );
 
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.grant_source));
+    const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
     try std.testing.expectEqual(balance, row.balance_nanos);
 }
 
-test "integration: should report a fresh tenant's trial open-ended (NULL boundary reads active)" {
+test "integration: the starter grant is the whole free allowance a fresh tenant gets" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try seed(db_ctx.conn, WS_TRIAL);
-    defer teardown(db_ctx.conn, WS_TRIAL);
+    try seed(db_ctx.conn, WS_STARTER_GRANT);
+    defer teardown(db_ctx.conn, WS_STARTER_GRANT);
 
     try tenant_billing.insertStarterGrant(db_ctx.conn, TENANT_ID);
 
-    // isFreeTrialActive / FREE_TRIAL_END_MS are private; the public projection
-    // is Billing.free_trial_active vs free_trial_ends_at_ms. The strict
-    // less-than gate is the contract: active iff now_ms < ends_at_ms. This
-    // asserts the projection is internally consistent with the wall clock at
-    // call time without reaching into the private cutoff constant.
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.grant_source));
+    // What replaced the promotional window. A fresh tenant's free usage is a
+    // balance, not a date: positive on arrival, and bounded by that number
+    // rather than by a clock nobody set. Its exhaustion mark starts clear —
+    // `balance_exhausted_at` is now the only signal that free usage ran out.
+    const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
 
-    // A freshly provisioned tenant has no boundary set, so its trial is
-    // open-ended and the projection must say active regardless of the clock.
-    try std.testing.expect(row.free_trial_ends_at_ms == null);
-    try std.testing.expect(row.free_trial_active);
+    try std.testing.expect(row.balance_nanos > 0);
+    try std.testing.expect(row.exhausted_at_ms == null);
+}
+
+/// Abort the transaction so every subsequent statement on this connection
+/// errors. Same mechanism `budget_integration_test` uses to prove its own
+/// fail-open branch is reachable.
+fn poisonTransaction(conn: *pg.Conn) !void {
+    _ = try conn.exec("BEGIN", .{});
+    try std.testing.expectError(error.PG, conn.exec("SELECT 1/0", .{}));
+}
+
+fn healTransaction(conn: *pg.Conn) void {
+    _ = conn.exec("ROLLBACK", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+}
+
+test "integration: a wallet read on a faulted connection errors rather than answering" {
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    // Both consumers of `getBilling` route a read failure somewhere specific —
+    // the billing handler answers `internalDbUnavailable`, and the pre-claim
+    // metering gate fails OPEN so a database blip cannot refuse every lease. Both
+    // of those branches are `catch` arms, and a `catch` arm nothing can reach is
+    // dead code wearing a safety label. This proves the arm is live: the read
+    // genuinely errors on a faulted connection rather than returning null, which
+    // would read as "this tenant has no wallet" and take the wrong path entirely.
+    //
+    // The exact error variant is driver-drain dependent and immaterial — both
+    // call sites swallow any of them with `catch`.
+    try poisonTransaction(db_ctx.conn);
+    defer healTransaction(db_ctx.conn);
+
+    if (tenant_billing.getBilling(db_ctx.conn, TENANT_ID)) |_| {
+        return error.TestExpectedWalletReadToFailOnPoisonedTxn;
+    } else |_| {}
 }

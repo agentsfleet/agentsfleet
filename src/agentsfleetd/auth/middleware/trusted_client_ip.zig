@@ -20,11 +20,15 @@
 //! trust anchor. Local-dev / direct-internet deploys have neither header
 //! and fall back to the raw TCP peer.
 //!
-//! Pure function in this milestone — httpz `req.address` + header reads +
-//! audit-event wiring land in the handler slice. Decoupling the logic from
-//! the HTTP layer keeps testing deterministic and `src/auth/` portable.
+//! `deriveClientIp` stays pure so the trust rules are testable without a
+//! request. `fromRequest` is the one seam that names the wire headers: a
+//! caller that spells them itself is a caller whose spelling nothing checks,
+//! and the names must match how httpz stores them (lowercased in place while
+//! parsing — `request.zig`, `'A'...'Z' => buf[i] = bn + 32`) because
+//! `req.header` is an exact map lookup with no case folding.
 
 const std = @import("std");
+const httpz = @import("httpz");
 
 /// XFF chain separator + whitespace trim surface.
 const S_T_R_N = " \t\r\n";
@@ -95,6 +99,20 @@ pub fn deriveClientIp(
     }
 
     return .{ .ip = tcp_peer, .source = .tcp_peer, .divergent = false, .xff_raw = xff, .fly_client_ip_raw = fly_client_ip };
+}
+
+/// The two forwarding headers, spelled the way httpz stores them. Lowercase is
+/// load-bearing, not style: a capitalised literal here matches no stored key
+/// and silently degrades every request to `.tcp_peer`, which reads as a normal
+/// direct-deploy fallback rather than as a bug.
+pub const HDR_XFF = "x-forwarded-for";
+pub const HDR_FLY = "fly-client-ip";
+
+/// Derive the client IP for a live request. `tcp_peer` is the formatted peer
+/// address, which the caller already holds in request-lifetime storage — the
+/// returned slices may alias it.
+pub fn fromRequest(tcp_peer: []const u8, req: *httpz.Request) DerivedClientIp {
+    return deriveClientIp(tcp_peer, req.header(HDR_XFF), req.header(HDR_FLY));
 }
 
 /// Returns the leftmost non-empty XFF entry (the originating client),
@@ -180,4 +198,55 @@ test "deriveClientIp exposes both raw header values for audit emission" {
     const got = deriveClientIp("10.0.0.1", "1.2.3.4", "203.0.113.7");
     try testing.expectEqualStrings("1.2.3.4", got.xff_raw.?);
     try testing.expectEqualStrings("203.0.113.7", got.fly_client_ip_raw.?);
+}
+
+// The seam the eight tests above cannot reach: every one of them hands strings
+// straight to the pure function, so a header name that matches no stored key
+// looks exactly like a request that carried no headers.
+
+test "fromRequest reads the forwarded-for header off a real request" {
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+    ht.header(HDR_XFF, "203.0.113.7");
+
+    const got = fromRequest("10.0.0.1", ht.req);
+
+    try testing.expectEqualStrings("203.0.113.7", got.ip);
+    try testing.expectEqual(ClientIpSource.xff, got.source);
+}
+
+test "fromRequest flips to the Fly header when a request forges XFF" {
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+    ht.header(HDR_XFF, "1.2.3.4");
+    ht.header(HDR_FLY, "203.0.113.7");
+
+    const got = fromRequest("10.0.0.1", ht.req);
+
+    try testing.expectEqualStrings("203.0.113.7", got.ip);
+    try testing.expect(got.divergent);
+}
+
+test "fromRequest matches the header names httpz actually stores" {
+    // httpz lowercases names in place while parsing and looks them up by exact
+    // match, so a capitalised constant finds nothing and the derivation
+    // degrades to the TCP peer — indistinguishable from a direct deploy.
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+    ht.header("X-Forwarded-For", "203.0.113.7");
+
+    const got = fromRequest("10.0.0.1", ht.req);
+
+    try testing.expectEqualStrings("203.0.113.7", got.ip);
+    try testing.expectEqual(ClientIpSource.xff, got.source);
+}
+
+test "fromRequest falls back to the peer when a request carries no headers" {
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+
+    const got = fromRequest("10.0.0.1", ht.req);
+
+    try testing.expectEqualStrings("10.0.0.1", got.ip);
+    try testing.expectEqual(ClientIpSource.tcp_peer, got.source);
 }

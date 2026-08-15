@@ -83,9 +83,9 @@ readonly VERSION_FIELD_INDEX=2
 # ── Logging ──────────────────────────────────────────────────────────────────
 
 log()  { echo "[deploy] $*"; }
-die()  { log "FATAL: $*"; notify_discord "fail"; exit 1; }
+die()  { log "FATAL: $*"; exit 1; }
 
-# Exits without notifying Discord: a run refused because another deploy holds the
+# Exits quietly: a run refused because another deploy holds the
 # lock is not a failure, and a "deploy FAILED" embed would page for a working deploy.
 die_unnotified() { log "FATAL: $*"; exit 1; }
 
@@ -279,27 +279,6 @@ verify_healthy() {
   return 1
 }
 
-# ── Discord notification ─────────────────────────────────────────────────────
-
-notify_discord() {
-  local status="$1"  # "ok" or "fail"
-  [[ -n "${DISCORD_WEBHOOK_URL:-}" ]] || return 0
-
-  local color msg
-  if [[ "$status" == "ok" ]]; then
-    color=3066993
-    msg="✅ **${HOST}**: deployed \`${BINARY_NAME}\` ${VERSION}\\n${SERVICE_NAME}: active"
-  else
-    color=15158332
-    msg="❌ **${HOST}**: deploy FAILED for \`${BINARY_NAME}\` ${VERSION}\\nCheck: \`journalctl -u ${SERVICE_NAME}\`"
-  fi
-
-  curl -sf -X POST "$DISCORD_WEBHOOK_URL" \
-    -H "Content-Type: application/json" \
-    -d "{\"embeds\":[{\"description\":\"$msg\",\"color\":$color}]}" \
-    || log "Warning: Discord notification failed (non-fatal)."
-}
-
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 main() {
@@ -324,7 +303,6 @@ main() {
   # Skip version check when CI provides a local binary — always do a full
   # install+restart cycle. The shortcut is only for release-download mode.
   if [[ -z "$LOCAL_BINARY" ]] && is_already_installed; then
-    notify_discord "ok"
     return 0
   fi
 
@@ -339,10 +317,8 @@ main() {
   restart_services
 
   if verify_healthy; then
-    notify_discord "ok"
     log "Deploy complete: ${BINARY_NAME} ${VERSION}"
   else
-    notify_discord "fail"
     exit 1
   fi
 }
