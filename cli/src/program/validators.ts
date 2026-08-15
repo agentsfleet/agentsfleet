@@ -67,6 +67,18 @@ export interface JsonObjectOptions {
   maxBytes?: number | undefined;
 }
 
+export interface EnumOptions {
+  // Accept a case variant of a member and return the canonical spelling
+  // (`Anthropic` → `anthropic`). Off by default so exact-match callers
+  // (`--sort`) keep rejecting case drift.
+  foldCase?: boolean | undefined;
+  // Values the caller recognises but deliberately refuses, mapped to the
+  // reason. A recognised-but-refused value reads as a typo when it lands in
+  // the generic "must be one of: …" wall, so it earns its own sentence. Keys
+  // are matched under the same folding rule as members.
+  rejected?: Readonly<Record<string, string>> | undefined;
+}
+
 export type CommanderParser<T> = (value: unknown) => T;
 
 export function parseStringOption(value: unknown): string {
@@ -118,15 +130,46 @@ export function parseIdOption(value: unknown): string {
   return value;
 }
 
-export function parseEnumOption<T extends string>(allowed: readonly T[]): CommanderParser<T> {
+export function parseEnumOption<T extends string>(
+  allowed: readonly T[],
+  { foldCase = false, rejected }: EnumOptions = {},
+): CommanderParser<T> {
   if (!Array.isArray(allowed) || allowed.length === 0) {
     throw new Error("parseEnumOption requires a non-empty allowed array");
   }
+  const allRefusals = Object.entries(rejected ?? {});
+  // A refusal that is also a member can never fire — `allowed.includes` returns
+  // first — so drop it rather than carry a rule that silently does nothing.
+  // Dropped, NOT thrown: these parsers are built at module scope, so throwing
+  // here would turn a catalogue-data problem into a CLI that cannot start at
+  // all, `--help` and `logout` included, for a user who never touches the flag.
+  // The catalogue's own parity test is what asserts the two sets stay disjoint.
+  const members = allowed as readonly string[];
+  const isMember = (name: string): boolean =>
+    foldCase
+      ? members.some((m) => m.toLowerCase() === name.toLowerCase())
+      : members.includes(name);
+  const refusals = allRefusals.filter(([name]) => !isMember(name));
   return (value: unknown): T => {
-    if (!isString(value) || !allowed.includes(value as T)) {
-      throw new InvalidArgumentError(`must be one of: ${allowed.join(", ")}`);
+    if (isString(value)) {
+      if (allowed.includes(value as T)) return value as T;
+      const folded = value.toLowerCase();
+      if (foldCase) {
+        // Fold both sides: comparing the folded input against members
+        // verbatim would silently never match a non-lowercase member.
+        const canonical = allowed.find((member) => member.toLowerCase() === folded);
+        if (canonical !== undefined) return canonical;
+      }
+      // A deliberate refusal outranks the generic wall — it is the difference
+      // between "you typo'd" and "this exists and here is why it is not here".
+      const refusal = refusals.find(
+        ([name]) => name === value || (foldCase && name.toLowerCase() === folded),
+      );
+      if (refusal !== undefined) {
+        throw new InvalidArgumentError(`'${refusal[0]}' ${refusal[1]}`);
+      }
     }
-    return value as T;
+    throw new InvalidArgumentError(`must be one of: ${allowed.join(", ")}`);
   };
 }
 

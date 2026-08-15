@@ -81,6 +81,7 @@ export function makeSpyTree(): SpyTree {
     },
     fleet: {
       library: spy("fleet.library"),
+      models: spy("fleet.models"),
       install: spy("fleet.install"),
       update: spy("fleet.update"),
       list: spy("fleet.list"),

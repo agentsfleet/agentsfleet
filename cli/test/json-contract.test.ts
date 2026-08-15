@@ -3,34 +3,23 @@
 // envelope shape is stable, and removed v1 routes (run/runs/spec/specs)
 // surface UNKNOWN_COMMAND instead of resolving silently.
 
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Command } from "commander";
 import { makeBufferStream, ui } from "./helpers.ts";
-import { withFreshStateDir } from "./helpers-cli-state.ts";
 import { runCli } from "../src/cli.ts";
+import { STATE_DIR_ENV } from "../src/lib/config-dir.ts";
 import { writeError } from "../src/program/io.ts";
 import { buildProgram } from "../src/program/cli-tree.ts";
 import type { CommandHandlerFn, Handlers } from "../src/program/cli-tree-types.ts";
 
-// `runCli` honours `io.env` for environment reads, but the credential store
-// resolves from `process.env.AGENTSFLEET_STATE_DIR` (or HOME) inside
-// `loadCredentials`, which `io.env` never reaches. Without this, a developer
-// who has logged in hands real credentials to the auth-required cases below:
-// green on a clean runner, red on any working machine.
-let prevStateDir: string | undefined;
-
-beforeAll(() => {
-  prevStateDir = process.env.AGENTSFLEET_STATE_DIR;
-  process.env.AGENTSFLEET_STATE_DIR = mkdtempSync(path.join(os.tmpdir(), "agentsfleet-json-contract-"));
-});
-
-afterAll(() => {
-  if (prevStateDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
-  else process.env.AGENTSFLEET_STATE_DIR = prevStateDir;
-});
+// The credential store resolves from the environment `runCli` is handed, so
+// the auth-shaped cases below isolate by passing this directory in `io.env` —
+// no process-environment mutation, and a developer's real login never reaches
+// an assertion about unauthenticated behaviour.
+const isolatedStateDir = mkdtempSync(path.join(os.tmpdir(), "agentsfleet-json-contract-"));
 
 function tryParseJson(str: string): unknown {
   try {
@@ -53,7 +42,7 @@ function makeStubHandlers(): Handlers {
     tenant:    { provider: { show: noop, create: noop, delete: noop } },
     billing:   { show: noop },
     fleet: {
-      library: noop,
+      library: noop, models: noop,
       install: noop, update: noop, list: noop, status: noop, stop: noop, resume: noop,
       kill: noop, delete: noop, logs: noop, events: noop, steer: noop,
       secret: { create: noop, update: noop, show: noop, list: noop, delete: noop },
@@ -147,19 +136,20 @@ describe("JSON mode suppresses banners", () => {
 
 describe("JSON error envelope", () => {
   test("auth required in JSON mode emits AUTH_REQUIRED on stderr", async () => {
-    await withFreshStateDir(async () => {
-      const out = makeBufferStream();
-      const err = makeBufferStream();
-      const code = await runCli(["--json", "workspace", "list"], {
-        stdout: out.stream,
-        stderr: err.stream,
-        env: { NO_COLOR: "1" },
-      });
-      expect(code).toBe(1);
-      const parsed = tryParseJson(err.read()) as { error: { code: string } } | null;
-      expect(parsed).not.toBeNull();
-      expect(parsed?.error.code).toBe("AUTH_REQUIRED");
+    const out = makeBufferStream();
+    const err = makeBufferStream();
+    const code = await runCli(["--json", "workspace", "list"], {
+      stdout: out.stream,
+      stderr: err.stream,
+      // The injected environment reaches the credential store, so an empty
+      // isolated directory here IS the unauthenticated state — no process
+      // scope guard needed.
+      env: { NO_COLOR: "1", [STATE_DIR_ENV]: isolatedStateDir },
     });
+    expect(code).toBe(1);
+    const parsed = tryParseJson(err.read()) as { error: { code: string } } | null;
+    expect(parsed).not.toBeNull();
+    expect(parsed?.error.code).toBe("AUTH_REQUIRED");
   });
 
   test("removed v1 commands surface as commander unknown-command (exit 2)", async () => {

@@ -79,6 +79,7 @@ export interface FleetSecretHandlers {
 
 export interface FleetHandlers {
   library: CommandHandlerFn;
+  models: CommandHandlerFn;
   install: CommandHandlerFn;
   update: CommandHandlerFn;
   list: CommandHandlerFn;

@@ -30,7 +30,7 @@ const stateDir = useFreshStateDir();
 
 const provideEffect = async <A, E>(
   effect: Effect.Effect<A, E, Credentials>,
-): Promise<A> => Effect.runPromise(Effect.provide(effect, credentialsLayer));
+): Promise<A> => Effect.runPromise(Effect.provide(effect, credentialsLayer(process.env)));
 
 describe("Credentials service", () => {
   test("getAccessToken returns Option.none on empty store", async () => {
@@ -156,7 +156,7 @@ describe("Credentials service", () => {
           const c = yield* Credentials;
           return yield* c.getAccessToken;
         }),
-        credentialsLayer,
+        credentialsLayer(process.env),
       ),
     );
     expect(Exit.isFailure(exit)).toBe(true);

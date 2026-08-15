@@ -2,7 +2,9 @@ import { describe, test, expect } from "bun:test";
 import {
   requireAuth,
   unboundTarget,
+  guardCommand,
   AUTH_FAIL_MESSAGE,
+  UNBOUND_FAIL_MESSAGE,
 } from "../src/program/auth-guard.ts";
 
 const AFC = `afc_${"a".repeat(64)}`;
@@ -99,6 +101,69 @@ describe("unboundTarget", () => {
         apiKey: null,
         apiUrl: "https://api.agentsfleet.net",
         storedApiUrl: null,
+        targetIsExplicit: false,
+      }),
+    ).toBeNull();
+  });
+});
+
+// The composed policy — each refusal is a stable contract (errorCode +
+// commanderCode + message), pinned here rather than left to incidental
+// coverage through command suites.
+describe("guardCommand", () => {
+  const API_URL = "https://api.agentsfleet.net";
+
+  test("an exempt root passes with no credential at all", () => {
+    expect(
+      guardCommand("login", { token: null, apiKey: null, apiUrl: API_URL }),
+    ).toBeNull();
+  });
+
+  test("no credential refuses with the AUTH_REQUIRED contract", () => {
+    expect(
+      guardCommand("list", { token: null, apiKey: null, apiUrl: API_URL }),
+    ).toEqual({
+      errorCode: "AUTH_REQUIRED",
+      commanderCode: "auth.required",
+      message: AUTH_FAIL_MESSAGE,
+    });
+  });
+
+  test("a deployment-exempt root passes authed even when unbound", () => {
+    expect(
+      guardCommand("doctor", {
+        token: AFC,
+        apiKey: null,
+        apiUrl: API_URL,
+        storedApiUrl: null,
+        targetIsExplicit: false,
+      }),
+    ).toBeNull();
+  });
+
+  test("an unbound stored credential at an inferred target refuses with the DEPLOYMENT_UNKNOWN contract", () => {
+    expect(
+      guardCommand("list", {
+        token: AFC,
+        apiKey: null,
+        apiUrl: API_URL,
+        storedApiUrl: null,
+        targetIsExplicit: false,
+      }),
+    ).toEqual({
+      errorCode: "DEPLOYMENT_UNKNOWN",
+      commanderCode: "deployment.unknown",
+      message: UNBOUND_FAIL_MESSAGE,
+    });
+  });
+
+  test("a bound credential passes: the stored deployment is the target", () => {
+    expect(
+      guardCommand("list", {
+        token: AFC,
+        apiKey: null,
+        apiUrl: API_URL,
+        storedApiUrl: API_URL,
         targetIsExplicit: false,
       }),
     ).toBeNull();

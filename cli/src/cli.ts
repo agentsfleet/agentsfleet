@@ -7,13 +7,11 @@ import { type Command, CommanderError } from "commander";
 import { openUrl } from "./lib/browser.ts";
 import {
   clearCredentials,
-  emptyCredentials,
-  emptyWorkspaces,
   loadCredentials,
-  loadWorkspaces,
   saveCredentials,
   saveWorkspaces,
 } from "./lib/state.ts";
+import { loadState } from "./lib/state-load.ts";
 import { Effect } from "effect";
 import { runCommanderParse } from "./lib/commander-bridge.ts";
 import { isString } from "./lib/guards.ts";
@@ -111,17 +109,20 @@ function resolveGlobalApiUrl(
   return api || env.AGENTSFLEET_API_URL || null;
 }
 
-function buildDeps(): CommandDeps {
+// Binds the invocation's resolved environment onto the state functions at
+// the composition root, so the CommandDeps shape (and every handler behind
+// it) stays environment-free while the store reads the caller's environment.
+function buildDeps(env: NodeJS.ProcessEnv): CommandDeps {
   return {
-    clearCredentials,
-    loadCredentials,
+    clearCredentials: () => clearCredentials(env),
+    loadCredentials: () => loadCredentials(env),
     openUrl,
     printJson,
     printKeyValue,
     printSection,
     printTable,
-    saveCredentials,
-    saveWorkspaces,
+    saveCredentials: (next) => saveCredentials(env, next),
+    saveWorkspaces: (next) => saveWorkspaces(env, next),
     ui,
     writeLine,
     writeError,
@@ -239,10 +240,9 @@ export async function runCli(
   // Bare `agentsfleet` → --help so commander routes via stdout + exit 0 instead of stderr "missing command".
   const effectiveArgv = argv.length === 0 ? ["--help"] : [...argv];
 
-  const [creds, workspaces] = await Promise.all([
-    loadCredentials().catch(() => emptyCredentials()),
-    loadWorkspaces().catch(() => emptyWorkspaces()),
-  ]);
+  // Real read failures (EACCES, EIO — not absence) are recorded here and
+  // reported below, once the endpoint is known; the why lives with the helper.
+  const { creds, workspaces, unreadable } = await loadState(env);
   // Session identity is read and bumped through `telemetry.json`.
   const stdinSrc = io.stdin ?? process.stdin;
   // Two credential slots: the stored login credential (file slot, from
@@ -257,6 +257,22 @@ export async function runCli(
   const apiUrl = normalizeApiUrl(
     explicitApi || creds.api_url || DEFAULT_API_URL,
   );
+  // One plain sentence when a saved file exists but cannot be read: what broke,
+  // what the CLI is doing instead, and how to put it right. The endpoint is
+  // named because a failed read took the recorded deployment down with it — an
+  // operator pinned to a self-hosted backend would otherwise find out from the
+  // access log. Same two-line shape as a rendered error (fact, then Suggestion).
+  if (unreadable.length > 0) {
+    const files = unreadable.map((u) => `${u.file}: ${u.code}`).join(", ");
+    writeLine(
+      stderr,
+      `warning: cannot read your saved sign-in (${files}) — continuing signed out, against ${apiUrl}`,
+    );
+    writeLine(
+      stderr,
+      "  Suggestion: check the file's permissions, or run `agentsfleet login` to sign in again",
+    );
+  }
   const ctx: CommandCtx = {
     apiUrl,
     storedApiUrl: creds.api_url ?? null,
@@ -282,7 +298,7 @@ export async function runCli(
   const lifecycle: Lifecycle = {
     ctx,
     workspaces,
-    deps: buildDeps(),
+    deps: buildDeps(env),
     lastCommand: null,
   };
 

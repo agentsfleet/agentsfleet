@@ -21,6 +21,7 @@ import {
   updateEffectFromArgs,
 } from "../commands/fleet_install.ts";
 import { libraryEffect } from "../commands/fleet_library.ts";
+import { modelsEffectFromFlags } from "../commands/models.ts";
 import { listEffectFromFlags } from "../commands/fleet_list.ts";
 import { logsEffectFromFlags } from "../commands/fleet_logs.ts";
 import { eventsEffectFromFlags } from "../commands/fleet_events.ts";
@@ -48,6 +49,13 @@ export const buildFleetHandlers = (
   wrapEFn: WrapEFn,
 ): Handlers[typeof AGENT] => ({
   library: wrapE("fleet.library", libraryEffect),
+  models: wrapEFn(
+    "fleet.models",
+    (frame) =>
+      modelsEffectFromFlags({
+        provider: optString(frame.parsed.options, FIELD_PROVIDER),
+      }),
+  ),
   install: wrapEFn(
     "fleet.install",
     (frame) =>
