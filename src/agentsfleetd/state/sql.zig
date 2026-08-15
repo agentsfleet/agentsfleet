@@ -37,17 +37,8 @@ pub const SELECT_TENANT_BILLING_EXISTS =
     \\SELECT 1 FROM billing.tenant_wallet WHERE tenant_id = $1::uuid LIMIT 1
 ;
 
-/// The tenant's own free-trial boundary. NULL means open-ended. Narrow on
-/// purpose: the metering path needs only this column, not the whole ledger row.
-pub const SELECT_TENANT_TRIAL_BOUNDARY =
-    \\SELECT free_trial_ends_at
-    \\FROM billing.tenant_wallet
-    \\WHERE tenant_id = $1::uuid
-    \\LIMIT 1
-;
-
 pub const SELECT_TENANT_BALANCE =
-    \\SELECT balance_nanos, grant_source, updated_at, balance_exhausted_at, free_trial_ends_at
+    \\SELECT balance_nanos, updated_at, balance_exhausted_at
     \\FROM billing.tenant_wallet
     \\WHERE tenant_id = $1::uuid
     \\LIMIT 1

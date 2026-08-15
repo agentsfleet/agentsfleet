@@ -12,6 +12,7 @@
 
 const std = @import("std");
 const test_list = @import("test_list.zig");
+const shared = @import("shared.zig");
 
 const STEP_NAME = "test-auth";
 const STEP_DESC = "Run src/agentsfleetd/auth/** tests in isolation (portability gate)";
@@ -30,6 +31,7 @@ pub fn addTestStep(
     list_step: *std.Build.Step,
 ) void {
     const test_auth = b.addTest(.{
+        .use_llvm = shared.TEST_USE_LLVM,
         .name = TEST_NAME,
         .root_module = b.createModule(.{
             .root_source_file = b.path(ROOT_SOURCE),

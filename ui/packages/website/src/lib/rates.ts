@@ -29,18 +29,11 @@ export const EVENT_NANOS = 0n;
 // per-stage fees — runtime is metered by the second, not per stage.
 export const RUN_NANOS_PER_SEC = 100_000n;
 
-// Per-stage charge while a tenant's free trial is open: the server's
-// `compute_stage_charge` returns this regardless of posture / model / tokens.
-// Identifier names match the Zig + JS mirrors.
-//
-// The trial's END is deliberately NOT a constant here. It is a per-tenant fact
-// (`billing.tenant_wallet.free_trial_ends_at`, NULL = open-ended), so this
-// static marketing page has no boundary to state and must not invent one. The
-// copy below says what is true for everyone — the trial is open — and the
-// tenant's own boundary is surfaced in the dashboard billing panel, which can
-// actually read it. Customer surface for live rates: agentsfleet.net/#pricing.
-export const FREE_TRIAL_STAGE_NANOS = 0n;
-
+// The two EARLY_ACCESS_* strings below are marketing copy, not a pricing gate.
+// They describe the $5 starter grant — which is still the whole free allowance —
+// and stay accurate now that the promotional window is gone. They are named for
+// early access rather than a trial because no trial exists to end. Customer
+// surface for live rates: agentsfleet.net/#pricing.
 export const RATES_DISPLAY = {
   STARTER_CREDIT: "$5",
   EVENT_RATE: "free",
@@ -51,7 +44,7 @@ export const RATES_DISPLAY = {
   RUN_RATE_PER_SEC: "$0.0001/sec",
   RUN_RATE_PER_HOUR: "$0.36/hr",
   HEADLINE: "Get early access",
-  FREE_TRIAL_BANNER:
+  EARLY_ACCESS_BANNER:
     "Free during early access — every event receipt and stage execution is on us while we gather traction.",
-  FREE_TRIAL_PILL: "Free during early access",
+  EARLY_ACCESS_PILL: "Free during early access",
 } as const;

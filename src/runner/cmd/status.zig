@@ -49,3 +49,85 @@ test "renderStatus reports registration + status in both audiences" {
     try std.testing.expect(std.mem.indexOf(u8, j, "\"status\":\"active\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, renderStatus(&buf, .human, s), "host-7") != null);
 }
+
+// ---------------------------------------------------------------------------
+// `run` had no executed lines. Its contract is the operator's triage ladder —
+// no URL, no token, unreachable, healthy — and each rung returns a distinct
+// structured error, so each is pinned separately.
+// ---------------------------------------------------------------------------
+
+const common = @import("common");
+const plane_stub = @import("plane_stub_test.zig");
+
+const SELF_OK_BODY =
+    "{\"id\":\"r1\",\"status\":\"active\",\"host_id\":\"host-7\",\"sandbox_tier\":\"dev_none\",\"last_seen_at\":123}";
+
+test "status without an API URL fails with the URL error, not a dial attempt" {
+    const alloc = std.testing.allocator;
+    var map = try common.env.fromPairs(alloc, &.{});
+    defer map.deinit();
+    const argv = [_][:0]const u8{ "agentsfleet-runner", "status" };
+    var deadlines: runner_deadline.Owned = .{};
+    defer deadlines.deinit();
+    var muted = try plane_stub.MutedStdout.mute();
+    defer muted.restore();
+
+    try std.testing.expectEqual(@as(u8, 1), run(&argv, &map, common.globalIo(), alloc, &deadlines));
+}
+
+test "status with a URL but no token names the missing token" {
+    const alloc = std.testing.allocator;
+    var map = try common.env.fromPairs(alloc, &.{});
+    defer map.deinit();
+    const argv = [_][:0]const u8{ "agentsfleet-runner", "status", "--api", "http://127.0.0.1:1" };
+    var deadlines: runner_deadline.Owned = .{};
+    defer deadlines.deinit();
+    var muted = try plane_stub.MutedStdout.mute();
+    defer muted.restore();
+
+    // Fails on the token rung BEFORE dialing — port 1 would refuse, but the
+    // token check outranks reachability in the triage ladder.
+    try std.testing.expectEqual(@as(u8, 1), run(&argv, &map, common.globalIo(), alloc, &deadlines));
+}
+
+test "status against a dead control plane reports unreachable" {
+    const alloc = std.testing.allocator;
+    var map = try common.env.fromPairs(alloc, &.{.{ Config.ENV_AGENTSFLEET_RUNNER_TOKEN, "agt_rtest" }});
+    defer map.deinit();
+    const argv = [_][:0]const u8{ "agentsfleet-runner", "status", "--api", "http://127.0.0.1:1" };
+    var deadlines: runner_deadline.Owned = .{};
+    defer deadlines.deinit();
+    var muted = try plane_stub.MutedStdout.mute();
+    defer muted.restore();
+
+    try std.testing.expectEqual(@as(u8, 1), run(&argv, &map, common.globalIo(), alloc, &deadlines));
+}
+
+test "status renders the registration read from a healthy plane and exits zero" {
+    const alloc = std.testing.allocator;
+    const io = common.globalIo();
+    var addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 0);
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = plane_stub.boundPort(listener.socket.handle) catch return error.SkipZigTest;
+
+    var stub = plane_stub.OneShotPlane{
+        .io = io,
+        .listener = &listener,
+        .status = .{ .line = "200 OK", .body = SELF_OK_BODY },
+    };
+    const responder = std.Thread.spawn(.{}, plane_stub.OneShotPlane.serve, .{&stub}) catch return error.SkipZigTest;
+    defer responder.join();
+
+    var url_buf: [48]u8 = undefined;
+    const url = try std.fmt.bufPrintZ(&url_buf, "http://127.0.0.1:{d}", .{port});
+    var map = try common.env.fromPairs(alloc, &.{.{ Config.ENV_AGENTSFLEET_RUNNER_TOKEN, "agt_rtest" }});
+    defer map.deinit();
+    const argv = [_][:0]const u8{ "agentsfleet-runner", "status", "--api", url };
+    var deadlines: runner_deadline.Owned = .{};
+    defer deadlines.deinit();
+    var muted = try plane_stub.MutedStdout.mute();
+    defer muted.restore();
+
+    try std.testing.expectEqual(@as(u8, 0), run(&argv, &map, io, alloc, &deadlines));
+}

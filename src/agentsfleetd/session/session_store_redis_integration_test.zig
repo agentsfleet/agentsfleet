@@ -461,3 +461,82 @@ test "session_store works across three concurrent pods" {
     defer after.deinit();
     try std.testing.expectEqual(SessionStatus.consumed, after.value.status);
 }
+
+// ---------------------------------------------------------------------------
+// The SCAN machinery — deleteAllForUser and the background sweep. Nothing
+// executed these lines: the abort-all path is what a Clerk user-deletion
+// webhook rides (every live session must die, not just the newest), and the
+// sweep is the defensive prune for blobs whose TTL vanished. Distinct user id
+// so sibling suites' sessions never match the owner filter.
+// ---------------------------------------------------------------------------
+
+const SCAN_USER: []const u8 = "user_scan_sweep_probe_77";
+
+const AbortTally = struct {
+    count: u32 = 0,
+    fn onAborted(ctx: *anyopaque, session_id: []const u8) void {
+        // SAFETY: registered with ctx = *AbortTally below; only this test calls it.
+        const self: *AbortTally = @ptrCast(@alignCast(ctx));
+        self.count += 1;
+        std.debug.assert(session_id.len > 0);
+    }
+};
+
+test "deleteAllForUser aborts every session the user owns and only those" {
+    const alloc = std.testing.allocator;
+    var client = try connectRedisOrSkip(alloc);
+    defer client.deinit();
+    var store = SessionStore.init(alloc, &client, TEST_CODE_PEPPER, TEST_AUDIT_PEPPER);
+
+    // Two sessions owned by SCAN_USER…
+    const sid_a = try store.create(TEST_CLI_PK, TEST_TOKEN_NAME);
+    defer alloc.free(sid_a);
+    defer delSessionKey(&client, alloc, sid_a);
+    try store.approve(sid_a, TEST_DASH_PK, TEST_CIPHERTEXT, TEST_NONCE, TEST_VERIFICATION_CODE, SCAN_USER);
+    const sid_b = try store.create(TEST_CLI_PK, TEST_TOKEN_NAME);
+    defer alloc.free(sid_b);
+    defer delSessionKey(&client, alloc, sid_b);
+    try store.approve(sid_b, TEST_DASH_PK, TEST_CIPHERTEXT, TEST_NONCE, TEST_VERIFICATION_CODE, SCAN_USER);
+    // …and one owned by somebody else, which must survive untouched.
+    const sid_other = try store.create(TEST_CLI_PK, TEST_TOKEN_NAME);
+    defer alloc.free(sid_other);
+    defer delSessionKey(&client, alloc, sid_other);
+    try store.approve(sid_other, TEST_DASH_PK, TEST_CIPHERTEXT, TEST_NONCE, TEST_VERIFICATION_CODE, TEST_CLERK_USER_ID);
+
+    var tally = AbortTally{};
+    const aborted = try store.deleteAllForUser(SCAN_USER, "user_deleted", .{
+        .ctx = &tally,
+        .on_aborted = AbortTally.onAborted,
+    });
+
+    try std.testing.expect(aborted >= 2); // ≥: a prior aborted run may leave residue
+    try std.testing.expectEqual(aborted, tally.count);
+
+    // The foreign session is still live; the owned ones are terminally aborted.
+    var other = (try store.get(sid_other)).?;
+    defer other.deinit();
+    try std.testing.expect(other.value.status != .aborted);
+    var mine = (try store.get(sid_a)).?;
+    defer mine.deinit();
+    try std.testing.expectEqual(SessionStatus.aborted, mine.value.status);
+}
+
+test "the background sweep prunes an expired blob and spares a live one" {
+    const alloc = std.testing.allocator;
+    var client = try connectRedisOrSkip(alloc);
+    defer client.deinit();
+    var store = SessionStore.init(alloc, &client, TEST_CODE_PEPPER, TEST_AUDIT_PEPPER);
+
+    const sid = try store.create(TEST_CLI_PK, TEST_TOKEN_NAME);
+    defer alloc.free(sid);
+    defer delSessionKey(&client, alloc, sid);
+
+    // A sweep at wall-clock now must find nothing expired (steady state).
+    try std.testing.expectEqual(@as(u32, 0), try store.runBackgroundSweep(clock.nowMillis()));
+
+    // A sweep from the far future sees every blob as expired and prunes —
+    // the defensive arm for a blob whose Redis TTL was somehow cleared.
+    const far_future = clock.nowMillis() + 10 * 365 * 24 * 60 * 60 * 1000;
+    try std.testing.expect((try store.runBackgroundSweep(far_future)) >= 1);
+    try std.testing.expect((try store.get(sid)) == null);
+}

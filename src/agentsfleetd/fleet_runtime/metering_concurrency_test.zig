@@ -98,8 +98,7 @@ test "should drain every concurrent receive debit without lost writes" {
     // EVENT_NANOS (0) per event, so the balance never moves, but every call
     // must still succeed and write exactly one telemetry row.
     try tenant_billing.provision(db_ctx.conn, TENANT_ID, tenant_billing.STARTER_CREDIT_NANOS, "test_recv_race");
-    const initial = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(initial.grant_source));
+    const initial = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
 
     var jobs: [N_WORKERS]Job = undefined;
     var threads: [N_WORKERS]std.Thread = undefined;
@@ -119,8 +118,7 @@ test "should drain every concurrent receive debit without lost writes" {
     }
 
     // Balance unchanged (receive = 0); no phantom drains, no lost updates.
-    const final = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(final.grant_source));
+    const final = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
     try std.testing.expectEqual(initial.balance_nanos, final.balance_nanos);
 
     // Exactly N receive telemetry rows — one per distinct event_id, no losses.

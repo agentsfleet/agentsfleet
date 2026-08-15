@@ -12,16 +12,16 @@ Every memory row belongs to **one fleet**, keyed by the column **`fleet_id`** (U
 
 | Fact | Where it's enforced |
 |---|---|
-| Store column is `fleet_id`; the upsert key is the unique index `(key, fleet_id)` | `schema/013_memory_entries.sql` (`fleet_id UUID NOT NULL`; `idx_memory_entries_key_fleet_id`) |
+| Store column is `fleet_id`; the upsert key is the unique index `(key, fleet_id)` | `schema/820_memory_entries.sql` (`fleet_id UUID NOT NULL REFERENCES core.fleets`; `idx_memory_entries_key_fleet_id`) |
 | Every read/write scopes `WHERE fleet_id = $1` (never a fetch-all + in-memory filter) | `src/agentsfleetd/memory/fleet_memory.zig` — the only `INSERT`/cap/sweep/list path |
 | `fleet_id` is **server-derived from the lease**, never client-supplied (Insecure-Direct-Object-Reference guard) | `src/agentsfleetd/http/handlers/runner/memory.zig` (`lease.fleet_id == {fleet_id}`) |
 | Two fleets never share a namespace — Fleet A cannot read Fleet B's memory | role isolation (§2) + the `(key, fleet_id)` key |
 
-> **Terminology.** The scope column is `fleet_id`. The legacy NullClaw name **`instance_id`** (and the interim `zombie_id`) are **retired** — `schema/013` says so explicitly (*"no legacy instance_id prefix"*). Any doc or spec that still says `instance_id` is stale; the column, the wire path, and the code are `fleet_id` end to end.
+> **Terminology.** The scope column is `fleet_id`. The legacy NullClaw name **`instance_id`** (and the interim `zombie_id`) are **retired** — `schema/820` says so explicitly (*"no legacy instance_id prefix"*). Any doc or spec that still says `instance_id` is stale; the column, the wire path, and the code are `fleet_id` end to end.
 
 ## 2. Isolation — a Postgres role, not the workspace
 
-Memory lives in its own `memory` schema behind the **`memory_runtime`** Postgres role, which holds **zero grants on `core.*`** (RULE CTX). `api_runtime` does `SET ROLE memory_runtime` only inside a memory request, then `RESET`. The table carries **no foreign key to `core.fleets`** and **survives workspace destruction** (`schema/013` lines 2, 5–6) — the role boundary is the isolation, not a workspace column. The workspace is only the *authorization* boundary above this: a tenant must own the fleet to read its memory via `GET /v1/workspaces/{ws}/fleets/{id}/memories` (`fleet:read`) or forget one entry via `DELETE /v1/workspaces/{ws}/fleets/{id}/memories/{key}` (`fleet:write`). The item path decodes its URL segment before lookup, so reserved characters such as `/` round-trip through an encoded key. Forget deletes only the row matching both `fleet_id` and decoded `key`; an absent key returns 404.
+Memory lives in its own `memory` schema behind the **`memory_runtime`** Postgres role, which holds **zero grants on `core.*`** (RULE CTX). `api_runtime` does `SET ROLE memory_runtime` only inside a memory request, then `RESET`. `fleet_id` **REFERENCES `core.fleets` ON DELETE CASCADE** (`schema/820`), so memory is **erased with the fleet it belongs to** and an erased account keeps none of it. That edge does not weaken the isolation: PostgreSQL evaluates both the check and the cascade with the table owner's authority, so `memory_runtime` gains no `core` grant and still cannot name `core.fleets` at all. The role boundary remains the isolation, not a workspace column. The workspace is only the *authorization* boundary above this: a tenant must own the fleet to read its memory via `GET /v1/workspaces/{ws}/fleets/{id}/memories` (`fleet:read`) or forget one entry via `DELETE /v1/workspaces/{ws}/fleets/{id}/memories/{key}` (`fleet:write`). The item path decodes its URL segment before lookup, so reserved characters such as `/` round-trip through an encoded key. Forget deletes only the row matching both `fleet_id` and decoded `key`; an absent key returns 404.
 
 ## 3. Durable store vs ephemeral compute — why "ephemeral fleets" lose memory
 
@@ -46,7 +46,7 @@ The four tools (`memory_store` / `memory_recall` / `memory_list` / `memory_forge
 
 | Concern | Path |
 |---|---|
-| Schema (table, `(key, fleet_id)` index, role grants, `survives workspace destruction`) | `schema/013_memory_entries.sql` |
+| Schema (table, `(key, fleet_id)` index, role grants, `fleet_id` foreign key + cascade) | `schema/820_memory_entries.sql` |
 | The only write/read adapter (`WHERE fleet_id = $1`, `ON CONFLICT (key, fleet_id)`) | `src/agentsfleetd/memory/fleet_memory.zig` |
 | Runner hydrate/capture endpoints (lease-derived `fleet_id`, fencing) | `src/agentsfleetd/http/handlers/runner/memory.zig` |
 | Tenant read and forget (ownership-gated) | `src/agentsfleetd/http/handlers/memory/handler.zig` |
