@@ -46,11 +46,18 @@ ZIG_COVERAGE_DIR ?= $(CURDIR)/coverage/zig
 # Was ZIG_COVERAGE_MIN_LINES, which named a percentage. It now sits beside a
 # real measured-line minimum, and two variables a letter apart meaning entirely
 # different things is how the wrong one gets edited.
-ZIG_COVERAGE_MIN_PCT ?= 89
+#
+# These figures are LOWER than the ones this gate published before, and the
+# coverage did not regress. Test bodies written inside product files — 5,309
+# lines, 17% of the old denominator — were being counted as shipped code, and a
+# test body is ~100% covered by construction, so they lifted every rate by 1.7
+# to 2.6 points. Removing them is the same rule that already drops `*_test.zig`
+# files; it just reaches the blocks that live inside product sources.
+ZIG_COVERAGE_MIN_PCT ?= 88
 ZIG_COVERAGE_TARGET_PCT ?= 95
 # Per-folder enforced floors. Measured on the union at the time each was set;
 # they ratchet toward the targets below as tests land.
-ZIG_COVERAGE_FOLDER_FLOORS ?= agentsfleetd=89 runner=93 lib=93
+ZIG_COVERAGE_FOLDER_FLOORS ?= agentsfleetd=87 runner=91 lib=92
 # The quality bar for every product folder.
 ZIG_COVERAGE_FOLDER_TARGETS ?= agentsfleetd=95 runner=95 lib=95
 # One floor under the shape of the whole report, deliberately NOT one per

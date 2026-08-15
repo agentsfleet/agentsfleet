@@ -17,7 +17,10 @@ its length cap, and floor grading is a separable concern with its own tests.
 
 from __future__ import annotations
 
+import functools
+import re
 from dataclasses import dataclass
+from pathlib import Path
 
 # The scope name for the whole union. Folder scopes are named after the
 # directory under `src/`, so this cannot collide with one.
@@ -59,6 +62,52 @@ TEST_SUPPORT_SUFFIXES = ("_test_fixtures.zig", "_test_harness.zig", "_test_suppo
 
 class UsageError(ValueError):
     """An argument combination the caller got wrong, not a coverage failure."""
+
+
+# A top-level Zig test block: `test {`, `test "name" {`, `test name {`. Always
+# at column 0, and its closing brace is the first `}` at column 0.
+TEST_BLOCK_START = re.compile(r"^test\b[^{]*\{")
+
+
+@functools.lru_cache(maxsize=None)
+def inline_test_lines(path: str) -> frozenset[int]:
+    """1-indexed lines inside a top-level `test` block in a product file.
+
+    kcov's `--exclude-pattern` drops `*_test.zig` FILES; nothing drops a test
+    block written inside a product file. Those bodies were counted as shipped
+    code, and because a test body is ~100% covered by construction they lifted
+    every rate — 5,309 lines, 17% of the denominator, of which 5,280 were
+    covered. That made the gate partly satisfiable by writing more tests, which
+    is the exact failure the file-level exclusion exists to prevent.
+    """
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            lines = handle.read().splitlines()
+    except OSError:
+        return frozenset()
+
+    inside: set[int] = set()
+    depth = 0
+    active = False
+    for number, text in enumerate(lines, start=1):
+        if not active:
+            if TEST_BLOCK_START.match(text):
+                active = True
+                depth = text.count("{") - text.count("}")
+                inside.add(number)
+                if depth <= 0:
+                    active = False
+            continue
+        inside.add(number)
+        depth += text.count("{") - text.count("}")
+        if depth <= 0:
+            active = False
+    return frozenset(inside)
+
+
+def is_product_line(repo_root: Path, filename: str, number: int) -> bool:
+    """True when a measured line is shipped code rather than a test body."""
+    return number not in inline_test_lines(str(repo_root / filename))
 
 
 def is_product_source(filename: str) -> bool:

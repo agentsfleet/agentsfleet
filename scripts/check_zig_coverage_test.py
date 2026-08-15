@@ -361,6 +361,92 @@ class TestSupportExcluded(unittest.TestCase):
             self.assertIn("0/1 lines", out)
 
 
+class InlineTestBodiesExcluded(unittest.TestCase):
+    """A `test` block inside a product file is a test body, not shipped code.
+
+    kcov's --exclude-pattern drops `*_test.zig` FILES and nothing dropped these.
+    Because a test body is ~100% covered by construction, counting them lifted
+    every rate — the gate was partly satisfiable by writing more tests, which is
+    the exact failure the file-level exclusion exists to prevent.
+    """
+
+    def _write_source(self, root: Path, body: str) -> None:
+        target = root / "src" / "agentsfleetd" / "widget.zig"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body, encoding="utf-8")
+
+    def test_lines_inside_a_test_block_leave_the_denominator(self) -> None:
+        source = (
+            "const std = @import(\"std\");\n"  # 1
+            "pub fn add(a: u8, b: u8) u8 {\n"  # 2
+            "    return a + b;\n"  # 3
+            "}\n"  # 4
+            "\n"  # 5
+            "test \"add sums\" {\n"  # 6
+            "    try std.testing.expectEqual(3, add(1, 2));\n"  # 7
+            "    try std.testing.expectEqual(0, add(0, 0));\n"  # 8
+            "}\n"  # 9
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_source(root, source)
+            write_component(root, "unit", {
+                "src/agentsfleetd/widget.zig": [(2, 1), (3, 1), (6, 1), (7, 1), (8, 1)],
+            })
+            code, out, err = run_gate(root, ["unit"], 100.0)
+            self.assertEqual(code, 0, err)
+            # Only lines 2 and 3 are product; 6-8 are the test body.
+            self.assertIn("2/2 lines", out)
+
+    def test_an_uncovered_product_line_still_counts_beside_a_test_block(self) -> None:
+        """Excluding test bodies must not also excuse the code under test."""
+        source = (
+            "pub fn risky(x: u8) u8 {\n"  # 1
+            "    if (x == 0) return 1;\n"  # 2
+            "    return x;\n"  # 3
+            "}\n"  # 4
+            "test \"only the easy arm\" {\n"  # 5
+            "    _ = risky(0);\n"  # 6
+            "}\n"  # 7
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_source(root, source)
+            write_component(root, "unit", {
+                "src/agentsfleetd/widget.zig": [(1, 1), (2, 1), (3, 0), (5, 1), (6, 1)],
+            })
+            code, out, err = run_gate(root, ["unit"], 0.0)
+            self.assertEqual(code, 0, err)
+            self.assertIn("2/3 lines", out)
+
+    def test_a_bare_test_block_is_excluded_too(self) -> None:
+        """`test { }` — the import-chaining form every source file carries."""
+        source = (
+            "pub const value = 1;\n"  # 1
+            "test {\n"  # 2
+            "    _ = @import(\"widget_test.zig\");\n"  # 3
+            "}\n"  # 4
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_source(root, source)
+            write_component(root, "unit", {
+                "src/agentsfleetd/widget.zig": [(1, 1), (2, 1), (3, 1)],
+            })
+            code, out, err = run_gate(root, ["unit"], 100.0)
+            self.assertEqual(code, 0, err)
+            self.assertIn("1/1 lines", out)
+
+    def test_a_source_file_that_cannot_be_read_keeps_every_line(self) -> None:
+        """No source on disk means no exclusion — never silently drop a line."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "unit", {"src/agentsfleetd/absent.zig": [(1, 1), (2, 0)]})
+            code, out, err = run_gate(root, ["unit"], 0.0)
+            self.assertEqual(code, 0, err)
+            self.assertIn("1/2 lines", out)
+
+
 class DenominatorAssertions(unittest.TestCase):
     """No rate is graded before its denominator. A percentage over a report that
     lost most of the tree is not a measurement, however high it reads."""

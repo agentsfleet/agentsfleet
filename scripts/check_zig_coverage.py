@@ -83,6 +83,8 @@ def read_component(report: Path, repo_root: Path) -> dict[tuple[str, int], bool]
             number = line.get("number")
             if number is None:
                 continue
+            if not floors.is_product_line(repo_root, filename, int(number)):
+                continue
             key = (filename, int(number))
             covered = int(line.get("hits", "0")) > 0
             lines[key] = lines.get(key, False) or covered
