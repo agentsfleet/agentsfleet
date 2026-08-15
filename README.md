@@ -2,8 +2,10 @@
 
 # A fleet of prebuilt AI teammates for recurring engineering work.
 
-[![CI](https://github.com/agentsfleet/agentsfleet/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/agentsfleet/agentsfleet/actions/workflows/test.yml?query=branch%3Amain)
-[![Docs](https://img.shields.io/badge/Docs-blue)](https://docs.agentsfleet.net)
+[![CI](https://img.shields.io/github/actions/workflow/status/agentsfleet/agentsfleet/test.yml?branch=main&label=CI&logo=github&logoColor=white)](https://github.com/agentsfleet/agentsfleet/actions/workflows/test.yml?query=branch%3Amain)
+[![Zig coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fagentsfleet%2Fagentsfleet%2Fbadges%2Fcoverage.json)](https://github.com/agentsfleet/agentsfleet/actions/workflows/test.yml?query=branch%3Amain)
+[![Zig](https://img.shields.io/badge/Zig-0.16.0-F7A41D?logo=zig&logoColor=white)](https://ziglang.org/download/)
+[![Docs](https://img.shields.io/badge/Docs-agentsfleet.net-0A7CFF?logo=gitbook&logoColor=white)](https://docs.agentsfleet.net)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 </div>
