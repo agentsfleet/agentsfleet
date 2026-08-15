@@ -234,3 +234,4 @@ jobs:
           message: ${{ steps.verdict.outputs.message || '❌ PROD verification verdict could not be computed — inspect the summary job' }}
           op-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           vault: ${{ vars.VAULT_PROD }}
+          webhook-item: discord-release-webhook
