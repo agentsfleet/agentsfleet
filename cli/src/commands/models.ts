@@ -38,9 +38,21 @@ export interface ModelsFlags {
   readonly provider?: string | undefined;
 }
 
+// Two decimals is right for a dollar, and wrong for a rate below a cent —
+// $0.003625 per Mtok would print as "$0.00", which is this table's signal for
+// "no rate at all". A priced model must never be indistinguishable from an
+// unpriced one, so a sub-cent rate switches to significant digits instead.
+const SUB_CENT = 0.01;
+const SUB_CENT_DIGITS = 2;
+
 /** Nanos per million tokens → "$1.25", or a dash when the row carries no rate. */
-const usd = (nanos: number | undefined): string =>
-  !nanos || nanos <= 0 ? UNPRICED : `$${(nanos / NANOS_PER_USD).toFixed(2)}`;
+const usd = (nanos: number | undefined): string => {
+  if (!nanos || nanos <= 0) return UNPRICED;
+  const dollars = nanos / NANOS_PER_USD;
+  return dollars < SUB_CENT
+    ? `$${dollars.toPrecision(SUB_CENT_DIGITS)}`
+    : `$${dollars.toFixed(SUB_CENT_DIGITS)}`;
+};
 
 /** 200000 → "200k". The exact number is in --json; the table wants a shape. */
 const contextLabel = (tokens: number | undefined): string =>

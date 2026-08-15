@@ -77,6 +77,41 @@ describe("agentsfleet models", () => {
     });
   });
 
+  test("a sub-cent rate keeps its digits instead of collapsing to $0.00", async () => {
+    await authedScope(async () => {
+      // $0.003625 per Mtok is a real published rate (DeepSeek cached input).
+      // At two decimals it prints "$0.00", which this table uses for "no rate"
+      // — so a priced model would render identically to an unpriced one.
+      const CHEAP = {
+        id: "deepseek-v4-flash",
+        provider: "deepseek",
+        // pin test: literal is the contract
+        context_cap_tokens: 1000000,
+        input_nanos_per_mtok: 3625000,
+        cached_input_nanos_per_mtok: 3625000,
+        output_nanos_per_mtok: 280000000,
+      };
+      const routes: MockRoutes = {
+        "GET /v1/models": () => jsonResponse(200, page([CHEAP])),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(["models"], {
+          stdout: out.stream,
+          stderr: err.stream,
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl, NO_COLOR: "1" }),
+        });
+        expect(code).toBe(0);
+        const text = out.read() + err.read();
+        expect(text).toContain("$0.0036");
+        expect(text).not.toContain("$0.00 ");
+        // …and it is still distinguishable from a genuinely unpriced row.
+        expect(text).not.toContain("—");
+      });
+    });
+  });
+
   test("--provider filters server-side and reports the count it found", async () => {
     await authedScope(async () => {
       const seen: string[] = [];
