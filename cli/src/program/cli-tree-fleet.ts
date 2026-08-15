@@ -19,7 +19,12 @@ import {
   parseHttpsUrlOption,
 } from "./validators.ts";
 import { OPENAI_COMPATIBLE_PROVIDER } from "../constants/custom-endpoint.ts";
-import { PROVIDER_IDS } from "../constants/providers.ts";
+import {
+  CLI_ENGINE_PROVIDERS,
+  CLI_ENGINE_REJECTION,
+  PROVIDER_EXAMPLES,
+  PROVIDER_IDS,
+} from "../constants/providers.ts";
 import type {
   ActionDispatch,
   Handlers,
@@ -142,7 +147,7 @@ export function buildFleetTree(
   secret.command("create <name>")
     .description("Store a secret JSON object")
     .option(FLAG_DATA_JSON, "Secret JSON object, or @- to read stdin")
-    .option(FLAG_PROVIDER, DESC_PROVIDER, parseEnumOption(PROVIDER_IDS, { foldCase: true }))
+    .option(FLAG_PROVIDER, DESC_PROVIDER, parseProviderOption)
     .option(FLAG_BASE_URL, DESC_BASE_URL, parseHttpsUrlOption)
     .option(FLAG_API_KEY, DESC_API_KEY)
     .option(FLAG_MODEL_OPT, DESC_MODEL_OPT, parseStringOption)
@@ -155,7 +160,7 @@ export function buildFleetTree(
   secret.command("update <name>")
     .description("Replace a secret's stored body without releasing the name")
     .option(FLAG_DATA_JSON, "Replacement JSON object, or @- to read stdin")
-    .option(FLAG_PROVIDER, DESC_PROVIDER, parseEnumOption(PROVIDER_IDS, { foldCase: true }))
+    .option(FLAG_PROVIDER, DESC_PROVIDER, parseProviderOption)
     .option(FLAG_BASE_URL, DESC_BASE_URL, parseHttpsUrlOption)
     .option(FLAG_API_KEY, DESC_API_KEY)
     .option(FLAG_MODEL_OPT, DESC_MODEL_OPT, parseStringOption)
@@ -187,7 +192,15 @@ const FLAG_LIMIT_N = "--limit <n>" as const;
 const PAGE_SIZE = "Page size" as const;
 const SKILL_BUNDLE_PATH = "Skill bundle path" as const;
 const FLAG_DATA_JSON = "--data <json>" as const;
-const DESC_PROVIDER = `Provider id, one of: ${PROVIDER_IDS.join(", ")} (use '${OPENAI_COMPATIBLE_PROVIDER}' for a custom endpoint)`;
+const DESC_PROVIDER = `Provider id, e.g. ${PROVIDER_EXAMPLES.join(", ")} (${PROVIDER_IDS.length} accepted; an unknown id lists them all — use '${OPENAI_COMPATIBLE_PROVIDER}' for a custom endpoint)`;
+// One parser, both verbs: the accepted set and the refusal reasons are a
+// property of the flag, not of the command that carries it.
+const parseProviderOption = parseEnumOption(PROVIDER_IDS, {
+  foldCase: true,
+  rejected: Object.fromEntries(
+    CLI_ENGINE_PROVIDERS.map((name) => [name, CLI_ENGINE_REJECTION]),
+  ),
+});
 const DESC_BASE_URL = "Custom endpoint base URL (https; required for a custom-endpoint provider)" as const;
 const DESC_API_KEY = "Provider API key for the typed custom-endpoint form" as const;
 const DESC_MODEL_OPT = "Default model identifier for the typed custom-endpoint form" as const;

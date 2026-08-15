@@ -11,7 +11,7 @@ import {
   dispatch,
   buildSilent,
 } from "./helpers-cli-tree.ts";
-import { PROVIDER_IDS } from "../src/constants/providers.ts";
+import { PROVIDER_EXAMPLES, PROVIDER_IDS } from "../src/constants/providers.ts";
 import { OPENAI_COMPATIBLE_PROVIDER } from "../src/constants/custom-endpoint.ts";
 
 test("install accepts --library <id> and --name <name>", async () => {
@@ -233,14 +233,26 @@ test("secret create rejects a blank --provider rather than treating it as absent
   expect(calls).toHaveLength(0);
 });
 
-test("secret create and update --help each list every accepted provider id", () => {
+test("secret create and update --help name the examples and the true count, not the wall", () => {
   const { handlers } = makeSpyTree();
   const { program } = buildSilent({ handlers });
   const secret = program.commands.find((c) => c.name() === "secret");
   for (const verb of ["create", "update"]) {
     const sub = secret?.commands.find((c) => c.name() === verb);
     const help = sub?.helpInformation() ?? "";
-    for (const id of PROVIDER_IDS) expect(help).toContain(id);
+    for (const id of PROVIDER_EXAMPLES) {
+      // Boundary-anchored: bare `toContain` cannot catch a dropped short id
+      // whose longer sibling contains it (kimi ⊂ kimi-intl).
+      expect(help).toMatch(new RegExp(`(?<![\\w-])${id}(?![\\w-])`));
+    }
+    // Commander wraps descriptions at column width, so assert on a
+    // whitespace-normalized view — the count may straddle a line break.
+    const flat = help.replace(/\s+/g, " ");
+    // The count is live, so a catalogue change cannot leave help lying about
+    // the size of the accepted set…
+    expect(flat).toContain(`${PROVIDER_IDS.length} accepted`);
+    // …and the full wall stays out of help; the unknown-value error carries it.
+    expect(flat).not.toContain(PROVIDER_IDS.slice(0, 8).join(", "));
   }
 });
 
