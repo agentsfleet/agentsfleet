@@ -36,6 +36,11 @@ merging it as authored would change nothing in production. It is parked here
 whole, with the missing edge identified and proved, rather than shipped as a
 boundary that cannot fail.
 
+**None of the code below is on `main`.** Every Dimension marked `DONE` was
+completed on `feat/m154-privilege-boundaries` (pushed at `8ff760da6`, PR #598
+closed Aug 13, 2026) and merged nowhere. Read a `DONE` mark in this file as
+"authored and tested on the parked branch", never as "shipped".
+
 > Indy (2026-08-13): "i want only the removal of free trial in this PR other
 > grant and role related commits are not needed? I find it an over kill for this
 > stage." … "we can design and add it better"

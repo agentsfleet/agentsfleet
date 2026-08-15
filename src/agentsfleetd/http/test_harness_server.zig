@@ -63,6 +63,13 @@ fn stubResolveScopes(_: *anyopaque, alloc: std.mem.Allocator, _: []const u8) any
 /// Max bind attempts before `bringUpServer` surfaces the race as a hard error.
 const HARNESS_BIND_ATTEMPTS: u8 = 8;
 
+/// How long teardown waits for the accept loop to exit after `stop()` before
+/// declaring the shutdown stalled. Generous: a loaded runner can take a moment
+/// to schedule the listen thread, and a false panic here would be worse than
+/// the stall it reports.
+const HARNESS_TEARDOWN_TIMEOUT_MS: u64 = 5_000;
+const HARNESS_TEARDOWN_POLL_MS: u64 = 10;
+
 /// Bring the httpz server up on a free port, retrying on a lost bind race.
 ///
 /// httpz binds its own socket inside `listen()` (no fd-passing API), so the
@@ -76,13 +83,17 @@ pub fn bringUpServer(h: *TestHarness, alloc: std.mem.Allocator, cfg: Config) !u1
     while (true) : (attempt += 1) {
         const port = try test_port.allocFreePort();
         h.bind_failed.store(false, .seq_cst);
+        // Cleared per attempt: a retry spawns a fresh thread, and a flag left
+        // set by the previous attempt would let teardown join one that is still
+        // running.
+        h.listen_returned.store(false, .seq_cst);
         h.server = try http_server.Server.init(h.ctx.io, &h.ctx, &h.registry, .{
             .port = port,
             .threads = 2,
             .workers = 2,
             .max_clients = 64,
         });
-        h.thread = try std.Thread.spawn(.{}, serverThread, .{ h.server, &h.bind_failed });
+        h.thread = try std.Thread.spawn(.{}, serverThread, .{ h.server, &h.bind_failed, &h.listen_returned });
         if (waitForServer(alloc, port, cfg.wait_timeout_ms, &h.bind_failed)) {
             return port;
         } else |err| {
@@ -97,22 +108,52 @@ pub fn bringUpServer(h: *TestHarness, alloc: std.mem.Allocator, cfg: Config) !u1
                 return error.HarnessServerBindFailed;
             }
             // Timed out with a live listener (not a bind race): stop the loop,
-            // join, free, and surface — retrying would not help.
-            h.server.stop();
-            h.thread.join();
+            // join, free, and surface — retrying would not help. Bounded for
+            // the same reason as the caller's teardown: a listener that ignored
+            // stop() is exactly the state this branch is already reporting.
+            stopAndJoinBounded(h, "bring-up/healthz-timeout");
             h.server.deinit();
             return err;
         }
     }
 }
 
-fn serverThread(srv: *http_server.Server, bind_failed: *std.atomic.Value(bool)) void {
+fn serverThread(
+    srv: *http_server.Server,
+    bind_failed: *std.atomic.Value(bool),
+    listen_returned: *std.atomic.Value(bool),
+) void {
+    // Signalled on every exit path, error included: teardown reads this to know
+    // the thread is joinable, so a `listen()` that failed must set it too.
+    defer listen_returned.store(true, .seq_cst);
     // A lost bind race (the allocFreePort TOCTOU) is recorded for bringUpServer
     // to retry on a fresh port — it must never panic the test process.
     srv.listen() catch |err| {
         bind_failed.store(true, .seq_cst);
         std.log.warn("harness server listen failed (retrying on a fresh port): {s}", .{@errorName(err)});
     };
+}
+
+/// Stop the accept loop and join its thread, bounded.
+///
+/// The unbounded form parks the entire test binary when `stop()` fails to wake
+/// `accept()`: one transient bring-up failure hangs every test that would have
+/// run after it, with no output naming the cause. Detaching instead would be
+/// worse than the hang — the caller frees the server immediately after, and a
+/// live accept loop would then touch freed memory — so an expiry panics with
+/// the stage rather than waiting silently or risking a use-after-free.
+pub fn stopAndJoinBounded(h: *TestHarness, stage: []const u8) void {
+    h.server.stop();
+    var waited_ms: u64 = 0;
+    while (!h.listen_returned.load(.seq_cst)) {
+        if (waited_ms >= HARNESS_TEARDOWN_TIMEOUT_MS) std.debug.panic(
+            "harness teardown stalled at {s}: accept loop still running {d}ms after stop()",
+            .{ stage, HARNESS_TEARDOWN_TIMEOUT_MS },
+        );
+        common.sleepNanos(HARNESS_TEARDOWN_POLL_MS * std.time.ns_per_ms);
+        waited_ms += HARNESS_TEARDOWN_POLL_MS;
+    }
+    h.thread.join();
 }
 
 fn waitForServer(alloc: std.mem.Allocator, port: u16, timeout_ms: u32, bind_failed: *std.atomic.Value(bool)) !void {

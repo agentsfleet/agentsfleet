@@ -63,10 +63,20 @@ memleak:  ## Run Zig memory-leak gates across the daemon, runner, and lib test g
 	 $(MAKE) _memleak-lane LANE=agentsfleetd MEMLEAK_BUILD_FILE=- MEMLEAK_BUILD_STEP=test-bin MEMLEAK_OPENSSL_OFF=1 MEMLEAK_BINS="agentsfleetd-tests" MACOS_LEAKS_SUPPORTED=$$macos_leaks_supported >"$$lane_dir/agentsfleetd.log" 2>&1 & daemon_pid=$$!; \
 	 $(MAKE) _memleak-lane LANE=runner MEMLEAK_BUILD_FILE=build_runner.zig MEMLEAK_BUILD_STEP=test-bin MEMLEAK_OPENSSL_OFF=0 MEMLEAK_BINS="agentsfleet-runner-tests" MACOS_LEAKS_SUPPORTED=$$macos_leaks_supported >"$$lane_dir/runner.log" 2>&1 & runner_pid=$$!; \
 	 $(MAKE) _memleak-lane LANE=lib MEMLEAK_BUILD_FILE=- MEMLEAK_BUILD_STEP=test-lib-bin MEMLEAK_OPENSSL_OFF=1 MEMLEAK_BINS="agentsfleet-lib-tests agentsfleet-logging-tests agentsfleet-call-deadline-tests" MACOS_LEAKS_SUPPORTED=$$macos_leaks_supported >"$$lane_dir/lib.log" 2>&1 & lib_pid=$$!; \
-	 lane_status=0; wait "$$daemon_pid" || lane_status=1; wait "$$runner_pid" || lane_status=1; wait "$$lib_pid" || lane_status=1; \
+	 lane_status=0; failed_lanes=""; \
+	 wait "$$daemon_pid" || { lane_status=1; failed_lanes="$$failed_lanes agentsfleetd"; }; \
+	 wait "$$runner_pid" || { lane_status=1; failed_lanes="$$failed_lanes runner"; }; \
+	 wait "$$lib_pid" || { lane_status=1; failed_lanes="$$failed_lanes lib"; }; \
 	 infra_status=0; wait "$$infra_pid" || infra_status=1; \
 	 cat "$$lane_dir/agentsfleetd.log" "$$lane_dir/runner.log" "$$lane_dir/lib.log" "$$lane_dir/infra.log"; \
-	 [ "$$lane_status" -eq 0 ] || { echo "✗ [memleak] one or more component lanes failed"; exit "$$lane_status"; }; \
+	 [ "$$lane_status" -eq 0 ] || { \
+	   echo "✗ [memleak] failed lanes:$$failed_lanes"; \
+	   for lane in $$failed_lanes; do \
+	     echo "--- failing tests (lane=$$lane) ---"; \
+	     grep -v -E '$(ZIG_TEST_LOG_NOISE)' "$$lane_dir/$$lane.log" \
+	       | grep -B 1 -E '$(ZIG_TEST_FAILURE_GREP)' | head -n 40 || true; \
+	   done; \
+	   exit "$$lane_status"; }; \
 	 [ "$$infra_status" -eq 0 ] || { echo "✗ [memleak] test infra failed to come up; the boot→drain lane cannot run"; exit 1; }; \
 	 $(MAKE) _memleak-boot-drain; \
 	 echo "✓ memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle)"

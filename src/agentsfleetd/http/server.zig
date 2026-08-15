@@ -329,6 +329,7 @@ test {
     _ = @import("webhook_http_integration_test.zig");
     _ = @import("auth_mw_failure_integration_test.zig");
     _ = @import("request_header_size_integration_test.zig");
+    _ = @import("test_harness_teardown_integration_test.zig");
     _ = @import("test_port.zig");
     // M102 §3 — credential-mint handler unit tests (outcome→wire mapping).
     _ = @import("handlers/runner/credentials_mint.zig");

@@ -28,9 +28,9 @@ test.describe("Home page", () => {
     await expect(install).toContainText(/copy/i);
 
     // Promo pill between the LIVE eyebrow and the headline links to the
-    // inline /pricing anchor and surfaces the trial string
-    // (`RATES_DISPLAY.FREE_TRIAL_PILL` in lib/rates.ts). It names no end date:
-    // the trial boundary is a per-tenant column, so this page has none to state.
+    // inline /pricing anchor and surfaces the early-access string
+    // (`RATES_DISPLAY.EARLY_ACCESS_PILL` in lib/rates.ts). It names no end date:
+    // the free allowance is the starter grant, so this page has none to state.
     const pill = page.getByTestId("hero-promo-pill");
     await expect(pill).toBeVisible();
     await expect(pill).toHaveAttribute("href", "/pricing");

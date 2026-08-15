@@ -13,6 +13,9 @@ test {
     _ = @import("daemon/control_plane_client.zig");
     _ = @import("daemon/control_plane_client_mint.zig");
     _ = @import("daemon/control_plane_client_test.zig");
+    _ = @import("daemon/control_plane_verbs_test.zig");
+    _ = @import("daemon/lease_run_workspace_test.zig");
+    _ = @import("bundle_materialize_test.zig");
     _ = @import("daemon/config.zig");
     _ = @import("daemon/StorageHome.zig");
     _ = @import("daemon/loop.zig");
@@ -34,10 +37,14 @@ test {
     _ = @import("child_exec.zig");
     _ = @import("cmd/version.zig");
     _ = @import("cmd/args.zig");
+    _ = @import("cmd/args_test.zig");
+    _ = @import("engine/runner_progress_lifecycle_test.zig");
     _ = @import("cmd/output.zig");
+    _ = @import("cmd/output_test.zig");
     _ = @import("cmd/registry.zig");
     _ = @import("cmd/help.zig");
     _ = @import("cmd/status.zig");
+    _ = @import("cmd/plane_stub_test.zig");
     _ = @import("cmd/doctor.zig");
     _ = @import("sandbox_args.zig");
     _ = @import("bundle_extract.zig");
@@ -69,4 +76,11 @@ test {
     _ = @import("child_exec_edge_test.zig");
     _ = @import("sandbox_args_edge_test.zig");
     _ = @import("tool_bridge_resolution_test.zig");
+    // Pre-fork lease lifecycle + control-loop coverage
+    _ = @import("daemon/lease_run_exec_test.zig");
+    _ = @import("daemon/loop_poll_test.zig");
+    _ = @import("daemon/loop_heartbeat_seq_test.zig");
+    _ = @import("child_supervisor_prefork_test.zig");
+    _ = @import("engine/runner_execute_test.zig");
+    _ = @import("runner_tail_coverage_test.zig");
 }
