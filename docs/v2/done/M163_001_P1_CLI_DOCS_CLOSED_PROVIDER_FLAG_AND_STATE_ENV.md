@@ -218,6 +218,9 @@ name is never offered as a credential provider id). `pioneer` is the only
 - **Dimension 4.6** — Catalogue validation runs after body composition, so a locally-detectable error (`--data` with typed flags) costs no round-trip; the custom-endpoint sentinel short-circuits without a read at all → Test `test_local_errors_precede_any_catalogue_read` — **DONE**
 - **Dimension 4.7** — `agentsfleet models [--provider <id>]` lists the catalogue the dashboard picker shows, so `--provider` and `--model` are discoverable instead of guessed → Test `test_models_command_lists_catalogue` — **DONE**
 - **Dimension 4.8** — A CLI-engine name keeps its specific refusal, and that refusal does NOT offer the custom-endpoint route, which cannot reach a provider that spawns a binary and has no HTTP endpoint → Test `test_cli_engine_refusal_omits_endpoint_route` — **DONE**
+- **Dimension 4.9** — `--model` is validated against the same catalogue read that resolves `--provider`, scoped to that provider's rows. It is NOT case-folded: provider ids are ours to canonicalise, model ids belong to the provider and are case-sensitive there (`MiniMaxAI/MiniMax-M3`). Same three degradations → Test `test_model_is_checked_against_its_provider_rows` — **DONE**
+
+**Known gap — the catalogue does not yet reach the dial set.** The allowlist carries 103 provider entries, but the 87 newcomers have `models: []` and therefore emit ZERO rows: `core.model_library` still serves 16 providers, so `--provider cerebras` is refused where `main` accepts it. The derived skeleton (identity, aliases, `base_url`, display) is the groundwork; closing the gap needs curated models per provider, or a server-side surface for dialable-but-unpriced providers. Not resolved in this milestone — see Session Notes.
 
 ## Interfaces
 

@@ -27,8 +27,8 @@ import {
   resolveSecretBody,
   type SecretAddFlags,
 } from "./fleet_secret_body.ts";
-import { resolveCatalogueProvider } from "../lib/model-catalogue.ts";
-import { SECRET_FIELD_PROVIDER } from "../constants/custom-endpoint.ts";
+import { resolveCatalogueTarget } from "../lib/model-catalogue.ts";
+import { SECRET_FIELD_MODEL, SECRET_FIELD_PROVIDER } from "../constants/custom-endpoint.ts";
 import type { Redacted } from "effect/Redacted";
 
 // Reject a provider this server's catalogue does not price, and normalise its
@@ -51,8 +51,13 @@ const withCatalogueProvider = (
   Effect.gen(function* () {
     const provider = flags.provider?.trim();
     if (!provider) return data;
-    const resolved = yield* resolveCatalogueProvider(provider, token);
-    return { ...data, [SECRET_FIELD_PROVIDER]: resolved };
+    // One read resolves both identifiers. `--model` was checked nowhere, which
+    // is the same defect `--provider` had one flag over: a typo stored a
+    // credential that reported success and failed at the first event.
+    const target = yield* resolveCatalogueTarget(provider, flags.model, token);
+    const next: Record<string, unknown> = { ...data, [SECRET_FIELD_PROVIDER]: target.provider };
+    if (target.model !== undefined) next[SECRET_FIELD_MODEL] = target.model;
+    return next;
   });
 
 const TYPE_STRING = "string" as const;
