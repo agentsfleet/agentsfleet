@@ -25,11 +25,10 @@
 // first renewal that created it and `last_charged_at` the settle that wrote it
 // last, which pins exactly the window the budget apportionment reads.
 //
-// Free-trial note: the boundary is a tenant fact (§7), so arrange() closes this
-// suite's tenant's trial and raises the fixture pair's token rates above zero —
-// the reconciliation identity therefore carries real money unconditionally, and
-// the strict non-zero arm asserts at any clock position. The zero arms (replay,
-// lost fence, failed settle) stay zero for their own reasons, which is the point.
+// Rate note: arrange() raises the fixture pair's token rates above zero, so the
+// reconciliation identity carries real money unconditionally and the strict
+// non-zero arm asserts at any clock position. The zero arms (replay, lost fence,
+// failed settle) stay zero for their own reasons, which is the point.
 // Requires LIVE_DB + Redis; skipped when either is missing.
 
 const std = @import("std");
@@ -188,10 +187,9 @@ fn arrange() !Setup {
     try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
     setFixturePairRates(conn, RATE_INPUT_NANOS_PER_MTOK, RATE_CACHED_NANOS_PER_MTOK, RATE_OUTPUT_NANOS_PER_MTOK);
     try fundLargeBalance(conn);
-    // §7: an open trial prices every slice to zero, which would let the
-    // reconciliation identity pass by agreeing on nothing. Close this tenant's
-    // boundary so the identity carries real money at any clock position.
-    try base.endFreeTrialFor(conn, base.TEST_TENANT_ID);
+    // `setFixturePairRates` above is what makes the reconciliation identity
+    // meaningful: an unrated pair prices every slice to zero and the identity
+    // would pass by agreeing on nothing.
     try seedRunner(conn);
     try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, FLEET_NAME, CONFIG_NO_GATES, SOURCE_MD);
     try base.seedFleetSession(conn, FLEET_ID, "{}");
@@ -307,7 +305,7 @@ fn scalar(conn: *pg.Conn, sql: []const u8, event_id: []const u8) !i64 {
 /// The retired shape spread this across `fleet.metering_periods` and
 /// `core.fleet_execution_telemetry`, where the renewal accumulated slice
 /// charges into BOTH — so summing the second table whole double-counted the
-/// same money, and a zero-priced trial hid it. One table, one sum, no mirror.
+/// same money, and zero-priced slices hid it. One table, one sum, no mirror.
 fn committedDebitTotal(conn: *pg.Conn, event_id: []const u8) !i64 {
     // `SUM(bigint)` is `numeric` in Postgres, so the aggregate is cast back to
     // bigint for the i64 read. The column is bigint, so the cast is lossless.
@@ -396,8 +394,8 @@ test "integration: test_credit_metric_reconciles_committed_debits" {
     try std.testing.expect(span.last_charged_at >= before_settle);
     try std.testing.expect(span.last_charged_at <= after_settle);
 
-    // The trial is closed and the pair is rated, so the identity above carries
-    // real money rather than agreeing on zero — unconditionally.
+    // The pair is rated, so the identity above carries real money rather than
+    // agreeing on zero — unconditionally.
     try std.testing.expect(committed > 0);
     try std.testing.expect(emitted.count > 0);
 
@@ -490,9 +488,9 @@ test "integration: the wallet drain equals the ledger sum across a metered run" 
     const drained = opening - try walletBalance(s.conn);
     const ledgered = try committedDebitTotal(s.conn, lv.event_id);
 
-    // Non-vacuous first: the trial is closed and the pair is rated by arrange(),
-    // so a run that charged nothing means the fixture broke, not that the
-    // identity held. Without this the assertion below passes on 0 == 0.
+    // Non-vacuous first: the pair is rated by arrange(), so a run that charged
+    // nothing means the fixture broke, not that the identity held. Without this
+    // the assertion below passes on 0 == 0.
     try std.testing.expect(ledgered > 0);
     try std.testing.expectEqual(ledgered, drained);
 }

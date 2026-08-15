@@ -106,3 +106,17 @@ jobs:
           fi
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+
+      # always(): the point of this notification is the deploy that failed.
+      # job.status is read after the deploy step, so it carries that verdict.
+      - name: Notify Discord
+        if: always()
+        uses: ./.github/actions/notify-discord
+        with:
+          status: ${{ job.status }}
+          message: >-
+            ${{ job.status == 'success'
+            && format('✅ DEV agentsfleetd deployed — `{0}` @ `{1}`', vars.FLY_APP_DEV, github.sha)
+            || format('❌ DEV agentsfleetd deploy {0} — `{1}` @ `{2}`\nCheck: {3}/{4}/actions/runs/{5}', job.status, vars.FLY_APP_DEV, github.sha, github.server_url, github.repository, github.run_id) }}
+          op-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          vault: ${{ vars.VAULT_PROD }}

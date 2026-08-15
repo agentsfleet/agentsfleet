@@ -14,6 +14,7 @@
 //! compile time, and a filtered listing would report live blocks as dead.
 
 const std = @import("std");
+const shared = @import("shared.zig");
 
 pub const STEP_NAME = "list-tests";
 pub const STEP_DESC = "Print every compiler-registered test name (reachability gate)";
@@ -34,6 +35,7 @@ pub fn addLane(
     root_dir: []const u8,
 ) void {
     const listing = b.addTest(.{
+        .use_llvm = shared.TEST_USE_LLVM,
         .name = b.fmt("{s}{s}", .{ name, NAME_SUFFIX }),
         .root_module = root_module,
         .test_runner = .{ .path = b.path(RUNNER_PATH), .mode = .simple },

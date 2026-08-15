@@ -36,7 +36,7 @@ pub fn innerGetTenantBilling(hx: Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    const billing_opt = tenant_billing.getBilling(conn, hx.alloc, tenant_id) catch {
+    const billing_opt = tenant_billing.getBilling(conn, tenant_id) catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
@@ -44,17 +44,12 @@ pub fn innerGetTenantBilling(hx: Hx, req: *httpz.Request) void {
         hx.fail(ec.ERR_INTERNAL_OPERATION_FAILED, "Tenant billing row missing — bootstrap invariant violated");
         return;
     };
-    defer hx.alloc.free(@constCast(billing.grant_source));
 
     hx.ok(.ok, .{
         .balance_nanos = billing.balance_nanos,
         .updated_at = billing.updated_at_ms,
         .is_exhausted = billing.exhausted_at_ms != null,
         .exhausted_at = billing.exhausted_at_ms,
-        .free_trial = .{
-            .active = billing.free_trial_active,
-            .ends_at_ms = billing.free_trial_ends_at_ms,
-        },
     });
 }
 

@@ -60,7 +60,7 @@
       "operationId": "get_tenant_billing",
       "method": "GET",
       "path": "/v1/tenants/me/billing",
-      "description": "Read the caller tenant's credit-pool balance, exhaustion state, and free-trial window.",
+      "description": "Read the caller tenant's credit-pool balance and exhaustion state.",
       "actionClass": "safe"
     },
     {

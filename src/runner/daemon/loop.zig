@@ -84,6 +84,11 @@ const BACKOFF_CEILING_ATTEMPT: u32 = 4;
 /// multi-minute jittered ramp. Production never overrides it.
 pub var backoff_ms: *const fn (u32) u64 = constants.backoff.ms;
 
+/// Heartbeat-cadence seam, same shape and reason as `backoff_ms`: the scripted
+/// multi-beat control-loop tests run in milliseconds instead of one real
+/// `HEARTBEAT_INTERVAL_MS` per beat. Production never overrides it.
+pub var heartbeat_interval_ms: u64 = @intCast(constants.HEARTBEAT_INTERVAL_MS);
+
 /// Control loop: the host's single thread heartbeats once per host on the
 /// `HEARTBEAT_INTERVAL_MS` cadence, maps a `.stop`/`.drain` directive (and the
 /// signal-set `drain_requested`) onto the shared atomics, and owns the worker
@@ -222,7 +227,7 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
             policy_apply.logGrowNeedsRestart(&gates, assigned_workers);
         }
 
-        sleepMs(io, @intCast(constants.HEARTBEAT_INTERVAL_MS));
+        sleepMs(io, heartbeat_interval_ms);
     }
 }
 

@@ -455,7 +455,7 @@ This is the deliberate exception to "new principal types need no new middleware.
 
 A per-process memo used to front this read, with entries living at most `HEARTBEAT_INTERVAL_MS`. It was removed in M143_001 because it made revocation deterministic only on the machine that served the operator's write: every *other* control-plane machine kept authenticating the runner until its own entry expired. Reading the row every time means a runner taken out of service authenticates **nowhere, immediately**, with no window to reason about and no per-machine state to reconcile.
 
-What that costs: one indexed single-row read per runner request. The lease verb is not a blocking long poll — it returns 200 with `retry_after_ms` (`NO_WORK_RETRY_AFTER_MS` = 1 s) — so an idle runner authenticates about once a second per worker. At the ~100 runners `schema/033_hot_path_indexes.sql` assumes, that is a few hundred index probes a second against a table whose pages never leave cache.
+What that costs: one indexed single-row read per runner request. The lease verb is not a blocking long poll — it returns 200 with `retry_after_ms` (`NO_WORK_RETRY_AFTER_MS` = 1 s) — so an idle runner authenticates about once a second per worker. At the ~100 runners the sizing assumes (`fleet.runners`, `schema/600_runners.sql`), that is a few hundred index probes a second against a table whose pages never leave cache.
 
 It also means a Postgres outage fails runner auth immediately rather than being absorbed for up to one heartbeat. That surfaces as `503 UZ-AUTH-004`, which the runner classifies as transport loss and backs off from — **not** as an auth rejection, so an outage cannot trip the daemon's `MAX_CONSECUTIVE_AUTH_REJECTS` exit.
 

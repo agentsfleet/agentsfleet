@@ -85,13 +85,17 @@ mkdir -p "$cgroup_fixture"
 run_script() {
   : >"$calls"
   # env -i: the child sees ONLY what this harness assigns plus the VAR=val
-  # pairs each case passes before its command. Every variable the scripts
-  # read is supplied one of those two ways, so nothing ambient is needed —
-  # and nothing ambient can leak in. A developer shell exporting
-  # AGENTSFLEET_API_URL once tripped the prod-endpoint guard in common.sh;
-  # hermeticity closes that whole class instead of unsetting variables one
-  # by one as they bite. PATH is composed before the wipe, so the stub dir
-  # still shadows the real tools while the system tail keeps bash findable.
+  # pairs each case passes before its command. Cases that mean to exercise a
+  # variable pass it as an argument below, which still wins.
+  #
+  # The forcing case is AGENTSFLEET_API_URL: `common.sh` reads it as
+  # `${AGENTSFLEET_API_URL:-$expected_api_url}` and refuses the deploy when it
+  # disagrees with ENV's endpoint, so a developer shell pointed at api-dev
+  # fails the ENV=prod case alone, on that machine only. Dropping that one
+  # variable fixes that one bug; wiping the environment closes the whole class,
+  # since every variable these scripts read is supplied by this harness or by
+  # the case. PATH is composed before the wipe, so the stub dir still shadows
+  # the real tools while the system tail keeps bash findable.
   env -i \
     PATH="$stub_dir:$PATH" \
     CALLS="$calls" \

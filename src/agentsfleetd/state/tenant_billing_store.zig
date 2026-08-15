@@ -4,20 +4,17 @@ const clock = @import("common").clock;
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
-/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
+/// Every field is a copied scalar, so the row owns no memory and needs no
+/// allocator to read or release. It carried `grant_source` — the only allocated
+/// field, and the reason this struct once had a `deinit` — until M164 found that
+/// no reader consumed it: the wallet read duplicated the string on every billing
+/// request and every metered stage, and both callers freed it unexamined. The
+/// column is still WRITTEN at provisioning, where it is the audit record of why
+/// a tenant holds a balance; it is simply no longer read back.
 const BillingRow = struct {
-    const Self = @This();
-
     balance_nanos: i64,
-    grant_source: []u8,
     updated_at_ms: i64,
     exhausted_at_ms: ?i64,
-    /// NULL in the column means the trial is open-ended for this tenant.
-    free_trial_ends_at_ms: ?i64,
-
-    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
-        alloc.free(self.grant_source);
-    }
 };
 
 /// Returns true when a row was inserted; false means the tenant already had a
@@ -70,36 +67,14 @@ fn rowExists(conn: *pg.Conn, tenant_id: []const u8) !bool {
     return (try q.next()) != null;
 }
 
-/// This tenant's free-trial boundary, or null when open-ended. Also null when
-/// the tenant has no billing row at all — a tenant that was never granted a
-/// balance is not mid-trial, and the metering path treats both the same.
-pub fn loadTrialBoundary(conn: *pg.Conn, tenant_id: []const u8) !?i64 {
-    var q = PgQuery.from(try conn.query(sql.SELECT_TENANT_TRIAL_BOUNDARY, .{tenant_id}));
-    defer q.deinit();
-    const row = (try q.next()) orelse return null;
-    return try row.get(?i64, 0);
-}
-
-pub fn loadByTenant(
-    conn: *pg.Conn,
-    alloc: std.mem.Allocator,
-    tenant_id: []const u8,
-) !?BillingRow {
+pub fn loadByTenant(conn: *pg.Conn, tenant_id: []const u8) !?BillingRow {
     var q = PgQuery.from(try conn.query(sql.SELECT_TENANT_BALANCE, .{tenant_id}));
     defer q.deinit();
     const row = (try q.next()) orelse return null;
-    const bal = try row.get(i64, 0);
-    const grant_source = try alloc.dupe(u8, try row.get([]const u8, 1));
-    errdefer alloc.free(grant_source);
-    const ts = try row.get(i64, 2);
-    const exhausted_at_ms = try row.get(?i64, 3);
-    const free_trial_ends_at_ms = try row.get(?i64, 4);
     return .{
-        .balance_nanos = bal,
-        .grant_source = grant_source,
-        .updated_at_ms = ts,
-        .exhausted_at_ms = exhausted_at_ms,
-        .free_trial_ends_at_ms = free_trial_ends_at_ms,
+        .balance_nanos = try row.get(i64, 0),
+        .updated_at_ms = try row.get(i64, 1),
+        .exhausted_at_ms = try row.get(?i64, 2),
     };
 }
 

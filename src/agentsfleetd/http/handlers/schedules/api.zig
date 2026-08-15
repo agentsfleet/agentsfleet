@@ -295,3 +295,7 @@ fn scheduleJson(schedule: cron_model.Schedule) ScheduleJson {
         .updated_at = schedule.updated_at,
     };
 }
+
+test {
+    _ = @import("api_test.zig");
+}
