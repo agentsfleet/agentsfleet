@@ -121,11 +121,17 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 Today `--provider` takes any non-empty string, so the CLI is the entry point for provider values the runner cannot dial. This slice gives the CLI the catalogue the architecture already assumes exists, declared once so a future provider is one entry.
 
-**Implementation default:** the catalogue holds the dial names in `docs/architecture/billing_and_provider_keys.md` §9 plus `OPENAI_COMPATIBLE_PROVIDER`, because `openai-compatible` is agentsfleet's own custom-endpoint sentinel rather than a NullClaw dial target, and the typed form must keep accepting it.
+**Implementation default (amended at REVIEW):** the catalogue mirrors what the vendored NullClaw runtime can dial, which is decided by one function — `classifyProvider` in `zig-pkg/nullclaw-<version>/src/providers/factory.zig`. It reads three blocks, so the catalogue is their union: the `compat_providers` dial table (98), the `core_providers` map (17), and the alias arms of `canonicalProviderName` in `provider_names.zig` (14). Plus `OPENAI_COMPATIBLE_PROVIDER`, agentsfleet's own custom-endpoint sentinel rather than a NullClaw dial target, which the typed form must keep accepting.
+
+The authored default — "the dial names in `docs/architecture/billing_and_provider_keys.md` §9" — was wrong and shipped a regression. That section's table is illustrative, 13 entries; `main` accepts any string, so closing to 13 would have started rejecting `deepseek`, `cerebras`, `mistral` and ~100 more that the runtime dials today. There is no single table to mirror: the doc names one, the factory's own "single source of truth" comment scopes itself to OpenAI-compatible providers only, and core providers plus aliases sit outside it by design.
+
+**CLI-engine carve-out.** `claude-cli`, `claude-code`, `codex-cli`, `gemini-cli`, and `openai-codex` are dialable by NullClaw but excluded. Each spawns a local coding-agent binary (`claude_cli.zig` sets `CLI_NAME = "claude"`) and authenticates through that binary's own session, carrying no API key — so a key-bearing credential naming one is stored, classified `provider_key` by `billing_and_provider_keys.md` §8.2, and can never dial. They are refused by name with that reason rather than drowning in the accepted-set wall. Indy's direction records where they belong instead (see Discovery).
 
 - **Dimension 1.1** — A constants module declares the accepted ids as a single readonly catalogue, importing `OPENAI_COMPATIBLE_PROVIDER` rather than restating it → Test `test_catalogue_has_one_declaration_site` — **DONE**
 - **Dimension 1.2** — `parseEnumOption` accepts an opt-in case-folding option; its existing exact-match callers keep exact-match behaviour → Test `test_enum_option_folds_case_only_when_asked` — **DONE**
 - **Dimension 1.3** — `--provider` on `secret create` and on `secret update` parses through the catalogue; a canonical id passes and a mixed-case spelling of one normalises to the canonical form → Test `test_provider_flag_accepts_catalogue_and_normalises_case` — **DONE**
+- **Dimension 1.4** — The catalogue is re-derived from the vendored source by test, extracting each of the three blocks **by anchor** rather than sweeping the file, so an upstream test-vector row cannot enter a public flag and a dependency bump that widens the dial set fails the suite instead of silently narrowing the flag → Test `test_catalogue_mirrors_classify_provider_by_anchored_extraction` — **DONE**
+- **Dimension 1.5** — Every carved-out CLI-engine id is asserted to be a name NullClaw really dials, so the refusal message cannot become a lie if upstream drops one → Test `test_cli_engine_carve_out_names_are_really_dialable` — **DONE**
 
 ### §2 — Rejection is immediate, legible, and makes no network call
 
@@ -135,8 +141,9 @@ A rejected provider must cost nothing and explain itself. The user sees the valu
 
 - **Dimension 2.1** — An unknown provider exits 2 before any request is issued, and the message names both the rejected value and the accepted set → Test `test_unknown_provider_exits_two_without_request` — **DONE**
 - **Dimension 2.2** — An empty or whitespace-only `--provider` is rejected with the same code, not treated as absent → Test `test_blank_provider_is_rejected` — **DONE**
-- **Dimension 2.3** — `--help` for both secret verbs lists the accepted set, so the valid values are discoverable without reading documentation → Test `test_secret_help_lists_accepted_providers` — **DONE**
+- **Dimension 2.3** — `--help` for both secret verbs names example ids and the live accepted count; the full set appears in the unknown-value rejection, which is where an exhaustive list helps rather than buries → Test `test_secret_help_names_examples_and_count` — **DONE** *(amended at REVIEW: the authored dimension put the whole set in help. At 13 ids that read fine; at 116 it is a wall that buries every other option on the command, so the exhaustive list moved to the rejection and help names four examples plus the count.)*
 - **Dimension 2.4** — The generic `--data` form still accepts any body, including one whose `provider` field is outside the catalogue → Test `test_data_form_remains_unconstrained` — **DONE**
+- **Dimension 2.5** — The typed form requires `--provider`. Commander runs an option parser only on a flag it sees, so `--api-key` with `--model` and no provider reached the composer and produced `provider: ""` — stored by the server as a `provider_key` like any other non-sentinel string, and never dialable. Both verbs refuse it before any request → Test `test_typed_form_without_provider_is_refused` — **DONE**
 
 ### §3 — The credential store reads the caller's environment
 
@@ -231,10 +238,10 @@ process.env argument (unchanged behaviour for its Effect consumers).
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | An unknown provider is rejected before any network call (§1, §2) | `cd cli && bun run build && bun ./dist/bin/agentsfleet.js secret create t --provider notaprovider --api-key k --model m; echo "exit=$?"` | `exit=2` and stderr contains `must be one of:` | P0 | ✅ `exit=2`; stderr names `notaprovider` + all 13 ids |
+| R1 | An unknown provider is rejected before any network call (§1, §2) | `cd cli && bun run build && bun ./dist/bin/agentsfleet.js secret create t --provider notaprovider --api-key k --model m; echo "exit=$?"` | `exit=2` and stderr contains `must be one of:` | P0 | ✅ `exit=2`; stderr names `notaprovider` + the full accepted set (116 ids after the REVIEW amendment; the pre-amendment run named 13) |
 | R2 | The generic `--data` escape hatch is untouched (§2) | `grep -c 'FLAG_PROVIDER.*parseEnumOption' cli/src/program/cli-tree-fleet.ts` | exactly `2` — the two `--provider` sites; `FLAG_DATA_JSON` never pairs with a parser | P1 | ✅ exactly `2` |
 | R3 | The state modules never read the process environment (§3, Invariant 3) | `grep -c 'process\.env' cli/src/lib/state.ts cli/src/lib/config-dir.ts` | both lines end `:0` | P0 | ✅ both files `:0` |
-| R4 | The public flag change has a documentation branch | `git -C ~/Projects/docs diff --name-only main...HEAD` | at least 1 path, covering the page documenting `secret create --provider` | P0 | |
+| R4 | The public flag change has a documentation branch | `git -C ~/Projects/docs diff --name-only main...HEAD` | at least 1 path, covering the page documenting `secret create --provider` | P0 | ✅ branch `chore/m163-closed-provider-flag-changelog` (pushed): `fleets/model-providers.mdx` (new how-to), `cli/agentsfleet.mdx` (typed-form row), `docs.json` (nav), `changelog.mdx` (`<Update>`). `python3 scripts/check-documentation.py .` → `Documentation check passed` |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 49 paths, 0 missing from the tables |
 | R6 | The environment-key literal has one src declaration site (§3, Dimension 3.4) | `grep -rn 'AGENTSFLEET_STATE_DIR' cli/src/ \| grep -v 'lib/config-dir.ts'` | no output | P0 | ✅ no output |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ composite from solo clean runs: three Zig unit lanes + `test-coverage-all` exit 0 (zig merged 88.30% ≥ 83%; app 2249; website 173; cli 501 with the 100% line floor PASS). First attempt failed only on the floor — `auth-guard.ts:103-106`, fixed by the guardCommand contract tests |
@@ -265,11 +272,27 @@ N/A — no files deleted.
 
 - **Reconciling `semconv.WELL_KNOWN_PROVIDERS` with the dial catalogue.** They answer different questions — one is an OpenTelemetry naming standard, the other is what the runner can reach. Folding them together would put private spellings on the wire under a standard key. Separate observability milestone if it is wanted at all.
 - **Constraining the `provider` field inside `--data`.** That form is the generic secret blob; §8.2 of the architecture derives `custom_secret` from a missing or non-string provider, so constraining it would break generic secret storage.
+- **The CLI-engine providers (`claude-cli`, `claude-code`, `codex-cli`, `gemini-cli`, `openai-codex`).** Dialable by NullClaw, excluded here, and refused by name with the reason. They spawn a local coding-agent binary and authenticate through its own session, so they do not belong on a flag whose whole job is storing an API key. Indy's direction (Discovery, Aug 15) puts them behind an OAuth engine surface — the user clicks to sign in to the tool, and the engine replaces NullClaw for that fleet — which is a different mechanism, a different credential class, and its own milestone.
+- **Validating `--model` against the model catalogue.** `--model` is still a free string: any value stores successfully, activates, and fails at the first event — the same store-succeeds/fail-later shape this milestone closes for `--provider`, one flag over. `GET /v1/models` exists (`billing_and_provider_keys.md` §10) and the CLI never calls it; there is no `agentsfleet models` command, so a user choosing a model for their own provider has nothing to check a spelling against. Raised at REVIEW, not folded: it needs a new command, a new endpoint call, and its own docs page.
 - **Server-side rejection of an unaccepted provider.** The dashboard and the CLI are the two write surfaces and both would then be constrained, but a server-side closed set changes an API error surface and deserves its own milestone.
 - **Adopting m136's hook-scoped state-directory helper across the suite.** `feat/m136-live-connector-proof` adds `useFreshStateDir`; converting files to it belongs to that stream. §3 removes the *cause* of the inline guard rather than restyling it.
 - **Threading the caller's environment through the telemetry Effect graph.** `consent.ts:1-2` names it the M75 follow-up — a `CliConfig` environment field its three `getConfigDir` consumers would draw from. §3's dedupe leaves `getConfigDir` passing `process.env` explicitly at one visible call site; converting the consumers is that milestone's work.
 
 ---
+
+## Review findings (adversarial pass)
+
+Three CRITICAL findings landed against the implementation and were verified against source before any fix. One was refuted on the facts and kept only as a latent risk.
+
+| # | Finding | Verdict | Landed as |
+|---|---|---|---|
+| C1 | Omitting `--provider` bypasses the catalogue entirely — `--api-key k --model m` composes `provider: ""`, stored as a `provider_key` that can never dial | **CONFIRMED** from source at `fleet_secret_body.ts:83-113`; none of the four pairing rules rejected the empty string | Dimension 2.5, red-green proven on both verbs |
+| C2 | The parity regex sweeps all of `factory.zig`, so 11 `provider_holder_cases` test-vector names enter the public catalogue | **REFUTED as live, CONFIRMED as latent.** Set arithmetic shows every one of the 11 fixture names is also a `core_providers` key — no junk reached the catalogue. The unanchored extraction is still wrong: the next upstream negative fixture (`.name = "unknown-provider"`) would widen a public flag, and the `> 100` assertion was pinned to the accidental 109 rather than the real 98 | Dimension 1.4, anchored per-block extraction at pinned sizes |
+| C3 | The catalogue rejects names the runtime dials — `google`, `azure`, `mimo`, `vertex-ai` and 8 more, all working on `main` | **CONFIRMED.** The regex cannot see `core_providers` map keys or `canonicalProviderName` alias arms; only 98 of the union's 120 names are `.name =` fields | §1 implementation default amended; catalogue is the three-block union |
+
+Informational findings also landed: the `main-layer.ts` header documented a `MainLayer` export that does not exist (RULE NLR, fixed in the same diff), and Invariant 3's "suite-enforced" claim was only a three-file check, now a `Bun.Glob` walk over all of `cli/src/`.
+
+Two findings were **rejected**: tightening an already-created config directory's mode (out of this milestone's blast radius — it is a migration concern for existing installs, not a write-path defect), and honouring `env.HOME` in `resolveConfigDir` (the `cliEnv()` guard closes the same hole at lower cost and without changing production path resolution).
 
 ## Product Clarity (authoring record)
 
@@ -341,6 +364,34 @@ N/A — no files deleted.
   the `--provider` page + changelog is authorized this session (rubric R4).
   (3) The `runner_test.sh` ambient-env fix folds into this PR despite sitting
   outside the authored Files Changed — recorded as its own table row.
+- **REVIEW, Aug 15, 2026 — resolved: the catalogue mirrors `classifyProvider`, and the CLI engines wait for an OAuth engine surface.**
+  Context: the authored catalogue premise ("mirror the factory") does not resolve —
+  `classifyProvider` reads three separate blocks, and the doc table it was authored
+  from is 13 illustrative entries. Presented with the set arithmetic (98 compat + 17
+  core + 14 aliases = 120 dialable, against a 108-entry catalogue missing 12 names
+  `main` accepts today).
+  > Indy (2026-08-15): "well i just need 1 source of truth meaning what nullclaw
+  > providers are in our factory.zig or facotry.zig is nullclass."
+  Resolution: one source of truth is the **function**, not a table — the catalogue
+  mirrors `classifyProvider`'s accept set, and the parity test extracts the three
+  blocks it consults, by anchor.
+  On the CLI engines, asked whether NullClaw carries `claude-cli` / `codex-cli` /
+  `ampcode` as providers (answer from source: the first two yes, as first-class
+  `ProviderKind` variants that spawn a local binary and take no API key; `ampcode`
+  does not exist in NullClaw at all):
+  > Indy (2026-08-15): "suggest me this area for later implementation on how i feel
+  > can support all the cli, they would get added in a different way where the user
+  > clicks login to codex-cli which opens the codex login and upon auth we start
+  > using codex-cli as opposed to nullclaw so its pretty much an engine abstraction?
+  > via oauth"
+  Resolution: the CLI engines are **deferred to a future engine surface** and
+  excluded from this key-bearing flag, refused by name with the reason. Recorded in
+  Out of Scope; the parity test asserts each carved-out id is genuinely dialable so
+  the refusal cannot become a lie.
+  Amended in this pass: §1 implementation default, §1 (+Dimensions 1.4, 1.5), §2
+  (+Dimension 2.5, 2.3 rewritten), Review findings table, rubric R1 + R4 regraded,
+  Out of Scope (+2 rows).
+
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
