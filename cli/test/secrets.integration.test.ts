@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
+import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "ws_cred_test";
@@ -25,7 +25,7 @@ describe("secret commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["secret", "create", "github", `--data={"token":"ghp_test_value"}`],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         expect(out.read()).toMatch(/stored/i);
@@ -61,7 +61,7 @@ describe("secret commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["secret", "update", "github", `--data={"token":"ghp_replaced_value"}`],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         expect(out.read()).toMatch(/updated/i);
@@ -87,7 +87,7 @@ describe("secret commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["secret", "update", "ghost", `--data={"token":"x"}`],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
         expect(`${out.read()}${err.read()}`).toMatch(/UZ-VAULT-003|not found/i);
@@ -108,7 +108,7 @@ describe("secret commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["secret", "create", "github", `--data={"token":"ghp_second_attempt"}`],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         // Exit 0: re-running a provisioning script over names it already
         // created must be quiet, not an aborted run.
@@ -138,7 +138,7 @@ describe("secret commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["secret", "create", "github", `--data={"token":"ghp_x"}`],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
         expect(`${out.read()}${err.read()}`).toMatch(/UZ-VAULT-009/);
@@ -153,7 +153,7 @@ describe("secret commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["secret", "create", "github", `--data={"token":"ghp_x"}`, "--force"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
         // Rejected at parse time: nothing reaches the API, so a script still
@@ -178,7 +178,7 @@ describe("secret commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["secret", "list"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         const text = out.read();

@@ -9,6 +9,7 @@
 
 import { Effect, Layer, Option, Redacted, Context } from "effect";
 import {
+  STATE_STORE_SUGGESTION,
   loadCredentials as loadCredsRaw,
   saveCredentials as saveCredsRaw,
   clearCredentials as clearCredsRaw,
@@ -60,11 +61,13 @@ const unexpected = (op: string) =>
   (cause: unknown): UnexpectedError =>
     new UnexpectedError({
       detail: `credentials ${op} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-      suggestion: "check ~/.agentsfleet/ permissions and disk space",
+      suggestion: STATE_STORE_SUGGESTION,
     });
 
-const loadRecord = (): Effect.Effect<CredentialsRecord, UnexpectedError> =>
-  Effect.tryPromise({ try: () => loadCredsRaw(), catch: unexpected("load") });
+const loadRecord = (
+  env: NodeJS.ProcessEnv,
+): Effect.Effect<CredentialsRecord, UnexpectedError> =>
+  Effect.tryPromise({ try: () => loadCredsRaw(env), catch: unexpected("load") });
 
 // Refused on load, not merely on save. A session token written into this
 // field by a regression is dropped at read and never carried on a request —
@@ -93,12 +96,12 @@ const tokenOf = (
     ? Option.some(Redacted.make(rec.token))
     : Option.none<Redacted.Redacted<string>>();
 
-const makeLive = (): CredentialsShape => ({
-  getAccessToken: loadRecord().pipe(Effect.map(tokenOf)),
+const makeLive = (env: NodeJS.ProcessEnv): CredentialsShape => ({
+  getAccessToken: loadRecord(env).pipe(Effect.map(tokenOf)),
   // `credential_id` deliberately skips the shape check: an identifier is not
   // credential material, and a record whose token is unusable still names a
   // row worth revoking.
-  snapshot: loadRecord().pipe(
+  snapshot: loadRecord(env).pipe(
     Effect.map((rec) => ({
       accessToken: tokenOf(rec),
       savedAt: rec.saved_at ?? null,
@@ -110,7 +113,7 @@ const makeLive = (): CredentialsShape => ({
   saveAccessToken: (input) =>
     Effect.tryPromise({
       try: () =>
-        saveCredsRaw({
+        saveCredsRaw(env, {
           token: Redacted.value(input.token),
           saved_at: Date.now(),
           session_id: input.sessionId,
@@ -120,12 +123,16 @@ const makeLive = (): CredentialsShape => ({
       catch: unexpected("save"),
     }),
   clearAccessToken: Effect.tryPromise({
-    try: () => clearCredsRaw(),
+    try: () => clearCredsRaw(env),
     catch: unexpected("clear"),
   }),
 });
 
-export const credentialsLayer: Layer.Layer<Credentials> = Layer.succeed(
-  Credentials,
-  Credentials.of(makeLive()),
-);
+// A factory, not a module-level Layer: the environment is the composition
+// root's to supply (runCli resolves `io.env ?? process.env` once), and a
+// module-level layer would have to read the process environment here —
+// exactly the scattered read the state layer no longer performs.
+export const credentialsLayer = (
+  env: NodeJS.ProcessEnv,
+): Layer.Layer<Credentials> =>
+  Layer.succeed(Credentials, Credentials.of(makeLive(env)));

@@ -152,4 +152,8 @@ export const AUTH_REQUIRED_REPRESENTATIVE: ReadonlyArray<ReadonlyArray<string>> 
   ["connector", "list"],
   ["billing", "show"],
   ["list"],
+  // The catalogue is bearer-authed (handlers/model_library.zig), so `models`
+  // must fail on the auth guard rather than dialing and surfacing a transport
+  // error — the read happens before there is anything to read with.
+  ["models"],
 ];
