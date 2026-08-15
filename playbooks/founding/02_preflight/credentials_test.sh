@@ -170,6 +170,55 @@ test_deployment_rejects_missing_runtime_input() {
   fi
 }
 
+test_prod_checks_both_discord_webhooks() {
+  local name="production checks development and release Discord webhooks"
+  local output status=0
+  output="$(run_gate bootstrap '' prod)" || status=$?
+
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "complete production inventory failed: $output"
+  elif [[ "$output" != *"discord-ci-webhook/credential"* ]]; then
+    bad "$name" "development webhook was not checked"
+  elif [[ "$output" != *"discord-release-webhook/credential"* ]]; then
+    bad "$name" "release webhook was not checked"
+  elif [[ "$output" == *do-not-print-provider-secret* ]]; then
+    bad "$name" "gate printed a webhook secret"
+  else
+    ok "$name"
+  fi
+}
+
+test_discord_notifications_route_by_release_stage() {
+  local name="Discord notifications route development and production separately"
+  local action="$repo_root/.github/actions/notify-discord/action.yml"
+  local workflow
+
+  if ! rg --fixed-strings --quiet 'default: discord-ci-webhook' "$action" ||
+     ! rg --fixed-strings --quiet 'op://${{ inputs.vault }}/${{ inputs.webhook-item }}/credential' "$action"; then
+    bad "$name" "notify action does not default to the development webhook item"
+    return
+  fi
+
+  for workflow in release.yml post-release.yml; do
+    if ! rg --fixed-strings --quiet \
+      'webhook-item: discord-release-webhook' \
+      "$repo_root/.github/workflows/$workflow"; then
+      bad "$name" "$workflow does not select the release webhook"
+      return
+    fi
+  done
+
+  for workflow in deploy-dev.yml deploy-dev-fly.yml deploy-dev-worker.yml; do
+    if rg --fixed-strings --quiet \
+      'webhook-item: discord-release-webhook' \
+      "$repo_root/.github/workflows/$workflow"; then
+      bad "$name" "$workflow routes development output to the release webhook"
+      return
+    fi
+  done
+  ok "$name"
+}
+
 test_workflows_use_deployment_stage_without_generated_pointer() {
   local name="workflows use deployment stage without generated pointer"
   local workflow
@@ -270,6 +319,8 @@ test_bootstrap_checks_only_pre_priming_inputs
 test_post_deploy_values_are_not_early_inputs
 test_deployment_checks_complete_infrastructure_inputs
 test_deployment_rejects_missing_runtime_input
+test_prod_checks_both_discord_webhooks
+test_discord_notifications_route_by_release_stage
 test_workflows_use_deployment_stage_without_generated_pointer
 test_workflows_load_only_current_connector_boot_secret
 test_issue_tracker_docs_pin_current_source_scopes
