@@ -67,3 +67,40 @@ test "fromPairs builds a readable map and ignores absent keys" {
     try std.testing.expectEqualStrings("two", map.get("BETA").?);
     try std.testing.expect(map.get("MISSING") == null);
 }
+
+test "fromPairs frees the pairs it had copied when a later put fails" {
+    // `Map.put` copies both halves, so a failure on the second pair leaves the
+    // first one owned by the map and nothing else pointing at it. Walk the
+    // ladder: fail the Nth allocation for every N until the build succeeds.
+    var fail_index: usize = 0;
+    while (fail_index < 32) : (fail_index += 1) {
+        var fa = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
+        var map = fromPairs(fa.allocator(), &.{
+            .{ "ALPHA", "one" },
+            .{ "BETA", "two" },
+            .{ "GAMMA", "three" },
+        }) catch |err| {
+            try std.testing.expectEqual(error.OutOfMemory, err);
+            continue;
+        };
+        map.deinit();
+        return; // the ladder is exhausted — every earlier index unwound cleanly
+    }
+    return error.TestUnexpectedResult; // never succeeded: not a ladder proof
+}
+
+test "testLiveSnapshot frees the entries it had copied when a put fails" {
+    // The live environment carries more entries than the ladder is long in any
+    // lane that runs this, so each index drives the errdefer; a sparse environ
+    // completes the snapshot instead, which is equally correct.
+    var fail_index: usize = 0;
+    while (fail_index < 32) : (fail_index += 1) {
+        var fa = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
+        var map = testLiveSnapshot(fa.allocator()) catch |err| {
+            try std.testing.expectEqual(error.OutOfMemory, err);
+            continue;
+        };
+        map.deinit();
+        return;
+    }
+}

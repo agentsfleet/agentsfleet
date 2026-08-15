@@ -42,3 +42,31 @@ test "encodeForXAdd produces 5 field/value pairs in canonical order" {
     try std.testing.expectEqualStrings("created_at", argv[8]);
     try std.testing.expectEqualStrings("1745568000000", argv[9]);
 }
+
+test "encodeForXAdd frees the formatted created_at when the argv allocation fails" {
+    // Two allocations, in order: the duped `created_at`, then the 10-slot argv.
+    // A failure on the second must free the first — it is the only owned
+    // element, and nothing else holds a reference to it.
+    const env = EventEnvelope{
+        .event_id = "1729874000000-0",
+        .fleet_id = "zb-1",
+        .workspace_id = "ws-1",
+        .actor = "steer:kishore",
+        .event_type = .chat,
+        .request_json = "{\"message\":\"hello\"}",
+        .created_at = 1745568000000,
+    };
+
+    var fail_index: usize = 0;
+    while (fail_index < 8) : (fail_index += 1) {
+        var fa = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
+        const alloc = fa.allocator();
+        const argv = env.encodeForXAdd(alloc) catch |err| {
+            try std.testing.expectEqual(error.OutOfMemory, err);
+            continue;
+        };
+        EventEnvelope.freeXAddArgv(alloc, argv);
+        return; // the ladder is exhausted — every earlier index unwound cleanly
+    }
+    return error.TestUnexpectedResult; // never succeeded: not a ladder proof
+}

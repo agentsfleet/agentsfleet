@@ -85,10 +85,5 @@ pub fn freeXAddArgv(alloc: Allocator, argv: []const []const u8) void {
     alloc.free(argv);
 }
 
-/// Compute the continuation actor for a re-enqueued event. Flat — never
-/// re-nests `continuation:`. A steer that chunks 3 times produces
-/// `actor=continuation:steer:kishore` on every continuation, not
-/// `continuation:continuation:continuation:steer:kishore`.
-///
 const std = @import("std");
 const Allocator = std.mem.Allocator;
