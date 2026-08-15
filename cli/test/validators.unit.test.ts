@@ -174,6 +174,41 @@ describe("parseEnumOption", () => {
     expect(folding("prod")).toBe("prod");
     expect(() => folding("staging")).toThrow("must be one of: dev, prod");
   });
+
+  test("folding matches a non-lowercase member and returns its canonical spelling", () => {
+    const folding = parseEnumOption(["Mixed-Case", "plain"], { foldCase: true });
+    expect(folding("mixed-case")).toBe("Mixed-Case");
+    expect(folding("MIXED-CASE")).toBe("Mixed-Case");
+  });
+
+  test("a deliberately rejected value gets its reason, not the generic list", () => {
+    const parse = parseEnumOption(["dev", "prod"], {
+      rejected: { retired: "was removed in a prior release" },
+    });
+    expect(() => parse("retired")).toThrow("'retired' was removed in a prior release");
+    // The reason replaces the wall rather than appending to it.
+    expect(() => parse("retired")).not.toThrow("must be one of");
+    // An unrecognised value still gets the list.
+    expect(() => parse("nonsense")).toThrow("must be one of: dev, prod");
+  });
+
+  test("a rejected value is matched under the same folding rule as members", () => {
+    const folding = parseEnumOption(["dev"], {
+      foldCase: true,
+      rejected: { Retired: "is gone" },
+    });
+    expect(() => folding("retired")).toThrow("'Retired' is gone");
+    const exact = parseEnumOption(["dev"], { rejected: { Retired: "is gone" } });
+    // Without foldCase the refusal is exact-match only, mirroring members.
+    expect(() => exact("retired")).toThrow("must be one of: dev");
+  });
+
+  test("a rejected value never shadows a real member", () => {
+    const parse = parseEnumOption(["dev", "prod"], {
+      rejected: { dev: "unreachable — dev is accepted" },
+    });
+    expect(parse("dev")).toBe("dev");
+  });
 });
 
 describe("parsePathOption", () => {
