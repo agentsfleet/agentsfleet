@@ -30,6 +30,7 @@ export const CREDENTIALS_KEY_TOKEN = "token";
 export const CREDENTIALS_KEY_SAVED_AT = "saved_at";
 export const CREDENTIALS_KEY_SESSION_ID = "session_id";
 export const CREDENTIALS_KEY_API_URL = "api_url";
+export const CREDENTIALS_KEY_CREDENTIAL_ID = "credential_id";
 
 // `agent list --json` envelope key carrying the row array.
 export const LIST_ITEMS_KEY = "items";
@@ -46,6 +47,7 @@ export interface CredentialsRecord {
   readonly saved_at: number;
   readonly session_id: string | null;
   readonly api_url: string | null;
+  readonly credential_id?: string | null;
 }
 
 export function credentialsPathFor(stateDir: string): string {

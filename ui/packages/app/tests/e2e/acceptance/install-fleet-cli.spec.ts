@@ -9,7 +9,8 @@
  *   - Per-test temp directory under `os.tmpdir()` holds:
  *       * agentsfleet/credentials.json + workspaces.json   (CLI auth state)
  *   - `AGENTSFLEET_STATE_DIR=<tmpdir>/agentsfleet` points the CLI at that state.
- *   - `AGENTSFLEET_TOKEN=<fixture.sessionJwt>` populates the Bearer header with a JSON Web Token (JWT).
+ *   - The fixture session JWT mints a short-lived test CLI credential; only
+ *     that `afc_…` credential is persisted for the CLI process.
  *   - `AGENTSFLEET_API_URL=$NEXT_PUBLIC_API_URL` so the CLI and the
  *     workspace-id fetch hit the same agentsfleetd (mismatched URLs land at 404).
  *
@@ -39,6 +40,7 @@ const INSTALL_LIBRARY_NAME = "install-cli-fixture";
 const INSTALL_STATUS = "installed";
 const LIVE_STATE = "live";
 const SOURCE_KIND_UPLOAD = "upload";
+const CLI_CREDENTIALS_PATH = "/v1/cli-credentials";
 
 function loadFixtureCache(): Record<string, { sessionJwt: string }> {
   const cachePath = path.join(process.cwd(), ".fixture-jwts.json");
@@ -90,6 +92,36 @@ async function writeClientState(stateDir: string, workspaceId: string, token: st
   );
 }
 
+async function mintCliCredential(
+  apiUrl: string,
+  sessionToken: string,
+  machineName: string,
+): Promise<{ id: string; credential: string }> {
+  const response = await fetch(`${apiUrl}${CLI_CREDENTIALS_PATH}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${sessionToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ machine_name: machineName }),
+  });
+  if (!response.ok) {
+    throw new Error(`CLI credential mint failed (${response.status}): ${await response.text()}`);
+  }
+  const body = await response.json() as { id?: unknown; credential?: unknown };
+  if (typeof body.id !== "string" || typeof body.credential !== "string") {
+    throw new Error("CLI credential mint returned no usable credential");
+  }
+  return { id: body.id, credential: body.credential };
+}
+
+async function revokeCliCredential(apiUrl: string, minted: { id: string; credential: string }) {
+  const response = await fetch(`${apiUrl}${CLI_CREDENTIALS_PATH}/${encodeURIComponent(minted.id)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${minted.credential}` },
+  });
+  if (!response.ok) {
+    throw new Error(`CLI credential revoke failed (${response.status}): ${await response.text()}`);
+  }
+}
+
 async function onboardLibrary(apiUrl: string, workspaceId: string, token: string): Promise<string> {
   const response = await fetch(
     `${apiUrl}/v1/workspaces/${encodeURIComponent(workspaceId)}/fleet-libraries`,
@@ -118,20 +150,20 @@ async function onboardLibrary(apiUrl: string, workspaceId: string, token: string
 async function installFixture(
   apiUrl: string,
   workspaceId: string,
-  token: string,
+  sessionToken: string,
+  cliCredential: string,
   fleetName: string,
 ): Promise<{ fleet_id: string; status: string }> {
   const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "install-cli-"));
   try {
     const stateDir = path.join(tmpRoot, "agentsfleet");
-    await writeClientState(stateDir, workspaceId, token, apiUrl);
-    const libraryId = await onboardLibrary(apiUrl, workspaceId, token);
+    await writeClientState(stateDir, workspaceId, cliCredential, apiUrl);
+    const libraryId = await onboardLibrary(apiUrl, workspaceId, sessionToken);
     const result = await spawnFleetctl(
       ["--json", "install", "--library", libraryId, "--name", fleetName],
       {
         AGENTSFLEET_STATE_DIR: stateDir,
         AGENTSFLEET_API_URL: apiUrl,
-        AGENTSFLEET_TOKEN: token,
         AGENTSFLEET_TELEMETRY_DISABLED: "1",
         NO_COLOR: "1",
       },
@@ -161,21 +193,26 @@ test.describe("install-fleet-cli", () => {
 
     const tag = Math.random().toString(36).slice(2, 8);
     const name = `install-cli-${tag}`;
+    const minted = await mintCliCredential(apiUrl, token, `e2e-install-${tag}`);
 
-    const payload = await installFixture(apiUrl, ws, token, name);
-    expect(payload.status).toBe(INSTALL_STATUS);
-    expect(payload.fleet_id).toBeTruthy();
+    try {
+      const payload = await installFixture(apiUrl, ws, token, minted.credential, name);
+      expect(payload.status).toBe(INSTALL_STATUS);
+      expect(payload.fleet_id).toBeTruthy();
 
-    await signInAs(page, FIXTURE_KEY.regular);
-    await page.goto(workspaceHref(ws, "fleets"));
-    await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
+      await signInAs(page, FIXTURE_KEY.regular);
+      await page.goto(workspaceHref(ws, "fleets"));
+      await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
 
-    const row = page.locator(`a[href="${workspaceHref(ws, `fleets/${payload.fleet_id}`)}"]`);
-    await expect(row).toBeVisible();
-    await expect(row).toHaveAttribute("data-state", LIVE_STATE);
-    await expect(row).toHaveAccessibleName(
-      new RegExp(`^Manage fleet: ${name} — Agent .+ — active$`),
-    );
+      const row = page.locator(`a[href="${workspaceHref(ws, `fleets/${payload.fleet_id}`)}"]`);
+      await expect(row).toBeVisible();
+      await expect(row).toHaveAttribute("data-state", LIVE_STATE);
+      await expect(row).toHaveAccessibleName(
+        new RegExp(`^Manage fleet: ${name} — Agent .+ — active$`),
+      );
+    } finally {
+      await revokeCliCredential(apiUrl, minted);
+    }
   });
 
   test.afterEach(async () => {
