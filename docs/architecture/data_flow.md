@@ -651,6 +651,7 @@ not authority by itself.
    reasoning loop never branches on actor. Actor is metadata for the
    SKILL.md prose and the user's history filter.
 
+   > [!NOTE]
    > SLACK (M106): a fifth producer — the Slack-resident
    > bot lands an actor=slack:<user> event on fleet:{channel_fleet_id}:events
    > via the webhook-producer XADD shape (signature-authed, no principal —
@@ -668,6 +669,7 @@ not authority by itself.
    > no cron, code-set at creation (not from the skill.md prose). Spec:
    > docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md
 
+   > [!NOTE]
    > REPAIR VERIFICATION (M157): a sixth producer. After a human merges a
    > repair and GitHub reports production status, a bounded dispatcher matches
    > the workspace, repository, and commit, then lands one

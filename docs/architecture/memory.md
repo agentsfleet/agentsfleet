@@ -17,6 +17,7 @@ Every memory row belongs to **one fleet**, keyed by the column **`fleet_id`** (U
 | `fleet_id` is **server-derived from the lease**, never client-supplied (Insecure-Direct-Object-Reference guard) | `src/agentsfleetd/http/handlers/runner/memory.zig` (`lease.fleet_id == {fleet_id}`) |
 | Two fleets never share a namespace — Fleet A cannot read Fleet B's memory | role isolation (§2) + the `(key, fleet_id)` key |
 
+> [!NOTE]
 > **Terminology.** The scope column is `fleet_id`. The legacy NullClaw name **`instance_id`** (and the interim `zombie_id`) are **retired** — `schema/820` says so explicitly (*"no legacy instance_id prefix"*). Any doc or spec that still says `instance_id` is stale; the column, the wire path, and the code are `fleet_id` end to end.
 
 ## 2. Isolation — a Postgres role, not the workspace
