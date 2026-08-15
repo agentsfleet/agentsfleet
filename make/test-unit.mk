@@ -198,10 +198,7 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	 mkdir -p "$(ZIG_COVERAGE_DIR)"; \
 	 db_url="$${TEST_DATABASE_URL:-$(TEST_DATABASE_URL_LOCAL)}"; \
 	 redis_url="$${TEST_REDIS_TLS_URL:-$(TEST_REDIS_TLS_URL_LOCAL)}"; \
-	 components="agentsfleetd:agentsfleetd-tests runner:agentsfleet-runner-tests lib:agentsfleet-lib-tests logging:agentsfleet-logging-tests deadline:agentsfleet-call-deadline-tests s3:agentsfleet-s3-tests"; \
-	 if [ "$$(uname -s)" = Linux ]; then \
-	   components="$$components runner_integration:agentsfleet-runner-integration-tests"; \
-	 fi; \
+	 components="agentsfleetd:agentsfleetd-tests runner:agentsfleet-runner-tests lib:agentsfleet-lib-tests logging:agentsfleet-logging-tests deadline:agentsfleet-call-deadline-tests s3:agentsfleet-s3-tests runner_integration:agentsfleet-runner-integration-tests"; \
 	 names=""; \
 	 for component in $$components; do \
 	   name=$${component%%:*}; binary=$${component#*:}; output="$(ZIG_COVERAGE_DIR)/$$name"; \
