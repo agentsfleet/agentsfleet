@@ -674,3 +674,64 @@ jobs:
             WORKER_ITEM="$worker" \
               ./playbooks/lib/runner/verify.sh
           done
+
+  # ── Release verdict ──────────────────────────────────────────────────────
+  # PROD had no Discord notification at all: every workflow but deploy-dev.yml
+  # posted nothing, so a prod release succeeded or failed in silence. This is
+  # the one message that says which.
+  notify:
+    runs-on: ubuntu-latest
+    needs:
+      - npm
+      - create-release
+      - deploy-fly-prod
+      - deploy-worker-canary-prod
+      - deploy-worker-fleet-prod
+    if: always()
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Compose release verdict
+        id: verdict
+        env:
+          NPM_RESULT: ${{ needs.npm.result }}
+          RELEASE_RESULT: ${{ needs.create-release.result }}
+          FLY_RESULT: ${{ needs.deploy-fly-prod.result }}
+          CANARY_RESULT: ${{ needs.deploy-worker-canary-prod.result }}
+          FLEET_RESULT: ${{ needs.deploy-worker-fleet-prod.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          LINE="npm: ${NPM_RESULT} | release: ${RELEASE_RESULT} | fly: ${FLY_RESULT} | canary: ${CANARY_RESULT} | fleet: ${FLEET_RESULT}"
+
+          # A skipped worker stage is allowed — PROD_WORKER_READY gates it, and
+          # the fleet stage waits on a human approval that may not have landed.
+          ok=1
+          for r in "$NPM_RESULT" "$RELEASE_RESULT" "$FLY_RESULT"; do
+            [ "$r" = success ] || ok=0
+          done
+          for r in "$CANARY_RESULT" "$FLEET_RESULT"; do
+            case "$r" in success|skipped) ;; *) ok=0 ;; esac
+          done
+
+          if [ "$ok" = 1 ]; then
+            STATUS=success
+            MESSAGE="✅ PROD release \`$TAG\` shipped\\n$LINE"
+          else
+            STATUS=failure
+            MESSAGE="❌ PROD release \`$TAG\` failed\\n$LINE\\nCheck: ${RUN_URL}"
+          fi
+
+          # printf, not echo: the \n markers must reach the action as literal
+          # backslash-n for its printf %b to expand. echo's handling varies.
+          printf 'status=%s\n' "$STATUS" >>"$GITHUB_OUTPUT"
+          printf 'message=%s\n' "$MESSAGE" >>"$GITHUB_OUTPUT"
+
+      - name: Notify Discord
+        if: always()
+        uses: ./.github/actions/notify-discord
+        with:
+          status: ${{ steps.verdict.outputs.status }}
+          message: ${{ steps.verdict.outputs.message || '❌ PROD release verdict could not be computed — inspect the notify job' }}
+          op-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          vault: ${{ vars.VAULT_PROD }}

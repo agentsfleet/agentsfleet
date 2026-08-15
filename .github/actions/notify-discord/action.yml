@@ -1,0 +1,59 @@
+name: Notify Discord
+description: Post one deploy or release verdict to the CI Discord channel.
+
+# One implementation, every workflow. The per-host notifier this replaces lived
+# in deploy/baremetal/deploy.sh and guarded on DISCORD_WEBHOOK_URL, so when a
+# merge dropped the workflow step that delivered that variable the notifications
+# stopped without a single error. Notifying from the runner keeps the webhook
+# off deploy targets and makes a broken notify step fail its job instead.
+
+inputs:
+  message:
+    description: Body text. Literal \n markers become newlines.
+    required: true
+  status:
+    description: success | failure. Anything else is treated as failure.
+    required: false
+    default: failure
+  op-token:
+    description: 1Password service-account token.
+    required: true
+  vault:
+    description: Vault holding the discord-ci-webhook item.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Load Discord webhook from 1Password
+      uses: 1password/load-secrets-action@v4
+      with:
+        export-env: true
+      env:
+        OP_SERVICE_ACCOUNT_TOKEN: ${{ inputs.op-token }}
+        DISCORD_WEBHOOK: op://${{ inputs.vault }}/discord-ci-webhook/credential
+
+    - name: Post verdict
+      shell: bash
+      env:
+        MSG: ${{ inputs.message }}
+        STATUS: ${{ inputs.status }}
+      run: |
+        set -euo pipefail
+        # Green only on an explicit success; every other value reads as red.
+        if [ "$STATUS" = success ]; then COLOR=3066993; else COLOR=15158332; fi
+
+        # An absent webhook is the failure that hid the last outage. Fail here
+        # rather than posting nothing and reporting success.
+        if [ -z "${DISCORD_WEBHOOK:-}" ]; then
+          echo "✗ DISCORD_WEBHOOK is empty — 1Password load failed or the vault lacks discord-ci-webhook" >&2
+          exit 1
+        fi
+
+        # jq builds the payload so message content cannot break the JSON.
+        # printf %b turns the caller's literal \n markers into real newlines.
+        BODY="$(jq -n --arg msg "$(printf '%b' "$MSG")" --argjson color "$COLOR" \
+          '{embeds: [{description: $msg, color: $color}]}')"
+        curl -sf -X POST "$DISCORD_WEBHOOK" \
+          -H "Content-Type: application/json" \
+          -d "$BODY"

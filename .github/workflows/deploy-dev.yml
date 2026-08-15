@@ -98,14 +98,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Load Discord webhook from 1Password
-        uses: 1password/load-secrets-action@v4
-        with:
-          export-env: true
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          DISCORD_WEBHOOK: op://${{ vars.VAULT_PROD }}/discord-ci-webhook/credential
-
       # One verdict, every gate. Green requires qa-dev, acceptance-e2e-dev,
       # and cli-acceptance-dev to be "success". A skipped or canceled
       # release-critical job is red, with deploy-worker-dev allowed its
@@ -133,32 +125,25 @@ jobs:
 
           if [ "$QA_RESULT" = success ] && [ "$ACCEPTANCE_RESULT" = success ] && [ "$CLI_RESULT" = success ] \
             && { [ "$WORKER_RESULT" = success ] || [ "$WORKER_RESULT" = skipped ]; }; then
-            COLOR=3066993
+            STATUS=success
             MESSAGE="✅ DEV deploy green — \`$REF_NAME\` @ \`$SHORT_SHA\`\\nQA: passed | acceptance-e2e: passed | cli-acceptance: passed | worker: ${WORKER_RESULT}\\n→ ready for tag release"
           else
-            COLOR=15158332
+            STATUS=failure
             MESSAGE="❌ DEV deploy not releasable — \`$REF_NAME\` @ \`$SHORT_SHA\`\\nQA: ${QA_RESULT} | acceptance-e2e: ${ACCEPTANCE_RESULT} | cli-acceptance: ${CLI_RESULT} | worker: ${WORKER_RESULT}\\nCheck: ${RUN_URL}"
           fi
 
-          echo "color=$COLOR" >>"$GITHUB_OUTPUT"
+          echo "status=$STATUS" >>"$GITHUB_OUTPUT"
           echo "message=$MESSAGE" >>"$GITHUB_OUTPUT"
 
       - name: Notify Discord
         # always(): a verdict-step failure must still produce a red
         # notification — a silently absent message is the worst possible
-        # outcome for a release gate.
+        # outcome for a release gate. The message falls back rather than
+        # going out empty.
         if: always()
-        env:
-          MSG: ${{ steps.verdict.outputs.message }}
-          COLOR: ${{ steps.verdict.outputs.color }}
-        run: |
-          # jq builds the payload so no message content can break the JSON —
-          # a malformed notification would silence exactly the red verdict
-          # this job exists to deliver. printf %b turns the script's literal
-          # \n markers into the real newlines Discord renders.
-          FALLBACK_MSG="❌ DEV deploy verdict could not be computed — inspect the notify job"
-          BODY="$(jq -n --arg msg "$(printf '%b' "${MSG:-$FALLBACK_MSG}")" --argjson color "${COLOR:-15158332}" \
-            '{embeds: [{description: $msg, color: $color}]}')"
-          curl -sf -X POST "$DISCORD_WEBHOOK" \
-            -H "Content-Type: application/json" \
-            -d "$BODY"
+        uses: ./.github/actions/notify-discord
+        with:
+          status: ${{ steps.verdict.outputs.status }}
+          message: ${{ steps.verdict.outputs.message || '❌ DEV deploy verdict could not be computed — inspect the notify job' }}
+          op-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          vault: ${{ vars.VAULT_PROD }}
