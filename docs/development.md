@@ -32,7 +32,7 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
   host` on every attempt. It is not payload size — run the push with network
   sandboxing disabled and it lands first try.
 - **Flaky under parallel hook load:** `agentsfleet test/browser-resolve-platforms`
-  (and occasionally app's `provider-selector.test.ts`) time out at ~5 s but pass
+  (and occasionally the app's provider-selection tests) time out at ~5 s but pass
   in isolation. Retry serially before suspecting the diff.
 - **`main` is branch-protected** (required checks; direct pushes are declined).
   Everything lands via a feature branch + PR — including specs.
@@ -90,11 +90,11 @@ model Zig's transitive test-block compilation:
   `test {}` blocks compile, so a parent module's
   `test { _ = @import("x_test.zig"); }` pulls the test file in *transitively*.
 
-The trap: grepping "is this `_test.zig` imported by `tests.zig` directly?"
+The trap: grepping "is this `*_test.zig` imported by `tests.zig` directly?"
 produced **16 false positives** in one sweep — files like
 `error_registry_test.zig` run via their parent's test block, never via the
 aggregator directly. Non-test files reachable in TEST but not PROD are
-production-dead (test-kept); `_test.zig` files in neither walk are true orphans.
+production-dead (test-kept); `*_test.zig` files in neither walk are true orphans.
 
 ## agentsfleet CLI conventions
 
