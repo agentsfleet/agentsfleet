@@ -14,7 +14,7 @@ import { HttpClient } from "../src/services/http-client.ts";
 import {
   catalogueProviders,
   fetchCatalogue,
-  resolveCatalogueProvider,
+  resolveCatalogueTarget,
   type LibraryModel,
 } from "../src/lib/model-catalogue.ts";
 import { OPENAI_COMPATIBLE_PROVIDER } from "../src/constants/custom-endpoint.ts";
@@ -117,33 +117,33 @@ test("fetchCatalogue stops at the page cap when the server never stops paging", 
 
 test("resolveCatalogueProvider accepts a member and returns it unchanged", async () => {
   const got = await run(
-    resolveCatalogueProvider("anthropic", undefined),
+    resolveCatalogueTarget("anthropic", undefined, undefined),
     httpLayer([{ models: [ANTHROPIC, OPENAI] }]),
   );
-  expect(got).toBe("anthropic");
+  expect(got.provider).toBe("anthropic");
 });
 
 test("resolveCatalogueProvider folds case to the CATALOGUE's spelling", async () => {
   const got = await run(
-    resolveCatalogueProvider("AnThRoPiC", undefined),
+    resolveCatalogueTarget("AnThRoPiC", undefined, undefined),
     httpLayer([{ models: [ANTHROPIC] }]),
   );
   // Not the caller's bytes: the resolver compares the stored provider
   // byte-for-byte, so anything else stores a credential that cannot dial.
-  expect(got).toBe("anthropic");
+  expect(got.provider).toBe("anthropic");
 });
 
 test("resolveCatalogueProvider accepts the custom-endpoint sentinel without a catalogue row", async () => {
   const got = await run(
-    resolveCatalogueProvider(OPENAI_COMPATIBLE_PROVIDER, undefined),
+    resolveCatalogueTarget(OPENAI_COMPATIBLE_PROVIDER, undefined, undefined),
     httpLayer([{ models: [ANTHROPIC] }]),
   );
-  expect(got).toBe(OPENAI_COMPATIBLE_PROVIDER);
+  expect(got.provider).toBe(OPENAI_COMPATIBLE_PROVIDER);
 });
 
 test("resolveCatalogueProvider rejects a non-member, naming what THIS server serves", async () => {
   const err = await Effect.runPromise(
-    resolveCatalogueProvider("cerebras", undefined).pipe(
+    resolveCatalogueTarget("cerebras", undefined, undefined).pipe(
       Effect.provide(httpLayer([{ models: [ANTHROPIC] }])),
       Effect.flip,
     ) as unknown as Effect.Effect<{ detail: string; suggestion?: string }>,
@@ -158,7 +158,7 @@ test("resolveCatalogueProvider rejects a non-member, naming what THIS server ser
 
 test("a CLI-engine name is refused with its reason instead of the accepted-set wall", async () => {
   const err = await Effect.runPromise(
-    resolveCatalogueProvider("claude-cli", undefined).pipe(
+    resolveCatalogueTarget("claude-cli", undefined, undefined).pipe(
       Effect.provide(httpLayer([{ models: [ANTHROPIC] }])),
       Effect.flip,
     ) as unknown as Effect.Effect<{ detail: string }>,
@@ -168,19 +168,78 @@ test("a CLI-engine name is refused with its reason instead of the accepted-set w
   expect(err.detail).not.toContain("is not in this server's model catalogue");
 });
 
+test("a model the provider serves is accepted and returned unchanged", async () => {
+  const got = await run(
+    resolveCatalogueTarget("anthropic", "claude-opus-5", undefined),
+    httpLayer([{ models: [ANTHROPIC, OPENAI] }]),
+  );
+  expect(got).toEqual({ provider: "anthropic", model: "claude-opus-5" });
+});
+
+test("a model is NOT case-folded — model ids belong to the provider", async () => {
+  // `MiniMaxAI/MiniMax-M3` and `accounts/fireworks/models/kimi-k3` are real
+  // catalogue ids. Folding one would invent an id no provider serves, so a
+  // wrong-case model is a rejection, never a silent correction.
+  const err = await Effect.runPromise(
+    resolveCatalogueTarget("anthropic", "CLAUDE-OPUS-5", undefined).pipe(
+      Effect.provide(httpLayer([{ models: [ANTHROPIC] }])),
+      Effect.flip,
+    ) as unknown as Effect.Effect<{ detail: string }>,
+  );
+  expect(err.detail).toContain("CLAUDE-OPUS-5");
+});
+
+test("a model the provider does not serve is rejected, listing that provider's models", async () => {
+  const err = await Effect.runPromise(
+    resolveCatalogueTarget("anthropic", "gpt-5.6-sol", undefined).pipe(
+      Effect.provide(httpLayer([{ models: [ANTHROPIC, OPENAI] }])),
+      Effect.flip,
+    ) as unknown as Effect.Effect<{ detail: string; suggestion?: string }>,
+  );
+  expect(err.detail).toContain("gpt-5.6-sol");
+  expect(err.detail).toContain("claude-opus-5");
+  // Scoped to the provider: openai's models are not offered as alternatives
+  // for an anthropic credential.
+  expect(err.detail).toContain("provider 'anthropic'");
+  expect(err.suggestion).toContain("models --provider anthropic");
+});
+
+test("no --model skips the model check entirely", async () => {
+  // `--model` is required by the body composer, not by this resolver, and a
+  // `--data` blob reaches neither. Absent means "nothing to check".
+  const got = await run(
+    resolveCatalogueTarget("anthropic", undefined, undefined),
+    httpLayer([{ models: [ANTHROPIC] }]),
+  );
+  expect(got.model).toBeUndefined();
+});
+
+test("the sentinel accepts any model without a catalogue read", async () => {
+  // A user-supplied endpoint serves whatever it serves; no catalogue row could
+  // describe it, so reading the catalogue to approve it is a question whose
+  // answer is already known.
+  let reads = 0;
+  const got = await run(
+    resolveCatalogueTarget(OPENAI_COMPATIBLE_PROVIDER, "some-local-build", undefined),
+    httpLayer([{ models: [ANTHROPIC] }], () => { reads += 1; }),
+  );
+  expect(got).toEqual({ provider: OPENAI_COMPATIBLE_PROVIDER, model: "some-local-build" });
+  expect(reads).toBe(0);
+});
+
 test("an UNREACHABLE catalogue accepts the provider — the server stays the arbiter", async () => {
   // The dashboard degrades to a free-text provider input on the same condition.
   // Refusing here would make a catalogue outage mean "you may not store a
   // credential", a worse failure than one the server rejects with a typed error.
-  const got = await run(resolveCatalogueProvider("whatever", undefined), failingLayer());
-  expect(got).toBe("whatever");
+  const got = await run(resolveCatalogueTarget("whatever", undefined, undefined), failingLayer());
+  expect(got.provider).toBe("whatever");
 });
 
 test("an EMPTY catalogue accepts the provider — a fresh environment stays usable", async () => {
   // core.model_library ships empty; the model_catalogue playbook fills it.
   const got = await run(
-    resolveCatalogueProvider("anthropic", undefined),
+    resolveCatalogueTarget("anthropic", undefined, undefined),
     httpLayer([{ models: [] }]),
   );
-  expect(got).toBe("anthropic");
+  expect(got.provider).toBe("anthropic");
 });

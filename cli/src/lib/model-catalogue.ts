@@ -142,6 +142,10 @@ const CLI_ENGINE_NAMES: ReadonlyArray<string> = [
 const isCliEngine = (provider: string): boolean =>
   CLI_ENGINE_NAMES.includes(provider.toLowerCase());
 
+// Both rejection messages list a set, and both joined it with the same
+// separator literal (RULE UFS).
+const LIST_SEPARATOR = ", ";
+
 // Absent from the catalogue means UNPRICED, not unreachable. Most of these
 // names are dialable — NullClaw's compat table carries ~100 endpoints the
 // catalogue does not price yet — and every one of them is still usable through
@@ -154,7 +158,7 @@ const PROVIDER_REJECTED = (provider: string, accepted: ReadonlyArray<string>): s
   if (isCliEngine(provider)) return `provider '${provider}' ${CLI_ENGINE_REJECTION}`;
   return (
     `provider '${provider}' is not priced in this server's model catalogue. ` +
-    `Priced: ${accepted.join(", ")}`
+    `Priced: ${accepted.join(LIST_SEPARATOR)}`
   );
 };
 
@@ -169,56 +173,105 @@ const PROVIDER_SUGGESTION = (provider: string): string =>
     ? "use a provider that authenticates with an API key; run `agentsfleet models` to see them"
     : `run \`agentsfleet models\` to see what this server prices, or reach it directly with ${CUSTOM_ENDPOINT_ROUTE}`;
 
+export interface CatalogueTarget {
+  /** The catalogue's spelling of the provider — what gets stored. */
+  readonly provider: string;
+  /** The model, unchanged. Model ids are case-sensitive at every provider. */
+  readonly model: string | undefined;
+}
+
+/** Models one provider serves, by catalogue id, sorted. */
+const modelsForProvider = (
+  models: ReadonlyArray<LibraryModel>,
+  provider: string,
+): ReadonlyArray<string> => {
+  const ids = new Set<string>();
+  for (const m of models) {
+    if (m.provider === provider && m.id) ids.add(m.id);
+  }
+  return [...ids].sort();
+};
+
+const MODEL_REJECTED = (
+  model: string,
+  provider: string,
+  known: ReadonlyArray<string>,
+): string =>
+  `model '${model}' is not in this server's catalogue for provider '${provider}'. ` +
+  `Available: ${known.join(LIST_SEPARATOR)}`;
+
+const MODEL_SUGGESTION = (provider: string): string =>
+  `run \`agentsfleet models --provider ${provider}\` for the list`;
+
 /**
- * Reject a `--provider` the catalogue does not serve.
+ * Resolve BOTH identifiers against one catalogue read.
  *
- * Two deliberate degradations, both matching what the dashboard does rather
+ * `--model` was validated nowhere: a typo stored a credential that reported
+ * success and failed at the first event, which is the same defect `--provider`
+ * had one flag over. The catalogue already knows every model id per provider,
+ * so closing it costs one lookup on a page this call already fetched — not a
+ * second round-trip.
+ *
+ * The model is NOT case-folded. Provider ids are ours to canonicalise; model
+ * ids belong to the provider and are case-sensitive there
+ * (`accounts/fireworks/models/kimi-k3`, `MiniMaxAI/MiniMax-M3`), so folding
+ * one would invent an id the provider does not serve.
+ *
+ * Three deliberate degradations, all matching what the dashboard does rather
  * than inventing a stricter CLI:
  *
- *   - the catalogue read FAILS (offline, expired token, server down) — accept
- *     the value and let the server arbitrate. The dashboard falls back to a
- *     free-text provider input on the same condition
- *     (`AddModelEntryDialog.tsx`, `providerOptions.length > 0 ? Select : Input`).
- *     Refusing here would make an unreachable catalogue mean "you may not
- *     store a credential", which is a worse failure than a credential the
- *     server rejects with a typed error.
+ *   - the read FAILS (offline, expired token, server down) — accept and let
+ *     the server arbitrate. The dashboard falls back to a free-text provider
+ *     input on the same condition (`AddModelEntryDialog.tsx`,
+ *     `providerOptions.length > 0 ? Select : Input`). Refusing would make an
+ *     unreachable catalogue mean "you may not store a credential" — a worse
+ *     failure than one the server rejects with a typed error.
  *   - the catalogue is EMPTY — a freshly deployed environment before the
- *     model_catalogue playbook runs. Rejecting every provider there would make
- *     the CLI unusable during provisioning, which is precisely when it is used.
+ *     model_catalogue playbook runs. Rejecting everything there would make the
+ *     CLI unusable during exactly the provisioning it is used for.
+ *   - the provider is the custom-endpoint sentinel — a user-supplied endpoint
+ *     serves whatever it serves, and no catalogue row could describe it.
  *
- * Both paths still hit full server-side validation, so this check buys a fast,
+ * Every path still hits full server-side validation, so this buys a fast,
  * local, accurate error message — never a security boundary.
  */
-export const resolveCatalogueProvider = (
+export const resolveCatalogueTarget = (
   provider: string,
+  model: string | undefined,
   token: Redacted<string> | undefined,
-): Effect.Effect<string, CliError, HttpClient> =>
+): Effect.Effect<CatalogueTarget, CliError, HttpClient> =>
   Effect.gen(function* () {
-    // The custom-endpoint sentinel is accepted by definition — it names a
-    // user-supplied endpoint, so no catalogue row could ever imply it. Answer
-    // without a round-trip: the whole custom-endpoint flow is about reaching a
-    // host this catalogue does not carry, so reading the catalogue to approve
-    // it is a request whose answer is already known.
-    if (provider === OPENAI_COMPATIBLE_PROVIDER) return provider;
+    if (provider === OPENAI_COMPATIBLE_PROVIDER) return { provider, model };
 
     const models = yield* fetchCatalogue(token).pipe(
       Effect.orElseSucceed((): ReadonlyArray<LibraryModel> => []),
     );
-    if (models.length === 0) return provider;
+    if (models.length === 0) return { provider, model };
 
     const accepted = acceptedProviders(models);
-    // Case-folded, returning the CATALOGUE's spelling. The retired enum parser
-    // folded case too, and dropping that would store `Anthropic` verbatim into
-    // a credential the resolver matches byte-for-byte — a secret that reports
-    // success and can never dial. Matching returns the canonical id so the
-    // stored body always carries what the server compares against.
     const match = accepted.find((id) => id.toLowerCase() === provider.toLowerCase());
-    if (match) return match;
+    if (!match) {
+      return yield* Effect.fail(
+        new ValidationError({
+          detail: PROVIDER_REJECTED(provider, accepted),
+          suggestion: PROVIDER_SUGGESTION(provider),
+        }),
+      );
+    }
 
-    return yield* Effect.fail(
-      new ValidationError({
-        detail: PROVIDER_REJECTED(provider, accepted),
-        suggestion: PROVIDER_SUGGESTION(provider),
-      }),
-    );
+    const trimmed = model?.trim();
+    if (!trimmed) return { provider: match, model };
+
+    // A provider only reaches `accepted` by owning at least one row, so this
+    // list is never empty and the check is always meaningful.
+    const known = modelsForProvider(models, match);
+    if (!known.includes(trimmed)) {
+      return yield* Effect.fail(
+        new ValidationError({
+          detail: MODEL_REJECTED(trimmed, match, known),
+          suggestion: MODEL_SUGGESTION(match),
+        }),
+      );
+    }
+    return { provider: match, model: trimmed };
   });

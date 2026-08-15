@@ -45,6 +45,10 @@ const SECRET_NAME = "vllm-gateway";
 const VALID_BASE_URL = "https://vllm.corp.example/v1";
 const API_KEY = "sk-custom-secret-do-not-log";
 const MODEL = "qwen2.5-coder";
+// A model the CATALOGUE_PAGE fixture actually serves. `--model` is now checked
+// against the catalogue too, so a test proving PROVIDER folding must not trip
+// the model check on its way there.
+const CATALOGUE_MODEL = "claude-opus-5";
 const NON_HTTPS_BASE_URL = "http://vllm.corp.example/v1";
 
 const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
@@ -521,6 +525,41 @@ describe("secret create — provider catalogue closure", () => {
     });
   });
 
+  test("a model the provider does not serve is refused, and never POSTed", async () => {
+    await authedScope(async () => {
+      // The twin of the --provider hole: --model was checked nowhere, so a
+      // typo stored a credential that reported success and failed at the first
+      // event. One catalogue read now closes both.
+      const routes: MockRoutes = {
+        "GET /v1/models": () => jsonResponse(200, CATALOGUE_PAGE),
+        [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
+          jsonResponse(201, { name: SECRET_NAME }),
+      };
+      await withMockApi(routes, async (apiUrl, calls) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          [
+            "secret", "create", SECRET_NAME,
+            "--provider", "anthropic",
+            "--api-key", API_KEY,
+            "--model", "claude-opus-4",
+            "--json",
+          ],
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
+        );
+        expect(code).not.toBe(0);
+        expect(calls.some((c) => c.method === "POST")).toBe(false);
+        const text = out.read() + err.read();
+        expect(text).toContain("claude-opus-4");
+        // Scoped to anthropic — openai's models are not offered as fixes for
+        // an anthropic credential.
+        expect(text).toContain(CATALOGUE_MODEL);
+        expect(text).not.toContain("gpt-5.6-sol");
+      });
+    });
+  });
+
   test("an unreachable catalogue accepts the provider rather than blocking the write", async () => {
     await authedScope(async () => {
       // The dashboard degrades to a free-text provider input when the catalogue
@@ -607,7 +646,7 @@ describe("secret create — provider catalogue closure", () => {
             "secret", "create", SECRET_NAME,
             "--provider", "Anthropic",
             "--api-key", API_KEY,
-            "--model", MODEL,
+            "--model", CATALOGUE_MODEL,
             "--json",
           ],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
