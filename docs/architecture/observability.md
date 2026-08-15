@@ -15,7 +15,7 @@ Every row is extracted from the sections below; the owner column names the secti
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Signal paths | 3 | OTLP push (no collector hop) · PostHog · Postgres (money) | §The three signal paths |
+| Signal paths | 3 | OTLP push (no collector hop) · <img src="https://cdn.simpleicons.org/posthog" width="14" alt="" /> PostHog · 🐘 Postgres (money) | §The three signal paths |
 | Metric namespace | `agentsfleet_` runtime families; dotted semconv cost families | `otel_metrics_families.zig` declares every exported name; the namespace guard reads the registry | §The three signal paths |
 | Runner telemetry | deliberately bare | `record_metric` is a no-op stub; local logfmt to the host, liveness over `/v1/runners` | §`agentsfleet-runner` — deliberately bare |
 | Library read series | 102 total, comptime-asserted | closed enums; a new member fails the build, never grows the export | §Library read stages are metrics, not spans |
@@ -27,7 +27,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Log envelope | 4 KiB buffer, `truncated=true` on overflow | exporter-internal scopes stay stderr-only so a failing exporter cannot feed itself | §The shared logging module |
 | Performance gating | nothing gates on a percentile | the exported series are the evidence; a threshold that cannot fail reports success forever | §Library read stages are metrics, not spans |
 | The M61 naming trap | the live OTel export survived `OTEL_EXPORT_REMOVAL` | check `otel_logs.zig` / `otel_traces.zig` + the `GRAFANA_OTLP_*` gate, never the milestone name | §The M61 naming trap |
-| Production wiring truth | dated table, Jul 23, 2026 | per-surface state with code evidence | §Signal routing |
+| Production wiring truth | per-surface state, each row with its code evidence | re-read the evidence column rather than trusting the row | §Signal routing |
 
 ## The three signal paths
 
@@ -35,8 +35,8 @@ All of it lives under `src/agentsfleetd/observability/`.
 
 | Path | What | Consumer |
 |---|---|---|
-| OTLP (push) | logs → Loki, traces → Tempo, metrics (runtime + cost families) → Mimir. Direct to Grafana Cloud; **no collector hop**. Gated on the `GRAFANA_OTLP_*` env triple. The daemon's **only** metrics egress: there is no pull endpoint. | Grafana Cloud, operator dashboards |
-| PostHog | nullable client, product events only | product analytics |
+| OTLP (push) | logs → Loki, traces → Tempo, metrics (runtime + cost families) → Mimir. Direct to <img src="https://cdn.simpleicons.org/grafana" width="14" alt="" /> Grafana Cloud; **no collector hop**. Gated on the `GRAFANA_OTLP_*` env triple. The daemon's **only** metrics egress: there is no pull endpoint. | Grafana Cloud, operator dashboards |
+| <img src="https://cdn.simpleicons.org/posthog" width="14" alt="" /> PostHog | nullable client, product events only | product analytics |
 | Postgres | per-run execution telemetry + billing counters in `src/agentsfleetd/state/` | the money system of record |
 
 **One process, one registry.** Every runtime family carries the `agentsfleet_`
@@ -218,7 +218,7 @@ and retry limits plus the allowlist proof.
 | control-plane traces | HTTP ingress + settled delivery | OTLP to Tempo | route policy keeps output under the budget |
 | product analytics | PostHog client | batched capture | selected business events only |
 
-### Production wiring truth — Jul 23, 2026
+### Production wiring truth
 
 | Surface | State | Evidence |
 |---|---|---|
@@ -342,7 +342,7 @@ become PostHog events.
   failing exporter cannot enqueue its own warnings forever.
 
 Any `log.scoped(...)` call site is conformant by construction. Field rules:
-`docs/LOGGING_STANDARD.md` (a tracked symlink into the dotfiles; open it
+`~/Projects/dotfiles/docs/LOGGING_STANDARD.md` (a tracked symlink into the dotfiles; open it
 locally).
 
 ## The OTLP exporter substrate
@@ -383,7 +383,7 @@ Decision records:
   The scoped fix: shut the pinned socket down at the deadline via the
   scheduler, after reordering boot.
 
-### Capacity and loss audit — Jul 23, 2026
+### Capacity and loss audit
 
 Usable capacity: the ring keeps one slot empty. Rates are ceilings, not
 benchmarks.
