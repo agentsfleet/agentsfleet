@@ -6,7 +6,7 @@
  *     device flow refuses a non-TTY stdin), parse login_url, complete the
  *     dashboard's CLI-auth approve action via browser.ts, scrape the 6-digit
  *     code it displays, type it into the pty prompt, assert credentials.json
- *     mode 0600 + 3-segment JWT (WS-E #C3).
+ *     mode 0600 + durable CLI credential shape (WS-E #C3).
  *   - immediate auth-status proof with no env API key
  *     (AGENTSFLEET_API_KEY), so credentials.json is the load-bearing source.
  *
@@ -37,13 +37,13 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { completeCliAuthHandoff } from "./fixtures/browser.ts";
+import { CLI_CREDENTIAL_PATTERN } from "../../src/constants/cli-credential.ts";
 
 const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
 
 const CODE_PROMPT_RE = /verification code/i;
 const CREDENTIALS_MODE = 0o600;
-const JWT_SEGMENTS = 3;
 const HANDSHAKE_TIMEOUT_MS = 60_000;
 const AUTH_SOURCE_FILE = "file" as const;
 
@@ -107,7 +107,13 @@ if (!isLive) {
     });
 
     afterAll(async () => {
-      if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
+      if (!stateDir) return;
+      const credentialExists = await fs.stat(credentialsPath).then(() => true).catch(() => false);
+      if (credentialExists) {
+        const logout = await spawn(["logout", "--json"]);
+        assert.equal(logout.code, 0, `logout cleanup exited ${logout.code}: ${logout.stderr}`);
+      }
+      await fs.rm(stateDir, { recursive: true, force: true });
     });
 
     // CLI login handshake — drive the device flow through a pty, complete
@@ -141,7 +147,7 @@ if (!isLive) {
 
         const creds = JSON.parse(await fs.readFile(credentialsPath, "utf8")) as { token: string };
         assert.equal(typeof creds.token, "string");
-        assert.equal(creds.token.split(".").length, JWT_SEGMENTS, `token is not a 3-segment JWT: ${creds.token}`);
+        assert.match(creds.token, CLI_CREDENTIAL_PATTERN, "persisted token is not a CLI credential");
 
         const authStatus = await spawn(["auth", "status", "--json"]);
         assert.equal(authStatus.code, 0,

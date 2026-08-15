@@ -88,6 +88,10 @@ describe("charge identity", () => {
     expect(displayModelName("deepseek-ai/DeepSeek-V4-Pro")).toBe("DeepSeek V4 Pro");
     expect(displayModelName("kimi-k2.6")).toBe("kimi k2.6");
   });
+
+  it("labels a historical charge whose fleet was deleted", () => {
+    expect(chargeAgentLabel(charge({ fleet_id: null }))).toBe("Deleted agent");
+  });
 });
 
 describe("summarizeCharges", () => {
