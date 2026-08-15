@@ -1,12 +1,10 @@
 // Shared test scaffolding for CLI integration tests.
 //
-// Five sibling *.integration.test.{js,ts} files were each carrying their
-// own copy of (a) a Writable buffer that captures stdout/stderr, (b) a
-// mkdtemp-based AGENTSFLEET_STATE_DIR scope guard, and (c) an authed variant
-// of the same that pre-seeds credentials.json + workspaces.json so
-// auth-required commands don't bounce off the auth guard. Hoisting them
-// here cuts ~150 lines of duplication and makes the per-test surface
-// uniform.
+// Every in-process CLI test resolves three things through this file, and
+// there is no per-suite copy: (a) a Writable buffer that captures
+// stdout/stderr, (b) a mkdtemp-based AGENTSFLEET_STATE_DIR scope guard, and
+// (c) an authed variant of the same that pre-seeds credentials.json +
+// workspaces.json so auth-required commands don't bounce off the auth guard.
 //
 // IMPORTANT — serial-execution assumption:
 //

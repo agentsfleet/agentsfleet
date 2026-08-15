@@ -5,8 +5,9 @@ import { resolveConfigDir } from "./config-dir.ts";
 
 // On-disk state shapes. All files live under the directory `config-dir.ts`
 // resolves from the caller-supplied environment, at mode 0o600. JSON is
-// parsed permissively — missing files return the fallback, corrupt files
-// raise. No function here reads the process environment: `runCli` resolves
+// parsed permissively — a missing file AND an unparseable one both return the
+// fallback; only a read that genuinely fails (EACCES, EIO, EISDIR) raises, and
+// lib/state-load.ts is what turns those into a warning. No function here reads the process environment: `runCli` resolves
 // its io environment (falling back to the process one) exactly once and
 // threads it down, so an injected environment reaches the store instead of
 // silently losing to a global.

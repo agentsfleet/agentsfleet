@@ -29,11 +29,11 @@ export type { MainLayerServices };
 
 const FALLBACK_EXIT_CODE = 1;
 
-// R is the service-set the command Effect needs. The dispatcher provides
-// MainLayer; if R is not a subset of what MainLayer covers, the
-// `Effect.provide(MainLayer)` call below fails to typecheck — that's
-// the compile-time guard that every command's declared service-set is
-// actually wired.
+// R is the service-set the command Effect needs. The dispatcher provides the
+// layer `mainLayerFor` composes; if R is not a subset of MainLayerServices,
+// the `Effect.provide(runtime)` call below fails to typecheck — that's the
+// compile-time guard that every command's declared service-set is actually
+// wired.
 //
 // A — the success value type. `void` is the common case (the dispatcher
 // maps success → exit 0). `number` lets a command emit its own exit

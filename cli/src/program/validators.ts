@@ -137,7 +137,19 @@ export function parseEnumOption<T extends string>(
   if (!Array.isArray(allowed) || allowed.length === 0) {
     throw new Error("parseEnumOption requires a non-empty allowed array");
   }
-  const refusals = Object.entries(rejected ?? {});
+  const allRefusals = Object.entries(rejected ?? {});
+  // A refusal that is also a member can never fire — `allowed.includes` returns
+  // first — so drop it rather than carry a rule that silently does nothing.
+  // Dropped, NOT thrown: these parsers are built at module scope, so throwing
+  // here would turn a catalogue-data problem into a CLI that cannot start at
+  // all, `--help` and `logout` included, for a user who never touches the flag.
+  // The catalogue's own parity test is what asserts the two sets stay disjoint.
+  const members = allowed as readonly string[];
+  const isMember = (name: string): boolean =>
+    foldCase
+      ? members.some((m) => m.toLowerCase() === name.toLowerCase())
+      : members.includes(name);
+  const refusals = allRefusals.filter(([name]) => !isMember(name));
   return (value: unknown): T => {
     if (isString(value)) {
       if (allowed.includes(value as T)) return value as T;

@@ -188,4 +188,4 @@ export const PROVIDER_EXAMPLES = [
   EXAMPLE_OPENAI,
   EXAMPLE_DEEPSEEK,
   EXAMPLE_GROQ,
-] as const;
+] as const satisfies readonly ProviderId[];

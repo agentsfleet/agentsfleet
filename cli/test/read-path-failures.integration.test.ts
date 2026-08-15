@@ -248,10 +248,40 @@ describe("an unreadable state file warns and continues as logged out", () => {
       const warn = err.read();
       expect(warn).toContain("warning: could not read credentials.json");
       expect(warn).toContain("continuing as logged out");
+      // The recorded deployment died with the file, so the endpoint in use is
+      // the built-in default — named, not left to the access log.
+      expect(warn).toContain("the recorded deployment was unreadable; using");
       // The command then behaves exactly as logged out — refused by the
       // auth guard, not crashed by the unreadable file.
       expect(code).toBe(1);
       expect(warn).toContain("not authenticated");
+    });
+  });
+});
+
+describe("the workspaces arm reports its own file", () => {
+  // The two arms share one `orWarn` closure, so bun reports state-load.ts at
+  // 100% line coverage with only the credentials arm exercised — the floor
+  // cannot see this gap. A copy-paste of the wrong filename or fallback ships
+  // green and tells the operator the wrong file is unreadable.
+  test("workspaces.json unreadable → the warning names THAT file, not credentials.json", async () => {
+    const { withFreshStateDir } = await import("./helpers-cli-state.ts");
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    await withFreshStateDir(async (stateDir) => {
+      await fs.mkdir(path.join(stateDir, "workspaces.json"), { recursive: true });
+      const out = bufferStream();
+      const err = bufferStream();
+      const code = await runCli(["secret", "list"], {
+        stdout: out.stream,
+        stderr: err.stream,
+        env: cliEnv(),
+      });
+      const warn = err.read();
+      expect(warn).toContain("warning: could not read workspaces.json");
+      expect(warn).not.toContain("could not read credentials.json");
+      expect(warn).toContain("continuing as logged out");
+      expect(code).toBe(1);
     });
   });
 });

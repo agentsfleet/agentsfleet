@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { resolveConfigDir, STATE_DIR_ENV } from "../src/lib/config-dir.ts";
+import { cliEnv } from "./helpers-cli-state.ts";
 
 describe("resolveConfigDir", () => {
   test("honours the supplied environment", () => {
@@ -37,12 +38,34 @@ describe("resolveConfigDir", () => {
     // one file allowed to spell it.
     const srcRoot = new URL("../src/", import.meta.url).pathname;
     const glob = new Bun.Glob("**/*.ts");
-    const offenders: string[] = [];
+    const declarationSite = path.join("lib", "config-dir.ts");
+    const candidates: string[] = [];
     for await (const rel of glob.scan(srcRoot)) {
-      if (rel === path.join("lib", "config-dir.ts")) continue;
-      const body = await Bun.file(path.join(srcRoot, rel)).text();
-      if (body.includes(STATE_DIR_ENV)) offenders.push(rel);
+      if (rel !== declarationSite) candidates.push(rel);
     }
+    // Read together rather than one at a time — this walks all of src/.
+    const bodies = await Promise.all(
+      candidates.map((rel) => Bun.file(path.join(srcRoot, rel)).text()),
+    );
+    const offenders = candidates.filter((_, i) => bodies[i]?.includes(STATE_DIR_ENV));
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("cliEnv", () => {
+  test("refuses to build an env with no state dir, rather than escaping the sandbox", () => {
+    // This throw is the single funnel protecting ~29 test files from resolving
+    // the store to the operator's real ~/.config/agentsfleet. test/** is
+    // excluded from the coverage floor, so nothing else would notice if a
+    // refactor defaulted stateDirEnv() and the net went dead.
+    const previous = process.env[STATE_DIR_ENV];
+    delete process.env[STATE_DIR_ENV];
+    try {
+      expect(() => cliEnv()).toThrow(STATE_DIR_ENV);
+      expect(() => cliEnv({ AGENTSFLEET_API_URL: "https://x" })).toThrow(/unset/);
+    } finally {
+      if (previous === undefined) delete process.env[STATE_DIR_ENV];
+      else process.env[STATE_DIR_ENV] = previous;
+    }
   });
 });
