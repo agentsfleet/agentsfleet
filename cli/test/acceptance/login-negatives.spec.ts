@@ -45,6 +45,7 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { completeCliAuthHandoff } from "./fixtures/browser.ts";
+import { mintCliCredential } from "./fixtures/workspace-hydration.ts";
 import {
   CREDENTIALS_FILENAME,
   assertPersistedCredential,
@@ -132,23 +133,26 @@ if (!isLive) {
     // Seeds a persisted credential without going through `login`. The
     // scenarios below used to reach this state with `login --token <jwt>`;
     // that flag is gone, and the device flow needs a human, so the file is
-    // written directly. The value is well-formed for
-    // the loader's shape check — these scenarios assert what happens to a
-    // credential that is *present*, never that this one authenticates.
+    // written directly after performing the same exchange as production
+    // login, so scenarios that call `/me` hold a real CLI credential.
     async function seedCredential(): Promise<string> {
-      const seeded = `afc_${"a".repeat(64)}`;
+      const seeded = await mintCliCredential(
+        apiUrl,
+        sessionJwt,
+        `acceptance-${path.basename(stateDir)}`,
+      );
       await fs.writeFile(
         credentialsPath,
         JSON.stringify({
-          token: seeded,
+          token: seeded.credential,
           saved_at: Date.now(),
           session_id: null,
           api_url: apiUrl,
-          credential_id: null,
+          credential_id: seeded.id,
         }),
         { mode: 0o600 },
       );
-      return seeded;
+      return seeded.credential;
     }
 
     beforeAll(async () => {

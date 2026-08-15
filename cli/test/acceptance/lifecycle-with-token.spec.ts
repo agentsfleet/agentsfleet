@@ -1,5 +1,5 @@
 /**
- * Seeded-credentials acceptance scenario (minted Clerk JWT in the file slot).
+ * Seeded-credentials acceptance scenario (exchanged CLI credential in file).
  *
  * Mints a Clerk session JWT via the admin path (mirrors the dashboard
  * suite's identity), hydrates workspaces.json directly from the API
@@ -289,13 +289,13 @@ if (!isLive) {
       });
     });
 
-    // Valid-format nonexistent UUID → server 404 → UZ-* envelope.
+    // Valid-format nonexistent UUID → server 404 with its registered UZ code.
     describe("invalid-arg-value (valid format, nonexistent)", () => {
       for (const row of REQUIRES_IDENTIFIER) {
         if (!row.apiHits) continue;
         it(`${row.args.join(" ")} <random-uuidv7> → ${row.expectedErrorCode}`, async () => {
           const id = randomUuidv7();
-          const result = await expectInvalidArgValue([...row.args, id, "--json"], env, row.expectedErrorCode);
+          const result = await expectInvalidArgValue([...row.args, id], env, row.expectedErrorCode);
           assertNoSecretLeak(result, sessionJwt);
         });
       }
