@@ -1,9 +1,9 @@
 # Architecture — v2 Operational Outcome Runner
 
+> [!TIP]
 > **Trying to USE agentsfleet?** This directory is the contributor-facing architecture set. If you want to install a Fleet on your own infra, go to **[docs.agentsfleet.net](https://docs.agentsfleet.net)** instead — that surface walks you through `agentsfleet install` end-to-end and never asks you to read a system-topology file. Stay here only if you are contributing to the runtime, the Command-Line Interface (CLI), the dashboard, or the Software Development Kit (SDK) packages.
 
-Date: Jul 11, 2026
-Status: Canonical reference for the v2 problem, thesis, runtime model, Fleet / runner interaction, capabilities, and context lifecycle. All v2 specs in `docs/v2/` are grounded in the topic files in this directory.
+Canonical reference for the v2 problem, thesis, runtime model, Fleet / runner interaction, capabilities, and context lifecycle. All v2 specs in `docs/v2/` are grounded in the topic files in this directory.
 
 ---
 
@@ -31,13 +31,13 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | What network can a sandboxed fleet reach? | [`runner_fleet.md`](./runner_fleet.md) §Egress model |
 | Which sandbox tier may run whose work? | [`runner_fleet.md`](./runner_fleet.md) §Sandbox tiers |
 | How do steer, kill, and pause propagate? | [`runner_fleet.md`](./runner_fleet.md) §Steer, kill, pause |
-| Where does a webhook / steer / cron fire end up? | [`data_flow.md`](./data_flow.md) §B. TRIGGER |
+| Where does a webhook / steer / cron fire end up? | [`data_flow.md`](./data_flow.md) §"B. TRIGGER" |
 | What does one event write, in what order? | [`data_flow.md`](./data_flow.md) §Steer flow end-to-end |
 | Which table answers "what did this fleet do"? | [`data_flow.md`](./data_flow.md) §The three durable stores |
 | How does the live tail work — and can it lose frames? | [`data_flow.md`](./data_flow.md) §D. WATCH |
 | What happens if Redis blips during install? | [`data_flow.md`](./data_flow.md) §The install failure scenario, visually |
-| Why was my webhook rejected, and what do I fix? | [`data_flow.md`](./data_flow.md) §B. TRIGGER (webhook auth taxonomy) |
-| Who owns cron scheduling? | [`data_flow.md`](./data_flow.md) §B. TRIGGER — QStash owns the clock |
+| Why was my webhook rejected, and what do I fix? | [`data_flow.md`](./data_flow.md) §"The webhook auth taxonomy" |
+| Who owns cron scheduling? | [`data_flow.md`](./data_flow.md) §"QStash owns the clock" |
 | What is memory keyed by, and what survives? | [`memory.md`](./memory.md) §1 |
 | How does memory travel between runs? | [`runner_fleet.md`](./runner_fleet.md) §Memory continuity |
 | What should a fleet store so it survives hydration? | [`capabilities.md`](./capabilities.md) §4 — memory hygiene |
@@ -58,7 +58,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | What drives the idle Upstash bill? | [`scaling.md`](./scaling.md) §Per-request volume |
 | Which knob do I turn, and when? | [`scaling.md`](./scaling.md) §Tuneup knobs |
 | Where is the next bottleneck? | [`scaling.md`](./scaling.md) §Where the next ceiling actually lives |
-| Where does a signal go, and who owns it? | [`observability.md`](./observability.md) §The four signal paths |
+| Where does a signal go, and who owns it? | [`observability.md`](./observability.md) §The three signal paths |
 | What does metric family X mean? | [`observability.md`](./observability.md) §Metric family census |
 | Which locks exist, and what does each protect? | [`concurrency.md`](./concurrency.md) §Lock-invariant registry |
 | What order does shutdown happen in? | [`concurrency.md`](./concurrency.md) §Shutdown choreography |
@@ -67,7 +67,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | What is immutable in a bundle vs editable in a fleet? | [`fleet_bundles.md`](./fleet_bundles.md) §Two layers |
 | How does a platform fleet become installable? | [`fleet_bundles.md`](./fleet_bundles.md) §The publish gate |
 | Which test root owns my component? | [`testing.md`](./testing.md) §Component ownership |
-| What client analytics events exist? | [`product_analytics.md`](./product_analytics.md) §Client event catalog |
+| What rules govern a client analytics event? | [`product_analytics.md`](./product_analytics.md) §Client event rules |
 | Is feature X shipped or deferred? | [`roadmap.md`](./roadmap.md) §Status index |
 | Who may call what, with which token? | [`../AUTH.md`](../AUTH.md) |
 
@@ -78,30 +78,31 @@ Read in this order if you've never seen the project:
 3. [`scenarios/github-pr-reviewer.md`](./scenarios/github-pr-reviewer.md) — install `github-pr-reviewer` and watch it review a Pull Request.
 4. [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md) — trace a failed deployment from evidence to a human-reviewed fix.
 
+> [!IMPORTANT]
 > `user_flow.md` and `scenarios/` are **contributor-canonical** — cited by `§`-anchor in active and shipped spec acceptance criteria and in sibling arch docs. They are *not* user-facing docs to relocate to docs.agentsfleet.net (which carries its own independent user coverage). Before "moving user-facing docs," `git grep` the spec corpus for the file/anchor references first.
 
 After that, dip into whichever of these matches the change you're making:
 
 | File | Topic |
 |---|---|
-| [`high_level.md`](./high_level.md) | Product thesis, problem statement, why-now, MVP thesis, initial use cases. The "why this exists" reading for new contributors. |
-| [`direction.md`](./direction.md) | The architectural constants. When a spec proposes something that conflicts with these, the spec gets amended — not the constants. |
-| [`user_flow.md`](./user_flow.md) | How a user authors, imports, installs, triggers, and supervises a Fleet. Includes Fleet Bundle entrypoints, the CLI + template-catalogue install walkthrough, deployment posture, and the model-cap origin story (§8.7). |
-| [`data_flow.md`](./data_flow.md) | Where a webhook, a steer, or a cron fire ends up. Covers the two fleets in play, the three durable stores, the Redis streams + pub/sub channel, the install / trigger / execute / watch / kill sequences, multi-tenancy boundary, install-failure recovery, and the load-bearing invariants. |
-| [`fleet_bundles.md`](./fleet_bundles.md) | The bundle/fleet split: how a GitHub source is fetched, re-packed into agentsfleet's own canonical tar, and stored across R2 + Postgres; what is immutable vs `PATCH`-editable; the runtime read path; and the current support-file storage redundancy. |
-| [`runner_fleet.md`](./runner_fleet.md) | **The runtime split (implemented at the M80_002 cutover).** `agentsfleetd` control plane + host-resident `agentsfleet-runner` execution plane: System Guarantees + Failure Recovery Model first, then the `/v1/runners` control protocol, event-leasing + sticky routing + fencing/reclaim, secret-delivery trust modes, sandbox tiers, the scaling inversion, and the M80 roadmap. Sibling of `data_flow.md` (the same runtime, traced per event). |
-| [`capabilities.md`](./capabilities.md) | What the fleet has, what the platform enforces, and the context-lifecycle layers (memory checkpoint, rolling tool window, run chunking) that keep long incidents reasoning past the model's context window. |
-| [`memory.md`](./memory.md) | Fleet memory — the canonical scope/isolation/durability facts: keyed by `fleet_id` (never workspace), `memory_runtime` role isolation, erased with the fleet by cascade, and why ephemeral-fleet-per-event loses continuity. Hydrate/capture transport lives in `runner_fleet.md` §Memory continuity; in-run tools + categories in `capabilities.md` §4. |
-| [`observability.md`](./observability.md) | Where a signal goes and who owns it: `agentsfleetd` is the observability plane (Prometheus pull `/metrics`, live OTLP logs+traces direct to Grafana Cloud with no collector, PostHog, Postgres execution telemetry); the runner is deliberately bare (logfmt + liveness/result reports only). The M61 `OTEL_EXPORT_REMOVAL` naming trap and the shared `src/lib/logging/` module. |
-| [`concurrency.md`](./concurrency.md) | The thread/lock/channel/shutdown model of both planes: every spawned thread and its stop path (thread map), the SPSC channel inventory with payload ownership, the lock-invariant registry, and the stop→join→deinit shutdown choreography. Grounds the `C1–C5` concurrency rules; the doc `name_architecture` consults before naming a thread, channel, or lock. |
-| [`web_app.md`](./web_app.md) | The dashboard's five statements (server fetches / client-leaf boundary / shell-first / optimistic mutations / no useEffect loading), the server-client bar, and the grep-measured migration scoreboard. Consulted when a milestone touches `ui/packages/app`. |
-| [`testing.md`](./testing.md) | Zig component test ownership, unit and integration roots, merged line coverage, and memory verification. |
-| [`connectors.md`](./connectors.md) | The registry-driven connector platform: connect/callback/status, provider ownership proof, App-level inbound routing, platform App secrets, workspace installation handles, repository-bound fleet subscriptions, and the provider impact across GitHub, Slack, Jira, and Linear. This is the full platform-admin → workspace → fleet → event → short-lived-token walkthrough. |
-| [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) | How users pay for what they run. The credit-pool model (Amp-style), the one-time starter grant, the two debit points (receive + run), `compute_receive_charge` / `compute_stage_charge`, why free usage is a balance rather than a window, the self-managed secret shape, the api_key visibility boundary, NullClaw's provider routing, the model library (authenticated GET /v1/models) with per-model token rates, and the read-only billing dashboard + CLI surface. **Current dollar amounts live on [agentsfleet.net/#pricing](https://agentsfleet.net/#pricing)** — this doc covers shape and behaviour. |
-| [`scenarios/github-pr-reviewer.md`](./scenarios/github-pr-reviewer.md) | Install `github-pr-reviewer`, connect GitHub, and receive review comments. |
-| [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md) | Diagnose a failed deployment and show the unproven steps needed for a draft Pull Request (PR). |
-| [`roadmap.md`](./roadmap.md) | Deferred / forward-looking direction: v2.1 scope-based auth, the bastion post-MVP shape, open-fleet (mode C). Direction, not commitment. |
-| [`../AUTH.md`](../AUTH.md) | The principal model (CLI `afc_` credential, UI, tenant api key, and the `agt_r` runner machine principal), the bearer-routing middleware, and the per-flow detail. The canonical reference any time auth is in scope. |
+| 🧭 [`high_level.md`](./high_level.md) | Product thesis, problem statement, why-now, MVP thesis, initial use cases. The "why this exists" reading for new contributors. |
+| 📐 [`direction.md`](./direction.md) | The architectural constants. When a spec proposes something that conflicts with these, the spec gets amended — not the constants. |
+| 🧑‍💻 [`user_flow.md`](./user_flow.md) | How a user authors, imports, installs, triggers, and supervises a Fleet. Includes Fleet Bundle entrypoints, the CLI + template-catalogue install walkthrough, deployment posture, and the model-cap origin story (§8.7). |
+| 🔄 [`data_flow.md`](./data_flow.md) | Where a webhook, a steer, or a cron fire ends up. Covers the two fleets in play, the three durable stores, the Redis streams + pub/sub channel, the install / trigger / execute / watch / kill sequences, multi-tenancy boundary, install-failure recovery, and the load-bearing invariants. |
+| 📦 [`fleet_bundles.md`](./fleet_bundles.md) | The bundle/fleet split: how a GitHub source is fetched, re-packed into agentsfleet's own canonical tar, and stored across R2 + Postgres; what is immutable vs `PATCH`-editable; the runtime read path; and the current support-file storage redundancy. |
+| 🏃 [`runner_fleet.md`](./runner_fleet.md) | **The runtime split (implemented at the M80_002 cutover).** `agentsfleetd` control plane + host-resident `agentsfleet-runner` execution plane: System Guarantees + Failure Recovery Model first, then the `/v1/runners` control protocol, event-leasing + sticky routing + fencing/reclaim, secret-delivery trust modes, sandbox tiers, the scaling inversion, and the M80 roadmap. Sibling of `data_flow.md` (the same runtime, traced per event). |
+| 🧰 [`capabilities.md`](./capabilities.md) | What the fleet has, what the platform enforces, and the context-lifecycle layers (memory checkpoint, rolling tool window, run chunking) that keep long incidents reasoning past the model's context window. |
+| 🧠 [`memory.md`](./memory.md) | Fleet memory — the canonical scope/isolation/durability facts: keyed by `fleet_id` (never workspace), `memory_runtime` role isolation, erased with the fleet by cascade, and why ephemeral-fleet-per-event loses continuity. Hydrate/capture transport lives in [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity"; in-run tools + categories in `capabilities.md` §4. |
+| 📈 [`observability.md`](./observability.md) | Where a signal goes and who owns it: `agentsfleetd` is the observability plane (Prometheus pull `/metrics`, live OTLP logs+traces direct to Grafana Cloud with no collector, PostHog, Postgres execution telemetry); the runner is deliberately bare (logfmt + liveness/result reports only). The M61 `OTEL_EXPORT_REMOVAL` naming trap and the shared `src/lib/logging/` module. |
+| 🧵 [`concurrency.md`](./concurrency.md) | The thread/lock/channel/shutdown model of both planes: every spawned thread and its stop path (thread map), the SPSC channel inventory with payload ownership, the lock-invariant registry, and the stop→join→deinit shutdown choreography. Grounds the `C1–C5` concurrency rules; the doc `name_architecture` consults before naming a thread, channel, or lock. |
+| 🖥️ [`web_app.md`](./web_app.md) | The dashboard's five statements (server fetches / client-leaf boundary / shell-first / optimistic mutations / no useEffect loading), the server-client bar, and the grep-measured migration scoreboard. Consulted when a milestone touches `ui/packages/app`. |
+| 🧪 [`testing.md`](./testing.md) | Zig component test ownership, unit and integration roots, merged line coverage, and memory verification. |
+| 🔌 [`connectors.md`](./connectors.md) | The registry-driven connector platform: connect/callback/status, provider ownership proof, App-level inbound routing, platform App secrets, workspace installation handles, repository-bound fleet subscriptions, and the provider impact across GitHub, Slack, Zoho, Jira, and Linear. This is the full platform-admin → workspace → fleet → event → short-lived-token walkthrough. |
+| 💳 [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) | How users pay for what they run. The credit-pool model (Amp-style), the one-time starter grant, the two debit points (receive + run), `compute_receive_charge` / `compute_stage_charge`, the free-trial window through 2026-08-01 00:00 UTC, the self-managed secret shape, the api_key visibility boundary, NullClaw's provider routing, the model library (authenticated GET /v1/models) with per-model token rates, and the read-only billing dashboard + CLI surface. **Current dollar amounts live on [agentsfleet.net/#pricing](https://agentsfleet.net/#pricing)** — this doc covers shape and behaviour. |
+| 🐙 [`scenarios/github-pr-reviewer.md`](./scenarios/github-pr-reviewer.md) | Install `github-pr-reviewer`, connect GitHub, and receive review comments. |
+| 🚑 [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md) | Diagnose a failed deployment and show the unproven steps needed for a draft Pull Request (PR). |
+| 🗺️ [`roadmap.md`](./roadmap.md) | Deferred / forward-looking direction: v2.1 scope-based auth, the bastion post-MVP shape, open-fleet (mode C). Direction, not commitment. |
+| 🔐 [`../AUTH.md`](../AUTH.md) | The principal model (CLI `afc_` credential, UI, tenant api key, and the `agt_r` runner machine principal), the bearer-routing middleware, and the per-flow detail. The canonical reference any time auth is in scope. |>>>>>>> origin/main
 
 ---
 

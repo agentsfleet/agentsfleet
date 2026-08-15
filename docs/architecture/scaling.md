@@ -2,6 +2,7 @@
 
 > Parent: [`README.md`](./README.md) · Companions: [`data_flow.md`](./data_flow.md) §"Connection topology", [`runner_fleet.md`](./runner_fleet.md) §"Scaling".
 >
+> [!IMPORTANT]
 > **Scope:** this file sizes the runtime as it runs now — after the M80_002 cutover. The cutover **deleted the per-fleet dedicated Redis connection** (the worker's blocking `XREADGROUP` loop), which was the pre-cutover binding constraint. The binding constraint moved; the math below reflects the new shape.
 
 Read this when you need to size a deployment, pick env-var values, or decide whether the next bottleneck is `agentsfleetd` API replicas, Postgres, the Upstash plan, or runner fan-out.
@@ -26,7 +27,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Per-host concurrency | assigned `worker_count` = 1 (dashboard, per runner) | a capacity knob that widens the failure domain to N in-flight runs on host loss | §Tuneup knobs, §Runner host loss |
 | Admission ceiling | `API_MAX_IN_FLIGHT_REQUESTS` = 256, api-class only | ops routes (`/healthz`, `/readyz`, `/metrics`) are NEVER shed | §Tuneup knobs |
 | The binding constraint | `agentsfleetd` replicas + Postgres writes | both horizontally scalable; the hot path is shardable per fleet | §Where the next ceiling actually lives |
-| Recurring-read indexes | schema slot `033`, plan-asserted | idle Postgres cost tracks work, not accumulated rows; liveness batch = 6 buffer hits at 20,000 runners | §Which recurring Postgres reads are index-served |
+| Recurring-read indexes | one slot per table, plan-asserted | idle Postgres cost tracks work, not accumulated rows; liveness batch = 6 buffer hits at 20,000 runners | §Which recurring Postgres reads are index-served |
 | Idle pickup latency floor | ≤ `NO_WORK_RETRY_AFTER_MS` | a runner already mid-poll picks up immediately | §Event-delivery latency |
 | Outbound-answer consumer | non-blocking, `IDLE_POLL_MS` = 250 | rides the shared pool — adds requests, never connections | §Tuneup knobs |
 | Failover storm | bounded by 9·R re-dials | pool re-dials; the hub redials once and replays its SUBSCRIBEs | §Upstash failover |
@@ -41,17 +42,17 @@ The nine sizing anti-patterns ARE the trap list — read §Anti-patterns (do NOT
 
 ## Topology
 
-No standalone diagram; the sizing procedure block in §Sizing procedure is the operational artifact, with inputs, formulas, and emit targets.
+No standalone diagram; the sizing procedure block in §"Sizing procedure" is the operational artifact, with inputs, formulas, and emit targets.
 
 ## Decisions
 
 | Decision | Reason | Where / artifact |
 |---|---|---|
-| Auth memo removed — read the runner row every request | revocation must be deterministic fleet-wide, not per-machine | §Per-request volume; M143_001, `AUTH.md` §Runner token |
+| Auth memo removed — read the runner row every request | revocation must be deterministic fleet-wide, not per-machine | §Per-request volume; M143_001, [`../AUTH.md`](../AUTH.md) §"Runner token" |
 | Readiness recorded at ingress; lease consults the index before Postgres | idle cost follows the pollers, not the population | §Per-request volume; M141 |
 | Bare `LIMIT` on the candidate scan rejected | an ordered scan silently starves every fleet past the bound; only a randomized slice + ceiling is fair | §Anti-patterns |
 | Evented SSE substrate stays gated | it only earns its keep above the thread/memory ceiling and must event the subscriber socket itself | §2; M88_001 |
-| Fixed pool sizing, no adaptive resize | revisit only if a post-landing bench shows contention | §Out of scope |
+| Fixed pool sizing, no adaptive resize | revisit only if a post-landing bench shows contention | §"What is explicitly out of scope" |
 
 ---
 
@@ -142,7 +143,7 @@ removed the per-process memo that used to amortize it — so **every runner requ
 pays one indexed single-row read**, not one per heartbeat interval.
 
 That was a deliberate trade, and the reasoning is in
-[`../AUTH.md`](../AUTH.md) §Runner token: admin-state transitions have no delivery
+[`../AUTH.md`](../AUTH.md) §"Runner token" — admin-state transitions have no delivery
 channel other than auth rejection, so a per-process memo made revocation
 deterministic only on the machine that served the operator's write. Reading the row
 every time makes a cordon, drain, revoke, or delete effective fleet-wide the moment
@@ -155,7 +156,7 @@ probes a second. (`fleet.runners` is created by `schema/600_runners.sql` and
 carries no separate index slot: the M154 rebuild retired the shared
 `033_hot_path_indexes` and moved each index into the slot owning its table.) Revisit when runner count or poll rate makes
 that measurable — AUTH.md records the replacement design (a short-lived signed
-credential verified locally) and the condition it must meet.
+credential verified locally) and the condition it must meet.>>>>>>> origin/main
 
 For a 20-runner fleet at the 1 s default: ~72,000 idle `lease` requests/hour. Doubling `NO_WORK_RETRY_AFTER_MS` to 2 s halves it; the trade is idle pickup latency, not event-delivery latency for a busy fleet. Active traffic (XADD ingress, PUBLISH activity ~5/event, XACK on report) sits on top, scaling with event throughput as before.
 
@@ -178,7 +179,7 @@ Watch `agentsfleet_lease_poll_candidates_scanned_total / agentsfleet_lease_polls
 
 #### Which recurring Postgres reads are index-served
 
-The Redis figures above are only half the idle bill. The other half is Postgres, and it used to scale with *accumulated rows* rather than with work — an account that had been running a year cost more at idle than a fresh one, for no reason a user asked for. Schema slot `033` closes that: every recurring control-plane read below is now served by an index, and each index is asserted against the query **plan**, not merely created.
+The Redis figures above are only half the idle bill. The other half is Postgres, and it used to scale with *accumulated rows* rather than with work — an account that had been running a year cost more at idle than a fresh one, for no reason a user asked for. Each table's own index slot closes that: every recurring control-plane read below is served by an index, and each index is asserted against the query **plan**, not merely created.
 
 | Recurring read | Was | Now |
 |---|---|---|
@@ -302,7 +303,7 @@ Step 4: Emit configuration
 4. **Raise `REDIS_REQUEST_TIMEOUT_MS` above 5000.** Upstash regional p99 is single-digit-ms; >5 s is failure, not slowness.
 5. **Put `SUBSCRIBE` on the request pool.** A subscribed connection can serve nothing else — it lives outside the pool, on the SubscriptionHub, which holds exactly one and fans out in-process.
 6. **Size `API_HTTP_THREADS` to peak concurrent SSE tails.** Streams no longer touch the handler pool (dedicated detached threads, `SSE_MAX_STREAMS` cap); size the pool to request concurrency and the SSE knob to viewer concurrency — they are independent axes.
-7. **Include fleet count in the idle term.** It is not there any more. An idle poll costs one Redis read and no database work regardless of how many fleets exist; fleet count appears only in the readiness *recovery* bound (`runner_fleet.md` §"Failure recovery model"). Sizing an idle deployment by fleet population is the pre-M141 mistake, and it is the reason the idle figure in §"Per-request volume" used to be wrong.
+7. **Include fleet count in the idle term.** It is not there any more. An idle poll costs one Redis read and no database work regardless of how many fleets exist; fleet count appears only in the readiness *recovery* bound ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). Sizing an idle deployment by fleet population is the pre-M141 mistake, and it is the reason the idle figure in §"Per-request volume" used to be wrong.
 8. **Reach for a bare `LIMIT` on the candidate scan.** It was considered and rejected: a bare limit caps discovery throughput without removing the per-poll Postgres cost, and it silently starves every fleet past the bound because the scan is ordered, not sampled. The ceiling only works *because* the readiness slice above it is randomized.
 9. **Sum `agentsfleet_fleet_ready_depth` across replicas.** Every replica samples the same shared hash, so the fleet-wide value is any single instance's series. Summing multiplies it by replica count.
 
