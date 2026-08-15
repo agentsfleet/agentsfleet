@@ -237,3 +237,72 @@ fn freeScheme(alloc: std.mem.Allocator, s: SignatureScheme) void {
     if (s.ts_header) |t| alloc.free(t);
     alloc.free(s.hmac_version);
 }
+
+test "extractSecretRef refuses every shape that names no usable ref" {
+    const alloc = std.testing.allocator;
+    // Each of these reaches the middleware as "no Svix secret configured",
+    // which must fail closed rather than resolve to something arbitrary.
+    const refused = [_][]const u8{
+        "not json at all",
+        "[\"secret_ref\"]",
+        "{\"other\":\"x\"}",
+        "{\"secret_ref\":42}",
+        "{\"secret_ref\":\"\"}",
+    };
+    for (refused) |sig_json| {
+        try std.testing.expect(try extractSecretRef(alloc, sig_json) == null);
+    }
+}
+
+test "extractSecretRef returns the ref as an owned copy" {
+    const alloc = std.testing.allocator;
+    const ref = (try extractSecretRef(alloc, "{\"secret_ref\":\"whsec_key\"}")).?;
+    defer alloc.free(ref);
+    try std.testing.expectEqualStrings("whsec_key", ref);
+}
+
+const TEST_CONFIG = webhook_verify.VerifyConfig{
+    .name = "github",
+    .sig_header = "X-Hub-Signature-256",
+    .ts_header = "X-Hub-Timestamp",
+    .prefix = "sha256=",
+    .hmac_version = "v1",
+    .includes_timestamp = true,
+    .max_ts_drift_seconds = 300,
+};
+
+test "schemeFromConfig copies every field and freeScheme releases all of them" {
+    const alloc = std.testing.allocator;
+    const scheme = try schemeFromConfig(alloc, TEST_CONFIG);
+    defer freeScheme(alloc, scheme);
+
+    // Copies, not borrows: the config outlives no request, so a borrowed
+    // header name would dangle by the time the middleware verifies a payload.
+    try std.testing.expectEqualStrings(TEST_CONFIG.sig_header, scheme.sig_header);
+    try std.testing.expectEqualStrings(TEST_CONFIG.prefix, scheme.prefix);
+    try std.testing.expectEqualStrings(TEST_CONFIG.ts_header.?, scheme.ts_header.?);
+    try std.testing.expectEqualStrings(TEST_CONFIG.hmac_version, scheme.hmac_version);
+    try std.testing.expect(scheme.includes_timestamp);
+    try std.testing.expectEqual(TEST_CONFIG.max_ts_drift_seconds, scheme.max_ts_drift_seconds);
+}
+
+test "schemeFromConfig unwinds every partial copy when an allocation fails" {
+    // One run per allocation the function makes, so each errdefer arm unwinds
+    // in turn. testing.allocator underneath fails the test on any leak.
+    for (0..4) |fail_index| {
+        var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
+        try std.testing.expectError(error.OutOfMemory, schemeFromConfig(failing.allocator(), TEST_CONFIG));
+    }
+}
+
+test "freeSvixRow releases the row with and without a signature payload" {
+    const alloc = std.testing.allocator;
+    freeSvixRow(alloc, .{
+        .workspace_id = try alloc.dupe(u8, "ws-with-signature"),
+        .signature_json = try alloc.dupe(u8, "{\"secret_ref\":\"whsec_key\"}"),
+    });
+    freeSvixRow(alloc, .{
+        .workspace_id = try alloc.dupe(u8, "ws-without-signature"),
+        .signature_json = null,
+    });
+}
