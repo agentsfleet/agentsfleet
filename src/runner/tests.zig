@@ -59,6 +59,7 @@ test {
     _ = @import("engine/tool_bridge.zig");
     _ = @import("engine/CgroupScope.zig");
     _ = @import("engine/cgroup_scope_test.zig");
+    _ = @import("engine/capability_probe_test.zig");
     _ = @import("engine/landlock.zig");
     _ = @import("engine/seccomp.zig");
     _ = @import("engine/stream_redactor.zig");
