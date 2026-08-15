@@ -25,6 +25,11 @@ export interface StatePaths {
 // Single named const so the policy is enforced from one site.
 const STATE_FILE_MODE = 0o600;
 
+// The recovery hint both store services put on an UnexpectedError — one
+// declaration site (RULE UFS), owned here with the store it describes.
+export const STATE_STORE_SUGGESTION =
+  "check the CLI config directory permissions and disk space";
+
 export interface Credentials {
   token: string | null;
   saved_at: number | null;
@@ -88,9 +93,11 @@ export function emptyWorkspaces(): Workspaces {
   };
 }
 
-async function ensureBaseDir(env: NodeJS.ProcessEnv): Promise<void> {
-  const { baseDir } = resolveStatePaths(env);
-  await fs.mkdir(baseDir, { recursive: true });
+// Owner-only, matching the telemetry writer's mode for the same directory —
+// without it the first writer's umask decides whether the credentials
+// directory is world-listable.
+async function ensureBaseDir(baseDir: string): Promise<void> {
+  await fs.mkdir(baseDir, { recursive: true, mode: 0o700 });
 }
 
 async function readJson<T>(filePath: string, fallback: T): Promise<T> {
@@ -106,12 +113,15 @@ async function readJson<T>(filePath: string, fallback: T): Promise<T> {
   }
 }
 
+// Takes the resolved paths, not the environment: one resolution per
+// operation, so a caller's env object mutating between the path computation
+// and the directory creation cannot split a write across two directories.
 async function writeJson(
-  env: NodeJS.ProcessEnv,
+  paths: StatePaths,
   filePath: string,
   value: unknown,
 ): Promise<void> {
-  await ensureBaseDir(env);
+  await ensureBaseDir(paths.baseDir);
   const body = `${JSON.stringify(value, null, 2)}\n`;
   await fs.writeFile(filePath, body, { mode: STATE_FILE_MODE });
 }
@@ -125,15 +135,15 @@ export async function saveCredentials(
   env: NodeJS.ProcessEnv,
   next: Credentials,
 ): Promise<void> {
-  const { credentialsPath } = resolveStatePaths(env);
-  await writeJson(env, credentialsPath, next);
+  const paths = resolveStatePaths(env);
+  await writeJson(paths, paths.credentialsPath, next);
 }
 
 export async function clearCredentials(env: NodeJS.ProcessEnv): Promise<void> {
-  const { credentialsPath } = resolveStatePaths(env);
+  const paths = resolveStatePaths(env);
   // `saved_at` records when the clear happened, so the record is the empty
   // one with that single field stamped.
-  await writeJson(env, credentialsPath, {
+  await writeJson(paths, paths.credentialsPath, {
     ...emptyCredentials(),
     saved_at: Date.now(),
   });
@@ -148,8 +158,8 @@ export async function saveWorkspaces(
   env: NodeJS.ProcessEnv,
   next: Workspaces,
 ): Promise<void> {
-  const { workspacesPath } = resolveStatePaths(env);
-  await writeJson(env, workspacesPath, next);
+  const paths = resolveStatePaths(env);
+  await writeJson(paths, paths.workspacesPath, next);
 }
 
 export const stateInternals = {

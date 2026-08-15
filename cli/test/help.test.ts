@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { runCli, VERSION } from "../src/cli.ts";
-import { bufferStream, withFreshStateDir } from "./helpers-cli-state.ts";
+import { bufferStream, stateDirEnv, withFreshStateDir } from "./helpers-cli-state.ts";
 
 describe("help output", () => {
   test("--help output contains all user commands", async () => {
@@ -10,7 +10,7 @@ describe("help output", () => {
       const code = await runCli(["--help"], {
         stdout: out.stream,
         stderr: err.stream,
-        env: { NO_COLOR: "1" },
+        env: { NO_COLOR: "1", ...stateDirEnv() },
       });
       expect(code).toBe(0);
       const output = out.read();

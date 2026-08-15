@@ -15,7 +15,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withFreshStateDir } from "./helpers-cli-state.ts";
+import { bufferStream, stateDirEnv, withFreshStateDir } from "./helpers-cli-state.ts";
 
 describe("first-time user onboarding", () => {
   test("an auth-required command without credentials exits 1 with a clear message", async () => {
@@ -24,7 +24,7 @@ describe("first-time user onboarding", () => {
       const out = bufferStream();
       const err = bufferStream();
       const code = await runCli(["doctor"], {
-        stdout: out.stream, stderr: err.stream, env: {},
+        stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv() },
       });
       expect(code).toBe(1);
       expect(err.read()).toMatch(/not authenticated/i);
@@ -41,7 +41,7 @@ describe("first-time user onboarding", () => {
       const out = bufferStream();
       const err = bufferStream();
       const code = await runCli(["doctor"], {
-        stdout: out.stream, stderr: err.stream, env: {},
+        stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv() },
       });
       expect(code).toBe(1);
       expect(err.read()).toMatch(/not authenticated/i);

@@ -85,8 +85,9 @@ mkdir -p "$cgroup_fixture"
 run_script() {
   : >"$calls"
   # -u AGENTSFLEET_API_URL: a developer shell exporting the dev URL would trip
-  # the prod-endpoint guard in common.sh; the harness supplies every input a
-  # case needs, never the ambient shell.
+  # the prod-endpoint guard in common.sh. This sanitises the one guard-relevant
+  # variable; other ambient variables still flow through (full env -i
+  # hermeticity is a separate hardening).
   env -u AGENTSFLEET_API_URL \
     PATH="$stub_dir:$PATH" \
     CALLS="$calls" \
