@@ -31,6 +31,7 @@ const child_supervisor = @import("child_supervisor.zig");
 const secret_substitution = @import("engine/runtime/secret_substitution.zig");
 const cp = @import("daemon/control_plane_client.zig");
 const dts = @import("daemon/deadline_test_support.zig");
+const lease_run = @import("daemon/lease_run.zig");
 
 const ALLOC = std.testing.allocator;
 const ActivityFrame = contract.activity.ActivityFrame;
@@ -131,24 +132,10 @@ fn boundPort(handle: std.Io.net.Socket.Handle) !u16 {
     return std.mem.bigToNative(u16, sa.port);
 }
 
-/// The cp-backed mint hook — the production `MintForwarder` shape (lease_run.zig),
-/// inlined: `onMint` forwards the child's ask to the daemon over the real control
-/// plane, binding to the lease's workspace server-side (the child names no workspace).
-const Forwarder = struct {
-    client: *cp,
-    lease_id: []const u8,
-
-    fn onMint(ctx: *anyopaque, alloc: std.mem.Allocator, int: []const u8, scope: ?[]const u8) child_supervisor.CredentialOutcome {
-        const self: *Forwarder = @ptrCast(@alignCast(ctx));
-        return switch (self.client.mint(alloc, RUNNER_TOKEN, self.lease_id, int, scope, MINT_DEADLINE_MS)) {
-            .minted => |m| .{ .minted = .{ .token = m.token, .expires_at_ms = m.expires_at_ms } },
-            .rejected => .rejected,
-        };
-    }
-    fn hook(self: *Forwarder) child_supervisor.MintHook {
-        return .{ .ctx = self, .onMint = onMint };
-    }
-};
+/// The cp-backed mint hook — the PRODUCTION `MintForwarder` (lease_run.zig):
+/// `onMint` forwards the child's ask to the daemon over the real control plane,
+/// binding to the lease's workspace server-side (the child names no workspace).
+const Forwarder = lease_run.MintForwarder;
 
 test "test_child_requests_token_via_runner" {
     const io = common.globalIo();
@@ -165,7 +152,7 @@ test "test_child_requests_token_via_runner" {
     defer deadlines.deinit();
     var client = cp.init(ALLOC, io, try deadlines.start(ALLOC), url);
     defer client.deinit();
-    var forwarder = Forwarder{ .client = &client, .lease_id = "lease-e2e-3-1" };
+    var forwarder = Forwarder{ .cp = &client, .runner_token = RUNNER_TOKEN, .lease_id = "lease-e2e-3-1", .deadline_ms = MINT_DEADLINE_MS };
 
     // The child's stdout (parent reads out[0]) + stdin (the test reads resp[0]).
     const out = try pipe_proto.testOsPipe();
@@ -235,7 +222,7 @@ test "test_on_demand_mint_no_trigger" {
     defer deadlines.deinit();
     var client = cp.init(ALLOC, io, try deadlines.start(ALLOC), url);
     defer client.deinit();
-    var forwarder = Forwarder{ .client = &client, .lease_id = "lease-e2e-3-3" };
+    var forwarder = Forwarder{ .cp = &client, .runner_token = RUNNER_TOKEN, .lease_id = "lease-e2e-3-3", .deadline_ms = MINT_DEADLINE_MS };
 
     // Child writes requests on req[1], reads replies on resp[0]; parent reads
     // req[0], writes replies on resp[1].

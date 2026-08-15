@@ -23,4 +23,4 @@ that owns it; these are pointers, not second copies.
 | Missing frontmatter model fields overlay from the tenant's selection, per field, at lease time | [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) |
 | One credit pool drains under both postures; only the per-run rate differs | [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §1 |
 | The provider `api_key` never reaches a user-facing surface | [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §8 |
-| Every trigger enters one lease path; the runtime never branches on actor | [`../data_flow.md`](../data_flow.md) |
+| Every trigger enters one lease path; the runtime never branches on actor | [`../data_flow.md`](../data_flow.md) |>>>>>>> origin/main

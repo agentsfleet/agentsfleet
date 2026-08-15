@@ -126,6 +126,7 @@ pub fn build(b: *std.Build) void {
     // exe, so it proves exactly what ships and links no datastore: a red agentsfleetd
     // (`src/`) suite never blocks building, testing, or shipping the runner.
     const runner_tests = b.addTest(.{
+        .use_llvm = buildpkg.shared.TEST_USE_LLVM,
         .name = S_RUNNER_TESTS,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/runner/tests.zig"),
@@ -200,6 +201,7 @@ pub fn build(b: *std.Build) void {
     // Linux-only (SkipZigTest elsewhere); the `test-integration-agentsfleet-runner` make lane
     // runs them on a Linux host.
     const runner_integration_tests = b.addTest(.{
+        .use_llvm = buildpkg.shared.TEST_USE_LLVM,
         .name = S_RUNNER_INTEGRATION_TESTS,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/runner/sandbox_integration_test.zig"),
@@ -223,5 +225,10 @@ pub fn build(b: *std.Build) void {
     // resolve here too, not just in the unit lane.
     buildpkg.fixtures.addRunner(b, runner_integration_tests.root_module);
     b.step("test-integration", "Run agentsfleet-runner integration tests (real-process sandbox proofs + worker-pool concurrency, Linux)").dependOn(&b.addRunArtifact(runner_integration_tests).step);
+    // The coverage lane runs kcov over installed binaries; without an install
+    // step the fork-path lines this suite executes (forkExec, kill-tree, the
+    // worker pool's real children) are invisible to the measurement.
+    b.step("test-integration-bin", "Install the runner integration test binary for the coverage lane")
+        .dependOn(&b.addInstallArtifact(runner_integration_tests, .{}).step);
     buildpkg.test_list.addLane(b, list_step, S_RUNNER_INTEGRATION_TESTS, runner_integration_tests.root_module, S_RUNNER_ROOT_DIR);
 }

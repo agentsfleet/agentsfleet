@@ -260,3 +260,23 @@ test "fatalStderr formats and writes without the logger" {
     logging.fatalStderr("{s}", .{oversized}); // > 2 KiB cap — returns, no write
     logging.writeStderrLine("");
 }
+
+test "logfmt: a scope is carried per logger, not shared across them" {
+    const emitTwoScopes = struct {
+        fn call() void {
+            logging.scoped(.scope_alpha).info("from_alpha", .{});
+            logging.scoped(.scope_beta).info("from_beta", .{});
+        }
+    }.call;
+
+    const out = try capture(emitTwoScopes);
+    defer ALLOC.free(out);
+
+    try expectContains(out, "event=from_alpha");
+    try expectContains(out, "event=from_beta");
+}
+
+// The pre-init stderr path. `fatalStderr` runs before the logger exists, so it
+// has no sink to assert against — these call it for real to prove the format
+// and the truncation guard do not crash, which is the only failure mode that
+// matters when the process is already on its way out.

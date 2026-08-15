@@ -8,7 +8,7 @@ This is a cross-cutting topic. The data model lives in the tenant provider recor
 
 The billing model is **credit-based, Amp-style**: every tenant has a single credit balance in nanos (1 USD = 1,000,000,000 nanos); events deduct credits at two points (receive + run); when the balance hits zero the gate trips. There are no plan tiers in the cost function and no "included events" tier ladder — credits flow in (one-time starter grant in v2.0; Stripe purchase in v2.1+) and credits flow out per event. Receive is a fixed amount in both postures; **run** is posture-dispatched and is the friction-reducing gradient (platform default subsidises inference; self-managed runs cheaper because the user is paying their own provider for tokens). This file is the **concept reference** — it describes shape and behaviour.
 
-> **Where the live values are.** [`https://agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing) is the canonical source of truth for current rates, starter-grant value, and any active promotional window (e.g. a free-trial period). This doc and the scenarios in this directory deliberately do not quote dollar amounts or windows — they go stale the moment a rate moves. For implementers: server-authoritative constants live in `src/agentsfleetd/state/tenant_billing.zig` (pin-tested), mirrored to `ui/packages/website/src/lib/rates.ts` and `~/Projects/docs/snippets/rates.mdx`. Identifier names match across Zig/TS/JS so a rate bump is a coordinated PR.
+> **Where the live values are.** [`https://agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing) is the canonical source of truth for current rates and the starter-grant value. There is no promotional window (§2.3). This doc and the scenarios in this directory deliberately do not quote dollar amounts — they go stale the moment a rate moves. For implementers: server-authoritative constants live in `src/agentsfleetd/state/tenant_billing.zig` (pin-tested), mirrored to `ui/packages/website/src/lib/rates.ts` and `~/Projects/docs/snippets/rates.mdx`. Identifier names match across Zig/TS/JS so a rate bump is a coordinated PR.
 
 ---
 
@@ -25,7 +25,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Wallet clamp | `charged = LEAST(slice, balance)` | wallet write is `GREATEST(0, …)` — never negative, never credits a negative Δ | §3 |
 | Money writes per slice | 2, atomic | wallet debit + accumulated `stage` ledger row, inside the fenced renewal CTE (which also advances the two lease cursors) | §3 |
 | Ledger keying | `UNIQUE (event_id, charge_type)` | one `receive` row + one accumulated `stage` row per event — two rows total, however many times the run renews | §3 |
-| Free-trial window | `FREE_TRIAL_END_MS` = 2026-08-01T00:00:00Z | timestamp-gated, no flag, no column; charges are 0 until then and the gates cannot refuse | §2.3 |
+| Free usage | the starter grant only | a balance that drains, bounded by `balance_exhausted_at`; no promotional window and no mechanism for one | §2.3 |
 | Exhaustion policy | `BALANCE_EXHAUSTED_POLICY`, default `stop` | `warn` / `continue` opt out of blocking | §5 |
 | Mid-run exhaustion | next `/renew` refused | `UZ-RUN-012`; the run ends at its current deadline, never extended | §3, §5 |
 | Budget gate | per-fleet, independent of the balance gate | `daily_dollars` rolling 24 h · `monthly_dollars` UTC calendar month; mid-run refusal `UZ-RUN-015` | §5.1 |
@@ -34,7 +34,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Credential list | metadata projection | `kind` ∈ {`provider_key`, `custom_endpoint`, `custom_secret`}; `api_key` structurally absent (no field to leak) | §8.3 |
 | Model registry | one row per `(model_id, secret_ref)` | `core.tenant_model_entries`, `UNIQUE (tenant_id, model_id, secret_ref)`; entries reference keys, never own material | §8.4 |
 | Rate lookup | generation-validated process cache | entry accepted only at the observed `core.model_catalogue_revision` or later; a miss loads the row | §4.2, §10 |
-| Unknown model on platform | `std.debug.panic` | an unpriced model reaching the charge path is an internal inconsistency, never a default rate | §4.2 |
+| Unknown model on platform | `error.ModelNotPriced` | never a default rate: renew and settle fail closed on it, the lease-estimate gate fails open because an estimate is not a charge | §2.3, §4.2 |
 | Catalogue read | `GET /v1/models`, bearer-authed | the public `cap.json` route is retired — `404`, no alias | §10 |
 | Plan tiers | none in the cost function | future paid plans manifest as grants or top-ups, never a `compute_charge` branch | §2.4 |
 | Posture switch | claim-time snapshot wins | posture resolved once, at gate time, before the receive deduct | §7 |
@@ -45,8 +45,8 @@ Every row is extracted from the numbered sections below; the owner column names 
 
 Each trap is enforced in its owner section; this list is the index.
 
-- Never quote dollar amounts or promo windows in docs — they go stale the moment a rate moves (preamble).
-- Metering never stops — the trial window zeroes the money column, not the audit row (§2.3).
+- Never quote dollar amounts in docs — they go stale the moment a rate moves (preamble).
+- Metering never stops, and nothing zeroes the money column any more — a metered slice charges what the catalogue prices (§2.3).
 - Never read a cache eviction as "this model is not in the catalogue" — a miss loads, it does not answer (§4.2).
 - Renewal idempotency is the cumulative-token diff against the affinity cursor, not a slice number — a re-sent renewal charges ≈0 (§3).
 - The budget gate apportions each ledger row's accumulated total across `[created_at, last_charged_at]` — never stamps the whole total on one instant, which under-enforces exactly where the amounts are largest (§5.1).
@@ -69,7 +69,7 @@ The diagrams live with their flows: the per-slice metering picture (§3) and the
 | Credit-based Amp-style billing, no tier ladder | one number that drains; refills are grants or purchases | preamble, §2 |
 | Platform default routes through the admin tenant's own credential | no separate platform vault, no env-var fallback, one vault code path | §1 |
 | Fireworks Kimi K2.6 as the v2.0 platform default | strong general model, 256K context, cheap wholesale, OpenAI-compatible | §1 |
-| Free trial is timestamp-gated, not feature-flagged | time passes, the window closes — no deploy, no toggle to forget | §2.3 |
+| Free usage is a balance, not a promotional window | a number that drains cannot silently stay open; the timestamp-gated version priced every tenant at zero for its whole life | §2.3 |
 | Incremental per-renewal metering replaced the one-shot estimate | drained credit equals runtime × rate + actual tokens; refund-on-actual superseded | §3, §13; M80_010 |
 | Budget gate fails open on database failure | a metering outage must not halt every fleet on the platform | §5.1 |
 | Catalogue read moved behind auth | per-token margins are no longer world-readable | §10 |
@@ -113,15 +113,20 @@ Under M80_010's metering the grant drains at the run fee (`RUN_NANOS_PER_SEC` ×
 
 When `balance_nanos` cannot cover the next event's estimated cost, the gate trips. The event is blocked at the gate (`status='gate_blocked'`, `failure_label='balance_exhausted'`). The CLI prints a one-line pointer at the dashboard billing page; the dashboard shows the empty-balance state. **Stripe-backed Purchase Credits is deferred to v2.1.** In v2.0, a user whose grant runs out either contacts us (manual top-up via support) or stops using the platform. The pricing model and the schema both anticipate Stripe — they just don't ship the integration in v2.0.
 
-### 2.3 Promotional windows (free-trial mechanism)
+### 2.3 Free usage is a balance, never a window
 
-Promotional windows (e.g. a launch free-trial) are **timestamp-gated, not feature-flagged**: a cutoff constant (`FREE_TRIAL_END_MS` in `src/agentsfleetd/state/tenant_billing.zig`) drives `compute_stage_charge` to return `0` while `now_ms < cutoff`, then falls through to the standard rate constants automatically. No env var, no `is_free_trial_enabled` toggle, no database column — time passes, the window closes.
+**There is no promotional window, and there is no mechanism for one.** A tenant's free usage is the starter grant and nothing else: a number that drains, bounded by `balance_exhausted_at` when it reaches zero. Pricing consults the model catalogue and the posture — never the clock. No rate resolver takes a time parameter, which is asserted rather than left to review.
 
-While the window is active, the starter grant still inserts on tenant create and accumulates, so users carry unused balance into the post-window period. Telemetry rows still INSERT and still record posture + token counts, but with `credit_deducted_nanos = 0`: accurate audit history, zero revenue while we gather traction. **Metering never stops — the window zeroes the money column, not the audit row.** The pure charge functions (`computeStageChargeAt`) inject `now_ms` rather than reading the system clock, so pre-window / mid-window / post-window behaviour is all pin-tested deterministically in `tenant_billing_test.zig`.
+This replaced a timestamp-gated window, and the reason is worth keeping. The cutoff was a per-tenant column (`billing.tenant_wallet.free_trial_ends_at`) that was nullable with no default, and null read as "open". Its only writer in the repository was a test fixture, so **every tenant held null and every metered stage priced to zero — stage billing never charged anyone.** The gate sat ahead of the catalogue lookup, so it also masked an uncatalogued model: a pair with no rate row resolved to zero instead of refusing.
 
-**Gate behaviour while the window is open.** Because run charge is `0` for every posture during the window, the balance gate (`balanceCoversEstimate`) **cannot refuse** any tenant at either money checkpoint — `0 balance ≥ 0 charge` always covers. Both the lease-issue gate and the M80_006 per-lease **renewal** gate are therefore open for all tenants until the cutoff. The instant the clock passes `FREE_TRIAL_END_MS` (no deploy — time-gated), real per-posture charges apply and the gate begins to bite: lease-issue blocks an exhausted tenant (`balance_exhausted`), and renewal refuses one (`UZ-RUN-012`; the run ends at its current deadline, never extended). The HTTP-path gate integration tests skip while the window is open — the refusal they assert is unreachable until then — while the charge math they rely on is covered now by the injected-`now_ms` unit tests above.
+Two properties fall out of the removal, both load-bearing:
 
-Whether a window is currently active, and how it's presented to users, is canonical on [`agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing). Two consumer-visible reads surface the raw state for clients: `agentsfleet billing show --json` → `billing.free_trial: { active: bool, ends_at_ms: int }`, and the dashboard billing panel — both let consumers decide how to render.
+- **The balance gate can refuse.** While the window was open, run charge was `0` for every posture, so `balanceCoversEstimate` could never refuse anyone — `0 balance ≥ 0 charge` always covers. Both money checkpoints were effectively open for all tenants. They now bite: lease-issue blocks an exhausted tenant (`balance_exhausted`), and renewal refuses one (`UZ-RUN-012`; the run ends at its current deadline, never extended).
+- **An unpriceable model fails closed.** Platform posture with no catalogue row returns `error.ModelNotPriced`. Renew and settle fail closed on it; the lease-estimate gate fails open, because an estimate is not a charge.
+
+Metering itself is unchanged and never stopped: telemetry rows INSERT with posture and token counts regardless of what is charged. What changed is that `credit_deducted_nanos` now carries the catalogue's number instead of zero.
+
+How free usage is presented is canonical on [`agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing). `GET /v1/tenants/me/billing` carries exactly four members — `balance_nanos`, `updated_at`, `is_exhausted`, and `exhausted_at` — which is the whole state a client needs. It carries no `free_trial` member; that removal is breaking and is recorded in the changelog. The set is pinned by an integration test rather than described only here, so a member arriving or departing fails the suite instead of silently dating this page.
 
 ### 2.4 Plan tiers
 
@@ -226,11 +231,16 @@ pub fn computeStageCharge(
     d_cached:   u32,
     d_output:   u32,
 ) !i64 {
-    // Free-trial and self_managed price with NO statement at all. Only the
-    // platform branch consults the catalogue, and it prices against the
-    // generation `conn` observes.
-    const rates = (try resolveRenewSliceRates(conn, provider, posture, model, clock.nowMillis())) orelse
-        std.debug.panic("compute_stage_charge: model '{s}' (provider '{s}') not in the priced catalogue", .{ model, provider });
+    // self_managed prices with NO statement at all. Only the platform branch
+    // consults the catalogue, and it prices against the generation `conn`
+    // observes. No clock is involved at any point.
+    // An uncatalogued model is an OPERATIONAL state, not a programmer bug: an
+    // admin can DELETE a rate row while a tenant still names that model. This
+    // used to panic, which aborted the whole replica for one fleet's stale
+    // model, on every replica that picked the fleet up. It returns an error so
+    // each caller takes its own documented posture — see §2.3.
+    const rates = (try resolveRenewSliceRates(conn, provider, posture, model)) orelse
+        return error.ModelNotPriced;
     // ms-precision: divide AFTER multiplying, so a 20_500 ms slice bills the full
     // 20.5 s, not a second-truncated 20 s (the per-slice debits then sum to the
     // real runtime × rate — never under-bill across N renewals).
@@ -250,7 +260,9 @@ Rates come from a process-local cache in front of `core.model_library` (`state/m
 
 Every admin mutation runs inside the generation transaction: lock the singleton row `FOR UPDATE`, change the catalogue, increment the generation, commit. The rows and the generation describing them therefore become visible together, and a replica that never saw the mutation still cannot serve the old rate — its entry carries the old generation and every charge compares it.
 
-`std.debug.panic` under platform is correct: a model that's not in the catalogue should never reach the lease path's billing — it would have been rejected at `tenant provider create` time (`400 model_not_in_caps_catalogue`) or when the bundle's frontmatter was authored. Reaching `computeStageCharge` with an unknown model is an internal inconsistency; we want `agentsfleetd` to fail the lease loudly, alert, and investigate, not silently use a default.
+`error.ModelNotPriced` under platform, not a panic and never a default rate. The upstream validators do reject an uncatalogued model — at `tenant provider create` time (`400 model_not_in_caps_catalogue`) and when the bundle's frontmatter is authored — but the catalogue can move after they ran: an admin `DELETE` of a non-default row leaves any tenant still naming that model reaching this resolve and getting a database answer of "no row".
+
+That is an operational state, not a programmer bug, which is why this path used to panic and does not any more. A panic aborted the whole replica for one fleet's stale model, on every replica that picked the fleet up — one tenant's stale configuration taking down the daemon for everyone. The error lets each caller take its own documented posture instead: renew and settle fail closed, and the lease-estimate gate fails open, because an estimate is not a charge.
 
 ### 4.3 What an event costs — by shape, not by number
 
@@ -306,7 +318,7 @@ flowchart TD
 
 Properties:
 
-- **Single-pass gate.** One `balance_nanos < estimate` check at the start. If the user can't cover one event's worst-case, the event is rejected at the gate. The estimate is conservative — uses the worst-case-tokens estimate from the prompt size for the run portion. Whether the gate actually blocks is governed by the `BALANCE_EXHAUSTED_POLICY` env var (default `stop`, which blocks the exhausted tenant; set `warn` or `continue` to opt out of blocking and let the event through). Note that during the free-trial window all charges are `0` until 2026-08-01, so the gate cannot trigger at all until the window closes.
+- **Single-pass gate.** One `balance_nanos < estimate` check at the start. If the user can't cover one event's worst-case, the event is rejected at the gate. The estimate is conservative — uses the worst-case-tokens estimate from the prompt size for the run portion. Whether the gate actually blocks is governed by the `BALANCE_EXHAUSTED_POLICY` env var (default `stop`, which blocks the exhausted tenant; set `warn` or `continue` to opt out of blocking and let the event through).
 - **Receive deduct at issue + incremental run metering.** The receive deduct + its telemetry insert is one transaction at lease issue. The run half is metered incrementally — a per-`/renew` accumulate plus a settle at report (one `receive` row + one *accumulated* `stage` row — see §3). If `agentsfleetd` crashes between writes, the receive row is the durable record that the receive overhead was charged; each accumulated slice is likewise durable (committed in the renewal CTE), so reclaim meters forward from the cursor.
 - **Mid-event balance crossing zero is fine.** In-flight events run to completion under the snapshot taken at receive time. The next event hits the gate cleanly.
 - **Concurrent events on near-zero balance.** Two events claim simultaneously, both pass the gate (balance was sufficient for one), both deduct → balance can briefly go negative. We accept the small overshoot rather than serialise all events behind a row lock. Recovery: next event sees `balance_nanos < 0`, gate trips.
@@ -349,7 +361,7 @@ The slice-by-slice audit trail is a separate concern from enforcement, and it is
 
 The stored budget is parsed by `config_helpers.parseFleetBudget`, the same validator that accepted it at ingest, so the ceiling that admits a run and the ceiling that kills it are one number.
 
-**The gate is inert during the free trial.** Every charge is zero until `FREE_TRIAL_END_MS` (`2026-08-01T00:00:00Z`), so no fleet accrues `credit_deducted_nanos` and no budget is consumed. The balance gate shares the property, and it is the honest one: you are not being charged, so you are not spending your allowance. Both gates begin to bite when the window closes.
+**The gate consumes what the catalogue prices.** A fleet accrues `credit_deducted_nanos` from its first metered slice, so the budget is spent against real rates rather than against zero. This is a change: while the promotional window existed, every charge was zero, so no budget was ever consumed and neither gate could refuse anyone (§2.3).
 
 ---
 

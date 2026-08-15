@@ -48,19 +48,72 @@ after the component lanes converge.
 
 ## Coverage
 
-`make test-coverage-zig` installs and runs five binaries under kcov:
+`make test-coverage-zig` installs and runs eight component binaries under kcov:
 
 - daemon unit tests;
 - runner unit tests;
 - shared library tests;
 - logging tests;
-- call-deadline tests.
+- call-deadline tests;
+- object-store tests;
+- the runner integration suite (Linux only);
+- the daemon integration suite, against live datastores, serially.
 
-Each binary must produce a non-empty Cobertura report. kcov merges the component
-reports into `coverage/zig/merged`, and the merged line rate must meet
-`ZIG_COVERAGE_MIN_LINES`, which `make/test.mk` sets. Read the floor there rather
-than from this page — it is raised as production-path tests land, and a number
-copied here goes stale the first time it moves.
+`scripts/check_zig_coverage.py` unions those reports — a line counts as covered
+when any component executed it, because the unit lanes and the integration
+suites reach largely disjoint code — publishes the union to
+`coverage/zig/merged`, and enforces `ZIG_COVERAGE_MIN_LINES`. The floor is 89%.
+
+The union is deliberately not `kcov --merge`. That command returned only the
+three `src/lib` components on Linux — 24 files, 861 lines — against 558 files
+and 31,259 lines from the identical invocation on macOS, same kcov 43. The gate
+read the result without checking what it covered, so it graded 2.8% of the
+codebase and reported 93.70%.
+
+### Test binaries compile through LLVM
+
+Zig 0.16's self-hosted x86_64 backend emits DWARF 5 line programs libdw
+rejects. `dwarf_getsrclines` returns `invalid .debug_line section` for every Zig
+unit; binutils reports bogus sibling markers over the same bytes. kcov reads
+line tables through libdw and skips failing units silently. Six of eight
+components measured nothing on Linux; `agentsfleetd/` contributed nothing at
+all. Only `compiler_rt` survived — the one DWARF 4 unit per binary.
+
+So every test binary sets `use_llvm`, from one definition site:
+`shared.TEST_USE_LLVM`. Under LLVM the same sources parse whole. Measured with
+real kcov: `logging` 0 → 7 product classes, `deadline` 0 → 8, matching macOS.
+
+**Do not drop `use_llvm` from a test binary to speed up a build.** Its coverage
+silently falls to zero instead of failing — a skipped unit and an untested unit
+look identical in the report. `ZIG_COVERAGE_REQUIRED_COMPONENTS` is the only
+alarm.
+
+Two dead ends, so nobody retries them: kcov is current at v43 (`v44-pre-test3`
+is identical), and elfutils 0.190 and 0.192 both refuse the same bytes. The
+defect was in the debug info, not the readers.
+
+So the gate grades the union of the components that did collect and states
+`measured over N of M components`, naming every component that captured
+nothing, on success and on failure alike. `ZIG_COVERAGE_REQUIRED_COMPONENTS`
+(`make/test.mk`, one definition site per platform) names those that must
+collect; a required component contributing nothing fails the build, which is
+the regression the earlier blanket refusal was written to catch.
+
+**Read the rate with its denominator.** A subset flatters. While Linux measured
+only `runner` and `lib` it graded ~92% over 89 files; all seven macOS components
+measured 90.26% over 565. `zig_components_measured` and `zig_measured_files` tell
+them apart. A rate that rises while the file count falls is a capture regression.
+
+`ZIG_COVERAGE_REQUIRED_COMPONENTS` ratchets on evidence. A component joins it in
+the commit where a green run shows it collecting — never ahead.
+Until kcov collects the remaining components, per-folder floors for
+`agentsfleetd/` cannot be enforced in Continuous Integration (CI) at all,
+because that tree contributes no measured line there.
+
+The checker writes these keys to `.tmp/zig-coverage.txt` for the CI job summary:
+`zig_line_coverage_pct`, `zig_line_coverage_min_pct`, `zig_measured_files`,
+`zig_measured_lines`, `zig_components_measured`, `zig_components_total`, and
+`zig_components_empty`.>>>>>>> origin/main
 
 ## Adding a component
 

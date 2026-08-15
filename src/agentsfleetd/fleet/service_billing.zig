@@ -193,7 +193,7 @@ fn runBilling(hx: Hx, session: *FleetSession, event: *const redis_fleet.FleetEve
     };
     const policy = hx.ctx.balance_policy; // resolved once at startup, carried on the context
 
-    if (!metering.balanceCoversEstimate(pool, alloc, tr.tenant_id, tr.resolved.mode, tr.resolved.provider, tr.resolved.model, policy)) {
+    if (!metering.balanceCoversEstimate(pool, tr.tenant_id, tr.resolved.mode, tr.resolved.provider, tr.resolved.model, policy)) {
         log.debug("lease_balance_exhausted", .{ .fleet_id = session.fleet_id, .event_id = event.event_id });
         blockEvent(hx, session.fleet_id, event.event_id, rows.LABEL_BALANCE_EXHAUSTED);
         return null;

@@ -96,6 +96,11 @@ readonly RUNNER_ENV_INPUTS=(
 
 run_script() {
   : >"$calls"
+  # Runner env inputs are dropped, never merely overridden: `common.sh` reads
+  # `${AGENTSFLEET_API_URL:-$expected_api_url}` and refuses the deploy when it
+  # disagrees with ENV's endpoint. A developer shell pointed at api-dev then
+  # fails the ENV=prod case alone, on that machine only. Cases that mean to
+  # exercise a variable pass it as an argument below, which still wins.
   local -a unset_args=()
   local var
   for var in "${RUNNER_ENV_INPUTS[@]}"; do

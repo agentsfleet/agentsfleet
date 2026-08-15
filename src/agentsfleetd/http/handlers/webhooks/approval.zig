@@ -248,3 +248,7 @@ test "ApprovalDecision.toConstString maps correctly" {
     try std.testing.expectEqualStrings("approve", ApprovalDecision.approve.toConstString());
     try std.testing.expectEqualStrings("deny", ApprovalDecision.deny.toConstString());
 }
+
+test {
+    _ = @import("approval_test.zig");
+}
