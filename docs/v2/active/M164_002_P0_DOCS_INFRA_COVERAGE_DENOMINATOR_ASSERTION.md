@@ -58,6 +58,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/check_zig_coverage_test.py` | EDIT | Self-tests for every new assertion and its negative path. |
 | `make/test-unit.mk` | EDIT | Passes the new floors, targets, roots, and denominator minimums to the checker. |
 | `make/test.mk` | EDIT | Defines the per-folder floors and targets and the denominator minimums as named variables, one definition site each. |
+| `src/build/shared.zig` | EDIT | `TEST_USE_LLVM` — the single definition site forcing test binaries through LLVM, carrying why. |
+| `build.zig`, `build_runner.zig`, `src/build/{s3,daemon_tests,auth_tests,test_list,lib_tests}.zig` | EDIT | Each `addTest` site reads `TEST_USE_LLVM`, so no test binary can be built with unreadable debug info. |
+| `src/build/bench_incident.zig` | CREATE | The incident-response bench steps, moved out of `build.zig` when the added line crossed the 350-line cap. |
 | `docs/architecture/testing.md` | EDIT | §Coverage records the component set, the per-folder floors and targets, the denominator assertions, and the raise-only ratchet rule. |
 | `src/runner/**/*_test.zig` | CREATE/EDIT | Unit-lane tests lifting the runner's four worst files and the tail to the 95% target. |
 | `src/agentsfleetd/**/*_test.zig` | CREATE/EDIT | Live-harness unit tests for the zero-percent handlers and near-zero stores, descending dark order. |
@@ -104,6 +107,7 @@ The union already fails a component contributing literally nothing. A component 
 - **Dimension 2.1** — A component whose measured-file or measured-line count falls below its declared minimum fails, naming component, measured, and minimum → Test `test_component_denominator_floor_enforced`
 - **Dimension 2.2** — A union missing any declared product root fails naming the absent root, however high its rate → Test `test_absent_product_root_fails_despite_high_rate`
 - **Dimension 2.3** — DONE — The union's own measured-file and measured-line counts are published alongside the rate → Test `test_summary_file_publishes_the_denominator_and_the_component_counts`
+- **Dimension 2.5** — DONE — Every test binary compiles through LLVM from one definition site, so kcov can read its line table at all; a component whose debug info regresses fails at the required-component assertion rather than reporting a smaller number → Tests `test_required_component_contributing_nothing_fails_the_gate` (the alarm), plus the measured proof recorded in Discovery: `logging` 0 → 7 and `deadline` 0 → 8 product classes under real kcov
 - **Dimension 2.4** — DONE — kcov captures two of the eight components on Linux, so the gate grades the union of those that did collect, states `measured over N of M components` naming every component that captured nothing on success and failure alike, and fails when a component named in `ZIG_COVERAGE_REQUIRED_COMPONENTS` contributes nothing → Tests `test_unrequired_empty_component_is_graded_over_what_collected`, `test_required_component_contributing_nothing_fails_the_gate`, `test_scope_line_names_every_component_that_captured_nothing`, `test_every_component_empty_leaves_nothing_to_grade`
 
 ### §3 — Floors bind per folder, targets stay visible
@@ -284,11 +288,16 @@ Regression rows: the guards already on this branch must keep firing — `test_ze
 
 - **Measurement that changed the design** — every per-folder number in this spec was taken on macOS, and the platform the gate runs on cannot reproduce them. kcov 43 collects the product line tables of only `runner` and `lib` on Linux; the other components yield a Cobertura report with no classes at all. It is a kcov defect, not a filter or path error, on three counts: a kcov run with **no** include or exclude filter returns nothing but `/opt/zig/lib/compiler_rt/*` for the affected binaries; `readelf` shows their product units carrying `DW_AT_comp_dir` values under `src/`, squarely inside the include path; and the same sources measure every component on macOS. The edge of the set also flickers: `deadline` returned nothing on three consecutive Continuous Integration (CI) runs and then 2 files on the fourth, from identical sources, so only `runner` and `lib` are required. The subset **flatters** — the first green run published 91.86% over 89 files where all seven macOS components measure 90.26% over 565 — which is why the pre-existing `kcov --merge` gate could report 93.70% and look healthy.
 
-- **Consequences for this spec, not yet dispositioned by Indy:**
-  - §2 Dimension 2.2 (a union missing a declared product root fails) cannot be satisfied on Linux as written: `agentsfleetd/` contributes no measured line there, so the assertion would fail every run.
-  - §3's per-folder floors for `agentsfleetd/` are unenforceable in CI for the same reason — there is no daemon rate to grade. The 67.48% figure the floors are seeded from is a macOS measurement.
-  - §4's daemon coverage lifts remain worth doing and are still measurable on macOS, but CI cannot prove them.
-  - Fixing kcov collection is the unblocker for all three. The narrowed lead: kcov reads the DWARF 4 `compiler_rt` unit and drops the DWARF 5 units Zig emits for product code in these binaries, and the `DW_AT_stmt_list` offsets in the affected binaries are not monotonic in compilation-unit order, unlike the two that collect. Building a kcov newer than 43 in the CI image is the first thing to try.
+- **Root cause: Zig, not kcov.** Zig 0.16's self-hosted x86_64 backend emits DWARF 5 line programs libdw rejects — `dwarf_getsrclines` returns `invalid .debug_line section` for every Zig unit, and binutils reports bogus sibling markers over the same bytes. kcov skips failing units silently, so the symptom looked arbitrary. Only `compiler_rt` survived, the one DWARF 4 unit per binary. Isolated on a three-line Zig file: default backend → all units rejected; `-fllvm` → one clean unit, 102,585 lines.
+
+- **Two dead ends, recorded so nobody retries them:** kcov `v44-pre-test3` behaves identically to v43 (already the current release), and elfutils 0.192 refuses the same bytes as 0.190. Neither could work — the defect is in the debug info, not the readers.
+
+- **Fix:** every test binary sets `use_llvm` from one definition site, `shared.TEST_USE_LLVM`. Real kcov on real binaries: `logging` 0 → 7 product classes, `deadline` 0 → 8, `lib` 18 → 18, matching macOS. `build.zig` crossed the 350-line cap, so the incident-response bench block moved to `src/build/bench_incident.zig`.
+
+- **Consequences for this spec:**
+  - §2 Dimension 2.2 and §3's `agentsfleetd/` floors are unblocked — the daemon tree is measurable on Linux again. Neither is implemented yet.
+  - `ZIG_COVERAGE_REQUIRED_COMPONENTS` stays at `runner lib` until a green run shows the rest collecting, then ratchets in that commit.
+  - §4's daemon coverage lifts become provable in CI, not macOS-only.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.

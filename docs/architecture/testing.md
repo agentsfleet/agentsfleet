@@ -71,21 +71,27 @@ and 31,259 lines from the identical invocation on macOS, same kcov 43. The gate
 read the result without checking what it covered, so it graded 2.8% of the
 codebase and reported 93.70%.
 
-### kcov reads two of the eight components on Linux
+### Test binaries compile through LLVM
 
-kcov 43 collects the product line tables of only `runner` and `lib` on Linux,
-reliably. The rest yield a Cobertura report with no classes in it at all —
-usually. `deadline` and `s3` have each been seen contributing a couple of files
-on one run and nothing on the next, from the same sources, so the set is not
-merely small but unstable at its edge. Only `runner` and `lib` have collected on
-every run observed, which is why they alone are required.
+Zig 0.16's self-hosted x86_64 backend emits DWARF 5 line programs libdw
+rejects. `dwarf_getsrclines` returns `invalid .debug_line section` for every Zig
+unit; binutils reports bogus sibling markers over the same bytes. kcov reads
+line tables through libdw and skips failing units silently. Six of eight
+components measured nothing on Linux; `agentsfleetd/` contributed nothing at
+all. Only `compiler_rt` survived — the one DWARF 4 unit per binary.
 
-This is a kcov defect and not a filter or path mistake, on three pieces of
-evidence: a kcov run with no `--include-pattern` or `--exclude-pattern` returns
-nothing but `/opt/zig/lib/compiler_rt/*` for the affected binaries; their debug
-information carries product units rooted inside the include path, which
-`readelf` shows as `DW_AT_comp_dir` values under `src/`; and the same sources
-measure all seven macOS components.
+So every test binary sets `use_llvm`, from one definition site:
+`shared.TEST_USE_LLVM`. Under LLVM the same sources parse whole. Measured with
+real kcov: `logging` 0 → 7 product classes, `deadline` 0 → 8, matching macOS.
+
+**Do not drop `use_llvm` from a test binary to speed up a build.** Its coverage
+silently falls to zero instead of failing — a skipped unit and an untested unit
+look identical in the report. `ZIG_COVERAGE_REQUIRED_COMPONENTS` is the only
+alarm.
+
+Two dead ends, so nobody retries them: kcov is current at v43 (`v44-pre-test3`
+is identical), and elfutils 0.190 and 0.192 both refuse the same bytes. The
+defect was in the debug info, not the readers.
 
 So the gate grades the union of the components that did collect and states
 `measured over N of M components`, naming every component that captured
@@ -94,14 +100,13 @@ nothing, on success and on failure alike. `ZIG_COVERAGE_REQUIRED_COMPONENTS`
 collect; a required component contributing nothing fails the build, which is
 the regression the earlier blanket refusal was written to catch.
 
-**The Linux figure is not a whole-codebase figure, and it flatters.** What Linux
-can read grades around 92% over 89 files, where all seven macOS components
-measure about 90% over 565. Both the rate and the denominator move as edge
-components flicker, so treat the Linux number as a floor check on `runner` and
-`lib` rather than a codebase measurement, and take the codebase figure from a
-macOS run. Read the published rate together with `zig_components_measured` and
-`zig_measured_files`; a rise in the rate that comes with a fall in the file
-count is a capture regression, not progress.
+**Read the rate with its denominator.** A subset flatters. While Linux measured
+only `runner` and `lib` it graded ~92% over 89 files; all seven macOS components
+measured 90.26% over 565. `zig_components_measured` and `zig_measured_files` tell
+them apart. A rate that rises while the file count falls is a capture regression.
+
+`ZIG_COVERAGE_REQUIRED_COMPONENTS` ratchets on evidence. A component joins it in
+the commit where a green run shows it collecting — never ahead.
 Until kcov collects the remaining components, per-folder floors for
 `agentsfleetd/` cannot be enforced in Continuous Integration (CI) at all,
 because that tree contributes no measured line there.

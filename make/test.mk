@@ -35,17 +35,13 @@ ZIG_COVERAGE_DIR ?= $(CURDIR)/coverage/zig
 # merged figure has never reached it.
 ZIG_COVERAGE_MIN_LINES ?= 89
 # Components whose reports MUST carry measured lines, one definition site per
-# platform. kcov 43 reads the product line tables of only `runner` and `lib` of
-# the eight component binaries on Linux: a kcov run with no include or exclude
-# filter at all returns nothing but `/opt/zig/lib/compiler_rt/*` for the others,
-# while their debug info carries correctly-rooted product units the filter would
-# match. The filters are not the cause and the same sources measure every
-# component on macOS, so the Linux lane grades what kcov hands it and names the
-# rest as unmeasured on every run. `deadline` and `s3` have been seen collecting
-# on one run and not the next, so they stay out of the required list — only
-# these two have collected every run. The lists are the regression signal: a
-# component that collects today and stops fails the gate instead of quietly
-# shrinking the denominator.
+# platform. A component that collects today and stops fails the gate, instead of
+# quietly shrinking the denominator.
+#
+# Linux carried a short list while Zig's self-hosted backend emitted debug info
+# libdw refuses. Test binaries now compile through LLVM, which fixes it at the
+# source (docs/architecture/testing.md §Coverage). The list ratchets on evidence:
+# add a component in the commit where a green run shows it collecting.
 ifeq ($(shell uname -s),Linux)
 ZIG_COVERAGE_REQUIRED_COMPONENTS ?= runner lib
 else

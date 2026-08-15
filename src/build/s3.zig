@@ -11,6 +11,7 @@
 
 const std = @import("std");
 const test_list = @import("test_list.zig");
+const shared = @import("shared.zig");
 
 const DEP_Z3 = "z3"; // build.zig.zon dependency key AND r2.zig's import name
 const Z3_S3_MODULE = "s3"; // module name z3 exposes its S3 client under
@@ -44,6 +45,7 @@ pub fn addTestStep(
     list_step: *std.Build.Step,
 ) void {
     const s3_tests = b.addTest(.{
+        .use_llvm = shared.TEST_USE_LLVM,
         .name = S3_TESTS,
         .root_module = b.createModule(.{
             .root_source_file = b.path(R2_ROOT),
