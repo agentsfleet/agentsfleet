@@ -67,12 +67,14 @@ ZIG_COVERAGE_TARGET_PCT ?= 95
 # Per-folder enforced floors. Measured on the union at the time each was set;
 # they ratchet toward the targets below as tests land.
 #
-# Raised from 88/91/93 by the run that added the `runner_integration` component
-# to the macOS lane and the daemon tests below: measured 89.53 merged, 89.02
-# agentsfleetd, 92.24 runner, 93.89 lib over 9 of 9 components. `lib` holds at
-# 93 because 93.89 does not clear 94. Every floor here sits below its measured
-# value, which is the only condition under which one may move.
-ZIG_COVERAGE_FOLDER_FLOORS ?= agentsfleetd=89 runner=92 lib=93
+# Raised from 89/92/93 by the run that split the deadline scheduler and covered
+# the webhook lookup's pure half: measured 89.80 merged, 89.16 agentsfleetd,
+# 93.24 runner, 95.13 lib over 9 of 9 components. `lib` reaches its target and
+# its floor becomes that target — the folder is held there, not merely above
+# where it happened to land. `agentsfleetd` holds at 89 because 89.16 does not
+# clear 90. Every floor here sits at or below its measured value, which is the
+# only condition under which one may move.
+ZIG_COVERAGE_FOLDER_FLOORS ?= agentsfleetd=89 runner=93 lib=95
 # The quality bar for every product folder.
 ZIG_COVERAGE_FOLDER_TARGETS ?= agentsfleetd=95 runner=95 lib=95
 # One floor under the shape of the whole report, deliberately NOT one per

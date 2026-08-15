@@ -102,8 +102,8 @@ now has its own.
 |---|---|---|
 | merged | 89 | 95 |
 | `agentsfleetd` | 89 | 95 |
-| `runner` | 92 | 95 |
-| `lib` | 93 | 95 |
+| `runner` | 93 | 95 |
+| `lib` | 95 | 95 |
 
 Floors are enforced and **raise-only**: move one in the same commit as the tests
 that measurably clear it, never ahead. A floor set ahead of its tests gates
@@ -115,11 +115,19 @@ destination stays visible without an unmet one turning the build red.
 `scripts/check_zig_coverage_doc_test.py` fails when this table disagrees with
 it. The values above were stale for exactly as long as nothing checked them.
 
-A 95% target is reachable for the daemon and the runner but **not for `lib`**,
-whose measured ceiling is 97.05% and falling: kcov attributes no instructions to
-a function signature, a parameter line, a closing brace or a comment, so those
-lines cannot be covered by any test. Other subsystems ceil between 99.38% and
-99.69%.
+The 95% target sits under every product folder's ceiling, `lib` included — it
+measures 95.13% and its floor is now that target. An earlier revision of this
+page called 95 unreachable for `lib` on a 97.05% ceiling; the shortfall was not
+the ceiling. `call_deadline/scheduler.zig` sat at exactly the 350-line file cap
+with eight dark lines and no room for the tests that would clear them, and
+three of those lines were test-support fakes the denominator counted as
+product. Splitting the file moved both problems at once.
+
+The ceiling is real and it is why the target is not 100: kcov attributes no
+instruction to a function signature, a parameter line, a closing brace or a
+comment, so those lines cannot be covered by any test. Other subsystems ceil
+between 99.38% and 99.69%. A folder that reads as capped is worth re-measuring
+against its file shape before the ceiling is blamed.
 
 The union is deliberately not `kcov --merge`. That command returned only the
 three `src/lib` components on Linux — 24 files, 861 lines — against 558 files
