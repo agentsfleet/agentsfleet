@@ -26,14 +26,46 @@ include make/bench.mk
 ZIG_GLOBAL_CACHE_DIR ?= $(HOME)/.cache/agentsfleet/zig-global-cache
 ZIG_LOCAL_CACHE_DIR  ?= $(CURDIR)/.tmp/zig-local-cache
 ZIG_COVERAGE_DIR ?= $(CURDIR)/coverage/zig
-# Production lines only — the coverage target excludes test bodies from the
-# denominator, so this is the share of shipped code the suites actually execute.
-# It reads the unit lanes and the live-service integration suite merged, because
-# they cover largely disjoint code and either one alone understates the truth by
-# tens of points. Raise it only in the same commit as the tests that clear it —
-# 91 was set ahead of the tests and gated nothing but red, because the measured
-# merged figure has never reached it.
-ZIG_COVERAGE_MIN_LINES ?= 89
+# ---------------------------------------------------------------------------
+# Coverage floors, targets and denominator minimums — ONE definition site each.
+# The checker accepts all of them only as arguments, so no recipe and no Python
+# module can hold a second copy.
+#
+# Floors are ENFORCED and raise-only: move one in the same commit as the tests
+# that measurably clear it, never ahead. 91 was once set ahead of the tests and
+# gated nothing but red. Targets are PUBLISHED, never enforced — the gap between
+# floor and target is printed every run so the destination stays visible without
+# an unmet target turning the build red.
+#
+# Production lines only: the coverage target excludes test bodies AND test
+# support from the denominator, so these are shares of shipped code. They read
+# the unit lanes and the live-service integration suite merged, because those
+# cover largely disjoint code and either alone understates the truth by tens of
+# points.
+# ---------------------------------------------------------------------------
+# Was ZIG_COVERAGE_MIN_LINES, which named a percentage. It now sits beside a
+# real measured-line minimum, and two variables a letter apart meaning entirely
+# different things is how the wrong one gets edited.
+ZIG_COVERAGE_MIN_PCT ?= 89
+ZIG_COVERAGE_TARGET_PCT ?= 95
+# Per-folder enforced floors. Measured on the union at the time each was set;
+# they ratchet toward the targets below as tests land.
+ZIG_COVERAGE_FOLDER_FLOORS ?= agentsfleetd=89 runner=93 lib=93
+# The quality bar for every product folder.
+ZIG_COVERAGE_FOLDER_TARGETS ?= agentsfleetd=95 runner=95 lib=95
+# One floor under the shape of the whole report, deliberately NOT one per
+# component. The failure being caught is collapse — kcov once returned 24 files
+# where the tree holds 558 — and a pair of numbers at roughly half the measured
+# figures catches that by a mile. Per-component minimums were tried and cut:
+# they were fourteen numbers to maintain, they duplicated the
+# require-component assertion that already fails a component contributing
+# nothing, and they turned every honest deletion of dead code into a red gate.
+# Set these low on purpose. They are a collapse alarm, not a growth ratchet.
+ZIG_COVERAGE_MIN_FILES ?= 300
+ZIG_COVERAGE_MIN_MEASURED_LINES ?= 18000
+# Product roots that must carry a measured line, whatever the rate. A union at
+# 98% holding one tree is not a measurement of the codebase.
+ZIG_COVERAGE_REQUIRED_ROOTS ?= agentsfleetd runner lib
 # Components whose reports MUST carry measured lines, one definition site per
 # platform. A component that collects today and stops fails the gate, instead of
 # quietly shrinking the denominator.

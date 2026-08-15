@@ -92,7 +92,7 @@ class TestCoverageLane(unittest.TestCase):
                     f"ZIG_COVERAGE_DIR={temp / 'coverage'}",
                     f"ZIG_GLOBAL_CACHE_DIR={temp / 'global'}",
                     f"ZIG_LOCAL_CACHE_DIR={temp / 'local'}",
-                    f"ZIG_COVERAGE_MIN_LINES={minimum}",
+                    f"ZIG_COVERAGE_MIN_PCT={minimum}",
                     "TEST_INFRA=provided",
                     "KEEP_TEST_STATE=1",
                     f"TEST_REDIS_TLS_CA_CERT={cert}",
