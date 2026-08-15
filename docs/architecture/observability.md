@@ -15,7 +15,7 @@ Every row is extracted from the sections below; the owner column names the secti
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Signal paths | 3 | OTLP push (no collector hop) · 🦔 PostHog · 🐘 Postgres (money) | §The three signal paths |
+| Signal paths | 3 | OTLP push (no collector hop) · <img src="https://cdn.simpleicons.org/posthog" width="14" alt="" /> PostHog · 🐘 Postgres (money) | §The three signal paths |
 | Metric namespace | `agentsfleet_` runtime families; dotted semconv cost families | `otel_metrics_families.zig` declares every exported name; the namespace guard reads the registry | §The three signal paths |
 | Runner telemetry | deliberately bare | `record_metric` is a no-op stub; local logfmt to the host, liveness over `/v1/runners` | §`agentsfleet-runner` — deliberately bare |
 | Library read series | 102 total, comptime-asserted | closed enums; a new member fails the build, never grows the export | §Library read stages are metrics, not spans |
@@ -35,8 +35,8 @@ All of it lives under `src/agentsfleetd/observability/`.
 
 | Path | What | Consumer |
 |---|---|---|
-| OTLP (push) | logs → Loki, traces → Tempo, metrics (runtime + cost families) → Mimir. Direct to 📈 Grafana Cloud; **no collector hop**. Gated on the `GRAFANA_OTLP_*` env triple. The daemon's **only** metrics egress: there is no pull endpoint. | Grafana Cloud, operator dashboards |
-| 🦔 PostHog | nullable client, product events only | product analytics |
+| OTLP (push) | logs → Loki, traces → Tempo, metrics (runtime + cost families) → Mimir. Direct to <img src="https://cdn.simpleicons.org/grafana" width="14" alt="" /> Grafana Cloud; **no collector hop**. Gated on the `GRAFANA_OTLP_*` env triple. The daemon's **only** metrics egress: there is no pull endpoint. | Grafana Cloud, operator dashboards |
+| <img src="https://cdn.simpleicons.org/posthog" width="14" alt="" /> PostHog | nullable client, product events only | product analytics |
 | Postgres | per-run execution telemetry + billing counters in `src/agentsfleetd/state/` | the money system of record |
 
 **One process, one registry.** Every runtime family carries the `agentsfleet_`

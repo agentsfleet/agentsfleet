@@ -673,8 +673,8 @@ not authority by itself.
    > the workspace, repository, and commit, then lands one
    > actor=system:repair-verifier event on the verifier fleet's stream. Same
    > envelope, same single ingress; the lease/execute path does not change.
-   > The responder → repairer → verifier walkthrough, with 📈 Grafana and
-   > 🔎 Elasticsearch as the evidence sources, lives in
+   > The responder → repairer → verifier walkthrough, with <img src="https://cdn.simpleicons.org/grafana" width="14" alt="" /> Grafana and
+   > <img src="https://cdn.simpleicons.org/elasticsearch" width="14" alt="" /> Elasticsearch as the evidence sources, lives in
    > [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md).
 ```
 

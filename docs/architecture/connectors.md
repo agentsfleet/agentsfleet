@@ -251,11 +251,11 @@ Receiving a signed event does not hand GitHub credentials to a fleet. When a lea
 
 | Provider | Connect credential | Inbound events after M102_005 |
 |---|---|---|
-| 🐙 GitHub | App installation handle | App ingress routes by installation + repository + event + grant; manual per-fleet webhook remains available |
-| 💬 Slack | bot token from Open Authorization (OAuth) | unchanged specialized events route with team/channel routing |
-| 🧾 Zoho Desk | OAuth refresh handle, multi-data-center token endpoint | no inbound integration in this workstream |
-| 🎫 Jira | OAuth refresh handle | no inbound integration in this workstream |
-| 📏 Linear | OAuth refresh handle | no inbound integration in this workstream |
+| <img src="https://cdn.simpleicons.org/github" width="14" alt="" /> GitHub | App installation handle | App ingress routes by installation + repository + event + grant; manual per-fleet webhook remains available |
+| <img src="https://api.iconify.design/logos/slack-icon.svg" width="14" alt="" /> Slack | bot token from Open Authorization (OAuth) | unchanged specialized events route with team/channel routing |
+| <img src="https://cdn.simpleicons.org/zoho" width="14" alt="" /> Zoho Desk | OAuth refresh handle, multi-data-center token endpoint | no inbound integration in this workstream |
+| <img src="https://cdn.simpleicons.org/jira" width="14" alt="" /> Jira | OAuth refresh handle | no inbound integration in this workstream |
+| <img src="https://cdn.simpleicons.org/linear" width="14" alt="" /> Linear | OAuth refresh handle | no inbound integration in this workstream |
 
 ## Bounded outbound: every vendor call is armed
 
