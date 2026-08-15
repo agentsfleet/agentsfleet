@@ -16,14 +16,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M136
 **Workstream:** 001
 **Date:** Jul 20, 2026
-**Status:** DONE — closed with the live proof deferred, on Indy's Aug 14, 2026 call ("I cant keep in active M136_001 - move it to Done"; §4: "i want to take it later")
+**Status:** IN_PROGRESS — resumed on Indy's Aug 15, 2026 call after Pull Request (PR) #606 repaired the development acceptance lanes ("merged to main go")
 
 > **Disposition at close.** **Delivered:** the acceptance harness (green locally), the deployed provider prerequisites, and a unit-coverage batch. **Deferred: §1–§5 entire** — no Dimension marked DONE and no Acceptance Rubric row graded, because the live pass (Slack mention, GitHub delivery, replay, Live Wall) never ran. §4 replays §3's exact delivery, so the five sections are one execution and move together to the follow-up agent; the work-order prompt is in PR #600's Session notes.
+> **Resumed:** the follow-up owns one ordered development-environment pass across §1–§5. No provider mutation begins until the runner heartbeat advances and the workspace, repository, Fleet, grant, and control-Fleet tuple resolves uniquely.
 **Priority:** P0 — the flagship reviewer scenario remains incomplete until real provider authorization and replay safety pass.
 **Categories:** DOCS, INFRA
 **Batch:** B1 — starts after the development runner is online
-**Branch:** `feat/m136-live-connector-proof` — shared with M160_002 by Indy's call, Aug 11, 2026; both workstreams land from one branch and one worktree
-**Test Baseline:** unit=3512 integration=589
+**Branch:** `feat/m136-live-connector-proof-followup`
+**Test Baseline:** unit=3907 integration=638
 **Depends on:** M135_002 (online runner with advancing heartbeat); M135_001 (provider bags, callback routes, and registration grants); M133_001 (workspace-multiplexed Live Wall, visually accepted with exhaustive deployed proof delegated here)
 **Provenance:** human-directed successor to M135_001 after the Jul 20, 2026 scope decision
 **Canonical architecture:** `docs/architecture/scenarios/github-pr-reviewer.md` §Remaining proof punch list
@@ -41,6 +42,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **PR title (eventual):** test(connectors): prove live reviewer integrations
 - **Intent (one sentence):** A release operator can trust that real Slack and GitHub integrations execute once, use only declared grants, and remain replay-safe.
 - **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Restatement:** One development run must prove the real Slack workspace event and GitHub review, preserve the original delivery identifiers for replay, and show the Live Wall routes and backfills that activity once.
+- **ASSUMPTIONS I'M MAKING:** 1. The deployed target tuple is discovered read-only and must be unique. 2. The existing provider browser flows remain the authorization surface. 3. Any runner, ownership, grant, or repository mismatch stops before the first provider mutation. 4. A reproducible product defect stops this proof for an explicit scope decision rather than gaining an opportunistic patch.
 
 ## Implementing agent — read these first
 
@@ -55,12 +58,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
+| `docs/v2/done/M136_001_P0_DOCS_INFRA_LIVE_CONNECTOR_PROOF.md` | EDIT | Record the resumed branch, current baseline, graded live evidence, and final state. |
 | `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | Mark external proof complete only after every live rubric row passes. |
 | `playbooks/operations/slack_app_registration/001_playbook.md` | EDIT if discovered | Record corrections proven during the live workspace flow. |
 | `playbooks/operations/github_app_registration/001_playbook.md` | EDIT if discovered | Record corrections proven during the live repository flow. |
-| `ui/packages/app/tests/e2e/acceptance/fleet-count.spec.ts` | EDIT | Dimension 5.1 needs the real reviewer Fleet and a stop/resume cycle; the shipped spec seeds synthetic fleets and only counts upward. |
-| `ui/packages/app/tests/e2e/acceptance/multi-fleet.spec.ts` | EDIT | Dimension 5.2 needs the workspace-stream connection count; the shipped spec asserts tile state only and concedes the stream is unobserved. |
-| `ui/packages/app/tests/e2e/acceptance/reviewer-wall.spec.ts` | CREATE | Dimensions 5.3 and 5.4 have no home: delivery routing to a single tile, and reconnect plus replay leaving activity unduplicated. |
+| `ui/packages/app/tests/e2e/acceptance/_smoke.spec.ts` | EDIT | Name the runner readiness and advancing-heartbeat proof before every mutating project. |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/preflight.ts` | EDIT | Add bounded same-runner heartbeat comparison with redacted failure output. |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/live-connector-proof.ts` | CREATE | Own target discovery, bounded polling, count snapshots, and the redacted evidence ledger. |
+| `ui/packages/app/tests/e2e/acceptance/reviewer-wall.spec.ts` | CREATE | Run §2–§5 as one ordered walk so original delivery, reconnect, and replay share one browser and evidence state. |
 | `ui/packages/app/playwright.acceptance.config.ts` | EDIT | Schedule the new project after `pulse-wall`, so the reviewer walk runs once the wall chain has settled. |
 
 ## Applicable Rules
@@ -109,10 +114,11 @@ Use the existing installation, selected proof repository, installed fleet, and a
 - **Dimension 3.1** — one signed delivery creates one fleet event and one fleet-authored review through a short-lived installation token → Test `test_github_reviewer_posts_once`
 - **Dimension 3.2** — the fleet receives no Slack material because its trigger does not declare Slack → Test `test_reviewer_declared_connectors_only`
 
-### §4 — Replay closes the architecture marker — PARKED
+### §4 — Replay closes the architecture marker — RESUMED
 
 > **PARKED (Indy, Aug 14, 2026, verbatim):** "i want to take it later". Joins
 > §5 in the follow-up agent's work order.
+> **RESUMED (Indy, Aug 15, 2026, verbatim):** "merged to main go".
 >
 > **§4 cannot be run standalone.** It replays *the exact delivery* from §3 and
 > needs the event and review identifiers recorded during that run, so it is the
@@ -125,7 +131,7 @@ Replay the exact delivery only after recording original event and review identif
 - **Dimension 4.1** — replay creates no second fleet event → Test `test_github_replay_no_event`
 - **Dimension 4.2** — replay creates no second review and only then closes the architecture marker → Test `test_github_replay_no_review`
 
-### §5 — The real reviewer proves the Live Wall — PARKED
+### §5 — The real reviewer proves the Live Wall — RESUMED
 
 > **PARKED (Indy, Aug 14, 2026, verbatim):** "just make it parked i will ask
 > another agent after this PR is merged to implement/execute/ run the scenario
@@ -133,6 +139,7 @@ Replay the exact delivery only after recording original event and review identif
 > or tests ride this PR; Dimensions 5.1–5.4 below stay specified as the
 > follow-up agent's work order, to be driven end to end via Playwright against
 > the merged branch.
+> **RESUMED (Indy, Aug 15, 2026, verbatim):** "merged to main go".
 
 Use the same `github-pr-reviewer` Fleet and delivery from §3 rather than synthetic wall-only data. Record the workspace's live count before installation, after the reviewer becomes active, after the first delivery, and after replay.
 
