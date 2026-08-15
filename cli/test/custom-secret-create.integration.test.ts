@@ -23,7 +23,11 @@ import {
   SECRET_FIELD_BASE_URL,
   SECRET_FIELD_MODEL,
 } from "../src/constants/custom-endpoint.ts";
-import { PROVIDER_IDS } from "../src/constants/providers.ts";
+import {
+  CLI_ENGINE_PROVIDERS,
+  CLI_ENGINE_REJECTION,
+  PROVIDER_IDS,
+} from "../src/constants/providers.ts";
 
 const WS_ID = "ws_custom_cred_test";
 const SECRET_NAME = "vllm-gateway";
@@ -279,6 +283,76 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
       expect(text).toMatch(/--api-key|--provider|--base-url/i);
       // … NOT the generic "missing --data" hint the old fall-through produced.
       expect(text).not.toMatch(/missing --data/i);
+    });
+  });
+
+  // Commander only runs the catalogue parser on a flag it actually SEES, so
+  // the closed catalogue is worth nothing on an invocation that omits
+  // --provider. The typed form is engaged by --api-key/--model alone, and the
+  // composed body would carry `provider: ""` — which the server classifies as
+  // a provider_key like any other non-sentinel string. Stored, reported
+  // stored, never dialable: the exact failure the closed flag exists to stop.
+  for (const verb of ["create", "update"] as const) {
+    test(`secret ${verb}: --api-key with --model and no --provider is refused before the network`, async () => {
+      await authedScope(async () => {
+        const routes: MockRoutes = {
+          [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
+            jsonResponse(200, { secrets: [] }),
+          [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
+            jsonResponse(201, { name: SECRET_NAME }),
+          [`PUT /v1/workspaces/${WS_ID}/secrets/${SECRET_NAME}`]: () =>
+            jsonResponse(200, { name: SECRET_NAME }),
+        };
+        await withMockApi(routes, async (apiUrl, calls) => {
+          const out = bufferStream();
+          const err = bufferStream();
+          const code = await runCli(
+            [
+              "secret", verb, SECRET_NAME,
+              "--api-key", API_KEY,
+              "--model", MODEL,
+              "--json",
+            ],
+            { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          );
+          expect(code).not.toBe(0);
+          expect(calls.filter((c) => c.method !== "GET")).toHaveLength(0);
+          const text = out.read() + err.read();
+          expect(text).toMatch(/requires --provider/i);
+        });
+      });
+    });
+  }
+
+  test("a CLI-engine provider is refused by name, with the reason — not the generic wall", async () => {
+    await authedScope(async () => {
+      const routes: MockRoutes = {
+        [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
+          jsonResponse(200, { secrets: [] }),
+        [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
+          jsonResponse(201, { name: SECRET_NAME }),
+      };
+      await withMockApi(routes, async (apiUrl, calls) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          [
+            "secret", "create", SECRET_NAME,
+            "--provider", CLI_ENGINE_PROVIDERS[0],
+            "--api-key", API_KEY,
+            "--model", MODEL,
+            "--json",
+          ],
+          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+        );
+        expect(code).toBe(2);
+        expect(calls).toHaveLength(0);
+        const text = out.read() + err.read();
+        expect(text).toContain(CLI_ENGINE_PROVIDERS[0]);
+        expect(text).toContain(CLI_ENGINE_REJECTION);
+        // The reason replaces the wall; printing both would bury it.
+        expect(text).not.toMatch(/must be one of/i);
+      });
     });
   });
 

@@ -88,6 +88,15 @@ const typedProviderBody = (flags: SecretAddFlags): ParsedData => {
 
   const isCustom = provider === OPENAI_COMPATIBLE_PROVIDER;
 
+  // Any one of the four typed flags engages this path, so it is reachable with
+  // no --provider at all — and commander only runs the catalogue parser on a
+  // flag it actually sees. Without this rule `--api-key k --model m` composes
+  // `provider: ""`, which the server classifies as a provider_key like any
+  // other non-sentinel string: stored, reported stored, and never dialable.
+  if (provider.length === 0) {
+    return { ok: false, message: `the typed form requires --provider. ${PROVIDER_ADD_USAGE}` };
+  }
+
   // api_key is required for a named provider; OPTIONAL for an openai-compatible
   // endpoint (a keyless gateway dials with no key) — mirrors the dashboard and
   // the resolver, which only requires a non-empty key for named providers.
