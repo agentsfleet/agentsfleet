@@ -11,34 +11,10 @@ const EV_SCHEDULER_STOPPED = "scheduler_stopped";
 /// interruption plus the boot clock.
 pub const ProcessScheduler = Scheduler(InterruptTarget, MonotonicBackend);
 
-pub const MonotonicBackend = struct {
-    epoch: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
-
-    pub fn nowNs(_: *MonotonicBackend) i96 {
-        return std.Io.Clock.boot.now(common.globalIo()).toNanoseconds();
-    }
-
-    pub fn snapshotWake(self: *MonotonicBackend) u32 {
-        // safe because: the epoch detects wakeups only; scheduler state is mutex-protected.
-        return self.epoch.load(.monotonic);
-    }
-
-    pub fn wait(self: *MonotonicBackend, seen: u32, deadline_ns: ?i96) void {
-        const io = common.globalIo();
-        const timeout: std.Io.Timeout = if (deadline_ns) |deadline| blk: {
-            if (deadline <= self.nowNs()) return;
-            break :blk .{ .deadline = std.Io.Timestamp.fromNanoseconds(deadline).withClock(.boot) };
-        } else .none;
-        io.futexWaitTimeout(u32, &self.epoch.raw, seen, timeout) catch |err| switch (err) {
-            error.Canceled => {},
-        };
-    }
-
-    pub fn wake(self: *MonotonicBackend) void {
-        _ = self.epoch.fetchAdd(1, .release); // safe because: waiters only need to observe an epoch change.
-        common.globalIo().futexWake(u32, &self.epoch.raw, 1);
-    }
-};
+/// The production clock and wait primitive. Lives in its own file so this one
+/// carries only the state machine; re-exported because every consumer reaches
+/// both through the `call_deadline` module façade.
+pub const MonotonicBackend = @import("MonotonicBackend.zig");
 
 const StdThreadSpawner = struct {
     fn spawn(comptime entry: anytype, args: anytype) std.Thread.SpawnError!std.Thread {
@@ -53,7 +29,10 @@ pub fn Scheduler(comptime Target: type, comptime Backend: type) type {
     return SchedulerWithSpawner(Target, Backend, StdThreadSpawner);
 }
 
-fn SchedulerWithSpawner(comptime Target: type, comptime Backend: type, comptime Spawner: type) type {
+/// `Scheduler` with the thread spawner injected. Public for `scheduler_test.zig`
+/// alone: a spawner that always fails is the only way to drive the start-failure
+/// unwind, and no production caller has a reason to pick a spawner.
+pub fn SchedulerWithSpawner(comptime Target: type, comptime Backend: type, comptime Spawner: type) type {
     return struct {
         const Self = @This();
         const DeadlineTree = std.Treap(DeadlineKey, compareDeadline);
@@ -309,42 +288,4 @@ fn SchedulerWithSpawner(comptime Target: type, comptime Backend: type, comptime 
             return if (deadline_order == .eq) std.math.order(a.id, b.id) else deadline_order;
         }
     };
-}
-
-const FailingThreadSpawner = struct {
-    fn spawn(comptime entry: anytype, args: anytype) std.Thread.SpawnError!std.Thread {
-        _ = entry;
-        _ = args;
-        return error.ThreadQuotaExceeded;
-    }
-};
-
-const StartFailureBackend = struct {
-    fn nowNs(_: *StartFailureBackend) i96 {
-        return 0;
-    }
-
-    fn snapshotWake(_: *StartFailureBackend) u32 {
-        return 0;
-    }
-
-    fn wait(_: *StartFailureBackend, _: u32, _: ?i96) void {}
-    fn wake(_: *StartFailureBackend) void {}
-};
-
-const StartFailureTarget = struct {
-    fn interrupt(_: StartFailureTarget) InterruptTarget.Outcome {
-        return .stale;
-    }
-};
-
-test "scheduler start failure resets state and remains fail closed" {
-    const TestScheduler = SchedulerWithSpawner(StartFailureTarget, StartFailureBackend, FailingThreadSpawner);
-    var backend: StartFailureBackend = .{};
-    var scheduler = TestScheduler.init(std.testing.allocator, &backend);
-
-    try std.testing.expectError(error.ThreadQuotaExceeded, scheduler.start());
-    try std.testing.expectError(error.SchedulerStopped, scheduler.arm(.{}, 1));
-    try std.testing.expectError(error.ThreadQuotaExceeded, scheduler.start());
-    scheduler.deinit();
 }
