@@ -243,8 +243,8 @@ test_discord_notifications_route_by_release_stage() {
 
   for workflow in release.yml post-release.yml; do
     path="$repo_root/.github/workflows/$workflow"
-    notify_count="$(rg --fixed-strings --count 'uses: ./.github/actions/notify-discord' "$path" || true)"
-    selector_count="$(rg --fixed-strings --count 'webhook-item: discord-release-webhook' "$path" || true)"
+    notify_count="$(rg --fixed-strings -c 'uses: ./.github/actions/notify-discord' "$path" || true)"
+    selector_count="$(rg --fixed-strings -c 'webhook-item: discord-release-webhook' "$path" || true)"
     if [ "${notify_count:-0}" -ne 1 ] || [ "${selector_count:-0}" -ne 1 ]; then
       bad "$name" "$workflow does not select the release webhook"
       return
@@ -253,7 +253,7 @@ test_discord_notifications_route_by_release_stage() {
 
   for workflow in deploy-dev.yml deploy-dev-fly.yml deploy-dev-worker.yml; do
     path="$repo_root/.github/workflows/$workflow"
-    notify_count="$(rg --fixed-strings --count 'uses: ./.github/actions/notify-discord' "$path" || true)"
+    notify_count="$(rg --fixed-strings -c 'uses: ./.github/actions/notify-discord' "$path" || true)"
     if [ "${notify_count:-0}" -ne 1 ]; then
       bad "$name" "$workflow does not invoke the Discord notification action exactly once"
       return
