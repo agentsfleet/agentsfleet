@@ -24,9 +24,25 @@ describe("resolveConfigDir", () => {
       expect(source).not.toContain('".config"');
       expect(source).not.toContain("process.env." + STATE_DIR_ENV);
     }
-    // Invariant 3: neither state module reads the process environment at all.
+    // Neither state module reads the process environment at all.
     expect(state).not.toContain("process.env");
     const self = await read("../src/lib/config-dir.ts");
     expect(self).not.toContain("process.env");
+  });
+
+  test("no file under src/ names the state-dir variable except its declaration site", async () => {
+    // Suite-level, not review-level: a re-introduced literal anywhere in
+    // src/ — a new service, a command, a helper — fails here rather than
+    // depending on a reviewer to run the grep. The declaration site is the
+    // one file allowed to spell it.
+    const srcRoot = new URL("../src/", import.meta.url).pathname;
+    const glob = new Bun.Glob("**/*.ts");
+    const offenders: string[] = [];
+    for await (const rel of glob.scan(srcRoot)) {
+      if (rel === path.join("lib", "config-dir.ts")) continue;
+      const body = await Bun.file(path.join(srcRoot, rel)).text();
+      if (body.includes(STATE_DIR_ENV)) offenders.push(rel);
+    }
+    expect(offenders).toEqual([]);
   });
 });

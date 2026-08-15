@@ -27,7 +27,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir, withFreshStateDir, stateDirEnv } from "./helpers-cli-state.ts";
+import { bufferStream, withAuthedStateDir, withFreshStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-00000000a571";
@@ -69,7 +69,7 @@ describe("auth staleness — expired token on a read", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(["list"], {
-          stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl },
+          stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         expect(code).toBe(EXIT_SERVER_ERROR);
         const text = err.read();
@@ -104,7 +104,7 @@ describe("auth staleness — token revoked mid-session", () => {
         const firstOut = bufferStream();
         const firstErr = bufferStream();
         const firstCode = await runCli(["list"], {
-          stdout: firstOut.stream, stderr: firstErr.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl },
+          stdout: firstOut.stream, stderr: firstErr.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         expect(firstCode).toBe(0);
 
@@ -112,7 +112,7 @@ describe("auth staleness — token revoked mid-session", () => {
         const secondOut = bufferStream();
         const secondErr = bufferStream();
         const secondCode = await runCli(["list"], {
-          stdout: secondOut.stream, stderr: secondErr.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl },
+          stdout: secondOut.stream, stderr: secondErr.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         expect(secondCode).toBe(EXIT_SERVER_ERROR);
         const text = secondErr.read();
@@ -146,7 +146,7 @@ describe("auth staleness — corrupt credentials.json", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(["list"], {
-          stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl },
+          stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         // No usable token → auth-guard bounce → exit 1, never a crash.
         expect(code).toBe(EXIT_AUTH_REQUIRED);

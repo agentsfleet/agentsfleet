@@ -18,7 +18,7 @@ import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
 import { saveWorkspaces } from "../src/lib/state.ts";
-import { bufferStream, withAuthedStateDir, withFreshStateDir, stateDirEnv } from "./helpers-cli-state.ts";
+import { bufferStream, withAuthedStateDir, withFreshStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000fa17e1";
@@ -49,7 +49,7 @@ describe("failure modes — login surface", () => {
         const err = bufferStream();
         const code = await runCli(
           ["login", "--no-open", "--no-input"],
-          { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(1);
         const text = err.read();
@@ -75,7 +75,7 @@ describe("failure modes — workspace surface", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(["workspace", "create", "my-repo"], {
-          stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl },
+          stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         // Effect-shape contract: HTTP 4xx → ServerError → exit 3.
         // The pre-Effect path collapsed every API failure to exit 1.
@@ -107,7 +107,7 @@ describe("failure modes — install surface (server)", () => {
         const err = bufferStream();
         const code = await runCli(
           ["install", "--library", templateId],
-          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         // Effect-shape contract: HTTP 4xx → ServerError → exit 3.
         // The pre-Effect path collapsed every API failure to exit 1.
@@ -160,7 +160,7 @@ describe("failure modes — runtime / observability surface", () => {
         const installCode = await runCli(
           ["install", "--library", templateId],
           { stdout: installOut.stream, stderr: installErr.stream,
-            env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+            env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(installCode).toBe(0);
 
@@ -170,7 +170,7 @@ describe("failure modes — runtime / observability surface", () => {
         const logsCode = await runCli(
           ["logs", FLEET_ID],
           { stdout: logsOut.stream, stderr: logsErr.stream,
-            env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+            env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(logsCode).toBe(0);
         const logsText = logsOut.read();
@@ -202,7 +202,7 @@ describe("failure modes — runtime / observability surface", () => {
         const err = bufferStream();
         const code = await runCli(
           ["logs", FLEET_ID],
-          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         // Effect-shape contract: HTTP 401 → ServerError → exit 3.
         // The user-visible message still carries UZ-AUTH-003 + the
@@ -236,7 +236,7 @@ describe("failure modes — infra / server-down surface", () => {
         const err = bufferStream();
         const code = await runCli(
           ["doctor"],
-          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(1);
         const text = out.read();

@@ -5,7 +5,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir, stateDirEnv } from "./helpers-cli-state.ts";
+import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000b00b00";
@@ -38,7 +38,7 @@ describe("status", () => {
         const out = bufferStream();
         const code = await runCli(
           ["status"],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         const text = out.read();
@@ -60,7 +60,7 @@ describe("status", () => {
         const out = bufferStream();
         const code = await runCli(
           ["status"],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         const output = out.read();
@@ -80,7 +80,7 @@ describe("status", () => {
         const out = bufferStream();
         const code = await runCli(
           ["status"],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         const output = out.read();
@@ -101,7 +101,7 @@ describe("status", () => {
         const out = bufferStream();
         const code = await runCli(
           ["status", "--json"],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         const parsed = JSON.parse(out.read()) as typeof payload;
@@ -120,7 +120,7 @@ describe("status", () => {
         const err = bufferStream();
         const code = await runCli(
           ["status"],
-          { stdout: bufferStream().stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: bufferStream().stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
         expect(err.read()).toContain("UZ-INTERNAL-001");
@@ -148,7 +148,7 @@ describe("stop", () => {
         const out = bufferStream();
         const code = await runCli(
           ["stop", FLEET_ID],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         expect(out.read()).toContain("stopped");
@@ -167,7 +167,7 @@ describe("stop", () => {
         const out = bufferStream();
         const code = await runCli(
           ["stop", FLEET_ID, "--json"],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         expect((JSON.parse(out.read()) as { status?: string }).status).toBe("stopped");
@@ -185,7 +185,7 @@ describe("stop", () => {
         const err = bufferStream();
         const code = await runCli(
           ["stop", FLEET_ID],
-          { stdout: bufferStream().stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: bufferStream().stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
         expect(err.read()).toContain("UZ-AGT-001");
@@ -212,7 +212,7 @@ describe("resume", () => {
         const out = bufferStream();
         const code = await runCli(
           ["resume", FLEET_ID],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         expect(out.read()).toContain("resumed");
@@ -231,7 +231,7 @@ describe("resume", () => {
         const out = bufferStream();
         const code = await runCli(
           ["resume", FLEET_ID, "--json"],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         expect((JSON.parse(out.read()) as { status?: string }).status).toBe("active");
@@ -258,7 +258,7 @@ describe("kill", () => {
         const out = bufferStream();
         const code = await runCli(
           ["kill", FLEET_ID],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         expect(out.read()).toContain("killed");
@@ -277,7 +277,7 @@ describe("kill", () => {
         const out = bufferStream();
         const code = await runCli(
           ["kill", FLEET_ID, "--json"],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         expect((JSON.parse(out.read()) as { status?: string }).status).toBe("killed");
@@ -300,7 +300,7 @@ describe("delete", () => {
         const out = bufferStream();
         const code = await runCli(
           ["delete", FLEET_ID],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         expect(out.read()).toContain("deleted");
@@ -320,7 +320,7 @@ describe("delete", () => {
         const out = bufferStream();
         const code = await runCli(
           ["delete", FLEET_ID, "--json"],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         const parsed = JSON.parse(out.read()) as { fleet_id?: string; deleted?: boolean };
@@ -340,7 +340,7 @@ describe("delete", () => {
         const err = bufferStream();
         const code = await runCli(
           ["delete", FLEET_ID],
-          { stdout: bufferStream().stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: bufferStream().stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
         expect(err.read()).toContain("UZ-AGT-001");

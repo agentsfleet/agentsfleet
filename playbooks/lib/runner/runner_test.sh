@@ -84,11 +84,15 @@ cgroup_fixture="$work_dir/cgroup"
 mkdir -p "$cgroup_fixture"
 run_script() {
   : >"$calls"
-  # -u AGENTSFLEET_API_URL: a developer shell exporting the dev URL would trip
-  # the prod-endpoint guard in common.sh. This sanitises the one guard-relevant
-  # variable; other ambient variables still flow through (full env -i
-  # hermeticity is a separate hardening).
-  env -u AGENTSFLEET_API_URL \
+  # env -i: the child sees ONLY what this harness assigns plus the VAR=val
+  # pairs each case passes before its command. Every variable the scripts
+  # read is supplied one of those two ways, so nothing ambient is needed —
+  # and nothing ambient can leak in. A developer shell exporting
+  # AGENTSFLEET_API_URL once tripped the prod-endpoint guard in common.sh;
+  # hermeticity closes that whole class instead of unsetting variables one
+  # by one as they bite. PATH is composed before the wipe, so the stub dir
+  # still shadows the real tools while the system tail keeps bash findable.
+  env -i \
     PATH="$stub_dir:$PATH" \
     CALLS="$calls" \
     RUNNER_BINARY="$runner_binary" \

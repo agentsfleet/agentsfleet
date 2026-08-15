@@ -39,7 +39,7 @@ import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
 import { saveCredentials, saveWorkspaces } from "../src/lib/state.ts";
-import { bufferStream, withAuthedStateDir, withFreshStateDir, stateDirEnv } from "./helpers-cli-state.ts";
+import { bufferStream, withAuthedStateDir, withFreshStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 import {
   CLI_CREDENTIAL_BODY_LEN,
@@ -117,7 +117,7 @@ describe("config precedence — API URL at the wire (authed list)", () => {
         await seedCreds(apiUrl, "sess_creds_url");
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli([LIST], { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv() } });
+        const code = await runCli([LIST], { stdout: out.stream, stderr: err.stream, env: cliEnv() });
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
         expect(calls[0]?.headers[HOST_HEADER]).toBe(new URL(apiUrl).host);
@@ -137,7 +137,7 @@ describe("config precedence — API URL at the wire (authed list)", () => {
         const code = await runCli([LIST], {
           stdout: out.stream,
           stderr: err.stream,
-          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl },
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
@@ -159,7 +159,7 @@ describe("config precedence — API URL at the wire (authed list)", () => {
         const code = await runCli([LIST], {
           stdout: out.stream,
           stderr: err.stream,
-          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl, API_URL: UNROUTABLE_ENV_URL },
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl, API_URL: UNROUTABLE_ENV_URL }),
         });
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
@@ -181,7 +181,7 @@ describe("config precedence — API URL at the wire (authed list)", () => {
         const code = await runCli([FLAG_API, apiUrl, LIST], {
           stdout: out.stream,
           stderr: err.stream,
-          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: UNROUTABLE_ENV_URL, API_URL: UNROUTABLE_ENV_URL },
+          env: cliEnv({ AGENTSFLEET_API_URL: UNROUTABLE_ENV_URL, API_URL: UNROUTABLE_ENV_URL }),
         });
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
@@ -204,7 +204,7 @@ describe("config precedence — auth token Bearer at the wire (authed list)", ()
         const code = await runCli([LIST], {
           stdout: out.stream,
           stderr: err.stream,
-          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_API_KEY: ENV_API_KEY },
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_API_KEY: ENV_API_KEY }),
         });
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
@@ -223,7 +223,7 @@ describe("config precedence — auth token Bearer at the wire (authed list)", ()
         const code = await runCli([LIST], {
           stdout: out.stream,
           stderr: err.stream,
-          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl },
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
@@ -247,7 +247,7 @@ describe("config precedence — auth token Bearer at the wire (authed list)", ()
         const code = await runCli([LIST], {
           stdout: out.stream,
           stderr: err.stream,
-          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_API_KEY: ENV_API_KEY },
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_API_KEY: ENV_API_KEY }),
         });
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
@@ -266,7 +266,7 @@ describe("config precedence — active workspace in the request path (authed lis
         const code = await runCli([LIST], {
           stdout: out.stream,
           stderr: err.stream,
-          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl },
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);
@@ -285,7 +285,7 @@ describe("config precedence — active workspace in the request path (authed lis
         const code = await runCli([LIST, FLAG_WORKSPACE_ID, WS_OVERRIDE], {
           stdout: out.stream,
           stderr: err.stream,
-          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl },
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         expect(code).toBe(0);
         expect(calls).toHaveLength(1);

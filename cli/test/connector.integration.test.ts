@@ -7,7 +7,7 @@ import {
   FIXTURE_CREDENTIAL,
   withAuthedStateDir,
   withFreshStateDir,
-  stateDirEnv,
+  cliEnv,
 } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
@@ -42,7 +42,7 @@ describe("connector commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["connector", "list", "--workspace", WS_ID],
-          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
         expect(code).toBe(0);
@@ -77,7 +77,7 @@ describe("connector commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["connector", "status", "slack", "--workspace", WS_ID],
-          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
         expect(code).toBe(0);
@@ -111,7 +111,7 @@ describe("connector commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["connector", "status", "slack", "--workspace", WS_ID, "--json"],
-          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
         expect(code).toBe(0);
@@ -134,7 +134,7 @@ describe("connector commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["connector", "status", "Slack/Bad", "--workspace", WS_ID],
-          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
         expect(code).not.toBe(0);
@@ -159,7 +159,7 @@ describe("connector commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["connector", "list"],
-          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
         expect(code).not.toBe(0);
@@ -182,7 +182,7 @@ describe("connector commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["connector", "status", "github", "--workspace", WS_ID, "--json"],
-          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         expect(JSON.parse(out.read())).toMatchObject({
@@ -206,7 +206,7 @@ describe("connector commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["connector", "list", "--workspace", WS_ID, "--json"],
-          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
         expect(err.read()).toContain("UZ-INTERNAL-002");

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { runCli } from "../src/cli.ts";
 import { loadWorkspaces, saveWorkspaces } from "../src/lib/state.ts";
 import { asFetchOverride, makeHeaders, type ResponseLike } from "./helpers.ts";
-import { bufferStream, stateDirEnv, withFreshStateDir } from "./helpers-cli-state.ts";
+import { bufferStream, cliEnv, withFreshStateDir } from "./helpers-cli-state.ts";
 
 // ── --help surfaces the fleet group + new workspace subcommands ─────────
 
@@ -13,7 +13,7 @@ test("--help lists the fleet subcommand group", async () => {
   const code = await runCli(["--help"], {
     stdout: out.stream,
     stderr: err.stream,
-    env: { NO_COLOR: "1", ...stateDirEnv() },
+    env: cliEnv({ NO_COLOR: "1" }),
   });
   assert.equal(code, 0);
   const text = out.read();
@@ -33,7 +33,7 @@ test("--help lists the workspace group; its subcommands appear under `workspace 
   const topCode = await runCli(["--help"], {
     stdout: top.stream,
     stderr: bufferStream().stream,
-    env: { NO_COLOR: "1", ...stateDirEnv() },
+    env: cliEnv({ NO_COLOR: "1" }),
   });
   assert.equal(topCode, 0);
   assert.ok(top.read().includes("workspace"), "workspace group missing from top-level help");
@@ -43,7 +43,7 @@ test("--help lists the workspace group; its subcommands appear under `workspace 
   const subCode = await runCli(["workspace", "--help"], {
     stdout: sub.stream,
     stderr: bufferStream().stream,
-    env: { NO_COLOR: "1", ...stateDirEnv() },
+    env: cliEnv({ NO_COLOR: "1" }),
   });
   assert.equal(subCode, 0);
   const text = sub.read();
@@ -54,12 +54,12 @@ test("--help lists the workspace group; its subcommands appear under `workspace 
 
 test("--help lists the memory group; its read verbs appear under `memory --help`", async () => {
   const top = bufferStream();
-  const topCode = await runCli(["--help"], { stdout: top.stream, stderr: bufferStream().stream, env: { NO_COLOR: "1", ...stateDirEnv() } });
+  const topCode = await runCli(["--help"], { stdout: top.stream, stderr: bufferStream().stream, env: cliEnv({ NO_COLOR: "1" }) });
   assert.equal(topCode, 0);
   assert.ok(top.read().includes("memory"), "memory group missing from top-level help");
 
   const sub = bufferStream();
-  const subCode = await runCli(["memory", "--help"], { stdout: sub.stream, stderr: bufferStream().stream, env: { NO_COLOR: "1", ...stateDirEnv() } });
+  const subCode = await runCli(["memory", "--help"], { stdout: sub.stream, stderr: bufferStream().stream, env: cliEnv({ NO_COLOR: "1" }) });
   assert.equal(subCode, 0);
   const text = sub.read();
   assert.ok(text.includes("list"), "memory list subcommand row missing");
@@ -82,7 +82,7 @@ test("workspace use <id> writes current_workspace_id to state", async () => {
     const code = await runCli(["workspace", "use", "01900000-0000-7000-8000-000000000002"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test", ...stateDirEnv() },
+      env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
     });
     assert.equal(code, 0);
     const state = await loadWorkspaces(process.env);
@@ -102,7 +102,7 @@ test("workspace use rejects a workspace not in the local list", async () => {
     const code = await runCli(["workspace", "use", "01900000-0000-7000-8000-00000000aaaa"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test", ...stateDirEnv() },
+      env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
     });
     assert.equal(code, 5);
     assert.ok(err.read().includes("not in your local list"));
@@ -122,7 +122,7 @@ test("workspace use --json emits {active: <id>}", async () => {
     await runCli(["--json", "workspace", "use", "01900000-0000-7000-8000-000000000001"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test", ...stateDirEnv() },
+      env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
     });
     const parsed = JSON.parse(out.read());
     assert.equal(parsed.active, "01900000-0000-7000-8000-000000000001");
@@ -142,7 +142,7 @@ test("workspace show prints current workspace details", async () => {
     const code = await runCli(["workspace", "show"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test", ...stateDirEnv() },
+      env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
     });
     assert.equal(code, 0);
     const text = out.read();
@@ -162,7 +162,7 @@ test("workspace show --json returns the full detail object", async () => {
     await runCli(["--json", "workspace", "show"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test", ...stateDirEnv() },
+      env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
     });
     const parsed = JSON.parse(out.read());
     assert.equal(parsed.workspace_id, "01900000-0000-7000-8000-000000000001");
@@ -179,7 +179,7 @@ test("workspace show errors when no active workspace and no --workspace-id", asy
     const code = await runCli(["workspace", "show"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test", ...stateDirEnv() },
+      env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
     });
     assert.equal(code, 5);
     assert.ok(err.read().includes("no active workspace"));
@@ -195,7 +195,7 @@ test("workspace secrets prints the redirect message", async () => {
     const code = await runCli(["workspace", "secrets"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test", ...stateDirEnv() },
+      env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
     });
     assert.equal(code, 0);
     // The dashboard route is `/secrets` (Secrets & ENVs standalone page) —
@@ -211,7 +211,7 @@ test("workspace secrets --json returns status=redirect", async () => {
     await runCli(["--json", "workspace", "secrets"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test", ...stateDirEnv() },
+      env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
     });
     const parsed = JSON.parse(out.read());
     assert.equal(parsed.status, "redirect");
@@ -251,7 +251,7 @@ test("fleet list calls the paginated endpoint and prints rows", async () => {
     const code = await runCli(["list", "--limit", "2"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test", ...stateDirEnv() },
+      env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
       fetchImpl,
     });
     assert.equal(code, 0);
@@ -281,7 +281,7 @@ test("fleet list --json returns the raw envelope incl. next_cursor", async () =>
     await runCli(["--json", "list"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test", ...stateDirEnv() },
+      env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
       fetchImpl,
     });
     const parsed = JSON.parse(out.read());
@@ -314,7 +314,7 @@ test("fleet list honors --workspace-id override over current_workspace_id", asyn
     await runCli(["list", "--workspace-id", "01900000-0000-7000-8000-000000000002"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test", ...stateDirEnv() },
+      env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
       fetchImpl,
     });
     assert.ok(urls[0]?.includes("/v1/workspaces/01900000-0000-7000-8000-000000000002/fleets"), `expected 01900000-0000-7000-8000-000000000002 URL, got ${urls[0]}`);
@@ -329,7 +329,7 @@ test("fleet list errors with ConfigError when no active workspace and no --works
     const code = await runCli(["list"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test", ...stateDirEnv() },
+      env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
     });
     // Effect-shape contract: ConfigError → exit 5.
     // The pre-Effect path returned 1 via writeError(NO_WORKSPACE, ...).

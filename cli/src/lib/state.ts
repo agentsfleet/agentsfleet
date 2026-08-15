@@ -25,6 +25,11 @@ export interface StatePaths {
 // Single named const so the policy is enforced from one site.
 const STATE_FILE_MODE = 0o600;
 
+// The store's on-disk filenames, named once (RULE UFS) — path resolution and
+// the user-facing load warning in cli.ts both reference these.
+export const STATE_FILE_CREDENTIALS = "credentials.json";
+export const STATE_FILE_WORKSPACES = "workspaces.json";
+
 // The recovery hint both store services put on an UnexpectedError — one
 // declaration site (RULE UFS), owned here with the store it describes.
 export const STATE_STORE_SUGGESTION =
@@ -61,8 +66,8 @@ function resolveStatePaths(env: NodeJS.ProcessEnv): StatePaths {
   const baseDir = resolveConfigDir(env);
   return {
     baseDir,
-    credentialsPath: path.join(baseDir, "credentials.json"),
-    workspacesPath: path.join(baseDir, "workspaces.json"),
+    credentialsPath: path.join(baseDir, STATE_FILE_CREDENTIALS),
+    workspacesPath: path.join(baseDir, STATE_FILE_WORKSPACES),
   };
 }
 

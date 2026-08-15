@@ -32,7 +32,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir, stateDirEnv } from "./helpers-cli-state.ts";
+import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000fa17e1" as const;
@@ -82,7 +82,7 @@ describe("read-path failures — server 5xx boundedness", () => {
         const code = await runCli(["list"], {
           stdout: out.stream,
           stderr: err.stream,
-          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl },
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         expect(code).toBe(EXIT_SERVER_ERROR);
         const text = err.read();
@@ -107,7 +107,7 @@ describe("read-path failures — server 5xx boundedness", () => {
         const code = await runCli(["list"], {
           stdout: out.stream,
           stderr: err.stream,
-          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl },
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         expect(code).toBe(EXIT_SERVER_ERROR);
         const text = err.read();
@@ -136,7 +136,7 @@ describe("read-path failures — 429 rate limit boundedness", () => {
         const code = await runCli(["list"], {
           stdout: out.stream,
           stderr: err.stream,
-          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl },
+          env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
         });
         expect(code).toBe(EXIT_SERVER_ERROR);
         const text = err.read();
@@ -174,7 +174,7 @@ describe("read-path failures — request timeout boundedness", () => {
         stdout: out.stream,
         stderr: err.stream,
         // apiUrl is irrelevant — abortingFetch never reaches the network.
-        env: { ...stateDirEnv(), AGENTSFLEET_API_URL: "http://127.0.0.1:1/v1" },
+        env: cliEnv({ AGENTSFLEET_API_URL: "http://127.0.0.1:1/v1" }),
         fetchImpl: abortingFetch,
       });
       expect(code).toBe(EXIT_SERVER_ERROR);
@@ -201,7 +201,7 @@ describe("read-path failures — connection refused vs auth-required disambiguat
         stdout: out.stream,
         stderr: err.stream,
         // Real globalThis.fetch (no fetchImpl) against a refused port.
-        env: { ...stateDirEnv(), AGENTSFLEET_API_URL: "http://127.0.0.1:1" },
+        env: cliEnv({ AGENTSFLEET_API_URL: "http://127.0.0.1:1" }),
       });
       // NetworkError → exit 2, distinct from AuthError's exit 1.
       expect(code).toBe(EXIT_NETWORK_ERROR);
@@ -218,6 +218,40 @@ describe("read-path failures — connection refused vs auth-required disambiguat
       // the network.
       expect(text).not.toContain("not authenticated");
       expect(text.toLowerCase()).not.toContain("run `agentsfleet login`");
+    });
+  });
+});
+
+describe("an unreadable state file warns and continues as logged out", () => {
+  // A missing or corrupt file already reads as logged-out inside the store;
+  // this is the OTHER class — the file exists but cannot be read (here: it
+  // is a directory, the portable stand-in for EACCES/EIO). Silently folding
+  // that into "logged out" sends the operator to re-login against a store
+  // that cannot be read; the contract is warn-with-cause, then behave as
+  // logged out so read-only commands still work.
+  test("credentials.json unreadable → stderr warning names the file, command still runs", async () => {
+    const { withFreshStateDir } = await import("./helpers-cli-state.ts");
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    await withFreshStateDir(async (stateDir) => {
+      // A directory where the file should be: readFile → EISDIR, not ENOENT.
+      await fs.mkdir(path.join(stateDir, "credentials.json"), { recursive: true });
+      const out = bufferStream();
+      const err = bufferStream();
+      // `--version` exits before the store loads; `secret list` runs the
+      // load, then the auth guard sees the logged-out fallback and refuses.
+      const code = await runCli(["secret", "list"], {
+        stdout: out.stream,
+        stderr: err.stream,
+        env: cliEnv(),
+      });
+      const warn = err.read();
+      expect(warn).toContain("warning: could not read credentials.json");
+      expect(warn).toContain("continuing as logged out");
+      // The command then behaves exactly as logged out — refused by the
+      // auth guard, not crashed by the unreadable file.
+      expect(code).toBe(1);
+      expect(warn).toContain("not authenticated");
     });
   });
 });

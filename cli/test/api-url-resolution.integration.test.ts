@@ -6,8 +6,7 @@ import {
   bufferStream,
   FIXTURE_CREDENTIAL,
   withFreshStateDir,
-  stateDirEnv,
-} from "./helpers-cli-state.ts";
+  cliEnv } from "./helpers-cli-state.ts";
 
 const SESSION_ID = "sess_test_url_resolution";
 const API_URL_DEV = "https://api-dev.agentsfleet.net";
@@ -73,7 +72,7 @@ describe("api url resolution drives every fetch from runCli", () => {
       const { calls, fetchImpl } = makeFetchRecorder();
       const code = await runCli(
         ["login", "--no-open", "--no-input"],
-        { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: { ...stateDirEnv() }, fetchImpl: asFetchOverride(fetchImpl) },
+        { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: cliEnv(), fetchImpl: asFetchOverride(fetchImpl) },
       );
       // --no-input aborts at the verify prompt → exit 130, but only AFTER
       // createSession's POST has gone out to the resolved base URL (no poll).
@@ -90,7 +89,7 @@ describe("api url resolution drives every fetch from runCli", () => {
       const { calls, fetchImpl } = makeFetchRecorder();
       const code = await runCli(
         ["--api=http://localhost:4100", "login", "--no-open", "--no-input"],
-        { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: { ...stateDirEnv() }, fetchImpl: asFetchOverride(fetchImpl) },
+        { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: cliEnv(), fetchImpl: asFetchOverride(fetchImpl) },
       );
       expect(code).toBe(130);
       expect(calls[0]).toEqual({ url: "http://localhost:4100/v1/auth/sessions", method: "POST" });
@@ -108,7 +107,7 @@ describe("api url resolution drives every fetch from runCli", () => {
           stdout: out.stream,
           stderr: err.stream,
           stdin: ttyStdin,
-          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: "http://localhost:3000" },
+          env: cliEnv({ AGENTSFLEET_API_URL: "http://localhost:3000" }),
           fetchImpl: asFetchOverride(fetchImpl),
         },
       );
@@ -131,7 +130,7 @@ describe("api url resolution drives every fetch from runCli", () => {
           stdout: out.stream,
           stderr: err.stream,
           stdin: ttyStdin,
-          env: { ...stateDirEnv(), AGENTSFLEET_API_URL: "http://localhost:3000" },
+          env: cliEnv({ AGENTSFLEET_API_URL: "http://localhost:3000" }),
           fetchImpl: asFetchOverride(fetchImpl),
         },
       );
@@ -155,7 +154,7 @@ describe("api url resolution drives every fetch from runCli", () => {
           stdout: out.stream,
           stderr: err.stream,
           stdin: ttyStdin,
-          env: { ...stateDirEnv(), AGENTSFLEET_DASHBOARD_URL: `${DASHBOARD_URL_OVERRIDE}/` },
+          env: cliEnv({ AGENTSFLEET_DASHBOARD_URL: `${DASHBOARD_URL_OVERRIDE}/` }),
           fetchImpl: asFetchOverride(fetchImpl),
         },
       );
@@ -180,7 +179,7 @@ describe("api url resolution drives every fetch from runCli", () => {
           stdout: out.stream,
           stderr: err.stream,
           stdin: ttyStdin,
-          env: { ...stateDirEnv(), AGENTSFLEET_DASHBOARD_URL: `${DASHBOARD_URL_OVERRIDE}/` },
+          env: cliEnv({ AGENTSFLEET_DASHBOARD_URL: `${DASHBOARD_URL_OVERRIDE}/` }),
           fetchImpl: asFetchOverride(fetchImpl),
         },
       );
@@ -224,7 +223,7 @@ describe("api url resolution drives every fetch from runCli", () => {
       await runCli(["doctor"], {
         stdout: out.stream,
         stderr: err.stream,
-        env: { ...stateDirEnv() },
+        env: cliEnv(),
         fetchImpl: asFetchOverride(fetchImpl),
       });
 
@@ -296,7 +295,7 @@ describe("api url resolution drives every fetch from runCli", () => {
             api_url: c.set.creds === 1 ? CREDS : null,
             credential_id: null,
           });
-          const env: NodeJS.ProcessEnv = { ...stateDirEnv() };
+          const env: NodeJS.ProcessEnv = cliEnv();
           if (c.set.zenv === 1) env.AGENTSFLEET_API_URL = ZENV;
           if (c.set.aenv === 1) env.API_URL = AENV;
           const argv = c.set.flag === 1 ? ["--api", FLAG, "doctor"] : ["doctor"];
@@ -332,7 +331,7 @@ describe("api url resolution drives every fetch from runCli", () => {
           "--api", "https://api.agentsfleet.net//",
           "login", "--no-open", "--no-input",
         ],
-        { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: { ...stateDirEnv() }, fetchImpl: asFetchOverride(fetchImpl) },
+        { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: cliEnv(), fetchImpl: asFetchOverride(fetchImpl) },
       );
       expect(code).toBe(130);
       expect(calls[0]?.url).toBe("https://api.agentsfleet.net/v1/auth/sessions");
