@@ -1,5 +1,7 @@
 // Consent resolution. Reads process.env directly (no CliConfig
-// service field in agentsfleet yet — see M75 follow-up).
+// service field in agentsfleet yet — see M75 follow-up); the config
+// directory itself resolves through lib/config-dir.ts, the one
+// declaration site for that expression.
 //
 // Order of precedence (first match wins), mirrors supabase
 // getEffectiveConsent in apps/cli/src/shared/telemetry/consent.ts:
@@ -14,18 +16,11 @@
 
 import { Effect } from "effect";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import type { ConsentState, TelemetryConfig } from "./types.ts";
+import { resolveConfigDir } from "../../lib/config-dir.ts";
 
-function getConfigDirSync(): string {
-  return (
-    process.env.AGENTSFLEET_STATE_DIR ||
-    path.join(os.homedir(), ".config", "agentsfleet")
-  );
-}
-
-export const getConfigDir = Effect.sync(getConfigDirSync);
+export const getConfigDir = Effect.sync(() => resolveConfigDir(process.env));
 
 function telemetryDisabledFromEnv(env: NodeJS.ProcessEnv): boolean {
   const raw = env.AGENTSFLEET_TELEMETRY_DISABLED;

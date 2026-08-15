@@ -57,7 +57,11 @@ export interface CommandCtx {
   jsonMode?: boolean;
   noOpen?: boolean;
   noInput?: boolean;
-  env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+  // Required, not optional: every ctx consumer resolves credentials and
+  // state paths through this. An optional field let a construction site
+  // omit it and silently fall through to process.env at the next seam —
+  // the exact hop that once dropped an injected test environment.
+  env: NodeJS.ProcessEnv | Record<string, string | undefined>;
   [key: string]: unknown;
 }
 

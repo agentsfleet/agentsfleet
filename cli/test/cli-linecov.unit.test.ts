@@ -24,11 +24,14 @@ import { describe, test, expect } from "bun:test";
 import { Writable } from "node:stream";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withFreshStateDir } from "./helpers-cli-state.ts";
+import { bufferStream, cliEnv, withFreshStateDir } from "./helpers-cli-state.ts";
 
 const BOOM = "simulated stdout write failure";
 const HELP_ARG = "--help";
-const NO_COLOR_ENV = { NO_COLOR: "1" } as const;
+// Routed through cliEnv so the injected env carries the fixture state dir.
+// A bare { NO_COLOR } literal resolves the store to the operator's real
+// ~/.config/agentsfleet — the escape the helper exists to prevent.
+const noColorEnv = () => cliEnv({ NO_COLOR: "1" });
 
 // A stdout whose first (and every) write throws a plain Error. Commander
 // renders --help through this stream during parseAsync, so the throw
@@ -61,7 +64,7 @@ describe("runCli non-CommanderError parse-failure tail", () => {
       const code = await runCli([HELP_ARG], {
         stdout: throwingStdout(BOOM),
         stderr: err.stream,
-        env: NO_COLOR_ENV,
+        env: noColorEnv(),
       });
 
       // errMessage(err) pulled the message off the Error instance, and
@@ -77,7 +80,7 @@ describe("runCli non-CommanderError parse-failure tail", () => {
       const code = await runCli(["--json", HELP_ARG], {
         stdout: throwingStdout(BOOM),
         stderr: err.stream,
-        env: NO_COLOR_ENV,
+        env: noColorEnv(),
       });
 
       // JSON fallthrough: printJson(stderr, { error: { code, message } }).
@@ -102,7 +105,7 @@ describe("runCli non-CommanderError parse-failure tail", () => {
       const code = await runCli([HELP_ARG], {
         stdout: throwingStdout(distinct),
         stderr: err.stream,
-        env: NO_COLOR_ENV,
+        env: noColorEnv(),
       });
 
       expect(code).toBe(1);
@@ -122,7 +125,7 @@ describe("runCli non-CommanderError parse-failure tail", () => {
       const code = await runCli([HELP_ARG], {
         stdout: throwingStdoutNonError(marker),
         stderr: err.stream,
-        env: NO_COLOR_ENV,
+        env: noColorEnv(),
       });
 
       expect(code).toBe(1);

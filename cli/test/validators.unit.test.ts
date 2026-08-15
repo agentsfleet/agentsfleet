@@ -165,6 +165,71 @@ describe("parseEnumOption", () => {
   test("constructor rejects non-array allowed", () => {
     expect(() => parseEnumOption("not-array" as unknown as readonly string[])).toThrow("non-empty allowed array");
   });
+
+  test("folds case only when asked, returning the canonical spelling", () => {
+    const exact = parseEnumOption(["dev", "prod"]);
+    expect(() => exact("DEV")).toThrow(InvalidArgumentError);
+    const folding = parseEnumOption(["dev", "prod"], { foldCase: true });
+    expect(folding("DEV")).toBe("dev");
+    expect(folding("prod")).toBe("prod");
+    expect(() => folding("staging")).toThrow("must be one of: dev, prod");
+  });
+
+  test("folding matches a non-lowercase member and returns its canonical spelling", () => {
+    const folding = parseEnumOption(["Mixed-Case", "plain"], { foldCase: true });
+    expect(folding("mixed-case")).toBe("Mixed-Case");
+    expect(folding("MIXED-CASE")).toBe("Mixed-Case");
+  });
+
+  test("a deliberately rejected value gets its reason, not the generic list", () => {
+    const parse = parseEnumOption(["dev", "prod"], {
+      rejected: { retired: "was removed in a prior release" },
+    });
+    expect(() => parse("retired")).toThrow("'retired' was removed in a prior release");
+    // The reason replaces the wall rather than appending to it.
+    expect(() => parse("retired")).not.toThrow("must be one of");
+    // An unrecognised value still gets the list.
+    expect(() => parse("nonsense")).toThrow("must be one of: dev, prod");
+  });
+
+  test("a rejected value is matched under the same folding rule as members", () => {
+    const folding = parseEnumOption(["dev"], {
+      foldCase: true,
+      rejected: { Retired: "is gone" },
+    });
+    expect(() => folding("retired")).toThrow("'Retired' is gone");
+    const exact = parseEnumOption(["dev"], { rejected: { Retired: "is gone" } });
+    // Without foldCase the refusal is exact-match only, mirroring members.
+    expect(() => exact("retired")).toThrow("must be one of: dev");
+  });
+
+  test("a refusal that is also a member is dropped, and the member still parses", () => {
+    // `allowed.includes` returns first, so such a refusal could never fire.
+    // The catalogues feeding this are regenerated from vendored source, so an
+    // overlap introduced by a dependency bump would otherwise downgrade a
+    // deliberate refusal to silent acceptance with nothing to announce it.
+    // Dropped rather than thrown: these parsers are built at module scope, so a
+    // throw would stop the whole CLI from starting over a catalogue-data bug.
+    const parse = parseEnumOption(["dev", "prod"], { rejected: { dev: "unreachable" } });
+    expect(parse("dev")).toBe("dev");
+    // A disjoint refusal is unaffected and still fires.
+    const both = parseEnumOption(["dev"], { rejected: { retired: "is gone" } });
+    expect(() => both("retired")).toThrow("'retired' is gone");
+  });
+
+  test("the shadow drop folds exactly when the parser folds", () => {
+    // Folding on: `dev` resolves to the member `Dev`, so the refusal is
+    // unreachable and must be dropped — an exact-match-only check would keep
+    // a dead rule and report the wrong reason.
+    const folding = parseEnumOption(["Dev", "prod"], {
+      foldCase: true,
+      rejected: { dev: "unreachable" },
+    });
+    expect(folding("dev")).toBe("Dev");
+    // Folding off: `dev` is genuinely not a member, so the refusal is real.
+    const exact = parseEnumOption(["Dev", "prod"], { rejected: { dev: "is gone" } });
+    expect(() => exact("dev")).toThrow("'dev' is gone");
+  });
 });
 
 describe("parsePathOption", () => {

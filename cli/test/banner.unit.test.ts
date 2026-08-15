@@ -3,6 +3,7 @@
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { makeBufferStream } from "./helpers.ts";
+import { cliEnv } from "./helpers-cli-state.ts";
 import { printVersion } from "../src/program/banner.ts";
 import { runCli, VERSION } from "../src/cli.ts";
 
@@ -154,7 +155,7 @@ describe("--version — integration via runCli", () => {
     const code = await runCli(["--version"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1" },
+      env: cliEnv({ NO_COLOR: "1" }),
     });
     expect(code).toBe(0);
     expect(err.read()).toBe("");
@@ -166,7 +167,7 @@ describe("--version — integration via runCli", () => {
     const code = await runCli(["--version"], {
       stdout: out.stream,
       stderr: err.stream,
-      env: { NO_COLOR: "1" },
+      env: cliEnv({ NO_COLOR: "1" }),
     });
     expect(code).toBe(0);
     expect(err.read()).toBe("");
@@ -189,13 +190,13 @@ describe("--version — integration via runCli", () => {
     await runCli(["--version"], {
       stdout: out1.stream,
       stderr: makeBufferStream().stream,
-      env: { NO_COLOR: "1" },
+      env: cliEnv({ NO_COLOR: "1" }),
     });
     const out2 = makeBufferStream();
     await runCli(["--version"], {
       stdout: out2.stream,
       stderr: makeTtyBufferStream().stream,
-      env: { NO_COLOR: "1" },
+      env: cliEnv({ NO_COLOR: "1" }),
     });
     expect(out1.read()).toContain(`agentsfleet v${VERSION}`);
     expect(out2.read()).toContain(`agentsfleet v${VERSION}`);
@@ -219,7 +220,7 @@ describe("ttyOnly flag — output fidelity via runCli", () => {
     await runCli(["--version"], {
       stdout: out.stream,
       stderr: makeBufferStream().stream,
-      env: { NO_COLOR: "1" },
+      env: cliEnv({ NO_COLOR: "1" }),
     });
     expect(out.read()).not.toMatch(/\x1b\[/);
   });
