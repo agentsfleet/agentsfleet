@@ -63,6 +63,28 @@ export function stateDirEnv(): NodeJS.ProcessEnv {
   return { [STATE_DIR_ENV]: process.env[STATE_DIR_ENV] };
 }
 
+/**
+ * The environment every in-process runCli test injects: the current state
+ * dir plus the case's own overrides. One call site per test instead of a
+ * hand-spread `{ ...stateDirEnv(), … }` a test can forget — forgetting it
+ * points the store at the operator's real `~/.config/agentsfleet`, which is
+ * how a suite once overwrote a developer's live credentials.json. Throws
+ * when no state dir is set at all (the setup preload or a fixture always
+ * sets one), so a mis-ordered fixture fails loudly instead of escaping the
+ * sandbox. Tests proving DIVERGENCE between injected and process
+ * environments (injected-env.integration.test.ts) build their env by hand
+ * on purpose.
+ */
+export function cliEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const base = stateDirEnv();
+  if (base[STATE_DIR_ENV] === undefined) {
+    throw new Error(
+      `cliEnv(): ${STATE_DIR_ENV} is unset — run under test/setup.ts or inside a state-dir fixture`,
+    );
+  }
+  return { ...base, ...overrides };
+}
+
 // Mirror of helpers.ts:TestStream — Writable + optional isTTY so tests
 // can flip TTY-dependent code paths without an `as` cast at every site.
 export type TestStream = Writable & { isTTY?: boolean };

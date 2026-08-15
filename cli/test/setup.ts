@@ -31,7 +31,7 @@ if (process.env.AGENTSFLEET_TELEMETRY_DISABLED === undefined) {
 // `io.env` reaches it; see src/lib/state.ts). This process-env default exists
 // for the fixtures that still seed state THROUGH the process environment —
 // `withFreshStateDir` / `withAuthedStateDir` swap it per case and tests bridge
-// it into `io.env` via `stateDirEnv()` — so with nothing set, logged-out
+// it into `io.env` via `cliEnv()` — so with nothing set, logged-out
 // against an empty directory is the baseline instead of whatever real login
 // sits in `~/.config/agentsfleet`. A test wanting stored state sets its own
 // (see `makeStubbedStateDir`), and an already-exported value is left alone.

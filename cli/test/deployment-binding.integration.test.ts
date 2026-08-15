@@ -12,7 +12,7 @@ import {
   bufferStream,
   withAuthedStateDir,
   withFreshStateDir,
-  stateDirEnv,
+  cliEnv,
 } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 import {
@@ -142,7 +142,7 @@ describe("scenario 5 — a named target wins, and a wrong pair fails at the serv
           const code = await runCli(["events", FLEET_ID, "--api", apiUrl], {
             stdout: out.stream,
             stderr: err.stream,
-            env: { ...stateDirEnv() },
+            env: cliEnv(),
           });
 
           // The guard does NOT refuse: the operator named the target, so the

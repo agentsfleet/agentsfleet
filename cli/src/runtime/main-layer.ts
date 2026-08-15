@@ -14,13 +14,11 @@
 //   - HttpClient consumes CliConfig
 //   - Output, Credentials, Browser, Workspaces have no service deps
 //
-// Two entry points:
-//   - `MainLayer` — defaults-only constant, used by callers that don't
-//     need per-invocation overrides (and by tests that exercise the
-//     env-resolved shape).
-//   - `mainLayerFor(input)` — composes a layer with config/streams/
-//     commandPath overrides. Mirrors Supabase's cliProgramFor helper
-//     factory in shared/cli/run.ts.
+// One entry point: `mainLayerFor(input)` composes a layer with config/
+// streams/commandPath overrides and the invocation's resolved environment.
+// Mirrors Supabase's cliProgramFor helper factory in shared/cli/run.ts.
+// (The commander-parse path builds its own smaller layer in
+// commander-bridge.ts — it never calls this.)
 
 import { Layer } from "effect";
 import {
@@ -94,13 +92,15 @@ export interface MainLayerInput {
   readonly commandRunId?: string;
   // The invocation's resolved environment (runCli's `io.env ?? process.env`,
   // carried on ctx). The credentials + workspaces stores resolve their state
-  // directory from it. Defaults to process.env for callers with no injected
-  // environment (the commander-parse layer, layer-less tests).
-  readonly env?: NodeJS.ProcessEnv | undefined;
+  // directory from it. Required: an optional field with a process.env
+  // default is the hop that once dropped an injected environment on the
+  // way to the store — a caller with no override passes process.env and
+  // says so at its own seam.
+  readonly env: NodeJS.ProcessEnv;
 }
 
 export const mainLayerFor = (
-  input: MainLayerInput = {},
+  input: MainLayerInput,
 ): Layer.Layer<MainLayerServices> => {
   const configBase =
     input.config !== undefined ? cliConfigFromValuesLayer(input.config) : cliConfigLayer;
@@ -120,7 +120,7 @@ export const mainLayerFor = (
     Layer.provide(configBase),
   );
   const tracing = tracingLayer.pipe(Layer.provide(telemetryRuntimeLayer));
-  const envBase = input.env ?? process.env;
+  const envBase = input.env;
 
   return Layer.mergeAll(
     configBase,

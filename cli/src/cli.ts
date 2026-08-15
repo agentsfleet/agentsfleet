@@ -7,13 +7,11 @@ import { type Command, CommanderError } from "commander";
 import { openUrl } from "./lib/browser.ts";
 import {
   clearCredentials,
-  emptyCredentials,
-  emptyWorkspaces,
   loadCredentials,
-  loadWorkspaces,
   saveCredentials,
   saveWorkspaces,
 } from "./lib/state.ts";
+import { loadStateOrWarn } from "./lib/state-load.ts";
 import { Effect } from "effect";
 import { runCommanderParse } from "./lib/commander-bridge.ts";
 import { isString } from "./lib/guards.ts";
@@ -242,10 +240,11 @@ export async function runCli(
   // Bare `agentsfleet` → --help so commander routes via stdout + exit 0 instead of stderr "missing command".
   const effectiveArgv = argv.length === 0 ? ["--help"] : [...argv];
 
-  const [creds, workspaces] = await Promise.all([
-    loadCredentials(env).catch(() => emptyCredentials()),
-    loadWorkspaces(env).catch(() => emptyWorkspaces()),
-  ]);
+  // Real read failures (EACCES, EIO — not absence) warn and fall back to
+  // logged-out; the why lives with the helper.
+  const { creds, workspaces } = await loadStateOrWarn(env, (line) =>
+    writeLine(stderr, line),
+  );
   // Session identity is read and bumped through `telemetry.json`.
   const stdinSrc = io.stdin ?? process.stdin;
   // Two credential slots: the stored login credential (file slot, from

@@ -122,7 +122,10 @@ export const runEffect = async <A, E extends CliError, R extends MainLayerServic
     return yield* renderAndCount(exit);
   });
 
-  const runtime = input.layer ?? mainLayerFor(input.layerInput);
+  // A caller with neither layer nor layerInput is a layer-less test; the
+  // process environment is stated here rather than defaulted inside
+  // mainLayerFor, so the injected-env seam has no silent fallback left.
+  const runtime = input.layer ?? mainLayerFor(input.layerInput ?? { env: process.env });
   // The `R extends MainLayerServices` constraint guarantees the residual
   // after the runtime layer is `never`; TypeScript cannot prove the
   // symbolic Exclude<> reduction so a single localised cast at the

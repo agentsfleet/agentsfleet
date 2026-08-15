@@ -25,7 +25,7 @@ import { HttpClient, type HttpRequestInput } from "../src/services/http-client.t
 import { Output, type OutputShape } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import type { StreamGetCallback } from "../src/lib/sse.ts";
-import { bufferStream, withAuthedStateDir, stateDirEnv } from "./helpers-cli-state.ts";
+import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi } from "./helpers-mock-api.ts";
 
 // Exported so the sibling error-path suite shares one source of truth for
@@ -134,7 +134,7 @@ describe("steer — empty message validation via CLI (lines 340-345)", () => {
         const err = bufferStream();
         const code = await runCli(
           ["steer", FLEET_ID, "   "],
-          { stdout: out.stream, stderr: err.stream, env: { ...stateDirEnv(), AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
         expect(err.read()).toMatch(/message is required/i);

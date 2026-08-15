@@ -73,7 +73,7 @@ describe("runEffect — success path", () => {
     const exit = await runEffect({
       name: "test.with-cmd-path",
       effect: Effect.void,
-      layerInput: { commandPath: ["test", "with-cmd-path"] },
+      layerInput: { commandPath: ["test", "with-cmd-path"], env: process.env },
     });
     expect(exit).toBe(0);
   });
