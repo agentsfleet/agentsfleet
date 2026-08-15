@@ -17,12 +17,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Workstream:** 002
 **Date:** Aug 14, 2026
 **Status:** IN_PROGRESS
-**Priority:** P0 — the branch enforces one merged floor it does not clear (91% against a measured 89.07%), so its own Continuous Integration (CI) gate is red for a reason no per-folder signal explains.
+**Priority:** P0 — `agentsfleetd/`, `runner/` and `lib/` all sit below the 95% Indy set as the quality bar, and one merged floor cannot say which of them moved.
 **Categories:** DOCS, INFRA
-**Batch:** B1 — sequential with M164_001 on the same branch; no parallel workstream.
-**Test Baseline:** unit=3717 integration=619
-**Branch:** feat/m164-delete-the-free-trial — shared with M164_001; no new worktree, no new Pull Request (PR).
-**Depends on:** M164_001 (same branch and PR; its 91% floor is the value this workstream reconciles)
+**Batch:** B1 — resumed on its own branch after M164_001 merged; one Pull Request (PR).
+**Test Baseline:** unit=3907 integration=638
+**Branch:** feat/m164-002-coverage-floors — resumed Aug 15, 2026 in `../agentsfleet-m164-002-coverage`; M164_001's branch merged as PR #601 and was pruned.
+**Depends on:** M164_001 (merged, PR #601) — its floor is the value this workstream replaces with per-folder floors
 **Provenance:** LLM-drafted (Claude Opus 5 (1M context), Aug 14, 2026) — measurements taken by running this branch's own `scripts/check_zig_coverage.py` reader over the reports on disk, not from prose.
 **Canonical architecture:** `docs/architecture/testing.md` §Coverage
 
@@ -66,6 +66,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/**/*_test.zig` | CREATE/EDIT | Live-harness unit tests for the zero-percent handlers and near-zero stores, descending dark order. |
 | `src/agentsfleetd/tests.zig`, `src/runner/tests.zig` (test roots) | EDIT | New test files registered by explicit import, per the repository's test-discovery rule. |
 | `docs/v2/active/M164_002_P0_DOCS_INFRA_COVERAGE_DENOMINATOR_ASSERTION.md` | EDIT | This spec; Dimensions marked DONE alongside their code. |
+| `src/lib/**/*_test.zig` | CREATE/EDIT | Unit-lane tests lifting `lib/` to its 95% target. |
+| `README.md` | EDIT | The badge row gains the measured coverage figure a real run produced (§6). |
+| `scripts/publish_coverage_badge.py` | CREATE | Turns `.tmp/zig-coverage.txt` into the badge endpoint payload the README reads (§6). |
+| `scripts/publish_coverage_badge_test.py` | CREATE | Self-tests for the payload shape and its refusal to publish an ungraded run. |
+| `.github/workflows/test.yml` | EDIT | Publishes the measured figure after the gate passes — **approval-gated, diff shown to Indy before it lands** (§6). |
+| `playbooks/operations/m164_free_trial_removal/` | DELETE | One-shot hand-migration for M164_001, already applied; ephemeral by nature and referenced by nothing but M164_001's own record (§7). |
+| `docs/v2/done/M155_001_P1_API_OBS_UI_CHARGE_SLICE_BREAKDOWN.md` | RENAME | Carried over from `main`: M155_001 parked, moved `pending/` → `done/`. Bookkeeping only, no code. |
 
 ## Applicable Rules
 
@@ -112,7 +119,7 @@ The union already fails a component contributing literally nothing. A component 
 
 ### §3 — Floors bind per folder, targets stay visible
 
-One merged figure cannot bind two trees moving in opposite directions: 67.48% and 90.10% average to 89.07%, and no floor on that average can hold the daemon. Each scope gains an enforced floor seeded at its measured value and a fixed target — **91% merged, 95% on the `agentsfleetd/` unit lane, 95% on the `runner/` unit lane** — with the remaining gap published every run so the target is not forgotten. **Implementation default:** floors seed at the measured value rounded down to the whole point and are raise-only; targets are literals only Indy changes.
+One merged figure cannot bind three trees moving independently: `agentsfleetd/` 89.47%, `runner/` 93.75% and `lib/` 93.77% average into 90.18%, and a floor on that average lets any one of them fall while the number holds. Each scope gains an enforced floor and a fixed target — **95% merged, 95% `agentsfleetd/`, 95% `runner/`, 95% `lib/`**, the bar Indy set for all three folders — with the remaining gap published every run so the distance stays visible while §4 closes it. **Implementation default:** floors seed at the measured value rounded down to the whole point and are raise-only, ratcheting toward 95 in the same commit as the tests that clear each step; targets are literals only Indy changes.
 
 - **Dimension 3.1** — Enforced floors and fixed targets exist for merged, `agentsfleetd/`, and `runner/`, each with one definition site → Test `test_floors_and_targets_defined_once`
 - **Dimension 3.2** — A per-folder floor breach fails naming the folder, its measured rate, and its floor, distinctly from a merged breach → Test `test_folder_breach_names_folder_and_floor`
@@ -122,18 +129,34 @@ One merged figure cannot bind two trees moving in opposite directions: 67.48% an
 
 ### §4 — The lanes rise file by file, lowest first
 
-The coverage work itself, folded in on Indy's direction: walk the ranked dark-line list per folder and add unit-lane tests to the worst files individually, not merely the files this branch's diff touches. The runner is finishable — 188 of its 362 dark lines sit in four files — so it goes first and lands at its 95% target. The daemon's dark mass is zero-percent HTTP handlers; each gets driven through the in-process harness against live datastores, biggest first, and the daemon floor ratchets to whatever the landed tests measure. **Implementation default:** target files in descending dark-line order within each folder; a file is done when its dark remainder is unreachable-by-design (fatal paths, OS-specific branches) and that remainder is named in the test file.
+The coverage work itself, and on the re-measurement it is the bulk of this workstream rather than a tail on it. Walk the ranked dark-line list per folder and add tests to the worst files individually, not merely the files this branch's diff touches. `lib/` (+15 covered lines) and `runner/` (+50) are within reach and go first, which puts two folders at 95 early and leaves one number moving. `agentsfleetd/` needs **+1,450** and is the long pole: its dark mass is not four fat files but roughly 60–100 files in the 20–50 dark-line band, most of them error arms — invalid payloads, refused authorisation, datastore failures — that the suites construct the happy path around and never drive. Each folder's floor ratchets toward 95 in the same commit as the tests that clear the step. **Implementation default:** target files in descending union-dark order within each folder, and drive error arms through the in-process harness rather than reaching for new abstractions; a file is done when its dark remainder is unreachable-by-design (process-fatal paths, operating-system-specific branches) and that remainder is named in the test file.
 
-- **Dimension 4.1** — `runner/` unit lane reaches its 95% target: `daemon/lease_run.zig`, `child_supervisor.zig`, `engine/runner.zig`, `daemon/loop.zig`, then the tail until the folder rate clears 95 → Tests per file, `test_…` per behaviour
-- **Dimension 4.2** — the daemon's zero-percent handler files gain live-harness unit tests in descending dark order (`schedules/api.zig`, `fleets/cron_sync.zig`, `auth/identity_events_clerk.zig`, `tenant_workspaces.zig`, `fleet/runner_patch.zig`, `library/onboard.zig`, continuing down the ranking) → Tests per handler verb, success and failure halves
-- **Dimension 4.3** — the daemon's near-zero store and session files (`session/session_store_redis.zig`, `state/fleet_events_store.zig`) gain live-datastore tests → Tests per store operation
-- **Dimension 4.4** — the `agentsfleetd/` floor is raised in the same commit as the tests that clear the new value, never ahead → Test `test_enforced_floors_clear_measured_values` (re-graded)
+- **Dimension 4.1** — `lib/` clears 95%: `logging/mod.zig` carries 42 of the folder's 76 dark lines and 15 close the gap → Tests per behaviour on the scoped-logger arms
+- **Dimension 4.2** — `runner/` clears 95%: `daemon/lease_run.zig` (40 dark), `child_supervisor.zig` (25), `engine/runner.zig` (24), then the tail until the folder rate clears 95 → Tests per file, `test_…` per behaviour
+- **Dimension 4.3** — the daemon's worst files by union-dark count gain tests in descending order — `http/handlers/tenant_provider.zig` (53), `cmd/serve_webhook_lookup.zig` (48), `http/handlers/tenant_model_entries.zig` (47), `http/handlers/admin/platform_keys.zig` (42), `auth/clerk_backend.zig` (36), `http/handlers/auth/sessions.zig` (35), continuing down the ranking → Tests per verb, success and failure halves
+- **Dimension 4.4** — `cmd/serve.zig` is 116 dark lines at 0% because nothing drives the boot sequence; either it gains a test that boots it against the harness datastores, or the untestable remainder is extracted so what stays is reachable → Test `test_serve_boot_sequence`
+- **Dimension 4.5** — `agentsfleetd/` clears 95% over the product-only denominator → Test `test_enforced_floors_clear_measured_values` (re-graded)
+- **Dimension 4.6** — every folder floor is raised in the same commit as the tests that clear the new value, never ahead → Test `test_enforced_floors_clear_measured_values` (re-graded per ratchet)
 
 ### §5 — The architecture doc describes the instrument that exists
 
 `docs/architecture/testing.md` §Coverage still says five binaries, a 60% floor against a 61.40% baseline, and "each binary must produce a non-empty Cobertura report" — the weakest assertion in the lane and the one §2 replaces. It also predates the union, the `s3` component, and the runner integration component. A stale canonical doc is how the next agent reintroduces all of it.
 
 - **Dimension 5.1** — PARTIAL — §Coverage now records the eight-component set, the union, the kcov Linux capture gap and its evidence, the required-component regression signal, the published key surface, and the warning that the Linux rate flatters; the non-empty-report claim and the stale floor value are gone. The per-folder floors and the ratchet rule are not yet written because §3 has not landed → Test `test_architecture_doc_matches_gate_values` (pending §3)
+
+### §6 — The README carries the figure a real run produced
+
+The repository is public and its README opens with a badge row that says nothing about test quality. Indy's requirement is exact: the badge shows **what was executed and run**, not a floor, not a hand-typed number. The gate already writes `zig_line_coverage_pct` to `.tmp/zig-coverage.txt` after grading, so the figure exists; it just has nowhere to go. This publishes it from the run that produced it and points the README at it. **Implementation default:** publish only from a run that graded green on the default branch — a badge fed by a failed or partial run is worse than no badge, because it reports a number over a suite that did not finish. The workflow edit is approval-gated and does not land until Indy has seen the diff.
+
+- **Dimension 6.1** — the badge payload carries the measured percentage, its colour derived from the value, and is written only from a green graded run → Test `test_badge_payload_reflects_measured_run`
+- **Dimension 6.2** — a run whose gate failed, or whose summary file is absent or ungraded, publishes nothing rather than a stale or zero figure → Test `test_badge_refuses_ungraded_run`
+- **Dimension 6.3** — the README badge row renders as one coherent row on the rendered page, with the coverage badge beside the existing Continuous Integration (CI), Docs and License badges → Test `test_readme_badge_row_is_well_formed`
+
+### §7 — The one-shot M164 playbook leaves the tree
+
+`playbooks/operations/m164_free_trial_removal/` holds `apply.sql` and `verify.sql`, a hand-migration written for databases that are not rebuilt from the schema slots. M164_001 shipped and the migration has been applied, so the folder is a spent artefact sitting beside durable operator procedures. Nothing references it but M164_001's own Files Changed record, which is history and stays. **Implementation default:** delete both files with the folder; no deprecation note, no archive copy — the content is recoverable from git history and RULE NDC forbids keeping dead material for reassurance.
+
+- **Dimension 7.1** — the folder is gone from disk and from git, and `make check-playbooks` still passes → Test `test_no_m164_playbook_remains`
 
 ## Interfaces
 
@@ -280,13 +303,54 @@ Regression rows: the guards already on this branch must keep firing — `test_ze
 - **Alternatives considered:** (a) drop the merged floor to a passing value and land #601 with no per-folder signal — rejected, it leaves 22 points of daemon shortfall masked by the average and no way to see it; (b) per-file floors with a trend database — rejected as larger than the evidence supports, and named here rather than silently mud-patched toward.
 - **Patch-vs-refactor verdict:** this is a **patch** because the checker's structure, union, and normalisation are correct — the filter is too narrow and the grading too coarse. A refactor would touch the parts that work.
 
-## Parked
+## Resumed (Aug 15, 2026) — supersedes the park below
 
-Parked on Indy's direction after the coverage instrument was repaired and the
-Pull Request (PR) went green — *"I prefer A"*, choosing the park over finishing
-the remaining sections on this branch (2026-08-15). The spec stays in `active/`
-because it is genuinely unfinished: **3 of 18 Dimensions have landed.** It is not
-awaiting a clerical move to `done/`.
+Resumed on Indy's direction the same day it was parked, with the scope widened:
+**every one of `agentsfleetd/`, `runner/` and `lib/` reaches 95%**, and the
+README carries the coverage figure an actual run produced.
+
+> Indy (2026-08-15 17:40): "I think i want to be clear here that the quality
+> rests on agentsfleetd/ , runner/ , and the lib/ folders so get your rear
+> moving to fix them ultrathink to fix them and get us to 95% above for zig"
+
+> Indy (2026-08-15 17:40): "The coverage badge must be what was executed and run
+> and what we get in as a badge in README.md"
+
+**The park's per-folder numbers were wrong, and the error mattered.** They were
+macOS unit-lane figures taken before the debug-info repair, and they made the
+daemon look far worse than it is. Re-measured on this branch over the union the
+gate actually grades (unit lanes ∪ the live-datastore integration lane, seven
+components on disk):
+
+| Scope | Measured | Dark | Covered lines needed for 95% |
+|---|---|---|---|
+| union (current filter) | 90.25% — 28797/31907 over 565 files | 3110 | — |
+| union (+ §1 filter) | 90.18% — 28334/31419 over 558 files | 3085 | 1515 |
+| `agentsfleetd/` | 89.47% — 23452/26212 | 2760 | 1450 |
+| `runner/` | 93.75% — 3738/3987 | 249 | 50 |
+| `lib/` | 93.77% — 1144/1220 | 76 | 15 |
+
+The spec's `agentsfleetd/ 67.48%` was the unit lane alone; the integration lane
+covers the daemon heavily and the union is what the gate enforces. §1's harness
+filter removes **488 lines across 7 files**, not the 788 across 17 the spec
+claims — the remaining test-support spellings it names are already excluded by
+kcov's `--exclude-pattern` or do not exist in the tree.
+
+**What this changes about the plan.** §4 is no longer a tail on the gate work —
+it is the bulk of it, and `runner/` and `lib/` are nearly there while the daemon
+needs ~1,450 covered lines across a long tail. The dark mass is not four fat
+files: the largest single file is `cmd/serve.zig` at 116 dark lines and 0%, and
+the rest is ~60–100 files in the 20–50 dark-line band, most of them error arms
+the suites never drive.
+
+### The park it supersedes
+
+The spec was parked earlier the same day after the coverage instrument was
+repaired and the Pull Request (PR) went green — *"I prefer A"*, choosing the park
+over finishing the remaining sections. **3 of 18 Dimensions had landed.** That
+decision is superseded by the two quotes above; the record below stays because it
+is still the accurate account of what shipped and what each unshipped section
+leaves broken.
 
 **What shipped.** The instrument, not the floors. Dimensions 2.3, 2.4 and 2.5:
 the union grades what actually collected, states `measured over N of M
