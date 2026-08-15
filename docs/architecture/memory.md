@@ -34,7 +34,7 @@ Two layers, deliberately split:
 - **Durable** — the `fleet_id`-keyed rows in `memory.memory_entries` (Postgres). This is what persists.
 - **Ephemeral** — the *compute*. Each run forks a fresh sandboxed child whose in-run store is **SQLite `:memory:`** (no disk file); it vanishes on child exit.
 
-Continuity is the hydrate/capture loop bridging the two: `GET /v1/runners/me/memory/{fleet_id}` seeds the child at run start; `POST` captures deltas back at run end (fencing-verified, like `/reports`). Transport detail: `runner_fleet.md` §Memory continuity.
+Continuity is the hydrate/capture loop bridging the two: `GET /v1/runners/me/memory/{fleet_id}` seeds the child at run start; `POST` captures deltas back at run end (fencing-verified, like `/reports`). Transport detail: [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity".
 
 **The load-bearing consequence:** because the durable key is `fleet_id`, **a new fleet = a new `fleet_id` = an empty namespace.** Spinning a *new ephemeral fleet per event* gives each one nothing to hydrate — zero continuity. Memory continuity **requires reusing the same `fleet_id`** across events. The fleet (and its memory) is durable; only the run is ephemeral. "Workspace-shared memory across ephemeral fleets" is not possible — there is no workspace key.
 

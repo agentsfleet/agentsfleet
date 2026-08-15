@@ -26,6 +26,14 @@
 # The target keeps its `./` or `../` prefix: the gate joins it to the source's
 # directory, and dropping `../` resolved a sibling-directory pointer to a path
 # that does not exist, which the gate skipped rather than checked.
+#
+# A section with no link ahead of it on the line names a heading on its own
+# page, and comes back as `@self`. Those are the majority and they are why the
+# quoting rule matters: `§C. EXECUTE step 3` and `§Scope catalogue (meaning)`
+# read fine to a person and parse as nothing, so they went unchecked for as
+# long as they have existed. A same-page reference stays unlinked — quoting is
+# the whole fix. A reference to another page has to carry a link, because
+# nothing else says which page it means.
 
 set -euo pipefail
 
@@ -57,21 +65,41 @@ while IFS= read -r f; do
       gsub(/^"|"$/, "", a)
       return a
     }
-    {
-      rest = $0
+    function scan(line,   rest, tok, target) {
+      rest = line
       target = ""
       while (match(rest, PAT)) {
+        gap  = substr(rest, 1, RSTART - 1)
         tok  = substr(rest, RSTART, RLENGTH)
         rest = substr(rest, RSTART + RLENGTH)
+        # A link binds the sections that follow it in the same sentence, and no
+        # further. Past a full stop or a table-cell divider the subject has
+        # changed, so a bare section there is about the current page again —
+        # "(see other.md §\"X\"). The figure in §\"Y\" was wrong" names two
+        # different pages, and binding to the nearest link gets the second wrong.
+        if (gap ~ /[.][[:space:]]/ || index(gap, "|") > 0) target = ""
         if (substr(tok, 1, 1) == "]") {        # a link on its own: sets context
           target = pathof(tok)
         } else if (index(tok, "](") > 0) {     # link and section together
           target = pathof(tok)
           print src "::" target "::" anchorof(tok)
-        } else if (target != "") {             # a section against the last link
-          print src "::" target "::" anchorof(tok)
+        } else {                               # a section against the last link,
+          # or, with no link ahead of it on the line, against its own page.
+          print src "::" (target == "" ? "@self" : target) "::" anchorof(tok)
         }
       }
     }
+    # Prose is hard-wrapped, so a quoted anchor can straddle the line break and
+    # arrive at the scanner cut in half. An odd number of quotes on a line that
+    # opens one is the signal; hold it and read on. The cap stops a stray quote
+    # from swallowing the rest of the file.
+    function open_quote(s) { return (index(s, "§\"") > 0 && gsub(/"/, "\"", s) % 2 == 1) }
+    {
+      line = (held == "" ? $0 : held " " $0)
+      if (open_quote(line) && holds < 3) { held = line; holds++; next }
+      held = ""; holds = 0
+      scan(line)
+    }
+    END { if (held != "") scan(held) }
   ' "$f" | sort -u
 done
