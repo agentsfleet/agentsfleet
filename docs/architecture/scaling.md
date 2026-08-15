@@ -142,7 +142,7 @@ removed the per-process memo that used to amortize it — so **every runner requ
 pays one indexed single-row read**, not one per heartbeat interval.
 
 That was a deliberate trade, and the reasoning is in
-[`../AUTH.md`](../AUTH.md) §Runner token: admin-state transitions have no delivery
+[`../AUTH.md`](../AUTH.md) §"Runner token" — admin-state transitions have no delivery
 channel other than auth rejection, so a per-process memo made revocation
 deterministic only on the machine that served the operator's write. Reading the row
 every time makes a cordon, drain, revoke, or delete effective fleet-wide the moment

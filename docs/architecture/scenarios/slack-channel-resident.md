@@ -1,6 +1,6 @@
 # Scenario — Slack-resident channel bot (the Rung-0 on-ramp)
 
-> Parent: [`README.md`](./README.md) · References: [`../runner_fleet.md`](../runner_fleet.md) (§Memory continuity — the hydrate/capture loop), [`../data_flow.md`](../data_flow.md) (single-ingress trigger/execute loop), [`../user_flow.md`](../user_flow.md) §8.8 (Slack as a resident surface).
+> Parent: [`README.md`](./README.md) · References: [`../runner_fleet.md`](../runner_fleet.md) (§"Memory continuity" — the hydrate/capture loop), [`../data_flow.md`](../data_flow.md) (single-ingress trigger/execute loop), [`../user_flow.md`](../user_flow.md) §8.8 (Slack as a resident surface).
 >
 > **Shipped (M106).** Specced in [`../../v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`](../../v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md). This narrates the channel-resident surface as it now ships.
 
