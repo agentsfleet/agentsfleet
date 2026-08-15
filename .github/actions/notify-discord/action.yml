@@ -1,5 +1,5 @@
 name: Notify Discord
-description: Post one deploy or release verdict to the CI Discord channel.
+description: Post one deploy or release verdict to its configured Discord channel.
 
 # One implementation, every workflow. The per-host notifier this replaces lived
 # in deploy/baremetal/deploy.sh and guarded on DISCORD_WEBHOOK_URL, so when a
@@ -19,8 +19,12 @@ inputs:
     description: 1Password service-account token.
     required: true
   vault:
-    description: Vault holding the discord-ci-webhook item.
+    description: Vault holding the selected Discord webhook item.
     required: true
+  webhook-item:
+    description: 1Password item containing the destination webhook.
+    required: false
+    default: discord-ci-webhook
 
 runs:
   using: composite
@@ -31,13 +35,14 @@ runs:
         export-env: true
       env:
         OP_SERVICE_ACCOUNT_TOKEN: ${{ inputs.op-token }}
-        DISCORD_WEBHOOK: op://${{ inputs.vault }}/discord-ci-webhook/credential
+        DISCORD_WEBHOOK: op://${{ inputs.vault }}/${{ inputs.webhook-item }}/credential
 
     - name: Post verdict
       shell: bash
       env:
         MSG: ${{ inputs.message }}
         STATUS: ${{ inputs.status }}
+        WEBHOOK_ITEM: ${{ inputs.webhook-item }}
       run: |
         set -euo pipefail
         # Green only on an explicit success; every other value reads as red.
@@ -46,7 +51,7 @@ runs:
         # An absent webhook is the failure that hid the last outage. Fail here
         # rather than posting nothing and reporting success.
         if [ -z "${DISCORD_WEBHOOK:-}" ]; then
-          echo "✗ DISCORD_WEBHOOK is empty — 1Password load failed or the vault lacks discord-ci-webhook" >&2
+          echo "✗ DISCORD_WEBHOOK is empty — 1Password load failed or the vault lacks $WEBHOOK_ITEM" >&2
           exit 1
         fi
 
