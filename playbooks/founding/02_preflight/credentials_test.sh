@@ -197,6 +197,22 @@ test_prod_checks_both_discord_webhooks() {
   fi
 }
 
+test_dev_checks_ci_discord_webhook() {
+  local name="development checks its shared CI Discord webhook"
+  local output status=0
+  output="$(run_gate bootstrap)" || status=$?
+
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "complete development inventory failed: $output"
+  elif [[ "$output" != *"ZMB_CD_PROD/discord-ci-webhook/credential"* ]]; then
+    bad "$name" "shared CI webhook was not checked"
+  elif [[ "$output" == *do-not-print-provider-secret* ]]; then
+    bad "$name" "gate printed the webhook secret"
+  else
+    ok "$name"
+  fi
+}
+
 test_prod_rejects_malformed_discord_webhook() {
   local name="production rejects a malformed Discord webhook"
   local ref='op://ZMB_CD_PROD/discord-release-webhook/credential'
@@ -350,6 +366,7 @@ test_post_deploy_values_are_not_early_inputs
 test_deployment_checks_complete_infrastructure_inputs
 test_deployment_rejects_missing_runtime_input
 test_prod_checks_both_discord_webhooks
+test_dev_checks_ci_discord_webhook
 test_prod_rejects_malformed_discord_webhook
 test_discord_notifications_route_by_release_stage
 test_workflows_use_deployment_stage_without_generated_pointer
