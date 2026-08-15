@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M163
 **Workstream:** 001
 **Date:** Aug 12, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — a Command-Line Interface (CLI) user can save a credential naming a provider the runner cannot dial; the save reports success and the failure surfaces later as a fleet that cannot reach any inference host
 **Categories:** CLI, DOCS
 **Batch:** B1 — §3 is independent of §1/§2 and may land in either order within the same branch
