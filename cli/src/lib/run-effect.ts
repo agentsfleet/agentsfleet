@@ -29,11 +29,11 @@ export type { MainLayerServices };
 
 const FALLBACK_EXIT_CODE = 1;
 
-// R is the service-set the command Effect needs. The dispatcher provides
-// MainLayer; if R is not a subset of what MainLayer covers, the
-// `Effect.provide(MainLayer)` call below fails to typecheck — that's
-// the compile-time guard that every command's declared service-set is
-// actually wired.
+// R is the service-set the command Effect needs. The dispatcher provides the
+// layer `mainLayerFor` composes; if R is not a subset of MainLayerServices,
+// the `Effect.provide(runtime)` call below fails to typecheck — that's the
+// compile-time guard that every command's declared service-set is actually
+// wired.
 //
 // A — the success value type. `void` is the common case (the dispatcher
 // maps success → exit 0). `number` lets a command emit its own exit
@@ -122,7 +122,10 @@ export const runEffect = async <A, E extends CliError, R extends MainLayerServic
     return yield* renderAndCount(exit);
   });
 
-  const runtime = input.layer ?? mainLayerFor(input.layerInput);
+  // A caller with neither layer nor layerInput is a layer-less test; the
+  // process environment is stated here rather than defaulted inside
+  // mainLayerFor, so the injected-env seam has no silent fallback left.
+  const runtime = input.layer ?? mainLayerFor(input.layerInput ?? { env: process.env });
   // The `R extends MainLayerServices` constraint guarantees the residual
   // after the runtime layer is `never`; TypeScript cannot prove the
   // symbolic Exclude<> reduction so a single localised cast at the

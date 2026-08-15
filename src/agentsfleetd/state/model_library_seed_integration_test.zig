@@ -61,7 +61,12 @@ const PROVIDER_COUNTS = [_]struct { provider: []const u8, rows: i64, exact: bool
     .{ .provider = "mistral", .rows = 5, .exact = true },
     .{ .provider = "pioneer", .rows = 19, .exact = true },
     .{ .provider = "openrouter", .rows = 11, .exact = true },
-    .{ .provider = "fireworks", .rows = 7, .exact = true },
+    // 8, not 7: the committed fixture had drifted a row behind the allowlist —
+    // `accounts/fireworks/models/kimi-k3` was curated and the fixture was never
+    // regenerated, so this table was pinned to the stale file rather than to
+    // the allowlist it is meant to prove. Regenerating the fixture corrected
+    // both (M163 §4).
+    .{ .provider = "fireworks", .rows = 8, .exact = true },
     .{ .provider = "together-ai", .rows = 5, .exact = true },
     .{ .provider = "novita", .rows = 6, .exact = true },
 };

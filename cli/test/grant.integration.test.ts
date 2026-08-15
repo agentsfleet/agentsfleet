@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
+import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-00000067e210";
@@ -28,7 +28,7 @@ describe("grant (integration grant) commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["grant", "list", "--fleet", FLEET_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         const text = out.read();
@@ -56,7 +56,7 @@ describe("grant (integration grant) commands", () => {
         const err = bufferStream();
         const code = await runCli(
           ["grant", "delete", "--fleet", FLEET_ID, "01900000-0000-7000-8000-000000067a01"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         const text = out.read();

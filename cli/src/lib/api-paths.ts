@@ -7,6 +7,10 @@ export const WORKSPACES_PATH = "/v1/workspaces/";
 // Mirrors the daemon's QUERY_STARTING_AFTER (http/pagination.zig) — the
 // keyset paging request parameter every cursor-paged list accepts.
 export const QUERY_STARTING_AFTER = "starting_after";
+// Mirrors Q_LIMIT / Q_PROVIDER in http/handlers/model_library.zig. `limit` is
+// bounded 1..100 server-side; `provider` filters the catalogue page.
+export const QUERY_LIMIT = "limit";
+export const QUERY_PROVIDER = "provider";
 export const WEBHOOKS_PATH = "/v1/webhooks/";
 
 // Flat (non-workspace-scoped) routes the CLI hits directly. Centralised
@@ -21,6 +25,11 @@ export const WORKSPACES_COLLECTION_PATH = "/v1/workspaces";
 export const TENANT_API_KEYS_PATH = "/v1/api-keys";
 export const TENANT_BILLING_PATH = "/v1/tenants/me/billing";
 export const TENANT_PROVIDER_PATH = "/v1/tenants/me/provider";
+// The priced model catalogue (core.model_library). Shared verbatim with
+// MODEL_LIBRARY_PATH in http/handlers/model_library.zig and the dashboard's
+// lib/api/model_library.ts. Backs `agentsfleet models` and the `--provider`
+// check — the CLI carries no provider list of its own.
+export const MODEL_LIBRARY_PATH = "/v1/models";
 export const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
 
 // First-party Fleet library catalog — global (not workspace-scoped),

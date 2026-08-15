@@ -10,6 +10,7 @@ import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { cliEnv } from "./helpers-cli-state.ts";
 import { runCli, VERSION } from "../src/cli.ts";
 import { makeBufferStream } from "./helpers.ts";
 
@@ -39,7 +40,7 @@ describe("golden — --version under NO_COLOR is byte-exact", () => {
     const code = await runCli(["--version"], {
       stdout: out.stream,
       stderr: makeBufferStream().stream,
-      env: { NO_COLOR: "1" },
+      env: cliEnv({ NO_COLOR: "1" }),
     });
     expect(code).toBe(0);
     expect(out.read()).toBe(golden("version-no-color.txt"));
@@ -52,7 +53,7 @@ describe("golden — --help under NO_COLOR is byte-exact", () => {
     const code = await runCli(["--help"], {
       stdout: out.stream,
       stderr: makeBufferStream().stream,
-      env: { NO_COLOR: "1" },
+      env: cliEnv({ NO_COLOR: "1" }),
     });
     expect(code).toBe(0);
     expect(out.read()).toBe(golden("help-no-color.txt"));

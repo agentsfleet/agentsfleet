@@ -54,51 +54,60 @@ function captureStream(): {
 
 test("save/load/clear Credentials roundtrip writes mode 0600 and clears to nulls", async () => {
   const dir = tmpDir();
+  const prevStateDir = process.env.AGENTSFLEET_STATE_DIR;
   process.env.AGENTSFLEET_STATE_DIR = dir;
   try {
-    await saveCredentials({
+    await saveCredentials(process.env, {
       token: "tok_abc",
       saved_at: 1,
       session_id: "sess",
       api_url: "https://api.example",
       credential_id: null,
     });
-    const after = await loadCredentials();
+    const after = await loadCredentials(process.env);
     expect(after.token).toBe("tok_abc");
     const stat = await fs.stat(path.join(dir, "credentials.json"));
     expect((stat.mode & 0o777).toString(8)).toBe("600");
-    await clearCredentials();
-    const cleared = await loadCredentials();
+    await clearCredentials(process.env);
+    const cleared = await loadCredentials(process.env);
     expect(cleared.token).toBeNull();
     expect(cleared.saved_at).toEqual(expect.any(Number));
   } finally {
-    delete process.env.AGENTSFLEET_STATE_DIR;
+    // Restore, never bare-delete: wiping the var strips the suite-wide
+    // sandbox default from every file that runs after this one.
+    if (prevStateDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+    else process.env.AGENTSFLEET_STATE_DIR = prevStateDir;
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
 
 test("save/load Workspaces roundtrip persists current_workspace_id + items[]", async () => {
   const dir = tmpDir();
+  const prevStateDir = process.env.AGENTSFLEET_STATE_DIR;
   process.env.AGENTSFLEET_STATE_DIR = dir;
   try {
-    await saveWorkspaces({
+    await saveWorkspaces(process.env, {
       current_workspace_id: "ws_1",
       items: [{ workspace_id: "ws_1", name: "main", created_at: null }],
     });
-    const after = await loadWorkspaces();
+    const after = await loadWorkspaces(process.env);
     expect(after.current_workspace_id).toBe("ws_1");
     expect(after.items).toHaveLength(1);
   } finally {
-    delete process.env.AGENTSFLEET_STATE_DIR;
+    // Restore, never bare-delete: wiping the var strips the suite-wide
+    // sandbox default from every file that runs after this one.
+    if (prevStateDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+    else process.env.AGENTSFLEET_STATE_DIR = prevStateDir;
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
 
 test("loadCredentials returns the default shape when no file exists", async () => {
   const dir = tmpDir();
+  const prevStateDir = process.env.AGENTSFLEET_STATE_DIR;
   process.env.AGENTSFLEET_STATE_DIR = dir;
   try {
-    const c = await loadCredentials();
+    const c = await loadCredentials(process.env);
     expect(c).toEqual({
       token: null,
       saved_at: null,
@@ -107,7 +116,8 @@ test("loadCredentials returns the default shape when no file exists", async () =
       credential_id: null,
     });
   } finally {
-    delete process.env.AGENTSFLEET_STATE_DIR;
+    if (prevStateDir === undefined) delete process.env.AGENTSFLEET_STATE_DIR;
+    else process.env.AGENTSFLEET_STATE_DIR = prevStateDir;
   }
 });
 
