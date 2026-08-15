@@ -26,6 +26,7 @@
 // path), proving fail-fast.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const scope_fixtures = @import("../../test_scope_tokens.zig");
 const common = @import("common");
 const clock = common.clock;
@@ -34,6 +35,33 @@ const auth_mw = @import("../../../auth/middleware/mod.zig");
 
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const harness_mod = @import("../../test_harness.zig");
+
+const PROC_STATUS_PATH = "/proc/self/status";
+/// The field naming the attached tracer's process id, or 0 when untraced.
+const TRACER_PID_FIELD = "TracerPid:";
+/// `/proc/self/status` runs ~1.3 KB and carries TracerPid in its first lines.
+const MAX_PROC_STATUS_BYTES = 4096;
+
+/// True when a ptrace-based tool is attached. The coverage lane runs these
+/// binaries under kcov, which breakpoints every mapped line and dilates wall
+/// clock past any real deadline. Linux-only signal; elsewhere, false.
+fn tracedByAnotherProcess() bool {
+    if (builtin.os.tag != .linux) return false;
+    const linux = std.os.linux;
+    var buf: [MAX_PROC_STATUS_BYTES]u8 = undefined;
+    const fd: isize = @bitCast(linux.openat(linux.AT.FDCWD, PROC_STATUS_PATH, .{ .ACCMODE = .RDONLY }, 0));
+    if (fd < 0) return false;
+    const n: isize = @bitCast(linux.read(@intCast(fd), &buf, buf.len));
+    _ = linux.close(@intCast(fd));
+    if (n <= 0) return false;
+
+    const status = buf[0..@intCast(n)];
+    const field = std.mem.indexOf(u8, status, TRACER_PID_FIELD) orelse return false;
+    const rest = status[field + TRACER_PID_FIELD.len ..];
+    const line = rest[0 .. std.mem.indexOfScalar(u8, rest, '\n') orelse rest.len];
+    const tracer = std.fmt.parseInt(std.posix.pid_t, std.mem.trim(u8, line, " \t"), 10) catch return false;
+    return tracer != 0;
+}
 
 const EVAL_BRANCH_QUOTA = 100_000;
 const PATCH_WRITER_COUNT = 2;
@@ -624,7 +652,11 @@ test "integration: PATCH against held lock → 503 in <5.5s, no hang" {
     const elapsed = clock.nowMillis() - t0;
 
     // Fail-fast: should return well before holder's 7s sleep completes.
-    try std.testing.expect(elapsed < 5_500);
+    // The bound is 5s of Postgres lock_timeout plus 500ms of slack, and kcov's
+    // per-line breakpoints spend that slack many times over. Status and
+    // deadlock-freedom still hold under a tracer; only the clock is unusable,
+    // and `make test-integration` proves the timing uninstrumented.
+    if (!tracedByAnotherProcess()) try std.testing.expect(elapsed < 5_500);
     try std.testing.expectEqual(@as(u16, 503), outcome.status);
     try std.testing.expect(!bodyContainsDeadlock(outcome));
 }

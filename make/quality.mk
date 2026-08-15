@@ -301,6 +301,20 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 check-migrate-unprivileged: _ensure-test-infra  ## Migrate from empty as a NON-superuser, the shape managed databases actually hand the migrator
 	@bash scripts/check-migrate-unprivileged.sh
 
+# Every deployment input the playbooks read off the ambient environment, dropped
+# before each suite runs. The suites build their child environments additively,
+# so without this they inherit the developer's shell and a run is only as
+# reproducible as whatever that shell happens to export. Two have bitten:
+# AGENTSFLEET_API_URL fails `runner_test.sh`'s ENV=prod case on any shell pointed
+# at api-dev, and VAULT_DEV retargets the vault under `credentials_test.sh` so a
+# negative test finds its "missing" input present. The rest are listed because
+# they are the same kind of input, not because they break today — a suite that
+# starts reading one should not reintroduce the trap. Continuous Integration (CI)
+# invokes this target with none of them set (.github/workflows/lint.yml), so the
+# scrub changes nothing there; it makes a developer's run match it.
+PLAYBOOK_TEST_SCRUB = -u ENV -u STAGE -u ACTION -u PUSH -u REVISION \
+  -u VAULT -u VAULT_DEV -u VAULT_PROD -u WORKER_ITEM -u AGENTSFLEET_API_URL
+
 check-playbooks: check-vault-gate-parity  ## Validate playbooks/ — vault-gate parity + shellcheck + reference integrity + README/tree parity
 	@echo "→ [playbooks] shellcheck on playbooks/**/*.sh..."
 	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
@@ -308,7 +322,8 @@ check-playbooks: check-vault-gate-parity  ## Validate playbooks/ — vault-gate 
 	@echo "→ [playbooks] focused shell regression tests..."
 	@set -e; TESTS=$$(find playbooks -type f -name '*_test.sh' | sort); \
 	if [ -z "$$TESTS" ]; then echo "✗ [playbooks] no shell regression tests found"; exit 1; fi; \
-	for test_script in $$TESTS; do echo "  $$test_script"; bash "$$test_script"; done
+	for test_script in $$TESTS; do echo "  $$test_script"; \
+	  env $(PLAYBOOK_TEST_SCRUB) bash "$$test_script"; done
 	@echo "→ [playbooks] reference integrity — every playbooks/ path resolves..."
 	@# Scans the live operational surface (CI, scripts, active docs, the playbooks
 	@# themselves). Excludes docs/v2/: specs are historical records that

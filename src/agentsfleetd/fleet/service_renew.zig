@@ -123,14 +123,12 @@ fn parseMeterBody(hx: Hx, req: *httpz.Request) protocol.RenewRequest {
 /// cumulative token counts. Delegates to `renewal.buildMeterInputs`, the shared
 /// source `service_report`'s settle uses too, so renew and settle meter at the
 /// identical rates.
-fn buildMeter(conn: *pg.Conn, lease: Lease, body: protocol.RenewRequest, now_ms: i64) renewal.MeterInputs {
+fn buildMeter(conn: *pg.Conn, lease: Lease, body: protocol.RenewRequest) renewal.MeterInputs {
     return renewal.buildMeterInputs(
         conn,
-        lease.tenant_id,
         lease.provider,
         parsePosture(lease.posture, lease.fleet_id),
         lease.model,
-        now_ms,
         body.input_tokens,
         body.cached_input_tokens,
         body.output_tokens,
@@ -177,7 +175,7 @@ fn runRenew(hx: Hx, lease_id: []const u8, runner_id: []const u8, lease: Lease, b
     // rate and the renewal it feeds observe one database session.
     const conn = try hx.ctx.pool.acquire();
     defer hx.ctx.pool.release(conn);
-    const meter = buildMeter(conn, lease, body, now_ms);
+    const meter = buildMeter(conn, lease, body);
     return renewal.renew(conn, lease_id, runner_id, now_ms, meter);
 }
 
@@ -185,7 +183,7 @@ fn runRenew(hx: Hx, lease_id: []const u8, runner_id: []const u8, lease: Lease, b
 /// renewal and issue share one credit policy. Policy is resolved once at
 /// startup and carried on the request context (not re-read from the env here).
 fn creditsCover(hx: Hx, lease: Lease) bool {
-    return metering.balanceCoversEstimate(hx.ctx.pool, hx.alloc, lease.tenant_id, parsePosture(lease.posture, lease.fleet_id), lease.provider, lease.model, hx.ctx.balance_policy);
+    return metering.balanceCoversEstimate(hx.ctx.pool, lease.tenant_id, parsePosture(lease.posture, lease.fleet_id), lease.provider, lease.model, hx.ctx.balance_policy);
 }
 
 /// The fleet's own spend ceiling. Returns the breach verdict when the run must

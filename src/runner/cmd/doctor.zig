@@ -122,6 +122,43 @@ test "doctor verdict is non-zero iff any check failed (exit-code contract)" {
     try std.testing.expect(allOk(&.{})); // vacuously true
 }
 
+// ---------------------------------------------------------------------------
+// Doctor is what an operator trusts before blaming the network, so each verdict
+// is pinned rather than assumed. Rendering is proven through the render helpers,
+// never `emit`/`run`: those write to stdout, and under `zig build test` stdout
+// is the build-runner protocol stream — printing there deadlocks the lane.
+// `reachCheck` returns a value and prints nothing, so its arms are driven
+// against a scripted control plane.
+// ---------------------------------------------------------------------------
+
+const common_test = @import("common");
+const dts = @import("../daemon/deadline_test_support.zig");
+const plane_stub = @import("plane_stub_test.zig");
+
+const STUB_OK = plane_stub.StubStatus{ .line = "200 OK", .body = "{\"status\":\"ok\"}" };
+const STUB_REJECT = plane_stub.StubStatus{ .line = "401 Unauthorized", .body = "{}" };
+const STUB_WRONG_HOST = plane_stub.StubStatus{ .line = "302 Found", .body = "" };
+
+/// Run `reachCheck` against a scripted plane and return the check it produced.
+fn probePlane(status: plane_stub.StubStatus) !Check {
+    const alloc = std.testing.allocator;
+    const io = common_test.globalIo();
+    var addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", 0);
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = plane_stub.boundPort(listener.socket.handle) catch return error.SkipZigTest;
+
+    var stub = plane_stub.OneShotPlane{ .io = io, .listener = &listener, .status = status };
+    const responder = std.Thread.spawn(.{}, plane_stub.OneShotPlane.serve, .{&stub}) catch return error.SkipZigTest;
+    defer responder.join();
+
+    var url_buf: [48]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}", .{port});
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    return reachCheck(io, alloc, try deadlines.start(alloc), url, "agt_rtest");
+}
+
 test "render arms cover both audiences and the reach probe reports itself skipped" {
     // The reach probe's early guard IS the unit-safe path: with api or token
     // unset it must answer a failed check without constructing a client, and a
@@ -157,4 +194,33 @@ test "render arms cover both audiences and the reach probe reports itself skippe
     var ok_buf: [256]u8 = undefined;
     const ok_line = renderHumanLine(&ok_buf, checks[0]);
     try std.testing.expect(std.mem.indexOf(u8, ok_line, "[OK] api_url: set") != null);
+}
+
+test "reachCheck: a healthy plane reads reachable with a valid token" {
+    const check = try probePlane(STUB_OK);
+    try std.testing.expect(check.ok);
+    try std.testing.expectEqualStrings("reachable; token valid", check.detail);
+}
+
+test "reachCheck: a 401 names the token, not the network" {
+    // The operator fix differs entirely: mint a fresh agt_r versus check DNS.
+    const check = try probePlane(STUB_REJECT);
+    try std.testing.expect(!check.ok);
+    try std.testing.expect(std.mem.indexOf(u8, check.detail, "token REJECTED") != null);
+}
+
+test "reachCheck: a host that answers but is not a control plane is not 'down'" {
+    const check = try probePlane(STUB_WRONG_HOST);
+    try std.testing.expect(!check.ok);
+    try std.testing.expect(std.mem.indexOf(u8, check.detail, "not an agentsfleet control plane") != null);
+}
+
+test "reachCheck: a dial failure reads unreachable" {
+    // Port 1 on loopback: nothing listens, connect is refused immediately.
+    const alloc = std.testing.allocator;
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    const check = reachCheck(common_test.globalIo(), alloc, try deadlines.start(alloc), "http://127.0.0.1:1", "agt_rtest");
+    try std.testing.expect(!check.ok);
+    try std.testing.expect(std.mem.indexOf(u8, check.detail, "unreachable") != null);
 }

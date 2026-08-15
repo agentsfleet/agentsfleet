@@ -24,7 +24,7 @@ const items: { q: string; a: ReactNode }[] = [
   },
   {
     q: "What am I actually paying for?",
-    a: `${RATES_DISPLAY.FREE_TRIAL_PILL} — see the Pricing section above for the current rate and trial details. After the trial, hosted execution is metered per second of active runtime (${RATES_DISPLAY.RUN_RATE_PER_SEC}, about ${RATES_DISPLAY.RUN_RATE_PER_HOUR}) against a credit pool — the same rate whether you run on the platform default or your own provider key. You're only billed while a Fleet is actually working; idle time and event receipts are ${RATES_DISPLAY.EVENT_RATE}. On the platform default you also pay model-token costs at your provider's rates (we mark up zero); on your own key those go straight to your provider. Stealth-mode testing rate — will rise after General Availability (GA).`,
+    a: `${RATES_DISPLAY.EARLY_ACCESS_PILL} — see the Pricing section above for the current rate. Hosted execution is metered per second of active runtime (${RATES_DISPLAY.RUN_RATE_PER_SEC}, about ${RATES_DISPLAY.RUN_RATE_PER_HOUR}) against a credit pool — the same rate whether you run on the platform default or your own provider key. You're only billed while a Fleet is actually working; idle time and event receipts are ${RATES_DISPLAY.EVENT_RATE}. On the platform default you also pay model-token costs at your provider's rates (we mark up zero); on your own key those go straight to your provider. Stealth-mode testing rate — will rise after General Availability (GA).`,
   },
   {
     q: "Does the platform default cost more than bringing my own provider key?",

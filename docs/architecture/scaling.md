@@ -150,8 +150,10 @@ it commits.
 
 Sizing consequence: at the 1 s default the auth read tracks the lease-poll rate
 above (`R_runners × 3600` per hour), against a `fleet.runners` table whose pages
-stay resident. At the ~100 runners `schema/033_hot_path_indexes.sql` assumes that is
-a few hundred index probes a second. Revisit when runner count or poll rate makes
+stay resident. At the ~100 runners the sizing assumes, that is a few hundred index
+probes a second. (`fleet.runners` is created by `schema/600_runners.sql` and
+carries no separate index slot: the M154 rebuild retired the shared
+`033_hot_path_indexes` and moved each index into the slot owning its table.) Revisit when runner count or poll rate makes
 that measurable — AUTH.md records the replacement design (a short-lived signed
 credential verified locally) and the condition it must meet.
 

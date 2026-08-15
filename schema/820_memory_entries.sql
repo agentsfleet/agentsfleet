@@ -1,18 +1,21 @@
--- Fleet memory: the store that survives workspace destruction, isolated from
--- `core` by role rather than by convention.
+-- Fleet memory: isolated from `core` by role, and erased with the fleet it
+-- belongs to.
 --
 -- Confused-deputy mitigation per RULE CTX: memory lives behind a process
 -- boundary — a PostgreSQL role with no grants on `core` — not a shared
--- filesystem. The table deliberately carries NO foreign key to `core.fleets`:
--- the role isolation is the boundary, and a cross-schema foreign key would
--- couple memory back to core, which is the thing being prevented.
+-- filesystem. `fleet_id` REFERENCES `core.fleets` ON DELETE CASCADE, and that
+-- edge does NOT weaken the boundary: REFERENCES is a schema-definition
+-- privilege held by the migrator, and PostgreSQL evaluates both the check and
+-- the cascade with the table owner's authority. `memory_runtime` gains no
+-- `core` grant and still cannot name `core.fleets` at all.
 --
--- That has a consequence this rebuild states rather than leaves implicit. Every
--- other child table now resolves to a tenant through a cascade, so account
--- erasure no longer names it. Memory has no such edge, so erasure and fleet
--- deletion still delete from this table EXPLICITLY. It is the one table that
--- genuinely belongs in the hand-maintained delete order, and it
--- is there because of the trust boundary, not by omission.
+-- The edge exists because the alternative left rows nobody could reach. Erasure
+-- and fleet deletion still name this table explicitly, but an explicit sweep is
+-- scoped by a fleet the caller enumerated — so a row whose fleet was already
+-- gone was unreachable by every one of them, and an erased account kept its
+-- memory permanently. A capture racing an erasure now either commits before the
+-- fleet row goes and cascades away, or blocks on that row's lock and fails
+-- closed on the missing parent. The explicit sweeps stay as belt and braces.
 --
 -- Scope: every row belongs to one fleet. The runner-memory adapter derives
 -- `fleet_id` from the lease it issued and scopes every query by it — never a
@@ -34,7 +37,11 @@ CREATE TABLE IF NOT EXISTS memory.memory_entries (
     key         TEXT   NOT NULL,
     content     TEXT   NOT NULL,
     category    TEXT   NOT NULL,
-    fleet_id    UUID   NOT NULL,
+    -- Named rather than left to PostgreSQL's `memory_entries_fleet_id_fkey`, so a
+    -- database that gained this edge by hand carries the same constraint name as
+    -- one rebuilt from these slots.
+    fleet_id    UUID   NOT NULL
+        CONSTRAINT fk_memory_entries_fleet_id REFERENCES core.fleets(id) ON DELETE CASCADE,
     created_at  BIGINT NOT NULL,
     updated_at  BIGINT NOT NULL,
     -- The fleet's own overwrite mechanism and the upsert's conflict target: a
