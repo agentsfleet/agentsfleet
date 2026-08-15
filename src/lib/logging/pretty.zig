@@ -99,3 +99,37 @@ test "isPretty defaults off before init" {
     pretty_mode = .off;
     try std.testing.expect(!isPretty());
 }
+
+test "formatPretty gives every level its own colour and label" {
+    // Colour IS the interface here. An operator scanning a pretty log finds
+    // errors by looking for red, so a level rendered in the wrong colour is a
+    // missed incident, not a cosmetic bug. Only `.info` was pinned before, and
+    // three of the four arms could have been swapped without a test noticing.
+    const cases = .{
+        .{ .level = std.log.Level.err, .colour = ansi.red, .label = "ERROR" },
+        .{ .level = std.log.Level.warn, .colour = ansi.yellow, .label = "WARN " },
+        .{ .level = std.log.Level.info, .colour = ansi.cyan, .label = "INFO " },
+        .{ .level = std.log.Level.debug, .colour = ansi.grey, .label = "DEBUG" },
+    };
+
+    inline for (cases) |case| {
+        var buf: [512]u8 = undefined;
+        const out = formatPretty(&buf, 0, case.level, "probe", "event=x");
+        try std.testing.expect(std.mem.indexOf(u8, out, case.label) != null);
+        // The colour must sit immediately before its own label, not merely
+        // appear somewhere in the line — the timestamp is grey and the scope is
+        // cyan, so a loose search would pass for the wrong arm.
+        const at = std.mem.indexOf(u8, out, case.label) orelse return error.LabelMissing;
+        try std.testing.expect(at >= case.colour.len);
+        try std.testing.expectEqualStrings(case.colour, out[at - case.colour.len .. at]);
+    }
+}
+
+test "formatPretty returns empty rather than truncating into a buffer it cannot fill" {
+    // The fallback arm. A record wider than the caller's buffer must yield
+    // nothing at all: a half-written line carrying an unterminated escape
+    // sequence would recolour the operator's whole terminal from that point on.
+    var tiny: [8]u8 = undefined;
+    const out = formatPretty(&tiny, 0, .err, "scope-that-does-not-fit", "event=far_too_long");
+    try std.testing.expectEqual(@as(usize, 0), out.len);
+}
