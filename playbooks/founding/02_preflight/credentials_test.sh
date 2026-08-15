@@ -35,9 +35,16 @@ ref="${2:-}"
 if [ -n "${MISSING_REF:-}" ] && [ "$ref" = "$MISSING_REF" ]; then
   exit 1
 fi
+if [ -n "${INVALID_URL_REF:-}" ] && [ "$ref" = "$INVALID_URL_REF" ]; then
+  printf 'not-a-url\n'
+  exit 0
+fi
 case "$ref" in
   */issuer|*/grafana-url|*/qstash/url)
     printf 'https://provider.example.test\n'
+    ;;
+  */discord-*-webhook/credential)
+    printf 'https://discord.example.test/%s\n' "${SECRET_SENTINEL:-stub-value}"
     ;;
   */migrator-connection-string)
     printf 'postgres-migrator\n'
@@ -56,6 +63,7 @@ run_gate() {
   local stage="$1"
   local missing_ref="${2:-}"
   local target_env="${3:-dev}"
+  local invalid_url_ref="${4:-}"
 
   env \
     PATH="$stub_dir:$PATH" \
@@ -64,6 +72,7 @@ run_gate() {
     OP_READ_RETRIES=1 \
     OP_READ_MIN_INTERVAL_SECONDS=0 \
     MISSING_REF="$missing_ref" \
+    INVALID_URL_REF="$invalid_url_ref" \
     SECRET_SENTINEL=do-not-print-provider-secret \
     bash "$script_under_test" 2>&1
 }
@@ -170,6 +179,92 @@ test_deployment_rejects_missing_runtime_input() {
   fi
 }
 
+test_prod_checks_both_discord_webhooks() {
+  local name="production checks development and release Discord webhooks"
+  local output status=0
+  output="$(run_gate bootstrap '' prod)" || status=$?
+
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "complete production inventory failed: $output"
+  elif [[ "$output" != *"discord-ci-webhook/credential"* ]]; then
+    bad "$name" "development webhook was not checked"
+  elif [[ "$output" != *"discord-release-webhook/credential"* ]]; then
+    bad "$name" "release webhook was not checked"
+  elif [[ "$output" == *do-not-print-provider-secret* ]]; then
+    bad "$name" "gate printed a webhook secret"
+  else
+    ok "$name"
+  fi
+}
+
+test_dev_checks_ci_discord_webhook() {
+  local name="development checks its shared CI Discord webhook"
+  local output status=0
+  output="$(run_gate bootstrap)" || status=$?
+
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "complete development inventory failed: $output"
+  elif [[ "$output" != *"ZMB_CD_PROD/discord-ci-webhook/credential"* ]]; then
+    bad "$name" "shared CI webhook was not checked"
+  elif [[ "$output" == *do-not-print-provider-secret* ]]; then
+    bad "$name" "gate printed the webhook secret"
+  else
+    ok "$name"
+  fi
+}
+
+test_prod_rejects_malformed_discord_webhook() {
+  local name="production rejects a malformed Discord webhook"
+  local ref='op://ZMB_CD_PROD/discord-release-webhook/credential'
+  local output status=0
+  output="$(run_gate bootstrap '' prod "$ref")" || status=$?
+
+  if [ "$status" -ne 1 ]; then
+    bad "$name" "malformed webhook returned status $status"
+  elif [[ "$output" != *"INVALID URL: $ref"* ]]; then
+    bad "$name" "failure did not name $ref"
+  elif [[ "$output" == *not-a-url* ]]; then
+    bad "$name" "failure printed the malformed credential"
+  else
+    ok "$name"
+  fi
+}
+
+test_discord_notifications_route_by_release_stage() {
+  local name="Discord notifications route development and production separately"
+  local action="$repo_root/.github/actions/notify-discord/action.yml"
+  local workflow path notify_count selector_count
+
+  if ! rg --fixed-strings --quiet 'default: discord-ci-webhook' "$action" ||
+     ! rg --fixed-strings --quiet 'op://${{ inputs.vault }}/${{ inputs.webhook-item }}/credential' "$action"; then
+    bad "$name" "notify action does not default to the development webhook item"
+    return
+  fi
+
+  for workflow in release.yml post-release.yml; do
+    path="$repo_root/.github/workflows/$workflow"
+    notify_count="$(rg --fixed-strings -c 'uses: ./.github/actions/notify-discord' "$path" || true)"
+    selector_count="$(rg --fixed-strings -c 'webhook-item: discord-release-webhook' "$path" || true)"
+    if [ "${notify_count:-0}" -ne 1 ] || [ "${selector_count:-0}" -ne 1 ]; then
+      bad "$name" "$workflow does not select the release webhook"
+      return
+    fi
+  done
+
+  for workflow in deploy-dev.yml deploy-dev-fly.yml deploy-dev-worker.yml; do
+    path="$repo_root/.github/workflows/$workflow"
+    notify_count="$(rg --fixed-strings -c 'uses: ./.github/actions/notify-discord' "$path" || true)"
+    if [ "${notify_count:-0}" -ne 1 ]; then
+      bad "$name" "$workflow does not invoke the Discord notification action exactly once"
+      return
+    elif rg --quiet 'webhook-item:' "$path"; then
+      bad "$name" "$workflow overrides the development webhook default"
+      return
+    fi
+  done
+  ok "$name"
+}
+
 test_workflows_use_deployment_stage_without_generated_pointer() {
   local name="workflows use deployment stage without generated pointer"
   local workflow
@@ -270,6 +365,10 @@ test_bootstrap_checks_only_pre_priming_inputs
 test_post_deploy_values_are_not_early_inputs
 test_deployment_checks_complete_infrastructure_inputs
 test_deployment_rejects_missing_runtime_input
+test_prod_checks_both_discord_webhooks
+test_dev_checks_ci_discord_webhook
+test_prod_rejects_malformed_discord_webhook
+test_discord_notifications_route_by_release_stage
 test_workflows_use_deployment_stage_without_generated_pointer
 test_workflows_load_only_current_connector_boot_secret
 test_issue_tracker_docs_pin_current_source_scopes
