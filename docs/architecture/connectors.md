@@ -206,13 +206,12 @@ remembers. Resolving the gate as approved flips the grant and the gate in one
 statement, so the two cannot disagree; any non-approval outcome drives the grant
 to `revoked` rather than back to `pending`, which nothing would re-raise.
 
-Origination used to sit behind an external `integration-requests` route
-authenticated by a per-fleet key outside the middleware chain. No internally
-installed fleet ever held such a key, so it could never obtain a grant: the App
-ingress query inner-joins on `status = 'approved'`, so no event was written, no
-lease was issued, and nothing reported that a decision was owed — the fleet was
-silently inert. That route, its key table, and a second approval path that
-duplicated this webhook all retired with the move (M154 §8).
+Origination sits inside the middleware chain, and that placement is
+load-bearing. The App ingress query inner-joins on `status = 'approved'`, so a
+fleet that cannot obtain a grant writes no event, takes no lease, and reports
+nothing — it goes silently inert rather than failing visibly. An origination
+path reachable only with a credential the fleet does not hold produces exactly
+that silence.
 
 A lease is the last checkpoint: a credential that resolves to a mintable handle
 with no approved grant **parks the event** rather than dropping the credential

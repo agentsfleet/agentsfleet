@@ -322,6 +322,48 @@ test_arch_doc_punctuated_anchor_is_checked() {
   ok "$name"
 }
 
+# The section can also sit inside the link text — [`target.md` §Section](./target.md).
+# Both extractors used to require `§` AFTER the destination, so every pointer
+# written this way was skipped: the target heading could be renamed or deleted and
+# the assertion still reported green. Six live pointers in the corpus used it.
+test_arch_doc_inside_link_anchor_is_checked() {
+  local name="test_arch_doc_inside_link_anchor_is_checked"
+  local spec_root="$WORK_DIR/specs"
+  build_spec_root "$spec_root"
+
+  local dir="$WORK_DIR/anchor_inside"
+  mkdir -p "$dir"
+  printf '# Target\n\n## Egress model — outbound only\n\n## C. EXECUTE (lease to report)\n\nBody.\n' >"$dir/target.md"
+
+  printf '# Source\n\nSee [`target.md` §Egress model](./target.md) for the rule.\n' >"$dir/direction.md"
+  if ! run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "an inside-link anchor naming a real heading was rejected"
+    return
+  fi
+
+  # The regression: this was never read at all, so it passed while pointing nowhere.
+  printf '# Source\n\nSee [`target.md` §Ingress model](./target.md) for the rule.\n' >"$dir/direction.md"
+  if run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "an inside-link anchor naming no heading passed — it was never extracted"
+    return
+  fi
+
+  # Quoting has to carry punctuation in this position too, or `C. EXECUTE`
+  # truncates to `C` and prefix-matches any heading that happens to start with it.
+  printf '# Source\n\nSee [`target.md` §"C. EXECUTE"](./target.md) for the rule.\n' >"$dir/direction.md"
+  if ! run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a quoted punctuated inside-link anchor naming a real heading was rejected"
+    return
+  fi
+
+  printf '# Source\n\nSee [`target.md` §"C. DESTROY"](./target.md) for the rule.\n' >"$dir/direction.md"
+  if run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a quoted inside-link anchor naming no heading passed"
+    return
+  fi
+  ok "$name"
+}
+
 test_arch_doc_validates_all_m_ids
 test_arch_doc_roadmap_resolves_pending
 test_arch_doc_unresolved_ref_names_the_milestone
@@ -343,6 +385,7 @@ test_arch_doc_cited_make_targets_exist
 test_arch_doc_section_anchors_resolve
 test_arch_doc_no_retired_slot_numbers
 test_arch_doc_punctuated_anchor_is_checked
+test_arch_doc_inside_link_anchor_is_checked
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]
