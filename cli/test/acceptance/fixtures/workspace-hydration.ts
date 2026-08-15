@@ -1,14 +1,11 @@
 /**
- * Seed a minted-JWT session into a tmpdir-scoped `AGENTSFLEET_STATE_DIR` for
- * the live acceptance suites.
+ * Seed a live CLI login into a tmpdir-scoped `AGENTSFLEET_STATE_DIR` for the
+ * acceptance suites.
  *
- * The suites mint a Clerk JWT (`attachJwt`) and need the CLI to run as that
- * session. With the `AGENTSFLEET_TOKEN` env var removed, the only bearer
- * surfaces are the stored login (credentials.json, file slot) and the
- * service API key (`AGENTSFLEET_API_KEY`, env slot). The fixtures hold a
- * login-shaped JWT, not an `agt_t` key, so it belongs in the file slot — we
- * write it to `credentials.json` exactly as the login flow's persist step
- * would (`saveAccessToken` → src/lib/state.ts `Credentials` shape).
+ * The suites mint a short-lived Clerk session JWT (`attachJwt`). Production
+ * login spends that JWT exactly once to mint a durable `afc_…` credential;
+ * this fixture mirrors the same exchange and persists only the result. The
+ * session JWT remains available to callers for direct browser/API setup.
  *
  * We also hydrate `workspaces.json`: the CLI populates it only inside the
  * login post-success branch (`hydrateWorkspacesAfterLogin`), which the
@@ -22,7 +19,25 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import {
+  CLI_CREDENTIAL_PATTERN,
+  MAX_MACHINE_NAME_LEN,
+  MACHINE_NAME_DISALLOWED,
+  MACHINE_NAME_REPLACEMENT,
+} from "../../../src/constants/cli-credential.ts";
+
 const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
+const CLI_CREDENTIALS_PATH = "/v1/cli-credentials";
+const MACHINE_NAME_PREFIX = "acceptance-";
+const HTTP_UNAUTHORIZED = 401;
+const HTTP_NOT_FOUND = 404;
+
+export interface MintedCliCredential {
+  readonly id: string;
+  readonly credential: string;
+}
+
+const liveCredentials = new Map<string, MintedCliCredential>();
 
 export interface HydratedWorkspace {
   readonly workspace_id: string;
@@ -39,6 +54,7 @@ export interface HydrateOptions {
 export interface HydrateResult {
   readonly currentWorkspaceId: string;
   readonly workspaces: ReadonlyArray<HydratedWorkspace>;
+  readonly cliCredential: MintedCliCredential;
 }
 
 interface RawWorkspaceItem {
@@ -62,6 +78,65 @@ function normalizeWorkspace(
     name: typeof item.name === "string" ? item.name : null,
     created_at: Number.isFinite(item.created_at) ? item.created_at as number : fallbackCreatedAt,
   };
+}
+
+function machineNameFor(stateDir: string): string {
+  return `${MACHINE_NAME_PREFIX}${path.basename(stateDir)}`
+    .replace(MACHINE_NAME_DISALLOWED, MACHINE_NAME_REPLACEMENT)
+    .slice(0, MAX_MACHINE_NAME_LEN);
+}
+
+export async function mintCliCredential(
+  apiUrl: string,
+  sessionToken: string,
+  machineName: string,
+): Promise<MintedCliCredential> {
+  const response = await fetch(`${apiUrl}${CLI_CREDENTIALS_PATH}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${sessionToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ machine_name: machineName }),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`CLI credential mint ${response.status}: ${detail.slice(0, 200)}`);
+  }
+  const body = await response.json() as { id?: unknown; credential?: unknown };
+  if (
+    typeof body.id !== "string" ||
+    typeof body.credential !== "string" ||
+    !CLI_CREDENTIAL_PATTERN.test(body.credential)
+  ) {
+    throw new Error("CLI credential mint returned no usable credential");
+  }
+  const minted = { id: body.id, credential: body.credential };
+  liveCredentials.set(machineName, minted);
+  return minted;
+}
+
+export async function revokeHydratedCliCredentials(apiUrl: string): Promise<void> {
+  const credentials = [...liveCredentials.entries()];
+  await Promise.all(credentials.map(async ([machineName, minted]) => {
+    const response = await fetch(
+      `${apiUrl}${CLI_CREDENTIALS_PATH}/${encodeURIComponent(minted.id)}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${minted.credential}` } },
+    );
+    // A test may exercise `logout`, which already revoked this exact row and
+    // credential. Treat that completed cleanup as success here.
+    if (
+      !response.ok &&
+      response.status !== HTTP_UNAUTHORIZED &&
+      response.status !== HTTP_NOT_FOUND
+    ) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(`CLI credential revoke ${response.status}: ${detail.slice(0, 200)}`);
+    }
+    if (liveCredentials.get(machineName)?.id === minted.id) {
+      liveCredentials.delete(machineName);
+    }
+  }));
 }
 
 export async function hydrateWorkspacesForToken(opts: HydrateOptions): Promise<HydrateResult> {
@@ -96,21 +171,27 @@ export async function hydrateWorkspacesForToken(opts: HydrateOptions): Promise<H
   }
   const current_workspace_id = first.workspace_id;
   const payload = { tenant_id: body.tenant_id, current_workspace_id, items };
+  const cliCredential = await mintCliCredential(
+    apiUrl,
+    token,
+    machineNameFor(stateDir),
+  );
 
   await fs.mkdir(stateDir, { recursive: true });
   const target = path.join(stateDir, "workspaces.json");
   await fs.writeFile(target, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
 
-  // Seed the login session (file slot) so commands authenticate without the
-  // removed `AGENTSFLEET_TOKEN` env var. Matches src/lib/state.ts Credentials.
+  // Persist the exchanged credential, never the short-lived session JWT.
+  // Matches src/lib/state.ts Credentials and the production login flow.
   const credentials = {
-    token,
+    token: cliCredential.credential,
     saved_at: Date.now(),
     session_id: null,
     api_url: apiUrl,
+    credential_id: cliCredential.id,
   };
   const credentialsTarget = path.join(stateDir, "credentials.json");
   await fs.writeFile(credentialsTarget, `${JSON.stringify(credentials, null, 2)}\n`, { mode: 0o600 });
 
-  return { currentWorkspaceId: current_workspace_id, workspaces: items };
+  return { currentWorkspaceId: current_workspace_id, workspaces: items, cliCredential };
 }

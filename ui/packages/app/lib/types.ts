@@ -405,8 +405,8 @@ export type TenantBillingChargesResponse = {
   items: Array<{
     id: string;
     tenant_id: string;
-    workspace_id: string;
-    fleet_id: string;
+    workspace_id: string | null;
+    fleet_id: string | null;
     event_id: string;
     charge_type: ChargeType;
     posture: ProviderMode;

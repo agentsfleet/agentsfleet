@@ -224,16 +224,19 @@ if (!isLive) {
         // the invariant is that concurrent readers leave the seed byte-identical.
         // (hydrate also seeds a credentials.json; seedCredentialsFile below is
         // the authoritative last writer and the byte-pinned value.)
-        await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir: sharedDir });
+        const hydrated = await hydrateWorkspacesForToken({
+          apiUrl,
+          token: sessionJwt,
+          stateDir: sharedDir,
+        });
         const record: CredentialsRecord = {
           ...seedRecord,
-          // Seed the live JWT so the file mirrors a genuine credentials.json.
-          // runGuarded's assertNoSecretLeak (keyed on the same JWT) is what
-          // proves no read lane echoes it onto stdout/stderr; this on-disk
-          // copy is the value the byte-identical assertion pins after the storm.
-          token: sessionJwt,
+          // Pin the live exchanged credential so this remains a genuine
+          // credentials.json while concurrent readers exercise the file.
+          token: hydrated.cliCredential.credential,
           saved_at: Date.now(),
           api_url: apiUrl,
+          credential_id: hydrated.cliCredential.id,
         };
         seedBytes = await seedCredentialsFile(sharedDir, record);
         sharedEnv = envFor(sharedDir);

@@ -12,6 +12,7 @@ const USD_FORMATTER = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 4,
 });
 const AGENT_PREFIX = "Agent";
+const DELETED_AGENT_LABEL = "Deleted agent";
 const EVENT_RECEIVED_LABEL = "Event received";
 const RUN_LABEL = "Run";
 const NO_TOKEN_USAGE_LABEL = "No token usage recorded";
@@ -30,8 +31,9 @@ export function formatChargeAmount(nanos: number): string {
   return `−${formatDollars(nanos)}`;
 }
 
-/** Stable fleet identity is available on every telemetry row. */
+/** Keep historical charges legible after their fleet has been deleted. */
 export function chargeAgentLabel(row: ChargeRow): string {
+  if (row.fleet_id === null) return DELETED_AGENT_LABEL;
   return `${AGENT_PREFIX} ${deriveFleetIdentity(row.fleet_id).callsign}`;
 }
 
