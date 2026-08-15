@@ -276,12 +276,12 @@ describe("Hero", () => {
     expect(container.querySelector(".hero-headline")).toBeNull();
   });
 
-  it("renders the promo pill as a link to /pricing with the rates-pin trial-end string", () => {
+  it("renders the promo pill as a link to /pricing with the rates-pinned early-access string", () => {
     renderHero();
     const pill = screen.getByTestId("hero-promo-pill");
     expect(pill.tagName).toBe("A");
     expect(pill).toHaveAttribute("href", "/pricing");
-    // Sourced from RATES_DISPLAY.FREE_TRIAL_PILL in lib/rates.ts; rates.test.ts
+    // Sourced from RATES_DISPLAY.EARLY_ACCESS_PILL in lib/rates.ts; rates.test.ts
     // pins the literal — this assertion catches accidental hardcoding in Hero.
     expect(pill.textContent).toMatch(/Free during early access/);
     expect(pill.textContent).toMatch(/Promo/);

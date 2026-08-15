@@ -3,6 +3,7 @@
 const std = @import("std");
 const fixtures = @import("fixtures.zig");
 const test_list = @import("test_list.zig");
+const shared = @import("shared.zig");
 
 const S_UNIT_NAME = "agentsfleetd-tests";
 const S_UNIT_ROOT = "src/agentsfleetd/tests.zig";
@@ -61,6 +62,7 @@ fn addTest(
     imports: []const std.Build.Module.Import,
 ) *std.Build.Step.Compile {
     return b.addTest(.{
+        .use_llvm = shared.TEST_USE_LLVM,
         .name = name,
         .root_module = b.createModule(.{
             .root_source_file = b.path(root),

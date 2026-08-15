@@ -84,3 +84,7 @@ test "isContentHash accepts a 64-char lowercase sha256 and rejects everything el
     try std.testing.expect(!isContentHash("E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855")); // uppercase
     try std.testing.expect(!isContentHash("../../etc/passwd000000000000000000000000000000000000000000000000")); // path chars
 }
+
+test {
+    _ = @import("bundles_test.zig");
+}

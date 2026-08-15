@@ -105,14 +105,25 @@ class TestCoverageLane(unittest.TestCase):
             )
 
     def test_below_floor_fails(self) -> None:
+        # The report carries per-line hits, not a `line-rate` summary attribute.
+        # The gate counts lines now precisely because trusting that attribute is
+        # how a 24-file report read as 93.70% of the codebase.
         result = self.run_coverage(
             """\
             #!/bin/sh
-            if [ "$1" = "--merge" ]; then out=$2; else
-              for arg in "$@"; do case "$arg" in --*) ;; *) out=$arg; break;; esac; done
-            fi
+            for arg in "$@"; do case "$arg" in --*) ;; *) out=$arg; break;; esac; done
             mkdir -p "$out"
-            printf '<coverage line-rate="0.10"/>\\n' > "$out/cobertura.xml"
+            {
+              printf '<coverage><packages><package><classes>\\n'
+              printf '<class filename="a.zig"><lines>\\n'
+              printf '<line number="1" hits="1"/>\\n'
+              i=2
+              while [ "$i" -le 10 ]; do
+                printf '<line number="%s" hits="0"/>\\n' "$i"
+                i=$((i+1))
+              done
+              printf '</lines></class></classes></package></packages></coverage>\\n'
+            } > "$out/cobertura.xml"
             : > "$out/index.html"
             echo "781 passed; 7 skipped; 0 failed."
             """,

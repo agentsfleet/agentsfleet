@@ -129,19 +129,15 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
 
     test_fixtures.resetBillingFor(db_ctx.conn, TEST_TENANT_ID);
     try tenant_billing.insertStarterGrant(db_ctx.conn, TEST_TENANT_ID);
-    // §7: a tenant's trial is open-ended by default, and an open trial prices
-    // every stage charge to zero — which would leave the drained-balance
-    // refusal below permanently unprovable, and silently so. Closing THIS
-    // tenant's boundary is what arms it. No wall-clock date to wait for and
-    // none that can retire the assertion later.
-    try test_fixtures.endFreeTrialFor(db_ctx.conn, TEST_TENANT_ID);
+    // An unrated model prices every stage charge to zero, which would leave the
+    // drained-balance refusal below permanently unprovable, and silently so.
+    // Seeding the rate is what arms it.
     try seedModelRate(db_ctx.conn);
     defer teardownModelRate(db_ctx.conn);
 
     // STARTER_CREDIT_NANOS covers a self-managed event under stop policy.
     try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
-        alloc,
         TEST_TENANT_ID,
         .self_managed,
         "self-managed-test",
@@ -153,7 +149,6 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
     // below a balance verdict rather than a pricing accident.
     try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
-        alloc,
         TEST_TENANT_ID,
         .platform,
         RATE_PROVIDER,
@@ -167,7 +162,6 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
     _ = try tenant_billing.debit(db_ctx.conn, TEST_TENANT_ID, tenant_billing.STARTER_CREDIT_NANOS);
     try std.testing.expect(!metering.balanceCoversEstimate(
         db_ctx.pool,
-        alloc,
         TEST_TENANT_ID,
         .platform,
         RATE_PROVIDER,
@@ -178,7 +172,6 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
     // Non-stop policies fail-open — the event passes the gate even at 0¢.
     try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
-        alloc,
         TEST_TENANT_ID,
         .self_managed,
         "self-managed-test",
@@ -187,7 +180,6 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
     ));
     try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
-        alloc,
         TEST_TENANT_ID,
         .self_managed,
         "self-managed-test",
@@ -227,6 +219,54 @@ test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=false,
     try r.expectStatus(.ok);
     try std.testing.expect(r.bodyContains("\"is_exhausted\":false"));
     try std.testing.expect(r.bodyContains("\"exhausted_at\":null"));
+}
+
+test "integration: GET /v1/tenants/me/billing carries exactly its published members" {
+    const alloc = std.testing.allocator;
+    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    const now_ms = clock.nowMillis();
+    try seedTenantAndWorkspace(conn, TOKEN_TENANT_ID, now_ms);
+    defer teardown(conn, TOKEN_TENANT_ID);
+
+    _ = try conn.exec(
+        \\INSERT INTO billing.tenant_wallet
+        \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
+        \\VALUES ($1, $3, 'billing_handler_test', $2, $2)
+        \\ON CONFLICT (tenant_id) DO UPDATE
+        \\SET balance_nanos = EXCLUDED.balance_nanos,
+        \\    updated_at = EXCLUDED.updated_at
+    , .{ TOKEN_TENANT_ID, now_ms, TEST_BALANCE_NANOS });
+
+    const r = try (try h.get("/v1/tenants/me/billing").bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+
+    // The member set is pinned rather than probed for the removed name, the same
+    // doctrine the wallet's column set follows in schema_shape_integration_test.
+    // A name-shaped check catches only a reintroduction that reuses the old word
+    // — `promo_window` would restore the defect and pass — and it makes this
+    // suite spell an identifier the product no longer has. Pinning the set
+    // catches any spelling, and is non-vacuous by construction: an empty or
+    // error body fails the count before it reaches a membership check.
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, r.body, .{});
+    defer parsed.deinit();
+    const members = parsed.value.object;
+    try std.testing.expectEqual(@as(usize, 4), members.count());
+    for ([_][]const u8{
+        "balance_nanos",
+        "updated_at",
+        "is_exhausted",
+        "exhausted_at",
+    }) |member| {
+        try std.testing.expect(members.contains(member));
+    }
 }
 
 test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=true + exhausted_at=<ms> on an exhausted tenant" {

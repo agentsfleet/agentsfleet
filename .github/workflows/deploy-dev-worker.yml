@@ -75,3 +75,23 @@ jobs:
     steps:
       - name: Record worker result
         run: echo "deploy-worker-dev result = ${{ needs.deploy-worker-dev.result }}"
+
+      - uses: actions/checkout@v6
+
+      # The runner deploy used to announce itself from the target host, via a
+      # webhook file the workflow wrote there. A merge dropped the step that
+      # wrote it and the host-side notifier failed silent, so this went quiet
+      # for weeks. Notifying from here keeps the webhook off the worker box.
+      # A skipped deploy still reports, because DEV_WORKER_READY=false looking
+      # identical to a broken deploy is what makes silence dangerous.
+      - name: Notify Discord
+        if: always()
+        uses: ./.github/actions/notify-discord
+        with:
+          status: ${{ needs.deploy-worker-dev.result }}
+          message: >-
+            ${{ needs.deploy-worker-dev.result == 'success'
+            && format('✅ DEV agentsfleet-runner deployed — `dev-{0}`', github.sha)
+            || format('❌ DEV agentsfleet-runner deploy {0} — `dev-{1}`\nCheck: {2}/{3}/actions/runs/{4}', needs.deploy-worker-dev.result, github.sha, github.server_url, github.repository, github.run_id) }}
+          op-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          vault: ${{ vars.VAULT_PROD }}

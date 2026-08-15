@@ -34,6 +34,10 @@ test-unit-agentsfleet-lib:  ## Run shared src/lib module unit tests (Zig; named 
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 zig build test-lib --summary all
+	@echo "→ [lib] Running the R2/z3 wrapper test (own compilation — imports the named z3 module)..."
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 zig build test-s3 --summary all
 	@echo "→ [lib] Running incident-response harness unit tests (M157 §6)..."
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
@@ -75,6 +79,19 @@ test-coverage-all: test-coverage-zig  ## Run coverage gates across Zig, app, web
 	@cd ui/packages/design-system && bun run test:coverage
 	@echo "✓ All package coverage gates passed"
 
+# What a failing component's log is grepped for when the gate reports it. The
+# Zig test runner puts its verdict on its OWN line — `FAIL (TestExpectedEqual)`
+# — while the test's name and the assertion message sit on the line ABOVE, so
+# the match is taken with `grep -B 1` or the report names nothing. Every other
+# alternative is anchored: an unanchored `panic` matched the *passing* test
+# "…instead of @intCast-panicking" and printed it as the failure for a whole
+# round of red Continuous Integration (CI).
+ZIG_TEST_FAILURE_GREP = (^|\.\.\.)FAIL\b|^error: .* failed:|error return trace|^thread [0-9]+ panic|^panic:
+# Dropped before the `-B 1` window is taken: valgrind writes its own commentary
+# (`--PID-- …`, `==PID== …`) into the same stream, and a single interleaved
+# warning is enough to push the failing test's name out of the window.
+ZIG_TEST_LOG_NOISE = ^--[0-9]+--|^==[0-9]+==
+
 # Coverage measures the codebase, not a lane. The unit binaries and the
 # integration binary cover largely DISJOINT code — the unit lanes never reach an
 # HTTP handler or a store, because reaching one needs a live Postgres and Redis,
@@ -103,6 +120,12 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 zig build test-lib-bin
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 zig build test-s3-bin
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 zig build --build-file build_runner.zig test-integration-bin
 	@# The integration suite execs the runner binary and reads a migrated
 	@# database; `install` builds the daemon exe that performs the migration.
 	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
@@ -126,9 +149,21 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	@# Each component directory is REMOVED, not just `--clean`ed. kcov names its
 	@# output subdirectory after a hash of the binary, and `--clean` only resets
 	@# the directory for the hash it is writing — a rebuilt binary lands beside
-	@# its predecessor rather than replacing it. `kcov --merge` is handed the
-	@# parent, so every stale sibling silently rejoined the merge; a run whose
-	@# suite never executed kept dragging the figure down for days after.
+	@# its predecessor rather than replacing it, and a stale sibling would rejoin
+	@# the union below; a run whose suite never executed kept dragging the figure
+	@# down for days after.
+	@#
+	@# The per-component reports are unioned by `scripts/check_zig_coverage.py`,
+	@# NOT by `kcov --merge`. That merge silently returned only the three src/lib
+	@# components on Linux — 24 files against macOS's 558 — from identical
+	@# arguments and the same kcov 43, so the gate graded 2.8% of the codebase and
+	@# called it 93.70%.
+	@#
+	@# kcov 43 itself reads the product line tables of only two of these binaries
+	@# on Linux, which is why that merge had so little to return. The script
+	@# therefore grades the union of whatever collected and prints how many of how
+	@# many components that was; ZIG_COVERAGE_REQUIRED_COMPONENTS names the ones
+	@# that must collect, so a component regressing to nothing still fails.
 	@#
 	@# `--exclude-pattern` keeps the test bodies OUT of the denominator. They are
 	@# ~23k of the measured lines and are themselves ~90% covered — counting them
@@ -152,8 +187,11 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	@set -eu; \
 	 db_url="$${TEST_DATABASE_URL:-$(TEST_DATABASE_URL_LOCAL)}"; \
 	 redis_url="$${TEST_REDIS_TLS_URL:-$(TEST_REDIS_TLS_URL_LOCAL)}"; \
-	 components="agentsfleetd:agentsfleetd-tests runner:agentsfleet-runner-tests lib:agentsfleet-lib-tests logging:agentsfleet-logging-tests deadline:agentsfleet-call-deadline-tests"; \
-	 inputs=""; names=""; \
+	 components="agentsfleetd:agentsfleetd-tests runner:agentsfleet-runner-tests lib:agentsfleet-lib-tests logging:agentsfleet-logging-tests deadline:agentsfleet-call-deadline-tests s3:agentsfleet-s3-tests"; \
+	 if [ "$$(uname -s)" = Linux ]; then \
+	   components="$$components runner_integration:agentsfleet-runner-integration-tests"; \
+	 fi; \
+	 names=""; \
 	 for component in $$components; do \
 	   name=$${component%%:*}; binary=$${component#*:}; output="$(ZIG_COVERAGE_DIR)/$$name"; \
 	   echo "→ [zig] kcov component=$$name binary=$$binary"; \
@@ -172,7 +210,6 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	       "$$output" "zig-out/bin/$$binary" \
 	       >".tmp/kcov-$$name.log" 2>&1; echo $$? >".tmp/kcov-$$name.rc" ) & \
 	   names="$$names $$name"; \
-	   inputs="$$inputs $$output"; \
 	 done; \
 	 wait; \
 	 integration_output="$(ZIG_COVERAGE_DIR)/integration"; \
@@ -192,7 +229,6 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	     "$$integration_output" "zig-out/bin/agentsfleetd-integration-tests" \
 	     >".tmp/kcov-integration.log" 2>&1; echo $$? >".tmp/kcov-integration.rc" ); \
 	 names="$$names integration"; \
-	 inputs="$$inputs $$integration_output"; \
 	 failed=0; \
 	 for name in $$names; do \
 	   rc=$$(cat ".tmp/kcov-$$name.rc" 2>/dev/null || echo 1); \
@@ -200,7 +236,8 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	   if [ "$$rc" -ne 0 ]; then \
 	     echo "✗ Zig coverage component $$name exited $$rc"; \
 	     echo "--- failing tests (component=$$name) ---"; \
-	     grep -E '\.\.\.FAIL|^error: .*failed:' ".tmp/kcov-$$name.log" | head -n 60 || true; \
+	     grep -v -E '$(ZIG_TEST_LOG_NOISE)' ".tmp/kcov-$$name.log" \
+	       | grep -B 1 -E '$(ZIG_TEST_FAILURE_GREP)' | head -n 60 || true; \
 	     echo "--- tally (component=$$name) ---"; \
 	     grep -E '^[0-9]+ passed;' ".tmp/kcov-$$name.log" | tail -n 1 || true; \
 	     echo "--- last 40 lines (component=$$name) ---"; \
@@ -220,18 +257,26 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	 if [ -n "$$suite_failed" ] && [ "$$suite_failed" -ne 0 ]; then \
 	   echo "✗ the integration suite reported $$suite_failed failing test(s) — coverage over a failing suite is not a measurement"; \
 	   echo "--- failing tests (component=integration) ---"; \
-	   grep -E '\.\.\.FAIL|^error: .*failed:' ".tmp/kcov-integration.log" | head -n 60 || true; \
+	   grep -v -E '$(ZIG_TEST_LOG_NOISE)' ".tmp/kcov-integration.log" \
+	     | grep -B 1 -E '$(ZIG_TEST_FAILURE_GREP)' | head -n 60 || true; \
 	   exit 1; \
 	 fi; \
 	 echo "✓ [zig] integration suite executed ($$summary)"; \
-	 merged="$(ZIG_COVERAGE_DIR)/merged"; \
-	 rm -rf "$$merged"; \
-	 kcov --merge "$$merged" $$inputs >/dev/null; \
-	 merged_report=$$(find "$$merged" -name cobertura.xml -type f -size +0c -print -quit); \
-	 test -n "$$merged_report" || { echo "✗ merged Zig coverage produced no Cobertura report"; exit 1; }; \
-	 line_rate=$$(sed -n 's/.*line-rate="\([0-9.]*\)".*/\1/p' "$$merged_report" | head -n 1); \
-	 if [ -z "$$line_rate" ]; then echo "✗ failed to parse Zig line-rate from $$merged_report"; exit 1; fi; \
-	 line_pct=$$(awk -v r="$$line_rate" 'BEGIN { printf "%.2f", r * 100 }'); \
-	 printf 'zig_line_coverage_pct=%s\nzig_line_coverage_min_pct=%s\n' "$$line_pct" "$(ZIG_COVERAGE_MIN_LINES)" | tee .tmp/zig-coverage.txt >/dev/null; \
-	 awk -v got="$$line_pct" -v min="$(ZIG_COVERAGE_MIN_LINES)" 'BEGIN { if ((got + 0) < (min + 0)) { printf "✗ Zig line coverage %.2f%% is below threshold %.2f%%\n", got, min; exit 1 } }'; \
-	 echo "✓ [zig] merged line coverage passed ($$line_pct% >= $(ZIG_COVERAGE_MIN_LINES)%; report=$$merged/index.html)"
+	 component_flags=""; \
+	 for name in $$names; do component_flags="$$component_flags --component $$name"; done; \
+	 for name in $(ZIG_COVERAGE_REQUIRED_COMPONENTS); do \
+	   component_flags="$$component_flags --require-component $$name"; done; \
+	 python3 scripts/check_zig_coverage.py \
+	   --coverage-dir "$(ZIG_COVERAGE_DIR)" \
+	   $$component_flags \
+	   --min-pct "$(ZIG_COVERAGE_MIN_LINES)" \
+	   --merged-report "$(ZIG_COVERAGE_DIR)/merged" \
+	   --repo-root "$(CURDIR)" \
+	   --summary-file .tmp/zig-coverage.txt \
+	 || { \
+	   echo "--- kcov stderr tails (why a capture came back empty) ---"; \
+	   for f in .tmp/kcov-*.log; do \
+	     echo "── $$f"; tail -n 12 "$$f"; \
+	   done; \
+	   exit 1; \
+	 }

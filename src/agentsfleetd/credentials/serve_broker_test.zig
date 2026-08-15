@@ -155,3 +155,106 @@ test "exchange frees the partial response body when the vendor dies mid-stream" 
         return error.TestUnexpectedResult;
     } else |err| try testing.expectEqual(error.HttpExchangeFailed, err);
 }
+
+// ---------------------------------------------------------------------------
+// Vault-backed platform-app loads — the half of this file only a real boot
+// runs. `loadGithubApp` and (through `buildDeps`) `loadOauthApp` decide whether
+// each provider can mint at all; every miss must degrade to null so an
+// unconfigured platform still boots. Live-database cases guard on
+// TEST_DATABASE_URL like pool_test: skipped in the plain lane, executed in the
+// coverage lane.
+// ---------------------------------------------------------------------------
+
+const pg = @import("pg");
+const db = @import("../db/pool.zig");
+const base = @import("../db/test_fixtures.zig");
+const vault = @import("../state/vault.zig");
+const crypto_primitives = @import("../secrets/crypto_primitives.zig");
+
+const BROKER_WS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bbbb1";
+
+fn liveBrokerPool() !?*db.Pool {
+    const url = common.env.testLiveValue("TEST_DATABASE_URL") orelse return null;
+    var env = try common.env.fromPairs(testing.allocator, &.{.{ "DATABASE_URL_API", url }});
+    defer env.deinit();
+    return try db.initFromEnvForRole(common.globalIo(), &env, testing.allocator, .api);
+}
+
+fn seedBrokerWorkspace(conn: *pg.Conn) !void {
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, BROKER_WS);
+}
+
+fn cleanupBrokerWorkspace(conn: *pg.Conn) void {
+    _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{BROKER_WS}) catch |err|
+        std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
+    base.teardownWorkspace(conn, BROKER_WS);
+}
+
+test "loadGithubApp returns the configured App and null on a missing field" {
+    crypto_primitives.setTestKek();
+    const pool = (try liveBrokerPool()) orelse return error.SkipZigTest;
+    defer pool.deinit();
+    const conn = try pool.acquire();
+    defer pool.release(conn);
+    try seedBrokerWorkspace(conn);
+    defer cleanupBrokerWorkspace(conn);
+
+    // (1) Fully configured: id + PEM + slug all come back duped.
+    try vault.storeJsonPlaintext(testing.allocator, conn, BROKER_WS, serve_broker.GITHUB_APP_VAULT_KEY, "{\"app_id\":\"12345\",\"private_key_pem\":\"-----BEGIN RSA-----probe\",\"app_slug\":\"agentsfleet-app\"}");
+    const app = serve_broker.loadGithubApp(testing.allocator, conn, BROKER_WS) orelse
+        return error.TestUnexpectedResult;
+    defer {
+        testing.allocator.free(app.app_id);
+        testing.allocator.free(app.private_key_pem);
+        if (app.app_slug) |s| testing.allocator.free(s);
+    }
+    try testing.expectEqualStrings("12345", app.app_id);
+    try testing.expect(app.app_slug != null);
+
+    // (2) Missing private_key_pem → unconfigured, never a half-built App.
+    try vault.storeJsonPlaintext(testing.allocator, conn, BROKER_WS, serve_broker.GITHUB_APP_VAULT_KEY, "{\"app_id\":\"12345\"}");
+    try testing.expect(serve_broker.loadGithubApp(testing.allocator, conn, BROKER_WS) == null);
+
+    // (3) No row at all → the vault-miss arm.
+    cleanupBrokerWorkspace(conn);
+    try seedBrokerWorkspace(conn);
+    try testing.expect(serve_broker.loadGithubApp(testing.allocator, conn, BROKER_WS) == null);
+}
+
+test "buildDeps loads every configured OAuth provider app from the vault" {
+    crypto_primitives.setTestKek();
+    const pool = (try liveBrokerPool()) orelse return error.SkipZigTest;
+    defer pool.deinit();
+    {
+        const conn = try pool.acquire();
+        defer pool.release(conn);
+        try seedBrokerWorkspace(conn);
+        for ([_][]const u8{ "zoho-app", "jira-app", "linear-app" }) |key| {
+            try vault.storeJsonPlaintext(testing.allocator, conn, BROKER_WS, key, "{\"client_id\":\"cid_probe\",\"client_secret\":\"csec_probe\"}");
+        }
+    }
+    defer {
+        const conn = pool.acquire() catch null;
+        if (conn) |c| {
+            cleanupBrokerWorkspace(c);
+            pool.release(c);
+        }
+    }
+
+    var backend: call_deadline.MonotonicBackend = .{};
+    var sched = call_deadline.ProcessScheduler.init(testing.allocator, &backend);
+    try sched.start();
+    defer sched.deinit();
+    var ex = HttpClientExchange{ .io = common.globalIo(), .sched = &sched };
+
+    var built = serve_broker.buildDeps(testing.allocator, pool, &ex, BROKER_WS);
+    defer built.deinit(testing.allocator);
+
+    // Each provider's app came off its own vault key; a wrong-key read would
+    // leave that provider unconfigured and its mints reconnect_required.
+    try testing.expect(built.zoho_app != null);
+    try testing.expect(built.jira_app != null);
+    try testing.expect(built.linear_app != null);
+    try testing.expectEqualStrings("cid_probe", built.zoho_app.?.client_id);
+}

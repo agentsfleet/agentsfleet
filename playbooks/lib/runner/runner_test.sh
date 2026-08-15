@@ -84,7 +84,12 @@ cgroup_fixture="$work_dir/cgroup"
 mkdir -p "$cgroup_fixture"
 run_script() {
   : >"$calls"
-  env \
+  # AGENTSFLEET_API_URL is dropped, never merely overridden: `common.sh` reads it
+  # as `${AGENTSFLEET_API_URL:-$expected_api_url}` and refuses the deploy when it
+  # disagrees with ENV's endpoint. A developer shell pointed at api-dev then
+  # fails the ENV=prod case alone, on that machine only. Cases that mean to
+  # exercise the variable pass it as an argument below, which still wins.
+  env -u AGENTSFLEET_API_URL \
     PATH="$stub_dir:$PATH" \
     CALLS="$calls" \
     RUNNER_BINARY="$runner_binary" \
