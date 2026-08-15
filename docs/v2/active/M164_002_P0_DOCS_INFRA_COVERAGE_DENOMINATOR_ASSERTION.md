@@ -67,10 +67,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/tests.zig`, `src/runner/tests.zig` (test roots) | EDIT | New test files registered by explicit import, per the repository's test-discovery rule. |
 | `docs/v2/active/M164_002_P0_DOCS_INFRA_COVERAGE_DENOMINATOR_ASSERTION.md` | EDIT | This spec; Dimensions marked DONE alongside their code. |
 | `src/lib/**/*_test.zig` | CREATE/EDIT | Unit-lane tests lifting `lib/` to its 95% target. |
-| `README.md` | EDIT | The badge row gains the measured coverage figure a real run produced (§6). |
-| `scripts/publish_coverage_badge.py` | CREATE | Turns `.tmp/zig-coverage.txt` into the badge endpoint payload the README reads (§6). |
-| `scripts/publish_coverage_badge_test.py` | CREATE | Self-tests for the payload shape and its refusal to publish an ungraded run. |
-| `.github/workflows/test.yml` | EDIT | Publishes the measured figure after the gate passes — **approval-gated, diff shown to Indy before it lands** (§6). |
+| `README.md` | EDIT | The badge row gains one Codecov badge per measured surface — `zig`, `app`, `website`, `cli` (§6). |
+| `scripts/publish_coverage_badge.py` | DELETE | Written for the superseded `badges` branch; Codecov hosts the number, so this is dead (RULE NDC). |
+| `scripts/publish_coverage_badge_test.py` | DELETE | Its ten tests go with it. |
+| `scripts/check_zig_coverage_doc_test.py` | CREATE | Parity self-tests: the architecture doc's floors table, component list and variable names against `make/test.mk` and `make/test-unit.mk` (§5). |
+| `scripts/check_zig_test_lanes_test.py` | EDIT | The stubbed kcov emits the lifecycle run marker the recipe now greps; one test asserts a skipped proof fails the lane. |
+| `scripts/check_lane_concurrency_test.py` | EDIT | The pinned status-file path moved under `ZIG_COVERAGE_DIR`. |
+| `make/bench.mk` | EDIT | The boot-drain lane reads the lifecycle filter, marker and isolation variable from their one definition site. |
+| `.github/workflows/test.yml` | EDIT | Four Codecov upload steps, one per flag — **approval-gated, diff shown to Indy before it lands** (§6). |
 | `playbooks/operations/m164_free_trial_removal/` | DELETE | One-shot hand-migration for M164_001, already applied; ephemeral by nature and referenced by nothing but M164_001's own record (§7). |
 | `docs/v2/done/M155_001_P1_API_OBS_UI_CHARGE_SLICE_BREAKDOWN.md` | RENAME | Carried over from `main`: M155_001 parked, moved `pending/` → `done/`. Bookkeeping only, no code. |
 
@@ -134,7 +138,7 @@ The coverage work itself, and on the re-measurement it is the bulk of this works
 - **Dimension 4.1** — IN_PROGRESS —  `lib/` clears 95%: `logging/mod.zig` carries 42 of the folder's 76 dark lines and 15 close the gap → Tests per behaviour on the scoped-logger arms
 - **Dimension 4.2** — NOT STARTED —  `runner/` clears 95%: `daemon/lease_run.zig` (40 dark), `child_supervisor.zig` (25), `engine/runner.zig` (24), then the tail until the folder rate clears 95 → Tests per file, `test_…` per behaviour
 - **Dimension 4.3** — IN_PROGRESS —  the daemon's worst files by union-dark count gain tests in descending order — `http/handlers/tenant_provider.zig` (53), `cmd/serve_webhook_lookup.zig` (48), `http/handlers/tenant_model_entries.zig` (47), `http/handlers/admin/platform_keys.zig` (42), `auth/clerk_backend.zig` (36), `http/handlers/auth/sessions.zig` (35), continuing down the ranking → Tests per verb, success and failure halves
-- **Dimension 4.4** — NOT STARTED —  `cmd/serve.zig` is 116 dark lines at 0% because nothing drives the boot sequence; either it gains a test that boots it against the harness datastores, or the untestable remainder is extracted so what stays is reachable → Test `test_serve_boot_sequence`
+- **Dimension 4.4** — DONE —  `cmd/serve.zig` was 116 dark lines at 0% because nothing drove the boot sequence. The test that drives the real `serve.run` already existed and already skipped: it needs its own process. A `lifecycle` kcov component runs it filtered and isolated, and the file reads **112/116, 96.6%** — the union rose 88.34% → 89.20% (+221 covered lines) with no new test code, `cmd/serve_shutdown.zig`, `cmd/serve_background.zig`, `cmd/serve_qstash.zig` and the three sweepers gaining alongside it → Tests `test_a_skipped_lifecycle_proof_fails_the_lane` (the marker assertion that keeps it honest), plus the measured proof recorded in Discovery
 - **Dimension 4.5** — NOT STARTED —  `agentsfleetd/` clears 95% over the product-only denominator → Test `test_enforced_floors_clear_measured_values` (re-graded)
 - **Dimension 4.6** — DONE —  every folder floor is raised in the same commit as the tests that clear the new value, never ahead → Test `test_enforced_floors_clear_measured_values` (re-graded per ratchet)
 
@@ -142,15 +146,25 @@ The coverage work itself, and on the re-measurement it is the bulk of this works
 
 `docs/architecture/testing.md` §Coverage still says five binaries, a 60% floor against a 61.40% baseline, and "each binary must produce a non-empty Cobertura report" — the weakest assertion in the lane and the one §2 replaces. It also predates the union, the `s3` component, and the runner integration component. A stale canonical doc is how the next agent reintroduces all of it.
 
-- **Dimension 5.1** — PARTIAL — §Coverage now records the eight-component set, the union, the kcov Linux capture gap and its evidence, the required-component regression signal, the published key surface, and the warning that the Linux rate flatters; the non-empty-report claim and the stale floor value are gone. The per-folder floors and the ratchet rule are not yet written because §3 has not landed → Test `test_architecture_doc_matches_gate_values` (pending §3)
+- **Dimension 5.1** — DONE — §Coverage records the nine-component set by gate name, the union, the kcov Linux capture gap and its evidence, the required-component and required-root assertions, the collapse alarm, the full published key surface, the denominator rule with the figure that motivated it, the per-folder floors table, the raise-only ratchet rule, and `lib/`'s 97.05% ceiling. Three stale claims are gone: the retired `ZIG_COVERAGE_MIN_LINES`, a floor value that never matched the gate, and "per-folder floors cannot be enforced in CI at all", true only before the LLVM repair. A merge conflict marker committed to the default branch mid-sentence is gone with them → Tests `test_architecture_doc_matches_gate_values`, `test_every_product_scope_is_documented`, `test_architecture_doc_lists_every_measured_component`, `test_architecture_doc_names_no_retired_variable`, `test_the_doc_carries_no_conflict_marker` (`scripts/check_zig_coverage_doc_test.py`)
 
 ### §6 — The README carries the figure a real run produced
 
 The repository is public and its README opens with a badge row that says nothing about test quality. Indy's requirement is exact: the badge shows **what was executed and run**, not a floor, not a hand-typed number. The gate already writes `zig_line_coverage_pct` to `.tmp/zig-coverage.txt` after grading, so the figure exists; it just has nowhere to go. This publishes it from the run that produced it and points the README at it. **Implementation default:** publish only from a run that graded green on the default branch — a badge fed by a failed or partial run is worse than no badge, because it reports a number over a suite that did not finish. The workflow edit is approval-gated and does not land until Indy has seen the diff.
 
-- **Dimension 6.1** — DONE —  the badge payload carries the measured percentage, its colour derived from the value, and is written only from a green graded run → Test `test_badge_payload_reflects_measured_run`
-- **Dimension 6.2** — DONE —  a run whose gate failed, or whose summary file is absent or ungraded, publishes nothing rather than a stale or zero figure → Test `test_badge_refuses_ungraded_run`
-- **Dimension 6.3** — BLOCKED (needs the `badges` branch to exist) —  the README badge row renders as one coherent row on the rendered page, with the coverage badge beside the existing Continuous Integration (CI), Docs and License badges → Test `test_readme_badge_row_is_well_formed`
+**Superseded — the repository does not host the number.** The first build wrote
+`scripts/publish_coverage_badge.py`, which turned the graded summary into a
+shields endpoint payload committed to an orphan `badges` branch. Indy cut it on
+two grounds: there is no point carrying that machinery, and the row needs four
+numbers, not one — `app`, `website` and `cli` alongside the daemon. Five JSON
+files, a publish step, `contents: write` and a commit on every push to main is a
+lot of apparatus for four integers. Codecov gives four direct URLs and hosts
+nothing in this repository, so the publisher and its ten tests are deleted
+(RULE NDC) rather than extended.
+
+- **Dimension 6.1** — DONE —  the README carries one badge per measured surface — `zig`, `app`, `website`, `cli` — each a direct Codecov URL with no repository-hosted state behind it → Test `test_every_readme_flag_has_an_upload` (pending the workflow edit)
+- **Dimension 6.2** — BLOCKED (approval-gated `.github/workflows/test.yml` edit + `CODECOV_TOKEN`) —  the Zig badge equals the number the gate enforced, because CI uploads `coverage/zig/merged/cobertura.xml` — the union with this spec's denominator rules already applied — and never the raw per-component kcov reports, which would let Codecov build its own union roughly two points higher → Test `test_zig_upload_names_the_merged_report`
+- **Dimension 6.3** — BLOCKED (same edit) —  every flag the README names has an upload step that produces it, so no badge can render `unknown`, and the row stays one coherent row beside the Continuous Integration (CI), Zig, Docs and License badges → Test `test_readme_badge_row_is_well_formed`
 
 ### §7 — The one-shot M164 playbook leaves the tree
 
@@ -396,6 +410,20 @@ inline test to a product file raised that file's rate directly.
 | `runner/` | 93.74% | **91.18%** — 2532/2777, 66 files | 91 | 95 | 3.82 |
 | `lib/` | 94.24% | **92.40%** — 802/868, 25 files | 92 | 95 | 2.60 |
 
+**After the `lifecycle` component** (8 of 8 components, every one collecting;
+`make test-coverage-zig` green). Floors ratcheted to these values in the same
+commit, each below its measured figure:
+
+| Scope | Measured | Floor | Target | Gap |
+|---|---|---|---|---|
+| merged | **89.19%** — 22990/25775, 531 files | 89 | 95 | 5.81 |
+| `agentsfleetd/` | **88.78%** — 19648/22130, 440 files | 88 | 95 | 6.22 |
+| `runner/` | 91.18% — 2532/2777, 66 files | 91 | 95 | 3.82 |
+| `lib/` | **93.32%** — 810/868, 25 files | 93 | 95 | 1.68 |
+
+The `runner/` figure is unchanged because the boot sequence is the daemon's; the
+`lib/` rise is `logging/mod.zig`, which the booted daemon exercises for real.
+
 **A 99% target is not reachable on this instrument for every folder.** kcov
 attributes no instructions to a function signature, a parameter line, a closing
 brace or a comment, so those lines can never be marked covered by any test.
@@ -414,7 +442,42 @@ why the lane is slow.
 
 ## Discovery (consult log)
 
+- **The daemon's boot sequence was measurable all along.** `cmd/serve.zig` read
+  0% of 116 lines, the largest single dark file in the tree by 2.3×, and the
+  ranked plan called for writing a boot test. One already existed:
+  `serve_lifecycle_integration_test.zig` drives the real `serve.run` against
+  live datastores and asserts the whole boot → SIGTERM → drain choreography. It
+  skipped, because it needs its own process — it installs signal handlers, binds
+  a port and moves process-global state the other ~2000 integration tests read,
+  and `make memleak` was the only lane isolating it. Running it as its own kcov
+  component costs one rebuild (the integration binary takes its filter at build
+  time) and buys **112/116 on `serve.zig`, 0% → 96.6%**, with the union at
+  88.34% → 89.20%, +221 covered lines, no new test code. Fourteen files gained:
+  `serve_shutdown` (14), `serve_background` (12), `serve_qstash` (7),
+  `serve_boot` (5), and the reclaim (18), liveness (16) and repair-verification
+  (15) sweepers. **Read the ranked dark list for a test that exists and skips
+  before writing one.**
+
+- **The lane self-tests and real runs were reading each other's output.** The
+  coverage recipe wrote `.tmp/kcov-<component>.{log,rc}` at a hardcoded relative
+  path. `check_zig_test_lanes_test.py` drives the *real* recipe with a stubbed
+  kcov and redirects `ZIG_COVERAGE_DIR`, but not those — so a stubbed run
+  truncated a real run's logs, and a real run's 57 KB log outlived a stubbed one
+  and was read as its output, complete with NUL padding. Both then blamed the
+  gate. The logs moved under `ZIG_COVERAGE_DIR`, beside the reports they
+  explain; the summary file keeps its own variable because CI reads that exact
+  path, so its default cannot move and only a test redirects it. Related and
+  still true: that test class shells out to a full `make test-coverage-zig`,
+  which is how a lane self-test can sit on a machine for nine hours.
+
+- **A merge conflict marker shipped to the default branch.** `>>>>>>> origin/main`
+  was appended to the end of a sentence in `docs/architecture/testing.md`, not
+  at the start of a line, so every line-anchored grep and every pre-commit check
+  looked straight past it. `test_the_doc_carries_no_conflict_marker` now looks
+  for it anywhere in the file.
+
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
+  > Indy (2026-08-15, this session): chose the live badge — an orphan `badges` branch fed by the graded run — over deleting the publisher, because a floor-backed badge is a hand-typed number and the requirement was the figure a real run produced. The `.github/workflows/test.yml` step remains approval-gated and is shown as a diff before it lands.
   > Indy (2026-08-15 17:52): "I suppose you havent over engineered to measure the floors, and made it stricter to expand and measure it later?" — context: he was right. Per-component denominator minimums (§2 Dimension 2.1) had been built: seven components × two counts, hand-maintained in `make/test.mk`. Two faults. They duplicated `--require-component`, which already fails a component contributing nothing, so the marginal catch was only "a component that half-collected". And being lower bounds on measured lines, they made the gate hostile to deletion — removing dead code shrinks the denominator and would have turned a good change red. Cut to one union-level pair (`--min-files 300`, `--min-lines 18000`, against 558 files / 31,419 lines measured), which still catches the collapse this lane was built for and leaves room to shrink the tree. Floors themselves were checked for the same fault and are not over-tight: every one is seeded below its measured value.
   > Indy (2026-08-14 14:04): "I think you have to go and the check the files in runner/ and agentsfleetd/ individually with lower coverage and improve the tests. You shouldnt just sit and check the mergeable changed or modified new file in the PR" — context: folds the unit-lane coverage lifts (formerly Out of Scope follow-on) into this workstream as §4; targets stay 91/95/95.
   > Indy (2026-08-15): "Make the union script grade honestly" — context: chosen over reverting the gate to the branch point or parking the check, after the measurement below showed the union could not publish at all on Linux.
