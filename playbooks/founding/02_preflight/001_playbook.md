@@ -45,7 +45,7 @@ Production vault `ZMB_CD_PROD`:
 |---|---|
 | `cloudflare-api-token`, `fly-api-token`, `npm-publish-token`, `vercel-api-token` | `credential` |
 | `vercel-bypass-website`, `vercel-bypass-agents`, `vercel-bypass-app` | `credential` |
-| `discord-ci-webhook`, `posthog-prod` | `credential` |
+| `discord-ci-webhook`, `discord-release-webhook`, `posthog-prod` | `credential` |
 | `clerk-prod` | `publishable-key`, `secret-key`, `webhook-secret`, `issuer` |
 | `e2e-fixtures-email` | `regular`, `admin` |
 | `agentsfleet-admin` | `username`, `credential` |
