@@ -268,4 +268,5 @@ test {
     _ = @import("cmd/preflight_test.zig");
     _ = @import("cmd/serve_boot_test.zig");
     _ = @import("cmd/serve_shutdown.zig");
+    _ = @import("cmd/serve_webhook_lookup.zig");
 }
