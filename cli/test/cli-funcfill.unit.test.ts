@@ -22,7 +22,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { runCli } from "../src/cli.ts";
-import { bufferStream, makeNoop, withAuthedStateDir, withFreshStateDir } from "./helpers-cli-state.ts";
+import { bufferStream, makeNoop, cliEnv, withAuthedStateDir, withFreshStateDir } from "./helpers-cli-state.ts";
 
 const VALID_ID = "01900000-0000-7000-8000-000000000001";
 
@@ -49,7 +49,7 @@ describe("runCli exit-code mapping (exitFromCommanderError reachable branches)",
       const code = await runCli(["nope-not-a-command"], {
         stdout: out.stream,
         stderr: err.stream,
-        env: { NO_COLOR: "1" },
+        env: cliEnv({ NO_COLOR: "1" }),
       });
       expect(code).toBe(2);
       expect(err.read()).toContain("unknown command");
@@ -65,7 +65,7 @@ describe("runCli exit-code mapping (exitFromCommanderError reachable branches)",
       const code = await runCli(["--api"], {
         stdout: makeNoop(),
         stderr: makeNoop(),
-        env: { NO_COLOR: "1" },
+        env: cliEnv({ NO_COLOR: "1" }),
       });
       expect(code).toBe(2);
     });
@@ -76,7 +76,7 @@ describe("runCli exit-code mapping (exitFromCommanderError reachable branches)",
       const code = await runCli(["--version"], {
         stdout: makeNoop(),
         stderr: makeNoop(),
-        env: { NO_COLOR: "1" },
+        env: cliEnv({ NO_COLOR: "1" }),
       });
       expect(code).toBe(0);
     });
@@ -93,7 +93,7 @@ describe("runCli exit-code mapping (exitFromCommanderError reachable branches)",
       const code = await runCli(["doctor"], {
         stdout: out.stream,
         stderr: err.stream,
-        env: { NO_COLOR: "1" },
+        env: cliEnv({ NO_COLOR: "1" }),
       });
       expect(code).toBe(1);
       expect(err.read().length).toBeGreaterThan(0);
@@ -107,7 +107,7 @@ describe("runCli exit-code mapping (exitFromCommanderError reachable branches)",
       const code = await runCli(["--json", "doctor"], {
         stdout: out.stream,
         stderr: err.stream,
-        env: { NO_COLOR: "1" },
+        env: cliEnv({ NO_COLOR: "1" }),
       });
       expect(code).toBe(1);
     });
@@ -119,7 +119,7 @@ describe("runCli exit-code mapping (exitFromCommanderError reachable branches)",
       const code = await runCli(["doctor"], {
         stdout: makeNoop(),
         stderr: err.stream,
-        env: { NO_COLOR: "1" },
+        env: cliEnv({ NO_COLOR: "1" }),
       });
       expect(code).toBe(1);
       expect(err.read()).toContain("not authenticated");
@@ -134,7 +134,7 @@ describe("runCli exit-code mapping (exitFromCommanderError reachable branches)",
       const code = await runCli(["workspace", "list"], {
         stdout: makeNoop(),
         stderr: makeNoop(),
-        env: { NO_COLOR: "1" },
+        env: cliEnv({ NO_COLOR: "1" }),
         // Offline: no fetch needed — workspace list reads local state.
       });
       expect(typeof code).toBe("number");

@@ -7,7 +7,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir, withFreshStateDir, type TestStream } from "./helpers-cli-state.ts";
+import { bufferStream, withAuthedStateDir, withFreshStateDir, type TestStream, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-0000005e4e71";
@@ -41,7 +41,7 @@ describe("memory list — human table on a terminal", () => {
         const err = bufferStream();
         const code = await runCli(
           ["memory", "list", "--fleet", FLEET_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         const text = out.read();
@@ -75,7 +75,7 @@ describe("memory list — human table on a terminal", () => {
         const err = bufferStream();
         const okCode = await runCli(
           ["memory", "list", "--fleet", FLEET_ID, "--category", "daily", "--limit", "5"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(okCode).toBe(0);
         expect(calls[0]?.search).toContain("category=daily");
@@ -92,7 +92,7 @@ describe("memory list — human table on a terminal", () => {
         const err = bufferStream();
         const code = await runCli(
           ["memory", "list", "--fleet", FLEET_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         expect(out.read()).toMatch(/no memories stored/i);
@@ -113,7 +113,7 @@ describe("memory search", () => {
         const err = bufferStream();
         const code = await runCli(
           ["memory", "search", "--fleet", FLEET_ID, "acme"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         expect(calls[0]?.search).toContain("query=acme");
@@ -132,7 +132,7 @@ describe("memory search", () => {
         const err = bufferStream();
         const code = await runCli(
           ["memory", "search", "--fleet", FLEET_ID, "ghost"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         expect(out.read()).toMatch(/no memories matched "ghost"/i);
@@ -158,7 +158,7 @@ describe("memory — machine-stable JSON", () => {
         const err = bufferStream();
         const code = await runCli(
           ["memory", "list", "--fleet", FLEET_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         const parsed = JSON.parse(out.read()) as typeof envelope;
@@ -178,7 +178,7 @@ describe("memory — machine-stable JSON", () => {
         const err = bufferStream();
         const code = await runCli(
           ["memory", "list", "--fleet", FLEET_ID, "--json"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         const parsed = JSON.parse(out.read()) as typeof ENVELOPE;
@@ -203,7 +203,7 @@ describe("memory — error shapes", () => {
         const err = bufferStream();
         const code = await runCli(
           ["memory", "list", "--fleet", FLEET_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
         const stderrText = err.read();
@@ -231,7 +231,7 @@ describe("memory — error shapes", () => {
         const err = bufferStream();
         const code = await runCli(
           ["memory", "list", "--fleet", FLEET_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
         expect(err.read()).toContain("UZ-MEM-003");
@@ -246,7 +246,7 @@ describe("memory — error shapes", () => {
       const err = bufferStream();
       const code = await runCli(
         ["memory", "list", "--fleet", FLEET_ID],
-        { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: "http://127.0.0.1:9" } },
+        { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: "http://127.0.0.1:9" }) },
       );
       expect(code).not.toBe(0);
       expect(err.read()).toMatch(/login/);
@@ -260,7 +260,7 @@ describe("memory — error shapes", () => {
       const code = await runCli(
         ["memory", "list", "--fleet", FLEET_ID],
         // loopback discard port — nothing listens, refuses instantly
-        { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: "http://127.0.0.1:9" } },
+        { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: "http://127.0.0.1:9" }) },
       );
       expect(code).not.toBe(0);
       const stderrText = err.read();

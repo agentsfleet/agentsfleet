@@ -115,6 +115,10 @@ function mainLayerForCtx(lifecycle: Lifecycle, name: string): ReturnType<typeof 
   return mainLayerFor({
     config: configOverrideFromCtx(lifecycle.ctx),
     commandPath: name.split("."),
+    // ctx.env is runCli's already-resolved `io.env ?? process.env` — the
+    // one hop that previously dropped an injected environment before the
+    // credential and workspace stores.
+    env: lifecycle.ctx.env,
     ...(streams !== undefined ? { streams } : {}),
     ...(stdin !== undefined ? { stdin } : {}),
   });

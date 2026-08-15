@@ -1,10 +1,16 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 
-// On-disk state shapes. All files live under `$AGENTSFLEET_STATE_DIR` (or
-// `~/.config/agentsfleet`) at mode 0o600. JSON is parsed permissively —
-// missing files return the fallback, corrupt files raise.
+import { resolveConfigDir } from "./config-dir.ts";
+
+// On-disk state shapes. All files live under the directory `config-dir.ts`
+// resolves from the caller-supplied environment, at mode 0o600. JSON is
+// parsed permissively — a missing file AND an unparseable one both return the
+// fallback; only a read that genuinely fails (EACCES, EIO, EISDIR) raises, and
+// lib/state-load.ts is what turns those into a warning. No function here reads the process environment: `runCli` resolves
+// its io environment (falling back to the process one) exactly once and
+// threads it down, so an injected environment reaches the store instead of
+// silently losing to a global.
 //
 // Session identity (`device_id`, `session_id`, `session_last_active`)
 // lives in `telemetry.json` under `src/services/telemetry/`, mirroring
@@ -19,6 +25,16 @@ export interface StatePaths {
 // Every file under baseDir is owner-rw-only: credentials, workspaces.
 // Single named const so the policy is enforced from one site.
 const STATE_FILE_MODE = 0o600;
+
+// The store's on-disk filenames, named once (RULE UFS) — path resolution and
+// the user-facing load warning in cli.ts both reference these.
+export const STATE_FILE_CREDENTIALS = "credentials.json";
+export const STATE_FILE_WORKSPACES = "workspaces.json";
+
+// The recovery hint both store services put on an UnexpectedError — one
+// declaration site (RULE UFS), owned here with the store it describes.
+export const STATE_STORE_SUGGESTION =
+  "check the CLI config directory permissions and disk space";
 
 export interface Credentials {
   token: string | null;
@@ -47,14 +63,12 @@ export interface Workspaces {
   items: WorkspaceItem[];
 }
 
-function resolveStatePaths(): StatePaths {
-  const baseDir =
-    process.env.AGENTSFLEET_STATE_DIR ||
-    path.join(os.homedir(), ".config", "agentsfleet");
+function resolveStatePaths(env: NodeJS.ProcessEnv): StatePaths {
+  const baseDir = resolveConfigDir(env);
   return {
     baseDir,
-    credentialsPath: path.join(baseDir, "credentials.json"),
-    workspacesPath: path.join(baseDir, "workspaces.json"),
+    credentialsPath: path.join(baseDir, STATE_FILE_CREDENTIALS),
+    workspacesPath: path.join(baseDir, STATE_FILE_WORKSPACES),
   };
 }
 
@@ -85,9 +99,11 @@ export function emptyWorkspaces(): Workspaces {
   };
 }
 
-async function ensureBaseDir(): Promise<void> {
-  const { baseDir } = resolveStatePaths();
-  await fs.mkdir(baseDir, { recursive: true });
+// Owner-only, matching the telemetry writer's mode for the same directory —
+// without it the first writer's umask decides whether the credentials
+// directory is world-listable.
+async function ensureBaseDir(baseDir: string): Promise<void> {
+  await fs.mkdir(baseDir, { recursive: true, mode: 0o700 });
 }
 
 async function readJson<T>(filePath: string, fallback: T): Promise<T> {
@@ -103,40 +119,53 @@ async function readJson<T>(filePath: string, fallback: T): Promise<T> {
   }
 }
 
-async function writeJson(filePath: string, value: unknown): Promise<void> {
-  await ensureBaseDir();
+// Takes the resolved paths, not the environment: one resolution per
+// operation, so a caller's env object mutating between the path computation
+// and the directory creation cannot split a write across two directories.
+async function writeJson(
+  paths: StatePaths,
+  filePath: string,
+  value: unknown,
+): Promise<void> {
+  await ensureBaseDir(paths.baseDir);
   const body = `${JSON.stringify(value, null, 2)}\n`;
   await fs.writeFile(filePath, body, { mode: STATE_FILE_MODE });
 }
 
-export async function loadCredentials(): Promise<Credentials> {
-  const { credentialsPath } = resolveStatePaths();
+export async function loadCredentials(env: NodeJS.ProcessEnv): Promise<Credentials> {
+  const { credentialsPath } = resolveStatePaths(env);
   return readJson<Credentials>(credentialsPath, emptyCredentials());
 }
 
-export async function saveCredentials(next: Credentials): Promise<void> {
-  const { credentialsPath } = resolveStatePaths();
-  await writeJson(credentialsPath, next);
+export async function saveCredentials(
+  env: NodeJS.ProcessEnv,
+  next: Credentials,
+): Promise<void> {
+  const paths = resolveStatePaths(env);
+  await writeJson(paths, paths.credentialsPath, next);
 }
 
-export async function clearCredentials(): Promise<void> {
-  const { credentialsPath } = resolveStatePaths();
+export async function clearCredentials(env: NodeJS.ProcessEnv): Promise<void> {
+  const paths = resolveStatePaths(env);
   // `saved_at` records when the clear happened, so the record is the empty
   // one with that single field stamped.
-  await writeJson(credentialsPath, {
+  await writeJson(paths, paths.credentialsPath, {
     ...emptyCredentials(),
     saved_at: Date.now(),
   });
 }
 
-export async function loadWorkspaces(): Promise<Workspaces> {
-  const { workspacesPath } = resolveStatePaths();
+export async function loadWorkspaces(env: NodeJS.ProcessEnv): Promise<Workspaces> {
+  const { workspacesPath } = resolveStatePaths(env);
   return readJson<Workspaces>(workspacesPath, emptyWorkspaces());
 }
 
-export async function saveWorkspaces(next: Workspaces): Promise<void> {
-  const { workspacesPath } = resolveStatePaths();
-  await writeJson(workspacesPath, next);
+export async function saveWorkspaces(
+  env: NodeJS.ProcessEnv,
+  next: Workspaces,
+): Promise<void> {
+  const paths = resolveStatePaths(env);
+  await writeJson(paths, paths.workspacesPath, next);
 }
 
 export const stateInternals = {

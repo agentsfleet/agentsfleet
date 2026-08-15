@@ -54,14 +54,14 @@ const loadToken = async (): Promise<Option.Option<string>> =>
         const token = yield* credentials.getAccessToken;
         return Option.map(token, (value) => String(value));
       }),
-      credentialsLayer,
+      credentialsLayer(process.env),
     ),
   );
 
 // Plant a value the way a regression would: straight into the file, past the
 // service that would have refused it on the way in.
 const plant = async (token: string): Promise<void> => {
-  await saveCredentials({
+  await saveCredentials(process.env, {
     token,
     saved_at: Date.now(),
     session_id: "sess_shape",

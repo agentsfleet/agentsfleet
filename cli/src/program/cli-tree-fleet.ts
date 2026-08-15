@@ -38,6 +38,15 @@ export function buildFleetTree(
     .description("Browse the first-party Fleet library gallery")
     .action(actionFor("fleet.library", (frame) => runHandler(state, frame, handlers.fleet.library)));
 
+  // The CLI peer of the dashboard's model picker. Both read GET /v1/models, so
+  // `--provider` and `--model` have a discoverable source instead of being two
+  // identifiers the operator has to already know.
+  program
+    .command("models")
+    .description("List the model catalogue this server serves")
+    .option(FLAG_PROVIDER, "Show only this provider's models", parseStringOption)
+    .action(actionFor("fleet.models", (frame) => runHandler(state, frame, handlers.fleet.models)));
+
   program
     .command("install")
     .description("Install a Fleet from an onboarded library (--library <id>)")
@@ -131,14 +140,19 @@ export function buildFleetTree(
     .description("Workspace secret vault");
 
   // Two ways to supply the body: the generic `--data <json>` blob, or the
-  // typed custom-endpoint flags (`--provider openai-compatible --base-url
-  // <url> --api-key <key> [--model <m>]`) that compose the same JSON object.
+  // typed provider flags in one of two shapes — a named provider
+  // (`--provider <id> --api-key <key> --model <m>`) or a custom endpoint
+  // (`--provider openai-compatible --base-url <url> --model <m>
+  // [--api-key <key>]`) — composing the same JSON object.
   // `--base-url` runs parseHttpsUrlOption at PARSE time, so a non-https URL
   // exits non-zero with NO network call (full SSRF check stays server-side).
+  // `--provider` cannot be checked here: its accepted set is whatever this
+  // server's catalogue serves, so the handler validates it against
+  // `GET /v1/models`. `--data` stays unconstrained (generic blob).
   secret.command("create <name>")
     .description("Store a secret JSON object")
     .option(FLAG_DATA_JSON, "Secret JSON object, or @- to read stdin")
-    .option(FLAG_PROVIDER, `Provider id (use '${OPENAI_COMPATIBLE_PROVIDER}' for a custom endpoint)`, parseStringOption)
+    .option(FLAG_PROVIDER, DESC_PROVIDER, parseStringOption)
     .option(FLAG_BASE_URL, DESC_BASE_URL, parseHttpsUrlOption)
     .option(FLAG_API_KEY, DESC_API_KEY)
     .option(FLAG_MODEL_OPT, DESC_MODEL_OPT, parseStringOption)
@@ -151,7 +165,7 @@ export function buildFleetTree(
   secret.command("update <name>")
     .description("Replace a secret's stored body without releasing the name")
     .option(FLAG_DATA_JSON, "Replacement JSON object, or @- to read stdin")
-    .option(FLAG_PROVIDER, `Provider id (use '${OPENAI_COMPATIBLE_PROVIDER}' for a custom endpoint)`, parseStringOption)
+    .option(FLAG_PROVIDER, DESC_PROVIDER, parseStringOption)
     .option(FLAG_BASE_URL, DESC_BASE_URL, parseHttpsUrlOption)
     .option(FLAG_API_KEY, DESC_API_KEY)
     .option(FLAG_MODEL_OPT, DESC_MODEL_OPT, parseStringOption)
@@ -183,9 +197,16 @@ const FLAG_LIMIT_N = "--limit <n>" as const;
 const PAGE_SIZE = "Page size" as const;
 const SKILL_BUNDLE_PATH = "Skill bundle path" as const;
 const FLAG_DATA_JSON = "--data <json>" as const;
+// No enum parser here, and that is the design. The accepted set is whatever
+// `GET /v1/models` serves on the server the caller is pointed at, so it cannot
+// be known at parse time and differs between environments. The check runs in
+// the handler against the live catalogue (lib/model-catalogue.ts) — the same
+// bytes the dashboard's provider dropdown is built from.
+const DESC_PROVIDER =
+  `Provider id from \`agentsfleet models\` (use '${OPENAI_COMPATIBLE_PROVIDER}' with --base-url for an endpoint the catalogue does not carry)`;
 const DESC_BASE_URL = "Custom endpoint base URL (https; required for a custom-endpoint provider)" as const;
-const DESC_API_KEY = "Provider API key for the typed custom-endpoint form" as const;
-const DESC_MODEL_OPT = "Default model identifier for the typed custom-endpoint form" as const;
+const DESC_API_KEY = "Provider API key (required with a named --provider, optional for a keyless custom endpoint)" as const;
+const DESC_MODEL_OPT = "Default model identifier (required with --provider)" as const;
 const FLAG_PROVIDER = "--provider <id>" as const;
 const FLAG_BASE_URL = "--base-url <url>" as const;
 const FLAG_API_KEY = "--api-key <key>" as const;
