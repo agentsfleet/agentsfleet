@@ -11,7 +11,7 @@ import {
   saveCredentials,
   saveWorkspaces,
 } from "./lib/state.ts";
-import { loadStateOrWarn } from "./lib/state-load.ts";
+import { loadState } from "./lib/state-load.ts";
 import { Effect } from "effect";
 import { runCommanderParse } from "./lib/commander-bridge.ts";
 import { isString } from "./lib/guards.ts";
@@ -240,11 +240,9 @@ export async function runCli(
   // Bare `agentsfleet` → --help so commander routes via stdout + exit 0 instead of stderr "missing command".
   const effectiveArgv = argv.length === 0 ? ["--help"] : [...argv];
 
-  // Real read failures (EACCES, EIO — not absence) warn and fall back to
-  // logged-out; the why lives with the helper.
-  const { creds, workspaces, readFailed } = await loadStateOrWarn(env, (line) =>
-    writeLine(stderr, line),
-  );
+  // Real read failures (EACCES, EIO — not absence) are recorded here and
+  // reported below, once the endpoint is known; the why lives with the helper.
+  const { creds, workspaces, unreadable } = await loadState(env);
   // Session identity is read and bumped through `telemetry.json`.
   const stdinSrc = io.stdin ?? process.stdin;
   // Two credential slots: the stored login credential (file slot, from
@@ -259,13 +257,21 @@ export async function runCli(
   const apiUrl = normalizeApiUrl(
     explicitApi || creds.api_url || DEFAULT_API_URL,
   );
-  // A credential file that FAILED to read (as opposed to being absent) took the
-  // recorded deployment down with it, so the target below is a guess — the
-  // built-in default — while an env API key still authenticates. Say which host
-  // is about to receive it; an operator pinned to a self-hosted backend would
-  // otherwise learn it from the access log.
-  if (readFailed && !explicitApi) {
-    writeLine(stderr, `warning: the recorded deployment was unreadable; using ${apiUrl}`);
+  // One plain sentence when a saved file exists but cannot be read: what broke,
+  // what the CLI is doing instead, and how to put it right. The endpoint is
+  // named because a failed read took the recorded deployment down with it — an
+  // operator pinned to a self-hosted backend would otherwise find out from the
+  // access log. Same two-line shape as a rendered error (fact, then Suggestion).
+  if (unreadable.length > 0) {
+    const files = unreadable.map((u) => `${u.file}: ${u.code}`).join(", ");
+    writeLine(
+      stderr,
+      `warning: cannot read your saved sign-in (${files}) — continuing signed out, against ${apiUrl}`,
+    );
+    writeLine(
+      stderr,
+      "  Suggestion: check the file's permissions, or run `agentsfleet login` to sign in again",
+    );
   }
   const ctx: CommandCtx = {
     apiUrl,

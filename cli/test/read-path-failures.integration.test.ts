@@ -246,11 +246,14 @@ describe("an unreadable state file warns and continues as logged out", () => {
         env: cliEnv(),
       });
       const warn = err.read();
-      expect(warn).toContain("warning: could not read credentials.json");
-      expect(warn).toContain("continuing as logged out");
-      // The recorded deployment died with the file, so the endpoint in use is
-      // the built-in default — named, not left to the access log.
-      expect(warn).toContain("the recorded deployment was unreadable; using");
+      // One plain sentence: what broke, what it is doing instead, how to fix.
+      expect(warn).toContain("cannot read your saved sign-in");
+      expect(warn).toContain("credentials.json:");
+      expect(warn).toContain("continuing signed out, against");
+      expect(warn).toContain("agentsfleet login");
+      // The errno, never the absolute path — that would carry the operator's
+      // home directory and username into any CI log.
+      expect(warn).not.toContain("/.config/agentsfleet");
       // The command then behaves exactly as logged out — refused by the
       // auth guard, not crashed by the unreadable file.
       expect(code).toBe(1);
@@ -278,9 +281,9 @@ describe("the workspaces arm reports its own file", () => {
         env: cliEnv(),
       });
       const warn = err.read();
-      expect(warn).toContain("warning: could not read workspaces.json");
-      expect(warn).not.toContain("could not read credentials.json");
-      expect(warn).toContain("continuing as logged out");
+      expect(warn).toContain("workspaces.json:");
+      expect(warn).not.toContain("credentials.json:");
+      expect(warn).toContain("cannot read your saved sign-in");
       expect(code).toBe(1);
     });
   });
