@@ -149,7 +149,7 @@ Two facts the diagram pins:
      │  OR replaced                            │  OR explicit DELETE                        replay
      ▼                                        ▼  OR replaced                                window)
 ┌─────────┐                       ┌───────────────────────┐
-│ expired │  (terminal)           │ aborted               │  (terminal)
+│ expired │                       │ aborted               │  (terminal)
 └─────────┘                       └───────────────────────┘
 ```
 

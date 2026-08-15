@@ -59,18 +59,18 @@ Each trap is enforced in its owner section; this list is the index.
 ## Topology
 
 ```
-        BEFORE (deleted)                            NOW (this doc + data_flow.md)
- ┌──────── ONE TRUST ZONE ─────────┐    ┌─ PLATFORM ──┐      ┌─ HOST (bare metal / Mac / pod) ─┐
- │ agentsfleetd serve ─┐  PG, Vault      │    │ agentsfleetd     │      │ agentsfleet-runner  (one binary)     │
- │                ▼                 │    │ control     │◀────▶│  parent loop: heartbeat,        │
- │ PG ◀─ 15 writes ─ agentsfleetd worker │    │ plane:      │HTTPS │  lease, report, activity        │
- │ Redis ◀─ XREADGROUP ─ worker     │    │ owns PG +   │ pull │  (boots from pre-minted agt_r)   │
- │                │ Unix-socket RPC │    │ Redis +     │ agt_r │    │ fork + sandbox per event    │
- │                ▼                 │    │ Vault API + │      │    ▼                            │
- │           sandbox sidecar        │    │ assignment  │      │  sandboxed child: NullClaw      │
- └──────────────────────────────────┘   └──────┬──────┘      └─────────────────────────────────┘
-                                          PG · Redis · Vault
-                                          (never leave the platform)
+ ┌─ PLATFORM ──┐      ┌─ HOST (bare metal / Mac / pod) ─┐
+ │ agentsfleetd│      │ agentsfleet-runner (one binary) │
+ │ control     │◀────▶│  parent loop: heartbeat,        │
+ │ plane:      │ HTTPS│  lease, report, activity        │
+ │ owns PG +   │ pull │  (boots from pre-minted agt_r)  │
+ │ Redis +     │agt_r │                                 │
+ │ Vault API + │      │    fork + sandbox per event     │
+ │ assignment  │      │             ▼                   │
+ └──────┬──────┘      │  sandboxed child: NullClaw      │
+        │             └─────────────────────────────────┘
+  PG · Redis · Vault
+  (never leave the platform)
 ```
 
 Deeper diagrams stay with their sections: the renewal timeline (§Per-lease renewal), the enrollment sequence (§Registering a runner), the two auth layers (§Datastore role model), one event's run (§Running one event), the memory carry-over (§Memory continuity), and the three signal routes (§Observability).
@@ -150,7 +150,7 @@ A renewal pushes the kill-deadline forward *only while the child is genuinely wo
      • else → extend lease_expires_at AND affinity.leased_until to
               min(now+LEASE_TTL_MS, created_at+MAX_RUNTIME_MS); bump last_seen_at
                                               │
-   ┌──────────────────────────────────────────┴───────────────────────────────┐
+   ┌────────────────────────────────────────────────────────────────────────────┐
    │ The tick on a live-but-quiet child IS the synthetic keepalive — a long     │
    │ model call with no progress frames still renews. A truly dead/dormant      │
    │ child emits nothing, is never renewed, and is reclaimed at the deadline.   │
@@ -343,11 +343,11 @@ Access to the runner-domain tables (`fleet.runners`, `fleet.runner_leases`, `fle
    caller (Clerk JWT, platform_admin=true)            runner (agt_r token, NO db creds)
         │  GET/POST /v1/fleet, /v1/runners                  │  POST /v1/runners/me/leases
         ▼                                                   ▼
-   ┌──────────────────────────────────────────────────────────────────┐
+   ┌─────────────────────────────────────────────────────────────────────────┐
    │ agentsfleetd                                                            │
-   │   Layer 1 — claim check: is caller platform_admin?  (admin routes) │
-   │   Layer 2 — writes fleet.* connecting to PG as api_runtime         │
-   └───────────────────────────────────┬────────────────────────────────┘
+   │   Layer 1 — claim check: is caller platform_admin?  (admin routes)      │
+   │   Layer 2 — writes fleet.* connecting to PG as api_runtime              │
+   └─────────────────────────────────────────────────────────────────────────┘
                                         ▼
             fleet.runners · fleet.runner_leases · fleet.runner_affinity
             GRANT SELECT, INSERT, UPDATE … TO api_runtime   (schema 021/022/023)
@@ -433,19 +433,19 @@ The sandboxed child holds **no** `agt_r` token, **no** control-plane URL, and **
 | `POST` | `/v1/runners/me/memory/{fleet_id}` | capture (child → parent → control plane) | the parent pushes the run's memory (`lease_id` + `fencing_token` in the body, like `report`, to fence the write); `agentsfleetd` persists it under `SET ROLE memory_runtime` (the same datastore role the tenant memory write uses) |
 
 ```
-        ┌──────────────── CONTROL PLANE (agentsfleetd) ─────────────────┐
-        │  Postgres · memory.memory_entries  ← ONLY durable store    │
-        │  written under SET ROLE memory_runtime (datastore role)    │
-        └──────────▲───────────────────────────────▲────────────────┘
+        ┌───────────────────────────────────────────────────────────────┐
+        │  Postgres · memory.memory_entries  ← ONLY durable store       │
+        │  written under SET ROLE memory_runtime (datastore role)       │
+        └───────────────────────────────────────────────────────────────┘
           GET /v1/runners/me/memory/{id}   POST /v1/runners/me/memory/{id}
           (hydrate prior memory)         (capture run memory)
           [agt_r + fencing]               [agt_r + fencing]
                    │                             │
-        ┌──────────┴─────────────────────────────┴────────────┐
+        ┌─────────────────────────────────────────────────────────────┐
         │  agentsfleet-runner PARENT (trusted) — holds the agt_r      │
-        └──────────┬─────────────────────────────▲────────────┘
+        └─────────────────────────────────────────────────────────────┘
             pipe ↓ prior memory (stdin)     pipe ↑ memory frame (stdout)
-        ╔══════════▼═════════════════════════════╧════════════╗  ← SANDBOX
+        ╔══════════════════════════════════════════════════════╗  ← SANDBOX
         ║  sandboxed child (NullClaw) — NO token, URL, or DSN  ║     BOUNDARY
         ║  in-run store = SQLite :memory:  (no disk file)      ║
         ║  fleet calls memory_recall() / memory_store()        ║
