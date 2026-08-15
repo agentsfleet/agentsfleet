@@ -24,7 +24,7 @@ Every row is extracted from the sections below; the owner column names the secti
 
 ## Traps
 
-§Notable invariants is the binding list; the index highlights:
+§"Notable invariants" is the binding list; the index highlights:
 
 - The runner ignores the tar's SKILL.md/TRIGGER.md copies — the fleet's live copy wins on every lease (§Runtime read path).
 - A `public` row with no bundle is invisible by query, not by migration — stale rows cannot lie to a tenant (§The publish gate).
@@ -120,10 +120,10 @@ Caps (`importer.zig`): **32 support files · 64 KiB per file · 256 KiB total.**
 
 ## Runtime read path
 
-At lease time (see [`data_flow.md` §C](./data_flow.md)):
+At lease time (see [`data_flow.md` §"C. EXECUTE"](./data_flow.md)):
 
 - **SKILL.md / TRIGGER.md** → from the **lease** (`instructions`/`policy`, resolved from `core.fleets` fresh per lease, so they reflect any PATCH). The runner **ignores** the SKILL.md/TRIGGER.md copies inside the tar.
-- **Support files** → the runner downloads the tar via `GET /v1/runners/me/bundles/{content_hash}` (daemon proxies `r2.get`; cached at `.bundle-cache/{hash}.tar`), and untars the support files into the per-lease sandbox workspace **before** the child forks. `SKILL.md` can then reference them (`review.sh`, playbooks, …).
+- **Support files** → the runner downloads the tar via `GET /v1/runners/me/bundles/{content_hash}` (daemon proxies `r2.get`; cached at `.bundle-cache/{hash}.tar`), and untars the support files into the per-lease sandbox workspace **before** the child forks. `SKILL.md` can then reference them — a review script, a playbook, whatever the bundle shipped.
 
 ## Update + sync
 

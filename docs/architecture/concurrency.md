@@ -1,7 +1,6 @@
 # Concurrency architecture — threads, channels, locks, shutdown
 
-Date: Jul 11, 2026
-Status: Canonical concurrency model for `agentsfleetd` (control plane) and
+Canonical concurrency model for `agentsfleetd` (control plane) and
 `agentsfleet-runner` (execution plane). This is the file the `name_architecture`
 dispatch consults before naming a thread, channel, or lock, or asserting a
 shutdown ordering. Sibling of [`data_flow.md`](./data_flow.md) (the same runtime
@@ -10,7 +9,7 @@ split). Channel and stream **names** are canonical in `data_flow.md`; this file
 owns the thread/lock/shutdown layer on top of them.
 
 The Allocator and concurrency rules `A1–A6` / `C1–C5` live in the Zig discipline
-façade (`dispatch/write_zig.md`); this doc is where the `C`-rules become the
+façade (`~/Projects/dotfiles/dispatch/write_zig.md`); this doc is where the `C`-rules become the
 system's concrete invariants, and it is the seed the discipline roster
 (`audits/zig-discipline-roster.txt`) expands against.
 
@@ -119,7 +118,7 @@ Rooted at `src/runner/main.zig`, isolated from datastore code (enforced by
 ## Channel inventory
 
 Cross-thread and cross-process channels, with SPSC roles and payload ownership.
-Redis stream/channel **names** are canonical in `data_flow.md` §"Two streams + one
+Redis stream/channel **names** are canonical in [`data_flow.md`](./data_flow.md) §"Two streams + one
 pub/sub channel"; the roles below are the concurrency view.
 
 | Channel | Kind | Producer → Consumer | Payload ownership |
@@ -236,7 +235,7 @@ The rules above are enforced in code across the folders listed in
 phrase (A5); outside, the same findings warn.
 
 **Adding the next folder is one line.** Append its path prefix to the roster, run
-`make lint`, fix what the check surfaces, and commit — no code change is needed
+`make lint-all`, fix what the check surfaces, and commit — no code change is needed
 for the scope to grow, because enforcement scope is data, not logic. Until a
 folder joins the roster, RULE NLR (touch-it-fix-it) owns cleanup of its
 individual files.

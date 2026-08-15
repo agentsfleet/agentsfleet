@@ -64,7 +64,7 @@ Full storage detail: [`../fleet_bundles.md`](../fleet_bundles.md).
 
 ## 2. Two layers: immutable Bundle vs live Fleet
 
-| | **Bundle** (`core.fleet_bundles` + R2 tar) | **Fleet** (`core.fleets`) |
+| | **Bundle** (`core.fleet_library` + R2 tar) | **Fleet** (`core.fleets`) |
 |---|---|---|
 | Mutability | immutable, content-addressed | live — `SKILL.md`/`TRIGGER.md` editable via `PATCH` |
 | Runtime role | source of **support files** | source of **SKILL.md/TRIGGER.md** (rides every lease) |
