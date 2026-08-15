@@ -13,7 +13,7 @@ test("--help lists the fleet subcommand group", async () => {
   const code = await runCli(["--help"], {
     stdout: out.stream,
     stderr: err.stream,
-    env: { NO_COLOR: "1" },
+    env: { NO_COLOR: "1", ...stateDirEnv() },
   });
   assert.equal(code, 0);
   const text = out.read();
@@ -33,7 +33,7 @@ test("--help lists the workspace group; its subcommands appear under `workspace 
   const topCode = await runCli(["--help"], {
     stdout: top.stream,
     stderr: bufferStream().stream,
-    env: { NO_COLOR: "1" },
+    env: { NO_COLOR: "1", ...stateDirEnv() },
   });
   assert.equal(topCode, 0);
   assert.ok(top.read().includes("workspace"), "workspace group missing from top-level help");
@@ -43,7 +43,7 @@ test("--help lists the workspace group; its subcommands appear under `workspace 
   const subCode = await runCli(["workspace", "--help"], {
     stdout: sub.stream,
     stderr: bufferStream().stream,
-    env: { NO_COLOR: "1" },
+    env: { NO_COLOR: "1", ...stateDirEnv() },
   });
   assert.equal(subCode, 0);
   const text = sub.read();
@@ -54,12 +54,12 @@ test("--help lists the workspace group; its subcommands appear under `workspace 
 
 test("--help lists the memory group; its read verbs appear under `memory --help`", async () => {
   const top = bufferStream();
-  const topCode = await runCli(["--help"], { stdout: top.stream, stderr: bufferStream().stream, env: { NO_COLOR: "1" } });
+  const topCode = await runCli(["--help"], { stdout: top.stream, stderr: bufferStream().stream, env: { NO_COLOR: "1", ...stateDirEnv() } });
   assert.equal(topCode, 0);
   assert.ok(top.read().includes("memory"), "memory group missing from top-level help");
 
   const sub = bufferStream();
-  const subCode = await runCli(["memory", "--help"], { stdout: sub.stream, stderr: bufferStream().stream, env: { NO_COLOR: "1" } });
+  const subCode = await runCli(["memory", "--help"], { stdout: sub.stream, stderr: bufferStream().stream, env: { NO_COLOR: "1", ...stateDirEnv() } });
   assert.equal(subCode, 0);
   const text = sub.read();
   assert.ok(text.includes("list"), "memory list subcommand row missing");

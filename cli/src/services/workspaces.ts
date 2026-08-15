@@ -8,6 +8,7 @@
 
 import { Effect, Layer, Context } from "effect";
 import {
+  STATE_STORE_SUGGESTION,
   loadWorkspaces as loadWorkspacesRaw,
   saveWorkspaces as saveWorkspacesRaw,
   type Workspaces as WorkspacesRecord,
@@ -35,7 +36,7 @@ const unexpected =
   (cause: unknown): UnexpectedError =>
     new UnexpectedError({
       detail: `workspaces ${op} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-      suggestion: "check the CLI config directory permissions and disk space",
+      suggestion: STATE_STORE_SUGGESTION,
     });
 
 // A factory for the same reason as credentialsLayer: the composition root

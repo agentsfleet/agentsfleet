@@ -27,18 +27,14 @@ if (process.env.AGENTSFLEET_TELEMETRY_DISABLED === undefined) {
   process.env.AGENTSFLEET_TELEMETRY_DISABLED = "1";
 }
 
-// Credentials resolve through `resolveStatePaths()` (src/lib/state.ts), which
-// reads `process.env.AGENTSFLEET_STATE_DIR` directly — NOT the `env` handed to
-// `runCli`, because `loadCredentials()` runs before that env is consulted. With
-// the var unset it falls back to `~/.config/agentsfleet`, so an in-process
-// "auth required" assertion held only while whoever ran the suite happened to
-// be logged out; on a machine with a real login it failed with the operator's
-// own workspace id in the diff. Continuous Integration (CI) has no such
-// directory, so it passed throughout and never flagged this.
-//
-// Default the runner to an empty state dir so logged-out is the baseline. A
-// test wanting stored state sets its own (see `makeStubbedStateDir`), and an
-// already-exported value is left alone.
+// The store resolves from the environment `runCli` is handed (an injected
+// `io.env` reaches it; see src/lib/state.ts). This process-env default exists
+// for the fixtures that still seed state THROUGH the process environment —
+// `withFreshStateDir` / `withAuthedStateDir` swap it per case and tests bridge
+// it into `io.env` via `stateDirEnv()` — so with nothing set, logged-out
+// against an empty directory is the baseline instead of whatever real login
+// sits in `~/.config/agentsfleet`. A test wanting stored state sets its own
+// (see `makeStubbedStateDir`), and an already-exported value is left alone.
 //
 // The spawned-CLI acceptance specs do NOT inherit this — they compose a clean
 // child env via `composeEnv`, so they inject the same knob directly.

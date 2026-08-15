@@ -9,6 +9,7 @@
 
 import { Effect, Layer, Option, Redacted, Context } from "effect";
 import {
+  STATE_STORE_SUGGESTION,
   loadCredentials as loadCredsRaw,
   saveCredentials as saveCredsRaw,
   clearCredentials as clearCredsRaw,
@@ -60,7 +61,7 @@ const unexpected = (op: string) =>
   (cause: unknown): UnexpectedError =>
     new UnexpectedError({
       detail: `credentials ${op} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-      suggestion: "check the CLI config directory permissions and disk space",
+      suggestion: STATE_STORE_SUGGESTION,
     });
 
 const loadRecord = (
