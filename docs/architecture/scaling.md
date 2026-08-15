@@ -2,6 +2,7 @@
 
 > Parent: [`README.md`](./README.md) · Companions: [`data_flow.md`](./data_flow.md) §"Connection topology", [`runner_fleet.md`](./runner_fleet.md) §"Scaling".
 >
+> [!IMPORTANT]
 > **Scope:** this file sizes the runtime as it runs now — after the M80_002 cutover. The cutover **deleted the per-fleet dedicated Redis connection** (the worker's blocking `XREADGROUP` loop), which was the pre-cutover binding constraint. The binding constraint moved; the math below reflects the new shape.
 
 Read this when you need to size a deployment, pick env-var values, or decide whether the next bottleneck is `agentsfleetd` API replicas, Postgres, the Upstash plan, or runner fan-out.

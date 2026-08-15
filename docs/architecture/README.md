@@ -1,5 +1,6 @@
 # Architecture — v2 Operational Outcome Runner
 
+> [!TIP]
 > **Trying to USE agentsfleet?** This directory is the contributor-facing architecture set. If you want to install a Fleet on your own infra, go to **[docs.agentsfleet.net](https://docs.agentsfleet.net)** instead — that surface walks you through `agentsfleet install` end-to-end and never asks you to read a system-topology file. Stay here only if you are contributing to the runtime, the Command-Line Interface (CLI), the dashboard, or the Software Development Kit (SDK) packages.
 
 Canonical reference for the v2 problem, thesis, runtime model, Fleet / runner interaction, capabilities, and context lifecycle. All v2 specs in `docs/v2/` are grounded in the topic files in this directory.
@@ -77,6 +78,7 @@ Read in this order if you've never seen the project:
 3. [`scenarios/github-pr-reviewer.md`](./scenarios/github-pr-reviewer.md) — install `github-pr-reviewer` and watch it review a Pull Request.
 4. [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md) — trace a failed deployment from evidence to a human-reviewed fix.
 
+> [!IMPORTANT]
 > `user_flow.md` and `scenarios/` are **contributor-canonical** — cited by `§`-anchor in active and shipped spec acceptance criteria and in sibling arch docs. They are *not* user-facing docs to relocate to docs.agentsfleet.net (which carries its own independent user coverage). Before "moving user-facing docs," `git grep` the spec corpus for the file/anchor references first.
 
 After that, dip into whichever of these matches the change you're making:
@@ -103,6 +105,18 @@ After that, dip into whichever of these matches the change you're making:
 | 🔐 [`../AUTH.md`](../AUTH.md) | The principal model (CLI `afc_` credential, UI, tenant api key, and the `agt_r` runner machine principal), the bearer-routing middleware, and the per-flow detail. The canonical reference any time auth is in scope. |>>>>>>> origin/main
 
 ---
+
+## What makes this set joyful to read
+
+The criteria every page here aims for, so the next edit keeps them:
+
+1. **Answer first.** A Facts table or a "read this when" line opens the page; the reasoning follows it, never the other way around.
+2. **Questions are the index.** You arrive with a symptom or a question, not a topic — the index table above maps each one to a single section.
+3. **One fact, one home.** A fact lives on the page that owns it; every other mention is a pointer. Nothing to reconcile, nothing to drift.
+4. **Pictures where structure beats prose.** Topology gets a drawn box diagram; flows get a sequence; comparisons get a table; reasoning stays prose.
+5. **Color that means something.** Blue notes, purple must-knows, and green tips via GitHub callouts; brand logos where a product is named; concept emoji in the tables above. Never inside headings — specs cite heading text verbatim.
+6. **Short sentences, plain words.** One idea per sentence; the set averages under fifteen words each.
+7. **Errors tell you what to do.** A failure is a code, its cause, and the exact fix command — with a link into [docs.agentsfleet.net](https://docs.agentsfleet.net) when the user-facing page carries more.
 
 ## Decision records (Claude artifacts)
 
