@@ -16,6 +16,8 @@
 
 import fs from "node:fs/promises";
 
+import { CLI_CREDENTIAL_PATTERN } from "../../../src/constants/cli-credential.ts";
+
 // `credentials.json` is the on-disk auth record `Credentials.saveAccessToken`
 // writes; the device-flow + direct-token + piped-stdin paths all funnel
 // through it. Mirrors the filename `lifecycle-after-login.spec.ts` reads.
@@ -25,10 +27,6 @@ export const CREDENTIALS_FILENAME = "credentials.json";
 // asserts this; the negative-path spec reuses the constant to prove the
 // direct-token / piped-stdin writes carry the same posture.
 export const CREDENTIALS_MODE = 0o600;
-
-// A persisted JWT is a 3-segment string. The negative-path spec asserts
-// the recovered token shape after each non-interactive login path.
-export const JWT_SEGMENTS = 3;
 
 // `logout` clears credentials by overwriting the record with a null token
 // (it does NOT unlink the file — see `clearCredentials` in src/lib/state.ts).
@@ -73,7 +71,7 @@ export async function credentialHasToken(credentialsPath: string): Promise<boole
   return typeof record?.token === "string" && record.token.length > 0;
 }
 
-// Asserts the on-disk credential carries a 3-segment JWT and 0600 mode.
+// Asserts the on-disk credential carries the durable CLI shape and 0600 mode.
 // Throws (not returns) on any violation so callers can `await` it directly
 // inside a test body. Returns the parsed token for follow-on assertions.
 export async function assertPersistedCredential(
@@ -90,8 +88,8 @@ export async function assertPersistedCredential(
   if (!record || typeof record.token !== "string") {
     throw new Error(`credentials.json missing a string token: ${JSON.stringify(record)}`);
   }
-  if (record.token.split(".").length !== JWT_SEGMENTS) {
-    throw new Error(`persisted token is not a 3-segment JWT: ${record.token}`);
+  if (!CLI_CREDENTIAL_PATTERN.test(record.token)) {
+    throw new Error("persisted token is not a CLI credential");
   }
   return record.token;
 }

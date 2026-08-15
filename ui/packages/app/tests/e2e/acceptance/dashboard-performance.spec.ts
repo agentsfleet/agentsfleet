@@ -137,14 +137,19 @@ test.describe("authenticated dashboard fluidity", () => {
         });
       });
       const scriptRequests: string[] = [];
+      let applicationOrigin = "";
       page.on("request", (request) => {
-        if (request.resourceType() === "script") {
+        if (
+          request.resourceType() === "script" &&
+          new URL(request.url()).origin === applicationOrigin
+        ) {
           scriptRequests.push(request.url());
         }
       });
 
       await signInAs(page, FIXTURE_KEY.operator);
       await page.goto("/admin/fleet-libraries");
+      applicationOrigin = new URL(page.url()).origin;
       // Gate on content only the LOADED view carries — the route's loading
       // skeleton renders the same h1, and waiting for network silence is
       // unreachable here (the Clerk testing proxy holds retried FAPI

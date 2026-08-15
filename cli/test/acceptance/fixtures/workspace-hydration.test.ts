@@ -11,13 +11,16 @@ const TENANT_ID = "tenant_fixture";
 const WORKSPACE_ID = "workspace_fixture";
 const WORKSPACE_NAME = "Fixture workspace";
 const CREATED_AT = 1_785_172_000_000;
+const CLI_CREDENTIAL_ID = "01989abc-def0-7123-8abc-def012345678";
+const CLI_CREDENTIAL = `afc_${"a".repeat(64)}`;
 
 let originalFetch: typeof globalThis.fetch;
 let stateDir = "";
 
-function installResponse(body: unknown): void {
+function installResponses(...bodies: ReadonlyArray<unknown>): void {
+  let index = 0;
   globalThis.fetch = Object.assign(
-    async (): Promise<Response> => Response.json(body),
+    async (): Promise<Response> => Response.json(bodies[index++] ?? {}),
     { preconnect: originalFetch.preconnect },
   );
 }
@@ -34,14 +37,17 @@ afterEach(async () => {
 
 describe("workspace fixture hydration", () => {
   it("persists tenant identity with the normalized workspace list", async () => {
-    installResponse({
-      tenant_id: TENANT_ID,
-      items: [{
-        workspace_id: WORKSPACE_ID,
-        name: WORKSPACE_NAME,
-        created_at: CREATED_AT,
-      }],
-    });
+    installResponses(
+      {
+        tenant_id: TENANT_ID,
+        items: [{
+          workspace_id: WORKSPACE_ID,
+          name: WORKSPACE_NAME,
+          created_at: CREATED_AT,
+        }],
+      },
+      { id: CLI_CREDENTIAL_ID, credential: CLI_CREDENTIAL },
+    );
 
     await hydrateWorkspacesForToken({
       apiUrl: API_URL,
@@ -54,10 +60,16 @@ describe("workspace fixture hydration", () => {
     ) as Record<string, unknown>;
     expect(persisted.tenant_id).toBe(TENANT_ID);
     expect(persisted.current_workspace_id).toBe(WORKSPACE_ID);
+
+    const credentials = JSON.parse(
+      await fs.readFile(path.join(stateDir, "credentials.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(credentials.token).toBe(CLI_CREDENTIAL);
+    expect(credentials.credential_id).toBe(CLI_CREDENTIAL_ID);
   });
 
   it("refuses a workspace response without tenant identity", async () => {
-    installResponse({
+    installResponses({
       items: [{ workspace_id: WORKSPACE_ID, name: WORKSPACE_NAME }],
     });
 
