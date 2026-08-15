@@ -16,12 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M163
 **Workstream:** 001
 **Date:** Aug 12, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — a Command-Line Interface (CLI) user can save a credential naming a provider the runner cannot dial; the save reports success and the failure surfaces later as a fleet that cannot reach any inference host
 **Categories:** CLI, DOCS
 **Batch:** B1 — §3 is independent of §1/§2 and may land in either order within the same branch
 **Branch:** feat/m163-closed-provider-flag
 **Test Baseline:** unit=3743 integration=630
+**Test Delta (VERIFY):** the Zig depth gate reads `unit=3907 integration=638`, but that **+164 unit / +8 integration is M164's, arriving through the `origin/main` merge** — this diff contains zero Zig (`git diff --name-only origin/main...HEAD | grep '\.zig$'` is empty). This diff's own growth is the Bun `cli` suite: **1471 → 1495, +24** (the closed catalogue and its anchored fixture parity, the typed-form `--provider` requirement, the CLI-engine refusal, `parseEnumOption`'s refusal option and its shadow-drop, the api-key trim, the usage-per-shape pin, the injected-env divergence proof, the unreadable-store warning on both arms, and `cliEnv()`'s own guard).
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-opus-5[1m], Aug 12, 2026), verified against source on `main` @ `b941fabf6`; amended and re-verified at PLAN (claude-fable-5, Aug 14, 2026) — every cited path, line, and lane membership re-checked in the worktree
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` §9 — Provider routing
@@ -84,6 +85,24 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | ~24 further `cli/test/**` files | EDIT | Mechanical, one shape: direct store calls gain `process.env` as the env argument, and `runCli` env literals gain `...stateDirEnv()` so the injected environment points at the directory the fixture seeded. Repo `tsc --noEmit` covers `test/`, so `make lint-*` enumerates every site — none can be missed silently |
 | `cli/test/auth-guard.test.ts` | EDIT | `guardCommand`'s three refusal arms become direct contract tests (errorCode + commanderCode + message). Its DEPLOYMENT_UNKNOWN arm had only incidental coverage through command suites; the env conversion rerouted that path and the 100% line floor caught the gap (`auth-guard.ts:103-106`) |
 | `playbooks/lib/runner/runner_test.sh` | EDIT | Indy-acked fold-in at VERIFY: the harness leaked the ambient `AGENTSFLEET_API_URL` into the prod-selection case, so `make check-playbooks` was red on every developer shell (and on `main`); `run_script` now sanitises it — the harness supplies every input a case needs |
+
+**Amended at REVIEW — the second review round's additions** (each traceable to a finding in the Review-findings section):
+
+| File | Action | Why |
+|------|--------|-----|
+| `cli/src/constants/providers.ts` | EDIT | The catalogue regenerated from `classifyProvider`'s three blocks (116 ids), plus `CLI_ENGINE_PROVIDERS`, its refusal reason, and the help examples |
+| `cli/src/commands/fleet_secret_body.ts` | EDIT | The typed form requires `--provider`; `--api-key` trims like its siblings; one usage string per shape, each rejection carrying its own suggestion |
+| `cli/src/commands/types.ts` | EDIT | `CommandCtx.env` becomes required — an optional field with a process-environment default was the hop that dropped an injected environment |
+| `cli/src/runtime/main-layer.ts` | EDIT | Same, for `MainLayerInput.env`; the header stops describing a `MainLayer` export that no longer exists (RULE NLR) |
+| `cli/src/lib/run-effect.ts` | EDIT | The one layer-less test convenience states `process.env` explicitly rather than defaulting inside the layer |
+| `cli/src/lib/state-load.ts` | CREATE | The entry point's state read, extracted because the unreadable-file reporting pushed `cli.ts` over the 350-line cap. Records which files failed and their errno; the caller reports once, after it knows which endpoint it settled on |
+| `cli/scripts/gen-provider-fixture.ts` | CREATE | Regenerates the provider fixture from vendored source, so a NullClaw bump is mechanical rather than a hand edit |
+| `cli/test/fixtures/nullclaw-providers.json` | CREATE | The committed extraction. `zig-pkg/` is gitignored and absent from the Bun-only CI lane, so reading it directly made the parity tests pass locally and fail everywhere else |
+| `cli/test/providers-parity.unit.test.ts` | CREATE | Catalogue-vs-fixture and fixture-vs-`build.zig.zon` pin (hermetic, runs everywhere); fixture-vs-live-source drift check where `zig-pkg/` exists |
+| `cli/test/injected-env.integration.test.ts` | CREATE | The positive arm of the injected-environment seam, proven by divergence |
+| `cli/test/read-path-failures.integration.test.ts` | EDIT | Both arms of the unreadable-store warning — credentials and workspaces — and the endpoint it names |
+| `cli/test/cli-linecov.unit.test.ts` | EDIT | Four sites passing a bare env literal resolved the store to the operator's real config directory; routed through `cliEnv()` |
+| `cli/README.md` | EDIT | The typed `--provider` rows, the pairing requirement, and a note that an inline `--api-key` is an argv token |
 
 **Spec bookkeeping carried by this branch** (no source change; listed so rubric R5 grades a complete diff):
 
@@ -242,11 +261,11 @@ process.env argument (unchanged behaviour for its Effect consumers).
 | R2 | The generic `--data` escape hatch is untouched (§2) | `grep -c 'FLAG_PROVIDER.*parseEnumOption' cli/src/program/cli-tree-fleet.ts` | exactly `2` — the two `--provider` sites; `FLAG_DATA_JSON` never pairs with a parser | P1 | ✅ exactly `2` |
 | R3 | The state modules never read the process environment (§3, Invariant 3) | `grep -c 'process\.env' cli/src/lib/state.ts cli/src/lib/config-dir.ts` | both lines end `:0` | P0 | ✅ both files `:0` |
 | R4 | The public flag change has a documentation branch | `git -C ~/Projects/docs diff --name-only main...HEAD` | at least 1 path, covering the page documenting `secret create --provider` | P0 | ✅ branch `chore/m163-closed-provider-flag-changelog` (pushed): `fleets/model-providers.mdx` (new how-to), `cli/agentsfleet.mdx` (typed-form row), `docs.json` (nav), `changelog.mdx` (`<Update>`). `python3 scripts/check-documentation.py .` → `Documentation check passed` |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 49 paths, 0 missing from the tables |
-| R6 | The environment-key literal has one src declaration site (§3, Dimension 3.4) | `grep -rn 'AGENTSFLEET_STATE_DIR' cli/src/ \| grep -v 'lib/config-dir.ts'` | no output | P0 | ✅ no output |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ composite from solo clean runs: three Zig unit lanes + `test-coverage-all` exit 0 (zig merged 88.30% ≥ 83%; app 2249; website 173; cli 501 with the 100% line floor PASS). First attempt failed only on the floor — `auth-guard.ts:103-106`, fixed by the guardCommand contract tests |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `make lint-all` fully green after the Indy-acked fold-in: `run_script` in `runner_test.sh` sanitises the ambient `AGENTSFLEET_API_URL` (the red was pre-existing on `main`, green in CI, red on any dev shell) |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ exit 0 from clean state, run solo (tier 3); two earlier reds (10, then a different 9) were cross-suite pollution from concurrently driven datastores — failure sets shifted between runs and vanished solo |
+| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 62 paths, 0 missing — the tables were amended twice more (EXECUTE, then REVIEW) as the blast radius grew; the `~24 further cli/test/**` row covers the mechanical `cliEnv()` sweep |
+| R6 | The environment-key literal has one src declaration site (§3, Dimension 3.4) | `grep -rn 'AGENTSFLEET_STATE_DIR' cli/src/ \| grep -v 'lib/config-dir.ts'` | no output | P0 | ✅ no output on the final commit; now also suite-enforced by a `Bun.Glob` walk over all of `cli/src/` rather than a hand-run grep |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `EXIT=0` on the final post-review commit, run solo. agentsfleetd 2318 pass/297 skip/**0 fail**; runner 517/7 skip; Zig integration under kcov **906 passed, 7 skipped, 0 failed**; merged Zig line coverage **90.26% ≥ 89%** (28799/31907, 565 files); `enforce-coverage: floor line=100.00% → actual line=100.00% → PASS`; cli suite **1495 pass / 0 fail** |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `All lint checks passed` on the final commit, including the hermetic `env -i` runner harness (17/17 with a hostile `AGENTSFLEET_API_URL` exported) |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ `EXIT=0`, run solo from clean, twice. Corroborated by the coverage lane executing the same binary: **906 passed; 7 skipped; 0 failed**. ⚠️ Open anomaly, reproducible in both runs: the non-TTY log carries a Zig-toolchain `failed command:` line (not ours — zero hits in `make/`, `scripts/`, `build.zig`) on a run that exits 0 and reaches make's success gate, alongside a truncated progress line (`run test agentsfleetd-integration-tests w`). Unexplained; recorded rather than dismissed |
 | S4 | End-to-end walks the user path | `make cli-acceptance` | exit 0. Runs the deterministic lane then the live lane; this milestone's new case is in the deterministic half, so a failure there is this diff's and a live-lane failure is not | P0 | ✅ deterministic 95/95 (owns this diff's case) · ⚠️ live lane skipped per environment constraint (AGENTSFLEET_ACCEPTANCE_TARGET unset locally; runs in CI cli-acceptance-{dev,prod}) |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` (170.43 MB scanned) |
 | S8 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v -E '\.md$\|^vendor/\|_test\.\|\.test\.\|\.spec\.\|/tests?/' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output — *(amended at VERIFY: the authored row omitted the canonical test-file exclusion from `VERIFY_TIERS.md` §Hygiene; spec follows the rule)* | P0 | ✅ no output under the canonical command |
@@ -289,6 +308,24 @@ Three CRITICAL findings landed against the implementation and were verified agai
 | C1 | Omitting `--provider` bypasses the catalogue entirely — `--api-key k --model m` composes `provider: ""`, stored as a `provider_key` that can never dial | **CONFIRMED** from source at `fleet_secret_body.ts:83-113`; none of the four pairing rules rejected the empty string | Dimension 2.5, red-green proven on both verbs |
 | C2 | The parity regex sweeps all of `factory.zig`, so 11 `provider_holder_cases` test-vector names enter the public catalogue | **REFUTED as live, CONFIRMED as latent.** Set arithmetic shows every one of the 11 fixture names is also a `core_providers` key — no junk reached the catalogue. The unanchored extraction is still wrong: the next upstream negative fixture (`.name = "unknown-provider"`) would widen a public flag, and the `> 100` assertion was pinned to the accidental 109 rather than the real 98 | Dimension 1.4, anchored per-block extraction at pinned sizes |
 | C3 | The catalogue rejects names the runtime dials — `google`, `azure`, `mimo`, `vertex-ai` and 8 more, all working on `main` | **CONFIRMED.** The regex cannot see `core_providers` map keys or `canonicalProviderName` alias arms; only 98 of the union's 120 names are `.name =` fields | §1 implementation default amended; catalogue is the three-block union |
+
+### Second pass (gstack `/review`, Aug 15) — 4 specialists + adversarial, 29 findings
+
+The first pass reviewed the pre-fix state; the catalogue rewrite, the anchored
+extraction, the four hardenings and the `cliEnv()` sweep had never been reviewed
+by anything but the author. Two findings were ship-blockers.
+
+| # | Finding | Verdict | Landed as |
+|---|---|---|---|
+| B1 | The parity test read its source of truth from `zig-pkg/`, which is gitignored and produced by no step the Bun-only CI lane runs | **CONFIRMED** — `git ls-files zig-pkg` = 0, `.gitignore:6`; the `test-unit-cli` job is checkout + `bun install` + `bun run test`. Five of seven tests would fail on push, taking the suite and its coverage floor | Committed fixture + a `build.zig.zon` pin assertion, so the guarantee holds with no Zig toolchain; live-source drift check still runs where `zig-pkg/` exists. Proven by removing `zig-pkg/` (9 pass) and by falsifying the pin (fails) |
+| B2 | The fixture introduced for B1 was **untracked**, and imported — `Cannot find module`, killing the whole lane | **CONFIRMED**, self-inflicted while fixing B1 | `git add`; plus `cli/scripts/gen-provider-fixture.ts`, which reproduces the committed bytes exactly so a bump is mechanical |
+| B3 | `--api-key` was the one typed flag without `.trim()`: a whitespace-only key passed the non-empty gate and stored blank — reported stored, never able to authenticate | **CONFIRMED** | Trimmed like its three siblings and like `resolveApiKeyFromEnv`; red-green proven both ways |
+| B4 | One usage string served both shapes of the typed form, so a named-provider error recommended the custom-endpoint line, whose only outcome is the next error | **CONFIRMED** | Split per shape; a rejection carries its own suggestion rather than the renderer printing a usage twice |
+| B5 | A test passed a bare `{ NO_COLOR }` env at four sites, resolving the store to the operator's real config directory | **CONFIRMED** — the class `cliEnv()` exists to close, missed because that file never used `stateDirEnv()` | Routed through `cliEnv()` |
+
+**Reversed on review:** the wiring-time overlap check was authored as a throw. These parsers are built at module scope, so a catalogue-data bug would have stopped `--help`, `--version` and `logout` for a user who never touches the flag. It now drops the unfirable refusal; the parity test is what asserts disjointness.
+
+**Not fixed, recorded:** `--api-key` has no stdin form (a feature, annotated in the README instead); `--data` still stores CLI-engine providers the flag refuses (Out of Scope — the generic blob); `custom:` / `anthropic-custom:` prefixes are dialable but rejected, so the mirror claim is narrower than stated; `mkdir` 0o700 covers the parent chain and skips an existing directory; an unparseable state file still warns nothing; telemetry still resolves its directory from `process.env`.
 
 Informational findings also landed: the `main-layer.ts` header documented a `MainLayer` export that does not exist (RULE NLR, fixed in the same diff), and Invariant 3's "suite-enforced" claim was only a three-file check, now a `Bun.Glob` walk over all of `cli/src/`.
 
