@@ -117,9 +117,8 @@ export async function mintCliCredential(
 }
 
 export async function revokeHydratedCliCredentials(apiUrl: string): Promise<void> {
-  const credentials = [...liveCredentials.values()];
-  liveCredentials.clear();
-  await Promise.all(credentials.map(async (minted) => {
+  const credentials = [...liveCredentials.entries()];
+  await Promise.all(credentials.map(async ([machineName, minted]) => {
     const response = await fetch(
       `${apiUrl}${CLI_CREDENTIALS_PATH}/${encodeURIComponent(minted.id)}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${minted.credential}` } },
@@ -133,6 +132,9 @@ export async function revokeHydratedCliCredentials(apiUrl: string): Promise<void
     ) {
       const detail = await response.text().catch(() => "");
       throw new Error(`CLI credential revoke ${response.status}: ${detail.slice(0, 200)}`);
+    }
+    if (liveCredentials.get(machineName)?.id === minted.id) {
+      liveCredentials.delete(machineName);
     }
   }));
 }

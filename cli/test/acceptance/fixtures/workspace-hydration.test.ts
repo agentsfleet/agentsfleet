@@ -3,7 +3,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { hydrateWorkspacesForToken } from "./workspace-hydration.ts";
+import {
+  hydrateWorkspacesForToken,
+  mintCliCredential,
+  revokeHydratedCliCredentials,
+} from "./workspace-hydration.ts";
 
 const API_URL = "https://api.test";
 const SESSION_TOKEN = "fixture-session-token";
@@ -31,6 +35,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await revokeHydratedCliCredentials(API_URL);
   globalThis.fetch = originalFetch;
   await fs.rm(stateDir, { recursive: true, force: true });
 });
@@ -78,5 +83,29 @@ describe("workspace fixture hydration", () => {
       token: SESSION_TOKEN,
       stateDir,
     })).rejects.toThrow("response missing tenant_id");
+  });
+
+  it("retains a credential for retry when revocation fails", async () => {
+    let revokeAttempts = 0;
+    globalThis.fetch = Object.assign(
+      async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        if (init?.method === "POST") {
+          return Response.json({ id: CLI_CREDENTIAL_ID, credential: CLI_CREDENTIAL });
+        }
+        revokeAttempts += 1;
+        return revokeAttempts === 1
+          ? new Response("temporary failure", { status: 503 })
+          : new Response(null, { status: 204 });
+      },
+      { preconnect: originalFetch.preconnect },
+    );
+
+    await mintCliCredential(API_URL, SESSION_TOKEN, "acceptance-retry");
+    await expect(revokeHydratedCliCredentials(API_URL)).rejects.toThrow(
+      "CLI credential revoke 503: temporary failure",
+    );
+    await revokeHydratedCliCredentials(API_URL);
+
+    expect(revokeAttempts).toBe(2);
   });
 });
