@@ -280,6 +280,41 @@ Regression rows: the guards already on this branch must keep firing — `test_ze
 - **Alternatives considered:** (a) drop the merged floor to a passing value and land #601 with no per-folder signal — rejected, it leaves 22 points of daemon shortfall masked by the average and no way to see it; (b) per-file floors with a trend database — rejected as larger than the evidence supports, and named here rather than silently mud-patched toward.
 - **Patch-vs-refactor verdict:** this is a **patch** because the checker's structure, union, and normalisation are correct — the filter is too narrow and the grading too coarse. A refactor would touch the parts that work.
 
+## Parked
+
+Parked on Indy's direction after the coverage instrument was repaired and the
+Pull Request (PR) went green — *"I prefer A"*, choosing the park over finishing
+the remaining sections on this branch (2026-08-15). The spec stays in `active/`
+because it is genuinely unfinished: **3 of 18 Dimensions have landed.** It is not
+awaiting a clerical move to `done/`.
+
+**What shipped.** The instrument, not the floors. Dimensions 2.3, 2.4 and 2.5:
+the union grades what actually collected, states `measured over N of M
+components` and names every component that captured nothing, and fails when a
+required component contributes zero. Underneath it, the defect that made all of
+this necessary — Zig 0.16's self-hosted backend emitting debug info libdw
+rejects — is fixed at source, so Linux measures the whole codebase for the first
+time. `ZIG_COVERAGE_REQUIRED_COMPONENTS` names all eight, so the six components
+that were silently dark cannot go dark again without the gate saying so.
+
+**What did not ship, and what each one leaves broken:**
+
+| Section | Dimensions | What remains broken |
+|---|---|---|
+| §1 denominator holds product only | 1.1, 1.2, 1.3 | 788 lines of test harness across 17 files still count as product in the daemon lane. The gate is still satisfiable by writing more harness. |
+| §2 shrinking component caught | 2.1, 2.2 | A component contributing a handful of lines still passes; only literal zero fails. No assertion that every product root is present. |
+| §3 floors bind per folder | 3.1–3.5 | The section this spec is named after. One merged floor still averages `agentsfleetd/` and `runner/` together, so no floor can bind the daemon. |
+| §4 lanes rise file by file | 4.1–4.4 | The coverage lifts themselves. Folded in on Indy's direction (quote in Discovery); unstarted. |
+| §5 architecture doc | 5.1 PARTIAL | §Coverage records the eight-component set and the union; the per-folder floors and the ratchet rule are unwritten because §3 has not landed. |
+
+**For whoever resumes.** §1, §2.1/2.2, §3 and §5 are one file plus its test file
+(`scripts/check_zig_coverage.py`, `scripts/check_zig_coverage_test.py`) — bounded
+and self-contained. §4 is a different animal: open-ended test-writing whose size
+depends on measured dark lines, and Indy folded it in by direction, so splitting
+or dropping it is his call. The per-folder floors this spec cites (67.48% daemon,
+90.10% runner) are macOS measurements taken before the repair; re-measure on
+Linux before seeding any floor from them.
+
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
@@ -296,8 +331,10 @@ Regression rows: the guards already on this branch must keep firing — `test_ze
 
 - **Consequences for this spec:**
   - §2 Dimension 2.2 and §3's `agentsfleetd/` floors are unblocked — the daemon tree is measurable on Linux again. Neither is implemented yet.
-  - `ZIG_COVERAGE_REQUIRED_COMPONENTS` stays at `runner lib` until a green run shows the rest collecting, then ratchets in that commit.
+  - `ZIG_COVERAGE_REQUIRED_COMPONENTS` **ratcheted to all eight on Linux**, in the commit the evidence arrived: job 94963891177 published `measured over 8 of 8 components — every component collected`, each carrying lines (agentsfleetd 26392, integration 23104, runner 4588, runner_integration 4136, deadline 307, lib 594, logging 276, s3 28). The flicker at the edge of the set is gone because its cause is gone.
+  - **The first honest whole-codebase figure Linux has produced: 89.63%, 29089/32456 lines across 565 files.** The 91.86% it published before was 89 files — a flattering subset. The number fell because the denominator grew sixfold, not because coverage regressed.
   - §4's daemon coverage lifts become provable in CI, not macOS-only.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
+  > Indy (2026-08-15): "I prefer A, and start a new session" — context: chooses the park over finishing §1, §2.1/2.2, §3, §4 and §5 on this branch. Offered against B (finish everything, including §4's open-ended lifts) and C (finish the gate logic, reassess §4). The spec stays in `active/`; §Parked records what each unshipped section leaves broken.

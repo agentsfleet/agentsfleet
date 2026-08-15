@@ -42,8 +42,16 @@ ZIG_COVERAGE_MIN_LINES ?= 89
 # libdw refuses. Test binaries now compile through LLVM, which fixes it at the
 # source (docs/architecture/testing.md §Coverage). The list ratchets on evidence:
 # add a component in the commit where a green run shows it collecting.
+#
+# Ratcheted to the full Linux set on the run that earned it — job 94963891177
+# reported `measured over 8 of 8 components — every component collected`, every
+# one carrying lines (agentsfleetd 26392, integration 23104, runner 4588,
+# runner_integration 4136, deadline 307, lib 594, logging 276, s3 28). Naming
+# all eight is what keeps the LLVM fix honest: with only `runner lib` required,
+# the six that were silently dark could go dark again and the gate would stay
+# green. runner_integration is Linux-only, which is why this list is longer.
 ifeq ($(shell uname -s),Linux)
-ZIG_COVERAGE_REQUIRED_COMPONENTS ?= runner lib
+ZIG_COVERAGE_REQUIRED_COMPONENTS ?= agentsfleetd runner lib logging deadline s3 runner_integration integration
 else
 ZIG_COVERAGE_REQUIRED_COMPONENTS ?= agentsfleetd runner lib logging deadline s3 integration
 endif
