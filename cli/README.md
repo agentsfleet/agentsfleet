@@ -108,16 +108,20 @@ Both verbs accept `--workspace <id>` to override the active workspace. The serve
 
 ### Workspace secrets
 
-Workspace-scoped tool secrets live in the vault (Slack, GitHub, Fly, Upstash, etc.). Secret bytes are never echoed back.
+Workspace-scoped tool secrets live in the vault (Slack, GitHub, Fly, Upstash, etc.), alongside model-provider credentials for `tenant provider create`. Secret bytes are never echoed back.
 
 | Command | Description |
 |---------|-------------|
-| `secret create <name> --data=@-` | Create a secret (pipe JSON on stdin; skip if exists) |
+| `secret create <name> --provider <id> --api-key <key> --model <m>` | Store a model-provider credential; `--provider` accepts only ids the runtime can dial (unknown ids exit 2 listing the accepted set) |
+| `secret create <name> --provider openai-compatible --base-url <url> --model <m> [--api-key <key>]` | Store a custom OpenAI-compatible endpoint (https only; key optional for keyless gateways) |
+| `secret create <name> --data=@-` | Create a free-form secret (pipe JSON on stdin; skip if exists) |
 | `secret update <name> --data=@-` | Replace an existing secret |
 | `secret create <name> --data='<json>'` | Create a secret (inline JSON, exposes secret to shell history) |
 | `secret show <name>` | Check existence and `created_at` (never echoes secret) |
 | `secret list` | List workspace secrets |
 | `secret delete <name>` | Remove a workspace secret |
+
+The typed `--provider` form requires all its flags spelled out — omitting `--provider` while passing `--api-key`/`--model` is refused before any request, so a credential naming no provider can never be stored. `secret update` accepts the same typed flags.
 
 ## Global flags
 
