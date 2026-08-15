@@ -106,18 +106,6 @@ After that, dip into whichever of these matches the change you're making:
 
 ---
 
-## What makes this set joyful to read
-
-The criteria every page here aims for, so the next edit keeps them:
-
-1. **Answer first.** A Facts table or a "read this when" line opens the page; the reasoning follows it, never the other way around.
-2. **Questions are the index.** You arrive with a symptom or a question, not a topic — the index table above maps each one to a single section.
-3. **One fact, one home.** A fact lives on the page that owns it; every other mention is a pointer. Nothing to reconcile, nothing to drift.
-4. **Pictures where structure beats prose.** Topology gets a drawn box diagram; flows get a sequence; comparisons get a table; reasoning stays prose.
-5. **Color that means something.** Blue notes, purple must-knows, and green tips via GitHub callouts; brand logos where a product is named; concept emoji in the tables above. Never inside headings — specs cite heading text verbatim.
-6. **Short sentences, plain words.** One idea per sentence; the set averages under fifteen words each.
-7. **Errors tell you what to do.** A failure is a code, its cause, and the exact fix command — with a link into [docs.agentsfleet.net](https://docs.agentsfleet.net) when the user-facing page carries more.
-
 ## Decision records (Claude artifacts)
 
 Long-form decision write-ups live as published artifacts, not in this repo —
