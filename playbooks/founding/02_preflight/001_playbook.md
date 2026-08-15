@@ -53,6 +53,11 @@ Production vault `ZMB_CD_PROD`:
 | `auth-session-code-pepper`, `audit-log-pepper` | `credential` |
 | `tailscale` | `oauth-client-id`, `oauth-secret` |
 
+Development deployment preflight also reads
+`ZMB_CD_PROD/discord-ci-webhook/credential`, because development verdicts post
+to the shared public community channel rather than a duplicate development
+webhook.
+
 Run:
 
 ```bash

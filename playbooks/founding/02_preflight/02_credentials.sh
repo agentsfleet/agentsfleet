@@ -183,6 +183,9 @@ check_dev() {
   check_ref "op://$v/audit-log-pepper/credential"
   check_ref "op://$v/posthog-dev/credential"
   check_ref "op://$v/fly-api-token/credential"
+  # Development workflows post CI verdicts through the shared production
+  # community webhook rather than storing a duplicate in the development vault.
+  check_url_ref "op://$vault_prod/discord-ci-webhook/credential"
 
   if [ "$stage" = "deployment" ]; then
     check_ref "op://$v/approval-signing-secret/credential"
