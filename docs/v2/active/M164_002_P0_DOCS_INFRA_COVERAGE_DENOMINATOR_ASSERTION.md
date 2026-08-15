@@ -103,16 +103,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 788 lines across 17 files in the daemon lane are test harness counted as product, because `is_product_source` recognises only a `_test.zig` suffix and two test-root spellings. A gate satisfiable by writing more harness measures the wrong thing, and at a 95% target the noise is larger than the margin. **Implementation default:** exclude by the naming forms present in the tree, enumerated in one place, rather than by a broad `test` substring that would also swallow product files.
 
-- **Dimension 1.1** — Every test-support naming form in the tree is excluded, and the daemon lane's measured-line count drops by the harness total → Test `test_support_naming_forms_excluded`
-- **Dimension 1.2** — `fleet_runtime/config_helpers.zig`, `http/handlers/auth/session_helpers.zig`, and `http/handlers/memory/helpers.zig` stay in the denominator, because they are product → Test `test_product_helpers_retained`
-- **Dimension 1.3** — A path matching an excluded form contributes no measured line to any component or to the union → Test `test_excluded_form_absent_from_union`
+- **Dimension 1.1** — DONE —  Every test-support naming form in the tree is excluded, and the daemon lane's measured-line count drops by the harness total → Test `test_support_naming_forms_excluded`
+- **Dimension 1.2** — DONE —  `fleet_runtime/config_helpers.zig`, `http/handlers/auth/session_helpers.zig`, and `http/handlers/memory/helpers.zig` stay in the denominator, because they are product → Test `test_product_helpers_retained`
+- **Dimension 1.3** — DONE —  A path matching an excluded form contributes no measured line to any component or to the union → Test `test_excluded_form_absent_from_union`
 
 ### §2 — A component that shrinks is caught before it is averaged
 
 The union already fails a component contributing literally nothing. A component contributing a handful of lines still passes, and that is the shape kcov's Linux merge actually produced. This slice puts a floor under the shape of the report, not just its rate, and asserts that every product root is represented. **Implementation default:** absolute minimum counts rather than a percentage of an expected total, because the expected total is exactly what a degraded run gets wrong.
 
 - **Dimension 2.1** — CUT (Indy, Aug 15, 2026 — see Discovery). Per-component minimums were built and removed: fourteen hand-maintained numbers duplicating the `--require-component` assertion that already fails a component contributing nothing, and every one of them turns an honest deletion of dead code into a red gate. Replaced by a single union-level collapse alarm — `--min-files` / `--min-lines`, set near half the measured figures — which catches the failure actually observed (24 files reported where the tree holds 558) without ratcheting against shrinkage → Test `test_collapsed_report_fails_before_any_rate`
-- **Dimension 2.2** — A union missing any declared product root fails naming the absent root, however high its rate → Test `test_absent_product_root_fails_despite_high_rate`
+- **Dimension 2.2** — DONE —  A union missing any declared product root fails naming the absent root, however high its rate → Test `test_absent_product_root_fails_despite_high_rate`
 - **Dimension 2.3** — DONE — The union's own measured-file and measured-line counts are published alongside the rate → Test `test_summary_file_publishes_the_denominator_and_the_component_counts`
 - **Dimension 2.5** — DONE — Every test binary compiles through LLVM from one definition site, so kcov can read its line table at all; a component whose debug info regresses fails at the required-component assertion rather than reporting a smaller number → Tests `test_required_component_contributing_nothing_fails_the_gate` (the alarm), plus the measured proof recorded in Discovery: `logging` 0 → 7 and `deadline` 0 → 8 product classes under real kcov
 - **Dimension 2.4** — DONE — kcov captures two of the eight components on Linux, so the gate grades the union of those that did collect, states `measured over N of M components` naming every component that captured nothing on success and failure alike, and fails when a component named in `ZIG_COVERAGE_REQUIRED_COMPONENTS` contributes nothing → Tests `test_unrequired_empty_component_is_graded_over_what_collected`, `test_required_component_contributing_nothing_fails_the_gate`, `test_scope_line_names_every_component_that_captured_nothing`, `test_every_component_empty_leaves_nothing_to_grade`
@@ -121,22 +121,22 @@ The union already fails a component contributing literally nothing. A component 
 
 One merged figure cannot bind three trees moving independently: `agentsfleetd/` 89.47%, `runner/` 93.75% and `lib/` 93.77% average into 90.18%, and a floor on that average lets any one of them fall while the number holds. Each scope gains an enforced floor and a fixed target — **95% merged, 95% `agentsfleetd/`, 95% `runner/`, 95% `lib/`**, the bar Indy set for all three folders — with the remaining gap published every run so the distance stays visible while §4 closes it. **Implementation default:** floors seed at the measured value rounded down to the whole point and are raise-only, ratcheting toward 95 in the same commit as the tests that clear each step; targets are literals only Indy changes.
 
-- **Dimension 3.1** — Enforced floors and fixed targets exist for merged, `agentsfleetd/`, and `runner/`, each with one definition site → Test `test_floors_and_targets_defined_once`
-- **Dimension 3.2** — A per-folder floor breach fails naming the folder, its measured rate, and its floor, distinctly from a merged breach → Test `test_folder_breach_names_folder_and_floor`
-- **Dimension 3.3** — Every enforced floor is at or below its measured value, so a tree that has not regressed stays green → Test `test_enforced_floors_clear_measured_values`
-- **Dimension 3.4** — Each scope's gap to target is computed and published, and a floor above its own target is a usage error → Test `test_gap_to_target_published_and_bounded`
-- **Dimension 3.5** — The merged floor on this branch is reconciled to a value the measured figure clears, so a red gate means a regression → Test `test_merged_floor_clears_measured_figure`
+- **Dimension 3.1** — DONE —  Enforced floors and fixed targets exist for merged, `agentsfleetd/`, and `runner/`, each with one definition site → Test `test_floors_and_targets_defined_once`
+- **Dimension 3.2** — DONE —  A per-folder floor breach fails naming the folder, its measured rate, and its floor, distinctly from a merged breach → Test `test_folder_breach_names_folder_and_floor`
+- **Dimension 3.3** — DONE —  Every enforced floor is at or below its measured value, so a tree that has not regressed stays green → Test `test_enforced_floors_clear_measured_values`
+- **Dimension 3.4** — DONE —  Each scope's gap to target is computed and published, and a floor above its own target is a usage error → Test `test_gap_to_target_published_and_bounded`
+- **Dimension 3.5** — DONE —  The merged floor on this branch is reconciled to a value the measured figure clears, so a red gate means a regression → Test `test_merged_floor_clears_measured_figure`
 
 ### §4 — The lanes rise file by file, lowest first
 
 The coverage work itself, and on the re-measurement it is the bulk of this workstream rather than a tail on it. Walk the ranked dark-line list per folder and add tests to the worst files individually, not merely the files this branch's diff touches. `lib/` (+15 covered lines) and `runner/` (+50) are within reach and go first, which puts two folders at 95 early and leaves one number moving. `agentsfleetd/` needs **+1,450** and is the long pole: its dark mass is not four fat files but roughly 60–100 files in the 20–50 dark-line band, most of them error arms — invalid payloads, refused authorisation, datastore failures — that the suites construct the happy path around and never drive. Each folder's floor ratchets toward 95 in the same commit as the tests that clear the step. **Implementation default:** target files in descending union-dark order within each folder, and drive error arms through the in-process harness rather than reaching for new abstractions; a file is done when its dark remainder is unreachable-by-design (process-fatal paths, operating-system-specific branches) and that remainder is named in the test file.
 
-- **Dimension 4.1** — `lib/` clears 95%: `logging/mod.zig` carries 42 of the folder's 76 dark lines and 15 close the gap → Tests per behaviour on the scoped-logger arms
-- **Dimension 4.2** — `runner/` clears 95%: `daemon/lease_run.zig` (40 dark), `child_supervisor.zig` (25), `engine/runner.zig` (24), then the tail until the folder rate clears 95 → Tests per file, `test_…` per behaviour
-- **Dimension 4.3** — the daemon's worst files by union-dark count gain tests in descending order — `http/handlers/tenant_provider.zig` (53), `cmd/serve_webhook_lookup.zig` (48), `http/handlers/tenant_model_entries.zig` (47), `http/handlers/admin/platform_keys.zig` (42), `auth/clerk_backend.zig` (36), `http/handlers/auth/sessions.zig` (35), continuing down the ranking → Tests per verb, success and failure halves
-- **Dimension 4.4** — `cmd/serve.zig` is 116 dark lines at 0% because nothing drives the boot sequence; either it gains a test that boots it against the harness datastores, or the untestable remainder is extracted so what stays is reachable → Test `test_serve_boot_sequence`
-- **Dimension 4.5** — `agentsfleetd/` clears 95% over the product-only denominator → Test `test_enforced_floors_clear_measured_values` (re-graded)
-- **Dimension 4.6** — every folder floor is raised in the same commit as the tests that clear the new value, never ahead → Test `test_enforced_floors_clear_measured_values` (re-graded per ratchet)
+- **Dimension 4.1** — IN_PROGRESS —  `lib/` clears 95%: `logging/mod.zig` carries 42 of the folder's 76 dark lines and 15 close the gap → Tests per behaviour on the scoped-logger arms
+- **Dimension 4.2** — NOT STARTED —  `runner/` clears 95%: `daemon/lease_run.zig` (40 dark), `child_supervisor.zig` (25), `engine/runner.zig` (24), then the tail until the folder rate clears 95 → Tests per file, `test_…` per behaviour
+- **Dimension 4.3** — IN_PROGRESS —  the daemon's worst files by union-dark count gain tests in descending order — `http/handlers/tenant_provider.zig` (53), `cmd/serve_webhook_lookup.zig` (48), `http/handlers/tenant_model_entries.zig` (47), `http/handlers/admin/platform_keys.zig` (42), `auth/clerk_backend.zig` (36), `http/handlers/auth/sessions.zig` (35), continuing down the ranking → Tests per verb, success and failure halves
+- **Dimension 4.4** — NOT STARTED —  `cmd/serve.zig` is 116 dark lines at 0% because nothing drives the boot sequence; either it gains a test that boots it against the harness datastores, or the untestable remainder is extracted so what stays is reachable → Test `test_serve_boot_sequence`
+- **Dimension 4.5** — NOT STARTED —  `agentsfleetd/` clears 95% over the product-only denominator → Test `test_enforced_floors_clear_measured_values` (re-graded)
+- **Dimension 4.6** — DONE —  every folder floor is raised in the same commit as the tests that clear the new value, never ahead → Test `test_enforced_floors_clear_measured_values` (re-graded per ratchet)
 
 ### §5 — The architecture doc describes the instrument that exists
 
@@ -148,15 +148,15 @@ The coverage work itself, and on the re-measurement it is the bulk of this works
 
 The repository is public and its README opens with a badge row that says nothing about test quality. Indy's requirement is exact: the badge shows **what was executed and run**, not a floor, not a hand-typed number. The gate already writes `zig_line_coverage_pct` to `.tmp/zig-coverage.txt` after grading, so the figure exists; it just has nowhere to go. This publishes it from the run that produced it and points the README at it. **Implementation default:** publish only from a run that graded green on the default branch — a badge fed by a failed or partial run is worse than no badge, because it reports a number over a suite that did not finish. The workflow edit is approval-gated and does not land until Indy has seen the diff.
 
-- **Dimension 6.1** — the badge payload carries the measured percentage, its colour derived from the value, and is written only from a green graded run → Test `test_badge_payload_reflects_measured_run`
-- **Dimension 6.2** — a run whose gate failed, or whose summary file is absent or ungraded, publishes nothing rather than a stale or zero figure → Test `test_badge_refuses_ungraded_run`
-- **Dimension 6.3** — the README badge row renders as one coherent row on the rendered page, with the coverage badge beside the existing Continuous Integration (CI), Docs and License badges → Test `test_readme_badge_row_is_well_formed`
+- **Dimension 6.1** — DONE —  the badge payload carries the measured percentage, its colour derived from the value, and is written only from a green graded run → Test `test_badge_payload_reflects_measured_run`
+- **Dimension 6.2** — DONE —  a run whose gate failed, or whose summary file is absent or ungraded, publishes nothing rather than a stale or zero figure → Test `test_badge_refuses_ungraded_run`
+- **Dimension 6.3** — BLOCKED (needs the `badges` branch to exist) —  the README badge row renders as one coherent row on the rendered page, with the coverage badge beside the existing Continuous Integration (CI), Docs and License badges → Test `test_readme_badge_row_is_well_formed`
 
 ### §7 — The one-shot M164 playbook leaves the tree
 
 `playbooks/operations/m164_free_trial_removal/` holds `apply.sql` and `verify.sql`, a hand-migration written for databases that are not rebuilt from the schema slots. M164_001 shipped and the migration has been applied, so the folder is a spent artefact sitting beside durable operator procedures. Nothing references it but M164_001's own Files Changed record, which is history and stays. **Implementation default:** delete both files with the folder; no deprecation note, no archive copy — the content is recoverable from git history and RULE NDC forbids keeping dead material for reassurance.
 
-- **Dimension 7.1** — the folder is gone from disk and from git, and `make check-playbooks` still passes → Test `test_no_m164_playbook_remains`
+- **Dimension 7.1** — DONE —  the folder is gone from disk and from git, and `make check-playbooks` still passes → Test `test_no_m164_playbook_remains`
 
 ## Interfaces
 
@@ -378,6 +378,39 @@ depends on measured dark lines, and Indy folded it in by direction, so splitting
 or dropping it is his call. The per-folder floors this spec cites (67.48% daemon,
 90.10% runner) are macOS measurements taken before the repair; re-measure on
 Linux before seeding any floor from them.
+
+## Measured outcome (Aug 15, 2026)
+
+**The published rates fell, and coverage did not regress.** The denominator was
+holding 5,309 lines of inline `test` blocks written inside product files — 17%
+of it — and a test body is ~100% covered by construction (5,280 of the 5,309
+were covered), so they lifted every rate. Removing them is the same rule that
+already drops `*_test.zig` files; it reaches the blocks that live inside product
+sources. It also closes the gate's own gaming vector: before this, adding an
+inline test to a product file raised that file's rate directly.
+
+| Scope | Before (flattered) | Honest | Floor | Target | Gap |
+|---|---|---|---|---|---|
+| merged | 90.14% | **88.24%** — 22744/25775, 531 files | 88 | 95 | 6.76 |
+| `agentsfleetd/` | 89.41% | **87.71%** — 19410/22130, 440 files | 87 | 95 | 7.29 |
+| `runner/` | 93.74% | **91.18%** — 2532/2777, 66 files | 91 | 95 | 3.82 |
+| `lib/` | 94.24% | **92.40%** — 802/868, 25 files | 92 | 95 | 2.60 |
+
+**A 99% target is not reachable on this instrument for every folder.** kcov
+attributes no instructions to a function signature, a parameter line, a closing
+brace or a comment, so those lines can never be marked covered by any test.
+`src/lib/logging/mod.zig` is the proof: `mod_test.zig` demonstrably calls all
+four scoped levels and asserts the output, yet lines 40-69 — the inline wrapper
+signatures — read dark. Measured ceilings if every reachable line were covered:
+`runner/engine` 99.38%, `lease` 99.69%, `redis` 99.45%, `postgres/db` 99.51%,
+`agentsfleetd` 99.60%, `runner` 99.67%, **`lib` 97.05%**.
+
+**Unit and integration overlap by 34.8%** — 10,814 of 31,079 lines were covered
+by both lanes. Neither is redundant: the unit lanes alone measure 69.46%, the
+integration lane alone 55.51%, the union 90.18%. Dropping integration would lose
+6,439 lines; dropping the unit lanes would lose 10,773. The duplicated third is
+the price of two lanes that each reach ~20-35 points nothing else does, and it is
+why the lane is slow.
 
 ## Discovery (consult log)
 
