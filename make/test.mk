@@ -26,6 +26,15 @@ include make/bench.mk
 ZIG_GLOBAL_CACHE_DIR ?= $(HOME)/.cache/agentsfleet/zig-global-cache
 ZIG_LOCAL_CACHE_DIR  ?= $(CURDIR)/.tmp/zig-local-cache
 ZIG_COVERAGE_DIR ?= $(CURDIR)/coverage/zig
+# Per-component kcov logs and exit statuses live under ZIG_COVERAGE_DIR beside
+# the reports they explain. They were at a hardcoded relative `.tmp/`, which the
+# lane self-tests share with a real run even though they redirect the coverage
+# directory: a stubbed run truncated a real run's logs, and a real run's 57 KB
+# log outlived a stubbed one, so each read the other's output and blamed the
+# gate. The summary file keeps its own variable because CI reads that exact path
+# (`.github/workflows/test.yml`) — the default must not move; only a test
+# redirects it.
+ZIG_COVERAGE_SUMMARY_FILE ?= .tmp/zig-coverage.txt
 # ---------------------------------------------------------------------------
 # Coverage floors, targets and denominator minimums — ONE definition site each.
 # The checker accepts all of them only as arguments, so no recipe and no Python
@@ -53,11 +62,16 @@ ZIG_COVERAGE_DIR ?= $(CURDIR)/coverage/zig
 # test body is ~100% covered by construction, so they lifted every rate by 1.7
 # to 2.6 points. Removing them is the same rule that already drops `*_test.zig`
 # files; it just reaches the blocks that live inside product sources.
-ZIG_COVERAGE_MIN_PCT ?= 88
+ZIG_COVERAGE_MIN_PCT ?= 89
 ZIG_COVERAGE_TARGET_PCT ?= 95
 # Per-folder enforced floors. Measured on the union at the time each was set;
 # they ratchet toward the targets below as tests land.
-ZIG_COVERAGE_FOLDER_FLOORS ?= agentsfleetd=87 runner=91 lib=92
+#
+# Raised from 87/91/92 (merged 88) by the run that added the `lifecycle`
+# component: measured 89.19 merged, 88.78 agentsfleetd, 91.18 runner, 93.32 lib
+# over 8 of 8 components. Every floor here sits below its measured value, which
+# is the only condition under which one may move.
+ZIG_COVERAGE_FOLDER_FLOORS ?= agentsfleetd=88 runner=91 lib=93
 # The quality bar for every product folder.
 ZIG_COVERAGE_FOLDER_TARGETS ?= agentsfleetd=95 runner=95 lib=95
 # One floor under the shape of the whole report, deliberately NOT one per
@@ -92,8 +106,24 @@ ZIG_COVERAGE_REQUIRED_ROOTS ?= agentsfleetd runner lib
 ifeq ($(shell uname -s),Linux)
 ZIG_COVERAGE_REQUIRED_COMPONENTS ?= agentsfleetd runner lib logging deadline s3 runner_integration integration
 else
-ZIG_COVERAGE_REQUIRED_COMPONENTS ?= agentsfleetd runner lib logging deadline s3 integration
+# `lifecycle` is required here and not above for the reason this list states:
+# evidence, in the commit it arrives. A macOS run showed it collecting 21,686
+# lines over 446 files. It joins the Linux list on the CI run that shows the
+# same. The run-marker assertion in the recipe is the other half — it proves the
+# test executed, where this proves the report carried lines.
+ZIG_COVERAGE_REQUIRED_COMPONENTS ?= agentsfleetd runner lib logging deadline s3 integration lifecycle
 endif
+# The boot -> SIGTERM -> drain proof is the only test that drives the real
+# `serve.run`, and it is far too invasive to interleave with the ~2000 tests in
+# the shared integration binary: it perturbs process-global state and
+# destabilises unrelated tests. Two lanes therefore run it alone, filtered, with
+# the isolation variable set — the leak gate and the coverage gate — so both
+# need the same three strings. One definition site each: a filter that silently
+# stops matching runs nothing, and both lanes assert the marker for exactly that
+# reason.
+LIFECYCLE_ISOLATION_ENV ?= AGENTSFLEET_LIFECYCLE_ISOLATED
+LIFECYCLE_TEST_FILTER ?= daemon boot -> SIGTERM -> drain
+LIFECYCLE_RUN_MARKER ?= SERVE_LIFECYCLE_BOOT_DRAIN_RAN
 # Use baseline CPU so valgrind can execute SHA/AVX instructions it can't emulate.
 MEMLEAK_CPU ?= baseline
 
