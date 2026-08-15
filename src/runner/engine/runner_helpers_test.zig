@@ -8,6 +8,7 @@ const Config = nullclaw.config.Config;
 
 const runner_helpers = @import("runner_helpers.zig");
 const runner_progress = @import("runner_progress.zig");
+const tools_mod = nullclaw.tools;
 const redactedFinalReply = runner_helpers.redactedFinalReply;
 const applyFleetConfig = runner_helpers.applyFleetConfig;
 
@@ -157,4 +158,61 @@ test "applyFleetConfig applies an in-range max_tokens and temperature" {
     try std.testing.expectEqual(@as(u32, 2048), cfg.max_tokens.?);
     try std.testing.expectEqual(@as(f64, 0.25), cfg.temperature);
     try std.testing.expectEqual(@as(f64, 0.25), cfg.default_temperature);
+}
+
+test "buildToolsFromSpec frees every tool name the bridge could not resolve" {
+    // A fleet ships a tools array naming something this runner build does not
+    // carry. The bridge hands those names back under `skipped`, and this
+    // function owns both the warning an operator reads and the free of every
+    // name — a miss here leaks one allocation per unknown tool per lease, and
+    // the leak only shows on fleets whose spec has drifted from the build.
+    const alloc = std.testing.allocator;
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        alloc,
+        "[\"definitely_not_a_tool\",\"also_not_a_tool\"]",
+        .{},
+    );
+    defer parsed.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var cfg = Config{ .workspace_dir = "", .config_path = "", .allocator = arena.allocator() };
+
+    const tools = try runner_helpers.buildToolsFromSpec(
+        alloc,
+        "/tmp/agentsfleet-tools-spec-test",
+        parsed.value,
+        &cfg,
+        null, // policy — the allTools fallback path
+        null, // cred_channel
+    );
+    defer tools_mod.deinitTools(alloc, tools);
+
+    // Neither name resolves, so the spec contributes no tool. `std.testing.allocator`
+    // is the actual assertion: it fails the test if a skipped name went unfreed.
+    try std.testing.expectEqual(@as(usize, 0), tools.len);
+}
+
+test "a non-array tools spec falls back to the default tool set" {
+    // The wire type is `?std.json.Value`; a malformed fleet can send an object
+    // or a string. That must degrade to the default set, never error the lease.
+    const alloc = std.testing.allocator;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, "{\"not\":\"an array\"}", .{});
+    defer parsed.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var cfg = Config{ .workspace_dir = "", .config_path = "", .allocator = arena.allocator() };
+
+    const tools = try runner_helpers.buildToolsFromSpec(
+        alloc,
+        "/tmp/agentsfleet-tools-fallback-test",
+        parsed.value,
+        &cfg,
+        null,
+        null,
+    );
+    defer tools_mod.deinitTools(alloc, tools);
+    try std.testing.expect(tools.len > 0);
 }
