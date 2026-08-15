@@ -79,8 +79,13 @@ const TestTarget = struct {
     value: u32,
     blocker: ?*Blocker = null,
     fired: ?*common.Event = null,
+    /// Set to make this callback overrun `InterruptTarget.CALLBACK_BUDGET_NS`.
+    /// It advances the very clock `fire` times it against, so the breach is
+    /// exact and instant instead of a real sleep that goes flaky under load.
+    overrun_backend: ?*FakeBackend = null,
 
     pub fn interrupt(self: TestTarget) InterruptTarget.Outcome {
+        if (self.overrun_backend) |backend| backend.advanceMs(OVERRUN_MS);
         if (self.blocker) |blocker| {
             blocker.entered.set();
             blocker.release.timedWait(TEST_WAIT_NS) catch @panic("blocked callback release timed out");
@@ -95,6 +100,9 @@ const TestScheduler = scheduler_module.Scheduler(TestTarget, FakeBackend);
 const ProductionScheduler = scheduler_module.Scheduler(TestTarget, scheduler_module.MonotonicBackend);
 const TEST_WAIT_NS: u64 = 5 * std.time.ns_per_s;
 const BARRIER_PROBE_NS: u64 = 20 * std.time.ns_per_ms;
+/// One millisecond past the callback budget, so the breach is unambiguous
+/// rather than resting on `overranBudget`'s inclusive boundary.
+const OVERRUN_MS: i64 = @intCast(@divTrunc(InterruptTarget.CALLBACK_BUDGET_NS, std.time.ns_per_ms) + 1);
 const REGISTRATION_COUNT = 128;
 const CANCEL_COUNT = REGISTRATION_COUNT / 2;
 
@@ -449,4 +457,125 @@ test "the reuse pool is freed by deinit, not leaked across arms" {
         guard.* = try scheduler.arm(.{ .recorder = &recorder, .value = @intCast(index) }, REUSE_ARM_TIMEOUT_MS);
     }
     for (&guards) |*guard| _ = guard.finish();
+}
+
+// ── Start failure ───────────────────────────────────────────────────────────
+// Moved out of `scheduler.zig` with the split: these three fakes are test
+// support, and a `_test.zig` file keeps them out of the coverage denominator
+// where they read as permanently-dark product code.
+
+const FailingThreadSpawner = struct {
+    pub fn spawn(comptime entry: anytype, args: anytype) std.Thread.SpawnError!std.Thread {
+        _ = entry;
+        _ = args;
+        return error.ThreadQuotaExceeded;
+    }
+};
+
+const StartFailureBackend = struct {
+    pub fn nowNs(_: *StartFailureBackend) i96 {
+        return 0;
+    }
+
+    pub fn snapshotWake(_: *StartFailureBackend) u32 {
+        return 0;
+    }
+
+    pub fn wait(_: *StartFailureBackend, _: u32, _: ?i96) void {}
+    pub fn wake(_: *StartFailureBackend) void {}
+};
+
+const StartFailureTarget = struct {
+    pub fn interrupt(_: StartFailureTarget) InterruptTarget.Outcome {
+        return .stale;
+    }
+};
+
+test "scheduler start failure resets state and remains fail closed" {
+    const FailingScheduler = scheduler_module.SchedulerWithSpawner(StartFailureTarget, StartFailureBackend, FailingThreadSpawner);
+    var backend: StartFailureBackend = .{};
+    var scheduler = FailingScheduler.init(std.testing.allocator, &backend);
+
+    try std.testing.expectError(error.ThreadQuotaExceeded, scheduler.start());
+    try std.testing.expectError(error.SchedulerStopped, scheduler.arm(.{}, 1));
+    try std.testing.expectError(error.ThreadQuotaExceeded, scheduler.start());
+    scheduler.deinit();
+}
+
+// ── Concurrent stop and budget breach ───────────────────────────────────────
+
+/// Arms and immediately cancels until the scheduler refuses, which is the only
+/// state observation available from outside: `armLocked` rejects anything that
+/// is not `.running`, and it takes the same mutex `stop` holds.
+fn waitUntilStopping(scheduler: *TestScheduler, recorder: *Recorder) !void {
+    var waited: u64 = 0;
+    while (true) {
+        if (scheduler.arm(.{ .recorder = recorder, .value = 0 }, REUSE_ARM_TIMEOUT_MS)) |guard| {
+            _ = guard.finish();
+        } else |_| return;
+        if (waited >= TEST_WAIT_NS) return error.Timeout;
+        common.sleepNanos(std.time.ns_per_ms);
+        waited += std.time.ns_per_ms;
+    }
+}
+
+test "a second stop waits for the first to finish instead of racing it" {
+    var backend: FakeBackend = .{};
+    var recorder: Recorder = .{};
+    var blocker: Blocker = .{};
+    var scheduler = TestScheduler.init(std.testing.allocator, &backend);
+    try scheduler.start();
+
+    // Park the worker inside a callback so the first stop cannot complete its
+    // join, holding the scheduler in `stopping` for as long as the test needs.
+    _ = try scheduler.arm(.{ .recorder = &recorder, .value = 1, .blocker = &blocker }, 1);
+    backend.advanceMs(1);
+    try blocker.entered.timedWait(TEST_WAIT_NS);
+
+    var first = StopCall{ .scheduler = &scheduler };
+    const first_thread = try std.Thread.spawn(.{}, StopCall.run, .{&first});
+    try first.started.timedWait(TEST_WAIT_NS);
+    try waitUntilStopping(&scheduler, &recorder);
+
+    // Entering now is what makes this the second-stop arm rather than a race:
+    // the state is already `stopping` and cannot leave it until the worker joins.
+    var second = StopCall{ .scheduler = &scheduler };
+    const second_thread = try std.Thread.spawn(.{}, StopCall.run, .{&second});
+    try second.started.timedWait(TEST_WAIT_NS);
+    try std.testing.expectError(error.Timeout, first.done.timedWait(BARRIER_PROBE_NS));
+    try std.testing.expectError(error.Timeout, second.done.timedWait(BARRIER_PROBE_NS));
+
+    // Both must return — the second only after the first published `stopped`,
+    // so a caller that stops concurrently still gets a quiesced scheduler.
+    blocker.release.set();
+    try first.done.timedWait(TEST_WAIT_NS);
+    try second.done.timedWait(TEST_WAIT_NS);
+    first_thread.join();
+    second_thread.join();
+    scheduler.deinit();
+}
+
+test "a callback that overruns its budget is reported and the fire still completes" {
+    var backend: FakeBackend = .{};
+    var recorder: Recorder = .{};
+    var fired: common.Event = .{};
+    var scheduler = TestScheduler.init(std.testing.allocator, &backend);
+    try scheduler.start();
+
+    const guard = try scheduler.arm(.{
+        .recorder = &recorder,
+        .value = 7,
+        .fired = &fired,
+        .overrun_backend = &backend,
+    }, 1);
+    backend.advanceMs(1);
+    try fired.timedWait(TEST_WAIT_NS);
+
+    // Reported, never fatal: the breach is a log line, so the registration
+    // still reaches `fired` and the worker stays available for the next one.
+    try std.testing.expectEqual(TestScheduler.FinishOutcome.fired, guard.finish());
+    try std.testing.expectEqual(@as(usize, 1), recorder.count);
+    try std.testing.expectEqual(@as(u32, 7), recorder.valueAt(0));
+    scheduler.stop();
+    scheduler.deinit();
 }
