@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
+import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000c1a170";
@@ -55,7 +55,7 @@ describe("install — missing --library flag", () => {
         const err = bufferStream();
         const code = await runCli(
           ["install"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(4);
         expect(err.read()).toContain("--library");
@@ -79,7 +79,7 @@ describe("install — template absent from gallery", () => {
         const err = bufferStream();
         const code = await runCli(
           ["install", "--library", "no-such-template"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(5);
         expect(err.read()).toContain("is not in this workspace's gallery");
@@ -103,7 +103,7 @@ describe("install — text-mode success", () => {
         const err = bufferStream();
         const code = await runCli(
           ["install", "--library", TEMPLATE_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         expect(out.read()).toContain("text-mode-fleet");
@@ -128,7 +128,7 @@ describe("install — JSON-mode success", () => {
         const err = bufferStream();
         const code = await runCli(
           ["--json", "install", "--library", TEMPLATE_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         const parsed = JSON.parse(out.read()) as {
@@ -162,7 +162,7 @@ describe("install — webhook URL output", () => {
         const err = bufferStream();
         const code = await runCli(
           ["install", "--library", TEMPLATE_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         expect(out.read()).toContain("github");
@@ -185,7 +185,7 @@ describe("install — webhook URL output", () => {
         const out = bufferStream();
         const code = await runCli(
           ["install", "--library", fallbackTemplateId],
-          { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
         expect(out.read()).toContain(fallbackTemplateId);
@@ -204,7 +204,7 @@ describe("fleet update — missing --from flag", () => {
         const err = bufferStream();
         const code = await runCli(
           ["fleet", "update", FLEET_ID],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(4);
         expect(err.read()).toContain("--from");
@@ -226,7 +226,7 @@ describe("fleet update — invalid fleet_id", () => {
           const err = bufferStream();
           const code = await runCli(
             ["fleet", "update", "not-a-uuid", "--from", dir],
-            { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+            { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
           );
           expect(code).toBe(4);
           expect(calls).toHaveLength(0);
@@ -253,7 +253,7 @@ describe("fleet update — text-mode success", () => {
           const out = bufferStream();
           const code = await runCli(
             ["fleet", "update", FLEET_ID, "--from", dir],
-            { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+            { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
           );
           expect(code).toBe(0);
           expect(out.read()).toContain(FLEET_ID);
@@ -282,7 +282,7 @@ describe("fleet update — text-mode success", () => {
           const out = bufferStream();
           const code = await runCli(
             ["fleet", "update", FLEET_ID, "--from", dir],
-            { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+            { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
           );
           expect(code).toBe(0);
           const body = JSON.parse(calls[0]?.body ?? "{}") as {
@@ -309,7 +309,7 @@ describe("fleet update — text-mode success", () => {
           const out = bufferStream();
           const code = await runCli(
             ["fleet", "update", FLEET_ID, "--from", dir],
-            { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+            { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
           );
           expect(code).toBe(0);
           expect(out.read()).not.toContain("Config revision");
@@ -336,7 +336,7 @@ describe("fleet update — JSON-mode success", () => {
           const out = bufferStream();
           const code = await runCli(
             ["--json", "fleet", "update", FLEET_ID, "--from", dir],
-            { stdout: out.stream, stderr: bufferStream().stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+            { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
           );
           expect(code).toBe(0);
           const parsed = JSON.parse(out.read()) as {
@@ -363,7 +363,7 @@ describe("fleet update — error paths", () => {
         const err = bufferStream();
         const code = await runCli(
           ["fleet", "update", FLEET_ID, "--from", "/no/such/bundle/dir"],
-          { stdout: out.stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(5);
         expect(err.read()).toContain("ERR_PATH_NOT_FOUND");
@@ -387,7 +387,7 @@ describe("fleet update — error paths", () => {
           const err = bufferStream();
           const code = await runCli(
             ["fleet", "update", FLEET_ID, "--from", dir],
-            { stdout: bufferStream().stream, stderr: err.stream, env: { AGENTSFLEET_API_URL: apiUrl } },
+            { stdout: bufferStream().stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
           );
           expect(code).toBe(3);
           expect(err.read()).toContain("UZ-AGT-001");

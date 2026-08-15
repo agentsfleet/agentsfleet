@@ -82,31 +82,27 @@ runner_binary="$work_dir/agentsfleet-runner"
 printf 'runner\n' >"$runner_binary"
 cgroup_fixture="$work_dir/cgroup"
 mkdir -p "$cgroup_fixture"
-# Every variable the runner library reads, cleared before each case sets its own.
-# The library resolves deployment inputs from the environment, so a developer who
-# has any of these exported gets a result the test never asked for. The repository
-# encourages exactly that: `.githooks/post-checkout` links `.env.runner.local`,
-# which carries `AGENTSFLEET_API_URL`, so an ambient dev endpoint failed the prod
-# case on a workstation while Continuous Integration — with a bare environment —
-# passed. The test must supply its whole world.
-readonly RUNNER_ENV_INPUTS=(
-  AGENTSFLEET_API_URL ENV RUNNER_API_URL RUNNER_HOST RUNNER_ITEM RUNNER_TARGET
-  RUNNER_TOKEN RUNNER_USER RUNNER_VAULT VAULT_DEV VAULT_PROD WORKER_ITEM
-)
-
 run_script() {
   : >"$calls"
-  # Runner env inputs are dropped, never merely overridden: `common.sh` reads
-  # `${AGENTSFLEET_API_URL:-$expected_api_url}` and refuses the deploy when it
-  # disagrees with ENV's endpoint. A developer shell pointed at api-dev then
-  # fails the ENV=prod case alone, on that machine only. Cases that mean to
+  # The test must supply its whole world, so the child sees ONLY what this
+  # harness assigns plus the VAR=val pairs each case passes. Cases that mean to
   # exercise a variable pass it as an argument below, which still wins.
-  local -a unset_args=()
-  local var
-  for var in "${RUNNER_ENV_INPUTS[@]}"; do
-    unset_args+=(-u "$var")
-  done
-  env "${unset_args[@]}" \
+  #
+  # The repository actively encourages a polluted environment:
+  # `.githooks/post-checkout` links `.env.runner.local`, which carries
+  # `AGENTSFLEET_API_URL`, and `common.sh` reads it as
+  # `${AGENTSFLEET_API_URL:-$expected_api_url}` then refuses the deploy when it
+  # disagrees with ENV's endpoint. An ambient dev endpoint therefore failed the
+  # ENV=prod case on a workstation while Continuous Integration — with a bare
+  # environment — passed.
+  #
+  # `env -i` rather than `env -u` per known name: the enumerated form fixes the
+  # variables someone remembered, and this file gains readers faster than it
+  # gains maintainers of that list. Wiping closes the whole class, including
+  # the next input the runner library learns to read. PATH is composed before
+  # the wipe, so the stub dir still shadows the real tools while the system
+  # tail keeps bash findable.
+  env -i \
     PATH="$stub_dir:$PATH" \
     CALLS="$calls" \
     RUNNER_BINARY="$runner_binary" \
