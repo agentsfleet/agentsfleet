@@ -134,7 +134,8 @@ check_prod() {
   # persistent runner enrollment.
   check_ref "op://$v/tailscale/oauth-client-id"
   check_ref "op://$v/tailscale/oauth-secret"
-  check_ref "op://$v/discord-ci-webhook/credential"
+  check_url_ref "op://$v/discord-ci-webhook/credential"
+  check_url_ref "op://$v/discord-release-webhook/credential"
   check_ref "op://$v/fly-api-token/credential"
 
   if [ "$stage" = "deployment" ]; then
@@ -182,6 +183,9 @@ check_dev() {
   check_ref "op://$v/audit-log-pepper/credential"
   check_ref "op://$v/posthog-dev/credential"
   check_ref "op://$v/fly-api-token/credential"
+  # Development workflows post CI verdicts through the shared production
+  # community webhook rather than storing a duplicate in the development vault.
+  check_url_ref "op://$vault_prod/discord-ci-webhook/credential"
 
   if [ "$stage" = "deployment" ]; then
     check_ref "op://$v/approval-signing-secret/credential"
