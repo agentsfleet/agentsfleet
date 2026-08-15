@@ -55,6 +55,7 @@ test {
     _ = @import("http/route_trace_integration_test.zig");
     _ = @import("http/secrets_json_metadata_integration_test.zig");
     _ = @import("http/tenant_provider_platform_default_available_integration_test.zig");
+    _ = @import("http/tenant_provider_error_arms_integration_test.zig");
     _ = @import("http/library_read_bounds_integration_test.zig");
     _ = @import("http/library_stage_bounds_integration_test.zig");
     _ = @import("http/library_body_ceiling_integration_test.zig");
