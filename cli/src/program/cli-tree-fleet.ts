@@ -15,16 +15,9 @@ import {
   parseIdOption,
   parsePathOption,
   parseStringOption,
-  parseEnumOption,
   parseHttpsUrlOption,
 } from "./validators.ts";
 import { OPENAI_COMPATIBLE_PROVIDER } from "../constants/custom-endpoint.ts";
-import {
-  CLI_ENGINE_PROVIDERS,
-  CLI_ENGINE_REJECTION,
-  PROVIDER_EXAMPLES,
-  PROVIDER_IDS,
-} from "../constants/providers.ts";
 import type {
   ActionDispatch,
   Handlers,
@@ -44,6 +37,15 @@ export function buildFleetTree(
     .command("library")
     .description("Browse the first-party Fleet library gallery")
     .action(actionFor("fleet.library", (frame) => runHandler(state, frame, handlers.fleet.library)));
+
+  // The CLI peer of the dashboard's model picker. Both read GET /v1/models, so
+  // `--provider` and `--model` have a discoverable source instead of being two
+  // identifiers the operator has to already know.
+  program
+    .command("models")
+    .description("List the model catalogue this server serves")
+    .option(FLAG_PROVIDER, "Show only this provider's models", parseStringOption)
+    .action(actionFor("fleet.models", (frame) => runHandler(state, frame, handlers.fleet.models)));
 
   program
     .command("install")
@@ -144,12 +146,13 @@ export function buildFleetTree(
   // [--api-key <key>]`) — composing the same JSON object.
   // `--base-url` runs parseHttpsUrlOption at PARSE time, so a non-https URL
   // exits non-zero with NO network call (full SSRF check stays server-side).
-  // `--provider` parses through PROVIDER_IDS the same way — an undialable id
-  // exits 2 before any request; `--data` stays unconstrained (generic blob).
+  // `--provider` cannot be checked here: its accepted set is whatever this
+  // server's catalogue serves, so the handler validates it against
+  // `GET /v1/models`. `--data` stays unconstrained (generic blob).
   secret.command("create <name>")
     .description("Store a secret JSON object")
     .option(FLAG_DATA_JSON, "Secret JSON object, or @- to read stdin")
-    .option(FLAG_PROVIDER, DESC_PROVIDER, parseProviderOption)
+    .option(FLAG_PROVIDER, DESC_PROVIDER, parseStringOption)
     .option(FLAG_BASE_URL, DESC_BASE_URL, parseHttpsUrlOption)
     .option(FLAG_API_KEY, DESC_API_KEY)
     .option(FLAG_MODEL_OPT, DESC_MODEL_OPT, parseStringOption)
@@ -162,7 +165,7 @@ export function buildFleetTree(
   secret.command("update <name>")
     .description("Replace a secret's stored body without releasing the name")
     .option(FLAG_DATA_JSON, "Replacement JSON object, or @- to read stdin")
-    .option(FLAG_PROVIDER, DESC_PROVIDER, parseProviderOption)
+    .option(FLAG_PROVIDER, DESC_PROVIDER, parseStringOption)
     .option(FLAG_BASE_URL, DESC_BASE_URL, parseHttpsUrlOption)
     .option(FLAG_API_KEY, DESC_API_KEY)
     .option(FLAG_MODEL_OPT, DESC_MODEL_OPT, parseStringOption)
@@ -194,15 +197,13 @@ const FLAG_LIMIT_N = "--limit <n>" as const;
 const PAGE_SIZE = "Page size" as const;
 const SKILL_BUNDLE_PATH = "Skill bundle path" as const;
 const FLAG_DATA_JSON = "--data <json>" as const;
-const DESC_PROVIDER = `Provider id, e.g. ${PROVIDER_EXAMPLES.join(", ")} (${PROVIDER_IDS.length} accepted; an unknown id lists them all — use '${OPENAI_COMPATIBLE_PROVIDER}' for a custom endpoint)`;
-// One parser, both verbs: the accepted set and the refusal reasons are a
-// property of the flag, not of the command that carries it.
-const parseProviderOption = parseEnumOption(PROVIDER_IDS, {
-  foldCase: true,
-  rejected: Object.fromEntries(
-    CLI_ENGINE_PROVIDERS.map((name) => [name, CLI_ENGINE_REJECTION]),
-  ),
-});
+// No enum parser here, and that is the design. The accepted set is whatever
+// `GET /v1/models` serves on the server the caller is pointed at, so it cannot
+// be known at parse time and differs between environments. The check runs in
+// the handler against the live catalogue (lib/model-catalogue.ts) — the same
+// bytes the dashboard's provider dropdown is built from.
+const DESC_PROVIDER =
+  `Provider id from \`agentsfleet models\` (use '${OPENAI_COMPATIBLE_PROVIDER}' with --base-url for an endpoint the catalogue does not carry)`;
 const DESC_BASE_URL = "Custom endpoint base URL (https; required for a custom-endpoint provider)" as const;
 const DESC_API_KEY = "Provider API key (required with a named --provider, optional for a keyless custom endpoint)" as const;
 const DESC_MODEL_OPT = "Default model identifier (required with --provider)" as const;

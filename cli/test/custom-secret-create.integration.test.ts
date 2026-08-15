@@ -25,11 +25,20 @@ import {
   SECRET_FIELD_BASE_URL,
   SECRET_FIELD_MODEL,
 } from "../src/constants/custom-endpoint.ts";
-import {
-  CLI_ENGINE_PROVIDERS,
-  CLI_ENGINE_REJECTION,
-  PROVIDER_IDS,
-} from "../src/constants/providers.ts";
+// The accepted `--provider` set is now whatever GET /v1/models serves, so these
+// tests state it as catalogue rows rather than importing a compiled-in list.
+// Two providers is enough to prove membership, non-membership, and case-folding
+// while keeping the rejection message short enough to assert on.
+const CATALOGUE_PAGE = {
+  version: "1",
+  models: [
+    // These are wire bytes the CLI parses, not values it computes.
+    // pin test: literal is the contract
+    { id: "claude-opus-5", provider: "anthropic", context_cap_tokens: 1000000, input_nanos_per_mtok: 5000000000, cached_input_nanos_per_mtok: 500000000, output_nanos_per_mtok: 25000000000 },
+    { id: "gpt-5.6-sol", provider: "openai", context_cap_tokens: 1050000, input_nanos_per_mtok: 5000000000, cached_input_nanos_per_mtok: 500000000, output_nanos_per_mtok: 30000000000 },
+  ],
+  next_cursor: null,
+};
 
 const WS_ID = "ws_custom_cred_test";
 const SECRET_NAME = "vllm-gateway";
@@ -419,9 +428,10 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
     });
   });
 
-  test("a CLI-engine provider is refused by name, with the reason — not the generic wall", async () => {
+  test("a CLI-engine provider is refused by name, with the reason — not the accepted-set wall", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
+        "GET /v1/models": () => jsonResponse(200, CATALOGUE_PAGE),
         [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
           jsonResponse(200, { secrets: [] }),
         [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
@@ -433,20 +443,21 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
         const code = await runCli(
           [
             "secret", "create", SECRET_NAME,
-            "--provider", CLI_ENGINE_PROVIDERS[0],
+            "--provider", "claude-cli",
             "--api-key", API_KEY,
             "--model", MODEL,
             "--json",
           ],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
-        expect(code).toBe(2);
-        expect(calls).toHaveLength(0);
+        expect(code).not.toBe(0);
+        // The catalogue read is expected; the credential POST is not.
+        expect(calls.some((c) => c.method === "POST")).toBe(false);
         const text = out.read() + err.read();
-        expect(text).toContain(CLI_ENGINE_PROVIDERS[0]);
-        expect(text).toContain(CLI_ENGINE_REJECTION);
+        expect(text).toContain("claude-cli");
+        expect(text).toContain("carries no API key");
         // The reason replaces the wall; printing both would bury it.
-        expect(text).not.toMatch(/must be one of/i);
+        expect(text).not.toMatch(/is not in this server's model catalogue/i);
       });
     });
   });
@@ -474,11 +485,10 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
 });
 
 describe("secret create — provider catalogue closure", () => {
-  test("an unknown provider exits 2 naming the value and the accepted set, with ZERO requests", async () => {
+  test("an unknown provider is refused against the live catalogue, and never POSTed", async () => {
     await authedScope(async () => {
-      // Every route is registered, so ANY request would land in `calls`. The
-      // catalogue parser must reject at parse time → calls stays empty.
       const routes: MockRoutes = {
+        "GET /v1/models": () => jsonResponse(200, CATALOGUE_PAGE),
         [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
           jsonResponse(200, { secrets: [] }),
         [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
@@ -497,11 +507,82 @@ describe("secret create — provider catalogue closure", () => {
           ],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
-        expect(code).toBe(2);
-        expect(calls).toHaveLength(0);
+        expect(code).not.toBe(0);
+        // The credential must never reach the vault…
+        expect(calls.some((c) => c.method === "POST")).toBe(false);
         const text = out.read() + err.read();
         expect(text).toContain("notaprovider");
-        expect(text).toContain(`must be one of: ${PROVIDER_IDS.join(", ")}`);
+        // …and the accepted set names what THIS server serves, derived from the
+        // catalogue rows above — not a set compiled into the binary.
+        expect(text).toContain("anthropic");
+        expect(text).toContain(OPENAI_COMPATIBLE_PROVIDER);
+        expect(text).not.toContain("cerebras");
+      });
+    });
+  });
+
+  test("an unreachable catalogue accepts the provider rather than blocking the write", async () => {
+    await authedScope(async () => {
+      // The dashboard degrades to a free-text provider input when the catalogue
+      // read fails; the CLI must degrade the same way. Refusing here would make
+      // a catalogue outage mean "you may not store a credential" — a worse
+      // failure than one the server rejects with a typed error.
+      const routes: MockRoutes = {
+        "GET /v1/models": () => jsonResponse(503, { detail: "catalogue down" }),
+        [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
+          jsonResponse(201, { name: SECRET_NAME }),
+      };
+      await withMockApi(routes, async (apiUrl, calls) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          [
+            "secret", "create", SECRET_NAME,
+            "--provider", "anything-at-all",
+            "--api-key", API_KEY,
+            "--model", MODEL,
+            "--json",
+          ],
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
+        );
+        expect(code).toBe(0);
+        const post = calls.find((c) => c.method === "POST");
+        expect(post).toBeDefined();
+        const sent = JSON.parse(post?.body ?? "{}") as { data?: Record<string, unknown> };
+        expect(sent.data?.[SECRET_FIELD_PROVIDER]).toBe("anything-at-all");
+        out.read();
+        err.read();
+      });
+    });
+  });
+
+  test("an EMPTY catalogue accepts the provider — a fresh environment stays usable", async () => {
+    await authedScope(async () => {
+      // `core.model_library` ships empty and the model_catalogue playbook fills
+      // it. Rejecting every provider before that runs would make the CLI
+      // unusable during exactly the provisioning it is used for.
+      const routes: MockRoutes = {
+        "GET /v1/models": () => jsonResponse(200, { version: "0", models: [] }),
+        [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
+          jsonResponse(201, { name: SECRET_NAME }),
+      };
+      await withMockApi(routes, async (apiUrl, calls) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          [
+            "secret", "create", SECRET_NAME,
+            "--provider", "anthropic",
+            "--api-key", API_KEY,
+            "--model", MODEL,
+            "--json",
+          ],
+          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
+        );
+        expect(code).toBe(0);
+        expect(calls.some((c) => c.method === "POST")).toBe(true);
+        out.read();
+        err.read();
       });
     });
   });
@@ -509,6 +590,10 @@ describe("secret create — provider catalogue closure", () => {
   test("a mixed-case catalogue member succeeds and the POSTed body carries the canonical spelling", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
+        // Folding is the CATALOGUE's, not the parser's: the stored body must
+        // carry the spelling the resolver compares byte-for-byte, or the
+        // credential reports success and can never dial.
+        "GET /v1/models": () => jsonResponse(200, CATALOGUE_PAGE),
         [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
           jsonResponse(200, { secrets: [] }),
         [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
