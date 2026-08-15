@@ -266,10 +266,19 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	 for name in $$names; do component_flags="$$component_flags --component $$name"; done; \
 	 for name in $(ZIG_COVERAGE_REQUIRED_COMPONENTS); do \
 	   component_flags="$$component_flags --require-component $$name"; done; \
+	 for name in $(ZIG_COVERAGE_REQUIRED_ROOTS); do \
+	   component_flags="$$component_flags --require-root $$name"; done; \
+	 for pair in $(ZIG_COVERAGE_FOLDER_FLOORS); do \
+	   component_flags="$$component_flags --folder-floor $$pair"; done; \
+	 for pair in $(ZIG_COVERAGE_FOLDER_TARGETS); do \
+	   component_flags="$$component_flags --folder-target $$pair"; done; \
 	 python3 scripts/check_zig_coverage.py \
 	   --coverage-dir "$(ZIG_COVERAGE_DIR)" \
 	   $$component_flags \
-	   --min-pct "$(ZIG_COVERAGE_MIN_LINES)" \
+	   --min-pct "$(ZIG_COVERAGE_MIN_PCT)" \
+	   --target-pct "$(ZIG_COVERAGE_TARGET_PCT)" \
+	   --min-files "$(ZIG_COVERAGE_MIN_FILES)" \
+	   --min-lines "$(ZIG_COVERAGE_MIN_MEASURED_LINES)" \
 	   --merged-report "$(ZIG_COVERAGE_DIR)/merged" \
 	   --repo-root "$(CURDIR)" \
 	   --summary-file .tmp/zig-coverage.txt \
