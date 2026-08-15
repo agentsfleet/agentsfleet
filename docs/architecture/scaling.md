@@ -150,10 +150,12 @@ it commits.
 
 Sizing consequence: at the 1 s default the auth read tracks the lease-poll rate
 above (`R_runners × 3600` per hour), against a `fleet.runners` table whose pages
-stay resident. At a hundred runners that is a few hundred index probes a second.
-Revisit when runner count or poll rate makes it measurable — AUTH.md records the
-replacement design (a short-lived signed credential verified locally) and the
-condition it must meet.
+stay resident. At the ~100 runners the sizing assumes, that is a few hundred index
+probes a second. (`fleet.runners` is created by `schema/600_runners.sql` and
+carries no separate index slot: the M154 rebuild retired the shared
+`033_hot_path_indexes` and moved each index into the slot owning its table.) Revisit when runner count or poll rate makes
+that measurable — AUTH.md records the replacement design (a short-lived signed
+credential verified locally) and the condition it must meet.>>>>>>> origin/main
 
 For a 20-runner fleet at the 1 s default: ~72,000 idle `lease` requests/hour. Doubling `NO_WORK_RETRY_AFTER_MS` to 2 s halves it; the trade is idle pickup latency, not event-delivery latency for a busy fleet. Active traffic (XADD ingress, PUBLISH activity ~5/event, XACK on report) sits on top, scaling with event throughput as before.
 

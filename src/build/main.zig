@@ -9,6 +9,7 @@ pub const s3 = @import("s3.zig");
 pub const lib_tests = @import("lib_tests.zig");
 pub const auth_tests = @import("auth_tests.zig");
 pub const daemon_tests = @import("daemon_tests.zig");
+pub const bench_incident = @import("bench_incident.zig");
 pub const fixtures = @import("fixtures.zig");
 pub const test_list = @import("test_list.zig");
 

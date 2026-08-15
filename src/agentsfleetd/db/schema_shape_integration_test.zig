@@ -188,6 +188,32 @@ test "integration: the ledger carries the originating event's creation time as a
     ));
 }
 
+test "integration: the wallet carries no promotional-window column" {
+    const ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+
+    // The column set is pinned rather than probed for the removed name. The
+    // window was a nullable per-tenant timestamp with no DEFAULT, and null read
+    // as "open", so every tenant priced to zero — but a name-shaped check only
+    // catches a reintroduction that reuses the old word. `promo_window_ends_at`
+    // would restore the defect and pass. Pinning the set catches any spelling,
+    // at the price of one deliberate edit when the wallet legitimately grows.
+    //
+    // Two assertions, because either alone is satisfiable by the wrong schema:
+    // the count alone passes a swap, the membership alone passes a removal.
+    try std.testing.expectEqual(@as(i64, 6), try scalarI64(ctx.conn,
+        \\SELECT count(*)::bigint FROM information_schema.columns
+        \\WHERE table_schema = 'billing' AND table_name = 'tenant_wallet'
+    ));
+    try std.testing.expectEqual(@as(i64, 0), try scalarI64(ctx.conn,
+        \\SELECT count(*)::bigint FROM information_schema.columns
+        \\WHERE table_schema = 'billing' AND table_name = 'tenant_wallet'
+        \\  AND column_name NOT IN ('tenant_id', 'balance_nanos', 'grant_source',
+        \\                          'balance_exhausted_at', 'created_at', 'updated_at')
+    ));
+}
+
 test "integration: no schema is created that holds no table" {
     const ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer ctx.pool.deinit();

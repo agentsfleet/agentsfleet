@@ -73,10 +73,20 @@ test "should keep the first balance when provision is replayed on the same tenan
     // (ON CONFLICT DO NOTHING) — the row stays as the first call left it.
     try tenant_billing.provision(db_ctx.conn, TENANT_ID, balance2, "source_second");
 
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.grant_source));
+    const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
     try std.testing.expectEqual(balance1, row.balance_nanos);
-    try std.testing.expectEqualStrings("source_first", row.grant_source);
+
+    // The no-op claim covers the source as well as the balance, but the billing
+    // read no longer carries `grant_source` — production stopped duplicating a
+    // column nothing consumed. The column is still written at provisioning, so
+    // the claim is asserted against what is stored, the way
+    // `signup_bootstrap_test` asserts the same value.
+    var q = PgQuery.from(try db_ctx.conn.query(
+        \\SELECT grant_source FROM billing.tenant_wallet WHERE tenant_id = $1::uuid
+    , .{TENANT_ID}));
+    defer q.deinit();
+    const stored = (try q.next()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("source_first", try stored.get([]const u8, 0));
 }
 
 test "should commit a telemetry row with zero deducted nanos and leave balance unchanged" {
@@ -89,8 +99,7 @@ test "should commit a telemetry row with zero deducted nanos and leave balance u
     defer _ = db_ctx.conn.exec("DELETE FROM billing.usage_ledger WHERE workspace_id = $1", .{WS_ZERO_DEBIT}) catch {};
 
     try tenant_billing.insertStarterGrant(db_ctx.conn, TENANT_ID);
-    const before = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(before.grant_source));
+    const before = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
 
     // computeReceiveCharge is EVENT_NANOS (0) under every posture, so the
     // debit branch is skipped (nanos == 0) yet the telemetry INSERT still
@@ -110,8 +119,7 @@ test "should commit a telemetry row with zero deducted nanos and leave balance u
     }
 
     // Balance untouched — no nanos drained on a zero charge.
-    const after = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, TENANT_ID)).?;
-    defer ALLOC.free(@constCast(after.grant_source));
+    const after = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
     try std.testing.expectEqual(before.balance_nanos, after.balance_nanos);
 
     // Telemetry row present with credit_deducted_nanos = 0.

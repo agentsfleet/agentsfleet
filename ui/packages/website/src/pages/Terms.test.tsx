@@ -25,11 +25,11 @@ describe("Terms", () => {
     expect(screen.getByRole("heading", { name: /termination/i })).toBeInTheDocument();
   });
 
-  it("mentions the free-trial period in billing terms, without committing to a date", () => {
+  it("mentions early access in billing terms, without committing to a date", () => {
     render(<Terms />);
-    // The boundary is per account (NULL = open-ended), so the Terms describe the
-    // trial and point at the Dashboard for the date rather than naming one here
-    // — a fixed date on this page went stale the moment it passed.
+    // There is no end date to commit to: the free allowance is the starter
+    // grant, which ends when the balance does. A fixed date on this page went
+    // stale the moment it passed, which is the bug this assertion pins shut.
     expect(screen.getByText(/free to try during early access/i)).toBeInTheDocument();
   });
 
