@@ -14,15 +14,18 @@ const Entry = entries.Entry;
 const REGISTRY = entries.ENTRIES ++ entries_runtime.ENTRIES_RUNTIME;
 const common = @import("common");
 
+/// The page's front-matter `verified:` stamp. Bump it when a registry change
+/// regenerates the page; the shape test reads it from here, so the two cannot
+/// disagree.
+pub const VERIFIED_DATE = "2026-08-15";
+
 const PRELUDE_BEFORE_VERSION =
     \\---
     \\title: Error codes
     \\description: API error response fields and stable error codes.
     \\type: reference
     \\audience: user
-    \\verified: 2026-07-28
-    \\product_version:
-;
+++ "\nverified: " ++ VERIFIED_DATE ++ "\nproduct_version:";
 
 const PRELUDE_AFTER_VERSION =
     \\executable: false

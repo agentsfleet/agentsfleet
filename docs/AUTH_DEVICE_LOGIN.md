@@ -135,7 +135,7 @@ sequenceDiagram
 
 Two facts the diagram pins:
 1. **The CLI is the initiator.** Every interaction with the UI, API, or Clerk is downstream of `agentsfleet login`. The user typing the verification code closes the loop back to the CLI.
-2. **Clerk is involved at exactly one step of this flow** (`POST /tokens`). The API server never talks to Clerk while the device flow is running. It does afterwards, but differently than it once did: since M160_002 the CLI presents an `afc_` credential rather than the JWT, so Clerk is not consulted for JWKS on those calls — it is consulted by the scope resolver, which fetches the owning user's capabilities per request behind a short cache. Verification moved from "is this signature valid" to "who is this row, and what may they do right now."
+2. **Clerk is involved at exactly one step of this flow** (`POST /tokens`). The API server never talks to Clerk while the device flow is running. It does afterwards, but differently than it once did. Since M160_002 the command-line interface presents an `afc_` credential rather than the JWT, so Clerk is not consulted for its key set on those calls. It is consulted by the scope resolver, which fetches the owning user's capabilities per request behind a short cache. Verification moved from "is this signature valid" to "who is this row, and what may they do right now."
 
 ## Session state machine
 
@@ -149,7 +149,7 @@ Two facts the diagram pins:
      │  OR replaced                            │  OR explicit DELETE                        replay
      ▼                                        ▼  OR replaced                                window)
 ┌─────────┐                       ┌───────────────────────┐
-│ expired │  (terminal)           │ aborted               │  (terminal)
+│ expired │                       │ aborted               │  (terminal)
 └─────────┘                       └───────────────────────┘
 ```
 
@@ -294,7 +294,7 @@ Flow 1's protocol assumes the following deploy rules. Diverging from these turns
 | Requirement | Detail |
 |---|---|
 | **HTTPS-only** for `/v1/auth/*` | Load balancer / reverse proxy enforces. HTTP requests promoted via HTTP 308 to HTTPS. `api.agentsfleet.net` already enforces this in prod. |
-| **HSTS** header on every API response | `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`. Source: load balancer only — the in-app `security_headers.zig` middleware was removed as dead code in M83 (`1d793867`). |
+| **HSTS** header on every API response | `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`. The load balancer is the only source; `agentsfleetd` sets no security headers of its own. |
 | **TLS ≥ 1.2** (1.3 preferred) | Load balancer config. |
 | **Redis required** | `REDIS_URL` env must resolve to a single-node Redis reachable from every API pod (acceptable for dev / single-region prod) OR a Redis Sentinel / Cluster with ≥1 reachable primary per pod. In-memory session storage is **not** acceptable under any multi-pod topology. agentsfleetd fails fast on boot if `REDIS_URL` is unset. |
 | `maxmemory-policy allkeys-lfu` (recommended) | Under memory pressure, least-frequently-accessed session keys evict first. Deploy-time config, not enforced by code. |

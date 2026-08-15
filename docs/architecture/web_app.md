@@ -18,7 +18,13 @@ Every network call to the backend happens in a Server Component or a Server
 Action. A `"use client"` file that calls `fetch` is a bug. The token comes
 from `auth()` on the server; shipping it to the browser to repeat the same
 call adds a round trip and widens the credential surface.
-Grep: `grep -rl '"use client"' app components | xargs grep -l 'fetch('` → 0.
+Grep: `grep -rl '"use client"' app components | xargs grep -l 'fetch('` → one
+file, `app/cli-auth/[session_id]/page.tsx`. That page is the command-line
+handoff: it derives an Elliptic-Curve Diffie-Hellman key in the browser and
+posts the encrypted result, so the call cannot move to the server without
+moving the private key with it. It is the documented exception
+([`../AUTH.md`](../AUTH.md) §"Why the dashboard rides one token"), and it is
+the only one.
 
 **2 · `"use client"` marks a leaf, never a branch.**
 The directive goes on the smallest interactive unit — a button, a form, a
@@ -97,27 +103,24 @@ The bar between the worlds:
 
 ## Scoreboard
 
-Measured Jul 28, 2026 (`ui/packages/app`, 162 `.tsx` files). Move the
-numbers, not the prose. Re-measure at any milestone that touches the app
+Run the greps, then move the numbers. Every row is measurable in one command,
+so a stale row is a choice. Re-measure at any milestone that touches the app
 and update this table in the same diff.
 
-The Jul 27 row recorded 23 `useEffect` and 4 `Suspense`; re-running the
-listed greps against that same commit yields 22 and 3. The numbers below are
-measured, and the deltas attributed to M143_002 are counted from 22 and 3
-rather than from the published figures.
+Measured against `ui/packages/app` at 209 `.tsx` files.
 
 | Signal | Today | Target | Grep |
 |---|---|---|---|
-| `"use client"` files | 90 | ~25 | `grep -rl '"use client"' app components \| wc -l` |
-| `useEffect` files | 20 | ~5 | `grep -rl useEffect app components hooks \| wc -l` |
+| `"use client"` files | 116 | ~25 | `grep -rl '"use client"' app components \| wc -l` |
+| `useEffect` files | 31 | ~5 | `grep -rl useEffect app components hooks \| wc -l` |
 | `useActionState` | 0 | every form | `grep -rl useActionState app components \| wc -l` |
 | `useOptimistic` | 1 | every mutation surface | `grep -rl useOptimistic app components \| wc -l` |
 | `Suspense` files | 5 | every data route | `grep -rl Suspense app \| wc -l` |
 
-**Jul 28 — M143_002 (library reads).** `useEffect` 22 → 20 and `Suspense`
-3 → 5, both from the two library routes.
+The first two moved away from target as the app grew; the last three have not
+moved at all. Both facts are the point of keeping the table.
 
-Statement 5 was the larger of the two. `ModelCatalogueProvider` fetched the
+The two library routes are the worked example. `ModelCatalogueProvider` fetched the
 entire global model catalogue in a mount effect, so every visit to Models
 paid for data most visits never opened a dialog to use; it now loads on
 intent — dialog open, focus, or an eligible hover. `InstallFleet` matched a

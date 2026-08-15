@@ -1,6 +1,6 @@
 # Connectors — the registry-driven connector platform
 
-> Parent: [`README.md`](./README.md) · Sibling: [`../AUTH.md`](../AUTH.md) §OAuth connectors (flow behavior, trust-anchor mechanics, error taxonomy of the shipped providers).
+> Parent: [`README.md`](./README.md) · Sibling: [`../AUTH.md`](../AUTH.md) §OAuth connectors (flow behavior, trust-anchor mechanics, error taxonomy of the shipped providers). · User-facing setup: [docs.agentsfleet.net/fleets/connectors](https://docs.agentsfleet.net/fleets/connectors).
 >
 > Scope: the platform shape — the comptime registry + archetype dispatch that makes a new provider a data entry, the callback and event-ingress trust anchors, the bounded-outbound rule for vendor calls, and the connector-vs-integration terminology. Read this before adding a provider or writing any connector outbound call. Flow behavior stays in AUTH.md; this doc owns the invariants that make the flows generic.
 
@@ -47,23 +47,23 @@ A workspace *connects* a provider once (connector); everything fleets then do wi
 `handlers/connectors/registry.zig` holds a comptime `[]const ConnectorSpec`. Adding a provider is ONE entry (plus a small per-provider hook file) — never new route or flow code:
 
 ```
-            ┌──────────────────────────── comptime ────────────────────────────┐
-            │ REGISTRY = [_]ConnectorSpec{                                      │
-            │   { provider, display_name, archetype: union(enum){              │
+            ┌──────────────────────────────────────────────────────────────────────┐
+            │ REGISTRY = [_]ConnectorSpec{                                         │
+            │   { provider, display_name, archetype: union(enum){                  │
             │       oauth2:      {flow, refresh, exchange_failed_code, post_auth}, │
-            │       app_install: {state, build_install_url, complete},          │
-            │   }, respond_status }                                             │
-            │ }  + comptime validation (dup ids, scopes, id agreement…)         │
-            └──────────────────────────────┬────────────────────────────────────┘
+            │       app_install: {state, build_install_url, complete},             │
+            │   }, respond_status }                                                │
+            │ }  + comptime validation (dup ids, scopes, id agreement…)            │
+            └──────────────────────────────────────────────────────────────────────┘
    runtime lookup(provider) ── null → 404 UZ-CONN-004 (body names the id)
                               ── hit  → exhaustive switch on ARCHETYPE
-            ┌──────────────────────────────┴────────────────────────────────────┐
-            │ generic {provider} handlers: connect.zig · callback.zig · status.zig │
-            │ per-provider deltas: slack/{spec,callback,status}.zig,              │
-            │                      github/{spec,connect,callback,status}.zig,     │
-            │                      zoho/{spec,callback,multi_dc}.zig,             │
+            ┌───────────────────────────────────────────────────────────────────────────┐
+            │ generic {provider} handlers: connect.zig · callback.zig · status.zig      │
+            │ per-provider deltas: slack/{spec,callback,status}.zig,                    │
+            │                      github/{spec,connect,callback,status}.zig,           │
+            │                      zoho/{spec,callback,multi_dc}.zig,                   │
             │                      jira/{spec,callback}.zig, linear/{spec,callback}.zig │
-            └─────────────────────────────────────────────────────────────────────┘
+            └───────────────────────────────────────────────────────────────────────────┘
 ```
 
 - **Routes are generic.** `POST /v1/workspaces/{ws}/connectors/{provider}/connect`, `GET /v1/workspaces/{ws}/connectors/{provider}`, `GET /v1/connectors/{provider}/callback` — three matchers serve every provider (`route_matchers_connectors.zig`); scopes stay `connector:write`/`connector:read` on the generic variants. The shipped Slack/GitHub URLs are preserved verbatim because `slack`/`github` are registry ids.
@@ -206,13 +206,12 @@ remembers. Resolving the gate as approved flips the grant and the gate in one
 statement, so the two cannot disagree; any non-approval outcome drives the grant
 to `revoked` rather than back to `pending`, which nothing would re-raise.
 
-Origination used to sit behind an external `integration-requests` route
-authenticated by a per-fleet key outside the middleware chain. No internally
-installed fleet ever held such a key, so it could never obtain a grant: the App
-ingress query inner-joins on `status = 'approved'`, so no event was written, no
-lease was issued, and nothing reported that a decision was owed — the fleet was
-silently inert. That route, its key table, and a second approval path that
-duplicated this webhook all retired with the move (M154 §8).
+Origination sits inside the middleware chain, and that placement is
+load-bearing. The App ingress query inner-joins on `status = 'approved'`, so a
+fleet that cannot obtain a grant writes no event, takes no lease, and reports
+nothing — it goes silently inert rather than failing visibly. An origination
+path reachable only with a credential the fleet does not hold produces exactly
+that silence.
 
 A lease is the last checkpoint: a credential that resolves to a mintable handle
 with no approved grant **parks the event** rather than dropping the credential
@@ -252,10 +251,11 @@ Receiving a signed event does not hand GitHub credentials to a fleet. When a lea
 
 | Provider | Connect credential | Inbound events after M102_005 |
 |---|---|---|
-| GitHub | App installation handle | App ingress routes by installation + repository + event + grant; manual per-fleet webhook remains available |
-| Slack | bot token from Open Authorization (OAuth) | unchanged specialized events route with team/channel routing |
-| Jira | OAuth refresh handle | no inbound integration in this workstream |
-| Linear | OAuth refresh handle | no inbound integration in this workstream |
+| <img src="https://cdn.simpleicons.org/github" width="14" alt="" /> GitHub | App installation handle | App ingress routes by installation + repository + event + grant; manual per-fleet webhook remains available |
+| <img src="https://api.iconify.design/logos/slack-icon.svg" width="14" alt="" /> Slack | bot token from Open Authorization (OAuth) | unchanged specialized events route with team/channel routing |
+| <img src="https://cdn.simpleicons.org/zoho" width="14" alt="" /> Zoho Desk | OAuth refresh handle, multi-data-center token endpoint | no inbound integration in this workstream |
+| <img src="https://cdn.simpleicons.org/jira" width="14" alt="" /> Jira | OAuth refresh handle | no inbound integration in this workstream |
+| <img src="https://cdn.simpleicons.org/linear" width="14" alt="" /> Linear | OAuth refresh handle | no inbound integration in this workstream |
 
 ## Bounded outbound: every vendor call is armed
 
@@ -264,7 +264,7 @@ Receiving a signed event does not hand GitHub credentials to a fleet. When a lea
 - **Fail-closed, no unbounded branch.** A call either runs armed or is refused: watchdog-unavailable (thread spawn failure) and pin failure both refuse the call (`UZ-CONN-003`, 502) instead of falling through to an unarmed fetch. The invariant is code-path-true — there is no fallback branch to take.
 - **Deadlines are named per call class**, once: token exchange (10 s), outbound post (10 s), thread re-read (1.5 s — M106's ingress bound, kept).
 - **Watchdog ownership follows the concurrency of the path.** A watchdog arms exactly ONE call at a time. The serialized outbound worker owns one across its loop; the request-concurrent paths (OAuth exchange, mention-ingress thread re-read) hold one per request — sharing an instance across concurrent requests would let two arms clobber each other and leave one call unbounded.
-- **Residual window: connection setup.** Name resolution, the TCP dial, **and the TLS handshake** happen before a pooled handle exists to arm. DNS + dial are OS-bounded (connect timeouts); the TLS handshake read is **not** — `std.http.Client.connect` does TCP+TLS atomically, so we cannot arm between them without a setup deadline mechanism that does not exist yet. So a vendor that completes TCP then stalls the TLS handshake is the one unbounded branch left (tracked as a follow-up alongside the non-connector-caller bounding in §Out of Scope). The armed surface is the post-handshake read stage, where the M100/M106 incidents actually lived (vendor accepts + handshakes, then stalls the response). This is a strict improvement, not a regression: pre-M108 the *entire* call — connect, handshake, and read — was unbounded.
+- **Residual window: connection setup.** Name resolution, the TCP dial, **and the TLS handshake** happen before a pooled handle exists to arm. DNS + dial are OS-bounded (connect timeouts); the TLS handshake read is **not** — `std.http.Client.connect` does TCP+TLS atomically, so we cannot arm between them without a setup deadline mechanism that does not exist yet. So a vendor that completes TCP then stalls the TLS handshake is the one unbounded branch left (tracked as a follow-up, together with bounding the outbound callers that are not connectors — JWKS, Clerk, OTLP, fleet-bundle fetches, and the credential broker's GitHub mint — which M108_001 deferred). The armed surface is the post-handshake read stage, where the M100/M106 incidents actually lived (vendor accepts + handshakes, then stalls the response). This is a strict improvement, not a regression: pre-M108 the *entire* call — connect, handshake, and read — was unbounded.
 - **No pool slot rides a vendor call.** Credentials load under a short acquire released before the exchange; the events ingress pre-loads the bot token and returns its slot before the thread re-read (closes merged-PR #468's P1).
 
 Deadline fired, watchdog unarmable, or vendor unreachable → `UZ-CONN-003` (502) + a `connector_vendor_call_refused` warn naming provider, call class, and `reason` (the per-class distinction) — never URL query or token material.

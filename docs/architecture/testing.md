@@ -1,7 +1,6 @@
 # Zig test architecture
 
-Date: Jul 26, 2026
-Status: Canonical component ownership and verification topology.
+Canonical component ownership and verification topology.
 
 ---
 
@@ -25,7 +24,7 @@ Eight roots, not three. Two of them â€” the logging and call-deadline entries â€
 are production module roots whose own `test` block doubles as the lane root, so
 they carry imports the module needs rather than an aggregate list. The runner's
 integration root is likewise a test file that force-imports three siblings, not
-a dedicated aggregate root; there is no `src/runner/integration_tests.zig`.
+a dedicated aggregate root. The runner has no integration aggregate root at all.
 
 The daemon unit root imports production modules and isolated test files. The
 daemon integration root imports live PostgreSQL, Redis, and QStash test files.
@@ -114,7 +113,7 @@ because that tree contributes no measured line there.
 The checker writes these keys to `.tmp/zig-coverage.txt` for the CI job summary:
 `zig_line_coverage_pct`, `zig_line_coverage_min_pct`, `zig_measured_files`,
 `zig_measured_lines`, `zig_components_measured`, `zig_components_total`, and
-`zig_components_empty`.
+`zig_components_empty`.>>>>>>> origin/main
 
 ## Adding a component
 
