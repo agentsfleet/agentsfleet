@@ -22,6 +22,11 @@
 
 set -euo pipefail
 
+# Resolved from BASH_SOURCE, not `$PWD`: the gate runs from the repository root
+# but the self-tests invoke it by absolute path, and its sibling extractor has to
+# resolve either way.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 ARCH_DIR="${ARCH_DIR:-docs/architecture}"
 SPEC_ROOT="${SPEC_ROOT:-docs/v2}"
 DONE_DIR="$SPEC_ROOT/done"
@@ -283,10 +288,10 @@ done)
 
 # ---------------------------------------------------------------------------
 # 8. test_arch_section_anchors_resolve
-#    Cross-page pointers are written `[`page.md`](./page.md) §Section title`.
 #    The file check above proves the page exists; this proves the section does.
-#    Only word-leading anchors are read — a numeric one (`§4`) names a heading
-#    the page numbers itself, which the heading text does not have to repeat.
+#    `check_architecture_doc_anchors.sh` owns the pointer spellings — the
+#    section may sit after the link or inside its text, quoted or bare — and
+#    hands back `src::target::anchor` triples for this loop to resolve.
 # ---------------------------------------------------------------------------
 broken_anchors=0
 while IFS= read -r entry; do
@@ -304,17 +309,7 @@ while IFS= read -r entry; do
   grep -qiE "^#+[[:space:]]+$(printf '%s' "$anchor" | sed 's/[][(){}|+?\\.*^$/]/\\&/g')" "$target_path" && continue
   err "test_arch_section_anchors_resolve: $src points at $target §$anchor, which is not a heading there"
   broken_anchors=$((broken_anchors + 1))
-done < <(doc_files | while IFS= read -r f; do
-  # Two pointer spellings, both captured. Quoted (`§"C. EXECUTE"`) runs to the
-  # closing quote, so internal punctuation survives. Unquoted runs to a comma,
-  # semicolon, pipe, paren or end of line, then loses a sentence-final period.
-  {
-    grep -oE '\]\(\.\.?/[A-Za-z0-9_/-]+\.md\)[[:space:]]*§"[^"]+"' "$f" 2>/dev/null \
-      | sed -E 's|\]\(\.\.?/([A-Za-z0-9_/-]+\.md)\)[[:space:]]*§"([^"]+)"|::\1::\2|' || true
-    grep -oE '\]\(\.\.?/[A-Za-z0-9_/-]+\.md\)[[:space:]]*§[A-Za-z][^,;|)"]*' "$f" 2>/dev/null \
-      | sed -E 's|\]\(\.\.?/([A-Za-z0-9_/-]+\.md)\)[[:space:]]*§|::\1::|' || true
-  } | sed -E 's/[[:space:]]*\.?[[:space:]]*$//' | sort -u | sed "s|^|$f|" || true
-done)
+done < <(doc_files | bash "$SCRIPT_DIR/check_architecture_doc_anchors.sh")
 [ "$broken_anchors" = 0 ] && ok "test_arch_section_anchors_resolve: every cross-page section anchor resolves"
 
 # ---------------------------------------------------------------------------

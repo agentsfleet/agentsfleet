@@ -316,21 +316,6 @@ into the anti-vibes traps the rest of this doc forbids.
 
 ---
 
-## Implementation roadmap (separate effort from this doc)
-
-This document is the spec. Implementation is a separate milestone. Suggested workstream split:
-
-1. **W1 — `ui/packages/design-system`:** rewrite `tokens.css`, `theme.css`. Swap `@fontsource-variable/geist` for Commit Mono (self-host) + Instrument Sans (Google Fonts or self-host). Update every component (Button, Badge, Card, Input, etc.) to read new tokens. Add `<WakePulse />` primitive for the signature animation.
-2. **W2 — `ui/packages/website`:** apply new tokens, replace any Geist references, rebuild marketing hero with the new typography scale, add the dot-grid hero background.
-3. **W3 — `ui/packages/app`:** apply new tokens, audit every page against the dashboard mockup, ensure `<WakePulse />` only fires on actually-live agents (data-driven, not decorative).
-4. **W4 — `docs.agentsfleet.net`:** apply new typography stack, single-column layout, ~68ch measure.
-5. **W5 — `agentsfleet`:** add 256-color terminal mode (detect via `tput colors`), implement status glyphs, audit every output line for the new palette mapping.
-6. **W6 — Wire-up:** add a `docs/DESIGN_SYSTEM.md` row to the EXECUTE doc-reads table in `AGENTS.md` (triggers: `*.tsx`, `*.css`, files under `ui/packages/**`, `cli/src/**` when touching output formatting). Triggers the Invariance Suite Gate — handle as its own commit.
-
-Each workstream is its own spec. Use `kishore-spec-new` to create them once you're ready to start implementation.
-
----
-
 ## Decisions log
 
 | Date | Decision | Rationale |
@@ -359,10 +344,3 @@ Each workstream is its own spec. Use `kishore-spec-new` to create them once you'
 | 2026-07-23 | Fleet detail supports an operational conversation | Operators can steer a fleet in a centered transcript alongside evidence from GitHub, Slack, Zoho, Grafana, logs, and other sources. Human turns are distinct from source-context cards; fleet replies remain evidence-first and never use generic consumer-chat styling. |
 
 ---
-
-## Preview reference
-
-The first rendered preview of this system lives at:
-`~/.gstack/projects/agentsfleet/designs/design-system-20260508-0831/preview.html`
-
-It uses JetBrains Mono as a visual stand-in for Commit Mono (cross-environment reliability). Production system uses Commit Mono.
