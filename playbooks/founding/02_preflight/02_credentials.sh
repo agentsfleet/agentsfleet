@@ -134,8 +134,8 @@ check_prod() {
   # persistent runner enrollment.
   check_ref "op://$v/tailscale/oauth-client-id"
   check_ref "op://$v/tailscale/oauth-secret"
-  check_ref "op://$v/discord-ci-webhook/credential"
-  check_ref "op://$v/discord-release-webhook/credential"
+  check_url_ref "op://$v/discord-ci-webhook/credential"
+  check_url_ref "op://$v/discord-release-webhook/credential"
   check_ref "op://$v/fly-api-token/credential"
 
   if [ "$stage" = "deployment" ]; then
