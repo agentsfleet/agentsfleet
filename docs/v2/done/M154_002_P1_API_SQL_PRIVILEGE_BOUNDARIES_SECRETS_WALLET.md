@@ -16,11 +16,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M154
 **Workstream:** 002
 **Date:** Aug 01, 2026
-**Status:** DEFERRED — parked in `docs/v2/done/`; re-activates on the login-role edge (see Parked below)
+**Status:** SUPERSEDED — parked in `docs/v2/done/`, its branch deleted and its `DONE` marks stale; the privilege boundary is redesigned from an attacker's path, not resumed from here (see Parked below)
 **Priority:** P1 — a security boundary that exists in prose and not in grants
 **Categories:** API, SQL
 **Batch:** B1 — its own Pull Request, both halves together; the grants live in slots M154_001 authors
-**Branch:** feat/m154-privilege-boundaries
+**Branch:** feat/m154-privilege-boundaries — **deleted Aug 15, 2026**; archived only as `refs/pull/598/head` (`8ff760da6`)
 **Test Baseline:** unit=3512 integration=589
 **Depends on:** M154_001 (merged first) — the grants land in the slots it re-authors, so those slots must exist for this to apply. Its §1 revoke and §2 elevation ship together or not at all: the revoke alone refuses every signup, because the starter grant is written inside the tenant-create transaction
 **Provenance:** LLM-drafted (Claude Opus 5, Aug 01, 2026), from a grant-level audit of the shipped schema
@@ -36,10 +36,30 @@ merging it as authored would change nothing in production. It is parked here
 whole, with the missing edge identified and proved, rather than shipped as a
 boundary that cannot fail.
 
-**None of the code below is on `main`.** Every Dimension marked `DONE` was
-completed on `feat/m154-privilege-boundaries` (pushed at `8ff760da6`, PR #598
-closed Aug 13, 2026) and merged nowhere. Read a `DONE` mark in this file as
-"authored and tested on the parked branch", never as "shipped".
+**None of the code below is on `main`, and the branch that held it is gone.**
+Every Dimension marked `DONE` was completed on `feat/m154-privilege-boundaries`
+(`8ff760da6`, PR #598 closed Aug 13, 2026) and merged nowhere. That branch was
+deleted on Aug 15, 2026.
+
+**Every `DONE` mark in this file is stale.** They describe 138 files of work
+that exists on no branch. The spec and the tree have drifted apart: nothing
+below is shipped, and nothing below is a live claim about the repository. Read
+this file as a record of a defect found and a design rejected — not as a plan
+with completed parts.
+
+**Why the branch went rather than being kept alive.** Keeping a dangling branch
+only so a spec's `DONE` marks stay true is the wrong trade: it preserves the
+claim and not the value. Indy deleted it to restart the privilege boundary from
+a fresh position — designed from how an attacker actually reaches the data
+rather than from the grant-level audit this spec was drafted off. The question
+the replacement answers is which path a hacker takes to the secret store and the
+wallet, and what each grant denies them at that moment. This spec never asked
+that; it asked which grants a tidy schema would have.
+
+**The code is unbranched, not lost.** GitHub retains the closed PR's head:
+`git fetch origin refs/pull/598/head` recovers `8ff760da6`. That is an archive
+for archaeology, not a starting point — the replacement work is expected to be
+designed again, not resumed from it.
 
 > Indy (2026-08-13): "i want only the removal of free trial in this PR other
 > grant and role related commits are not needed? I find it an over kill for this
