@@ -13,14 +13,14 @@ Find the question, jump to the one §-section that answers it. Do not read the w
 | Question | Where |
 |---|---|
 | Which validator handles my route's credential? | §Auth model in one screen |
-| What scope does a route require? | `http/route_scopes.zig` (declaration) + §Scope catalogue (meaning) |
-| Where do a principal's scopes come from, per credential? | §Scope catalogue → §CLI credential — resolved, not granted |
-| How does `agentsfleet login` work, and its threat model? | §Flow 1 + [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) |
-| Why does the dashboard send Bearer, never the cookie? | §Flow 2 → §Where the cookie lives |
+| What scope does a route require? | `http/route_scopes.zig` (declaration) + §"Scope catalogue" (meaning) |
+| Where do a principal's scopes come from, per credential? | §"Scope catalogue" → §"CLI credential" |
+| How does `agentsfleet login` work, and its threat model? | §"Flow 1" + [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) |
+| Why does the dashboard send Bearer, never the cookie? | §"Flow 2" → §"Where the cookie lives" |
 | Why does the dashboard carry one token and not two? | §Why the dashboard rides one token |
 | How is the SSE stream authenticated? | §SSE stream — Next Route Handler injects Bearer |
 | How is an `agt_t` tenant key checked? | §Flow 3 — Tenant API key |
-| What can a runner token reach — and never reach? | §Runner token → §Least privilege |
+| What can a runner token reach — and never reach? | §"Runner token" → §"Least privilege" |
 | Who can mint Token B, and where do secrets live? | §Security model |
 | Where may `CLERK_SECRET_KEY` be *sent*? | §Where the secret is sent — `CLERK_API_BASE` |
 | How do I rotate `CLERK_SECRET_KEY`? | §Rotation procedure |
@@ -411,7 +411,7 @@ sequenceDiagram
     API-->>Service: 200 OK
 ```
 
-API key **authentication** never touches Clerk: the raw key lives only in the backend DB, hashed at rest, and arrives via the same `Authorization: Bearer …` header that JWTs use — the `agt_t` prefix tells the middleware to take the DB hash-compare branch instead of the JWKS verify branch. The key's **capabilities** do touch Clerk (§Resolved above): after the hash lookup succeeds, the middleware resolves the creator's claim through the shared scope resolver and its cache.
+API key **authentication** never touches Clerk: the raw key lives only in the backend DB, hashed at rest, and arrives via the same `Authorization: Bearer …` header that JWTs use — the `agt_t` prefix tells the middleware to take the DB hash-compare branch instead of the JWKS verify branch. The key's **capabilities** do touch Clerk (resolved above): after the hash lookup succeeds, the middleware resolves the creator's claim through the shared scope resolver and its cache.
 
 ---
 
@@ -596,7 +596,7 @@ Templates can also be scope-gated (e.g. "only users whose `scopes` claim carries
 
 The wire shape is deliberately uniform: one credential header, one middleware, two payload branches. New **outbound** principal types plug in by issuing a JWT with the right `aud`, or by minting a new prefixed API key. No new auth middleware is required.
 
-**Inbound provider traffic is a separate story and never uses Bearer.** Fleet-trigger webhooks (§Webhook auth) and OAuth connectors (§OAuth connectors) authenticate by signature. That is a keyed hash over the raw body, or a signed single-use `state` on the callback. Either is verified against a vault-held secret, not against a token the caller presents.
+**Inbound provider traffic is a separate story and never uses Bearer.** Fleet-trigger webhooks (§"Manual fleet-webhook auth") and OAuth connectors (§OAuth connectors) authenticate by signature. That is a keyed hash over the raw body, or a signed single-use `state` on the callback. Either is verified against a vault-held secret, not against a token the caller presents.
 
 Cookie handling stays inside Clerk and Next.js. The Zig backend is a stateless JWT/key validator.
 
@@ -804,7 +804,7 @@ The `UZ-WH-020` vs `UZ-WH-010` split matters: the first is a recoverable misconf
 ### Cross-references
 
 - Implementation: `src/agentsfleetd/auth/middleware/webhook_sig.zig` (middleware), `src/agentsfleetd/cmd/serve_webhook_lookup.zig` (resolver), `src/agentsfleetd/fleet_runtime/webhook_verify.zig` (provider registry).
-- Operator-facing data flow: `docs/architecture/data_flow.md` §B (TRIGGER), `docs/architecture/user_flow.md` §8 (the GH Actions worked example).
+- Operator-facing data flow: [`architecture/data_flow.md`](./architecture/data_flow.md) §"B. TRIGGER", [`architecture/user_flow.md`](./architecture/user_flow.md) §8 (the GH Actions worked example).
 - Error registry: `src/agentsfleetd/errors/error_entries.zig` (HTTP status + docs URI for each code), `src/agentsfleetd/auth/middleware/errors.zig` (the auth-layer mirror that keeps `src/agentsfleetd/auth/` portable).
 
 ---
@@ -904,7 +904,7 @@ Log reasons in parentheses are the greppable `reason=` values the ingress emits 
 | --- | --- | --- |
 | `UZ-CONN-001` (connector not configured) | platform app secrets missing at connect or the events ingress (the status read never emits it — it degrades to `not_connected`) | **503** — the ingress fails loud too, it is not a silent no-op |
 | `UZ-CONN-002` (invalid connect state) | callback `state` forged / expired / replayed (a *missing* state is `UZ-REQ-001`) | 400 on the callback |
-| `UZ-CONN-003` (vendor deadline exceeded) | a connector vendor call hit its enforced deadline (vendor accepted, then stalled) or could not be deadline-armed and was refused — never runs unbounded (`bounded_fetch`; shape in `architecture/connectors.md` §Bounded outbound) | **502** on the callback exchange; logged + retried on background paths |
+| `UZ-CONN-003` (vendor deadline exceeded) | a connector vendor call hit its enforced deadline (vendor accepted, then stalled) or could not be deadline-armed and was refused — never runs unbounded (`bounded_fetch`; shape in [`architecture/connectors.md`](./architecture/connectors.md) §"Bounded outbound") | **502** on the callback exchange; logged + retried on background paths |
 | `UZ-CONN-004` (unknown connector provider) | the `{provider}` route segment resolves to no registry entry — connect, callback, and status answer identically, body names the id | 404 |
 | `UZ-CONN-008` (installation ownership denied) | GitHub user token cannot access the claimed installation, or another workspace already owns its route | **403** on the callback; no vault or routing-row mutation |
 | `UZ-SLK-010` (`invalid_signature`) | events-ingress HMAC mismatch | 401 |

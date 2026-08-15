@@ -118,7 +118,7 @@ Rooted at `src/runner/main.zig`, isolated from datastore code (enforced by
 ## Channel inventory
 
 Cross-thread and cross-process channels, with SPSC roles and payload ownership.
-Redis stream/channel **names** are canonical in `data_flow.md` §"Two streams + one
+Redis stream/channel **names** are canonical in [`data_flow.md`](./data_flow.md) §"Two streams + one
 pub/sub channel"; the roles below are the concurrency view.
 
 | Channel | Kind | Producer → Consumer | Payload ownership |

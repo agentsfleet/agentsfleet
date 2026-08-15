@@ -299,19 +299,19 @@ while IFS= read -r entry; do
   rest="${entry#*::}"
   target="${rest%%::*}"
   anchor="${rest##*::}"
-  target_path="$(dirname "$src")/$target"
+  # `@self` — no link ahead of it, so it must name a heading on its own page.
+  if [ "$target" = "@self" ]; then target_path="$src"; else target_path="$(dirname "$src")/$target"; fi
   [ -f "$target_path" ] || continue
   # Exactly one match, prefix-anchored. A pointer names a heading's opening
-  # words, so `^#+ <anchor>` is the test — substring matching let `§C` match
-  # any heading containing that letter. Several matches prove nothing either:
-  # `§C` prefix-matches `## Config`, `## Connection topology` and `## Concrete
-  # example` alike, naming none of them. Both are the silent pass this exists
-  # to prevent, and both have the same fix — quote the full heading text.
+  # words, so `^#+ <anchor>` is the test. Several matches prove nothing: `§C`
+  # prefix-matches `## Config`, `## Connection topology` and `## Concrete
+  # example` alike, naming none. Same fix — quote the full heading text.
   hits="$(grep -ciE "^#+[[:space:]]+$(printf '%s' "$anchor" | sed 's/[][(){}|+?\\.*^$/]/\\&/g')" "$target_path" || true)"
   [ "$hits" = 1 ] && continue
+  [ "$target" = "@self" ] && where="its own page" || where="$target"
   [ "$hits" = 0 ] \
-    && err "test_arch_section_anchors_resolve: $src points at $target §$anchor, which is not a heading there" \
-    || err "test_arch_section_anchors_resolve: $src points at $target §$anchor, which prefix-matches $hits headings — quote the full heading text"
+    && err "test_arch_section_anchors_resolve: $src §$anchor names no heading on $where — quote the anchor and move any descriptor outside it, or add a link if the section lives on another page" \
+    || err "test_arch_section_anchors_resolve: $src §$anchor prefix-matches $hits headings on $where — quote the full heading text"
   broken_anchors=$((broken_anchors + 1))
 done < <(doc_files | bash "$SCRIPT_DIR/check_architecture_doc_anchors.sh")
 [ "$broken_anchors" = 0 ] && ok "test_arch_section_anchors_resolve: every cross-page section anchor resolves"

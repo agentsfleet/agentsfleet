@@ -419,9 +419,61 @@ test_arch_doc_multi_anchor_and_sibling_dir_are_checked() {
   # A bare anchor must stop at a following link rather than swallowing it:
   # `§Flow 1 + [`x.md`](./x.md)` names a section here and a page there.
   printf '# Target\n\n## B. TRIGGER\n\n## C. EXECUTE\n\n## Config\n\n## Connection topology\n\nBody.\n' >"$dir/target.md"
-  printf '# Source\n\n## Flow 1\n\nSee §Flow 1 + [`target.md`](./target.md) §"C. EXECUTE".\n' >"$dir/direction.md"
+  printf '# Source\n\n## Flow 1\n\nSee §Flow 1 [`target.md`](./target.md) §"C. EXECUTE".\n' >"$dir/direction.md"
   if ! run_gate_from_root "$dir" "$spec_root"; then
     bad "$name" "a bare anchor swallowed the link that followed it"
+    return
+  fi
+  ok "$name"
+}
+
+# Most `§` references carry no link at all — they name a heading on their own
+# page. None of them were read until the gate learned `@self`, which is why
+# `§Webhook auth` survived four months after M102 renamed that heading. Three
+# behaviours are locked here: a same-page reference resolves without a link, a
+# quoted anchor survives the line wrap that hard-wrapped prose puts through it,
+# and a link stops binding at the end of its sentence.
+test_arch_doc_same_page_anchor_is_checked() {
+  local name="test_arch_doc_same_page_anchor_is_checked"
+  local spec_root="$WORK_DIR/specs"
+  build_spec_root "$spec_root"
+
+  local dir="$WORK_DIR/anchor_self"
+  mkdir -p "$dir"
+  printf '# Other\n\n## Failure recovery model\n\nBody.\n' >"$dir/other.md"
+
+  printf '# Source\n\n## Per-request volume\n\nSized in §"Per-request volume".\n' >"$dir/direction.md"
+  if ! run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a same-page anchor naming a real heading was rejected"
+    return
+  fi
+
+  # The regression: unlinked references were never extracted, so this passed.
+  printf '# Source\n\n## Per-request volume\n\nSized in §"Absent section".\n' >"$dir/direction.md"
+  if run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a same-page anchor naming no heading passed — it was never extracted"
+    return
+  fi
+
+  # Hard-wrapped prose splits a quoted anchor across the line break.
+  printf '# Source\n\n## Per-request volume\n\nSized in §"Per-request\nvolume" as described.\n' >"$dir/direction.md"
+  if ! run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a quoted anchor wrapped across a line break was rejected"
+    return
+  fi
+
+  # A link binds only to the end of its sentence. Past the full stop the bare
+  # anchor is about this page again, and must not resolve against the link.
+  printf '# Source\n\n## Per-request volume\n\nSee [`other.md`](./other.md) §"Failure recovery model". The figure in §"Per-request volume" was wrong.\n' >"$dir/direction.md"
+  if ! run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a same-page anchor after a link+full-stop was bound to the linked page"
+    return
+  fi
+
+  # ...and within one sentence it does still bind to the link.
+  printf '# Source\n\n## Per-request volume\n\nSee [`other.md`](./other.md) §"Failure recovery model" and §"Absent there".\n' >"$dir/direction.md"
+  if run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a second anchor in the link's own sentence stopped binding to it"
     return
   fi
   ok "$name"
@@ -450,6 +502,7 @@ test_arch_doc_no_retired_slot_numbers
 test_arch_doc_punctuated_anchor_is_checked
 test_arch_doc_inside_link_anchor_is_checked
 test_arch_doc_multi_anchor_and_sibling_dir_are_checked
+test_arch_doc_same_page_anchor_is_checked
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]

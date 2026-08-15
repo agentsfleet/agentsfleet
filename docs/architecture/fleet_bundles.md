@@ -24,7 +24,7 @@ Every row is extracted from the sections below; the owner column names the secti
 
 ## Traps
 
-§Notable invariants is the binding list; the index highlights:
+§"Notable invariants" is the binding list; the index highlights:
 
 - The runner ignores the tar's SKILL.md/TRIGGER.md copies — the fleet's live copy wins on every lease (§Runtime read path).
 - A `public` row with no bundle is invisible by query, not by migration — stale rows cannot lie to a tenant (§The publish gate).

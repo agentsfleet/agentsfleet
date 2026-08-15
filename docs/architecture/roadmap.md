@@ -20,7 +20,7 @@ One row per item, so an agent can check a status without reading the ledger; eac
 | Slack consumption ladder | Rung 0 ✅ (M106_001); Rung 1 is direction, not a commitment | §Slack-resident surface |
 | Bastion | post-MVP shape, documented so specs don't foreclose it | §Bastion |
 | Payload offload + charge breakdown | specced, not started (M155_001, `docs/v2/pending/`) | §Payload offload and the durable stream |
-| Dashboard Backend-for-Frontend | deferred — build with the v3 capability tokens | §Dashboard Backend-for-Frontend |
+| Dashboard Backend-for-Frontend | deferred — build with the v3 capability tokens | §"Dashboard Backend-for-Frontend" |
 
 ## v2.1 — authorization
 
@@ -31,7 +31,7 @@ Authorization is now **scope-based**. The role ladder (`AuthRole = user < operat
 ## v2.1+ — other deferred items
 
 - **Flow-1 active-MITM closure** — URL-fragment public-key binding + HKDF transcript binding. See [`../AUTH.md`](../AUTH.md) *threats this flow does NOT close*.
-- **Dashboard token model** — the Backend-for-Frontend direction. Deferred; see §Dashboard Backend-for-Frontend below.
+- **Dashboard token model** — the Backend-for-Frontend direction. Deferred; see §"Dashboard Backend-for-Frontend" below.
 - **Open fleet (mode C)** — self-enrolling runners. See [`runner_fleet.md`](./runner_fleet.md).
 - **Label-scoped sticky affinity — ✅ DELIVERED (M85_001).** The first eligibility gate shipped: `core.fleets.required_tags <@ runner.labels` filters the candidate set before `fleet.runner_affinity.last_runner_id` is applied as a sticky preference. A sticky runner that no longer satisfies a fleet's tags cannot win; the eligible runner wins instead. See `src/agentsfleetd/fleet/assign.zig` and the `sticky hint never overrides eligibility` / `unsatisfiable tags hold then schedule` tests in `placement_eligibility_test.zig`.
 - **Trust-scoped sticky affinity** — still deferred. Once runners can be local / low-trust (laptops, untrusted hosts), affinity selection must add **trust class + scope** (allowed tenants/workspaces) and sandbox-tier eligibility before the sticky preference — "prefer the last runner *among the eligible set*," never an override of eligibility. M85_001 intentionally shipped labels only; the trust/scope/tier funnel remains its own security workstream.
@@ -124,7 +124,7 @@ synchronously.
 The dashboard rides one Clerk session token today, and the browser still holds it
 in memory to send as a Bearer. The end shape routes every dashboard read through
 `/api/*` route handlers on the Next.js server, so the browser carries only the
-`__session` cookie and never a token. `AUTH.md` §"Why the dashboard rides one
+`__session` cookie and never a token. [`../AUTH.md`](../AUTH.md) §"Why the dashboard rides one
 token" describes what ships now.
 
 It is deferred, for three reasons.

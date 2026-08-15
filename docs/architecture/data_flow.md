@@ -21,7 +21,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Dedicated Redis connections | one — the SubscriptionHub | refcounted `SUBSCRIBE`; N viewers cost one connection per replica | §Connection topology |
 | Postgres acquire failures | 2 distinct errors | `PoolTimeout` (capacity) vs `PoolUnavailable` (datastore); `MAX_CONNECTIONS_PER_READ` = 1 | §The Postgres pool |
 | Config freshness | read per lease | a `PATCH` takes effect on the next lease; no cache, no signal | §Config reload |
-| Gate-blocked rows | terminal | never reopened; the resolved gate lands a NEW row via `actor=continuation:<original>` | §C. EXECUTE step 3 |
+| Gate-blocked rows | terminal | never reopened; the resolved gate lands a NEW row via `actor=continuation:<original>` | §"C. EXECUTE" step 3 |
 | Webhook rejections | 3 codes | `UZ-WH-020` (misconfig) · `UZ-WH-010` (bad signature) · `UZ-WH-011` (stale timestamp, 5-minute window) | §B. TRIGGER |
 | Install guarantee | stream + group before 201 | `ensureEventStream` retries `[100ms, 500ms, 1500ms]`; exhaustion rolls back the PG row | §A. INSTALL |
 | SSE sequence ids | not durable | per-connection counter, resets to 0; `Last-Event-ID` ignored; backfill via the events list | §D. WATCH |
@@ -29,7 +29,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Cron authority | QStash | signature verified at ingress; replay suppressed atomically; the runner owns no timer | §B. TRIGGER |
 | Cancel latency | ≤ one heartbeat interval | revocation rides the heartbeat reply | §KILL |
 | Lease ownership | at most one active lease per fleet | atomic `runner_affinity` claim + monotonic `fencing_seq` | §One active lease per fleet |
-| Provider `api_key` | never in `secrets_map` | rides `ExecutionPolicy.provider` + `.api_key`; injected for the inference call only | §C. EXECUTE step 4 |
+| Provider `api_key` | never in `secrets_map` | rides `ExecutionPolicy.provider` + `.api_key`; injected for the inference call only | §"C. EXECUTE" step 4 |
 | Tenant isolation | RLS + namespacing | Postgres Row-Level Security by `workspace_id`; Redis keys namespaced by unguessable fleet UUID | §Multi-tenancy boundary |
 
 ## Traps
@@ -40,7 +40,7 @@ Each trap is enforced in its owner section; this list is the index.
 - A connection held across a blocking `SUBSCRIBE` can never return to a pool (§Connection topology).
 - Never acquire a second Postgres connection while holding one — that is how a pool deadlocks (§The Postgres pool).
 - The Postgres pool has no ordering or fairness guarantee; do not assert one (§The Postgres pool).
-- `gate_blocked` rows are NEVER reopened (§C. EXECUTE step 3).
+- `gate_blocked` rows are NEVER reopened (§"C. EXECUTE" step 3).
 - Never carry a separate event id in the payload — the stream entry id IS the canonical event id (§B. TRIGGER).
 - The continuation actor is FLAT — it never re-nests `continuation:` (§B. TRIGGER).
 - `repositories` is required for GitHub App traffic; omission means no delivery, never every repository (§B. TRIGGER).
@@ -57,7 +57,7 @@ The diagrams live with their flows — each is the section's proof, so none is d
 - coding fleet vs Fleet runtime — §The coding fleet and the Fleet runtime
 - the steer round-trip with the 12 writes — §Steer flow end-to-end
 - the Redis connection topology — §Connection topology
-- install, trigger envelope, execute, watch, kill — §A–§D and §KILL under §End-to-end sequence
+- install, trigger envelope, execute, watch, kill — §"End-to-end sequence" — A through D, plus KILL
 - the install failure window — §The install failure scenario, visually
 
 ## Decisions
@@ -666,8 +666,9 @@ not authority by itself.
    > creation actor. One more producer into THIS same ingress — the
    > lease/execute path does not change. The resident fleet owns the channel's
    > memory namespace (keyed by the resident fleet_id), so memory persists
-   > thread→thread through the existing hydrate/capture loop (runner_fleet.md
-   > §Memory continuity). Reactive only — read-only tools, no source triggers,
+   > thread→thread through the existing hydrate/capture loop
+   > ([`runner_fleet.md`](./runner_fleet.md) §"Memory continuity"). Reactive
+   > only — read-only tools, no source triggers,
    > no cron, code-set at creation (not from the skill.md prose). Spec:
    > docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md
 ```
@@ -689,8 +690,8 @@ user action:
   timestamp outside the 5-minute drift window. Clock skew or replay.
 
 There is no Bearer fallback. The `Authorization` header is never
-consulted on `/v1/webhooks/…` routes. See `docs/AUTH.md §Webhook auth
-(separate surface)` for the full surface.
+consulted on `/v1/webhooks/…` routes. See
+[`../AUTH.md`](../AUTH.md) §"Manual fleet-webhook auth" for the full surface.
 
 ### C. EXECUTE  (lease → runner → report)
 
@@ -825,7 +826,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    dead runner is fenced out at claimReport (UZ-RUN-005).
 ```
 
-**Slack-resident answer round-trip (M106).** For §B's fifth producer (the Slack channel bot) two connector-specific hops bracket this generic trace without altering it. *At ingress:* `connectors/slack/thread.zig` does a best-effort re-read of the recent thread (Slack `conversations.replies`, bounded to the last-N messages) so the leased `request_json` carries same-thread context. It **never throws**: a failed or absent re-fetch degrades to an empty thread, and the answer still runs from the mention alone. *On the way out:* the answer is not posted from the report handler directly. Step 7's report path calls `enqueueOutboundAnswer` (`fleet/service_report.zig`) — if the reporting fleet has a `core.connector_channels` binding it enqueues a `provider`-tagged job onto the generic `connector:outbound` stream (`queue/connector_outbound.zig`); a non-connector fleet, empty answer, or any failure is a logged no-op that never fails the finalized report. The boot-started `outbound/worker.zig` consumer (the one blocking Redis consumer sized in [`scaling.md`](./scaling.md)) then reads the job, routes it by `provider`, and posts the answer back in-thread with bounded retry + pending-first redelivery. The core report path stays provider-agnostic (Invariant 9) — the worker is the only place a connector poster is imported.
+**Slack-resident answer round-trip (M106).** For the fifth producer in §"B. TRIGGER" (the Slack channel bot) two connector-specific hops bracket this generic trace without altering it. *At ingress:* `connectors/slack/thread.zig` does a best-effort re-read of the recent thread (Slack `conversations.replies`, bounded to the last-N messages) so the leased `request_json` carries same-thread context. It **never throws**: a failed or absent re-fetch degrades to an empty thread, and the answer still runs from the mention alone. *On the way out:* the answer is not posted from the report handler directly. Step 7's report path calls `enqueueOutboundAnswer` (`fleet/service_report.zig`) — if the reporting fleet has a `core.connector_channels` binding it enqueues a `provider`-tagged job onto the generic `connector:outbound` stream (`queue/connector_outbound.zig`); a non-connector fleet, empty answer, or any failure is a logged no-op that never fails the finalized report. The boot-started `outbound/worker.zig` consumer (the one blocking Redis consumer sized in [`scaling.md`](./scaling.md)) then reads the job, routes it by `provider`, and posts the answer back in-thread with bounded retry + pending-first redelivery. The core report path stays provider-agnostic (Invariant 9) — the worker is the only place a connector poster is imported.
 
 ### D. WATCH  (user-side: how the live tail surfaces)
 

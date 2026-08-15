@@ -22,8 +22,9 @@ Grep: `grep -rl '"use client"' app components | xargs grep -l 'fetch('` → one
 file, `app/cli-auth/[session_id]/page.tsx`. That page is the command-line
 handoff: it derives an Elliptic-Curve Diffie-Hellman key in the browser and
 posts the encrypted result, so the call cannot move to the server without
-moving the private key with it. It is the documented exception (`AUTH.md`
-§"Why the dashboard rides one token"), and it is the only one.
+moving the private key with it. It is the documented exception
+([`../AUTH.md`](../AUTH.md) §"Why the dashboard rides one token"), and it is
+the only one.
 
 **2 · `"use client"` marks a leaf, never a branch.**
 The directive goes on the smallest interactive unit — a button, a form, a
