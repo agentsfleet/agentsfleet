@@ -20,7 +20,7 @@ const PRELUDE_BEFORE_VERSION =
     \\description: API error response fields and stable error codes.
     \\type: reference
     \\audience: user
-    \\verified: 2026-07-28
+    \\verified: 2026-08-15
     \\product_version:
 ;
 

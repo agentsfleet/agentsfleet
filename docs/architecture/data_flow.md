@@ -12,7 +12,7 @@ Every row is extracted from the sections below; the owner column names the secti
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Event ingress | ONE — five producers | steer / webhook / cron / continuation / Slack all `XADD fleet:{id}:events`; the stream entry id IS the canonical event id | §B. TRIGGER |
+| Event ingress | ONE — six producers | steer / webhook / cron / continuation / Slack / repair-verifier all `XADD fleet:{id}:events`; the stream entry id IS the canonical event id | §B. TRIGGER |
 | Hot-path writes | 12, in the worker's order | `lease` does 1–6, `report` does 7–12; row-equivalent to the deleted worker (cutover Invariant 2) | §Steer flow end-to-end |
 | Durable stores | 3 tables, join key `event_id` | `fleet_sessions` (one row per fleet, UPSERT) · `fleet_events` (one row per delivery) · `billing.usage_ledger` (two rows per event, UNIQUE `(event_id, charge_type)`) | §The three durable stores |
 | Replay safety | idempotent | `INSERT … ON CONFLICT DO NOTHING` + the UNIQUE telemetry `event_id` | §C. EXECUTE |
@@ -79,7 +79,14 @@ The diagrams live with their flows — each is the section's proof, so none is d
 
 ## Detail
 
-Everything below is the full reference. Headings are stable — specs cite them by text; insert new sections, never rename existing ones.
+Everything below is the full reference. One event is told three times, at three
+zoom levels, and they do not repeat each other — read the one that matches your
+question. §"Steer flow end-to-end" draws the path as boxes, so you can see where
+a call goes. §"End-to-end sequence" (A INSTALL → D WATCH, plus KILL) states what
+each step must guarantee. §"Concrete platform-ops example" shows the actual row
+contents at every step, for when you need to know what the data looks like.
+
+Headings are stable — specs cite them by text; insert new sections, never rename existing ones.
 
 ## Process and stream ownership at a glance
 
@@ -106,15 +113,15 @@ Everything below is the full reference. Headings are stable — specs cite them 
 Two distinct things are in play. Keeping them straight is essential to understanding the architecture:
 
 ```
-┌────────────────────────────────┐         ┌──────────────────────────────┐
-│  CODING AGENT (laptop)         │         │  FLEET RUNTIME (host)            │
-│                                │         │                              │
-│  Claude Code / Amp / Codex /   │         │  NullClaw running inside the │
+┌──────────────────────────────────┐         ┌───────────────────────────────────┐
+│  CODING AGENT (laptop)           │         │  FLEET RUNTIME (host)             │
+│                                  │         │                                   │
+│  Claude Code / Amp / Codex /     │         │  NullClaw running inside the      │
 │  OpenCode driving agentsfleet    │         │  agentsfleet-runner's sandboxed   │
-│                                │         │  child (Landlock + cgroups + │
-│  This is what the human types  │         │  netns via bwrap; durable,   │
-│  into. Ephemeral.              │         │  persists across laptop close)│
-└────────────────────────────────┘         └──────────────────────────────┘
+│                                  │         │  child (Landlock + cgroups +      │
+│  This is what the human types    │         │  netns via bwrap; durable,        │
+│  into. Ephemeral.                │         │  persists across laptop close)    │
+└──────────────────────────────────┘         └───────────────────────────────────┘
 ```
 
 The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime — the product object the user creates — runs a NullClaw fleet loop inside the runner.s sandboxed child. The coding fleet never becomes that runtime and never sees its tokens — they communicate only through the steer endpoint, the event stream, and the events history.
@@ -127,99 +134,99 @@ The coding fleet is a workstation tool driving `agentsfleet`. The Fleet runtime 
          Coding Fleet → agentsfleet steer <fleet_id> "<msg>"
                           ↓
 
-           ╔═══════════════════════════════════╗
+           ╔════════════════════════════════════════╗
            ║  agentsfleetd-api (HTTP)               ║
-           ║  POST /v1/.../fleets/{id}/messages║
-           ║  ───────────────────────────────  ║
-           ║  XADD fleet:{id}:events *         ║   ← single ingress.
-           ║       actor=steer:<user>           ║     Webhook + cron use
-           ║       type=chat                    ║     the same XADD.
-           ║       workspace_id=<uuid>          ║
-           ║       request=<msg-json>           ║
-           ║       created_at=<epoch_ms>        ║
-           ║  → 202 { event_id }                ║
-           ╚═══════════════════════════════════╝
+           ║  POST /v1/.../fleets/{id}/messages     ║
+           ║  ────────────────────────────────────  ║
+           ║  XADD fleet:{id}:events *              ║   ← single ingress.
+           ║       actor=steer:<user>               ║     Webhook + cron use
+           ║       type=chat                        ║     the same XADD.
+           ║       workspace_id=<uuid>              ║
+           ║       request=<msg-json>               ║
+           ║       created_at=<epoch_ms>            ║
+           ║  → 202 { event_id }                    ║
+           ╚════════════════════════════════════════╝
                           ↓
         ( the event waits on the stream until a runner asks for work )
                           ↓
-           ╔═══════════════════════════════════╗
+           ╔════════════════════════════════════════╗
            ║  agentsfleet-runner (host)             ║
-           ║  POST /v1/runners/me/leases        ║   ← long-poll; no work
-           ║  Authorization: Bearer agt_r        ║     → null + retry_after_ms
-           ╚═══════════════════════════════════╝
+           ║  POST /v1/runners/me/leases            ║   ← long-poll; no work
+           ║  Authorization: Bearer agt_r           ║     → null + retry_after_ms
+           ╚════════════════════════════════════════╝
                           ↓
-           ╔═══════════════════════════════════╗
+           ╔════════════════════════════════════════╗
            ║  agentsfleetd (lease handler)          ║   ← the work the worker
-           ║  ───────────────────────────────  ║     used to do, now on
-           ║  assign.select():                  ║     the request thread:
-           ║   non-blocking XREADGROUP across   ║
-           ║   active Fleets (sticky pref) →    ║   ← narrative log opens
-           ║   claim fleet.runner_affinity,     ║     (mutable)
-           ║   issue monotonic fencing_token    ║
-           ║  1. INSERT core.fleet_events      ║   ← live: pub/sub frame
-           ║     (status='received')            ║     (ephemeral, no ACK)
-           ║  2. PUBLISH fleet:{id}:activity   ║
-           ║     {kind:"event_received"}        ║   See
-           ║  3. balance gate, receive debit,   ║   [`capabilities.md`](./capabilities.md)
-           ║     approval gate, run debit       ║   for each gate layer.
-           ║  4. resolve secrets_map from vault ║
-           ║  5. UPSERT core.fleet_sessions    ║   ← resume cursor:
-           ║     SET execution_id (busy)        ║     marks Fleet busy
-           ║  6. issue fleet.runner_leases row  ║
-           ║     (lease_expires_at, fencing)    ║
-           ║  → 200 { event, ExecutionPolicy,   ║
-           ║         secrets_map, instructions, ║
-           ║         lease_id, fencing_token }  ║
-           ╚═══════════════════════════════════╝
+           ║  ────────────────────────────────────  ║     used to do, now on
+           ║  assign.select():                      ║     the request thread:
+           ║   non-blocking XREADGROUP across       ║
+           ║   active Fleets (sticky pref) →        ║   ← narrative log opens
+           ║   claim fleet.runner_affinity,         ║     (mutable)
+           ║   issue monotonic fencing_token        ║
+           ║  1. INSERT core.fleet_events           ║   ← live: pub/sub frame
+           ║     (status='received')                ║     (ephemeral, no ACK)
+           ║  2. PUBLISH fleet:{id}:activity        ║
+           ║     {kind:"event_received"}            ║   See
+           ║  3. balance gate, receive debit,       ║   [`capabilities.md`](./capabilities.md)
+           ║     approval gate, run debit           ║   for each gate layer.
+           ║  4. resolve secrets_map from vault     ║
+           ║  5. UPSERT core.fleet_sessions         ║   ← resume cursor:
+           ║     SET execution_id (busy)            ║     marks Fleet busy
+           ║  6. issue fleet.runner_leases row      ║
+           ║     (lease_expires_at, fencing)        ║
+           ║  → 200 { event, ExecutionPolicy,       ║
+           ║         secrets_map, instructions,     ║
+           ║         lease_id, fencing_token }      ║
+           ╚════════════════════════════════════════╝
                           ↓
-           ╔═══════════════════════════════════╗
+           ╔════════════════════════════════════════╗
            ║  agentsfleet-runner (parent + child)   ║
-           ║  ───────────────────────────────  ║
-           ║  parent: establish cgroup, fork,   ║       This is the
-           ║  exec self as `__execute` under    ║       Fleet runtime.
-           ║  bwrap, feed the lease via stdin   ║       An LLM in a
-           ║                                    ║       sandbox; the coding
-           ║  sandboxed child:                  ║       fleet never becomes
-           ║   apply mandatory Landlock,        ║       it, never sees its
-           ║   run NullClaw over the policy.    ║       tokens or context.
-           ║   Each tool call → tool bridge     ║
-           ║   substitutes ${secrets.NAME.x}    ║
-           ║   inside the sandbox, then the     ║
-           ║   HTTPS request fires.             ║
-           ║                                    ║
-           ║   Each progress frame → stdout pipe ║   ← parent forwards
-           ║   (A=activity, R=result, framed):  ║     each A frame to
-           ║     - tool_call_started            ║     agentsfleetd .../activity,
-           ║     - fleet_response_chunk         ║     which PUBLISHes it.
-           ║     - tool_call_completed          ║
-           ║                                    ║
-           ║   Child returns ExecutionResult.   ║
-           ║  → {content, tokens, ttft_ms,      ║
-           ║     wall_ms, outcome}              ║
-           ╚═══════════════════════════════════╝
+           ║  ────────────────────────────────────  ║
+           ║  parent: establish cgroup, fork,       ║       This is the
+           ║  exec self as `__execute` under        ║       Fleet runtime.
+           ║  bwrap, feed the lease via stdin       ║       An LLM in a
+           ║                                        ║       sandbox; the coding
+           ║  sandboxed child:                      ║       fleet never becomes
+           ║   apply mandatory Landlock,            ║       it, never sees its
+           ║   run NullClaw over the policy.        ║       tokens or context.
+           ║   Each tool call → tool bridge         ║
+           ║   substitutes ${secrets.NAME.x}        ║
+           ║   inside the sandbox, then the         ║
+           ║   HTTPS request fires.                 ║
+           ║                                        ║
+           ║   Each progress frame → stdout pipe    ║   ← parent forwards
+           ║   (A=activity, R=result, framed):      ║     each A frame to
+           ║     - tool_call_started                ║     agentsfleetd .../activity,
+           ║     - fleet_response_chunk             ║     which PUBLISHes it.
+           ║     - tool_call_completed              ║
+           ║                                        ║
+           ║   Child returns ExecutionResult.       ║
+           ║  → {content, tokens, ttft_ms,          ║
+           ║     wall_ms, outcome}                  ║
+           ╚════════════════════════════════════════╝
                           ↓
-           ╔═══════════════════════════════════╗
+           ╔════════════════════════════════════════╗
            ║  agentsfleetd (report handler)         ║
-           ║  POST /v1/runners/me/reports       ║
-           ║  ───────────────────────────────  ║
-           ║   claimReport(): atomic CAS —      ║   ← fence + flip + dedup
-           ║     UPDATE runner_leases           ║     in one statement
-           ║     SET status=reported            ║     (stale token → reject
-           ║     FROM runner_affinity           ║      UZ-RUN-005)
-           ║     WHERE status=active AND        ║
-           ║       fencing_token >= fencing_seq ║
-           ║   7. UPDATE core.fleet_events     ║   ← narrative log closes
-           ║      status='processed'            ║     (same row)
-           ║      response_text=<content>       ║
-           ║   8. PUBLISH fleet:{id}:activity  ║   ← live: terminal frame
-           ║      {kind:"event_complete"}       ║
-           ║   9. INSERT core.fleet_execution_ ║   ← billing/latency
-           ║      telemetry (reconcile actuals) ║     audit (UNIQUE event_id)
-           ║  10. UPSERT core.fleet_sessions   ║   ← resume cursor:
-           ║      context_json, execution_id=NULL║     clears handle,
-           ║  11. XACK fleet:{id}:events       ║     advances bookmark
-           ║  12. release affinity (token-guard)║
-           ╚═══════════════════════════════════╝
+           ║  POST /v1/runners/me/reports           ║
+           ║  ────────────────────────────────────  ║
+           ║   claimReport(): atomic CAS —          ║   ← fence + flip + dedup
+           ║     UPDATE runner_leases               ║     in one statement
+           ║     SET status=reported                ║     (stale token → reject
+           ║     FROM runner_affinity               ║      UZ-RUN-005)
+           ║     WHERE status=active AND            ║
+           ║       fencing_token >= fencing_seq     ║
+           ║   7. UPDATE core.fleet_events          ║   ← narrative log closes
+           ║      status='processed'                ║     (same row)
+           ║      response_text=<content>           ║
+           ║   8. PUBLISH fleet:{id}:activity       ║   ← live: terminal frame
+           ║      {kind:"event_complete"}           ║
+           ║   9. INSERT core.fleet_execution_      ║   ← billing/latency
+           ║      telemetry (reconcile actuals)     ║     audit (UNIQUE event_id)
+           ║  10. UPSERT core.fleet_sessions        ║   ← resume cursor:
+           ║      context_json, execution_id=NULL   ║     clears handle,
+           ║  11. XACK fleet:{id}:events            ║     advances bookmark
+           ║  12. release affinity (token-guard)    ║
+           ╚════════════════════════════════════════╝
                           ↓
    Coding Fleet's `agentsfleet steer <fleet_id>` polls GET /events
    (or SSE-tails GET /events/stream which SUBSCRIBEs
@@ -383,46 +390,38 @@ Before the cutover, the worker held **one dedicated blocking Redis connection pe
 
 ```
                         REDIS CONNECTION TOPOLOGY (post-cutover)
-                        ═════════════════════════════════════════
+                        ════════════════════════════════════════
 
-  ┌─────────────────────────────────────────────────────────────────────────────────┐
-  │                        POOL  (max_idle=8, eager_min=2)                           │
-  │              ──── short-lived request-path commands only ────                    │
-  │                                                                                  │
-  │   acquire → command → release    (microseconds to milliseconds per cycle)        │
-  │                                                                                  │
-  └──▲───────────────────────▲───────────────────────▲───────────────────▲───────────┘
-     │ XADD                   │ XREADGROUP (no BLOCK)  │ PUBLISH            │ XACK
-     │ fleet:{id}:events     │ fleet:{id}:events     │ fleet:{id}:       │ fleet:{id}:
-     │ (steer/webhook/cron/   │ (on each lease)        │ activity           │ events
-     │  continuation)         │                        │ (brackets +        │ (on report)
-     │                        │                        │  forwarded frames) │
-  ┌──┴─────────┐         ┌────┴────────┐          ┌─────┴───────┐      ┌─────┴──────┐
-  │ HTTP user  │         │ lease       │          │ lease +     │      │ report     │
-  │ handlers   │         │ handler     │          │ report +    │      │ handler    │
-  │ (agentsfleetd-  │         │ (agentsfleetd-   │          │ activity    │      │ (agentsfleetd-  │
-  │  api)      │         │  api)       │          │ (agentsfleetd-api)│      │  api)      │
-  └────────────┘         └─────────────┘          └─────────────┘      └────────────┘
+  ┌─────────────────────────────────────────────────────────────────────────────┐
+  │                      POOL  (max_idle=8, eager_min=2)                        │
+  │            ──── short-lived request-path commands only ────                 │
+  │                                                                             │
+  │   acquire → command → release   (microseconds to milliseconds)              │
+  │                                                                             │
+  └──▲──────────────────▲──────────────────▲──────────────────▲─────────────────┘
+     │ XADD             │ XREADGROUP       │ PUBLISH          │ XACK
+     │ fleet:{id}:      │ (no BLOCK)       │ fleet:{id}:      │ fleet:{id}:
+     │ events           │ fleet:{id}:      │ activity         │ events
+     │ (steer/webhook/  │ events           │ (brackets +      │ (on report)
+     │   cron/continue) │ (on each lease)  │  forwarded)      │
+  ┌──┴─────────────┐ ┌──┴─────────────┐ ┌──┴─────────────┐ ┌──┴─────────────┐
+  │ HTTP user      │ │ lease          │ │ lease + report │ │ report         │
+  │ handlers       │ │ handler        │ │ + activity     │ │ handler        │
+  │ (agentsfleetd) │ │ (agentsfleetd) │ │ (agentsfleetd) │ │ (agentsfleetd) │
+  └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘
 
-
-  ┌──────────────────────────────────────────────────────────────────────────────────┐
-  │       DEDICATED CONNECTION  (NOT in the pool) — ONE SubscriptionHub conn          │
-  │                    ──── long-lived blocking SUBSCRIBE ────                         │
-  │                                                                                   │
-  │   ┌──────────────────────────────────────────────┐                                │
-  │   │ SubscriptionHub reader thread                │   one wire SUBSCRIBE per       │
-  │   │   SUBSCRIBE fleet:Z1:activity               │   channel-with-viewers,        │
-  │   │   SUBSCRIBE fleet:Z2:activity   ...         │   refcounted (first viewer     │
-  │   │   → fan-out by copy into each SSE stream's   │   subscribes, last viewer      │
-  │   │     bounded queue; never blocks on a slow    │   unsubscribes)                │
-  │   │     viewer (drop-oldest + counter)           │                                │
-  │   └──────────────────────────────────────────────┘                                │
-  │                                                                                   │
-  │   The per-SSE-stream SUBSCRIBE connections that used to live here are GONE —      │
-  │   N viewers cost one connection per replica, not one each.                        │
-  │   The per-fleet XREADGROUP-BLOCK connection that used to live here is GONE.       │
-  │   A dead runner is reclaimed by lease expiry + fencing_token, not consumer idle.  │
-  └───────────────────────────────────────────────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │   DEDICATED CONNECTION  (NOT in the pool) — one SubscriptionHub conn     │
+  │                ──── long-lived blocking SUBSCRIBE ────                   │
+  │                                                                          │
+  │   SubscriptionHub reader thread                                          │
+  │     SUBSCRIBE fleet:{a}:activity      one wire SUBSCRIBE per channel     │
+  │     SUBSCRIBE fleet:{b}:activity  …   that has viewers, refcounted:      │
+  │     → fan-out by copy into each SSE   first viewer subscribes,           │
+  │       stream's bounded queue; never   last one unsubscribes.             │
+  │       blocks on a slow viewer         N viewers cost one connection      │
+  │       (drop-oldest + counter)         per replica, not one each.         │
+  └──────────────────────────────────────────────────────────────────────────┘
 ```
 
 **The rule that survives.** A connection held across a Redis call that blocks the server (`SUBSCRIBE`) cannot return to a pool — its lifetime is tied to the consumer, not the request. The pool is reserved for commands that complete in milliseconds: `XADD`, the non-blocking `XREADGROUP`, `PUBLISH`, `XACK`. The SubscriptionHub's reader is the only remaining dedicated-connection consumer; when its connection dies it redials with stop-checked pacing and replays SUBSCRIBE from the refcount map, while streams heartbeat through the gap (`agentsfleet_sse_hub_reconnects_total` counts recoveries).
@@ -568,7 +567,8 @@ not authority by itself.
    never carry a separate id in the payload):
 
        actor         steer:<user> | webhook:<source> | cron:<schedule>
-                     | continuation:<original_actor>
+                     | continuation:<original_actor> | slack:<user>
+                     | system:repair-verifier
        type          chat | webhook | cron | continuation
        workspace_id  <uuid>
        request       <opaque JSON — the message + metadata>
@@ -633,10 +633,6 @@ not authority by itself.
                       workspace_id=<ws>        request=<schedule-event-json>
                       created_at=<ms>
 
-             QStash owns the clock. agentsfleetd stores the desired schedule,
-             pushes each requested mutation synchronously, and receives fires.
-             The runner and its disposable NullClaw child own no schedule timer.
-
    CONTINUATION  agentsfleetd re-enqueue (chunk-continuation or
                  user-resumed fulfillment)
                → XADD fleet:{id}:events *
@@ -651,8 +647,8 @@ not authority by itself.
                  `actor=continuation:steer:kishore` on every continuation,
                  not `continuation:continuation:continuation:...`).
 
-   All five producers land the same envelope on the same stream. The
-   reasoning loop never branches on actor — actor is metadata for the
+   All six producers land the same envelope on the same stream. The
+   reasoning loop never branches on actor. Actor is metadata for the
    SKILL.md prose and the user's history filter.
 
    > SLACK (M106): a fifth producer — the Slack-resident
@@ -671,11 +667,28 @@ not authority by itself.
    > only — read-only tools, no source triggers,
    > no cron, code-set at creation (not from the skill.md prose). Spec:
    > docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md
+
+   > REPAIR VERIFICATION (M157): a sixth producer. After a human merges a
+   > repair and GitHub reports production status, a bounded dispatcher matches
+   > the workspace, repository, and commit, then lands one
+   > actor=system:repair-verifier event on the verifier fleet's stream. Same
+   > envelope, same single ingress; the lease/execute path does not change.
+   > The responder → repairer → verifier walkthrough, with 📈 Grafana and
+   > 🔎 Elasticsearch as the evidence sources, lives in
+   > [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md).
 ```
 
-**Webhook auth taxonomy.** The `webhook_sig` middleware classifies every
-inbound rejection into one of three error codes, each with a distinct
-user action:
+#### QStash owns the clock
+
+`agentsfleetd` stores the desired schedule, pushes each requested mutation to
+QStash synchronously, and receives the fires. Neither the runner nor its
+disposable NullClaw child owns a schedule timer.
+
+#### The webhook auth taxonomy
+
+`webhook_sig` classifies every inbound rejection into one of three codes, each
+with a different user action (user-facing registry:
+[error-codes#UZ-WH-020](https://docs.agentsfleet.net/api-reference/error-codes#UZ-WH-020)):
 
 - `UZ-WH-020 webhook_credential_not_configured` (error code name unchanged — M112_001
   deferred renaming this constant) — the matching `triggers[].source` is unknown
@@ -826,7 +839,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    dead runner is fenced out at claimReport (UZ-RUN-005).
 ```
 
-**Slack-resident answer round-trip (M106).** For the fifth producer in §"B. TRIGGER" (the Slack channel bot) two connector-specific hops bracket this generic trace without altering it. *At ingress:* `connectors/slack/thread.zig` does a best-effort re-read of the recent thread (Slack `conversations.replies`, bounded to the last-N messages) so the leased `request_json` carries same-thread context. It **never throws**: a failed or absent re-fetch degrades to an empty thread, and the answer still runs from the mention alone. *On the way out:* the answer is not posted from the report handler directly. Step 7's report path calls `enqueueOutboundAnswer` (`fleet/service_report.zig`) — if the reporting fleet has a `core.connector_channels` binding it enqueues a `provider`-tagged job onto the generic `connector:outbound` stream (`queue/connector_outbound.zig`); a non-connector fleet, empty answer, or any failure is a logged no-op that never fails the finalized report. The boot-started `outbound/worker.zig` consumer (the one blocking Redis consumer sized in [`scaling.md`](./scaling.md)) then reads the job, routes it by `provider`, and posts the answer back in-thread with bounded retry + pending-first redelivery. The core report path stays provider-agnostic (Invariant 9) — the worker is the only place a connector poster is imported.
+**Slack-resident answer round-trip (M106).** For the Slack producer in §"B. TRIGGER" two connector-specific hops bracket this generic trace without altering it. *At ingress:* `connectors/slack/thread.zig` does a best-effort re-read of the recent thread (Slack `conversations.replies`, bounded to the last-N messages) so the leased `request_json` carries same-thread context. It **never throws**: a failed or absent re-fetch degrades to an empty thread, and the answer still runs from the mention alone. *On the way out:* the answer is not posted from the report handler directly. Step 7's report path calls `enqueueOutboundAnswer` (`fleet/service_report.zig`) — if the reporting fleet has a `core.connector_channels` binding it enqueues a `provider`-tagged job onto the generic `connector:outbound` stream (`queue/connector_outbound.zig`); a non-connector fleet, empty answer, or any failure is a logged no-op that never fails the finalized report. The boot-started `outbound/worker.zig` consumer (the one blocking Redis consumer sized in [`scaling.md`](./scaling.md)) then reads the job, routes it by `provider`, and posts the answer back in-thread with bounded retry + pending-first redelivery. The core report path stays provider-agnostic (Invariant 9) — the worker is the only place a connector poster is imported.
 
 ### D. WATCH  (user-side: how the live tail surfaces)
 
@@ -989,7 +1002,7 @@ A future reconcile job (a control-plane sweep over `core.fleets` for `active` ro
 ## Notable invariants this flow proves
 
 - **No race on stream / group creation.** `innerCreateFleet` does INSERT + `XGROUP CREATE` synchronously before returning 201. Any event arriving within microseconds of the 201 finds the stream already there, ready to be leased.
-- **All triggers funnel into one ingress.** Webhook, cron, steer, and continuation are different *producers* into `fleet:{id}:events`; the lease path doesn't branch on actor type.
+- **All triggers funnel into one ingress.** Webhook, cron, steer, continuation, the Slack bot, and the repair verifier are different *producers* into `fleet:{id}:events`; the lease path doesn't branch on actor type.
 - **Secrets never enter fleet context.** Substitution happens at the tool bridge, inside the runner's sandboxed child, after sandbox entry. The fleet sees `${secrets.fly.api_token}`; HTTPS request headers get real bytes; responses never echo the token; the bytes never cross the activity pipe.
 - **Exactly one active lease per fleet.** The atomic affinity claim + monotonic fencing token guarantee a single in-flight lease per fleet no matter how many runners poll.
 - **Reclaim is lease-layer, not Redis-consumer.** A dead runner is reclaimed via `lease_expires_at` + `fencing_token`, never `XAUTOCLAIM` — Redis cannot observe an off-platform processor's death.

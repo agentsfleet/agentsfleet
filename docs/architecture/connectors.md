@@ -1,6 +1,6 @@
 # Connectors — the registry-driven connector platform
 
-> Parent: [`README.md`](./README.md) · Sibling: [`../AUTH.md`](../AUTH.md) §OAuth connectors (flow behavior, trust-anchor mechanics, error taxonomy of the shipped providers).
+> Parent: [`README.md`](./README.md) · Sibling: [`../AUTH.md`](../AUTH.md) §OAuth connectors (flow behavior, trust-anchor mechanics, error taxonomy of the shipped providers). · User-facing setup: [docs.agentsfleet.net/fleets/connectors](https://docs.agentsfleet.net/fleets/connectors).
 >
 > Scope: the platform shape — the comptime registry + archetype dispatch that makes a new provider a data entry, the callback and event-ingress trust anchors, the bounded-outbound rule for vendor calls, and the connector-vs-integration terminology. Read this before adding a provider or writing any connector outbound call. Flow behavior stays in AUTH.md; this doc owns the invariants that make the flows generic.
 
@@ -47,23 +47,23 @@ A workspace *connects* a provider once (connector); everything fleets then do wi
 `handlers/connectors/registry.zig` holds a comptime `[]const ConnectorSpec`. Adding a provider is ONE entry (plus a small per-provider hook file) — never new route or flow code:
 
 ```
-            ┌──────────────────────────── comptime ────────────────────────────┐
-            │ REGISTRY = [_]ConnectorSpec{                                      │
-            │   { provider, display_name, archetype: union(enum){              │
+            ┌──────────────────────────────────────────────────────────────────────┐
+            │ REGISTRY = [_]ConnectorSpec{                                         │
+            │   { provider, display_name, archetype: union(enum){                  │
             │       oauth2:      {flow, refresh, exchange_failed_code, post_auth}, │
-            │       app_install: {state, build_install_url, complete},          │
-            │   }, respond_status }                                             │
-            │ }  + comptime validation (dup ids, scopes, id agreement…)         │
-            └──────────────────────────────┬────────────────────────────────────┘
+            │       app_install: {state, build_install_url, complete},             │
+            │   }, respond_status }                                                │
+            │ }  + comptime validation (dup ids, scopes, id agreement…)            │
+            └──────────────────────────────────────────────────────────────────────┘
    runtime lookup(provider) ── null → 404 UZ-CONN-004 (body names the id)
                               ── hit  → exhaustive switch on ARCHETYPE
-            ┌──────────────────────────────┴────────────────────────────────────┐
-            │ generic {provider} handlers: connect.zig · callback.zig · status.zig │
-            │ per-provider deltas: slack/{spec,callback,status}.zig,              │
-            │                      github/{spec,connect,callback,status}.zig,     │
-            │                      zoho/{spec,callback,multi_dc}.zig,             │
+            ┌───────────────────────────────────────────────────────────────────────────┐
+            │ generic {provider} handlers: connect.zig · callback.zig · status.zig      │
+            │ per-provider deltas: slack/{spec,callback,status}.zig,                    │
+            │                      github/{spec,connect,callback,status}.zig,           │
+            │                      zoho/{spec,callback,multi_dc}.zig,                   │
             │                      jira/{spec,callback}.zig, linear/{spec,callback}.zig │
-            └─────────────────────────────────────────────────────────────────────┘
+            └───────────────────────────────────────────────────────────────────────────┘
 ```
 
 - **Routes are generic.** `POST /v1/workspaces/{ws}/connectors/{provider}/connect`, `GET /v1/workspaces/{ws}/connectors/{provider}`, `GET /v1/connectors/{provider}/callback` — three matchers serve every provider (`route_matchers_connectors.zig`); scopes stay `connector:write`/`connector:read` on the generic variants. The shipped Slack/GitHub URLs are preserved verbatim because `slack`/`github` are registry ids.
@@ -251,10 +251,11 @@ Receiving a signed event does not hand GitHub credentials to a fleet. When a lea
 
 | Provider | Connect credential | Inbound events after M102_005 |
 |---|---|---|
-| GitHub | App installation handle | App ingress routes by installation + repository + event + grant; manual per-fleet webhook remains available |
-| Slack | bot token from Open Authorization (OAuth) | unchanged specialized events route with team/channel routing |
-| Jira | OAuth refresh handle | no inbound integration in this workstream |
-| Linear | OAuth refresh handle | no inbound integration in this workstream |
+| 🐙 GitHub | App installation handle | App ingress routes by installation + repository + event + grant; manual per-fleet webhook remains available |
+| 💬 Slack | bot token from Open Authorization (OAuth) | unchanged specialized events route with team/channel routing |
+| 🧾 Zoho Desk | OAuth refresh handle, multi-data-center token endpoint | no inbound integration in this workstream |
+| 🎫 Jira | OAuth refresh handle | no inbound integration in this workstream |
+| 📏 Linear | OAuth refresh handle | no inbound integration in this workstream |
 
 ## Bounded outbound: every vendor call is armed
 
