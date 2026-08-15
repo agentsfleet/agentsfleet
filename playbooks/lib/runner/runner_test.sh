@@ -84,18 +84,24 @@ cgroup_fixture="$work_dir/cgroup"
 mkdir -p "$cgroup_fixture"
 run_script() {
   : >"$calls"
-  # env -i: the child sees ONLY what this harness assigns plus the VAR=val
-  # pairs each case passes before its command. Cases that mean to exercise a
-  # variable pass it as an argument below, which still wins.
+  # The test must supply its whole world, so the child sees ONLY what this
+  # harness assigns plus the VAR=val pairs each case passes. Cases that mean to
+  # exercise a variable pass it as an argument below, which still wins.
   #
-  # The forcing case is AGENTSFLEET_API_URL: `common.sh` reads it as
-  # `${AGENTSFLEET_API_URL:-$expected_api_url}` and refuses the deploy when it
-  # disagrees with ENV's endpoint, so a developer shell pointed at api-dev
-  # fails the ENV=prod case alone, on that machine only. Dropping that one
-  # variable fixes that one bug; wiping the environment closes the whole class,
-  # since every variable these scripts read is supplied by this harness or by
-  # the case. PATH is composed before the wipe, so the stub dir still shadows
-  # the real tools while the system tail keeps bash findable.
+  # The repository actively encourages a polluted environment:
+  # `.githooks/post-checkout` links `.env.runner.local`, which carries
+  # `AGENTSFLEET_API_URL`, and `common.sh` reads it as
+  # `${AGENTSFLEET_API_URL:-$expected_api_url}` then refuses the deploy when it
+  # disagrees with ENV's endpoint. An ambient dev endpoint therefore failed the
+  # ENV=prod case on a workstation while Continuous Integration — with a bare
+  # environment — passed.
+  #
+  # `env -i` rather than `env -u` per known name: the enumerated form fixes the
+  # variables someone remembered, and this file gains readers faster than it
+  # gains maintainers of that list. Wiping closes the whole class, including
+  # the next input the runner library learns to read. PATH is composed before
+  # the wipe, so the stub dir still shadows the real tools while the system
+  # tail keeps bash findable.
   env -i \
     PATH="$stub_dir:$PATH" \
     CALLS="$calls" \

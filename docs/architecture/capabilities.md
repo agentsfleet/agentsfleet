@@ -16,7 +16,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 |---|---|---|---|
 | Capability layers | 2 | `SKILL.md` + support files are advisory; `TRIGGER.md` + install-derived policy are binding, enforced in the sandboxed child | §1 |
 | `trigger.type` vs `event_type` | orthogonal fields | different tables (`TRIGGER.md` frontmatter vs `core.fleet_events`), never the same value | §1.1 |
-| Tool primitives | `http_request` · `file_read/write/edit` · `git` · `memory_store/recall` · `shell` (gated) | reachable only through the fleet's `tools:` allowlist | §2 |
+| Tool primitives | `http_request` · `file_read/write/edit` · `git` · the four `memory_*` tools · `shell` (gated) | reachable only through the fleet's `tools:` allowlist | §2 |
 | Mintable integrations | short-lived tokens, minted at the bridge | GitHub App: daemon-signed RS256 JWT exchanged for a ≤ 1 h installation token; the App private key never leaves the daemon | §2, §3 |
 | Vault secret shapes | 2 | static (stores the value, resolved at lease) vs mintable (stores a handle, never a token) | §3 |
 | Context lifecycle | 3 layers | `memory_checkpoint_every: 5` · `tool_window: auto` (30 / 20 / 10 by context cap) · `stage_chunk_threshold: 0.75` | §4 |
@@ -70,7 +70,7 @@ These are the tool primitives NullClaw exposes. The fleet's `tools:` allowlist g
 | `http_request` | GET / POST to allow-listed hosts. Placeholders like `${secrets.NAME.FIELD}` are substituted at the tool bridge after sandbox entry. For a **mintable integration** (e.g. GitHub), the placeholder resolves to a short-lived token **minted on demand** at the bridge through the credential broker — not a stored value. | The fleet sees placeholders only; it never sees raw secret bytes. |
 | `file_read` / `file_write` / `file_edit` | Read or change files inside the runner workspace. A fleet receives only the file tools listed in its policy. | Yes, when explicitly enabled. |
 | `git` | Inspect and change the repository inside the runner workspace. Network access and GitHub credentials remain separate controls. | Yes, when explicitly enabled. |
-| `memory_store` / `memory_recall` | Durable scratchpad keyed by string. Survives run boundaries and full restart. The "where I am" snapshot mechanism. | Yes — the fleet reads and writes. |
+| `memory_store` / `memory_recall` / `memory_list` / `memory_forget` | Durable scratchpad keyed by string. Survives run boundaries and full restart. The "where I am" snapshot mechanism. Store writes or replaces a key, recall searches key and content, list filters, forget deletes one key. | Yes — the fleet reads and writes. |
 | `shell` (gated) | Read-only commands like `docker ps`, `kubectl get`. Not part of the initial platform-ops surface. | Yes, when explicitly enabled. |
 
 Scheduled wakes are not a child tool. A Fleet declares its primary cron in `TRIGGER.md`, or an operator manages schedules through the schedule API / `agentsfleet schedule`; `agentsfleetd` stores the schedule, QStash owns the clock, and the runner receives only the resulting event.
@@ -192,7 +192,7 @@ Eighty percent of users use the defaults forever and never see context errors. T
 
 ### Memory hygiene — what to store so it survives
 
-Durable memory is selected, not searched: hydration pins the `core` category first (newest-first, within the byte budget), fills the remaining budget with the newest non-core entries, and cap eviction takes non-core rows before any `core` row (see [*Memory continuity*](./runner_fleet.md) §Selection policy). Four habits make that selection work for the fleet instead of against it:
+Durable memory is selected, not searched: hydration pins the `core` category first (newest-first, within the byte budget), fills the remaining budget with the newest non-core entries, and cap eviction takes non-core rows before any `core` row (see [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity"). Four habits make that selection work for the fleet instead of against it:
 
 - **Store load-bearing facts as `core`.** Owner, deploy target, customer plan, standing constraints — anything the fleet must still know at entry 1001 belongs in `core`. `daily`, `conversation`, and any custom category are windowed by recency and are the first to age out of hydration. `daily` additionally expires outright: rows older than the 72-hour retention window are deleted on the fleet's next capture push (only `daily` — every other category persists until cap eviction or an explicit `memory_forget`).
 - **Reuse stable keys.** Re-storing a key is an upsert — it refreshes the entry instead of duplicating it. `deploy_target` beats a dated `deploy_target_jun12`.

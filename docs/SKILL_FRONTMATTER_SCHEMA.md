@@ -143,7 +143,7 @@ Caps do not compose (`daily * 30 ≠ monthly`). First trip blocks further runs. 
 
 ## Cross-file invariant
 
-`SKILL.md.name == TRIGGER.md.name`. Enforced at the install HTTP handler (`POST /v1/.../fleets`). Mismatch → `name_mismatch` error pointing at both values.
+`SKILL.md.name == TRIGGER.md.name`. Enforced at the install HTTP handler (`POST /v1/workspaces/{workspace_id}/fleets`). Mismatch → `name_mismatch` error pointing at both values.
 
 The directory basename is **not** the canonical name — it's a fallback hint for human-readable CLI output if the server response omits the name.
 
