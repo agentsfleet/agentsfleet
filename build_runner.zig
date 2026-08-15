@@ -126,6 +126,7 @@ pub fn build(b: *std.Build) void {
     // exe, so it proves exactly what ships and links no datastore: a red agentsfleetd
     // (`src/`) suite never blocks building, testing, or shipping the runner.
     const runner_tests = b.addTest(.{
+        .use_llvm = buildpkg.shared.TEST_USE_LLVM,
         .name = S_RUNNER_TESTS,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/runner/tests.zig"),
@@ -200,6 +201,7 @@ pub fn build(b: *std.Build) void {
     // Linux-only (SkipZigTest elsewhere); the `test-integration-agentsfleet-runner` make lane
     // runs them on a Linux host.
     const runner_integration_tests = b.addTest(.{
+        .use_llvm = buildpkg.shared.TEST_USE_LLVM,
         .name = S_RUNNER_INTEGRATION_TESTS,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/runner/sandbox_integration_test.zig"),
