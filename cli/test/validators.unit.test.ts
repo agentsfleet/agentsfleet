@@ -203,11 +203,32 @@ describe("parseEnumOption", () => {
     expect(() => exact("retired")).toThrow("must be one of: dev");
   });
 
-  test("a rejected value never shadows a real member", () => {
-    const parse = parseEnumOption(["dev", "prod"], {
-      rejected: { dev: "unreachable — dev is accepted" },
-    });
+  test("a refusal that is also a member is dropped, and the member still parses", () => {
+    // `allowed.includes` returns first, so such a refusal could never fire.
+    // The catalogues feeding this are regenerated from vendored source, so an
+    // overlap introduced by a dependency bump would otherwise downgrade a
+    // deliberate refusal to silent acceptance with nothing to announce it.
+    // Dropped rather than thrown: these parsers are built at module scope, so a
+    // throw would stop the whole CLI from starting over a catalogue-data bug.
+    const parse = parseEnumOption(["dev", "prod"], { rejected: { dev: "unreachable" } });
     expect(parse("dev")).toBe("dev");
+    // A disjoint refusal is unaffected and still fires.
+    const both = parseEnumOption(["dev"], { rejected: { retired: "is gone" } });
+    expect(() => both("retired")).toThrow("'retired' is gone");
+  });
+
+  test("the shadow drop folds exactly when the parser folds", () => {
+    // Folding on: `dev` resolves to the member `Dev`, so the refusal is
+    // unreachable and must be dropped — an exact-match-only check would keep
+    // a dead rule and report the wrong reason.
+    const folding = parseEnumOption(["Dev", "prod"], {
+      foldCase: true,
+      rejected: { dev: "unreachable" },
+    });
+    expect(folding("dev")).toBe("Dev");
+    // Folding off: `dev` is genuinely not a member, so the refusal is real.
+    const exact = parseEnumOption(["Dev", "prod"], { rejected: { dev: "is gone" } });
+    expect(() => exact("dev")).toThrow("'dev' is gone");
   });
 });
 

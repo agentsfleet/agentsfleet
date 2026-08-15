@@ -112,7 +112,7 @@ Workspace-scoped tool secrets live in the vault (Slack, GitHub, Fly, Upstash, et
 
 | Command | Description |
 |---------|-------------|
-| `secret create <name> --provider <id> --api-key <key> --model <m>` | Store a model-provider credential; `--provider` accepts only ids the runtime can dial (unknown ids exit 2 listing the accepted set) |
+| `secret create <name> --provider <id> --api-key <key> --model <m>` | Store a model-provider credential; `--provider` accepts only ids the runtime can dial (unknown ids exit 2 listing the accepted set). An inline `--api-key` is visible in `ps` and shell history — see the note below |
 | `secret create <name> --provider openai-compatible --base-url <url> --model <m> [--api-key <key>]` | Store a custom OpenAI-compatible endpoint (https only; key optional for keyless gateways) |
 | `secret create <name> --data=@-` | Create a free-form secret (pipe JSON on stdin; skip if exists) |
 | `secret update <name> --data=@-` | Replace an existing secret |
@@ -122,6 +122,8 @@ Workspace-scoped tool secrets live in the vault (Slack, GitHub, Fly, Upstash, et
 | `secret delete <name>` | Remove a workspace secret |
 
 The typed `--provider` form requires all its flags spelled out — omitting `--provider` while passing `--api-key`/`--model` is refused before any request, so a credential naming no provider can never be stored. `secret update` accepts the same typed flags.
+
+A key passed as `--api-key <key>` is an argv token: it appears in `ps`, in `/proc/<pid>/cmdline`, in shell history, and in any CI log running under `set -x`. The `--data=@-` form reads the whole body from stdin and keeps it out of all four.
 
 ## Global flags
 

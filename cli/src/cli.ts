@@ -242,7 +242,7 @@ export async function runCli(
 
   // Real read failures (EACCES, EIO — not absence) warn and fall back to
   // logged-out; the why lives with the helper.
-  const { creds, workspaces } = await loadStateOrWarn(env, (line) =>
+  const { creds, workspaces, readFailed } = await loadStateOrWarn(env, (line) =>
     writeLine(stderr, line),
   );
   // Session identity is read and bumped through `telemetry.json`.
@@ -259,6 +259,14 @@ export async function runCli(
   const apiUrl = normalizeApiUrl(
     explicitApi || creds.api_url || DEFAULT_API_URL,
   );
+  // A credential file that FAILED to read (as opposed to being absent) took the
+  // recorded deployment down with it, so the target below is a guess — the
+  // built-in default — while an env API key still authenticates. Say which host
+  // is about to receive it; an operator pinned to a self-hosted backend would
+  // otherwise learn it from the access log.
+  if (readFailed && !explicitApi) {
+    writeLine(stderr, `warning: the recorded deployment was unreadable; using ${apiUrl}`);
+  }
   const ctx: CommandCtx = {
     apiUrl,
     storedApiUrl: creds.api_url ?? null,

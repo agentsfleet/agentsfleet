@@ -20,25 +20,34 @@ import {
 export interface LoadedState {
   readonly creds: Credentials;
   readonly workspaces: Workspaces;
+  // True when a read FAILED, as distinct from a file that was simply absent.
+  // Absence is the logged-out baseline; failure means the record — including
+  // the deployment the credential was bound to — is unknown rather than empty.
+  readonly readFailed: boolean;
 }
 
 export async function loadStateOrWarn(
   env: NodeJS.ProcessEnv,
   warn: (line: string) => void,
 ): Promise<LoadedState> {
-  const warnFor = (file: string) => (cause: unknown) => {
-    const detail = cause instanceof Error ? cause.message : String(cause);
-    warn(`warning: could not read ${file} (${detail}); continuing as logged out`);
-  };
+  let failed = false;
+  const orWarn = <T>(read: Promise<T>, file: string, fallback: () => T): Promise<T> =>
+    read.catch((cause: unknown) => {
+      // The errno, not err.message: the message embeds the absolute path, which
+      // puts the operator's home directory and username into stderr and from
+      // there into any CI job log. The code is the actionable half.
+      const code =
+        cause !== null && typeof cause === "object" && "code" in cause
+          ? String((cause as { code: unknown }).code)
+          : String(cause);
+      failed = true;
+      warn(`warning: could not read ${file} (${code}); continuing as logged out`);
+      return fallback();
+    });
+  // Both reads stay in flight together; the catch arms only run on failure.
   const [creds, workspaces] = await Promise.all([
-    loadCredentials(env).catch((cause: unknown) => {
-      warnFor(STATE_FILE_CREDENTIALS)(cause);
-      return emptyCredentials();
-    }),
-    loadWorkspaces(env).catch((cause: unknown) => {
-      warnFor(STATE_FILE_WORKSPACES)(cause);
-      return emptyWorkspaces();
-    }),
+    orWarn(loadCredentials(env), STATE_FILE_CREDENTIALS, emptyCredentials),
+    orWarn(loadWorkspaces(env), STATE_FILE_WORKSPACES, emptyWorkspaces),
   ]);
-  return { creds, workspaces };
+  return { creds, workspaces, readFailed: failed };
 }
