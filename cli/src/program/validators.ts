@@ -72,6 +72,11 @@ export interface EnumOptions {
   // (`Anthropic` → `anthropic`). Off by default so exact-match callers
   // (`--sort`) keep rejecting case drift.
   foldCase?: boolean | undefined;
+  // Values the caller recognises but deliberately refuses, mapped to the
+  // reason. A recognised-but-refused value reads as a typo when it lands in
+  // the generic "must be one of: …" wall, so it earns its own sentence. Keys
+  // are matched under the same folding rule as members.
+  rejected?: Readonly<Record<string, string>> | undefined;
 }
 
 export type CommanderParser<T> = (value: unknown) => T;
@@ -127,18 +132,29 @@ export function parseIdOption(value: unknown): string {
 
 export function parseEnumOption<T extends string>(
   allowed: readonly T[],
-  { foldCase = false }: EnumOptions = {},
+  { foldCase = false, rejected }: EnumOptions = {},
 ): CommanderParser<T> {
   if (!Array.isArray(allowed) || allowed.length === 0) {
     throw new Error("parseEnumOption requires a non-empty allowed array");
   }
+  const refusals = Object.entries(rejected ?? {});
   return (value: unknown): T => {
     if (isString(value)) {
       if (allowed.includes(value as T)) return value as T;
+      const folded = value.toLowerCase();
       if (foldCase) {
-        const folded = value.toLowerCase();
-        const canonical = allowed.find((member) => member === folded);
+        // Fold both sides: comparing the folded input against members
+        // verbatim would silently never match a non-lowercase member.
+        const canonical = allowed.find((member) => member.toLowerCase() === folded);
         if (canonical !== undefined) return canonical;
+      }
+      // A deliberate refusal outranks the generic wall — it is the difference
+      // between "you typo'd" and "this exists and here is why it is not here".
+      const refusal = refusals.find(
+        ([name]) => name === value || (foldCase && name.toLowerCase() === folded),
+      );
+      if (refusal !== undefined) {
+        throw new InvalidArgumentError(`'${refusal[0]}' ${refusal[1]}`);
       }
     }
     throw new InvalidArgumentError(`must be one of: ${allowed.join(", ")}`);
