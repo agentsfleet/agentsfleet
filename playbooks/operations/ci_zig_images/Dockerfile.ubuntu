@@ -18,6 +18,12 @@ RUN test -n "$ZIG_VERSION" && test -n "$ZIG_SHA256_X86_64_LINUX"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# bubblewrap is production parity, not a convenience: the runtime image
+# (/Dockerfile) installs it, and the runner spawns every sandboxed lease through
+# `bwrap`. Without it here, each proof that needs a real binary resolved
+# `error.BwrapUnavailable` and returned SkipZigTest — silently, on every run, in
+# the only Linux environment those tests had. That is how a sandbox missing
+# /run/systemd/resolve shipped and broke every lease for a week (M167).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libssl-dev \
@@ -31,6 +37,7 @@ RUN apt-get update \
       build-essential \
       docker.io \
       gnupg \
+      bubblewrap \
  && rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \

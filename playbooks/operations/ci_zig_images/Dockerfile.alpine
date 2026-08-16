@@ -28,6 +28,12 @@ RUN test -n "$ZIG_VERSION" \
  && test -n "$ZIG_SHA256_AARCH64_LINUX" \
  && test -n "$TARGETARCH"
 
+# bubblewrap: this image also backs the local kernel lane
+# (make/test-integration.mk RUNNER_CI_IMAGE), which is where a macOS developer's
+# real-sandbox proofs execute. Without it those proofs SkipZigTest on every Mac
+# while reporting green — the same silent skip that let a broken sandbox bind
+# set ship (M167). Alpine's bwrap is only the test harness; production sandboxes
+# run the Debian binary from /Dockerfile.
 RUN apk add --no-cache \
     git \
     openssl-dev \
@@ -38,7 +44,8 @@ RUN apk add --no-cache \
     tar \
     wget \
     make \
-    bash
+    bash \
+    bubblewrap
 
 # OpenSSL static-link symlinks. The arch-specific GNU triple paths are what
 # the build.zig static-link helper looks for; without these, zig build fails
