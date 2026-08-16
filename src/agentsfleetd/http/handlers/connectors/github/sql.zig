@@ -2,13 +2,6 @@
 //! so the routing-index writes and App-ingress reads have one schema-qualified
 //! GitHub owner.
 
-/// Remove the prior GitHub reverse-routing row for a workspace before a
-/// reconnect stores its current installation.
-pub const DELETE_WORKSPACE_INSTALLS =
-    \\DELETE FROM core.connector_installs
-    \\WHERE provider = $1 AND workspace_id = $2::uuid
-;
-
 /// Store or refresh the installation-to-workspace reverse-routing row. A
 /// conflict owned by another workspace returns no row and the transaction
 /// rolls back; installation transfer requires a separately verified flow.
@@ -34,10 +27,6 @@ pub const SELECT_INSTALL =
 /// Serialize final GitHub install persistence for one workspace. The callback
 /// consumes the latest-state marker under this transaction-level advisory lock
 /// before deleting/replacing the vault handle and reverse-routing row.
-pub const LOCK_INSTALL_PERSISTENCE =
-    \\SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))
-;
-
 /// Resolve a GitHub App installation id to its connected workspace.
 pub const SELECT_WORKSPACE_BY_INSTALLATION =
     \\SELECT workspace_id::text FROM core.connector_installs
@@ -74,9 +63,7 @@ pub const SELECT_APP_INGRESS_TARGETS =
 
 test "GitHub connector statements use the core schema" {
     const std = @import("std");
-    try std.testing.expect(std.mem.indexOf(u8, DELETE_WORKSPACE_INSTALLS, "core.connector_installs") != null);
     try std.testing.expect(std.mem.indexOf(u8, UPSERT_INSTALL, "core.connector_installs") != null);
-    try std.testing.expect(std.mem.indexOf(u8, LOCK_INSTALL_PERSISTENCE, "pg_advisory_xact_lock") != null);
     try std.testing.expect(std.mem.indexOf(u8, SELECT_WORKSPACE_BY_INSTALLATION, "core.connector_installs") != null);
     try std.testing.expect(std.mem.indexOf(u8, SELECT_APP_INGRESS_TARGETS, "core.fleets") != null);
     try std.testing.expect(std.mem.indexOf(u8, SELECT_APP_INGRESS_TARGETS, "core.integration_grants") != null);

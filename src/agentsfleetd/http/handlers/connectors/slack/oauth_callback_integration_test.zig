@@ -5,8 +5,9 @@
 // Requires TEST_DATABASE_URL + REDIS_URL_API — skipped gracefully otherwise.
 //
 // This is the first connector-integration test (M102's GitHub connector
-// shipped without one). It drives the real /v1/connectors/slack/callback route
-// through TestHarness: a valid signed state is minted, the fake-Slack answers
+// shipped without one). It drives the real authenticated
+// POST /v1/connectors/slack/callback route through TestHarness: a valid signed state
+// is minted, the fake-Slack answers
 // oauth.v2.access with a canned token, and the assertions prove the token lands
 // in the vault (RULE VLT) and NOT in the connector_installs table.
 
@@ -16,6 +17,7 @@ const pg = @import("pg");
 const auth_mw = @import("../../../../auth/middleware/mod.zig");
 const harness_mod = @import("../../../test_harness.zig");
 const test_port = @import("../../../test_port.zig");
+const scope_tokens = @import("../../../test_scope_tokens.zig");
 const PgQuery = @import("../../../../db/pg_query.zig").PgQuery;
 const test_fixtures = @import("../../../../db/test_fixtures.zig");
 const vault = @import("../../../../state/vault.zig");
@@ -30,11 +32,13 @@ const testing = std.testing;
 // UUIDv7-shaped fixtures (version nibble '7' at position 15). Distinct from
 // other suites' ids so the shared test DB stays collision-free under the
 // parallel runner.
-const TENANT_ID = "0195c106-0000-7000-8000-f00000000001"; // per-suite tenant — keeps this suite's workspaces off the shared tenant's FK chain
+const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TENANT_NAME = "slack-oauth-callback-suite";
 const ADMIN_WS = "0195c106-0001-7000-8000-000000000001";
 const TARGET_WS = "0195c106-0002-7000-8000-000000000002";
 const SIGNING_SECRET = "m106-connect-signing-secret-key!";
+const CALLBACK_SUBJECT = "user_m11_006";
+const CALLBACK_USER_ID = "0195c106-0003-7000-8000-000000000001";
 
 // Canned Slack `oauth.v2.access` success body (the shape parseSlackToken
 // consumes). team.id is the external_account_id; access_token is the bot token.
@@ -114,6 +118,24 @@ const FakeSlack = struct {
 
 fn noopRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
+fn startHarness(alloc: std.mem.Allocator) !*TestHarness {
+    return TestHarness.start(alloc, .{
+        .configureRegistry = noopRegistry,
+        .inline_jwks_json = scope_tokens.JWKS,
+        .issuer = scope_tokens.ISSUER,
+        .audience = scope_tokens.AUDIENCE,
+    });
+}
+
+fn seedCallbackUser(conn: *pg.Conn) !void {
+    const now_ms = common.clock.nowMillis();
+    _ = try conn.exec(
+        \\INSERT INTO core.users (id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $5)
+        \\ON CONFLICT (oidc_subject) DO NOTHING
+    , .{ CALLBACK_USER_ID, TENANT_ID, CALLBACK_SUBJECT, "connector-callback@agentsfleet.test", now_ms });
+}
+
 fn seedSlackAppCreds(alloc: std.mem.Allocator, conn: *pg.Conn) !void {
     var obj: std.json.ObjectMap = .empty;
     defer obj.deinit(alloc);
@@ -135,7 +157,7 @@ fn preClean(conn: *pg.Conn) void {
 
 test "integration: slack oauth callback persists install + vaults token (Dim 1.1)" {
     const alloc = testing.allocator;
-    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+    const h = startHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
@@ -153,6 +175,7 @@ test "integration: slack oauth callback persists install + vaults token (Dim 1.1
     try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
     try test_fixtures.seedWorkspaceWithTenant(conn, ADMIN_WS, TENANT_ID);
     try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
+    try seedCallbackUser(conn);
     preClean(conn);
     try seedSlackAppCreds(alloc, conn);
 
@@ -169,8 +192,9 @@ test "integration: slack oauth callback persists install + vaults token (Dim 1.1
     h.ctx.connector_oauth_token_endpoint_override = token_url;
     h.ctx.app_url = "http://127.0.0.1/";
 
-    // Mint the signed single-use state the callback consumes (binds TARGET_WS).
-    const state = try oauth2.mintState(alloc, &h.queue, spec.SPEC, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    // Mint the signed single-use state the callback consumes (binds TARGET_WS
+    // and the authenticated browser subject).
+    const state = try oauth2.mintState(alloc, &h.queue, spec.SPEC, SIGNING_SECRET, TARGET_WS, CALLBACK_SUBJECT, common.clock.nowMillis());
     defer alloc.free(state);
 
     const path = try std.fmt.allocPrint(alloc, "/v1/connectors/slack/callback?code=fake-code&state={s}", .{state});
@@ -178,7 +202,7 @@ test "integration: slack oauth callback persists install + vaults token (Dim 1.1
 
     // `.unhandled` returns the 302 as-is (else the client chases Location to
     // app_url :80). The install side effects run before the redirect.
-    const r = try h.get(path).redirectBehavior(.unhandled).send();
+    const r = try (try (try h.post(path).json("{}")).bearer(scope_tokens.NO_TENANT)).redirectBehavior(.unhandled).send();
     defer r.deinit();
     try r.expectStatus(.found);
     const expected_redirect = "http://127.0.0.1/w/" ++ TARGET_WS ++ "/integrations";
@@ -210,7 +234,7 @@ test "integration: slack oauth callback persists install + vaults token (Dim 1.1
 
 test "integration: slack oauth callback rejects a forged state (Dim 1.2)" {
     const alloc = testing.allocator;
-    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+    const h = startHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
@@ -223,6 +247,7 @@ test "integration: slack oauth callback rejects a forged state (Dim 1.2)" {
     try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
     try test_fixtures.seedWorkspaceWithTenant(conn, ADMIN_WS, TENANT_ID);
     try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
+    try seedCallbackUser(conn);
     preClean(conn);
     try seedSlackAppCreds(alloc, conn);
 
@@ -232,7 +257,7 @@ test "integration: slack oauth callback rejects a forged state (Dim 1.2)" {
     // Mint a valid single-use state for TARGET_WS, then tamper one byte so the
     // HMAC no longer verifies — a signature-forged state (the security property
     // Dim 1.2 pins), rejected before any code exchange or write.
-    const good = try oauth2.mintState(alloc, &h.queue, spec.SPEC, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    const good = try oauth2.mintState(alloc, &h.queue, spec.SPEC, SIGNING_SECRET, TARGET_WS, CALLBACK_SUBJECT, common.clock.nowMillis());
     defer alloc.free(good);
     const forged = try alloc.dupe(u8, good);
     defer alloc.free(forged);
@@ -240,7 +265,7 @@ test "integration: slack oauth callback rejects a forged state (Dim 1.2)" {
 
     const path = try std.fmt.allocPrint(alloc, "/v1/connectors/slack/callback?code=whatever&state={s}", .{forged});
     defer alloc.free(path);
-    const r = try h.get(path).redirectBehavior(.unhandled).send();
+    const r = try (try (try h.post(path).json("{}")).bearer(scope_tokens.NO_TENANT)).redirectBehavior(.unhandled).send();
     defer r.deinit();
 
     // Rejected with the GENERIC connector-state-invalid code, consistent with

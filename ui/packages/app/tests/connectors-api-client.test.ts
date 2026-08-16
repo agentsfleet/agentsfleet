@@ -92,6 +92,21 @@ describe("lib/api/connectors", () => {
     expect(res.install_url).toBe(install_url);
   });
 
+  it("disconnectConnector(…) DELETEs the exact provider path", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 204 });
+    const mod = await import("../lib/api/connectors");
+
+    await mod.disconnectConnector("github", "ws_1", "tkn");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/workspaces/ws_1/connectors/github"),
+      expect.objectContaining({
+        method: "DELETE",
+        headers: expect.objectContaining({ Authorization: "Bearer tkn" }),
+      }),
+    );
+  });
+
   it("getConnectorCatalog(…) GETs the workspace-nested /connectors collection and returns the entries", async () => {
     const entries = [
       { id: "slack", archetype: "oauth2", display_name: "Slack", configured: true, connected: true },

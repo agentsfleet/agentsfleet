@@ -2,7 +2,7 @@
 
 **Owners:** 🤠 Indy for GitHub settings and 1Password; 🦉 Orly for secret sync
 and verification
-**Updated:** Jul 31, 2026
+**Updated:** Aug 16, 2026
 **Prerequisite:** the target environment's admin bootstrap is complete, its API
 host passes `/readyz`, and its dashboard is reachable
 
@@ -20,10 +20,12 @@ for production.
 In GitHub **Settings → Developer settings → GitHub Apps**, create the app:
 
 - Homepage URL: the matching dashboard URL.
-- Callback URL: `<API_BASE>/v1/connectors/github/callback`.
-- Enable **Request user authorization during installation**. The callback needs
-  both `installation_id` and the one-time authorization `code` to verify that
-  the returning user may access the installation.
+- Callback URL: `https://<APP_HOST>/api/connectors/github/callback`. Use
+  `app-dev.agentsfleet.net` for development and `app.agentsfleet.net` for
+  production.
+- Enable **Request user authorization during installation**. The dashboard
+  callback uses the one-time authorization `code` and the current signed-in
+  person to verify a claimed installation or discover one accessible install.
 - Keep webhooks active with
   `<API_BASE>/v1/ingress/github` and a new high-entropy webhook secret.
 - Keep Secure Sockets Layer (SSL) verification enabled.
@@ -84,8 +86,9 @@ step once before live acceptance.
 
 ## 4. Indy and Orly: prove the live path
 
-1. Indy installs the app on one test repository and completes **Connect
-   GitHub** in the dashboard.
+1. Indy selects **Connect** in the dashboard. If the App already exists, GitHub
+   authorizes the user and `agentsfleet` restores the internal workspace
+   binding. If the App is absent, Indy installs it on one test repository.
 2. Orly confirms the connector reports connected and the installation belongs
    to the expected tenant.
 3. Indy opens a test pull request; Orly confirms exactly one intended fleet
@@ -98,6 +101,9 @@ step once before live acceptance.
    and creator identity shown by GitHub.
 5. Orly replays each delivery identifier and confirms no second fleet event,
    review, or production result is created.
+6. Indy selects **Disconnect**. Orly confirms the dashboard reports **Not
+   connected** while the GitHub App remains installed. Indy selects **Connect**
+   again and confirms the dashboard returns to **Connected**.
 
 Record the development environment, repository, Pull Request (PR) URL, fleet
 identifier, expected deployment integration, received creator identity,

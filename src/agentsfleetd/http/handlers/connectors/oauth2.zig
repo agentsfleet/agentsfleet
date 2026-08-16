@@ -2,7 +2,7 @@
 //! for every token-exchange connector (Slack now; Zoho/Jira/Linear later reuse
 //! it as data). A connector is a `Spec` (endpoints + scopes + state binding);
 //! its thin `connectors/<name>/{connect,callback}.zig` handlers call
-//! `authorizeUrl`/`mintState`/`consumeState`/`exchange` with that Spec, then do
+//! `authorizeUrl`/`mintState`/`exchange` with that Spec, then do
 //! the provider-specific response parsing + vault-handle shaping themselves.
 //!
 //! GitHub is intentionally NOT on this mechanism — it is a GitHub App
@@ -48,30 +48,19 @@ pub const ExchangeResult = struct {
     body: []const u8,
 };
 
-/// Mint a signed single-use install-state bound to `workspace_id`, in the
-/// connector's state domain. Caller owns the returned slice.
+/// Mint a signed single-use install-state bound to `workspace_id` and the
+/// initiating person, in the connector's state domain. Caller owns the returned
+/// slice.
 pub fn mintState(
     alloc: std.mem.Allocator,
     queue: *queue_redis.Client,
     spec: Spec,
     secret: []const u8,
     workspace_id: []const u8,
+    starter_subject: []const u8,
     now_ms: i64,
 ) ![]const u8 {
-    return connector_state.mint(alloc, queue, spec.state, secret, workspace_id, now_ms);
-}
-
-/// Verify + single-use consume an install-state; returns the bound workspace_id
-/// (caller owns) or null on any failure.
-pub fn consumeState(
-    alloc: std.mem.Allocator,
-    queue: *queue_redis.Client,
-    spec: Spec,
-    secret: []const u8,
-    state: []const u8,
-    now_ms: i64,
-) ?[]const u8 {
-    return connector_state.verifyConsume(alloc, queue, spec.state, secret, state, now_ms);
+    return connector_state.mint(alloc, queue, spec.state, secret, workspace_id, starter_subject, now_ms);
 }
 
 /// Build the provider authorize URL. `scopes`/`client_id`/`state` are URL-safe
@@ -86,6 +75,11 @@ pub fn authorizeUrl(
 ) ![]const u8 {
     const redir = try percentEncode(alloc, redirect_uri);
     defer alloc.free(redir);
+    if (spec.scopes.len == 0) {
+        return std.fmt.allocPrint(alloc, "{s}?response_type=code&client_id={s}&redirect_uri={s}&state={s}", .{
+            spec.authorize_endpoint, client_id, redir, state,
+        });
+    }
     const scope = try percentEncode(alloc, spec.scopes);
     defer alloc.free(scope);
     if (spec.authorize_extra_query.len > 0) {

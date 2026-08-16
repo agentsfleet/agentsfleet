@@ -1,6 +1,7 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { routerRefresh } from "./helpers/dashboard-mocks";
 
 // The connectors card grid is registry-driven: it renders whatever the catalog
 // returns (`ConnectorCatalogEntry[]`), so these tests feed a catalog and assert
@@ -8,8 +9,13 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 // connectors are OAuth/app_install (api-key providers are custom secrets, not
 // connectors). The connect action is mocked; the real security boundary is the
 // backend, proven by its own suite.
-const { startConnectActionMock } = vi.hoisted(() => ({ startConnectActionMock: vi.fn() }));
+const { disconnectConnectorActionMock, startConnectActionMock } = vi.hoisted(() => ({
+  disconnectConnectorActionMock: vi.fn(),
+  startConnectActionMock: vi.fn(),
+}));
+vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
 vi.mock("@/app/(dashboard)/w/[workspaceId]/integrations/connector-actions", () => ({
+  disconnectConnectorAction: disconnectConnectorActionMock,
   startConnectAction: startConnectActionMock,
 }));
 vi.mock("lucide-react", () => {
@@ -71,7 +77,9 @@ function renderConnectors(
 
 afterEach(() => {
   cleanup();
+  disconnectConnectorActionMock.mockReset();
   startConnectActionMock.mockReset();
+  routerRefresh.mockReset();
 });
 
 describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () => {
@@ -122,27 +130,38 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     const github = screen.getByTestId("integration-github");
     expect(github.textContent).toContain("Not connected");
     expect(github.textContent).not.toContain("GITHUB_TOKEN");
-    expect(screen.getByRole("button", { name: /connect github/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Connect GitHub" })).toBeTruthy();
     // Not-connected is a neutral fact, not a fault (FINDING-007) — amber stays
     // reserved for reconnect-required, which genuinely needs attention.
     expect(within(github).getByText("Not connected").getAttribute("data-variant")).toBe("neutral");
   });
 
-  it("uses the bespoke GitHub status override (connected → no Connect button)", () => {
+  it("shows Connected before an exact Disconnect action", () => {
     renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.connected });
-    expect(screen.getByTestId("integration-github").textContent).toContain("Connected");
-    expect(screen.queryByRole("button", { name: /connect github/i })).toBeNull();
+    const github = screen.getByTestId("integration-github");
+    expect(github.textContent).toContain("Connected");
+    expect(screen.getByRole("button", { name: "Disconnect GitHub" })).toBeTruthy();
+    expect(github.textContent?.indexOf("Connected")).toBeLessThan(
+      github.textContent?.indexOf("Disconnect") ?? -1,
+    );
   });
 
-  it("offers Reconnect when the install was revoked (reconnect_required)", () => {
+  it("offers Connect when the install was revoked", () => {
     renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.reconnectRequired });
-    expect(screen.getByRole("button", { name: /reconnect github/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Connect GitHub" })).toBeTruthy();
   });
 
   it("derives status from the catalog `connected` flag when there's no override (Zoho)", () => {
     renderConnectors([entry({ id: "zoho", archetype: "oauth2", display_name: "Zoho Desk", connected: true })]);
     expect(screen.getByTestId("integration-zoho").textContent).toContain("Connected");
-    expect(screen.queryByRole("button", { name: /connect zoho/i })).toBeNull();
+    expect(screen.getByRole("button", { name: "Disconnect Zoho Desk" })).toBeTruthy();
+  });
+
+  it("gives identical visible actions provider-specific accessible names", () => {
+    renderConnectors([GITHUB, SLACK]);
+
+    expect(screen.getByRole("button", { name: "Connect GitHub" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Connect Slack" })).toBeTruthy();
   });
 
   it("shows the Slack team identity from the override when connected", () => {
@@ -161,7 +180,7 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
     });
     try {
       renderConnectors([GITHUB]);
-      fireEvent.click(screen.getByRole("button", { name: /connect github/i }));
+      fireEvent.click(screen.getByRole("button", { name: "Connect GitHub" }));
       await waitFor(() => expect(startConnectActionMock).toHaveBeenCalledWith("github", WS));
       await waitFor(() => expect(assigned).toBe(install_url));
     } finally {
@@ -172,10 +191,61 @@ describe("IntegrationsConnectors (test_ui_connectors_cards_from_catalog)", () =>
   it("surfaces a connect failure as an inline error, no redirect", async () => {
     startConnectActionMock.mockResolvedValue({ ok: false, error: "boom", errorCode: "UZ-CONN-001" });
     renderConnectors([GITHUB]);
-    fireEvent.click(screen.getByRole("button", { name: /connect github/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Connect GitHub" }));
     await waitFor(() =>
       expect(within(screen.getByTestId("integration-github")).getByRole("alert")).toBeTruthy(),
     );
+  });
+
+  it.each([
+    [new Error("connect threw"), "connect threw"],
+    ["non-error connect failure", "Connection failed"],
+  ])("surfaces a thrown connect failure %#", async (cause, message) => {
+    startConnectActionMock.mockRejectedValue(cause);
+    renderConnectors([GITHUB]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect GitHub" }));
+
+    expect(await screen.findByText(message)).toBeTruthy();
+  });
+
+  it("disconnects the connected provider and refreshes server state", async () => {
+    disconnectConnectorActionMock.mockResolvedValue({ ok: true, data: undefined });
+    renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.connected });
+
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect GitHub" }));
+
+    await waitFor(() => expect(disconnectConnectorActionMock).toHaveBeenCalledWith("github", WS));
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces a Disconnect failure inline and keeps the connected row", async () => {
+    disconnectConnectorActionMock.mockResolvedValue({
+      ok: false,
+      error: "boom",
+      errorCode: "UZ-INTERNAL-003",
+    });
+    renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.connected });
+
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect GitHub" }));
+
+    await waitFor(() =>
+      expect(within(screen.getByTestId("integration-github")).getByRole("alert")).toBeTruthy(),
+    );
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [new Error("disconnect threw"), "disconnect threw"],
+    ["non-error disconnect failure", "Disconnect failed"],
+  ])("surfaces a thrown disconnect failure %#", async (cause, message) => {
+    disconnectConnectorActionMock.mockRejectedValue(cause);
+    renderConnectors([GITHUB], { githubStatus: CONNECTOR_STATUS.connected });
+
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect GitHub" }));
+
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(routerRefresh).not.toHaveBeenCalled();
   });
 
   it("renders an unconfigured OAuth connector with the UZ-CONN-001 docs link, no Connect", () => {

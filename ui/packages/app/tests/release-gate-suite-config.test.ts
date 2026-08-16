@@ -12,6 +12,7 @@ import {
   ReleasePreflightError,
   assertCliArtifactPresent,
   assertConnectorConfigured,
+  assertRunnerHeartbeatAdvanced,
   assertRunnerOnline,
   assertRuntimeModelAvailable,
   assertServiceHealthy,
@@ -124,6 +125,18 @@ describe("release preflight gates every journey", () => {
       items: [{ liveness: "registered" }, { liveness: "offline" }],
     } as Parameters<typeof assertRunnerOnline>[0];
     expect(() => assertRunnerOnline(stale)).toThrow(ReleasePreflightError);
+  });
+
+  it("test_runner_last_seen_advances", () => {
+    const first = { id: "runner-a", last_seen_at: 1_000, liveness: "online" } as const;
+    const advanced = { id: "runner-a", last_seen_at: 2_000, liveness: "busy" } as const;
+    const unchanged = { id: "runner-a", last_seen_at: 1_000, liveness: "online" } as const;
+    const replaced = { id: "runner-b", last_seen_at: 2_000, liveness: "online" } as const;
+
+    expect(() => assertRunnerHeartbeatAdvanced(first, advanced)).not.toThrow();
+    expect(() => assertRunnerHeartbeatAdvanced(first, unchanged)).toThrow(ReleasePreflightError);
+    expect(() => assertRunnerHeartbeatAdvanced(first, replaced)).toThrow(ReleasePreflightError);
+    expect(() => assertRunnerHeartbeatAdvanced(first, undefined)).toThrow(ReleasePreflightError);
   });
 
   it("test_release_preflight_is_read_only_and_idempotent", () => {
