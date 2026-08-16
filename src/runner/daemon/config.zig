@@ -205,3 +205,28 @@ test "storage home defaults when unset and honours the env when set" {
     defer cfg.deinit();
     try std.testing.expectEqualStrings(DEFAULT_STORAGE_HOME, cfg.storage_home);
 }
+
+test "a bootstrap load that fails partway frees what it already read" {
+    // Every early return here abandons an owned string. The daemon retries its
+    // bootstrap, so a leak on the refusal path repeats per attempt on exactly
+    // the hosts that are already misconfigured. testing.allocator turns each
+    // survivor into a failed test.
+    const alloc = std.testing.allocator;
+
+    // URL present, token absent: the URL is owned and must not survive.
+    var no_token = try common_constants.env.fromPairs(alloc, &.{
+        .{ ENV_AGENTSFLEET_API_URL, "http://127.0.0.1:8080" },
+    });
+    defer no_token.deinit();
+    try std.testing.expectError(ConfigError.MissingEnvVar, Config.load(&no_token, alloc));
+
+    // Both present, token malformed: the refusal comes after both are owned, so
+    // this is the arm that frees two strings rather than one. A host holding a
+    // dashboard token instead of a runner token lands exactly here.
+    var bad_token = try common_constants.env.fromPairs(alloc, &.{
+        .{ ENV_AGENTSFLEET_API_URL, "http://127.0.0.1:8080" },
+        .{ ENV_AGENTSFLEET_RUNNER_TOKEN, "agt_t" ++ "c" ** 64 },
+    });
+    defer bad_token.deinit();
+    try std.testing.expectError(ConfigError.InvalidRunnerToken, Config.load(&bad_token, alloc));
+}
