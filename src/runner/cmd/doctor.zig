@@ -15,7 +15,9 @@ const output = @import("output.zig");
 const LITERAL = "\n";
 const CHECK_CONTROL_PLANE = "control_plane";
 
-const Check = struct { name: []const u8, ok: bool, detail: []const u8 };
+/// Public for `runner_tail_coverage_test.zig` alone, which drives `emit` with
+/// stdout muted — the only way to reach the write path in-process.
+pub const Check = struct { name: []const u8, ok: bool, detail: []const u8 };
 
 pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, io: std.Io, alloc: std.mem.Allocator, deadlines: *runner_deadline.Owned) u8 {
     const sched = deadlines.start(alloc);
@@ -89,19 +91,35 @@ fn renderHumanLine(buf: []u8, c: Check) []const u8 {
     return std.fmt.bufPrint(buf, "[{s}] {s}: {s}\n", .{ mark, c.name, c.detail }) catch LITERAL;
 }
 
-fn emit(a: output.Audience, alloc: std.mem.Allocator, checks: []const Check) u8 {
+/// Render the whole verdict into one buffer. Pure — no I/O — so both audiences
+/// are testable, which the per-check write loop below it never was: under
+/// `zig build test` stdout is the build-runner protocol stream, so a test that
+/// reaches `writeOut` deadlocks the lane. Writing once also costs one syscall
+/// instead of one per check.
+fn renderAll(alloc: std.mem.Allocator, a: output.Audience, checks: []const Check) ![]u8 {
     switch (a) {
         .json => {
-            const s = renderJson(alloc, checks) orelse return 1;
+            const s = renderJson(alloc, checks) orelse return error.OutOfMemory;
             defer alloc.free(s);
-            output.writeOut(s);
-            output.writeOut(LITERAL);
+            return std.fmt.allocPrint(alloc, "{s}{s}", .{ s, LITERAL });
         },
-        .human => for (checks) |c| {
-            var buf: [256]u8 = undefined;
-            output.writeOut(renderHumanLine(&buf, c));
+        .human => {
+            var out: std.ArrayList(u8) = .empty;
+            errdefer out.deinit(alloc);
+            for (checks) |c| {
+                var buf: [256]u8 = undefined;
+                try out.appendSlice(alloc, renderHumanLine(&buf, c));
+            }
+            return out.toOwnedSlice(alloc);
         },
     }
+}
+
+/// Public for `runner_tail_coverage_test.zig` alone (see `Check`).
+pub fn emit(a: output.Audience, alloc: std.mem.Allocator, checks: []const Check) u8 {
+    const rendered = renderAll(alloc, a, checks) catch return 1;
+    defer alloc.free(rendered);
+    output.writeOut(rendered);
     return if (allOk(checks)) 0 else 1;
 }
 
@@ -223,4 +241,66 @@ test "reachCheck: a dial failure reads unreachable" {
     const check = reachCheck(common_test.globalIo(), alloc, try deadlines.start(alloc), "http://127.0.0.1:1", "agt_rtest");
     try std.testing.expect(!check.ok);
     try std.testing.expect(std.mem.indexOf(u8, check.detail, "unreachable") != null);
+}
+
+test "the human verdict renders every check as one buffer, in order" {
+    // The operator's whole reading of `doctor` is these lines. Rendering them
+    // into one buffer is what makes them assertable at all — the write itself
+    // cannot be reached from a test, because stdout is the build protocol here.
+    const alloc = std.testing.allocator;
+    const checks = [_]Check{
+        .{ .name = "api_url", .ok = true, .detail = "set" },
+        .{ .name = "runner_token", .ok = false, .detail = "missing or not a agt_r token" },
+        .{ .name = CHECK_CONTROL_PLANE, .ok = false, .detail = "skipped — api/token unset" },
+    };
+    const rendered = try renderAll(alloc, .human, &checks);
+    defer alloc.free(rendered);
+
+    try std.testing.expect(std.mem.startsWith(u8, rendered, "[OK] api_url: set\n"));
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "[!!] runner_token:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "[!!] control_plane:") != null);
+    try std.testing.expectEqual(@as(usize, 3), std.mem.count(u8, rendered, "\n"));
+}
+
+test "the json verdict is one newline-terminated envelope" {
+    // Piped output is parsed by whatever called us, so the envelope must be a
+    // single object followed by exactly one newline — not a line per check.
+    const alloc = std.testing.allocator;
+    const checks = [_]Check{.{ .name = "api_url", .ok = true, .detail = "set" }};
+    const rendered = try renderAll(alloc, .json, &checks);
+    defer alloc.free(rendered);
+
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "\"ok\":true") != null);
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, rendered, "\n"));
+    try std.testing.expect(std.mem.endsWith(u8, rendered, "\n"));
+}
+
+test "an empty check set still renders, and renders as passing" {
+    // Vacuous truth reaches the exit code, so the empty render must not be an
+    // error path that reports failure for having nothing to report.
+    const alloc = std.testing.allocator;
+    const human = try renderAll(alloc, .human, &.{});
+    defer alloc.free(human);
+    try std.testing.expectEqual(@as(usize, 0), human.len);
+
+    const json = try renderAll(alloc, .json, &.{});
+    defer alloc.free(json);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"ok\":true") != null);
+}
+
+test "a render that runs out of memory reports failure rather than half a verdict" {
+    // `emit` turns any render failure into exit 1. Partial output would be worse
+    // than none: a truncated JSON envelope parses as malformed, and a truncated
+    // human list reads as "these are all the checks".
+    const checks = [_]Check{
+        .{ .name = "api_url", .ok = true, .detail = "set" },
+        .{ .name = "runner_token", .ok = true, .detail = "present (agt_r)" },
+    };
+    for (0..4) |fail_index| {
+        var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
+        const alloc = failing.allocator();
+        inline for (.{ output.Audience.human, output.Audience.json }) |audience| {
+            if (renderAll(alloc, audience, &checks)) |buf| alloc.free(buf) else |_| {}
+        }
+    }
 }
