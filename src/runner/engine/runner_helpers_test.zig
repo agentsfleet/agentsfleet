@@ -216,3 +216,64 @@ test "a non-array tools spec falls back to the default tool set" {
     defer tools_mod.deinitTools(alloc, tools);
     try std.testing.expect(tools.len > 0);
 }
+
+// ── ProviderBundle + the tool-spec skip path ────────────────────────────────
+
+test "a bundle that cannot be allocated fails closed, and deinit stays safe" {
+    // An unresolvable provider NAME is not what this arm defends: the runtime
+    // builds a holder for whatever it is handed. Allocation failure is, so that
+    // is what is injected. A fleet must refuse to start rather than run against
+    // a half-built bundle, and `deinit` then has to cope with an `inner` that
+    // was never set — the failure path is exactly where a double-free or a use
+    // of undefined would hide.
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var cfg = Config{ .workspace_dir = "", .config_path = "", .allocator = arena.allocator() };
+    cfg.default_provider = "openai";
+
+    var failing = std.testing.FailingAllocator.init(arena.allocator(), .{ .fail_index = 0 });
+    var bundle = runner_helpers.ProviderBundle{};
+    defer bundle.deinit();
+    try std.testing.expectError(error.FleetInitFailed, bundle.acquire(failing.allocator(), &cfg));
+    try std.testing.expect(bundle.inner == null);
+}
+
+test "a resolvable provider hands back a bundle the fleet loop can drive" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var cfg = Config{ .workspace_dir = "", .config_path = "", .allocator = alloc };
+    cfg.default_provider = "openai";
+    cfg.default_model = "gpt-4o-mini";
+
+    var bundle = runner_helpers.ProviderBundle{};
+    defer bundle.deinit();
+    // Some builds compile without this provider; skipping beats asserting a
+    // build-configuration difference is a product failure.
+    _ = bundle.acquire(alloc, &cfg) catch return error.SkipZigTest;
+    try std.testing.expect(bundle.inner != null);
+}
+
+test "a tool the bridge cannot resolve is skipped with its name freed, not fatal" {
+    // A fleet spec naming a tool this runner build does not carry must still
+    // start: the tool is dropped and logged, and the run proceeds with the rest.
+    // The skipped names are heap copies the caller owns, so this also proves
+    // they are released rather than leaked — testing.allocator enforces it.
+    const alloc = std.testing.allocator;
+    const spec_json =
+        \\[{"name":"file_read","enabled":true},
+        \\ {"name":"no_such_tool_in_this_build","enabled":true}]
+    ;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, spec_json, .{});
+    defer parsed.deinit();
+    var cfg = Config{ .workspace_dir = "", .config_path = "", .allocator = alloc };
+
+    const tools = try runner_helpers.buildToolsFromSpec(alloc, "/tmp", parsed.value, &cfg, null, null);
+    defer {
+        for (tools) |t| t.deinit(alloc);
+        alloc.free(tools);
+    }
+    // Only the resolvable one survives; the unknown name did not abort the build.
+    try std.testing.expectEqual(@as(usize, 1), tools.len);
+    try std.testing.expectEqualStrings("file_read", tools[0].name());
+}
