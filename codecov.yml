@@ -6,26 +6,45 @@ coverage:
         threshold: 1%
         informational: false
     # Patch targets bind PER FLAG, not once across the repository. One global
-    # number cannot judge four lanes that sit thirteen points apart: the Zig
-    # tree measures ~87% on Linux (its own gate's floors live in make/test.mk
-    # and docs/architecture/testing.md), while all three TypeScript packages
-    # are pinned at a hard 100% by their own runners — cli/bunfig.toml
+    # number cannot judge six lanes that sit thirteen points apart: the Zig
+    # folders measure 87–90% on Linux (their floors live in make/test.mk and
+    # docs/architecture/testing.md), while all three TypeScript packages are
+    # pinned at a hard 100% by their own runners — cli/bunfig.toml
     # (+ scripts/enforce-coverage.mjs), ui/packages/app/vitest.config.ts, and
     # ui/packages/website/vite.config.ts. The single 97% these replace was
     # wrong in both directions at once: it failed every Zig diff by
     # construction, and it would have let any TypeScript package quietly drop
     # three points below the bar its own suite refuses to build under.
     #
-    # Each target states what its lane already enforces elsewhere, so this
-    # file follows those gates rather than competing with them. Raise `zig`
-    # here when make/test.mk's floors rise, and keep the TypeScript entry at
-    # 100 for exactly as long as those three configs say 100.
+    # Each target states what its lane already enforces elsewhere, so this file
+    # follows those gates rather than competing with them. Move the Zig entries
+    # when make/test.mk's floors move, and keep the TypeScript entry at 100 for
+    # exactly as long as those three configs say 100.
+    #
+    # Every target carries 1% of give, matching the `project` block above. A
+    # patch status grades only the lines this diff touched, so its denominator
+    # is often tiny: on a twelve-line diff one unhit line is 8.3 points, and a
+    # 0% threshold reds the build over it. The 1% band absorbs that granularity
+    # without moving the bar the lane is held to — a real regression clears it
+    # immediately.
     patch:
-      zig:
+      zig-agentsfleetd:
         flags:
-          - zig
+          - zig-agentsfleetd
+        target: 90%
+        threshold: 1%
+        informational: false
+      zig-runner:
+        flags:
+          - zig-runner
         target: 87%
-        threshold: 0%
+        threshold: 1%
+        informational: false
+      zig-lib:
+        flags:
+          - zig-lib
+        target: 94%
+        threshold: 1%
         informational: false
       typescript:
         flags:
@@ -33,12 +52,36 @@ coverage:
           - website
           - cli
         target: 100%
-        threshold: 0%
+        threshold: 1%
         informational: false
 
-  range: "70..90"
+  # The badge colour scale, tightened to where the code actually sits. At
+  # 70..90 every lane rendered the same green — the runner at 87 and the
+  # TypeScript packages at 100 were indistinguishable, so the gradient carried
+  # no signal. 86 sits just under the lowest floor (runner, 87); 100 is the
+  # TypeScript bar.
+  range: "86..100"
   round: down
   precision: 2
+
+# The Zig tree publishes per folder, never as one blended figure. Three trees
+# move independently underneath it, and a single number lets any one of them
+# fall while the average holds steady — the same reasoning that made the gate's
+# own floors per-folder in make/test.mk. Each flag filters the ONE merged union
+# report by path, so every badge and every patch status above reads the exact
+# denominator `check_zig_coverage.py` graded, split three ways rather than
+# re-measured. `scripts/check_readme_badges_test.py` holds these flags, the
+# README badges, and the workflow uploads to each other.
+flags:
+  zig-agentsfleetd:
+    paths:
+      - src/agentsfleetd/
+  zig-runner:
+    paths:
+      - src/runner/
+  zig-lib:
+    paths:
+      - src/lib/
 
 comment:
   layout: "reach,diff,flags,tree"

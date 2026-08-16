@@ -29,9 +29,13 @@ WORKFLOW = REPO_ROOT / ".github" / "workflows" / "test.yml"
 MAKE_TEST = REPO_ROOT / "make" / "test.mk"
 
 CODECOV_ACTION = "codecov/codecov-action@"
-# The merged report is the only Zig artefact Codecov may see. Named by the flag
-# it belongs to so a second Zig flag cannot inherit the assertion by accident.
-ZIG_FLAG = "zig"
+# The merged report is the only Zig artefact Codecov may see. Every Zig flag is
+# enumerated, so a new one cannot inherit the assertion by accident — it has to
+# be added here, which is the moment to ask whether it names the union too.
+# The three publish the SAME union scoped by the `paths` filters in
+# codecov.yml, matching the per-folder floors in make/test.mk.
+ZIG_FLAGS = frozenset({"zig-agentsfleetd", "zig-runner", "zig-lib"})
+ZIG_FLAG_PREFIX = "zig"
 MERGED_REPORT_NAME = "merged/cobertura.xml"
 
 # `[![zig coverage](https://img.shields.io/codecov/...)](https://codecov.io/...)`
@@ -129,16 +133,43 @@ class ReadmeBadgeRow(unittest.TestCase):
             "coverage is uploaded under flags the README never shows",
         )
 
-    def test_zig_upload_names_the_merged_report(self) -> None:
+    def test_every_zig_upload_names_the_merged_report(self) -> None:
         """Codecov sees the union this gate graded, never the per-component reports."""
-        uploads = [upload for upload in codecov_uploads() if upload.get("flags") == ZIG_FLAG]
-        self.assertEqual(len(uploads), 1, f"expected one {ZIG_FLAG} upload, found {len(uploads)}")
-        expected = f"{zig_coverage_dir()}/{MERGED_REPORT_NAME}"
+        uploads = [
+            upload for upload in codecov_uploads() if upload.get("flags") in ZIG_FLAGS
+        ]
         self.assertEqual(
-            uploads[0].get("files"),
-            expected,
-            "the zig upload must name the merged report; a per-component report"
-            " lets Codecov build its own union over a denominator this gate excludes",
+            {upload["flags"] for upload in uploads},
+            set(ZIG_FLAGS),
+            f"expected one upload per Zig flag ({sorted(ZIG_FLAGS)})",
+        )
+        expected = f"{zig_coverage_dir()}/{MERGED_REPORT_NAME}"
+        for upload in uploads:
+            self.assertEqual(
+                upload.get("files"),
+                expected,
+                f"{upload['flags']!r} must name the merged report; a per-component"
+                " report lets Codecov build its own union over a denominator this"
+                " gate excludes",
+            )
+
+    def test_no_zig_flag_escapes_the_enumeration(self) -> None:
+        """A fourth Zig folder must join ZIG_FLAGS, not publish ungraded.
+
+        The assertion above only reaches the flags it already knows. Without
+        this, adding `zig-<folder>` to the workflow and the README would pass
+        every check here while nothing verified it names the union.
+        """
+        published = {
+            upload["flags"]
+            for upload in codecov_uploads()
+            if upload.get("flags", "").startswith(ZIG_FLAG_PREFIX)
+        }
+        self.assertEqual(
+            published - set(ZIG_FLAGS),
+            set(),
+            "a Zig flag is uploaded that ZIG_FLAGS does not enumerate — add it"
+            " there so its report path is checked too",
         )
 
     def test_every_upload_disables_report_search(self) -> None:
