@@ -5,9 +5,34 @@ coverage:
         target: auto
         threshold: 1%
         informational: false
+    # Patch targets bind PER FLAG, not once across the repository. One global
+    # number cannot judge four lanes that sit thirteen points apart: the Zig
+    # tree measures ~87% on Linux (its own gate's floors live in make/test.mk
+    # and docs/architecture/testing.md), while all three TypeScript packages
+    # are pinned at a hard 100% by their own runners — cli/bunfig.toml
+    # (+ scripts/enforce-coverage.mjs), ui/packages/app/vitest.config.ts, and
+    # ui/packages/website/vite.config.ts. The single 97% these replace was
+    # wrong in both directions at once: it failed every Zig diff by
+    # construction, and it would have let any TypeScript package quietly drop
+    # three points below the bar its own suite refuses to build under.
+    #
+    # Each target states what its lane already enforces elsewhere, so this
+    # file follows those gates rather than competing with them. Raise `zig`
+    # here when make/test.mk's floors rise, and keep the TypeScript entry at
+    # 100 for exactly as long as those three configs say 100.
     patch:
-      default:
-        target: 97%
+      zig:
+        flags:
+          - zig
+        target: 87%
+        threshold: 0%
+        informational: false
+      typescript:
+        flags:
+          - app
+          - website
+          - cli
+        target: 100%
         threshold: 0%
         informational: false
 
