@@ -22,8 +22,10 @@ import { FleetNotFoundError, getStatus } from "./lifecycle.ts";
 import { ensurePlatformSecretsSeeded } from "./platform-secrets.ts";
 import {
   buildPlatformOpsContent,
+  buildSteerProbeContent,
   onboardUploadTemplate,
   readAuthContext,
+  type SampleContent,
 } from "./template-ops.ts";
 
 export interface InstallOptions {
@@ -45,8 +47,8 @@ export interface InstalledFleet {
 const FLEET_READY_POLL_MS = 1_000;
 const DEFAULT_INSTALL_TIMEOUT_MS = 120_000;
 
-function uniqueName(runPrefix: string): string {
-  return `${runPrefix}-platform-ops-${crypto.randomBytes(3).toString("hex")}`;
+function uniqueName(runPrefix: string, fixtureName: string): string {
+  return `${runPrefix}-${fixtureName}-${crypto.randomBytes(3).toString("hex")}`;
 }
 
 function remainingTimeoutMs(deadline: number): number {
@@ -85,13 +87,26 @@ async function waitForFleetActive(
 }
 
 export async function installPlatformOpsFleet(opts: InstallOptions): Promise<InstalledFleet> {
+  return installFixtureFleet(opts, "platform-ops", buildPlatformOpsContent, opts.seedFixtureSecrets !== false);
+}
+
+export async function installSteerProbeFleet(opts: InstallOptions): Promise<InstalledFleet> {
+  return installFixtureFleet(opts, "steer-probe", buildSteerProbeContent, false);
+}
+
+async function installFixtureFleet(
+  opts: InstallOptions,
+  fixtureName: string,
+  buildContent: (name: string) => Promise<SampleContent>,
+  seedSecrets: boolean,
+): Promise<InstalledFleet> {
   const deadline = Date.now() + (opts.timeoutMs ?? DEFAULT_INSTALL_TIMEOUT_MS);
   const runPrefix = opts.runPrefix ?? ACCEPTANCE_RUN_PREFIX;
   const ctx = await readAuthContext(opts.env);
-  if (opts.seedFixtureSecrets !== false) {
+  if (seedSecrets) {
     await ensurePlatformSecretsSeeded(opts.env, () => remainingTimeoutMs(deadline));
   }
-  const content = await buildPlatformOpsContent(uniqueName(runPrefix));
+  const content = await buildContent(uniqueName(runPrefix, fixtureName));
   const templateId = await onboardUploadTemplate(ctx, content, remainingTimeoutMs(deadline));
   const result = await runFleetctl(
     ["install", "--library", templateId, "--json"],

@@ -725,6 +725,7 @@ const ROLE_PRIVILEGE_MATRIX = [_]RolePrivilege{
     // without an elevation path refuses every signup and every secret read.
     .{ .role = "api_runtime", .table = "vault.secrets", .select = true, .insert = true, .update = true, .delete = true },
     .{ .role = "api_runtime", .table = "billing.tenant_wallet", .select = true, .insert = true, .update = true, .delete = true },
+    .{ .role = "api_runtime", .table = "core.connector_installs", .select = true, .insert = true, .update = true, .delete = true },
     // No DELETE on the ledger: a charge leaves only with the tenant that paid,
     // through the cascade. Nothing else in the system may erase one.
     .{ .role = "api_runtime", .table = "billing.usage_ledger", .select = true, .insert = true, .update = true, .delete = false },

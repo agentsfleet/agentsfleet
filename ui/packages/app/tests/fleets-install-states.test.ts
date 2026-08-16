@@ -148,12 +148,11 @@ describe("test_install_states_render", () => {
   });
 
   it("holds at the connect gate when a required secret is missing", async () => {
-    renderStates(TEMPLATE_GH, []); // github not present
+    renderStates(entry({ required_credentials_reasons: {} }), []); // github not present
     await waitFor(() => expect(screen.getByText(/first run: connect github/i)).toBeTruthy());
-    const link = screen.getByRole("link", { name: /connect github/i });
-    expect(link.getAttribute("href")).toBe("/w/ws_1/secrets");
-    // Purpose-driven copy from the template's per-credential reason (data-driven).
-    expect(screen.getByText(/review your pull requests/i)).toBeTruthy();
+    const link = screen.getByRole("link", { name: "Connect" });
+    expect(link.getAttribute("href")).toBe("/w/ws_1/integrations");
+    expect(screen.getByText(/Connect it in Integrations/i)).toBeTruthy();
     // Create is gated — no fleet created yet.
     expect(installFleetActionMock).not.toHaveBeenCalled();
     // No skip path: connecting is the only action (the "Continue" button is gone).

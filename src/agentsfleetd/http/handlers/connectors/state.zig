@@ -1,7 +1,8 @@
 //! Shared connector OAuth install-state — a signed, single-use token binding a
-//! connect round-trip to the initiating workspace, reused by every OAuth
-//! connector (GitHub, Slack, …). A connector callback carries no Bearer (it is a
-//! top-level browser redirect), so this state is the only trust anchor:
+//! connect round-trip to the initiating workspace *and person*, reused by every
+//! OAuth connector (GitHub, Slack, …). The provider returns through the
+//! dashboard, which relays the current Bearer token to the backend. State binds
+//! that returning principal without exposing its raw identity to the provider:
 //!   * unforgeable — HMAC-SHA256 over the payload with the platform signing
 //!     secret, domain-separated by a per-connector prefix (`Config.domain_prefix`)
 //!     so one connector's state can't cross-verify as another's.
@@ -9,9 +10,9 @@
 //!   * single-use — a Redis nonce DEL'd on first callback (integer reply), keyed
 //!     by a per-connector prefix (`Config.nonce_prefix`).
 //!
-//! Wire shape: `base64url(workspace_id "|" nonce "|" exp_ms) "." hex(mac)`.
+//! Wire shape: `base64url(workspace_id "|" subject_tag "|" nonce "|" exp_ms) "." hex(mac)`.
 //! Each connector pins one `Config` in a thin `connectors/<name>/state.zig`
-//! wrapper and calls `mint`/`verifyConsume`; `signState`/`verifySignedState` are
+//! wrapper and calls `mint`/`verify`/`consume`; `signState`/`verifySignedState` are
 //! the pure (I/O-free) core the unit tests drive.
 
 const std = @import("std");
@@ -31,6 +32,7 @@ const LATEST_KEY_SEGMENT = "latest:";
 const LATEST_KEY_FMT = "{s}{s}{s}";
 const S_GET = "GET";
 const DEFAULT_TTL_SECONDS: u32 = 600;
+const SUBJECT_TAG_PREFIX = "subject:v1:";
 
 /// Per-connector binding: the HMAC domain prefix and Redis nonce-key prefix that
 /// keep one connector's states from cross-verifying as another's, plus the state
@@ -41,49 +43,68 @@ pub const Config = struct {
     ttl_seconds: u32 = DEFAULT_TTL_SECONDS,
 };
 
-/// Verified state payload. `workspace_id` and `nonce` borrow from `buf`; the
-/// caller owns `buf` and frees it with the same allocator.
-const Parsed = struct {
+/// Verified state payload. Every slice borrows from `buf`; the caller owns the
+/// value and releases it through `deinit` after completion.
+pub const VerifiedState = struct {
     workspace_id: []const u8,
+    subject_tag: []const u8,
     nonce: []const u8,
     buf: []const u8,
+
+    pub fn deinit(self: VerifiedState, alloc: std.mem.Allocator) void {
+        alloc.free(self.buf);
+    }
 };
 
-/// Mint a signed single-use state for `workspace_id`. Records the nonce in Redis
-/// (TTL `cfg.ttl_seconds`). Caller owns the returned slice. `now_ms` is injected.
+/// Mint a signed single-use state for `workspace_id` and the initiating person.
+/// A keyed subject tag, rather than the raw subject, rides the provider-visible
+/// URL. Records the nonce in Redis (TTL `cfg.ttl_seconds`). Caller owns the
+/// returned slice. `now_ms` is injected.
 pub fn mint(
     alloc: std.mem.Allocator,
     queue: *queue_redis.Client,
     cfg: Config,
     secret: []const u8,
     workspace_id: []const u8,
+    starter_subject: []const u8,
     now_ms: i64,
 ) ![]const u8 {
     var raw: [NONCE_BYTES]u8 = undefined;
     try common.secureRandomBytes(&raw);
     const nonce = std.fmt.bytesToHex(raw, .lower);
     const exp_ms = now_ms + @as(i64, cfg.ttl_seconds) * MS_PER_SECOND;
+    const subject_tag = subjectTag(cfg, secret, starter_subject);
 
-    const state = try signState(alloc, cfg, secret, workspace_id, nonce[0..], exp_ms);
+    const state = try signState(alloc, cfg, secret, workspace_id, subject_tag[0..], nonce[0..], exp_ms);
     errdefer alloc.free(state);
     try storeNonce(queue, cfg, nonce[0..]);
     return state;
 }
 
-/// Verify + single-use consume. Returns the bound `workspace_id` (caller owns)
-/// or null on any failure (bad signature, malformed, expired, or replayed).
-pub fn verifyConsume(
+/// Verify signature, shape, and expiry without consuming the nonce. The handler
+/// must first compare the returning subject and re-authorize workspace access,
+/// then call `consume`. This ordering prevents a different authenticated person
+/// from invalidating the starter's state.
+pub fn verify(
     alloc: std.mem.Allocator,
-    queue: *queue_redis.Client,
     cfg: Config,
     secret: []const u8,
     state: []const u8,
     now_ms: i64,
-) ?[]const u8 {
-    const p = verifySignedState(alloc, cfg, secret, state, now_ms) orelse return null;
-    defer alloc.free(p.buf);
-    if (!consumeNonce(queue, cfg, p.nonce)) return null;
-    return alloc.dupe(u8, p.workspace_id) catch null;
+) ?VerifiedState {
+    return verifySignedState(alloc, cfg, secret, state, now_ms);
+}
+
+/// True only for the person who started this state. The tag is HMAC-derived so
+/// the provider URL carries no raw identity-provider subject.
+pub fn subjectMatches(cfg: Config, secret: []const u8, state: VerifiedState, subject: []const u8) bool {
+    return constEql(state.subject_tag, subjectTag(cfg, secret, subject)[0..]);
+}
+
+/// Atomically consume a state only after its signature, identity, capability,
+/// and workspace authorization checks passed.
+pub fn consume(queue: *queue_redis.Client, cfg: Config, state: VerifiedState) bool {
+    return consumeNonce(queue, cfg, state.nonce);
 }
 
 /// Record the newest app-install state for a workspace. Older valid states must
@@ -114,11 +135,12 @@ fn signState(
     cfg: Config,
     secret: []const u8,
     workspace_id: []const u8,
+    subject_tag: []const u8,
     nonce: []const u8,
     exp_ms: i64,
 ) ![]const u8 {
-    const payload = try std.fmt.allocPrint(alloc, "{s}{c}{s}{c}{d}", .{
-        workspace_id, FIELD_SEP, nonce, FIELD_SEP, exp_ms,
+    const payload = try std.fmt.allocPrint(alloc, "{s}{c}{s}{c}{s}{c}{d}", .{
+        workspace_id, FIELD_SEP, subject_tag, FIELD_SEP, nonce, FIELD_SEP, exp_ms,
     });
     defer alloc.free(payload);
 
@@ -138,7 +160,7 @@ fn verifySignedState(
     secret: []const u8,
     state: []const u8,
     now_ms: i64,
-) ?Parsed {
+) ?VerifiedState {
     const dot = std.mem.lastIndexOfScalar(u8, state, MAC_SEP) orelse return null;
     const b64 = state[0..dot];
     const provided_mac = state[dot + 1 ..];
@@ -152,15 +174,17 @@ fn verifySignedState(
 
     var it = std.mem.splitScalar(u8, buf, FIELD_SEP);
     const ws = it.next() orelse return freeNull(alloc, buf);
+    const subject_tag = it.next() orelse return freeNull(alloc, buf);
     const nonce = it.next() orelse return freeNull(alloc, buf);
     const exp_raw = it.next() orelse return freeNull(alloc, buf);
+    if (it.next() != null) return freeNull(alloc, buf);
     const exp_ms = std.fmt.parseInt(i64, exp_raw, 10) catch return freeNull(alloc, buf);
     if (now_ms > exp_ms) return freeNull(alloc, buf);
 
-    return .{ .workspace_id = ws, .nonce = nonce, .buf = buf };
+    return .{ .workspace_id = ws, .subject_tag = subject_tag, .nonce = nonce, .buf = buf };
 }
 
-fn freeNull(alloc: std.mem.Allocator, buf: []const u8) ?Parsed {
+fn freeNull(alloc: std.mem.Allocator, buf: []const u8) ?VerifiedState {
     alloc.free(buf);
     return null;
 }
@@ -170,6 +194,16 @@ fn macHex(domain_prefix: []const u8, secret: []const u8, payload: []const u8) [H
     var h = HmacSha256.init(secret);
     h.update(domain_prefix);
     h.update(payload);
+    h.final(&mac);
+    return std.fmt.bytesToHex(mac, .lower);
+}
+
+fn subjectTag(cfg: Config, secret: []const u8, subject: []const u8) [HmacSha256.mac_length * 2]u8 {
+    var mac: [HmacSha256.mac_length]u8 = undefined;
+    var h = HmacSha256.init(secret);
+    h.update(cfg.domain_prefix);
+    h.update(SUBJECT_TAG_PREFIX);
+    h.update(subject);
     h.final(&mac);
     return std.fmt.bytesToHex(mac, .lower);
 }
@@ -216,20 +250,24 @@ const T_CFG = Config{ .domain_prefix = "test-conn:v1:", .nonce_prefix = "connect
 const T_CFG_OTHER = Config{ .domain_prefix = "other-conn:v1:", .nonce_prefix = "connect:other:nonce:" };
 const T_SECRET = "test-connect-signing-secret";
 const T_WS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ddd01";
+const T_SUBJECT = "user_test";
+const T_OTHER_SUBJECT = "user_other";
 const T_NONCE = "deadbeefdeadbeefdeadbeefdeadbeef";
 const T_FAR_FUTURE: i64 = 32_503_680_000_000; // year 3000, ms
 
-test "signState/verifySignedState: round-trips workspace_id + nonce" {
-    const st = try signState(testing.allocator, T_CFG, T_SECRET, T_WS, T_NONCE, T_FAR_FUTURE);
+test "signState/verifySignedState: round-trips workspace_id + subject tag + nonce" {
+    const st = try signState(testing.allocator, T_CFG, T_SECRET, T_WS, subjectTag(T_CFG, T_SECRET, T_SUBJECT)[0..], T_NONCE, T_FAR_FUTURE);
     defer testing.allocator.free(st);
     const p = verifySignedState(testing.allocator, T_CFG, T_SECRET, st, 0).?;
     defer testing.allocator.free(p.buf);
     try testing.expectEqualStrings(T_WS, p.workspace_id);
     try testing.expectEqualStrings(T_NONCE, p.nonce);
+    try testing.expect(subjectMatches(T_CFG, T_SECRET, p, T_SUBJECT));
+    try testing.expect(!subjectMatches(T_CFG, T_SECRET, p, T_OTHER_SUBJECT));
 }
 
 test "verifySignedState: rejects a tampered mac" {
-    const st = try signState(testing.allocator, T_CFG, T_SECRET, T_WS, T_NONCE, T_FAR_FUTURE);
+    const st = try signState(testing.allocator, T_CFG, T_SECRET, T_WS, subjectTag(T_CFG, T_SECRET, T_SUBJECT)[0..], T_NONCE, T_FAR_FUTURE);
     defer testing.allocator.free(st);
     const bad = try testing.allocator.dupe(u8, st);
     defer testing.allocator.free(bad);
@@ -238,13 +276,13 @@ test "verifySignedState: rejects a tampered mac" {
 }
 
 test "verifySignedState: rejects a foreign secret" {
-    const st = try signState(testing.allocator, T_CFG, T_SECRET, T_WS, T_NONCE, T_FAR_FUTURE);
+    const st = try signState(testing.allocator, T_CFG, T_SECRET, T_WS, subjectTag(T_CFG, T_SECRET, T_SUBJECT)[0..], T_NONCE, T_FAR_FUTURE);
     defer testing.allocator.free(st);
     try testing.expect(verifySignedState(testing.allocator, T_CFG, "other-secret", st, 0) == null);
 }
 
 test "verifySignedState: rejects an expired state" {
-    const st = try signState(testing.allocator, T_CFG, T_SECRET, T_WS, T_NONCE, 1000);
+    const st = try signState(testing.allocator, T_CFG, T_SECRET, T_WS, subjectTag(T_CFG, T_SECRET, T_SUBJECT)[0..], T_NONCE, 1000);
     defer testing.allocator.free(st);
     try testing.expect(verifySignedState(testing.allocator, T_CFG, T_SECRET, st, 2000) == null);
 }
@@ -254,7 +292,7 @@ test "verifySignedState: rejects malformed input (no separator)" {
 }
 
 test "verifySignedState: a state minted for one connector fails another (domain separation)" {
-    const st = try signState(testing.allocator, T_CFG, T_SECRET, T_WS, T_NONCE, T_FAR_FUTURE);
+    const st = try signState(testing.allocator, T_CFG, T_SECRET, T_WS, subjectTag(T_CFG, T_SECRET, T_SUBJECT)[0..], T_NONCE, T_FAR_FUTURE);
     defer testing.allocator.free(st);
     // Same secret + payload, different connector domain prefix → verify must fail.
     try testing.expect(verifySignedState(testing.allocator, T_CFG_OTHER, T_SECRET, st, 0) == null);

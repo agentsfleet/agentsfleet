@@ -13,6 +13,7 @@ test {
     _ = @import("http/handlers/fleet/runners_list_integration_test.zig");
     _ = @import("http/handlers/fleets/secret_list_integration_test.zig");
     _ = @import("http/handlers/connectors/registry_integration_test.zig");
+    _ = @import("http/handlers/connectors/binding_tx_integration_test.zig");
     _ = @import("http/handlers/connectors/github/callback_integration_test.zig");
     _ = @import("http/handlers/connectors/oauth_providers_integration_test.zig");
     _ = @import("http/handlers/connectors/slack/oauth_callback_integration_test.zig");

@@ -14,8 +14,10 @@ Every row is extracted from the sections below; the owner column names the secti
 | Registry | comptime `[]const ConnectorSpec`, `REGISTRY.len` pinned at 5 | adding a provider is one entry + a small hook file; never new route or flow code | §The registry |
 | Dispatch | on archetype SHAPE, never provider id | exhaustive switch on the tagged union; registry invariants are `@compileError`s | §The registry |
 | Archetypes | 2 — `oauth2` · `app_install` | `slack` / `zoho` (multi-DC) / `jira` / `linear` · `github`; the `api_key` archetype was considered and dropped (M108_002) | §Archetypes |
-| Trust anchors | 4 | signed single-use `state` (`UZ-CONN-002`) · user-authorization installation proof (`UZ-CONN-008`) · admin-vault `<provider>-app` bags (`UZ-CONN-001`) · provider signatures; no Bearer fallback inbound | §Trust anchors |
-| GitHub App URLs | 2, different jobs | `/v1/connectors/github/callback` (browser install) vs `/v1/ingress/github` (machine events) | §GitHub App |
+| Trust anchors | 4 | signed single-use state bound to workspace and starter identity (`UZ-CONN-002`) · user-authorization installation proof (`UZ-CONN-008`) · admin-vault `<provider>-app` bags (`UZ-CONN-001`) · provider signatures | §Trust anchors |
+| GitHub App URLs | 2, different jobs | `/api/connectors/github/callback` on the dashboard (browser install) vs `/v1/ingress/github` on the API (machine events) | §GitHub App |
+| Disconnect | internal state only | `DELETE` removes the workspace handle and routing rows; provider authorization remains active | §The registry |
+| Binding writes | one transaction per provider and workspace | every callback and Disconnect share a transaction-scoped writer lock | §The registry |
 | App replay identity | authenticated body digest, per fleet | the unsigned delivery header is diagnostic only; failed fan-out legs retry without duplicating others | §GitHub App |
 | Outbound HTTP | `bounded_fetch.zig` only, grep-gated | pin → arm → fetch → disarm; refusal is `UZ-CONN-003` (502); deadlines named per call class (10 s / 10 s / 1.5 s) | §Bounded outbound |
 | Residual unbounded window | the TLS handshake | `std.http.Client.connect` does TCP+TLS atomically; tracked follow-up | §Bounded outbound |
@@ -51,7 +53,7 @@ A workspace *connects* a provider once (connector); everything fleets then do wi
             │ REGISTRY = [_]ConnectorSpec{                                         │
             │   { provider, display_name, archetype: union(enum){                  │
             │       oauth2:      {flow, refresh, exchange_failed_code, post_auth}, │
-            │       app_install: {state, build_install_url, complete},             │
+            │       app_install: {state, build_connect_url, build_install_url, complete}, │
             │   }, respond_status }                                                │
             │ }  + comptime validation (dup ids, scopes, id agreement…)            │
             └──────────────────────────────────────────────────────────────────────┘
@@ -59,6 +61,7 @@ A workspace *connects* a provider once (connector); everything fleets then do wi
                               ── hit  → exhaustive switch on ARCHETYPE
             ┌───────────────────────────────────────────────────────────────────────────┐
             │ generic {provider} handlers: connect.zig · callback.zig · status.zig      │
+            │                              disconnect.zig                               │
             │ per-provider deltas: slack/{spec,callback,status}.zig,                    │
             │                      github/{spec,connect,callback,status}.zig,           │
             │                      zoho/{spec,callback,multi_dc}.zig,                   │
@@ -66,9 +69,10 @@ A workspace *connects* a provider once (connector); everything fleets then do wi
             └───────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Routes are generic.** `POST /v1/workspaces/{ws}/connectors/{provider}/connect`, `GET /v1/workspaces/{ws}/connectors/{provider}`, `GET /v1/connectors/{provider}/callback` — three matchers serve every provider (`route_matchers_connectors.zig`); scopes stay `connector:write`/`connector:read` on the generic variants. The shipped Slack/GitHub URLs are preserved verbatim because `slack`/`github` are registry ids.
+- **Routes are generic.** `POST /v1/workspaces/{ws}/connectors/{provider}/connect`, `GET` or `DELETE /v1/workspaces/{ws}/connectors/{provider}`, and authenticated `POST /v1/connectors/{provider}/callback` use the same matchers for every provider. The dashboard owns `/api/connectors/{provider}/callback`. The old API `GET` callback only relays browsers to that dashboard route. `DELETE` requires `connector:write`, removes only `agentsfleet` state, and returns 204 when repeated. Provider authorization remains active outside `agentsfleet`.
 - **Dispatch is on SHAPE, never on provider id.** The archetype tagged-union owns which flow runs; handlers switch exhaustively on it (a new archetype cannot land half-wired — the compiler forces every arm). No `if provider == "slack"` exists anywhere in the flow.
 - **Invariants are compile-time facts.** Duplicate/empty provider ids, an oauth2 entry without scopes or an exchange-failed code, or a flow whose embedded provider id disagrees with its entry — all `@compileError`, not review vigilance.
+- **Binding writes are atomic.** Each provider callback and Disconnect takes one transaction-scoped PostgreSQL advisory lock for `(provider, workspace_id)`. The transaction commits the vault handle and each routing row together. A callback cannot recreate a connector while Disconnect is removing it.
 - **Inbound routing follows the provider's real shape.** App-level webhooks whose payload carries a stable routing key use `POST /v1/ingress/{provider}`, but the shipped implementation is provider-owned: GitHub lives in `handlers/ingress/github.zig`, and its routing statements live with the GitHub connector in `handlers/connectors/github/sql.zig`. Slack keeps `POST /v1/connectors/slack/events` because its challenge, retry, timestamp, channel, and thread semantics are load-bearing. Jira and Linear have connected credentials but no inbound integration yet. Generic connect plumbing does not imply generic event behavior.
 
 ## Archetypes
@@ -76,14 +80,14 @@ A workspace *connects* a provider once (connector); everything fleets then do wi
 | Archetype | Flow | Callback carries | Writes | Shipped instances |
 |---|---|---|---|---|
 | `oauth2` | authorize-redirect → code exchange (deadline-armed) → `post_auth` hook parses + persists | `code` + `state` | vault handle (+ provider-specific rows, e.g. Slack's `connector_installs`) | `slack`, `zoho` (multi-DC — the callback's `location` resolves the effective token endpoint), `jira`, `linear` |
-| `app_install` | vendor install page → user authorization-code exchange → provider installation-access check → `complete` hook | `installation_id` + `code` + `state` | vault handle + non-secret connector-install routing row | `github` |
+| `app_install` | user authorization → discover or verify App installation → `complete` hook; zero installations continue to the vendor install page | `code` + `state`; `installation_id` is optional | vault handle + non-secret connector-install routing row | `github` |
 
 **There is no `api_key` archetype.** One was considered for operator-pasted vendor keys (Datadog, Grafana, Fly) and dropped (M108_002). A static vendor key is just a workspace secret referenced as `${secrets.<name>.<field>}`, not a connector: it never had a connect/callback round-trip or a platform app secret to protect. Those three providers are plain `agentsfleet secret create` entries, never registry entries. `REGISTRY.len` is pinned at 5 (`registry.zig`'s own pin test) — five OAuth/app-install connectors, not eight.
 
 ## Trust anchors
 
-1. **The signed single-use `state` binds workspace intent.** It is keyed with the approval signing secret, workspace-bound, verified constant-time, and consumed exactly once. Forged, expired, or replayed state returns 400 `UZ-CONN-002`. State does not prove ownership of a provider installation.
-2. **GitHub user authorization proves installation access.** The callback exchanges the one-time `code` with the platform `client_id` and `client_secret`, then calls GitHub's user-installation repository endpoint for the claimed `installation_id`. A denial returns 403 `UZ-CONN-008`; no vault or routing row changes. The datastore also refuses to move an installation already bound to another workspace.
+1. **The signed single-use `state` binds workspace intent and starter identity.** It is keyed with the approval signing secret, carries a keyed identity tag instead of a raw subject, verifies in constant time, and is consumed exactly once. The authenticated callbacks endpoint checks the same identity, `connector:write`, and current workspace access before consuming state. Forged, expired, replayed, or identity-mismatched state returns 400 `UZ-CONN-002`. State does not prove ownership of a provider installation.
+2. **GitHub user authorization proves installation access.** The callback exchanges the one-time `code` with the platform `client_id` and `client_secret`. A claimed `installation_id` is probed directly. With no claim, exactly one accessible installation repairs internal state loss. Zero continues to App install while retaining the user token server-side under the new identity-bound state; the installation return uses that token to probe GitHub before persistence, without exposing it to the browser or provider URL. More than one returns 403 `UZ-CONN-008`. The datastore also refuses to move an installation already bound to another workspace.
 3. **Platform app secrets live in the admin-workspace vault** as per-provider `<provider>-app` bags (`slack-app`, `github-app`, …) — one app per provider shared across all tenants, catastrophic-if-leaked, never on a per-tenant surface. GitHub's bag carries its App identity, user-authorization client credentials, and App-level webhook secret; an unprovisioned bag fails loud: 503 `UZ-CONN-001`.
 4. **Provider signatures authenticate inbound events.** GitHub App traffic is verified against the platform `github-app.webhook_secret`; manual per-fleet webhooks still use the workspace `<source>.webhook_secret`; Slack App events use the platform `slack-app.signing_secret`. No inbound route falls back to Bearer authentication.
 
@@ -94,12 +98,12 @@ The connector registry owns callback dispatch; provider ingress handlers own eve
 One GitHub App serves every tenant in an environment. The platform operator configures two different URLs on that App:
 
 ```
-browser install callback              machine event ingress
-/v1/connectors/github/callback        /v1/ingress/github
+browser install callback                    machine event ingress
+/api/connectors/github/callback             /v1/ingress/github
           │                                      │
-          │ connects one workspace               │ wakes subscribed fleets
+          │ relays authenticated completion       │ wakes subscribed fleets
           ▼                                      ▼
- signed single-use state                 GitHub App signature
+identity-bound signed state               GitHub App signature
 ```
 
 The platform identity lives only in the `agentsfleet-admin` workspace:
@@ -114,13 +118,16 @@ github-app
 └── webhook_secret      verifies inbound App deliveries
 ```
 
-A workspace administrator connects GitHub once, chooses the GitHub account or organisation and the repositories the installation may access, and returns through the callback with `installation_id`, one-time `code`, and signed `state`. The callback accepts the connection only after both independent claims hold:
+A workspace administrator selects **Connect**. GitHub authorizes the user first. If the App is already installed and exactly one installation is accessible, `agentsfleet` restores the missing internal binding. If none exists, the browser continues to App installation and repository selection.
 
 ```
-signed state ──────────────────────────────── proves intended workspace
+signed state ──────────────────────────────── proves intended workspace and starter identity
 one-time code → GitHub user token
-              → GET /user/installations/{id}/repositories
-              ─────────────────────────────── proves user can access installation
+              ├─ claimed id → GET /user/installations/{id}/repositories
+              └─ no claim   → GET /user/installations?per_page=2
+                               0 → App install page
+                               1 → restore internal binding
+                              >1 → 403, no arbitrary organisation choice
                                           │
                                           ▼
                          conditional datastore write
@@ -128,7 +135,9 @@ one-time code → GitHub user token
                          other workspace: 403, no mutation
 ```
 
-The user token is request-local and discarded. After the checks pass, the callback writes both records on one database connection:
+**Disconnect** and every authenticated provider callback completion share one transaction-scoped writer lock for the provider and workspace. The transaction deletes or writes the vault handle and reverse-routing rows together. Disconnect leaves the GitHub App and repository access installed. A later **Connect** can therefore reconcile external and internal state after a datastore rebuild.
+
+The user token is discarded after the current callback, except when zero installations require the App-install continuation. In that case it is held only in Redis under the new single-use state for the same ten-minute expiry, consumed atomically on the installation return, and never placed in provider-visible state. After the identity, workspace, and installation checks pass, the callbacks endpoint writes both records on one database connection:
 
 ```
 workspace vault                          core.connector_installs
@@ -138,7 +147,7 @@ github = {                               provider = github
 }                                        credentials = NONE
 ```
 
-The encrypted handle supports outbound token minting. The connector-install row is deliberately non-secret and supports inbound `installation.id → workspace` routing. Neither row alone is sufficient; callback failure leaves the workspace disconnected rather than half-connected.
+The encrypted handle supports outbound token minting. The connector-install row is deliberately non-secret and supports inbound `installation.id → workspace` routing. Neither row alone is sufficient. A callback completion failure rolls back both rows and leaves the workspace disconnected.
 
 ### Repository and event subscriptions belong to fleets
 

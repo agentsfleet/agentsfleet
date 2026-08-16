@@ -12,6 +12,7 @@ const hx_mod = @import("handlers/hx.zig");
 const connect_h = @import("handlers/connectors/connect.zig");
 const callback_h = @import("handlers/connectors/callback.zig");
 const status_h = @import("handlers/connectors/status.zig");
+const disconnect_h = @import("handlers/connectors/disconnect.zig");
 const catalog_h = @import("handlers/connectors/catalog.zig");
 const slack_events_h = @import("handlers/connectors/slack/events.zig");
 
@@ -23,8 +24,11 @@ pub fn invokeConnectorConnect(hx: *Hx, req: *httpz.Request, route: router.Route)
 }
 
 pub fn invokeConnectorStatus(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (!common.requireMethod(hx.res, req.method, .GET)) return;
-    status_h.innerStatus(hx.*, route.connector_status);
+    switch (req.method) {
+        .GET => status_h.innerStatus(hx.*, route.connector_status),
+        .DELETE => disconnect_h.innerDisconnect(hx.*, route.connector_status),
+        else => _ = common.requireMethod(hx.res, req.method, .GET),
+    }
 }
 
 pub fn invokeConnectorCatalog(hx: *Hx, req: *httpz.Request, route: router.Route) void {
@@ -34,7 +38,12 @@ pub fn invokeConnectorCatalog(hx: *Hx, req: *httpz.Request, route: router.Route)
 
 pub fn invokeConnectorCallback(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (!common.requireMethod(hx.res, req.method, .GET)) return;
-    callback_h.innerCallback(hx.*, req, route.connector_callback);
+    callback_h.innerCallbackRelay(hx.*, req, route.connector_callback);
+}
+
+pub fn invokeConnectorComplete(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (!common.requireMethod(hx.res, req.method, .POST)) return;
+    callback_h.innerComplete(hx.*, req, route.connector_complete);
 }
 
 pub fn invokeSlackEvents(hx: *Hx, req: *httpz.Request, route: router.Route) void {

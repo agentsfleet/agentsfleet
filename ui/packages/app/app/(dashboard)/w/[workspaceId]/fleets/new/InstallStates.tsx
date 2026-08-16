@@ -8,7 +8,7 @@ import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { FLEET_NAME_CONFLICT_MESSAGE } from "@/lib/errors";
 import { WORKSPACE_SECRETS_PATH } from "@/lib/fleet-secrets";
-import { workspacePath } from "@/lib/workspace-routes";
+import { WORKSPACE_INTEGRATIONS_PATH, workspacePath } from "@/lib/workspace-routes";
 import { requestOnboardingRefresh } from "@/lib/onboarding-refresh";
 import { installFleetAction } from "../actions";
 import {
@@ -169,15 +169,14 @@ function PreCreateLines({
 }
 
 // Connect gate: the requirement transparency the old review page showed,
-// surfaced as a gate. Resolves via the custom-secret bridge — the one-click
-// connector is a later milestone, so this links to the vault, not an app
-// connect. There is no skip: a fleet that can't reach its tool can't run, so the
-// only action is to connect. Back → re-enter re-evaluates the gate, and an
-// operator returning with the credential stored auto-proceeds to create.
+// surfaced as a gate. GitHub is a connector and resolves on Integrations;
+// custom secrets still resolve in the vault. There is no skip: a fleet that
+// cannot reach its tool cannot run. Back → re-enter re-evaluates the gate, and
+// a returning operator with the credential stored auto-proceeds to create.
 function ConnectGate({ workspaceId, unmet, reasons }: { workspaceId: string; unmet: string[]; reasons: Record<string, string> }) {
-  const connectLabel = unmet.some((credential) => credential.toLowerCase().includes("github"))
-    ? "Connect GitHub"
-    : "Add token";
+  const githubOnly = unmet.length === 1 && unmet[0]?.toLowerCase() === "github";
+  const connectLabel = githubOnly ? "Connect" : "Add token";
+  const connectPath = githubOnly ? WORKSPACE_INTEGRATIONS_PATH : WORKSPACE_SECRETS_PATH;
   const objectLabel = unmet.length === 1 ? "it" : "them";
   // Purpose-driven copy when the library entry declares why each credential is needed
   // (e.g. "to review your pull requests"); otherwise the generic connect prompt.
@@ -195,14 +194,16 @@ function ConnectGate({ workspaceId, unmet, reasons }: { workspaceId: string; unm
           </>
         ) : (
           <>
-            Needs <span className="font-mono text-foreground">{unmet.join(", ")}</span>. Add{" "}
-            {objectLabel} in Secrets to run this fleet.
+            Needs <span className="font-mono text-foreground">{unmet.join(", ")}</span>.{" "}
+            {githubOnly
+              ? `Connect ${objectLabel} in Integrations to run this fleet.`
+              : `Add ${objectLabel} in Secrets to run this fleet.`}
           </>
         )}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Button asChild size="sm">
-          <Link href={workspacePath(workspaceId, WORKSPACE_SECRETS_PATH)}>{connectLabel}</Link>
+          <Link href={workspacePath(workspaceId, connectPath)}>{connectLabel}</Link>
         </Button>
       </div>
     </div>

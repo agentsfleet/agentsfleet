@@ -2,7 +2,7 @@
 
 **Owners:** 🤠 Indy for Linear settings and 1Password; 🦉 Orly for secret sync
 and verification
-**Updated:** Jul 31, 2026
+**Updated:** Aug 16, 2026
 **Prerequisite:** the target environment's admin bootstrap is complete, its API
 host passes `/readyz`, and Indy can create an application in Linear
 
@@ -11,8 +11,8 @@ development acceptance.
 
 | Environment | App name | Callback URL | Access |
 |---|---|---|---|
-| Development | `agentsfleet-dev` | `https://api-dev.agentsfleet.net/v1/connectors/linear/callback` | Private test workspace |
-| Production | `agentsfleet` | `https://api.agentsfleet.net/v1/connectors/linear/callback` | Public customer workspaces |
+| Development | `agentsfleet-dev` | `https://app-dev.agentsfleet.net/api/connectors/linear/callback` | Private test workspace |
+| Production | `agentsfleet` | `https://app.agentsfleet.net/api/connectors/linear/callback` | Public customer workspaces |
 
 ## 1. Indy: create and configure the application
 

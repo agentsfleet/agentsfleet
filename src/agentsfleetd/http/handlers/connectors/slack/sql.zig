@@ -1,6 +1,18 @@
 //! SQL statement text for the Slack connector domain (RULE SQLMOD — query text
 //! lives here, grepable in one place).
 
+/// Store or refresh the Slack team-to-workspace reverse-routing row.
+pub const UPSERT_INSTALL =
+    \\INSERT INTO core.connector_installs
+    \\  (id, provider, external_account_id, workspace_id, installed_by, scopes, created_at, updated_at)
+    \\VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6::text[], $7, $7)
+    \\ON CONFLICT (provider, external_account_id) DO UPDATE SET
+    \\  workspace_id = EXCLUDED.workspace_id,
+    \\  installed_by = EXCLUDED.installed_by,
+    \\  scopes = EXCLUDED.scopes,
+    \\  updated_at = EXCLUDED.updated_at
+;
+
 /// Which fleet, if any, a Slack channel is bound to. The triple
 /// `(provider, external_account_id, external_channel_id)` is the natural key —
 /// a channel id alone is not unique across Slack workspaces.
