@@ -24,6 +24,7 @@ const env = common.env;
 const pg = @import("pg");
 const db = @import("pool.zig");
 const PgQuery = @import("pg_query.zig").PgQuery;
+const billing_store = @import("../state/tenant_billing_store.zig");
 
 const IGNORED_ERROR_FMT = "ignored: {s}";
 
@@ -146,6 +147,33 @@ pub fn teardownTenantById(conn: *pg.Conn, tenant_id: []const u8) void {
 /// the next grant (double-debit / exhausted-carry under seed-randomized order).
 /// A direct DELETE sidesteps the FK chain, making balance assertions
 /// order-independent. Call before ANY grant/provision whose balance is asserted.
+/// Seed a wallet at an arbitrary balance. Test-only: production has exactly one
+/// credit inflow, `tenant_billing.insertStarterGrant` at signup, and no route
+/// that tops a tenant up. Suites need arbitrary balances to reach the gate's
+/// boundaries, so the arbitrary-amount insert lives here rather than as a
+/// production function nothing calls.
+///
+/// `insertIfAbsent` semantics: a second call against an existing wallet is a
+/// no-op, so pair it with `resetBillingFor` when a suite needs a specific
+/// balance on a tenant an earlier test already provisioned.
+pub fn seedWalletBalance(conn: *pg.Conn, tenant_id: []const u8, balance_nanos: i64, grant_source: []const u8) !void {
+    _ = try billing_store.insertIfAbsent(conn, tenant_id, balance_nanos, grant_source);
+}
+
+/// Spend a wallet down by `nanos`. Test-only, and deliberately a plain UPDATE
+/// rather than a production call: the daemon drains balance exclusively inside
+/// the renew and settle writable CTEs, which need a live lease and a fence to
+/// run. Suites that only want a balance sitting at a chosen boundary — one nano
+/// under the estimate, or drained to zero — move it directly here instead of
+/// staging a whole run.
+pub fn spendWallet(conn: *pg.Conn, tenant_id: []const u8, nanos: i64) !void {
+    _ = try conn.exec(
+        \\UPDATE billing.tenant_wallet
+        \\SET balance_nanos = GREATEST(0, balance_nanos - $2), updated_at = $3
+        \\WHERE tenant_id = $1::uuid
+    , .{ tenant_id, nanos, common.clock.nowMillis() });
+}
+
 pub fn resetBillingFor(conn: *pg.Conn, tenant_id: []const u8) void {
     _ = conn.exec(
         "DELETE FROM billing.tenant_wallet WHERE tenant_id = $1::uuid",
