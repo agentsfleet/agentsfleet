@@ -104,7 +104,7 @@ jobs:
             -e ZIG_LOCAL_CACHE_DIR \
             -e TEST_DATABASE_URL="postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb" \
             -e TEST_REDIS_TLS_URL="rediss://:agentsfleet@localhost:6379" \
-            ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0 \
+            ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r3 \
             sh -c 'mkdir -p "$ZIG_GLOBAL_CACHE_DIR" "$ZIG_LOCAL_CACHE_DIR" && zig build install test-integration-bin && make test-integration'
 
       - name: Stop services
@@ -119,7 +119,7 @@ jobs:
   test-integration-kernel:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0
+      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r3
       # Privileged + private cgroup namespace so the security-enforcement proofs
       # can delegate a cgroup-v2 controller subtree (cgroup pids/OOM cage). The
       # GitHub runner is native amd64, so seccomp's arch-matched BPF filter is
@@ -145,25 +145,14 @@ jobs:
           restore-keys: |
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-
-      # bubblewrap is NOT in the CI image. The product Dockerfile installs it;
-      # this image never did, so every proof that needed a real `bwrap` binary
-      # hit `error.BwrapUnavailable` and returned SkipZigTest — silently, and
-      # on every run. Combined with the macOS arm skipping for `os.tag`, the
-      # tests guarding which host paths reach a lease executed in NO
-      # environment at all, which is how a missing `/run/systemd/resolve`
-      # shipped and broke every lease for a week (M167).
-      #
-      # The argv-shape half no longer needs this: `composeSandboxPrefix` takes
-      # the bwrap path as an argument, so the bind contract is proven on every
-      # platform including a developer's Mac. What still needs the real binary
-      # is the execution proof — that a sandbox built from that argv actually
-      # starts and resolves a name (RULE ITF: the integration tier runs against
-      # a real sandbox on Linux). This job is where that belongs: privileged,
-      # native amd64, already the home of the seccomp/Landlock/cgroup proofs.
-      - name: Install bubblewrap (real-sandbox execution proofs)
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends bubblewrap
-          bwrap --version
+      # The real-sandbox execution proofs need a `bwrap` binary — without one
+      # they resolve error.BwrapUnavailable and SkipZigTest silently, which is
+      # how a sandbox missing /run/systemd/resolve shipped and broke every lease
+      # for a week (M167). It is baked into ci-zig-ubuntu from r3 onward rather
+      # than apt-installed per run, so this lane keeps the zero-network-fetch
+      # property the pre-baked images exist for. `--privileged` above is what
+      # lets bwrap create the namespaces; Docker's default seccomp profile
+      # refuses them, so the argv-composition proofs (which need no namespace)
+      # are what run in the unprivileged unit lanes.
       - name: Runner kernel integration proofs (env filter + kill-tree + seccomp/Landlock/cgroup)
         run: sh scripts/cgroup-delegate.sh make test-integration-kernel

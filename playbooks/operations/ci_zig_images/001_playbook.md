@@ -12,9 +12,23 @@ The three images this playbook publishes are:
 
 | Image                                         | Arch              | Replaces in CI                                                                                       |
 | --------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------- |
-| `ghcr.io/agentsfleet/ci-zig-alpine`             | amd64 + arm64     | `cross-compile.yml` (both lanes), `release.yml` (Alpine job), `deploy-dev.yml` (Alpine job)          |
+| `ghcr.io/agentsfleet/ci-zig-alpine`             | amd64 + arm64     | `cross-compile.yml` (both lanes), `release.yml` (Alpine job), `deploy-dev.yml` (Alpine job), `make/test-integration.mk` (`RUNNER_CI_IMAGE`, the local macOS kernel lane) |
 | `ghcr.io/agentsfleet/ci-zig-debian-trixie`      | amd64             | `memleak.yml`                                                                                        |
 | `ghcr.io/agentsfleet/ci-zig-ubuntu`             | amd64             | `test.yml`, `bench.yml`, `lint.yml` (lint-zig), `qa.yml`, `qa-smoke.yml`, `test-integration.yml`     |
+
+**Current revision: `r3`** — alpine and ubuntu carry `bubblewrap`; debian-trixie
+is deliberately still `0.16.0` (no revision). The runner spawns every sandboxed
+lease through `bwrap`, so an image without it makes each real-sandbox proof
+resolve `error.BwrapUnavailable` and `SkipZigTest` — silently, on every run.
+That is how a sandbox missing `/run/systemd/resolve` shipped and broke every
+lease for a week (M167). debian-trixie stays lean because the memleak lane runs
+valgrind and never spawns a sandbox.
+
+`bwrap` needs to create namespaces, which Docker's default seccomp profile
+refuses. Lanes that execute a sandbox therefore need `--privileged` (the
+`test-integration.yml` kernel job and the local macOS lane both have it) or
+`--security-opt seccomp=unconfined` (the `test.yml` coverage lane). The
+unprivileged unit lanes only compose argv, so the binary alone is enough there.
 
 **Status:** images are live in GHCR (public) and every Zig-using workflow has been rewritten to consume them. The Zig + OpenSSL toolchain is no longer fetched per-job — every CI lane that needs Zig pulls the relevant `ci-zig-*` image and runs `make` directly.
 
@@ -95,9 +109,15 @@ list) but `ZIG_VERSION` is unchanged, bump the **revision** so consumers can
 pin to the new tag explicitly:
 
 ```bash
-./build_and_push.sh build --revision r2
-# → ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r2  (and the other two)
+./build_and_push.sh build --revision r3
+# → ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r3  (and the other two)
 ```
+
+A revision bump is only landed once the tag is pushed AND every consumer is
+repinned in the same change — `grep -rn 'ci-zig-' .github/workflows/ make/`
+enumerates them. Leaving a lane on the old revision is how two images drift
+into service and the next reader has to work out which lanes carry which
+packages.
 
 Consumers (workflow YAMLs) should always pin to the full `<version>[-<rev>]`
 tag — never `latest` — so a bad image rebuild can never silently break CI.
@@ -156,8 +176,23 @@ docker run --rm --platform linux/amd64 \
   sh -lc 'zig version && kcov --version && python3 --version && make --version | head -n 1 && docker --version'
 ```
 
-For a revisioned publish (e.g. `--revision r2`), substitute
-`"$ZIG_VERSION"-r2` for `"$ZIG_VERSION"` in the tag above.
+For a revisioned publish (e.g. `--revision r3`), substitute
+`"$ZIG_VERSION"-r3` for `"$ZIG_VERSION"` in the tag above.
+
+`bwrap` needs both halves checked — the binary alone proves nothing, since a
+present-but-unusable `bwrap` still fails every sandbox spawn:
+
+```bash
+# binary present (alpine and ubuntu only)
+docker run --rm ghcr.io/agentsfleet/ci-zig-alpine:"$ZIG_VERSION"-r3 bwrap --version
+
+# and it can actually unshare — needs --privileged, as the lanes that spawn
+# sandboxes have. Without it Docker's seccomp profile refuses the namespace
+# and this prints "No permissions to creating new namespace".
+docker run --rm --privileged \
+  ghcr.io/agentsfleet/ci-zig-alpine:"$ZIG_VERSION"-r3 \
+  bwrap --unshare-all --ro-bind / / -- /bin/busybox echo SANDBOX_OK
+```
 
 All three commands should print `0.16.0` (or whatever `versions.env` says) and exit 0.
 
