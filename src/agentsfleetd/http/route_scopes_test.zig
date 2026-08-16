@@ -77,16 +77,18 @@ test "no-auth and self-service routes carry no capability scope (authenticated-o
     try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.delete_all_auth_sessions, .DELETE).len);
 }
 
-test "connector routes: generic trio gates write/read; callback + events are signature/state-authed (no scope)" {
+test "connector routes: generic trio gates write/read; callback methods split relay from completion" {
     const connect_route: @import("router.zig").Route = .{ .connector_connect = .{ .workspace_id = "ws1", .provider = "slack" } };
     const status_route: @import("router.zig").Route = .{ .connector_status = .{ .workspace_id = "ws1", .provider = "github" } };
     try testing.expectEqual(scopes.Scope.connector_write, onlyScope(route_scopes.requiredScopes(connect_route, .POST)).?);
     try testing.expectEqual(scopes.Scope.connector_read, onlyScope(route_scopes.requiredScopes(status_route, .GET)).?);
     // The catalog is a read of the registry + workspace state — connector:read.
     try testing.expectEqual(scopes.Scope.connector_read, onlyScope(route_scopes.requiredScopes(.{ .connector_catalog = "ws1" }, .GET)).?);
-    // Bearer-less by design: the callback trusts the signed single-use state,
-    // the events ingress trusts the Slack v0 signature — neither carries a scope.
+    // The provider-facing GET relay is Bearer-less. The dashboard POST carries
+    // connector:write and the same-identity state check. Slack events trust
+    // their own v0 signature.
     try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.{ .connector_callback = "slack" }, .GET).len);
+    try testing.expectEqual(scopes.Scope.connector_write, onlyScope(route_scopes.requiredScopes(.{ .connector_complete = "slack" }, .POST)).?);
     try testing.expectEqual(@as(usize, 0), route_scopes.requiredScopes(.slack_events, .POST).len);
 }
 

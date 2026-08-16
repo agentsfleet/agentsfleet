@@ -13,7 +13,9 @@ const clock = @import("common").clock;
 const hx_mod = @import("../../hx.zig");
 const vault = @import("../../../../state/vault.zig");
 const id_format = @import("../../../../types/id_format.zig");
+const BindingTxn = @import("../binding_tx.zig");
 const spec = @import("spec.zig");
+const sql = @import("sql.zig");
 
 const log = logging.scoped(.connector_slack);
 
@@ -26,17 +28,6 @@ const F_TEAM = "team";
 const F_ID = "id";
 const F_NAME = "name";
 const F_AUTHED_USER = "authed_user";
-
-const INSERT_INSTALL_SQL =
-    \\INSERT INTO core.connector_installs
-    \\  (id, provider, external_account_id, workspace_id, installed_by, scopes, created_at, updated_at)
-    \\VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6::text[], $7, $7)
-    \\ON CONFLICT (provider, external_account_id) DO UPDATE SET
-    \\  workspace_id = EXCLUDED.workspace_id,
-    \\  installed_by = EXCLUDED.installed_by,
-    \\  scopes = EXCLUDED.scopes,
-    \\  updated_at = EXCLUDED.updated_at
-;
 
 /// Per-install vault handle (mirrors github's `{integration, …}` shape). Carries
 /// the bot token — never an entity-table column (RULE VLT). Stringified with
@@ -67,6 +58,8 @@ pub fn postAuth(hx: hx_mod.Hx, workspace_id: []const u8, body: []const u8, _: ?[
 
     const conn: *pg.Conn = hx.ctx.pool.acquire() catch return error.DbUnavailable;
     defer hx.ctx.pool.release(conn);
+    var txn = try BindingTxn.begin(conn, spec.PROVIDER, workspace_id);
+    defer txn.abort();
 
     try storeHandle(hx, conn, workspace_id, .{
         .integration = spec.PROVIDER,
@@ -77,6 +70,7 @@ pub fn postAuth(hx: hx_mod.Hx, workspace_id: []const u8, body: []const u8, _: ?[
         .scopes = tok.scope_csv,
     });
     try insertInstall(hx, conn, workspace_id, tok.team_id, tok.installed_by, tok.scope_csv);
+    try txn.commit();
 
     log.info("slack_connected", .{ .workspace_id = workspace_id, .team_id = tok.team_id });
 }
@@ -103,7 +97,7 @@ fn insertInstall(
     const id = try id_format.generateConnectorInstallId(hx.alloc);
     defer hx.alloc.free(id);
     const now = clock.nowMillis();
-    _ = try conn.exec(INSERT_INSTALL_SQL, .{ id, spec.PROVIDER, team_id, workspace_id, installed_by, scopes.items, now });
+    _ = try conn.exec(sql.UPSERT_INSTALL, .{ id, spec.PROVIDER, team_id, workspace_id, installed_by, scopes.items, now });
 }
 
 fn strField(obj: std.json.ObjectMap, key: []const u8) ?[]const u8 {

@@ -13,6 +13,7 @@
 
 const std = @import("std");
 const httpz = @import("httpz");
+const pg = @import("pg");
 const common = @import("common");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
@@ -46,14 +47,18 @@ pub const PostAuthFn = *const fn (hx: Hx, workspace_id: []const u8, exchange_bod
 /// app_install completion hook: validates + persists AND owns its failure
 /// responses (an installation callback's inputs are provider-bespoke). The
 /// raw state is passed through so the provider can keep freshness checks
-/// adjacent to its final persistence.
+/// adjacent to its final persistence. The generic handler has already checked
+/// the signed state against the authenticated starter identity.
 /// Returns true on success; false after having responded.
-pub const CompleteFn = *const fn (hx: Hx, workspace_id: []const u8, raw_state: []const u8, req: *httpz.Request) bool;
+pub const CompleteFn = *const fn (hx: Hx, workspace_id: []const u8, raw_state: []const u8, redirect_uri: []const u8, req: *httpz.Request) bool;
 /// Status renderer: `handle` is the parsed `fleet:<provider>` vault object
 /// (null = missing/unreadable). Owns the full response body.
 pub const RespondStatusFn = *const fn (hx: Hx, handle: ?std.json.ObjectMap) void;
 /// app_install install-URL builder (platform config → browser redirect URL).
 pub const BuildInstallUrlFn = *const fn (hx: Hx, state: []const u8) error{ NotConfigured, OutOfMemory }![]const u8;
+/// app_install connection-URL builder. GitHub starts with user authorization
+/// so an installation that outlived the agentsfleet datastore can be found.
+pub const BuildConnectUrlFn = *const fn (hx: Hx, conn: *pg.Conn, redirect_uri: []const u8, state: []const u8) error{ NotConfigured, OutOfMemory }![]const u8;
 
 /// OAuth-2.0 authorization-code archetype: connect mints a signed state and
 /// redirects to the provider's authorize endpoint; the callback exchanges the
@@ -77,10 +82,11 @@ pub const Oauth2Data = struct {
     resolve_token_endpoint: ?*const fn (location: ?[]const u8) []const u8 = null,
 };
 
-/// App-installation archetype (GitHub App shape): no code exchange — the
-/// callback carries an installation id and writes only the vault handle.
+/// App-installation archetype (GitHub App shape): user authorization proves
+/// access before the callback writes the installation vault handle.
 pub const AppInstallData = struct {
     state: connector_state.Config,
+    build_connect_url: BuildConnectUrlFn,
     build_install_url: BuildInstallUrlFn,
     complete: CompleteFn,
 };
@@ -123,6 +129,7 @@ pub const REGISTRY = [_]ConnectorSpec{
         .display_name = "GitHub",
         .archetype = .{ .app_install = .{
             .state = github_spec.STATE,
+            .build_connect_url = github_connect.buildConnectUrl,
             .build_install_url = github_connect.buildInstallUrl,
             .complete = github_callback.complete,
         } },
@@ -166,7 +173,8 @@ pub const REGISTRY = [_]ConnectorSpec{
 
 /// The signed single-use state binding an archetype carries (oauth2 via its
 /// flow, app_install directly). Both remaining archetypes carry a
-/// `connector_state.Config` — the SOLE trust anchor of the Bearer-less callback.
+/// `connector_state.Config` — the signed identity binding checked by the
+/// authenticated callbacks endpoint.
 fn stateBinding(spec: ConnectorSpec) ?connector_state.Config {
     return switch (spec.archetype) {
         .oauth2 => |o| o.flow.state,
@@ -186,9 +194,9 @@ comptime {
             if (std.mem.eql(u8, spec.provider, other.provider))
                 @compileError("registry: duplicate provider id: " ++ spec.provider);
         }
-        // Every callback-bearing archetype needs a non-empty state binding —
-        // it is the SOLE trust anchor of the Bearer-less callback (state.zig),
-        // so an empty domain/nonce is a degenerate HMAC domain, not a typo.
+        // Every callback-bearing archetype needs a non-empty state binding.
+        // It names the HMAC and nonce domains for authenticated completion, so
+        // an empty domain/nonce is a degenerate binding, not a typo.
         // (oauth2 was previously unchecked; only app_install was.)
         if (stateBinding(spec)) |sb| {
             if (sb.domain_prefix.len == 0 or sb.nonce_prefix.len == 0)

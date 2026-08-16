@@ -50,6 +50,8 @@ export const PLATFORM_OPS_SAMPLE_DIR = "tests/fixtures/fleetbundle/platform-ops"
 // the seeded one. The acceptance helpers replace this exact name with a
 // run-prefixed one so parallel runs don't collide on the uniqueness constraint.
 export const PLATFORM_OPS_FIXTURE_NAME = "platform-ops";
+export const STEER_PROBE_SAMPLE_DIR = "tests/fixtures/fleetbundle/steer-probe";
+export const STEER_PROBE_FIXTURE_NAME = "steer-probe";
 
 export const LOGIN_POLL_MS = 500;
 

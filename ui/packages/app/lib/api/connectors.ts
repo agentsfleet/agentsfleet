@@ -77,6 +77,18 @@ export async function startConnect(
   );
 }
 
+export async function disconnectConnector(
+  provider: string,
+  workspaceId: string,
+  token: string,
+): Promise<void> {
+  return request<void>(
+    connectorPath(provider, workspaceId),
+    { method: "DELETE" },
+    token,
+  );
+}
+
 // ── Registry-driven catalog (M108) ───────────────────────────────────────────
 // The dashboard renders its connector cards from this, never a hard-coded list:
 // `GET /v1/workspaces/{ws}/connectors` returns one entry per registry provider —
