@@ -48,7 +48,7 @@ registry_allowlist: []const []const u8,
 /// Defaulted — unlike the tier/egress fields, "none" IS the fail-closed value
 /// here (baseline only, no extra mounts), so an unstated list cannot widen the
 /// sandbox the way an unstated tier could.
-extra_binds: []const []const u8 = &.{},
+extra_binds: []const contract.protocol.ExtraBind = &.{},
 /// Control-plane call deadlines — code defaults, single-sourced with the
 /// client (`call_deadline`). No environment override surface: a deadline is
 /// transport plumbing, not operator policy.

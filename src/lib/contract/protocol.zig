@@ -125,8 +125,11 @@ pub const MAX_REGISTRY_ENTRIES = policy.MAX_REGISTRY_ENTRIES;
 pub const registryAllowlistValid = policy.registryAllowlistValid;
 pub const capabilityReportBounded = policy.capabilityReportBounded;
 pub const extraBindsValid = policy.extraBindsValid;
+pub const ExtraBind = policy.ExtraBind;
+pub const BindMode = policy.BindMode;
 pub const MAX_EXTRA_BINDS = policy.MAX_EXTRA_BINDS;
 pub const MAX_BIND_PATH_LEN = policy.MAX_BIND_PATH_LEN;
+pub const MAX_BIND_NOTE_LEN = policy.MAX_BIND_NOTE_LEN;
 
 /// How tenant secrets reach the runner. S0 ships `inline` only (secrets travel
 /// in the lease over TLS, trusted fleet); `scoped`/`proxy` are the reserved
