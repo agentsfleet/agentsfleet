@@ -248,31 +248,10 @@ fn mapFetchError(err: anyerror) PatchError {
     };
 }
 
-// In-file tests: runFetchBlocking is deliberately private, and the property
-// under proof is allocator-visible only from inside this module.
-fn testBoundPort(handle: std.Io.net.Socket.Handle) !u16 {
-    // SAFETY: getsockname fills sa before sa.port is read on success.
-    var sa: std.posix.sockaddr.in = undefined;
-    var len: std.posix.socklen_t = @sizeOf(std.posix.sockaddr.in);
-    if (std.c.getsockname(handle, @ptrCast(&sa), &len) != 0) return error.GetSockNameFailed;
-    return std.mem.bigToNative(u16, sa.port);
-}
-
-const TestOkServer = struct {
-    fn run(listener: *std.Io.net.Server, io: std.Io) void {
-        const conn = listener.accept(io) catch return;
-        defer conn.close(io);
-        var buf: [2048]u8 = undefined;
-        _ = std.posix.read(conn.socket.handle, &buf) catch return;
-        const resp: []const u8 = "HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok";
-        var sent: usize = 0;
-        while (sent < resp.len) {
-            const rc = std.posix.system.write(conn.socket.handle, resp[sent..].ptr, resp.len - sent);
-            if (std.posix.errno(rc) != .SUCCESS) return;
-            sent += @intCast(rc);
-        }
-    }
-};
+// In-file tests: the fetch and job-building paths are deliberately private, and
+// the property under proof is allocator-visible only from inside this module.
+// The loopback server they drive lives in the sibling support module — inline
+// here it was shipped code that no release build can ever execute.
 
 test "burst beyond the worker budget is rejected before any allocation" {
     // Saturate the shared slot budget, then submit: the reject fires before
@@ -295,18 +274,64 @@ test "fetch error path retains nothing under the leak-detecting allocator" {
 }
 
 test "fetch success path retains nothing under the leak-detecting allocator" {
+    const support = @import("clerk_backend_test_support.zig");
     const io = constants.globalIo();
     var addr = std.Io.net.IpAddress.parseIp4("127.0.0.1", 0) catch return error.SkipZigTest;
     var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
     defer listener.deinit(io);
-    const port = testBoundPort(listener.socket.handle) catch return error.SkipZigTest;
-    const server = std.Thread.spawn(.{}, TestOkServer.run, .{ &listener, io }) catch return error.SkipZigTest;
+    const port = support.boundPort(listener.socket.handle) catch return error.SkipZigTest;
+    const server = std.Thread.spawn(.{}, support.OkServer.run, .{ &listener, io }) catch return error.SkipZigTest;
 
     var url_buf: [64]u8 = undefined;
     const url = try std.fmt.bufPrint(&url_buf, "http://127.0.0.1:{d}/users/u/metadata", .{port});
     const r = runFetchBlocking(std.testing.allocator, url, "Bearer t", "{}");
     server.join();
     try r; // 200 → success; the response body was streamed and discarded
+}
+
+test "a metadata write builds the job, reaches the endpoint, and frees it on the worker" {
+    // The whole fire-and-forget path in one pass: payload render, URL and
+    // Authorization assembly, slot claim, job build, spawn, and the worker's own
+    // fetch-and-free. Nothing drove it before, so every allocation in
+    // `prepareFetchJob` and every free in `freeFetchJob` was unproven — and the
+    // job rides `c_allocator`, so a missed free is invisible to the test
+    // allocator and only shows as process growth in production.
+    const support = @import("clerk_backend_test_support.zig");
+    const io = constants.globalIo();
+    var addr = std.Io.net.IpAddress.parseIp4("127.0.0.1", 0) catch return error.SkipZigTest;
+    var listener = addr.listen(io, .{ .reuse_address = true }) catch return error.SkipZigTest;
+    defer listener.deinit(io);
+    const port = support.boundPort(listener.socket.handle) catch return error.SkipZigTest;
+    const server = std.Thread.spawn(.{}, support.OkServer.run, .{ &listener, io }) catch return error.SkipZigTest;
+
+    var base_buf: [40]u8 = undefined;
+    const api_base = try std.fmt.bufPrint(&base_buf, "http://127.0.0.1:{d}", .{port});
+    try patchUserPublicMetadata(
+        support.SECRET,
+        api_base,
+        std.testing.allocator,
+        support.USER_ID,
+        support.TENANT_ID,
+        support.SCOPES,
+    );
+
+    server.join();
+    // The submission returns the instant the thread is spawned, so the worker is
+    // still holding its slot here. Draining is the module's own definition of
+    // "every fetch finished" — without it the test ends while a detached thread
+    // still owns the job, and the free it performs lands after teardown.
+    worker_slots.drainForShutdown();
+}
+
+test "a secret that is only whitespace never reaches the network" {
+    // Distinct from an absent secret: a misconfigured deployment that sets
+    // CLERK_SECRET_KEY to blanks would otherwise send `Authorization: Bearer `
+    // and read Clerk's 401 as a vendor fault.
+    const support = @import("clerk_backend_test_support.zig");
+    try std.testing.expectError(
+        PatchError.MissingSecret,
+        patchUserPublicMetadata("  \t\r\n ", support.API_BASE, std.testing.allocator, support.USER_ID, null, null),
+    );
 }
 
 test {
