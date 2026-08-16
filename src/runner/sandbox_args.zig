@@ -173,6 +173,22 @@ pub fn buildSandboxPrefix(io: std.Io, alloc: std.mem.Allocator, cfg: Config, wor
     return list.toOwnedSlice(alloc);
 }
 
+/// The sandbox prefix for a GIVEN bwrap binary and child exe — the same
+/// composition `buildSandboxPrefix` performs, minus the two host lookups that
+/// make it unrunnable off a configured Linux box. Free with `freeArgv`.
+///
+/// `pub` for the bind-contract tests, which assert which host paths reach a
+/// lease and at what mode. Those assertions are about the argv the daemon
+/// composes, not about bubblewrap executing, so they must not require the
+/// binary to exist — otherwise they skip everywhere and guard nothing. The
+/// real-sandbox execution proof is the integration tier's job (RULE ITF).
+pub fn composeSandboxPrefix(alloc: std.mem.Allocator, bwrap: []const u8, self_exe: []const u8, cfg: Config, workspace_path: []const u8, egress: ?EgressFiles) ![]const []const u8 {
+    var list: std.ArrayList([]const u8) = .empty;
+    errdefer freeList(alloc, &list);
+    try appendBwrapAt(alloc, &list, bwrap, self_exe, workspace_path, egress, cfg.network_policy, cfg.extra_binds);
+    return list.toOwnedSlice(alloc);
+}
+
 /// The child's exec target. Normally the runner's own binary (re-exec into
 /// `__execute`). An `executor_provider_stub` build (tests only) redirects to the
 /// prebuilt stub exe at `build_options.stub_runner_exe_path` — the integration
@@ -224,6 +240,21 @@ fn bindTry(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), bind: con
 /// `deny_all` stays fully unshared (no network).
 fn appendBwrap(io: std.Io, alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), self_exe: []const u8, workspace: []const u8, egress: ?EgressFiles, net_policy: Policy.Mode, extra_binds: []const contract.protocol.ExtraBind) !void {
     const bwrap = bwrapPath(io) orelse return error.BwrapUnavailable;
+    return appendBwrapAt(alloc, list, bwrap, self_exe, workspace, egress, net_policy, extra_binds);
+}
+
+/// The wrapper's composition, given an ALREADY-RESOLVED bwrap path. Split from
+/// `appendBwrap` so the argv contract is provable without a bubblewrap binary
+/// on the box: this arm touches no filesystem and reads no `builtin.os.tag`.
+///
+/// That split is not a convenience. Before it, every bind-contract test gated
+/// on `error.BwrapUnavailable` and skipped — on a Mac because the host is not
+/// Linux, and in continuous integration because the CI image ships no
+/// bubblewrap (the product `Dockerfile` installs it; the CI image does not). So
+/// the tests guarding which paths reach a lease ran NOWHERE, which is how a
+/// missing `/run/systemd/resolve` shipped and broke every lease for a week.
+/// Composition is a pure function of the policy, so it is tested as one.
+fn appendBwrapAt(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), bwrap: []const u8, self_exe: []const u8, workspace: []const u8, egress: ?EgressFiles, net_policy: Policy.Mode, extra_binds: []const contract.protocol.ExtraBind) !void {
     // `--new-session` detaches the controlling terminal (no TIOCSTI input
     // injection if a tty is ever attached); it sits with the other namespace
     // flags so every sandboxed tier gets it.

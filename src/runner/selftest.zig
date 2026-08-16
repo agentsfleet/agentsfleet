@@ -89,7 +89,23 @@ pub const PROBE_ARGV = [_][]const u8{ "/bin/sh", "-c", "cat /etc/resolv.conf" };
 pub fn buildProbeArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_path: []const u8) ![]const []const u8 {
     const prefix = try sandbox_args.buildSandboxPrefix(io, alloc, cfg, workspace_path, null);
     defer sandbox_args.freeArgv(alloc, prefix);
+    return appendProbeCommand(alloc, prefix);
+}
 
+/// The probe argv for a GIVEN bwrap binary and child exe — the pure twin of
+/// `buildProbeArgv`, composed exactly the way a lease is. `pub` so Dimension
+/// 2.1 can assert the two prefixes match on any platform: gating that
+/// assertion on a real bubblewrap binary skipped it everywhere, which would
+/// leave "the probe runs through the lease builder" asserted by nothing.
+pub fn composeProbeArgv(alloc: std.mem.Allocator, bwrap: []const u8, self_exe: []const u8, cfg: Config, workspace_path: []const u8) ![]const []const u8 {
+    const prefix = try sandbox_args.composeSandboxPrefix(alloc, bwrap, self_exe, cfg, workspace_path, null);
+    defer sandbox_args.freeArgv(alloc, prefix);
+    return appendProbeCommand(alloc, prefix);
+}
+
+/// Copy `prefix` and append the probe's child command, transferring ownership
+/// of the result to the caller.
+fn appendProbeCommand(alloc: std.mem.Allocator, prefix: []const []const u8) ![]const []const u8 {
     var list: std.ArrayList([]const u8) = .empty;
     errdefer {
         for (list.items) |s| alloc.free(s);

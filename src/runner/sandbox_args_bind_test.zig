@@ -5,14 +5,21 @@
 //! edge file keeps the argv-shape and platform-arm tests, this one owns which
 //! host paths reach a lease and at what mode.
 //!
-//! The composition tests are deliberately platform-INDEPENDENT: additive-only
-//! is the security property of the operator-editable surface, so it is proven
-//! on every host via the pure `composeRoBinds`, not only on a Linux runner
-//! where `appendBwrap` actually emits flags. The argv-level tests below stay
-//! Linux-gated because bwrap flags exist only there.
+//! Every test here is platform-INDEPENDENT, composition and argv alike. Which
+//! host paths reach a lease, and at what mode, is the security property of
+//! this surface — so it is proven on every host rather than only on a
+//! configured Linux runner.
+//!
+//! That was not always true, and the gap was the point. These tests used to
+//! gate on a real bubblewrap binary and skip without one: on macOS because the
+//! host is not Linux, and in continuous integration because the CI image ships
+//! no bubblewrap (the product Dockerfile installs it; the CI image never did).
+//! So the tests guarding the bind set ran in NO environment, which is exactly
+//! how a missing `/run/systemd/resolve` shipped and broke every lease for a
+//! week. `composeSandboxPrefix` takes the bwrap path as an argument, so
+//! composition is a pure function of the policy and is tested as one.
 
 const std = @import("std");
-const builtin = @import("builtin");
 const contract = @import("contract");
 const common = @import("common");
 
@@ -126,18 +133,35 @@ test "test_composed_binds_cannot_drop_or_remode_a_baseline_path" {
     try std.testing.expectEqual(sandbox_args.RO_SYSTEM_PATHS.len, clamped.len);
 }
 
-test "test_operator_bind_reaches_the_argv_with_its_assigned_mode" {
-    if (builtin.os.tag != .linux) return error.SkipZigTest;
+// ── argv-level: which paths reach a lease, at what mode ─────────────────────
+//
+// These go through `composeSandboxPrefix`, which takes the bwrap path and the
+// child exe as arguments instead of probing the host for them. That is what
+// lets them run on EVERY platform. Gating them on a real bubblewrap binary
+// skipped them on macOS (not Linux) and in continuous integration (the CI
+// image ships no bubblewrap) — so the tests guarding which host paths reach a
+// lease executed nowhere, which is exactly how the resolver bind went missing.
+
+const FAKE_BWRAP = "/usr/bin/bwrap";
+const FAKE_SELF_EXE = "/opt/agentsfleet/bin/agentsfleet-runner";
+
+/// Writable bind flags. `--bind` is the lease workspace; `--bind-try` is an
+/// operator entry assigned `read_write`. Both grant write access to a host
+/// path, so a test asking "what can this lease write" must scan for both.
+const WRITABLE_FLAGS = [_][]const u8{ "--bind", "--bind-try" };
+
+fn prefixWith(alloc: std.mem.Allocator, extra: []const contract.protocol.ExtraBind) ![]const []const u8 {
+    return sandbox_args.composeSandboxPrefix(alloc, FAKE_BWRAP, FAKE_SELF_EXE, cfgWithBinds(extra), WORKSPACE, null);
+}
+
+test "test_operator_bind_reaches_the_argv_at_its_mode" {
     const alloc = std.testing.allocator;
-    // Each assigned path lands under the flag its own mode names.
-    const cfg = cfgWithBinds(&.{
+    // Dimension 4.1 — each assigned path lands under the flag its own mode
+    // names.
+    const argv = try prefixWith(alloc, &.{
         .{ .path = "/srv/fonts" },
         .{ .path = "/srv/models", .mode = .read_write, .note = "shared model cache" },
     });
-    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfg, WORKSPACE, null) catch |err| {
-        try std.testing.expectEqual(error.BwrapUnavailable, err);
-        return error.SkipZigTest;
-    };
     defer sandbox_args.freeArgv(alloc, argv);
 
     try std.testing.expect(bindTripleIndex(argv, "--ro-bind-try", "/srv/fonts") != null);
@@ -146,28 +170,14 @@ test "test_operator_bind_reaches_the_argv_with_its_assigned_mode" {
     // that leaked across entries would silently widen one of them.
     try std.testing.expect(bindTripleIndex(argv, "--bind-try", "/srv/fonts") == null);
     try std.testing.expect(bindTripleIndex(argv, "--ro-bind-try", "/srv/models") == null);
-
-    // The workspace remains the only plain `--bind` (the writable mount the
-    // lease owns); an operator's writable entry uses `--bind-try` and never
-    // displaces it.
-    for (argv, 0..) |s, i| {
-        if (!std.mem.eql(u8, s, "--bind")) continue;
-        try std.testing.expectEqualStrings(WORKSPACE, argv[i + 1]);
-    }
 }
 
 test "test_operator_list_cannot_remove_a_contract_path" {
-    if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
-    // The operator list is ADDITIVE. Even an assignment that
-    // names nothing, or names only unrelated paths, leaves every baseline path
-    // bound: there is no assignment shape that un-binds the resolver and
-    // re-creates the incident this milestone came from.
-    const cfg = cfgWithBinds(&.{"/srv/models"});
-    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfg, WORKSPACE, null) catch |err| {
-        try std.testing.expectEqual(error.BwrapUnavailable, err);
-        return error.SkipZigTest;
-    };
+    // Dimension 4.2 — the operator list is ADDITIVE. No assignment shape
+    // un-binds the resolver and re-creates the incident this milestone came
+    // from.
+    const argv = try prefixWith(alloc, &.{.{ .path = "/srv/models" }});
     defer sandbox_args.freeArgv(alloc, argv);
 
     for (sandbox_args.RO_SYSTEM_PATHS) |baseline| {
@@ -180,16 +190,13 @@ test "test_operator_list_cannot_remove_a_contract_path" {
 }
 
 test "should ro-bind the systemd-resolved stub directory so DNS resolves under any network policy" {
-    if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
-    // /etc/resolv.conf symlinks to /run/systemd/resolve/stub-resolv.conf on a
-    // systemd-resolved host; without this ro-bind the symlink dangles inside
-    // the sandbox's own (always-unshared) mount namespace regardless of
-    // --share-net, and every outbound DNS lookup fails HostResolutionFailed.
-    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithBinds(&.{}), WORKSPACE, null) catch |err| {
-        try std.testing.expectEqual(error.BwrapUnavailable, err);
-        return error.SkipZigTest;
-    };
+    // The M167 incident, pinned. /etc/resolv.conf symlinks to
+    // /run/systemd/resolve/stub-resolv.conf on a systemd-resolved host; without
+    // this ro-bind the symlink dangles inside the sandbox's own (always
+    // unshared) mount namespace regardless of --share-net, and every outbound
+    // DNS lookup fails HostResolutionFailed.
+    const argv = try prefixWith(alloc, &.{});
     defer sandbox_args.freeArgv(alloc, argv);
 
     const path_i = indexOfStr(argv, "/run/systemd/resolve").?;
@@ -197,44 +204,28 @@ test "should ro-bind the systemd-resolved stub directory so DNS resolves under a
     try std.testing.expectEqualStrings("/run/systemd/resolve", argv[path_i + 1]);
 }
 
-// ── §3 the declared contract ────────────────────────────────────────────────
-
-/// Writable bind flags. `--bind` is the lease workspace; `--bind-try` is an
-/// operator entry assigned `read_write`. Both grant write access to a host
-/// path, so a test asking "what can this lease write" must scan for both.
-const WRITABLE_FLAGS = [_][]const u8{ "--bind", "--bind-try" };
-
 test "test_every_contract_path_is_bound_at_its_mode" {
-    if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     // Dimension 3.1 — the contract is not prose: every declared path reaches
     // the argv under the flag its declared mode names. Reading the real
     // constant (not a copy) is what makes a dropped entry fail here; a copy
-    // would stay green while the live list rotted, which is exactly how the
-    // resolver bind went missing.
-    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithBinds(&.{}), WORKSPACE, null) catch |err| {
-        try std.testing.expectEqual(error.BwrapUnavailable, err);
-        return error.SkipZigTest;
-    };
+    // would stay green while the live list rotted.
+    const argv = try prefixWith(alloc, &.{});
     defer sandbox_args.freeArgv(alloc, argv);
 
+    const flag = contract.protocol.BindMode.read_only.bwrapFlag();
     for (sandbox_args.RO_SYSTEM_PATHS) |p| {
-        const flag = contract.protocol.BindMode.read_only.bwrapFlag();
         try std.testing.expect(bindTripleIndex(argv, flag, p) != null);
     }
 }
 
 test "test_workspace_is_the_only_writable_bind" {
-    if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     // Dimension 3.2 / Invariant 3 — with no operator list, the workspace is
-    // the sole writable mount. Scanning for EVERY writable flag is the point:
-    // an earlier version of this test looked only at `--bind` and would have
-    // missed a `--bind-try` entry widening the boundary.
-    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithBinds(&.{}), WORKSPACE, null) catch |err| {
-        try std.testing.expectEqual(error.BwrapUnavailable, err);
-        return error.SkipZigTest;
-    };
+    // the sole writable mount. Scanning EVERY writable flag is the point: a
+    // version of this test that looked only at `--bind` would miss a
+    // `--bind-try` entry widening the boundary.
+    const argv = try prefixWith(alloc, &.{});
     defer sandbox_args.freeArgv(alloc, argv);
 
     var writable: usize = 0;
@@ -246,19 +237,29 @@ test "test_workspace_is_the_only_writable_bind" {
         }
     }
     try std.testing.expectEqual(@as(usize, 1), writable);
+
+    // And an operator-assigned read_write entry adds exactly one more, itself
+    // — the widening is bounded by what the operator named, nothing else.
+    const widened = try prefixWith(alloc, &.{.{ .path = "/srv/models", .mode = .read_write }});
+    defer sandbox_args.freeArgv(alloc, widened);
+
+    var writable_paths: usize = 0;
+    for (widened) |s| {
+        for (WRITABLE_FLAGS) |flag| {
+            if (std.mem.eql(u8, s, flag)) writable_paths += 1;
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 2), writable_paths);
+    try std.testing.expect(bindTripleIndex(widened, "--bind-try", "/srv/models") != null);
 }
 
 test "test_contract_and_argv_agree_exactly" {
-    if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     // Dimension 3.3 — the agreement is BIDIRECTIONAL. One direction (every
     // entry is bound) catches a dropped path; the other (every bound path has
     // an entry) catches one added to the argv without being declared. Only
     // both together make the contract the single source of truth.
-    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithBinds(&.{}), WORKSPACE, null) catch |err| {
-        try std.testing.expectEqual(error.BwrapUnavailable, err);
-        return error.SkipZigTest;
-    };
+    const argv = try prefixWith(alloc, &.{});
     defer sandbox_args.freeArgv(alloc, argv);
 
     // → no entry without a bind
@@ -267,7 +268,7 @@ test "test_contract_and_argv_agree_exactly" {
     }
 
     // ← no bind without an entry. With an empty operator list every
-    // `--ro-bind-try` triple in the argv must be a declared contract path.
+    // `--ro-bind-try` triple must name a declared contract path.
     var seen: usize = 0;
     for (argv, 0..) |s, i| {
         if (!std.mem.eql(u8, s, "--ro-bind-try")) continue;
@@ -285,9 +286,7 @@ test "test_contract_and_argv_agree_exactly" {
 
 test "test_architecture_doc_matches_the_contract" {
     // Dimension 3.4 — the architecture doc's path table is checked against the
-    // constant, not trusted to track it by review. Platform-independent: it
-    // reads a file and compares strings, so the doc cannot drift on a Mac and
-    // be caught only by Linux continuous integration.
+    // constant, not trusted to track it by review.
     const alloc = std.testing.allocator;
     const doc = std.Io.Dir.cwd().readFileAlloc(common.globalIo(), DOC_PATH, alloc, .limited(MAX_DOC_BYTES)) catch |err| switch (err) {
         // The runner test binary may run from a different cwd than the repo
@@ -297,7 +296,6 @@ test "test_architecture_doc_matches_the_contract" {
     };
     defer alloc.free(doc);
 
-    // Every declared path appears as a table row naming its mode.
     for (sandbox_args.RO_SYSTEM_PATHS) |p| {
         const row = try std.fmt.allocPrint(alloc, "| `{s}` | read-only |", .{p});
         defer alloc.free(row);
