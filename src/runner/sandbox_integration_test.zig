@@ -344,5 +344,37 @@ test "the resolver config a lease inherits is readable inside a real sandbox" {
     defer alloc.free(out);
     _ = child.wait(io) catch {};
 
-    try std.testing.expect(std.mem.indexOf(u8, out, "RESOLV_OK") != null);
+    // Three outcomes, and conflating the first two is what makes this test
+    // either useless or falsely red:
+    //
+    //   RESOLV_OK        the sandbox came up and the resolver file resolved
+    //   RESOLV_DANGLING  the sandbox came up and it did NOT — the M167 bug
+    //   neither token    bwrap never reached the payload at all
+    //
+    // The third is an environment verdict, not a product one. The lease prefix
+    // carries `--proc /proc`, and mounting a fresh procfs inside a nested user
+    // namespace is denied unless the container is privileged — Docker masks
+    // /proc otherwise. `bwrap: Can't mount proc on /newroot/proc: Operation not
+    // permitted`, and stdout is empty. That is exactly the coverage lane, which
+    // runs unprivileged under kcov; the privileged kernel lane
+    // (test-integration.yml, --privileged --cgroupns=private) is where this
+    // proof actually executes, per RULE ITF.
+    //
+    // Asserting RESOLV_OK unconditionally reddens the coverage lane for a
+    // kernel permission it was never granted. Skipping on ANY non-OK output
+    // would be worse — it would swallow RESOLV_DANGLING, the one result this
+    // whole milestone exists to catch. So the dangling arm fails loudly and
+    // only an unestablished sandbox skips.
+    if (std.mem.indexOf(u8, out, "RESOLV_OK") != null) return;
+
+    if (std.mem.indexOf(u8, out, "RESOLV_DANGLING") != null) {
+        std.debug.print(
+            "sandbox established but /etc/resolv.conf did not resolve inside it — " ++
+                "the resolver stub is not bound into the lease sandbox (M167)\n",
+            .{},
+        );
+        return error.ResolverDanglingInsideSandbox;
+    }
+
+    return error.SkipZigTest;
 }
