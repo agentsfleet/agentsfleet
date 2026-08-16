@@ -42,6 +42,11 @@ pub fn addTestStep(
             .root_source_file = b.path(S_LIB_TESTS_ROOT),
             .target = target,
             .optimize = optimize,
+            // common/env.zig's TEST-ONLY std.c.environ/getenv reads need libc
+            // explicitly — nothing else in this dependency-light module links a
+            // C library, so nothing pulls it in implicitly the way agentsfleetd's
+            // sqlite3/openssl deps do for the daemon's own test binary.
+            .link_libc = true,
         }),
         .filters = test_filters,
     });
