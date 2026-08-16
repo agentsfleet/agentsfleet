@@ -229,24 +229,6 @@ test "egress files are ro-bound over /etc/hosts + /etc/resolv.conf when supplied
     try std.testing.expect(indexOfStr(argv, "--share-net") == null);
 }
 
-test "should ro-bind the systemd-resolved stub directory so DNS resolves under any network policy" {
-    if (builtin.os.tag != .linux) return error.SkipZigTest;
-    const alloc = std.testing.allocator;
-    // /etc/resolv.conf symlinks to /run/systemd/resolve/stub-resolv.conf on a
-    // systemd-resolved host; without this ro-bind the symlink dangles inside
-    // the sandbox's own (always-unshared) mount namespace regardless of
-    // --share-net, and every outbound DNS lookup fails HostResolutionFailed.
-    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE, null) catch |err| {
-        try std.testing.expectEqual(error.BwrapUnavailable, err);
-        return error.SkipZigTest;
-    };
-    defer sandbox_args.freeArgv(alloc, argv);
-
-    const path_i = indexOfStr(argv, "/run/systemd/resolve").?;
-    try std.testing.expectEqualStrings("--ro-bind-try", argv[path_i - 1]);
-    try std.testing.expectEqualStrings("/run/systemd/resolve", argv[path_i + 1]);
-}
-
 test "should have no memory leaks freeing dev_none argv over many iterations" {
     const alloc = std.testing.allocator;
     // std.testing.allocator panics on any leak; 100 create-free cycles prove

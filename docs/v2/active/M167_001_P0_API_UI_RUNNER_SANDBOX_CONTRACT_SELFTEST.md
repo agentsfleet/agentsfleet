@@ -18,7 +18,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Date:** Aug 16, 2026
 **Status:** IN_PROGRESS
 **Priority:** P0 — a runner whose sandbox cannot resolve a hostname reports itself healthy and fails every lease; today that gap is only visible by reading the daemon journal over Secure Shell (SSH)
-**Categories:** API, CLI, UI
+**Categories:** API, UI
 **Batch:** B1 — §3 declares the contract §2 probes and §1 renders; §4 extends the contract with an operator-editable additive layer
 **Branch:** feat/m167-runner-sandbox-selftest
 **Test Baseline:** unit=3924 integration=649
@@ -60,7 +60,6 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/runner/sandbox_args.zig` | EDIT | The bind set becomes a declared contract with mode per entry, composed with the assigned extra binds |
 | `src/runner/bind_policy.zig` | CREATE | Validates an assigned extra-bind list and composes it onto the baseline, fail-closed |
 | `src/runner/selftest.zig` | CREATE | Builds the probe argv via `buildArgv`, runs it, collects per-check results |
-| `src/runner/cmd/selftest.zig` | CREATE | The operator-invocable `agentsfleet-runner selftest` surface |
 | `src/runner/daemon/loop.zig` | EDIT | A requested self-test runs on the heartbeat path and reports its result |
 | `src/agentsfleetd/http/handlers/fleet/runner_patch.zig` | EDIT | One new action arm requesting a self-test |
 | `src/agentsfleetd/http/handlers/runner/heartbeat.zig` | EDIT | Accepts and stores the self-test result |
@@ -120,6 +119,7 @@ A check that runs on the host proves nothing about a lease: the incident that mo
 - **Dimension 2.3** — under `deny_all_egress` the probe reports egress unavailable as an expected verdict, never as a fault → Test `test_probe_reports_deny_all_as_expected`
 - **Dimension 2.4** — a probe that exceeds its bound is reaped and reports a timeout verdict, leaving no orphan → Test `test_probe_timeout_reaps_and_reports`
 - **Dimension 2.5** — the result carries no token, credential, or environment value → Test `test_probe_result_carries_no_secrets`
+- **Dimension 2.6** — the daemon probes itself once at startup and reports the result on its first heartbeat, so a freshly deployed broken runner is visible without an operator clicking → Test `test_startup_probe_reports_on_first_heartbeat`
 
 ### §3 — The sandbox filesystem contract is declared and tested
 
@@ -165,10 +165,11 @@ CHANGED GET /v1/fleets/runners/{runner_id}
          Response gains the latest self-test result and its request state.
          Every existing field is untouched.
 
-NEW CLI  agentsfleet-runner selftest [--json]
-         Runs the same probe on demand from the host, rendering the same
-         {name, ok, detail} checks as `doctor`. Exits non-zero if any check
-         failed, so a deploy playbook can gate on it.
+UNCHANGED agentsfleet-runner command surface
+         No new subcommand. `doctor` keeps its host-side preflight scope and
+         its {name, ok, detail} vocabulary, which the self-test result reuses.
+         The probe is reachable only through the operator control and the
+         daemon's own startup run — deliberately not a second host entrypoint.
 
 NEW ERROR Self-test refused (revoked runner) and self-test failed to execute —
          two registered UZ- codes. A failed CHECK is a result, not an error.
@@ -222,6 +223,7 @@ Product analytics: the runner page gains one operator interaction. It is an oper
 | 2.3 | integration | `test_probe_reports_deny_all_as_expected` | Under `deny_all_egress` egress-unavailable is an expected verdict, not a fault |
 | 2.4 | integration | `test_probe_timeout_reaps_and_reports` | A hung probe is reaped, reports a timeout, and leaves no orphan |
 | 2.5 | unit | `test_probe_result_carries_no_secrets` | No token, credential, or environment value appears in any check detail |
+| 2.6 | integration | `test_startup_probe_reports_on_first_heartbeat` | A daemon boot runs the probe once and its first heartbeat carries the result |
 | 3.1 | unit | `test_every_contract_path_is_bound_at_its_mode` | Every contract path appears in the argv at its declared mode |
 | 3.2 | unit | `test_workspace_is_the_only_writable_bind` | The sandboxed argv has exactly one `--bind`, the workspace |
 | 3.3 | unit | `test_contract_and_argv_agree_exactly` | A bind with no entry, or an entry with no bind, fails |
@@ -279,10 +281,10 @@ Product analytics: the runner page gains one operator interaction. It is an oper
 2. **Preserved user behaviour** — the runner page renders exactly as it does today: same header actions, same lease table, same metrics strip. The control and its result are additive; tenants see nothing new.
 3. **Optimal-way check** — the optimal shape proves capability by exercising the real path rather than describing it. A host-side check is cheaper and is what failed; running the probe through the lease's own argv builder is the shortest honest form.
 4. **Rebuild-vs-iterate** — iterate. The heartbeat, the capability report and the operator action row all stay; this adds a request arm, a probe, and a control.
-5. **What we build** — a declared bind contract with per-path tests, an operator-editable list of *extra* read-only binds composed onto it, an in-sandbox probe reusing the lease argv builder, a request/report round trip on the existing heartbeat, one operator control, and a host-invocable `selftest` command a deploy playbook can gate on.
+5. **What we build** — a declared bind contract with per-path tests, an operator-editable list of *extra* read-only binds composed onto it, an in-sandbox probe reusing the lease argv builder, a request/report round trip on the existing heartbeat, a startup run of the same probe, and one operator control.
 6. **What we do NOT build** — writable operator binds, an editable baseline, automatic remediation, scheduled runs, auto-cordon on failure, or a second health vocabulary alongside `doctor`'s.
 7. **Fit with existing features** — compounds with the capability report and the degraded-runner reconciliation already driving assignment. It must not destabilise the heartbeat: a self-test that delays or fails a heartbeat is worse than the bug it detects.
-8. **Surface order** — UI-first, per Indy's direction on this milestone. The repo default is CLI-first; the divergence is deliberate because the operator moment being fixed happens on the runner page. The host-invocable command ships in the same workstream so the deploy playbook is not left behind.
+8. **Surface order** — UI-only, per Indy's direction on this milestone. The repo default is CLI-first; the divergence is deliberate because the operator moment being fixed happens on the runner page, and a second host entrypoint alongside `doctor` would be two ways to ask one question. The deploy path is covered instead by the daemon probing itself at startup and reporting the result upward, so a freshly deployed broken runner is visible without anyone clicking.
 9. **Dashboard restraint** — the control renders only where a real probe backs it. A button that reports a fabricated or host-only verdict is worse than no button, because it re-creates the exact false confidence this milestone exists to remove.
 10. **Confused-user next step** — a failed check names the mechanism that failed and the host path or endpoint involved, so the operator's next move is a host fix, not a support ticket.
 

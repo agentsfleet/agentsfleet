@@ -16,6 +16,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const build_options = @import("build_options");
 
+const contract = @import("contract");
 const Config = @import("daemon/config.zig");
 const Policy = @import("network/Policy.zig");
 const child_exec = @import("child_exec.zig");
@@ -28,10 +29,40 @@ const BWRAP_PATHS = [_][]const u8{ "/usr/bin/bwrap", "/usr/local/bin/bwrap" };
 /// unshared, so the child's `/etc/resolv.conf` is a dangling symlink without this
 /// — every outbound DNS lookup fails `HostResolutionFailed` regardless of the
 /// assigned network policy). Absent and harmless on a non-systemd-resolved host.
-const RO_SYSTEM_PATHS = [_][]const u8{ "/etc", "/lib", "/lib64", "/bin", "/sbin", "/opt", "/run/systemd/resolve" };
+/// `pub` for the sibling contract test, which asserts every entry here reaches
+/// the built argv. It must read THIS array — a copy in the test would stay
+/// green while the real list rots, which is precisely how the resolver bind
+/// went missing.
+pub const RO_SYSTEM_PATHS = [_][]const u8{ "/etc", "/lib", "/lib64", "/bin", "/sbin", "/opt", "/run/systemd/resolve" };
 /// Used at several bind sites (RULE UFS); the rest are single-use bwrap flags
 /// whose literal spelling IS bwrap's CLI contract.
 const RO_BIND = "--ro-bind";
+/// `--ro-bind-try` tolerates an absent source path (RULE UFS — used at every
+/// baseline and operator bind site).
+const RO_BIND_TRY = "--ro-bind-try";
+
+/// Upper bound on the composed read-only bind set: the daemon-owned baseline
+/// plus the most extra binds an assignment may carry. Comptime, so the buffer
+/// `composeRoBinds` fills can never overflow.
+pub const MAX_RO_BINDS = RO_SYSTEM_PATHS.len + contract.protocol.MAX_EXTRA_BINDS;
+
+/// The ordered read-only bind set for one lease: the daemon-owned baseline
+/// FIRST, then the operator's additions. Pure and platform-independent by
+/// design — the additive-only invariant is the security property of the
+/// operator-editable surface, so it is provable on any host rather than only
+/// on a Linux runner where `appendBwrap` actually emits flags.
+///
+/// Composition, not substitution: `extra` is appended and never consulted when
+/// emitting the baseline, so no assignment can drop or re-mode a path the
+/// sandbox depends on. Over-long input is truncated to the baseline alone —
+/// unreachable in practice (`extraBindsValid` caps the list before it is
+/// stored) and fail-closed if it ever were.
+pub fn composeRoBinds(buf: *[MAX_RO_BINDS][]const u8, extra: []const []const u8) []const []const u8 {
+    for (RO_SYSTEM_PATHS, 0..) |p, i| buf[i] = p;
+    if (extra.len > contract.protocol.MAX_EXTRA_BINDS) return buf[0..RO_SYSTEM_PATHS.len];
+    for (extra, 0..) |p, i| buf[RO_SYSTEM_PATHS.len + i] = p;
+    return buf[0 .. RO_SYSTEM_PATHS.len + extra.len];
+}
 /// In-sandbox absolute paths for the parent-rendered resolver files: the
 /// static `/etc/hosts` (allowlist names → resolved IPs) and a resolver-less
 /// `/etc/resolv.conf`. Bound only when `EgressScope` supplied host-side paths.
@@ -89,7 +120,7 @@ pub fn buildArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_pa
     defer alloc.free(self_exe);
 
     const sandboxed = builtin.os.tag == .linux and cfg.sandbox_tier != .dev_none;
-    if (sandboxed) try appendBwrap(io, alloc, &list, self_exe, workspace_path, egress, cfg.network_policy);
+    if (sandboxed) try appendBwrap(io, alloc, &list, self_exe, workspace_path, egress, cfg.network_policy, cfg.extra_binds);
 
     try dup(alloc, &list, self_exe);
     try dup(alloc, &list, child_exec.SUBCOMMAND);
@@ -137,6 +168,16 @@ fn dup(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), s: []const u8
     try list.append(alloc, copy);
 }
 
+/// One `--ro-bind-try <path> <path>` triple. `-try` tolerates a path absent on
+/// this host: a baseline entry that does not exist here is skipped rather than
+/// failing the lease, and an operator entry naming a missing directory shows up
+/// as a failed self-test check instead of a dead runner.
+fn roBindTry(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), path: []const u8) !void {
+    try dup(alloc, list, RO_BIND_TRY);
+    try dup(alloc, list, path);
+    try dup(alloc, list, path);
+}
+
 /// Append the bubblewrap wrapper: namespaces + ro system + rw workspace + the
 /// runner binary ro-bound (so the sandbox can exec it) + the per-lease resolver
 /// files when egress is enabled + `--`. INTERIM (until 2.0.1 option D): the
@@ -144,7 +185,7 @@ fn dup(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), s: []const u8
 /// lease has full egress while filtered-veth enforcement is unbuilt;
 /// `allow_list_egress` (strict / fail-closed default) keeps its own netns and
 /// `deny_all` stays fully unshared (no network).
-fn appendBwrap(io: std.Io, alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), self_exe: []const u8, workspace: []const u8, egress: ?EgressFiles, net_policy: Policy.Mode) !void {
+fn appendBwrap(io: std.Io, alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), self_exe: []const u8, workspace: []const u8, egress: ?EgressFiles, net_policy: Policy.Mode, extra_binds: []const []const u8) !void {
     const bwrap = bwrapPath(io) orelse return error.BwrapUnavailable;
     // `--new-session` detaches the controlling terminal (no TIOCSTI input
     // injection if a tty is ever attached); it sits with the other namespace
@@ -157,11 +198,12 @@ fn appendBwrap(io: std.Io, alloc: std.mem.Allocator, list: *std.ArrayList([]cons
         "/usr",
     };
     for (base) |a| try dup(alloc, list, a);
-    for (RO_SYSTEM_PATHS) |p| {
-        try dup(alloc, list, "--ro-bind-try");
-        try dup(alloc, list, p);
-        try dup(alloc, list, p);
-    }
+    // Baseline then operator additions, composed by the pure helper so the
+    // additive-only invariant is asserted independently of this platform arm.
+    // `extra_binds` is validated (`extraBindsValid`) before it reaches the
+    // holder; an invalid list never gets this far.
+    var bind_buf: [MAX_RO_BINDS][]const u8 = undefined;
+    for (composeRoBinds(&bind_buf, extra_binds)) |p| try roBindTry(alloc, list, p);
     try dup(alloc, list, "--bind");
     try dup(alloc, list, workspace);
     try dup(alloc, list, workspace);

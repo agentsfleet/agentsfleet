@@ -42,6 +42,13 @@ worker_count: u32,
 /// Never owned by Config: the placeholder is a static empty slice, and each
 /// effective copy borrows from an `AppliedPolicy` snapshot the worker frees.
 registry_allowlist: []const []const u8,
+/// Operator-assigned extra read-only sandbox binds, appended AFTER the
+/// daemon-owned baseline so an assignment can only add. Same ownership rule as
+/// `registry_allowlist`: static empty placeholder, borrowed per effective copy.
+/// Defaulted — unlike the tier/egress fields, "none" IS the fail-closed value
+/// here (baseline only, no extra mounts), so an unstated list cannot widen the
+/// sandbox the way an unstated tier could.
+extra_binds: []const []const u8 = &.{},
 /// Control-plane call deadlines — code defaults, single-sourced with the
 /// client (`call_deadline`). No environment override surface: a deadline is
 /// transport plumbing, not operator policy.
@@ -75,6 +82,7 @@ pub fn load(env_map: *const std.process.Environ.Map, alloc: Allocator) ConfigErr
         .network_policy = network.FAIL_CLOSED_DEFAULT,
         .worker_count = contract.protocol.DEFAULT_WORKER_COUNT,
         .registry_allowlist = &.{},
+        .extra_binds = &.{},
         .cp_deadlines = .{},
         .alloc = alloc,
     };
