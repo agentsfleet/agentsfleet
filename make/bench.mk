@@ -108,7 +108,7 @@ _memleak-lane:
 _memleak-boot-drain: _ensure-test-infra
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
 	@db_url="$(TEST_DATABASE_URL_LOCAL)"; redis_url="$(TEST_REDIS_TLS_URL_LOCAL)"; ca="$(TEST_REDIS_TLS_CA_CERT)"; \
-	filter="daemon boot -> SIGTERM -> drain"; marker="SERVE_LIFECYCLE_BOOT_DRAIN_RAN"; \
+	filter="$(LIFECYCLE_TEST_FILTER)"; marker="$(LIFECYCLE_RUN_MARKER)"; \
 	echo "→ [boot-drain] Migrating the test database..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" DATABASE_URL_MIGRATOR="$$db_url" zig build run -- migrate || exit 1; \
 	case "$$(uname -s)" in \
@@ -121,7 +121,7 @@ _memleak-boot-drain: _ensure-test-infra
 	echo "→ [boot-drain] Building the integration lifecycle test binary (filtered)..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" zig build test-integration-bin $$opt -Dtest-filter="$$filter" $(if $(MEMLEAK_CPU),-Dcpu=$(MEMLEAK_CPU),) || exit 1; \
 	echo "→ [boot-drain] Running the lifecycle test under the leak gate (live pg + TLS redis)..."; \
-	out=$$(AGENTSFLEET_LIFECYCLE_ISOLATED=1 TEST_DATABASE_URL="$$db_url" TEST_REDIS_TLS_URL="$$redis_url" REDIS_TLS_CA_CERT_FILE="$$ca" $$runner zig-out/bin/agentsfleetd-integration-tests 2>&1) || { echo "$$out"; echo "✗ [boot-drain] valgrind gate failed — check whether the output above is a LEAK SUMMARY or another memcheck class (an invalid read/write or a syscall param); they have different causes and this gate fails on all of them"; exit 1; }; \
+	out=$$($(LIFECYCLE_ISOLATION_ENV)=1 TEST_DATABASE_URL="$$db_url" TEST_REDIS_TLS_URL="$$redis_url" REDIS_TLS_CA_CERT_FILE="$$ca" $$runner zig-out/bin/agentsfleetd-integration-tests 2>&1) || { echo "$$out"; echo "✗ [boot-drain] valgrind gate failed — check whether the output above is a LEAK SUMMARY or another memcheck class (an invalid read/write or a syscall param); they have different causes and this gate fails on all of them"; exit 1; }; \
 	echo "$$out" | grep -q "$$marker" || { echo "$$out"; echo "✗ [boot-drain] lifecycle test did NOT run (skipped — infra env misconfigured); the leak claim would be vacuous"; exit 1; }; \
 	echo "✓ [boot-drain] boot→SIGTERM→drain ran leak-clean under the gate"
 

@@ -8,6 +8,7 @@ const Config = nullclaw.config.Config;
 
 const runner_helpers = @import("runner_helpers.zig");
 const runner_progress = @import("runner_progress.zig");
+const tools_mod = nullclaw.tools;
 const redactedFinalReply = runner_helpers.redactedFinalReply;
 const applyFleetConfig = runner_helpers.applyFleetConfig;
 
@@ -157,4 +158,122 @@ test "applyFleetConfig applies an in-range max_tokens and temperature" {
     try std.testing.expectEqual(@as(u32, 2048), cfg.max_tokens.?);
     try std.testing.expectEqual(@as(f64, 0.25), cfg.temperature);
     try std.testing.expectEqual(@as(f64, 0.25), cfg.default_temperature);
+}
+
+test "buildToolsFromSpec frees every tool name the bridge could not resolve" {
+    // A fleet ships a tools array naming something this runner build does not
+    // carry. The bridge hands those names back under `skipped`, and this
+    // function owns both the warning an operator reads and the free of every
+    // name — a miss here leaks one allocation per unknown tool per lease, and
+    // the leak only shows on fleets whose spec has drifted from the build.
+    const alloc = std.testing.allocator;
+    var parsed = try std.json.parseFromSlice(
+        std.json.Value,
+        alloc,
+        "[\"definitely_not_a_tool\",\"also_not_a_tool\"]",
+        .{},
+    );
+    defer parsed.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var cfg = Config{ .workspace_dir = "", .config_path = "", .allocator = arena.allocator() };
+
+    const tools = try runner_helpers.buildToolsFromSpec(
+        alloc,
+        "/tmp/agentsfleet-tools-spec-test",
+        parsed.value,
+        &cfg,
+        null, // policy — the allTools fallback path
+        null, // cred_channel
+    );
+    defer tools_mod.deinitTools(alloc, tools);
+
+    // Neither name resolves, so the spec contributes no tool. `std.testing.allocator`
+    // is the actual assertion: it fails the test if a skipped name went unfreed.
+    try std.testing.expectEqual(@as(usize, 0), tools.len);
+}
+
+test "a non-array tools spec falls back to the default tool set" {
+    // The wire type is `?std.json.Value`; a malformed fleet can send an object
+    // or a string. That must degrade to the default set, never error the lease.
+    const alloc = std.testing.allocator;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, "{\"not\":\"an array\"}", .{});
+    defer parsed.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var cfg = Config{ .workspace_dir = "", .config_path = "", .allocator = arena.allocator() };
+
+    const tools = try runner_helpers.buildToolsFromSpec(
+        alloc,
+        "/tmp/agentsfleet-tools-fallback-test",
+        parsed.value,
+        &cfg,
+        null,
+        null,
+    );
+    defer tools_mod.deinitTools(alloc, tools);
+    try std.testing.expect(tools.len > 0);
+}
+
+// ── ProviderBundle + the tool-spec skip path ────────────────────────────────
+
+test "a bundle that cannot be allocated fails closed, and deinit stays safe" {
+    // An unresolvable provider NAME is not what this arm defends: the runtime
+    // builds a holder for whatever it is handed. Allocation failure is, so that
+    // is what is injected. A fleet must refuse to start rather than run against
+    // a half-built bundle, and `deinit` then has to cope with an `inner` that
+    // was never set — the failure path is exactly where a double-free or a use
+    // of undefined would hide.
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var cfg = Config{ .workspace_dir = "", .config_path = "", .allocator = arena.allocator() };
+    cfg.default_provider = "openai";
+
+    var failing = std.testing.FailingAllocator.init(arena.allocator(), .{ .fail_index = 0 });
+    var bundle = runner_helpers.ProviderBundle{};
+    defer bundle.deinit();
+    try std.testing.expectError(error.FleetInitFailed, bundle.acquire(failing.allocator(), &cfg));
+    try std.testing.expect(bundle.inner == null);
+}
+
+test "a resolvable provider hands back a bundle the fleet loop can drive" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var cfg = Config{ .workspace_dir = "", .config_path = "", .allocator = alloc };
+    cfg.default_provider = "openai";
+    cfg.default_model = "gpt-4o-mini";
+
+    var bundle = runner_helpers.ProviderBundle{};
+    defer bundle.deinit();
+    // Some builds compile without this provider; skipping beats asserting a
+    // build-configuration difference is a product failure.
+    _ = bundle.acquire(alloc, &cfg) catch return error.SkipZigTest;
+    try std.testing.expect(bundle.inner != null);
+}
+
+test "a tool the bridge cannot resolve is skipped with its name freed, not fatal" {
+    // A fleet spec naming a tool this runner build does not carry must still
+    // start: the tool is dropped and logged, and the run proceeds with the rest.
+    // The skipped names are heap copies the caller owns, so this also proves
+    // they are released rather than leaked — testing.allocator enforces it.
+    const alloc = std.testing.allocator;
+    const spec_json =
+        \\[{"name":"file_read","enabled":true},
+        \\ {"name":"no_such_tool_in_this_build","enabled":true}]
+    ;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, spec_json, .{});
+    defer parsed.deinit();
+    var cfg = Config{ .workspace_dir = "", .config_path = "", .allocator = alloc };
+
+    const tools = try runner_helpers.buildToolsFromSpec(alloc, "/tmp", parsed.value, &cfg, null, null);
+    defer {
+        for (tools) |t| t.deinit(alloc);
+        alloc.free(tools);
+    }
+    // Only the resolvable one survives; the unknown name did not abort the build.
+    try std.testing.expectEqual(@as(usize, 1), tools.len);
+    try std.testing.expectEqualStrings("file_read", tools[0].name());
 }

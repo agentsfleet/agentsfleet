@@ -407,7 +407,7 @@ test "bootstrapPersonalAccount: replay never tops up an existing spent-down wall
     try std.testing.expect(created.created);
 
     const debit_nanos: i64 = 1_000;
-    _ = try tenant_billing.debit(db_ctx.conn, created.tenant_id, debit_nanos);
+    try base.spendWallet(db_ctx.conn, created.tenant_id, debit_nanos);
     const spent_down = tenant_billing.STARTER_CREDIT_NANOS - debit_nanos;
     try std.testing.expectEqual(@as(?i64, spent_down), try walletBalance(db_ctx.conn, created.tenant_id));
 

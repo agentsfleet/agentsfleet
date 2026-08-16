@@ -16,13 +16,46 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M155
 **Workstream:** 001
 **Date:** Aug 14, 2026
-**Status:** PENDING
+**Status:** PARKED — never started; parked in `docs/v2/done/` with no branch and no code. Re-activates once Indy has settled how time-series storage and atomic usage charges should work (see Parked below)
 **Priority:** P1 — the Usage tab ships a Run charge that is the accumulated sum of every renewal slice, and the drill-down that used to explain it was removed with the table it read
 **Categories:** API, OBS, UI
 **Batch:** B1 — §1 writes what §2 reads and §3 renders; §4 is a measurement gating separate work
 **Depends on:** M154_001 — it deleted `fleet.metering_periods` and the two routes that read it, which is the state this workstream answers
 **Provenance:** LLM-drafted (Claude Opus 5, Aug 14, 2026), rewritten from the payload-offload framing after reading the emit path, the metric dimensions and the Usage tab on `main`
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` · `docs/architecture/observability.md` · `docs/architecture/data_flow.md`
+
+---
+
+## Parked (Aug 15, 2026) — read this before reactivating
+
+**Nothing here was ever started.** No branch, no worktree, no code, no `DONE`
+marks. This file went straight from `pending/` to `done/` as a design record.
+Read every Section below as a proposal, not as a claim about the repository.
+
+**The problem it describes is still true on `main`.** A Run charge on the Usage
+tab is the accumulated sum of every renewal slice, and the two routes that used
+to open it are still pinned 404s in `router_test.zig`. A tenant disputing a
+charge still stops at the total, and so does the operator answering them. That
+cost is accepted for as long as this stays parked.
+
+**What is undecided is the storage shape, not the need.** Fixed-width buckets
+accumulated in place are one answer to a broader question Indy wants to settle
+once: how this system stores time-series data at all, and how an atomic usage
+charge relates to the series that explains it. `fleet.metering_periods` was the
+first answer and M154 deleted it for unbounded growth; a bucket table decided
+milestone-by-milestone risks being the second table retired rather than the last
+one built. The decision belongs upstream of this workstream.
+
+**Two questions this spec left open are inputs to that decision, not leftovers.**
+The RULE LDC (Legacy-Design Consult) A/B/C consult in Discovery is unanswered —
+re-introducing a per-event history table M154 deliberately removed needs Indy's
+call before any edit. Bucket width is likewise unresolved, and it fixes both the
+derived row bound and the resolution a tenant sees.
+
+**§4 does not depend on any of that.** Measuring event-body storage against the
+live dataset is a query and a recorded number, and it gates the object-storage
+offload rather than this workstream. It can be lifted into its own workstream
+whenever that offload becomes a live question.
 
 ---
 
@@ -270,6 +303,8 @@ Product analytics: the Usage tab gains one expansion interaction. The funnel pla
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/write-integration-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close)).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
+
+  > Indy (2026-08-15 16:58): "if this is something we will defer later say its parked, since i wanna think thru how to do timeseries storage and these atomic usage charges later. and move it to docs/v2/done" — context: the whole workstream. Parked before CHORE(open) with no branch and no code; the storage shape is decided upstream of this spec, not inside it. See Parked at the top.
 
 - **Why this spec was rewritten (Aug 14, 2026).** The first draft led with moving event bodies to object storage and framed per-slice charge detail as an audit trail that never existed. Reading `main` corrected both premises. The detail read is not the only production reader of the body columns — reclaim, the connector reply path and both repair-verification reads also select them, so the offload's blast radius was understated. And the per-slice charge is already emitted: `service_renew.zig` calls `recordCreditConsumed` once per metered slice. What is missing is narrower and more concrete than the draft claimed — the emitted sample deliberately carries no event identity, and the drill-down that used to open a charge was removed with M154's table. The user-visible gap is one unopenable row on a surface that already ships, which is what this workstream now addresses.
 

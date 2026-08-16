@@ -6,7 +6,7 @@ const queue_redis = @import("../queue/redis.zig");
 const logging = @import("log");
 
 const log = logging.scoped(.agentsfleetd);
-const S_STARTUP_ENV_CHECK_FAILED = "startup.env_check_failed";
+const S_STARTUP_ENV_CHECK_FAILED = "startup_env_check_failed";
 
 /// Boot-path read of the request-path Redis read-timeout knob.
 /// Absent env uses the default; malformed input fails startup loudly.

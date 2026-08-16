@@ -197,3 +197,32 @@ test "OOM leaves the carry untouched (fail-closed, no half-applied delta)" {
     // The carry is exactly what it was — the failed delta was not absorbed.
     try testing.expectEqualStrings(carry_before, carry.items);
 }
+
+test "an OOM after the emit slice exists still frees it and leaves the carry whole" {
+    // The test above fails at the FIRST allocation, so the two unwind arms past
+    // it — freeing the emit slice, discarding the half-built next carry — never
+    // ran. Sweeping the fail index walks the failure down the function until it
+    // lands after `emit` was allocated. testing.allocator underneath turns a
+    // missed free into a failed test rather than a slow leak on the live tail.
+    const alloc = testing.allocator;
+    const secrets = [_]Secret{.{ .value = "sk-abc123", .placeholder = "[REDACTED]" }};
+
+    for (0..6) |fail_index| {
+        var carry: std.ArrayListUnmanaged(u8) = .empty;
+        defer carry.deinit(alloc);
+        const seeded = try push(alloc, &carry, "hello sk-ab", &secrets);
+        alloc.free(seeded);
+        const before = try alloc.dupe(u8, carry.items);
+        defer alloc.free(before);
+
+        var fa = std.testing.FailingAllocator.init(alloc, .{ .fail_index = fail_index });
+        // Past the budget the push simply succeeds; either way the carry must be
+        // coherent — never a half-absorbed delta.
+        if (push(fa.allocator(), &carry, "c123 tail", &secrets)) |emitted| {
+            alloc.free(emitted);
+        } else |err| {
+            try testing.expectEqual(error.OutOfMemory, err);
+            try testing.expectEqualStrings(before, carry.items);
+        }
+    }
+}

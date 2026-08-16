@@ -168,3 +168,20 @@ test "deinit leaves an empty, re-deinit-safe value" {
 }
 
 const std = @import("std");
+
+test "an allowlist that fails mid-append frees the host it had just duplicated" {
+    // Each accepted host is duplicated, then appended. A failure between the two
+    // strands the copy — and the list errdefer above frees only what made it in,
+    // so the in-flight duplicate needs its own arm. The sweep walks the failure
+    // across both.
+    const registry = [_][]const u8{ "crates.io", "registry.npmjs.org", "pypi.org" };
+    for (0..8) |fail_index| {
+        var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
+        if (build(failing.allocator(), &registry, &.{}, "")) |list| {
+            var owned = list;
+            owned.deinit();
+        } else |err| {
+            try std.testing.expectEqual(error.OutOfMemory, err);
+        }
+    }
+}

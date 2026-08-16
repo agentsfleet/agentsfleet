@@ -283,3 +283,24 @@ test "UsageSnapshot encode/decode round-trips over a usage frame" {
     try std.testing.expectEqual(FrameType.usage, out.frame.ftype);
     try std.testing.expectEqual(snap, UsageSnapshot.decode(out.frame.payload).?);
 }
+
+test "a frame whose payload never fully arrives times out and frees what it read" {
+    // The sibling timeout test never gets past the header, so the payload-side
+    // timeout — the one that has already allocated the payload buffer and must
+    // release it — was untested. A child that writes a header and then stalls is
+    // the real shape: the parent must give up on the deadline, not block the
+    // supervisor forever, and not leak a buffer per stalled frame.
+    const fds = try testOsPipe();
+    defer testOsClose(fds[0]);
+    defer testOsClose(fds[1]);
+
+    // A header promising 64 bytes, followed by 4. The rest never comes.
+    var header: [HEADER_LEN]u8 = undefined;
+    header[0] = @intFromEnum(FrameType.activity);
+    std.mem.writeInt(u32, header[1..5], 64, .big);
+    try writeAll(fds[1], &header);
+    try writeAll(fds[1], "part");
+
+    const out = try readFrame(std.testing.allocator, fds[0], clock.nowMillis() + 50, 1024);
+    try std.testing.expect(out == .timed_out);
+}

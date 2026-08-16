@@ -162,3 +162,18 @@ test "failedDetailed dupes the cause; failed leaves it empty" {
     try std.testing.expect(detailed.failureDetail().ptr != DETAIL_LEASE_SERIALIZE.ptr);
     try std.testing.expectEqualStrings("", failed(.runner_crash).failureDetail());
 }
+
+test "a child killed by a signal is classified as a crash, not a silent success" {
+    // `.exited` carries an exit code the classifier can attribute; a signal
+    // carries none. Falling through to the crash arm is what stops a
+    // SIGKILL — the shape an out-of-memory host or an operator `kill -9`
+    // produces — from reaching `parseResult` and reporting whatever bytes
+    // happened to be in the pipe as a completed run.
+    var scope: ?cgroup = null;
+    const signalled = classify(std.testing.allocator, .{}, .{ .signal = .KILL }, &scope);
+    try std.testing.expectEqual(types.FailureClass.runner_crash, signalled.outcome.failed.class);
+
+    // A non-zero exit with no special meaning lands on the same arm.
+    const odd_code = classify(std.testing.allocator, .{}, .{ .exited = 42 }, &scope);
+    try std.testing.expectEqual(types.FailureClass.runner_crash, odd_code.outcome.failed.class);
+}

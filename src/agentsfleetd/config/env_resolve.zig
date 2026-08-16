@@ -30,8 +30,8 @@ const log = logging.scoped(.agentsfleetd);
 
 const EnvMap = common.env.Map;
 
-const S_SECRET_ALLOC_FAILED = "startup.secret_alloc_failed";
-const S_CONFIG_ALLOC_FAILED = "startup.config_alloc_failed";
+const S_SECRET_ALLOC_FAILED = "startup_secret_alloc_failed";
+const S_CONFIG_ALLOC_FAILED = "startup_config_alloc_failed";
 
 pub const CLERK_WEBHOOK_SECRET_ENV = "CLERK_WEBHOOK_SECRET";
 pub const APPROVAL_SIGNING_SECRET_ENV = "APPROVAL_SIGNING_SECRET";

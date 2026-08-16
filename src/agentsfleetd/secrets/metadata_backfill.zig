@@ -83,7 +83,7 @@ pub fn run(alloc: std.mem.Allocator, conn: *pg.Conn) !Stats {
         try projectWorkspace(alloc, conn, workspace_id, &stats);
     }
 
-    log.info("backfill.completed", .{
+    log.info("backfill_completed", .{
         .workspaces = stats.workspaces,
         .projected = stats.projected,
         .undecryptable = stats.undecryptable,

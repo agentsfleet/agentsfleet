@@ -285,3 +285,36 @@ test "mint: a failing allocator fails closed with OutOfMemory, writes no frame, 
     var failing = std.testing.FailingAllocator.init(testing.allocator, .{ .fail_index = 0 });
     try testing.expectError(error.OutOfMemory, mint(h.ch, failing.allocator(), "github", null));
 }
+
+test "a mint whose request channel is gone fails closed as a write failure" {
+    // The fleet asks the parent to mint a credential. If the pipe is already
+    // gone the child must surface a distinct write failure rather than block or
+    // report a mint that never happened. The fds are closed before the channel
+    // is built, so nothing here can double-close one.
+    const clock = @import("common").clock;
+    const fds = try pipe_proto.testOsPipe();
+    pipe_proto.testOsClose(fds[0]);
+    pipe_proto.testOsClose(fds[1]);
+    const ch = Channel{ .request_fd = fds[1], .response_fd = fds[0], .deadline_ms = clock.nowMillis() + 5_000 };
+
+    try testing.expectError(error.ChannelWrite, mint(ch, testing.allocator, "github", null));
+}
+
+test "a mint that outlives its deadline is a timeout, distinct from a rejection" {
+    // A parent that never answers must not read as "credential denied": the
+    // fleet retries a timeout and fails closed on a denial, so conflating them
+    // would turn a slow parent into a permanent refusal.
+    const clock = @import("common").clock;
+    const h = try Harness.init(clock.nowMillis() - 1);
+    defer h.deinit();
+
+    try testing.expectError(error.MintTimeout, mint(h.ch, testing.allocator, "github", null));
+
+    // The request still went out — the child asked and gave up waiting, which is
+    // what makes this a timeout rather than a channel that was never used. Read
+    // it back on a live deadline; the channel's own is deliberately expired.
+    const out = try pipe_proto.readFrame(testing.allocator, h.parent_read, clock.nowMillis() + 5_000, 4096);
+    try testing.expect(out == .frame);
+    defer testing.allocator.free(out.frame.payload);
+    try testing.expectEqual(pipe_proto.FrameType.credential_request, out.frame.ftype);
+}

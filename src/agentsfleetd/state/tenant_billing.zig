@@ -44,18 +44,6 @@ pub const Billing = struct {
     exhausted_at_ms: ?i64,
 };
 
-pub const DebitResult = struct { balance_nanos: i64, updated_at_ms: i64 };
-
-pub fn provision(
-    conn: *pg.Conn,
-    tenant_id: []const u8,
-    balance_nanos: i64,
-    grant_source: []const u8,
-) !void {
-    _ = try store.insertIfAbsent(conn, tenant_id, balance_nanos, grant_source);
-    log.info("tenant_billing_provisioned", .{ .tenant_id = tenant_id, .balance_nanos = balance_nanos, .source = grant_source });
-}
-
 /// Replay-path convergence for the bootstrap invariant: restore the starter
 /// grant iff the tenant's wallet row is missing. Returns true when a row was
 /// inserted (the invariant had been violated); an existing wallet — including
@@ -68,37 +56,19 @@ pub fn healStarterGrant(conn: *pg.Conn, tenant_id: []const u8) !bool {
 /// Insert the one-time $5 starter grant for a new tenant. Called from the
 /// tenant-create transaction in signup_bootstrap. Idempotent via the
 /// underlying ON CONFLICT DO NOTHING.
+///
+/// The only credit inflow the daemon has. Every other movement of
+/// `balance_nanos` is a drain, and it happens in SQL — the renew and settle
+/// writable CTEs in `fleet/renewal.zig` and `fleet/renewal_settle.zig`.
 pub fn insertStarterGrant(conn: *pg.Conn, tenant_id: []const u8) !void {
-    return provision(conn, tenant_id, STARTER_CREDIT_NANOS, BOOTSTRAP_GRANT_SOURCE);
+    _ = try store.insertIfAbsent(conn, tenant_id, STARTER_CREDIT_NANOS, BOOTSTRAP_GRANT_SOURCE);
+    log.info("tenant_billing_provisioned", .{ .tenant_id = tenant_id, .balance_nanos = STARTER_CREDIT_NANOS, .source = BOOTSTRAP_GRANT_SOURCE });
 }
 
 /// Receive-side per-event charge. M66: zero both postures.
 pub fn computeReceiveCharge(posture: Posture) i64 {
     _ = posture;
     return EVENT_NANOS;
-}
-
-pub fn debit(conn: *pg.Conn, tenant_id: []const u8, nanos: i64) !DebitResult {
-    const r = try store.debit(conn, tenant_id, nanos);
-    return .{ .balance_nanos = r.balance_nanos, .updated_at_ms = r.updated_at_ms };
-}
-
-/// Atomically stamp `balance_exhausted_at` on the first CreditExhausted debit.
-/// Returns true if this call transitioned the row (first exhaust), false if
-/// the row was already marked. Callers use the return value to gate the
-/// one-shot `balance_exhausted_first_debit` activity event.
-pub fn markExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
-    return store.markExhausted(conn, tenant_id);
-}
-
-/// Clear `balance_exhausted_at` when a tenant is replenished outside the
-/// regular `debit` path (admin manual credit, Stripe top-up when wired,
-/// etc.). `debit` already clears on a successful deduction, so callers
-/// that debit after top-up do not need this — but paths that add credit
-/// without a matching debit (refunds, grants, admin SQL) MUST call it
-/// or the `stop` gate stays permanently closed.
-pub fn clearExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
-    return store.clearExhausted(conn, tenant_id);
 }
 
 /// Allocation-free: every member is a scalar the row already carries, so the

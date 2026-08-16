@@ -35,8 +35,6 @@ fn teardown(conn: *pg.Conn, workspace_id: []const u8) void {
 // Segment 5 (aa06xx) identifies this file's workspaces; easy to grep + clean.
 const WS_PLATFORM_ZERO = "0195b4ba-8d3a-7f13-8abc-aa0600000001";
 const WS_PLATFORM_LARGE = "0195b4ba-8d3a-7f13-8abc-aa0600000002";
-const WS_DEBIT_EXACT = "0195b4ba-8d3a-7f13-8abc-aa0600000003";
-const WS_DEBIT_OVER = "0195b4ba-8d3a-7f13-8abc-aa0600000004";
 const WS_STARTER_GRANT = "0195b4ba-8d3a-7f13-8abc-aa0600000005";
 
 // Suite-private (provider, model) pair with real token rates for the overflow
@@ -135,51 +133,6 @@ test "integration: should refuse to price an uncatalogued model with error.Model
         0,
         0,
     ));
-}
-
-test "integration: should succeed with zero balance when debit exactly covers the remaining credit" {
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try seed(db_ctx.conn, WS_DEBIT_EXACT);
-    defer teardown(db_ctx.conn, WS_DEBIT_EXACT);
-
-    base.resetBillingFor(db_ctx.conn, TENANT_ID);
-    // Provision a known, small balance so the exact-drain boundary is precise.
-    const balance: i64 = 1_000_000;
-    try tenant_billing.provision(db_ctx.conn, TENANT_ID, balance, "test_exact");
-
-    // Debit exactly the remaining balance: succeeds, lands at zero, no exhaust.
-    const after = try tenant_billing.debit(db_ctx.conn, TENANT_ID, balance);
-    try std.testing.expectEqual(@as(i64, 0), after.balance_nanos);
-
-    const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
-    try std.testing.expectEqual(@as(i64, 0), row.balance_nanos);
-    // A zero-balance debit-to-exact must NOT stamp the exhausted gate.
-    try std.testing.expect(row.exhausted_at_ms == null);
-}
-
-test "integration: should return CreditExhausted and leave balance unchanged when debit is one nano over" {
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try seed(db_ctx.conn, WS_DEBIT_OVER);
-    defer teardown(db_ctx.conn, WS_DEBIT_OVER);
-
-    base.resetBillingFor(db_ctx.conn, TENANT_ID);
-    const balance: i64 = 1_000_000;
-    try tenant_billing.provision(db_ctx.conn, TENANT_ID, balance, "test_over");
-
-    // One nano more than the balance: CreditExhausted, balance untouched.
-    try std.testing.expectError(
-        error.CreditExhausted,
-        tenant_billing.debit(db_ctx.conn, TENANT_ID, balance + 1),
-    );
-
-    const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
-    try std.testing.expectEqual(balance, row.balance_nanos);
 }
 
 test "integration: the starter grant is the whole free allowance a fresh tenant gets" {

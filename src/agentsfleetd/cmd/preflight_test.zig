@@ -49,6 +49,34 @@ test "initPostHog builds a client when the key is present, and deinit owns both"
     try std.testing.expect(result.api_key_owned != null);
 }
 
+test "initPostHog disables analytics when the client cannot be built" {
+    // The key is present, so the copy succeeds and the function goes on to
+    // build a client — which then fails. Two claims: the daemon still boots
+    // (a telemetry failure is never a reason to refuse to start), and the arm
+    // frees the key it had already copied. `testing.allocator` underneath
+    // fails the test on the leak the second claim prevents.
+    //
+    // Ladder rather than one index: `posthog.init`'s first allocation is an
+    // implementation detail, so every index past the key copy is driven until
+    // one of them lands on it.
+    const alloc = std.testing.allocator;
+    var env = try constants.env.fromPairs(alloc, &.{.{ "POSTHOG_API_KEY", "phc_ladder_key" }});
+    defer env.deinit();
+
+    var saw_disabled = false;
+    for (1..8) |fail_index| {
+        var failing = std.testing.FailingAllocator.init(alloc, .{ .fail_index = fail_index });
+        const result = preflight.initPostHog(&env, failing.allocator());
+        defer result.deinit(failing.allocator());
+        if (result.client == null) {
+            // Disabled, and it did NOT keep the key it copied on the way in.
+            try std.testing.expect(result.api_key_owned == null);
+            saw_disabled = true;
+        }
+    }
+    try std.testing.expect(saw_disabled);
+}
+
 test "initTelemetry carries the PostHog client and exposes a stable pointer" {
     const alloc = std.testing.allocator;
     var env = try constants.env.fromPairs(alloc, &.{});

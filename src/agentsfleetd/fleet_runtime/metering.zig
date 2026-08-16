@@ -55,14 +55,6 @@ pub const PreflightContext = struct {
 pub const DebitOutcome = union(enum) {
     /// Debit + telemetry both committed. Nanos drained on this charge.
     deducted: i64,
-    /// Balance < nanos. Tenant balance unchanged. Caller marks gate_blocked.
-    /// On the *first* exhaust the row's `balance_exhausted_at` is stamped
-    /// inside the same transaction (atomic with the failed debit attempt).
-    exhausted: void,
-    /// Tenant has no billing row — bootstrap invariant violated. Logged at
-    /// `err`; caller should sleep + return without XACK so the operator can
-    /// fix the bootstrap and the event redelivers cleanly.
-    missing_tenant_billing: void,
     /// Non-fatal DB failure. Caller XACKs to avoid retrying into the fault.
     db_error: void,
 };
@@ -126,9 +118,10 @@ pub fn balanceCoversEstimate(
     return billing.balance_nanos >= (receive + stage);
 }
 
-/// Charge `computeReceiveCharge(ctx.posture)` and INSERT a `receive`
-/// telemetry row. Both ops in a single transaction; rollback on either
-/// failure leaves the balance untouched and the row absent.
+/// INSERT the `receive` telemetry row for this event, in its own transaction.
+/// The row records `computeReceiveCharge(ctx.posture)` as the amount charged,
+/// which is zero under both postures — the balance itself is drained by the
+/// renew/settle CTE (`fleet/renewal_settle.zig`), never here.
 /// `event_created_at` is the event envelope's creation instant, passed in rather
 /// than read from a local clock. Every ledger row for one event must hold the
 /// SAME value (schema/710), and the receive row is written on a different path,
@@ -143,10 +136,9 @@ pub fn debitReceive(
     tenant_id: []const u8,
     ctx: PreflightContext,
     event_created_at: i64,
-    policy: balance_policy.Policy,
 ) DebitOutcome {
     const nanos = tenant_billing.computeReceiveCharge(ctx.posture);
-    return debitAndInsert(pool, alloc, tenant_id, ctx, event_created_at, .receive, nanos, policy);
+    return debitAndInsert(pool, alloc, tenant_id, ctx, event_created_at, .receive, nanos);
 }
 
 const NANOS_PER_MILLI: u64 = 1_000_000;
@@ -228,7 +220,6 @@ fn debitAndInsert(
     event_created_at: i64,
     charge_type: fleet_telemetry_store.ChargeType,
     nanos: i64,
-    policy: balance_policy.Policy,
 ) DebitOutcome {
     const conn = pool.acquire() catch |err| {
         log.warn("acquire_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = ctx.fleet_id, .err = @errorName(err) });
@@ -244,38 +235,6 @@ fn debitAndInsert(
     defer if (tx_open) {
         conn.rollback() catch |err| log.warn(ROLLBACK_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(err) });
     };
-
-    if (nanos > 0) {
-        _ = tenant_billing.debit(conn, tenant_id, nanos) catch |err| switch (err) {
-            error.CreditExhausted => {
-                _ = tenant_billing.markExhausted(conn, tenant_id) catch |mark_err| {
-                    log.warn("mark_exhausted_fail", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .fleet_id = ctx.fleet_id, .tenant_id = tenant_id, .err = @errorName(mark_err) });
-                };
-                _ = conn.exec(S_COMMIT, .{}) catch |commit_err| log.warn(COMMIT_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(commit_err) });
-                tx_open = false;
-                onExhaustedDebit(ctx.fleet_id, tenant_id, charge_type, nanos, policy);
-                return .{ .exhausted = {} };
-            },
-            error.TenantBillingMissing => {
-                conn.rollback() catch |rollback_err| log.warn(ROLLBACK_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(rollback_err) });
-                tx_open = false;
-                log.err("missing_tenant_billing", .{
-                    .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
-                    .fleet_id = ctx.fleet_id,
-                    .tenant_id = tenant_id,
-                    .workspace_id = ctx.workspace_id,
-                    .msg = "starter grant was never inserted for this tenant",
-                });
-                return .{ .missing_tenant_billing = {} };
-            },
-            else => {
-                conn.rollback() catch |rollback_err| log.warn(ROLLBACK_FAIL_EVENT, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .err = @errorName(rollback_err) });
-                tx_open = false;
-                log.warn("debit_fail", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = ctx.fleet_id, .tenant_id = tenant_id, .err = @errorName(err) });
-                return .{ .db_error = {} };
-            },
-        };
-    }
 
     fleet_telemetry_store.insertTelemetry(conn, alloc, .{
         .tenant_id = tenant_id,
@@ -307,22 +266,6 @@ fn debitAndInsert(
 
     log.debug("debit", .{ .charge_type = charge_type.label(), .tenant_id = tenant_id, .event_id = ctx.event_id, .nanos = nanos });
     return .{ .deducted = nanos };
-}
-
-fn onExhaustedDebit(
-    fleet_id: []const u8,
-    tenant_id: []const u8,
-    charge_type: fleet_telemetry_store.ChargeType,
-    nanos: i64,
-    policy: balance_policy.Policy,
-) void {
-    log.debug("exhausted", .{
-        .fleet_id = fleet_id,
-        .tenant_id = tenant_id,
-        .charge_type = charge_type.label(),
-        .nanos_attempted = nanos,
-        .policy = policy.label(),
-    });
 }
 
 test {

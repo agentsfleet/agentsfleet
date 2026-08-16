@@ -292,6 +292,30 @@ fn resolveGate(h: *TestHarness, gate_id: []const u8, decision: []const u8) !void
     try r.expectStatus(.ok);
 }
 
+/// Owned copy: the caller holds this past the query's own lifetime, to build
+/// the revoke URL after the row that produced it is gone.
+fn readGrantId(conn: *pg.Conn, fleet_id: []const u8) ![]const u8 {
+    var q = PgQuery.from(try conn.query(
+        "SELECT id::text FROM core.integration_grants WHERE fleet_id = $1::uuid",
+        .{fleet_id},
+    ));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.NoGrantRow;
+    return ALLOC.dupe(u8, try row.get([]const u8, 0));
+}
+
+fn revokeGrant(h: *TestHarness, fleet_id: []const u8, grant_id: []const u8) !void {
+    const url = try std.fmt.allocPrint(
+        ALLOC,
+        "/v1/workspaces/{s}/fleets/{s}/integration-grants/{s}",
+        .{ TEST_WORKSPACE_ID, fleet_id, grant_id },
+    );
+    defer ALLOC.free(url);
+    const r = try (try h.delete(url).bearer(TOKEN_ADMIN)).send();
+    defer r.deinit();
+    try r.expectStatus(.no_content);
+}
+
 // ── Origination: install seeds the grant and raises the gate ────────────────
 
 fn expectPendingGrant(_: void, g: Grant) anyerror!void {
@@ -431,5 +455,57 @@ test "integration: test_gate_denial_revokes_the_grant" {
     try resolveGate(h, gate_id, gate_constants.GATE_DECISION_DENY);
 
     try withGrant(conn, fleet_id, {}, expectRevokedGrant);
+    try std.testing.expectEqual(@as(usize, 0), try countIngressTargets(conn));
+}
+
+fn captureRevokedAt(out: *?i64, g: Grant) anyerror!void {
+    out.* = g.revoked_at;
+}
+
+test "integration: test_resolving_a_stale_gate_after_revoke_does_not_resurrect_the_grant" {
+    // The revoke endpoint only ever writes core.integration_grants — it has no
+    // reason to know about a gate that predates it. If that gate is still
+    // pending when someone eventually answers it, RESOLVE_GATE's grant arm
+    // must not treat "approved" as license to overwrite a decision it never
+    // saw being made.
+    crypto_primitives.setTestKek();
+    const h = makeHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try seedWorkspace(conn);
+    try vault.storeJsonPlaintext(ALLOC, conn, TEST_WORKSPACE_ID, CREDENTIAL_MINTABLE, HANDLE_MINTABLE);
+
+    const fleet_id = try installFleet(h, conn, "grant-stale-gate", CREDENTIAL_MINTABLE);
+    defer ALLOC.free(fleet_id);
+    defer purgeFleet(conn, fleet_id);
+
+    // Grant and gate both born pending. Revoke the grant directly — the gate
+    // is left exactly as it was, still pending, unresolved.
+    const grant_id = try readGrantId(conn, fleet_id);
+    defer ALLOC.free(grant_id);
+    try revokeGrant(h, fleet_id, grant_id);
+
+    try withGrant(conn, fleet_id, {}, expectRevokedGrant);
+    var revoked_at_before: ?i64 = null;
+    try withGrant(conn, fleet_id, &revoked_at_before, captureRevokedAt);
+    try std.testing.expect(revoked_at_before != null);
+
+    // The stale gate finally gets answered — approved, the decision it was
+    // actually raised to ask. Before the fix this silently re-armed the
+    // grant the workspace owner had already cut off.
+    const gate_id = try readGateId(conn, fleet_id, shared.PROVIDER_GITHUB, CREDENTIAL_MINTABLE);
+    defer ALLOC.free(gate_id);
+    try resolveGate(h, gate_id, gate_constants.GATE_DECISION_APPROVE);
+
+    try withGrant(conn, fleet_id, {}, expectRevokedGrant);
+    var revoked_at_after: ?i64 = null;
+    try withGrant(conn, fleet_id, &revoked_at_after, captureRevokedAt);
+    try std.testing.expectEqual(revoked_at_before, revoked_at_after);
     try std.testing.expectEqual(@as(usize, 0), try countIngressTargets(conn));
 }

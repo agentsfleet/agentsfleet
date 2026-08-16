@@ -350,3 +350,35 @@ test "a failed eager flush is swallowed and the latch stays consumed" {
     forwarders.ActivityForwarder.forward(@ptrCast(&fwd), frameFixture());
     try testing.expectEqual(@as(usize, 1), fwd.count); // no eager re-fire
 }
+
+test "a frame that cannot be buffered rolls its separator back, keeping the batch valid JSON" {
+    // The comma goes in before the frame body. If the body then fails to append,
+    // the orphan comma would poison the WHOLE batch into invalid JSON — not just
+    // drop one frame — and the control plane would reject every frame buffered
+    // before it. The rollback is what keeps one allocation failure local.
+    var deadlines: dts.TestScheduler = .{};
+    defer deadlines.deinit();
+    var c = client_mod.init(testing.allocator, common.globalIo(), try deadlines.start(testing.allocator), DEAD_URL);
+    defer c.deinit();
+
+    var failing = std.testing.FailingAllocator.init(testing.allocator, .{ .fail_index = 4 });
+    var fwd = forwarders.ActivityForwarder{
+        .alloc = failing.allocator(),
+        .cp = &c,
+        .runner_token = "agt_rtest",
+        .lease_id = "lease_test",
+        .deadline_ms = call_deadline.ACTIVITY_DEADLINE_MS,
+    };
+    defer fwd.deinit();
+    consumeEagerLatches(&fwd);
+
+    // Fill the batch until the allocator budget runs out mid-frame.
+    for (0..6) |_| forwarders.ActivityForwarder.forward(@ptrCast(&fwd), frameFixture());
+
+    // Whatever survived is still parseable as an array — no trailing separator.
+    const wrapped = try std.fmt.allocPrint(testing.allocator, "[{s}]", .{fwd.buf.items});
+    defer testing.allocator.free(wrapped);
+    var parsed = try std.json.parseFromSlice(std.json.Value, testing.allocator, wrapped, .{});
+    defer parsed.deinit();
+    try testing.expectEqual(fwd.count, parsed.value.array.items.len);
+}

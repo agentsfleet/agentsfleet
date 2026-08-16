@@ -272,3 +272,20 @@ test "should surface OutOfMemory under allocation failure without leaking" {
         .{},
     );
 }
+
+test "an argv that cannot be completed frees the workspace flag exactly once" {
+    // The workspace flag is allocated, then appended. Between the two it is
+    // owned by nobody; after it, the list's own errdefer owns it. Freeing in
+    // both places would double-free, freeing in neither would leak — so the
+    // scoped errdefer has to cover exactly the gap. The sweep walks a failure
+    // across the whole build to prove neither mistake is present.
+    for (0..12) |fail_index| {
+        var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
+        const alloc = failing.allocator();
+        if (sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(DEV_NONE), WORKSPACE, null)) |argv| {
+            sandbox_args.freeArgv(alloc, argv);
+        } else |err| {
+            try std.testing.expectEqual(error.OutOfMemory, err);
+        }
+    }
+}

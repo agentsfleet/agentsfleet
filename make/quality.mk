@@ -69,7 +69,11 @@ _lint_zig_pg_drain:
 # Every checker's self-test, not a hand-listed prefix: a narrow pattern meant a
 # new gate's tests sat on disk unrun, which is the same 'enforcement in
 # appearance only' defect this repository deletes dead checkers for.
-SCRIPT_SELF_TESTS := python3 -m unittest discover -s scripts -t scripts -p 'check_*_test.py'
+# `*_test.py`, not `check_*_test.py`: the narrower pattern silently skipped any
+# script whose name did not start with `check_`, so a self-test could be written,
+# committed and never run — which is worse than not having it. Every existing
+# file matches both spellings; the widening only stops the next one being lost.
+SCRIPT_SELF_TESTS := python3 -m unittest discover -s scripts -t scripts -p '*_test.py'
 
 _lint_zig_discipline:
 	@echo "→ [zig] Checking ghostty-derived A5/A2 discipline (roster-scoped)..."

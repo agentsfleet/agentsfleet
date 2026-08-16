@@ -26,7 +26,9 @@ pub fn buildDefault(
     return filterUnsupported(alloc, tools);
 }
 
-fn filterUnsupported(
+/// Public for `hosted_tools_test.zig` alone: both unwind arms below are
+/// unreachable through `buildDefault`, whose own allocation fails first.
+pub fn filterUnsupported(
     alloc: std.mem.Allocator,
     tools: []tools_mod.Tool,
 ) ![]tools_mod.Tool {
@@ -54,4 +56,8 @@ fn filterUnsupported(
     alloc.free(tools);
     original_owned = false;
     return filtered.toOwnedSlice(alloc);
+}
+
+test {
+    _ = @import("hosted_tools_test.zig");
 }

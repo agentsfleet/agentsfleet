@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Merge per-component kcov Cobertura reports and gate the merged line rate.
 
-`kcov --merge` is a black box that fails silently. On Linux it returned a report
-containing only the three `src/lib` components — 24 files, 861 lines — while the
-same command on macOS merged all six for 558 files and 31,259 lines. Both ran
-kcov 43 with identical arguments. The gate read whatever came back and never
-asked whether it covered the codebase, so Continuous Integration graded 2.8% of
-the product and reported 93.70%.
+`kcov --merge` is a black box that fails silently. On Linux it returned only the
+three `src/lib` components — 24 files, 861 lines — where macOS merged all six for
+558 files and 31,259 lines, from identical arguments and the same kcov 43. The
+gate read whatever came back and never asked whether it covered the codebase, so
+Continuous Integration graded 2.8% of the product and reported 93.70%.
 
 This replaces the merge with a union we own: parse each component's Cobertura
 report and OR the hit counts per (file, line), so a line covered by any one
@@ -16,12 +15,12 @@ What a component contributes is not guaranteed. Zig's self-hosted backend emitte
 debug info libdw refuses, and kcov skips such units silently, so six of eight
 components measured nothing on Linux. Test binaries now compile through LLVM,
 which fixes it at the source (`docs/architecture/testing.md`). The failure shape
-is permanent though: a component that stops collecting shrinks the report, never
-errors.
+is permanent though: a component that stops collecting shrinks the report rather
+than erroring.
 
-So this grades the union of what collected, and says how many of how many that
-was. The `required` set turns that silence into a red build. A rate over a subset
-flatters — two components graded ~92% where all of them measure ~90%.
+So this grades the union of what collected and says how many of how many that
+was; `required` turns that silence into a red build. Floors, targets and the
+denominator assertions live in `check_zig_coverage_floors.py`.
 """
 
 from __future__ import annotations
@@ -32,17 +31,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-# kcov already drops `*_test.zig` via --exclude-pattern. Test roots reach the
-# report under a different spelling, so they are dropped here for the same
-# reason: a gate satisfiable by writing more test files measures the wrong thing.
-TEST_ROOT_NAMES = frozenset({"tests.zig", "test.zig"})
-
-
-def is_product_source(filename: str) -> bool:
-    """True when a reported path is shipped code rather than a test body."""
-    basename = filename.rsplit("/", 1)[-1]
-    return not (basename.endswith("_test.zig") or basename in TEST_ROOT_NAMES)
-
+import check_zig_coverage_floors as floors
 
 def find_report(component_dir: Path) -> Path:
     """Return the component's Cobertura report.
@@ -85,7 +74,7 @@ def read_component(report: Path, repo_root: Path) -> dict[tuple[str, int], bool]
             filename = resolved.relative_to(repo_root).as_posix()
         except ValueError:
             filename = resolved.as_posix()
-        if not is_product_source(filename):
+        if not floors.is_product_source(filename):
             continue
         container = class_element.find("lines")
         if container is None:
@@ -94,6 +83,8 @@ def read_component(report: Path, repo_root: Path) -> dict[tuple[str, int], bool]
             number = line.get("number")
             if number is None:
                 continue
+            if not floors.is_product_line(repo_root, filename, int(number)):
+                continue
             key = (filename, int(number))
             covered = int(line.get("hits", "0")) > 0
             lines[key] = lines.get(key, False) or covered
@@ -101,11 +92,11 @@ def read_component(report: Path, repo_root: Path) -> dict[tuple[str, int], bool]
 
 
 def raw_class_names(report: Path, limit: int = 8) -> list[str]:
-    """The class filenames a report carries BEFORE any filtering — evidence for
-    diagnosing a component whose product view is empty. On Linux, Continuous
-    Integration produced reports for a varying subset of components whose
-    product view was zero while the file itself was not; this names what kcov
-    actually wrote so the failure says which shape it took."""
+    """The class filenames a report carries BEFORE any filtering.
+
+    Evidence for a component whose product view is empty while the file itself
+    is not — this names what kcov actually wrote, so the failure says which
+    shape it took."""
     with report.open("rb") as handle:
         root = ET.parse(handle).getroot()
     names = [c.get("filename", "?") for c in root.iter("class")]
@@ -117,8 +108,8 @@ def raw_class_names(report: Path, limit: int = 8) -> list[str]:
 
 def union_components(
     coverage_dir: Path, names: list[str], repo_root: Path, required: list[str]
-) -> tuple[dict[tuple[str, int], bool], list[str], list[str]]:
-    """Union every named component into (merged lines, collected names, empty names).
+) -> tuple[dict[tuple[str, int], bool], list[str], list[str], dict[str, tuple[int, int]]]:
+    """Union every named component into (merged, collected, empty, per-component counts).
 
     A component contributing nothing is fatal only when it is named in
     `required`. Elsewhere it is reported and survived, because on Linux kcov
@@ -128,10 +119,12 @@ def union_components(
     merged: dict[tuple[str, int], bool] = {}
     collected: list[str] = []
     empty: list[str] = []
+    counts: dict[str, tuple[int, int]] = {}
     for name in names:
         report = find_report(coverage_dir / name)
         component = read_component(report, repo_root)
         files = len({filename for filename, _ in component})
+        counts[name] = (files, len(component))
         print(f"→ [zig] component={name} files={files} lines={len(component)}")
         if not component:
             print(f"    raw classes in {report}: {raw_class_names(report)}")
@@ -151,7 +144,7 @@ def union_components(
         )
     if not collected:
         raise ValueError("no component contributed a measured line — there is nothing to grade")
-    return merged, collected, empty
+    return merged, collected, empty, counts
 
 
 def describe_scope(collected: list[str], empty: list[str]) -> str:
@@ -236,20 +229,36 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--summary-file", type=Path, required=True)
     parser.add_argument("--merged-report", type=Path, default=None)
     parser.add_argument("--repo-root", type=Path, required=True)
+    # Every addition below is optional, so the invocation that existed before
+    # per-folder grading keeps working unchanged.
+    parser.add_argument("--min-files", type=int, default=0)
+    parser.add_argument("--min-lines", type=int, default=0)
+    parser.add_argument("--require-root", action="append", default=[], dest="required_roots")
+    parser.add_argument("--target-pct", type=float, default=0.0)
+    parser.add_argument("--folder-floor", action="append", default=[], dest="folder_floors")
+    parser.add_argument("--folder-target", action="append", default=[], dest="folder_targets")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        merged, collected, empty = union_components(
+        merged, collected, empty, counts = union_components(
             args.coverage_dir, args.components, args.repo_root.resolve(), args.required
+        )
+        files, covered, valid, percentage = summarise(merged)
+        folder_floors = floors.parse_scope_pct(args.folder_floors, "--folder-floor")
+        folder_targets = floors.parse_scope_pct(args.folder_targets, "--folder-target")
+        scopes = floors.build_scopes(
+            merged,
+            (files, covered, valid),
+            {floors.MERGED_SCOPE: args.min_pct, **folder_floors},
+            {floors.MERGED_SCOPE: args.target_pct, **folder_targets},
         )
     except (FileNotFoundError, ValueError, ET.ParseError) as error:
         print(f"✗ Zig coverage merge failed: {error}", file=sys.stderr)
         return 1
 
-    files, covered, valid, percentage = summarise(merged)
     scope = describe_scope(collected, empty)
     if args.merged_report is not None:
         write_merged_report(args.merged_report, merged)
@@ -261,16 +270,29 @@ def main(argv: list[str] | None = None) -> int:
         f"zig_measured_lines={valid}\n"
         f"zig_components_measured={len(collected)}\n"
         f"zig_components_total={len(collected) + len(empty)}\n"
-        f"zig_components_empty={','.join(sorted(empty))}\n",
+        f"zig_components_empty={','.join(sorted(empty))}\n" + floors.summary_keys(scopes),
         encoding="utf-8",
     )
 
-    if percentage + 1e-9 < args.min_pct:
-        print(
-            f"✗ Zig line coverage {percentage:.2f}% is below threshold "
-            f"{args.min_pct:.2f}% ({covered}/{valid} lines across {files} files)\n{scope}",
-            file=sys.stderr,
+    # The denominator is asserted before any rate is compared: a percentage over
+    # a report that lost a component is not a measurement, however high it is.
+    try:
+        problems = floors.grade_denominator(
+            merged, args.required_roots, (files, valid), (args.min_files, args.min_lines)
         )
+    except floors.UsageError as error:
+        print(f"✗ Zig coverage gate misconfigured: {error}", file=sys.stderr)
+        return 1
+    unknown = floors.unknown_scope_names(scopes, folder_floors, folder_targets)
+    if unknown:
+        problems.append(
+            "✗ floor or target named for scope(s) no component measured: " + ", ".join(unknown)
+        )
+    problems.extend(floors.breaches(scopes))
+    for line in floors.report_lines(scopes):
+        print(line)
+    if problems:
+        print("\n".join(problems) + f"\n{scope}", file=sys.stderr)
         return 1
 
     print(

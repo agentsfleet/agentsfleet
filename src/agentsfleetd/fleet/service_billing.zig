@@ -211,7 +211,7 @@ fn runBilling(hx: Hx, session: *FleetSession, event: *const redis_fleet.FleetEve
     // Receive debits exactly once per event — a re-delivered entry already
     // paid on its first delivery (the balance debit is not replay-guarded;
     // only the telemetry row is).
-    if (first_delivery) switch (metering.debitReceive(pool, alloc, tr.tenant_id, ctx, event.created_at_ms, policy)) {
+    if (first_delivery) switch (metering.debitReceive(pool, alloc, tr.tenant_id, ctx, event.created_at_ms)) {
         // Post-commit, fire-and-forget OTLP metric: the receive credit debit.
         // The debit already committed inside debitReceive; this never blocks it.
         // Workspace identity deliberately does not travel — per-workspace cost
@@ -221,13 +221,10 @@ fn runBilling(hx: Hx, session: *FleetSession, event: *const redis_fleet.FleetEve
             .provider = ctx.provider,
             .model = ctx.model,
         }),
-        .exhausted => {
-            blockEvent(hx, session.fleet_id, event.event_id, rows.LABEL_BALANCE_EXHAUSTED);
-            return null;
-        },
-        // Operator-fixable bootstrap gap / transient DB fault: no terminal
-        // write, no XACK — the delivery redelivers once the fault clears.
-        .missing_tenant_billing, .db_error => {
+        // Transient DB fault: no terminal write, no XACK — the delivery
+        // redelivers once the fault clears. Balance exhaustion is not an
+        // outcome here; the pre-claim gate above already refused it.
+        .db_error => {
             log.warn("lease_receive_debit_unavailable", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .fleet_id = session.fleet_id, .event_id = event.event_id });
             return null;
         },

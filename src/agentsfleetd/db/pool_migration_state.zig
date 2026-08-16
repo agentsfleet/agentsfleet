@@ -171,3 +171,7 @@ fn countApplied(conn: *Conn, migrations: []const Migration, has_migrations: bool
         .has_noncanonical = applied.has_noncanonical,
     };
 }
+
+test {
+    _ = @import("pool_migration_state_test.zig");
+}

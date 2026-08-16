@@ -213,3 +213,14 @@ test "Plan input-matrix: boundary worker_index, empty entries, IPv6 fail-closed 
 }
 
 const std = @import("std");
+
+test "a plan that cannot allocate its second interface name frees the first" {
+    // Both names are allocated before either is owned by a Plan. A failure on the
+    // second strands the first, and the pool builds a plan per worker per lease —
+    // so this leaks proportionally to throughput on a memory-pressured host.
+    const entries = [_]HostEntry{};
+    for (0..2) |fail_index| {
+        var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
+        try std.testing.expectError(error.OutOfMemory, build(failing.allocator(), 3, &entries));
+    }
+}
