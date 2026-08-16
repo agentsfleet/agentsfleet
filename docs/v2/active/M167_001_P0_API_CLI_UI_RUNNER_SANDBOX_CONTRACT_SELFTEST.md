@@ -16,11 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M167
 **Workstream:** 001
 **Date:** Aug 16, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — a runner whose sandbox cannot resolve a hostname reports itself healthy and fails every lease; today that gap is only visible by reading the daemon journal over Secure Shell (SSH)
 **Categories:** API, CLI, UI
-**Batch:** B1 — §3 declares the contract §2 probes and §1 renders; §4 is a decision gate on top of them
-**Depends on:** none — the fix that motivated it (`/run/systemd/resolve` added to the sandbox bind set) ships separately and is not a prerequisite
+**Batch:** B1 — §3 declares the contract §2 probes and §1 renders; §4 extends the contract with an operator-editable additive layer
+**Branch:** feat/m167-runner-sandbox-selftest
+**Test Baseline:** unit=3924 integration=649
+**Depends on:** none — the fix that motivated it (`/run/systemd/resolve` added to the sandbox bind set) landed separately in `ba7c990a7` and is not a prerequisite
 **Provenance:** LLM-drafted (Claude Sonnet 5, Aug 16, 2026), from a live production-blocking incident reproduced on `zombie-dev-worker-ant` and confirmed against `main`
 **Canonical architecture:** `docs/architecture/runner_fleet.md` · `docs/architecture/capabilities.md`
 
