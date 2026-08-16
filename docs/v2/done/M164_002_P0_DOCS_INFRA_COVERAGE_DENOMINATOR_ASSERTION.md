@@ -619,3 +619,12 @@ why the lane is slow.
   (94.94% vs 95.02% local) held within noise; `runner` did not.
   > Indy (2026-08-16, via AskUserQuestion): "Lower the floor to match CI reality" — context: chosen over excluding the three enforcement files from the denominator, among three options for a `runner` floor that was never achievable in this lane. `ZIG_COVERAGE_FOLDER_FLOORS`'s `runner` value drops 95 → 87 (`aeb8693ee`); `ZIG_COVERAGE_FOLDER_TARGETS`'s 95 is unchanged, so the gap stays published rather than the ambition getting lowered too. Closing it needs either a privileged Linux coverage lane or tests that hold without one — neither exists yet. Dimension 4.2's "DONE — clears 95%" and the 95.18% figure above are left as the historical record of what was measured and how; this entry is the correction, not a rewrite of that record.
   > Indy (2026-08-16): confirmed leaving `codecov/codecov-action@v5` unpinned in `.github/workflows/test.yml` (Greptile P2/security, `.github/workflows/test.yml:208-210`) — deferring the SHA pin rather than fixing it in this PR; replied to Greptile accordingly. Unrelated to the coverage gate, noted here because it landed in the same triage pass.
+
+- **Correction to the entry above: `lib`'s 0.06pp gap was not noise.** The next
+  CI cycle (same commit, `runner` now clearing its corrected floor) reproduced
+  `merged` 89.96% and `lib` 94.94% byte-identical to the first measurement —
+  deterministic, not test-order flake. Both are the same root cause as
+  `runner`: never checked against Linux before PR #608, and `merged` is a
+  weighted average that had been folding in `runner`'s and `lib`'s inflated
+  macOS numbers on top of its own gap.
+  > Indy (2026-08-16, via AskUserQuestion): "Yes, same pattern" — context: applying the runner precedent to `merged` (90 → 89, `ZIG_COVERAGE_MIN_PCT`) and `lib` (95 → 94, `ZIG_COVERAGE_FOLDER_FLOORS`) in `df7cbf6a5`. Both targets unchanged. Asked rather than assumed despite the direct precedent, because the edit tool's own auto-mode classifier flagged a gate-threshold change in `make/test.mk` for explicit confirmation.
