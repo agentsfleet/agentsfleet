@@ -19,7 +19,6 @@
 const std = @import("std");
 const logging = @import("log");
 const nullclaw = @import("nullclaw");
-const clock = @import("common").clock;
 const protocol = @import("contract").protocol;
 const pipe_proto = @import("../pipe_proto.zig");
 const client_errors = @import("client_errors.zig");
@@ -151,34 +150,6 @@ pub const MemoryCapturer = struct {
     }
 };
 
-// ── Tests ────────────────────────────────────────────────────────────────────
-
-test "initRuntime builds a usable file-less store; seed + capture round-trip" {
-    const alloc = std.testing.allocator;
-    var rt = initRuntime(alloc, "/tmp") orelse return error.SkipZigTest; // sqlite disabled in some builds
-    defer rt.deinit();
-
-    // Seed two real entries plus an internal bootstrap key that must be filtered.
-    seed(rt.memory, &.{
-        .{ .key = "deploy_target", .content = "fly", .category = "core" },
-        .{ .key = "owner", .content = "indy", .category = "core" },
-    });
-    rt.memory.store("__bootstrap.prompt.AGENTS.md", "noise", .core, null) catch {};
-
-    const fds = try pipe_proto.testOsPipe();
-    defer pipe_proto.testOsClose(fds[0]);
-    var cap = MemoryCapturer{ .mem = rt.memory, .fd = fds[1], .alloc = alloc };
-    cap.capture();
-    pipe_proto.testOsClose(fds[1]);
-
-    const dl = clock.nowMillis() + 5_000;
-    const out = try pipe_proto.readFrame(alloc, fds[0], dl, 1 << 20);
-    try std.testing.expect(out == .frame);
-    defer alloc.free(out.frame.payload);
-    try std.testing.expectEqual(pipe_proto.FrameType.memory, out.frame.ftype);
-
-    const parsed = try std.json.parseFromSlice([]protocol.MemoryDelta, alloc, out.frame.payload, .{});
-    defer parsed.deinit();
-    // The two real entries survive; the bootstrap key is filtered out.
-    try std.testing.expectEqual(@as(usize, 2), parsed.value.len);
+test {
+    _ = @import("inrun_memory_test.zig");
 }
