@@ -190,5 +190,79 @@ class RealFile(unittest.TestCase):
         self.assertEqual(stale, [])
 
 
+class SeededRates(unittest.TestCase):
+    """Regression guard on the two silent seeder failures M168 fixed.
+
+    Both are asserted against the committed SQL rather than against the helper
+    functions, because the failure mode of each was *emitting the wrong row*,
+    not returning the wrong number — and the emitted row is what bills someone.
+    """
+
+    SEED = os.path.join(REPO_ROOT, "samples", "fixtures", "model-library", "seed.sql")
+
+    @classmethod
+    def setUpClass(cls):
+        with open(cls.SEED, encoding="utf-8") as handle:
+            cls.sql = handle.read()
+
+    def _rows(self, provider):
+        """(model_id, input, cached, output) for every seeded row of a provider."""
+        rows = []
+        for line in self.sql.splitlines():
+            marker = f"'{provider}', '"
+            if marker not in line:
+                continue
+            _, _, rest = line.partition(marker)
+            model_id, _, tail = rest.partition("', ")
+            nums = [p.strip() for p in tail.split(",")]
+            # context_cap_tokens, input, cached_input, output, created_at, updated_at
+            rows.append((model_id, int(nums[1]), int(nums[2]), int(nums[3])))
+        return rows
+
+    def test_currency_prefixed_provider_seeds_every_allowlisted_model(self):
+        # Synthetic ships "$0.000001". Number() read that as NaN, the model was
+        # skipped with a warning, and the provider seeded short — silently.
+        rows = self._rows("synthetic")
+        self.assertEqual(len(rows), 4, f"expected 4 synthetic rows, got {[r[0] for r in rows]}")
+        for model_id, inp, cached, out in rows:
+            self.assertGreater(inp, 0, model_id)
+            self.assertGreater(cached, 0, model_id)
+            self.assertGreater(out, 0, model_id)
+
+    def test_zero_cache_read_seeded_as_input_not_as_free(self):
+        # OVHcloud publishes "0" for cache reads meaning "no discount offered".
+        # Seeding that verbatim would zero-rate every cached read.
+        rows = self._rows("ovh")
+        self.assertTrue(rows, "no ovh rows seeded")
+        for model_id, inp, cached, _ in rows:
+            self.assertGreater(cached, 0, f"{model_id}: cached read seeded at zero")
+            self.assertEqual(cached, inp, f"{model_id}: expected cache read to fall back to the input rate")
+
+    def test_no_seeded_row_carries_a_zero_rate(self):
+        zeros = []
+        for line in self.sql.splitlines():
+            if not line.startswith("  '"):
+                continue
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) < 8:
+                continue
+            try:
+                inp, cached, out = int(parts[4]), int(parts[5]), int(parts[6])
+            except ValueError:
+                continue
+            if 0 in (inp, cached, out):
+                zeros.append(parts[2])
+        self.assertEqual(zeros, [], "zero rates must never enter the cost path")
+
+    def test_local_runtime_floor_is_nonzero_after_nanos_rounding(self):
+        # The floor is 1e-6 USD/Mtok; toNanos rounds it to 1000. A smaller
+        # sentinel would round to 0 and trip the zero-rate invariant.
+        for provider in ("vllm", "ollama", "sglang"):
+            rows = self._rows(provider)
+            self.assertEqual(len(rows), 1, provider)
+            _, inp, cached, out = rows[0]
+            self.assertEqual((inp, cached, out), (1000, 1000, 1000), provider)
+
+
 if __name__ == "__main__":
     unittest.main()
