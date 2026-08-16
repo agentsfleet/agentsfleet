@@ -53,6 +53,33 @@ fn findCheck(r: selftest.Result, name: []const u8) ?selftest.Check {
 const FAKE_BWRAP = "/usr/bin/bwrap";
 const FAKE_SELF_EXE = "/opt/agentsfleet/bin/agentsfleet-runner";
 
+test "test_probe_argv_frees_its_partial_copy_when_an_allocation_fails" {
+    // The probe argv is built one duped string at a time. A failure partway
+    // through must free every string already copied AND the in-flight one, or
+    // the daemon leaks a whole sandbox argv per attempt — and the self-test is
+    // meant to run on a host that is ALREADY unhealthy, which is exactly when
+    // an allocator is most likely to refuse. testing.allocator underneath the
+    // FailingAllocator fails this test if anything survives.
+    //
+    // Walked rather than pinned to one index: the argv's length is a property
+    // of the bind set, so a fixed index would silently stop covering the second
+    // loop the moment the baseline grows.
+    const alloc = std.testing.allocator;
+    const c = cfg(.allow_all, &.{});
+
+    const full = try selftest.composeProbeArgv(alloc, FAKE_BWRAP, FAKE_SELF_EXE, c, WORKSPACE);
+    const argv_allocs = full.len + 1; // every string, plus the list itself
+    sandbox_args.freeArgv(alloc, full);
+
+    for (0..argv_allocs) |fail_index| {
+        var fa = std.testing.FailingAllocator.init(alloc, .{ .fail_index = fail_index });
+        try std.testing.expectError(
+            error.OutOfMemory,
+            selftest.composeProbeArgv(fa.allocator(), FAKE_BWRAP, FAKE_SELF_EXE, c, WORKSPACE),
+        );
+    }
+}
+
 test "test_probe_uses_the_lease_argv_builder" {
     const alloc = std.testing.allocator;
     // Dimension 2.1 / Invariant 1 — the probe's sandbox must be the SAME
