@@ -39,7 +39,7 @@ jobs:
   test-unit-agentsfleetd:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r3
+      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
     steps:
       - uses: actions/checkout@v6
       - name: Cache Zig build
@@ -62,7 +62,7 @@ jobs:
   test-unit-agentsfleet-runner:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r3
+      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
     steps:
       - uses: actions/checkout@v6
       - name: Cache Zig build
@@ -85,7 +85,7 @@ jobs:
   test-unit-agentsfleet-lib:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r3
+      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
     steps:
       - uses: actions/checkout@v6
       - name: Cache Zig build
@@ -171,7 +171,7 @@ jobs:
             -e KEEP_TEST_STATE=1 \
             -e TEST_DATABASE_URL="postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb?sslmode=disable" \
             -e TEST_REDIS_TLS_URL="rediss://:agentsfleet@localhost:6379" \
-            ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r3@sha256:2221d571c4814d54577012b5cf332e2ec3606a24f7f66bd88e07200fcf0304f7 \
+            ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4@sha256:b27550eb4910e77e532f061a7c1f3453815cb275dd188bdcc7db0448dd656948 \
             sh -c 'make test-coverage-zig'
       # Runs on the HOST, after the container step above has produced
       # zig-out/bin/agentsfleetd: the host has compose (and therefore `docker

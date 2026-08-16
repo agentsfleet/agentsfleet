@@ -36,9 +36,17 @@ RUN apt-get update \
       python3 \
       build-essential \
       docker.io \
+      docker-compose-v2 \
       gnupg \
       bubblewrap \
  && rm -rf /var/lib/apt/lists/*
+# docker-compose-v2 is named explicitly because `docker.io` does NOT provide it.
+# This image drives `docker compose up` against the mounted host socket from the
+# test-integration lane, and the header below claimed docker-cli was enough for
+# that — it is not, on Ubuntu 24.04. A rebuild from the unchanged Dockerfile
+# therefore produced an image whose compose had silently vanished, and the lane
+# died on `unknown shorthand flag: 'd' in -d`. Naming the package pins the
+# capability to this file instead of to whatever `docker.io` happens to bundle.
 
 RUN set -eux; \
     tarball="zig-x86_64-linux-${ZIG_VERSION}.tar.xz"; \
