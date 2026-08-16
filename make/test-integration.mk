@@ -20,7 +20,7 @@
 # the cgroup proofs then SkipZigTest (requireCgroupDelegation) — no host mutation,
 # no false green. In production the runner's cgroup subtree is delegated by the
 # init system (systemd Delegate=) / container runtime; this script is never deployed.
-RUNNER_CI_IMAGE ?= ghcr.io/agentsfleet/ci-zig-alpine:0.16.0
+RUNNER_CI_IMAGE ?= ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r3
 
 test-integration-kernel:  ## Run the runner's real-process kernel integration tests (env/kill-tree + seccomp/Landlock/cgroup); native on Linux, auto-containerized on macOS
 ifeq ($(shell uname),Darwin)
