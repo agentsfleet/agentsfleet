@@ -104,7 +104,7 @@ test "integration: balanceCoversEstimate returns true under non-stop policies re
 
     // Provision at 0¢ — balance is empty, but non-stop policies must let
     // the event through.
-    try tenant_billing.provision(db_ctx.conn, TENANT_ID, 0, "test_continue");
+    try base.seedWalletBalance(db_ctx.conn, TENANT_ID, 0, "test_continue");
 
     try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
@@ -140,7 +140,7 @@ test "integration: balanceCoversEstimate blocks when stop policy AND balance bel
     // and leave `balance < est_total` unreachable, so the refusal below could
     // never fire.
     base.resetBillingFor(db_ctx.conn, TENANT_ID);
-    try tenant_billing.provision(db_ctx.conn, TENANT_ID, 0, "test_block");
+    try base.seedWalletBalance(db_ctx.conn, TENANT_ID, 0, "test_block");
 
     try std.testing.expect(!metering.balanceCoversEstimate(
         db_ctx.pool,
@@ -193,7 +193,6 @@ test "integration: debitReceive self-managed EVENT_NANOS=0 charge writes telemet
         TENANT_ID,
         makeCtx(WS_RECEIVE_DEBIT, event_id),
         EVENT_CREATED_AT,
-        .stop,
     );
     switch (result) {
         .deducted => |c| try std.testing.expectEqual(tenant_billing.EVENT_NANOS, c),
@@ -232,9 +231,9 @@ test "integration: telemetry insert is idempotent — same event_id+charge_type 
     const event_id = "0195b4ba-8d3a-7f13-8abc-aa1900000a06";
     const ctx = makeCtx(ws, event_id);
 
-    _ = metering.debitReceive(db_ctx.pool, ALLOC, TENANT_ID, ctx, EVENT_CREATED_AT, .stop);
+    _ = metering.debitReceive(db_ctx.pool, ALLOC, TENANT_ID, ctx, EVENT_CREATED_AT);
     // Replay: the second INSERT must hit ON CONFLICT DO NOTHING.
-    _ = metering.debitReceive(db_ctx.pool, ALLOC, TENANT_ID, ctx, EVENT_CREATED_AT, .stop);
+    _ = metering.debitReceive(db_ctx.pool, ALLOC, TENANT_ID, ctx, EVENT_CREATED_AT);
 
     var q = PgQuery.from(try db_ctx.conn.query(
         \\SELECT COUNT(*)::BIGINT FROM billing.usage_ledger

@@ -90,7 +90,7 @@ test "integration: should pass the stop gate for self_managed at zero balance (n
             tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
         );
     try std.testing.expectEqual(@as(i64, 0), est_total);
-    try tenant_billing.provision(db_ctx.conn, TENANT_ID, est_total, "test_gate_exact");
+    try base.seedWalletBalance(db_ctx.conn, TENANT_ID, est_total, "test_gate_exact");
 
     // balance == est_total == 0 → gate passes (>= comparison, not strict).
     try std.testing.expect(metering.balanceCoversEstimate(
@@ -135,10 +135,10 @@ test "integration: should block the stop gate when balance is one nano below the
     // Provision the exact estimate. seedPlatformProvider granted the starter
     // balance and provision is idempotent — reset so est_total actually lands.
     base.resetBillingFor(db_ctx.conn, TENANT_ID);
-    try tenant_billing.provision(db_ctx.conn, TENANT_ID, est_total, "test_gate_under");
+    try base.seedWalletBalance(db_ctx.conn, TENANT_ID, est_total, "test_gate_under");
 
     // Drop exactly one nano below the estimate so the stop gate must refuse.
-    _ = try tenant_billing.debit(db_ctx.conn, TENANT_ID, 1);
+    try base.spendWallet(db_ctx.conn, TENANT_ID, 1);
 
     try std.testing.expect(!metering.balanceCoversEstimate(
         db_ctx.pool,

@@ -11,23 +11,13 @@ const ALLOC = std.testing.allocator;
 
 test "DebitOutcome variants compile and pattern-match" {
     const r1: metering.DebitOutcome = .{ .deducted = 7 };
-    const r2: metering.DebitOutcome = .{ .exhausted = {} };
-    const r3: metering.DebitOutcome = .{ .missing_tenant_billing = {} };
-    const r4: metering.DebitOutcome = .{ .db_error = {} };
+    const r2: metering.DebitOutcome = .{ .db_error = {} };
 
     try std.testing.expectEqual(@as(i64, 7), switch (r1) {
         .deducted => |c| c,
         else => @as(i64, -1),
     });
     switch (r2) {
-        .exhausted => {},
-        else => return error.TestExpectedEqual,
-    }
-    switch (r3) {
-        .missing_tenant_billing => {},
-        else => return error.TestExpectedEqual,
-    }
-    switch (r4) {
         .db_error => {},
         else => return error.TestExpectedEqual,
     }

@@ -17,51 +17,11 @@ pub const INSERT_TENANT_BILLING =
     \\ON CONFLICT (tenant_id) DO NOTHING
 ;
 
-/// Debit, refusing to go negative.
-///
-/// `balance_nanos >= $2` in the WHERE is the overdraft guard, and it is why
-/// this is one statement rather than a read-then-write: two concurrent debits
-/// cannot both observe a sufficient balance and both succeed. A caller that
-/// gets no row was outbid, not errored.
-pub const DEBIT_TENANT_BALANCE =
-    \\UPDATE billing.tenant_wallet
-    \\SET balance_nanos = balance_nanos - $2,
-    \\    balance_exhausted_at = NULL,
-    \\    updated_at = $3
-    \\WHERE tenant_id = $1::uuid
-    \\  AND balance_nanos >= $2
-    \\RETURNING balance_nanos, updated_at
-;
-
-pub const SELECT_TENANT_BILLING_EXISTS =
-    \\SELECT 1 FROM billing.tenant_wallet WHERE tenant_id = $1::uuid LIMIT 1
-;
-
 pub const SELECT_TENANT_BALANCE =
     \\SELECT balance_nanos, updated_at, balance_exhausted_at
     \\FROM billing.tenant_wallet
     \\WHERE tenant_id = $1::uuid
     \\LIMIT 1
-;
-
-/// Stamp exhaustion once. The `IS NULL` guard makes the first writer the only
-/// writer, so the timestamp records when the balance ran out rather than the
-/// last time anything noticed.
-pub const MARK_BALANCE_EXHAUSTED =
-    \\UPDATE billing.tenant_wallet
-    \\SET balance_exhausted_at = $2, updated_at = $2
-    \\WHERE tenant_id = $1::uuid
-    \\  AND balance_exhausted_at IS NULL
-    \\RETURNING balance_exhausted_at
-;
-
-/// Clear exhaustion on top-up; mirrors the guard above so a no-op reports none.
-pub const CLEAR_BALANCE_EXHAUSTED =
-    \\UPDATE billing.tenant_wallet
-    \\SET balance_exhausted_at = NULL, updated_at = $2
-    \\WHERE tenant_id = $1::uuid
-    \\  AND balance_exhausted_at IS NOT NULL
-    \\RETURNING tenant_id
 ;
 
 pub const SELECT_TENANT_FOR_WORKSPACE =

@@ -159,7 +159,7 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
     // Drain the entire starter grant; stop policy must now block. Priced under
     // platform posture against the seeded row: the self-managed branch zeroes
     // both token tiers, so its floor is 0 and a drained balance still covers it.
-    _ = try tenant_billing.debit(db_ctx.conn, TEST_TENANT_ID, tenant_billing.STARTER_CREDIT_NANOS);
+    try test_fixtures.spendWallet(db_ctx.conn, TEST_TENANT_ID, tenant_billing.STARTER_CREDIT_NANOS);
     try std.testing.expect(!metering.balanceCoversEstimate(
         db_ctx.pool,
         TEST_TENANT_ID,
@@ -304,61 +304,6 @@ test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=true +
 }
 
 // ── Concurrency — markExhausted atomicity under parallel callers ─────────
-
-test "integration(m11_006): concurrent markExhausted calls — exactly one transitions, rest are no-ops" {
-    const alloc = std.testing.allocator;
-    // Acquire the pool via the base harness (seed uses a single conn, threads
-    // each acquire their own connection to exercise the real race surface).
-    const db_ctx = (try @import("../../db/test_fixtures.zig").openTestConn(alloc)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-
-    const now_ms = clock.nowMillis();
-    {
-        try seedTenantAndWorkspace(db_ctx.conn, TEST_TENANT_ID, now_ms);
-        test_fixtures.resetBillingFor(db_ctx.conn, TEST_TENANT_ID);
-        try tenant_billing.insertStarterGrant(db_ctx.conn, TEST_TENANT_ID);
-    }
-    defer {
-        teardown(db_ctx.conn, TEST_TENANT_ID);
-        db_ctx.pool.release(db_ctx.conn);
-    }
-
-    const Worker = struct {
-        pool: *@import("pg").Pool,
-        result: bool = false,
-        err: ?anyerror = null,
-
-        fn run(self: *@This()) void {
-            const conn = self.pool.acquire() catch |e| {
-                self.err = e;
-                return;
-            };
-            defer self.pool.release(conn);
-            self.result = tenant_billing.markExhausted(conn, TEST_TENANT_ID) catch |e| blk: {
-                self.err = e;
-                break :blk false;
-            };
-        }
-    };
-
-    const N = 8;
-    var workers: [N]Worker = undefined;
-    var threads: [N]std.Thread = undefined;
-    for (0..N) |idx| workers[idx] = .{ .pool = db_ctx.pool };
-    for (0..N) |idx| threads[idx] = try std.Thread.spawn(.{}, Worker.run, .{&workers[idx]});
-    for (0..N) |idx| threads[idx].join();
-
-    // Exactly one worker observes the NULL→now transition; the other N-1
-    // see the idempotent replay. This is the load-bearing invariant for
-    // the one-shot `balance_exhausted_first_debit` activity event —
-    // duplicates here would dupe the operator-visible notification.
-    var transitioned_count: usize = 0;
-    for (0..N) |idx| {
-        if (workers[idx].err) |e| return e;
-        if (workers[idx].result) transitioned_count += 1;
-    }
-    try std.testing.expectEqual(@as(usize, 1), transitioned_count);
-}
 
 // ── §1.2 (post-1.7) — null tenant_id → 403 ──────────────────────────────
 

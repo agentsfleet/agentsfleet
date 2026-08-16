@@ -68,10 +68,10 @@ test "should keep the first balance when provision is replayed on the same tenan
     // First provision lands balance1 + source1. The claim below is
     // first-provision-wins, so start from a guaranteed-absent row.
     base.resetBillingFor(db_ctx.conn, TENANT_ID);
-    try tenant_billing.provision(db_ctx.conn, TENANT_ID, balance1, "source_first");
+    try base.seedWalletBalance(db_ctx.conn, TENANT_ID, balance1, "source_first");
     // Second provision with a different balance/source must be a silent no-op
     // (ON CONFLICT DO NOTHING) — the row stays as the first call left it.
-    try tenant_billing.provision(db_ctx.conn, TENANT_ID, balance2, "source_second");
+    try base.seedWalletBalance(db_ctx.conn, TENANT_ID, balance2, "source_second");
 
     const row = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
     try std.testing.expectEqual(balance1, row.balance_nanos);
@@ -111,7 +111,6 @@ test "should commit a telemetry row with zero deducted nanos and leave balance u
         TENANT_ID,
         selfManagedCtx(WS_ZERO_DEBIT, event_id),
         EVENT_CREATED_AT,
-        .stop,
     );
     switch (result) {
         .deducted => |c| try std.testing.expectEqual(@as(i64, 0), c),
