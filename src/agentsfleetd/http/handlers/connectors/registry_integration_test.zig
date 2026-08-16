@@ -1,7 +1,7 @@
 // Integration tests — the generic connector platform:
 //
 //  * unknown provider → 404 whose body names it (end-to-end via the
-//    Bearer-less callback route; the connect/status routes reach the same
+//    compatibility callback relay; the connect/status routes reach the same
 //    `registry.respondUnknown` line, pinned here by pure router-match tests)
 //  * unconfigured provider → 503 UZ-CONN-001, fail-loud, no partial state
 //    (a registry provider whose `<provider>-app` vault bag is absent) — the
@@ -26,10 +26,12 @@ const test_port = @import("../../test_port.zig");
 const scope_tokens = @import("../../test_scope_tokens.zig");
 const test_fixtures = @import("../../../db/test_fixtures.zig");
 const vault = @import("../../../state/vault.zig");
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const oauth2 = @import("oauth2.zig");
 const connector_state = @import("state.zig");
 const slack_spec = @import("slack/spec.zig");
 const github_spec = @import("github/spec.zig");
+const connector_sql = @import("sql.zig");
 
 const TestHarness = harness_mod.TestHarness;
 const net = std.Io.net;
@@ -42,13 +44,14 @@ const ADMIN_WS = "0195c108-0001-7000-8000-000000000001";
 const TARGET_WS = "0195c108-0002-7000-8000-000000000002";
 const SIGNING_SECRET = "m108-registry-signing-secret-key";
 const UNKNOWN_PROVIDER = "nope";
+const CALLBACK_SUBJECT = "user_test";
 
 fn noopRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
 fn mintLatestGithubState(alloc: std.mem.Allocator, h: *TestHarness) ![]const u8 {
-    const state = try connector_state.mint(alloc, &h.queue, github_spec.STATE, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    const state = try connector_state.mint(alloc, &h.queue, github_spec.STATE, SIGNING_SECRET, AUTHED_WS, CALLBACK_SUBJECT, common.clock.nowMillis());
     errdefer alloc.free(state);
-    try connector_state.markLatest(&h.queue, github_spec.STATE, TARGET_WS, state);
+    try connector_state.markLatest(&h.queue, github_spec.STATE, AUTHED_WS, state);
     return state;
 }
 
@@ -65,6 +68,8 @@ test "router: the generic connector trio captures workspace + provider" {
 
     const callback = router.match("/v1/connectors/slack/callback", .GET) orelse return error.TestUnexpectedResult;
     try testing.expectEqualStrings("slack", callback.connector_callback);
+    const complete = router.match("/v1/connectors/slack/callback", .POST) orelse return error.TestUnexpectedResult;
+    try testing.expectEqualStrings("slack", complete.connector_complete);
 
     // The catalog is the workspace-nested collection whose items are the status
     // routes; its capture is the workspace id (workspace_id is a PATH param, per
@@ -97,12 +102,62 @@ test "integration: unknown provider callback is a 404 whose body names it" {
     try testing.expect(r.bodyContains("UZ-CONN-004"));
 }
 
+test "integration: legacy callback relays state and fixed source marker without inspecting it" {
+    const h = TestHarness.start(testing.allocator, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const response = try h.get("/v1/connectors/slack/callback?code=legacy-code&state=legacy-state").redirectBehavior(.unhandled).send();
+    defer response.deinit();
+    try response.expectStatus(.found);
+    const location = response.header("location") orelse return error.RedirectLocationMissing;
+    try testing.expect(std.mem.indexOf(u8, location, "callback_source=legacy_api") != null);
+    try testing.expect(std.mem.indexOf(u8, location, "code=legacy-code") != null);
+    try testing.expect(std.mem.indexOf(u8, location, "state=legacy-state") != null);
+}
+
+test "integration: legacy callback percent-encodes every relayed provider value" {
+    const h = TestHarness.start(testing.allocator, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const response = try h.get("/v1/connectors/zoho/callback?code=a%2Bb%26c&state=s%2Ft%20u&location=eu%2Eexample%2Fdc&installation_id=12%2F34").redirectBehavior(.unhandled).send();
+    defer response.deinit();
+    try response.expectStatus(.found);
+    const location = response.header("location") orelse return error.RedirectLocationMissing;
+    try testing.expect(std.mem.indexOf(u8, location, "code=a%2Bb%26c") != null);
+    try testing.expect(std.mem.indexOf(u8, location, "state=s%2Ft%20u") != null);
+    try testing.expect(std.mem.indexOf(u8, location, "location=eu.example%2Fdc") != null);
+    try testing.expect(std.mem.indexOf(u8, location, "installation_id=12%2F34") != null);
+}
+
+test "integration: legacy GitHub installation callback relays without an OAuth code" {
+    const h = TestHarness.start(testing.allocator, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const response = try h.get("/v1/connectors/github/callback?installation_id=12345&state=legacy-state").redirectBehavior(.unhandled).send();
+    defer response.deinit();
+    try response.expectStatus(.found);
+    const location = response.header("location") orelse return error.RedirectLocationMissing;
+    try testing.expect(std.mem.indexOf(u8, location, "callback_source=legacy_api") != null);
+    try testing.expect(std.mem.indexOf(u8, location, "installation_id=12345") != null);
+    try testing.expect(std.mem.indexOf(u8, location, "state=legacy-state") != null);
+    try testing.expect(std.mem.indexOf(u8, location, "code=") == null);
+}
+
 // ── End-to-end: registry provider without its `<provider>-app` bag →
 // 503 UZ-CONN-001, no partial state (Dim 1.1) ────────────────────────────────
 
 test "integration: unconfigured provider fails loud 503, no partial state" {
     const alloc = testing.allocator;
-    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
@@ -112,9 +167,7 @@ test "integration: unconfigured provider fails loud 503, no partial state" {
     defer h.releaseConn(conn);
 
     test_fixtures.setTestEncryptionKey();
-    try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
-    try test_fixtures.seedWorkspaceWithTenant(conn, ADMIN_WS, TENANT_ID);
-    try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
+    try seedAuthedFixtures(conn);
     preClean(conn);
 
     // Signing secret present, admin workspace wired — but NO slack-app vault
@@ -122,18 +175,18 @@ test "integration: unconfigured provider fails loud 503, no partial state" {
     h.ctx.approval_signing_secret = SIGNING_SECRET;
     h.ctx.platform_admin_workspace_id = ADMIN_WS;
 
-    const state = try oauth2.mintState(alloc, &h.queue, slack_spec.SPEC, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    const state = try oauth2.mintState(alloc, &h.queue, slack_spec.SPEC, SIGNING_SECRET, AUTHED_WS, CALLBACK_SUBJECT, common.clock.nowMillis());
     defer alloc.free(state);
     const path = try std.fmt.allocPrint(alloc, "/v1/connectors/slack/callback?code=fake-code&state={s}", .{state});
     defer alloc.free(path);
 
-    const r = try h.get(path).redirectBehavior(.unhandled).send();
+    const r = try (try (try h.post(path).json("{}")).bearer(scope_tokens.TENANT_ADMIN)).redirectBehavior(.unhandled).send();
     defer r.deinit();
     try r.expectStatus(.service_unavailable);
     try testing.expect(r.bodyContains("UZ-CONN-001"));
 
     // Fail-loud with NO partial state: no vault handle was written.
-    if (vault.loadJson(alloc, conn, TARGET_WS, common.PROVIDER_SLACK)) |parsed| {
+    if (vault.loadJson(alloc, conn, AUTHED_WS, common.PROVIDER_SLACK)) |parsed| {
         var p = parsed;
         p.deinit();
         return error.HandleUnexpectedlyWritten;
@@ -141,7 +194,7 @@ test "integration: unconfigured provider fails loud 503, no partial state" {
 }
 
 fn preClean(conn: *pg.Conn) void {
-    _ = vault.deleteCredential(conn, TARGET_WS, common.PROVIDER_SLACK) catch |e| std.log.warn("preclean vault ignored: {s}", .{@errorName(e)});
+    _ = vault.deleteCredential(conn, AUTHED_WS, common.PROVIDER_SLACK) catch |e| std.log.warn("preclean vault ignored: {s}", .{@errorName(e)});
     // Belt-and-suspenders: the "unconfigured" assertion depends on ADMIN_WS
     // having NO slack-app bag. A sibling seed-creds test that crashed before
     // its cleanup could leave one — and then this test would load real creds
@@ -155,6 +208,19 @@ fn preClean(conn: *pg.Conn) void {
 const AUTHED_TENANT = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const AUTHED_WS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const GITHUB_TEST_SLUG = "m108-test-app";
+const GITHUB_TEST_CLIENT_ID = "m108-github-client-id";
+const CONNECTOR_INSTALL_ID = "0195c108-0004-7000-8000-000000000004";
+const CONNECTOR_EXTERNAL_ID = "42424242";
+const INSERT_CONNECTOR_INSTALL =
+    \\INSERT INTO core.connector_installs
+    \\  (id, provider, external_account_id, workspace_id, installed_by, scopes, created_at, updated_at)
+    \\VALUES ($1::uuid, $2, $3, $4::uuid, '', ARRAY[]::text[], $5, $5)
+    \\ON CONFLICT (provider, external_account_id) DO UPDATE SET workspace_id = EXCLUDED.workspace_id, updated_at = EXCLUDED.updated_at
+;
+const COUNT_CONNECTOR_INSTALLS =
+    \\SELECT count(*) FROM core.connector_installs
+    \\WHERE provider = $1 AND workspace_id = $2::uuid
+;
 
 fn startAuthedHarness(alloc: std.mem.Allocator) !*TestHarness {
     return TestHarness.start(alloc, .{
@@ -188,6 +254,21 @@ fn seedSlackAppCreds(alloc: std.mem.Allocator, conn: *pg.Conn) !void {
     try obj.put(alloc, "client_id", .{ .string = "m108-test-client-id" });
     try obj.put(alloc, "client_secret", .{ .string = "m108-test-client-secret" });
     try test_fixtures.storeVaultJson(alloc, conn, ADMIN_WS, "slack-app", .{ .object = obj });
+}
+
+fn seedGithubAppCreds(alloc: std.mem.Allocator, conn: *pg.Conn) !void {
+    var obj: std.json.ObjectMap = .empty;
+    defer obj.deinit(alloc);
+    try obj.put(alloc, "client_id", .{ .string = GITHUB_TEST_CLIENT_ID });
+    try obj.put(alloc, "client_secret", .{ .string = "m108-github-client-secret" });
+    try test_fixtures.storeVaultJson(alloc, conn, ADMIN_WS, "github-app", .{ .object = obj });
+}
+
+fn countConnectorInstalls(conn: *pg.Conn, provider: []const u8, workspace_id: []const u8) !i64 {
+    var query = PgQuery.from(try conn.query(COUNT_CONNECTOR_INSTALLS, .{ provider, workspace_id }));
+    defer query.deinit();
+    const row = try query.next() orelse return error.CountMissing;
+    return row.get(i64, 0);
 }
 
 fn deleteVaultKey(conn: *pg.Conn, ws: []const u8, key: []const u8) void {
@@ -280,7 +361,7 @@ test "integration: slack connect returns the provider authorize URL with a bound
     try testing.expect(r.bodyContains("m108-test-client-id"));
 }
 
-test "integration: github connect builds the App install URL from the configured slug" {
+test "integration: github connect starts user authorization for existing-install discovery" {
     const alloc = testing.allocator;
     const h = startAuthedHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
@@ -289,14 +370,21 @@ test "integration: github connect builds the App install URL from the configured
     defer h.deinit();
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
+    test_fixtures.setTestEncryptionKey();
     try seedAuthedFixtures(conn);
+    try seedGithubAppCreds(alloc, conn);
+    defer deleteVaultKey(conn, ADMIN_WS, "github-app");
     h.ctx.approval_signing_secret = SIGNING_SECRET;
+    h.ctx.platform_admin_workspace_id = ADMIN_WS;
     h.ctx.github_app_slug = GITHUB_TEST_SLUG;
 
     const r = try (try (try h.post("/v1/workspaces/" ++ AUTHED_WS ++ "/connectors/github/connect").json("{}")).bearer(scope_tokens.TENANT_ADMIN)).send();
     defer r.deinit();
     try r.expectStatus(.ok);
-    try testing.expect(r.bodyContains("github.com/apps/" ++ GITHUB_TEST_SLUG ++ "/installations/new?state="));
+    try testing.expect(r.bodyContains("github.com/login/oauth/authorize"));
+    try testing.expect(r.bodyContains(GITHUB_TEST_CLIENT_ID));
+    try testing.expect(r.bodyContains("state="));
+    try testing.expect(!r.bodyContains("scope="));
 }
 
 test "integration: github connect without an App slug is a loud 503" {
@@ -308,8 +396,12 @@ test "integration: github connect without an App slug is a loud 503" {
     defer h.deinit();
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
+    test_fixtures.setTestEncryptionKey();
     try seedAuthedFixtures(conn);
+    try seedGithubAppCreds(alloc, conn);
+    defer deleteVaultKey(conn, ADMIN_WS, "github-app");
     h.ctx.approval_signing_secret = SIGNING_SECRET;
+    h.ctx.platform_admin_workspace_id = ADMIN_WS;
     h.ctx.github_app_slug = null; // platform config absent → degrade closed
 
     const r = try (try (try h.post("/v1/workspaces/" ++ AUTHED_WS ++ "/connectors/github/connect").json("{}")).bearer(scope_tokens.TENANT_ADMIN)).send();
@@ -318,53 +410,163 @@ test "integration: github connect without an App slug is a loud 503" {
     try r.expectErrorCode("UZ-CONN-001");
 }
 
-// ── Callback request-shape failures (Bearer-less route) ─────────────────────
-
-test "integration: callback without approval signing secret fails closed" {
+test "integration: completion rejects a different identity without consuming the starter state" {
     const alloc = testing.allocator;
-    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    test_fixtures.setTestEncryptionKey();
+    try seedAuthedFixtures(conn);
+    preClean(conn);
+    h.ctx.approval_signing_secret = SIGNING_SECRET;
+    h.ctx.platform_admin_workspace_id = ADMIN_WS;
+
+    const state = try oauth2.mintState(alloc, &h.queue, slack_spec.SPEC, SIGNING_SECRET, AUTHED_WS, CALLBACK_SUBJECT, common.clock.nowMillis());
+    defer alloc.free(state);
+    const path = try std.fmt.allocPrint(alloc, "/v1/connectors/slack/callback?code=fake-code&state={s}", .{state});
+    defer alloc.free(path);
+
+    // The compatibility GET may relay the signed state, but it must not inspect
+    // or consume it. The starter's later progress to the app-credential check
+    // proves this relay left the nonce usable.
+    const legacy_relay = try h.get(path).redirectBehavior(.unhandled).send();
+    defer legacy_relay.deinit();
+    try legacy_relay.expectStatus(.found);
+    try testing.expect(std.mem.indexOf(u8, legacy_relay.header("location") orelse return error.RedirectLocationMissing, "callback_source=legacy_api") != null);
+
+    const unauthenticated = try (try h.post(path).json("{}")).send();
+    defer unauthenticated.deinit();
+    try unauthenticated.expectStatus(.unauthorized);
+
+    const wrong_identity = try (try (try h.post(path).json("{}")).bearer(scope_tokens.NO_TENANT)).send();
+    defer wrong_identity.deinit();
+    try wrong_identity.expectStatus(.bad_request);
+    try wrong_identity.expectErrorCode("UZ-CONN-002");
+
+    // The owner can still use the same state. Its expected 503 proves it got
+    // past identity verification and nonce consumption to the absent app bag,
+    // rather than being rejected as a previously consumed state.
+    const starter = try (try (try h.post(path).json("{}")).bearer(scope_tokens.TENANT_ADMIN)).send();
+    defer starter.deinit();
+    try starter.expectStatus(.service_unavailable);
+    try starter.expectErrorCode("UZ-CONN-001");
+}
+
+test "integration: connector disconnect removes internal binding and is idempotent" {
+    const alloc = testing.allocator;
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    test_fixtures.setTestEncryptionKey();
+    try seedAuthedFixtures(conn);
+    _ = try conn.exec(connector_sql.DELETE_WORKSPACE_INSTALLS, .{ common.PROVIDER_GITHUB, AUTHED_WS });
+    defer {
+        _ = conn.exec(connector_sql.DELETE_WORKSPACE_INSTALLS, .{ common.PROVIDER_GITHUB, AUTHED_WS }) catch {};
+        deleteVaultKey(conn, AUTHED_WS, common.PROVIDER_GITHUB);
+    }
+    _ = try conn.exec(INSERT_CONNECTOR_INSTALL, .{
+        CONNECTOR_INSTALL_ID,
+        common.PROVIDER_GITHUB,
+        CONNECTOR_EXTERNAL_ID,
+        AUTHED_WS,
+        common.clock.nowMillis(),
+    });
+    var handle: std.json.ObjectMap = .empty;
+    defer handle.deinit(alloc);
+    try handle.put(alloc, "integration", .{ .string = "github" });
+    try handle.put(alloc, "installation_id", .{ .string = CONNECTOR_EXTERNAL_ID });
+    try test_fixtures.storeVaultJson(alloc, conn, AUTHED_WS, common.PROVIDER_GITHUB, .{ .object = handle });
+
+    const path = "/v1/workspaces/" ++ AUTHED_WS ++ "/connectors/github";
+    inline for (0..2) |_| {
+        const response = try (try h.delete(path).bearer(scope_tokens.TENANT_ADMIN)).send();
+        defer response.deinit();
+        try response.expectStatus(.no_content);
+    }
+    try testing.expectEqual(@as(i64, 0), try countConnectorInstalls(conn, common.PROVIDER_GITHUB, AUTHED_WS));
+    try testing.expectError(error.NotFound, vault.loadJson(alloc, conn, AUTHED_WS, common.PROVIDER_GITHUB));
+}
+
+test "integration: connector disconnect requires connector write scope" {
+    const h = startAuthedHarness(testing.allocator) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const path = "/v1/workspaces/" ++ AUTHED_WS ++ "/connectors/github";
+    const response = try (try h.delete(path).bearer(scope_tokens.OPERATOR)).send();
+    defer response.deinit();
+    try response.expectStatus(.forbidden);
+}
+
+// ── Authenticated completion request-shape failures ─────────────────────────
+
+test "integration: completion without approval signing secret fails closed" {
+    const alloc = testing.allocator;
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
     defer h.deinit();
     h.ctx.approval_signing_secret = null;
 
-    const r = try h.get("/v1/connectors/slack/callback?code=unused&state=unsigned").send();
+    const r = try (try (try h.post("/v1/connectors/slack/callback?code=unused&state=unsigned").json("{}")).bearer(scope_tokens.TENANT_ADMIN)).send();
     defer r.deinit();
     try r.expectStatus(.service_unavailable);
     try r.expectErrorCode("UZ-CONN-001");
 }
 
-test "integration: callback with a missing state is a 400 invalid request" {
+test "integration: completion with a missing state is a 400 invalid request" {
     const alloc = testing.allocator;
-    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
     defer h.deinit();
     h.ctx.approval_signing_secret = SIGNING_SECRET;
 
-    const r = try h.get("/v1/connectors/slack/callback?code=whatever").send();
+    const r = try (try (try h.post("/v1/connectors/slack/callback?code=whatever").json("{}")).bearer(scope_tokens.TENANT_ADMIN)).send();
     defer r.deinit();
     try r.expectStatus(.bad_request);
     try r.expectErrorCode("UZ-REQ-001");
 }
 
-test "integration: oauth2 callback with a missing code is a 400 invalid request" {
+test "integration: completion rejects an unknown callback source" {
+    const h = startAuthedHarness(testing.allocator) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const r = try (try (try h.post("/v1/connectors/slack/callback?code=whatever&state=unused&callback_source=browser_supplied").json("{}")).bearer(scope_tokens.TENANT_ADMIN)).send();
+    defer r.deinit();
+    try r.expectStatus(.bad_request);
+    try r.expectErrorCode("UZ-REQ-001");
+}
+
+test "integration: oauth2 completion with a missing code is a 400 invalid request" {
     const alloc = testing.allocator;
-    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
     defer h.deinit();
     h.ctx.approval_signing_secret = SIGNING_SECRET;
 
-    const state = try oauth2.mintState(alloc, &h.queue, slack_spec.SPEC, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    const state = try oauth2.mintState(alloc, &h.queue, slack_spec.SPEC, SIGNING_SECRET, AUTHED_WS, CALLBACK_SUBJECT, common.clock.nowMillis());
     defer alloc.free(state);
     const path = try std.fmt.allocPrint(alloc, "/v1/connectors/slack/callback?state={s}", .{state});
     defer alloc.free(path);
 
-    const r = try h.get(path).send();
+    const r = try (try (try h.post(path).json("{}")).bearer(scope_tokens.TENANT_ADMIN)).send();
     defer r.deinit();
     try r.expectStatus(.bad_request);
     try r.expectErrorCode("UZ-REQ-001");
@@ -531,7 +733,7 @@ test "integration: github status reads the installation handle" {
 
 test "integration: github callback requires a user-authorization code" {
     const alloc = testing.allocator;
-    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
@@ -539,9 +741,8 @@ test "integration: github callback requires a user-authorization code" {
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     test_fixtures.setTestEncryptionKey();
-    try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
-    try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
-    deleteFleetHandle(conn, TARGET_WS, common.PROVIDER_GITHUB);
+    try seedAuthedFixtures(conn);
+    deleteFleetHandle(conn, AUTHED_WS, common.PROVIDER_GITHUB);
     h.ctx.approval_signing_secret = SIGNING_SECRET;
 
     // app_install state is minted against github's OWN domain binding.
@@ -550,17 +751,17 @@ test "integration: github callback requires a user-authorization code" {
     const path = try std.fmt.allocPrint(alloc, "/v1/connectors/github/callback?installation_id=42424242&state={s}", .{state});
     defer alloc.free(path);
 
-    const r = try h.get(path).redirectBehavior(.unhandled).send();
+    const r = try (try (try h.post(path).json("{}")).bearer(scope_tokens.TENANT_ADMIN)).redirectBehavior(.unhandled).send();
     defer r.deinit();
     try r.expectStatus(.bad_request);
     try r.expectErrorCode("UZ-REQ-001");
 
-    deleteFleetHandle(conn, TARGET_WS, common.PROVIDER_GITHUB);
+    deleteFleetHandle(conn, AUTHED_WS, common.PROVIDER_GITHUB);
 }
 
 test "integration: github callback with a non-numeric installation_id is a 400, no handle written" {
     const alloc = testing.allocator;
-    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
@@ -568,9 +769,8 @@ test "integration: github callback with a non-numeric installation_id is a 400, 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     test_fixtures.setTestEncryptionKey();
-    try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
-    try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
-    deleteFleetHandle(conn, TARGET_WS, common.PROVIDER_GITHUB);
+    try seedAuthedFixtures(conn);
+    deleteFleetHandle(conn, AUTHED_WS, common.PROVIDER_GITHUB);
     h.ctx.approval_signing_secret = SIGNING_SECRET;
 
     const state = try mintLatestGithubState(alloc, h);
@@ -578,12 +778,12 @@ test "integration: github callback with a non-numeric installation_id is a 400, 
     const path = try std.fmt.allocPrint(alloc, "/v1/connectors/github/callback?installation_id=not-a-number&state={s}", .{state});
     defer alloc.free(path);
 
-    const r = try h.get(path).redirectBehavior(.unhandled).send();
+    const r = try (try (try h.post(path).json("{}")).bearer(scope_tokens.TENANT_ADMIN)).redirectBehavior(.unhandled).send();
     defer r.deinit();
     try r.expectStatus(.bad_request);
     try r.expectErrorCode("UZ-REQ-001");
 
-    if (vault.loadJson(alloc, conn, TARGET_WS, common.PROVIDER_GITHUB)) |p| {
+    if (vault.loadJson(alloc, conn, AUTHED_WS, common.PROVIDER_GITHUB)) |p| {
         var pp = p;
         pp.deinit();
         return error.HandleUnexpectedlyWritten;
@@ -627,7 +827,7 @@ test "integration: a valid token cannot connect/read a workspace it doesn't own 
 
 test "integration: an unreachable vendor is a 502 UZ-CONN-003 (pin refused, never unbounded)" {
     const alloc = testing.allocator;
-    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
@@ -638,7 +838,7 @@ test "integration: an unreachable vendor is a 502 UZ-CONN-003 (pin refused, neve
     try seedAuthedFixtures(conn);
     try seedSlackAppCreds(alloc, conn);
     defer deleteVaultKey(conn, ADMIN_WS, "slack-app"); // cleans up even if an assert below fails
-    defer deleteFleetHandle(conn, TARGET_WS, common.PROVIDER_SLACK);
+    defer deleteFleetHandle(conn, AUTHED_WS, common.PROVIDER_SLACK);
     h.ctx.approval_signing_secret = SIGNING_SECRET;
     h.ctx.platform_admin_workspace_id = ADMIN_WS;
     // Port 1 (tcpmux) never listens on a dev/CI host: the dial is refused,
@@ -646,12 +846,12 @@ test "integration: an unreachable vendor is a 502 UZ-CONN-003 (pin refused, neve
     // maps it to the vendor-call failure code — no vault write.
     h.ctx.connector_oauth_token_endpoint_override = "http://127.0.0.1:1/api/oauth.v2.access";
 
-    const state = try oauth2.mintState(alloc, &h.queue, slack_spec.SPEC, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    const state = try oauth2.mintState(alloc, &h.queue, slack_spec.SPEC, SIGNING_SECRET, AUTHED_WS, CALLBACK_SUBJECT, common.clock.nowMillis());
     defer alloc.free(state);
     const path = try std.fmt.allocPrint(alloc, "/v1/connectors/slack/callback?code=fake-code&state={s}", .{state});
     defer alloc.free(path);
 
-    const r = try h.get(path).redirectBehavior(.unhandled).send();
+    const r = try (try (try h.post(path).json("{}")).bearer(scope_tokens.TENANT_ADMIN)).redirectBehavior(.unhandled).send();
     defer r.deinit();
     try r.expectStatus(.bad_gateway);
     try r.expectErrorCode("UZ-CONN-003");
@@ -714,7 +914,7 @@ const FakeVendor500 = struct {
 
 test "integration: a vendor 5xx on the exchange is a 502 exchange-failed" {
     const alloc = testing.allocator;
-    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+    const h = startAuthedHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
@@ -736,17 +936,17 @@ test "integration: a vendor 5xx on the exchange is a 502 exchange-failed" {
     defer alloc.free(override);
     h.ctx.connector_oauth_token_endpoint_override = override;
 
-    const state = try oauth2.mintState(alloc, &h.queue, slack_spec.SPEC, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    const state = try oauth2.mintState(alloc, &h.queue, slack_spec.SPEC, SIGNING_SECRET, AUTHED_WS, CALLBACK_SUBJECT, common.clock.nowMillis());
     defer alloc.free(state);
     const path = try std.fmt.allocPrint(alloc, "/v1/connectors/slack/callback?code=fake-code&state={s}", .{state});
     defer alloc.free(path);
 
-    const r = try h.get(path).redirectBehavior(.unhandled).send();
+    const r = try (try (try h.post(path).json("{}")).bearer(scope_tokens.TENANT_ADMIN)).redirectBehavior(.unhandled).send();
     defer r.deinit();
     try r.expectStatus(.bad_gateway);
     try r.expectErrorCode("UZ-SLK-022");
     // Exchange failed → no vault write happened (the exchange precedes it).
-    if (vault.loadJson(alloc, conn, TARGET_WS, common.PROVIDER_SLACK)) |parsed| {
+    if (vault.loadJson(alloc, conn, AUTHED_WS, common.PROVIDER_SLACK)) |parsed| {
         var p = parsed;
         p.deinit();
         return error.HandleUnexpectedlyWritten;

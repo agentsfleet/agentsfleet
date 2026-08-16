@@ -14,7 +14,7 @@
  */
 import * as fs from "node:fs";
 import type { ConnectorCatalogEntry } from "@/lib/api/connectors";
-import type { RunnerListResponse, RunnerLiveness } from "@/lib/api/runners";
+import type { RunnerListItem, RunnerListResponse, RunnerLiveness } from "@/lib/api/runners";
 import type { TenantModelEntryList } from "@/lib/types";
 import { clientFor } from "./api-client";
 import { AGENTSFLEET_CLI_ENTRY, CLI_ARTIFACT_MISSING_DIAGNOSIS } from "./cli-runner";
@@ -26,9 +26,12 @@ const HEALTHZ_PATH = "/healthz";
 const READYZ_PATH = "/readyz";
 const TENANT_MODELS_PATH = "/v1/tenants/me/models";
 const FLEET_RUNNERS_PATH = "/v1/fleets/runners";
+const HEARTBEAT_OBSERVATION_DELAY_MS = 12_000;
 
 // A runner doing work is as alive as an idle one — either satisfies the gate.
 const LIVE_RUNNER_STATES: readonly RunnerLiveness[] = ["online", "busy"];
+
+type RunnerHeartbeatSnapshot = Pick<RunnerListItem, "id" | "last_seen_at" | "liveness">;
 
 // agentsfleetd error codes the preflight can translate into a recovery step.
 // Values are operator guidance, deliberately free of any response-body echo.
@@ -106,6 +109,22 @@ export function assertRunnerOnline(runners: Pick<RunnerListResponse, "items">): 
     throw new ReleasePreflightError(
       "no runner is online or busy. Fleets cannot execute; check the runner " +
         "service and its heartbeat before running user journeys.",
+    );
+  }
+}
+
+export function assertRunnerHeartbeatAdvanced(
+  first: RunnerHeartbeatSnapshot,
+  second: RunnerHeartbeatSnapshot | undefined,
+): void {
+  if (!second || second.id !== first.id || !LIVE_RUNNER_STATES.includes(second.liveness)) {
+    throw new ReleasePreflightError(
+      "the selected runner did not remain online across the heartbeat observation window",
+    );
+  }
+  if (second.last_seen_at <= first.last_seen_at) {
+    throw new ReleasePreflightError(
+      "the selected runner heartbeat did not advance across two bounded reads",
     );
   }
 }
@@ -203,5 +222,24 @@ export async function probeRunnerOnline(): Promise<void> {
   } catch (error) {
     if (error instanceof ReleasePreflightError) throw error;
     throw diagnoseApiError(error, "runner-liveness probe");
+  }
+}
+
+export async function probeRunnerHeartbeatAdvances(): Promise<void> {
+  try {
+    const client = clientFor(FIXTURE_KEY.operator);
+    const firstList = await client.get<RunnerListResponse>(FLEET_RUNNERS_PATH);
+    assertRunnerOnline(firstList);
+    const first = firstList.items.find((item) => LIVE_RUNNER_STATES.includes(item.liveness));
+    if (!first) throw new ReleasePreflightError("no live runner was available to observe");
+
+    await new Promise((resolve) => setTimeout(resolve, HEARTBEAT_OBSERVATION_DELAY_MS));
+
+    const secondList = await client.get<RunnerListResponse>(FLEET_RUNNERS_PATH);
+    const second = secondList.items.find((item) => item.id === first.id);
+    assertRunnerHeartbeatAdvanced(first, second);
+  } catch (error) {
+    if (error instanceof ReleasePreflightError) throw error;
+    throw diagnoseApiError(error, "runner-heartbeat probe");
   }
 }

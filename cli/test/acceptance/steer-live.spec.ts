@@ -52,7 +52,7 @@ import {
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
-import { installPlatformOpsFleet } from "./fixtures/seed.ts";
+import { installSteerProbeFleet } from "./fixtures/seed.ts";
 import { cleanWorkspaceFleets } from "./fixtures/teardown.ts";
 
 const target = process.env[ACCEPTANCE_TARGET_ENV] ?? "";
@@ -124,9 +124,9 @@ function parseSteerEnvelope(stdout: string): SteerEnvelope {
   return parsed;
 }
 
-function assertSteerProcessed(result: RunResult): void {
+function assertSteerProcessed(result: RunResult, diagnostics = ""): void {
   assert.equal(result.code, 0,
-    `live steer must exit 0 with a processed result; stdout=${result.stdout} stderr=${result.stderr}`);
+    `live steer must exit 0 with a processed result; stdout=${result.stdout} stderr=${result.stderr}${diagnostics}`);
   const envelope = parseSteerEnvelope(result.stdout);
   const eventId = envelope[ENVELOPE_EVENT_ID_KEY];
   assert.equal(typeof eventId, "string", `steer envelope missing ${ENVELOPE_EVENT_ID_KEY}: ${result.stdout}`);
@@ -171,7 +171,7 @@ if (!isLive) {
       const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
       workspaceId = hydrated.currentWorkspaceId;
 
-      const installed = await installPlatformOpsFleet({ env, seedFixtureSecrets: false });
+      const installed = await installSteerProbeFleet({ env, seedFixtureSecrets: false });
       const id = installed.id ?? installed.fleet_id;
       if (!id) throw new Error(`install missing id: ${JSON.stringify(installed)}`);
       fleetId = id;
@@ -189,7 +189,10 @@ if (!isLive) {
     it("steer <id> <message> --json returns a processed terminal result", async () => {
       assert.ok(fleetId, "fleet was not installed in beforeAll");
       const result = await runWithEnv([STEER_COMMAND, fleetId, ONE_SHOT_MESSAGE, JSON_FLAG]);
-      assertSteerProcessed(result);
+      const diagnostics = result.code === 0
+        ? ""
+        : ` events=${JSON.stringify(await runWithEnv(["events", fleetId, JSON_FLAG]))}`;
+      assertSteerProcessed(result, diagnostics);
     }, STEER_TIMEOUT_MS);
 
     it("steer <id> with a whitespace-only message is rejected client-side", async () => {

@@ -96,6 +96,7 @@ pub fn templateFor(route: router.Route) []const u8 {
         .connector_status => WORKSPACE ++ "/connectors/{provider}",
         .connector_connect => WORKSPACE ++ "/connectors/{provider}/connect",
         .connector_callback => "/v1/connectors/{provider}/callback",
+        .connector_complete => "/v1/connectors/{provider}/callback",
         .slack_events => "/v1/connectors/slack/events",
 
         .fleet_bundles => "/v1/fleets/bundles",

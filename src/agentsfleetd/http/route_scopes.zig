@@ -204,8 +204,11 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
         .revoke_integration_grant => &GRANT_WRITE,
 
         // ── Connectors (generic {provider} trio) ──
-        .connector_connect => &CONNECTOR_WRITE,
-        .connector_status => &CONNECTOR_READ,
+        .connector_connect, .connector_complete => &CONNECTOR_WRITE,
+        .connector_status => switch (method) {
+            .GET => &CONNECTOR_READ,
+            else => &CONNECTOR_WRITE,
+        },
         .connector_catalog => &CONNECTOR_READ,
 
         // ── Approvals: view the inbox (read) vs decide a gate (resolve) ──

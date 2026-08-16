@@ -2,6 +2,7 @@
 
 import type { ComponentType } from "react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Alert,
   Button,
@@ -24,7 +25,7 @@ import {
   type ConnectorCatalogEntry,
   type ConnectorStatus,
 } from "@/lib/api/connectors";
-import { startConnectAction } from "../connector-actions";
+import { disconnectConnectorAction, startConnectAction } from "../connector-actions";
 import { presentErrorString } from "@/lib/errors";
 
 const NOT_CONNECTED_LABEL = "Not connected";
@@ -32,6 +33,9 @@ const CONNECTED_LABEL = "Connected";
 const RECONNECT_LABEL = "Reconnect needed";
 const NOT_CONFIGURED_LABEL = "Admin setup required";
 const CONNECTING_LABEL = "Connecting…";
+const DISCONNECTING_LABEL = "Disconnecting…";
+const CONNECT_LABEL = "Connect";
+const DISCONNECT_LABEL = "Disconnect";
 const SETUP_STEPS_LABEL = "Setup guide";
 const CONNECTED_IDENTITY_PREFIX = "Connected: ";
 const NOT_CONFIGURED_DESCRIPTION = "A platform admin needs to enable this connector.";
@@ -85,8 +89,10 @@ export function OAuthConnectorRow({
   workspaceId: string;
   override?: ConnectorStatusOverride;
 }) {
+  const router = useRouter();
   const Icon = providerIcon(entry.id);
   const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const status =
@@ -96,11 +102,6 @@ export function OAuthConnectorRow({
   const pill = entry.configured
     ? oauthStatusPill(status)
     : { label: NOT_CONFIGURED_LABEL, variant: "neutral" as const };
-  const ctaLabel =
-    status === CONNECTOR_STATUS.reconnectRequired
-      ? `Reconnect ${entry.display_name}`
-      : `Connect ${entry.display_name}`;
-
   async function connect() {
     setError(null);
     setConnecting(true);
@@ -117,8 +118,33 @@ export function OAuthConnectorRow({
         return;
       }
       window.location.href = result.data.install_url;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Connection failed");
     } finally {
       setConnecting(false);
+    }
+  }
+
+  async function disconnect() {
+    setError(null);
+    setDisconnecting(true);
+    try {
+      const result = await disconnectConnectorAction(entry.id, workspaceId);
+      if (!result.ok) {
+        setError(
+          presentErrorString({
+            errorCode: result.errorCode,
+            message: result.error,
+            action: `disconnect ${entry.display_name}`,
+          }),
+        );
+        return;
+      }
+      router.refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Disconnect failed");
+    } finally {
+      setDisconnecting(false);
     }
   }
 
@@ -160,7 +186,19 @@ export function OAuthConnectorRow({
               <BookOpenIcon size={14} aria-hidden />
               {SETUP_STEPS_LABEL}
             </a>
-          ) : isConnected ? null : (
+          ) : isConnected ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void disconnect()}
+              disabled={disconnecting}
+              aria-busy={disconnecting}
+              aria-label={`${DISCONNECT_LABEL} ${entry.display_name}`}
+            >
+              {disconnecting ? DISCONNECTING_LABEL : DISCONNECT_LABEL}
+            </Button>
+          ) : (
             <Button
               type="button"
               variant="outline"
@@ -168,8 +206,9 @@ export function OAuthConnectorRow({
               onClick={() => void connect()}
               disabled={connecting}
               aria-busy={connecting}
+              aria-label={`${CONNECT_LABEL} ${entry.display_name}`}
             >
-              {connecting ? CONNECTING_LABEL : ctaLabel}
+              {connecting ? CONNECTING_LABEL : CONNECT_LABEL}
             </Button>
           )}
         </div>

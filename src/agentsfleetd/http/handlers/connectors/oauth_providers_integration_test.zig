@@ -1,6 +1,7 @@
 // Integration tests for the non-Slack OAuth provider callbacks added in M108:
-// Zoho Desk, Jira, and Linear. Each drives the real Bearer-less callback route
-// through TestHarness, with vendor exchanges pointed at a loopback fake.
+// Zoho Desk, Jira, and Linear. Each drives the real Bearer-authenticated
+// completion route through TestHarness, with vendor exchanges pointed at a
+// loopback fake.
 
 const std = @import("std");
 const common = @import("common");
@@ -8,6 +9,7 @@ const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 const harness_mod = @import("../../test_harness.zig");
 const test_port = @import("../../test_port.zig");
+const scope_tokens = @import("../../test_scope_tokens.zig");
 const test_fixtures = @import("../../../db/test_fixtures.zig");
 const vault = @import("../../../state/vault.zig");
 const oauth2 = @import("oauth2.zig");
@@ -20,11 +22,13 @@ const TestHarness = harness_mod.TestHarness;
 const net = std.Io.net;
 const testing = std.testing;
 
-const TENANT_ID = "0195c109-0000-7000-8000-f00000000001";
+const TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TENANT_NAME = "m108-oauth-providers-suite";
 const ADMIN_WS = "0195c109-0001-7000-8000-000000000001";
 const TARGET_WS = "0195c109-0002-7000-8000-000000000002";
 const SIGNING_SECRET = "m108-oauth-providers-signing-secret";
+const CALLBACK_SUBJECT = "user_m11_006";
+const CALLBACK_USER_ID = "0195c109-0003-7000-8000-000000000001";
 const FIELD_CLIENT_ID = "client_id";
 const FIELD_CLIENT_SECRET = "client_secret";
 const TOKEN_URL_PATH = "/oauth/token";
@@ -115,11 +119,30 @@ const FakeVendor = struct {
 
 fn noopRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
 
+fn startHarness(alloc: std.mem.Allocator) !*TestHarness {
+    return TestHarness.start(alloc, .{
+        .configureRegistry = noopRegistry,
+        .inline_jwks_json = scope_tokens.JWKS,
+        .issuer = scope_tokens.ISSUER,
+        .audience = scope_tokens.AUDIENCE,
+    });
+}
+
+fn seedCallbackUser(conn: *pg.Conn) !void {
+    const now_ms = common.clock.nowMillis();
+    _ = try conn.exec(
+        \\INSERT INTO core.users (id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $5)
+        \\ON CONFLICT (oidc_subject) DO NOTHING
+    , .{ CALLBACK_USER_ID, TENANT_ID, CALLBACK_SUBJECT, "connector-callback@agentsfleet.test", now_ms });
+}
+
 fn seedFixtures(alloc: std.mem.Allocator, conn: *pg.Conn, provider: []const u8) !void {
     test_fixtures.setTestEncryptionKey();
     try test_fixtures.seedTenantById(conn, TENANT_ID, TENANT_NAME);
     try test_fixtures.seedWorkspaceWithTenant(conn, ADMIN_WS, TENANT_ID);
     try test_fixtures.seedWorkspaceWithTenant(conn, TARGET_WS, TENANT_ID);
+    try seedCallbackUser(conn);
     deleteFleetHandle(conn, TARGET_WS, provider);
     try seedAppCreds(alloc, conn, provider);
 }
@@ -152,14 +175,14 @@ fn driveCallbackWithLocation(h: *TestHarness, alloc: std.mem.Allocator, flow: oa
     h.ctx.approval_signing_secret = SIGNING_SECRET;
     h.ctx.platform_admin_workspace_id = ADMIN_WS;
     h.ctx.connector_oauth_token_endpoint_override = token_url;
-    const state = try oauth2.mintState(alloc, &h.queue, flow, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    const state = try oauth2.mintState(alloc, &h.queue, flow, SIGNING_SECRET, TARGET_WS, CALLBACK_SUBJECT, common.clock.nowMillis());
     defer alloc.free(state);
     const path = if (location) |loc|
         try std.fmt.allocPrint(alloc, "/v1/connectors/{s}/callback?code=fake-code&state={s}&location={s}", .{ provider, state, loc })
     else
         try std.fmt.allocPrint(alloc, "/v1/connectors/{s}/callback?code=fake-code&state={s}", .{ provider, state });
     defer alloc.free(path);
-    const r = try h.get(path).redirectBehavior(.unhandled).send();
+    const r = try (try (try h.post(path).json("{}")).bearer(scope_tokens.NO_TENANT)).redirectBehavior(.unhandled).send();
     defer r.deinit();
     try r.expectStatus(.found);
 }
@@ -170,7 +193,7 @@ fn loadHandle(alloc: std.mem.Allocator, conn: *pg.Conn, provider: []const u8) !s
 
 test "test_zoho_callback_vaults_refresh_handle" {
     const alloc = testing.allocator;
-    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+    const h = startHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
@@ -195,7 +218,7 @@ test "test_zoho_callback_vaults_refresh_handle" {
 
 test "test_zoho_callback_stores_the_eu_accounts_base_from_location" {
     const alloc = testing.allocator;
-    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+    const h = startHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
@@ -221,7 +244,7 @@ test "test_zoho_callback_stores_the_eu_accounts_base_from_location" {
 
 test "test_zoho_callback_stores_the_irregular_canada_accounts_base" {
     const alloc = testing.allocator;
-    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+    const h = startHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
@@ -247,7 +270,7 @@ test "test_zoho_callback_stores_the_irregular_canada_accounts_base" {
 
 test "test_jira_callback_resolves_cloud_id" {
     const alloc = testing.allocator;
-    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+    const h = startHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
@@ -272,7 +295,7 @@ test "test_jira_callback_resolves_cloud_id" {
 
 test "test_linear_callback_vaults_refresh_handle" {
     const alloc = testing.allocator;
-    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+    const h = startHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
@@ -297,7 +320,7 @@ test "test_linear_callback_vaults_refresh_handle" {
 
 test "test_new_provider_state_forgery_rejected" {
     const alloc = testing.allocator;
-    const h = TestHarness.start(alloc, .{ .configureRegistry = noopRegistry }) catch |err| switch (err) {
+    const h = startHarness(alloc) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
@@ -307,14 +330,14 @@ test "test_new_provider_state_forgery_rejected" {
     try seedFixtures(alloc, conn, common.PROVIDER_ZOHO);
     h.ctx.approval_signing_secret = SIGNING_SECRET;
     h.ctx.platform_admin_workspace_id = ADMIN_WS;
-    const good = try oauth2.mintState(alloc, &h.queue, zoho_spec.SPEC, SIGNING_SECRET, TARGET_WS, common.clock.nowMillis());
+    const good = try oauth2.mintState(alloc, &h.queue, zoho_spec.SPEC, SIGNING_SECRET, TARGET_WS, CALLBACK_SUBJECT, common.clock.nowMillis());
     defer alloc.free(good);
     const forged = try alloc.dupe(u8, good);
     defer alloc.free(forged);
     forged[forged.len - 1] = if (forged[forged.len - 1] == 'A') 'B' else 'A';
     const path = try std.fmt.allocPrint(alloc, "/v1/connectors/zoho/callback?code=fake-code&state={s}", .{forged});
     defer alloc.free(path);
-    const r = try h.get(path).redirectBehavior(.unhandled).send();
+    const r = try (try (try h.post(path).json("{}")).bearer(scope_tokens.NO_TENANT)).redirectBehavior(.unhandled).send();
     defer r.deinit();
     try r.expectStatus(.bad_request);
     try r.expectErrorCode(ec.ERR_CONNECTOR_STATE_INVALID);
