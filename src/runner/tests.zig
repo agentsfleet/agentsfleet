@@ -81,6 +81,7 @@ test {
     _ = @import("tool_bridge_resolution_test.zig");
     // Pre-fork lease lifecycle + control-loop coverage
     _ = @import("daemon/lease_run_exec_test.zig");
+    _ = @import("daemon/applied_policy_bind_test.zig");
     _ = @import("daemon/loop_poll_test.zig");
     _ = @import("daemon/loop_heartbeat_seq_test.zig");
     _ = @import("child_supervisor_prefork_test.zig");
