@@ -76,6 +76,7 @@ test {
     // W2 runner-engine coverage
     _ = @import("child_exec_edge_test.zig");
     _ = @import("sandbox_args_edge_test.zig");
+    _ = @import("sandbox_args_bind_test.zig");
     _ = @import("tool_bridge_resolution_test.zig");
     // Pre-fork lease lifecycle + control-loop coverage
     _ = @import("daemon/lease_run_exec_test.zig");

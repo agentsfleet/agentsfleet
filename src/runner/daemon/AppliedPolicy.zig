@@ -62,6 +62,11 @@ pub fn apply(self: *AppliedPolicy, raw: ?std.json.Value) ApplyOutcome {
     // The host-side half of the shared clamp: even a compromised or buggy
     // control plane can never size the pool outside the bounds.
     decoded.worker_count = std.math.clamp(decoded.worker_count, protocol.MIN_WORKER_COUNT, protocol.MAX_WORKER_COUNT);
+    // The bind list is NOT clamped — it is refused whole. Silently dropping one
+    // bad entry would lease under a bind set neither the operator nor the daemon
+    // described; `.invalid` holds nothing, so leasing stops until the assignment
+    // is fixed. The control plane validates too; neither side trusts the other.
+    if (!protocol.extraBindsValid(decoded.extra_binds)) return self.store(null, .invalid);
     return self.store(decoded, .applied);
 }
 
@@ -123,37 +128,61 @@ fn eqlPolicy(a: protocol.AssignedPolicy, b: protocol.AssignedPolicy) bool {
     if (a.sandbox_tier != b.sandbox_tier) return false;
     if (a.network_policy != b.network_policy) return false;
     if (a.worker_count != b.worker_count) return false;
-    if (a.registry_allowlist.len != b.registry_allowlist.len) return false;
-    for (a.registry_allowlist, b.registry_allowlist) |x, y| {
+    if (!eqlStrings(a.registry_allowlist, b.registry_allowlist)) return false;
+    // Without this arm a re-assigned bind list would compare `.unchanged` and
+    // every lease would keep the old mounts until some other field moved.
+    if (!eqlStrings(a.extra_binds, b.extra_binds)) return false;
+    return true;
+}
+
+fn eqlStrings(a: []const []const u8, b: []const []const u8) bool {
+    if (a.len != b.len) return false;
+    for (a, b) |x, y| {
         if (!std.mem.eql(u8, x, y)) return false;
     }
     return true;
 }
 
-fn dupePolicy(alloc: std.mem.Allocator, p: protocol.AssignedPolicy) !protocol.AssignedPolicy {
-    const list = try alloc.alloc([]const u8, p.registry_allowlist.len);
+/// Deep-copy one owned string list. On any failure every string already duped
+/// is freed and the backing slice released — the caller's errdefer ladder then
+/// unwinds the lists copied before it.
+fn dupeStrings(alloc: std.mem.Allocator, src: []const []const u8) ![]const []const u8 {
+    const list = try alloc.alloc([]const u8, src.len);
     var duped: usize = 0;
     errdefer {
         for (list[0..duped]) |s| alloc.free(s);
         alloc.free(list);
     }
-    for (p.registry_allowlist) |host| {
-        list[duped] = try alloc.dupe(u8, host);
+    for (src) |s| {
+        list[duped] = try alloc.dupe(u8, s);
         duped += 1;
     }
+    return list;
+}
+
+fn freeStrings(alloc: std.mem.Allocator, list: []const []const u8) void {
+    for (list) |s| alloc.free(s);
+    alloc.free(list);
+}
+
+fn dupePolicy(alloc: std.mem.Allocator, p: protocol.AssignedPolicy) !protocol.AssignedPolicy {
+    const registries = try dupeStrings(alloc, p.registry_allowlist);
+    errdefer freeStrings(alloc, registries);
+    const binds = try dupeStrings(alloc, p.extra_binds);
     return .{
         .sandbox_tier = p.sandbox_tier,
         .network_policy = p.network_policy,
-        .registry_allowlist = list,
+        .registry_allowlist = registries,
         .worker_count = p.worker_count,
+        .extra_binds = binds,
     };
 }
 
 /// Free a `snapshot` (or internal) deep copy. Caller passes the same
 /// allocator the snapshot was taken with.
 pub fn freePolicy(alloc: std.mem.Allocator, p: protocol.AssignedPolicy) void {
-    for (p.registry_allowlist) |s| alloc.free(s);
-    alloc.free(p.registry_allowlist);
+    freeStrings(alloc, p.registry_allowlist);
+    freeStrings(alloc, p.extra_binds);
 }
 
 const std = @import("std");

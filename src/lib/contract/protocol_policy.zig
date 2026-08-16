@@ -82,6 +82,12 @@ pub const AssignedPolicy = struct {
     /// Empty = the runner substitutes its named default registry set.
     registry_allowlist: []const []const u8,
     worker_count: u32,
+    /// Extra host paths bound read-only into every lease's sandbox, IN ADDITION
+    /// to the daemon-owned baseline (`sandbox_args.RO_SYSTEM_PATHS`) — an
+    /// operator can add a path a host needs, never remove or re-mode one the
+    /// sandbox depends on. Defaulted so an older control plane that omits the
+    /// field still decodes. Validated by `extraBindsValid` on both sides.
+    extra_binds: []const []const u8 = &.{},
 };
 
 /// What this host's kernel can actually enforce — probed at startup, refreshed
@@ -119,6 +125,45 @@ pub fn capabilityReportBounded(report: CapabilityReport) bool {
     if (report.cgroup_controllers.len > MAX_REPORT_CONTROLLERS) return false;
     for (report.cgroup_controllers) |c| {
         if (c.len == 0 or c.len > MAX_CONTROLLER_NAME_LEN) return false;
+    }
+    return true;
+}
+
+/// Extra-bind bounds. The operator list is ADDITIVE to the daemon-owned
+/// baseline and read-only by construction — the wire carries a path and
+/// nothing else, so there is no mode an operator could get wrong.
+pub const MAX_EXTRA_BINDS: usize = 16;
+pub const MAX_BIND_PATH_LEN: usize = 4096; // PATH_MAX on Linux
+
+/// Every operator-supplied bind path must be a well-formed absolute path.
+/// Fails the WHOLE list on one bad entry: a partially applied bind set is a
+/// sandbox nobody reasoned about, so the caller degrades the runner instead of
+/// leasing under it.
+///
+/// Deliberately NOT a path denylist. Enumerating "sensitive" host paths fails
+/// open on everything unlisted and goes stale the moment a host gains a new
+/// one — the same rot that left `/run/systemd/resolve` out of the baseline and
+/// broke every lease. What bounds this surface is structural instead: the
+/// mount is read-only, it is additive so no baseline path can be removed or
+/// re-moded, and the self-test reports each entry so a mount is never silent.
+pub fn extraBindsValid(paths: []const []const u8) bool {
+    if (paths.len > MAX_EXTRA_BINDS) return false;
+    for (paths) |p| {
+        if (!bindPathValid(p)) return false;
+    }
+    return true;
+}
+
+/// One path's grammar: absolute, no `..` segment, no NUL, no trailing slash
+/// (one spelling per path, so the same mount cannot be named two ways).
+fn bindPathValid(path: []const u8) bool {
+    if (path.len < 2 or path.len > MAX_BIND_PATH_LEN) return false;
+    if (path[0] != '/') return false; // absolute only — no cwd-relative mounts
+    if (path[path.len - 1] == '/') return false; // one spelling per path
+    if (std.mem.indexOfScalar(u8, path, 0) != null) return false; // NUL truncation
+    var it = std.mem.splitScalar(u8, path, '/');
+    while (it.next()) |seg| {
+        if (std.mem.eql(u8, seg, "..")) return false; // no escaping the named root
     }
     return true;
 }
@@ -161,6 +206,50 @@ test "registryAllowlistValid accepts host[:port] names and refuses everything el
     try std.testing.expect(!registryAllowlistValid(&.{"pypi.org:"})); // bare colon
     try std.testing.expect(!registryAllowlistValid(&.{"pypi.org:70000x"})); // 6-char port
     try std.testing.expect(!registryAllowlistValid(&.{"a" ** 260})); // over length
+}
+
+test "test_operator_bind_validation_refuses_unsafe_paths" {
+    // The grammar an operator-supplied mount must satisfy.
+    try std.testing.expect(extraBindsValid(&.{})); // empty = baseline only
+    try std.testing.expect(extraBindsValid(&.{ "/run/systemd/resolve", "/usr/share/ca-certificates" }));
+
+    try std.testing.expect(!extraBindsValid(&.{"relative/path"})); // not absolute
+    try std.testing.expect(!extraBindsValid(&.{"/etc/../root"})); // traversal escapes the prefix check
+    try std.testing.expect(!extraBindsValid(&.{"/srv/data/"})); // trailing slash = second spelling
+    try std.testing.expect(!extraBindsValid(&.{"/"})); // shorter than the 2-char floor
+    try std.testing.expect(!extraBindsValid(&.{"/srv\x00/etc"})); // NUL truncation
+    try std.testing.expect(!extraBindsValid(&.{"/" ++ "a" ** MAX_BIND_PATH_LEN})); // over length
+
+    // No path denylist: a platform admin already commands this runner's policy,
+    // so the grammar checks shape, not which directory an operator "should"
+    // name. Read-only + additive + reported is what bounds the surface.
+    try std.testing.expect(extraBindsValid(&.{"/srv/models"}));
+
+    // One bad entry fails the whole list — never a partial bind set.
+    try std.testing.expect(!extraBindsValid(&.{ "/usr/share/zoneinfo", "relative" }));
+}
+
+test "test_extra_binds_are_bounded" {
+    // A runner:write caller must not be able to stuff the per-heartbeat payload.
+    var over: [MAX_EXTRA_BINDS + 1][]const u8 = undefined;
+    for (&over) |*slot| slot.* = "/usr/share/zoneinfo";
+    try std.testing.expect(!extraBindsValid(&over));
+
+    var at_cap: [MAX_EXTRA_BINDS][]const u8 = undefined;
+    for (&at_cap) |*slot| slot.* = "/usr/share/zoneinfo";
+    try std.testing.expect(extraBindsValid(&at_cap));
+}
+
+test "test_assigned_policy_decodes_without_extra_binds" {
+    // Wire compatibility: a control plane that predates the field still decodes,
+    // and the absent list reads as "baseline only" rather than failing closed on
+    // a runner that would otherwise lease fine.
+    const older =
+        \\{"sandbox_tier":"landlock_full","network_policy":"allow_all","registry_allowlist":[],"worker_count":1}
+    ;
+    const parsed = try std.json.parseFromSlice(AssignedPolicy, std.testing.allocator, older, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(usize, 0), parsed.value.extra_binds.len);
 }
 
 test "test_sandbox_tier_vocabulary_excludes_seatbelt" {

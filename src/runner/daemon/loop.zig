@@ -289,6 +289,7 @@ pub fn pollAndProcess(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, run
     eff.network_policy = pol.network_policy;
     eff.worker_count = pol.worker_count;
     eff.registry_allowlist = pol.registry_allowlist;
+    eff.extra_binds = pol.extra_binds;
 
     const lease_parsed = cp.lease(alloc, runner_token, eff.cp_deadlines.default_ms) catch |err| {
         if (err == error.Unauthorized) {
