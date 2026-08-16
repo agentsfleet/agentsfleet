@@ -37,7 +37,9 @@ const TOOL_CRON_REMOVE = "cron_remove";
 const TOOL_CRON_RUN = "cron_run";
 const TOOL_CRON_RUNS = "cron_runs";
 const TOOL_CRON_UPDATE = "cron_update";
-const UNSUPPORTED_HOSTED_TOOLS = [_][]const u8{
+/// Public for `tool_bridge_test.zig` alone: the extracted tests assert this
+/// registry fact directly, and no production caller outside this file reads it.
+pub const UNSUPPORTED_HOSTED_TOOLS = [_][]const u8{
     TOOL_SCHEDULE,
     TOOL_CRON_ADD,
     TOOL_CRON_LIST,
@@ -125,7 +127,8 @@ const BRIDGE_REGISTRY = [_]ToolEntry{
 // ── Public API ─────────────────────────────────────────────────────────────
 
 /// Total number of registered tools.
-const TOOL_COUNT = BRIDGE_REGISTRY.len;
+/// Public for `tool_bridge_test.zig` alone (see UNSUPPORTED_HOSTED_TOOLS).
+pub const TOOL_COUNT = BRIDGE_REGISTRY.len;
 
 /// Resolve a tool name to its registry entry.
 pub fn resolve(tool_name: []const u8) ?*const ToolEntry {
@@ -244,85 +247,6 @@ fn jsonGetBoolDefault(val: std.json.Value, key: []const u8, default: bool) bool 
     return if (v == .bool) v.bool else default;
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────────
-
-test "resolve: canonical name found" {
-    const entry = resolve("file_read").?;
-    try std.testing.expectEqualStrings("file_read", entry.name);
-}
-
-test "resolve: all core tools resolvable" {
-    const core = [_][]const u8{
-        "shell",         "file_read",    "file_write",       "file_edit",
-        "file_append",   "file_delete",  "file_read_hashed", "file_edit_hashed",
-        "git",           "image",        "calculator",       "memory_store",
-        "memory_recall", "memory_list",  "memory_forget",    "delegate",
-        "spawn",         "http_request", "web_search",       "web_fetch",
-        "pushover",      "browser",      "screenshot",       "browser_open",
-        "message",
-    };
-    for (core) |name| {
-        try std.testing.expect(resolve(name) != null);
-    }
-    try std.testing.expectEqual(@as(usize, core.len), TOOL_COUNT);
-}
-
-test "resolve: hosted local scheduler tools are unsupported" {
-    for (UNSUPPORTED_HOSTED_TOOLS) |name| {
-        try std.testing.expect(resolve(name) == null);
-        try std.testing.expect(isUnsupportedHostedToolName(name));
-    }
-}
-
-test "resolve: unknown name returns null" {
-    try std.testing.expect(resolve("linear") == null);
-    try std.testing.expect(resolve("slack") == null);
-    try std.testing.expect(resolve("") == null);
-}
-
-test "buildTools: empty array returns empty slice" {
-    const alloc = std.testing.allocator;
-    var arr = std.json.Value{ .array = std.json.Array.init(alloc) };
-    defer arr.array.deinit();
-    const result = try buildTools(alloc, arr, "/tmp", undefined, null, null);
-    defer result.deinit(alloc);
-    try std.testing.expectEqual(@as(usize, 0), result.tools.len);
-    try std.testing.expectEqual(@as(usize, 0), result.skipped.len);
-}
-
-test "buildTools: non-array value returns empty slice" {
-    const alloc = std.testing.allocator;
-    const result = try buildTools(alloc, .{ .integer = 42 }, "/tmp", undefined, null, null);
-    defer result.deinit(alloc);
-    try std.testing.expectEqual(@as(usize, 0), result.tools.len);
-}
-
-test "buildTools: unknown tool name skipped and reported" {
-    const alloc = std.testing.allocator;
-    var arr = std.json.Value{ .array = std.json.Array.init(alloc) };
-    defer arr.array.deinit();
-    var obj: std.json.ObjectMap = .empty;
-    defer obj.deinit(alloc);
-    try obj.put(alloc, "name", .{ .string = "unknown_future_tool" });
-    try arr.array.append(.{ .object = obj });
-    const result = try buildTools(alloc, arr, "/tmp", undefined, null, null);
-    defer result.deinit(alloc);
-    try std.testing.expectEqual(@as(usize, 0), result.tools.len);
-    try std.testing.expectEqual(@as(usize, 1), result.skipped.len);
-    try std.testing.expectEqualStrings("unknown_future_tool", result.skipped[0]);
-}
-
-test "buildTools: disabled tool skipped" {
-    const alloc = std.testing.allocator;
-    var arr = std.json.Value{ .array = std.json.Array.init(alloc) };
-    defer arr.array.deinit();
-    var obj: std.json.ObjectMap = .empty;
-    defer obj.deinit(alloc);
-    try obj.put(alloc, "name", .{ .string = "file_read" });
-    try obj.put(alloc, "enabled", .{ .bool = false });
-    try arr.array.append(.{ .object = obj });
-    const result = try buildTools(alloc, arr, "/tmp", undefined, null, null);
-    defer result.deinit(alloc);
-    try std.testing.expectEqual(@as(usize, 0), result.tools.len);
-    try std.testing.expectEqual(@as(usize, 0), result.skipped.len);
+test {
+    _ = @import("tool_bridge_test.zig");
 }
