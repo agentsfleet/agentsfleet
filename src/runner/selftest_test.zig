@@ -1,13 +1,20 @@
 //! §2 tests — the daemon proves egress from inside a real sandbox.
 //!
-//! The grading tests are platform-INDEPENDENT: how a verdict is graded is the
-//! product behaviour an operator reads, so it is proven on every host. The argv
-//! tests are Linux-gated because bwrap flags exist only there.
+//! Every test here is platform-INDEPENDENT, including the argv one. How a
+//! verdict is graded is the product behaviour an operator reads, and which
+//! sandbox the probe is built into is the security property — neither should
+//! be provable only on a configured Linux box. The argv test goes through
+//! `composeProbeArgv`, which takes the bwrap path as an argument, because
+//! gating it on a real binary skipped it on macOS AND in continuous
+//! integration (no bubblewrap in the CI image) — leaving Invariant 1 asserted
+//! by nothing at all.
+//!
+//! What still needs a real sandbox is EXECUTION — that a sandbox built from
+//! this argv actually starts and resolves a name. That is the integration
+//! tier's job (RULE ITF), not this file's.
 
 const std = @import("std");
-const builtin = @import("builtin");
 const contract = @import("contract");
-const common = @import("common");
 
 const selftest = @import("selftest.zig");
 const sandbox_args = @import("sandbox_args.zig");
@@ -43,8 +50,10 @@ fn findCheck(r: selftest.Result, name: []const u8) ?selftest.Check {
     return null;
 }
 
+const FAKE_BWRAP = "/usr/bin/bwrap";
+const FAKE_SELF_EXE = "/opt/agentsfleet/bin/agentsfleet-runner";
+
 test "test_probe_uses_the_lease_argv_builder" {
-    if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     // Dimension 2.1 / Invariant 1 — the probe's sandbox must be the SAME
     // construction a lease gets. A parallel argv built for testing would prove
@@ -53,13 +62,13 @@ test "test_probe_uses_the_lease_argv_builder" {
     // sandbox. So the probe's prefix must be byte-identical to a lease's.
     const c = cfg(.allow_all, &.{});
 
-    const lease = sandbox_args.buildArgv(common.globalIo(), alloc, c, WORKSPACE, null) catch |err| {
-        try std.testing.expectEqual(error.BwrapUnavailable, err);
-        return error.SkipZigTest;
-    };
+    // Both go through the pure composition, so this runs on every platform.
+    // Gating it on a real bubblewrap binary skipped it on macOS AND in
+    // continuous integration, leaving Invariant 1 asserted by nothing.
+    const lease = try sandbox_args.composeSandboxPrefix(alloc, FAKE_BWRAP, FAKE_SELF_EXE, c, WORKSPACE, null);
     defer sandbox_args.freeArgv(alloc, lease);
 
-    const probe = try selftest.buildProbeArgv(common.globalIo(), alloc, c, WORKSPACE);
+    const probe = try selftest.composeProbeArgv(alloc, FAKE_BWRAP, FAKE_SELF_EXE, c, WORKSPACE);
     defer sandbox_args.freeArgv(alloc, probe);
 
     // Both end their sandbox wrapper at `--`; everything before it is the

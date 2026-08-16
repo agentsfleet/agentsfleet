@@ -145,5 +145,25 @@ jobs:
           restore-keys: |
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-
+      # bubblewrap is NOT in the CI image. The product Dockerfile installs it;
+      # this image never did, so every proof that needed a real `bwrap` binary
+      # hit `error.BwrapUnavailable` and returned SkipZigTest — silently, and
+      # on every run. Combined with the macOS arm skipping for `os.tag`, the
+      # tests guarding which host paths reach a lease executed in NO
+      # environment at all, which is how a missing `/run/systemd/resolve`
+      # shipped and broke every lease for a week (M167).
+      #
+      # The argv-shape half no longer needs this: `composeSandboxPrefix` takes
+      # the bwrap path as an argument, so the bind contract is proven on every
+      # platform including a developer's Mac. What still needs the real binary
+      # is the execution proof — that a sandbox built from that argv actually
+      # starts and resolves a name (RULE ITF: the integration tier runs against
+      # a real sandbox on Linux). This job is where that belongs: privileged,
+      # native amd64, already the home of the seccomp/Landlock/cgroup proofs.
+      - name: Install bubblewrap (real-sandbox execution proofs)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends bubblewrap
+          bwrap --version
       - name: Runner kernel integration proofs (env filter + kill-tree + seccomp/Landlock/cgroup)
         run: sh scripts/cgroup-delegate.sh make test-integration-kernel
