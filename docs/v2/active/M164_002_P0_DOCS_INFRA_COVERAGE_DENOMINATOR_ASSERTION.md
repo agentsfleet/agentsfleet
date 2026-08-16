@@ -125,7 +125,7 @@ The union already fails a component contributing literally nothing. A component 
 
 ### §3 — Floors bind per folder, targets stay visible
 
-One merged figure cannot bind three trees moving independently: `agentsfleetd/` 89.47%, `runner/` 93.75% and `lib/` 93.77% average into 90.18%, and a floor on that average lets any one of them fall while the number holds. Each scope gains an enforced floor and a fixed target — **95% merged, 95% `runner/`, 95% `lib/`**, the bar Indy set for all three folders, with **`agentsfleetd/` at 91%** after he shortened that folder's campaign on Aug 16, 2026 (quoted in Discovery) — with the remaining gap published every run so the distance stays visible while §4 closes it. **Implementation default:** floors seed at the measured value rounded down to the whole point and are raise-only, ratcheting toward 95 in the same commit as the tests that clear each step; targets are literals only Indy changes.
+One merged figure cannot bind three trees moving independently: `agentsfleetd/` 89.47%, `runner/` 93.75% and `lib/` 93.77% average into 90.18%, and a floor on that average lets any one of them fall while the number holds. Each scope gains an enforced floor and a fixed target — **95% merged, 95% `runner/`, 95% `lib/`**, the bar Indy set for all three folders, with **`agentsfleetd/` at 90%** after he shortened that folder's campaign on Aug 16, 2026, first to 91% and then to 90% the same day (quoted in Discovery) — with the remaining gap published every run so the distance stays visible while §4 closes it. **Implementation default:** floors seed at the measured value rounded down to the whole point and are raise-only, ratcheting toward 95 in the same commit as the tests that clear each step; targets are literals only Indy changes.
 
 - **Dimension 3.1** — DONE —  Enforced floors and fixed targets exist for merged, `agentsfleetd/`, and `runner/`, each with one definition site → Test `test_floors_and_targets_defined_once`
 - **Dimension 3.2** — DONE —  A per-folder floor breach fails naming the folder, its measured rate, and its floor, distinctly from a merged breach → Test `test_folder_breach_names_folder_and_floor`
@@ -139,9 +139,9 @@ The coverage work itself, and on the re-measurement it is the bulk of this works
 
 - **Dimension 4.1** — DONE —  `lib/` clears 95%: measured **95.13% (821/863)**, floor ratcheted 93 → 95. The route was not the one planned above: `logging/mod.zig`'s dark lines were mostly signatures and comptime-folded branches that carry no instruction, while `call_deadline/scheduler.zig` sat at exactly the 350-line cap with 8 dark lines and no room for the tests that would clear them. Splitting the clock and futex wait into `MonotonicBackend.zig` and moving the three start-failure fakes into `scheduler_test.zig` took the module to 100% — 3 lines left the denominator as the test support they always were, 5 were driven → Tests `a second stop waits for the first to finish instead of racing it`, `a callback that overruns its budget is reported and the fire still completes` (`src/lib/call_deadline/scheduler_test.zig`)
 - **Dimension 4.2** — DONE —  `runner/` clears 95%: measured **95.18% (2668/2803)**, floor ratcheted 92 → 93 → 95. `daemon/lease_run.zig` and `child_supervisor.zig` were not the route — the supervisor's tail needs a forked child and belongs to the Linux integration lane. What moved the number was the failure half of eleven modules the happy path cannot reach: storage-home refusals, the hosted-tool filter's two unwind arms, the in-run store's degrade paths, allocation unwinds in `AppliedPolicy`/`stream_redactor`/`Plan`/`AllowList`/`sandbox_args`/`tool_bridge`, the read loop's EOF, wire-skew and refused-mint arms, and the bootstrap's two refusals. Two structural moves mattered more than any single test: test-support written inline in a product file is counted as **product** by the denominator (its unexercised vtable stubs read as permanently dark shipped code) — moving it to `_test.zig` siblings was worth 0.66 points on its own; and `cmd/doctor.zig`'s `emit` was refactored to render once and write once, which made both audiences assertable and cost one syscall instead of one per check → Tests across `storage_home_test.zig`, `hosted_tools_test.zig`, `inrun_memory_test.zig`, `runner_helpers_test.zig`, `child_supervisor_edge_test.zig`, `tool_bridge_test.zig`, `runner_tail_coverage_test.zig` and inline blocks in the modules above
-- **Dimension 4.3** — IN_PROGRESS —  the daemon's worst files by union-dark count gain tests in descending order — `http/handlers/tenant_provider.zig` (53), `cmd/serve_webhook_lookup.zig` (48), `http/handlers/tenant_model_entries.zig` (47), `http/handlers/admin/platform_keys.zig` (42), `auth/clerk_backend.zig` (36), `http/handlers/auth/sessions.zig` (35), continuing down the ranking → Tests per verb, success and failure halves
+- **Dimension 4.3** — DONE —  the daemon's worst files by union-dark count gained tests in descending order — models registry cursor paging, integration-grant approve/revoke verbs, tenant billing charges cursor, fleet-library SSRF guards from the entry point, and the Clerk metadata writeback, plus the repair-verification double-free fix found along the way — until the Aug 16 re-measurement cleared Indy's 90% waypoint (Dimension 4.5) and he chose to bank the PR rather than continue down the ranking (quoted in Discovery). Files below `auth/clerk_backend.zig` on the original ranking are unstarted and not required by this milestone's target → Tests per verb, success and failure halves, across the five commits below Dimension 4.4
 - **Dimension 4.4** — DONE —  `cmd/serve.zig` was 116 dark lines at 0% because nothing drove the boot sequence. The test that drives the real `serve.run` already existed and already skipped: it needs its own process. A `lifecycle` kcov component runs it filtered and isolated, and the file reads **112/116, 96.6%** — the union rose 88.34% → 89.20% (+221 covered lines) with no new test code, `cmd/serve_shutdown.zig`, `cmd/serve_background.zig`, `cmd/serve_qstash.zig` and the three sweepers gaining alongside it → Tests `test_a_skipped_lifecycle_proof_fails_the_lane` (the marker assertion that keeps it honest), plus the measured proof recorded in Discovery
-- **Dimension 4.5** — NOT STARTED —  `agentsfleetd/` clears **91%** over the product-only denominator — Indy's Aug 16, 2026 re-target, ~+392 covered lines from 89.23% rather than the ~+1,278 that 95% would need → Test `test_enforced_floors_clear_measured_values` (re-graded)
+- **Dimension 4.5** — DONE —  `agentsfleetd/` clears **90%** over the product-only denominator: measured **90.21% (19898/22058, 440 files)** on the Aug 16 re-measurement, against Indy's same-day re-target from 91% to 90% (quoted in Discovery). The Dimension 4.3 tail already in flight closed the gap before the retarget landed — no test-writing was needed once the number was honest → Test `test_enforced_floors_clear_measured_values` (re-graded)
 - **Dimension 4.6** — DONE —  every folder floor is raised in the same commit as the tests that clear the new value, never ahead → Test `test_enforced_floors_clear_measured_values` (re-graded per ratchet)
 
 ### §5 — The architecture doc describes the instrument that exists
@@ -444,6 +444,35 @@ The denominator grew by 19 lines against the previous run — `runner_integratio
 carries 67 files the unit runner lane does not — which is why `runner/` rose
 2,532/2,777 → 2,579/2,796 rather than by the +47 covered alone.
 
+**Aug 16, 2026 — `agentsfleetd/` clears its waypoint, §4 closes.** Dimension 4.1
+and 4.2 had already taken `lib/` and `runner/` to their 95% target and floor by
+this point (see their rows above). The Dimension 4.3 tail — model registry
+cursor paging, both integration-grant verbs, the tenant billing charges cursor,
+fleet-library's SSRF guards, the Clerk metadata writeback, and the
+repair-verification double-free fix found along the way — ran across six
+commits without a re-measurement between them. Indy cut the daemon's target
+from 91% to 90% the same day the tail landed (quoted in Discovery), and the
+re-measurement that followed showed the tail had already cleared the new
+number on its own:
+
+| Scope | Measured | Floor | Target | Gap |
+|---|---|---|---|---|
+| merged | **90.91%** — 23387/25725, 532 files | 90 | 95 | 4.09 |
+| `agentsfleetd/` | **90.21%** — 19898/22058, 440 files | 90 | 90 | 0.00 |
+| `runner/` | 95.18% — 2668/2803, 66 files | 95 | 95 | 0.00 |
+| `lib/` | 95.02% — 821/864, 26 files | 95 | 95 | 0.00 |
+
+Every folder floor now equals its target — the first time all three have held
+there simultaneously. `agentsfleetd/`'s floor ratchets 89 → 90 in the same
+commit as this measurement, per the raise-only rule; its target ratchets 91 →
+90 in the same commit, per Indy's ruling. Files below `auth/clerk_backend.zig`
+on the original Dimension 4.3 ranking (`api_keys/{list,tenant}`,
+`workspaces/{events,preferences}`, `schedules/api`,
+`fleets/{list,create,secrets}`, and the rest of the 105-file, 1,717-dark-line
+tail measured before this run) are unstarted and no longer required by this
+milestone — a future milestone raises the daemon target past 90 and resumes
+the ranking where this one left it.
+
 **A 99% target is not reachable on this instrument for every folder.** kcov
 attributes no instructions to a function signature, a parameter line, a closing
 brace or a comment, so those lines can never be marked covered by any test.
@@ -462,6 +491,26 @@ why the lane is slow.
 
 ## Discovery (consult log)
 
+- **Orphaned code is real in `agentsfleetd/` but does not move this gate.** Indy
+  asked whether dead code was inflating the daemon's dark-line count enough to
+  help close the last gap to 90%. Two passes over `src/agentsfleetd/` (plus
+  `bench/`, `tests/`, `build.zig`/`build_runner.zig`, and the vendored
+  `zig-pkg/` deps for framework-callback false positives like `httpz`'s
+  `uncaughtError` hook) found genuine orphans: three SQL statements in
+  `http/handlers/webhooks/sql.zig` (`SELECT_FLEET_WORKSPACE`, `APPROVE_GRANT`,
+  `REVOKE_GRANT`) left behind when integration-grant approve/revoke shipped as
+  `http/handlers/integration_grants/workspace.zig` with its own inline SQL
+  instead; three dead facade re-exports in `observability/metrics.zig`; and a
+  handful of unreferenced single-line consts and getters elsewhere. None of it
+  is measured. Zig's lazy compilation only generates code (and therefore kcov
+  debug-line entries) for a function reachable from some root; a `pub fn` nothing
+  calls is never Sema'd and never appears in the Cobertura report as either a
+  covered or a dark line — confirmed directly by diffing the merged report
+  against each candidate's line range. Deleting these orphans is real hygiene
+  (and in scope for a follow-up), but it changes neither the numerator nor the
+  denominator of this gate, so it was not pursued in this commit. The lever
+  that actually moved the daemon from 89.80% to 90.21% was the Dimension 4.3
+  test tail already in flight, not dead-code removal.
 - **The daemon's boot sequence was measurable all along.** `cmd/serve.zig` read
   0% of 116 lines, the largest single dark file in the tree by 2.3×, and the
   ranked plan called for writing a boot test. One already existed:
@@ -518,6 +567,7 @@ why the lane is slow.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
+  > Indy (2026-08-16, later the same day): "I feel like we must move the agentsfleetd to 90% as opposed 91% and send a PR, since i think there could be duplicated orphaned code which can help us moving up as well. So can we shoot agentsfleetd to 90%" — context: `agentsfleetd/`'s target drops again, 91 → 90 (Dimension 4.5), and the milestone ships as a PR at that number rather than continuing toward 91/95. The Dimension 4.3 tail already in flight (six commits, ~+125 covered lines against the 12:48 measurement) cleared 90.21% on the next re-measurement, so no further test-writing was needed — see Measured outcome. The orphaned-code hypothesis was investigated (below) and does not hold for this instrument: it is a real but separate lever, not one that was pending for this number.
   > Indy (2026-08-16): "i feel the campaign is too long for me, so for now move the agentsfleetd to 91%, i think it can move faster if the 350L rule sensible reasoning is adopted since you are unable to move coverage because the files are big and you are not able to create tests and move coverage up." — context: `agentsfleetd/`'s target drops 95 → 91 (Dimension 4.5, `ZIG_COVERAGE_FOLDER_TARGETS`, the floors table in `docs/architecture/testing.md`). 91 is a waypoint; the merged 95 target is unchanged and the daemon is 86% of that denominator, so this number is raised later rather than the merged one lowered.
   > Indy (2026-08-16): "I think dont build the error_codes.zig for the 5 changes now, will deal with it lagter" — context: `src/lib/**` carries five `err`/`warn` emits with no `error_code`, because the shared tier is imported by both build graphs and can reach neither `src/errors/error_registry.zig` nor `src/runner/engine/client_errors.zig`. A third registry, `src/lib/common/error_codes.zig`, would also need an allowlist entry in `~/Projects/dotfiles/audits/error-codes.sh` to avoid reading as a raw-literal leak. The five: `call_deadline/scheduler.zig` `scheduler_start_failed` / `scheduler_stopped` / `deadline_callback_slow`, `logging/leak_guard.zig` `gpa_leak_verdict`, and `tripwire/tripwire.zig` `untripped_point` (comptime-gated to test builds). None surfaces to a tenant, and the startup-failure arm falls under the same code-less carve-out M123_002 recorded for `db_migrate` and the startup commands. `logging/mod.zig`'s two emits are the sink forwarding a caller's message and carry the caller's code by construction.
   > Indy (2026-08-15): "I prefer A, and start a new session" — context: chooses the park over finishing §1, §2.1/2.2, §3, §4 and §5 on this branch. Offered against B (finish everything, including §4's open-ended lifts) and C (finish the gate logic, reassess §4). The spec stays in `active/`; §Parked records what each unshipped section leaves broken.
