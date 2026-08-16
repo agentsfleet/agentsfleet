@@ -62,19 +62,19 @@ ZIG_COVERAGE_SUMMARY_FILE ?= .tmp/zig-coverage.txt
 # test body is ~100% covered by construction, so they lifted every rate by 1.7
 # to 2.6 points. Removing them is the same rule that already drops `*_test.zig`
 # files; it just reaches the blocks that live inside product sources.
-ZIG_COVERAGE_MIN_PCT ?= 89
+ZIG_COVERAGE_MIN_PCT ?= 90
 ZIG_COVERAGE_TARGET_PCT ?= 95
 # Per-folder enforced floors. Measured on the union at the time each was set;
 # they ratchet toward the targets below as tests land.
 #
-# Raised from 89/92/93 by the run that split the deadline scheduler and covered
-# the webhook lookup's pure half: measured 89.80 merged, 89.16 agentsfleetd,
-# 93.24 runner, 95.13 lib over 9 of 9 components. `lib` reaches its target and
-# its floor becomes that target — the folder is held there, not merely above
-# where it happened to land. `agentsfleetd` holds at 89 because 89.16 does not
-# clear 90. Every floor here sits at or below its measured value, which is the
-# only condition under which one may move.
-ZIG_COVERAGE_FOLDER_FLOORS ?= agentsfleetd=89 runner=93 lib=95
+# Raised by the run that took the runner's unwind and give-up arms: measured
+# 90.07 merged, 89.23 agentsfleetd, 95.18 runner, 95.02 lib over 9 of 9
+# components. `runner` and `lib` have both reached the 95% quality bar, so each
+# floor becomes that target — the folders are held there, not merely above where
+# they happened to land. `agentsfleetd` holds at 89 because 89.23 does not clear
+# 90. Every floor here sits at or below its measured value, which is the only
+# condition under which one may move.
+ZIG_COVERAGE_FOLDER_FLOORS ?= agentsfleetd=89 runner=95 lib=95
 # The quality bar for every product folder.
 ZIG_COVERAGE_FOLDER_TARGETS ?= agentsfleetd=95 runner=95 lib=95
 # One floor under the shape of the whole report, deliberately NOT one per
