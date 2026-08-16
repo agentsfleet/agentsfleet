@@ -130,6 +130,8 @@ pub const BindMode = policy.BindMode;
 pub const MAX_EXTRA_BINDS = policy.MAX_EXTRA_BINDS;
 pub const MAX_BIND_PATH_LEN = policy.MAX_BIND_PATH_LEN;
 pub const MAX_BIND_NOTE_LEN = policy.MAX_BIND_NOTE_LEN;
+pub const BASELINE_RO_PATHS = policy.BASELINE_RO_PATHS;
+pub const SENSITIVE_PATHS = policy.SENSITIVE_PATHS;
 
 /// How tenant secrets reach the runner. S0 ships `inline` only (secrets travel
 /// in the lease over TLS, trusted fleet); `scoped`/`proxy` are the reserved

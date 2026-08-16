@@ -33,7 +33,12 @@ const BWRAP_PATHS = [_][]const u8{ "/usr/bin/bwrap", "/usr/local/bin/bwrap" };
 /// the built argv. It must read THIS array — a copy in the test would stay
 /// green while the real list rots, which is precisely how the resolver bind
 /// went missing.
-pub const RO_SYSTEM_PATHS = [_][]const u8{ "/etc", "/lib", "/lib64", "/bin", "/sbin", "/opt", "/run/systemd/resolve" };
+///
+/// Aliases the contract-layer list rather than restating it: the control plane
+/// validates an operator's assignment against the same paths at the API
+/// boundary, and two copies would let the two sides disagree about what an
+/// operator is allowed to re-mode (RULE UFS).
+pub const RO_SYSTEM_PATHS = contract.protocol.BASELINE_RO_PATHS;
 /// Used at several bind sites (RULE UFS); the rest are single-use bwrap flags
 /// whose literal spelling IS bwrap's CLI contract.
 const RO_BIND = "--ro-bind";
@@ -116,7 +121,7 @@ pub fn buildArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_pa
     const self_exe = try resolveChildExe(io, alloc);
     defer alloc.free(self_exe);
 
-    const sandboxed = builtin.os.tag == .linux and cfg.sandbox_tier != .dev_none;
+    const sandboxed = isSandboxed(cfg);
     if (sandboxed) try appendBwrap(io, alloc, &list, self_exe, workspace_path, egress, cfg.network_policy, cfg.extra_binds);
 
     try dup(alloc, &list, self_exe);
@@ -131,6 +136,40 @@ pub fn buildArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_pa
         try list.append(alloc, ws_flag);
     }
 
+    return list.toOwnedSlice(alloc);
+}
+
+/// Whether this tier gets a bubblewrap wrapper. `dev_none` and every
+/// non-Linux host exec the child directly. Private: both callers live here,
+/// and the probe asks for a prefix rather than asking whether to build one.
+fn isSandboxed(cfg: Config) bool {
+    return builtin.os.tag == .linux and cfg.sandbox_tier != .dev_none;
+}
+
+/// The bubblewrap wrapper alone — every namespace, mount and network flag a
+/// lease gets, ending at the `--` that separates it from the child command.
+/// Empty on a non-sandboxed tier. Free with `freeArgv`.
+///
+/// Exists so the self-test probe runs under the SAME sandbox construction a
+/// lease does instead of a parallel one built for testing. That is the whole
+/// point of the probe: the M167 incident had a green host check and a dead
+/// sandbox, so a probe that assembled its own flags would prove nothing about
+/// real work. `buildArgv` and the probe both go through here, and
+/// `test_probe_uses_the_lease_argv_builder` asserts the two prefixes are
+/// byte-identical for the same policy.
+///
+/// The probe supplies its own child command rather than re-execing
+/// `__execute`: a lease's tail runs the real executor, which a self-test must
+/// not do. The sandbox is what has to be identical, not the payload.
+pub fn buildSandboxPrefix(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_path: []const u8, egress: ?EgressFiles) ![]const []const u8 {
+    var list: std.ArrayList([]const u8) = .empty;
+    errdefer freeList(alloc, &list);
+
+    if (isSandboxed(cfg)) {
+        const self_exe = try resolveChildExe(io, alloc);
+        defer alloc.free(self_exe);
+        try appendBwrap(io, alloc, &list, self_exe, workspace_path, egress, cfg.network_policy, cfg.extra_binds);
+    }
     return list.toOwnedSlice(alloc);
 }
 
