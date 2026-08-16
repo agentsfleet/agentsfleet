@@ -446,6 +446,42 @@ class InlineTestBodiesExcluded(unittest.TestCase):
             self.assertEqual(code, 0, err)
             self.assertIn("1/2 lines", out)
 
+    def test_an_unbalanced_fixture_line_does_not_swallow_the_function_after_it(self) -> None:
+        """A `\\`-prefixed fixture line's braces are text, not Zig syntax.
+
+        A JSON blob split one field per multiline-string line can carry more
+        `{` than `}` on a single line (the other half is on the next line).
+        Counting that as real nesting leaves the scanner "inside" the test
+        past its actual closing brace, so the product function written right
+        after it would otherwise vanish from the denominator too.
+        """
+        source = (
+            "pub fn before(a: u8) u8 {\n"  # 1  product
+            "    return a;\n"  # 2  product
+            "}\n"  # 3
+            "\n"  # 4
+            'test "a fixture whose brace count does not balance per line" {\n'  # 5
+            "    const s =\n"  # 6
+            '        \\\\{"a": "one open brace, no close on this line",\n'  # 7
+            "    ;\n"  # 8
+            "    _ = s;\n"  # 9
+            "}\n"  # 10  the test's REAL closing brace
+            "\n"  # 11
+            "pub fn after(b: u8) u8 {\n"  # 12 product
+            "    return b;\n"  # 13 product
+            "}\n"  # 14
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_source(root, source)
+            write_component(root, "unit", {
+                "src/agentsfleetd/widget.zig": [(1, 1), (2, 1), (12, 1), (13, 0)],
+            })
+            code, out, err = run_gate(root, ["unit"], 0.0)
+            self.assertEqual(code, 0, err)
+            # before() and after() both count; only 13 is uncovered.
+            self.assertIn("3/4 lines", out)
+
 
 class DenominatorAssertions(unittest.TestCase):
     """No rate is graded before its denominator. A percentage over a report that

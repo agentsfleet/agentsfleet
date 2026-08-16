@@ -68,6 +68,12 @@ class UsageError(ValueError):
 # at column 0, and its closing brace is the first `}` at column 0.
 TEST_BLOCK_START = re.compile(r"^test\b[^{]*\{")
 
+# A Zig multiline-string continuation (`\\...`) is fixture text, not syntax —
+# a brace inside an embedded JSON blob or wire example must not perturb depth,
+# or an unbalanced-per-line fixture leaves the scanner "inside" the test block
+# for the rest of the file, silently dropping real product lines that follow.
+MULTILINE_STRING_LINE = re.compile(r"^\s*\\\\")
+
 
 @functools.lru_cache(maxsize=None)
 def inline_test_lines(path: str) -> frozenset[int]:
@@ -99,7 +105,8 @@ def inline_test_lines(path: str) -> frozenset[int]:
                     active = False
             continue
         inside.add(number)
-        depth += text.count("{") - text.count("}")
+        if not MULTILINE_STRING_LINE.match(text):
+            depth += text.count("{") - text.count("}")
         if depth <= 0:
             active = False
     return frozenset(inside)
