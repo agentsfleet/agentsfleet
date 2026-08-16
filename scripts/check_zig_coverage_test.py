@@ -482,6 +482,58 @@ class InlineTestBodiesExcluded(unittest.TestCase):
             # before() and after() both count; only 13 is uncovered.
             self.assertIn("3/4 lines", out)
 
+    def test_a_stray_brace_in_a_line_comment_does_not_swallow_the_function_after_it(self) -> None:
+        """A `//` comment's braces are text too, not just a `\\` line's."""
+        source = (
+            "pub fn before(a: u8) u8 {\n"  # 1  product
+            "    return a;\n"  # 2  product
+            "}\n"  # 3
+            "\n"  # 4
+            'test "a comment with a brace that has no close on its line" {\n'  # 5
+            "    // note the { here has no matching close on this line\n"  # 6
+            "    _ = 1;\n"  # 7
+            "}\n"  # 8  the test's REAL closing brace
+            "\n"  # 9
+            "pub fn after(b: u8) u8 {\n"  # 10 product
+            "    return b;\n"  # 11 product
+            "}\n"  # 12
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_source(root, source)
+            write_component(root, "unit", {
+                "src/agentsfleetd/widget.zig": [(1, 1), (2, 1), (10, 1), (11, 0)],
+            })
+            code, out, err = run_gate(root, ["unit"], 0.0)
+            self.assertEqual(code, 0, err)
+            self.assertIn("3/4 lines", out)
+
+    def test_a_stray_brace_in_a_quoted_string_does_not_swallow_the_function_after_it(self) -> None:
+        """A `"..."` string's braces are text too, not just a `\\` line's."""
+        source = (
+            "pub fn before(a: u8) u8 {\n"  # 1  product
+            "    return a;\n"  # 2  product
+            "}\n"  # 3
+            "\n"  # 4
+            'test "a string with a brace that has no close in it" {\n'  # 5
+            '    const s = "unbalanced { in here";\n'  # 6
+            "    _ = s;\n"  # 7
+            "}\n"  # 8  the test's REAL closing brace
+            "\n"  # 9
+            "pub fn after(b: u8) u8 {\n"  # 10 product
+            "    return b;\n"  # 11 product
+            "}\n"  # 12
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_source(root, source)
+            write_component(root, "unit", {
+                "src/agentsfleetd/widget.zig": [(1, 1), (2, 1), (10, 1), (11, 0)],
+            })
+            code, out, err = run_gate(root, ["unit"], 0.0)
+            self.assertEqual(code, 0, err)
+            self.assertIn("3/4 lines", out)
+
 
 class DenominatorAssertions(unittest.TestCase):
     """No rate is graded before its denominator. A percentage over a report that

@@ -68,11 +68,45 @@ class UsageError(ValueError):
 # at column 0, and its closing brace is the first `}` at column 0.
 TEST_BLOCK_START = re.compile(r"^test\b[^{]*\{")
 
-# A Zig multiline-string continuation (`\\...`) is fixture text, not syntax —
-# a brace inside an embedded JSON blob or wire example must not perturb depth,
-# or an unbalanced-per-line fixture leaves the scanner "inside" the test block
-# for the rest of the file, silently dropping real product lines that follow.
+# A Zig multiline-string continuation (`\\...`) is fixture text end to end —
+# skipped wholesale rather than tokenized, since its content can be anything,
+# including an unterminated quote that would desync the tokenizer below.
 MULTILINE_STRING_LINE = re.compile(r"^\s*\\\\")
+
+
+def _brace_delta(text: str) -> int:
+    """Net '{' minus '}' on one line, counting only real Zig syntax.
+
+    A brace inside a `"..."` string, a `'.'` char literal, or a `//` comment
+    is text, not nesting. Counting it drifts `depth` off the block's real
+    boundary, and once it drifts there is no signal that says "the test
+    actually ended three lines ago" — every line after silently joins the
+    test body, including real product code.
+    """
+    depth = 0
+    quote = None
+    i = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if quote:
+            if c == "\\" and i + 1 < n:
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+            i += 1
+            continue
+        if c == '"' or c == "'":
+            quote = c
+        elif c == "/" and i + 1 < n and text[i + 1] == "/":
+            break
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+        i += 1
+    return depth
 
 
 @functools.lru_cache(maxsize=None)
@@ -99,14 +133,14 @@ def inline_test_lines(path: str) -> frozenset[int]:
         if not active:
             if TEST_BLOCK_START.match(text):
                 active = True
-                depth = text.count("{") - text.count("}")
+                depth = _brace_delta(text)
                 inside.add(number)
                 if depth <= 0:
                     active = False
             continue
         inside.add(number)
         if not MULTILINE_STRING_LINE.match(text):
-            depth += text.count("{") - text.count("}")
+            depth += _brace_delta(text)
         if depth <= 0:
             active = False
     return frozenset(inside)
