@@ -101,7 +101,7 @@ now has its own.
 | Scope | Enforced floor | Target |
 |---|---|---|
 | merged | 90 | 95 |
-| `agentsfleetd` | 89 | 95 |
+| `agentsfleetd` | 89 | 91 |
 | `runner` | 95 | 95 |
 | `lib` | 95 | 95 |
 
@@ -122,6 +122,14 @@ the ceiling. `call_deadline/scheduler.zig` sat at exactly the 350-line file cap
 with eight dark lines and no room for the tests that would clear them, and
 three of those lines were test-support fakes the denominator counted as
 product. Splitting the file moved both problems at once.
+
+`agentsfleetd` targets 91, not 95, because Indy shortened the campaign on
+Aug 16, 2026 after `lib` and `runner` landed: 89.23% to 95% is 1,278 covered
+lines over a 22,130-line denominator, and the file-splitting lever that makes
+the daemon's big files testable had only just been ruled on. 91 is a waypoint.
+The daemon is 86% of the merged denominator, so the merged 95 above cannot be
+reached until this number moves again — the two are reconciled by raising this
+target later, never by lowering that one.
 
 The ceiling is real and it is why the target is not 100: kcov attributes no
 instruction to a function signature, a parameter line, a closing brace or a

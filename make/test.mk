@@ -75,8 +75,13 @@ ZIG_COVERAGE_TARGET_PCT ?= 95
 # 90. Every floor here sits at or below its measured value, which is the only
 # condition under which one may move.
 ZIG_COVERAGE_FOLDER_FLOORS ?= agentsfleetd=89 runner=95 lib=95
-# The quality bar for every product folder.
-ZIG_COVERAGE_FOLDER_TARGETS ?= agentsfleetd=95 runner=95 lib=95
+# The quality bar for every product folder. 95 everywhere except the daemon,
+# which Indy cut to 91 on Aug 16, 2026 — the 5.77-point climb was a longer
+# campaign than he wanted to fund in one milestone, and the lever that makes it
+# move (splitting big files so their tests fit) had only just been ruled on.
+# 91 is a waypoint, not a lowered bar: the merged 95 above still implies the
+# daemon eventually goes past it, because the daemon is 86% of the denominator.
+ZIG_COVERAGE_FOLDER_TARGETS ?= agentsfleetd=91 runner=95 lib=95
 # One floor under the shape of the whole report, deliberately NOT one per
 # component. The failure being caught is collapse — kcov once returned 24 files
 # where the tree holds 558 — and a pair of numbers at roughly half the measured
