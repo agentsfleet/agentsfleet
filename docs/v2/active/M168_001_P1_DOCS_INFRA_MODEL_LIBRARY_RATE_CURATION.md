@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M168
 **Workstream:** 001
 **Date:** Aug 17, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — 87 of 103 dialable providers cannot be activated at all; `UZ-PROVIDER-004` refuses every model they host.
 **Categories:** DOCS, INFRA
 **Batch:** B1 — single-stream data curation; no parallel context.
-**Branch:** {feat/m168-model-library-rate-curation — added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m168-model-library-rate-curation
+**Test Baseline:** unit=4026 integration=684
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-opus-5, Aug 17 2026) — rates read from live provider endpoints and official pricing pages during authoring, never from model memory.
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` §9, §10
