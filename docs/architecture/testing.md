@@ -100,9 +100,9 @@ now has its own.
 
 | Scope | Enforced floor | Target |
 |---|---|---|
-| merged | 89 | 95 |
+| merged | 90 | 95 |
 | `agentsfleetd` | 89 | 95 |
-| `runner` | 93 | 95 |
+| `runner` | 95 | 95 |
 | `lib` | 95 | 95 |
 
 Floors are enforced and **raise-only**: move one in the same commit as the tests
@@ -115,8 +115,8 @@ destination stays visible without an unmet one turning the build red.
 `scripts/check_zig_coverage_doc_test.py` fails when this table disagrees with
 it. The values above were stale for exactly as long as nothing checked them.
 
-The 95% target sits under every product folder's ceiling, `lib` included — it
-measures 95.13% and its floor is now that target. An earlier revision of this
+The 95% target sits under every product folder's ceiling. `lib` measures 95.02%
+and `runner` 95.18%; both floors are now that target. An earlier revision of this
 page called 95 unreachable for `lib` on a 97.05% ceiling; the shortfall was not
 the ceiling. `call_deadline/scheduler.zig` sat at exactly the 350-line file cap
 with eight dark lines and no room for the tests that would clear them, and
