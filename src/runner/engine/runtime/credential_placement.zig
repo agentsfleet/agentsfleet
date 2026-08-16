@@ -138,3 +138,60 @@ fn staticCredentialMatchesHost(value: std.json.Value, host: []const u8) bool {
         else => false,
     };
 }
+
+// ---------------------------------------------------------------------------
+// This module had no tests of its own — it was reached only through
+// policy_http_request, and only ever on paths where a credential WAS found.
+// The negative half is what actually gates a request: a nested structure the
+// walker has to exhaust before it can answer "no credential here".
+// ---------------------------------------------------------------------------
+
+const testing = std.testing;
+
+/// A policy that cannot short-circuit: `read_only` forces the host-binding
+/// check to run instead of returning true on the first line.
+fn boundPolicy(secrets: ?std.json.Value) execution_policy.ExecutionPolicy {
+    return .{ .network_policy = .{ .read_only = true }, .secrets_map = secrets };
+}
+
+test "a request whose nested headers carry no credential is bound to any host" {
+    // The walker recurses through arrays and objects. Every prior test hit a
+    // credential early; here it must exhaust both containers and come back
+    // false — the arm that decides an ordinary request is not a credential leak.
+    const alloc = testing.allocator;
+    const args_json =
+        \\{"url":"https://api.example.com/v1/things",
+        \\ "headers":{"X-Trace":["alpha","beta"],"X-Meta":{"team":"platform","tier":"gold"}}}
+    ;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, args_json, .{});
+    defer parsed.deinit();
+
+    var secrets = try std.json.parseFromSlice(std.json.Value, alloc,
+        \\{"github":{"host":"api.github.com","token":"ghs_live"}}
+    , .{});
+    defer secrets.deinit();
+
+    const policy = boundPolicy(secrets.value);
+    // The `github` credential is never referenced, so its host binding is not
+    // consulted and an unrelated host is fine.
+    try testing.expect(credentialsBoundToHost(&policy, "api.example.com", parsed.value.object));
+}
+
+test "a credential referenced in a header is refused on a host it is not bound to" {
+    // The positive half, kept beside the negative one so the pair reads as a
+    // contract: naming a credential binds the request to that credential's host.
+    const alloc = testing.allocator;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc,
+        \\{"url":"https://evil.example.com/","headers":{"Authorization":"Bearer ${secrets.github.token}"}}
+    , .{});
+    defer parsed.deinit();
+
+    var secrets = try std.json.parseFromSlice(std.json.Value, alloc,
+        \\{"github":{"host":"api.github.com","token":"ghs_live"}}
+    , .{});
+    defer secrets.deinit();
+
+    const policy = boundPolicy(secrets.value);
+    try testing.expect(!credentialsBoundToHost(&policy, "evil.example.com", parsed.value.object));
+    try testing.expect(credentialsBoundToHost(&policy, "api.github.com", parsed.value.object));
+}
