@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M164
 **Workstream:** 002
 **Date:** Aug 14, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — `agentsfleetd/`, `runner/` and `lib/` all sit below the 95% Indy set as the quality bar, and one merged floor cannot say which of them moved.
 **Categories:** DOCS, INFRA
 **Batch:** B1 — resumed on its own branch after M164_001 merged; one Pull Request (PR).
@@ -491,6 +491,37 @@ why the lane is slow.
 
 ## Discovery (consult log)
 
+- **Adversarial pre-landing review of this PR found a live grant-resurrection
+  bug, unrelated to coverage and pre-dating this branch entirely.** Three
+  independent passes (Codex, a Claude adversarial subagent, a security
+  specialist) reviewed the session-5 diff before push. Codex ran its full
+  budget but timed out before delivering a verdict — treated as missing
+  coverage, not a clean bill, not re-run. The Claude adversarial subagent
+  confirmed the double-free fix and the Clerk fire-and-forget path are both
+  correct, and separately flagged (confidence 8/10) that the coverage
+  floor's "raise-only" ratchet is enforced only by convention — nothing in
+  `scripts/check_zig_coverage_floors.py` or `make/test.mk` compares a floor
+  against its own prior value across commits, so a future PR could silently
+  lower one and pass every existing gate. Recorded here as a known gap, not
+  fixed — implementing cross-commit floor enforcement is a design call
+  outside this milestone's scope, and today's real protection is PR review,
+  which is how this branch's own two retargets (91→90, twice in one day)
+  were made visible.
+  The security specialist found something sharper: `innerRevokeGrant`
+  (`http/handlers/integration_grants/workspace.zig`) only ever writes
+  `core.integration_grants` — it has no reason to know about a fleet's
+  approval gate. `RESOLVE_GATE`'s grant-update CTE
+  (`fleet_runtime/sql.zig`) matched a gate resolution to its grant by
+  `(fleet_id, service, gate_kind)` alone, with no check on the grant's
+  current status. A gate raised before an explicit revoke and left
+  unresolved would still be sitting pending; answering it later — an
+  ordinary approval, no malicious intent required — silently flipped the
+  grant back to approved. Same-workspace only, no cross-tenant break, which
+  is why it graded P1 rather than P0, but real: no error, no audit signal,
+  and the App ingress routing query checks that status live on every
+  request. I verified the claim by reading both the SQL and the handler
+  directly before surfacing it, rather than forwarding the subagent's report
+  unchecked.
 - **Orphaned code is real in `agentsfleetd/` but does not move this gate.** Indy
   asked whether dead code was inflating the daemon's dark-line count enough to
   help close the last gap to 90%. Two passes over `src/agentsfleetd/` (plus
@@ -567,6 +598,7 @@ why the lane is slow.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
+  > Indy (2026-08-16, via AskUserQuestion): "Fold into this PR" — context: choosing among three options (fast-follow after this PR ships / fold into this PR / file it and look himself) for the grant-resurrection bug the pre-landing security review surfaced (see Discovery). Chose to add the SQL fix and its regression test as one more commit (`bea73a723`) before pushing, rather than isolate the unrelated security fix in a separate PR.
   > Indy (2026-08-16, later the same day): "I feel like we must move the agentsfleetd to 90% as opposed 91% and send a PR, since i think there could be duplicated orphaned code which can help us moving up as well. So can we shoot agentsfleetd to 90%" — context: `agentsfleetd/`'s target drops again, 91 → 90 (Dimension 4.5), and the milestone ships as a PR at that number rather than continuing toward 91/95. The Dimension 4.3 tail already in flight (six commits, ~+125 covered lines against the 12:48 measurement) cleared 90.21% on the next re-measurement, so no further test-writing was needed — see Measured outcome. The orphaned-code hypothesis was investigated (below) and does not hold for this instrument: it is a real but separate lever, not one that was pending for this number.
   > Indy (2026-08-16): "i feel the campaign is too long for me, so for now move the agentsfleetd to 91%, i think it can move faster if the 350L rule sensible reasoning is adopted since you are unable to move coverage because the files are big and you are not able to create tests and move coverage up." — context: `agentsfleetd/`'s target drops 95 → 91 (Dimension 4.5, `ZIG_COVERAGE_FOLDER_TARGETS`, the floors table in `docs/architecture/testing.md`). 91 is a waypoint; the merged 95 target is unchanged and the daemon is 86% of that denominator, so this number is raised later rather than the merged one lowered.
   > Indy (2026-08-16): "I think dont build the error_codes.zig for the 5 changes now, will deal with it lagter" — context: `src/lib/**` carries five `err`/`warn` emits with no `error_code`, because the shared tier is imported by both build graphs and can reach neither `src/errors/error_registry.zig` nor `src/runner/engine/client_errors.zig`. A third registry, `src/lib/common/error_codes.zig`, would also need an allowlist entry in `~/Projects/dotfiles/audits/error-codes.sh` to avoid reading as a raw-literal leak. The five: `call_deadline/scheduler.zig` `scheduler_start_failed` / `scheduler_stopped` / `deadline_callback_slow`, `logging/leak_guard.zig` `gpa_leak_verdict`, and `tripwire/tripwire.zig` `untripped_point` (comptime-gated to test builds). None surfaces to a tenant, and the startup-failure arm falls under the same code-less carve-out M123_002 recorded for `db_migrate` and the startup commands. `logging/mod.zig`'s two emits are the sink forwarding a caller's message and carry the caller's code by construction.
