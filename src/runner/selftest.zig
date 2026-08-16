@@ -42,7 +42,12 @@ pub const CHECK_SANDBOX = "a sandbox can be established";
 /// Every `detail` a check may carry. A fixed vocabulary is what makes
 /// Invariant 7 provable: the probe never interpolates child output, a hostname,
 /// or an environment value into a result, so no result can carry a secret.
-pub const DETAIL_OK = "";
+/// Prose, not an empty string. `doctor.Check.detail` is non-optional because a
+/// check always has something to say — every passing doctor check carries a
+/// line ("set", "reachable; token valid"). An empty one would also read as a
+/// leaked internal identifier to the dashboard's cause-line rule, which hides
+/// it from the operator and reports it as a runner refusal.
+pub const DETAIL_OK = "no fault detected";
 pub const DETAIL_RESOLVER_DANGLING = "/etc/resolv.conf does not resolve to a readable file — the systemd-resolved stub is not bound into the sandbox";
 pub const DETAIL_DNS_FAILED = "the resolver did not answer inside the sandbox";
 pub const DETAIL_EGRESS_BLOCKED = "the endpoint did not accept a connection";
