@@ -49,7 +49,7 @@ jobs:
     container:
       # Pre-baked: alpine:3.21 + Zig 0.16.0 + apk deps + x86_64-linux-gnu OpenSSL
       # static-link symlinks. Multi-arch image; linux/amd64 selected on x86_64 runner.
-      image: ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r3
+      image: ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r4
     steps:
       - uses: actions/checkout@v6
 
@@ -157,7 +157,7 @@ jobs:
             --platform linux/arm64 \
             -v "$GITHUB_WORKSPACE:/src:ro" \
             -v "$GITHUB_WORKSPACE/zig-out:/zig-out" \
-            ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r3 \
+            ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r4 \
             sh -c '
               set -e
               cp -a /src/. /build
