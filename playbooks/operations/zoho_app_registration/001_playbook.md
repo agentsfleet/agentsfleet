@@ -2,7 +2,7 @@
 
 **Owners:** 🤠 Indy for Zoho settings and 1Password; 🦉 Orly for secret sync
 and verification
-**Updated:** Jul 31, 2026
+**Updated:** Aug 16, 2026
 **Prerequisite:** the target environment's admin bootstrap is complete, its API
 host passes `/readyz`, and Indy can create a client in the Zoho API Console
 
@@ -11,8 +11,8 @@ development acceptance.
 
 | Environment | Client name | Callback URL |
 |---|---|---|
-| Development | `agentsfleet-dev` | `https://api-dev.agentsfleet.net/v1/connectors/zoho/callback` |
-| Production | `agentsfleet` | `https://api.agentsfleet.net/v1/connectors/zoho/callback` |
+| Development | `agentsfleet-dev` | `https://app-dev.agentsfleet.net/api/connectors/zoho/callback` |
+| Production | `agentsfleet` | `https://app.agentsfleet.net/api/connectors/zoho/callback` |
 
 ## 1. Indy: create and vault the client
 

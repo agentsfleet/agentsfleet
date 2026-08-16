@@ -6,17 +6,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // connect/probe security boundary is the backend. The provider is NOT checked
 // against an allowlist — that would duplicate the registry — so a newly registered
 // provider connects with no change here. Mock both module boundaries.
-const { withTokenMock, startConnectMock } = vi.hoisted(() => ({
+const { disconnectConnectorMock, withTokenMock, startConnectMock } = vi.hoisted(() => ({
+  disconnectConnectorMock: vi.fn(),
   withTokenMock: vi.fn(),
   startConnectMock: vi.fn(),
 }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
 vi.mock("@/lib/api/connectors", () => ({
+  disconnectConnector: disconnectConnectorMock,
   startConnect: startConnectMock,
 }));
 
-import { startConnectAction } from "@/app/(dashboard)/w/[workspaceId]/integrations/connector-actions";
+import {
+  disconnectConnectorAction,
+  startConnectAction,
+} from "@/app/(dashboard)/w/[workspaceId]/integrations/connector-actions";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -28,6 +33,33 @@ beforeEach(() => {
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
+  });
+});
+
+describe("disconnectConnectorAction", () => {
+  it("forwards the provider and workspace through withToken", async () => {
+    disconnectConnectorMock.mockResolvedValue(undefined);
+
+    const result = await disconnectConnectorAction("github", "ws_1");
+
+    expect(result).toEqual({ ok: true, data: undefined });
+    expect(disconnectConnectorMock).toHaveBeenCalledWith("github", "ws_1", "tok");
+  });
+
+  it("rejects a path-tampered provider before token or API work", async () => {
+    const result = await disconnectConnectorAction("evil/../provider", "ws_1");
+
+    expect(result).toEqual({ ok: false, error: "Unknown connector provider" });
+    expect(withTokenMock).not.toHaveBeenCalled();
+    expect(disconnectConnectorMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a client failure as an action error", async () => {
+    disconnectConnectorMock.mockRejectedValue(new Error("disconnect failed"));
+
+    const result = await disconnectConnectorAction("slack", "ws_1");
+
+    expect(result).toEqual({ ok: false, error: "disconnect failed" });
   });
 });
 afterEach(() => vi.resetAllMocks());

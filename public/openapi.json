@@ -2994,13 +2994,62 @@
             "$ref": "#/components/responses/Error"
           }
         }
+      },
+      "delete": {
+        "operationId": "connector_disconnect",
+        "summary": "Disconnect a provider from a workspace",
+        "description": "Removes the workspace's connector handle and event-routing records from `agentsfleet`. Provider authorization remains active outside `agentsfleet`.\n\nRepeating this request returns 204. Use Connect to authorize the provider again.\n",
+        "tags": [
+          "Connectors"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "Workspace identifier.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "description": "Provider identifier, such as `slack` or `github`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Connector disconnected or already absent."
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
       }
     },
     "/v1/connectors/{provider}/callback": {
       "get": {
         "operationId": "connector_callback",
-        "summary": "Complete a provider connection",
-        "description": "The provider sends the user's browser here after approval. A valid callback connects the workspace and returns the browser to the dashboard.\n\nInvalid, expired, or reused state returns 400 `UZ-CONN-002`. A provider timeout returns `UZ-CONN-003`.\n",
+        "summary": "Relay a provider callback to the dashboard",
+        "description": "Compatibility URL for provider registrations that still target the API host. It forwards the browser to the dashboard callback with a fixed legacy marker. The authenticated endpoint uses that marker only to echo the old redirect URL during token exchange. This endpoint never exchanges a provider code or changes connector data.\n\nNew provider registrations use `https://<APP_HOST>/api/connectors/{provider}/callback` for the matching environment. The dashboard posts the current Bearer token to the authenticated callback completion method.\n",
         "tags": [
           "Connectors"
         ],
@@ -3040,30 +3089,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "description": "Provider data-center location supplied by multi-region providers such as Zoho.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
-          "200": {
-            "description": "Connected without a dashboard redirect.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "status"
-                  ],
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "const": "connected"
-                    }
-                  }
-                }
-              }
-            }
-          },
           "302": {
-            "description": "Connected. The browser returns to the dashboard.",
+            "description": "Browser redirected to the dashboard callback.",
             "headers": {
               "Location": {
                 "description": "Dashboard connectors page.",
@@ -3079,6 +3118,102 @@
           "404": {
             "$ref": "#/components/responses/Error"
           },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      },
+      "post": {
+        "operationId": "connector_callback_complete",
+        "summary": "Complete a provider connection",
+        "description": "The dashboard calls this endpoint after the provider returns to the browser. The caller needs `connector:write` and must be the same person who started the signed connection state.\n\nThe signed state binds the workspace, a keyed tag of the starter identity, a nonce, and expiry. The endpoint verifies identity and workspace access before consuming the nonce or exchanging a provider code.\n",
+        "tags": [
+          "Connectors"
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "description": "Provider identifier, such as `slack` or `github`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "description": "Signed one-time value from the connection URL.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "description": "Authorization code supplied by the provider when required.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "installation_id",
+            "in": "query",
+            "required": false,
+            "description": "Installation identifier supplied by providers such as GitHub.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "description": "Provider data-center location supplied by multi-region providers such as Zoho.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "callback_source",
+            "in": "query",
+            "required": false,
+            "description": "Fixed compatibility marker added by the legacy API relay. Browser callers omit it.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "legacy_api"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "The provider flow advances to its next authorization step or returns to dashboard Integrations after connection.",
+            "headers": {
+              "Location": {
+                "description": "Provider continuation URL or dashboard Integrations page.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
           "502": {
             "$ref": "#/components/responses/Error"
           },
@@ -3089,7 +3224,11 @@
             "$ref": "#/components/responses/Error"
           }
         },
-        "security": []
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/v1/connectors/slack/events": {

@@ -7,6 +7,7 @@
 /** Route prefix for the workspace-scoped dashboard segment (`app/(dashboard)/w/[workspaceId]`). */
 export const WORKSPACE_ROUTE_PREFIX = "/w";
 export const DEFAULT_WORKSPACE_SUBPATH = "fleets";
+export const WORKSPACE_INTEGRATIONS_PATH = "/integrations";
 
 /**
  * Dashboard root (`app/(dashboard)/page.tsx`) — the single place that resolves

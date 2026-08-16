@@ -2,6 +2,7 @@
 
 import { withToken, type ActionResult } from "@/lib/actions/with-token";
 import {
+  disconnectConnector,
   startConnect,
   type ConnectorConnectStart,
 } from "@/lib/api/connectors";
@@ -18,6 +19,10 @@ import {
 const PROVIDER_ID_PATTERN = /^[a-z][a-z0-9_-]*$/;
 const UNKNOWN_PROVIDER = "Unknown connector provider";
 
+function providerIsValid(provider: string): boolean {
+  return PROVIDER_ID_PATTERN.test(provider);
+}
+
 // Initiates a browser-OAuth / app-install connector connect (redirect round-trip).
 // Returns the provider authorize/install URL the client redirects to; the round
 // trip finishes at the backend callback, which writes the vault handle the broker
@@ -26,8 +31,18 @@ export async function startConnectAction(
   provider: string,
   workspaceId: string,
 ): Promise<ActionResult<ConnectorConnectStart>> {
-  if (!PROVIDER_ID_PATTERN.test(provider)) {
+  if (!providerIsValid(provider)) {
     return { ok: false, error: UNKNOWN_PROVIDER };
   }
   return withToken((t) => startConnect(provider, workspaceId, t));
+}
+
+export async function disconnectConnectorAction(
+  provider: string,
+  workspaceId: string,
+): Promise<ActionResult<void>> {
+  if (!providerIsValid(provider)) {
+    return { ok: false, error: UNKNOWN_PROVIDER };
+  }
+  return withToken((t) => disconnectConnector(provider, workspaceId, t));
 }

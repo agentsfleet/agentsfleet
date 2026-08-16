@@ -52,6 +52,7 @@ pub const migrations = [_]MigrationEntry{
     .{ .version = 520, .sql = @embedFile("520_fleet_schedules.sql") },
     .{ .version = 540, .sql = @embedFile("540_integration_grants.sql") },
     .{ .version = 550, .sql = @embedFile("550_connector_installs.sql") },
+    .{ .version = 551, .sql = @embedFile("551_connector_installs_delete_privilege.sql") },
     .{ .version = 560, .sql = @embedFile("560_connector_channels.sql") },
     .{ .version = 570, .sql = @embedFile("570_user_preferences.sql") },
 

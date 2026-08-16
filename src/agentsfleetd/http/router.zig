@@ -143,7 +143,11 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // ── Connectors: generic {provider} trio, registry-resolved (M108) ─────
     if (matchers.matchWorkspaceConnectorConnect(p)) |r| return .{ .connector_connect = r };
     if (matchers.matchWorkspaceConnector(p)) |r| return .{ .connector_status = r };
-    if (matchers.matchConnectorCallback(p)) |provider| return .{ .connector_callback = provider };
+    if (matchers.matchConnectorCallback(p)) |provider| return switch (method) {
+        .GET => .{ .connector_callback = provider },
+        .POST => .{ .connector_complete = provider },
+        else => .{ .connector_callback = provider },
+    };
     if (matchers.matchWorkspaceConnectorCatalog(p)) |ws| return .{ .connector_catalog = ws };
     // ── Slack events ingress (M106 §2) — POST-only (invoke fn 405s others) ─
     if (matchers.matchSlackEvents(p)) return .{ .slack_events = {} };

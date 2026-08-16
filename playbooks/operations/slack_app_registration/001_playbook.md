@@ -2,7 +2,7 @@
 
 **Owners:** 🤠 Indy for Slack settings and 1Password; 🦉 Orly for secret sync
 and verification
-**Updated:** Jul 31, 2026
+**Updated:** Aug 16, 2026
 **Prerequisite:** the target environment's admin bootstrap is complete, its API
 host passes `/readyz`, and its public Slack ingress is reachable
 
@@ -17,7 +17,9 @@ app only after development acceptance passes.
 ## 1. Indy: create the app
 
 At [Slack app management](https://api.slack.com/apps), choose **Create New App
-→ From a manifest** and use this manifest with the target `API_BASE`:
+→ From a manifest** and use this manifest with the target `API_BASE`. Set
+`APP_HOST` to `app-dev.agentsfleet.net` for development or
+`app.agentsfleet.net` for production:
 
 ```yaml
 display_information:
@@ -28,7 +30,7 @@ features:
     always_online: true
 oauth_config:
   redirect_urls:
-    - <API_BASE>/v1/connectors/slack/callback
+    - https://<APP_HOST>/api/connectors/slack/callback
   scopes:
     bot:
       - app_mentions:read
