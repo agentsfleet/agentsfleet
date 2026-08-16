@@ -211,12 +211,14 @@ test "a home whose lock file cannot be created is unavailable, never adopted" {
     // A home on a read-only mount, or one owned by another user, has to refuse
     // the claim rather than proceed unlocked. Two daemons sweeping one home is
     // exactly what the lock exists to prevent, so failing open is not an option.
+    //
+    // A directory sitting at the lock's name blocks its creation with a type
+    // conflict (EISDIR) rather than a permission bit, so the refusal holds even
+    // when the test runs as root (CI's container user), which silently ignores
+    // a 0o500 directory mode.
     const home = try freshHome("lock-uncreatable");
     defer Dir.cwd().deleteTree(io, home) catch {};
-    try setMode(home, 0o500);
-    // Runs before the deleteTree above (defers unwind last-in-first-out), or the
-    // temp tree would outlive the test.
-    defer setMode(home, 0o700) catch {};
+    try makeDir(home, LOCK_NAME);
 
     try expectOutcome(.unavailable, boot(home));
 }
@@ -248,6 +250,12 @@ test "an orphan that refuses to be reaped is logged and the sweep continues past
     // One such entry must not strand the others: the sweep exists to clear what
     // an unclean shutdown left behind, and stopping at the first refusal leaves
     // the disk filling up for the same reason it was filling up before.
+    //
+    // Root ignores the write-permission bit LEASE_A's refusal depends on, and
+    // there is no portable, unprivileged-only way to force deleteTree to fail
+    // instead — skip under a root-run harness (CI's container user).
+    if (std.c.geteuid() == 0) return error.SkipZigTest;
+
     const home = try freshHome("reap-refused");
     defer Dir.cwd().deleteTree(io, home) catch {};
     var buf: [std.fs.max_path_bytes]u8 = undefined;
