@@ -114,6 +114,7 @@ test {
     _ = @import("http/handlers/auth/cli_credentials_index_integration_test.zig");
     _ = @import("http/handlers/auth/cli_credentials_relogin_integration_test.zig");
     _ = @import("cmd/preflight_integration_test.zig");
+    _ = @import("cmd/serve_webhook_lookup_integration_test.zig");
     _ = @import("http/handlers/webhooks/approval_integration_test.zig");
     _ = @import("http/handlers/fleets/messages_integration_test.zig");
     _ = @import("http/handlers/schedules/api_integration_test.zig");

@@ -3,6 +3,15 @@
 
 const std = @import("std");
 const telemetry = @import("telemetry.zig");
+const common = @import("common");
+const posthog = @import("posthog");
+
+/// Batch knobs set far above anything the capture ladder below emits, so the
+/// single event it enqueues is never batched out and the network stays
+/// untouched. Named rather than spelled inline: both are "effectively never",
+/// not a tuned value, and the reason belongs with the number.
+const NEVER_FLUSH_INTERVAL_MS = 3_600_000;
+const NEVER_FLUSH_AT = 1_000;
 
 // FleetTriggered / FleetCompleted comptime struct shape.
 test "FleetTriggered properties return expected keys" {
@@ -104,4 +113,47 @@ test "test_completion_analytics_remains_optional" {
         .time_to_first_token_ms = 0,
     }));
     // Reaching here without panic is the pass condition.
+}
+
+test "a capture the client cannot serialize is swallowed, never propagated" {
+    // `ProdBackend.capture` returns void: the caller emitting an analytics
+    // event has no way to handle a telemetry failure and must not be made to.
+    // The existing sibling test covers the null-client early return; this one
+    // reaches the arm past it, where a real client's `capture` fails.
+    //
+    // The client is built on a failing allocator whose budget runs out during
+    // `serializeEvent`. `has_induced_failure` separates the two outcomes: it
+    // is false while the ladder is still failing `init` (which returns early),
+    // and true only once init succeeded and the capture itself was starved —
+    // which is the arm under test, asserted rather than merely driven.
+    const alloc = std.testing.allocator;
+    const event = telemetry.FleetTriggered{
+        .distinct_id = "ws_capture",
+        .workspace_id = "ws_capture",
+        .fleet_id = "z_capture",
+        .event_id = "e_capture",
+        .source = "webhook",
+    };
+
+    var proved = false;
+    for (0..64) |fail_index| {
+        var failing = std.testing.FailingAllocator.init(alloc, .{ .fail_index = fail_index });
+        const client = posthog.init(failing.allocator(), common.globalIo(), .{
+            .api_key = "phc_capture_ladder",
+            .host = "https://us.i.posthog.com",
+            .flush_interval_ms = NEVER_FLUSH_INTERVAL_MS,
+            .flush_at = NEVER_FLUSH_AT,
+            .max_retries = 1,
+        }) catch continue;
+        defer client.deinit();
+
+        var prod = telemetry.ProdBackend{ .client = client };
+        prod.capture(telemetry.FleetTriggered, event);
+
+        if (failing.has_induced_failure) {
+            proved = true;
+            break;
+        }
+    }
+    try std.testing.expect(proved);
 }
