@@ -130,8 +130,15 @@ fn eqlPolicy(a: protocol.AssignedPolicy, b: protocol.AssignedPolicy) bool {
     if (a.worker_count != b.worker_count) return false;
     if (!eqlStrings(a.registry_allowlist, b.registry_allowlist)) return false;
     // Without this arm a re-assigned bind list would compare `.unchanged` and
-    // every lease would keep the old mounts until some other field moved.
-    if (!eqlStrings(a.extra_binds, b.extra_binds)) return false;
+    // every lease would keep the old mounts until some other field moved. Mode
+    // is compared too: flipping a path read-only → read-write changes nothing
+    // else, and must not read as "same policy".
+    if (a.extra_binds.len != b.extra_binds.len) return false;
+    for (a.extra_binds, b.extra_binds) |x, y| {
+        if (x.mode != y.mode) return false;
+        if (!std.mem.eql(u8, x.path, y.path)) return false;
+        if (!std.mem.eql(u8, x.note, y.note)) return false;
+    }
     return true;
 }
 
@@ -165,10 +172,41 @@ fn freeStrings(alloc: std.mem.Allocator, list: []const []const u8) void {
     alloc.free(list);
 }
 
+/// Deep-copy the owned bind list. Each entry owns two strings, so a mid-list
+/// failure unwinds BOTH of every entry already copied plus the partial entry —
+/// anything less leaks the path when the note allocation fails.
+fn dupeBinds(alloc: std.mem.Allocator, src: []const protocol.ExtraBind) ![]const protocol.ExtraBind {
+    const list = try alloc.alloc(protocol.ExtraBind, src.len);
+    var duped: usize = 0;
+    errdefer {
+        for (list[0..duped]) |b| {
+            alloc.free(b.path);
+            alloc.free(b.note);
+        }
+        alloc.free(list);
+    }
+    for (src) |b| {
+        const path = try alloc.dupe(u8, b.path);
+        errdefer alloc.free(path); // freed here iff the note dupe below fails
+        const note = try alloc.dupe(u8, b.note);
+        list[duped] = .{ .path = path, .mode = b.mode, .note = note };
+        duped += 1;
+    }
+    return list;
+}
+
+fn freeBinds(alloc: std.mem.Allocator, list: []const protocol.ExtraBind) void {
+    for (list) |b| {
+        alloc.free(b.path);
+        alloc.free(b.note);
+    }
+    alloc.free(list);
+}
+
 fn dupePolicy(alloc: std.mem.Allocator, p: protocol.AssignedPolicy) !protocol.AssignedPolicy {
     const registries = try dupeStrings(alloc, p.registry_allowlist);
     errdefer freeStrings(alloc, registries);
-    const binds = try dupeStrings(alloc, p.extra_binds);
+    const binds = try dupeBinds(alloc, p.extra_binds);
     return .{
         .sandbox_tier = p.sandbox_tier,
         .network_policy = p.network_policy,
@@ -182,7 +220,7 @@ fn dupePolicy(alloc: std.mem.Allocator, p: protocol.AssignedPolicy) !protocol.As
 /// allocator the snapshot was taken with.
 pub fn freePolicy(alloc: std.mem.Allocator, p: protocol.AssignedPolicy) void {
     freeStrings(alloc, p.registry_allowlist);
-    freeStrings(alloc, p.extra_binds);
+    freeBinds(alloc, p.extra_binds);
 }
 
 const std = @import("std");

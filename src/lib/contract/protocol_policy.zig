@@ -73,6 +73,46 @@ pub const DEFAULT_WORKER_COUNT: u32 = 1;
 pub const MIN_WORKER_COUNT: u32 = 1;
 pub const MAX_WORKER_COUNT: u32 = 64;
 
+/// How one host path is mounted into a lease's sandbox. `read_write` lets the
+/// agent's own code modify host state outside its workspace, on every lease
+/// that runner takes — an operator opts into that per path, and an unstated
+/// mode is always `read_only` so a malformed or older assignment can never
+/// widen access by omission.
+pub const BindMode = enum {
+    read_only,
+    read_write,
+
+    /// The bwrap flag this mode emits. `-try` on both: a path absent on this
+    /// host is skipped rather than failing the lease, and shows up as a failed
+    /// self-test check instead of a dead runner.
+    pub fn bwrapFlag(self: BindMode) []const u8 {
+        return switch (self) {
+            .read_only => "--ro-bind-try",
+            .read_write => "--bind-try",
+        };
+    }
+
+    /// Operator-facing label — the dashboard and the self-test name the mode
+    /// the same way, so "why can the agent write here" is answerable from
+    /// either surface (RULE UFS: single source for both runtimes).
+    pub fn label(self: BindMode) []const u8 {
+        return switch (self) {
+            .read_only => "read-only",
+            .read_write => "read-write",
+        };
+    }
+};
+
+/// One operator-assigned mount: the host path, how it is mounted, and the
+/// operator's own note saying why it exists. The note is carried so the
+/// self-test can echo it back per check — an unexplained mount on a security
+/// boundary is how a bind outlives the reason it was added.
+pub const ExtraBind = struct {
+    path: []const u8,
+    mode: BindMode = .read_only,
+    note: []const u8 = "",
+};
+
 /// The policy the control plane assigns to one runner — everything a host was
 /// previously told through its environment, now delivered with its identity.
 pub const AssignedPolicy = struct {
@@ -82,12 +122,12 @@ pub const AssignedPolicy = struct {
     /// Empty = the runner substitutes its named default registry set.
     registry_allowlist: []const []const u8,
     worker_count: u32,
-    /// Extra host paths bound read-only into every lease's sandbox, IN ADDITION
-    /// to the daemon-owned baseline (`sandbox_args.RO_SYSTEM_PATHS`) — an
-    /// operator can add a path a host needs, never remove or re-mode one the
-    /// sandbox depends on. Defaulted so an older control plane that omits the
-    /// field still decodes. Validated by `extraBindsValid` on both sides.
-    extra_binds: []const []const u8 = &.{},
+    /// Extra host paths bound into every lease's sandbox, IN ADDITION to the
+    /// daemon-owned baseline (`sandbox_args.RO_SYSTEM_PATHS`) — an operator can
+    /// add a path a host needs, never remove or re-mode one the sandbox depends
+    /// on. Defaulted so an older control plane that omits the field still
+    /// decodes. Validated by `extraBindsValid` on both sides.
+    extra_binds: []const ExtraBind = &.{},
 };
 
 /// What this host's kernel can actually enforce — probed at startup, refreshed
@@ -130,26 +170,29 @@ pub fn capabilityReportBounded(report: CapabilityReport) bool {
 }
 
 /// Extra-bind bounds. The operator list is ADDITIVE to the daemon-owned
-/// baseline and read-only by construction — the wire carries a path and
-/// nothing else, so there is no mode an operator could get wrong.
+/// baseline: an assignment can only append, never drop or re-mode a path the
+/// sandbox depends on.
 pub const MAX_EXTRA_BINDS: usize = 16;
 pub const MAX_BIND_PATH_LEN: usize = 4096; // PATH_MAX on Linux
+pub const MAX_BIND_NOTE_LEN: usize = 200; // one line of operator intent, not a document
 
-/// Every operator-supplied bind path must be a well-formed absolute path.
-/// Fails the WHOLE list on one bad entry: a partially applied bind set is a
-/// sandbox nobody reasoned about, so the caller degrades the runner instead of
-/// leasing under it.
+/// Every operator-supplied bind must carry a well-formed absolute path and a
+/// bounded note. Fails the WHOLE list on one bad entry: a partially applied
+/// bind set is a sandbox nobody reasoned about, so the caller degrades the
+/// runner instead of leasing under it.
 ///
 /// Deliberately NOT a path denylist. Enumerating "sensitive" host paths fails
 /// open on everything unlisted and goes stale the moment a host gains a new
 /// one — the same rot that left `/run/systemd/resolve` out of the baseline and
-/// broke every lease. What bounds this surface is structural instead: the
-/// mount is read-only, it is additive so no baseline path can be removed or
-/// re-moded, and the self-test reports each entry so a mount is never silent.
-pub fn extraBindsValid(paths: []const []const u8) bool {
-    if (paths.len > MAX_EXTRA_BINDS) return false;
-    for (paths) |p| {
-        if (!bindPathValid(p)) return false;
+/// broke every lease. What bounds this surface is structural instead: it is
+/// additive so no baseline path can be removed or re-moded, the mode is
+/// explicit and defaults closed, and the self-test reports each entry with its
+/// mode and note so a mount is never silent.
+pub fn extraBindsValid(binds: []const ExtraBind) bool {
+    if (binds.len > MAX_EXTRA_BINDS) return false;
+    for (binds) |b| {
+        if (!bindPathValid(b.path)) return false;
+        if (b.note.len > MAX_BIND_NOTE_LEN) return false;
     }
     return true;
 }
@@ -210,33 +253,58 @@ test "registryAllowlistValid accepts host[:port] names and refuses everything el
 
 test "test_operator_bind_validation_refuses_unsafe_paths" {
     // The grammar an operator-supplied mount must satisfy.
+    const ok = [_]ExtraBind{
+        .{ .path = "/run/systemd/resolve" },
+        .{ .path = "/srv/models", .mode = .read_write, .note = "shared model cache" },
+    };
     try std.testing.expect(extraBindsValid(&.{})); // empty = baseline only
-    try std.testing.expect(extraBindsValid(&.{ "/run/systemd/resolve", "/usr/share/ca-certificates" }));
+    try std.testing.expect(extraBindsValid(&ok));
 
-    try std.testing.expect(!extraBindsValid(&.{"relative/path"})); // not absolute
-    try std.testing.expect(!extraBindsValid(&.{"/etc/../root"})); // traversal escapes the prefix check
-    try std.testing.expect(!extraBindsValid(&.{"/srv/data/"})); // trailing slash = second spelling
-    try std.testing.expect(!extraBindsValid(&.{"/"})); // shorter than the 2-char floor
-    try std.testing.expect(!extraBindsValid(&.{"/srv\x00/etc"})); // NUL truncation
-    try std.testing.expect(!extraBindsValid(&.{"/" ++ "a" ** MAX_BIND_PATH_LEN})); // over length
+    try std.testing.expect(!extraBindsValid(&.{.{ .path = "relative/path" }})); // not absolute
+    try std.testing.expect(!extraBindsValid(&.{.{ .path = "/etc/../root" }})); // traversal
+    try std.testing.expect(!extraBindsValid(&.{.{ .path = "/srv/data/" }})); // trailing slash
+    try std.testing.expect(!extraBindsValid(&.{.{ .path = "/" }})); // under the 2-char floor
+    try std.testing.expect(!extraBindsValid(&.{.{ .path = "/srv\x00/etc" }})); // NUL truncation
+    try std.testing.expect(!extraBindsValid(&.{.{ .path = "/" ++ "a" ** MAX_BIND_PATH_LEN }})); // over length
+    try std.testing.expect(!extraBindsValid(&.{.{ .path = "/srv/x", .note = "n" ** (MAX_BIND_NOTE_LEN + 1) }}));
 
     // No path denylist: a platform admin already commands this runner's policy,
     // so the grammar checks shape, not which directory an operator "should"
-    // name. Read-only + additive + reported is what bounds the surface.
-    try std.testing.expect(extraBindsValid(&.{"/srv/models"}));
+    // name. Additive + explicit mode + reported is what bounds the surface.
+    try std.testing.expect(extraBindsValid(&.{.{ .path = "/srv/models" }}));
 
     // One bad entry fails the whole list — never a partial bind set.
-    try std.testing.expect(!extraBindsValid(&.{ "/usr/share/zoneinfo", "relative" }));
+    try std.testing.expect(!extraBindsValid(&.{
+        .{ .path = "/usr/share/zoneinfo" },
+        .{ .path = "relative" },
+    }));
+}
+
+test "test_bind_mode_defaults_closed_and_maps_to_its_bwrap_flag" {
+    // An assignment that names a path but no mode must never widen access.
+    const defaulted = ExtraBind{ .path = "/srv/models" };
+    try std.testing.expectEqual(BindMode.read_only, defaulted.mode);
+
+    // Wire compatibility: a control plane that sends only a path still decodes,
+    // and decodes CLOSED.
+    const parsed = try std.json.parseFromSlice([]const ExtraBind, std.testing.allocator, "[{\"path\":\"/srv/models\"}]", .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+    try std.testing.expectEqual(BindMode.read_only, parsed.value[0].mode);
+
+    try std.testing.expectEqualStrings("--ro-bind-try", BindMode.read_only.bwrapFlag());
+    try std.testing.expectEqualStrings("--bind-try", BindMode.read_write.bwrapFlag());
+    try std.testing.expectEqualStrings("read-only", BindMode.read_only.label());
+    try std.testing.expectEqualStrings("read-write", BindMode.read_write.label());
 }
 
 test "test_extra_binds_are_bounded" {
     // A runner:write caller must not be able to stuff the per-heartbeat payload.
-    var over: [MAX_EXTRA_BINDS + 1][]const u8 = undefined;
-    for (&over) |*slot| slot.* = "/usr/share/zoneinfo";
+    var over: [MAX_EXTRA_BINDS + 1]ExtraBind = undefined;
+    for (&over) |*slot| slot.* = .{ .path = "/usr/share/zoneinfo" };
     try std.testing.expect(!extraBindsValid(&over));
 
-    var at_cap: [MAX_EXTRA_BINDS][]const u8 = undefined;
-    for (&at_cap) |*slot| slot.* = "/usr/share/zoneinfo";
+    var at_cap: [MAX_EXTRA_BINDS]ExtraBind = undefined;
+    for (&at_cap) |*slot| slot.* = .{ .path = "/usr/share/zoneinfo" };
     try std.testing.expect(extraBindsValid(&at_cap));
 }
 
