@@ -203,13 +203,38 @@ jobs:
       # harness files and the inline `test {}` blocks this gate excludes — and
       # the badge would read about two points above the number the gate
       # enforced. This file is what `check_zig_coverage.py` published.
-      - name: Upload zig coverage to Codecov
+      #
+      # Three uploads of that ONE file, one per product folder. Each flag
+      # carries a `paths` filter in codecov.yml, so Codecov scopes the same
+      # union three ways rather than re-measuring anything: the badges then
+      # publish exactly what the gate's own per-folder floors enforce. A single
+      # blended `zig` flag averaged three trees that move independently, which
+      # is the failure make/test.mk's per-folder floors exist to prevent.
+      - name: Upload zig agentsfleetd coverage to Codecov
         if: success()
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage/zig/merged/cobertura.xml
-          flags: zig
+          flags: zig-agentsfleetd
+          disable_search: true
+          fail_ci_if_error: true
+      - name: Upload zig runner coverage to Codecov
+        if: success()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage/zig/merged/cobertura.xml
+          flags: zig-runner
+          disable_search: true
+          fail_ci_if_error: true
+      - name: Upload zig lib coverage to Codecov
+        if: success()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage/zig/merged/cobertura.xml
+          flags: zig-lib
           disable_search: true
           fail_ci_if_error: true
       - name: Upload Zig coverage report
