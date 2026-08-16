@@ -25,7 +25,7 @@ const crypto_primitives = @import("../secrets/crypto_primitives.zig");
 const harness_mod = @import("test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 
-const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
+pub const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 pub const TEST_WS_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const PRIMARY_WORKSPACE_CREATED_AT_MS: i64 = 0;
 
