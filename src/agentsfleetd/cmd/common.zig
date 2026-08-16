@@ -91,7 +91,7 @@ pub fn enforceServeMigrationSafety(
     switch (decision) {
         .allow_without_running => return,
         .run_required => {
-            log.warn("startup.migration_auto_apply_start", .{ .reason = "MIGRATE_ON_START enabled" });
+            log.warn("startup_migration_auto_apply_start", .{ .reason = "MIGRATE_ON_START enabled" });
 
             // Run over a session-scoped migrator pool, NOT the pooled API pool
             // the inspection used — the session advisory lock leaks on a

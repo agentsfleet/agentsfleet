@@ -23,9 +23,9 @@ const log = logging.scoped(.agentsfleetd);
 
 const EnvMap = common.env.Map;
 
-const S_STARTUP_CONFIG_LOAD_FAILED = "startup.config_load_failed";
-const S_STARTUP_ARGS_PARSE_FAILED = "startup.args_parse_failed";
-const S_STARTUP_ENV_CHECK_FAILED = "startup.env_check_failed";
+const S_STARTUP_CONFIG_LOAD_FAILED = "startup_config_load_failed";
+const S_STARTUP_ARGS_PARSE_FAILED = "startup_args_parse_failed";
+const S_STARTUP_ENV_CHECK_FAILED = "startup_env_check_failed";
 const S_API = "api";
 
 pub fn parseArgsOrExit(argv: []const [:0]const u8) ?u16 {
@@ -40,7 +40,7 @@ pub fn parseArgsOrExit(argv: []const [:0]const u8) ?u16 {
 }
 
 pub fn enforceEnvOrExit(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
-    log.info("startup.env_check_start", .{});
+    log.info("startup_env_check_start", .{});
     env_vars.enforceFromEnv(env_map, alloc) catch |err| {
         const env_code = error_codes.ERR_STARTUP_ENV_CHECK;
         switch (err) {
@@ -51,11 +51,11 @@ pub fn enforceEnvOrExit(env_map: *const EnvMap, alloc: std.mem.Allocator) void {
         }
         std.process.exit(1);
     };
-    log.info("startup.env_check_ok", .{});
+    log.info("startup_env_check_ok", .{});
 }
 
 pub fn loadServeConfigOrExit(env_map: *const EnvMap, alloc: std.mem.Allocator) runtime_config.ServeConfig {
-    log.info("startup.config_load_start", .{});
+    log.info("startup_config_load_start", .{});
     const serve_cfg = runtime_config.ServeConfig.load(env_map, alloc) catch |err| {
         switch (err) {
             runtime_config.ValidationError.OidcRequired,
@@ -79,7 +79,7 @@ pub fn loadServeConfigOrExit(env_map: *const EnvMap, alloc: std.mem.Allocator) r
         }
         std.process.exit(1);
     };
-    log.info("startup.config_load_ok", .{});
+    log.info("startup_config_load_ok", .{});
     return serve_cfg;
 }
 
@@ -94,26 +94,26 @@ pub fn setKekOrExit(master_key_hex: []const u8) void {
 }
 
 pub fn connectRedisOrExit(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) queue_redis.Client {
-    log.info("startup.redis_connect_start", .{ .role = S_API });
+    log.info("startup_redis_connect_start", .{ .role = S_API });
     const redis_request_timeout_ms = serve_redis_timeout.read(env_map, alloc);
-    log.info("startup.redis_request_timeout_resolved", .{ .ms = redis_request_timeout_ms });
+    log.info("startup_redis_request_timeout_resolved", .{ .ms = redis_request_timeout_ms });
     const client = queue_redis.Client.connectFromEnvWithOptions(io, env_map, alloc, .api, .{
         .read_timeout_ms = redis_request_timeout_ms,
     }) catch |err| {
-        log.err("startup.redis_connect_failed", .{
+        log.err("startup_redis_connect_failed", .{
             .role = S_API,
             .error_code = error_codes.ERR_STARTUP_REDIS_CONNECT,
             .err = @errorName(err),
         });
         std.process.exit(1);
     };
-    log.info("startup.redis_connect_ok", .{ .role = S_API });
+    log.info("startup_redis_connect_ok", .{ .role = S_API });
     return client;
 }
 
 pub fn initOidc(alloc: std.mem.Allocator, serve_cfg: *const runtime_config.ServeConfig) !?oidc_auth.Verifier {
     if (!serve_cfg.oidc_enabled) return null;
-    log.info("startup.oidc_init_start", .{ .provider = @tagName(serve_cfg.oidc_provider), .jwks_url = serve_cfg.oidc_jwks_url orelse "" });
+    log.info("startup_oidc_init_start", .{ .provider = @tagName(serve_cfg.oidc_provider), .jwks_url = serve_cfg.oidc_jwks_url orelse "" });
     return try oidc_auth.Verifier.init(alloc, .{
         .provider = serve_cfg.oidc_provider,
         .jwks_url = serve_cfg.oidc_jwks_url orelse "",

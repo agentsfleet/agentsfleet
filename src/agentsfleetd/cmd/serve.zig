@@ -45,7 +45,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     // Bounded wait for in-flight Clerk metadata workers; stragglers own only
     // self-lifetime memory, so timing out cannot free state under them.
     defer clerk_fetch_worker.drainForShutdown();
-    log.info("startup.serve_start", .{});
+    log.info("startup_serve_start", .{});
 
     const serve_port_override = serve_boot.parseArgsOrExit(argv);
     serve_boot.enforceEnvOrExit(env_map, alloc);
@@ -101,13 +101,13 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     var fleet_sets = fleet_set_cache.init(alloc, io);
     defer serve_shutdown.deinitStreaming(&hub, &streams, &fleet_sets);
     hub.start(api_queue.pool.cfg, deadline_scheduler) catch |err| {
-        log.err("startup.subscription_hub_failed", .{
+        log.err("startup_subscription_hub_failed", .{
             .error_code = error_codes.ERR_STARTUP_REDIS_CONNECT,
             .err = @errorName(err),
         });
         std.process.exit(1);
     };
-    log.info("startup.subscription_hub_ok", .{});
+    log.info("startup_subscription_hub_ok", .{});
 
     // Webhook/backend secrets resolved ONCE at boot; borrowed by handlers + webhook
     // middleware for the process lifetime (null = unset → fail closed).
@@ -130,13 +130,13 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     const clerk_api_base_env = try common.env.owned(env_map, alloc, clerk_backend.API_BASE_ENV_VAR);
     defer if (clerk_api_base_env) |v| alloc.free(v);
     const clerk_api_base = clerk_backend.resolveApiBase(clerk_api_base_env) catch {
-        log.err("startup.clerk_api_base_invalid", .{
+        log.err("startup_clerk_api_base_invalid", .{
             .error_code = error_codes.ERR_STARTUP_ENV_CHECK,
             .hint = "CLERK_API_BASE must be https:// (or http://127.0.0.1 / http://localhost for an offline lane)",
         });
         std.process.exit(1);
     };
-    if (clerk_api_base_env != null) log.info("startup.clerk_api_base_override", .{ .base = clerk_api_base });
+    if (clerk_api_base_env != null) log.info("startup_clerk_api_base_override", .{ .base = clerk_api_base });
 
     var ctx = http_handler.Context{
         .model_library_cache = serve_caches.init(alloc),
@@ -182,7 +182,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     defer if (oidc) |*v| v.deinit();
     if (oidc) |*v| {
         ctx.oidc = v;
-        log.info("startup.oidc_init_ok", .{});
+        log.info("startup_oidc_init_ok", .{});
     }
     var cred_broker = preflight.installCredentialBroker(alloc, io, deadline_scheduler, api_pool, serve_cfg.platform_admin_workspace_id, &ctx.broker, &ctx.github_app_slug); // M102 §3 + §5 slug
     defer cred_broker.deinit();
@@ -234,7 +234,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     registry.initChains();
     registry.setWebhookSig(webhook_sig_mw.middleware());
     registry.setSvixSig(svix_mw.middleware());
-    log.info("startup.middleware_registry_ok", .{});
+    log.info("startup_middleware_registry_ok", .{});
 
     serve_shutdown.reset();
     preflight.installSignalHandlers(serve_shutdown.onSignal);
@@ -243,7 +243,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     try background.start(api_pool, &api_queue, alloc, deadline_scheduler);
     defer background.stop();
 
-    log.info("http.server_starting", .{
+    log.info("http_server_starting", .{
         .port = serve_cfg.port,
         .api_threads = serve_cfg.api_http_threads,
         .api_workers = serve_cfg.api_http_workers,
@@ -258,7 +258,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
         .workers = serve_cfg.api_http_workers,
         .max_clients = @intCast(serve_cfg.api_max_clients),
     }) catch |err| {
-        log.err("http.server_init_failed", .{ .err = @errorName(err) });
+        log.err("http_server_init_failed", .{ .err = @errorName(err) });
         return err;
     };
     defer srv.deinit();
@@ -270,7 +270,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     defer streams.drain();
 
     srv.listen() catch |err| {
-        log.err("http.server_exit_failed", .{ .err = @errorName(err) });
+        log.err("http_server_exit_failed", .{ .err = @errorName(err) });
     };
 
     background.stop();

@@ -29,7 +29,7 @@ const log = logging.scoped(.preflight);
 // ---------------------------------------------------------------------------
 
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
-const S_STARTUP_MIGRATION_CHECK_FAILED = "startup.migration_check_failed";
+const S_STARTUP_MIGRATION_CHECK_FAILED = "startup_migration_check_failed";
 
 pub const PostHogResult = struct {
     const Self = @This();
@@ -54,7 +54,7 @@ pub fn initPostHog(env_map: *const EnvMap, alloc: std.mem.Allocator) PostHogResu
         .flush_at = 20,
         .max_retries = 3,
     }) catch |err| {
-        log.warn("startup.posthog_init_failed", .{ .err = @errorName(err), .reason = "analytics_disabled" });
+        log.warn("startup_posthog_init_failed", .{ .err = @errorName(err), .reason = "analytics_disabled" });
         alloc.free(api_key.?);
         return .{ .client = null, .api_key_owned = null };
     };
@@ -123,7 +123,7 @@ pub fn initOtelExporters(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allo
     const cfg = otlp_config.configFromEnv(env_map, alloc) orelse {
         // Self-serve signal: the disabled reason lives in the startup log, not
         // a ticket — one shared GRAFANA_OTLP_* gate for all three signals.
-        log.info("startup.otel_disabled", .{ .reason = "no GRAFANA_OTLP_ENDPOINT" });
+        log.info("startup_otel_disabled", .{ .reason = "no GRAFANA_OTLP_ENDPOINT" });
         return .{};
     };
     logInstallOutcome("startup.otel_logs", otel_logs.install(io, cfg));
@@ -137,16 +137,16 @@ pub fn initOtelExporters(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allo
 // ---------------------------------------------------------------------------
 
 pub fn connectDbPool(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator, role: db.DbRole) !*db.Pool {
-    log.info("startup.db_connect_start", .{ .role = @tagName(role) });
+    log.info("startup_db_connect_start", .{ .role = @tagName(role) });
     const pool = db.initFromEnvForRole(io, env_map, alloc, role) catch |err| {
-        log.err("startup.db_connect_failed", .{
+        log.err("startup_db_connect_failed", .{
             .role = @tagName(role),
             .error_code = error_codes.ERR_STARTUP_DB_CONNECT,
             .err = @errorName(err),
         });
         return err;
     };
-    log.info("startup.db_connect_ok", .{ .role = @tagName(role) });
+    log.info("startup_db_connect_ok", .{ .role = @tagName(role) });
     return pool;
 }
 
@@ -155,7 +155,7 @@ pub fn connectDbPool(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocato
 // ---------------------------------------------------------------------------
 
 pub fn checkMigrations(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator, pool: *db.Pool, migrate_on_start: bool) anyerror!void {
-    log.info("startup.migration_check_start", .{});
+    log.info("startup_migration_check_start", .{});
     common.enforceServeMigrationSafety(io, env_map, alloc, pool, migrate_on_start) catch |err| {
         const mc_code = error_codes.ERR_STARTUP_MIGRATION_CHECK;
         switch (err) {
@@ -186,7 +186,7 @@ pub fn checkMigrations(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Alloca
         }
         return err;
     };
-    log.info("startup.migration_check_ok", .{});
+    log.info("startup_migration_check_ok", .{});
 }
 
 pub fn parseMigrateOnStart(env_map: *const EnvMap, alloc: std.mem.Allocator) !bool {
@@ -220,7 +220,7 @@ pub fn installSignalHandlers(handler: *const fn (std.posix.SIG) callconv(.c) voi
 
 /// Structured log message for a credential-broker boot failure (RULE UFS — one
 /// spelling across the three alloc/init guard sites).
-const S_CREDENTIAL_BROKER_INIT_FAILED: []const u8 = "startup.credential_broker_init_failed";
+const S_CREDENTIAL_BROKER_INIT_FAILED: []const u8 = "startup_credential_broker_init_failed";
 
 /// Owns the heap-allocated credential-broker singleton + its HTTP boundary + the
 /// duped platform key. `deinit` tears them down at shutdown; all fields optional
