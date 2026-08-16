@@ -61,6 +61,16 @@ const usd = (nanos) => (nanos / NANOS_PER_USD).toFixed(6).replace(/0+$/, "").rep
 const sqlStr = (s) => `'${String(s).replace(/'/g, "''")}'`;
 const dig = (obj, path) => path.split(".").reduce((o, k) => (o == null ? o : o[k]), obj);
 
+/**
+ * A published rate -> a number. Providers are not consistent about the wrapper:
+ * Synthetic ships "$0.000001", most ship "0.000001", a few ship a bare number.
+ * Number("$0.000001") is NaN, which the caller reads as "unparseable" and SKIPS
+ * the model — so a currency symbol silently seeds a provider with fewer rows
+ * than allowlisted. Strip the symbol and the separators; anything still
+ * non-numeric stays NaN and is rejected on purpose.
+ */
+const rate = (raw) => (typeof raw === "string" ? Number(raw.replace(/[$£€,\s]/g, "")) : Number(raw));
+
 function fail(msg) {
   console.error(`✗ ${msg}`);
   process.exit(1);
@@ -116,12 +126,17 @@ async function fromApi(provider, cfg) {
       console.warn(`  ! ${provider}/${id} — allowlisted but absent upstream (retired?)`);
       continue;
     }
-    const input = Number(dig(row, cfg.field_map.input));
-    const cachedRaw = dig(row, cfg.field_map.cached_input);
+    const input = rate(dig(row, cfg.field_map.input));
     // No published cache-read price -> fall back to the input rate, never 0.
-    // A 0 here would silently zero-rate every cached read.
-    const cached = cachedRaw == null || cachedRaw === "" ? input : Number(cachedRaw);
-    const output = Number(dig(row, cfg.field_map.output));
+    // A 0 here would silently zero-rate every cached read. Three spellings of
+    // "no cache discount" arrive from real feeds and all three mean the same
+    // thing: the field is absent (Venice on most rows), it is empty, or it is a
+    // literal zero (OVHcloud publishes "0" across its whole catalogue). Treating
+    // the zero as a real rate is the case that actually bills wrong, because it
+    // parses cleanly and passes every downstream guard.
+    const cachedParsed = rate(dig(row, cfg.field_map.cached_input));
+    const cached = Number.isFinite(cachedParsed) && cachedParsed > 0 ? cachedParsed : input;
+    const output = rate(dig(row, cfg.field_map.output));
     const ctx = Number(dig(row, cfg.field_map.context_cap_tokens));
     if (![input, cached, output, ctx].every(Number.isFinite)) {
       console.warn(`  ! ${provider}/${id} — unparseable rate or context, skipped`);

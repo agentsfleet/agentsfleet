@@ -1,0 +1,295 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "anthropic/claude-haiku-4-5",
+      "object": "model",
+      "created": 1778671374,
+      "owned_by": "anthropic",
+      "name": "Claude Haiku 4.5",
+      "pricing": {
+        "input": 1,
+        "output": 5,
+        "prompt": "0.000001",
+        "completion": "0.000005",
+        "image": "0",
+        "request": "0",
+        "input_cache_read": "0.0000001"
+      },
+      "context_length": 200000,
+      "max_output_length": 8192,
+      "architecture": {
+        "inputModalities": [
+          "text",
+          "image"
+        ],
+        "outputModalities": [
+          "text"
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "supported_sampling_parameters": [
+        "temperature",
+        "top_p",
+        "top_k",
+        "max_tokens",
+        "stop"
+      ],
+      "supported_features": [
+        "tools",
+        "structured_outputs"
+      ],
+      "is_ready": false,
+      "description": "Anthropic's fastest model with near-frontier intelligence. Extended thinking support with 200K context window. Best for high-throughput, cost-sensitive workloads.",
+      "top_provider": {
+        "context_length": 200000,
+        "max_completion_tokens": 8192,
+        "is_moderated": false
+      }
+    },
+    {
+      "id": "anthropic/claude-opus-4-8",
+      "object": "model",
+      "created": 1785525405,
+      "owned_by": "anthropic",
+      "name": "Claude Opus 4.8",
+      "pricing": {
+        "input": 5,
+        "output": 25,
+        "prompt": "0.000005",
+        "completion": "0.000025",
+        "image": "0",
+        "request": "0",
+        "input_cache_read": "0.0000005"
+      },
+      "context_length": 1000000,
+      "architecture": {
+        "inputModalities": [
+          "text",
+          "image"
+        ],
+        "outputModalities": [
+          "text"
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "supported_sampling_parameters": [],
+      "supported_features": [],
+      "description": "Anthropic's most capable model. Next-generation built for long-running agents and complex coding tasks. 1M token context window with 128K max output.",
+      "top_provider": {
+        "context_length": 1000000,
+        "is_moderated": false
+      }
+    },
+    {
+      "id": "anthropic/claude-sonnet-5",
+      "object": "model",
+      "created": 1785526312,
+      "owned_by": "anthropic",
+      "name": "Claude Sonnet 5",
+      "pricing": {
+        "input": 3,
+        "output": 15,
+        "prompt": "0.000003",
+        "completion": "0.000015",
+        "image": "0",
+        "request": "0",
+        "input_cache_read": "0.0000003"
+      },
+      "context_length": 1000000,
+      "architecture": {
+        "inputModalities": [
+          "text",
+          "image"
+        ],
+        "outputModalities": [
+          "text"
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "supported_sampling_parameters": [],
+      "supported_features": [],
+      "description": "Claude Sonnet 5 is the next generation of Anthropic's Sonnet model family. It is a drop-in upgrade for Claude Sonnet 4.6 with three behavior changes: adaptive thinking is on by default, manual extended thinking now returns a 400 error (it was deprecated on Claude Sonnet 4.6), and setting sampling parameters (temperature, top_p, top_k) to non-default values returns a 400 error.",
+      "top_provider": {
+        "context_length": 1000000,
+        "is_moderated": false
+      }
+    },
+    {
+      "id": "deepseek-ai/DeepSeek-V4-Flash",
+      "object": "model",
+      "created": 1780561470,
+      "owned_by": "nearai",
+      "name": "DeepSeek V4 Flash",
+      "hugging_face_id": "deepseek-ai/DeepSeek-V4-Flash",
+      "quantization": "fp8",
+      "pricing": {
+        "input": 0.17,
+        "output": 0.35000000000000003,
+        "prompt": "0.00000017",
+        "completion": "0.00000035",
+        "image": "0",
+        "request": "0",
+        "input_cache_read": "0.000000035"
+      },
+      "context_length": 1048576,
+      "max_output_length": 8192,
+      "architecture": {
+        "inputModalities": [
+          "text"
+        ],
+        "outputModalities": [
+          "text"
+        ]
+      },
+      "input_modalities": [
+        "text"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "supported_sampling_parameters": [
+        "temperature",
+        "top_p",
+        "top_k",
+        "min_p",
+        "frequency_penalty",
+        "presence_penalty",
+        "repetition_penalty",
+        "max_tokens",
+        "stop",
+        "seed",
+        "logit_bias"
+      ],
+      "supported_features": [
+        "tools",
+        "reasoning",
+        "json_mode",
+        "structured_outputs"
+      ],
+      "is_ready": true,
+      "description": "DeepSeek V4 Flash — large mixture-of-experts language model from DeepSeek, FP8-quantized. Served on H200 with TP=4 and EAGLE speculative decoding in a TDX-confidential inference CVM.",
+      "top_provider": {
+        "context_length": 1048576,
+        "max_completion_tokens": 8192,
+        "is_moderated": false
+      },
+      "datacenters": [
+        {
+          "country_code": "US"
+        }
+      ],
+      "openrouter": {
+        "slug": "deepseek/deepseek-v4-flash"
+      }
+    },
+    {
+      "id": "anthropic/claude-fable-5",
+      "object": "model",
+      "created": 1785525829,
+      "owned_by": "anthropic",
+      "name": "Claude Fable 5",
+      "pricing": {
+        "input": 10,
+        "output": 50,
+        "prompt": "0.00001",
+        "completion": "0.00005",
+        "image": "0",
+        "request": "0",
+        "input_cache_read": "0.0000005"
+      },
+      "context_length": 1000000,
+      "architecture": {
+        "inputModalities": [
+          "text",
+          "image"
+        ],
+        "outputModalities": [
+          "text"
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "supported_sampling_parameters": [],
+      "supported_features": [],
+      "description": "Claude Fable 5 is Anthropic's most capable widely released model, built for the most demanding reasoning and long-horizon agentic work. ",
+      "top_provider": {
+        "context_length": 1000000,
+        "is_moderated": false
+      }
+    },
+    {
+      "id": "anthropic/claude-opus-4-6",
+      "object": "model",
+      "created": 1770414679,
+      "owned_by": "anthropic",
+      "name": "Claude Opus 4.6",
+      "pricing": {
+        "input": 5,
+        "output": 25,
+        "prompt": "0.000005",
+        "completion": "0.000025",
+        "image": "0",
+        "request": "0"
+      },
+      "context_length": 200000,
+      "max_output_length": 32768,
+      "architecture": {
+        "inputModalities": [
+          "text"
+        ],
+        "outputModalities": [
+          "text"
+        ]
+      },
+      "input_modalities": [
+        "text"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "supported_sampling_parameters": [
+        "temperature",
+        "top_p",
+        "top_k",
+        "max_tokens",
+        "stop"
+      ],
+      "supported_features": [
+        "tools",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "is_ready": false,
+      "description": "Anthropic's most intelligent model for building agents and coding",
+      "top_provider": {
+        "context_length": 200000,
+        "max_completion_tokens": 32768,
+        "is_moderated": false
+      }
+    }
+  ]
+}
