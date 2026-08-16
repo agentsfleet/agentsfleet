@@ -96,10 +96,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Implementation default:** where a vendor's international arm carries a different provider name than its China arm (BytePlus versus Volcengine/Ark/Doubao), the international name is the one that gets rows.
 
-- **Dimension 1.1** — `_readme` carries the international rule as prose, and `nullclaw_alias_collisions` describes the endpoints actually shipped rather than the ones intended → Test `test_readme_states_international_rule`
-- **Dimension 1.2** — every provider whose `base_url` is a mainland-China host has empty `models` and `unpriced_reason: "cn_endpoint"` → Test `test_cn_endpoints_are_unpriced_with_reason`
-- **Dimension 1.3** — `kimi` and `qwen` carry their international `base_url`, matching the `source_url` their rates were read from → Test `test_priced_provider_base_url_matches_rate_region`
-- **Dimension 1.4** — international aliases of an already-priced vendor carry that vendor's rates as their own rows, because `(provider, model_id)` is the catalogue's composite key and an alias inherits nothing → Test `test_intl_aliases_carry_own_rows`
+- **Dimension 1.1 — DONE** — `_readme` carries the international rule as prose, and `nullclaw_alias_collisions` describes the endpoints actually shipped rather than the ones intended → Test `test_readme_states_international_rule`
+- **Dimension 1.2 — DONE** — every provider whose `base_url` is a mainland-China host has empty `models` and `unpriced_reason: "cn_endpoint"` → Test `test_cn_endpoints_are_unpriced_with_reason`
+- **Dimension 1.3 — DONE** — `kimi` and `qwen` carry their international `base_url`, matching the `source_url` their rates were read from → Test `test_priced_provider_base_url_matches_rate_region`
+- **Dimension 1.4 — DONE** — international aliases of an already-priced vendor carry that vendor's rates as their own rows, because `(provider, model_id)` is the catalogue's composite key and an alias inherits nothing → Test `test_intl_aliases_carry_own_rows`
 
 ### §2 — Eight providers converted to live pricing feeds
 
@@ -109,10 +109,10 @@ Two of the eight expose a shape `fromApi` mishandles today, and both failures ar
 
 **Implementation default:** normalise a leading currency symbol before `Number()`, and treat a cache-read rate that parses to zero the same as an absent one (fall back to the input rate). Both are corrections to the reader's contract with providers, not per-provider special cases, so neither takes a provider name.
 
-- **Dimension 2.1** — a rate string carrying a leading `$` parses to its numeric value rather than being skipped → Test `test_currency_prefixed_rate_parses`
-- **Dimension 2.2** — a published cache-read rate of zero falls back to the input rate and never seeds a zero → Test `test_zero_cache_read_falls_back_to_input`
-- **Dimension 2.3** — each of the eight providers carries `endpoint`, `rate_unit`, and a `field_map` whose paths resolve against that provider's committed fixture → Test `test_api_provider_field_maps_resolve`
-- **Dimension 2.4** — each of the eight has a committed fixture under `samples/fixtures/model-library/`, so the integration lane seeds deterministically without network → Test `test_every_api_provider_has_a_fixture`
+- **Dimension 2.1 — DONE** — a rate string carrying a leading `$` parses to its numeric value rather than being skipped → Test `test_currency_prefixed_rate_parses`
+- **Dimension 2.2 — DONE** — a published cache-read rate of zero falls back to the input rate and never seeds a zero → Test `test_zero_cache_read_falls_back_to_input`
+- **Dimension 2.3 — DONE** — each of the eight providers carries `endpoint`, `rate_unit`, and a `field_map` whose paths resolve against that provider's committed fixture → Test `test_api_provider_field_maps_resolve`
+- **Dimension 2.4 — DONE** — each of the eight has a committed fixture under `samples/fixtures/model-library/`, so the integration lane seeds deterministically without network → Test `test_every_api_provider_has_a_fixture`
 
 ### §3 — Manual rates, local runtimes, and a reason for everything else
 
@@ -124,10 +124,10 @@ Everything still unpriced gains a typed reason, replacing the uniform note that 
 
 **Implementation default:** the reason vocabulary is exactly five values — `cn_endpoint` (§1), `local_runtime`, `subscription_plan` (Copilot, the Kimi and Qwen coding portals, the `-plan` endpoints — billed per seat, not per token), `gateway_passthrough` (Hugging Face and Cloudflare route to partner infrastructure at partner rates, so the partner is the thing to price), and `deployment_scoped` (Azure and Vertex price per customer deployment and region, and carry no `base_url` at all). A sixth value means the vocabulary is wrong — extend it deliberately or classify correctly.
 
-- **Dimension 3.1** — Cerebras, Perplexity, Cohere, and both Bedrock spellings carry rates and a `source_url` that resolves → Test `test_manual_providers_carry_source_url`
-- **Dimension 3.2** — every local runtime carries the minimal rate and `unpriced_reason: "local_runtime"`, and the rate is nonzero → Test `test_local_runtimes_priced_at_minimum`
-- **Dimension 3.3** — every provider in the file either has a non-empty `models` array or a valid `unpriced_reason`; none has both, none has neither → Test `test_priced_xor_reasoned`
-- **Dimension 3.4** — no priced model anywhere in the file carries a zero in any of the three rate columns → Test `test_no_zero_rates`
+- **Dimension 3.1 — DONE** — Cerebras, Perplexity, Cohere, and both Bedrock spellings carry rates and a `source_url` that resolves → Test `test_manual_providers_carry_source_url`
+- **Dimension 3.2 — DONE** — every local runtime carries the minimal rate and `unpriced_reason: "local_runtime"`, and the rate is nonzero → Test `test_local_runtimes_priced_at_minimum`
+- **Dimension 3.3 — DONE** — every provider in the file either has a non-empty `models` array or a valid `unpriced_reason`; none has both, none has neither → Test `test_priced_xor_reasoned`
+- **Dimension 3.4 — DONE** — no priced model anywhere in the file carries a zero in any of the three rate columns → Test `test_no_zero_rates`
 
 ### §4 — `base_url` becomes curated, not derived
 
@@ -135,9 +135,9 @@ The generator lists `base_url` among the fields it derives from vendored NullCla
 
 Moving `base_url` into the curated set makes §1's rule survive a dependency bump. The generator still supplies a `base_url` for a newly-derived provider that has none, because a provider with no endpoint is unroutable; it simply stops overwriting one that is already there.
 
-- **Dimension 4.1** — regenerating the skeleton against unchanged vendored NullClaw leaves every existing `base_url` byte-identical → Test `test_regeneration_preserves_curated_base_url`
-- **Dimension 4.2** — a newly-derived provider absent from the current file still receives its derived `base_url` → Test `test_new_provider_receives_derived_base_url`
-- **Dimension 4.3** — `unpriced_reason` survives a regeneration, like every other curated field → Test `test_regeneration_preserves_unpriced_reason`
+- **Dimension 4.1 — DONE** — regenerating the skeleton against unchanged vendored NullClaw leaves every existing `base_url` byte-identical → Test `test_regeneration_preserves_curated_base_url`
+- **Dimension 4.2 — DONE** — a newly-derived provider absent from the current file still receives its derived `base_url` → Test `test_new_provider_receives_derived_base_url`
+- **Dimension 4.3 — DONE** — `unpriced_reason` survives a regeneration, like every other curated field → Test `test_regeneration_preserves_unpriced_reason`
 
 ### §5 — The architecture doc re-synced in place
 
@@ -145,10 +145,10 @@ Moving `base_url` into the curated set makes §1's rule survive a dependency bum
 
 The prose is corrected in place rather than replaced with a pointer, per the authoring decision recorded in Discovery.
 
-- **Dimension 5.1** — no reference to `kimi-k2.6` survives anywhere in the doc; the named platform default is a model the allowlist prices → Test `test_doc_names_no_retired_model`
-- **Dimension 5.2** — §9's routing table states the count of dialable providers and cites the allowlist as the enumeration, rather than presenting eight rows as the set → Test `test_doc_routing_table_cites_allowlist`
-- **Dimension 5.3** — §10's provider-origin paragraph agrees with the schema: `provider` is a column, not an inference from `model_id` → Test `test_doc_provider_origin_matches_schema`
-- **Dimension 5.4** — the doc quotes no dollar amounts, unchanged from today → Test `test_doc_quotes_no_dollar_amounts`
+- **Dimension 5.1 — DONE** — no reference to `kimi-k2.6` survives anywhere in the doc; the named platform default is a model the allowlist prices → Test `test_doc_names_no_retired_model`
+- **Dimension 5.2 — DONE** — §9's routing table states the count of dialable providers and cites the allowlist as the enumeration, rather than presenting eight rows as the set → Test `test_doc_routing_table_cites_allowlist`
+- **Dimension 5.3 — DONE** — §10's provider-origin paragraph agrees with the schema: `provider` is a column, not an inference from `model_id` → Test `test_doc_provider_origin_matches_schema`
+- **Dimension 5.4 — DONE** — the doc quotes no dollar amounts, unchanged from today → Test `test_doc_quotes_no_dollar_amounts`
 
 ## Interfaces
 
@@ -325,5 +325,26 @@ and the emitted SQL's INSERT … ON CONFLICT arbitration.
     > Indy (2026-08-16): "use international than CN" — context: §1, §4.
     > Indy (2026-08-16): "if someone wants CN they can us the endpoint via openapi compatible technique" — context: §1; this is why `cn_endpoint` is a permanent reason rather than a pending-curation state.
 - **Metrics review** — no analytics/funnel playbook update required: this workstream adds no route, no user action, and no counter; the only operator-visible output is the seeder's existing diff report, whose format is unchanged.
+- **Evidence map** — the spec's Dimension test names were authored before the tests existed; these are the artifacts that actually cover them. Committed tests live in `scripts/check_model_allowlist_test.py` (34 tests, all green).
+
+  | Dimension | Covered by | Kind |
+  |---|---|---|
+  | 1.1, 1.3 | `RealFile.test_kimi_and_qwen_point_at_their_international_endpoints` | committed test |
+  | 1.2 | `RegionAgreement.*` (5 tests) + `RealFile.test_no_cn_endpoint_carries_rates` | committed test |
+  | 1.4 | `RealFile.test_every_provider_is_priced_or_reasoned` | committed test |
+  | 2.1 | `SeededRates.test_currency_prefixed_provider_seeds_every_allowlisted_model` | committed test |
+  | 2.2 | `SeededRates.test_zero_cache_read_seeded_as_input_not_as_free` | committed test |
+  | 2.3, 2.4 | `check_api_has_fixture` + `node scripts/seed-models.mjs --fixtures` → `173 new · 0 unmanaged` | committed test + command |
+  | 3.1 | `node scripts/seed-models.mjs` — every manual provider emits its rows | command |
+  | 3.2 | `SeededRates.test_local_runtime_floor_is_nonzero_after_nanos_rounding` + `ActivationFloor.*` | committed test |
+  | 3.3 | `PricedXorReasoned.*` (5 tests) + `RealFile.test_every_provider_is_priced_or_reasoned` | committed test |
+  | 3.4 | `ZeroRates.*` (5) + `SeededRates.test_no_seeded_row_carries_a_zero_rate` | committed test |
+  | 4.1, 4.3 | `node scripts/gen-provider-skeleton.mjs` twice → byte-identical output | command |
+  | 4.2 | generator's `newly added` arm, exercised at 0 newcomers this pass | command |
+  | 5.1 | `RealFile.test_no_provider_still_carries_the_old_uniform_note` + `grep -c 'K2\.6' docs/architecture/billing_and_provider_keys.md` → 0 | committed test + command |
+  | 5.2, 5.3, 5.4 | `bash scripts/check_architecture_doc.sh` → all OK | command |
+
+  Dimensions covered by command rather than a committed test (2.3 partial, 3.1, 4.1–4.3, 5.2–5.4) are re-run by `make lint-governance` and `scripts/check_architecture_doc.sh` in CI, so none depends on a one-off local run. The generator round-trip (4.1–4.3) is the one gap with no CI caller — a fresh worktree has no `zig-pkg`, so the generator cannot run there.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results to be recorded as the work proceeds.
-- **Deferrals** — none yet. Items in Out of Scope were never in scope and are not deferrals.
+- **Deferrals** — none. Items in Out of Scope were never in scope and are not deferrals.
+- **Open decision for Indy — the local-runtime activation gap.** Seeding `vllm`/`ollama`/etc. at an activation floor makes the catalogue row exist, but `UZ-PROVIDER-004` matches on `(provider, model_id)` and the seeded id is the literal `local`. A user serving `llama-3.3-70b` from their own vLLM still fails the membership check. Closing it properly means teaching the activation validator to accept any `model_id` for a provider whose row carries `rate_basis: "activation_floor"` — a Zig change to a validation boundary, outside this workstream's Files Changed and not taken unilaterally.
