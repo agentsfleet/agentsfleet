@@ -26,13 +26,13 @@ pub const Owned = struct {
         self.scheduler = call_deadline.ProcessScheduler.init(alloc, &self.backend);
         const scheduler = &self.scheduler.?;
         scheduler.start() catch |err| {
-            log.err("startup.deadline_scheduler_failed", .{
+            log.err("startup_deadline_scheduler_failed", .{
                 .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED,
                 .err = @errorName(err),
             });
             std.process.exit(1);
         };
-        log.info("startup.deadline_scheduler_ok", .{});
+        log.info("startup_deadline_scheduler_ok", .{});
         return scheduler;
     }
 

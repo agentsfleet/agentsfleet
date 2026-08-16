@@ -70,15 +70,15 @@ pub fn acquireBounded(conn: *Conn, max_attempts: u32, retry_ms: u64) !void {
         const got = try tryAcquire(conn);
         switch (classifyAttempt(got, attempt, max_attempts)) {
             .acquired => {
-                if (attempt > 1) log.info("migrate.lock_acquired_after_contention", .{ .attempt = attempt });
+                if (attempt > 1) log.info("migrate_lock_acquired_after_contention", .{ .attempt = attempt });
                 return;
             },
             .exhausted => {
-                log.warn("migrate.lock_exhausted", .{ .attempts = max_attempts, .waited_ms = max_attempts * retry_ms });
+                log.warn("migrate_lock_exhausted", .{ .attempts = max_attempts, .waited_ms = max_attempts * retry_ms });
                 return error.MigrationLockUnavailable;
             },
             .retry => {
-                log.warn("migrate.lock_contended", .{ .attempt = attempt, .max_attempts = max_attempts, .retry_ms = retry_ms });
+                log.warn("migrate_lock_contended", .{ .attempt = attempt, .max_attempts = max_attempts, .retry_ms = retry_ms });
                 common.sleepNanos(retry_ms * std.time.ns_per_ms);
             },
         }

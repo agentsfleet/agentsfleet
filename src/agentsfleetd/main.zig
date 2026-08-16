@@ -217,7 +217,7 @@ pub fn main(init: std.process.Init) void {
     registerProductionSinks();
 
     if (builtin.mode == .Debug) {
-        log.warn("startup.debug_build hint=not_for_production", .{});
+        log.warn("startup_debug_build", .{ .hint = "not_for_production" });
     }
 
     // Zig 0.16 removed std.process.argsAlloc/std.os.argv; args (and io + the

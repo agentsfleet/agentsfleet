@@ -34,7 +34,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
     // for the migrator role would hand a data sweep full authority over Data
     // Definition Language for no reason.
     const pool = db.initFromEnvForRole(io, env_map, alloc, .api) catch |err| {
-        log.err("backfill.db_connect_failed", .{
+        log.err("backfill_db_connect_failed", .{
             .error_code = error_codes.ERR_STARTUP_DB_CONNECT,
             .err = @errorName(err),
         });
@@ -43,7 +43,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
     defer pool.deinit();
 
     const conn = pool.acquire() catch |err| {
-        log.err("backfill.conn_acquire_failed", .{
+        log.err("backfill_conn_acquire_failed", .{
             .error_code = error_codes.ERR_STARTUP_DB_CONNECT,
             .err = @errorName(err),
         });
@@ -52,7 +52,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
     defer pool.release(conn);
 
     const stats = metadata_backfill.run(alloc, conn) catch |err| {
-        log.err("backfill.failed", .{
+        log.err("backfill_failed", .{
             .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED,
             .err = @errorName(err),
         });
@@ -61,7 +61,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
 
     // Counts only — never a key name, provider, or endpoint. Credential
     // metadata stays out of logs even though it is not itself secret.
-    log.info("backfill.summary", .{
+    log.info("backfill_summary", .{
         .workspaces = stats.workspaces,
         .projected = stats.projected,
         .undecryptable = stats.undecryptable,
@@ -73,6 +73,6 @@ pub fn run(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
     // credentials, which is truthful, and failing the whole sweep over one
     // damaged envelope would block every healthy row behind it.
     if (stats.undecryptable > 0) {
-        log.warn("backfill.undecryptable_rows_remain", .{ .count = stats.undecryptable });
+        log.warn("backfill_undecryptable_rows_remain", .{ .count = stats.undecryptable });
     }
 }

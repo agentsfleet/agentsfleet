@@ -110,7 +110,7 @@ out="$(DATABASE_URL_MIGRATOR="$url" "${migrate_cmd[@]}" 2>&1)" || {
   exit 1
 }
 
-printf '%s' "$out" | grep -q 'migrate.completed' || {
+printf '%s' "$out" | grep -q 'migrate_completed' || {
   echo "$out" | tail -20
   echo "✗ [unpriv] migration did not report completion" >&2
   exit 1
