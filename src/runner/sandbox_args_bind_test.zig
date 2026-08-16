@@ -76,7 +76,7 @@ test "test_composed_binds_are_additive_and_baseline_first" {
     // carrying the mode it was assigned.
     const with = sandbox_args.composeBinds(&buf, &.{
         .{ .path = "/srv/models", .mode = .read_write, .note = "shared model cache" },
-        .{ .path = "/usr/share/zoneinfo" },
+        .{ .path = "/srv/fonts" },
     });
     try std.testing.expectEqual(baseline.len + 2, with.len);
     for (baseline, with[0..baseline.len]) |want, got| {
@@ -91,16 +91,31 @@ test "test_composed_binds_are_additive_and_baseline_first" {
 
 test "test_composed_binds_cannot_drop_or_remode_a_baseline_path" {
     // The security property: NO assignment shape removes a baseline path or
-    // makes one writable. An operator naming a baseline path gets a second,
-    // later entry — the daemon's own read-only mount still stands, and bwrap
-    // applies binds in order so the baseline is established first.
+    // makes one writable. `composeBinds` alone CANNOT establish that — it
+    // always writes the baseline first, so asserting the baseline slots are
+    // intact is true by construction and proves nothing about the sandbox.
+    // bwrap applies binds in argv order and the LAST operation on a target
+    // wins, so an appended `/etc` read_write would re-mode the baseline mount
+    // that composition left sitting untouched in slot 0.
+    //
+    // What actually holds the invariant is validation refusing the overlap
+    // before composition ever runs. That is asserted here, and the argv-level
+    // consequence in `test_operator_list_cannot_remove_a_contract_path`.
+    for (sandbox_args.RO_SYSTEM_PATHS) |baseline_path| {
+        try std.testing.expect(!contract.protocol.extraBindsValid(&.{
+            .{ .path = baseline_path, .mode = .read_write },
+        }));
+        try std.testing.expect(!contract.protocol.extraBindsValid(&.{
+            .{ .path = baseline_path, .mode = .read_only },
+        }));
+    }
+
+    // Composition still holds its half of the bargain for a VALID list.
     var buf: [sandbox_args.MAX_BINDS]contract.protocol.ExtraBind = undefined;
-    const shadowed = sandbox_args.composeBinds(&buf, &.{
-        .{ .path = "/etc", .mode = .read_write },
-    });
+    const composed = sandbox_args.composeBinds(&buf, &.{.{ .path = "/srv/models" }});
     for (sandbox_args.RO_SYSTEM_PATHS, 0..) |baseline_path, i| {
-        try std.testing.expectEqualStrings(baseline_path, shadowed[i].path);
-        try std.testing.expectEqual(contract.protocol.BindMode.read_only, shadowed[i].mode);
+        try std.testing.expectEqualStrings(baseline_path, composed[i].path);
+        try std.testing.expectEqual(contract.protocol.BindMode.read_only, composed[i].mode);
     }
 
     // An over-long list (unreachable past extraBindsValid) degrades to the
@@ -116,7 +131,7 @@ test "test_operator_bind_reaches_the_argv_with_its_assigned_mode" {
     const alloc = std.testing.allocator;
     // Each assigned path lands under the flag its own mode names.
     const cfg = cfgWithBinds(&.{
-        .{ .path = "/usr/share/zoneinfo" },
+        .{ .path = "/srv/fonts" },
         .{ .path = "/srv/models", .mode = .read_write, .note = "shared model cache" },
     });
     const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfg, WORKSPACE, null) catch |err| {
@@ -125,11 +140,11 @@ test "test_operator_bind_reaches_the_argv_with_its_assigned_mode" {
     };
     defer sandbox_args.freeArgv(alloc, argv);
 
-    try std.testing.expect(bindTripleIndex(argv, "--ro-bind-try", "/usr/share/zoneinfo") != null);
+    try std.testing.expect(bindTripleIndex(argv, "--ro-bind-try", "/srv/fonts") != null);
     try std.testing.expect(bindTripleIndex(argv, "--bind-try", "/srv/models") != null);
     // The read-only entry is NOT emitted writable, and vice versa — a mode
     // that leaked across entries would silently widen one of them.
-    try std.testing.expect(bindTripleIndex(argv, "--bind-try", "/usr/share/zoneinfo") == null);
+    try std.testing.expect(bindTripleIndex(argv, "--bind-try", "/srv/fonts") == null);
     try std.testing.expect(bindTripleIndex(argv, "--ro-bind-try", "/srv/models") == null);
 
     // The workspace remains the only plain `--bind` (the writable mount the
@@ -181,3 +196,117 @@ test "should ro-bind the systemd-resolved stub directory so DNS resolves under a
     try std.testing.expectEqualStrings("--ro-bind-try", argv[path_i - 1]);
     try std.testing.expectEqualStrings("/run/systemd/resolve", argv[path_i + 1]);
 }
+
+// ── §3 the declared contract ────────────────────────────────────────────────
+
+/// Writable bind flags. `--bind` is the lease workspace; `--bind-try` is an
+/// operator entry assigned `read_write`. Both grant write access to a host
+/// path, so a test asking "what can this lease write" must scan for both.
+const WRITABLE_FLAGS = [_][]const u8{ "--bind", "--bind-try" };
+
+test "test_every_contract_path_is_bound_at_its_mode" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    // Dimension 3.1 — the contract is not prose: every declared path reaches
+    // the argv under the flag its declared mode names. Reading the real
+    // constant (not a copy) is what makes a dropped entry fail here; a copy
+    // would stay green while the live list rotted, which is exactly how the
+    // resolver bind went missing.
+    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithBinds(&.{}), WORKSPACE, null) catch |err| {
+        try std.testing.expectEqual(error.BwrapUnavailable, err);
+        return error.SkipZigTest;
+    };
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    for (sandbox_args.RO_SYSTEM_PATHS) |p| {
+        const flag = contract.protocol.BindMode.read_only.bwrapFlag();
+        try std.testing.expect(bindTripleIndex(argv, flag, p) != null);
+    }
+}
+
+test "test_workspace_is_the_only_writable_bind" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    // Dimension 3.2 / Invariant 3 — with no operator list, the workspace is
+    // the sole writable mount. Scanning for EVERY writable flag is the point:
+    // an earlier version of this test looked only at `--bind` and would have
+    // missed a `--bind-try` entry widening the boundary.
+    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithBinds(&.{}), WORKSPACE, null) catch |err| {
+        try std.testing.expectEqual(error.BwrapUnavailable, err);
+        return error.SkipZigTest;
+    };
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    var writable: usize = 0;
+    for (argv, 0..) |s, i| {
+        for (WRITABLE_FLAGS) |flag| {
+            if (!std.mem.eql(u8, s, flag)) continue;
+            try std.testing.expectEqualStrings(WORKSPACE, argv[i + 1]);
+            writable += 1;
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 1), writable);
+}
+
+test "test_contract_and_argv_agree_exactly" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    // Dimension 3.3 — the agreement is BIDIRECTIONAL. One direction (every
+    // entry is bound) catches a dropped path; the other (every bound path has
+    // an entry) catches one added to the argv without being declared. Only
+    // both together make the contract the single source of truth.
+    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithBinds(&.{}), WORKSPACE, null) catch |err| {
+        try std.testing.expectEqual(error.BwrapUnavailable, err);
+        return error.SkipZigTest;
+    };
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    // → no entry without a bind
+    for (sandbox_args.RO_SYSTEM_PATHS) |p| {
+        try std.testing.expect(bindTripleIndex(argv, "--ro-bind-try", p) != null);
+    }
+
+    // ← no bind without an entry. With an empty operator list every
+    // `--ro-bind-try` triple in the argv must be a declared contract path.
+    var seen: usize = 0;
+    for (argv, 0..) |s, i| {
+        if (!std.mem.eql(u8, s, "--ro-bind-try")) continue;
+        if (i + 2 >= argv.len) continue;
+        if (!std.mem.eql(u8, argv[i + 1], argv[i + 2])) continue;
+        var declared = false;
+        for (sandbox_args.RO_SYSTEM_PATHS) |p| {
+            if (std.mem.eql(u8, argv[i + 1], p)) declared = true;
+        }
+        try std.testing.expect(declared);
+        seen += 1;
+    }
+    try std.testing.expectEqual(sandbox_args.RO_SYSTEM_PATHS.len, seen);
+}
+
+test "test_architecture_doc_matches_the_contract" {
+    // Dimension 3.4 — the architecture doc's path table is checked against the
+    // constant, not trusted to track it by review. Platform-independent: it
+    // reads a file and compares strings, so the doc cannot drift on a Mac and
+    // be caught only by Linux continuous integration.
+    const alloc = std.testing.allocator;
+    const doc = std.Io.Dir.cwd().readFileAlloc(common.globalIo(), DOC_PATH, alloc, .limited(MAX_DOC_BYTES)) catch |err| switch (err) {
+        // The runner test binary may run from a different cwd than the repo
+        // root; a missing doc is an environment fact, not a contract failure.
+        error.FileNotFound => return error.SkipZigTest,
+        else => return err,
+    };
+    defer alloc.free(doc);
+
+    // Every declared path appears as a table row naming its mode.
+    for (sandbox_args.RO_SYSTEM_PATHS) |p| {
+        const row = try std.fmt.allocPrint(alloc, "| `{s}` | read-only |", .{p});
+        defer alloc.free(row);
+        std.testing.expect(std.mem.indexOf(u8, doc, row) != null) catch |err| {
+            std.debug.print("contract path missing from {s}: {s}\n", .{ DOC_PATH, p });
+            return err;
+        };
+    }
+}
+
+const DOC_PATH = "docs/architecture/runner_fleet.md";
+const MAX_DOC_BYTES = 1024 * 1024;
