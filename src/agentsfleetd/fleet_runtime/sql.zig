@@ -34,6 +34,12 @@ pub const SELECT_TIMED_OUT_GATES =
 /// drives the grant to `$10` rather than leaving it `pending`, which nothing
 /// would ever re-raise. `$11` selects the kind; gates of any other kind leave
 /// `core.integration_grants` untouched because no row matches.
+///
+/// `g.status != $10` (not revoked) closes a resurrection hole: an explicit
+/// revoke (the standalone DELETE endpoint) never touches the gate row, so a
+/// gate raised before the revoke and left unresolved would otherwise arm the
+/// grant right back on its eventual approval — silently reversing a decision
+/// this statement had no part in and no visibility into.
 pub const RESOLVE_GATE =
     \\WITH resolved AS (
     \\  UPDATE core.fleet_approval_gates
@@ -51,6 +57,7 @@ pub const RESOLVE_GATE =
     \\  WHERE g.fleet_id = r.fleet_id
     \\    AND g.service  = r.evidence->>'service'
     \\    AND r.gate_kind = $11
+    \\    AND g.status != $10
     \\  RETURNING g.id
     \\)
     \\SELECT id::text, action_id, workspace_id::text, fleet_id::text,
