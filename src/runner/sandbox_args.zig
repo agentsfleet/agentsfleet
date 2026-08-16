@@ -22,7 +22,13 @@ const child_exec = @import("child_exec.zig");
 
 const BWRAP_PATHS = [_][]const u8{ "/usr/bin/bwrap", "/usr/local/bin/bwrap" };
 /// System paths bound read-only when present (`--ro-bind-try` tolerates absence).
-const RO_SYSTEM_PATHS = [_][]const u8{ "/etc", "/lib", "/lib64", "/bin", "/sbin", "/opt" };
+/// `/run/systemd/resolve` carries the systemd-resolved stub `resolv.conf` that
+/// `/etc/resolv.conf` symlinks to on a systemd-managed host (`allow_all`'s
+/// `--share-net` shares the network namespace, but the mount namespace is still
+/// unshared, so the child's `/etc/resolv.conf` is a dangling symlink without this
+/// — every outbound DNS lookup fails `HostResolutionFailed` regardless of the
+/// assigned network policy). Absent and harmless on a non-systemd-resolved host.
+const RO_SYSTEM_PATHS = [_][]const u8{ "/etc", "/lib", "/lib64", "/bin", "/sbin", "/opt", "/run/systemd/resolve" };
 /// Used at several bind sites (RULE UFS); the rest are single-use bwrap flags
 /// whose literal spelling IS bwrap's CLI contract.
 const RO_BIND = "--ro-bind";

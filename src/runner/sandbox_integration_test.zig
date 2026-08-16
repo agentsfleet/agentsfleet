@@ -23,6 +23,23 @@ const child_process = @import("child_process.zig");
 const child_supervisor = @import("child_supervisor.zig");
 const cgroup = @import("engine/CgroupScope.zig");
 const pipe_proto = @import("pipe_proto.zig");
+const sandbox_args = @import("sandbox_args.zig");
+const Config = @import("daemon/config.zig");
+const contract = @import("contract");
+
+/// Daemon Config for the sandbox-argv probe below. `buildArgv` reads only
+/// `sandbox_tier` and `network_policy`; the rest are inert literals.
+const sandbox_args_test_cfg = Config{
+    .control_plane_url = "http://127.0.0.1:8080",
+    .runner_token = "agt_rtest",
+    .sandbox_tier = contract.protocol.SandboxTier.landlock_full,
+    .storage_home = "/tmp/agentsfleet-runner",
+    .network_policy = .deny_all_egress,
+    .worker_count = 1,
+    .cp_deadlines = .{},
+    .registry_allowlist = &.{},
+    .alloc = std.testing.allocator,
+};
 
 const SH = "/bin/sh";
 const PLANTED_TOKEN = "agt_rplanted_probe_value";
@@ -268,4 +285,64 @@ test "the spawn path introduces no file descriptor the parent did not already ho
         const path = try std.fmt.bufPrint(&path_buf, "/proc/self/fd/{d}", .{fd});
         _ = std.Io.Dir.readLinkAbsolute(io, path, &link_buf) catch return error.SpawnIntroducedStrayFd;
     }
+}
+
+/// The bwrap prefix the real builder produced, up to and including its `--`
+/// separator — so a probe runs under the SAME binds a lease gets. Swapping only
+/// the payload command is what keeps this a proof about production argv rather
+/// than about a hand-written flag list. Caller owns nothing; `argv` still owns.
+fn bwrapPrefixLen(argv: []const []const u8) ?usize {
+    for (argv, 0..) |s, i| {
+        if (std.mem.eql(u8, s, "--")) return i + 1;
+    }
+    return null;
+}
+
+test "the resolver config a lease inherits is readable inside a real sandbox" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+
+    // A real workspace: bwrap --bind and --chdir both require it to exist, and
+    // it must be absolute (the sibling lease_run tests use the same base shape).
+    const ws = "/tmp/agentsfleet-resolver-probe-test";
+    std.Io.Dir.createDirAbsolute(io, ws, .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+    defer std.Io.Dir.cwd().deleteTree(io, ws) catch {};
+
+    // The REAL production argv, under the posture that shares host networking.
+    var cfg = sandbox_args_test_cfg;
+    cfg.network_policy = .allow_all;
+    const argv = sandbox_args.buildArgv(io, alloc, cfg, ws, null) catch |err| {
+        try std.testing.expectEqual(error.BwrapUnavailable, err);
+        return error.SkipZigTest;
+    };
+    defer sandbox_args.freeArgv(alloc, argv);
+    const prefix = bwrapPrefixLen(argv) orelse return error.NoBwrapSeparator;
+
+    // Same binds, probe payload: read the resolver config the host actually
+    // uses. On a systemd-resolved host /etc/resolv.conf is a symlink into
+    // /run/systemd/resolve — bind the link without its target and this read
+    // ENOENTs inside the sandbox while succeeding on the host, which is exactly
+    // how every lease came to fail HostResolutionFailed with a green `doctor`.
+    var probe: std.ArrayList([]const u8) = .empty;
+    defer probe.deinit(alloc);
+    try probe.appendSlice(alloc, argv[0..prefix]);
+    try probe.appendSlice(alloc, &.{ SH, "-c", "cat /etc/resolv.conf >/dev/null 2>&1 && echo RESOLV_OK || echo RESOLV_DANGLING" });
+
+    var child = try std.process.spawn(io, .{
+        .argv = probe.items,
+        .stdin = .ignore,
+        .stdout = .pipe,
+        .stderr = .ignore,
+    });
+    const out = try readToEnd(alloc, child.stdout.?.handle, 4096);
+    defer alloc.free(out);
+    _ = child.wait(io) catch {};
+
+    try std.testing.expect(std.mem.indexOf(u8, out, "RESOLV_OK") != null);
 }
