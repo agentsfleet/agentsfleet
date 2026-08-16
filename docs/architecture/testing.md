@@ -100,42 +100,53 @@ now has its own.
 
 | Scope | Enforced floor | Target |
 |---|---|---|
-| merged | 90 | 95 |
+| merged | 89 | 95 |
 | `agentsfleetd` | 90 | 90 |
 | `runner` | 87 | 95 |
-| `lib` | 95 | 95 |
+| `lib` | 94 | 95 |
 
 Floors are enforced and **raise-only** under normal operation: move one in the
 same commit as the tests that measurably clear it, never ahead. A floor set
 ahead of its tests gates nothing but red, which is what 91 did here once
 already. The one exception is a floor discovered to have been measured on the
-wrong platform — see `runner` below, corrected down once real CI, not a dev
-Mac, finally graded it. Targets are published and never enforced; the gap
-between floor and target prints every run, so the destination stays visible
-without an unmet one turning the build red.
+wrong platform — see `runner` and `lib` below, and `merged` above, all
+corrected down once real CI, not a dev Mac, finally graded them. Targets are
+published and never enforced; the gap between floor and target prints every
+run, so the destination stays visible without an unmet one turning the build
+red.
 
 `make/test.mk` is the single definition site for every one of these numbers, and
 `scripts/check_zig_coverage_doc_test.py` fails when this table disagrees with
 it. The values above were stale for exactly as long as nothing checked them.
 
-The 95% target sits under `lib`'s ceiling: it measures 95.02% on the same
-denominator its floor now enforces. An earlier revision of this page called 95
-unreachable for `lib` on a 97.05% ceiling; the shortfall was not the ceiling.
-`call_deadline/scheduler.zig` sat at exactly the 350-line file cap with eight
-dark lines and no room for the tests that would clear them, and three of those
-lines were test-support fakes the denominator counted as product. Splitting
-the file moved both problems at once.
+The 95% target sits under `lib`'s ceiling on macOS: it measured 95.02% there.
+An earlier revision of this page called 95 unreachable for `lib` on a 97.05%
+ceiling; the shortfall was not the ceiling. `call_deadline/scheduler.zig` sat
+at exactly the 350-line file cap with eight dark lines and no room for the
+tests that would clear them, and three of those lines were test-support fakes
+the denominator counted as product. Splitting the file moved both problems at
+once — but, like every number on this page before PR #608's first real CI
+cycle, 95.02% was never checked against the platform the gate runs on. Linux
+measured 94.94% (826/870); the floor corrected down to 94 to match, one line
+short of 95.
 
-`runner` measured 95.18% too — on macOS. Every per-folder number on this page
-was taken there, and the platform the gate actually runs on could not
-reproduce that one: `src/runner/engine/{seccomp,landlock,cgroup}.zig` are real
-Linux sandboxing enforcement whose Linux branches comptime-eliminate to stubs
-on macOS, so those lines never entered the denominator locally. On Linux CI
-they compile in for real, and only `sec_enforcement_integration_test.zig`'s
-privileged lane — which this gate is not — exercises them. This branch's first
-real CI cycle (PR #608, Aug 16, 2026) measured 87.48% instead of 95.18%; the
-floor corrected down to match. The target stays 95 as the gap left to close,
-with either a privileged coverage lane or tests that hold without one.
+`runner` measured 95.18% on macOS, further from what Linux CI could
+reproduce: `src/runner/engine/{seccomp,landlock,cgroup}.zig` are real Linux
+sandboxing enforcement whose Linux branches comptime-eliminate to stubs on
+macOS, so those lines never entered the denominator locally. On Linux CI they
+compile in for real, and only `sec_enforcement_integration_test.zig`'s
+privileged lane — which this gate is not — exercises them. PR #608's first
+real CI cycle measured 87.48% instead of 95.18%; the floor corrected down to
+match. The target stays 95 for both `runner` and `lib` as the gap left to
+close, with either a privileged coverage lane or tests that hold without one.
+
+`merged` moved for the same reason, one level up: it is a weighted average
+across all nine components, and it had been folding in `runner`'s and `lib`'s
+inflated macOS numbers the whole time. First Linux measurement: 89.96%
+(23724/26371), not the 90.91% this page and `make/test.mk` both carried before
+PR #608. Floor corrected 90 → 89. All three corrections reproduced
+byte-identical across two separate CI runs on the same commit, so this is
+measurement, not flake.
 
 `agentsfleetd` targets 90, not 95, because Indy shortened the campaign on
 Aug 16, 2026 after `lib` and `runner` landed: 89.23% to 95% is 1,278 covered
