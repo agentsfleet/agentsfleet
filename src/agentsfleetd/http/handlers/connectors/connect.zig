@@ -4,7 +4,8 @@
 //! (unknown → 404 naming it) and dispatches on the archetype. oauth2 mints a
 //! single-use signed state and returns the provider authorize URL; app_install
 //! mints the same state and returns the vendor install URL. No token is
-//! created or stored here — the round-trip finishes at the generic callback.
+//! created or stored here — the round-trip finishes through the dashboard's
+//! authenticated callback relay.
 //! Per-provider deltas live in the registry entry's data + hooks, never here.
 
 const std = @import("std");
@@ -23,14 +24,18 @@ const log = logging.scoped(.connectors);
 
 const S_WORKSPACE_ACCESS_DENIED = "Workspace access denied";
 const S_CONNECT_START_FAILED = "Failed to start connector connect";
+const S_CALLBACK_URL_BUILD_FAILED = "Failed to build connector callback URL";
 const EV_CONNECT_INITIATED = "connect_initiated";
 // Detail strings interpolate the registry display name so each provider keeps
 // its shipped wording ("Slack connect is not configured on this deployment").
 const NOT_CONFIGURED_FMT = "{s} connect is not configured on this deployment";
 const NOT_CONFIGURED_FALLBACK = "Connector is not configured on this deployment";
 /// The one site that spells the callback path shape (RULE UFS); the generic
-/// callback route serves it for every provider.
-const CALLBACK_PATH_FMT = "/v1/connectors/{s}/callback";
+/// dashboard callback route serves it for every provider.
+const CALLBACK_PATH_FMT = "/api/connectors/{s}/callback";
+const LEGACY_CALLBACK_PATH_FMT = "/v1/connectors/{s}/callback";
+const URL_JOIN_FMT = "{s}{s}";
+const S_CONNECT_IDENTITY_REQUIRED = "Connector connect requires a user identity";
 
 pub fn innerConnect(hx: hx_mod.Hx, route: matchers.WorkspaceConnectorRoute) void {
     const spec = registry.lookup(route.provider) orelse return registry.respondUnknown(hx, route.provider);
@@ -45,34 +50,38 @@ pub fn innerConnect(hx: hx_mod.Hx, route: matchers.WorkspaceConnectorRoute) void
         hx.fail(ec.ERR_FORBIDDEN, S_WORKSPACE_ACCESS_DENIED);
         return;
     }
+    const starter_subject = hx.principal.user_id orelse {
+        hx.fail(ec.ERR_FORBIDDEN, S_CONNECT_IDENTITY_REQUIRED);
+        return;
+    };
 
     switch (spec.archetype) {
         .oauth2 => |o| {
             const secret = hx.ctx.approval_signing_secret orelse return failNotConfigured(hx, spec);
-            connectOauth2(hx, conn, spec, o, route.workspace_id, secret);
+            connectOauth2(hx, conn, spec, o, route.workspace_id, starter_subject, secret);
         },
         .app_install => |a| {
             const secret = hx.ctx.approval_signing_secret orelse return failNotConfigured(hx, spec);
-            connectAppInstall(hx, spec, a, route.workspace_id, secret);
+            connectAppInstall(hx, conn, spec, a, route.workspace_id, starter_subject, secret);
         },
     }
 }
 
 /// oauth2: platform app creds from the admin vault (fail-loud when the
 /// `<provider>-app` bag is absent) → signed state → provider authorize URL.
-fn connectOauth2(hx: hx_mod.Hx, conn: *pg.Conn, spec: *const registry.ConnectorSpec, o: registry.Oauth2Data, workspace_id: []const u8, secret: []const u8) void {
+fn connectOauth2(hx: hx_mod.Hx, conn: *pg.Conn, spec: *const registry.ConnectorSpec, o: registry.Oauth2Data, workspace_id: []const u8, starter_subject: []const u8, secret: []const u8) void {
     const creds = oauth2.loadAppCreds(hx.alloc, conn, hx.ctx.platform_admin_workspace_id, spec.provider) orelse
         return failNotConfigured(hx, spec);
     defer creds.deinit(hx.alloc);
 
-    const st = oauth2.mintState(hx.alloc, hx.ctx.queue, o.flow, secret, workspace_id, clock.nowMillis()) catch {
+    const st = oauth2.mintState(hx.alloc, hx.ctx.queue, o.flow, secret, workspace_id, starter_subject, clock.nowMillis()) catch {
         common.internalOperationError(hx.res, S_CONNECT_START_FAILED, hx.req_id);
         return;
     };
     defer hx.alloc.free(st);
 
     const redirect_uri = callbackUrl(hx, spec.provider) catch {
-        common.internalOperationError(hx.res, "Failed to build connector callback URL", hx.req_id);
+        common.internalOperationError(hx.res, S_CALLBACK_URL_BUILD_FAILED, hx.req_id);
         return;
     };
     defer hx.alloc.free(redirect_uri);
@@ -89,14 +98,20 @@ fn connectOauth2(hx: hx_mod.Hx, conn: *pg.Conn, spec: *const registry.ConnectorS
 
 /// app_install: signed state → the provider's install URL (built by the
 /// registry hook from platform config).
-fn connectAppInstall(hx: hx_mod.Hx, spec: *const registry.ConnectorSpec, a: registry.AppInstallData, workspace_id: []const u8, secret: []const u8) void {
-    const st = connector_state.mint(hx.alloc, hx.ctx.queue, a.state, secret, workspace_id, clock.nowMillis()) catch {
+fn connectAppInstall(hx: hx_mod.Hx, conn: *pg.Conn, spec: *const registry.ConnectorSpec, a: registry.AppInstallData, workspace_id: []const u8, starter_subject: []const u8, secret: []const u8) void {
+    const st = connector_state.mint(hx.alloc, hx.ctx.queue, a.state, secret, workspace_id, starter_subject, clock.nowMillis()) catch {
         common.internalOperationError(hx.res, S_CONNECT_START_FAILED, hx.req_id);
         return;
     };
     defer hx.alloc.free(st);
 
-    const url = a.build_install_url(hx, st) catch |err| switch (err) {
+    const redirect_uri = callbackUrl(hx, spec.provider) catch {
+        common.internalOperationError(hx.res, S_CALLBACK_URL_BUILD_FAILED, hx.req_id);
+        return;
+    };
+    defer hx.alloc.free(redirect_uri);
+
+    const url = a.build_connect_url(hx, conn, redirect_uri, st) catch |err| switch (err) {
         error.NotConfigured => return failNotConfigured(hx, spec),
         error.OutOfMemory => {
             common.internalOperationError(hx.res, "Failed to build install URL", hx.req_id);
@@ -114,12 +129,21 @@ fn connectAppInstall(hx: hx_mod.Hx, spec: *const registry.ConnectorSpec, a: regi
     hx.ok(.ok, .{ .install_url = url });
 }
 
-/// The absolute callback URL registered with the provider — one site builds
-/// it for connect (redirect_uri) and the callback's own exchange.
+/// The dashboard callback URL registered with the provider — one site builds
+/// it for connect (redirect_uri) and the completion exchange.
 pub fn callbackUrl(hx: hx_mod.Hx, provider: []const u8) ![]const u8 {
     const path = try std.fmt.allocPrint(hx.alloc, CALLBACK_PATH_FMT, .{provider});
     defer hx.alloc.free(path);
-    return std.fmt.allocPrint(hx.alloc, "{s}{s}", .{ hx.ctx.api_url, path });
+    return std.fmt.allocPrint(hx.alloc, URL_JOIN_FMT, .{ hx.ctx.app_url, path });
+}
+
+/// The old API callback URL is accepted only for browser journeys that began
+/// before provider registrations moved to the dashboard. OAuth token exchange
+/// requires the exact redirect URI used to mint the authorization code.
+pub fn legacyCallbackUrl(hx: hx_mod.Hx, provider: []const u8) ![]const u8 {
+    const path = try std.fmt.allocPrint(hx.alloc, LEGACY_CALLBACK_PATH_FMT, .{provider});
+    defer hx.alloc.free(path);
+    return std.fmt.allocPrint(hx.alloc, URL_JOIN_FMT, .{ hx.ctx.api_url, path });
 }
 
 /// 503 UZ-CONN-001 with the provider's shipped wording.

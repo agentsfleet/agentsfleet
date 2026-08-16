@@ -17,6 +17,8 @@ import fs from "node:fs/promises";
 import {
   PLATFORM_OPS_FIXTURE_NAME,
   PLATFORM_OPS_SAMPLE_DIR,
+  STEER_PROBE_FIXTURE_NAME,
+  STEER_PROBE_SAMPLE_DIR,
 } from "./constants.ts";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
@@ -61,15 +63,27 @@ export async function readAuthContext(env: Readonly<Record<string, string>>): Pr
 // `name:` and the two frontmatter template tokens resolved, so the upload parses
 // server-side. Body-only placeholders never reach the config parser.
 export async function buildPlatformOpsContent(name: string): Promise<SampleContent> {
-  const sourceDir = path.join(WORKTREE_ROOT, PLATFORM_OPS_SAMPLE_DIR);
+  return buildFixtureContent(PLATFORM_OPS_SAMPLE_DIR, PLATFORM_OPS_FIXTURE_NAME, name);
+}
+
+export async function buildSteerProbeContent(name: string): Promise<SampleContent> {
+  return buildFixtureContent(STEER_PROBE_SAMPLE_DIR, STEER_PROBE_FIXTURE_NAME, name);
+}
+
+async function buildFixtureContent(
+  sampleDir: string,
+  fixtureName: string,
+  name: string,
+): Promise<SampleContent> {
+  const sourceDir = path.join(WORKTREE_ROOT, sampleDir);
   const skill = await fs.readFile(path.join(sourceDir, "SKILL.md"), "utf8");
   const trigger = await fs.readFile(path.join(sourceDir, "TRIGGER.md"), "utf8");
   return {
     skillMarkdown: skill
-      .replace(`name: ${PLATFORM_OPS_FIXTURE_NAME}`, `name: ${name}`)
+      .replace(`name: ${fixtureName}`, `name: ${name}`)
       .replaceAll("{{slack_channel}}", "#agentsfleet-acceptance"),
     triggerMarkdown: trigger
-      .replace(`name: ${PLATFORM_OPS_FIXTURE_NAME}`, `name: ${name}`)
+      .replace(`name: ${fixtureName}`, `name: ${name}`)
       .replaceAll("{{model}}", "accounts/fireworks/models/kimi-k2.6")
       .replaceAll("{{context_cap_tokens}}", "256000"),
   };

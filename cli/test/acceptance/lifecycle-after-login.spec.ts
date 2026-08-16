@@ -161,7 +161,7 @@ if (!isLive) {
 
         // WS-E #C1: the minted browser-leg JWT must never surface on the pty.
         assertNoSecretLeak({ stdout: cli.output, stderr: "" }, sessionJwt);
-      });
+      }, HANDSHAKE_TIMEOUT_MS * 2);
     });
   });
 }

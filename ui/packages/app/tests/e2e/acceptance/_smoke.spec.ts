@@ -30,6 +30,7 @@ import {
   diagnoseApiError,
   probeConnectorRegistry,
   probeDeployedService,
+  probeRunnerHeartbeatAdvances,
   probeRunnerOnline,
   probeRuntimeModel,
 } from "./fixtures/preflight";
@@ -63,8 +64,12 @@ test.describe("release preflight", () => {
     await probeConnectorRegistry();
   });
 
-  test("a runner is online to execute fleets", async () => {
+  test("test_connector_proof_requires_online_runner", async () => {
     await probeRunnerOnline();
+  });
+
+  test("test_runner_last_seen_advances", async () => {
+    await probeRunnerHeartbeatAdvances();
   });
 
   test("the workflow-built CLI artifact is present", () => {

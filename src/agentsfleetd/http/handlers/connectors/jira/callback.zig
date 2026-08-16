@@ -7,6 +7,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const hx_mod = @import("../../hx.zig");
+const BindingTxn = @import("../binding_tx.zig");
 const bounded_fetch = @import("../bounded_fetch.zig");
 const oauth_refresh = @import("../oauth_refresh.zig");
 const spec = @import("spec.zig");
@@ -42,6 +43,8 @@ pub fn postAuth(hx: hx_mod.Hx, workspace_id: []const u8, body: []const u8, _: ?[
 
     const conn: *pg.Conn = hx.ctx.pool.acquire() catch return error.DbUnavailable;
     defer hx.ctx.pool.release(conn);
+    var txn = try BindingTxn.begin(conn, spec.PROVIDER, workspace_id);
+    defer txn.abort();
 
     try oauth_refresh.storeHandle(hx, conn, spec.PROVIDER, workspace_id, Handle{
         .integration = spec.PROVIDER,
@@ -53,6 +56,7 @@ pub fn postAuth(hx: hx_mod.Hx, workspace_id: []const u8, body: []const u8, _: ?[
         .site_url = resource.site_url,
         .label = resource.name,
     });
+    try txn.commit();
 }
 
 const Resource = struct { cloud_id: []const u8, site_url: []const u8, name: []const u8 };

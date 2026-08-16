@@ -4,7 +4,8 @@
 // connector registry (`handlers/connectors/registry.zig` — the invoke layer
 // resolves the captured segment and 404s unknown ids with a body naming
 // them), under the platform namespace: `/v1/workspaces/{ws}/connectors/*`
-// authed + `/v1/connectors/{provider}/callback` state-authed. Slack's events
+// authed + an API callback relay plus a Bearer-authenticated completion method.
+// Slack's events
 // ingress keeps its bespoke matcher — inbound event surfaces are per-provider
 // by nature.
 
@@ -50,8 +51,8 @@ pub fn matchWorkspaceConnectorCatalog(p: Path) ?[]const u8 {
     return p.param(1);
 }
 
-/// GET /v1/connectors/{provider}/callback — Bearer-less; the workspace comes
-/// from the signed state.
+/// GET /v1/connectors/{provider}/callback — Bearer-less compatibility relay.
+/// It performs no provider-code exchange or persistence.
 pub fn matchConnectorCallback(p: Path) ?[]const u8 {
     if (p.segs.len != 3) return null;
     if (!p.eq(0, S_CONNECTORS) or !p.eq(2, S_CALLBACK)) return null;
