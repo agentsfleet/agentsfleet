@@ -189,3 +189,92 @@ test "a sweep clears more orphans than one batch holds" {
     try std.testing.expect(exists(home, CACHE_DIR));
     try expectReaped(0, boot(home)); // idempotent
 }
+
+/// The lock file's name, mirrored from `StorageHome.zig`'s private constant so
+/// a test can pre-create it. Kept private there because nothing but the claim
+/// has any business naming it.
+const LOCK_NAME = ".agentsfleet-runner-home.lock";
+
+/// chmod by absolute path. `setPermissions` is only permitted on a handle that
+/// was opened for iteration, so the helper opens it that way.
+fn setMode(path: []const u8, mode: std.posix.mode_t) !void {
+    var dir = try Dir.openDirAbsolute(io, path, .{ .iterate = true });
+    defer dir.close(io);
+    try dir.setPermissions(io, std.Io.File.Permissions.fromMode(mode));
+}
+
+fn subPath(buf: []u8, home: []const u8, name: []const u8) ![]const u8 {
+    return std.fmt.bufPrint(buf, "{s}/{s}", .{ home, name });
+}
+
+test "a home whose lock file cannot be created is unavailable, never adopted" {
+    // A home on a read-only mount, or one owned by another user, has to refuse
+    // the claim rather than proceed unlocked. Two daemons sweeping one home is
+    // exactly what the lock exists to prevent, so failing open is not an option.
+    //
+    // A directory sitting at the lock's name blocks its creation with a type
+    // conflict (EISDIR) rather than a permission bit, so the refusal holds even
+    // when the test runs as root (CI's container user), which silently ignores
+    // a 0o500 directory mode.
+    const home = try freshHome("lock-uncreatable");
+    defer Dir.cwd().deleteTree(io, home) catch {};
+    try makeDir(home, LOCK_NAME);
+
+    try expectOutcome(.unavailable, boot(home));
+}
+
+test "a home that cannot take the sentinel is adopted, and reaps nothing" {
+    // The lock file already exists, so the claim itself succeeds on a directory
+    // that refuses new entries — and then the sentinel cannot be written. A home
+    // we cannot mark is a home we do not own, so the orphan must survive: this is
+    // the arm that keeps a permissions problem from being read as "safe to
+    // delete everything here".
+    const home = try freshHome("sentinel-unwritable");
+    defer Dir.cwd().deleteTree(io, home) catch {};
+    try makeDir(home, LEASE_A);
+    {
+        var dir = try Dir.openDirAbsolute(io, home, .{});
+        defer dir.close(io);
+        var lock = try dir.createFile(io, LOCK_NAME, .{ .truncate = false });
+        lock.close(io);
+    }
+    try setMode(home, 0o500);
+    defer setMode(home, 0o700) catch {};
+
+    try expectOutcome(.adopted, boot(home));
+    try std.testing.expect(exists(home, LEASE_A));
+}
+
+test "an orphan that refuses to be reaped is logged and the sweep continues past it" {
+    // deleteTree cannot empty a workspace whose own directory refuses writes.
+    // One such entry must not strand the others: the sweep exists to clear what
+    // an unclean shutdown left behind, and stopping at the first refusal leaves
+    // the disk filling up for the same reason it was filling up before.
+    //
+    // Root ignores the write-permission bit LEASE_A's refusal depends on, and
+    // there is no portable, unprivileged-only way to force deleteTree to fail
+    // instead — skip under a root-run harness (CI's container user).
+    if (std.c.geteuid() == 0) return error.SkipZigTest;
+
+    const home = try freshHome("reap-refused");
+    defer Dir.cwd().deleteTree(io, home) catch {};
+    var buf: [std.fs.max_path_bytes]u8 = undefined;
+    const stuck_workspace = try subPath(&buf, home, LEASE_A);
+
+    try makeDir(home, LEASE_A);
+    try makeDir(home, LEASE_B);
+    {
+        var workspace = try Dir.openDirAbsolute(io, stuck_workspace, .{});
+        defer workspace.close(io);
+        var held = try workspace.createFile(io, "held", .{});
+        held.close(io);
+    }
+    try setMode(stuck_workspace, 0o500);
+    defer setMode(stuck_workspace, 0o700) catch {};
+
+    try expectOutcome(.adopted, boot(home)); // sentinel now present
+    // The reapable one still goes, and the count reports only what actually went.
+    try expectReaped(1, boot(home));
+    try std.testing.expect(exists(home, LEASE_A));
+    try std.testing.expect(!exists(home, LEASE_B));
+}

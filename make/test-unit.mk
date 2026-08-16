@@ -184,19 +184,27 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	@# off the run below. Zero passes means the suite never ran; any failure means
 	@# the number describes a broken suite. Both fail the target rather than
 	@# yielding a report that is technically valid and completely wrong.
+	@# The lifecycle component runs last and costs a rebuild. `cmd/serve.zig` is
+	@# the daemon's boot sequence and read 0% — 115 reachable lines — because
+	@# nothing in either binary drives it: the one test that boots the real
+	@# `serve.run` skips unless it is isolated, since it installs signal handlers,
+	@# binds a port and perturbs process-global state the other ~2000 integration
+	@# tests share. The integration binary takes its filter at BUILD time, so
+	@# measuring that test means rebuilding filtered, which is why this runs after
+	@# the unfiltered integration component rather than replacing it. Its log is
+	@# grepped for the run marker: a skipped lifecycle test still yields a
+	@# perfectly valid report describing a process that started and stopped.
 	@set -eu; \
+	 mkdir -p "$(ZIG_COVERAGE_DIR)"; \
 	 db_url="$${TEST_DATABASE_URL:-$(TEST_DATABASE_URL_LOCAL)}"; \
 	 redis_url="$${TEST_REDIS_TLS_URL:-$(TEST_REDIS_TLS_URL_LOCAL)}"; \
-	 components="agentsfleetd:agentsfleetd-tests runner:agentsfleet-runner-tests lib:agentsfleet-lib-tests logging:agentsfleet-logging-tests deadline:agentsfleet-call-deadline-tests s3:agentsfleet-s3-tests"; \
-	 if [ "$$(uname -s)" = Linux ]; then \
-	   components="$$components runner_integration:agentsfleet-runner-integration-tests"; \
-	 fi; \
+	 components="agentsfleetd:agentsfleetd-tests runner:agentsfleet-runner-tests lib:agentsfleet-lib-tests logging:agentsfleet-logging-tests deadline:agentsfleet-call-deadline-tests s3:agentsfleet-s3-tests runner_integration:agentsfleet-runner-integration-tests"; \
 	 names=""; \
 	 for component in $$components; do \
 	   name=$${component%%:*}; binary=$${component#*:}; output="$(ZIG_COVERAGE_DIR)/$$name"; \
 	   echo "→ [zig] kcov component=$$name binary=$$binary"; \
 	   rm -rf "$$output"; mkdir -p "$$output"; \
-	   rm -f ".tmp/kcov-$$name.rc"; \
+	   rm -f "$(ZIG_COVERAGE_DIR)/kcov-$$name.rc"; \
 	   ( set +e; \
 	     LIVE_DB=1 \
 	     TEST_DATABASE_URL="$$db_url" \
@@ -208,14 +216,14 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	     AGENTSFLEET_QSTASH_LIVE_TOKEN="$(QSTASH_DEV_TOKEN_LOCAL)" \
 	     kcov --clean --include-pattern="$(CURDIR)/src" --exclude-pattern=_test.zig \
 	       "$$output" "zig-out/bin/$$binary" \
-	       >".tmp/kcov-$$name.log" 2>&1; echo $$? >".tmp/kcov-$$name.rc" ) & \
+	       >"$(ZIG_COVERAGE_DIR)/kcov-$$name.log" 2>&1; echo $$? >"$(ZIG_COVERAGE_DIR)/kcov-$$name.rc" ) & \
 	   names="$$names $$name"; \
 	 done; \
 	 wait; \
 	 integration_output="$(ZIG_COVERAGE_DIR)/integration"; \
 	 echo "→ [zig] kcov component=integration binary=agentsfleetd-integration-tests (live datastores, serial)"; \
 	 rm -rf "$$integration_output"; mkdir -p "$$integration_output"; \
-	 rm -f ".tmp/kcov-integration.rc"; \
+	 rm -f "$(ZIG_COVERAGE_DIR)/kcov-integration.rc"; \
 	 ( set +e; \
 	   LIVE_DB=1 \
 	   TEST_DATABASE_URL="$$db_url" \
@@ -227,55 +235,91 @@ test-coverage-zig:  ## Run and gate merged Zig line coverage across the unit lan
 	   AGENTSFLEET_QSTASH_LIVE_TOKEN="$(QSTASH_DEV_TOKEN_LOCAL)" \
 	   kcov --clean --include-pattern="$(CURDIR)/src" --exclude-pattern=_test.zig \
 	     "$$integration_output" "zig-out/bin/agentsfleetd-integration-tests" \
-	     >".tmp/kcov-integration.log" 2>&1; echo $$? >".tmp/kcov-integration.rc" ); \
+	     >"$(ZIG_COVERAGE_DIR)/kcov-integration.log" 2>&1; echo $$? >"$(ZIG_COVERAGE_DIR)/kcov-integration.rc" ); \
 	 names="$$names integration"; \
+	 lifecycle_output="$(ZIG_COVERAGE_DIR)/lifecycle"; \
+	 echo "→ [zig] rebuilding the integration binary filtered to the lifecycle proof"; \
+	 ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 zig build test-integration-bin -Dtest-filter="$(LIFECYCLE_TEST_FILTER)"; \
+	 echo "→ [zig] kcov component=lifecycle binary=agentsfleetd-integration-tests (real serve.run, isolated, serial)"; \
+	 rm -rf "$$lifecycle_output"; mkdir -p "$$lifecycle_output"; \
+	 rm -f "$(ZIG_COVERAGE_DIR)/kcov-lifecycle.rc"; \
+	 ( set +e; \
+	   $(LIFECYCLE_ISOLATION_ENV)=1 \
+	   LIVE_DB=1 \
+	   TEST_DATABASE_URL="$$db_url" \
+	   TEST_REDIS_TLS_URL="$$redis_url" \
+	   REDIS_URL_API="$$redis_url" \
+	   REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
+	   AGENTSFLEET_RUNNER_BIN="$(CURDIR)/zig-out/bin/agentsfleet-runner" \
+	   AGENTSFLEET_QSTASH_LIVE_URL="$(QSTASH_DEV_URL_LOCAL)" \
+	   AGENTSFLEET_QSTASH_LIVE_TOKEN="$(QSTASH_DEV_TOKEN_LOCAL)" \
+	   kcov --clean --include-pattern="$(CURDIR)/src" --exclude-pattern=_test.zig \
+	     "$$lifecycle_output" "zig-out/bin/agentsfleetd-integration-tests" \
+	     >"$(ZIG_COVERAGE_DIR)/kcov-lifecycle.log" 2>&1; echo $$? >"$(ZIG_COVERAGE_DIR)/kcov-lifecycle.rc" ); \
+	 names="$$names lifecycle"; \
 	 failed=0; \
 	 for name in $$names; do \
-	   rc=$$(cat ".tmp/kcov-$$name.rc" 2>/dev/null || echo 1); \
+	   rc=$$(cat "$(ZIG_COVERAGE_DIR)/kcov-$$name.rc" 2>/dev/null || echo 1); \
 	   case "$$rc" in ''|*[!0-9]*) rc=1;; esac; \
 	   if [ "$$rc" -ne 0 ]; then \
 	     echo "✗ Zig coverage component $$name exited $$rc"; \
 	     echo "--- failing tests (component=$$name) ---"; \
-	     grep -v -E '$(ZIG_TEST_LOG_NOISE)' ".tmp/kcov-$$name.log" \
+	     grep -v -E '$(ZIG_TEST_LOG_NOISE)' "$(ZIG_COVERAGE_DIR)/kcov-$$name.log" \
 	       | grep -B 1 -E '$(ZIG_TEST_FAILURE_GREP)' | head -n 60 || true; \
 	     echo "--- tally (component=$$name) ---"; \
-	     grep -E '^[0-9]+ passed;' ".tmp/kcov-$$name.log" | tail -n 1 || true; \
+	     grep -E '^[0-9]+ passed;' "$(ZIG_COVERAGE_DIR)/kcov-$$name.log" | tail -n 1 || true; \
 	     echo "--- last 40 lines (component=$$name) ---"; \
-	     tail -n 40 ".tmp/kcov-$$name.log"; failed=1; continue; \
+	     tail -n 40 "$(ZIG_COVERAGE_DIR)/kcov-$$name.log"; failed=1; continue; \
 	   fi; \
 	   report=$$(find "$(ZIG_COVERAGE_DIR)/$$name" -name cobertura.xml -type f -size +0c -print -quit); \
 	   test -n "$$report" || { echo "✗ Zig coverage component $$name produced no Cobertura report"; failed=1; }; \
 	 done; \
 	 [ "$$failed" -eq 0 ] || exit 1; \
-	 summary=$$(grep -E '^[0-9]+ passed;' ".tmp/kcov-integration.log" | tail -n 1); \
+	 summary=$$(grep -E '^[0-9]+ passed;' "$(ZIG_COVERAGE_DIR)/kcov-integration.log" | tail -n 1); \
 	 passed=$$(printf '%s' "$$summary" | sed -n 's/^\([0-9][0-9]*\) passed;.*/\1/p'); \
 	 suite_failed=$$(printf '%s' "$$summary" | sed -n 's/.*; \([0-9][0-9]*\) failed.*/\1/p'); \
 	 if [ -z "$$passed" ] || [ "$$passed" -eq 0 ]; then \
 	   echo "✗ the integration suite reported no passing tests — coverage would be measured over a suite that never ran"; \
-	   tail -n 20 ".tmp/kcov-integration.log"; exit 1; \
+	   tail -n 20 "$(ZIG_COVERAGE_DIR)/kcov-integration.log"; exit 1; \
 	 fi; \
 	 if [ -n "$$suite_failed" ] && [ "$$suite_failed" -ne 0 ]; then \
 	   echo "✗ the integration suite reported $$suite_failed failing test(s) — coverage over a failing suite is not a measurement"; \
 	   echo "--- failing tests (component=integration) ---"; \
-	   grep -v -E '$(ZIG_TEST_LOG_NOISE)' ".tmp/kcov-integration.log" \
+	   grep -v -E '$(ZIG_TEST_LOG_NOISE)' "$(ZIG_COVERAGE_DIR)/kcov-integration.log" \
 	     | grep -B 1 -E '$(ZIG_TEST_FAILURE_GREP)' | head -n 60 || true; \
 	   exit 1; \
 	 fi; \
 	 echo "✓ [zig] integration suite executed ($$summary)"; \
+	 grep -q "$(LIFECYCLE_RUN_MARKER)" "$(ZIG_COVERAGE_DIR)/kcov-lifecycle.log" || { \
+	   echo "✗ the boot→drain lifecycle test did not run (it skips without live datastores); the component would measure a process that started and stopped, and the daemon's boot sequence would read dark"; \
+	   tail -n 20 "$(ZIG_COVERAGE_DIR)/kcov-lifecycle.log"; exit 1; \
+	 }; \
+	 echo "✓ [zig] lifecycle boot→drain executed (the real serve.run is measured)"; \
 	 component_flags=""; \
 	 for name in $$names; do component_flags="$$component_flags --component $$name"; done; \
 	 for name in $(ZIG_COVERAGE_REQUIRED_COMPONENTS); do \
 	   component_flags="$$component_flags --require-component $$name"; done; \
+	 for name in $(ZIG_COVERAGE_REQUIRED_ROOTS); do \
+	   component_flags="$$component_flags --require-root $$name"; done; \
+	 for pair in $(ZIG_COVERAGE_FOLDER_FLOORS); do \
+	   component_flags="$$component_flags --folder-floor $$pair"; done; \
+	 for pair in $(ZIG_COVERAGE_FOLDER_TARGETS); do \
+	   component_flags="$$component_flags --folder-target $$pair"; done; \
 	 python3 scripts/check_zig_coverage.py \
 	   --coverage-dir "$(ZIG_COVERAGE_DIR)" \
 	   $$component_flags \
-	   --min-pct "$(ZIG_COVERAGE_MIN_LINES)" \
+	   --min-pct "$(ZIG_COVERAGE_MIN_PCT)" \
+	   --target-pct "$(ZIG_COVERAGE_TARGET_PCT)" \
+	   --min-files "$(ZIG_COVERAGE_MIN_FILES)" \
+	   --min-lines "$(ZIG_COVERAGE_MIN_MEASURED_LINES)" \
 	   --merged-report "$(ZIG_COVERAGE_DIR)/merged" \
 	   --repo-root "$(CURDIR)" \
-	   --summary-file .tmp/zig-coverage.txt \
+	   --summary-file "$(ZIG_COVERAGE_SUMMARY_FILE)" \
 	 || { \
 	   echo "--- kcov stderr tails (why a capture came back empty) ---"; \
-	   for f in .tmp/kcov-*.log; do \
+	   for f in $(ZIG_COVERAGE_DIR)/kcov-*.log; do \
 	     echo "── $$f"; tail -n 12 "$$f"; \
 	   done; \
 	   exit 1; \

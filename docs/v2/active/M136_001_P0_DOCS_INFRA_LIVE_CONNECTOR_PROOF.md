@@ -315,6 +315,34 @@ N/A — no files deleted.
 - **Un-parked (Aug 12, 2026).** The parking above is lifted. This workstream shares a branch and a worktree with M160_002, so one Pull Request (PR) carries both, and CHORE(close) requires both specs in `done/` — §5's acceptance specs get written and §1–§4's external proof gets run rather than deferred.
   > Indy (2026-08-12): "Finish M136's §5 too" — context: asked directly whether to park M136 out of the shared PR's scope, finish it, or split the branches apart. Finishing was chosen.
 
+- **The 350-line cap is a ceiling, not a target (Aug 16, 2026).** RULE FLL's 350
+  lines is a hard refusal boundary, and a file sitting at 340 is not therefore
+  correct. Split whenever the implementing agent's own rubric says two files are
+  better than one — unit-test coverage, simplicity, optimisation, performance,
+  concurrency, adversarial review. Two files of ~150 lines each is a good
+  outcome, not an over-split.
+
+  The measured case that prompted this: `src/lib/call_deadline/scheduler.zig`
+  sat at **exactly 350** with eight dark lines and no room for the tests that
+  would clear them. Splitting the clock and futex wait into
+  `MonotonicBackend.zig` and moving three test-support fakes into
+  `scheduler_test.zig` took the file to 291 lines and the module to **100%**
+  coverage — three of those lines left the denominator as the test support they
+  always were, five were driven. The cap was never the obstacle; treating it as
+  a budget to spend was.
+
+  > Indy (2026-08-16): "On the Cap gate i think there is a strict cap of 350
+  > also if you feel with your rubric for unit testing coverage, better
+  > simplicity, optimized code, performant, concurrency, adversarial think the
+  > code could be broken to two files then you should even have 2 files of 150
+  > lines or so in it."
+
+  **Pending, not applied:** the durable home for this is RULE FLL in
+  `~/Projects/dotfiles/dispatch/write_any.md` §File & Function Length Gate.
+  That edit is **not** made here — dotfiles governance is in flight on Indy's
+  side, and the agent must ask for approval before touching that checkout.
+  Recorded in this spec so the decision is not lost while the rule text waits.
+
 - **Deferrals** —
   > Indy (2026-07-20 22:23): "And move th 2,3,4 to the next milestone and read and move this milestone to done?" — context: live Slack authorization/signed mention and real GitHub review/replay proof move from M135_001 to this successor; runner activation remains M135_002 and is this workstream's prerequisite.
   > Indy (2026-07-26): "I think move this to DONE. I have eyeballed it, on fleets getting added, i will do an exhaustive check in M136_001" — context: M133 closes on direct visual acceptance; M136 inherits the unrun deployed `live-counter` and `pulse-wall` proof and must exercise them with the real `github-pr-reviewer` Fleet.

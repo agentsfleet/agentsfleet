@@ -24,6 +24,7 @@ const AppliedPolicy = @import("daemon/AppliedPolicy.zig");
 const StorageHome = @import("daemon/StorageHome.zig");
 const help = @import("cmd/help.zig");
 const muted = @import("cmd/plane_stub_test.zig");
+const doctor = @import("cmd/doctor.zig");
 
 const ALLOC = testing.allocator;
 
@@ -171,4 +172,24 @@ test "an unknown command renders help and exits 2" {
     defer sink.restore();
     // 2, not 0: a mistyped verb is a usage error a script must be able to detect.
     try testing.expectEqual(@as(u8, 2), help.runUnknown(ALLOC, UNKNOWN_COMMAND));
+}
+
+test "the doctor verdict writes once and its exit code follows the checks" {
+    // `emit` is the exit-code contract an operator's shell reads, and it writes
+    // to the real stdout — which under `zig build test` is the build-runner's
+    // protocol pipe, so it needs fd 1 muted like the help paths above. A failing
+    // check must be non-zero even though the render succeeded: the render and
+    // the verdict are separate answers.
+    var sink = muted.MutedStdout.mute() catch return error.SkipZigTest;
+    defer sink.restore();
+
+    const passing = [_]doctor.Check{.{ .name = "api_url", .ok = true, .detail = "set" }};
+    const failing = [_]doctor.Check{
+        .{ .name = "api_url", .ok = true, .detail = "set" },
+        .{ .name = "runner_token", .ok = false, .detail = "missing" },
+    };
+    try std.testing.expectEqual(@as(u8, 0), doctor.emit(.human, std.testing.allocator, &passing));
+    try std.testing.expectEqual(@as(u8, 1), doctor.emit(.human, std.testing.allocator, &failing));
+    try std.testing.expectEqual(@as(u8, 0), doctor.emit(.json, std.testing.allocator, &passing));
+    try std.testing.expectEqual(@as(u8, 1), doctor.emit(.json, std.testing.allocator, &failing));
 }

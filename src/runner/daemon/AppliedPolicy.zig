@@ -244,3 +244,31 @@ test "snapshot is an independent deep copy (mutating the holder later is safe)" 
     // The snapshot's strings survive the holder's clear — owned, not borrowed.
     try std.testing.expectEqualStrings("crates.io", snap.registry_allowlist[0]);
 }
+
+test "a snapshot that cannot be fully duplicated frees its partial copy and reads null" {
+    // The control loop calls `snapshot` per lease. A failure partway through the
+    // allowlist copy must free the strings already duped rather than strand them
+    // — a leak here recurs on every lease, for the life of the daemon. Two hosts
+    // so the failure lands with one already copied; testing.allocator underneath
+    // fails the test if it survives.
+    const a = std.testing.allocator;
+    var holder = AppliedPolicy.init(a);
+    defer holder.deinit();
+
+    const v = try testValue(a,
+        \\{"sandbox_tier":"container_nested","network_policy":"allow_list_egress","registry_allowlist":["crates.io","registry.npmjs.org"],"worker_count":2}
+    );
+    defer v.deinit();
+    try std.testing.expectEqual(ApplyOutcome.applied, holder.apply(v.value));
+
+    for (0..3) |fail_index| {
+        var fa = std.testing.FailingAllocator.init(a, .{ .fail_index = fail_index });
+        // Null, never a partial policy: the caller reads "no snapshot" and
+        // retries, instead of leasing against half an allowlist.
+        try std.testing.expect(holder.snapshot(fa.allocator()) == null);
+    }
+    // The holder itself is untouched by a failed snapshot.
+    const good = holder.snapshot(a) orelse return error.TestUnexpectedResult;
+    defer freePolicy(a, good);
+    try std.testing.expectEqual(@as(usize, 2), good.registry_allowlist.len);
+}

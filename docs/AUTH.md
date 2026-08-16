@@ -639,7 +639,7 @@ Compromise of `CLERK_SECRET_KEY` is total: anyone holding it can mint Token B fo
 | `http://127.0.0.1…` · `http://localhost…` | accepted for offline and boot-drain lanes — **only** when the loopback hostname terminates at end-of-string, a path, or a digits-only port |
 | anything else | **refuses boot**, `ERR_STARTUP_ENV_CHECK` |
 
-An override that is accepted is logged once at boot as `startup.clerk_api_base_override`, so the resolved root is always readable from the first page of daemon logs.
+An override that is accepted is logged once at boot as `startup_clerk_api_base_override`, so the resolved root is always readable from the first page of daemon logs.
 
 The termination rule on the loopback carve-out is the part worth reading twice. `http://127.0.0.1.attacker.example` and `http://localhost@evil.example` both *start with* a loopback prefix while naming a remote host, and both read as harmless in a manifest review or a log scan. A prefix-only check accepts them, and the daemon then sends `CLERK_SECRET_KEY` in cleartext on every scope-cache miss — see the compromise scope directly above. So this rule does not defend against an attacker who already writes the daemon's environment (they can read the secret anyway); it defends against a config change that a human waves through because it looks like localhost.
 

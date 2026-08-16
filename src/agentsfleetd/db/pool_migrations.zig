@@ -114,7 +114,7 @@ fn applySqlStatements(conn: *Conn, version: i32, sql: []const u8) !u32 {
     // Loud reject: unterminated SQL fails as a named SplitError (never error.PG)
     // before any truncated statement could apply.
     sql_splitter.SqlStatementSplitter.validate(sql) catch |err| {
-        log.err("migrate.sql_invalid", .{ .version = version, .err = @errorName(err) });
+        log.err("migrate_sql_invalid", .{ .version = version, .err = @errorName(err) });
         return err;
     };
     var splitter = sql_splitter.SqlStatementSplitter.init(sql);
@@ -182,14 +182,14 @@ fn runMigrationsWithPolicy(
 ) !void {
     const conn = try pool.acquire();
     defer pool.release(conn);
-    log.info("migrate.conn_acquired", .{ .expected_versions = migrations.len });
+    log.info("migrate_conn_acquired", .{ .expected_versions = migrations.len });
 
     migration_lock.acquireBounded(conn, lock_max_attempts, lock_retry_ms) catch |err| {
         if (err == error.PG) migration_state.logPgErrorContext(conn, "migrate.acquire_lock");
         return err;
     };
     defer migration_lock.release(conn);
-    log.info("migrate.lock_acquired", .{});
+    log.info("migrate_lock_acquired", .{});
 
     ensureSchemaMigrationsTable(conn) catch |err| {
         if (err == error.PG) migration_state.logPgErrorContext(conn, "migrate.ensure_schema_migrations_table");

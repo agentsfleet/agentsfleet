@@ -111,7 +111,7 @@ pub fn complete(conn: *pg.Conn, verification_id: []const u8, claim_token: []cons
 pub fn redisCleanupDue(alloc: std.mem.Allocator, conn: *pg.Conn, now_ms: i64) ![]RedisCleanup {
     var rows: std.ArrayList(RedisCleanup) = .empty;
     errdefer {
-        freeRedisCleanup(alloc, rows.items);
+        freeRedisCleanupItems(alloc, rows.items);
         rows.deinit(alloc);
     }
     var q = PgQuery.from(try conn.query(sql.SELECT_REPAIR_VERIFICATION_REDIS_CLEANUP, .{
@@ -212,9 +212,18 @@ fn copyDue(alloc: std.mem.Allocator, row: pg.Row) !Due {
     };
 }
 
+/// Releases an owned page returned by `redisCleanupDue`, slice included.
 pub fn freeRedisCleanup(alloc: std.mem.Allocator, rows: []RedisCleanup) void {
-    for (rows) |*row| row.deinit(alloc);
+    freeRedisCleanupItems(alloc, rows);
     alloc.free(rows);
+}
+
+/// Releases only the ids, leaving the backing slice to its owner. The unwind
+/// paths hold a live `ArrayList`, whose buffer belongs to `deinit` — freeing
+/// `items` there frees a capacity-length allocation by its length and then
+/// hands the same pointer to `deinit` a second time.
+fn freeRedisCleanupItems(alloc: std.mem.Allocator, rows: []RedisCleanup) void {
+    for (rows) |*row| row.deinit(alloc);
 }
 
 fn freeDueItems(alloc: std.mem.Allocator, rows: []Due) void {

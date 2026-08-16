@@ -25,13 +25,13 @@ pub fn run(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
     // via the stdout log sink; serve keeps the full OTLP exporter set.
     var attempt: u32 = 1;
     while (true) {
-        log.info("migrate.connect_start", .{ .role = S_MIGRATOR, .attempt = attempt, .max_attempts = max_migrate_attempts });
+        log.info("migrate_connect_start", .{ .role = S_MIGRATOR, .attempt = attempt, .max_attempts = max_migrate_attempts });
         const pool = db.initFromEnvForRole(io, env_map, alloc, .migrator) catch |err| {
             if (backoffForRetry("migrate.connect_retry", err, attempt)) {
                 attempt += 1;
                 continue;
             }
-            log.err("migrate.db_connect_failed", .{
+            log.err("migrate_db_connect_failed", .{
                 .error_code = error_codes.ERR_STARTUP_DB_CONNECT,
                 .role = S_MIGRATOR,
                 .err = @errorName(err),
@@ -39,14 +39,14 @@ pub fn run(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
             std.process.exit(1);
         };
 
-        log.info("migrate.run_start", .{ .attempt = attempt, .max_attempts = max_migrate_attempts });
+        log.info("migrate_run_start", .{ .attempt = attempt, .max_attempts = max_migrate_attempts });
         common.runCanonicalMigrations(pool) catch |err| {
             pool.deinit();
             if (backoffForRetry("migrate.run_retry", err, attempt)) {
                 attempt += 1;
                 continue;
             }
-            log.err("migrate.run_failed", .{
+            log.err("migrate_run_failed", .{
                 .error_code = error_codes.ERR_STARTUP_MIGRATION_CHECK,
                 .err = @errorName(err),
             });
@@ -55,7 +55,7 @@ pub fn run(io: std.Io, env_map: *const EnvMap, alloc: std.mem.Allocator) !void {
         pool.deinit();
         break;
     }
-    log.info("migrate.completed", .{ .attempt = attempt, .max_attempts = max_migrate_attempts });
+    log.info("migrate_completed", .{ .attempt = attempt, .max_attempts = max_migrate_attempts });
 }
 
 /// True when the failed attempt should retry after the backoff sleep; the

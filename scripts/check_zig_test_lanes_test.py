@@ -11,6 +11,14 @@ ROOT = Path(__file__).resolve().parents[1]
 MEMLEAK_RUNNER = ROOT / "scripts" / "run-zig-memleak-lane.sh"
 
 
+# The coverage lane greps the lifecycle component's log for this marker, because
+# that test skips itself without live datastores and a skipped run still yields a
+# valid report — of a process that started and stopped. These stubs stand in for
+# the real binary, so by default they say what it says when it runs.
+LIFECYCLE_RUN_MARKER = "SERVE_LIFECYCLE_BOOT_DRAIN_RAN"
+LIFECYCLE_MARKER_ECHO = f'echo "{LIFECYCLE_RUN_MARKER}"\n'
+
+
 def write_executable(path: Path, body: str) -> None:
     path.write_text(textwrap.dedent(body), encoding="utf-8")
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
@@ -69,13 +77,23 @@ class TestLaneGraph(unittest.TestCase):
 
 
 class TestCoverageLane(unittest.TestCase):
-    def run_coverage(self, kcov_body: str, minimum: str = "60") -> subprocess.CompletedProcess[str]:
+    def run_coverage(
+        self,
+        kcov_body: str,
+        minimum: str = "60",
+        lifecycle_ran: bool = True,
+    ) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory() as raw:
             temp = Path(raw)
             tool_dir = temp / "bin"
             tool_dir.mkdir()
             write_executable(tool_dir / "zig", "#!/bin/sh\nexit 0\n")
-            write_executable(tool_dir / "kcov", kcov_body)
+            # Dedent before appending: an unindented line would otherwise become
+            # the common prefix and leave the body's own indentation in place.
+            stub = textwrap.dedent(kcov_body)
+            if lifecycle_ran:
+                stub += LIFECYCLE_MARKER_ECHO
+            write_executable(tool_dir / "kcov", stub)
             # The lane now measures the integration binary too, which needs a
             # live Postgres and Redis. These tests are about the gate's
             # arithmetic and its failure messages, not about provisioning, so
@@ -92,7 +110,11 @@ class TestCoverageLane(unittest.TestCase):
                     f"ZIG_COVERAGE_DIR={temp / 'coverage'}",
                     f"ZIG_GLOBAL_CACHE_DIR={temp / 'global'}",
                     f"ZIG_LOCAL_CACHE_DIR={temp / 'local'}",
-                    f"ZIG_COVERAGE_MIN_LINES={minimum}",
+                    f"ZIG_COVERAGE_MIN_PCT={minimum}",
+                    # Redirected for the same reason as the coverage directory:
+                    # the default path is the one a real run publishes and CI
+                    # reads, and a stubbed run must not overwrite it.
+                    f"ZIG_COVERAGE_SUMMARY_FILE={temp / 'zig-coverage.txt'}",
                     "TEST_INFRA=provided",
                     "KEEP_TEST_STATE=1",
                     f"TEST_REDIS_TLS_CA_CERT={cert}",
@@ -144,6 +166,31 @@ class TestCoverageLane(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("component runner produced no Cobertura report", result.stdout + result.stderr)
+
+    def test_a_skipped_lifecycle_proof_fails_the_lane(self) -> None:
+        # The boot->drain proof skips itself when the datastores or the isolation
+        # variable are missing, and kcov still writes a perfectly valid report for
+        # the process that started and stopped. Without this check the lane would
+        # grade that as `cmd/serve.zig` being genuinely uncovered, which is the
+        # same number an honest regression produces.
+        result = self.run_coverage(
+            """\
+            #!/bin/sh
+            for arg in "$@"; do case "$arg" in --*) ;; *) out=$arg; break;; esac; done
+            mkdir -p "$out"
+            {
+              printf '<coverage><packages><package><classes>\\n'
+              printf '<class filename="a.zig"><lines>\\n'
+              printf '<line number="1" hits="1"/>\\n'
+              printf '</lines></class></classes></package></packages></coverage>\\n'
+            } > "$out/cobertura.xml"
+            : > "$out/index.html"
+            echo "781 passed; 7 skipped; 0 failed."
+            """,
+            lifecycle_ran=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("lifecycle test did not run", result.stdout + result.stderr)
 
     def test_missing_kcov_names_install_hint(self) -> None:
         env = os.environ.copy()

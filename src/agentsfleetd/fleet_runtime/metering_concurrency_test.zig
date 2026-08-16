@@ -72,7 +72,7 @@ const Job = struct {
 };
 
 fn runReceive(job: *Job) void {
-    job.outcome = metering.debitReceive(job.pool, ALLOC, TENANT_ID, job.ctx(), EVENT_CREATED_AT, .stop);
+    job.outcome = metering.debitReceive(job.pool, ALLOC, TENANT_ID, job.ctx(), EVENT_CREATED_AT);
 }
 
 // event_id pattern: aa19 segment + a per-index suffix, zero-padded, unique.
@@ -97,7 +97,7 @@ test "should drain every concurrent receive debit without lost writes" {
     // Ample balance so no receive debit can exhaust — receive charges
     // EVENT_NANOS (0) per event, so the balance never moves, but every call
     // must still succeed and write exactly one telemetry row.
-    try tenant_billing.provision(db_ctx.conn, TENANT_ID, tenant_billing.STARTER_CREDIT_NANOS, "test_recv_race");
+    try base.seedWalletBalance(db_ctx.conn, TENANT_ID, tenant_billing.STARTER_CREDIT_NANOS, "test_recv_race");
     const initial = (try tenant_billing.getBilling(db_ctx.conn, TENANT_ID)).?;
 
     var jobs: [N_WORKERS]Job = undefined;

@@ -40,7 +40,10 @@ class TestCoverageConcurrency(unittest.TestCase):
 
     def test_coverage_failure_is_still_attributed_and_fatal(self) -> None:
         # Concurrency must not lose which component failed, nor the non-zero exit.
-        self.assertIn('rc=$$(cat ".tmp/kcov-$$name.rc"', self.makefile)
+        # The status files live under the coverage directory, not a hardcoded
+        # relative path, so a stubbed lane run and a real one cannot read each
+        # other's output.
+        self.assertIn('rc=$$(cat "$(ZIG_COVERAGE_DIR)/kcov-$$name.rc"', self.makefile)
         self.assertIn('echo "✗ Zig coverage component $$name exited $$rc"', self.makefile)
         self.assertIn('[ "$$failed" -eq 0 ] || exit 1', self.makefile)
 

@@ -20,6 +20,7 @@ const crypto_store = @import("../secrets/crypto_store.zig");
 const vault = @import("../state/vault.zig");
 const webhook_verify = @import("../fleet_runtime/webhook_verify.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
+const error_codes = @import("../errors/error_registry.zig");
 const logging = @import("log");
 
 const LookupResult = auth_mw.webhook_sig_mod.LookupResult;
@@ -82,7 +83,7 @@ pub fn lookupSvix(
     defer alloc.free(secret_ref);
 
     const secret = crypto_store.load(alloc, conn, row_data.workspace_id, secret_ref) catch |err| {
-        log.err("svix.vault_load_failed", .{ .secret_ref = secret_ref, .err = @errorName(err) });
+        log.err("svix_vault_load_failed", .{ .error_code = error_codes.ERR_SECRET_NOT_FOUND, .secret_ref = secret_ref, .err = @errorName(err) });
         return .{ .secret = null };
     };
     return .{ .secret = secret };
@@ -192,7 +193,7 @@ fn loadWebhookSecret(
     key_name: []const u8,
 ) ?[]const u8 {
     var parsed = vault.loadJson(alloc, conn, workspace_id, key_name) catch |err| {
-        log.warn("webhook_credential_load_failed", .{ .workspace_id = workspace_id, .key = key_name, .err = @errorName(err) });
+        log.warn("webhook_credential_load_failed", .{ .error_code = error_codes.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, .workspace_id = workspace_id, .key = key_name, .err = @errorName(err) });
         return null;
     };
     defer parsed.deinit();
@@ -202,7 +203,7 @@ fn loadWebhookSecret(
         else => return null,
     };
     const val = obj.get(WEBHOOK_SECRET_FIELD) orelse {
-        log.warn("webhook_credential_missing_field", .{ .workspace_id = workspace_id, .key = key_name });
+        log.warn("webhook_credential_missing_field", .{ .error_code = error_codes.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, .workspace_id = workspace_id, .key = key_name });
         return null;
     };
     const secret = switch (val) {
@@ -236,4 +237,73 @@ fn freeScheme(alloc: std.mem.Allocator, s: SignatureScheme) void {
     alloc.free(s.prefix);
     if (s.ts_header) |t| alloc.free(t);
     alloc.free(s.hmac_version);
+}
+
+test "extractSecretRef refuses every shape that names no usable ref" {
+    const alloc = std.testing.allocator;
+    // Each of these reaches the middleware as "no Svix secret configured",
+    // which must fail closed rather than resolve to something arbitrary.
+    const refused = [_][]const u8{
+        "not json at all",
+        "[\"secret_ref\"]",
+        "{\"other\":\"x\"}",
+        "{\"secret_ref\":42}",
+        "{\"secret_ref\":\"\"}",
+    };
+    for (refused) |sig_json| {
+        try std.testing.expect(try extractSecretRef(alloc, sig_json) == null);
+    }
+}
+
+test "extractSecretRef returns the ref as an owned copy" {
+    const alloc = std.testing.allocator;
+    const ref = (try extractSecretRef(alloc, "{\"secret_ref\":\"whsec_key\"}")).?;
+    defer alloc.free(ref);
+    try std.testing.expectEqualStrings("whsec_key", ref);
+}
+
+const TEST_CONFIG = webhook_verify.VerifyConfig{
+    .name = "github",
+    .sig_header = "X-Hub-Signature-256",
+    .ts_header = "X-Hub-Timestamp",
+    .prefix = "sha256=",
+    .hmac_version = "v1",
+    .includes_timestamp = true,
+    .max_ts_drift_seconds = 300,
+};
+
+test "schemeFromConfig copies every field and freeScheme releases all of them" {
+    const alloc = std.testing.allocator;
+    const scheme = try schemeFromConfig(alloc, TEST_CONFIG);
+    defer freeScheme(alloc, scheme);
+
+    // Copies, not borrows: the config outlives no request, so a borrowed
+    // header name would dangle by the time the middleware verifies a payload.
+    try std.testing.expectEqualStrings(TEST_CONFIG.sig_header, scheme.sig_header);
+    try std.testing.expectEqualStrings(TEST_CONFIG.prefix, scheme.prefix);
+    try std.testing.expectEqualStrings(TEST_CONFIG.ts_header.?, scheme.ts_header.?);
+    try std.testing.expectEqualStrings(TEST_CONFIG.hmac_version, scheme.hmac_version);
+    try std.testing.expect(scheme.includes_timestamp);
+    try std.testing.expectEqual(TEST_CONFIG.max_ts_drift_seconds, scheme.max_ts_drift_seconds);
+}
+
+test "schemeFromConfig unwinds every partial copy when an allocation fails" {
+    // One run per allocation the function makes, so each errdefer arm unwinds
+    // in turn. testing.allocator underneath fails the test on any leak.
+    for (0..4) |fail_index| {
+        var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
+        try std.testing.expectError(error.OutOfMemory, schemeFromConfig(failing.allocator(), TEST_CONFIG));
+    }
+}
+
+test "freeSvixRow releases the row with and without a signature payload" {
+    const alloc = std.testing.allocator;
+    freeSvixRow(alloc, .{
+        .workspace_id = try alloc.dupe(u8, "ws-with-signature"),
+        .signature_json = try alloc.dupe(u8, "{\"secret_ref\":\"whsec_key\"}"),
+    });
+    freeSvixRow(alloc, .{
+        .workspace_id = try alloc.dupe(u8, "ws-without-signature"),
+        .signature_json = null,
+    });
 }

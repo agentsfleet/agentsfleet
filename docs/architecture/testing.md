@@ -48,21 +48,122 @@ after the component lanes converge.
 
 ## Coverage
 
-`make test-coverage-zig` installs and runs eight component binaries under kcov:
+`make test-coverage-zig` installs and runs nine component binaries under kcov:
 
-- daemon unit tests;
-- runner unit tests;
-- shared library tests;
-- logging tests;
-- call-deadline tests;
-- object-store tests;
-- the runner integration suite (Linux only);
-- the daemon integration suite, against live datastores, serially.
+- `agentsfleetd` — daemon unit tests;
+- `runner` — runner unit tests;
+- `lib` — shared library tests;
+- `logging` — logging tests;
+- `deadline` — call-deadline tests;
+- `s3` — object-store tests;
+- `runner_integration` — the runner integration suite, whose worker-pool tests
+  fork the real stub child on Linux and macOS alike;
+- `integration` — the daemon integration suite, against live datastores, serially;
+- `lifecycle` — the boot to SIGTERM to drain proof, alone in its own process
+  against live datastores.
 
 `scripts/check_zig_coverage.py` unions those reports — a line counts as covered
 when any component executed it, because the unit lanes and the integration
 suites reach largely disjoint code — publishes the union to
-`coverage/zig/merged`, and enforces `ZIG_COVERAGE_MIN_LINES`. The floor is 89%.
+`coverage/zig/merged`, and enforces `ZIG_COVERAGE_MIN_PCT` plus one floor per
+product folder.
+
+`lifecycle` measures the only test that drives the real `serve.run`. It runs
+last and costs a rebuild: the integration binary takes its test filter at build
+time, and this test cannot share a process with the rest of the suite, since it
+installs signal handlers, binds a port and moves process-global state the other
+tests read. Before it existed, `cmd/serve.zig` — the daemon's entire boot
+sequence — measured 0% of 116 lines. Both lanes that run it, this one and
+`make memleak`, grep its run marker: a test that skipped still yields a valid
+report, describing a process that started and stopped.
+
+### The denominator holds shipped code only
+
+A line enters the denominator only if it ships. Three exclusions, all in
+`scripts/check_zig_coverage.py`:
+
+- `*_test.zig` files, dropped by kcov's `--exclude-pattern`;
+- test-support sources — harnesses, fixtures, fakes — matched by naming form;
+- `test { ... }` blocks written inside product files.
+
+The third one mattered most. Those blocks held 5,309 lines, 17% of the old
+denominator, and a test body is ~100% covered by construction, so they lifted
+every published rate by 1.7 to 2.6 points. Worse, they made the gate satisfiable
+by writing more tests inside a file rather than covering more of it. Rates fell
+when this landed; coverage did not regress.
+
+### Floors bind per folder
+
+One merged floor averages the daemon against the runner, so no floor could ever
+bind the daemon — the tree that carries most of the risk. Each product folder
+now has its own.
+
+| Scope | Enforced floor | Target |
+|---|---|---|
+| merged | 89 | 95 |
+| `agentsfleetd` | 90 | 90 |
+| `runner` | 87 | 95 |
+| `lib` | 94 | 95 |
+
+Floors are enforced and **raise-only** under normal operation: move one in the
+same commit as the tests that measurably clear it, never ahead. A floor set
+ahead of its tests gates nothing but red, which is what 91 did here once
+already. The one exception is a floor discovered to have been measured on the
+wrong platform — see `runner` and `lib` below, and `merged` above, all
+corrected down once real CI, not a dev Mac, finally graded them. Targets are
+published and never enforced; the gap between floor and target prints every
+run, so the destination stays visible without an unmet one turning the build
+red.
+
+`make/test.mk` is the single definition site for every one of these numbers, and
+`scripts/check_zig_coverage_doc_test.py` fails when this table disagrees with
+it. The values above were stale for exactly as long as nothing checked them.
+
+The 95% target sits under `lib`'s ceiling on macOS: it measured 95.02% there.
+An earlier revision of this page called 95 unreachable for `lib` on a 97.05%
+ceiling; the shortfall was not the ceiling. `call_deadline/scheduler.zig` sat
+at exactly the 350-line file cap with eight dark lines and no room for the
+tests that would clear them, and three of those lines were test-support fakes
+the denominator counted as product. Splitting the file moved both problems at
+once — but, like every number on this page before PR #608's first real CI
+cycle, 95.02% was never checked against the platform the gate runs on. Linux
+measured 94.94% (826/870); the floor corrected down to 94 to match, one line
+short of 95.
+
+`runner` measured 95.18% on macOS, further from what Linux CI could
+reproduce: `src/runner/engine/{seccomp,landlock,cgroup}.zig` are real Linux
+sandboxing enforcement whose Linux branches comptime-eliminate to stubs on
+macOS, so those lines never entered the denominator locally. On Linux CI they
+compile in for real, and only `sec_enforcement_integration_test.zig`'s
+privileged lane — which this gate is not — exercises them. PR #608's first
+real CI cycle measured 87.48% instead of 95.18%; the floor corrected down to
+match. The target stays 95 for both `runner` and `lib` as the gap left to
+close, with either a privileged coverage lane or tests that hold without one.
+
+`merged` moved for the same reason, one level up: it is a weighted average
+across all nine components, and it had been folding in `runner`'s and `lib`'s
+inflated macOS numbers the whole time. First Linux measurement: 89.96%
+(23724/26371), not the 90.91% this page and `make/test.mk` both carried before
+PR #608. Floor corrected 90 → 89. All three corrections reproduced
+byte-identical across two separate CI runs on the same commit, so this is
+measurement, not flake.
+
+`agentsfleetd` targets 90, not 95, because Indy shortened the campaign on
+Aug 16, 2026 after `lib` and `runner` landed: 89.23% to 95% is 1,278 covered
+lines over a 22,130-line denominator, and the file-splitting lever that makes
+the daemon's big files testable had only just been ruled on. He first cut the
+target to 91, then to 90 the same day once the session's remaining commits had
+closed most of that gap on their own — banking the PR at 90 beat funding
+another round of file splits for the last point. 90 is a waypoint. The daemon
+is 86% of the merged denominator, so the merged 95 above cannot be reached
+until this number moves again — the two are reconciled by raising this target
+later, never by lowering that one.
+
+The ceiling is real and it is why the target is not 100: kcov attributes no
+instruction to a function signature, a parameter line, a closing brace or a
+comment, so those lines cannot be covered by any test. Other subsystems ceil
+between 99.38% and 99.69%. A folder that reads as capped is worth re-measuring
+against its file shape before the ceiling is blamed.
 
 The union is deliberately not `kcov --merge`. That command returned only the
 three `src/lib` components on Linux — 24 files, 861 lines — against 558 files
@@ -106,14 +207,29 @@ them apart. A rate that rises while the file count falls is a capture regression
 
 `ZIG_COVERAGE_REQUIRED_COMPONENTS` ratchets on evidence. A component joins it in
 the commit where a green run shows it collecting — never ahead.
-Until kcov collects the remaining components, per-folder floors for
-`agentsfleetd/` cannot be enforced in Continuous Integration (CI) at all,
-because that tree contributes no measured line there.
 
-The checker writes these keys to `.tmp/zig-coverage.txt` for the CI job summary:
-`zig_line_coverage_pct`, `zig_line_coverage_min_pct`, `zig_measured_files`,
-`zig_measured_lines`, `zig_components_measured`, `zig_components_total`, and
-`zig_components_empty`.>>>>>>> origin/main
+`ZIG_COVERAGE_REQUIRED_ROOTS` is the companion assertion on the union itself:
+`agentsfleetd`, `runner` and `lib` must each carry a measured line, whatever the
+rate. A union at 98% holding one tree is not a measurement of the codebase.
+`ZIG_COVERAGE_MIN_FILES` and `ZIG_COVERAGE_MIN_MEASURED_LINES` sit under the
+whole report at roughly half the measured figures — a collapse alarm, not a
+growth ratchet, set low on purpose so deleting dead code never turns the gate
+red.
+
+The checker writes these keys to `.tmp/zig-coverage.txt` for the Continuous
+Integration (CI) job summary: `zig_line_coverage_pct`,
+`zig_line_coverage_min_pct`, `zig_line_coverage_target_pct`,
+`zig_line_coverage_gap_pts`, `zig_measured_files`, `zig_measured_lines`,
+`zig_components_measured`, `zig_components_total`, `zig_components_empty`, and
+one `zig_folder_pct_*`, `zig_folder_min_pct_*`, `zig_folder_target_pct_*` and
+`zig_folder_gap_pts_*` per product folder.
+
+The README badge does **not** read those keys. It reads Codecov, which is fed
+`coverage/zig/merged/cobertura.xml` — the union this checker publishes, with the
+denominator rules above already applied. Uploading the raw per-component kcov
+reports instead would let Codecov build its own union over its own denominator,
+and the badge would disagree with the gate by roughly two points. Upload the
+merged report, nothing else.
 
 ## Adding a component
 

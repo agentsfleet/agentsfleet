@@ -23,22 +23,22 @@ const renderText = doctor_render.renderText;
 const renderJson = doctor_render.renderJson;
 const parseDoctorArgs = doctor_args.parseDoctorArgs;
 
-const S_DOCTOR_DB_CONNECT_START = "doctor.db_connect_start";
-const S_DOCTOR_REDIS_CONNECT_START = "doctor.redis_connect_start";
-const S_DOCTOR_DB_CONNECT_OK = "doctor.db_connect_ok";
+const S_DOCTOR_DB_CONNECT_START = "doctor_db_connect_start";
+const S_DOCTOR_REDIS_CONNECT_START = "doctor_redis_connect_start";
+const S_DOCTOR_DB_CONNECT_OK = "doctor_db_connect_ok";
 const S_OIDC_PROVIDER = "oidc_provider";
 const S_API = "api";
 const S_ENCRYPTION_MASTER_KEY = "encryption_master_key";
 const S_AUTH_SESSION_CODE_PEPPER = "auth_session_code_pepper";
 const S_AUDIT_LOG_PEPPER = "audit_log_pepper";
-const S_DOCTOR_SCHEMA_GATE_FAILED = "doctor.schema_gate_failed";
+const S_DOCTOR_SCHEMA_GATE_FAILED = "doctor_schema_gate_failed";
 const S_SCHEMA_GATE_COMPAT = "schema_gate_compat";
 const S_DB_API_CONFIG = "db_api_config";
-const S_DOCTOR_REDIS_CONNECT_FAILED = "doctor.redis_connect_failed";
+const S_DOCTOR_REDIS_CONNECT_FAILED = "doctor_redis_connect_failed";
 const S_OIDC_JWKS_REACHABILITY = "oidc_jwks_reachability";
 const S_T_R_N = " \t\r\n";
-const S_DOCTOR_REDIS_CONNECT_OK = "doctor.redis_connect_ok";
-const S_DOCTOR_DB_CONNECT_FAILED = "doctor.db_connect_failed";
+const S_DOCTOR_REDIS_CONNECT_OK = "doctor_redis_connect_ok";
+const S_DOCTOR_DB_CONNECT_FAILED = "doctor_db_connect_failed";
 
 const MigrationSchemaGateError = error{
     FailedMigrations,
@@ -64,7 +64,7 @@ fn ensureSchemaCompatible(state: db.MigrationState) MigrationSchemaGateError!voi
 }
 
 pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc: std.mem.Allocator) !void {
-    log.info("doctor.start", .{});
+    log.info("doctor_start", .{});
     var ok = true;
     var stdout_buf: [8192]u8 = undefined;
     var stdout_w = std.Io.File.stdout().writer(io, &stdout_buf);
@@ -94,9 +94,9 @@ pub fn run(io: std.Io, env_map: *const EnvMap, argv: []const [:0]const u8, alloc
     }
     try stdout.flush();
     if (ok) {
-        log.info("doctor.finish_ok", .{});
+        log.info("doctor_finish_ok", .{});
     } else {
-        log.err("doctor.finish_failed", .{});
+        log.err("doctor_finish_failed", .{});
     }
     if (!ok) std.process.exit(1);
 }
@@ -157,7 +157,7 @@ fn checkDbApi(c: CheckCtx) !void {
 }
 
 fn checkSchemaGate(c: CheckCtx) !void {
-    log.info("doctor.schema_gate_start", .{});
+    log.info("doctor_schema_gate_start", .{});
     const pool = db.initFromEnvForRole(c.io, c.env_map, c.alloc, .migrator) catch |err| {
         log.err(S_DOCTOR_SCHEMA_GATE_FAILED, .{ .stage = "connect", .err = @errorName(err) });
         try appendCheck(c.alloc, c.results, "schema_gate_config", false, "DATABASE_URL_MIGRATOR not set/invalid", c.ok);
@@ -186,7 +186,7 @@ fn checkSchemaGate(c: CheckCtx) !void {
         return;
     };
 
-    log.info("doctor.schema_gate_ok", .{ .expected = state.expected_versions, .applied = state.applied_versions });
+    log.info("doctor_schema_gate_ok", .{ .expected = state.expected_versions, .applied = state.applied_versions });
     try appendFmtCheck(
         c.alloc,
         c.results,

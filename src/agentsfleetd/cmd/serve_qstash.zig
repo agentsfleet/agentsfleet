@@ -7,7 +7,7 @@ const logging = @import("log");
 const Credentials = @import("../cron/Credentials.zig");
 
 const log = logging.scoped(.agentsfleetd);
-const EVENT_QSTASH_UNCONFIGURED = "startup.qstash_unconfigured";
+const EVENT_QSTASH_UNCONFIGURED = "startup_qstash_unconfigured";
 
 pub fn load(
     alloc: std.mem.Allocator,

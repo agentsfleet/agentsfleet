@@ -81,7 +81,7 @@ pub const ProdBackend = struct {
             .event = @tagName(E.kind),
             .properties = &props,
         }) catch |err| {
-            log.warn("posthog.capture_failed", .{ .event = @tagName(E.kind), .err = @errorName(err) });
+            log.warn("posthog_capture_failed", .{ .event = @tagName(E.kind), .err = @errorName(err) });
         };
     }
 };
