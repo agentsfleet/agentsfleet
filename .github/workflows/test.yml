@@ -162,8 +162,27 @@ jobs:
           # paths, and take over the runner. TEST_INFRA=provided removes the
           # reason it was ever mounted, and fails closed: it re-verifies the CA
           # cert the host extracted and dies loudly if infra was claimed but not
-          # provided.
-          docker run --rm --network host \
+          # provided. `--privileged` below does NOT walk that back: it bounds a
+          # contributor to this container, where the socket would have handed
+          # them the host.
+          #
+          # `--privileged` is what lets bubblewrap create namespaces, and this
+          # lane measures the code that needs them. The image has baked bwrap in
+          # since r3, so the real-sandbox proofs in `selftest_integration_test`
+          # do not fail here without it — they SKIP, on a `probeRanHere` guard
+          # that reads a silent probe as a harness fact rather than a verdict.
+          # Skipping is the correct behaviour and it left `selftest_exec.run` —
+          # the whole spawn/bound/reap half of the self-test — measured at 33%,
+          # which then read as "structurally unreachable in the coverage lane"
+          # rather than as one missing flag. Measured on this image:
+          # unprivileged all four skip, privileged all four pass. No narrower
+          # capability substitutes; `--cap-add=SYS_ADMIN` alone still skips.
+          #
+          # kcov's own two relaxations stay spelled out below even though this
+          # subsumes them, so narrowing the privilege later cannot silently take
+          # kcov's requirements with it. `scripts/check_ci_lane_config_test.py`
+          # holds this lane, its reason, and that pairing together.
+          docker run --rm --network host --privileged \
             --security-opt seccomp=unconfined --cap-add=SYS_PTRACE \
             -v "${{ github.workspace }}":"${{ github.workspace }}" \
             -w "${{ github.workspace }}" \
