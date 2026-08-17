@@ -299,9 +299,12 @@ export interface RunnerDetail extends RunnerListItem {
  * The result is then history, not a statement about how this runner is
  * configured now, and the page must say so (Dimension 1.3). */
 export function isSelftestStale(runner: RunnerDetail): boolean {
-  const report = runner.selftest;
+  // `?? null` rather than `=== null`: a daemon older than these columns omits
+  // the keys entirely, so the field arrives undefined and a strict null check
+  // would fall through and dereference it.
+  const report = runner.selftest ?? null;
   if (report === null) return false;
-  const assigned = runner.assigned_policy;
+  const assigned = runner.assigned_policy ?? null;
   if (assigned === null) return true;
   return report.sandbox_tier !== assigned.sandbox_tier || report.network_policy !== assigned.network_policy;
 }

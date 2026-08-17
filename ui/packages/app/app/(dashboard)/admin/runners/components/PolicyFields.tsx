@@ -34,12 +34,25 @@ import {
   type AssignedPolicy,
   type SandboxTier,
 } from "@/lib/api/runners";
+import {
+  BIND_MODES,
+  MAX_EXTRA_BINDS,
+  bindNoteIssue,
+  bindPathIssue,
+  bindsFromForm,
+  formFromBinds,
+} from "./policy-binds";
+import { PolicyBindsField } from "./PolicyBindsField";
 
-// The four-field ASSIGNMENT section, shared verbatim by AddRunnerDialog
-// (enrollment) and EditPolicyDialog (re-assignment) so the two surfaces can
-// never drift on what a policy is. Every description reads as an assignment
-// the host must satisfy — the host applies exactly this and reports what it
-// can actually enforce; it never declares its own policy.
+// The ASSIGNMENT section, shared verbatim by AddRunnerDialog (enrollment) and
+// EditPolicyDialog (re-assignment) so the two surfaces can never drift on what
+// a policy is. Every description reads as an assignment the host must satisfy —
+// the host applies exactly this and reports what it can actually enforce; it
+// never declares its own policy.
+//
+// The bind list rides here rather than in its own dialog because PATCH replaces
+// the WHOLE assignment: a form that edits four fields and omits the fifth sends
+// `extra_binds: []` and wipes the operator's mounts.
 
 export const DEFAULT_ASSIGNED_SANDBOX_TIER: SandboxTier = "landlock_full";
 
@@ -68,6 +81,25 @@ export const policyFormSchema = z.object({
       const n = Number(v);
       return Number.isInteger(n) && n >= MIN_WORKER_COUNT && n <= MAX_WORKER_COUNT;
     }, WORKER_COUNT_RANGE_MESSAGE),
+  // A blank row is dropped on save rather than refused — an operator who opens
+  // a row and changes their mind should still be able to save. Every filled row
+  // is graded against the same rules `protocol_bind.extraBindsValid` applies.
+  extra_binds: z
+    .array(z.object({ path: z.string(), mode: z.enum(BIND_MODES), note: z.string() }))
+    .superRefine((rows, ctx) => {
+      const filled = rows.filter((r) => r.path.trim().length > 0);
+      if (filled.length > MAX_EXTRA_BINDS) {
+        ctx.addIssue({ code: "custom", message: `At most ${MAX_EXTRA_BINDS} binds per runner` });
+      }
+      rows.forEach((r, i) => {
+        const path = r.path.trim();
+        if (path.length === 0) return;
+        const pathIssue = bindPathIssue(path);
+        if (pathIssue) ctx.addIssue({ code: "custom", message: pathIssue, path: [i, "path"] });
+        const noteIssue = bindNoteIssue(r.note.trim());
+        if (noteIssue) ctx.addIssue({ code: "custom", message: noteIssue, path: [i, "note"] });
+      });
+    }),
 });
 export type PolicyFormValues = z.infer<typeof policyFormSchema>;
 
@@ -76,6 +108,7 @@ export const POLICY_FORM_DEFAULTS: PolicyFormValues = {
   network_policy: DEFAULT_ASSIGNED_NETWORK_POLICY,
   registry_allowlist: "",
   worker_count: String(DEFAULT_WORKER_COUNT),
+  extra_binds: [],
 };
 
 /** Form values → the wire assignment; surfaces the registry parse error. */
@@ -88,6 +121,7 @@ export function policyFromForm(values: PolicyFormValues): { policy: AssignedPoli
       network_policy: values.network_policy,
       registry_allowlist: parsed.hosts,
       worker_count: Number(values.worker_count),
+      extra_binds: bindsFromForm(values.extra_binds),
     },
     error: null,
   };
@@ -100,6 +134,7 @@ export function formFromPolicy(policy: AssignedPolicy): PolicyFormValues {
     network_policy: policy.network_policy,
     registry_allowlist: policy.registry_allowlist.join(", "),
     worker_count: String(policy.worker_count),
+    extra_binds: formFromBinds(policy.extra_binds),
   };
 }
 
@@ -203,6 +238,7 @@ export function PolicyFields({ control }: { control: Control<PolicyFormValues> }
           </FormItem>
         )}
       />
+      <PolicyBindsField control={c} />
     </>
   );
 }
