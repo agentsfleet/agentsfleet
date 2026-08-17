@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M167
 **Workstream:** 001
 **Date:** Aug 16, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — a runner whose sandbox cannot resolve a hostname reports itself healthy and fails every lease; today that gap is only visible by reading the daemon journal over Secure Shell (SSH)
 **Categories:** API, UI
 **Batch:** B1 — §3 declares the contract §2 probes and §1 renders; §4 extends the contract with an operator-editable additive layer
