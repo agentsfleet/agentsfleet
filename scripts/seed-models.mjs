@@ -69,7 +69,19 @@ const dig = (obj, path) => path.split(".").reduce((o, k) => (o == null ? o : o[k
  * than allowlisted. Strip the symbol and the separators; anything still
  * non-numeric stays NaN and is rejected on purpose.
  */
-const rate = (raw) => (typeof raw === "string" ? Number(raw.replace(/[$£€,\s]/g, "")) : Number(raw));
+export const rate = (raw) => (typeof raw === "string" ? Number(raw.replace(/[$£€,\s]/g, "")) : Number(raw));
+
+/**
+ * The cache-read rate to seed, given the parsed cache value and the input rate.
+ * Exported so the three "no cache discount" spellings are covered by a test
+ * rather than only by whatever the committed fixture happens to contain.
+ */
+export const cachedOrInput = (cachedParsed, input) =>
+  Number.isFinite(cachedParsed) && cachedParsed > 0 ? cachedParsed : input;
+
+/** Whether a parsed row is billable. Finite is not the same as billable. */
+export const isBillable = (input, output, ctx) =>
+  [input, output, ctx].every(Number.isFinite) && input > 0 && output > 0 && ctx > 0;
 
 function fail(msg) {
   console.error(`✗ ${msg}`);
@@ -134,12 +146,18 @@ async function fromApi(provider, cfg) {
     // literal zero (OVHcloud publishes "0" across its whole catalogue). Treating
     // the zero as a real rate is the case that actually bills wrong, because it
     // parses cleanly and passes every downstream guard.
-    const cachedParsed = rate(dig(row, cfg.field_map.cached_input));
-    const cached = Number.isFinite(cachedParsed) && cachedParsed > 0 ? cachedParsed : input;
+    const cached = cachedOrInput(rate(dig(row, cfg.field_map.cached_input)), input);
     const output = rate(dig(row, cfg.field_map.output));
     const ctx = Number(dig(row, cfg.field_map.context_cap_tokens));
-    if (![input, cached, output, ctx].every(Number.isFinite)) {
-      console.warn(`  ! ${provider}/${id} — unparseable rate or context, skipped`);
+    // Finite is not the same as billable. `Number(null)`, `Number("")` and
+    // `Number("0")` are all 0, which reads as a valid number and would seed a
+    // zero rate — free inference under platform posture, silently, for as long
+    // as nobody reads the row. A feed publishing a null or empty rate is telling
+    // us it has no price for that model, which is a reason to skip the model,
+    // not to bill it at nothing. (Cache reads are exempt: a published zero there
+    // means "no discount", already resolved to the input rate above.)
+    if (!isBillable(input, output, ctx)) {
+      console.warn(`  ! ${provider}/${id} — unparseable or non-billable rate/context (in=${input} out=${output} ctx=${ctx}), skipped`);
       continue;
     }
     out.push({
@@ -361,58 +379,64 @@ function warnStale(allowlist, nowMs) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
+//
+// Guarded so the helpers above can be imported and tested directly. Without it,
+// `import`ing this file to unit-test `rate()` would read the allowlist, fetch
+// every api provider, and try to reach Postgres.
+if (import.meta.main) {
 
-const allowlist = JSON.parse(readFileSync(ALLOWLIST, "utf8"));
-const nowMs = Date.now();
-const stamp = Object.assign(new Date(nowMs).toISOString().slice(0, 10), { ms: nowMs });
+  const allowlist = JSON.parse(readFileSync(ALLOWLIST, "utf8"));
+  const nowMs = Date.now();
+  const stamp = Object.assign(new Date(nowMs).toISOString().slice(0, 10), { ms: nowMs });
 
-const wanted = await collect(allowlist);
-console.log(`→ ${wanted.length} allowlisted rows across ${Object.keys(allowlist.providers).length} providers`);
+  const wanted = await collect(allowlist);
+  console.log(`→ ${wanted.length} allowlisted rows across ${Object.keys(allowlist.providers).length} providers`);
 
-if (EMIT_FIXTURE) {
-  const { writeFileSync } = await import("node:fs");
-  const fixed_ms = Date.parse(allowlist.verified_at);
-  const fixture_stamp = Object.assign(allowlist.verified_at, { ms: fixed_ms });
-  const out = join(ROOT, "samples", "fixtures", "model-library", "seed.sql");
-  // No BEGIN/COMMIT: the Zig tests exec one statement at a time.
-  writeFileSync(out, emit(wanted, allowlist, fixture_stamp, { no_transaction: true }) + "\n");
-  console.log(`→ wrote ${out} (${wanted.length} rows, stamp ${allowlist.verified_at})`);
-  process.exit(0);
+  if (EMIT_FIXTURE) {
+    const { writeFileSync } = await import("node:fs");
+    const fixed_ms = Date.parse(allowlist.verified_at);
+    const fixture_stamp = Object.assign(allowlist.verified_at, { ms: fixed_ms });
+    const out = join(ROOT, "samples", "fixtures", "model-library", "seed.sql");
+    // No BEGIN/COMMIT: the Zig tests exec one statement at a time.
+    writeFileSync(out, emit(wanted, allowlist, fixture_stamp, { no_transaction: true }) + "\n");
+    console.log(`→ wrote ${out} (${wanted.length} rows, stamp ${allowlist.verified_at})`);
+    process.exit(0);
+  }
+
+  const delta = diff(wanted, readLive());
+  report(delta);
+  warnStale(allowlist, nowMs);
+
+  if (!delta.added.length && !delta.changed.length) {
+    console.log("\n✓ catalogue already matches the allowlist — nothing to emit");
+    process.exit(0);
+  }
+
+  if (!APPLY) {
+    console.log("\n  Re-run with APPLY=1 to write these changes to the database.");
+    process.exit(0);
+  }
+  if (PSQL_TAKES_URL && !process.env.DATABASE_URL) fail("APPLY=1 needs DATABASE_URL (or SEED_PSQL)");
+  {
+    const [bin, ...pre] = PSQL_ARGV;
+    const args = PSQL_TAKES_URL ? [...pre, process.env.DATABASE_URL] : pre;
+    // Only the rows the diff named: upserting all 77 would bump updated_at_ms on
+    // unchanged rows and destroy it as a per-row drift signal.
+    const toWrite = [...delta.added, ...delta.changed.map((c) => c.row)];
+    execFileSync(bin, [...args, "-v", "ON_ERROR_STOP=1", "-f", "-"], {
+      input: emit(toWrite, allowlist, stamp),
+      stdio: ["pipe", "inherit", "inherit"],
+    });
+  }
+  console.log(`✓ applied — ${delta.added.length} added, ${delta.changed.length} updated`);
+  // No restart. This transaction bumped core.model_catalogue_revision alongside
+  // the rows, which is the same protocol the admin API uses, so every replica
+  // invalidates on its next read: `rateAtRevision` rejects a cached entry whose
+  // stored generation is older than the one it reads, and a miss loads the row it
+  // asked about. The old advice here was to restart agentsfleetd — correct while
+  // this script wrote rows without touching the generation, and misleading now.
+  console.log(
+    `\n  ✓ Catalogue generation bumped in the same transaction — no restart needed.\n` +
+      `    Replicas invalidate on their next read (state/model_rate_cache.zig).`,
+  );
 }
-
-const delta = diff(wanted, readLive());
-report(delta);
-warnStale(allowlist, nowMs);
-
-if (!delta.added.length && !delta.changed.length) {
-  console.log("\n✓ catalogue already matches the allowlist — nothing to emit");
-  process.exit(0);
-}
-
-if (!APPLY) {
-  console.log("\n  Re-run with APPLY=1 to write these changes to the database.");
-  process.exit(0);
-}
-if (PSQL_TAKES_URL && !process.env.DATABASE_URL) fail("APPLY=1 needs DATABASE_URL (or SEED_PSQL)");
-{
-  const [bin, ...pre] = PSQL_ARGV;
-  const args = PSQL_TAKES_URL ? [...pre, process.env.DATABASE_URL] : pre;
-  // Only the rows the diff named: upserting all 77 would bump updated_at_ms on
-  // unchanged rows and destroy it as a per-row drift signal.
-  const toWrite = [...delta.added, ...delta.changed.map((c) => c.row)];
-  execFileSync(bin, [...args, "-v", "ON_ERROR_STOP=1", "-f", "-"], {
-    input: emit(toWrite, allowlist, stamp),
-    stdio: ["pipe", "inherit", "inherit"],
-  });
-}
-console.log(`✓ applied — ${delta.added.length} added, ${delta.changed.length} updated`);
-// No restart. This transaction bumped core.model_catalogue_revision alongside
-// the rows, which is the same protocol the admin API uses, so every replica
-// invalidates on its next read: `rateAtRevision` rejects a cached entry whose
-// stored generation is older than the one it reads, and a miss loads the row it
-// asked about. The old advice here was to restart agentsfleetd — correct while
-// this script wrote rows without touching the generation, and misleading now.
-console.log(
-  `\n  ✓ Catalogue generation bumped in the same transaction — no restart needed.\n` +
-    `    Replicas invalidate on their next read (state/model_rate_cache.zig).`,
-);
