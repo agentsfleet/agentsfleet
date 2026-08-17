@@ -1,0 +1,431 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "kimi-k3",
+      "object": "model",
+      "created": 1784317799914,
+      "description": "Kimi’s flagship model for long-horizon coding and end-to-end knowledge work, with a 1M-token context window.",
+      "owned_by": "Moonshot AI",
+      "root": "kimi-k3",
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [],
+      "pricing": {
+        "prompt": "0.0000030303",
+        "completion": "0.0000151515",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.000000303",
+        "input_cache_write": null
+      },
+      "context_window": {
+        "context_length": 1000000,
+        "max_output_tokens": null
+      },
+      "context_length": 1000000,
+      "metadata": {
+        "display_name": "Kimi-K3",
+        "image": {
+          "url": "https://qph.cf2.poecdn.net/main-thumb-pb-7065999-200-jyxydakqlewteavdxmjrflwlicrnwlng.jpeg",
+          "alt": "Kimi-K3 model icon",
+          "width": 200,
+          "height": 200
+        },
+        "url": "https://poe.com/kimi-k3"
+      },
+      "reasoning": null,
+      "parameters": [
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "medium",
+          "description": "Controls how much reasoning Kimi K3 uses before answering."
+        }
+      ]
+    },
+    {
+      "id": "claude-opus-4.8",
+      "object": "model",
+      "created": 1779988699777,
+      "description": "Anthropic's flagship model for enterprise-grade knowledge work, now with sharper judgment and significantly improved honesty. Powered by Dynamic Workflows and effort control, Opus 4.8 excels at codebase-scale migrations, multi-agent coordination, and long-running autonomous tasks with hundreds of parallel subagents. It leverages a massive 1M-token context window and best-in-class computer-use capabilities to seamlessly execute intricate workflows with elite reasoning, safety, and reliability.\n\nThis bot supports optional parameters for advanced customization.",
+      "owned_by": "Anthropic",
+      "root": "claude-opus-4.8",
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/messages",
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "pricing": {
+        "prompt": "0.0000042929",
+        "completion": "0.0000214646",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000004293",
+        "input_cache_write": "0.0000053662"
+      },
+      "context_window": {
+        "context_length": 1048576,
+        "max_output_tokens": 128000
+      },
+      "context_length": 1048576,
+      "metadata": {
+        "display_name": "Claude-Opus-4.8",
+        "image": {
+          "url": "https://qph.cf2.poecdn.net/main-thumb-pb-1044-200-rsqutialttghdgtplrvwcewbmdnyacsu.jpeg",
+          "alt": "Claude-Opus-4.8 model icon",
+          "width": 200,
+          "height": 200
+        },
+        "url": "https://poe.com/claude-opus-4.8"
+      },
+      "reasoning": {
+        "budget": null,
+        "required": false,
+        "supports_reasoning_effort": false
+      },
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "output_effort",
+          "schema": {
+            "enum": [
+              "max",
+              "xhigh",
+              "high",
+              "medium",
+              "low",
+              "none"
+            ]
+          },
+          "default_value": "high"
+        },
+        {
+          "name": "thinking_display",
+          "schema": {
+            "enum": [
+              "omitted",
+              "summarized"
+            ]
+          },
+          "default_value": "omitted"
+        },
+        {
+          "name": "task_budget",
+          "schema": {
+            "type": "number",
+            "minimum": 20000,
+            "maximum": 1048576
+          },
+          "default_value": 128000,
+          "description": "Advisory token budget for agentic turns. The model will attempt to stay within budget."
+        }
+      ]
+    },
+    {
+      "id": "grok-4.5",
+      "object": "model",
+      "created": 1783461241901,
+      "description": "SpaceXAI's smartest model with frontier performance on coding, knowledge work, and STEM.",
+      "owned_by": "XAI",
+      "root": "grok-4.5",
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/messages"
+      ],
+      "pricing": {
+        "prompt": "0.0000020202",
+        "completion": "0.0000060606",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.000000303",
+        "input_cache_write": null
+      },
+      "context_window": {
+        "context_length": 500000,
+        "max_output_tokens": null
+      },
+      "context_length": 500000,
+      "metadata": {
+        "display_name": "Grok-4.5",
+        "image": {
+          "url": "https://qph.cf2.poecdn.net/main-thumb-pb-7055656-200-bovefbbszqkzrytlszlttfhianrfhyxm.jpeg",
+          "alt": "Grok-4.5 model icon",
+          "width": 200,
+          "height": 200
+        },
+        "url": "https://poe.com/grok-4.5"
+      },
+      "reasoning": null,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true
+        },
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "high"
+        }
+      ]
+    },
+    {
+      "id": "gemini-3.1-pro",
+      "object": "model",
+      "created": 1771460884211,
+      "description": "Gemini 3.1 Pro is a state-of-the-art model for complex problem-solving, advanced reasoning, creative coding, and ambitious agentic workflows, delivering top benchmark results including a verified score of 77.1% on the ARC-AGI-2 benchmark (more than double the reasoning performance of Gemini 3 Pro).\n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "Google",
+      "root": "gemini-3.1-pro",
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image",
+          "video",
+          "audio"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image,video,audio->text"
+      },
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions",
+        "/v1/messages"
+      ],
+      "pricing": {
+        "prompt": "0.0000020202",
+        "completion": "0.0000121212",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.000000202",
+        "input_cache_write": null
+      },
+      "context_window": {
+        "context_length": 1048576,
+        "max_output_tokens": 65536
+      },
+      "context_length": 1048576,
+      "metadata": {
+        "display_name": "Gemini-3.1-Pro",
+        "image": {
+          "url": "https://qph.cf2.poecdn.net/main-thumb-pb-6029-200-wpcheprrnbiehsmmhqlcsdwnjvxfqppq.jpeg",
+          "alt": "Gemini-3.1-Pro model icon",
+          "width": 200,
+          "height": 200
+        },
+        "url": "https://poe.com/gemini-3.1-pro"
+      },
+      "reasoning": {
+        "budget": null,
+        "required": false,
+        "supports_reasoning_effort": true
+      },
+      "parameters": [
+        {
+          "name": "thinking_level",
+          "schema": {
+            "enum": [
+              "low",
+              "high"
+            ]
+          },
+          "default_value": "low"
+        },
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        }
+      ]
+    },
+    {
+      "id": "assistant",
+      "object": "model",
+      "created": 1694610718936,
+      "description": "General-purpose assistant. Write, code, ask for real-time information, create images, and more.\n\nQueries are automatically routed based on the task and subscription status.\n\nFor subscribers:\n- General queries: @GPT-5.5\n- Image generation: @Nano-Banana-2\n- Video-input tasks: @Gemini-3.1-Pro\n\nFor non-subscribers:\n- General queries: @GPT-5.4-Nano\n- Image generation: @Nano-Banana-2\n- Video-input tasks: @Gemini-3-Flash",
+      "owned_by": "Poe",
+      "root": "assistant",
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image,video->text"
+      },
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions",
+        "/v1/messages"
+      ],
+      "pricing": null,
+      "context_window": {
+        "context_length": 400000,
+        "max_output_tokens": 128000
+      },
+      "context_length": 400000,
+      "metadata": {
+        "display_name": "Assistant",
+        "image": {
+          "url": "https://qph.cf2.poecdn.net/main-thumb-pb-3002-200-vcmrcgoloaktppabmdfsgeczaixswmxt.jpeg",
+          "alt": "Assistant model icon",
+          "width": 200,
+          "height": 200
+        },
+        "url": "https://poe.com/assistant"
+      },
+      "reasoning": {
+        "budget": null,
+        "required": false,
+        "supports_reasoning_effort": true
+      },
+      "parameters": []
+    },
+    {
+      "id": "grok-4.6",
+      "object": "model",
+      "created": 1786486412907,
+      "description": "xAI’s frontier model for long-running agents, interactive and visual work, coding, and knowledge work.",
+      "owned_by": "XAI",
+      "root": "grok-4.6",
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/chat/completions",
+        "/v1/messages"
+      ],
+      "pricing": {
+        "prompt": "0.0000020202",
+        "completion": "0.0000060606",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000005051",
+        "input_cache_write": null
+      },
+      "context_window": {
+        "context_length": 500000,
+        "max_output_tokens": null
+      },
+      "context_length": 500000,
+      "metadata": {
+        "display_name": "Grok-4.6",
+        "image": {
+          "url": "https://qph.cf2.poecdn.net/main-thumb-pb-7091299-200-dvbecevvtqywpfkhdtjbnhjnszxzppxo.jpeg",
+          "alt": "Grok-4.6 model icon",
+          "width": 200,
+          "height": 200
+        },
+        "url": "https://poe.com/grok-4.6"
+      },
+      "reasoning": null,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true
+        },
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "default_value": "high"
+        }
+      ]
+    }
+  ]
+}
