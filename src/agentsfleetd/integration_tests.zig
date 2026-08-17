@@ -122,6 +122,7 @@ test {
     _ = @import("http/handlers/runner/assigned_policy_integration_test.zig");
     _ = @import("http/handlers/runner/selftest_heartbeat_integration_test.zig");
     _ = @import("http/handlers/fleet/runner_selftest_patch_integration_test.zig");
+    _ = @import("http/handlers/fleet/runner_extra_binds_patch_integration_test.zig");
     _ = @import("http/handlers/runner/credentials_mint_integration_test.zig");
     _ = @import("http/handlers/runner/activity_integration_test.zig");
     _ = @import("http/handlers/runner/memory_loop_integration_test.zig");
