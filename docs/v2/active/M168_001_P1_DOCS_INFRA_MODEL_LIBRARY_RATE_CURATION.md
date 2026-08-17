@@ -59,6 +59,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/gen-provider-skeleton.mjs` | EDIT | Move `base_url` from the derived set to the curated set; carry `unpriced_reason` through a regeneration. |
 | `docs/architecture/billing_and_provider_keys.md` | EDIT | Re-sync §1/§4/§8/§9/§10 prose against the curated catalogue; the platform default it names is retired. |
 | `samples/fixtures/model-library/seed.sql` | EDIT | Regenerated fixture — the Zig integration tests exec it statement-by-statement. |
+| `samples/fixtures/model-library/{venice,chutes,atlas-cloud,synthetic,nearai,vercel,vercel-ai,poe,ovh,ovhcloud}.json` | CREATE | One committed feed fixture per api-source provider, so the integration lane seeds without the network. |
+| `scripts/seed_models_test.py` | CREATE | Direct tests for the three rate helpers `seed-models.mjs` now exports; found during REVIEW that they had no executable test. |
 | `src/agentsfleetd/http/handlers/tenant_provider_cap.zig` | EDIT | Local runtimes take the existing custom-endpoint path instead of the catalogue-membership check; their served model cannot be enumerated. |
 | `scripts/check_model_allowlist.py` | CREATE | Asserts the file's invariants (priced-or-reasoned, international rule, no zero rates, local-runtime parity with the activation gate) so they are enforced by a gate rather than by review. |
 | `scripts/check_model_allowlist_test.py` | CREATE | Unit tests for the checker, matching the repository's `*_test.py` convention. |
