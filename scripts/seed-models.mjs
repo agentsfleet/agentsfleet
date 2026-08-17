@@ -287,7 +287,16 @@ function emit(rows, allowlist, stamp, opts = {}) {
     `-- the allowlist are never touched.`,
     ``,
   ];
-  if (!opts.no_transaction) lines.push(`BEGIN;`, ``);
+  if (!opts.no_transaction) {
+    lines.push(`BEGIN;`, ``);
+    // Same order every catalogue mutation uses (schema/410_model_catalogue_revision.sql):
+    // lock the singleton, change the catalogue, increment the generation, commit.
+    // The lock is what serialises this against a concurrent admin mutation — two
+    // writers cannot both read generation N and both write N+1.
+    lines.push(`-- Serialise against concurrent catalogue mutations (schema/410).`);
+    lines.push(`SELECT revision FROM core.model_catalogue_revision WHERE id = 1 FOR UPDATE;`);
+    lines.push(``);
+  }
   rows.forEach((r) => {
     if (r.tier) lines.push(`-- ${r.provider}/${r.model_id}: upper tier seeded (see allowlist)`);
     lines.push(`-- source: ${r.source_url}`);
@@ -312,7 +321,30 @@ function emit(rows, allowlist, stamp, opts = {}) {
     lines.push(`  updated_at = EXCLUDED.updated_at;`);
     lines.push(``);
   });
-  if (!opts.no_transaction) lines.push(`COMMIT;`);
+  if (!opts.no_transaction) {
+    // Bump the generation in the SAME transaction as the rows it describes, so
+    // they become visible together. Without this the rows land and every replica
+    // keeps serving whatever it already cached: `rateAtRevision` accepts a cached
+    // entry whose stored generation is >= the one it reads, so an unchanged
+    // generation means a CHANGED rate is never re-read. New rows are unaffected
+    // (a miss loads), which is exactly why the gap stayed invisible — it only
+    // bites on the monthly rate refresh this script exists for.
+    lines.push(`-- Make the new rows and the generation describing them visible together.`);
+    lines.push(`DO $$`);
+    lines.push(`BEGIN`);
+    lines.push(`  UPDATE core.model_catalogue_revision`);
+    lines.push(`     SET revision = revision + 1, updated_at = ${stamp.ms}`);
+    lines.push(`   WHERE id = 1;`);
+    // The singleton is seeded by schema slot 410 and never deleted, so a missing
+    // row means the schema was not applied — fail rather than write rates into a
+    // catalogue nothing can invalidate.
+    lines.push(`  IF NOT FOUND THEN`);
+    lines.push(`    RAISE EXCEPTION 'core.model_catalogue_revision singleton missing — schema slot 410 not applied';`);
+    lines.push(`  END IF;`);
+    lines.push(`END $$;`);
+    lines.push(``);
+    lines.push(`COMMIT;`);
+  }
   return lines.join("\n");
 }
 
@@ -374,14 +406,13 @@ if (PSQL_TAKES_URL && !process.env.DATABASE_URL) fail("APPLY=1 needs DATABASE_UR
   });
 }
 console.log(`✓ applied — ${delta.added.length} added, ${delta.changed.length} updated`);
-// The in-process rate cache is populated at boot (cmd/serve.zig) and after admin
-// API mutations (model_library_admin.zig) — never by a direct SQL write. Until it
-// is rebuilt, the activation gate still reads the OLD catalogue: named providers
-// keep failing UZ-PROVIDER-004 and the provider dropdown stays empty, which reads
-// exactly like the seed having done nothing.
+// No restart. This transaction bumped core.model_catalogue_revision alongside
+// the rows, which is the same protocol the admin API uses, so every replica
+// invalidates on its next read: `rateAtRevision` rejects a cached entry whose
+// stored generation is older than the one it reads, and a miss loads the row it
+// asked about. The old advice here was to restart agentsfleetd — correct while
+// this script wrote rows without touching the generation, and misleading now.
 console.log(
-  "\n  ! Restart agentsfleetd before these take effect.\n" +
-    "    The rate cache is built at boot and on admin-API writes; a direct SQL\n" +
-    "    write does not rebuild it, so until you restart, activation still sees\n" +
-    "    the old catalogue and fails with UZ-PROVIDER-004.",
+  `\n  ✓ Catalogue generation bumped in the same transaction — no restart needed.\n` +
+    `    Replicas invalidate on their next read (state/model_rate_cache.zig).`,
 );
