@@ -30,6 +30,8 @@ const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_heartbeat);
 const LOG_EVENT_HEARTBEAT_BUMP_FAILED = "heartbeat_bump_failed";
 const LOG_EVENT_CAPABILITY_PERSIST_FAILED = "capability_persist_failed";
+const LOG_EVENT_SELFTEST_PERSIST_FAILED = "selftest_persist_failed";
+const LOG_EVENT_SELFTEST_REJECTED = "selftest_report_rejected";
 
 pub fn innerRunnerHeartbeat(hx: Hx, req: *httpz.Request) void {
     const runner_id = hx.principal.runner_id orelse {
@@ -67,6 +69,12 @@ pub fn innerRunnerHeartbeat(hx: Hx, req: *httpz.Request) void {
     const verdict = reconcile.reconcile(row.assigned, effective_cap);
     persistVerdict(hx, conn, runner_id, incoming, row, verdict);
 
+    // A verdict rode in on this beat. Stored after the capability write so a
+    // malformed one cannot cost the beat its reconciliation, and best-effort for
+    // the same reason liveness is: a self-test that fails to persist is re-run
+    // by the operator, while a failed heartbeat parks real work.
+    const reported = persistSelftest(hx, conn, runner_id, req);
+
     bumpLastSeen(hx, conn, runner_id);
     metrics_runner.touchRunnerSeen(runner_id); // in-memory liveness for /metrics
     hx.ok(.ok, protocol.HeartbeatResponse{
@@ -74,7 +82,50 @@ pub fn innerRunnerHeartbeat(hx: Hx, req: *httpz.Request) void {
         .assigned_policy = row.assigned,
         .degraded = verdict.degraded,
         .degraded_reason = verdict.reason,
+        // Suppressed on the beat that just reported one: the write above cleared
+        // the request, so echoing it back would ask the host to immediately
+        // re-run the probe it has this second finished.
+        .selftest_requested = row.selftest_requested and !reported,
     });
+}
+
+/// Store a reported verdict, if this beat carried a well-formed one. Returns
+/// whether anything was written, which is what suppresses the request echo.
+///
+/// Silent on a malformed verdict, exactly like the capability report: a runner
+/// token must not be able to fail a liveness beat by sending nonsense.
+fn persistSelftest(hx: Hx, conn: *pg.Conn, runner_id: []const u8, req: *httpz.Request) bool {
+    const raw = req.body() orelse return false;
+    if (raw.len == 0) return false;
+    const parsed = std.json.parseFromSliceLeaky(protocol.HeartbeatRequest, hx.alloc, raw, .{ .ignore_unknown_fields = true }) catch return false;
+    const report = parsed.selftest orelse return false;
+    switch (protocol.selftestReportRejection(report)) {
+        .none => {},
+        .unbounded => {
+            log.warn(LOG_EVENT_SELFTEST_REJECTED, .{ .error_code = ec.ERR_RUN_SELFTEST_REPORT_INVALID, .runner_id = runner_id, .err = "verdict exceeds its bounds" });
+            return false;
+        },
+        .all_ok_disagrees => {
+            log.warn(LOG_EVENT_SELFTEST_REJECTED, .{ .error_code = ec.ERR_RUN_SELFTEST_REPORT_INVALID, .runner_id = runner_id, .err = "all_ok disagrees with the reported checks" });
+            return false;
+        },
+    }
+
+    const checks_json = std.json.Stringify.valueAlloc(hx.alloc, report.checks, .{}) catch return false;
+    const now_ms = clock.nowMillis();
+    _ = conn.exec(sql.UPDATE_RUNNER_SELFTEST, .{
+        runner_id,
+        checks_json,
+        report.all_ok,
+        report.sandbox_tier,
+        report.network_policy,
+        now_ms,
+    }) catch |err| {
+        log.warn(LOG_EVENT_SELFTEST_PERSIST_FAILED, .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .runner_id = runner_id, .err = @errorName(err) });
+        return false;
+    };
+    log.debug("runner_selftest_reported", .{ .runner_id = runner_id, .all_ok = report.all_ok, .checks = report.checks.len });
+    return true;
 }
 
 /// What one heartbeat body carried. A malformed report must never fail a
@@ -101,6 +152,10 @@ const PolicyRow = struct {
     capability_json: ?[]const u8,
     stored_degraded: bool,
     stored_reason: ?[]const u8,
+    /// An operator's outstanding ask, as a decided boolean rather than the raw
+    /// timestamp: the reply carries "is one pending", and nothing downstream has
+    /// a use for when it was made.
+    selftest_requested: bool,
 };
 
 fn readPolicyRow(alloc: std.mem.Allocator, conn: *pg.Conn, runner_id: []const u8) !?PolicyRow {
@@ -113,6 +168,7 @@ fn readPolicyRow(alloc: std.mem.Allocator, conn: *pg.Conn, runner_id: []const u8
         row.get(?[]const u8, 1) catch return error.DbError,
         row.get(?[]const u8, 2) catch return error.DbError,
         row.get(i32, 3) catch return error.DbError,
+        row.get(?[]const u8, 8) catch return error.DbError,
     );
     const reason_raw = row.get(?[]const u8, 5) catch return error.DbError;
     const cap_raw = row.get(?[]const u8, 6) catch return error.DbError;
@@ -121,6 +177,7 @@ fn readPolicyRow(alloc: std.mem.Allocator, conn: *pg.Conn, runner_id: []const u8
         .capability_json = if (cap_raw) |c| try alloc.dupe(u8, c) else null,
         .stored_degraded = row.get(bool, 4) catch return error.DbError,
         .stored_reason = if (reason_raw) |r| try alloc.dupe(u8, r) else null,
+        .selftest_requested = (row.get(?i64, 7) catch return error.DbError) != null,
     };
 }
 

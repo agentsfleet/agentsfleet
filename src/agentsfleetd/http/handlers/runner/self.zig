@@ -80,6 +80,7 @@ fn readRow(alloc: std.mem.Allocator, row: pg.Row) !protocol.SelfResponse {
             try row.get(?[]const u8, 5),
             try row.get(?[]const u8, 6),
             try row.get(i32, 7),
+            try row.get(?[]const u8, 11),
         ),
         .achievable = policy_row.decodeCapability(alloc, try row.get(?[]const u8, 8)),
         .degraded = try row.get(bool, 9),

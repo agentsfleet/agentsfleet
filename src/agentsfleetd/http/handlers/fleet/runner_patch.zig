@@ -20,12 +20,15 @@ const reconcile = @import("../runner/heartbeat_reconcile.zig");
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.fleet_runner_patch);
 
-const S_PATCH_BODY = "PATCH body must be exactly one of {\"action\":\"cordon|drain|revoke\"} or {\"assigned_policy\":{sandbox_tier, network_policy, registry_allowlist[], worker_count}}";
+const S_PATCH_BODY = "PATCH body must be exactly one of {\"action\":\"cordon|drain|revoke|self_test\"} or {\"assigned_policy\":{sandbox_tier, network_policy, registry_allowlist[], worker_count, extra_binds[]}}";
 const S_RUNNER_NOT_FOUND = "Runner not found";
 const S_REVOKED_IS_TERMINAL = "revoked runners cannot transition back to cordoned or draining";
 const S_REVOKED_NO_POLICY = "revoked runners cannot be re-assigned a policy";
 const S_EVENT_ID_MINT_FAILED = "runner event id generation failed";
 const S_BAD_REGISTRY = "registry_allowlist entries must be host[:port] names";
+const S_BAD_EXTRA_BINDS = "extra_binds entries must be absolute host paths outside the daemon-owned baseline and the sensitive set, with no traversal";
+const S_POLICY_UPDATE_FAILED = "runner policy update failed";
+const S_REVOKED_NO_SELFTEST = "revoked runners cannot be asked to self-test";
 
 pub fn innerPatchFleetRunner(hx: Hx, req: *httpz.Request, runner_id: []const u8) void {
     if (!common.requireUuidV7Id(hx.res, hx.req_id, runner_id, "runner_id")) return;
@@ -48,11 +51,68 @@ pub fn innerPatchFleetRunner(hx: Hx, req: *httpz.Request, runner_id: []const u8)
         applyPolicyAssignment(hx, conn, runner_id, current, requested);
         return;
     }
+    // `self_test` records an ask rather than transitioning state, so it forks
+    // ahead of `stateForAction` — which has no target state to give it.
+    if (body.action.? == .self_test) {
+        applySelfTestRequest(hx, conn, runner_id, current);
+        return;
+    }
     applyAdminAction(hx, conn, runner_id, current, body.action.?);
 }
 
+/// Record an operator's self-test ask. The reply is the recorded REQUEST, never
+/// a verdict: the daemon picks the ask up on its next heartbeat and reports the
+/// result on a later one, so blocking here would hang the dashboard on exactly
+/// the offline host an operator most wants to test.
+fn applySelfTestRequest(hx: Hx, conn: *pg.Conn, runner_id: []const u8, current: protocol.AdminState) void {
+    if (current == .revoked) {
+        hx.fail(ec.ERR_RUN_SELFTEST_REFUSED, S_REVOKED_NO_SELFTEST);
+        return;
+    }
+    const now_ms = clock.nowMillis();
+    const recorded = requestSelfTest(conn, runner_id, now_ms) catch |err| {
+        switch (err) {
+            error.RunnerGone => hx.fail(ec.ERR_RUNNER_NOT_FOUND, S_RUNNER_NOT_FOUND),
+            error.RevokedRace => hx.fail(ec.ERR_RUN_SELFTEST_REFUSED, S_REVOKED_NO_SELFTEST),
+            else => common.internalDbError(hx.res, hx.req_id),
+        }
+        return;
+    };
+
+    log.debug("runner_selftest_requested", .{ .runner_id = runner_id, .requested_at = recorded });
+    hx.ok(.ok, protocol.RunnerAdminPatchResponse{
+        .id = runner_id,
+        .admin_state = current,
+        .selftest_requested_at = recorded,
+    });
+}
+
+/// Stamp the ask, returning the instant recorded. A null row means the guard
+/// rejected the write, so the row is re-read to say WHICH guard: a runner that
+/// vanished and one revoked mid-request are different answers to the operator.
+fn requestSelfTest(conn: *pg.Conn, runner_id: []const u8, now_ms: i64) !i64 {
+    var q = PgQuery.from(conn.query(sql.PATCH_RUNNER_SELFTEST_REQUEST, .{
+        runner_id,
+        now_ms,
+        @tagName(protocol.AdminState.revoked),
+    }) catch return error.DbError);
+    defer q.deinit();
+
+    const row = q.next() catch return error.DbError;
+    if (row != null) return now_ms;
+    const after = try loadState(conn, runner_id) orelse return error.RunnerGone;
+    if (after == .revoked) return error.RevokedRace;
+    return error.DbError;
+}
+
 fn applyAdminAction(hx: Hx, conn: *pg.Conn, runner_id: []const u8, current: protocol.AdminState, action: protocol.RunnerAdminAction) void {
-    const target = stateForAction(action);
+    // `self_test` names no target state and is forked away by the caller. A 400
+    // rather than `unreachable`: if a later edit reorders that fork, an operator
+    // gets a refusal instead of a panicked worker thread.
+    const target = stateForAction(action) orelse {
+        hx.fail(ec.ERR_INVALID_REQUEST, S_PATCH_BODY);
+        return;
+    };
     if (current == .revoked and target != .revoked) {
         hx.fail(ec.ERR_INVALID_REQUEST, S_REVOKED_IS_TERMINAL);
         return;
@@ -93,11 +153,25 @@ fn applyPolicyAssignment(hx: Hx, conn: *pg.Conn, runner_id: []const u8, current:
         hx.fail(ec.ERR_INVALID_REQUEST, S_BAD_REGISTRY);
         return;
     }
+    // The daemon re-validates this same list before `buildArgv`; neither side
+    // trusts the other's check. Refusing here as well means an unsafe entry is
+    // never STORED, so it cannot reach a host that skips its own validation —
+    // and the operator learns at the dashboard rather than via a degraded
+    // runner one heartbeat later.
+    if (!protocol.extraBindsValid(requested.extra_binds)) {
+        hx.fail(ec.ERR_INVALID_REQUEST, S_BAD_EXTRA_BINDS);
+        return;
+    }
     var stored = requested;
     stored.worker_count = std.math.clamp(stored.worker_count, protocol.MIN_WORKER_COUNT, protocol.MAX_WORKER_COUNT);
     const registry_json = std.json.Stringify.valueAlloc(hx.alloc, stored.registry_allowlist, .{}) catch {
         // mudball-ok: OOM-only failure stringifying an already-validated payload; detail stays plain English
-        common.internalOperationError(hx.res, "runner policy update failed", hx.req_id);
+        common.internalOperationError(hx.res, S_POLICY_UPDATE_FAILED, hx.req_id);
+        return;
+    };
+    const extra_binds_json = std.json.Stringify.valueAlloc(hx.alloc, stored.extra_binds, .{}) catch {
+        // mudball-ok: OOM-only failure stringifying an already-validated payload; detail stays plain English
+        common.internalOperationError(hx.res, S_POLICY_UPDATE_FAILED, hx.req_id);
         return;
     };
     const event_row_id = id_format.generateRunnerEventId(hx.alloc) catch {
@@ -129,6 +203,7 @@ fn applyPolicyAssignment(hx: Hx, conn: *pg.Conn, runner_id: []const u8, current:
             runner_events.META_WORKER_COUNT,
             verdict.degraded,
             verdict.reason,
+            extra_binds_json,
         }) catch {
             common.internalDbError(hx.res, hx.req_id);
             return;
@@ -177,11 +252,15 @@ fn parseBody(hx: Hx, req: *httpz.Request) ?protocol.RunnerAdminPatchRequest {
     return parsed;
 }
 
-fn stateForAction(action: protocol.RunnerAdminAction) protocol.AdminState {
+/// The state each action moves the runner to, or null for an action that moves
+/// none. Exhaustive by construction: a new action added to the enum fails to
+/// compile here until someone decides which side of that line it falls on.
+fn stateForAction(action: protocol.RunnerAdminAction) ?protocol.AdminState {
     return switch (action) {
         .cordon => .cordoned,
         .drain => .draining,
         .revoke => .revoked,
+        .self_test => null,
     };
 }
 
