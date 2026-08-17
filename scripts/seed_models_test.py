@@ -12,20 +12,35 @@ written in response to a real feed that broke the previous version:
                   so they pass a Number.isFinite check and seed a ZERO rate.
                   That is free inference under platform posture, silently.
 
-They are exercised through `node` rather than reimplemented here, so the test
-asserts the shipping code and not a Python copy of it. seed-models.mjs guards its
-main block behind `import.meta.main`, which is what makes importing it free of
-side effects (no allowlist read, no network, no psql).
+They are exercised through a real JavaScript runtime rather than reimplemented
+here, so the test asserts the shipping code and not a Python copy of it.
+seed-models.mjs guards its main block behind `import.meta.main`, which is what
+makes importing it free of side effects (no allowlist read, no network, no psql).
+
+That runtime is not universally present. `make lint-zig` runs this suite inside
+`ci-zig-ubuntu`, which carries neither node nor bun — the same reason the
+integration lane seeds `model_library` from committed SQL instead of shelling out
+to the generator. Rather than error 20 times there, the JS-backed cases SKIP with
+the runtime named, so the gap is visible in the lane output instead of silent.
 
 Run: python3 -m unittest discover -s scripts -t scripts -p 'seed_models*_test.py'
 """
 import json
 import os
+import shutil
 import subprocess
+import tempfile
 import unittest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEEDER = os.path.join(REPO_ROOT, "scripts", "seed-models.mjs")
+
+# Either runtime executes an .mjs file the same way. Resolved once: `which` per
+# assertion would be 20 lookups for one answer that cannot change mid-run.
+JS_RUNTIME = shutil.which("node") or shutil.which("bun")
+NEEDS_JS = unittest.skipUnless(
+    JS_RUNTIME, "no node or bun on PATH — the shipping helper cannot be invoked"
+)
 
 
 def _call(fn: str, args: list) -> object:
@@ -36,21 +51,31 @@ def _call(fn: str, args: list) -> object:
         f"const r = {fn}(...a);"
         "console.log(JSON.stringify(Number.isNaN(r) ? '__NaN__' : r));"
     )
-    out = subprocess.run(
-        ["node", "--input-type=module", "-e", script],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        cwd=REPO_ROOT,
-    )
+    # A file rather than `-e`: node wants `--input-type=module` for inline ESM
+    # and bun rejects that flag, so the one form both runtimes agree on is a
+    # module on disk.
+    with tempfile.NamedTemporaryFile("w", suffix=".mjs", delete=False) as handle:
+        handle.write(script)
+        path = handle.name
+    try:
+        out = subprocess.run(
+            [JS_RUNTIME, path],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=REPO_ROOT,
+        )
+    finally:
+        os.unlink(path)
     if out.returncode != 0:
-        raise AssertionError(f"node failed for {fn}{args}: {out.stderr.strip()}")
+        raise AssertionError(f"{JS_RUNTIME} failed for {fn}{args}: {out.stderr.strip()}")
     return json.loads(out.stdout.strip())
 
 
 NAN = "__NaN__"
 
 
+@NEEDS_JS
 class RateParsing(unittest.TestCase):
     def test_plain_numeric_string(self):
         self.assertEqual(_call("rate", ["0.000001"]), 0.000001)
@@ -88,6 +113,7 @@ class RateParsing(unittest.TestCase):
             )
 
 
+@NEEDS_JS
 class CachedReadFallback(unittest.TestCase):
     def test_real_cache_rate_is_kept(self):
         self.assertEqual(_call("cachedOrInput", [0.3, 3.0]), 0.3)
@@ -107,6 +133,7 @@ class CachedReadFallback(unittest.TestCase):
             self.assertGreater(_call("cachedOrInput", [cached, 0.15]), 0)
 
 
+@NEEDS_JS
 class BillableGuard(unittest.TestCase):
     def test_normal_row_is_billable(self):
         self.assertTrue(_call("isBillable", [3.0, 15.0, 262144]))
@@ -127,9 +154,10 @@ class BillableGuard(unittest.TestCase):
     def test_negative_is_refused(self):
         self.assertFalse(_call("isBillable", [-3.0, 15.0, 262144]))
 
-    def test_the_activation_floor_is_still_billable(self):
-        # Local runtimes seed 1e-6 USD/Mtok. The guard must not reject it, or
-        # every local runtime silently loses its row.
+    def test_a_sub_cent_rate_is_still_billable(self):
+        # The guard refuses zero, not "small". 1e-6 USD/Mtok is the smallest rate
+        # that survives `toNanos` rounding as nonzero, so it is the boundary the
+        # guard must let through — rejecting it would silently drop a real row.
         self.assertTrue(_call("isBillable", [0.000001, 0.000001, 262144]))
 
 
@@ -151,15 +179,22 @@ def _emit(no_transaction: bool) -> str:
         f"const stamp = Object.assign('2026-08-17', {{ ms: 1755388800000 }});"
         f"process.stdout.write(emit([{json.dumps(row)}], {{ verified_at: '2026-08-17' }}, stamp, {json.dumps(opts)}));"
     )
-    out = subprocess.run(
-        ["node", "--input-type=module", "-e", script],
-        capture_output=True, text=True, timeout=30, cwd=REPO_ROOT,
-    )
+    with tempfile.NamedTemporaryFile("w", suffix=".mjs", delete=False) as handle:
+        handle.write(script)
+        path = handle.name
+    try:
+        out = subprocess.run(
+            [JS_RUNTIME, path],
+            capture_output=True, text=True, timeout=30, cwd=REPO_ROOT,
+        )
+    finally:
+        os.unlink(path)
     if out.returncode != 0:
         raise AssertionError(f"emit failed: {out.stderr.strip()}")
     return out.stdout
 
 
+@NEEDS_JS
 class GenerationBump(unittest.TestCase):
     """The apply path must move the catalogue generation with the rows.
 
@@ -224,15 +259,22 @@ class GenerationBump(unittest.TestCase):
             self.assertNotIn(construct, committed)
 
 
+@NEEDS_JS
 class ImportIsSideEffectFree(unittest.TestCase):
     def test_importing_the_seeder_does_not_run_main(self):
         """The `import.meta.main` guard is what makes every test above possible."""
-        out = subprocess.run(
-            ["node", "--input-type=module", "-e",
-             f"const m = await import({json.dumps(SEEDER)});"
-             "console.log(Object.keys(m).sort().join(','));"],
-            capture_output=True, text=True, timeout=30, cwd=REPO_ROOT,
-        )
+        script = (f"const m = await import({json.dumps(SEEDER)});"
+                  "console.log(Object.keys(m).sort().join(','));")
+        with tempfile.NamedTemporaryFile("w", suffix=".mjs", delete=False) as handle:
+            handle.write(script)
+            path = handle.name
+        try:
+            out = subprocess.run(
+                [JS_RUNTIME, path],
+                capture_output=True, text=True, timeout=30, cwd=REPO_ROOT,
+            )
+        finally:
+            os.unlink(path)
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertEqual(out.stdout.strip(), "cachedOrInput,emit,isBillable,rate")
         # main would print "→ N allowlisted rows across ..." and hit the network.
