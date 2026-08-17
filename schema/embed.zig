@@ -63,7 +63,7 @@ pub const migrations = [_]MigrationEntry{
     .{ .version = 630, .sql = @embedFile("630_runner_affinity.sql") },
     .{ .version = 640, .sql = @embedFile("640_runner_events.sql") },
     .{ .version = 650, .sql = @embedFile("650_runner_lifetime_counters.sql") },
-    .{ .version = 660, .sql = @embedFile("660_runner_selftests.sql") },
+    .{ .version = 660, .sql = @embedFile("660_runner_selftest_columns.sql") },
 
     // ── 7xx money ──────────────────────────────────────────────────────────
     .{ .version = 700, .sql = @embedFile("700_tenant_wallet.sql") },
