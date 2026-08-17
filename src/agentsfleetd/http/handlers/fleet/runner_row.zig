@@ -64,13 +64,19 @@ pub fn readPolicyColumns(alloc: std.mem.Allocator, row: anytype, tier_raw: []con
     const capability_raw = try row.get(?[]u8, base + 3);
     const degraded = try row.get(bool, base + 4);
     const reason_raw = try row.get(?[]u8, base + 5);
+    const extra_binds_raw = try row.get(?[]u8, base + 6);
     return .{
-        .assigned_policy = policy_row.decodePolicy(alloc, tier_raw, network_raw, registry_raw, worker_count),
+        .assigned_policy = policy_row.decodePolicy(alloc, tier_raw, network_raw, registry_raw, worker_count, extra_binds_raw),
         .achievable = policy_row.decodeCapability(alloc, capability_raw),
         .degraded = degraded,
         .degraded_reason = if (reason_raw) |r| try alloc.dupe(u8, r) else null,
     };
 }
+
+/// The stored self-test verdict, re-exported so `runner_get` reaches it through
+/// the same row-decoding façade it already uses for the policy tail rather than
+/// importing across handler families.
+pub const decodeSelftest = policy_row.decodeSelftest;
 
 /// Build one list item, duping borrowed row slices into the request arena
 /// (they outlive the query's deinit) and parsing the labels JSONB.
@@ -159,6 +165,7 @@ const FakeRow = struct {
     capability_json: ?[]const u8 = null,
     degraded: bool = false,
     degraded_reason: ?[]const u8 = null,
+    extra_binds_json: ?[]const u8 = null,
     fail_at: ?usize = null, // inject a decode error at this column index
 
     fn get(self: *const Self, comptime T: type, col: usize) !T {
@@ -178,6 +185,7 @@ const FakeRow = struct {
             9 => self.registry_json orelse return null,
             11 => self.capability_json orelse return null,
             13 => self.degraded_reason orelse return null,
+            14 => self.extra_binds_json orelse return null,
             else => unreachable,
         });
         if (T == i64) return switch (col) {
@@ -240,6 +248,35 @@ test "readItem: a degraded row carries verdict, reason, and the stored report" {
     const cap = item.achievable orelse return error.TestUnexpectedResult;
     try std.testing.expect(!cap.landlock);
     try std.testing.expectEqual(@as(usize, 3), cap.cgroup_controllers.len);
+}
+
+test "readItem: the operator's extra binds ride the row out to the dashboard at their modes" {
+    // Dimension 4.1 — the operator surface must read back what it assigned.
+    // Without this column on the read the page would render an assignment it
+    // had just stored as empty, and an operator would re-add a bind that was
+    // already there.
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const fake = FakeRow{ .extra_binds_json =
+        \\[{"path":"/srv/fonts"},{"path":"/srv/models","mode":"read_write","note":"shared model cache"}]
+    };
+    const item = try readItem(arena.allocator(), fake, MS_PER_SECOND);
+    const p = item.assigned_policy orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(@as(usize, 2), p.extra_binds.len);
+    try std.testing.expectEqualStrings("/srv/fonts", p.extra_binds[0].path);
+    try std.testing.expectEqual(protocol.BindMode.read_only, p.extra_binds[0].mode);
+    try std.testing.expectEqual(protocol.BindMode.read_write, p.extra_binds[1].mode);
+    try std.testing.expectEqualStrings("shared model cache", p.extra_binds[1].note);
+}
+
+test "readItem: a row with no assigned binds reads the baseline, not a null policy" {
+    // A NULL `extra_binds` is every runner enrolled before `schema/670`. It
+    // must not fail the policy decode — those runners still lease.
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const item = try readItem(arena.allocator(), FakeRow{}, MS_PER_SECOND);
+    const p = item.assigned_policy orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(@as(usize, 0), p.extra_binds.len);
 }
 
 test "readItem: a pre-policy row (NULL network) reads assigned_policy = null, never defaults" {

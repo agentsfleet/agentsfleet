@@ -215,6 +215,15 @@ pub const ERR_RUNNER_NOT_FOUND = "UZ-RUN-014";
 /// The FLEET's own spend ceiling, not the tenant's credit pool (UZ-RUN-012).
 pub const ERR_RUN_BUDGET_EXCEEDED = "UZ-RUN-015";
 pub const ERR_RUNNER_MUST_REVOKE_FIRST = "UZ-RUN-016"; // mirrors ERR_APIKEY_MUST_REVOKE_FIRST
+/// A reported self-test verdict was refused: past its bounds, or claiming an
+/// `all_ok` its own checks contradict. Dropped rather than stored — a runner
+/// token must not be able to write an unreasoned verdict, nor to fail the
+/// liveness beat carrying it.
+pub const ERR_RUN_SELFTEST_REPORT_INVALID = "UZ-RUN-017";
+/// An operator asked a revoked runner to self-test. Revocation is terminal, so
+/// the host will never beat again to pick the ask up; recording it would leave
+/// a request pending forever and read on the page as a test still running.
+pub const ERR_RUN_SELFTEST_REFUSED = "UZ-RUN-018";
 // CREDENTIAL BROKER (M102 — on-demand mint via POST /v1/runners/me/credentials/mint)
 pub const ERR_CRED_INTEGRATION_NOT_CONNECTED = "UZ-CRED-001";
 pub const ERR_CRED_BROKER_NOT_CONFIGURED = "UZ-CRED-002";

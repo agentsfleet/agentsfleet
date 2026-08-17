@@ -22,6 +22,7 @@ const EventEnvelope = @import("event_envelope.zig");
 const ExecutionPolicy = @import("execution_policy.zig").ExecutionPolicy;
 const runner_events = @import("runner_events.zig");
 const policy = @import("protocol_policy.zig");
+const admin = @import("protocol_admin.zig");
 const reports = @import("protocol_report.zig");
 const memory = @import("protocol_memory.zig");
 const credentials = @import("protocol_credentials.zig");
@@ -118,6 +119,9 @@ pub const NetworkPolicy = policy.NetworkPolicy;
 pub const FAIL_CLOSED_DEFAULT = policy.FAIL_CLOSED_DEFAULT;
 pub const AssignedPolicy = policy.AssignedPolicy;
 pub const CapabilityReport = policy.CapabilityReport;
+pub const SelftestReport = policy.SelftestReport;
+pub const SelftestCheck = policy.SelftestCheck;
+pub const selftestReportRejection = policy.selftestReportRejection;
 pub const DEFAULT_WORKER_COUNT = policy.DEFAULT_WORKER_COUNT;
 pub const MIN_WORKER_COUNT = policy.MIN_WORKER_COUNT;
 pub const MAX_WORKER_COUNT = policy.MAX_WORKER_COUNT;
@@ -147,34 +151,14 @@ pub const Outcome = enum { processed, fleet_error };
 /// reserved for fleet failover so that workstream needn't recut the type.
 pub const HeartbeatStatus = enum { ok, drain, stop };
 
-/// `fleet.runners.admin_state` — operator intent, a typed enum, app-enforced (no
-/// SQL CHECK, per RULE STS). `active` admits the runner plane; cordoned/draining/
-/// drained/revoked all reject it (→ 401 UZ-RUN-009). Renamed from `status`. The
-/// enum is the single source for the operator PATCH; the string consts below are
-/// derived from it (RULE UFS) for the SQL insert + the active gate. Not a wire value.
-pub const AdminState = enum { active, cordoned, draining, drained, revoked };
-/// The only `admin_state` that admits a runner-plane call — derived from the enum
-/// (RULE UFS). Used by register (insert) and the runnerBearer lookup (active gate).
-pub const ADMIN_STATE_ACTIVE = @tagName(AdminState.active);
-
-/// Platform-admin mutation actions for `PATCH /v1/fleets/runners/{id}`. These
-/// are wire enum values, so std.json accepts/serializes the tag names verbatim.
-pub const RunnerAdminAction = enum { cordon, drain, revoke };
-
-/// PATCH body: exactly one of `action` (admin-state transition) or
-/// `assigned_policy` (policy re-assignment — reaches the host on its next
-/// heartbeat, no host visit). Both-or-neither is a 400; the handler enforces it.
-pub const RunnerAdminPatchRequest = struct {
-    action: ?RunnerAdminAction = null,
-    assigned_policy: ?AssignedPolicy = null,
-};
-
-pub const RunnerAdminPatchResponse = struct {
-    id: []const u8,
-    admin_state: AdminState,
-    /// Present on the policy-update path: the assignment as stored.
-    assigned_policy: ?AssignedPolicy = null,
-};
+// The operator plane — `admin_state` and the PATCH body/reply — lives in
+// `protocol_admin.zig` (RULE FLL); re-exported here so `protocol.AdminState`
+// (and siblings) keep their names across every existing call site.
+pub const AdminState = admin.AdminState;
+pub const ADMIN_STATE_ACTIVE = admin.ADMIN_STATE_ACTIVE;
+pub const RunnerAdminAction = admin.RunnerAdminAction;
+pub const RunnerAdminPatchRequest = admin.RunnerAdminPatchRequest;
+pub const RunnerAdminPatchResponse = admin.RunnerAdminPatchResponse;
 
 pub const RunnerEventType = runner_events.RunnerEventType;
 pub const PER_LEASE_EVENT_TYPES = runner_events.PER_LEASE_EVENT_TYPES;
@@ -234,6 +218,8 @@ pub const RegisterResponse = struct {
 /// then reads degraded with a no-capability-report reason, never a crash.
 pub const HeartbeatRequest = struct {
     capability_report: ?CapabilityReport = null,
+    /// A verdict produced since the last beat, by request or by startup probe.
+    selftest: ?SelftestReport = null,
 };
 
 /// POST /v1/runners/me/heartbeats reply (`me` resolves from the token). Carries
@@ -246,6 +232,9 @@ pub const HeartbeatResponse = struct {
     assigned_policy: ?AssignedPolicy = null,
     degraded: bool = false,
     degraded_reason: ?[]const u8 = null,
+    /// An operator asked this runner to self-test. Rides the beat, like the
+    /// assignment does — one interval, no second endpoint, no host visit.
+    selftest_requested: bool = false,
 };
 
 /// GET /v1/runners/me reply (Bearer runner_token). The runner's own registration

@@ -249,6 +249,8 @@ pub const ENTRIES = [_]Entry{
     eu("UZ-RUN-014", .not_found, "Runner not found", "No runner matches this runner_id. Verify the platform admin minted the runner before mutating it.", "We couldn't find that runner. It may have been removed — refresh the list."),
     e("UZ-RUN-015", .payment_required, "Lease renewal blocked: fleet budget exhausted", "The fleet reached its daily_dollars or monthly_dollars limit from `TRIGGER.md`, so the run stops. The tenant balance is fine; this is the fleet's own budget."), // reachable: no — runner-daemon-to-control-plane wire protocol, not dashboard-facing
     eu("UZ-RUN-016", .conflict, "Active runner must be revoked before deletion", "Revoke the runner first with `PATCH /v1/fleets/runners/{id}` body `{\"action\": \"revoke\"}`, then retry DELETE.", "This runner is still live. Revoke it first, then delete it."),
+    eu("UZ-RUN-017", .bad_request, "Self-test verdict refused", "The reported verdict exceeded its bounds, or its `all_ok` contradicted the checks it carried. The heartbeat still succeeded; the verdict was dropped.", "This runner reported a self-test result that did not make sense, so it was not recorded. Run the test again."),
+    eu("UZ-RUN-018", .conflict, "Self-test refused: runner is revoked", "A revoked runner never heartbeats again, so it cannot pick the request up. Enroll a replacement runner and test that one instead.", "This runner is revoked, so it can't run a self-test. Enroll a new runner to test one."),
     // Runtime / execute-path entries (sandbox, runner, relay, credentials,
     // approval-gate, memory, api-keys, grants, tool/credential, proxy,
     // gate-execute) live in error_entries_runtime.zig and are concatenated

@@ -158,6 +158,7 @@ fn registryHostValid(entry: []const u8) bool {
 
 const std = @import("std");
 const bind = @import("protocol_bind.zig");
+const selftest = @import("protocol_selftest.zig");
 
 // The sandbox bind contract lives in its own module (RULE FLL); re-exported
 // here so `protocol.zig` and every existing consumer keep the same names.
@@ -170,8 +171,18 @@ pub const MAX_BIND_PATH_LEN = bind.MAX_BIND_PATH_LEN;
 pub const MAX_BIND_NOTE_LEN = bind.MAX_BIND_NOTE_LEN;
 pub const extraBindsValid = bind.extraBindsValid;
 
+// The self-test verdict, split for the same reason and re-exported the same way.
+pub const SelftestCheck = selftest.SelftestCheck;
+pub const SelftestReport = selftest.SelftestReport;
+pub const MAX_SELFTEST_CHECKS = selftest.MAX_SELFTEST_CHECKS;
+pub const MAX_CHECK_NAME_LEN = selftest.MAX_CHECK_NAME_LEN;
+pub const MAX_CHECK_DETAIL_LEN = selftest.MAX_CHECK_DETAIL_LEN;
+pub const SelftestRejection = selftest.Rejection;
+pub const selftestReportRejection = selftest.selftestReportRejection;
+
 test {
     _ = bind;
+    _ = selftest;
 }
 
 test "registryAllowlistValid accepts host[:port] names and refuses everything else" {
