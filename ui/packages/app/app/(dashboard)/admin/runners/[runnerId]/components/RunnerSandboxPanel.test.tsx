@@ -81,7 +81,9 @@ describe("RunnerSandboxPanel — self-test half", () => {
     expect(within(panel()).getByText(/A self-test is outstanding/)).toBeTruthy();
   });
 
-  it("renders each check the host reported, with its own detail line", () => {
+  // Dimension 1.2 — each check the host reported gets its own name and detail
+  // line, so "DNS failed inside the sandbox" reads without a journal.
+  it("test_selftest_result_renders_per_check", () => {
     render(
       <RunnerSandboxPanel
         runner={detail({ selftest: PASSING, selftest_completed_at: 1_760_000_000_000 })}
@@ -107,9 +109,9 @@ describe("RunnerSandboxPanel — self-test half", () => {
     expect(within(panel()).getByText("the stub is not bound")).toBeTruthy();
   });
 
-  it("marks a verdict recorded against an assignment the runner no longer carries", () => {
-    // Dimension 1.3 — the result is history, and the page has to say so or an
-    // operator reads a passing verdict as proof of the current policy.
+  // Dimension 1.3 — the result is history, and the page has to say so or an
+  // operator reads a passing verdict as proof of the current policy.
+  it("test_stale_selftest_result_is_labelled", () => {
     render(
       <RunnerSandboxPanel
         runner={detail({

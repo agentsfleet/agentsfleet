@@ -72,7 +72,10 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
 }
 
 describe("RunnerHeader self-test control", () => {
-  it("records the request against this runner and re-reads the header for the pending state", async () => {
+  // Dimension 1.1 — the ask is recorded against this runner, and the re-read is
+  // what makes the pending state appear; the pending face itself is asserted by
+  // the sibling arm below.
+  it("test_selftest_control_requests_and_reflects_pending", async () => {
     requestRunnerSelftestActionMock.mockResolvedValueOnce({
       ok: true,
       data: { id: RUNNER_ID, admin_state: "active", selftest_requested_at: Date.now() },
@@ -124,7 +127,9 @@ describe("RunnerHeader self-test control", () => {
     });
   });
 
-  it("disables the control and names the outstanding ask while a request is unanswered", () => {
+  // Dimension 1.1 (pending face) — an unanswered ask has to read as outstanding
+  // and refuse a second click, or an operator re-asks into a queue of one.
+  it("test_selftest_control_requests_and_reflects_pending (pending face)", () => {
     render(<RunnerHeader runner={detail({ selftest_requested_at: Date.now() })} grafanaHref={null} canWrite />);
     const button = screen.getByRole("button", { name: SELFTEST_PENDING_LABEL });
     expect(button.hasAttribute("disabled")).toBe(true);
@@ -145,7 +150,9 @@ describe("RunnerHeader self-test control", () => {
     expect(screen.queryByRole("button", { name: SELFTEST_PENDING_LABEL })).toBeNull();
   });
 
-  it("offers no self-test to a read-only operator", () => {
+  // Dimension 1.4 (control absent) — the refusal half is the route scope guard,
+  // proven daemon-side in runner_selftest_patch_integration_test.zig.
+  it("test_selftest_control_requires_write_scope (control absent)", () => {
     render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite={false} />);
     expect(screen.queryByRole("button", { name: SELFTEST_LABEL })).toBeNull();
   });

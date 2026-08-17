@@ -62,6 +62,20 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/lib/contract/protocol_policy.zig` | EDIT | Re-exports the bind contract so existing `protocol.X` consumers are unchanged |
 | `src/runner/selftest.zig` | CREATE | Builds the probe argv on the shared sandbox prefix, grades the run, collects per-check results |
 | `src/runner/selftest_test.zig` | CREATE | §2's grading tests plus Dimension 4.5; split from `selftest.zig` to keep both under the length bound |
+| `src/runner/selftest_probe.zig` | CREATE | The `__selftest_probe` child arm: the resolver read, name lookup, dial and bind confirmation that run INSIDE the sandbox, with no dependency on host tooling |
+| `src/runner/selftest_probe_test.zig` | CREATE | The child↔parent wire shape and the hidden-arm property |
+| `src/runner/selftest_exec.zig` | CREATE | The parent half — spawn the probe, bound it with a reaper thread, reap it, parse its line into booleans |
+| `src/runner/selftest_exec_test.zig` | CREATE | Verdict-parser tiers: an unread key is never a pass, a reaped probe reports nothing partial |
+| `src/runner/selftest_integration_test.zig` | CREATE | §2's real-sandbox execution proofs (Linux + bubblewrap), gated so a probe that did not run reads as a skip |
+| `src/runner/daemon/selftest_beat.zig` | CREATE | The verdict held between heartbeats, the probe-or-not decision, and the probe's own workspace |
+| `src/runner/daemon/selftest_beat_test.zig` | CREATE | What rides a beat, what clears, and the loop's `shouldCapture` decision |
+| `src/runner/daemon/selftest_heartbeat_wire_test.zig` | CREATE | The round trip over real Hypertext Transfer Protocol (HTTP): the verdict goes up, the operator's ask comes down |
+| `src/runner/main.zig` | EDIT | Dispatches `__selftest_probe` beside `__execute`, ahead of the operator registry so help is unchanged |
+| `src/runner/daemon/AppliedPolicy.zig` | EDIT | The reply struct gains `selftest_requested` — without it the runner cannot see an operator's ask |
+| `src/runner/daemon/control_plane_client.zig` | EDIT | `heartbeat` carries the verdict up; without it the runner cannot answer |
+| `src/runner/cmd/doctor.zig` | EDIT | `Check` becomes the wire type rather than a structural twin (RULE UFS); heartbeat call site updated |
+| `src/runner/tests.zig` · `src/runner/sandbox_integration_test.zig` | EDIT | Test discovery for the new modules and the real-sandbox lane |
+| `build_runner.zig` | EDIT | Bakes the absolute build root so the sandboxed exec target resolves; a relative one bound fine and then failed `execvp` |
 | `src/runner/daemon/loop.zig` | EDIT | A requested self-test runs on the heartbeat path and reports its result |
 | `src/agentsfleetd/http/handlers/fleet/runner_patch.zig` | EDIT | One new action arm requesting a self-test |
 | `src/agentsfleetd/http/handlers/runner/heartbeat.zig` | EDIT | Accepts and stores the self-test result |
@@ -107,10 +121,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The runner page today shows what a host *is* (active, online, its tier) and what it *did* (its leases), with no way to ask what it *can do right now*. This adds that question as one control beside the existing operator actions, and renders the answer as a per-check list — each check named in the operator's language with its own verdict, so "DNS resolution failed inside the sandbox" is readable without a journal. A stale result is labelled with when it was produced; a result is never presented as current when it is not. **Implementation default:** the control requests and the page reports — it does not block on the runner, because the daemon picks the request up on its own heartbeat and a synchronous wait would hang the dashboard on an offline host.
 
-- **Dimension 1.1** — triggering the control records a request and the page reflects that a test is pending → Test `test_selftest_control_requests_and_reflects_pending`
-- **Dimension 1.2** — a completed result renders per-check verdicts, each with its name and failure detail → Test `test_selftest_result_renders_per_check`
-- **Dimension 1.3** — a result older than the current assignment is labelled stale rather than presented as current → Test `test_stale_selftest_result_is_labelled`
-- **Dimension 1.4** — an operator without the runner-write scope sees no control → Test `test_selftest_control_requires_write_scope`
+- **Dimension 1.1** — DONE — triggering the control records a request and the page reflects that a test is pending → Test `test_selftest_control_requests_and_reflects_pending` (+ its `(pending face)` arm)
+- **Dimension 1.2** — DONE — a completed result renders per-check verdicts, each with its name and failure detail → Test `test_selftest_result_renders_per_check`
+- **Dimension 1.3** — DONE — a result older than the current assignment is labelled stale rather than presented as current → Test `test_stale_selftest_result_is_labelled`
+- **Dimension 1.4** — DONE — an operator without the runner-write scope sees no control → Test `test_selftest_control_requires_write_scope`, both halves: the control's absence in the app suite and the route guard's refusal daemon-side
 
 ### §2 — The daemon proves egress from inside a real sandbox
 
@@ -121,7 +135,7 @@ A check that runs on the host proves nothing about a lease: the incident that mo
 - **Dimension 2.3** — DONE — under `deny_all_egress` the probe reports egress unavailable as an expected verdict, never as a fault → Test `test_probe_reports_deny_all_as_expected`
 - **Dimension 2.4** — DONE — a probe that exceeds its bound is reaped and reports a timeout verdict, leaving no orphan → Test `test_probe_timeout_reaps_and_reports`
 - **Dimension 2.5** — DONE — the result carries no token, credential, or environment value → Test `test_probe_result_carries_no_secrets`
-- **Dimension 2.6** — the daemon probes itself once at startup and reports the result on its first heartbeat, so a freshly deployed broken runner is visible without an operator clicking → Test `test_startup_probe_reports_on_first_heartbeat`
+- **Dimension 2.6** — DONE — the daemon probes itself once at startup and reports the result on its first heartbeat, so a freshly deployed broken runner is visible without an operator clicking → Test `test_startup_probe_reports_on_first_heartbeat`
 
 ### §3 — The sandbox filesystem contract is declared and tested
 
@@ -223,16 +237,16 @@ Product analytics: the runner page gains one operator interaction. It is an oper
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | e2e | `test_selftest_control_requests_and_reflects_pending` | Triggering the control records a request and the page shows it pending |
-| 1.2 | e2e | `test_selftest_result_renders_per_check` | A completed result renders each check's name and verdict |
+| 1.1 | component | `test_selftest_control_requests_and_reflects_pending` | Triggering the control records a request and the page shows it pending |
+| 1.2 | component | `test_selftest_result_renders_per_check` | A completed result renders each check's name and verdict |
 | 1.3 | unit | `test_stale_selftest_result_is_labelled` | A result whose policy differs from the current assignment renders as stale |
-| 1.4 | integration | `test_selftest_control_requires_write_scope` | A read-scoped operator gets no control and a refused request |
+| 1.4 | component + integration | `test_selftest_control_requires_write_scope` | A read-scoped operator gets no control (app) and a refused request (daemon) |
 | 2.1 | unit | `test_probe_uses_the_lease_argv_builder` | The probe's sandbox prefix is byte-identical to a lease's for the same policy, and the probe never execs `__execute` |
-| 2.2 | integration | `test_probe_detects_a_dangling_resolver` | With the resolver bind absent the resolver check fails and is reported |
-| 2.3 | integration | `test_probe_reports_deny_all_as_expected` | Under `deny_all_egress` egress-unavailable is an expected verdict, not a fault |
-| 2.4 | integration | `test_probe_timeout_reaps_and_reports` | A hung probe is reaped, reports a timeout, and leaves no orphan |
+| 2.2 | integration | `test_probe_detects_a_dangling_resolver` | A real probe in a real sandbox missing `/etc/resolv.conf` reports the resolver check failed, naming the mechanism. Paired with `the resolver check passes in an unmodified sandbox`, so a probe that always failed could not satisfy it |
+| 2.3 | integration | `test_probe_reports_deny_all_as_expected` | A real probe under `deny_all_egress` grades egress-unavailable expected and the runner healthy; the resolver stays bound, because the mount namespace is not the network namespace |
+| 2.4 | unit + integration | `test_probe_timeout_reaps_and_reports` (verdict) · `a completed probe leaves no process behind` (orphan) | A reaped probe reports a timeout and observes nothing partial; a completed probe leaves the parent's child count unchanged |
 | 2.5 | unit | `test_probe_result_carries_no_secrets` | No token, credential, or environment value appears in any check detail |
-| 2.6 | integration | `test_startup_probe_reports_on_first_heartbeat` | A daemon boot runs the probe once and its first heartbeat carries the result |
+| 2.6 | unit + integration | `test_startup_probe_reports_on_first_heartbeat` | A held verdict rides the next beat over real Hypertext Transfer Protocol (HTTP), carrying its checks and the policy it ran under; the reply's `selftest_requested` reaches the runner. The loop's own probe-or-not decision is `shouldCapture` |
 | 3.1 | unit | `test_every_contract_path_is_bound_at_its_mode` | Every contract path appears in the argv at its declared mode |
 | 3.2 | unit | `test_workspace_is_the_only_writable_bind` | With an empty operator list the sandboxed argv has exactly one writable bind, the workspace |
 | 3.3 | unit | `test_contract_and_argv_agree_exactly` | A bind with no entry, or an entry with no bind, fails |
@@ -250,20 +264,20 @@ Product analytics: the runner page gains one operator interaction. It is an oper
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | An operator tests a runner from its page (§1) | `test_selftest_result_renders_per_check` | test passes | P0 | |
-| R2 | The probe runs through the lease argv builder (§2) | `test_probe_uses_the_lease_argv_builder` | test passes | P0 | |
-| R3 | A dangling resolver is detected (§2) | `test_probe_detects_a_dangling_resolver` | test passes | P0 | |
+| R1 | An operator tests a runner from its page (§1) | `test_selftest_result_renders_per_check` | test passes | P0 | ✅ 18/18 in the two self-test app files; `make test-unit-all` exit 0 |
+| R2 | The probe runs through the lease argv builder (§2) | `test_probe_uses_the_lease_argv_builder` | test passes | P0 | ✅ passes; the probe tail now execs `__selftest_probe`, never `__execute` |
+| R3 | A dangling resolver is detected (§2) | `test_probe_detects_a_dangling_resolver` | test passes | P0 | ✅ on real Linux + bubblewrap: unmodified sandbox `resolver=1 dns=1 egress=1`, `--tmpfs /etc` `resolver=0 dns=0`. Runner integration lane 389 passed / 10 skipped / 0 failed |
 | R4 | Contract and argv agree exactly (§3) | `test_contract_and_argv_agree_exactly` | test passes | P0 | |
 | R5 | No writable bind arises without an operator naming it (§3) | `test_workspace_is_the_only_writable_bind && test_bind_mode_defaults_closed_and_maps_to_its_bwrap_flag` | tests pass | P0 | |
 | R6 | An operator bind is additive, mode-explicit, and validated (§4) | `test_operator_list_cannot_remove_a_contract_path && test_operator_bind_validation_refuses_unsafe_paths` | tests pass | P0 | |
 | R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S4 | No leaks | `make memleak` | exit 0 | P0 | |
-| S5 | Cross-compile | `zig build --build-file build_runner.zig -Dtarget=x86_64-linux && zig build --build-file build_runner.zig -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S7 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 — `✓ All unit lanes passed`; runner lane 615/617 (2 skipped), +24 on the 591 baseline |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ exit 0 — `✓ All lint checks passed` |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ exit 0 — `✓ Full integration suite passed` |
+| S4 | No leaks | `make memleak` | exit 0 | P0 | ✅ exit 0 — `✓ memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle)` |
+| S5 | Cross-compile | `zig build --build-file build_runner.zig -Dtarget=x86_64-linux && zig build --build-file build_runner.zig -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ both targets exit 0 |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` — 4513 commits scanned |
+| S7 | Orphan sweep | Dead Code Sweep greps below | 0 matches | P0 | ✅ 0 matches; `PROBE_ARGV` retired with no residual reference |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line; long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE.
 
@@ -320,6 +334,16 @@ Product analytics: the runner page gains one operator interaction. It is an oper
     > Indy (2026-08-16): "Amend the spec, keep read_write" — context: §4 bind mode, decided **amend**.
 
     Read as: an operator-assigned writable mount is admitted deliberately, and the spec now argues for it instead of forbidding it. §3's default, §4's title and body, Invariants 3 and 5, the Interfaces block, Failure Modes, the test table, rubric rows R5/R6 and Out of Scope were rewritten to that shape, and Dimension 4.6 was added to assert the two properties that keep it a named decision — an unstated mode binds read-only, and a `read_write` entry renders as a boundary widening rather than a plain row. The widening is per-runner, not per-lease; narrowing it to a tenant or a lease is listed Out of Scope for its own spec.
+  - **RESOLVED — §2's execution half did not exist, and the Dimensions were marked DONE anyway.** Found at pickup by grepping for production callers: `selftest.zig`'s `grade`, `buildProbeArgv` and `unavailable` had exactly one reference in the whole runner tree — the test aggregator. `AppliedPolicy.HeartbeatReplyRaw` carried no `selftest_requested`, so the runner could not see an operator's ask; `control_plane_client.heartbeat` took only a capability report, so it could not send a verdict; and `PROBE_ARGV` was a `/bin/sh -c cat` placeholder whose output nothing parsed. Dimensions 2.2/2.3/2.4 were graded `integration` in the table but implemented in `selftest_test.zig` as `grade` calls on struct literals — they asserted the grading, and would have kept passing with no probe at all. The operator control therefore recorded an ask nothing answered, which Product Clarity item 9 names as worse than no control.
+    > Indy (2026-08-17): "Okay build this" — context: closing the execution half in this Pull Request rather than shipping the control dark or deferring, decided **build**.
+
+    Read as: the probe arm, the executor, the reply field, the heartbeat parameter and the loop wiring all land here. 2.2/2.3/2.4/2.6 are re-tiered above to name what each half actually proves, and every real-execution arm is gated on `probeRanHere` so a probe that did not run reads as a skip rather than as a detected fault.
+  - **RESOLVED — §2, the probe execs the runner's own binary rather than a host tool (A/B/C consult).** Options put: **A** — a hidden `__selftest_probe` arm doing the lookup and dial in Zig · **B** — shell out to `getent`/`wget`, degrading to `DETAIL_DNS_NOT_TESTABLE` when absent · **C** — defer 2.6 entirely.
+    > Indy (2026-08-17): chose "Probe via the runner's own binary" — context: §2 probe mechanism, decided **A**.
+
+    Read as: measured, not assumed. The production image (`Dockerfile:18`, `debian:bookworm-slim`) installs `bubblewrap ca-certificates git openssl wget` and **no `curl`**, while the continuous-integration image has `curl` and no `wget` guarantee — and a baremetal runner deployed via `agentsfleet-runner.service` carries whatever its operator installed. Reaching for the obvious tool would have red-flagged every production runner. The runner binary is already `--ro-bind`-ed into every sandbox (`sandbox_args.appendBwrapAt`), so the arm adds no mount and no dependency, and `__execute` establishes the hidden-arm precedent: `main.zig` dispatches it before the operator registry, so the spec's `UNCHANGED agentsfleet-runner command surface` still holds. Verified on Linux with bubblewrap 0.9.0/0.8.0: an unmodified sandbox reports `resolver=1 dns=1 egress=1`, and `--tmpfs /etc` reproduces the M167 incident as `resolver=0 dns=0`.
+  - **RESOLVED — the integration lane's exec target was relative, so every real-sandbox proof would have skipped.** Surfaced only by running the cross-compiled binary on Linux: `bwrap: execvp .zig-cache/o/…/agentsfleet-runner-execstub: No such file or directory`. `addOptionPath` emits `stub_runner_exe_path` relative to the build root; bwrap resolves a BIND source against the caller's cwd but execs the tail against the SANDBOX's cwd, which `--chdir` has already moved to the workspace. The bind succeeded and the exec failed, so the probe printed nothing — and an empty verdict line parses to every check failing, which is indistinguishable from a correctly detected dangling resolver. `test_probe_detects_a_dangling_resolver` passed on that false green before the `probeRanHere` gate existed. Fixed by baking the absolute build root (`OPT_BUILD_ROOT`) and absolutising in `resolveChildExe`, the same reasoning `requireAbsoluteArgv0` already applies to argv[0]. Without it these proofs would have skipped in CI too — the exact "tests ran NOWHERE" failure `sandbox_args.zig:250-256` records as how the original outage shipped.
+  - **RESOLVED — §1, Dimensions 1.1/1.2 land at component tier, not e2e.** The table originally graded both `e2e`. A browser run proves nothing here without a live runner that heartbeats and answers a probe, and neither the `acceptance-e2e-dev` nor the `acceptance-e2e-prod` lane has one — an e2e arm would assert the control renders and then wait on a verdict that never arrives, which is a flake, not a proof. Both dimensions are asserted at component tier (vitest + testing-library, the whole `RunnerHeader` / `RunnerSandboxPanel` render with the server action mocked at the module boundary), and the verdict path they render is proven end-to-end daemon-side by `test_heartbeat_stores_a_reported_selftest_verdict`. The tier column now records what shipped. Agent's call at pickup, not Indy's — flagged here for review rather than left as a silent downgrade.
   - **Open — §1 surface order vs dashboard restraint.** Indy directed UI control first. Product Clarity item 9 forbids a control whose backing signal is not real, so §1 and §2 must land in the same workstream; the control must not ship against a stubbed probe. Recorded so the sequencing is a decision, not a discovery mid-EXECUTE.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/write-integration-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close)).

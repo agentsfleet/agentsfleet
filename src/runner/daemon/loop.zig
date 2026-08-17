@@ -14,6 +14,7 @@ const constants = common;
 const Config = @import("config.zig");
 const AppliedPolicy = @import("AppliedPolicy.zig");
 const policy_apply = @import("policy_apply.zig");
+const selftest_beat = @import("selftest_beat.zig");
 const capability_probe = @import("../engine/capability_probe.zig");
 const call_deadline = @import("call_deadline");
 const client_mod = @import("control_plane_client.zig");
@@ -130,6 +131,10 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
     // failed beat never updates this).
     var last_report: ?contract.protocol.CapabilityReport = null;
     defer if (last_report) |r| capability_probe.freeReport(alloc, r);
+    // The self-test verdict waiting to ride a beat (see `selftest_beat`).
+    var pending = selftest_beat.Pending.init(alloc);
+    defer pending.deinit();
+    var startup_probed = false;
     while (true) {
         if (drain_requested.load(.seq_cst)) {
             log.info(EVENT_SERVER_STOPPED, .{ .reason = "signal_drain" });
@@ -141,7 +146,7 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
         const report = capability_probe.collect(io, alloc);
         const send_report = last_report == null or !capability_probe.eql(last_report.?, report);
 
-        const hb_parsed = cp.heartbeat(alloc, runner_token, cfg.cp_deadlines.default_ms, if (send_report) report else null) catch |err| {
+        const hb_parsed = cp.heartbeat(alloc, runner_token, cfg.cp_deadlines.default_ms, if (send_report) report else null, pending.report()) catch |err| {
             capability_probe.freeReport(alloc, report);
             // A 401/403 is a rejected token — retrying can never fix it, so count
             // it apart from transport loss and fail loud once it's clearly not a
@@ -177,10 +182,14 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
             capability_probe.freeReport(alloc, report);
         }
 
+        // The control plane owns the verdict now. A FAILED beat never reaches
+        // here, so an unsent verdict rides the retry instead of being dropped.
+        pending.clear();
         // Copy the status out, apply the policy + verdict while the parse is
         // alive, then free it — the reply's strings live in the parse.
         const status = hb_parsed.value.status;
         const reply_degraded = hb_parsed.value.degraded;
+        const selftest_asked = hb_parsed.value.selftest_requested;
         policy_apply.applyHeartbeatPolicy(alloc, &applied, &gates, hb_parsed.value.assigned_policy);
         policy_apply.noteDegraded(&applied, &gates, hb_parsed.value.degraded, hb_parsed.value.degraded_reason);
         hb_parsed.deinit();
@@ -208,6 +217,13 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
                 return .drained;
             },
             .ok => {},
+        }
+
+        // AFTER the policy applies, so the verdict names the assignment the page
+        // renders it against; it rides the NEXT beat, never delaying this one.
+        if (selftest_beat.shouldCapture(selftest_asked, startup_probed, applied.currentWorkerCount() != null)) {
+            pending.capture(io, &applied, cfg);
+            startup_probed = true;
         }
 
         // The pool comes up on the first OK heartbeat that carries an

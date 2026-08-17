@@ -23,6 +23,7 @@ const contract = @import("contract");
 const Config = @import("daemon/config.zig");
 const doctor = @import("cmd/doctor.zig");
 const sandbox_args = @import("sandbox_args.zig");
+const selftest_probe = @import("selftest_probe.zig");
 
 pub const Check = doctor.Check;
 
@@ -62,11 +63,16 @@ pub const DETAIL_SPAWN_FAILED = "the sandbox could not be established";
 /// configuration gets muted — then it is not there when the sandbox breaks.
 pub const DETAIL_DNS_NO_NETWORK = "no egress by assignment (deny_all_egress), so no name can resolve — expected, not a fault";
 
-/// The probe could not run a resolver lookup at all (no `getent` in the
-/// sandbox). Distinct from `DETAIL_DNS_FAILED`: "not tested" and "tested and
-/// broken" are different facts, and collapsing them would report a missing
-/// tool as a dead resolver.
-pub const DETAIL_DNS_NOT_TESTABLE = "no resolver tool inside the sandbox, so name resolution was not tested";
+/// Nothing asked the probe to resolve a name — the assignment declares no
+/// registry, so there is no name the operator has said this runner needs.
+/// Distinct from `DETAIL_DNS_FAILED`: "not tested" and "tested and broken" are
+/// different facts, and collapsing them reports an undeclared target as a dead
+/// resolver.
+///
+/// This no longer means "no tool in the sandbox". The probe performs the lookup
+/// through the runner's own binary (`selftest_probe`), which is bound into
+/// every sandbox, so the tool is never the missing piece — only a target is.
+pub const DETAIL_DNS_NOT_TESTABLE = "no hostname is assigned to resolve, so name resolution was not tested";
 
 /// No registry host is assigned, so the runner has declared no egress
 /// requirement to prove. The probe never dials a host the operator did not
@@ -104,21 +110,56 @@ pub const Result = struct {
     }
 };
 
-/// The probe's child command, run INSIDE the sandbox. Deliberately not a new
-/// `agentsfleet-runner` subcommand (the operator surface stays unchanged) and
-/// deliberately not `__execute` — a self-test must not run the real executor.
+/// What the probe is asked to reach, derived from the ASSIGNMENT rather than
+/// from a default. Both are optional: a runner that declared no registry has no
+/// egress requirement to prove, and inventing a target would red-flag a host
+/// configured exactly as intended.
+pub const ProbeTargets = struct {
+    /// Host to resolve (no port).
+    resolve: ?[]const u8 = null,
+    /// `host:port` to dial.
+    dial: ?[]const u8 = null,
+    /// Operator-assigned binds to confirm landed. Borrowed from the config —
+    /// the argv builder copies each path before the caller's config can go.
+    binds: []const contract.protocol.ExtraBind = &.{},
+};
+
+/// Port assumed when a declared registry names a bare host. Registries are
+/// pulled over Transport Layer Security (TLS), so 443 is the reachability
+/// question worth asking; `registryAllowlistValid` already permits `host:port`
+/// for anything else.
+pub const DEFAULT_REGISTRY_PORT = "443";
+
+/// The probe's targets for one assignment: the FIRST declared registry, or
+/// nothing. First rather than all because the checks answer "can this sandbox
+/// reach the network at all" — one declared host settles that, and dialling
+/// every entry would turn one operator click into N connections per runner.
 ///
-/// `/bin/sh` and the files it reads are baseline binds, so this exercises the
-/// exact mounts a lease depends on: reading `/etc/resolv.conf` fails when the
-/// resolver stub is unbound, which is precisely the incident.
-pub const PROBE_ARGV = [_][]const u8{ "/bin/sh", "-c", "cat /etc/resolv.conf" };
+/// Under `deny_all_egress` both stay null: `grade` reports those two checks as
+/// expected-by-assignment without consulting a probe, so asking the child to
+/// dial would spend a timeout to produce a verdict already known.
+pub fn targetsFor(cfg: Config) ProbeTargets {
+    // Binds are confirmed under EVERY posture: an operator-added mount is a
+    // filesystem question, and a locked-down network says nothing about whether
+    // the path landed.
+    if (cfg.network_policy == .deny_all_egress) return .{ .binds = cfg.extra_binds };
+    const first = if (cfg.registry_allowlist.len > 0) cfg.registry_allowlist[0] else return .{ .binds = cfg.extra_binds };
+    const colon = std.mem.lastIndexOfScalar(u8, first, ':');
+    return .{
+        .resolve = if (colon) |c| first[0..c] else first,
+        .dial = first,
+        .binds = cfg.extra_binds,
+    };
+}
 
 /// Build the probe's full argv: the lease sandbox prefix plus the probe
 /// command. Free with `sandbox_args.freeArgv`.
 pub fn buildProbeArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_path: []const u8) ![]const []const u8 {
     const prefix = try sandbox_args.buildSandboxPrefix(io, alloc, cfg, workspace_path, null);
     defer sandbox_args.freeArgv(alloc, prefix);
-    return appendProbeCommand(alloc, prefix);
+    const self_exe = try sandbox_args.resolveChildExe(io, alloc);
+    defer alloc.free(self_exe);
+    return appendProbeCommand(alloc, prefix, self_exe, targetsFor(cfg));
 }
 
 /// The probe argv for a GIVEN bwrap binary and child exe — the pure twin of
@@ -129,28 +170,56 @@ pub fn buildProbeArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspa
 pub fn composeProbeArgv(alloc: std.mem.Allocator, bwrap: []const u8, self_exe: []const u8, cfg: Config, workspace_path: []const u8) ![]const []const u8 {
     const prefix = try sandbox_args.composeSandboxPrefix(alloc, bwrap, self_exe, cfg, workspace_path, null);
     defer sandbox_args.freeArgv(alloc, prefix);
-    return appendProbeCommand(alloc, prefix);
+    return appendProbeCommand(alloc, prefix, self_exe, targetsFor(cfg));
 }
 
 /// Copy `prefix` and append the probe's child command, transferring ownership
 /// of the result to the caller.
-fn appendProbeCommand(alloc: std.mem.Allocator, prefix: []const []const u8) ![]const []const u8 {
+///
+/// The tail is the runner's own binary in `__selftest_probe` mode — the same
+/// `self_exe` the prefix already `--ro-bind`s, so no mount is added for it.
+/// Deliberately NOT `__execute`: a self-test must never run the real executor
+/// (Invariant 1). Deliberately not a host tool either — see `selftest_probe`'s
+/// header for why `curl`/`getent` cannot be assumed present.
+fn appendProbeCommand(alloc: std.mem.Allocator, prefix: []const []const u8, self_exe: []const u8, targets: ProbeTargets) ![]const []const u8 {
     var list: std.ArrayList([]const u8) = .empty;
     errdefer {
         for (list.items) |s| alloc.free(s);
         list.deinit(alloc);
     }
-    for (prefix) |s| {
-        const copy = try alloc.dupe(u8, s);
-        errdefer alloc.free(copy);
-        try list.append(alloc, copy);
-    }
-    for (PROBE_ARGV) |s| {
-        const copy = try alloc.dupe(u8, s);
-        errdefer alloc.free(copy);
-        try list.append(alloc, copy);
-    }
+    for (prefix) |s| try appendCopy(alloc, &list, s);
+    try appendCopy(alloc, &list, self_exe);
+    try appendCopy(alloc, &list, selftest_probe.SUBCOMMAND);
+    if (targets.resolve) |h| try appendFlag(alloc, &list, selftest_probe.RESOLVE_FLAG_PREFIX, h);
+    if (targets.dial) |d| try appendDialFlag(alloc, &list, d);
+    for (targets.binds) |b| try appendFlag(alloc, &list, selftest_probe.BIND_FLAG_PREFIX, b.path);
     return list.toOwnedSlice(alloc);
+}
+
+/// Append one owned copy of `s`. Split out so every append in
+/// `appendProbeCommand` carries the same errdefer-safe ownership transfer
+/// rather than repeating the three-line dance per argument.
+fn appendCopy(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), s: []const u8) !void {
+    const copy = try alloc.dupe(u8, s);
+    errdefer alloc.free(copy);
+    try list.append(alloc, copy);
+}
+
+/// Append `<prefix><value>` as one argv entry.
+fn appendFlag(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), prefix: []const u8, value: []const u8) !void {
+    const joined = try std.fmt.allocPrint(alloc, "{s}{s}", .{ prefix, value });
+    errdefer alloc.free(joined);
+    try list.append(alloc, joined);
+}
+
+/// Append the dial flag, defaulting a bare host to the registry port so the
+/// child never has to guess one.
+fn appendDialFlag(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), target: []const u8) !void {
+    if (std.mem.lastIndexOfScalar(u8, target, ':') != null)
+        return appendFlag(alloc, list, selftest_probe.DIAL_FLAG_PREFIX, target);
+    const with_port = try std.fmt.allocPrint(alloc, "{s}:{s}", .{ target, DEFAULT_REGISTRY_PORT });
+    defer alloc.free(with_port);
+    return appendFlag(alloc, list, selftest_probe.DIAL_FLAG_PREFIX, with_port);
 }
 
 /// The verdict for a host whose sandbox could not be established at all. A

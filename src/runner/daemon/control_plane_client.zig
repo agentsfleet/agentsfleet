@@ -101,8 +101,8 @@ pub fn lease(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, 
 
 /// POST /v1/runners/me/heartbeats → capability report up, assignment + verdict
 /// down. Caller deinits AFTER copying what it keeps (strings live in the parse).
-pub fn heartbeat(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, deadline_ms: u31, capability_report: ?protocol.CapabilityReport) !std.json.Parsed(AppliedPolicy.HeartbeatReplyRaw) {
-    const body = try std.json.Stringify.valueAlloc(alloc, protocol.HeartbeatRequest{ .capability_report = capability_report }, .{});
+pub fn heartbeat(self: *LoopbackClient, alloc: Allocator, runner_token: []const u8, deadline_ms: u31, capability_report: ?protocol.CapabilityReport, selftest: ?protocol.SelftestReport) !std.json.Parsed(AppliedPolicy.HeartbeatReplyRaw) {
+    const body = try std.json.Stringify.valueAlloc(alloc, protocol.HeartbeatRequest{ .capability_report = capability_report, .selftest = selftest }, .{});
     defer alloc.free(body);
     const res = try self.post(alloc, protocol.PATH_RUNNER_HEARTBEATS, runner_token, body, deadline_ms);
     defer alloc.free(res.body);

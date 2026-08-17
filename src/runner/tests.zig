@@ -78,6 +78,10 @@ test {
     _ = @import("sandbox_args_edge_test.zig");
     _ = @import("sandbox_args_bind_test.zig");
     _ = @import("selftest.zig");
+    _ = @import("selftest_probe.zig");
+    _ = @import("selftest_exec.zig");
+    _ = @import("daemon/selftest_beat.zig");
+    _ = @import("daemon/selftest_heartbeat_wire_test.zig");
     _ = @import("tool_bridge_resolution_test.zig");
     // Pre-fork lease lifecycle + control-loop coverage
     _ = @import("daemon/lease_run_exec_test.zig");

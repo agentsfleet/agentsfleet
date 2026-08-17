@@ -16,6 +16,7 @@ const loop = @import("daemon/loop.zig");
 const startup = @import("daemon/startup.zig");
 const runner_deadline = @import("daemon/runner_deadline.zig");
 const child_exec = @import("child_exec.zig");
+const selftest_probe = @import("selftest_probe.zig");
 const client_errors = @import("engine/client_errors.zig");
 const version_cmd = @import("cmd/version.zig");
 const registry = @import("cmd/registry.zig");
@@ -136,6 +137,11 @@ fn dispatchCli(argv: []const [:0]const u8, env_map: *const std.process.Environ.M
     // The forked child re-execs us with `__execute` — run one lease from stdin
     // and exit (no daemon loop, no env config). Hot path, checked first.
     if (std.mem.eql(u8, a1, child_exec.SUBCOMMAND)) return child_exec.run(argv, env_map, alloc);
+    // The self-test probe re-execs us inside a sandbox — answer three
+    // connectivity questions and exit. Sits beside `__execute` (before the
+    // operator registry) so it stays out of `--help`: `doctor` remains the one
+    // host-side entry point, per the spec's UNCHANGED command surface.
+    if (std.mem.eql(u8, a1, selftest_probe.SUBCOMMAND)) return selftest_probe.run(argv, io);
     if (std.mem.eql(u8, a1, "--version") or std.mem.eql(u8, a1, "-V")) return version_cmd.run();
     // Operator subcommands reach the control plane, so they need the process
     // scheduler — OWNED here (this branch always returns, so a process still
