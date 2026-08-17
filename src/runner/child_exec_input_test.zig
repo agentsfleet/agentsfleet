@@ -94,6 +94,28 @@ test "buildCallArgs injects neither half of an incomplete provider key pair" {
     try testing.expect(ac.get(wire.provider) == null);
 }
 
+test "buildCallArgs carries a KEYLESS gateway — an empty key is legitimate, not malformed" {
+    const alloc = testing.allocator;
+    // `probeSelfManagedSecret` accepts an openai-compatible credential with no
+    // api_key — a private gateway that takes none is the spec's optional-key
+    // design — so the lease legitimately carries {provider, ""}. The pairing
+    // rule dropped BOTH halves of that, and nullclaw then fell back to whatever
+    // `Config.load` resolved, running the tenant's slice against a provider they
+    // never chose. That is the wrong-provider outcome the rule exists to
+    // prevent, produced by the rule itself.
+    const payload = testLease(.{
+        .provider = "custom:https://gw.corp/v1",
+        .api_key = "",
+        .base_url = "https://gw.corp/v1",
+    });
+    var args = try input.buildCallArgs(alloc, payload);
+    defer args.deinit(alloc);
+    const ac = args.fleet_config.?.object;
+    try testing.expectEqualStrings("custom:https://gw.corp/v1", ac.get(wire.provider).?.string);
+    try testing.expectEqualStrings("", ac.get(wire.api_key).?.string);
+    try testing.expectEqualStrings("https://gw.corp/v1", ac.get(wire.base_url).?.string);
+}
+
 test "buildCallArgs leaks nothing on allocation failure (every alloc site)" {
     // checkAllAllocationFailures fails each allocation site in turn and asserts
     // the function returns error.OutOfMemory and frees everything — the canonical
