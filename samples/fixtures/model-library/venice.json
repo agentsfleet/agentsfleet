@@ -1,0 +1,322 @@
+{
+  "data": [
+    {
+      "context_length": 1000000,
+      "created": 1786665600,
+      "id": "gemini-3-7-flash",
+      "model_spec": {
+        "pricing": {
+          "input": {
+            "usd": 1.875,
+            "diem": 1.875
+          },
+          "cache_input": {
+            "usd": 0.1875,
+            "diem": 0.1875
+          },
+          "output": {
+            "usd": 9.375,
+            "diem": 9.375
+          }
+        },
+        "model_sets": [
+          "venice_recommendations"
+        ],
+        "availableContextTokens": 1000000,
+        "maxCompletionTokens": 65536,
+        "capabilities": {
+          "optimizedForCode": false,
+          "quantization": "not-available",
+          "supportsAudioInput": true,
+          "supportsFunctionCalling": true,
+          "supportsLogProbs": false,
+          "supportsMultipleImages": false,
+          "supportsReasoning": true,
+          "supportsReasoningEffort": false,
+          "supportsResponseSchema": true,
+          "supportsTeeAttestation": false,
+          "supportsE2EE": false,
+          "supportsVideoInput": true,
+          "supportsVision": true,
+          "supportsWebSearch": true,
+          "supportsXSearch": false
+        },
+        "description": "Gemini 3.7 Flash is Google's most capable Flash model, built for complex coding, agentic workflows, and reliable multi-step execution, with 1M context and tunable thinking.",
+        "name": "Gemini 3.7 Flash",
+        "offline": false,
+        "privacy": "anonymized",
+        "traits": []
+      },
+      "object": "model",
+      "owned_by": "venice.ai",
+      "type": "text"
+    },
+    {
+      "context_length": 1000000,
+      "created": 1783555200,
+      "id": "gemini-3-5-flash-lite",
+      "model_spec": {
+        "pricing": {
+          "input": {
+            "usd": 0.375,
+            "diem": 0.375
+          },
+          "cache_input": {
+            "usd": 0.0375,
+            "diem": 0.0375
+          },
+          "output": {
+            "usd": 3.125,
+            "diem": 3.125
+          }
+        },
+        "availableContextTokens": 1000000,
+        "maxCompletionTokens": 65536,
+        "capabilities": {
+          "optimizedForCode": false,
+          "quantization": "not-available",
+          "supportsAudioInput": true,
+          "supportsFunctionCalling": true,
+          "supportsLogProbs": false,
+          "supportsMultipleImages": false,
+          "supportsReasoning": true,
+          "supportsReasoningEffort": false,
+          "supportsResponseSchema": true,
+          "supportsTeeAttestation": false,
+          "supportsE2EE": false,
+          "supportsVideoInput": true,
+          "supportsVision": true,
+          "supportsWebSearch": true,
+          "supportsXSearch": false
+        },
+        "description": "Gemini 3.5 Flash-Lite is the fastest, most cost-efficient Gemini 3.5 model with 1M context, ideal for everyday questions, summarization, and lightweight coding tasks.",
+        "name": "Gemini 3.5 Flash-Lite",
+        "offline": false,
+        "privacy": "anonymized",
+        "traits": []
+      },
+      "object": "model",
+      "owned_by": "venice.ai",
+      "type": "text"
+    },
+    {
+      "context_length": 1000000,
+      "created": 1781568000,
+      "id": "zai-org-glm-5-2",
+      "model_spec": {
+        "betaModel": true,
+        "pricing": {
+          "input": {
+            "usd": 1.4,
+            "diem": 1.4
+          },
+          "cache_input": {
+            "usd": 0.26,
+            "diem": 0.26
+          },
+          "output": {
+            "usd": 4.4,
+            "diem": 4.4
+          }
+        },
+        "model_sets": [
+          "venice_recommendations"
+        ],
+        "availableContextTokens": 1000000,
+        "maxCompletionTokens": 131072,
+        "capabilities": {
+          "optimizedForCode": true,
+          "quantization": "fp8",
+          "supportsAudioInput": false,
+          "supportsFunctionCalling": true,
+          "supportsLogProbs": false,
+          "supportsMultipleImages": false,
+          "supportsReasoning": true,
+          "supportsReasoningEffort": true,
+          "reasoningEffortOptions": [
+            "none",
+            "high",
+            "max"
+          ],
+          "defaultReasoningEffort": "max",
+          "supportsResponseSchema": true,
+          "supportsTeeAttestation": false,
+          "supportsE2EE": false,
+          "supportsVideoInput": false,
+          "supportsVision": false,
+          "supportsWebSearch": true,
+          "supportsXSearch": false
+        },
+        "description": "GLM-5.2 is the next-generation large language model developed by Zhiyuan AI, featuring significantly enhanced reasoning capabilities, improved instruction following, and support for multiple languages. Supports large context windows for processing extensive text and detailed analysis with fast inference speed.",
+        "name": "GLM 5.2",
+        "modelSource": "https://huggingface.co/zai-org/GLM-5.2",
+        "offline": false,
+        "privacy": "private",
+        "traits": []
+      },
+      "object": "model",
+      "owned_by": "venice.ai",
+      "type": "text"
+    },
+    {
+      "context_length": 128000,
+      "created": 1771200000,
+      "id": "qwen3-5-397b-a17b",
+      "model_spec": {
+        "pricing": {
+          "input": {
+            "usd": 0.75,
+            "diem": 0.75
+          },
+          "output": {
+            "usd": 4.5,
+            "diem": 4.5
+          }
+        },
+        "availableContextTokens": 128000,
+        "maxCompletionTokens": 32768,
+        "capabilities": {
+          "optimizedForCode": true,
+          "quantization": "not-available",
+          "supportsAudioInput": false,
+          "supportsFunctionCalling": true,
+          "supportsLogProbs": true,
+          "supportsMultipleImages": true,
+          "maxImages": 5,
+          "supportsReasoning": true,
+          "supportsReasoningEffort": true,
+          "reasoningEffortOptions": [
+            "none",
+            "low",
+            "medium",
+            "high"
+          ],
+          "defaultReasoningEffort": "low",
+          "supportsResponseSchema": true,
+          "supportsTeeAttestation": false,
+          "supportsE2EE": false,
+          "supportsVideoInput": true,
+          "supportsVision": true,
+          "supportsWebSearch": true,
+          "supportsXSearch": false
+        },
+        "description": "Qwen 3.5 is Alibaba flagship reasoning model featuring a 397B parameter Mixture-of-Experts architecture with 17B active parameters. It excels at complex reasoning, coding, and general knowledge tasks.",
+        "name": "Qwen 3.5 397B",
+        "modelSource": "https://huggingface.co/Qwen/Qwen3.5-397B-A17B",
+        "offline": false,
+        "privacy": "anonymized",
+        "traits": []
+      },
+      "object": "model",
+      "owned_by": "venice.ai",
+      "type": "text"
+    },
+    {
+      "context_length": 1000000,
+      "created": 1783555200,
+      "id": "gemini-3-6-flash",
+      "model_spec": {
+        "pricing": {
+          "input": {
+            "usd": 1.875,
+            "diem": 1.875
+          },
+          "cache_input": {
+            "usd": 0.1875,
+            "diem": 0.1875
+          },
+          "output": {
+            "usd": 9.375,
+            "diem": 9.375
+          }
+        },
+        "availableContextTokens": 1000000,
+        "maxCompletionTokens": 65536,
+        "capabilities": {
+          "optimizedForCode": false,
+          "quantization": "not-available",
+          "supportsAudioInput": true,
+          "supportsFunctionCalling": true,
+          "supportsLogProbs": false,
+          "supportsMultipleImages": false,
+          "supportsReasoning": true,
+          "supportsReasoningEffort": false,
+          "supportsResponseSchema": true,
+          "supportsTeeAttestation": false,
+          "supportsE2EE": false,
+          "supportsVideoInput": true,
+          "supportsVision": true,
+          "supportsWebSearch": true,
+          "supportsXSearch": false
+        },
+        "description": "Gemini 3.6 Flash is a high speed, high value thinking model with 1M context, designed for agentic workflows, multi-turn chat, and coding assistance. It delivers near Pro level reasoning with substantially lower latency.",
+        "name": "Gemini 3.6 Flash",
+        "offline": false,
+        "privacy": "anonymized",
+        "traits": []
+      },
+      "object": "model",
+      "owned_by": "venice.ai",
+      "type": "text"
+    },
+    {
+      "context_length": 200000,
+      "created": 1775520000,
+      "id": "zai-org-glm-5-1",
+      "model_spec": {
+        "betaModel": true,
+        "pricing": {
+          "input": {
+            "usd": 1.54,
+            "diem": 1.54
+          },
+          "cache_input": {
+            "usd": 0.286,
+            "diem": 0.286
+          },
+          "output": {
+            "usd": 4.84,
+            "diem": 4.84
+          }
+        },
+        "availableContextTokens": 200000,
+        "maxCompletionTokens": 80000,
+        "capabilities": {
+          "optimizedForCode": false,
+          "quantization": "fp8",
+          "supportsAudioInput": false,
+          "supportsFunctionCalling": true,
+          "supportsLogProbs": false,
+          "supportsMultipleImages": false,
+          "supportsReasoning": true,
+          "supportsReasoningEffort": true,
+          "reasoningEffortOptions": [
+            "none",
+            "low",
+            "medium",
+            "high"
+          ],
+          "defaultReasoningEffort": "low",
+          "supportsResponseSchema": true,
+          "supportsTeeAttestation": false,
+          "supportsE2EE": false,
+          "supportsVideoInput": false,
+          "supportsVision": false,
+          "supportsWebSearch": true,
+          "supportsXSearch": false
+        },
+        "description": "GLM-5.1 is the next-generation large language model developed by Zhiyuan AI, featuring significantly enhanced reasoning capabilities, improved instruction following, and support for multiple languages. Supports large context windows for processing extensive text and detailed analysis with fast inference speed.",
+        "name": "GLM 5.1",
+        "modelSource": "https://huggingface.co/zai-org/GLM-5.1",
+        "offline": false,
+        "privacy": "private",
+        "traits": []
+      },
+      "object": "model",
+      "owned_by": "venice.ai",
+      "type": "text"
+    }
+  ],
+  "object": "list",
+  "type": "text"
+}

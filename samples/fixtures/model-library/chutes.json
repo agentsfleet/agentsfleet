@@ -1,0 +1,338 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "Qwen/Qwen3.5-397B-A17B-TEE",
+      "root": "Qwen/Qwen3.5-397B-A17B-FP8",
+      "price": {
+        "input": {
+          "tao": 0.002285931412913887,
+          "usd": 0.45
+        },
+        "output": {
+          "tao": 0.015239542752759246,
+          "usd": 3
+        },
+        "input_cache_read": {
+          "tao": 0.00022859314129138863,
+          "usd": 0.04499999999999999
+        }
+      },
+      "object": "model",
+      "parent": null,
+      "created": 1786905739,
+      "pricing": {
+        "prompt": 0.45,
+        "completion": 3,
+        "input_cache_read": 0.04499999999999999
+      },
+      "chute_id": "51a4284a-a5a0-5e44-a9cc-6af5a2abfbcf",
+      "owned_by": "sglang",
+      "quantization": "fp8",
+      "max_model_len": 262144,
+      "context_length": 262144,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "max_output_length": 65536,
+      "output_modalities": [
+        "text"
+      ],
+      "supported_features": [
+        "json_mode",
+        "tools",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "confidential_compute": true,
+      "supported_sampling_parameters": [
+        "temperature",
+        "top_p",
+        "top_k",
+        "repetition_penalty",
+        "frequency_penalty",
+        "presence_penalty",
+        "stop",
+        "seed"
+      ]
+    },
+    {
+      "id": "deepseek-ai/DeepSeek-V4-Flash-0731-TEE",
+      "root": "AtlasCloud/DeepSeek-V4-Flash-0731-FP8-DSpark",
+      "price": {
+        "input": {
+          "tao": 0.0007111786617954315,
+          "usd": 0.14
+        },
+        "output": {
+          "tao": 0.001422357323590863,
+          "usd": 0.28
+        },
+        "input_cache_read": {
+          "tao": 0.00007111786617954313,
+          "usd": 0.013999999999999999
+        }
+      },
+      "object": "model",
+      "parent": null,
+      "created": 1786905739,
+      "pricing": {
+        "prompt": 0.14,
+        "completion": 0.28,
+        "input_cache_read": 0.013999999999999999
+      },
+      "chute_id": "b4d58772-e72b-55d1-9d73-d30dff6d2ed8",
+      "owned_by": "sglang",
+      "quantization": "fp8",
+      "max_model_len": 1048576,
+      "context_length": 1048576,
+      "input_modalities": [
+        "text"
+      ],
+      "max_output_length": 131072,
+      "output_modalities": [
+        "text"
+      ],
+      "supported_features": [
+        "json_mode",
+        "structured_outputs",
+        "tools",
+        "reasoning"
+      ],
+      "confidential_compute": true,
+      "supported_sampling_parameters": [
+        "temperature",
+        "top_p",
+        "top_k",
+        "repetition_penalty",
+        "frequency_penalty",
+        "presence_penalty",
+        "stop",
+        "seed"
+      ]
+    },
+    {
+      "id": "moonshotai/Kimi-K3-TEE",
+      "root": "moonshotai/Kimi-K3",
+      "price": {
+        "input": {
+          "tao": 0.015239542752759246,
+          "usd": 3
+        },
+        "output": {
+          "tao": 0.07619771376379623,
+          "usd": 15
+        },
+        "input_cache_read": {
+          "tao": 0.0015239542752759243,
+          "usd": 0.29999999999999993
+        }
+      },
+      "object": "model",
+      "parent": null,
+      "created": 1786905739,
+      "pricing": {
+        "prompt": 3,
+        "completion": 15,
+        "input_cache_read": 0.29999999999999993
+      },
+      "chute_id": "0bb5d4c2-b5da-587d-b88e-62b4839028ec",
+      "owned_by": "sglang",
+      "quantization": "mxfp4",
+      "max_model_len": 1048576,
+      "context_length": 1048576,
+      "input_modalities": [
+        "text",
+        "image",
+        "video"
+      ],
+      "max_output_length": 65535,
+      "output_modalities": [
+        "text"
+      ],
+      "supported_features": [
+        "json_mode",
+        "structured_outputs",
+        "tools",
+        "reasoning"
+      ],
+      "confidential_compute": true,
+      "supported_sampling_parameters": [
+        "temperature",
+        "top_p",
+        "top_k",
+        "repetition_penalty",
+        "frequency_penalty",
+        "presence_penalty",
+        "stop",
+        "seed"
+      ]
+    },
+    {
+      "id": "zai-org/GLM-5.2-TEE",
+      "root": "nvidia/GLM-5.2-NVFP4",
+      "price": {
+        "input": {
+          "tao": 0.006371244788321764,
+          "usd": 1.25
+        },
+        "output": {
+          "tao": 0.020133133531096775,
+          "usd": 3.95
+        },
+        "input_cache_read": {
+          "tao": 0.0006371244788321763,
+          "usd": 0.12499999999999997
+        }
+      },
+      "object": "model",
+      "parent": null,
+      "created": 1786884735,
+      "pricing": {
+        "prompt": 1.25,
+        "completion": 3.95,
+        "input_cache_read": 0.12499999999999997
+      },
+      "chute_id": "08901219-159f-55a7-87cf-9d0d02744668",
+      "owned_by": "sglang",
+      "quantization": "fp4",
+      "max_model_len": 1048576,
+      "context_length": 1048576,
+      "input_modalities": [
+        "text"
+      ],
+      "max_output_length": 65535,
+      "output_modalities": [
+        "text"
+      ],
+      "supported_features": [
+        "json_mode",
+        "structured_outputs",
+        "tools",
+        "reasoning"
+      ],
+      "confidential_compute": true,
+      "supported_sampling_parameters": [
+        "temperature",
+        "top_p",
+        "top_k",
+        "repetition_penalty",
+        "frequency_penalty",
+        "presence_penalty",
+        "stop",
+        "seed"
+      ]
+    },
+    {
+      "id": "Qwen/Qwen3-32B-TEE",
+      "root": "Qwen/Qwen3-32B-FP8",
+      "price": {
+        "input": {
+          "tao": 0.0005283041487623206,
+          "usd": 0.104
+        },
+        "output": {
+          "tao": 0.002113216595049282,
+          "usd": 0.416
+        },
+        "input_cache_read": {
+          "tao": 0.00005283041487623204,
+          "usd": 0.010399999999999998
+        }
+      },
+      "object": "model",
+      "parent": null,
+      "created": 1786905739,
+      "pricing": {
+        "prompt": 0.104,
+        "completion": 0.416,
+        "input_cache_read": 0.010399999999999998
+      },
+      "chute_id": "ac059e33-eb27-541c-b9a9-24b214036475",
+      "owned_by": "sglang",
+      "quantization": "fp8",
+      "max_model_len": 40960,
+      "context_length": 40960,
+      "input_modalities": [
+        "text"
+      ],
+      "max_output_length": 40960,
+      "output_modalities": [
+        "text"
+      ],
+      "supported_features": [
+        "json_mode",
+        "tools",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "confidential_compute": true,
+      "supported_sampling_parameters": [
+        "temperature",
+        "top_p",
+        "top_k",
+        "repetition_penalty",
+        "frequency_penalty",
+        "presence_penalty",
+        "stop",
+        "seed"
+      ]
+    },
+    {
+      "id": "zai-org/GLM-5.1-TEE",
+      "root": "zai-org/GLM-5.1-FP8",
+      "price": {
+        "input": {
+          "tao": 0.004978250632568021,
+          "usd": 0.98
+        },
+        "output": {
+          "tao": 0.015645930559499494,
+          "usd": 3.08
+        },
+        "input_cache_read": {
+          "tao": 0.000497825063256802,
+          "usd": 0.09799999999999998
+        }
+      },
+      "object": "model",
+      "parent": null,
+      "created": 1786905739,
+      "pricing": {
+        "prompt": 0.98,
+        "completion": 3.08,
+        "input_cache_read": 0.09799999999999998
+      },
+      "chute_id": "b048fe26-0352-5c46-acf7-335e527e7f3d",
+      "owned_by": "sglang",
+      "quantization": "fp8",
+      "max_model_len": 202752,
+      "context_length": 202752,
+      "input_modalities": [
+        "text"
+      ],
+      "max_output_length": 65535,
+      "output_modalities": [
+        "text"
+      ],
+      "supported_features": [
+        "json_mode",
+        "structured_outputs",
+        "tools",
+        "reasoning"
+      ],
+      "confidential_compute": true,
+      "supported_sampling_parameters": [
+        "temperature",
+        "top_p",
+        "top_k",
+        "repetition_penalty",
+        "frequency_penalty",
+        "presence_penalty",
+        "stop",
+        "seed"
+      ]
+    }
+  ]
+}

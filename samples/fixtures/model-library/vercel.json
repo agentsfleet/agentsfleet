@@ -1,0 +1,339 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "anthropic/claude-fable-5",
+      "object": "model",
+      "created": 1755815280,
+      "released": 1782864000,
+      "owned_by": "anthropic",
+      "name": "Claude Fable 5",
+      "description": "Claude Fable 5 is a Mythos-class model with robust safeguards. It can handle long-running, complex, and asynchronous tasks where previous models would have needed more frequent check-ins.",
+      "context_window": 1000000,
+      "max_tokens": 128000,
+      "type": "language",
+      "tags": [
+        "reasoning",
+        "tool-use",
+        "explicit-caching",
+        "file-input",
+        "vision"
+      ],
+      "regions": [
+        "us"
+      ],
+      "supported_specifications": [
+        "v2",
+        "v3",
+        "v4"
+      ],
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [
+        "max_tokens",
+        "temperature",
+        "stop",
+        "tools",
+        "tool_choice",
+        "reasoning",
+        "include_reasoning"
+      ],
+      "temperature": true,
+      "reasoning_options": [
+        {
+          "type": "toggle"
+        },
+        {
+          "type": "effort",
+          "values": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        }
+      ],
+      "knowledge": "2026-01-31",
+      "pricing": {
+        "input": "0.00001",
+        "output": "0.00005",
+        "input_cache_read": "0.000001",
+        "input_cache_write": "0.0000125",
+        "web_search": "10",
+        "regional": {
+          "us": {
+            "input": "0.000011",
+            "output": "0.000055",
+            "input_cache_read": "0.0000011",
+            "input_cache_write": "0.00001375"
+          }
+        }
+      }
+    },
+    {
+      "id": "anthropic/claude-haiku-4.5",
+      "object": "model",
+      "created": 1755815280,
+      "released": 1760486400,
+      "owned_by": "anthropic",
+      "name": "Claude Haiku 4.5",
+      "description": "Claude Haiku 4.5 matches Sonnet 4's performance on coding, computer use, and agent tasks at substantially lower cost and faster speeds. It delivers near-frontier performance and Claude’s unique character at a price point that works for scaled sub-agent deployments, free tier products, and intelligence-sensitive applications with budget constraints.",
+      "context_window": 200000,
+      "max_tokens": 64000,
+      "type": "language",
+      "tags": [
+        "explicit-caching",
+        "file-input",
+        "reasoning",
+        "tool-use",
+        "vision",
+        "web-search"
+      ],
+      "regions": [
+        "eu",
+        "us"
+      ],
+      "supported_specifications": [
+        "v2",
+        "v3",
+        "v4"
+      ],
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [
+        "max_tokens",
+        "temperature",
+        "stop",
+        "tools",
+        "tool_choice",
+        "reasoning",
+        "include_reasoning"
+      ],
+      "temperature": true,
+      "reasoning_options": [
+        {
+          "type": "toggle"
+        },
+        {
+          "type": "budget_tokens",
+          "min": 1024
+        }
+      ],
+      "knowledge": "2025-02-28",
+      "interleaved": true,
+      "pricing": {
+        "input": "0.000001",
+        "output": "0.000005",
+        "input_cache_read": "0.0000001",
+        "input_cache_write": "0.00000125",
+        "web_search": "10",
+        "regional": {
+          "eu": {
+            "input": "0.0000011",
+            "output": "0.0000055",
+            "input_cache_read": "0.00000011",
+            "input_cache_write": "0.000001375"
+          },
+          "us": {
+            "input": "0.0000011",
+            "output": "0.0000055",
+            "input_cache_read": "0.00000011",
+            "input_cache_write": "0.000001375"
+          }
+        }
+      }
+    },
+    {
+      "id": "anthropic/claude-opus-5",
+      "object": "model",
+      "created": 1755815280,
+      "released": 1784851200,
+      "owned_by": "anthropic",
+      "name": "Claude Opus 5",
+      "description": "Claude Opus 5 is the latest model in Anthropic's Opus family and a step-change improvement over Opus 4.8. It delivers major gains over Opus 4.8 in agentic coding, professional knowledge work, and long-horizon reasoning, and it is stronger per token across effort levels.",
+      "context_window": 1000000,
+      "max_tokens": 128000,
+      "type": "language",
+      "tags": [
+        "tool-use",
+        "reasoning",
+        "vision",
+        "file-input",
+        "explicit-caching",
+        "web-search",
+        "fast"
+      ],
+      "regions": [
+        "eu",
+        "us"
+      ],
+      "supported_specifications": [
+        "v2",
+        "v3",
+        "v4"
+      ],
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "pdf"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [
+        "max_tokens",
+        "temperature",
+        "stop",
+        "tools",
+        "tool_choice",
+        "reasoning",
+        "include_reasoning"
+      ],
+      "temperature": true,
+      "pricing": {
+        "input": "0.000005",
+        "output": "0.000025",
+        "input_cache_read": "0.0000005",
+        "input_cache_write": "0.00000625",
+        "web_search": "10",
+        "fast": {
+          "input": "0.00001",
+          "output": "0.00005",
+          "input_cache_read": "0.000001",
+          "input_cache_write": "0.0000125"
+        },
+        "regional": {
+          "eu": {
+            "input": "0.0000055",
+            "output": "0.0000275",
+            "input_cache_read": "0.00000055",
+            "input_cache_write": "0.000006875"
+          },
+          "us": {
+            "input": "0.0000055",
+            "output": "0.0000275",
+            "input_cache_read": "0.00000055",
+            "input_cache_write": "0.000006875",
+            "fast": {
+              "input": "0.000011",
+              "output": "0.000055",
+              "input_cache_read": "0.0000011",
+              "input_cache_write": "0.00001375"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "alibaba/qwen-3-14b",
+      "object": "model",
+      "created": 1755815280,
+      "released": 1745798400,
+      "owned_by": "alibaba",
+      "name": "Qwen3-14B",
+      "description": "Qwen3 is the latest generation of large language models in Qwen series, offering a comprehensive suite of dense and mixture-of-experts (MoE) models. Built upon extensive training, Qwen3 delivers groundbreaking advancements in reasoning, instruction-following, agent capabilities, and multilingual support",
+      "context_window": 40960,
+      "max_tokens": 16384,
+      "type": "language",
+      "tags": [
+        "reasoning",
+        "tool-use"
+      ],
+      "supported_specifications": [
+        "v2",
+        "v3",
+        "v4"
+      ],
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [
+        "max_tokens",
+        "temperature",
+        "stop",
+        "tools",
+        "tool_choice",
+        "reasoning",
+        "include_reasoning"
+      ],
+      "temperature": true,
+      "reasoning_options": [
+        {
+          "type": "toggle"
+        }
+      ],
+      "knowledge": "2025-04",
+      "pricing": {
+        "input": "0.00000012",
+        "output": "0.00000024"
+      }
+    },
+    {
+      "id": "alibaba/qwen-3-235b",
+      "object": "model",
+      "created": 1755815280,
+      "released": 1745798400,
+      "owned_by": "alibaba",
+      "name": "Qwen3 235B A22B",
+      "description": "",
+      "context_window": 262144,
+      "max_tokens": 16384,
+      "type": "language",
+      "tags": [
+        "tool-use",
+        "reasoning"
+      ],
+      "supported_specifications": [
+        "v2",
+        "v3",
+        "v4"
+      ],
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "supported_parameters": [
+        "max_tokens",
+        "temperature",
+        "stop",
+        "tools",
+        "tool_choice",
+        "reasoning",
+        "include_reasoning"
+      ],
+      "temperature": true,
+      "knowledge": "2025-04",
+      "pricing": {
+        "input": "0.00000022",
+        "output": "0.00000088"
+      }
+    }
+  ]
+}
