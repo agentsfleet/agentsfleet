@@ -1,0 +1,107 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "Qwen3.5-397B-A17B",
+      "created": 1779113482,
+      "object": "model",
+      "owned_by": "Qwen",
+      "pricing": {
+        "currency_unit": "USD",
+        "completion": "0.00000425",
+        "image": "0",
+        "prompt": "0.00000071",
+        "request": "0",
+        "input_cache_reads": "0",
+        "input_cache_writes": "0"
+      },
+      "context_length": 262144,
+      "max_completion_tokens": 262144
+    },
+    {
+      "id": "gpt-oss-20b",
+      "created": 1756386145,
+      "object": "model",
+      "owned_by": "OpenAI",
+      "pricing": {
+        "currency_unit": "USD",
+        "completion": "0.00000018",
+        "image": "0",
+        "prompt": "0.00000005",
+        "request": "0",
+        "input_cache_reads": "0",
+        "input_cache_writes": "0"
+      },
+      "context_length": 131072,
+      "max_completion_tokens": 131072
+    },
+    {
+      "id": "Qwen3.6-27B",
+      "created": 1780302734,
+      "object": "model",
+      "owned_by": "Qwen",
+      "pricing": {
+        "currency_unit": "USD",
+        "completion": "0.00000319",
+        "image": "0",
+        "prompt": "0.00000047",
+        "request": "0",
+        "input_cache_reads": "0",
+        "input_cache_writes": "0"
+      },
+      "context_length": 262144,
+      "max_completion_tokens": 262144
+    },
+    {
+      "id": "gpt-oss-120b",
+      "created": 1756386145,
+      "object": "model",
+      "owned_by": "OpenAI",
+      "pricing": {
+        "currency_unit": "USD",
+        "completion": "0.00000047",
+        "image": "0",
+        "prompt": "0.00000009",
+        "request": "0",
+        "input_cache_reads": "0",
+        "input_cache_writes": "0"
+      },
+      "context_length": 131072,
+      "max_completion_tokens": 131072
+    },
+    {
+      "id": "Qwen3Guard-Gen-8B",
+      "created": 1769078773,
+      "object": "model",
+      "owned_by": "qwen3guard",
+      "pricing": {
+        "currency_unit": "USD",
+        "completion": "0",
+        "image": "0",
+        "prompt": "0",
+        "request": "0",
+        "input_cache_reads": "0",
+        "input_cache_writes": "0"
+      },
+      "context_length": 32768,
+      "max_completion_tokens": 16384
+    },
+    {
+      "id": "Qwen3.5-9B",
+      "created": 1776853448,
+      "object": "model",
+      "owned_by": "Qwen",
+      "pricing": {
+        "currency_unit": "USD",
+        "completion": "0.00000018",
+        "image": "0",
+        "prompt": "0.00000012",
+        "request": "0",
+        "input_cache_reads": "0",
+        "input_cache_writes": "0"
+      },
+      "context_length": 262144,
+      "max_completion_tokens": 262144
+    }
+  ]
+}
