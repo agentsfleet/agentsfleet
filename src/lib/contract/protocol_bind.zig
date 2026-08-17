@@ -121,6 +121,10 @@ pub fn extraBindsValid(binds: []const ExtraBind) bool {
 /// True when two absolute paths name the same mount or one contains the other.
 /// Segment-aware: `/etc` contains `/etc/ssl` but NOT `/etcetera`, so a prefix
 /// compare alone would refuse legitimate paths and admit nothing extra.
+///
+/// Compares the strings as given, so it is only sound on canonical paths.
+/// `extraBindsValid` runs `bindPathValid` first for exactly that reason — the
+/// two are one check split in half, not two independent ones.
 fn pathsOverlap(a: []const u8, b: []const u8) bool {
     if (std.mem.eql(u8, a, b)) return true;
     return containsPath(a, b) or containsPath(b, a);
@@ -133,15 +137,24 @@ fn containsPath(parent: []const u8, child: []const u8) bool {
     return child[parent.len] == '/';
 }
 
-/// One path's grammar: absolute, no `..` segment, no NUL, no trailing slash
-/// (one spelling per path, so the same mount cannot be named two ways).
+/// One path's grammar: absolute, already canonical, no NUL, no trailing slash.
+/// Canonical is the load-bearing half. `pathsOverlap` compares raw strings, so
+/// any path admitted here that RESOLVES somewhere other than where it reads is
+/// a hole straight through the overlap check: `/etc/./ssl` matches neither
+/// `/etc` nor `/etc/ssl` textually, yet bwrap binds it onto the baseline's
+/// `/etc/ssl` — at `read_write` if the operator asked, on every lease that
+/// runner takes. Refusing the non-canonical spelling is what keeps the string
+/// compare and the kernel's resolution talking about the same mount.
 fn bindPathValid(path: []const u8) bool {
     if (path.len < 2 or path.len > MAX_BIND_PATH_LEN) return false;
     if (path[0] != '/') return false; // absolute only — no cwd-relative mounts
     if (path[path.len - 1] == '/') return false; // one spelling per path
     if (std.mem.indexOfScalar(u8, path, 0) != null) return false; // NUL truncation
     var it = std.mem.splitScalar(u8, path, '/');
+    _ = it.next(); // the leading '/' always yields one empty segment
     while (it.next()) |seg| {
+        if (seg.len == 0) return false; // `//` — same mount, second spelling
+        if (std.mem.eql(u8, seg, ".")) return false; // no-op segment, same
         if (std.mem.eql(u8, seg, "..")) return false; // no escaping the named root
     }
     return true;
@@ -199,6 +212,34 @@ test "test_operator_bind_validation_refuses_unsafe_paths" {
         .{ .path = "/srv/fonts" },
         .{ .path = "/etc", .mode = .read_write },
     }));
+}
+
+test "test_non_canonical_spellings_cannot_smuggle_a_bind_onto_a_protected_path" {
+    // The overlap check compares raw strings while bwrap binds where the path
+    // RESOLVES. Any spelling admitted here that resolves elsewhere re-modes a
+    // baseline mount for every lease on the runner — `/etc/./ssl` reads as
+    // neither `/etc` nor `/etc/ssl` and lands on the latter.
+    const smuggled = [_][]const u8{
+        "/etc/./ssl", // `.` segment — resolves under a baseline path
+        "/etc/.", // `.` tail — resolves to `/etc` itself
+        "//etc", // doubled separator, same mount
+        "/etc//ssl", // interior empty segment
+        "/run/./systemd/resolve", // shadows the mount whose absence caused M167
+        "/./srv/models", // leading `.` on an otherwise allowed path
+    };
+    for (smuggled) |p| {
+        try std.testing.expect(!extraBindsValid(&.{.{ .path = p }}));
+        try std.testing.expect(!extraBindsValid(&.{.{ .path = p, .mode = .read_write }}));
+    }
+
+    // The canonical spelling of an allowed path still passes — the rule refuses
+    // a second spelling, not the mount.
+    try std.testing.expect(extraBindsValid(&.{.{ .path = "/srv/models" }}));
+
+    // A segment that merely STARTS with a dot is a real directory name, not a
+    // traversal: refusing it would lock operators out of every dotfile mount.
+    try std.testing.expect(extraBindsValid(&.{.{ .path = "/srv/.cache/models" }}));
+    try std.testing.expect(extraBindsValid(&.{.{ .path = "/srv/..data" }}));
 }
 
 test "test_bind_mode_defaults_closed_and_maps_to_its_bwrap_flag" {
