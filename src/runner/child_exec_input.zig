@@ -55,12 +55,12 @@ pub fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) error{OutO
         try fleet_obj.put(alloc, wire.model, .{ .string = payload.policy.context.model });
     // The provider is the authoritative resolved value delivered on the lease,
     // and it is what decides where the engine dials. An EMPTY key alongside it
-    // is legitimate, not malformed: `requiresApiKey` (secret_probe.zig) waives
-    // the key for an openai-compatible gateway and for a local runtime, both of
-    // which dial something that authenticates nobody. Requiring both dropped the
-    // provider too, and nullclaw then fell back to whatever `Config.load` had —
-    // running a tenant's self-managed slice against the wrong provider entirely,
-    // which is the failure this branch exists to prevent.
+    // is legitimate, not malformed: `probeSelfManagedSecret` accepts an
+    // openai-compatible credential with no api_key, because a private gateway
+    // that takes none is the spec's optional-key design. Requiring both dropped
+    // the provider too, and nullclaw then fell back to whatever `Config.load`
+    // had — running a tenant's self-managed slice against the wrong provider
+    // entirely, which is the failure this branch exists to prevent.
     //
     // The genuinely malformed direction is the other one: a key with no provider
     // would authenticate against a provider nobody chose, so that still injects

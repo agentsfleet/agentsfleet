@@ -9,7 +9,6 @@
 const std = @import("std");
 const pg = @import("pg");
 
-const metadata = @import("../../secrets/metadata.zig");
 const tenant_provider = @import("../../state/tenant_provider.zig");
 const model_rate_cache = @import("../../state/model_rate_cache.zig");
 const revision_state = @import("../../state/model_catalogue_revision.zig");
@@ -23,24 +22,10 @@ const revision_state = @import("../../state/model_catalogue_revision.zig");
 /// frontmatter overlay resolve the effective context window at run time.
 const CUSTOM_ENDPOINT_CAP_UNKNOWN: u32 = 0;
 
-/// `core.model_library` can never hold the (provider, model) pair a local
-/// runtime's request names — the model lives on the operator's hardware and the
-/// set is per-install — so enforcing membership refused EVERY local activation.
-/// Seeding a placeholder model id does not fix it either: any fixed string is a
-/// guess about what the operator called their model.
-///
-/// They take the custom-endpoint path instead, for the same reason it exists: a
-/// user-hosted model is absent from the platform catalogue by design. Billing is
-/// unaffected — a local runtime is self-managed by construction, and
-/// self-managed charges a run fee only, never a token rate.
-const isLocalRuntime = metadata.isLocalRuntime;
-
 /// Resolve the context-window cap to persist for a self-managed activation.
 /// A custom (openai-compatible) endpoint is provider-direct billing: its
 /// user-hosted model is absent from the platform rate catalogue by design, so it
-/// bypasses the gate and takes the unknown/auto sentinel. A local runtime
-/// (`metadata.LOCAL_RUNTIME_PROVIDERS`) takes the same path for the same reason — the
-/// model lives on the operator's hardware and cannot be enumerated. A named provider must
+/// bypasses the gate and takes the unknown/auto sentinel. A named provider must
 /// resolve a catalogued rate row (whose cap we store) — `null` means the model is
 /// not in the catalogue, and the caller fails it (UZ-PROVIDER-004). The rate row
 /// is keyed by (provider, model): the credential's provider is the authority for
@@ -57,7 +42,7 @@ const isLocalRuntime = metadata.isLocalRuntime;
 pub fn resolveSelfManagedCap(conn: *pg.Conn, provider: []const u8, model: []const u8) ?u32 {
     const trimmed = std.mem.trim(u8, model, &std.ascii.whitespace);
     if (trimmed.len == 0 or trimmed.len != model.len) return null;
-    if (std.mem.eql(u8, provider, tenant_provider.OPENAI_COMPATIBLE_PROVIDER) or isLocalRuntime(provider)) {
+    if (std.mem.eql(u8, provider, tenant_provider.OPENAI_COMPATIBLE_PROVIDER)) {
         // A custom endpoint still names a real model, and a context window is a
         // property of the MODEL, not the host serving it — so borrow the
         // catalogue's cap when it knows one (never the rate: self-managed is
@@ -76,12 +61,4 @@ pub fn resolveSelfManagedCap(conn: *pg.Conn, provider: []const u8, model: []cons
     const revision = revision_state.read(conn) catch return null;
     const entry = (model_rate_cache.rateAtRevision(conn, revision, provider, model) catch return null) orelse return null;
     return entry.context_cap_tokens;
-}
-
-test "the activation gate reads the canonical local-runtime list" {
-    // The membership bypass and the keyless-credential carve-out must key off
-    // ONE list; this pins the re-export rather than a second copy of the names.
-    // The list's own behaviour is proven in `secrets/metadata_test.zig`.
-    try std.testing.expect(isLocalRuntime("ollama"));
-    try std.testing.expect(!isLocalRuntime("anthropic"));
 }

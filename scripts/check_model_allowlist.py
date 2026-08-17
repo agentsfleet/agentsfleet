@@ -22,28 +22,18 @@ So the file's invariants are checked here rather than trusted to review:
                               warns about, and it shipped for months.
   5. api providers have fixtures — otherwise the integration lane silently
                               depends on the network being up.
-  6. local-runtime parity   — four lists must be equal: the providers carrying
-                              an activation floor here, the ones the server's
-                              credential layer exempts (from the catalogue check
-                              and from the non-empty-api_key check), and the CLI
-                              and dashboard mirrors of the same set. Adding to
-                              one alone leaves a local runtime that still
-                              refuses activation, one that bypasses the gates
-                              with nothing behind it, or a client surface that
-                              rejects a credential the API would have accepted.
+  6. sentinel rates announce themselves — a rate small enough to be a placeholder
+                              must carry `rate_basis`, or it reads as a real
+                              price nobody meant to charge.
 
 Exit 0 if clean, 1 with one line per violation.
 """
 import json
-import re
 import sys
 from pathlib import Path
 
 ALLOWLIST = Path("scripts/model-library-allowlist.json")
 FIXTURE_DIR = Path("samples/fixtures/model-library")
-PROVIDER_METADATA = Path("src/agentsfleetd/secrets/metadata.zig")
-CLI_PROVIDER_CONSTANTS = Path("cli/src/constants/custom-endpoint.ts")
-UI_PROVIDER_CONSTANTS = Path("ui/packages/app/lib/types.ts")
 
 RATE_FIELDS = ("input", "cached_input", "output")
 
@@ -58,6 +48,7 @@ VALID_REASONS = frozenset(
         "credentialed_feed",
         "no_public_rates",
         "awaiting_curation",
+        "operator_hosted",
     }
 )
 
@@ -77,7 +68,9 @@ CN_HOSTS = (
     "dashscope.aliyuncs.com",
 )
 
-# Providers whose rate row is an activation floor, not a price (local runtimes).
+# A rate row that is a placeholder rather than a price must say so under this
+# key. No provider carries one today; the check stays because a sentinel that
+# does not announce itself is indistinguishable from a real rate.
 RATE_BASIS_FLOOR = "activation_floor"
 
 
@@ -156,154 +149,6 @@ CHECKS = (
 )
 
 
-def zig_local_runtime_providers() -> set[str]:
-    """The provider names LOCAL_RUNTIME_PROVIDERS lists in the credential layer.
-
-    Parsed rather than duplicated: the Zig array is the authority for which
-    providers skip the catalogue-membership check AND the non-empty-api_key
-    check, and this file is the authority for which carry an activation floor.
-    They describe the same set, so a provider added to one and not the other is
-    a real defect — either a local runtime that still refuses activation, or one
-    that bypasses both gates with no floor behind it.
-    """
-    body = PROVIDER_METADATA.read_text(encoding="utf-8")
-    # Comments first: this is a scrape, not a parse, so a `//` line mentioning the
-    # declaration or carrying a quoted example inside the array's byte range would
-    # otherwise be read as a member. Dropping comment text makes the scan see only
-    # code, which is the only thing `isLocalRuntime` compiles against. The scan
-    # starts at the array's opening brace so a doc comment between the name and
-    # the members cannot contribute one.
-    code = _strip_line_comments(body)
-    start = code.find("const LOCAL_RUNTIME_PROVIDERS")
-    if start == -1:
-        raise ValueError(f"LOCAL_RUNTIME_PROVIDERS not found in {PROVIDER_METADATA}")
-    eq_at = code.find("=", start)
-    if eq_at == -1:
-        raise ValueError(f"LOCAL_RUNTIME_PROVIDERS in {PROVIDER_METADATA} is never assigned")
-    open_at = code.find("{", eq_at)
-    if open_at == -1:
-        raise ValueError(f"LOCAL_RUNTIME_PROVIDERS in {PROVIDER_METADATA} has no opening brace")
-    end = code.find("};", open_at)
-    if end == -1:
-        raise ValueError(f"LOCAL_RUNTIME_PROVIDERS in {PROVIDER_METADATA} has no closing brace")
-    return set(re.findall(r'"([^"]+)"', code[open_at:end]))
-
-
-def _strip_line_comments(body: str) -> str:
-    """Drop `//` comments WITHOUT cutting inside a string literal.
-
-    The naive `line.split("//")[0]` truncates any line carrying a URL — and a
-    provider list is exactly where a `"http://localhost:11434/v1"` would sit. A
-    cut mid-literal leaves an unbalanced quote, and the member regex then re-pairs
-    quotes across the rest of the window, yielding a WRONG-but-non-empty set that
-    a vacuity check on length would not notice.
-    """
-    out = []
-    for line in body.splitlines():
-        in_str = False
-        cut = len(line)
-        i = 0
-        while i < len(line):
-            ch = line[i]
-            if in_str:
-                if ch == "\\":
-                    i += 2
-                    continue
-                if ch == '"':
-                    in_str = False
-            elif ch == '"':
-                in_str = True
-            elif ch == "/" and line.startswith("//", i):
-                cut = i
-                break
-            i += 1
-        out.append(line[:cut])
-    return "\n".join(out)
-
-
-def _ts_local_runtime_providers(path: Path) -> set[str]:
-    """The provider names a TypeScript surface mirrors, for the same set.
-
-    Both surfaces enforce their own copy of the rules before any request is
-    made — the CLI refuses `--provider ollama` with no `--api-key` and checks
-    `--model` against the catalogue; the dashboard disables Save and builds the
-    model picker from catalogue rows. A mirror that lags the Zig list therefore
-    rejects credentials the API would accept, from the surfaces operators
-    actually use. `cli/` and `ui/` share no module graph with the server or with
-    each other, so the literal is restated once in each and pinned here.
-    """
-    body = path.read_text(encoding="utf-8")
-    code = _strip_line_comments(body)
-    start = code.find("const LOCAL_RUNTIME_PROVIDERS")
-    if start == -1:
-        raise ValueError(f"LOCAL_RUNTIME_PROVIDERS not found in {path}")
-    # Anchor on the ASSIGNMENT, then the array's opening bracket. A type
-    # annotation (`: readonly string[] = [...]`) puts an empty `[]` between the
-    # name and the members, so scanning from the declaration finds that bracket
-    # pair instead and yields an empty set — which compares equal to nothing and
-    # would report clean forever.
-    eq_at = code.find("=", start)
-    if eq_at == -1:
-        raise ValueError(f"LOCAL_RUNTIME_PROVIDERS in {path} is never assigned")
-    open_at = code.find("[", eq_at)
-    if open_at == -1:
-        raise ValueError(f"LOCAL_RUNTIME_PROVIDERS in {path} has no opening bracket")
-    end = code.find("]", open_at + 1)
-    if end == -1:
-        raise ValueError(f"LOCAL_RUNTIME_PROVIDERS in {path} has no closing bracket")
-    return set(re.findall(r'"([^"]+)"', code[open_at:end]))
-
-
-def ts_local_runtime_providers() -> set[str]:
-    """The CLI's mirror."""
-    return _ts_local_runtime_providers(CLI_PROVIDER_CONSTANTS)
-
-
-def ui_local_runtime_providers() -> set[str]:
-    """The dashboard's mirror."""
-    return _ts_local_runtime_providers(UI_PROVIDER_CONSTANTS)
-
-
-def check_local_runtime_parity(doc: dict) -> list[str]:
-    floor = {
-        name
-        for name, cfg in doc.get("providers", {}).items()
-        if cfg.get("rate_basis") == RATE_BASIS_FLOOR
-    }
-    try:
-        zig = zig_local_runtime_providers()
-    except (OSError, ValueError) as err:
-        return [f"could not read the credential layer's local-runtime list: {err}"]
-    try:
-        ts = ts_local_runtime_providers()
-    except (OSError, ValueError) as err:
-        return [f"could not read the CLI's local-runtime list: {err}"]
-    try:
-        ui = ui_local_runtime_providers()
-    except (OSError, ValueError) as err:
-        return [f"could not read the dashboard's local-runtime list: {err}"]
-    problems = []
-    if floor - zig:
-        problems.append(
-            f"carry an activation floor but the credential layer still enforces catalogue membership: {sorted(floor - zig)}"
-        )
-    if zig - floor:
-        problems.append(
-            f"bypass the credential gates but carry no activation floor in the allowlist: {sorted(zig - floor)}"
-        )
-    if zig != ts:
-        problems.append(
-            f"the CLI's local-runtime mirror disagrees with the server's: "
-            f"server-only={sorted(zig - ts)}, cli-only={sorted(ts - zig)}"
-        )
-    if zig != ui:
-        problems.append(
-            f"the dashboard's local-runtime mirror disagrees with the server's: "
-            f"server-only={sorted(zig - ui)}, dashboard-only={sorted(ui - zig)}"
-        )
-    return problems
-
-
 def check_legend_covers_vocabulary(doc: dict) -> list[str]:
     """The in-file legend and this module's vocabulary must not drift apart."""
     legend = {k for k in doc.get("unpriced_reasons", {}) if not k.startswith("_")}
@@ -329,7 +174,6 @@ def main() -> int:
         return 1
 
     problems = check_legend_covers_vocabulary(doc)
-    problems.extend(check_local_runtime_parity(doc))
     providers = doc.get("providers", {})
     for name, cfg in providers.items():
         for check in CHECKS:

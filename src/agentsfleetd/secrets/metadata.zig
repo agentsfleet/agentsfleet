@@ -33,37 +33,6 @@ const S_API_KEY = "api_key";
 /// constant exists, so it belongs beside `classify`.
 pub const OPENAI_COMPATIBLE_PROVIDER: []const u8 = "openai-compatible";
 
-/// Providers that serve models from hardware the operator owns. NullClaw dials
-/// each by name at a localhost endpoint and carries no model list for any of
-/// them, because there cannot be one: the served model is whatever the operator
-/// loaded (`--served-model-name`, an `ollama pull`), so the set is unbounded and
-/// per-install. Two credential gates read this — the activation gate
-/// (`handlers/tenant_provider_cap.zig`) and the key-requirement gate
-/// (`state/secret_probe.zig`) — and `state/` cannot import `http/handlers/`, so
-/// the canonical list lives here beside the other provider-classification facts.
-///
-/// Kept in lockstep with the allowlist's `rate_basis: "activation_floor"` set by
-/// scripts/check_model_allowlist.py, so the two cannot drift apart silently.
-pub const LOCAL_RUNTIME_PROVIDERS = [_][]const u8{
-    "litellm",
-    "llama.cpp",
-    "llamacpp",
-    "lm-studio",
-    "lmstudio",
-    "ollama",
-    "osaurus",
-    "sglang",
-    "vllm",
-};
-
-/// Whether this provider serves models from the operator's own hardware.
-pub fn isLocalRuntime(provider: []const u8) bool {
-    for (LOCAL_RUNTIME_PROVIDERS) |name| {
-        if (std.mem.eql(u8, provider, name)) return true;
-    }
-    return false;
-}
-
 /// What a stored credential *is*, derived from its `provider` field. The wire
 /// value is the `@tagName` and is kept verbatim in the TS client union (the
 /// cross-runtime half of RULE UFS), so a rename here is a wire break there.

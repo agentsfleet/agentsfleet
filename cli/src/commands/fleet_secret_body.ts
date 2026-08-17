@@ -22,7 +22,6 @@ import { Effect } from "effect";
 import { ConfigError, ValidationError, type CliError } from "../errors/index.ts";
 import {
   OPENAI_COMPATIBLE_PROVIDER,
-  isLocalRuntime,
   SECRET_FIELD_PROVIDER,
   SECRET_FIELD_API_KEY,
   SECRET_FIELD_BASE_URL,
@@ -113,12 +112,6 @@ const typedProviderBody = (flags: SecretAddFlags): ParsedData => {
   const model = flags.model?.trim();
 
   const isCustom = provider === OPENAI_COMPATIBLE_PROVIDER;
-  // Case-folded, unlike the server's exact match, because this check runs on
-  // the RAW flag while `resolveCatalogueTarget` later normalises the spelling to
-  // the catalogue's and posts THAT. Matching exactly here would refuse
-  // `--provider Ollama` for want of a key the credential it actually stores
-  // (`ollama`) does not need.
-  const isLocal = isLocalRuntime(provider.toLowerCase());
 
   // Any one of the four typed flags engages this path, so it is reachable with
   // no --provider at all — and commander only runs the catalogue parser on a
@@ -129,13 +122,10 @@ const typedProviderBody = (flags: SecretAddFlags): ParsedData => {
     return reject("the typed form requires --provider", PROVIDER_ADD_USAGE);
   }
 
-  // api_key is required for a HOSTED provider; optional for an
-  // openai-compatible endpoint (a keyless gateway dials with no key) and for a
-  // local runtime (a model server on the operator's own box authenticates
-  // nobody) — mirrors `requiresApiKey` in secret_probe.zig. Rejecting here when
-  // the server would accept means the operator invents a placeholder key to
-  // satisfy the CLI alone.
-  if (!isCustom && !isLocal && apiKey.length === 0) {
+  // api_key is required for a named provider; OPTIONAL for an openai-compatible
+  // endpoint (a keyless gateway dials with no key) — mirrors the dashboard and
+  // the resolver, which only requires a non-empty key for named providers.
+  if (!isCustom && apiKey.length === 0) {
     return reject("--provider requires --api-key", NAMED_PROVIDER_USAGE);
   }
   if (isCustom && (baseUrl === undefined || baseUrl.length === 0)) {
