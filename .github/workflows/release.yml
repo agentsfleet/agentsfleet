@@ -294,7 +294,26 @@ jobs:
         with:
           bun-version: 1.3.14
 
-      - name: Load npm token from 1Password
+      # The token is the FALLBACK now, not the primary credential. `id-token:
+      # write` above mints an OIDC identity, and the npm CLI "automatically
+      # detects OIDC environments and uses them for authentication before
+      # falling back to traditional tokens" — so once a Trusted Publisher is
+      # configured on npmjs.com this step stops being load-bearing and can go.
+      #
+      # It cannot go YET, and the reason is a fact about the registry rather
+      # than a preference: `@agentsfleet/cli` has never been published. Checked
+      # Aug 17, 2026, authenticated as a scope member — `npm view` 404s and
+      # `npm access list packages @agentsfleet` is empty. A Trusted Publisher is
+      # configured on a package's own settings page, so there is nothing to
+      # attach one to until a first version exists. Removing the token before
+      # then would leave the first publish with neither route.
+      #
+      # Sequence to finish this: publish once on this token → configure the
+      # publisher (agentsfleet/agentsfleet, workflow release.yml, blank
+      # environment) → delete this step, `NODE_AUTH_TOKEN` below, and
+      # `--provenance`. The publisher pins owner/repo/workflow, so renaming any
+      # of the three breaks it silently.
+      - name: Load npm token from 1Password (fallback until a publisher exists)
         uses: 1password/load-secrets-action@v4
         with:
           export-env: true
@@ -307,7 +326,18 @@ jobs:
 
       - run: bun install --frozen-lockfile
       - run: bun run build
+      # setup-node's bundled npm predates OIDC support. An npm older than
+      # 11.5.1 ignores the identity entirely and falls straight back to a token
+      # lookup, which fails with an auth error that names neither cause — so the
+      # version is forced rather than inferred from `node-version`. Same step,
+      # same reason, as indykish/dotfiles' release.yml.
+      - name: Use an npm that speaks OIDC
+        run: npm install -g npm@latest
       - name: Publish to npm (skip if version already exists)
+        # `--provenance` STAYS while the token fallback does. Trusted Publishing
+        # implies provenance, but a token-authenticated publish only attests
+        # when asked, and dropping the flag before the publisher exists would
+        # silently ship the first releases unattested.
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           if npm view "@agentsfleet/cli@${VERSION}" version 2>/dev/null | grep -qF "${VERSION}"; then
