@@ -91,11 +91,15 @@ pub const Pending = struct {
     /// against the assignment the operator is actually looking at. With no
     /// assignment yet there is nothing to probe under — the runner is already
     /// refusing to lease, and the row reads degraded for that reason.
-    pub fn capture(self: *Pending, io: std.Io, applied: *AppliedPolicy, cfg: Config) void {
+    /// Returns whether a verdict was actually produced. The caller uses that to
+    /// decide whether the startup proof is done: a transient workspace or
+    /// allocation failure must not count as "probed", or one bad boot suppresses
+    /// the startup self-test for the life of the daemon.
+    pub fn capture(self: *Pending, io: std.Io, applied: *AppliedPolicy, cfg: Config) bool {
         self.clear();
         const pol = applied.snapshot(self.alloc) orelse {
             log.debug("selftest_skipped_no_assignment", .{});
-            return;
+            return false;
         };
         var eff = cfg;
         eff.sandbox_tier = pol.sandbox_tier;
@@ -106,20 +110,21 @@ pub const Pending = struct {
         const workspace = probeWorkspace(io, self.alloc, cfg) catch |err| {
             AppliedPolicy.freePolicy(self.alloc, pol);
             log.warn("selftest_workspace_failed", .{ .err = @errorName(err) });
-            return;
+            return false;
         };
         defer self.alloc.free(workspace);
 
         const r = selftest_exec.run(io, self.alloc, eff, workspace) catch |err| {
             AppliedPolicy.freePolicy(self.alloc, pol);
             log.warn("selftest_probe_failed", .{ .err = @errorName(err) });
-            return;
+            return false;
         };
         // The snapshot is retained, not freed: `r`'s operator-bind check names
         // point into `pol.extra_binds`.
         self.result = r;
         self.policy = pol;
         log.info("selftest_completed", .{ .all_ok = r.allOk(), .checks = r.checks.len });
+        return true;
     }
 };
 

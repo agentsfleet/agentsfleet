@@ -297,8 +297,9 @@ test "test_probe_result_carries_no_secrets" {
         selftest.DETAIL_DNS_NOT_TESTABLE,
         selftest.DETAIL_EGRESS_NONE_DECLARED,
         selftest.DETAIL_POSTURE_UNBUILDABLE,
-        "read-only",
-        "read-write",
+        selftest.DETAIL_BIND_PRESENT_RO,
+        selftest.DETAIL_BIND_PRESENT_RW,
+        selftest.DETAIL_BIND_ABSENT,
     };
     for (r.checks) |check| {
         var known = false;
@@ -323,10 +324,21 @@ test "test_selftest_reports_operator_binds_individually" {
     const r = try selftest.grade(alloc, c, HEALTHY);
     defer r.deinit(alloc);
 
+    // The detail names the ASSIGNED mode without claiming the probe verified it
+    // — bwrap enforces the mode in the kernel, and a bare "read-only" here would
+    // read as a verification the probe never performed.
     const models = findCheck(r, "/srv/models").?;
-    try std.testing.expectEqualStrings("read-write", models.detail);
+    try std.testing.expectEqualStrings(selftest.DETAIL_BIND_PRESENT_RW, models.detail);
     const fonts = findCheck(r, "/srv/fonts").?;
-    try std.testing.expectEqualStrings("read-only", fonts.detail);
+    try std.testing.expectEqualStrings(selftest.DETAIL_BIND_PRESENT_RO, fonts.detail);
+
+    // A bind that did not land says so, instead of echoing its mode as if it had.
+    var absent = HEALTHY;
+    absent.extra_binds_present = false;
+    const missed = try selftest.grade(alloc, c, absent);
+    defer missed.deinit(alloc);
+    try std.testing.expectEqualStrings(selftest.DETAIL_BIND_ABSENT, findCheck(missed, "/srv/fonts").?.detail);
+    try std.testing.expect(!findCheck(missed, "/srv/fonts").?.ok);
 }
 
 test "an unestablished sandbox is a named failed check, never a silent pass" {
@@ -351,4 +363,51 @@ test "the result records the policy it ran under, so a stale result is detectabl
 
     try std.testing.expectEqual(contract.protocol.NetworkPolicy.deny_all_egress, r.network_policy);
     try std.testing.expectEqual(contract.protocol.SandboxTier.landlock_full, r.sandbox_tier);
+}
+
+test "the probe only ever aims at what the assignment declared" {
+    // `targetsFor` decides what the child is asked to reach. It is the guard
+    // against the false red this milestone exists to remove: probing a name or
+    // an endpoint the operator never declared red-flags a runner that is
+    // configured exactly as intended.
+
+    // Nothing declared → nothing dialled, nothing resolved.
+    const bare = selftest.targetsFor(cfg(.allow_all, &.{}));
+    try std.testing.expectEqual(@as(?[]const u8, null), bare.resolve);
+    try std.testing.expectEqual(@as(?[]const u8, null), bare.dial);
+
+    // A declared registry is both the name to resolve and the endpoint to dial.
+    var declared = cfg(.allow_all, &.{});
+    declared.registry_allowlist = &.{"pypi.org"};
+    const open = selftest.targetsFor(declared);
+    try std.testing.expectEqualStrings("pypi.org", open.resolve.?);
+    try std.testing.expectEqualStrings("pypi.org", open.dial.?);
+
+    // An explicit port belongs to the dial target, never to the name lookup.
+    var ported = cfg(.allow_all, &.{});
+    ported.registry_allowlist = &.{"registry.npmjs.org:5000"};
+    const with_port = selftest.targetsFor(ported);
+    try std.testing.expectEqualStrings("registry.npmjs.org", with_port.resolve.?);
+    try std.testing.expectEqualStrings("registry.npmjs.org:5000", with_port.dial.?);
+
+    // Under deny_all there is no network by assignment, so spending a probe
+    // timeout to rediscover that would be pure latency — `grade` already knows.
+    var denied = cfg(.deny_all_egress, &.{});
+    denied.registry_allowlist = &.{"pypi.org"};
+    const closed = selftest.targetsFor(denied);
+    try std.testing.expectEqual(@as(?[]const u8, null), closed.resolve);
+    try std.testing.expectEqual(@as(?[]const u8, null), closed.dial);
+}
+
+test "operator binds are confirmed under every posture, including deny_all" {
+    // A mount is a filesystem question. A locked-down network says nothing
+    // about whether the operator's path landed, so the bind checks must survive
+    // the posture that skips the network targets.
+    const binds = [_]contract.protocol.ExtraBind{.{ .path = "/srv/models" }};
+    const denied = selftest.targetsFor(cfg(.deny_all_egress, &binds));
+    try std.testing.expectEqual(@as(usize, 1), denied.binds.len);
+    try std.testing.expectEqualStrings("/srv/models", denied.binds[0].path);
+
+    const open = selftest.targetsFor(cfg(.allow_all, &binds));
+    try std.testing.expectEqual(@as(usize, 1), open.binds.len);
 }

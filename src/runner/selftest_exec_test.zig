@@ -7,6 +7,11 @@
 //! healthy sandbox, which is the exact failure this milestone exists to remove.
 
 const std = @import("std");
+const builtin = @import("builtin");
+const common = @import("common");
+const Config = @import("daemon/config.zig");
+const sandbox_args = @import("sandbox_args.zig");
+const selftest = @import("selftest.zig");
 const selftest_exec = @import("selftest_exec.zig");
 
 const PASSING = "resolver=1 dns=1 egress=1 binds=1\n";
@@ -28,8 +33,22 @@ test "a check the probe never ran is untested, not failed" {
     const o = selftest_exec.outcomeFrom("resolver=1 dns=x egress=x binds=x", false);
     try std.testing.expect(o.resolver_readable);
     try std.testing.expect(!o.dns_testable);
-    // Nothing was assigned, so nothing failed to land.
-    try std.testing.expect(o.extra_binds_present);
+    // Binds are the one check that does NOT get the benefit of the doubt: only
+    // an explicit pass certifies an assigned mount. `grade` iterates the
+    // assigned list, so this reads false-but-unused when nothing is assigned,
+    // and fail-closed when something is.
+    try std.testing.expect(!o.extra_binds_present);
+}
+
+test "an assigned bind is never certified by a probe that did not look for it" {
+    // The failure this guards: a probe built without the bind arguments emits
+    // `binds=x`, and treating "untested" as present would report every
+    // operator-assigned mount healthy without one having been checked —
+    // Dimension 4.5 reporting a green row it never earned.
+    const untested = selftest_exec.outcomeFrom("resolver=1 dns=1 egress=1 binds=x", false);
+    try std.testing.expect(!untested.extra_binds_present);
+    const passed = selftest_exec.outcomeFrom("resolver=1 dns=1 egress=1 binds=1", false);
+    try std.testing.expect(passed.extra_binds_present);
 }
 
 test "an operator bind that did not land reads as absent" {
@@ -80,4 +99,73 @@ test "a reaped probe reports nothing it half-observed" {
     try std.testing.expect(!o.dns_resolved);
     try std.testing.expect(!o.egress_reachable);
     try std.testing.expect(!o.extra_binds_present);
+}
+
+test "a child that did not exit cleanly is never trusted" {
+    // The probe prints and then returns 0. A non-zero status means it died
+    // partway, so its line describes a run that did not finish — accepting it
+    // would let a crash halfway through report the checks it managed to print.
+    try std.testing.expect(selftest_exec.exitedClean(.{ .exited = 0 }));
+    try std.testing.expect(!selftest_exec.exitedClean(.{ .exited = 1 }));
+    try std.testing.expect(!selftest_exec.exitedClean(.{ .signal = .KILL }));
+    // A wait we could not perform proves nothing about the child.
+    try std.testing.expect(!selftest_exec.exitedClean(null));
+}
+
+test "the drain reaches end-of-file even when the child overruns the cap" {
+    // The regression this pins: stopping at a full buffer returns WITHOUT
+    // end-of-file, and the caller retires the watchdog on that return — so a
+    // chatty-then-hung child would leave the reap blocked with nothing alive to
+    // kill it. Reading past the cap and discarding is what keeps EOF the exit.
+    const io = common.globalIo();
+    const path = "/tmp/agentsfleet-selftest-drain-test";
+    const long = "resolver=1 dns=1 egress=1 binds=1\n" ++ ("x" ** 400);
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = long });
+    defer std.Io.Dir.cwd().deleteFile(io, path) catch |err|
+        std.debug.print("drain fixture cleanup ignored: {s}\n", .{@errorName(err)});
+
+    const file = try std.Io.Dir.openFileAbsolute(io, path, .{});
+    defer file.close(io);
+
+    var buf: [128]u8 = undefined;
+    const line = selftest_exec.drainVerdict(io, file, &buf);
+    try std.testing.expectEqual(@as(usize, 128), line.len);
+    // The verdict still parses out of the retained prefix.
+    const o = selftest_exec.outcomeFrom(line, false);
+    try std.testing.expect(o.resolver_readable);
+    try std.testing.expect(o.extra_binds_present);
+}
+
+test "a host without bubblewrap reports an unestablished sandbox, not an empty panel" {
+    // Runs on exactly the host the coverage lane uses: Linux, no bwrap. Guarded
+    // twice — off Linux the tier is not sandboxed and `run` would spawn the
+    // probe for real, and with a real bwrap present it would build a sandbox.
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const io = common.globalIo();
+    if (sandbox_args.bwrapPath(io) != null) return error.SkipZigTest;
+
+    const alloc = std.testing.allocator;
+    const r = try selftest_exec.run(io, alloc, probeCfg(), "/tmp");
+    defer r.deinit(alloc);
+
+    // A missing mechanism is a named failed CHECK, never an error return — the
+    // operator reads what to install instead of an empty self-test.
+    try std.testing.expect(!r.allOk());
+    try std.testing.expectEqual(@as(usize, 1), r.checks.len);
+    try std.testing.expectEqualStrings(selftest.CHECK_SANDBOX, r.checks[0].name);
+    try std.testing.expectEqualStrings(selftest.DETAIL_NO_BWRAP, r.checks[0].detail);
+}
+
+fn probeCfg() Config {
+    return .{
+        .control_plane_url = "http://127.0.0.1:8080",
+        .runner_token = "agt_rtest",
+        .sandbox_tier = .landlock_full,
+        .storage_home = "/tmp/agentsfleet-runner",
+        .network_policy = .deny_all_egress,
+        .worker_count = 1,
+        .cp_deadlines = .{},
+        .registry_allowlist = &.{},
+        .alloc = std.testing.allocator,
+    };
 }
