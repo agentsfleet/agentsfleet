@@ -182,3 +182,66 @@ test "decodeCapability parses a stored report, tolerates unknown fields, nulls o
     try std.testing.expect(decodeCapability(a, null) == null);
     try std.testing.expect(decodeCapability(a, "{{nope") == null);
 }
+
+test "decodeSelftest parses a stored verdict and keeps its policy alongside it" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const report = decodeSelftest(
+        a,
+        \\[{"name":"a hostname resolves inside the sandbox","ok":false,"detail":"the resolver did not answer","future":1}]
+    ,
+        false,
+        "landlock_full",
+        "deny_all_egress",
+    ) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(@as(usize, 1), report.checks.len);
+    try std.testing.expect(!report.all_ok);
+    try std.testing.expect(!report.checks[0].ok);
+    // The policy travels WITH the verdict — the page labels a mismatch stale
+    // rather than presenting an old result against the current assignment.
+    try std.testing.expectEqualStrings("landlock_full", report.sandbox_tier);
+    try std.testing.expectEqualStrings("deny_all_egress", report.network_policy);
+}
+
+test "decodeSelftest reads a row missing any one column as no verdict at all" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const checks = "[]";
+    // A partial verdict is never completed with defaults: every column must be
+    // present or the row reads as never-self-tested (the same fail-closed rule
+    // decodePolicy applies), so each NULL is proven independently.
+    try std.testing.expect(decodeSelftest(a, null, true, "landlock_full", "allow_all") == null);
+    try std.testing.expect(decodeSelftest(a, checks, null, "landlock_full", "allow_all") == null);
+    try std.testing.expect(decodeSelftest(a, checks, true, null, "allow_all") == null);
+    try std.testing.expect(decodeSelftest(a, checks, true, "landlock_full", null) == null);
+}
+
+test "decodeSelftest reads an unparseable verdict as none rather than surfacing a partial one" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    try std.testing.expect(decodeSelftest(a, "{{nope", true, "landlock_full", "allow_all") == null);
+    // Right JSON shape, wrong type for `ok` — still refused whole.
+    try std.testing.expect(decodeSelftest(a, "[{\"name\":\"n\",\"ok\":\"yes\",\"detail\":\"d\"}]", true, "landlock_full", "allow_all") == null);
+}
+
+test "decodeSelftest yields no verdict when the arena cannot own the policy strings" {
+    // The two dupes own their bytes past the row's deinit; if either cannot be
+    // made, returning a report pointing at borrowed row memory would be a
+    // use-after-free, so the decoder drops the whole verdict instead.
+    const checks = "[]";
+    var index: usize = 0;
+    while (index < 8) : (index += 1) {
+        var fa = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = index });
+        var arena = std.heap.ArenaAllocator.init(fa.allocator());
+        defer arena.deinit();
+        // Either it decoded fully or it refused — never a report with a
+        // half-owned string.
+        if (decodeSelftest(arena.allocator(), checks, true, "landlock_full", "allow_all")) |r| {
+            try std.testing.expectEqualStrings("landlock_full", r.sandbox_tier);
+            try std.testing.expectEqualStrings("allow_all", r.network_policy);
+        }
+    }
+}

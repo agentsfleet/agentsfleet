@@ -280,3 +280,40 @@ test "integration: test_a_verdict_claiming_false_health_is_refused" {
     try std.testing.expectEqual(@as(?bool, null), row.all_ok);
     try std.testing.expectEqual(@as(i64, 0), row.completed_at);
 }
+
+// A name one byte past MAX_CHECK_NAME_LEN. A runner token must not become a
+// persistence amplifier, so the verdict is refused whole rather than truncated.
+const HB_VERDICT_UNBOUNDED =
+    \\{"selftest":{"checks":[
+    \\  {"name":"nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn","ok":true,
+    \\   "detail":"no fault detected"}],
+    \\ "all_ok":true,"sandbox_tier":"dev_none","network_policy":"allow_all"}}
+;
+
+test "integration: a malformed or unbounded verdict is dropped without failing the liveness beat" {
+    // The beat is the runner's liveness signal. Refusing a bad verdict must
+    // never 4xx it, or a runner with a buggy probe would read as offline and
+    // stop taking work — a worse outcome than the missing verdict.
+    const h = try startHarness();
+    defer h.deinit();
+    defer cleanupAll(h);
+    cleanupAll(h);
+
+    const reg = try register(h, registerBody(HOST_REPORT));
+    defer freeRegistered(reg);
+
+    // Body absent entirely, body that is not JSON, and a verdict past its
+    // bounds — three ways in, one outcome: 200 and no stored verdict.
+    for ([_][]const u8{ "", "{not json", HB_VERDICT_UNBOUNDED }) |body| {
+        const resp = try heartbeat(h, reg.runner_token, body);
+        defer resp.deinit();
+        try resp.expectStatus(.ok);
+    }
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const row = try selftestRow(conn, reg.runner_id);
+    defer row.deinit();
+    try std.testing.expect(!row.has_checks);
+    try std.testing.expectEqual(@as(i64, 0), row.completed_at);
+}

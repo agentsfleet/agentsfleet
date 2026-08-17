@@ -56,6 +56,30 @@ pub const DETAIL_TIMEOUT = "the probe exceeded its time bound and was reaped";
 pub const DETAIL_NO_BWRAP = "no bubblewrap binary on this host — a sandboxed tier cannot be established";
 pub const DETAIL_SPAWN_FAILED = "the sandbox could not be established";
 
+/// Under `deny_all_egress` no name can resolve, by assignment. Graded the same
+/// way the egress check is: reporting it a fault would make every correctly
+/// locked-down runner read unhealthy, and an alert that fires on correct
+/// configuration gets muted — then it is not there when the sandbox breaks.
+pub const DETAIL_DNS_NO_NETWORK = "no egress by assignment (deny_all_egress), so no name can resolve — expected, not a fault";
+
+/// The probe could not run a resolver lookup at all (no `getent` in the
+/// sandbox). Distinct from `DETAIL_DNS_FAILED`: "not tested" and "tested and
+/// broken" are different facts, and collapsing them would report a missing
+/// tool as a dead resolver.
+pub const DETAIL_DNS_NOT_TESTABLE = "no resolver tool inside the sandbox, so name resolution was not tested";
+
+/// No registry host is assigned, so the runner has declared no egress
+/// requirement to prove. The probe never dials a host the operator did not
+/// name — probing the daemon's own fallback guess would produce a red row
+/// nobody can act on.
+pub const DETAIL_EGRESS_NONE_DECLARED = "no registry hosts are assigned, so there is no declared egress requirement to test";
+
+/// `allow_list_egress` refuses the lease outright until option D lands
+/// (`child_supervisor.enforcesEgress` fail-closed), so there is no sandbox to
+/// probe. Reported as the same refusal a lease gets rather than as a verdict
+/// on a sandbox that was never built.
+pub const DETAIL_POSTURE_UNBUILDABLE = "the assigned egress posture is not established for leases on this build, so no sandbox was probed";
+
 /// One probe run's verdict: the ordered checks, the policy they ran under, and
 /// whether the sandbox was even established. The policy travels WITH the result
 /// so a result that outlives its assignment renders as stale rather than as a
@@ -160,8 +184,15 @@ pub fn grade(alloc: std.mem.Allocator, cfg: Config, outcome: Outcome) !Result {
         .detail = if (outcome.resolver_readable) DETAIL_OK else DETAIL_RESOLVER_DANGLING,
     });
 
+    // DNS is graded against the ASSIGNED posture too. Under deny_all there is
+    // no network to resolve through, so a failure there is the assignment
+    // working — the same reasoning the egress arm below has always used.
     if (outcome.timed_out) {
         try checks.append(alloc, .{ .name = CHECK_DNS, .ok = false, .detail = DETAIL_TIMEOUT });
+    } else if (cfg.network_policy == .deny_all_egress) {
+        try checks.append(alloc, .{ .name = CHECK_DNS, .ok = true, .detail = DETAIL_DNS_NO_NETWORK });
+    } else if (!outcome.dns_testable) {
+        try checks.append(alloc, .{ .name = CHECK_DNS, .ok = true, .detail = DETAIL_DNS_NOT_TESTABLE });
     } else {
         try checks.append(alloc, .{
             .name = CHECK_DNS,
@@ -171,8 +202,14 @@ pub fn grade(alloc: std.mem.Allocator, cfg: Config, outcome: Outcome) !Result {
     }
 
     // Egress is graded against the ASSIGNED posture, not against an absolute.
+    // The probe dials only hosts the operator DECLARED: an assigned registry is
+    // an assertion that leases need it, so failing to reach one is a real fault
+    // — whereas dialing the daemon's own fallback set would red-flag a runner
+    // that is configured exactly as intended.
     if (cfg.network_policy == .deny_all_egress) {
         try checks.append(alloc, .{ .name = CHECK_EGRESS, .ok = true, .detail = DETAIL_EGRESS_DENIED_EXPECTED });
+    } else if (cfg.registry_allowlist.len == 0) {
+        try checks.append(alloc, .{ .name = CHECK_EGRESS, .ok = true, .detail = DETAIL_EGRESS_NONE_DECLARED });
     } else {
         try checks.append(alloc, .{
             .name = CHECK_EGRESS,
@@ -207,6 +244,10 @@ pub const Outcome = struct {
     egress_reachable: bool,
     extra_binds_present: bool = true,
     timed_out: bool = false,
+    /// False when the sandbox carried no resolver tool to ask with. Defaults
+    /// true so an existing caller keeps grading DNS as before; the executor
+    /// sets it false rather than reporting an untested resolver as broken.
+    dns_testable: bool = true,
 };
 
 test {
