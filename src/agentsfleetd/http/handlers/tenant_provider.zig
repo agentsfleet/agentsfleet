@@ -189,7 +189,7 @@ fn probeSelfManagedOrFail(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, secret_
             return null;
         },
         tenant_provider.ResolveError.SecretDataMalformed => {
-            hx.fail(ec.ERR_PROVIDER_SECRET_DATA_MALFORMED, "credential JSON missing required field (provider, or api_key for a named provider)");
+            hx.fail(ec.ERR_PROVIDER_SECRET_DATA_MALFORMED, "credential JSON missing required field (provider, or api_key for a hosted provider — a custom endpoint and a local runtime need no key)");
             return null;
         },
         tenant_provider.ResolveError.SecretEndpointInvalid => {

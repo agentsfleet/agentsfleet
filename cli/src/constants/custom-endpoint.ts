@@ -1,5 +1,7 @@
 /**
- * Custom OpenAI-compatible endpoint constants for the CLI.
+ * Provider-classification constants for the CLI — the two provider kinds whose
+ * credential rules differ from a hosted vendor's: the custom OpenAI-compatible
+ * endpoint, and the local runtimes.
  *
  * The `provider` id below mirrors the backend resolver
  * (`src/agentsfleetd/state/tenant_provider_resolver.zig` →
@@ -20,6 +22,34 @@
  */
 
 export const OPENAI_COMPATIBLE_PROVIDER = "openai-compatible" as const;
+
+/**
+ * Providers that serve models from hardware the operator owns, mirroring
+ * `LOCAL_RUNTIME_PROVIDERS` in `src/agentsfleetd/secrets/metadata.zig` (same
+ * identifier, per the cross-runtime naming rule). The server exempts these from
+ * two checks — catalogue membership and the non-empty `api_key` — because the
+ * served model is whatever the operator loaded and the server authenticates
+ * nobody. The CLI has to know the same set or it rejects the credential before
+ * the request is ever made, which is what it did.
+ *
+ * `scripts/check_model_allowlist.py` requires this list, the Zig list, and the
+ * allowlist's `activation_floor` set to be equal, so the mirror cannot drift.
+ */
+export const LOCAL_RUNTIME_PROVIDERS = [
+  "litellm",
+  "llama.cpp",
+  "llamacpp",
+  "lm-studio",
+  "lmstudio",
+  "ollama",
+  "osaurus",
+  "sglang",
+  "vllm",
+] as const;
+
+/** Whether this provider serves models from the operator's own hardware. */
+export const isLocalRuntime = (provider: string): boolean =>
+  (LOCAL_RUNTIME_PROVIDERS as ReadonlyArray<string>).includes(provider);
 
 // Secret JSON field names (verbatim with the server-side resolver).
 export const SECRET_FIELD_PROVIDER = "provider" as const;

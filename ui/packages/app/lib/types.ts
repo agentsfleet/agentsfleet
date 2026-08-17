@@ -319,6 +319,30 @@ export const PROVIDER_MODE = {
 // option, and the tests) imports it (RULE UFS).
 export const OPENAI_COMPATIBLE_PROVIDER = "openai-compatible" as const;
 
+// Providers serving models from hardware the operator owns. Mirrors
+// `LOCAL_RUNTIME_PROVIDERS` in `src/agentsfleetd/secrets/metadata.zig` and the
+// CLI's copy, under the same identifier (cross-runtime naming rule). The server
+// exempts these from catalogue membership and from the non-empty `api_key`
+// check, because the served model is whatever the operator loaded and the box
+// authenticates nobody. The dashboard has to know the same set or it disables
+// Save and offers a model picker with one sentinel row in it.
+// `scripts/check_model_allowlist.py` pins all three lists equal.
+export const LOCAL_RUNTIME_PROVIDERS = [
+  "litellm",
+  "llama.cpp",
+  "llamacpp",
+  "lm-studio",
+  "lmstudio",
+  "ollama",
+  "osaurus",
+  "sglang",
+  "vllm",
+] as const;
+
+// Whether this provider serves models from the operator's own hardware.
+export const isLocalRuntime = (provider: string): boolean =>
+  (LOCAL_RUNTIME_PROVIDERS as ReadonlyArray<string>).includes(provider);
+
 // Secret JSON field names (verbatim with the server-side resolver's
 // `S_API_KEY` / `S_BASE_URL` extraction).
 export const SECRET_FIELD = {

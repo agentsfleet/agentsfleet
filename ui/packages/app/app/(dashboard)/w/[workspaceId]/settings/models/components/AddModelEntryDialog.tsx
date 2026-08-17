@@ -28,7 +28,7 @@ import { isHttpsUrl, BASE_URL_NOT_HTTPS } from "../lib/custom-endpoint";
 import { presentErrorString } from "@/lib/errors";
 import { SECRET_KIND, type Secret } from "@/lib/api/secrets";
 import { providerLabel, uniqueProviders } from "@/lib/api/model_library";
-import { OPENAI_COMPATIBLE_PROVIDER, SECRET_FIELD } from "@/lib/types";
+import { OPENAI_COMPATIBLE_PROVIDER, SECRET_FIELD, isLocalRuntime } from "@/lib/types";
 import { EVENTS } from "@/lib/analytics/events";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { maySpeculateOnHover } from "@/components/domain/island-dynamic/intent-module-loader";
@@ -87,10 +87,16 @@ export default function AddModelEntryDialog({
   const [error, setError] = useState<string | null>(null);
 
   const isCustom = provider.trim() === OPENAI_COMPATIBLE_PROVIDER;
+  // A local runtime is keyless for the same reason a custom endpoint may be:
+  // there is nothing on the other end to authenticate against. The server
+  // agrees (`requiresApiKey` in secret_probe.zig), so demanding one here would
+  // only make the operator invent a placeholder to enable Save.
+  const isLocal = isLocalRuntime(provider.trim());
 
   // Gates both Save buttons below — without it, a click on an incomplete
   // form silently no-ops (no error, no feedback) since submit() validates
-  // internally. A custom endpoint may be keyless; a named provider never is.
+  // internally. A custom endpoint and a local runtime may be keyless; a hosted
+  // provider never is.
   //
   // The secrets-load arm is a safety gate, not polish: firing the load on
   // open is worthless if a fast hand can submit before it lands, and the
@@ -102,7 +108,7 @@ export default function AddModelEntryDialog({
     keyName.trim() !== "" &&
     provider.trim() !== "" &&
     model.trim() !== "" &&
-    (isCustom ? baseUrl.trim() !== "" : apiKey.trim() !== "");
+    (isCustom ? baseUrl.trim() !== "" : isLocal || apiKey.trim() !== "");
 
   function reset() {
     setKeyName("");
@@ -206,12 +212,17 @@ export default function AddModelEntryDialog({
       return;
     }
 
+    // Omit the key rather than storing `api_key: ""`, matching the custom
+    // path above — a blank string is a key the vault reports as present.
+    const namedData: Record<string, unknown> = { [SECRET_FIELD.provider]: provider.trim() };
+    if (key !== "") namedData[SECRET_FIELD.apiKey] = key;
+
     if (existing) {
       if (existing.kind !== SECRET_KIND.provider_key || existing.provider !== provider.trim()) {
         setError(NAME_PROVIDER_MISMATCH);
         return;
       }
-      const replaced = await replaceSecretAction(workspaceId, name, { [SECRET_FIELD.provider]: provider.trim(), [SECRET_FIELD.apiKey]: key });
+      const replaced = await replaceSecretAction(workspaceId, name, namedData);
       if (!replaced.ok) {
         setError(presentErrorString({ errorCode: replaced.errorCode, message: replaced.error, action: STORE_ACTION }));
         return;
@@ -219,10 +230,7 @@ export default function AddModelEntryDialog({
       if (await doCreateEntry(name, modelId, activate, false)) handleOpenChange(false);
       return;
     }
-    const created = await createSecretAction(workspaceId, {
-      name,
-      data: { [SECRET_FIELD.provider]: provider.trim(), [SECRET_FIELD.apiKey]: key },
-    });
+    const created = await createSecretAction(workspaceId, { name, data: namedData });
     if (!created.ok) {
       setError(presentErrorString({ errorCode: created.errorCode, message: created.error, action: STORE_ACTION }));
       return;
@@ -304,13 +312,19 @@ export default function AddModelEntryDialog({
           ) : null}
           <ProviderModelSelect id={`${uid}-model`} provider={provider || undefined} model={model} onModelChange={setModel} />
           <div className="space-y-2">
-            <Label htmlFor={`${uid}-api-key`}>{isCustom ? "API key (optional)" : "API key"}</Label>
+            <Label htmlFor={`${uid}-api-key`}>{isCustom || isLocal ? "API key (optional)" : "API key"}</Label>
             <Input
               id={`${uid}-api-key`}
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder={isCustom ? "leave blank if the endpoint needs no key" : "stored in your workspace vault; never shown again"}
+              placeholder={
+                isCustom
+                  ? "leave blank if the endpoint needs no key"
+                  : isLocal
+                    ? "leave blank — a model server you run needs no key"
+                    : "stored in your workspace vault; never shown again"
+              }
               spellCheck={false}
               autoComplete="off"
             />
