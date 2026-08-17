@@ -79,25 +79,46 @@ export const policyFormSchema = z.object({
     .trim()
     .refine((v) => {
       const n = Number(v);
-      return Number.isInteger(n) && n >= MIN_WORKER_COUNT && n <= MAX_WORKER_COUNT;
+      return (
+        Number.isInteger(n) && n >= MIN_WORKER_COUNT && n <= MAX_WORKER_COUNT
+      );
     }, WORKER_COUNT_RANGE_MESSAGE),
   // A blank row is dropped on save rather than refused — an operator who opens
   // a row and changes their mind should still be able to save. Every filled row
   // is graded against the same rules `protocol_bind.extraBindsValid` applies.
   extra_binds: z
-    .array(z.object({ path: z.string(), mode: z.enum(BIND_MODES), note: z.string() }))
+    .array(
+      z.object({
+        path: z.string(),
+        mode: z.enum(BIND_MODES),
+        note: z.string(),
+      }),
+    )
     .superRefine((rows, ctx) => {
       const filled = rows.filter((r) => r.path.trim().length > 0);
       if (filled.length > MAX_EXTRA_BINDS) {
-        ctx.addIssue({ code: "custom", message: `At most ${MAX_EXTRA_BINDS} binds per runner` });
+        ctx.addIssue({
+          code: "custom",
+          message: `At most ${MAX_EXTRA_BINDS} binds per runner`,
+        });
       }
       rows.forEach((r, i) => {
         const path = r.path.trim();
         if (path.length === 0) return;
         const pathIssue = bindPathIssue(path);
-        if (pathIssue) ctx.addIssue({ code: "custom", message: pathIssue, path: [i, "path"] });
+        if (pathIssue)
+          ctx.addIssue({
+            code: "custom",
+            message: pathIssue,
+            path: [i, "path"],
+          });
         const noteIssue = bindNoteIssue(r.note.trim());
-        if (noteIssue) ctx.addIssue({ code: "custom", message: noteIssue, path: [i, "note"] });
+        if (noteIssue)
+          ctx.addIssue({
+            code: "custom",
+            message: noteIssue,
+            path: [i, "note"],
+          });
       });
     }),
 });
@@ -112,7 +133,10 @@ export const POLICY_FORM_DEFAULTS: PolicyFormValues = {
 };
 
 /** Form values → the wire assignment; surfaces the registry parse error. */
-export function policyFromForm(values: PolicyFormValues): { policy: AssignedPolicy | null; error: string | null } {
+export function policyFromForm(values: PolicyFormValues): {
+  policy: AssignedPolicy | null;
+  error: string | null;
+} {
   const parsed = parseRegistryAllowlist(values.registry_allowlist);
   if (parsed.error) return { policy: null, error: parsed.error };
   return {
@@ -138,7 +162,11 @@ export function formFromPolicy(policy: AssignedPolicy): PolicyFormValues {
   };
 }
 
-export function PolicyFields({ control }: { control: Control<PolicyFormValues> }) {
+export function PolicyFields({
+  control,
+}: {
+  control: Control<PolicyFormValues>;
+}) {
   const c = control;
   const isolationModeLabelId = useId();
   return (
@@ -173,7 +201,9 @@ export function PolicyFields({ control }: { control: Control<PolicyFormValues> }
                 ))}
               </RadioGroup>
             </FormControl>
-            <FormDescription>{ISOLATION_ASSIGNMENT_DESCRIPTION}</FormDescription>
+            <FormDescription>
+              {ISOLATION_ASSIGNMENT_DESCRIPTION}
+            </FormDescription>
             <FormMessage />
           </FormItem>
         )}
@@ -198,46 +228,61 @@ export function PolicyFields({ control }: { control: Control<PolicyFormValues> }
                 ))}
               </SelectContent>
             </Select>
-            <FormDescription>{NETWORK_POLICY_DESCRIPTIONS[field.value]}</FormDescription>
+            <FormDescription>
+              {NETWORK_POLICY_DESCRIPTIONS[field.value]}
+            </FormDescription>
             <FormMessage />
           </FormItem>
         )}
       />
-      <FormField
-        control={c}
-        name="registry_allowlist"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>{REGISTRY_ASSIGNMENT_LABEL}</FormLabel>
-            <FormControl>
-              <Input placeholder="registry.npmjs.org, pypi.org" autoComplete="off" {...field} />
-            </FormControl>
-            <FormDescription>{REGISTRY_ASSIGNMENT_DESCRIPTION}</FormDescription>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-      <FormField
-        control={c}
-        name="worker_count"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>{WORKERS_ASSIGNMENT_LABEL}</FormLabel>
-            <FormControl>
-              <Input
-                type="number"
-                inputMode="numeric"
-                min={MIN_WORKER_COUNT}
-                max={MAX_WORKER_COUNT}
-                autoComplete="off"
-                {...field}
-              />
-            </FormControl>
-            <FormDescription>{WORKERS_ASSIGNMENT_DESCRIPTION}</FormDescription>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
+      {/* The two single-line fields sit side by side from `sm` up. Stacked,
+          each contributed a label + input + description band to a dialog that
+          was already reaching the full viewport height. */}
+      <div className="grid gap-md sm:grid-cols-2">
+        <FormField
+          control={c}
+          name="registry_allowlist"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{REGISTRY_ASSIGNMENT_LABEL}</FormLabel>
+              <FormControl>
+                <Input
+                  placeholder="registry.npmjs.org, pypi.org"
+                  autoComplete="off"
+                  {...field}
+                />
+              </FormControl>
+              <FormDescription>
+                {REGISTRY_ASSIGNMENT_DESCRIPTION}
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={c}
+          name="worker_count"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{WORKERS_ASSIGNMENT_LABEL}</FormLabel>
+              <FormControl>
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min={MIN_WORKER_COUNT}
+                  max={MAX_WORKER_COUNT}
+                  autoComplete="off"
+                  {...field}
+                />
+              </FormControl>
+              <FormDescription>
+                {WORKERS_ASSIGNMENT_DESCRIPTION}
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
       <PolicyBindsField control={c} />
     </>
   );
