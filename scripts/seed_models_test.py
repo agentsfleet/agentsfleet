@@ -133,6 +133,97 @@ class BillableGuard(unittest.TestCase):
         self.assertTrue(_call("isBillable", [0.000001, 0.000001, 262144]))
 
 
+def _emit(no_transaction: bool) -> str:
+    """Render the SQL `emit()` produces for one row, on either path."""
+    row = {
+        "provider": "acme",
+        "model_id": "acme/m1",
+        "context_cap_tokens": 128000,
+        "input": 3_000_000_000,
+        "cached": 300_000_000,
+        "output": 15_000_000_000,
+        "tier": None,
+        "source_url": "https://example.invalid/pricing",
+    }
+    opts = {"no_transaction": True} if no_transaction else {}
+    script = (
+        f"import {{ emit }} from {json.dumps(SEEDER)};"
+        f"const stamp = Object.assign('2026-08-17', {{ ms: 1755388800000 }});"
+        f"process.stdout.write(emit([{json.dumps(row)}], {{ verified_at: '2026-08-17' }}, stamp, {json.dumps(opts)}));"
+    )
+    out = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        capture_output=True, text=True, timeout=30, cwd=REPO_ROOT,
+    )
+    if out.returncode != 0:
+        raise AssertionError(f"emit failed: {out.stderr.strip()}")
+    return out.stdout
+
+
+class GenerationBump(unittest.TestCase):
+    """The apply path must move the catalogue generation with the rows.
+
+    Without the bump, `rateAtRevision` keeps serving whatever a replica already
+    cached — a CHANGED rate is never re-read, so every replica bills the old
+    price until it restarts. New rows are unaffected (a miss loads), which is why
+    this stayed invisible until someone changed a rate.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.txn = _emit(no_transaction=False)
+        cls.fixture = _emit(no_transaction=True)
+
+    def test_transaction_path_locks_the_singleton_first(self):
+        self.assertIn("BEGIN;", self.txn)
+        self.assertIn("core.model_catalogue_revision WHERE id = 1 FOR UPDATE", self.txn)
+        # Lock before any row write, per schema/410's documented protocol.
+        self.assertLess(
+            self.txn.index("FOR UPDATE"),
+            self.txn.index("INSERT INTO core.model_library"),
+            "the singleton lock must precede the catalogue writes",
+        )
+
+    def test_transaction_path_bumps_the_generation_after_the_rows(self):
+        self.assertIn("SET revision = revision + 1", self.txn)
+        self.assertLess(
+            self.txn.index("INSERT INTO core.model_library"),
+            self.txn.index("SET revision = revision + 1"),
+            "the generation must be bumped after the rows it describes",
+        )
+        self.assertLess(self.txn.index("SET revision = revision + 1"), self.txn.index("COMMIT;"))
+
+    def test_bump_stamps_the_same_timestamp_as_the_rows(self):
+        self.assertIn("updated_at = 1755388800000", self.txn)
+
+    def test_missing_singleton_raises_rather_than_updating_nothing(self):
+        # Slot 410 seeds the row and nothing deletes it, so absence means the
+        # schema was not applied — writing rates into a catalogue nothing can
+        # invalidate is worse than failing.
+        self.assertIn("IF NOT FOUND THEN", self.txn)
+        self.assertIn("RAISE EXCEPTION", self.txn)
+        self.assertIn("schema slot 410 not applied", self.txn)
+
+    def test_fixture_path_omits_every_transactional_construct(self):
+        # The Zig tests exec this file one statement at a time with no
+        # surrounding transaction, where a FOR UPDATE lock is meaningless.
+        for construct in ("BEGIN;", "COMMIT;", "FOR UPDATE", "DO $$", "RAISE EXCEPTION"):
+            self.assertNotIn(construct, self.fixture, f"fixture path must not emit {construct!r}")
+
+    def test_both_paths_still_write_the_row(self):
+        for sql in (self.txn, self.fixture):
+            self.assertIn("INSERT INTO core.model_library", sql)
+            self.assertIn("ON CONFLICT (provider, model_id) DO UPDATE SET", sql)
+
+    def test_committed_fixture_matches_the_no_transaction_shape(self):
+        """Regression guard tying the assertion above to the real artifact."""
+        path = os.path.join(REPO_ROOT, "samples", "fixtures", "model-library", "seed.sql")
+        with open(path, encoding="utf-8") as handle:
+            committed = handle.read()
+        for construct in ("BEGIN;", "COMMIT;", "FOR UPDATE", "DO $$"):
+            self.assertNotIn(construct, committed)
+
+
 class ImportIsSideEffectFree(unittest.TestCase):
     def test_importing_the_seeder_does_not_run_main(self):
         """The `import.meta.main` guard is what makes every test above possible."""
@@ -143,7 +234,7 @@ class ImportIsSideEffectFree(unittest.TestCase):
             capture_output=True, text=True, timeout=30, cwd=REPO_ROOT,
         )
         self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertEqual(out.stdout.strip(), "cachedOrInput,isBillable,rate")
+        self.assertEqual(out.stdout.strip(), "cachedOrInput,emit,isBillable,rate")
         # main would print "→ N allowlisted rows across ..." and hit the network.
         self.assertNotIn("allowlisted rows", out.stdout)
 

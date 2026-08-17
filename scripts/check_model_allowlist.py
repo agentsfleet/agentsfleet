@@ -162,11 +162,18 @@ def zig_local_runtime_providers() -> set[str]:
     floor behind it.
     """
     body = CAP_HANDLER.read_text(encoding="utf-8")
-    start = body.find("const LOCAL_RUNTIME_PROVIDERS")
+    # Comments first: this is a scrape, not a parse, so a `//` line mentioning the
+    # declaration or carrying a quoted example inside the array's byte range would
+    # otherwise be read as a member. Dropping comment text makes the scan see only
+    # code, which is the only thing `isLocalRuntime` compiles against.
+    code = "\n".join(line.split("//")[0] for line in body.splitlines())
+    start = code.find("const LOCAL_RUNTIME_PROVIDERS")
     if start == -1:
         raise ValueError(f"LOCAL_RUNTIME_PROVIDERS not found in {CAP_HANDLER}")
-    end = body.find("};", start)
-    return set(re.findall(r'"([^"]+)"', body[start:end]))
+    end = code.find("};", start)
+    if end == -1:
+        raise ValueError(f"LOCAL_RUNTIME_PROVIDERS in {CAP_HANDLER} has no closing brace")
+    return set(re.findall(r'"([^"]+)"', code[start:end]))
 
 
 def check_local_runtime_parity(doc: dict) -> list[str]:
