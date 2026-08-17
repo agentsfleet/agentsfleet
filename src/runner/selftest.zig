@@ -18,6 +18,7 @@
 //! one runner must not report health two ways.
 
 const std = @import("std");
+const common = @import("common");
 const contract = @import("contract");
 
 const Config = @import("daemon/config.zig");
@@ -30,7 +31,19 @@ pub const Check = doctor.Check;
 /// How long a probe child may run before it is reaped. A probe is three
 /// filesystem/DNS operations; anything past this is a hung resolver, which is
 /// itself the fault we are looking for.
-pub const PROBE_TIMEOUT_MS: u64 = 10_000;
+///
+/// It MUST stay well under the heartbeat interval. The probe runs on the
+/// heartbeat path, so a probe that burns its whole bound delays the NEXT beat
+/// by that much — at parity with the interval a single timing-out probe costs a
+/// full beat, eating the margin `HEARTBEAT_INTERVAL_MS` keeps against
+/// `RUNNER_OFFLINE_AFTER_MS`. A self-test that reported a host offline would be
+/// worse than the fault it looks for.
+pub const PROBE_TIMEOUT_MS: u64 = 5_000;
+
+comptime {
+    if (PROBE_TIMEOUT_MS * 2 > @as(u64, @intCast(common.HEARTBEAT_INTERVAL_MS)))
+        @compileError("PROBE_TIMEOUT_MS must leave at least half the heartbeat interval, or a timing-out probe delays the beat that carries its verdict");
+}
 
 /// Check names. Operator-facing and stable — they appear on the runner page and
 /// in the stored result, so a historical result stays readable after a rename
@@ -43,11 +56,8 @@ pub const CHECK_SANDBOX = "a sandbox can be established";
 /// Every `detail` a check may carry. A fixed vocabulary is what makes
 /// Invariant 7 provable: the probe never interpolates child output, a hostname,
 /// or an environment value into a result, so no result can carry a secret.
-/// Prose, not an empty string. `doctor.Check.detail` is non-optional because a
-/// check always has something to say — every passing doctor check carries a
-/// line ("set", "reachable; token valid"). An empty one would also read as a
-/// leaked internal identifier to the dashboard's cause-line rule, which hides
-/// it from the operator and reports it as a runner refusal.
+/// Prose, never empty — the dashboard reads a whitespace-free cause as a leaked
+/// internal identifier and hides it, losing the check's explanation.
 pub const DETAIL_OK = "no fault detected";
 pub const DETAIL_RESOLVER_DANGLING = "/etc/resolv.conf does not resolve to a readable file — the systemd-resolved stub is not bound into the sandbox";
 pub const DETAIL_DNS_FAILED = "the resolver did not answer inside the sandbox";
@@ -79,6 +89,15 @@ pub const DETAIL_DNS_NOT_TESTABLE = "no hostname is assigned to resolve, so name
 /// name — probing the daemon's own fallback guess would produce a red row
 /// nobody can act on.
 pub const DETAIL_EGRESS_NONE_DECLARED = "no registry hosts are assigned, so there is no declared egress requirement to test";
+
+/// Per-bind details. The probe checks that an operator-assigned path RESOLVES
+/// inside the sandbox; it does not re-test the mode, because bwrap enforces
+/// that in the kernel. These say exactly that, rather than echoing the mode
+/// label alone — a bare "read-only" as a check's detail reads as "verified
+/// read-only", which is a claim the probe has not earned.
+pub const DETAIL_BIND_PRESENT_RO = "mounted inside the sandbox; assigned read-only, a mode the kernel enforces rather than the probe";
+pub const DETAIL_BIND_PRESENT_RW = "mounted inside the sandbox; assigned read-write, which widens the isolation boundary for every lease this runner takes";
+pub const DETAIL_BIND_ABSENT = "not present inside the sandbox — this bind did not land on this host, so leases run without it";
 
 /// `allow_list_egress` refuses the lease outright until option D lands
 /// (`child_supervisor.enforcesEgress` fail-closed), so there is no sandbox to
@@ -294,7 +313,7 @@ pub fn grade(alloc: std.mem.Allocator, cfg: Config, outcome: Outcome) !Result {
         try checks.append(alloc, .{
             .name = b.path,
             .ok = outcome.extra_binds_present,
-            .detail = b.mode.label(),
+            .detail = bindDetail(b.mode, outcome.extra_binds_present),
         });
     }
 
@@ -302,6 +321,17 @@ pub fn grade(alloc: std.mem.Allocator, cfg: Config, outcome: Outcome) !Result {
         .checks = try checks.toOwnedSlice(alloc),
         .network_policy = cfg.network_policy,
         .sandbox_tier = cfg.sandbox_tier,
+    };
+}
+
+/// The fixed-vocabulary detail for one operator bind. A missing bind says so
+/// plainly; a present one names the assigned mode without claiming to have
+/// verified it.
+fn bindDetail(mode: contract.protocol.BindMode, present: bool) []const u8 {
+    if (!present) return DETAIL_BIND_ABSENT;
+    return switch (mode) {
+        .read_only => DETAIL_BIND_PRESENT_RO,
+        .read_write => DETAIL_BIND_PRESENT_RW,
     };
 }
 

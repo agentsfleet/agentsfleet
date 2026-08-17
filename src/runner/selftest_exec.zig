@@ -15,6 +15,7 @@
 //! carry no secrets") a property of the shape rather than of review discipline.
 
 const std = @import("std");
+const common = @import("common");
 const logging = @import("log");
 
 const Config = @import("daemon/config.zig");
@@ -43,28 +44,57 @@ const REAP_POLL_MS = 100;
 ///
 /// A timer thread rather than a poll loop around `wait()`: `wait()` blocks the
 /// calling thread, so a timeout check after it never runs (write_zig, §Memory
-/// Safety). `done` is what makes the kill safe against pid reuse — the parent
-/// sets it before reaping, so the reaper can never signal a recycled pid.
+/// Safety).
+///
+/// Retirement is what makes the kill safe against pid reuse, and the ORDER is
+/// load-bearing. `wait()` reaps the pid, and the kernel may hand that number to
+/// an unrelated process immediately after; a reaper that checked a flag, got
+/// descheduled, and then signalled would `SIGKILL` a stranger's process group.
+/// So the parent retires the reaper while the child is still un-reaped — after
+/// the child's stdout has hit end-of-file, which only happens once the whole
+/// sandboxed tree has released the pipe — and joins before it calls `wait()`.
+/// The mutex makes retire-vs-kill mutually exclusive rather than merely ordered.
 const Reaper = struct {
     io: std.Io,
     pgid: std.posix.pid_t,
-    done: std.atomic.Value(bool) = .init(false),
-    fired: std.atomic.Value(bool) = .init(false),
+    mutex: common.Mutex = .{},
+    done: bool = false,
+    fired: bool = false,
 
     fn watch(self: *Reaper) void {
         var waited: u64 = 0;
         while (waited < selftest.PROBE_TIMEOUT_MS) {
-            if (self.done.load(.seq_cst)) return;
-            self.io.sleep(std.Io.Duration.fromMilliseconds(REAP_POLL_MS), .awake) catch return;
+            if (self.isDone()) return;
+            // Fail CLOSED on a sleep error: stop waiting and go enforce the
+            // bound. Returning here would retire the only watchdog while the
+            // parent is still blocked reading the child's pipe.
+            self.io.sleep(std.Io.Duration.fromMilliseconds(REAP_POLL_MS), .awake) catch break;
             waited += REAP_POLL_MS;
         }
-        if (self.done.load(.seq_cst)) return;
-        self.fired.store(true, .seq_cst);
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        if (self.done) return;
+        self.fired = true;
         // Negative pid = the whole process group. The probe leads its own via
         // `pgid = 0` at spawn, so this reaps bwrap AND whatever it started —
         // killing only the pid would leave the sandbox's children orphaned.
         std.posix.kill(-self.pgid, std.posix.SIG.KILL) catch |err|
             log.warn(EVENT_KILL_FAILED, .{ .err = @errorName(err) });
+    }
+
+    fn isDone(self: *Reaper) bool {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        return self.done;
+    }
+
+    /// Parent side: no signal may be sent from here on. Returns whether the
+    /// reaper had already fired, which is the timeout verdict.
+    fn retire(self: *Reaper) bool {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        self.done = true;
+        return self.fired;
     }
 };
 
@@ -104,27 +134,76 @@ pub fn run(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_path: []
     };
 
     var buf: [VERDICT_READ_CAP]u8 = undefined;
+    // Reads to end-of-file, not to the first chunk: EOF is what proves the
+    // sandboxed tree has exited, and that is the precondition for retiring the
+    // reaper safely below. A hung probe never reaches EOF — the reaper kills it,
+    // the pipe closes, and this returns.
     const line = readVerdict(io, &child, &buf);
 
-    _ = child.wait(io) catch |err|
-        log.warn(EVENT_WAIT_FAILED, .{ .err = @errorName(err) });
-    reaper.done.store(true, .seq_cst);
+    // Retire and join BEFORE reaping. Reversing these two lines re-opens the
+    // pid-reuse window described on `Reaper`.
+    const timed_out = reaper.retire();
     watcher.join();
+    const term = child.wait(io) catch |err| blk: {
+        log.warn(EVENT_WAIT_FAILED, .{ .err = @errorName(err) });
+        break :blk null;
+    };
 
-    const timed_out = reaper.fired.load(.seq_cst);
+    // A line from a child that did not exit cleanly is not a verdict. The probe
+    // prints and then returns 0, so a non-zero status means it died partway —
+    // and a half-run that printed three passes before crashing would otherwise
+    // read as a healthy sandbox.
+    if (!timed_out and !exitedClean(term)) {
+        log.warn("selftest_probe_unclean_exit", .{});
+        return selftest.unavailable(alloc, cfg, selftest.DETAIL_SPAWN_FAILED);
+    }
     return selftest.grade(alloc, cfg, outcomeFrom(line, timed_out));
 }
 
-/// Read the child's single verdict line. A short read is normal (the line is
-/// well under the cap); a failed read yields an empty slice, which parses to
-/// every check failing — a probe that said nothing proved nothing.
+/// Did the probe exit 0? A missing status (the `wait` failed) is not clean —
+/// we could not prove the child finished, so we do not trust what it said.
+/// `pub` so the fail-closed arms are asserted without spawning a process.
+pub fn exitedClean(term: ?std.process.Child.Term) bool {
+    const t = term orelse return false;
+    return switch (t) {
+        .exited => |code| code == 0,
+        else => false,
+    };
+}
+
+/// Drain the child's stdout to end-of-file. A failed read yields an empty
+/// slice, which parses to every check failing — a probe that said nothing
+/// proved nothing.
+///
+/// Draining rather than taking the first chunk is deliberate on two counts: it
+/// bounds what a wedged child can hand us at `VERDICT_READ_CAP`, and reaching
+/// EOF is the signal the parent needs before it may retire the reaper.
 fn readVerdict(io: std.Io, child: *std.process.Child, buf: []u8) []const u8 {
     const out = child.stdout orelse return "";
+    return drainVerdict(io, out, buf);
+}
+
+/// The drain itself, split from the child so it can be proven against a real
+/// file descriptor. `pub` for that reason: the overflow arm is what keeps a
+/// chatty child from returning early without end-of-file, and an untested
+/// version of it deadlocked the heartbeat.
+pub fn drainVerdict(io: std.Io, out: std.Io.File, buf: []u8) []const u8 {
     var fr = out.reader(io, &.{});
-    const len = fr.interface.readSliceShort(buf) catch |err| {
-        log.warn("selftest_probe_read_failed", .{ .err = @errorName(err) });
-        return "";
-    };
+    var len: usize = 0;
+    // Overflow past the cap is read and DISCARDED rather than left in the pipe.
+    // Stopping at a full buffer would return without EOF, and the caller retires
+    // the watchdog on this return — a child that wrote 128 bytes and then hung
+    // would leave `wait()` blocked with nothing left alive to kill it.
+    var overflow: [VERDICT_READ_CAP]u8 = undefined;
+    while (true) {
+        const dest = if (len < buf.len) buf[len..] else overflow[0..];
+        const n = fr.interface.readSliceShort(dest) catch |err| {
+            log.warn("selftest_probe_read_failed", .{ .err = @errorName(err) });
+            return buf[0..len];
+        };
+        if (n == 0) break; // EOF: the whole sandboxed tree released the pipe.
+        if (len < buf.len) len += n;
+    }
     return buf[0..len];
 }
 
@@ -144,8 +223,11 @@ pub fn outcomeFrom(line: []const u8, timed_out: bool) selftest.Outcome {
         .resolver_readable = verdictOf(line, selftest_probe.KEY_RESOLVER) == .passed,
         .dns_resolved = verdictOf(line, selftest_probe.KEY_DNS) == .passed,
         .egress_reachable = verdictOf(line, selftest_probe.KEY_EGRESS) == .passed,
-        // Untested = no bind was assigned, so there is nothing to have missed.
-        .extra_binds_present = verdictOf(line, selftest_probe.KEY_BINDS) != .failed,
+        // An assigned bind is healthy ONLY on an explicit pass. Treating
+        // "untested" as present would let a probe that never saw the bind
+        // arguments certify mounts it never looked for; `grade` iterates the
+        // assigned list, so with nothing assigned this value is never read.
+        .extra_binds_present = verdictOf(line, selftest_probe.KEY_BINDS) == .passed,
         // A resolver tool is never missing now that the probe IS the runner, so
         // the only untestable DNS is one nothing asked for.
         .dns_testable = verdictOf(line, selftest_probe.KEY_DNS) != .untested,
