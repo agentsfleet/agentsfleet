@@ -264,15 +264,15 @@ install flow   →   doctor --json (health)                  doctor --json (heal
                     workspace_binding_valid: ✓             workspace_binding_valid: ✓
                   ─ if any health check fails: print      ─ same health-fail short-circuit ─
                     `agentsfleet login` and STOP. ─
-                  tenant provider show --json:            tenant provider show --json:
-                    {mode=platform,                        {mode=self_managed,
-                     model=accounts/fireworks/models/kimi-k2.6,                provider=fireworks,
-                     context_cap_tokens=256000}              model=accounts/.../kimi-k2.6,
-                  (billing show → balance state)              context_cap_tokens=256000}
-                  branch on mode → write frontmatter      branch on mode → write frontmatter
-                  pin into frontmatter (resolved):        pin into frontmatter (sentinels):
-                    model: accounts/fireworks/models/kimi-k2.6                model: ""
-                    context_cap_tokens: 256000              context_cap_tokens: 0
+                  tenant provider show --json:                tenant provider show --json:
+                    {mode=platform,                           {mode=self_managed,
+                     model=accounts/fireworks/models/kimi-k3, provider=fireworks,
+                     context_cap_tokens=1048576}              model=accounts/.../kimi-k3,
+                  (billing show → balance state)                context_cap_tokens=1048576}
+                  branch on mode → write frontmatter          branch on mode → write frontmatter
+                  pin into frontmatter (resolved):            pin into frontmatter (sentinels):
+                    model: accounts/fireworks/models/kimi-k3  model: ""
+                    context_cap_tokens: 1048576               context_cap_tokens: 0
 
 tenant provider → (nothing — synth-default                → agentsfleet tenant provider create
                    stays in place)                            --secret account-fireworks-key
@@ -290,12 +290,12 @@ trigger fires  → lease resolve:                            → lease resolve:
                                                                model "" or absent → overlay
                                                                cap 0   or absent → overlay
 
-createExecution → context_cap_tokens=256000               → context_cap_tokens=256000
-                  model=accounts/fireworks/models/kimi-k2.6                   model=accounts/.../kimi-k2.6
-                  api_key=<from admin workspace vault>                   api_key=<fw_LIVE_…>
+createExecution → context_cap_tokens=1048576                  → context_cap_tokens=1048576
+                  model=accounts/fireworks/models/kimi-k3       model=accounts/.../kimi-k3
+                  api_key=<from admin workspace vault>          api_key=<fw_LIVE_…>
 
 L3 run chunking
-                → threshold = 0.75 × 200000               → threshold = 0.75 × 256000
+                → threshold = 0.75 × 1048576                  → threshold = 0.75 × 1048576
 ```
 
 **Overlay rule (per-field, independent, applied at lease time):** frontmatter `model: ""` OR `model:` key absent ⇒ overlay from `tenant_model_selection.model` (or synth-default if no row). Same rule for `context_cap_tokens: 0` OR absent. Non-empty / non-zero values respected as-is. The bundle's frontmatter carries the *visible* sentinels (`""`, `0`) under self-managed posture so a human reading it can spot at a glance that "this fleet inherits from tenant config"; absent-key is the safety net for hand-edits.

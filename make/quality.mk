@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: check-migrate-unprivileged lint-all lint-zig lint-governance lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check
+.PHONY: _model_allowlist_check check-migrate-unprivileged lint-all lint-zig lint-governance lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check
 
 # Regenerate docs/api-reference/error-codes.mdx (own repo, ~/Projects/docs)
 # from the agentsfleetd error registry. No default target path on purpose —
@@ -90,7 +90,11 @@ _lint_zig_discipline:
 # Deliberately NOT folded in: _fmt_check / _zlint_check (tooling, not policy) and
 # check-test-reachability / _lint_zig_test_depth (test structure, and the latter
 # is invoked directly to record a spec's test baseline).
-lint-governance: _lint_zig_pg_drain _lint_zig_discipline _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check  ## Run the repository convention gates
+_model_allowlist_check:
+	@echo "→ [models] Checking every dialable provider is priced or carries a reason..."
+	@python3 scripts/check_model_allowlist.py
+
+lint-governance: _lint_zig_pg_drain _lint_zig_discipline _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check _model_allowlist_check  ## Run the repository convention gates
 	@echo "✓ [governance] All convention gates passed"
 
 _zig_target_lint:

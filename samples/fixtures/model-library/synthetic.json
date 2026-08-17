@@ -1,0 +1,362 @@
+{
+  "data": [
+    {
+      "provider": "synthetic",
+      "always_on": true,
+      "id": "syn:large:text",
+      "hugging_face_id": "zai-org/GLM-5.2",
+      "name": "syn:large:text",
+      "reasoning_parameters": {
+        "efforts": [
+          "none",
+          "high",
+          "max"
+        ]
+      },
+      "description": "A very strong coding and writing model; exceeds Opus 4.7 on most tasks.",
+      "input_modalities": [
+        "text"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "context_length": 524288,
+      "max_output_length": 65536,
+      "pricing": {
+        "prompt": "$0.000001",
+        "completion": "$0.000003",
+        "image": "0",
+        "request": "0",
+        "input_cache_reads": "$0.00000016",
+        "input_cache_writes": "0"
+      },
+      "created": 1781568000,
+      "quantization": "nvfp4",
+      "supported_sampling_parameters": [
+        "temperature",
+        "top_k",
+        "top_p",
+        "repetition_penalty",
+        "frequency_penalty",
+        "presence_penalty",
+        "stop",
+        "seed"
+      ],
+      "supported_features": [
+        "tools",
+        "json_mode",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "openrouter": {
+        "slug": "zai-org/glm-5.2"
+      },
+      "datacenters": [
+        {
+          "country_code": "US"
+        },
+        {
+          "country_code": "SE"
+        },
+        {
+          "country_code": "IS"
+        }
+      ]
+    },
+    {
+      "provider": "synthetic",
+      "always_on": true,
+      "id": "hf:openai/gpt-oss-120b",
+      "hugging_face_id": "openai/gpt-oss-120b",
+      "name": "openai/gpt-oss-120b",
+      "reasoning_parameters": {
+        "efforts": [
+          "none",
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      "description": "OpenAI's largest open-source model. A strong reasoning model with great support for agentic tasks, and a good general-purpose LLM.",
+      "input_modalities": [
+        "text"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "context_length": 131072,
+      "max_output_length": 65536,
+      "pricing": {
+        "prompt": "$0.0000001",
+        "completion": "$0.0000001",
+        "image": "0",
+        "request": "0",
+        "input_cache_reads": "$0.00000002",
+        "input_cache_writes": "0"
+      },
+      "created": 1754352000,
+      "quantization": "mxfp4",
+      "supported_sampling_parameters": [
+        "temperature",
+        "top_k",
+        "top_p",
+        "repetition_penalty",
+        "frequency_penalty",
+        "presence_penalty",
+        "stop",
+        "seed"
+      ],
+      "supported_features": [
+        "tools",
+        "json_mode",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "openrouter": {
+        "slug": "openai/gpt-oss-120b"
+      },
+      "datacenters": [
+        {
+          "country_code": "US"
+        }
+      ]
+    },
+    {
+      "provider": "synthetic",
+      "always_on": true,
+      "id": "hf:zai-org/GLM-5.2",
+      "hugging_face_id": "zai-org/GLM-5.2",
+      "name": "zai-org/GLM-5.2",
+      "reasoning_parameters": {
+        "efforts": [
+          "none",
+          "high",
+          "max"
+        ]
+      },
+      "description": "A very strong coding and writing model; exceeds Opus 4.7 on most tasks.",
+      "input_modalities": [
+        "text"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "context_length": 524288,
+      "max_output_length": 65536,
+      "pricing": {
+        "prompt": "$0.000001",
+        "completion": "$0.000003",
+        "image": "0",
+        "request": "0",
+        "input_cache_reads": "$0.00000016",
+        "input_cache_writes": "0"
+      },
+      "created": 1781568000,
+      "quantization": "nvfp4",
+      "supported_sampling_parameters": [
+        "temperature",
+        "top_k",
+        "top_p",
+        "repetition_penalty",
+        "frequency_penalty",
+        "presence_penalty",
+        "stop",
+        "seed"
+      ],
+      "supported_features": [
+        "tools",
+        "json_mode",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "openrouter": {
+        "slug": "zai-org/glm-5.2"
+      },
+      "datacenters": [
+        {
+          "country_code": "US"
+        },
+        {
+          "country_code": "SE"
+        },
+        {
+          "country_code": "IS"
+        }
+      ]
+    },
+    {
+      "provider": "synthetic",
+      "always_on": true,
+      "id": "hf:moonshotai/Kimi-K3",
+      "hugging_face_id": "moonshotai/Kimi-K3",
+      "name": "moonshotai/Kimi-K3",
+      "reasoning_parameters": {
+        "efforts": [
+          "low",
+          "high",
+          "max"
+        ]
+      },
+      "description": "A massive 2.8T-parameter open-source model, on par with Claude Fable and GPT-5.6-Sol. Supports vision on uploaded images.",
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "context_length": 524288,
+      "max_output_length": 65536,
+      "pricing": {
+        "prompt": "$0.000003",
+        "completion": "$0.000015",
+        "image": "0",
+        "request": "0",
+        "input_cache_reads": "$0.00000045",
+        "input_cache_writes": "0"
+      },
+      "created": 1785110400,
+      "quantization": "mxfp4",
+      "supported_sampling_parameters": [
+        "temperature",
+        "top_k",
+        "top_p",
+        "repetition_penalty",
+        "frequency_penalty",
+        "presence_penalty",
+        "stop",
+        "seed"
+      ],
+      "supported_features": [
+        "tools",
+        "json_mode",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "openrouter": {
+        "slug": "moonshotai/kimi-k3"
+      },
+      "datacenters": [
+        {
+          "country_code": "US"
+        }
+      ]
+    },
+    {
+      "provider": "synthetic",
+      "always_on": true,
+      "id": "syn:small:text",
+      "hugging_face_id": "zai-org/GLM-4.7-Flash",
+      "name": "syn:small:text",
+      "reasoning_parameters": {
+        "efforts": [
+          "none",
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      "description": "The smaller, faster sibling of GLM 4.7, in the 30B parameter class, balancing performance and efficiency. Consumes rate limits more slowly.",
+      "input_modalities": [
+        "text"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "context_length": 196608,
+      "max_output_length": 65536,
+      "pricing": {
+        "prompt": "$0.0000001",
+        "completion": "$0.0000005",
+        "image": "0",
+        "request": "0",
+        "input_cache_reads": "$0.00000002",
+        "input_cache_writes": "0"
+      },
+      "created": 1768780800,
+      "quantization": "nvfp4",
+      "supported_sampling_parameters": [
+        "temperature",
+        "top_k",
+        "top_p",
+        "repetition_penalty",
+        "frequency_penalty",
+        "presence_penalty",
+        "stop",
+        "seed"
+      ],
+      "supported_features": [
+        "tools",
+        "json_mode",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "openrouter": {
+        "slug": "minimaxai/minimax-m2.5"
+      },
+      "datacenters": [
+        {
+          "country_code": "US"
+        }
+      ]
+    },
+    {
+      "provider": "synthetic",
+      "always_on": true,
+      "id": "syn:large:vision",
+      "hugging_face_id": "moonshotai/Kimi-K3",
+      "name": "syn:large:vision",
+      "reasoning_parameters": {
+        "efforts": [
+          "low",
+          "high",
+          "max"
+        ]
+      },
+      "description": "A massive 2.8T-parameter open-source model, on par with Claude Fable and GPT-5.6-Sol. Supports vision on uploaded images.",
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "context_length": 524288,
+      "max_output_length": 65536,
+      "pricing": {
+        "prompt": "$0.000003",
+        "completion": "$0.000015",
+        "image": "0",
+        "request": "0",
+        "input_cache_reads": "$0.00000045",
+        "input_cache_writes": "0"
+      },
+      "created": 1785110400,
+      "quantization": "mxfp4",
+      "supported_sampling_parameters": [
+        "temperature",
+        "top_k",
+        "top_p",
+        "repetition_penalty",
+        "frequency_penalty",
+        "presence_penalty",
+        "stop",
+        "seed"
+      ],
+      "supported_features": [
+        "tools",
+        "json_mode",
+        "structured_outputs",
+        "reasoning"
+      ],
+      "openrouter": {
+        "slug": "moonshotai/kimi-k3"
+      },
+      "datacenters": [
+        {
+          "country_code": "US"
+        }
+      ]
+    }
+  ]
+}
