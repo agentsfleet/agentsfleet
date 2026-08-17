@@ -53,16 +53,21 @@ pub fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) error{OutO
     errdefer fleet_obj.deinit(alloc);
     if (payload.policy.context.model.len > 0)
         try fleet_obj.put(alloc, wire.model, .{ .string = payload.policy.context.model });
-    // Provider + key are the authoritative resolved values delivered on the
-    // lease (the key the tenant is billed for) — atomic: the resolver always
-    // produces both or neither. A half-populated pair is a malformed lease; we
-    // inject nothing so the engine fails to authenticate cleanly rather than
-    // running against the wrong provider. The pair is atomic under OOM too: if
-    // the api_key `put` fails, `try` unwinds the whole build (the errdefer frees
-    // the already-inserted provider) so a provider-without-key never reaches the
-    // engine. `secrets_map` carries tool credentials only — a tool secret named
-    // "llm" is NOT the provider key.
-    if (payload.policy.provider.len > 0 and payload.policy.api_key.len > 0) {
+    // The provider is the authoritative resolved value delivered on the lease,
+    // and it is what decides where the engine dials. An EMPTY key alongside it
+    // is legitimate, not malformed: `probeSelfManagedSecret` accepts an
+    // openai-compatible credential with no api_key, because a private gateway
+    // that takes none is the spec's optional-key design. Requiring both dropped
+    // the provider too, and nullclaw then fell back to whatever `Config.load`
+    // had — running a tenant's self-managed slice against the wrong provider
+    // entirely, which is the failure this branch exists to prevent.
+    //
+    // The genuinely malformed direction is the other one: a key with no provider
+    // would authenticate against a provider nobody chose, so that still injects
+    // nothing. Both `put`s stay atomic under OOM — if the api_key `put` fails,
+    // `try` unwinds the whole build via the errdefer. `secrets_map` carries tool
+    // credentials only; a tool secret named "llm" is NOT the provider key.
+    if (payload.policy.provider.len > 0) {
         try fleet_obj.put(alloc, wire.provider, .{ .string = payload.policy.provider });
         try fleet_obj.put(alloc, wire.api_key, .{ .string = payload.policy.api_key });
         // Custom OpenAI-compatible endpoint: carry the dialed URL so the runner
@@ -72,8 +77,8 @@ pub fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) error{OutO
         if (payload.policy.base_url) |url| {
             if (url.len > 0) try fleet_obj.put(alloc, wire.base_url, .{ .string = url });
         }
-    } else if (payload.policy.provider.len > 0 or payload.policy.api_key.len > 0) {
-        log.warn("fleet_provider_key_incomplete", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .has_provider = payload.policy.provider.len > 0, .fleet_id = payload.event.fleet_id });
+    } else if (payload.policy.api_key.len > 0) {
+        log.warn("fleet_provider_key_incomplete", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .has_provider = false, .fleet_id = payload.event.fleet_id });
     }
 
     var tools_arr = std.json.Array.init(alloc);
