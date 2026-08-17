@@ -164,14 +164,91 @@ test "test_probe_reports_deny_all_as_expected" {
     try std.testing.expectEqualStrings(selftest.DETAIL_EGRESS_DENIED_EXPECTED, egress.detail);
     try std.testing.expect(r.allOk());
 
-    // The same observation under an OPEN posture is a real fault.
-    const open = try selftest.grade(alloc, cfg(.allow_all, &.{}), .{
+    // The same observation under an OPEN posture, against a registry the
+    // operator DECLARED, is a real fault: assigning a registry asserts that
+    // leases need it, so failing to reach it is actionable every time.
+    var open_cfg = cfg(.allow_all, &.{});
+    open_cfg.registry_allowlist = &.{"pypi.org"};
+    const open = try selftest.grade(alloc, open_cfg, .{
         .resolver_readable = true,
         .dns_resolved = true,
         .egress_reachable = false,
     });
     defer open.deinit(alloc);
     try std.testing.expect(!findCheck(open, selftest.CHECK_EGRESS).?.ok);
+}
+
+test "an open posture with no declared registry reports egress as untested, not as broken" {
+    const alloc = std.testing.allocator;
+    // The probe dials only what the operator named. Reaching for the daemon's
+    // own fallback registry set would red-flag a runner configured exactly as
+    // intended — a red row nobody can act on, which is how an alert gets muted.
+    const r = try selftest.grade(alloc, cfg(.allow_all, &.{}), .{
+        .resolver_readable = true,
+        .dns_resolved = true,
+        .egress_reachable = false,
+    });
+    defer r.deinit(alloc);
+
+    const egress = findCheck(r, selftest.CHECK_EGRESS).?;
+    try std.testing.expect(egress.ok);
+    try std.testing.expectEqualStrings(selftest.DETAIL_EGRESS_NONE_DECLARED, egress.detail);
+    try std.testing.expect(r.allOk());
+}
+
+test "under deny_all_egress an unresolvable name is the assignment working, not a fault" {
+    const alloc = std.testing.allocator;
+    // Same reasoning the egress arm has always used: with no network by
+    // assignment, no name can resolve. Grading that a fault makes every
+    // correctly locked-down runner read unhealthy.
+    const r = try selftest.grade(alloc, cfg(.deny_all_egress, &.{}), .{
+        .resolver_readable = true,
+        .dns_resolved = false,
+        .egress_reachable = false,
+    });
+    defer r.deinit(alloc);
+
+    const dns = findCheck(r, selftest.CHECK_DNS).?;
+    try std.testing.expect(dns.ok);
+    try std.testing.expectEqualStrings(selftest.DETAIL_DNS_NO_NETWORK, dns.detail);
+    try std.testing.expect(r.allOk());
+}
+
+test "a sandbox with no resolver tool reports DNS untested rather than broken" {
+    const alloc = std.testing.allocator;
+    // "Not tested" and "tested and broken" are different facts. Collapsing
+    // them would report a missing `getent` as a dead resolver and send an
+    // operator hunting a network fault that does not exist.
+    const r = try selftest.grade(alloc, cfg(.allow_all, &.{}), .{
+        .resolver_readable = true,
+        .dns_resolved = false,
+        .egress_reachable = true,
+        .dns_testable = false,
+    });
+    defer r.deinit(alloc);
+
+    const dns = findCheck(r, selftest.CHECK_DNS).?;
+    try std.testing.expect(dns.ok);
+    try std.testing.expectEqualStrings(selftest.DETAIL_DNS_NOT_TESTABLE, dns.detail);
+}
+
+test "a timeout still outranks the posture arms — a hung probe proves nothing" {
+    const alloc = std.testing.allocator;
+    // The timeout branch must stay ahead of the deny_all and not-testable
+    // arms: a reaped probe observed nothing, so reporting "expected, not a
+    // fault" would turn a hang into a green check.
+    const r = try selftest.grade(alloc, cfg(.deny_all_egress, &.{}), .{
+        .resolver_readable = true,
+        .dns_resolved = false,
+        .egress_reachable = false,
+        .timed_out = true,
+    });
+    defer r.deinit(alloc);
+
+    const dns = findCheck(r, selftest.CHECK_DNS).?;
+    try std.testing.expect(!dns.ok);
+    try std.testing.expectEqualStrings(selftest.DETAIL_TIMEOUT, dns.detail);
+    try std.testing.expect(!r.allOk());
 }
 
 test "test_probe_timeout_reaps_and_reports" {
@@ -216,6 +293,10 @@ test "test_probe_result_carries_no_secrets" {
         selftest.DETAIL_TIMEOUT,
         selftest.DETAIL_NO_BWRAP,
         selftest.DETAIL_SPAWN_FAILED,
+        selftest.DETAIL_DNS_NO_NETWORK,
+        selftest.DETAIL_DNS_NOT_TESTABLE,
+        selftest.DETAIL_EGRESS_NONE_DECLARED,
+        selftest.DETAIL_POSTURE_UNBUILDABLE,
         "read-only",
         "read-write",
     };
