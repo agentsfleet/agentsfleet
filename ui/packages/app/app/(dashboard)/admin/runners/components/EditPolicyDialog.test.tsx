@@ -39,10 +39,41 @@ describe("EditPolicyDialog", () => {
     fireEvent.change(screen.getByLabelText("Workers"), { target: { value: "4" } });
     fireEvent.click(screen.getByRole("button", { name: "Save assignment" }));
 
+    // PATCH replaces the WHOLE assignment, so the bind list is always sent —
+    // explicitly empty here, never omitted. Omitting it is what wiped an
+    // operator's mounts on any edit that did not touch them.
     await waitFor(() =>
-      expect(updateRunnerPolicyActionMock).toHaveBeenCalledWith("r-edit-1", { ...CURRENT, worker_count: 4 }),
+      expect(updateRunnerPolicyActionMock).toHaveBeenCalledWith("r-edit-1", {
+        ...CURRENT,
+        worker_count: 4,
+        extra_binds: [],
+      }),
     );
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  it("carries a stored bind through an edit that never touches it", async () => {
+    const withBind = {
+      ...CURRENT,
+      extra_binds: [{ path: "/srv/models", mode: "read_only" as const, note: "gpu weights" }],
+    };
+    updateRunnerPolicyActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { id: "r-edit-3", admin_state: "active", assigned_policy: withBind },
+    });
+    render(<EditPolicyDialog runnerId="r-edit-3" current={withBind} onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
+
+    expect((screen.getByLabelText("Bind path 1") as HTMLInputElement).value).toBe("/srv/models");
+    fireEvent.change(screen.getByLabelText("Workers"), { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save assignment" }));
+
+    await waitFor(() =>
+      expect(updateRunnerPolicyActionMock).toHaveBeenCalledWith("r-edit-3", {
+        ...withBind,
+        worker_count: 4,
+      }),
+    );
   });
 
   // Reported from a real assignment attempt: the dialog could not be scrolled,

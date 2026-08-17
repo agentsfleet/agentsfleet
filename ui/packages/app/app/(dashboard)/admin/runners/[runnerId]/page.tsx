@@ -25,6 +25,7 @@ import {
 import { RunnerHeader } from "./components/RunnerHeader";
 import { RunnerSubnavigation } from "./components/RunnerSubnavigation";
 import RunnerMetricsStrip from "./components/RunnerMetricsStrip";
+import { RunnerSandboxPanel } from "./components/RunnerSandboxPanel";
 import { LeaseTable } from "./components/LeaseTable";
 import { ActivityTable } from "./components/ActivityTable";
 import { RunnerViewedTracker } from "./components/RunnerViewedTracker";
@@ -168,6 +169,7 @@ async function loadRunnerView(
   }).catch((error: unknown) => (isRefusedRequest(error) ? REFUSED : null));
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-3xl">
+      <RunnerSandboxPanel runner={runner} />
       <RunnerMetricsStrip runner={runner} />
       {initial === REFUSED ? (
         <Alert variant="warning">

@@ -103,6 +103,21 @@ describe("isSelftestStale", () => {
     expect(isSelftestStale(detail())).toBe(false);
   });
 
+  it("survives a row from a daemon older than these columns, which omits the keys entirely", () => {
+    // The JSON round-trip drops undefined keys, reproducing the wire shape a
+    // pre-selftest daemon sends. A strict `=== null` check falls through it and
+    // dereferences undefined, which took the whole runner page down.
+    const older = JSON.parse(
+      JSON.stringify({ ...detail(), selftest: undefined, selftest_completed_at: undefined }),
+    ) as RunnerDetail;
+    expect(isSelftestStale(older)).toBe(false);
+  });
+
+  it("treats an omitted assignment as one the verdict can no longer describe", () => {
+    const noPolicy = JSON.parse(JSON.stringify({ ...detail(), assigned_policy: undefined })) as RunnerDetail;
+    expect(isSelftestStale(noPolicy)).toBe(true);
+  });
+
   it("reads staleness off the verdict, not off the runner's own tier column", () => {
     // The row's `sandbox_tier` is the live column; the comparison must use the
     // tier recorded WITH the verdict, or a re-tier would look freshly proven.
