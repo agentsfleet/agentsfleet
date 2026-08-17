@@ -103,7 +103,7 @@ Every fleet reasoning loop lives inside a single `runner.execute` call. As the f
 ```yaml
 # In the fleet's TRIGGER.md frontmatter under x-agentsfleet:
 x-agentsfleet:
-  model: accounts/fireworks/models/kimi-k2.6   # opaque pass-through; the control
+  model: accounts/fireworks/models/kimi-k3      # opaque pass-through; the control
                                                 # plane forwards it into the lease
                                                 # ExecutionPolicy (the engine's
                                                 # ContextBudget.model). Empty
