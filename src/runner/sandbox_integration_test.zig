@@ -378,3 +378,10 @@ test "the resolver config a lease inherits is readable inside a real sandbox" {
 
     return error.SkipZigTest;
 }
+
+// The self-test probe's real-sandbox proofs root here — the integration lane
+// has exactly one root module, and the façade pattern keeps that root a flat
+// list rather than one growing file (write_zig, §Must).
+test {
+    _ = @import("selftest_integration_test.zig");
+}

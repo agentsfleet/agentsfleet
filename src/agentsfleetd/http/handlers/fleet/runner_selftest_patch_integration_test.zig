@@ -141,6 +141,35 @@ test "integration: a revoked runner refuses the ask — it will never heartbeat 
     try std.testing.expectEqual(@as(?i64, null), try requestedAt(conn, RUNNER_REVOKED));
 }
 
+test "integration: test_selftest_control_requires_write_scope" {
+    // Dimension 1.4's daemon half. The dashboard withholds the control from a
+    // read-only operator (RunnerHeader.selftest.test.tsx), but the arm is
+    // reachable directly, so the refusal has to be the route guard's — not the
+    // UI's. VIEWER carries fleet:read + schedule:read and no runner scope at
+    // all, which is what "without runner:write" means at this boundary.
+    const alloc = std.testing.allocator;
+    const h = try startHarness(alloc);
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer deleteRunner(conn, RUNNER_ACTIVE);
+    try seedRunner(conn, RUNNER_ACTIVE, @tagName(protocol.AdminState.active));
+
+    const url = try patchUrl(alloc, RUNNER_ACTIVE);
+    defer alloc.free(url);
+
+    const r = try (try (try h.request(.PATCH, url).bearer(scope_fixtures.VIEWER)).json(BODY_SELF_TEST)).send();
+    defer r.deinit();
+    try std.testing.expectEqual(@as(u16, 403), r.status);
+    try std.testing.expect(std.mem.indexOf(u8, r.body, ec.ERR_INSUFFICIENT_SCOPE) != null);
+
+    // Refused at the guard means the row is untouched — a scope failure that
+    // still stamped the ask would leave the page pending on an unauthorised
+    // click.
+    try std.testing.expectEqual(@as(?i64, null), try requestedAt(conn, RUNNER_ACTIVE));
+}
+
 test "integration: an ask against a runner that does not exist is a 404, never a silent no-op" {
     const alloc = std.testing.allocator;
     const h = try startHarness(alloc);

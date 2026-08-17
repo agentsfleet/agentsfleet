@@ -29,6 +29,9 @@ pub const HeartbeatReplyRaw = struct {
     assigned_policy: ?std.json.Value = null,
     degraded: bool = false,
     degraded_reason: ?[]const u8 = null,
+    /// An operator asked this runner to self-test. Defaulted false so a control
+    /// plane too old to send it simply never asks, rather than failing the beat.
+    selftest_requested: bool = false,
 };
 
 pub fn init(alloc: std.mem.Allocator) AppliedPolicy {

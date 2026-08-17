@@ -17,7 +17,11 @@ const CHECK_CONTROL_PLANE = "control_plane";
 
 /// Public for `runner_tail_coverage_test.zig` alone, which drives `emit` with
 /// stdout muted — the only way to reach the write path in-process.
-pub const Check = struct { name: []const u8, ok: bool, detail: []const u8 };
+/// The wire type, not a twin of it. `doctor` and the sandbox self-test report
+/// the same `{name, ok, detail}` triple by design — one runner must not speak
+/// health two ways — and two structurally identical structs would let the
+/// shapes drift and force a copy at the heartbeat boundary (RULE UFS).
+pub const Check = protocol.SelftestCheck;
 
 pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, io: std.Io, alloc: std.mem.Allocator, deadlines: *runner_deadline.Owned) u8 {
     const sched = deadlines.start(alloc);
@@ -50,7 +54,7 @@ fn reachCheck(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proces
     if (api == null or token == null) return .{ .name = CHECK_CONTROL_PLANE, .ok = false, .detail = "skipped — api/token unset" };
     var client = Client.init(alloc, io, sched, api.?);
     defer client.deinit();
-    const probe = client.heartbeat(alloc, token.?, call_deadline.DEFAULT_DEADLINE_MS, null) catch |err|
+    const probe = client.heartbeat(alloc, token.?, call_deadline.DEFAULT_DEADLINE_MS, null, null) catch |err|
         return .{
             .name = CHECK_CONTROL_PLANE,
             .ok = false,
