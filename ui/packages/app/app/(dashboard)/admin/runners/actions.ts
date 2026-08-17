@@ -10,6 +10,7 @@ import {
   updateRunnerAdminState,
   updateRunnerPolicy,
   deleteRunner,
+  requestRunnerSelftest,
   type AssignedPolicy,
   type RunnerListResponse,
   type RunnerLeaseResponse,
@@ -17,6 +18,7 @@ import {
   type RunnerAdminAction,
   type RunnerAdminStateUpdate,
   type RunnerPolicyUpdate,
+  type RunnerSelftestRequest,
   type ListParams,
   type LeaseListParams,
 } from "@/lib/api/runners";
@@ -59,6 +61,15 @@ export async function updateRunnerAdminStateAction(
   action: RunnerAdminAction,
 ): Promise<ActionResult<RunnerAdminStateUpdate>> {
   return requireScope(SCOPE.RUNNER_WRITE, () => withToken((t) => updateRunnerAdminState(t, runnerId, action)));
+}
+
+// runner:write, the same scope as the transitions — a self-test executes code
+// inside the runner's sandbox and its result is an operator-visible statement
+// about that host, so it is a write even though it moves no state.
+export async function requestRunnerSelftestAction(
+  runnerId: string,
+): Promise<ActionResult<RunnerSelftestRequest>> {
+  return requireScope(SCOPE.RUNNER_WRITE, () => withToken((t) => requestRunnerSelftest(t, runnerId)));
 }
 
 // runner:write, the same scope as revoke — deleting an already-revoked record is

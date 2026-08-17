@@ -65,6 +65,10 @@ export default async function RunnerDetailPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   if (!(await hasScope(SCOPE.RUNNER_READ))) redirect(NOT_ADMIN);
+  // Read admits the page; write decides which controls exist on it. Resolved
+  // here, server-side, rather than in the client header — the browser must not
+  // be the one deciding what an operator is allowed to press.
+  const canWrite = await hasScope(SCOPE.RUNNER_WRITE);
 
   const { runnerId } = await params;
   const query: Record<string, string | string[] | undefined> = searchParams ? await searchParams : {};
@@ -101,7 +105,7 @@ export default async function RunnerDetailPage({
           className="hidden lg:block lg:w-56 lg:shrink-0"
         />
         <div className="min-w-0 flex-1">
-          <RunnerHeader runner={runner} grafanaHref={grafanaHrefFor(runner.id)} />
+          <RunnerHeader runner={runner} grafanaHref={grafanaHrefFor(runner.id)} canWrite={canWrite} />
         </div>
       </div>
 

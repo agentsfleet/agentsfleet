@@ -96,6 +96,24 @@ export function parseRegistryAllowlist(raw: string): { hosts: string[]; error: s
   return { hosts: [...seen], error: null };
 }
 
+// How an operator-added path is mounted — mirrors `protocol_bind.BindMode`.
+// An entry that names no mode is read-only, so access never widens by omission.
+export const BIND_MODE = {
+  read_only: "read_only",
+  read_write: "read_write",
+} as const;
+export type BindMode = (typeof BIND_MODE)[keyof typeof BIND_MODE];
+
+// One operator-assigned sandbox mount — mirrors `protocol_bind.ExtraBind`.
+// `read_write` is a real boundary widening: tenant agent code can then modify
+// host state outside its workspace on every lease that runner takes, so the
+// page renders it differently from a plain row.
+export interface ExtraBind {
+  path: string;
+  mode?: BindMode;
+  note?: string;
+}
+
 // The policy the operator assigns to a runner — mirrors `protocol.AssignedPolicy`
 // verbatim. The host applies exactly this; it never declares its own.
 export interface AssignedPolicy {
@@ -103,6 +121,10 @@ export interface AssignedPolicy {
   network_policy: NetworkPolicy;
   registry_allowlist: string[];
   worker_count: number;
+  // Paths bound IN ADDITION to the daemon-owned baseline. Optional on the wire:
+  // a runner enrolled before the column existed sends nothing, which reads as
+  // "baseline only" rather than as a missing assignment.
+  extra_binds?: ExtraBind[];
 }
 
 // What the host's kernel can actually enforce — mirrors
@@ -139,17 +161,25 @@ export const RUNNER_ADMIN_STATES = [
   RUNNER_ADMIN_STATE.revoked,
 ] as const;
 
+// The PATCH verbs the daemon serves — mirrors `protocol.RunnerAdminAction`.
 export const RUNNER_ADMIN_ACTION = {
   cordon: "cordon",
   drain: "drain",
   revoke: "revoke",
+  self_test: "self_test",
 } as const;
 export type RunnerAdminAction = (typeof RUNNER_ADMIN_ACTION)[keyof typeof RUNNER_ADMIN_ACTION];
+
+// The subset that moves `admin_state`. `self_test` records a request and moves
+// nothing, so the transition map and `actionsFor` key on THIS narrower type —
+// same reasoning that keeps Delete out of ACTION_CONFIG. Widening the map to
+// every wire verb would make a transition table answer for a non-transition.
 export const RUNNER_ADMIN_ACTIONS = [
   RUNNER_ADMIN_ACTION.cordon,
   RUNNER_ADMIN_ACTION.drain,
   RUNNER_ADMIN_ACTION.revoke,
 ] as const;
+export type RunnerStateAction = (typeof RUNNER_ADMIN_ACTIONS)[number];
 
 export const RUNNER_EVENT_TYPES = [
   "runner_registered",
@@ -223,6 +253,27 @@ export interface RunnerListResponse {
   next_cursor: string | null;
 }
 
+// One check's verdict — mirrors `protocol_selftest.SelftestCheck`. The same
+// `{name, ok, detail}` triple `agentsfleet-runner doctor` speaks, so an operator
+// reads one vocabulary across both surfaces. `detail` is prose even when `ok`.
+export interface SelftestCheck {
+  name: string;
+  ok: boolean;
+  detail: string;
+}
+
+// One probe run — mirrors `protocol_selftest.SelftestReport`. The tier and
+// policy travel WITH the verdict rather than being read live at render time: a
+// result outlives the assignment that produced it, and rendering an old verdict
+// against a new policy would tell an operator their policy is proven when
+// nothing has tested it.
+export interface SelftestReport {
+  checks: SelftestCheck[];
+  all_ok: boolean;
+  sandbox_tier: string;
+  network_policy: string;
+}
+
 /** The single-runner operator read: the list fields plus live-work and lifetime counters. */
 export interface RunnerDetail extends RunnerListItem {
   active_lease_count: number;
@@ -231,6 +282,28 @@ export interface RunnerDetail extends RunnerListItem {
   leases_succeeded: number;
   leases_failed: number;
   leases_expired: number;
+  /** An operator's outstanding ask, epoch ms; null when none is pending. The
+   * daemon clears it on the beat that reports the matching verdict, so a
+   * non-null value means "asked, not yet answered". */
+  selftest_requested_at: number | null;
+  /** When the verdict landed, epoch ms; null until a first report. A runner may
+   * hold a request with no result, or a result with no request (the startup
+   * probe, which no operator asked for). */
+  selftest_completed_at: number | null;
+  /** The latest verdict; null means never self-tested, which the page renders
+   * differently from "tested and reported no checks". */
+  selftest: SelftestReport | null;
+}
+
+/** True when a verdict describes an assignment the runner no longer carries.
+ * The result is then history, not a statement about how this runner is
+ * configured now, and the page must say so (Dimension 1.3). */
+export function isSelftestStale(runner: RunnerDetail): boolean {
+  const report = runner.selftest;
+  if (report === null) return false;
+  const assigned = runner.assigned_policy;
+  if (assigned === null) return true;
+  return report.sandbox_tier !== assigned.sandbox_tier || report.network_policy !== assigned.network_policy;
 }
 
 // Settled server-side into one closed tag; the client never re-derives an
@@ -290,6 +363,15 @@ export interface CreatedRunner {
 export interface RunnerAdminStateUpdate {
   id: string;
   admin_state: RunnerAdminState;
+}
+
+/** The self-test PATCH reply: the recorded REQUEST, never a verdict. The daemon
+ * picks the ask up on its next heartbeat and answers on a later one, so the page
+ * shows pending and ages it from `selftest_requested_at`. */
+export interface RunnerSelftestRequest {
+  id: string;
+  admin_state: RunnerAdminState;
+  selftest_requested_at: number;
 }
 
 /** The policy-update PATCH reply: the assignment as stored (worker count clamped). */
@@ -387,6 +469,21 @@ export async function updateRunnerAdminState(
   return request<RunnerAdminStateUpdate>(
     `${FLEET_RUNNERS_PATH}/${encodeURIComponent(runnerId)}`,
     { method: "PATCH", body: JSON.stringify({ action }) },
+    token,
+  );
+}
+
+/** Ask a runner to test its own sandbox. Returns once the request is recorded —
+ * it does NOT wait for the verdict, because the daemon collects the ask on its
+ * own heartbeat and waiting would hang the page on the offline host an operator
+ * most wants to test. A revoked runner refuses (409 UZ-RUN-018). */
+export async function requestRunnerSelftest(
+  token: string,
+  runnerId: string,
+): Promise<RunnerSelftestRequest> {
+  return request<RunnerSelftestRequest>(
+    `${FLEET_RUNNERS_PATH}/${encodeURIComponent(runnerId)}`,
+    { method: "PATCH", body: JSON.stringify({ action: RUNNER_ADMIN_ACTION.self_test }) },
     token,
   );
 }
