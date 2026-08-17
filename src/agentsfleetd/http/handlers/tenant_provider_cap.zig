@@ -9,6 +9,7 @@
 const std = @import("std");
 const pg = @import("pg");
 
+const metadata = @import("../../secrets/metadata.zig");
 const tenant_provider = @import("../../state/tenant_provider.zig");
 const model_rate_cache = @import("../../state/model_rate_cache.zig");
 const revision_state = @import("../../state/model_catalogue_revision.zig");
@@ -22,50 +23,23 @@ const revision_state = @import("../../state/model_catalogue_revision.zig");
 /// frontmatter overlay resolve the effective context window at run time.
 const CUSTOM_ENDPOINT_CAP_UNKNOWN: u32 = 0;
 
-/// Providers that serve models from hardware the operator owns. NullClaw dials
-/// each by name at a localhost endpoint and carries NO model list for any of
-/// them — `providers/factory.zig` gives them a name, a URL and a display label,
-/// nothing more — because there cannot be one: the served model is whatever the
-/// operator loaded (`--served-model-name`, an `ollama pull`). The set is
-/// unbounded and per-install.
-///
-/// So `core.model_library` can never hold the (provider, model) pair a real
-/// request names, and enforcing membership refuses EVERY local activation —
-/// which it did. Seeding a placeholder model id does not fix it either: any
-/// fixed string is a guess about what the operator called their model.
+/// `core.model_library` can never hold the (provider, model) pair a local
+/// runtime's request names — the model lives on the operator's hardware and the
+/// set is per-install — so enforcing membership refused EVERY local activation.
+/// Seeding a placeholder model id does not fix it either: any fixed string is a
+/// guess about what the operator called their model.
 ///
 /// They take the custom-endpoint path instead, for the same reason it exists: a
 /// user-hosted model is absent from the platform catalogue by design. Billing is
 /// unaffected — a local runtime is self-managed by construction, and
 /// self-managed charges a run fee only, never a token rate.
-///
-/// Kept in lockstep with the allowlist's `rate_basis: "activation_floor"` set by
-/// scripts/check_model_allowlist.py, so the two cannot drift apart silently.
-const LOCAL_RUNTIME_PROVIDERS = [_][]const u8{
-    "litellm",
-    "llama.cpp",
-    "llamacpp",
-    "lm-studio",
-    "lmstudio",
-    "ollama",
-    "osaurus",
-    "sglang",
-    "vllm",
-};
-
-/// Whether this provider serves models from the operator's own hardware.
-fn isLocalRuntime(provider: []const u8) bool {
-    for (LOCAL_RUNTIME_PROVIDERS) |name| {
-        if (std.mem.eql(u8, provider, name)) return true;
-    }
-    return false;
-}
+const isLocalRuntime = metadata.isLocalRuntime;
 
 /// Resolve the context-window cap to persist for a self-managed activation.
 /// A custom (openai-compatible) endpoint is provider-direct billing: its
 /// user-hosted model is absent from the platform rate catalogue by design, so it
 /// bypasses the gate and takes the unknown/auto sentinel. A local runtime
-/// (`LOCAL_RUNTIME_PROVIDERS`) takes the same path for the same reason — the
+/// (`metadata.LOCAL_RUNTIME_PROVIDERS`) takes the same path for the same reason — the
 /// model lives on the operator's hardware and cannot be enumerated. A named provider must
 /// resolve a catalogued rate row (whose cap we store) — `null` means the model is
 /// not in the catalogue, and the caller fails it (UZ-PROVIDER-004). The rate row
@@ -104,23 +78,10 @@ pub fn resolveSelfManagedCap(conn: *pg.Conn, provider: []const u8, model: []cons
     return entry.context_cap_tokens;
 }
 
-test "every local runtime is recognised" {
-    for (LOCAL_RUNTIME_PROVIDERS) |name| {
-        try std.testing.expect(isLocalRuntime(name));
-    }
-}
-
-test "a hosted provider is not a local runtime" {
-    // These MUST keep enforcing catalogue membership: they are billable under
-    // platform posture, so an uncatalogued model has to fail closed.
-    for ([_][]const u8{ "fireworks", "anthropic", "openai", "kimi", "bedrock", "pioneer" }) |name| {
-        try std.testing.expect(!isLocalRuntime(name));
-    }
-}
-
-test "local-runtime matching is exact, never a prefix or case fold" {
-    // A near-miss must not silently buy a catalogue bypass.
-    for ([_][]const u8{ "", "vllm2", "xvllm", "VLLM", "Ollama", "llama.cp", "llama.cppx", "lm-studio " }) |name| {
-        try std.testing.expect(!isLocalRuntime(name));
-    }
+test "the activation gate reads the canonical local-runtime list" {
+    // The membership bypass and the keyless-credential carve-out must key off
+    // ONE list; this pins the re-export rather than a second copy of the names.
+    // The list's own behaviour is proven in `secrets/metadata_test.zig`.
+    try std.testing.expect(isLocalRuntime("ollama"));
+    try std.testing.expect(!isLocalRuntime("anthropic"));
 }

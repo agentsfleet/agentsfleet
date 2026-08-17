@@ -107,16 +107,13 @@ pub fn probeSelfManagedSecret(
         break :blk mv.string;
     } else "";
 
-    // api_key is required + non-empty for a named provider, but OPTIONAL for an
-    // openai-compatible custom endpoint — a keyless gateway dials with no bearer
-    // key (the spec's optional-key design). A present key must still be a string;
-    // a missing or blank key on a named provider stays malformed.
-    const is_compatible = std.mem.eql(u8, provider_v.string, OPENAI_COMPATIBLE_PROVIDER);
+    // A present key must always be a string; whether one is REQUIRED is
+    // `requiresApiKey`'s call. Absent or non-required ⇒ "".
     const api_key_str: []const u8 = if (obj.get(S_API_KEY)) |kv| blk: {
         if (kv != .string) return ResolveError.SecretDataMalformed;
         break :blk kv.string;
     } else "";
-    if (!is_compatible and api_key_str.len == 0) return ResolveError.SecretDataMalformed;
+    if (requiresApiKey(provider_v.string) and api_key_str.len == 0) return ResolveError.SecretDataMalformed;
 
     // Extract the optional base_url (string when present) and validate the
     // provider⇔base_url pairing through the SSRF guard BEFORE any owned alloc, so
@@ -156,6 +153,23 @@ pub fn loadTenantSecretJson(
     const ws_id = try resolvePrimaryWorkspace(alloc, conn, tenant_id);
     defer alloc.free(ws_id);
     return loadSelfManagedJson(alloc, conn, ws_id, secret_ref);
+}
+
+/// Whether a self-managed credential for `provider` must carry a non-empty
+/// `api_key`. Two provider kinds dial without one and are exempt:
+///   - `openai-compatible` — a keyless gateway is the spec's optional-key design.
+///   - a local runtime (`metadata.LOCAL_RUNTIME_PROVIDERS`) — the server runs on
+///     the operator's own hardware and authenticates nobody, so the only key an
+///     operator could supply is a placeholder typed to satisfy this check. That
+///     is a papercut the credential layer should not mint.
+/// Every hosted provider still requires one: a blank key there reaches the
+/// vendor as an unauthenticated request and fails at dial time with a 401 the
+/// tenant cannot read, so it is rejected at the parse boundary instead.
+/// Pure and pub for the co-located §6 validation unit tests
+/// (`tenant_provider_test.zig`), which drive both exemptions with no DB.
+pub fn requiresApiKey(provider: []const u8) bool {
+    if (std.mem.eql(u8, provider, OPENAI_COMPATIBLE_PROVIDER)) return false;
+    return !metadata.isLocalRuntime(provider);
 }
 
 /// Validate the provider⇔base_url pairing for a self-managed credential (RULE

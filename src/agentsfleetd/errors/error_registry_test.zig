@@ -333,15 +333,21 @@ test "error_registry.zig exports REGISTRY (not TABLE)" {
 }
 
 // ── UZ-PROVIDER-003 hint must match secret_probe.zig's
-//    ACTUAL rule (probeSelfManagedSecret): provider + model always required,
-//    api_key required for a named provider but OPTIONAL for an openai-compatible
-//    endpoint. Regression guard against the old unconditional
-//    "provider, api_key, and model (all required)" phrasing that misled clients.
+//    ACTUAL rule (probeSelfManagedSecret + requiresApiKey): provider always
+//    required, api_key required for a HOSTED provider but optional for an
+//    openai-compatible endpoint AND for a local runtime. Regression guard
+//    against two phrasings that misled clients — the old unconditional
+//    "provider, api_key, and model (all required)", and the "named provider"
+//    wording that survived the local-runtime carve-out and would send an
+//    operator hunting for a key their own model server never issues.
 test "UZ-PROVIDER-003 hint states api_key is conditional, not unconditionally required" {
     const hint = reg.lookup(reg.ERR_PROVIDER_SECRET_DATA_MALFORMED).hint;
-    // Positive: the conditional rule the validator enforces.
-    try std.testing.expect(std.mem.indexOf(u8, hint, "required for a named provider") != null);
+    // Positive: the conditional rule the validator enforces, both exemptions.
+    try std.testing.expect(std.mem.indexOf(u8, hint, "required for a hosted provider") != null);
     try std.testing.expect(std.mem.indexOf(u8, hint, "optional for `openai-compatible`") != null);
+    try std.testing.expect(std.mem.indexOf(u8, hint, "local runtime") != null);
     // Negative: the old unconditional triplet-required phrasing must be gone.
     try std.testing.expect(std.mem.indexOf(u8, hint, "`provider`, `api_key`, and `model`") == null);
+    // Negative: "named provider" over-claims — a local runtime is named too.
+    try std.testing.expect(std.mem.indexOf(u8, hint, "required for a named provider") == null);
 }

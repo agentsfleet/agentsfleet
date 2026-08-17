@@ -10,6 +10,7 @@ import {
   SelectItem,
 } from "@agentsfleet/design-system";
 import { modelsForProvider, uniqueModelIds } from "@/lib/api/model_library";
+import { isLocalRuntime } from "@/lib/types";
 import { CATALOGUE_STATUS } from "./catalogue-status";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
 import { knownModelsFor } from "../lib/known-models";
@@ -52,7 +53,9 @@ function LoadingModelSelect({ id, label }: { id: string; label: string }) {
  * (lib/known-models.ts) fills the same <Select> shape as a plain autocomplete
  * convenience; only when NEITHER covers the provider does this degrade to a
  * free-text input. Provider-scoped because core.model_library is keyed by
- * (provider, model_id).
+ * (provider, model_id). A local runtime always takes the free-text tier — its
+ * only catalogue row is an activation-floor sentinel, so a constrained Select
+ * would offer exactly one option that is not a model.
  */
 export default function ProviderModelSelect({
   id,
@@ -62,9 +65,15 @@ export default function ProviderModelSelect({
   label = "Model",
 }: ProviderModelSelectProps) {
   const { models, status } = useModelCatalogue();
+  // A local runtime's catalogue row is an activation-floor sentinel, not a
+  // model anyone serves — offering it as the only option in a constrained
+  // Select would make the picker actively wrong. The served id is whatever the
+  // operator loaded, so this is the one provider kind that must stay free text.
+  const isLocal = provider !== undefined && isLocalRuntime(provider);
   const catalogueOptions = provider ? modelsForProvider(models, provider) : uniqueModelIds(models);
-  const optionIds =
-    catalogueOptions.length > 0
+  const optionIds = isLocal
+    ? []
+    : catalogueOptions.length > 0
       ? catalogueOptions.map((m) => m.id)
       : provider
         ? knownModelsFor(provider)
@@ -93,7 +102,7 @@ export default function ProviderModelSelect({
           id={id}
           value={model}
           onChange={(e) => onModelChange(e.target.value)}
-          placeholder="claude-sonnet-4-6"
+          placeholder={isLocal ? "the name your server serves it under" : "claude-sonnet-4-6"}
           spellCheck={false}
           autoComplete="off"
         />

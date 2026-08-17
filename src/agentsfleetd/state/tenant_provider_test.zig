@@ -187,6 +187,66 @@ test "test_resolver_named_provider_unchanged" {
     );
 }
 
+// ── api_key requirement (pure — no DB) ──────────────────────────────────────
+// The sibling parse-boundary gate. `requiresApiKey` decides whether a blank or
+// absent `api_key` makes the credential malformed; the probe is DB-bound, this
+// predicate is not, so every arm is driven here.
+
+test "test_key_required_for_a_hosted_provider" {
+    // The default, and the one that must not erode: a vendor that authenticates
+    // gets a key, or the credential is refused at the parse boundary rather
+    // than at dial time with an unreadable vendor 401.
+    for ([_][]const u8{ "fireworks", "anthropic", "openai", "kimi", "bedrock", "groq" }) |p| {
+        try std.testing.expect(tenant_provider.requiresApiKey(p));
+    }
+}
+
+test "test_key_optional_for_a_custom_endpoint" {
+    // Unchanged behaviour — a keyless gateway is the spec's optional-key design.
+    try std.testing.expect(!tenant_provider.requiresApiKey(COMPAT));
+}
+
+test "test_key_optional_for_a_local_runtime" {
+    // The carve-out: a server on the operator's own hardware authenticates
+    // nobody, so demanding a key only made operators type a placeholder to get
+    // past the check. Named literally rather than by looping the source array —
+    // that loop passes for any implementation that reads the list, including one
+    // that has silently lost a member.
+    for ([_][]const u8{
+        "litellm",   "llama.cpp", "llamacpp",
+        "lm-studio", "lmstudio",  "ollama",
+        "osaurus",   "sglang",    "vllm",
+    }) |p| {
+        try std.testing.expect(!tenant_provider.requiresApiKey(p));
+    }
+}
+
+test "test_local_runtime_is_still_forbidden_a_base_url" {
+    // The two exemptions are independent, asserted rather than only claimed in a
+    // comment: waiving the key must not become a door to a tenant-chosen dial
+    // target. A local runtime is a named provider to validateSecretEndpoint, so
+    // it stays on NullClaw's fixed localhost entry.
+    for ([_][]const u8{ "ollama", "vllm", "llama.cpp" }) |p| {
+        try std.testing.expectError(
+            tenant_provider.ResolveError.SecretEndpointInvalid,
+            tenant_provider.validateSecretEndpoint(p, "https://evil.example.com/v1"),
+        );
+        try std.testing.expectEqual(
+            @as(?[]const u8, null),
+            try tenant_provider.validateSecretEndpoint(p, null),
+        );
+    }
+}
+
+test "test_key_exemption_does_not_leak_to_a_near_miss_name" {
+    // The exemption is exact-match only: a provider id that merely resembles a
+    // local runtime is still a hosted provider and still needs a key. Without
+    // this, "Ollama" or "vllm2" would buy a credential with no key at all.
+    for ([_][]const u8{ "", "Ollama", "VLLM", "vllm2", "xvllm", "lm-studio ", "llama.cppx", "openai-compatible-x" }) |p| {
+        try std.testing.expect(tenant_provider.requiresApiKey(p));
+    }
+}
+
 // ── Mode enum + ResolvedProvider invariants ────────────────────────────────
 
 test "Mode label round-trips for both variants" {

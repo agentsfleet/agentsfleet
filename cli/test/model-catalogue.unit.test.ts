@@ -17,7 +17,7 @@ import {
   resolveCatalogueTarget,
   type LibraryModel,
 } from "../src/lib/model-catalogue.ts";
-import { OPENAI_COMPATIBLE_PROVIDER } from "../src/constants/custom-endpoint.ts";
+import { OPENAI_COMPATIBLE_PROVIDER, LOCAL_RUNTIME_PROVIDERS, isLocalRuntime } from "../src/constants/custom-endpoint.ts";
 import { NetworkError } from "../src/errors/index.ts";
 
 const model = (id: string, provider: string): LibraryModel => ({ id, provider });
@@ -242,4 +242,60 @@ test("an EMPTY catalogue accepts the provider — a fresh environment stays usab
     httpLayer([{ models: [] }]),
   );
   expect(got.provider).toBe("anthropic");
+});
+
+// ── local runtimes ──────────────────────────────────────────────────────────
+// A local runtime's only catalogue row is an activation-floor sentinel, so the
+// provider is known but its models are not enumerable. The server waives model
+// membership for exactly this set; enforcing it here refused credentials the
+// API accepts, which is the defect these tests pin closed.
+
+const OLLAMA_FLOOR = model("local", "ollama");
+
+test("a LOCAL RUNTIME's uncatalogued model is accepted — only the sentinel row exists", async () => {
+  const got = await run(
+    resolveCatalogueTarget("ollama", "llama-3.3-70b-my-finetune", undefined),
+    httpLayer([{ models: [ANTHROPIC, OLLAMA_FLOOR] }]),
+  );
+  expect(got).toEqual({ provider: "ollama", model: "llama-3.3-70b-my-finetune" });
+});
+
+test("every local runtime takes the bypass, not just ollama", async () => {
+  // Guards against narrowing `isLocalRuntime` to one name: each provider is
+  // driven through the real resolver with its own floor row.
+  for (const p of LOCAL_RUNTIME_PROVIDERS) {
+    const got = await run(
+      resolveCatalogueTarget(p, "some-served-name", undefined),
+      httpLayer([{ models: [ANTHROPIC, model("local", p)] }]),
+    );
+    expect(got).toEqual({ provider: p, model: "some-served-name" });
+  }
+});
+
+test("a HOSTED provider's uncatalogued model is still refused", async () => {
+  // The bypass is scoped to local runtimes; a billable provider must fail closed.
+  const attempt = run(
+    resolveCatalogueTarget("anthropic", "llama-3.3-70b-my-finetune", undefined),
+    httpLayer([{ models: [ANTHROPIC, OLLAMA_FLOOR] }]),
+  );
+  await expect(attempt).rejects.toBeDefined();
+});
+
+test("a local-runtime provider absent from the catalogue is still refused", async () => {
+  // Pins the deployment window: a populated catalogue that has not been seeded
+  // with the floor rows yet rejects `ollama` on the PROVIDER check, before the
+  // model bypass is ever reached. The server would accept it — running
+  // `make seed-models` is what closes the gap, not a client change.
+  const attempt = run(
+    resolveCatalogueTarget("ollama", "llama-3.3-70b-my-finetune", undefined),
+    httpLayer([{ models: [ANTHROPIC] }]),
+  );
+  await expect(attempt).rejects.toBeDefined();
+});
+
+test("isLocalRuntime is exact-match — a near miss buys no exemption", async () => {
+  for (const p of LOCAL_RUNTIME_PROVIDERS) expect(isLocalRuntime(p)).toBe(true);
+  for (const p of ["", "Ollama", "VLLM", "vllm2", "xvllm", "lm-studio ", "llama.cp", "llama.cppx", "openai-compatible"]) {
+    expect(isLocalRuntime(p)).toBe(false);
+  }
 });
