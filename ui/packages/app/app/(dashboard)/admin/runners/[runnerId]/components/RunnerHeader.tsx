@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ExternalLinkIcon } from "lucide-react";
-import { Badge, Button, CopyButton } from "@agentsfleet/design-system";
+import { Alert, Badge, Button, CopyButton } from "@agentsfleet/design-system";
 import {
   SANDBOX_TIER_LABELS,
   type CapabilityReport,
@@ -83,6 +83,10 @@ export function RunnerHeader({
   const [confirmAction, setConfirmAction] = useState<RunnerActionConfirmTarget>(null);
   const [confirmDelete, setConfirmDelete] = useState<RunnerDeleteConfirmTarget>(null);
   const [error, setError] = useState<string | null>(null);
+  // The self-test has its own error slot because it has no confirm dialog to
+  // carry one: `error` renders only inside RunnerActionConfirm, which stays
+  // closed for a self-test, so a shared slot would swallow the refusal.
+  const [selftestError, setSelftestError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   function requestAction(action: RunnerStateAction) {
@@ -110,11 +114,11 @@ export function RunnerHeader({
   // No confirm step and no wait for a verdict: the request is recorded, the
   // page re-reads, and the pending state renders from `selftest_requested_at`.
   function runSelftest() {
-    setError(null);
+    setSelftestError(null);
     startTransition(async () => {
       const result = await requestRunnerSelftestAction(runner.id);
       if (!result.ok) {
-        setError(
+        setSelftestError(
           presentErrorString({
             errorCode: result.errorCode,
             message: result.error,
@@ -211,6 +215,11 @@ export function RunnerHeader({
           ) : null}
         </div>
       </div>
+
+      {/* The self-test refusal reads here, beside the control that asked for
+          it — the other two actions carry their errors inside their confirm
+          dialog, which a self-test never opens. */}
+      {selftestError ? <Alert variant="destructive" className="mb-md">{selftestError}</Alert> : null}
 
       <div className="mb-2xl flex flex-col gap-md">
         <div className="flex flex-wrap items-center gap-2xl text-body-sm text-muted-foreground">
