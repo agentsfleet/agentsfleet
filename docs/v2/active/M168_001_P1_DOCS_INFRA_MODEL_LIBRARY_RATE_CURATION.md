@@ -30,11 +30,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** every provider key in `scripts/model-library-allowlist.json` either carries at least one priced model, or carries a machine-checkable `unpriced_reason` naming which of five permanent causes applies — and `make seed-models` emits a row for each priced one.
+**Goal (testable):** every provider key in `scripts/model-library-allowlist.json` either carries at least one priced model, or carries a machine-checkable `unpriced_reason` from a closed seven-code vocabulary naming why — and `make seed-models` emits a row for each priced one.
 
-**Problem:** a user picks Amazon Bedrock (or Cerebras, or Venice, or any of 85 other providers) in the provider dropdown, supplies a working key, and activation fails with *"That model is not in the model library."* The provider dials fine; there is simply no catalogue row, because `scripts/gen-provider-skeleton.mjs` stamps every newly-derived provider with `models: []` and a note saying rates are "not yet curated". Nothing has ever curated them. The note reads as a queue that someone is working through; it is not — 87 keys have sat in that state since the generator landed, and nine of them (the local runtimes) can never leave it, because a model running on the user's own hardware has no per-token price to find.
+**Problem:** a user picks Amazon Bedrock (or Cerebras, or Venice, or any of 85 other providers) in the provider dropdown, supplies a working key, and activation fails with *"That model is not in the model library."* The provider dials fine; there is simply no catalogue row, because `scripts/gen-provider-skeleton.mjs` stamps every newly-derived provider with `models: []` and a note saying rates are "not yet curated". Nothing has ever curated them. The note reads as a queue that someone is working through; it is not — 87 keys have sat in that state since the generator landed, and nine of them (the local runtimes) can never leave it on rates alone, because a model running on the user's own hardware has neither a per-token price nor an enumerable id.
 
-**Solution summary:** curate the catalogue in one pass and make the file state *why* for everything it still cannot price. Eight providers publish machine-readable pricing feeds — they convert from `source: "manual"` to `source: "api"`, so their rates refresh on every `make seed-models` and can never go stale. Four more get hand-verified rates from official pricing pages. Regional duplicates are resolved by a new standing rule: we price and dial the **international** endpoint of every vendor that has a China/international split, and mainland-China endpoints stay unpriced because they remain reachable through the OpenAI-compatible custom-endpoint route. Local runtimes get a minimal nonzero rate — not because we bill them (self-managed posture never charges tokens) but because the catalogue row is what `UZ-PROVIDER-004` checks before it lets a tenant activate the model at all. Everything still unpriced gains a typed `unpriced_reason` in place of the uniform "not yet priced" note, so the file distinguishes *pending curation* from *permanently unpriceable*. `base_url` moves from the generator's derived set to its curated set, closing a live wrong-continent hazard. The architecture doc's prose is re-synced in place against all of it.
+**Solution summary:** curate the catalogue in one pass and make the file state *why* for everything it still cannot price. Eight providers publish machine-readable pricing feeds — they convert from `source: "manual"` to `source: "api"`, so their rates refresh on every `make seed-models` and can never go stale. Four more get hand-verified rates from official pricing pages. Regional duplicates are resolved by a new standing rule: we price and dial the **international** endpoint of every vendor that has a China/international split, and mainland-China endpoints stay unpriced because they remain reachable through the OpenAI-compatible custom-endpoint route. Local runtimes get a minimal nonzero rate — not because we bill them (self-managed posture never charges tokens) but as a floor behind the activation path. The row alone is not enough: their model id is whatever the operator loaded, so the gate stops enforcing catalogue membership for them entirely (§6). Everything still unpriced gains a typed `unpriced_reason` in place of the uniform "not yet priced" note, so the file distinguishes *pending curation* from *permanently unpriceable*. `base_url` moves from the generator's derived set to its curated set, closing a live wrong-continent hazard. The architecture doc's prose is re-synced in place against all of it.
 
 ## PR Intent & comprehension handshake
 
@@ -59,9 +59,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/gen-provider-skeleton.mjs` | EDIT | Move `base_url` from the derived set to the curated set; carry `unpriced_reason` through a regeneration. |
 | `docs/architecture/billing_and_provider_keys.md` | EDIT | Re-sync §1/§4/§8/§9/§10 prose against the curated catalogue; the platform default it names is retired. |
 | `samples/fixtures/model-library/seed.sql` | EDIT | Regenerated fixture — the Zig integration tests exec it statement-by-statement. |
-| `scripts/check_model_allowlist.py` | CREATE | Asserts the file's invariants (priced-or-reasoned, international rule, no zero rates) so they are enforced by a gate rather than by review. |
+| `src/agentsfleetd/http/handlers/tenant_provider_cap.zig` | EDIT | Local runtimes take the existing custom-endpoint path instead of the catalogue-membership check; their served model cannot be enumerated. |
+| `scripts/check_model_allowlist.py` | CREATE | Asserts the file's invariants (priced-or-reasoned, international rule, no zero rates, local-runtime parity with the activation gate) so they are enforced by a gate rather than by review. |
 | `scripts/check_model_allowlist_test.py` | CREATE | Unit tests for the checker, matching the repository's `*_test.py` convention. |
-| `make/lint.mk` | EDIT | Register the checker under `make lint-governance`. |
+| `make/quality.mk` | EDIT | Register the checker under `make lint-governance`. |
 
 ## Applicable Rules
 
@@ -74,8 +75,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| ZIG GATE | no — no `*.zig` in the blast radius | N/A |
-| PUB / Struct-Shape | no — no new Zig public surface | N/A |
+| ZIG GATE | yes — `tenant_provider_cap.zig` gains a provider list, a pure predicate and three test blocks | `zig fmt --check` clean; inline tests reachable from the existing test root; no allocation, no error union, so no `errdefer`/drain surface |
+| PUB / Struct-Shape | no — `LOCAL_RUNTIME_PROVIDERS` and `isLocalRuntime` are file-private | the only `pub` in the file, `resolveSelfManagedCap`, keeps its signature |
 | File & Function Length (≤350/≤50/≤70) | yes — `check_model_allowlist.py` is new | One check function per invariant, each well under 50 lines; the file stays under 350 or splits its checks into a sibling module. |
 | UFS (repeated/semantic literals) | yes — reason codes and the minimal rate repeat across JSON and checker | The five reason codes and `LOCAL_RUNTIME_MINIMAL_USD_PER_MTOK` are module constants in the checker; the JSON side is asserted against them so the two cannot drift. |
 | UI Substitution / DESIGN TOKEN | no — no UI files | N/A |
@@ -149,6 +150,19 @@ The prose is corrected in place rather than replaced with a pointer, per the aut
 - **Dimension 5.2 — DONE** — §9's routing table states the count of dialable providers and cites the allowlist as the enumeration, rather than presenting eight rows as the set → Test `test_doc_routing_table_cites_allowlist`
 - **Dimension 5.3 — DONE** — §10's provider-origin paragraph agrees with the schema: `provider` is a column, not an inference from `model_id` → Test `test_doc_provider_origin_matches_schema`
 - **Dimension 5.4 — DONE** — the doc quotes no dollar amounts, unchanged from today → Test `test_doc_quotes_no_dollar_amounts`
+
+### §6 — The activation gate stops enforcing membership for local runtimes
+
+Seeding a rate row for `vllm` does not make `vllm` activatable. `UZ-PROVIDER-004` resolves `(provider, model_id)`, and a local runtime's model id is whatever the operator loaded — `--served-model-name`, an `ollama pull`. NullClaw itself carries no model name for any of the nine (its `compat_providers` table gives each a name, a localhost URL and a display label, nothing more), because the set is unbounded and per-install. So any id we seed is a guess, and the floor rows alone leave every local activation refused exactly as before.
+
+The gate already has the right shape for this. A custom OpenAI-compatible endpoint bypasses the catalogue and takes the unknown/auto cap sentinel, precisely because its user-hosted model is absent from the platform catalogue by design. A local runtime is the same case with a name attached, so it takes the same path. Billing is untouched: self-managed charges a run fee only, and a local runtime is self-managed by construction.
+
+**Implementation default:** membership is decided by a named-constant provider list in the gate rather than a new schema column, mirroring how `OPENAI_COMPATIBLE_PROVIDER` is already handled. The drift risk that introduces — two places listing the same nine providers — is closed by making the checker parse the gate's list and require set equality with the allowlist's `rate_basis: "activation_floor"` set.
+
+- **Dimension 6.1 — DONE** — Every provider in `LOCAL_RUNTIME_PROVIDERS` is recognised → Test `every local runtime is recognised`
+- **Dimension 6.2 — DONE** — A hosted, billable provider still enforces catalogue membership, so an uncatalogued model fails closed → Test `a hosted provider is not a local runtime`
+- **Dimension 6.3 — DONE** — Matching is exact: no prefix, suffix, case-fold or padded near-miss buys a catalogue bypass → Test `local-runtime matching is exact, never a prefix or case fold`
+- **Dimension 6.4 — DONE** — The gate's list and the allowlist's activation-floor set are the same set, and the parser that compares them cannot silently return empty → Test `LocalRuntimeParity` (4 tests)
 
 ## Interfaces
 

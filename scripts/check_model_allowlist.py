@@ -22,15 +22,23 @@ So the file's invariants are checked here rather than trusted to review:
                               warns about, and it shipped for months.
   5. api providers have fixtures — otherwise the integration lane silently
                               depends on the network being up.
+  6. local-runtime parity   — the providers carrying an activation floor here
+                              and the ones the activation gate lets past the
+                              catalogue check must be the same set. Adding to
+                              one alone leaves a local runtime that still
+                              refuses activation, or one that bypasses the gate
+                              with nothing behind it.
 
 Exit 0 if clean, 1 with one line per violation.
 """
 import json
+import re
 import sys
 from pathlib import Path
 
 ALLOWLIST = Path("scripts/model-library-allowlist.json")
 FIXTURE_DIR = Path("samples/fixtures/model-library")
+CAP_HANDLER = Path("src/agentsfleetd/http/handlers/tenant_provider_cap.zig")
 
 RATE_FIELDS = ("input", "cached_input", "output")
 
@@ -143,6 +151,46 @@ CHECKS = (
 )
 
 
+def zig_local_runtime_providers() -> set[str]:
+    """The provider names LOCAL_RUNTIME_PROVIDERS lists in the activation gate.
+
+    Parsed rather than duplicated: the Zig array is the authority for which
+    providers skip the catalogue-membership check, and this file is the authority
+    for which carry an activation floor. They describe the same set, so a
+    provider added to one and not the other is a real defect — either a local
+    runtime that still refuses activation, or one that bypasses the gate with no
+    floor behind it.
+    """
+    body = CAP_HANDLER.read_text(encoding="utf-8")
+    start = body.find("const LOCAL_RUNTIME_PROVIDERS")
+    if start == -1:
+        raise ValueError(f"LOCAL_RUNTIME_PROVIDERS not found in {CAP_HANDLER}")
+    end = body.find("};", start)
+    return set(re.findall(r'"([^"]+)"', body[start:end]))
+
+
+def check_local_runtime_parity(doc: dict) -> list[str]:
+    floor = {
+        name
+        for name, cfg in doc.get("providers", {}).items()
+        if cfg.get("rate_basis") == RATE_BASIS_FLOOR
+    }
+    try:
+        zig = zig_local_runtime_providers()
+    except (OSError, ValueError) as err:
+        return [f"could not read the activation gate's local-runtime list: {err}"]
+    problems = []
+    if floor - zig:
+        problems.append(
+            f"carry an activation floor but the activation gate still enforces catalogue membership: {sorted(floor - zig)}"
+        )
+    if zig - floor:
+        problems.append(
+            f"bypass the activation gate but carry no activation floor in the allowlist: {sorted(zig - floor)}"
+        )
+    return problems
+
+
 def check_legend_covers_vocabulary(doc: dict) -> list[str]:
     """The in-file legend and this module's vocabulary must not drift apart."""
     legend = {k for k in doc.get("unpriced_reasons", {}) if not k.startswith("_")}
@@ -168,6 +216,7 @@ def main() -> int:
         return 1
 
     problems = check_legend_covers_vocabulary(doc)
+    problems.extend(check_local_runtime_parity(doc))
     providers = doc.get("providers", {})
     for name, cfg in providers.items():
         for check in CHECKS:

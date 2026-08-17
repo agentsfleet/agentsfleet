@@ -190,6 +190,40 @@ class RealFile(unittest.TestCase):
         self.assertEqual(stale, [])
 
 
+class LocalRuntimeParity(unittest.TestCase):
+    """The allowlist's floor set and the activation gate's bypass set are one set."""
+
+    def test_real_tree_agrees(self):
+        with open(os.path.join(REPO_ROOT, "scripts", "model-library-allowlist.json"), encoding="utf-8") as handle:
+            doc = json.load(handle)
+        self.assertEqual(gate.check_local_runtime_parity(doc), [])
+
+    def test_gate_list_is_actually_parsed(self):
+        # Guard the parser itself: a silently-empty result would make the parity
+        # check vacuous and report clean forever.
+        names = gate.zig_local_runtime_providers()
+        self.assertIn("vllm", names)
+        self.assertIn("ollama", names)
+        self.assertIn("llama.cpp", names)
+        self.assertEqual(len(names), 9)
+
+    def test_floor_without_gate_entry_is_caught(self):
+        # Every real gate name present, plus one extra floor — so only the
+        # allowlist-side direction fires and the assertion isolates it.
+        providers = {n: {"rate_basis": gate.RATE_BASIS_FLOOR} for n in gate.zig_local_runtime_providers()}
+        providers["phantom-runtime"] = {"rate_basis": gate.RATE_BASIS_FLOOR}
+        problems = gate.check_local_runtime_parity({"providers": providers})
+        self.assertEqual(len(problems), 1)
+        self.assertIn("still enforces catalogue membership", problems[0])
+        self.assertIn("phantom-runtime", problems[0])
+
+    def test_gate_entry_without_floor_is_caught(self):
+        # Every real gate name absent from the allowlist side.
+        problems = gate.check_local_runtime_parity({"providers": {}})
+        self.assertEqual(len(problems), 1)
+        self.assertIn("carry no activation floor", problems[0])
+
+
 class SeededRates(unittest.TestCase):
     """Regression guard on the two silent seeder failures M168 fixed.
 
