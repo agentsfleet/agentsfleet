@@ -93,9 +93,9 @@ pub const ResolveError = error{
     /// self-managed row points at a secret_ref that has no vault row.
     SecretMissing,
     /// Vault row decrypted but the JSON object is missing a required field:
-    /// `provider` (always), or `api_key` (see `requiresApiKey` — optional for an
-    /// openai-compatible endpoint and for a local runtime). `model` is optional
-    /// (M121: it lives on the registry entry, not the credential).
+    /// `provider` (always), or `api_key` (for a named provider — optional for an
+    /// openai-compatible endpoint). `model` is optional (M121: it lives on the
+    /// registry entry, not the credential).
     SecretDataMalformed,
     /// An openai-compatible credential's `base_url` is missing, not https, or
     /// targets an SSRF-unsafe host; OR a non-openai-compatible credential
@@ -134,7 +134,7 @@ pub fn resolveActiveProvider(
 
 /// UPSERT a self-managed row for tenant_id. Validates the credential exists in the
 /// tenant's primary workspace vault and has the required shape (provider always;
-/// api_key where `requiresApiKey`) — `model` is NOT required on the credential
+/// api_key for a named provider) — `model` is NOT required on the credential
 /// (M121: it lives on the registry entry). Stores the caller-supplied model + cap
 /// directly — caller is responsible for resolving them from the model-library
 /// catalogue beforehand.
@@ -301,10 +301,6 @@ pub const OPENAI_COMPATIBLE_PROVIDER = secret_probe.OPENAI_COMPATIBLE_PROVIDER;
 /// Validate a self-managed credential's provider⇔base_url pairing (pure; SSRF +
 /// https-checked). Re-exported for the §6 validation unit tests.
 pub const validateSecretEndpoint = secret_probe.validateSecretEndpoint;
-
-/// Whether a self-managed credential for a provider must carry a non-empty
-/// `api_key` (pure). Re-exported for the §6 validation unit tests.
-pub const requiresApiKey = secret_probe.requiresApiKey;
 
 /// Probe the tenant's self-managed credential and return the {provider, api_key,
 /// model} triplet. Used by the HTTP PUT handler to read the effective

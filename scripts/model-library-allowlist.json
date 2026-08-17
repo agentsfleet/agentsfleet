@@ -81,7 +81,8 @@
     "deployment_scoped": "permanent — rates vary per customer deployment, region and commitment tier, and the provider carries no single base_url.",
     "credentialed_feed": "pending — the vendor publishes rates only behind an authenticated endpoint; not verifiable during curation.",
     "no_public_rates": "pending — the vendor publishes no per-token rate table at all.",
-    "awaiting_curation": "pending — newly derived from a NullClaw bump and not yet curated. The only code that is a queue rather than a decision; the next pass either prices the provider or replaces this with the reason it cannot."
+    "awaiting_curation": "pending — newly derived from a NullClaw bump and not yet curated. The only code that is a queue rather than a decision; the next pass either prices the provider or replaces this with the reason it cannot.",
+    "operator_hosted": "permanent — runs on hardware the operator owns. No per-token price exists to charge against, and no vendor publishes one."
   },
   "nullclaw_alias_collisions": {
     "_readme": [
@@ -706,55 +707,45 @@
       "base_url": "http://localhost:4000",
       "display": "LiteLLM",
       "source": "manual",
-      "models": [
-        { "model_id": "local", "context_cap_tokens": 262144, "input": 0.000001, "cached_input": 0.000001, "output": 0.000001 }
-      ],
-      "rate_basis": "activation_floor",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and the served model cannot be enumerated — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. The activation gate therefore skips the catalogue-membership check for these providers entirely (tenant_provider_cap.zig LOCAL_RUNTIME_PROVIDERS), the same path a custom OpenAI-compatible endpoint takes. This row is the ACTIVATION FLOOR that marks the provider local and backs the rate path if it is ever reached; it is not a price and is never billed, because a local runtime is self-managed by construction and self-managed charges no token cost. check_model_allowlist.py requires this set and the gate's list to match exactly."
+      "models": [],
+      "unpriced_reason": "operator_hosted",
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "llama.cpp": {
       "dial": "native",
       "base_url": "http://localhost:8080/v1",
       "display": "llama.cpp",
       "source": "manual",
-      "models": [
-        { "model_id": "local", "context_cap_tokens": 262144, "input": 0.000001, "cached_input": 0.000001, "output": 0.000001 }
-      ],
-      "rate_basis": "activation_floor",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and the served model cannot be enumerated — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. The activation gate therefore skips the catalogue-membership check for these providers entirely (tenant_provider_cap.zig LOCAL_RUNTIME_PROVIDERS), the same path a custom OpenAI-compatible endpoint takes. This row is the ACTIVATION FLOOR that marks the provider local and backs the rate path if it is ever reached; it is not a price and is never billed, because a local runtime is self-managed by construction and self-managed charges no token cost. check_model_allowlist.py requires this set and the gate's list to match exactly."
+      "models": [],
+      "unpriced_reason": "operator_hosted",
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "llamacpp": {
       "dial": "native",
       "base_url": "http://localhost:8080/v1",
       "display": "llama.cpp",
       "source": "manual",
-      "models": [
-        { "model_id": "local", "context_cap_tokens": 262144, "input": 0.000001, "cached_input": 0.000001, "output": 0.000001 }
-      ],
-      "rate_basis": "activation_floor",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and the served model cannot be enumerated — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. The activation gate therefore skips the catalogue-membership check for these providers entirely (tenant_provider_cap.zig LOCAL_RUNTIME_PROVIDERS), the same path a custom OpenAI-compatible endpoint takes. This row is the ACTIVATION FLOOR that marks the provider local and backs the rate path if it is ever reached; it is not a price and is never billed, because a local runtime is self-managed by construction and self-managed charges no token cost. check_model_allowlist.py requires this set and the gate's list to match exactly."
+      "models": [],
+      "unpriced_reason": "operator_hosted",
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "lm-studio": {
       "dial": "native",
       "base_url": "http://localhost:1234/v1",
       "display": "LM Studio",
       "source": "manual",
-      "models": [
-        { "model_id": "local", "context_cap_tokens": 262144, "input": 0.000001, "cached_input": 0.000001, "output": 0.000001 }
-      ],
-      "rate_basis": "activation_floor",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and the served model cannot be enumerated — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. The activation gate therefore skips the catalogue-membership check for these providers entirely (tenant_provider_cap.zig LOCAL_RUNTIME_PROVIDERS), the same path a custom OpenAI-compatible endpoint takes. This row is the ACTIVATION FLOOR that marks the provider local and backs the rate path if it is ever reached; it is not a price and is never billed, because a local runtime is self-managed by construction and self-managed charges no token cost. check_model_allowlist.py requires this set and the gate's list to match exactly."
+      "models": [],
+      "unpriced_reason": "operator_hosted",
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "lmstudio": {
       "dial": "native",
       "base_url": "http://localhost:1234/v1",
       "display": "LM Studio",
       "source": "manual",
-      "models": [
-        { "model_id": "local", "context_cap_tokens": 262144, "input": 0.000001, "cached_input": 0.000001, "output": 0.000001 }
-      ],
-      "rate_basis": "activation_floor",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and the served model cannot be enumerated — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. The activation gate therefore skips the catalogue-membership check for these providers entirely (tenant_provider_cap.zig LOCAL_RUNTIME_PROVIDERS), the same path a custom OpenAI-compatible endpoint takes. This row is the ACTIVATION FLOOR that marks the provider local and backs the rate path if it is ever reached; it is not a price and is never billed, because a local runtime is self-managed by construction and self-managed charges no token cost. check_model_allowlist.py requires this set and the gate's list to match exactly."
+      "models": [],
+      "unpriced_reason": "operator_hosted",
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "minimax-cn": {
       "dial": "native",
@@ -887,11 +878,9 @@
     "ollama": {
       "dial": "native",
       "source": "manual",
-      "models": [
-        { "model_id": "local", "context_cap_tokens": 262144, "input": 0.000001, "cached_input": 0.000001, "output": 0.000001 }
-      ],
-      "rate_basis": "activation_floor",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and the served model cannot be enumerated — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. The activation gate therefore skips the catalogue-membership check for these providers entirely (tenant_provider_cap.zig LOCAL_RUNTIME_PROVIDERS), the same path a custom OpenAI-compatible endpoint takes. This row is the ACTIVATION FLOOR that marks the provider local and backs the rate path if it is ever reached; it is not a price and is never billed, because a local runtime is self-managed by construction and self-managed charges no token cost. check_model_allowlist.py requires this set and the gate's list to match exactly."
+      "models": [],
+      "unpriced_reason": "operator_hosted",
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "opencode": {
       "dial": "native",
@@ -916,11 +905,9 @@
       "base_url": "http://localhost:1337/v1",
       "display": "Osaurus",
       "source": "manual",
-      "models": [
-        { "model_id": "local", "context_cap_tokens": 262144, "input": 0.000001, "cached_input": 0.000001, "output": 0.000001 }
-      ],
-      "rate_basis": "activation_floor",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and the served model cannot be enumerated — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. The activation gate therefore skips the catalogue-membership check for these providers entirely (tenant_provider_cap.zig LOCAL_RUNTIME_PROVIDERS), the same path a custom OpenAI-compatible endpoint takes. This row is the ACTIVATION FLOOR that marks the provider local and backs the rate path if it is ever reached; it is not a price and is never billed, because a local runtime is self-managed by construction and self-managed charges no token cost. check_model_allowlist.py requires this set and the gate's list to match exactly."
+      "models": [],
+      "unpriced_reason": "operator_hosted",
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "ovh": {
       "dial": "native",
@@ -1013,11 +1000,9 @@
       "base_url": "http://localhost:30000/v1",
       "display": "SGLang",
       "source": "manual",
-      "models": [
-        { "model_id": "local", "context_cap_tokens": 262144, "input": 0.000001, "cached_input": 0.000001, "output": 0.000001 }
-      ],
-      "rate_basis": "activation_floor",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and the served model cannot be enumerated — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. The activation gate therefore skips the catalogue-membership check for these providers entirely (tenant_provider_cap.zig LOCAL_RUNTIME_PROVIDERS), the same path a custom OpenAI-compatible endpoint takes. This row is the ACTIVATION FLOOR that marks the provider local and backs the rate path if it is ever reached; it is not a price and is never billed, because a local runtime is self-managed by construction and self-managed charges no token cost. check_model_allowlist.py requires this set and the gate's list to match exactly."
+      "models": [],
+      "unpriced_reason": "operator_hosted",
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "shengsuanyun": {
       "dial": "native",
@@ -1129,11 +1114,9 @@
       "base_url": "http://localhost:8000/v1",
       "display": "vLLM",
       "source": "manual",
-      "models": [
-        { "model_id": "local", "context_cap_tokens": 262144, "input": 0.000001, "cached_input": 0.000001, "output": 0.000001 }
-      ],
-      "rate_basis": "activation_floor",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and the served model cannot be enumerated — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. The activation gate therefore skips the catalogue-membership check for these providers entirely (tenant_provider_cap.zig LOCAL_RUNTIME_PROVIDERS), the same path a custom OpenAI-compatible endpoint takes. This row is the ACTIVATION FLOOR that marks the provider local and backs the rate path if it is ever reached; it is not a price and is never billed, because a local runtime is self-managed by construction and self-managed charges no token cost. check_model_allowlist.py requires this set and the gate's list to match exactly."
+      "models": [],
+      "unpriced_reason": "operator_hosted",
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "volcengine": {
       "dial": "native",

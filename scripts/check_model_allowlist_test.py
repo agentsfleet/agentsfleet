@@ -13,9 +13,7 @@ Run: python3 -m unittest discover -s scripts -t scripts -p 'check_model_allowlis
 """
 import json
 import os
-import tempfile
 import unittest
-from pathlib import Path
 
 import check_model_allowlist as gate
 
@@ -192,118 +190,6 @@ class RealFile(unittest.TestCase):
         self.assertEqual(stale, [])
 
 
-class LocalRuntimeParity(unittest.TestCase):
-    """The allowlist's floor set, the server's bypass set, and the CLI's mirror are one set."""
-
-    def test_real_tree_agrees(self):
-        with open(os.path.join(REPO_ROOT, "scripts", "model-library-allowlist.json"), encoding="utf-8") as handle:
-            doc = json.load(handle)
-        self.assertEqual(gate.check_local_runtime_parity(doc), [])
-
-    def test_gate_list_is_actually_parsed(self):
-        # Guard the parser itself: a silently-empty result would make the parity
-        # check vacuous and report clean forever.
-        names = gate.zig_local_runtime_providers()
-        self.assertIn("vllm", names)
-        self.assertIn("ollama", names)
-        self.assertIn("llama.cpp", names)
-        self.assertEqual(len(names), 9)
-
-    def test_floor_without_gate_entry_is_caught(self):
-        # Every real gate name present, plus one extra floor — so only the
-        # allowlist-side direction fires and the assertion isolates it.
-        providers = {n: {"rate_basis": gate.RATE_BASIS_FLOOR} for n in gate.zig_local_runtime_providers()}
-        providers["phantom-runtime"] = {"rate_basis": gate.RATE_BASIS_FLOOR}
-        problems = gate.check_local_runtime_parity({"providers": providers})
-        self.assertEqual(len(problems), 1)
-        self.assertIn("still enforces catalogue membership", problems[0])
-        self.assertIn("phantom-runtime", problems[0])
-
-    def test_gate_entry_without_floor_is_caught(self):
-        # Every real gate name absent from the allowlist side.
-        problems = gate.check_local_runtime_parity({"providers": {}})
-        self.assertEqual(len(problems), 1)
-        self.assertIn("carry no activation floor", problems[0])
-
-    def test_comment_stripping_does_not_cut_inside_a_string(self):
-        # `line.split("//")[0]` truncated any line carrying a URL, and a provider
-        # list is exactly where a localhost dial URL would sit. A cut mid-literal
-        # leaves an unbalanced quote and the member regex re-pairs across the rest
-        # of the window — a WRONG-but-non-empty set a length check cannot notice.
-        stripped = gate._strip_line_comments(
-            'const X = [\n  "http://localhost:11434/v1", // a trailing comment\n];'
-        )
-        self.assertIn('"http://localhost:11434/v1"', stripped)
-        self.assertNotIn("trailing comment", stripped)
-
-    def test_comment_stripping_handles_an_escaped_quote(self):
-        stripped = gate._strip_line_comments('const X = ["a\\"//b"]; // gone')
-        self.assertIn('a\\"//b', stripped)
-        self.assertNotIn("gone", stripped)
-
-    def test_ts_scan_starts_at_the_array_not_the_declaration(self):
-        # A type annotation puts `[]` between the name and the members; scanning
-        # for the first `]` from the declaration closes the window on it and
-        # yields an empty set that compares equal to nothing at all.
-        with tempfile.NamedTemporaryFile("w", suffix=".ts", delete=False) as handle:
-            handle.write(
-                'export const LOCAL_RUNTIME_PROVIDERS: readonly string[] = [\n'
-                '  "ollama",\n  "vllm",\n] as const;\n'
-            )
-            path = Path(handle.name)
-        try:
-            self.assertEqual(gate._ts_local_runtime_providers(path), {"ollama", "vllm"})
-        finally:
-            path.unlink()
-
-    def test_ui_mirror_is_actually_parsed(self):
-        names = gate.ui_local_runtime_providers()
-        self.assertIn("vllm", names)
-        self.assertIn("ollama", names)
-        self.assertIn("llama.cpp", names)
-        self.assertEqual(len(names), 9)
-
-    def test_ui_mirror_drift_is_caught(self):
-        # The dashboard gates Save on a key and builds the model picker from
-        # catalogue rows, so a lagging mirror is a form an operator cannot
-        # submit — the same defect as the CLI's, on the other surface.
-        real = gate.ui_local_runtime_providers
-        try:
-            gate.ui_local_runtime_providers = lambda: real() | {"phantom-runtime"}
-            providers = {n: {"rate_basis": gate.RATE_BASIS_FLOOR} for n in gate.zig_local_runtime_providers()}
-            problems = gate.check_local_runtime_parity({"providers": providers})
-            self.assertEqual(len(problems), 1)
-            self.assertIn("dashboard's local-runtime mirror disagrees", problems[0])
-            self.assertIn("phantom-runtime", problems[0])
-        finally:
-            gate.ui_local_runtime_providers = real
-
-    def test_cli_mirror_is_actually_parsed(self):
-        # Same vacuity guard as the Zig side: the TypeScript array is bracket-
-        # terminated, not brace-terminated, so an unchanged parser would return
-        # empty here and make the third-way comparison report clean forever.
-        names = gate.ts_local_runtime_providers()
-        self.assertIn("vllm", names)
-        self.assertIn("ollama", names)
-        self.assertIn("llama.cpp", names)
-        self.assertEqual(len(names), 9)
-
-    def test_cli_mirror_drift_is_caught(self):
-        # The CLI enforces both rules client-side, so a lagging mirror rejects a
-        # credential the API would accept — the exact failure this whole check
-        # exists to prevent, from the surface an operator actually types at.
-        real = gate.ts_local_runtime_providers
-        try:
-            gate.ts_local_runtime_providers = lambda: real() - {"ollama"}
-            providers = {n: {"rate_basis": gate.RATE_BASIS_FLOOR} for n in gate.zig_local_runtime_providers()}
-            problems = gate.check_local_runtime_parity({"providers": providers})
-            self.assertEqual(len(problems), 1)
-            self.assertIn("CLI's local-runtime mirror disagrees", problems[0])
-            self.assertIn("ollama", problems[0])
-        finally:
-            gate.ts_local_runtime_providers = real
-
-
 class SeededRates(unittest.TestCase):
     """Regression guard on the two silent seeder failures M168 fixed.
 
@@ -367,15 +253,6 @@ class SeededRates(unittest.TestCase):
             if 0 in (inp, cached, out):
                 zeros.append(parts[2])
         self.assertEqual(zeros, [], "zero rates must never enter the cost path")
-
-    def test_local_runtime_floor_is_nonzero_after_nanos_rounding(self):
-        # The floor is 1e-6 USD/Mtok; toNanos rounds it to 1000. A smaller
-        # sentinel would round to 0 and trip the zero-rate invariant.
-        for provider in sorted(gate.zig_local_runtime_providers()):
-            rows = self._rows(provider)
-            self.assertEqual(len(rows), 1, provider)
-            _, inp, cached, out = rows[0]
-            self.assertEqual((inp, cached, out), (1000, 1000, 1000), provider)
 
 
 if __name__ == "__main__":

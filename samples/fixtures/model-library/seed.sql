@@ -957,46 +957,6 @@ ON CONFLICT (provider, model_id) DO UPDATE SET
   cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok, output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
   updated_at = EXCLUDED.updated_at;
 
--- source: undefined
-INSERT INTO core.model_library (id, provider, model_id, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) VALUES (
-  '31056316-569b-7fa8-8e41-d0c306cf4160', 'litellm', 'local', 262144, 1000, 1000, 1000, 1786924800000, 1786924800000)
-ON CONFLICT (provider, model_id) DO UPDATE SET
-  context_cap_tokens = EXCLUDED.context_cap_tokens, input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
-  cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok, output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
-  updated_at = EXCLUDED.updated_at;
-
--- source: undefined
-INSERT INTO core.model_library (id, provider, model_id, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) VALUES (
-  'b62c318a-de38-7258-8f8e-ae282aa8314f', 'llama.cpp', 'local', 262144, 1000, 1000, 1000, 1786924800000, 1786924800000)
-ON CONFLICT (provider, model_id) DO UPDATE SET
-  context_cap_tokens = EXCLUDED.context_cap_tokens, input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
-  cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok, output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
-  updated_at = EXCLUDED.updated_at;
-
--- source: undefined
-INSERT INTO core.model_library (id, provider, model_id, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) VALUES (
-  '4280b435-4995-769e-82b6-8ea6ca2cfd34', 'llamacpp', 'local', 262144, 1000, 1000, 1000, 1786924800000, 1786924800000)
-ON CONFLICT (provider, model_id) DO UPDATE SET
-  context_cap_tokens = EXCLUDED.context_cap_tokens, input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
-  cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok, output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
-  updated_at = EXCLUDED.updated_at;
-
--- source: undefined
-INSERT INTO core.model_library (id, provider, model_id, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) VALUES (
-  '076499af-acf7-7b50-8cb5-ad31e311e8f0', 'lm-studio', 'local', 262144, 1000, 1000, 1000, 1786924800000, 1786924800000)
-ON CONFLICT (provider, model_id) DO UPDATE SET
-  context_cap_tokens = EXCLUDED.context_cap_tokens, input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
-  cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok, output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
-  updated_at = EXCLUDED.updated_at;
-
--- source: undefined
-INSERT INTO core.model_library (id, provider, model_id, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) VALUES (
-  '0c626782-c018-7805-8022-3d50565d3ee1', 'lmstudio', 'local', 262144, 1000, 1000, 1000, 1786924800000, 1786924800000)
-ON CONFLICT (provider, model_id) DO UPDATE SET
-  context_cap_tokens = EXCLUDED.context_cap_tokens, input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
-  cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok, output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
-  updated_at = EXCLUDED.updated_at;
-
 -- minimax-global/MiniMax-M3: upper tier seeded (see allowlist)
 -- source: https://platform.minimax.io/docs/guides/pricing-paygo
 INSERT INTO core.model_library (id, provider, model_id, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) VALUES (
@@ -1099,22 +1059,6 @@ ON CONFLICT (provider, model_id) DO UPDATE SET
 -- source: https://cloud-api.near.ai/v1/models
 INSERT INTO core.model_library (id, provider, model_id, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) VALUES (
   '057dd460-7a9e-7633-8658-fa693bf670f5', 'nearai', 'deepseek-ai/DeepSeek-V4-Flash', 1048576, 170000000, 35000000, 350000000, 1786924800000, 1786924800000)
-ON CONFLICT (provider, model_id) DO UPDATE SET
-  context_cap_tokens = EXCLUDED.context_cap_tokens, input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
-  cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok, output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
-  updated_at = EXCLUDED.updated_at;
-
--- source: undefined
-INSERT INTO core.model_library (id, provider, model_id, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) VALUES (
-  '38d3cc44-2bef-76a3-8c6f-c6e6a8423b1a', 'ollama', 'local', 262144, 1000, 1000, 1000, 1786924800000, 1786924800000)
-ON CONFLICT (provider, model_id) DO UPDATE SET
-  context_cap_tokens = EXCLUDED.context_cap_tokens, input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
-  cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok, output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
-  updated_at = EXCLUDED.updated_at;
-
--- source: undefined
-INSERT INTO core.model_library (id, provider, model_id, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) VALUES (
-  '09653a43-b944-7a83-8777-71e7e530fb01', 'osaurus', 'local', 262144, 1000, 1000, 1000, 1786924800000, 1786924800000)
 ON CONFLICT (provider, model_id) DO UPDATE SET
   context_cap_tokens = EXCLUDED.context_cap_tokens, input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
   cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok, output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
@@ -1256,14 +1200,6 @@ ON CONFLICT (provider, model_id) DO UPDATE SET
   cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok, output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
   updated_at = EXCLUDED.updated_at;
 
--- source: undefined
-INSERT INTO core.model_library (id, provider, model_id, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) VALUES (
-  'b03f77a3-acd0-7a52-887b-3960573ad85c', 'sglang', 'local', 262144, 1000, 1000, 1000, 1786924800000, 1786924800000)
-ON CONFLICT (provider, model_id) DO UPDATE SET
-  context_cap_tokens = EXCLUDED.context_cap_tokens, input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
-  cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok, output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
-  updated_at = EXCLUDED.updated_at;
-
 -- source: https://api.synthetic.new/openai/v1/models
 INSERT INTO core.model_library (id, provider, model_id, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) VALUES (
   '199e6682-8279-7e5a-86e7-1e10f588cc2d', 'synthetic', 'syn:large:text', 524288, 1000000000, 160000000, 3000000000, 1786924800000, 1786924800000)
@@ -1371,14 +1307,6 @@ ON CONFLICT (provider, model_id) DO UPDATE SET
 -- source: https://ai-gateway.vercel.sh/v1/models
 INSERT INTO core.model_library (id, provider, model_id, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) VALUES (
   '95143ccb-08db-7eca-8a89-0c41fc546c6c', 'vercel-ai', 'anthropic/claude-haiku-4.5', 200000, 1000000000, 100000000, 5000000000, 1786924800000, 1786924800000)
-ON CONFLICT (provider, model_id) DO UPDATE SET
-  context_cap_tokens = EXCLUDED.context_cap_tokens, input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
-  cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok, output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,
-  updated_at = EXCLUDED.updated_at;
-
--- source: undefined
-INSERT INTO core.model_library (id, provider, model_id, context_cap_tokens, input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok, created_at, updated_at) VALUES (
-  '9114e8d8-4347-7036-803b-ff2c68f121bc', 'vllm', 'local', 262144, 1000, 1000, 1000, 1786924800000, 1786924800000)
 ON CONFLICT (provider, model_id) DO UPDATE SET
   context_cap_tokens = EXCLUDED.context_cap_tokens, input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
   cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok, output_nanos_per_mtok = EXCLUDED.output_nanos_per_mtok,

@@ -21,7 +21,7 @@
 import { Effect } from "effect";
 import { HttpClient } from "../services/http-client.ts";
 import { MODEL_LIBRARY_PATH, QUERY_LIMIT, QUERY_PROVIDER, QUERY_STARTING_AFTER } from "./api-paths.ts";
-import { OPENAI_COMPATIBLE_PROVIDER, isLocalRuntime } from "../constants/custom-endpoint.ts";
+import { OPENAI_COMPATIBLE_PROVIDER } from "../constants/custom-endpoint.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
 import type { Redacted } from "effect/Redacted";
 
@@ -231,13 +231,6 @@ const MODEL_SUGGESTION = (provider: string): string =>
  *     CLI unusable during exactly the provisioning it is used for.
  *   - the provider is the custom-endpoint sentinel — a user-supplied endpoint
  *     serves whatever it serves, and no catalogue row could describe it.
- *   - the provider is a LOCAL RUNTIME — same reason with a name attached. The
- *     provider itself is catalogued (it carries an `activation_floor` row), so
- *     the provider check still runs and still catches a typo; only the MODEL
- *     check is skipped, because the served model is whatever the operator
- *     loaded and the floor row's id is a sentinel, not a real model. The server
- *     waives membership for the same set (`tenant_provider_cap.zig`), so
- *     enforcing it here rejected credentials the API would have accepted.
  *
  * Every path still hits full server-side validation, so this buys a fast,
  * local, accurate error message — never a security boundary.
@@ -268,11 +261,6 @@ export const resolveCatalogueTarget = (
 
     const trimmed = model?.trim();
     if (!trimmed) return { provider: match, model };
-
-    // The provider is real (it matched a catalogue row) but its models are not
-    // enumerable, so accept the id as given rather than checking it against a
-    // sentinel floor row.
-    if (isLocalRuntime(match)) return { provider: match, model: trimmed };
 
     // A provider only reaches `accepted` by owning at least one row, so this
     // list is never empty and the check is always meaningful.

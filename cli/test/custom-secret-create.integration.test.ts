@@ -51,20 +51,6 @@ const MODEL = "qwen2.5-coder";
 const CATALOGUE_MODEL = "claude-opus-5";
 const NON_HTTPS_BASE_URL = "http://vllm.corp.example/v1";
 
-// A local runtime reaches the catalogue as a single activation-floor row whose
-// id is a sentinel, never a model anyone serves. `LOCALLY_SERVED_MODEL` is
-// deliberately absent from that page — it is the shape `ollama pull` produces.
-const LOCAL_RUNTIME_PROVIDER = "ollama";
-const LOCALLY_SERVED_MODEL = "llama-3.3-70b-my-finetune";
-const LOCAL_RUNTIME_CATALOGUE_PAGE = {
-  version: "1",
-  models: [
-    // pin test: literal is the contract
-    { id: "local", provider: LOCAL_RUNTIME_PROVIDER, context_cap_tokens: 128000, input_nanos_per_mtok: 1, cached_input_nanos_per_mtok: 1, output_nanos_per_mtok: 1 },
-  ],
-  next_cursor: null,
-};
-
 const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_custom_cred" }, fn);
 
@@ -228,64 +214,6 @@ describe("secret create — custom OpenAI-compatible endpoint", () => {
         // No key was passed → the body omits api_key entirely (keyless).
         expect(sent.data?.[SECRET_FIELD_API_KEY]).toBeUndefined();
       });
-    });
-  });
-
-  test("a LOCAL RUNTIME without --api-key succeeds, and its uncatalogued model is accepted", async () => {
-    // Both client-side rules yield for a local runtime, mirroring the server:
-    // no key is demanded (the box authenticates nobody), and the model is not
-    // checked against the catalogue (the served id is whatever `ollama pull`
-    // wrote, and the catalogue holds only a sentinel floor row). Rejecting
-    // either here would refuse a credential the API accepts.
-    await authedScope(async () => {
-      const routes: MockRoutes = {
-        "GET /v1/models": () => jsonResponse(200, LOCAL_RUNTIME_CATALOGUE_PAGE),
-        [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
-          jsonResponse(200, { secrets: [] }),
-        [`POST /v1/workspaces/${WS_ID}/secrets`]: () =>
-          jsonResponse(201, { name: SECRET_NAME }),
-      };
-      await withMockApi(routes, async (apiUrl, calls) => {
-        const out = bufferStream();
-        const err = bufferStream();
-        const code = await runCli(
-          [
-            "secret", "create", SECRET_NAME,
-            "--provider", LOCAL_RUNTIME_PROVIDER,
-            "--model", LOCALLY_SERVED_MODEL,
-            "--json",
-          ],
-          { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
-        );
-        expect(code).toBe(0);
-        const post = calls.find((c) => c.method === "POST");
-        const sent = JSON.parse(post?.body ?? "{}") as { data?: Record<string, unknown> };
-        expect(sent.data?.[SECRET_FIELD_PROVIDER]).toBe(LOCAL_RUNTIME_PROVIDER);
-        expect(sent.data?.[SECRET_FIELD_MODEL]).toBe(LOCALLY_SERVED_MODEL);
-        expect(sent.data?.[SECRET_FIELD_API_KEY]).toBeUndefined();
-        // The exemption is scoped: a local runtime is still forbidden a
-        // base_url, so waiving the key never widens where it dials.
-        expect(sent.data?.[SECRET_FIELD_BASE_URL]).toBeUndefined();
-      });
-    });
-  });
-
-  test("a LOCAL RUNTIME with --base-url is still rejected — the key waiver is not an endpoint waiver", async () => {
-    await authedScope(async () => {
-      const out = bufferStream();
-      const err = bufferStream();
-      const code = await runCli(
-        [
-          "secret", "create", SECRET_NAME,
-          "--provider", LOCAL_RUNTIME_PROVIDER,
-          "--base-url", VALID_BASE_URL,
-          "--model", LOCALLY_SERVED_MODEL,
-          "--json",
-        ],
-        { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: "http://127.0.0.1:1/" }) },
-      );
-      expect(code).not.toBe(0);
-      expect(out.read() + err.read()).toMatch(/--base-url/i);
     });
   });
 

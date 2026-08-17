@@ -30,11 +30,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** every provider key in `scripts/model-library-allowlist.json` either carries at least one priced model, or carries a machine-checkable `unpriced_reason` from a closed seven-code vocabulary naming why — and `make seed-models` emits a row for each priced one.
+**Goal (testable):** every provider key in `scripts/model-library-allowlist.json` either carries at least one priced model, or carries a machine-checkable `unpriced_reason` from a closed eight-code vocabulary naming why — and `make seed-models` emits a row for each priced one.
 
 **Problem:** a user picks Amazon Bedrock (or Cerebras, or Venice, or any of 85 other providers) in the provider dropdown, supplies a working key, and activation fails with *"That model is not in the model library."* The provider dials fine; there is simply no catalogue row, because `scripts/gen-provider-skeleton.mjs` stamps every newly-derived provider with `models: []` and a note saying rates are "not yet curated". Nothing has ever curated them. The note reads as a queue that someone is working through; it is not — 87 keys have sat in that state since the generator landed, and nine of them (the local runtimes) can never leave it on rates alone, because a model running on the user's own hardware has neither a per-token price nor an enumerable id.
 
-**Solution summary:** curate the catalogue in one pass and make the file state *why* for everything it still cannot price. Eight providers publish machine-readable pricing feeds — they convert from `source: "manual"` to `source: "api"`, so their rates refresh on every `make seed-models` and can never go stale. Four more get hand-verified rates from official pricing pages. Regional duplicates are resolved by a new standing rule: we price and dial the **international** endpoint of every vendor that has a China/international split, and mainland-China endpoints stay unpriced because they remain reachable through the OpenAI-compatible custom-endpoint route. Local runtimes get a minimal nonzero rate — not because we bill them (self-managed posture never charges tokens) but as a floor behind the activation path. The row alone is not enough: their model id is whatever the operator loaded, so the gate stops enforcing catalogue membership for them entirely (§6). Everything still unpriced gains a typed `unpriced_reason` in place of the uniform "not yet priced" note, so the file distinguishes *pending curation* from *permanently unpriceable*. `base_url` moves from the generator's derived set to its curated set, closing a live wrong-continent hazard. The architecture doc's prose is re-synced in place against all of it.
+**Solution summary:** curate the catalogue in one pass and make the file state *why* for everything it still cannot price. Eight providers publish machine-readable pricing feeds — they convert from `source: "manual"` to `source: "api"`, so their rates refresh on every `make seed-models` and can never go stale. Four more get hand-verified rates from official pricing pages. Regional duplicates are resolved by a new standing rule: we price and dial the **international** endpoint of every vendor that has a China/international split, and mainland-China endpoints stay unpriced because they remain reachable through the OpenAI-compatible custom-endpoint route. Local runtimes take a new permanent code, `operator_hosted`: the model runs on hardware the operator owns, so no vendor publishes a per-token rate and none can be derived. Making them activatable is a product decision about the local-runtime experience rather than a curation gap, and it is deliberately out of scope here — see Out of Scope. Everything still unpriced gains a typed `unpriced_reason` in place of the uniform "not yet priced" note, so the file distinguishes *pending curation* from *permanently unpriceable*. `base_url` moves from the generator's derived set to its curated set, closing a live wrong-continent hazard. The architecture doc's prose is re-synced in place against all of it.
 
 ## PR Intent & comprehension handshake
 
@@ -61,32 +61,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `samples/fixtures/model-library/seed.sql` | EDIT | Regenerated fixture — the Zig integration tests exec it statement-by-statement. |
 | `samples/fixtures/model-library/{venice,chutes,atlas-cloud,synthetic,nearai,vercel,vercel-ai,poe,ovh,ovhcloud}.json` | CREATE | One committed feed fixture per api-source provider, so the integration lane seeds without the network. |
 | `scripts/seed_models_test.py` | CREATE | Direct tests for the three rate helpers `seed-models.mjs` now exports; found during REVIEW that they had no executable test. |
-| `src/agentsfleetd/http/handlers/tenant_provider_cap.zig` | EDIT | Local runtimes take the existing custom-endpoint path instead of the catalogue-membership check; their served model cannot be enumerated. |
-| `src/agentsfleetd/secrets/metadata.zig` | EDIT | New canonical home for `LOCAL_RUNTIME_PROVIDERS` + `isLocalRuntime`. Two gates in two layers read the list, and `state/` cannot import `http/handlers/`. |
-| `src/agentsfleetd/secrets/metadata_test.zig` | EDIT | The list's own behaviour — membership, exactness, and non-collapse with the `openai-compatible` sentinel — moves here with it. |
-| `src/agentsfleetd/state/secret_probe.zig` | EDIT | `requiresApiKey` replaces the inline `!is_compatible` test, so a local runtime is not asked for a key it has none of. |
-| `src/agentsfleetd/state/tenant_provider.zig` | EDIT | Re-export `requiresApiKey` on the existing probe chain, beside `validateSecretEndpoint`. |
-| `src/agentsfleetd/state/tenant_provider_test.zig` | EDIT | The §7 predicate's four arms, driven pure with no DB — the sibling of the existing base_url validation group. |
-| `src/agentsfleetd/http/handlers/tenant_provider.zig` | EDIT | The `UZ-PROVIDER-003` detail string said "a named provider"; a custom endpoint and a local runtime now need no key. |
-| `src/agentsfleetd/http/tenant_model_entries_integration_test.zig` | EDIT | End-to-end proof for both gates: a keyless, uncatalogued local activation succeeds; a keyless hosted one does not. |
-| `src/agentsfleetd/errors/error_entries.zig` | EDIT | `UZ-PROVIDER-003`'s hint said `api_key` is required for "a named provider" — a local runtime is named too, so the hint would send an operator hunting for a key their server never issues. |
-| `src/agentsfleetd/errors/error_registry_test.zig` | EDIT | Extend the existing hint-accuracy guard to both exemptions, and pin the retired "named provider" phrasing as a negative. |
-| `cli/src/constants/custom-endpoint.ts` | EDIT | The CLI's mirror of `LOCAL_RUNTIME_PROVIDERS` + `isLocalRuntime`, beside the `OPENAI_COMPATIBLE_PROVIDER` mirror already there. |
-| `cli/src/commands/fleet_secret_body.ts` | EDIT | Stop requiring `--api-key` for a local runtime — the CLI refused before the request was made. |
-| `cli/src/lib/model-catalogue.ts` | EDIT | Skip the client-side model-membership check for a local runtime; its only catalogue row is an activation-floor sentinel. |
-| `cli/test/custom-secret-create.integration.test.ts` | EDIT | §8's CLI dimensions. |
-| `ui/packages/app/lib/types.ts` | EDIT | The dashboard's mirror of the same list, beside its `OPENAI_COMPATIBLE_PROVIDER`. |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog.tsx` | EDIT | Save no longer gated on a key for a local runtime; the key label reads optional; the named path stops posting `api_key: ""`. |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ProviderModelSelect.tsx` | EDIT | A local runtime takes the free-text tier — a constrained picker would offer only the sentinel row. |
-| `ui/packages/app/tests/models-registry-add.test.tsx` | EDIT | §8's and §10's dashboard dimensions. |
-| `ui/packages/app/tests/custom-endpoint-lib.test.ts` | EDIT | The dashboard's `isLocalRuntime` driven over all nine names and a near-miss set (§10.4). |
 | `scripts/check_model_allowlist_test.py` | EDIT | Parser-vacuity, drift, comment-stripping and scan-anchor tests for the two TypeScript mirrors. |
-| `cli/test/model-catalogue.unit.test.ts` | EDIT | §10.5 — the catalogue bypass across every local runtime, the hosted negative, and the unseeded-catalogue window. |
-| `src/runner/child_exec_input.zig` | EDIT | §9 — the lease's provider/key pair test dropped a keyless provider, so NullClaw fell back to its default and ran the wrong provider entirely. |
-| `src/runner/child_exec_input_test.zig` | EDIT | §9's dimensions: a keyless local runtime and a keyless gateway both reach the engine; a key with no provider still does not. |
+| `src/runner/child_exec_input.zig` | EDIT | §6 — the lease's provider/key pair test dropped a keyless gateway, so NullClaw fell back to its default and ran the wrong provider entirely. |
+| `src/runner/child_exec_input_test.zig` | EDIT | §6's dimensions: a keyless gateway reaches the engine; a key with no provider still does not. |
 | `scripts/check_model_allowlist.py` | CREATE | Asserts the file's invariants (priced-or-reasoned, international rule, no zero rates, local-runtime parity with the credential layer) so they are enforced by a gate rather than by review. |
 | `scripts/check_model_allowlist_test.py` | CREATE | Unit tests for the checker, matching the repository's `*_test.py` convention. |
 | `make/quality.mk` | EDIT | Register the checker under `make lint-governance`. |
+| `src/runner/child_exec_input.zig` | EDIT | §6 — the lease's provider/key pair test dropped a keyless gateway, so NullClaw fell back to its default and ran the wrong provider. |
+| `src/runner/child_exec_input_test.zig` | EDIT | §6's dimensions: a keyless gateway reaches the engine; a key with no provider still does not. |
+| `docs/architecture/user_flow.md` | EDIT | Retire `kimi-k2.6` and its 256000 cap from the flow diagrams; the platform default is Kimi K3 at 1048576. |
+| `docs/architecture/capabilities.md` | EDIT | Same retired model id in the frontmatter example. |
 
 ## Applicable Rules
 
@@ -99,10 +83,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| ZIG GATE | yes — `tenant_provider_cap.zig` gains a provider list, a pure predicate and three test blocks | `zig fmt --check` clean; inline tests reachable from the existing test root; no allocation, no error union, so no `errdefer`/drain surface |
-| PUB / Struct-Shape | no — `LOCAL_RUNTIME_PROVIDERS` and `isLocalRuntime` are file-private | the only `pub` in the file, `resolveSelfManagedCap`, keeps its signature |
+| ZIG GATE | yes — `child_exec_input.zig` changes one branch condition and gains a test block | `zig fmt --check` clean; the test is reachable from the runner test root; the allocation shape and its `errdefer` are unchanged |
+| PUB / Struct-Shape | no — no new `pub` symbol; `buildCallArgs` keeps its signature | N/A |
 | File & Function Length (≤350/≤50/≤70) | yes — `check_model_allowlist.py` is new | One check function per invariant, each well under 50 lines; the file stays under 350 or splits its checks into a sibling module. |
-| UFS (repeated/semantic literals) | yes — reason codes and the minimal rate repeat across JSON and checker | The five reason codes and `LOCAL_RUNTIME_MINIMAL_USD_PER_MTOK` are module constants in the checker; the JSON side is asserted against them so the two cannot drift. |
+| UFS (repeated/semantic literals) | yes — reason codes repeat across the JSON and the checker | The eight reason codes are a module constant in the checker; the JSON legend is asserted against it, so the two cannot drift. |
 | UI Substitution / DESIGN TOKEN | no — no UI files | N/A |
 | LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | no — no new error codes, no schema change, no allocator wiring | `UZ-PROVIDER-004` already exists and its text is unchanged; `core.model_library` gains rows, not columns. |
 | DOC READ GATE | yes — architecture page and Python both touched | `bash audits/doc-read.sh log` for `docs/DOCUMENTATION_RULES.md` and `dispatch/write_python.md` before the first triggering edit. |
@@ -175,82 +159,19 @@ The prose is corrected in place rather than replaced with a pointer, per the aut
 - **Dimension 5.3 — DONE** — §10's provider-origin paragraph agrees with the schema: `provider` is a column, not an inference from `model_id` → Test `test_doc_provider_origin_matches_schema`
 - **Dimension 5.4 — DONE** — the doc quotes no dollar amounts, unchanged from today → Test `test_doc_quotes_no_dollar_amounts`
 
-### §6 — The activation gate stops enforcing membership for local runtimes
+### §6 — The lease stops discarding a keyless provider
 
-Seeding a rate row for `vllm` does not make `vllm` activatable. `UZ-PROVIDER-004` resolves `(provider, model_id)`, and a local runtime's model id is whatever the operator loaded — `--served-model-name`, an `ollama pull`. NullClaw itself carries no model name for any of the nine (its `compat_providers` table gives each a name, a localhost URL and a display label, nothing more), because the set is unbounded and per-install. So any id we seed is a guess, and the floor rows alone leave every local activation refused exactly as before.
+Found while tracing the local-runtime work (see Out of Scope), and it is a defect in its own right: `buildCallArgs` treated the lease's provider and api_key as an atomic pair — `if (provider.len > 0 and api_key.len > 0)` — on the documented reasoning that "the resolver always produces both or neither."
 
-The gate already has the right shape for this. A custom OpenAI-compatible endpoint bypasses the catalogue and takes the unknown/auto cap sentinel, precisely because its user-hosted model is absent from the platform catalogue by design. A local runtime is the same case with a name attached, so it takes the same path. Billing is untouched: self-managed charges a run fee only, and a local runtime is self-managed by construction.
+That is not true and never was. `probeSelfManagedSecret` accepts an `openai-compatible` credential with no `api_key`, because a private gateway that takes none is the spec's optional-key design. Such a lease carries `{provider: "custom:https://…", api_key: ""}`, the pair test fails, and BOTH halves are dropped with a `fleet_provider_key_incomplete` warning. NullClaw then falls back to whatever `Config.load` resolved — so a tenant's self-managed run goes to a provider they never chose, which is the exact wrong-provider outcome the pairing rule was written to prevent, produced by the rule itself.
 
-**Implementation default:** membership is decided by a named-constant provider list rather than a new schema column, mirroring how `OPENAI_COMPATIBLE_PROVIDER` is already handled — and living beside it in `secrets/metadata.zig` once §7 gave it a second reader. The drift risk that introduces — two places listing the same nine providers — is closed by making the checker parse the Zig list and require set equality with the allowlist's `rate_basis: "activation_floor"` set.
+The rule is now asymmetric, because the two directions are not equivalent. A provider with no key is legitimate. A key with no provider would authenticate against a provider nobody selected, so that direction still injects nothing.
 
-- **Dimension 6.1 — DONE** — Every provider in `LOCAL_RUNTIME_PROVIDERS` is recognised → Test `every local runtime is recognised`
-- **Dimension 6.2 — DONE** — A hosted, billable provider still enforces catalogue membership, so an uncatalogued model fails closed → Test `a hosted provider is not a local runtime`
-- **Dimension 6.3 — DONE** — Matching is exact: no prefix, suffix, case-fold or padded near-miss buys a catalogue bypass → Test `local-runtime matching is exact, never a prefix or case fold`
-- **Dimension 6.4 — DONE** — The gate's list and the allowlist's activation-floor set are the same set, and the parser that compares them cannot silently return empty → Test `LocalRuntimeParity` (4 tests)
-- **Dimension 6.5 — DONE** — An uncatalogued model on a local runtime activates through the real handler, a hosted provider naming the same model still fails closed, and a blank model is still refused → Test `test_activate_local_runtime_skips_catalogue`
+Unrelated to the curation, but landed here rather than parked: it is four lines, it is on the path this workstream was already reading, and leaving a known wrong-provider bug in place to keep a diff tidy is the wrong trade.
 
-### §7 — The credential gate stops requiring a key a local runtime does not have
+- **Dimension 6.1 — DONE** — A keyless openai-compatible lease carries its provider, an empty key, and its `base_url` to the engine → Test `buildCallArgs carries a KEYLESS gateway — an empty key is legitimate, not malformed`
+- **Dimension 6.2 — DONE** — A key with no provider is still refused outright → Test `buildCallArgs injects neither half of an incomplete provider key pair`
 
-Catalogue membership was only the second of two gates between an operator and their own box. The first is in the credential probe: `probeSelfManagedSecret` requires a non-empty `api_key` for every named provider, exempting only `openai-compatible`. A local server authenticates nobody, so there is no key to supply — the operator typed a placeholder to get past a check that measured nothing. Fixing §6 alone would have shipped "local runtimes work" with a lie in it.
-
-The exemption follows the same reasoning as the catalogue one and reads from the same list, so the two cannot drift: `requiresApiKey` returns false for `openai-compatible` and for any `metadata.LOCAL_RUNTIME_PROVIDERS` member, true for everything else. A hosted provider still fails at the parse boundary, which is the right place — a blank key reaches the vendor as an unauthenticated request and comes back a 401 the tenant cannot read.
-
-**Implementation default:** `LOCAL_RUNTIME_PROVIDERS` moves from the activation handler down to `secrets/metadata.zig`. Two gates now read it and `state/` cannot import `http/handlers/`; `metadata.zig` is the leaf that already owns `OPENAI_COMPATIBLE_PROVIDER`. The parity checker follows the list to its new home, so §6.4's set-equality guarantee is unchanged and now covers both gates. The two exemptions stay independent — waiving the key does not waive `validateSecretEndpoint`, so a local runtime still cannot smuggle a `base_url`.
-
-- **Dimension 7.1 — DONE** — Every hosted provider still requires a non-empty `api_key` → Test `test_key_required_for_a_hosted_provider`
-- **Dimension 7.2 — DONE** — An `openai-compatible` custom endpoint remains keyless, unchanged → Test `test_key_optional_for_a_custom_endpoint`
-- **Dimension 7.3 — DONE** — Every provider in `LOCAL_RUNTIME_PROVIDERS` is exempt from the key requirement → Test `test_key_optional_for_a_local_runtime`
-- **Dimension 7.4 — DONE** — The exemption is exact-match: a near-miss provider id still needs a key, so no hosted provider inherits it → Test `test_key_exemption_does_not_leak_to_a_near_miss_name`
-- **Dimension 7.5 — DONE** — The two exemptions do not collapse into each other: the `openai-compatible` sentinel is not a local runtime → Test `the openai-compatible sentinel is not a local runtime`
-- **Dimension 7.6 — DONE** — A credential carrying no `api_key` at all activates on a local runtime through the real handler, while a keyless hosted credential is still refused `UZ-PROVIDER-003` → Test `test_activate_local_runtime_skips_catalogue`
-- **Dimension 7.7 — DONE** — `UZ-PROVIDER-003`'s registry hint and the handler's detail string describe the rule the validator now enforces, naming both exemptions rather than "a named provider" → Test `UZ-PROVIDER-003 hint states api_key is conditional, not unconditionally required`
-
-### §8 — The client surfaces stop enforcing rules the server dropped
-
-Both client surfaces re-implement the credential rules so an operator gets a local error instead of a round-trip. That is the right design and it is why fixing the server alone would have shipped nothing: the CLI and the dashboard each refused the credential before the request was made. Three client-side refusals, all of them now aligned with the server:
-
-1. `cli/src/commands/fleet_secret_body.ts` rejected `--provider ollama` with no `--api-key`.
-2. `cli/src/lib/model-catalogue.ts` checked `--model` against the catalogue for every non-custom provider — and a local runtime's only row is the `local` sentinel, so a real model id was always rejected.
-3. `AddModelEntryDialog.tsx` gated Save on a non-empty key, and `ProviderModelSelect.tsx` rendered a constrained `<Select>` whose sole option was that same sentinel.
-
-**Implementation default:** each surface restates `LOCAL_RUNTIME_PROVIDERS` once, under the same identifier, because `cli/` and `ui/` share no module graph with the server or with each other — the pattern `OPENAI_COMPATIBLE_PROVIDER` already follows. Three mirrors is three chances to drift, so `check_model_allowlist.py` now requires all four lists (allowlist floor set, Zig, CLI, dashboard) to be equal, and each parser has a vacuity test so a silently-empty scrape cannot report clean forever. The dashboard also stops writing `api_key: ""` on the named path, matching the custom path: a blank string is a key the vault reports as present.
-
-- **Dimension 8.1 — DONE** — The CLI stores a local-runtime credential with no `--api-key` and an uncatalogued `--model` → Test `a LOCAL RUNTIME without --api-key succeeds, and its uncatalogued model is accepted`
-- **Dimension 8.2 — DONE** — The CLI still rejects `--base-url` on a local runtime: the key waiver is not an endpoint waiver → Test `a LOCAL RUNTIME with --base-url is still rejected — the key waiver is not an endpoint waiver`
-- **Dimension 8.3 — DONE** — The dashboard enables Save for a keyless local runtime, labels the key optional, and posts a body with no `api_key` and no `base_url` → Test `enables Save for a local runtime with no key, and stores a body carrying no api_key`
-- **Dimension 8.4 — DONE** — The dashboard's exemption is exact-match, so a near-miss provider name still requires a key → Test `still disables Save for a near-miss provider name that only looks local`
-- **Dimension 8.5 — DONE** — All four local-runtime lists are equal, and each parser is proven non-vacuous → Tests `test_cli_mirror_is_actually_parsed`, `test_cli_mirror_drift_is_caught`, `test_ui_mirror_is_actually_parsed`, `test_ui_mirror_drift_is_caught`
-
-### §9 — The lease stops discarding a keyless provider
-
-Found by the REVIEW security specialist, and it is the gate that made §7 and §8 inert. `buildCallArgs` treated the provider and the key as an atomic pair — `if (provider.len > 0 and api_key.len > 0)` — on the reasoning that "the resolver always produces both or neither." That was true until `requiresApiKey` waived the key. A keyless activation delivered `{provider: "ollama", api_key: ""}`, the pair test failed, and BOTH halves were dropped with a `fleet_provider_key_incomplete` warning. NullClaw then fell back to whatever `Config.load` resolved — so the tenant's self-managed run went to a provider they never chose, which is the exact wrong-provider outcome the pairing rule existed to prevent.
-
-The rule is now asymmetric, because the two directions are not equivalent. A provider with no key is legitimate (that is what §7 established). A key with no provider is still malformed — it would authenticate against a provider nobody selected — so that direction still injects nothing.
-
-This also un-breaks the openai-compatible optional-key design, which shipped before local runtimes existed: a keyless gateway credential was dropped by the same pair test and had never actually reached the engine.
-
-- **Dimension 9.1 — DONE** — A keyless local-runtime lease carries its provider and an empty key to the engine, and still no `base_url` → Test `buildCallArgs carries a KEYLESS provider — an empty key is legitimate, not malformed`
-- **Dimension 9.2 — DONE** — A keyless openai-compatible gateway carries provider, empty key, and its `base_url` → Test `buildCallArgs carries a keyless openai-compatible gateway too`
-- **Dimension 9.3 — DONE** — A key with no provider is still refused outright → Test `buildCallArgs injects neither half of an incomplete provider key pair` (unchanged, now the only malformed direction)
-
-### §10 — The tests the REVIEW specialists found missing
-
-Both specialists independently reported coverage that would have let this diff's behaviour regress green. Each gap is closed rather than noted:
-
-- **The dashboard's free-text carve-out was tested against an EMPTY catalogue**, where the branch is a no-op — production seeds one activation-floor row per local runtime, so the real path was untested and deleting the carve-out kept every test green.
-- **The REPLACE arm of the dashboard's `namedData` change had no assertion**; only the create arm did, so a revert on the replace path alone would have shipped `api_key: ""` again.
-- **Neither TypeScript `isLocalRuntime` had a direct test.** Narrowing either to `provider === "ollama"` left the parity gate green (it scrapes the array, never the function) while the other eight silently lost both exemptions.
-- **The Zig membership tests looped over the array the implementation scans** — a form that cannot fail for any implementation that reads the list, including one that has lost a member.
-- **The parser had two defects the security specialist demonstrated**: `line.split("//")[0]` cuts inside a string literal (a `"http://…"` member truncates and the regex re-pairs quotes across the window, yielding a wrong-but-non-empty set), and anchoring the scan on the declaration rather than the assignment lets a `: readonly string[]` annotation close the window on its own empty brackets. Both are fixed and both are now driven by a test that fails against the old parser.
-
-- **Dimension 10.1 — DONE** — The model picker stays free text for a local runtime whose floor row IS catalogued, and the sentinel is offered nowhere → Test `keeps the model field free text for a local runtime whose floor row IS catalogued`
-- **Dimension 10.2 — DONE** — A catalogued hosted provider still gets the constrained picker → Test `a hosted provider with catalogue rows still gets a constrained picker`
-- **Dimension 10.3 — DONE** — Replacing a held local-runtime credential omits `api_key` → Test `replacing a held local-runtime credential also omits api_key`
-- **Dimension 10.4 — DONE** — Both TypeScript mirrors are driven over all nine names and a near-miss set → Tests `isLocalRuntime is exact-match — a near miss buys no exemption` (CLI), `describe("isLocalRuntime")` (dashboard)
-- **Dimension 10.5 — DONE** — The CLI's catalogue bypass is driven for every local runtime, for a hosted provider that must still fail, and for the unseeded-catalogue window → Tests `every local runtime takes the bypass, not just ollama`, `a HOSTED provider's uncatalogued model is still refused`, `a local-runtime provider absent from the catalogue is still refused`
-- **Dimension 10.6 — DONE** — Comment stripping preserves a URL inside a string literal, and the array scan anchors on the assignment → Tests `test_comment_stripping_does_not_cut_inside_a_string`, `test_comment_stripping_handles_an_escaped_quote`, `test_ts_scan_starts_at_the_array_not_the_declaration`
-- **Dimension 10.7 — DONE** — A local runtime is still refused a `base_url` server-side, asserted rather than only claimed in a comment → Test `test_local_runtime_is_still_forbidden_a_base_url`
-- **Dimension 10.8 — DONE** — The seeded activation floors are asserted for all nine local runtimes, not a hard-coded three → Test `test_local_runtime_floor_is_nonzero_after_nanos_rounding`
 
 ## Interfaces
 
@@ -348,18 +269,8 @@ and the emitted SQL's INSERT … ON CONFLICT arbitration.
 | 5.2 | unit | `test_doc_routing_table_cites_allowlist` | §9 references `scripts/model-library-allowlist.json` and does not present its table as the complete provider set. |
 | 5.3 | unit | `test_doc_provider_origin_matches_schema` | §10 does not claim the provider is inferable from `model_id`. |
 | 5.4 | unit | `test_doc_quotes_no_dollar_amounts` | No `$<digit>` occurrence outside the shape-only CLI output block — a regression guard on behaviour the doc already has. |
-| 6.5, 7.6 | integration | `test_activate_local_runtime_skips_catalogue` | `provider=ollama`, no `api_key` at all, uncatalogued model → 200; `provider=anthropic` + same model → 400 UZ-PROVIDER-004; `provider=anthropic` with no key → 400 UZ-PROVIDER-003; blank model on a local runtime → 400. |
-| 7.1 | unit | `test_key_required_for_a_hosted_provider` | `requiresApiKey` is true for fireworks, anthropic, openai, kimi, bedrock, groq. |
-| 7.2 | unit | `test_key_optional_for_a_custom_endpoint` | `requiresApiKey(openai-compatible)` is false — unchanged behaviour. |
-| 7.3 | unit | `test_key_optional_for_a_local_runtime` | `requiresApiKey` is false for every `LOCAL_RUNTIME_PROVIDERS` member. |
-| 7.4 | unit | `test_key_exemption_does_not_leak_to_a_near_miss_name` | `""`, `Ollama`, `VLLM`, `vllm2`, `xvllm`, `lm-studio `, `llama.cppx`, `openai-compatible-x` all still require a key. |
-| 7.5 | unit | `the openai-compatible sentinel is not a local runtime` | The two exemption branches stay distinct, so a local runtime cannot reach the `base_url`-carrying path. |
-| 7.7 | unit | `UZ-PROVIDER-003 hint states api_key is conditional, not unconditionally required` | The hint names both exemptions and no longer says "required for a named provider". |
-| 8.1 | integration (CLI) | `a LOCAL RUNTIME without --api-key succeeds, and its uncatalogued model is accepted` | `secret create --provider ollama --model llama-3.3-70b-my-finetune` with no key exits 0; the POST body carries neither `api_key` nor `base_url`. |
-| 8.2 | integration (CLI) | `a LOCAL RUNTIME with --base-url is still rejected — the key waiver is not an endpoint waiver` | Non-zero exit naming `--base-url`. |
-| 8.3 | unit (dashboard) | `enables Save for a local runtime with no key, and stores a body carrying no api_key` | Save enabled with an empty key field; the label reads "API key (optional)"; the posted body omits `api_key` and `base_url`. |
-| 8.4 | unit (dashboard) | `still disables Save for a near-miss provider name that only looks local` | Provider `Ollama` keeps Save disabled until a key is typed. |
-| 8.5 | unit | `test_{cli,ui}_mirror_is_actually_parsed`, `test_{cli,ui}_mirror_drift_is_caught` | Each TypeScript scrape returns the nine names; a one-name divergence on either surface is reported. |
+| 6.1 | unit | `buildCallArgs carries a KEYLESS gateway — an empty key is legitimate, not malformed` | A lease of `{provider:"custom:https://gw.corp/v1", api_key:"", base_url}` reaches the engine with all three fields intact. |
+| 6.2 | unit | `buildCallArgs injects neither half of an incomplete provider key pair` | A key with no provider still injects nothing — the malformed direction is unchanged. |
 | regression | integration | `test_seed_fixture_sql_regenerates_byte_identical` | `node scripts/seed-models.mjs --fixtures --emit-fixture-sql` twice yields an unchanged file; the stamp is pinned to `verified_at`. |
 | regression | integration | `test_existing_sixteen_providers_unchanged` | The 16 providers priced before this workstream seed the same rates afterwards, except the deliberate `kimi`/`qwen` `base_url` correction. |
 | idempotency | integration | `test_reseed_is_a_noop` | Running `make seed-models` twice against the same catalogue reports "no changes" on the second run. |
@@ -400,6 +311,8 @@ and the emitted SQL's INSERT … ON CONFLICT arbitration.
 | `nvidia-nim` duplicate rationale | `grep -c 'credits retired Sep 2025' scripts/model-library-allowlist.json` | 1 match — the `retired` block only, not also a per-provider note |
 
 ## Out of Scope
+
+- **Making local runtimes activatable.** Pricing them is not the blocker — `operator_hosted` records why they carry no rate. Activation needs three separate changes (the catalogue-membership check, the non-empty-`api_key` check, and the matching client-side rules in the CLI and dashboard), and behind those sits a design question this workstream is the wrong place to answer: a tenant-chosen provider id resolves to a fixed loopback port on the runner host, and under the `allow_all` posture the sandbox shares the host network namespace. The platform deliberately blocks tenant reach to loopback everywhere else (`tool_builders.zig` runs `resolveConnectHost` on every host for the HTTP tool), so opening a second door needs the dial target gated per runner first. Indy's call, recorded below.
 
 - **Test fixtures and CLI test data still naming `kimi-k2.6`** (`cli/test/*.unit.test.ts`, `src/lib/contract/protocol_test.zig`, `tests/fixtures/fleetbundle/`). They are opaque strings to those tests and carry no rate lookup; renaming them is churn without a behavioural claim. Follow-up if the platform default changes in code.
 - **The `schema/400_model_library.sql` header comment**, which still describes an unauthenticated "cryptic-prefix endpoint" and an `agentctl` command name. Both are stale, both are outside this workstream's Files Changed, and correcting them is a schema-file edit that trips SCHEMA GUARD for no rate reason.
@@ -469,25 +382,24 @@ and the emitted SQL's INSERT … ON CONFLICT arbitration.
     - **Generator merge logic not unit-testable (informational, testing).** Open. `nullclawSrc()` runs at module top level and throws without a vendored `zig-pkg/`, so the module cannot be imported in a fresh worktree. Regeneration idempotency is currently proven by command (two runs, byte-identical output), not by a committed test.
   - Security specialist found **no critical issue** in the activation-gate bypass. It traced `provider` to tenant-controlled credential JSON, then confirmed `validateSecretEndpoint` forbids `base_url` for any non-`openai-compatible` provider — so claiming `provider="ollama"` cannot smuggle a dial target, because the destination is NullClaw's hardcoded localhost table. `context_cap_tokens` is a sizing hint, not a rate, and self-managed never reads the rate cache.
   - Data-migration specialist returned **NO FINDINGS**, independently verifying that the generation bump's lock/write/bump order matches the admin handler's (`revision_state.beginMutation` before `model_library_store.create`), so both writers contend for the same singleton lock in the same order.
-  - gstack `/review`, second run (§7–§10) — security + testing specialists over the credential boundary. Both returned findings; every one is dispositioned:
-    - **The lease discarded a keyless provider (critical, security).** Fixed as §9 — this is the finding that mattered, because §7 and §8 were inert without it.
-    - **The dashboard's free-text carve-out was tested against an empty catalogue (critical, testing).** Fixed as §10.1; the first version of the new test failed against the real fixture, which is the proof the old coverage was vacuous.
-    - **The REPLACE arm had no assertion (critical, testing).** Fixed as §10.3.
-    - **Neither TypeScript `isLocalRuntime` had a direct test (critical, testing + informational, security).** Fixed as §10.4.
-    - **Two parser defects — comment stripping cuts inside string literals, and the scan anchors on the declaration rather than the assignment (informational, security).** Both fixed, both now driven by tests that fail against the old parser (§10.6).
-    - **Tautological Zig membership tests (informational, testing).** Fixed — the nine names are now literal.
-    - **Local-runtime `base_url` refusal was claimed in a comment, never asserted (informational, testing).** Fixed as §10.7.
-    - **Local runtimes now dial NullClaw's hardcoded localhost ports, and under `allow_all` the child shares the host netns (critical, security — confidence 6).** OPEN, surfaced to Indy rather than acted on. This is §6's consequence (catalogue membership), not §7's: the credential layer never sees the URL because `validateSecretEndpoint` forbids `base_url` for these providers, so the dial target is NullClaw's fixed table and not tenant-supplied. The prior REVIEW's security specialist traced the same path and returned no critical. Treated as a judgment call on the network posture, not a defect this diff introduces.
-    - Untouched pre-existing gaps the testing specialist also raised, all outside §7–§10's changed lines: no test for `gen-provider-skeleton.mjs`'s merge precedence, `sqlComment` unexported and untested, and a loop-invariant assertion in `seed_models_test.py`. Named here so they are not mistaken for covered.
-- **Orphan sweep — one live residue, deliberately not swept.** `not yet priced` is gone from the allowlist (0 hits). `kimi-k2.6` still appears in two LIVE architecture pages — `docs/architecture/user_flow.md` (4) and `docs/architecture/capabilities.md` (1) — as the example model in flow diagrams. It is the same staleness §5 corrected in `billing_and_provider_keys.md`: a model the allowlist prices nowhere. Dimension 5.1 scoped the sweep to the billing page, and these two are outside this spec's Files Changed, so they are flagged for Indy rather than edited unilaterally. The remaining hits are archived `done/` specs (history, append-only) and one deliberate allowlist note explaining the retirement.
+  - gstack `/review`, second run — security + testing specialists over the credential boundary, run while the local-runtime carve-out was still in the diff. Its findings are why the carve-out is now out of scope, and one of them survives into this PR:
+    - **The lease discarded a keyless provider (critical, security).** Kept and fixed as §6. It is not a local-runtime defect: an `openai-compatible` credential with no `api_key` is shipped, supported behaviour, and its lease was being dropped the same way.
+    - **Local runtimes dial NullClaw's hardcoded localhost ports, and under `allow_all` the child shares the host netns (critical, security — confidence 6).** This is the finding that moved the carve-out out of scope. The platform blocks tenant reach to loopback everywhere else — `tool_builders.zig` runs `resolveConnectHost` (private-IP reject + rebind pin) on every host for the HTTP tool, closing what its own comment calls an "exfil hole" — and the provider path would have bypassed that guard entirely, because `validateSecretEndpoint` returns null for a named provider so `base_url_guard` never sees a URL. Reach is bounded to seven fixed ports, but the `allow_all` gate is weaker than it looks: `EGRESS_ENFORCEMENT_BUILT = false`, so `allow_list_egress` degrades and refuses to lease, leaving `allow_all` the only posture that both runs and permits outbound traffic.
+    - The remaining findings were all coverage gaps in the carve-out's own code and left with it. They are recorded here so a future local-runtime workstream inherits them rather than rediscovering them: the dashboard's free-text model picker must be tested against a catalogue that CONTAINS the provider's row (an empty catalogue makes the branch a no-op); the dashboard's replace path needs its own assertion; each TypeScript `isLocalRuntime` mirror needs a direct table-driven test, because a parity gate that scrapes the array never sees the function; and a Zig membership test that loops the array it checks is tautological.
+
   - `kishore-babysit-prs` — to run after the first push.
 - **Deferrals**
   - Changelog entry in `~/Projects/docs`. A 39-provider addition is a user-visible behaviour change, so CHORE(close) would normally require an `<Update>`. Indy waived it:
     > Indy (2026-08-17): "skip changelog" — context: CHORE(close) changelog requirement; asked because the write is cross-repo and needs explicit approval.
 
-    The waiver is honoured for §7–§10 too. Those sections DID land docs-repo changes (agentsfleet/docs#178) — the `UZ-PROVIDER-003` copy and the provider guide — because both described behaviour that no longer exists, which is a correction rather than an announcement. No `<Update>` block was added.
+    The docs-repo companion (agentsfleet/docs#178) was opened for the carve-out and is withdrawn with it: its `UZ-PROVIDER-003` correction and its local-runtime provider guide both describe behaviour this PR no longer ships. No `<Update>` block was added anywhere.
   - The generator merge-logic test above is recorded as open, not deferred — it has no Indy-acked quote, so it is incomplete scope rather than a deferral, and it is named in Out of Scope with the reason it is awkward to test as written.
-- **Resolved decision — the local-runtime activation gap, both gates.** Seeding `vllm`/`ollama`/etc. at an activation floor makes the catalogue row exist, but `UZ-PROVIDER-004` matches on `(provider, model_id)` and the seeded id is the literal `local`, so a user serving `llama-3.3-70b` from their own vLLM still failed the membership check. §6 closed that. A second gate then remained: `probeSelfManagedSecret` required a non-empty `api_key` for every named provider, so a local activation still needed a placeholder key. Both are Zig changes to validation boundaries and neither was taken unilaterally — the first was scoped in this spec from the start, the second on Indy's in-session direction:
+- **Resolved decision — the local-runtime carve-out is deferred to its own workstream.** It was built and reviewed inside this branch, then removed from it. The sequence matters more than the outcome:
+
+  Indy first directed the keyless-credential exemption be folded in rather than spec'd separately:
   > Indy (2026-08-17): "No, just update that fake key like unused-local thing and move on" — context: whether to fold the keyless-credential exemption into M168 or spec it separately; the agent's recommendation had been a separate spec.
 
-  Folded in as §7 rather than deferred, because "local runtimes work" is only true when both gates yield. Tracing the same claim through the surfaces an operator actually uses then turned up three more client-side refusals (§8) — the CLI's own key check, its catalogue-membership check on `--model`, and the dashboard's Save gate plus its sentinel-only model picker. Those are not scope creep on §7; without them §7 ships a server that accepts a credential no shipped client will send.
+  Tracing "can an operator actually do this?" through every surface then found not one gate but five, and REVIEW found a sixth. Five were closed; the sixth surfaced a design question — a tenant-chosen provider id resolving to a fixed loopback port on the runner host, bypassing the loopback block the platform enforces everywhere else. On that evidence Indy reversed the fold-in:
+  > Indy (2026-08-17): "Yes i dont wasnt o focus on local-runtiem care-out now. Its a separate user experience to think about first. So do 610 first" — context: after the security finding was reported, choosing between spec'ing the dial-target gate as a follow-up and pulling the carve-out out of this PR.
+
+  So the nine local runtimes revert to reasoned-not-priced under the new `operator_hosted` code, the six behavioural changes come out, and the curation lands on its own. §6's lease fix stays, because it is a defect in shipped `openai-compatible` behaviour rather than part of the carve-out.
