@@ -68,7 +68,7 @@ The diagrams live with their flows: the per-slice metering picture (§3) and the
 |---|---|---|
 | Credit-based Amp-style billing, no tier ladder | one number that drains; refills are grants or purchases | preamble, §2 |
 | Platform default routes through the admin tenant's own credential | no separate platform vault, no env-var fallback, one vault code path | §1 |
-| Fireworks Kimi K2.7-code as the v2.0 platform default | strong coding model, 256K context, cheap wholesale, OpenAI-compatible | §1 |
+| Fireworks Kimi K3 as the v2.0 platform default | strongest general model in the catalogue at 1M context; capability chosen over wholesale price | §1 |
 | The allowlist is the provider enumeration; this doc never re-lists it | a hand-copied provider table drifts the moment NullClaw is bumped | §9, §10 |
 | A provider is priced, or records why it never will be | "not yet priced" read as a queue nobody was working; 87 providers sat in it | §10 |
 | Free usage is a balance, not a promotional window | a number that drains cannot silently stay open; the timestamp-gated version priced every tenant at zero for its whole life | §2.3 |
@@ -92,10 +92,10 @@ One persona carries the worked examples through this doc and the scenarios: **Jo
 
 A tenant is in exactly one of two postures at any moment. The posture is tenant-scoped (single value per tenant; not per workspace, not per fleet):
 
-- **Platform-managed (v2.0 default = Fireworks Kimi K2.7-code).** agentsfleet routes platform-managed inference through the **admin tenant's self-managed credential**. The `agentsfleet-admin` user is one global account per environment, bootstrapped via [`playbooks/operations/admin_bootstrap/001_playbook.md`](../../playbooks/operations/admin_bootstrap/001_playbook.md). It signs up like a normal user and gets promoted to `role=admin` in Clerk. It stores a Fireworks credential in its own workspace's `vault.secrets` (the same M45 crypto_store path any self-managed user takes), then registers it as the active platform default via `PUT /v1/admin/platform-keys`. The `core.platform_provider_defaults` table records only a pointer `(provider, source_workspace_id)` — no key material lives there. At lease time the control plane (`agentsfleetd`) follows the pointer into the admin workspace's vault to fetch the api_key on-demand. There is no `PLATFORM_FIREWORKS_KEY` constant, no separate platform vault, no env-var fallback. The user pays agentsfleet a per-event fee that bundles inference (token-based, retail-rate-driven through the model library) plus orchestration, storage, and egress.
+- **Platform-managed (v2.0 default = Fireworks Kimi K3).** agentsfleet routes platform-managed inference through the **admin tenant's self-managed credential**. The `agentsfleet-admin` user is one global account per environment, bootstrapped via [`playbooks/operations/admin_bootstrap/001_playbook.md`](../../playbooks/operations/admin_bootstrap/001_playbook.md). It signs up like a normal user and gets promoted to `role=admin` in Clerk. It stores a Fireworks credential in its own workspace's `vault.secrets` (the same M45 crypto_store path any self-managed user takes), then registers it as the active platform default via `PUT /v1/admin/platform-keys`. The `core.platform_provider_defaults` table records only a pointer `(provider, source_workspace_id)` — no key material lives there. At lease time the control plane (`agentsfleetd`) follows the pointer into the admin workspace's vault to fetch the api_key on-demand. There is no `PLATFORM_FIREWORKS_KEY` constant, no separate platform vault, no env-var fallback. The user pays agentsfleet a per-event fee that bundles inference (token-based, retail-rate-driven through the model library) plus orchestration, storage, and egress.
 - **Self-managed provider keys.** The user stores their own provider credential — Fireworks, Anthropic, OpenAI, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-key`, `anthropic-prod`, etc.). The tenant's `core.tenant_model_selection` row points at that name through `secret_ref`. The runner's NullClaw child uses that key to call the provider's API. The user pays their provider directly for inference; agentsfleet charges a smaller flat orchestration fee per event with no token markup.
 
-**Why Fireworks Kimi K2.7-code is the v2.0 platform default.** It carries a 256K context window at significantly cheaper wholesale than Anthropic Sonnet or OpenAI GPT-class, and the 2.7 generation ships only in coding-specialised form — which is the shape this platform runs. Fireworks is OpenAI-compatible (NullClaw routes through `compatible.zig`), so one code path serves both postures.
+**Why Fireworks Kimi K3 is the v2.0 platform default.** It is the strongest general-purpose model in the catalogue that is not Anthropic- or OpenAI-priced, and its 1M context window means a coding agent working a real repository does not hit the wall mid-run. That is a deliberate trade against wholesale price: the K2.7-code generation on the same host is materially cheaper per token, and the default takes capability over cost because a run that exhausts its context and fails costs more than the tokens it saved. Fireworks is OpenAI-compatible (NullClaw routes through `compatible.zig`), so one code path serves both postures.
 
 The default is a **pointer, not a constant**: `core.platform_provider_defaults` names `(provider, source_workspace_id)`, and the model comes from the admin tenant's credential body. Changing it is an admin write, not a deploy. Whatever it points at must have a `core.model_library` row — an unpriced default would make every platform-posture slice fail `error.ModelNotPriced` (§4.2), which is exactly what naming a superseded model here did until M168. Under platform it dials Fireworks with the api_key the admin tenant provisioned via `PUT /v1/admin/platform-keys`. Under self-managed it dials Fireworks — or any other catalogue provider — with the user's own key. The runtime is uniform; only which workspace's vault holds the key (and the cost-function-vs-flat-fee distinction) differs.
 
@@ -198,10 +198,10 @@ Two functions, both in `src/agentsfleetd/state/tenant_billing.zig`. Both take `p
 
 ### 4.0 Worked examples up front
 
-Two events for John, taken at different points in his journey, drive the worked examples below. Both run against Kimi K2.7-code — only the posture differs:
+Two events for John, taken at different points in his journey, drive the worked examples below. Both run against Kimi K3 — only the posture differs:
 
-- **John on platform-managed.** A typical webhook event under `mode=platform`: 800 input tokens / 1040 output tokens against `accounts/fireworks/models/kimi-k2p7-code`. agentsfleet holds the Fireworks key; we pay Fireworks for the tokens and bill John at the retail rate from the model library plus orchestration overhead.
-- **John on self-managed.** Same workload, `mode=self_managed`: 800 input / 1040 output against `accounts/fireworks/models/kimi-k2p7-code`. John holds the Fireworks key; he pays Fireworks directly. agentsfleet bills the flat orchestration overhead, no token markup.
+- **John on platform-managed.** A typical webhook event under `mode=platform`: 800 input tokens / 1040 output tokens against `accounts/fireworks/models/kimi-k3`. agentsfleet holds the Fireworks key; we pay Fireworks for the tokens and bill John at the retail rate from the model library plus orchestration overhead.
+- **John on self-managed.** Same workload, `mode=self_managed`: 800 input / 1040 output against `accounts/fireworks/models/kimi-k3`. John holds the Fireworks key; he pays Fireworks directly. agentsfleet bills the flat orchestration overhead, no token markup.
 
 ### 4.1 Receive charge
 
@@ -229,7 +229,7 @@ pub fn computeStageCharge(
     conn:       *pg.Conn,      // the caller's already-acquired connection (M143 §2.2)
     provider:   []const u8,    // composite-key half — "anthropic", "pioneer", … (§9)
     posture:    Posture,
-    model:      []const u8,    // "accounts/fireworks/models/kimi-k2p7-code", "kimi-k2.7-code", …
+    model:      []const u8,    // "accounts/fireworks/models/kimi-k3", "kimi-k3", …
     elapsed_ms: i64,           // active wall time of the slice
     d_input:    u32,           // per-slice token deltas (CTE-computed max(0, cumulative − metered))
     d_cached:   u32,
@@ -408,7 +408,7 @@ Vault credentials are opaque JSON objects keyed by name (M45 contract). The self
 {
   "provider": "fireworks",
   "api_key":  "fw_LIVE_xxxxxxxxxxxxxxxx",
-  "model":    "accounts/fireworks/models/kimi-k2p7-code"
+  "model":    "accounts/fireworks/models/kimi-k3"
 }
 ```
 
@@ -471,7 +471,7 @@ core.tenant_model_entries (id, tenant_id, model_id, secret_ref, created_at, upda
 
 ---
 
-## 9. Provider routing — what makes Fireworks + Kimi K2.7-code work today
+## 9. Provider routing — what makes Fireworks + Kimi K3 work today
 
 NullClaw already speaks the OpenAI-compatible wire format, and it dials **103 provider names**. The enumeration lives in `scripts/model-library-allowlist.json`, which is generated from `nullclaw/src/providers/factory.zig` by `scripts/gen-provider-skeleton.mjs`. This section names the shapes those 103 fall into; it deliberately does not re-list them, because a hand-copied table is wrong the moment NullClaw is bumped — which is how the eight rows that used to sit here came to describe a fraction of what the platform could dial.
 
@@ -487,11 +487,11 @@ NullClaw already speaks the OpenAI-compatible wire format, and it dials **103 pr
 
 **Regional split — international is what we price.** Where a vendor runs separate mainland-China and international services, the allowlist prices and dials the **international** endpoint; the China endpoint carries no rates and is reached, when someone needs it, as an OpenAI-compatible custom endpoint. `base_url` is therefore a curated field that the skeleton generator never overwrites: NullClaw resolves both `kimi` and `qwen` to their China endpoints, while our rates for both come from the international price pages. Regenerating that field silently produced the right price against the wrong continent.
 
-For self-managed provider key with Fireworks + Kimi K2.7-code:
+For self-managed provider key with Fireworks + Kimi K3:
 
 ```
 provider: "fireworks"
-model:    "accounts/fireworks/models/kimi-k2p7-code"
+model:    "accounts/fireworks/models/kimi-k3"
 ```
 
 The OpenAI-compatible client routes the call to `https://api.fireworks.ai/inference/v1/chat/completions`. No provider-specific code needed in this repo. The same path opens up every other compatible provider in NullClaw's catalogue without further work.
@@ -583,8 +583,8 @@ Output (shape — actual dollar columns reflect current rates):
 Tenant balance:    $X.XX
 Last 10 events drained credits:
   EVENT_ID       POSTURE       MODEL                                IN_TOK  OUT_TOK  RECEIVE  STAGE     TOTAL
-  evt_01HXG2K4…  platform      accounts/fireworks/models/kimi-k2p7-code    800    1040    $0      $0.001…   $0.001…
-  evt_01HXG3M2…  self_managed  accounts/fireworks/models/kimi-k2p7-code    800    1320    $0      $0.0001   $0.0001
+  evt_01HXG2K4…  platform      accounts/fireworks/models/kimi-k3    800    1040    $0      $0.001…   $0.001…
+  evt_01HXG3M2…  self_managed  accounts/fireworks/models/kimi-k3    800    1320    $0      $0.0001   $0.0001
   …
 ⓘ Out of credits? See https://app.agentsfleet.net/settings/billing
    Or run agentsfleet billing show --json | jq for machine-readable output.
