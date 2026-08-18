@@ -111,6 +111,9 @@ describe("AddRunnerDialog component", () => {
         network_policy: "allow_all",
         registry_allowlist: [],
         worker_count: 1,
+        // Always sent, explicitly empty — enrollment assigns the whole policy,
+        // and an omitted bind list is indistinguishable from "wipe the binds".
+        extra_binds: [],
       },
       labels: ["gpu", "us-east"],
     });
@@ -173,6 +176,7 @@ describe("AddRunnerDialog component", () => {
         network_policy: "allow_all",
         registry_allowlist: [],
         worker_count: 1,
+        extra_binds: [],
       },
       labels: [],
     });

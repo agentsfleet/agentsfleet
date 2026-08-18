@@ -23,6 +23,23 @@ const child_process = @import("child_process.zig");
 const child_supervisor = @import("child_supervisor.zig");
 const cgroup = @import("engine/CgroupScope.zig");
 const pipe_proto = @import("pipe_proto.zig");
+const sandbox_args = @import("sandbox_args.zig");
+const Config = @import("daemon/config.zig");
+const contract = @import("contract");
+
+/// Daemon Config for the sandbox-argv probe below. `buildArgv` reads only
+/// `sandbox_tier` and `network_policy`; the rest are inert literals.
+const sandbox_args_test_cfg = Config{
+    .control_plane_url = "http://127.0.0.1:8080",
+    .runner_token = "agt_rtest",
+    .sandbox_tier = contract.protocol.SandboxTier.landlock_full,
+    .storage_home = "/tmp/agentsfleet-runner",
+    .network_policy = .deny_all_egress,
+    .worker_count = 1,
+    .cp_deadlines = .{},
+    .registry_allowlist = &.{},
+    .alloc = std.testing.allocator,
+};
 
 const SH = "/bin/sh";
 const PLANTED_TOKEN = "agt_rplanted_probe_value";
@@ -268,4 +285,224 @@ test "the spawn path introduces no file descriptor the parent did not already ho
         const path = try std.fmt.bufPrint(&path_buf, "/proc/self/fd/{d}", .{fd});
         _ = std.Io.Dir.readLinkAbsolute(io, path, &link_buf) catch return error.SpawnIntroducedStrayFd;
     }
+}
+
+/// The bwrap prefix the real builder produced, up to and including its `--`
+/// separator — so a probe runs under the SAME binds a lease gets. Swapping only
+/// the payload command is what keeps this a proof about production argv rather
+/// than about a hand-written flag list. Caller owns nothing; `argv` still owns.
+fn bwrapPrefixLen(argv: []const []const u8) ?usize {
+    for (argv, 0..) |s, i| {
+        if (std.mem.eql(u8, s, "--")) return i + 1;
+    }
+    return null;
+}
+
+test "the resolver config a lease inherits is readable inside a real sandbox" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+
+    // A real workspace: bwrap --bind and --chdir both require it to exist, and
+    // it must be absolute (the sibling lease_run tests use the same base shape).
+    const ws = "/tmp/agentsfleet-resolver-probe-test";
+    std.Io.Dir.createDirAbsolute(io, ws, .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+    defer std.Io.Dir.cwd().deleteTree(io, ws) catch {};
+
+    // The REAL production argv, under the posture that shares host networking.
+    var cfg = sandbox_args_test_cfg;
+    cfg.network_policy = .allow_all;
+    const argv = sandbox_args.buildArgv(io, alloc, cfg, ws, null) catch |err| {
+        try std.testing.expectEqual(error.BwrapUnavailable, err);
+        return error.SkipZigTest;
+    };
+    defer sandbox_args.freeArgv(alloc, argv);
+    const prefix = bwrapPrefixLen(argv) orelse return error.NoBwrapSeparator;
+
+    // Same binds, probe payload: read the resolver config the host actually
+    // uses. On a systemd-resolved host /etc/resolv.conf is a symlink into
+    // /run/systemd/resolve — bind the link without its target and this read
+    // ENOENTs inside the sandbox while succeeding on the host, which is exactly
+    // how every lease came to fail HostResolutionFailed with a green `doctor`.
+    var probe: std.ArrayList([]const u8) = .empty;
+    defer probe.deinit(alloc);
+    try probe.appendSlice(alloc, argv[0..prefix]);
+    try probe.appendSlice(alloc, &.{ SH, "-c", "cat /etc/resolv.conf >/dev/null 2>&1 && echo RESOLV_OK || echo RESOLV_DANGLING" });
+
+    var child = try std.process.spawn(io, .{
+        .argv = probe.items,
+        .stdin = .ignore,
+        .stdout = .pipe,
+        .stderr = .ignore,
+    });
+    const out = try readToEnd(alloc, child.stdout.?.handle, 4096);
+    defer alloc.free(out);
+    _ = child.wait(io) catch {};
+
+    // Three outcomes, and conflating the first two is what makes this test
+    // either useless or falsely red:
+    //
+    //   RESOLV_OK        the sandbox came up and the resolver file resolved
+    //   RESOLV_DANGLING  the sandbox came up and it did NOT — the M167 bug
+    //   neither token    bwrap never reached the payload at all
+    //
+    // The third is an environment verdict, not a product one. The lease prefix
+    // carries `--proc /proc`, and mounting a fresh procfs inside a nested user
+    // namespace is denied unless the container is privileged — Docker masks
+    // /proc otherwise. `bwrap: Can't mount proc on /newroot/proc: Operation not
+    // permitted`, and stdout is empty. That is exactly the coverage lane, which
+    // runs unprivileged under kcov; the privileged kernel lane
+    // (test-integration.yml, --privileged --cgroupns=private) is where this
+    // proof actually executes, per RULE ITF.
+    //
+    // Asserting RESOLV_OK unconditionally reddens the coverage lane for a
+    // kernel permission it was never granted. Skipping on ANY non-OK output
+    // would be worse — it would swallow RESOLV_DANGLING, the one result this
+    // whole milestone exists to catch. So the dangling arm fails loudly and
+    // only an unestablished sandbox skips.
+    if (std.mem.indexOf(u8, out, "RESOLV_OK") != null) return;
+
+    if (std.mem.indexOf(u8, out, "RESOLV_DANGLING") != null) {
+        std.debug.print(
+            "sandbox established but /etc/resolv.conf did not resolve inside it — " ++
+                "the resolver stub is not bound into the lease sandbox (M167)\n",
+            .{},
+        );
+        return error.ResolverDanglingInsideSandbox;
+    }
+
+    return error.SkipZigTest;
+}
+
+// The self-test probe's real-sandbox proofs root here — the integration lane
+// has exactly one root module, and the façade pattern keeps that root a flat
+// list rather than one growing file (write_zig, §Must).
+test {
+    _ = @import("selftest_integration_test.zig");
+}
+
+test "a bind that SYMLINKS onto a protected path is refused, however it is spelled" {
+    // The lexical rules cannot see this one, and they never will: the control
+    // plane validates an assignment from a machine where these paths do not
+    // exist, so a string is all it has. bubblewrap resolves the link itself
+    // when it opens the bind source, so `/tmp/...-link` -> `/etc` clears every
+    // name check and mounts the host's `/etc` into the lease. At `read_write`,
+    // that is agent code with a writable handle on host system state.
+    //
+    // Planted for real rather than stubbed: the whole defect is that the string
+    // and the filesystem disagree, so a fake filesystem would reproduce the
+    // check and not the bug.
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+
+    const ws = "/tmp/agentsfleet-symlink-bind-test-ws";
+    std.Io.Dir.createDirAbsolute(io, ws, .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+    defer std.Io.Dir.cwd().deleteTree(io, ws) catch {};
+
+    // Under `/srv`, not `/tmp`: `/tmp` is itself in `SENSITIVE_PATHS`, so a link
+    // placed there is refused by the lexical rules and would prove nothing about
+    // resolution. `/srv` is the prefix the bind unit tests already treat as
+    // legitimately assignable, which is exactly the shape of the hole — a path
+    // an operator may name, pointing where they may not.
+    std.Io.Dir.createDirAbsolute(io, "/srv", .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        // Unprivileged hosts cannot plant the fixture; that is a harness fact.
+        error.AccessDenied, error.PermissionDenied => return error.SkipZigTest,
+        else => return err,
+    };
+    const link = "/srv/agentsfleet-symlink-bind-test-link";
+    std.Io.Dir.cwd().deleteFile(io, link) catch {};
+    std.Io.Dir.symLinkAbsolute(io, "/etc", link, .{}) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        error.AccessDenied, error.PermissionDenied => return error.SkipZigTest,
+        else => return err,
+    };
+    defer std.Io.Dir.cwd().deleteFile(io, link) catch {};
+
+    // The declared path passes every lexical rule — that is the premise. If this
+    // ever fails, the bug moved and the rest of this test proves nothing.
+    const declared = [_]contract.protocol.ExtraBind{
+        .{ .path = link, .mode = .read_write, .note = "looks like a scratch dir" },
+    };
+    try std.testing.expect(contract.protocol.extraBindsValid(&declared));
+
+    var cfg = sandbox_args_test_cfg;
+    cfg.extra_binds = &declared;
+    try std.testing.expectError(
+        error.UnsafeBindTarget,
+        sandbox_args.buildArgv(io, alloc, cfg, ws, null),
+    );
+}
+
+test "a symlink pointing somewhere harmless still builds a lease" {
+    // The guard refuses what a path RESOLVES to, not the fact that it resolved.
+    // Without this, "refuse every symlink" would pass the test above and quietly
+    // break every operator who mounts through one.
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+
+    const ws = "/tmp/agentsfleet-symlink-ok-test-ws";
+    std.Io.Dir.createDirAbsolute(io, ws, .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+    defer std.Io.Dir.cwd().deleteTree(io, ws) catch {};
+
+    // Both ends under `/srv`, for the same reason as the test above: a `/tmp`
+    // target resolves into `SENSITIVE_PATHS` and would be refused on its merits,
+    // which would make this pass for the wrong reason.
+    const target = "/srv/agentsfleet-symlink-ok-test-target";
+    std.Io.Dir.createDirAbsolute(io, "/srv", .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        error.AccessDenied, error.PermissionDenied => return error.SkipZigTest,
+        else => return err,
+    };
+    std.Io.Dir.createDirAbsolute(io, target, .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        error.AccessDenied, error.PermissionDenied => return error.SkipZigTest,
+        else => return err,
+    };
+    defer std.Io.Dir.cwd().deleteTree(io, target) catch {};
+
+    const link = "/srv/agentsfleet-symlink-ok-test-link";
+    std.Io.Dir.cwd().deleteFile(io, link) catch {};
+    std.Io.Dir.symLinkAbsolute(io, target, link, .{}) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        error.AccessDenied, error.PermissionDenied => return error.SkipZigTest,
+        else => return err,
+    };
+    defer std.Io.Dir.cwd().deleteFile(io, link) catch {};
+
+    const declared = [_]contract.protocol.ExtraBind{
+        .{ .path = link, .mode = .read_write, .note = "a real scratch dir" },
+    };
+    var cfg = sandbox_args_test_cfg;
+    cfg.extra_binds = &declared;
+    const argv = sandbox_args.buildArgv(io, alloc, cfg, ws, null) catch |err| {
+        try std.testing.expectEqual(error.BwrapUnavailable, err);
+        return error.SkipZigTest;
+    };
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    // The bind is emitted at the DECLARED path: an operator's mount has to
+    // appear where they asked for it, not at whatever it happened to resolve to.
+    var found = false;
+    for (argv) |a| {
+        if (std.mem.eql(u8, a, link)) found = true;
+    }
+    try std.testing.expect(found);
 }

@@ -18,6 +18,12 @@ RUN test -n "$ZIG_VERSION" && test -n "$ZIG_SHA256_X86_64_LINUX"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# bubblewrap is production parity, not a convenience: the runtime image
+# (/Dockerfile) installs it, and the runner spawns every sandboxed lease through
+# `bwrap`. Without it here, each proof that needs a real binary resolved
+# `error.BwrapUnavailable` and returned SkipZigTest — silently, on every run, in
+# the only Linux environment those tests had. That is how a sandbox missing
+# /run/systemd/resolve shipped and broke every lease for a week (M167).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libssl-dev \
@@ -30,8 +36,17 @@ RUN apt-get update \
       python3 \
       build-essential \
       docker.io \
+      docker-compose-v2 \
       gnupg \
+      bubblewrap \
  && rm -rf /var/lib/apt/lists/*
+# docker-compose-v2 is named explicitly because `docker.io` does NOT provide it.
+# This image drives `docker compose up` against the mounted host socket from the
+# test-integration lane, and the header below claimed docker-cli was enough for
+# that — it is not, on Ubuntu 24.04. A rebuild from the unchanged Dockerfile
+# therefore produced an image whose compose had silently vanished, and the lane
+# died on `unknown shorthand flag: 'd' in -d`. Naming the package pins the
+# capability to this file instead of to whatever `docker.io` happens to bundle.
 
 RUN set -eux; \
     tarball="zig-x86_64-linux-${ZIG_VERSION}.tar.xz"; \

@@ -22,8 +22,13 @@ const cmd_common = @import("../cmd/common.zig");
 //  registry_allowlist worker_count capability_report capability_reported_at
 //  degraded degraded_reason last_seen_at created_at updated_at` — the
 //  `fleet.runners` column set. One identity column, not the generated/text pair
-//  the frozen-slot model was stuck with.
-const EXPECTED_COLUMN_COUNT: i64 = 17;
+//  the frozen-slot model was stuck with. Migration `660` adds the six self-test
+//  columns `selftest_requested_at selftest_completed_at selftest_checks
+//  selftest_all_ok selftest_sandbox_tier selftest_network_policy`, which carry
+//  the runner's own in-sandbox verdict on the same row as its capability report.
+//  Migration `670` adds `extra_binds`, the operator's additions to the
+//  daemon-owned sandbox baseline, stored beside the rest of the assignment.
+const EXPECTED_COLUMN_COUNT: i64 = 24;
 const EXPECTED_NAMED_CONSTRAINTS: i64 = 2;
 /// The retired identity twins: a generated UUID, a text `id` beside it, and a
 /// CHECK tying the two together, on both tables that carried the shape. Rebuilt

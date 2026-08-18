@@ -157,6 +157,13 @@ jobs:
           node-version: 25
           registry-url: https://registry.npmjs.org
 
+      # This token STAYS when release.yml's publish goes tokenless. Trusted
+      # Publishing authenticates one operation — `npm publish` — and hands back
+      # a short-lived credential scoped to it. `npm dist-tag add` below is a
+      # separate registry write that no trusted publisher covers, so this job
+      # would lose its only credential and start failing after a green release,
+      # at the point where `latest` is meant to move. The migration is partial
+      # by design, not half-finished.
       - name: Load npm publication token
         uses: 1password/load-secrets-action@v4
         with:

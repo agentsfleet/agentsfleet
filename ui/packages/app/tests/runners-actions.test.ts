@@ -19,6 +19,7 @@ const {
   updateRunnerPolicyMock,
   deleteRunnerMock,
   listRunnerLeasesMock,
+  requestRunnerSelftestMock,
 } = vi.hoisted(() => ({
   hasScopeMock: vi.fn(),
   withTokenMock: vi.fn(),
@@ -28,6 +29,7 @@ const {
   updateRunnerPolicyMock: vi.fn(),
   deleteRunnerMock: vi.fn(),
   listRunnerLeasesMock: vi.fn(),
+  requestRunnerSelftestMock: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/platform", () => ({ hasScope: hasScopeMock }));
@@ -39,6 +41,7 @@ vi.mock("@/lib/api/runners", () => ({
   updateRunnerPolicy: updateRunnerPolicyMock,
   deleteRunner: deleteRunnerMock,
   listRunnerLeases: listRunnerLeasesMock,
+  requestRunnerSelftest: requestRunnerSelftestMock,
 }));
 
 import {
@@ -48,6 +51,7 @@ import {
   updateRunnerPolicyAction,
   deleteRunnerAction,
   listRunnerLeasesAction,
+  requestRunnerSelftestAction,
 } from "@/app/(dashboard)/admin/runners/actions";
 
 const POLICY_TO_ASSIGN = {
@@ -231,5 +235,28 @@ describe("runner server actions — per-scope gate (defence-in-depth)", () => {
     const r = await listRunnerLeasesAction("runner-1", params);
     expect(r).toEqual({ ok: true, data: { items: [], total: 0, next_cursor: null } });
     expect(listRunnerLeasesMock).toHaveBeenCalledWith("tok", "runner-1", params);
+  });
+
+  it("requestRunnerSelftestAction gates on runner:write — a probe runs code on the host — and fails closed without it", async () => {
+    hasScopeMock.mockResolvedValueOnce(false);
+    const r = await requestRunnerSelftestAction("runner-1");
+    expect(r).toEqual({
+      ok: false,
+      error: "Operator scope required: runner:write",
+      status: 403,
+      errorCode: "UZ-AUTH-022",
+    });
+    expect(hasScopeMock).toHaveBeenCalledWith(SCOPE.RUNNER_WRITE);
+    expect(withTokenMock).not.toHaveBeenCalled();
+    expect(requestRunnerSelftestMock).not.toHaveBeenCalled();
+  });
+
+  it("requestRunnerSelftestAction returns the recorded request, never a verdict, when the scope holds", async () => {
+    hasScopeMock.mockResolvedValueOnce(true);
+    const recorded = { id: "runner-1", admin_state: "active", selftest_requested_at: 1_760_000_000_000 };
+    requestRunnerSelftestMock.mockResolvedValueOnce(recorded);
+    const r = await requestRunnerSelftestAction("runner-1");
+    expect(r).toEqual({ ok: true, data: recorded });
+    expect(requestRunnerSelftestMock).toHaveBeenCalledWith("tok", "runner-1");
   });
 });

@@ -5,7 +5,7 @@
 import {
   RUNNER_ADMIN_ACTION,
   RUNNER_ADMIN_STATE,
-  type RunnerAdminAction,
+  type RunnerStateAction,
   type RunnerAdminState,
 } from "@/lib/api/runners";
 
@@ -13,7 +13,7 @@ import {
 // source of the accessible name; revoke is offered until the runner is
 // revoked, delete only after (DELETE /v1/fleets/runners/{id} 409s on a live
 // runner), exactly as ApiKeyList alternates the two.
-export const ACTION_CONFIG: Record<RunnerAdminAction, {
+export const ACTION_CONFIG: Record<RunnerStateAction, {
   label: string;
   title: string;
   description: string;
@@ -44,10 +44,12 @@ export const ACTION_CONFIG: Record<RunnerAdminAction, {
 };
 
 // Delete is deliberately NOT a member of ACTION_CONFIG: that map is keyed on
-// RunnerAdminAction, the three PATCH verbs the daemon serves, and widening it
+// RunnerStateAction, the PATCH verbs that MOVE admin_state, and widening it
 // would loosen an exhaustive type that actionsFor and RunnerHeader lean on.
 // Delete is a different HTTP verb with a different lifecycle, so it gets its own
-// config and its own trigger.
+// config and its own trigger. `self_test` is out for the same reason from the
+// other direction: it is a PATCH verb, but it records a request and transitions
+// nothing, so it carries its own config below.
 export const DELETE_ACTION_CONFIG = {
   label: "Delete",
   title: "Delete this runner?",
@@ -57,13 +59,28 @@ export const DELETE_ACTION_CONFIG = {
   errorAction: "delete this runner",
 };
 
+// The self-test trigger. No confirm dialog: it runs a read-only probe inside the
+// runner's own sandbox and changes nothing an operator would want to undo, so a
+// confirmation would be ceremony without a decision behind it.
+export const SELFTEST_ACTION_CONFIG = {
+  label: "Run self-test",
+  pendingLabel: "Self-test requested",
+  errorAction: "run a self-test on this runner",
+};
+
 /** Only a revoked runner is deletable — the daemon 409s (UZ-RUN-016) otherwise. */
 export function canDelete(state: RunnerAdminState): boolean {
   return state === RUNNER_ADMIN_STATE.revoked;
 }
 
-export function actionsFor(state: RunnerAdminState): RunnerAdminAction[] {
-  const out: RunnerAdminAction[] = [];
+/** A revoked runner never heartbeats again, so it can never answer a self-test
+ * request — the daemon refuses it (UZ-RUN-018) and the control does not render. */
+export function canSelftest(state: RunnerAdminState): boolean {
+  return state !== RUNNER_ADMIN_STATE.revoked;
+}
+
+export function actionsFor(state: RunnerAdminState): RunnerStateAction[] {
+  const out: RunnerStateAction[] = [];
   if (state === RUNNER_ADMIN_STATE.active) out.push(RUNNER_ADMIN_ACTION.cordon);
   if (state === RUNNER_ADMIN_STATE.active || state === RUNNER_ADMIN_STATE.cordoned) out.push(RUNNER_ADMIN_ACTION.drain);
   if (state !== RUNNER_ADMIN_STATE.revoked) out.push(RUNNER_ADMIN_ACTION.revoke);

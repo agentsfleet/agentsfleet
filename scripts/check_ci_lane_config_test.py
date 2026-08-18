@@ -9,7 +9,8 @@ until someone read the run history:
   * a pre-warm step naming the wrong build step compiles a binary the job
     never runs, and leaves the one it does run cold;
   * `--privileged` grants a job that checks out branch code far more than the
-    two container relaxations kcov actually needs;
+    relaxations it actually needs, so every use of it is named here with the
+    kernel operation that earns it and an unlisted one fails;
   * the cache reclamation selector must never delete an entry that is still
     restorable.
 
@@ -64,6 +65,33 @@ class TestPrewarmArtifacts(unittest.TestCase):
 # Flags that widen what a job holds beyond the default container posture.
 GRANT_FLAGS = ("--privileged", "--security-opt", "--cap-add")
 
+# The only lanes allowed to hold `--privileged`, each against the kernel
+# operation that earns it. A workflow absent from this table fails the sweep
+# below: the gate's job is that privilege is argued for once, in the open,
+# rather than acquired by a flag nobody re-reads afterwards. Both entries are
+# operations the kernel refuses to an unprivileged container — neither is a
+# convenience, and neither has a narrower capability that substitutes (measured:
+# `--cap-add=SYS_ADMIN` alone does not).
+PRIVILEGED_LANES = {
+    # Delegating a cgroup-v2 controller subtree.
+    "test-integration.yml": "cgroup-v2 controller delegation",
+    # bubblewrap creating the namespaces the real-sandbox proofs run in. The CI
+    # image has baked bwrap in since r3, so without this the four
+    # `selftest_integration_test` cases do not FAIL here — they skip, on the
+    # `probeRanHere` guard that reads a silent probe as a harness fact rather
+    # than a verdict. Skipping is correct behaviour and it left
+    # `selftest_exec.run` — the entire spawn/bound/reap half of the self-test —
+    # measured at 33%, which then read as structurally unreachable rather than
+    # as one missing flag. Measured on this image: unprivileged all four skip,
+    # privileged all four pass.
+    "test.yml": "bubblewrap namespace creation",
+}
+
+# Lanes whose privilege is cgroup delegation must also SCOPE it. bubblewrap
+# needs no cgroup namespace of its own, so this is asserted per lane rather
+# than demanded of every privileged grant.
+CGROUP_DELEGATION_LANES = ("test-integration.yml",)
+
 
 def logical_lines(body: str) -> list[str]:
     """Workflow lines with backslash continuations joined, comments excluded.
@@ -108,14 +136,14 @@ def privilege_grants(body: str) -> list[str]:
 
 
 class TestContainerPrivilege(unittest.TestCase):
-    def test_coverage_job_is_not_privileged(self) -> None:
-        grants = privilege_grants(read_workflow("test.yml"))
-        for value in grants:
-            self.assertNotIn("--privileged", value)
+    def test_coverage_job_keeps_kcovs_two_relaxations_explicit(self) -> None:
         # kcov needs personality(ADDR_NO_RANDOMIZE), which the default seccomp
         # profile's personality allow-list omits, plus ptrace on its child.
-        # These two also carry the non-vacuity load: on a parser that matched
-        # nothing, `grants` is empty, `joined` is empty, and both fail.
+        # `--privileged` now subsumes both, but they stay spelled out: the day
+        # the privilege is narrowed back, kcov's own needs must not leave with
+        # it. These two also carry the non-vacuity load: on a parser that
+        # matched nothing, `grants` is empty, `joined` is empty, and both fail.
+        grants = privilege_grants(read_workflow("test.yml"))
         joined = " ".join(grants)
         self.assertIn("--security-opt seccomp=unconfined", joined)
         self.assertIn("--cap-add=SYS_PTRACE", joined)
@@ -150,14 +178,35 @@ class TestContainerPrivilege(unittest.TestCase):
             for value in privilege_grants(path.read_text(encoding="utf-8")):
                 if "--privileged" not in value:
                     continue
-                # The only defensible use is delegating a cgroup-v2 controller
-                # subtree, which genuinely cannot be done unprivileged.
+                # A defensible use is one the kernel leaves no unprivileged
+                # route to, and it is named in PRIVILEGED_LANES with which one.
+                # A new lane reaching for the flag lands here first.
                 self.assertIn(
-                    "--cgroupns=private",
-                    value,
-                    f"{path.name} declares `options: {value}` — privileged "
-                    "without the cgroup delegation that justifies it",
+                    path.name,
+                    PRIVILEGED_LANES,
+                    f"{path.name} declares `{value}` — privileged with no "
+                    "recorded kernel reason. Name the lane and the operation "
+                    "that earns it in PRIVILEGED_LANES, or drop the flag.",
                 )
+                if path.name in CGROUP_DELEGATION_LANES:
+                    self.assertIn(
+                        "--cgroupns=private",
+                        value,
+                        f"{path.name} is privileged for "
+                        f"{PRIVILEGED_LANES[path.name]} but does not scope it",
+                    )
+
+    def test_a_privileged_lane_cannot_be_listed_without_being_used(self) -> None:
+        # The table grants privilege, so a stale entry silently pre-approves a
+        # lane that no longer takes the flag — and the next edit to that
+        # workflow inherits the grant without argument.
+        for name in PRIVILEGED_LANES:
+            grants = privilege_grants(read_workflow(name))
+            self.assertTrue(
+                any("--privileged" in value for value in grants),
+                f"{name} is listed in PRIVILEGED_LANES but no longer takes "
+                "`--privileged` — drop the entry rather than leaving the grant",
+            )
 
 
 class TestCacheSelection(unittest.TestCase):

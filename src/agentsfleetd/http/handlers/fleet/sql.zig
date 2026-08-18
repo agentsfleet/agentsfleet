@@ -19,7 +19,8 @@ const RUNNER_KEYSET_COLS =
     \\           WHERE l.runner_id = r.id AND l.status = $1 AND l.lease_expires_at > $2
     \\       ) AS has_live_lease,
     \\       r.network_policy, r.registry_allowlist::text, r.worker_count,
-    \\       r.capability_report::text, r.degraded, r.degraded_reason
+    \\       r.capability_report::text, r.degraded, r.degraded_reason,
+    \\       r.extra_binds::text
     \\FROM fleet.runners r
     \\
 ;
@@ -57,7 +58,10 @@ pub const SELECT_RUNNER_DETAIL =
     \\       COALESCE(c.acquired, 0), COALESCE(c.succeeded, 0),
     \\       COALESCE(c.failed, 0), COALESCE(c.expired, 0),
     \\       r.network_policy, r.registry_allowlist::text, r.worker_count,
-    \\       r.capability_report::text, r.degraded, r.degraded_reason
+    \\       r.capability_report::text, r.degraded, r.degraded_reason,
+    \\       r.extra_binds::text,
+    \\       r.selftest_requested_at, r.selftest_completed_at, r.selftest_checks::text,
+    \\       r.selftest_all_ok, r.selftest_sandbox_tier, r.selftest_network_policy
     \\FROM fleet.runners r
     \\LEFT JOIN (
     \\    SELECT l.runner_id,
@@ -223,19 +227,20 @@ pub const SELECT_RUNNER_ADMIN_STATE =
 /// best-effort second write to fail.
 pub const PATCH_RUNNER_ASSIGNED_POLICY =
     \\WITH current_p AS (
-    \\  SELECT id, sandbox_tier, network_policy, registry_allowlist, worker_count
+    \\  SELECT id, sandbox_tier, network_policy, registry_allowlist, worker_count, extra_binds
     \\  FROM fleet.runners WHERE id = $1::uuid FOR UPDATE
     \\), updated AS (
     \\  UPDATE fleet.runners r
     \\  SET sandbox_tier = $2::text, network_policy = $3::text,
     \\      registry_allowlist = $4::jsonb, worker_count = $5::int, updated_at = $6::bigint,
-    \\      degraded = $13::bool, degraded_reason = $14::text
+    \\      degraded = $13::bool, degraded_reason = $14::text, extra_binds = $15::jsonb
     \\  FROM current_p c
     \\  WHERE r.id = c.id
     \\    AND (c.sandbox_tier IS DISTINCT FROM $2::text
     \\      OR c.network_policy IS DISTINCT FROM $3::text
     \\      OR c.registry_allowlist IS DISTINCT FROM $4::jsonb
-    \\      OR c.worker_count IS DISTINCT FROM $5::int)
+    \\      OR c.worker_count IS DISTINCT FROM $5::int
+    \\      OR c.extra_binds IS DISTINCT FROM $15::jsonb)
     \\  RETURNING r.id::text
     \\), event AS (
     \\  INSERT INTO fleet.runner_events
@@ -263,6 +268,27 @@ pub const SELECT_RUNNER_CAPABILITY =
 /// The `c.from_admin_state <> $2` guard makes a no-op transition write nothing
 /// at all — no row, and therefore no event — so the history holds real changes
 /// only.
+/// Record an operator's outstanding self-test ask.
+///
+/// `selftest_requested_at IS NOT NULL` IS the pending state — the daemon clears
+/// it on the beat that reports the matching verdict (`UPDATE_RUNNER_SELFTEST`),
+/// which makes the ask one-shot without a status vocabulary in the schema.
+///
+/// Re-asking simply moves the instant forward: one runner holds at most one
+/// outstanding request, so an impatient operator cannot queue a backlog of
+/// probes against a host that is slow to beat.
+///
+/// The `admin_state <> $3` guard is the race the handler's own revoked check
+/// cannot close — a runner revoked between that read and this write would
+/// otherwise take a request it will never answer. Null row means gone or
+/// revoked; the caller re-reads to tell those apart.
+pub const PATCH_RUNNER_SELFTEST_REQUEST =
+    \\UPDATE fleet.runners
+    \\SET selftest_requested_at = $2::bigint, updated_at = $2::bigint
+    \\WHERE id = $1::uuid AND admin_state <> $3::text
+    \\RETURNING id::text
+;
+
 pub const PATCH_RUNNER_ADMIN_STATE =
     \\WITH current_state AS (
     \\  SELECT id, admin_state AS from_admin_state

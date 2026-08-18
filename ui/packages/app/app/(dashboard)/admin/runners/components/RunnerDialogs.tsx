@@ -1,13 +1,13 @@
 "use client";
 
 import { ConfirmDialog } from "@agentsfleet/design-system";
-import type { RunnerAdminAction, RunnerListItem } from "@/lib/api/runners";
+import type { RunnerStateAction, RunnerListItem } from "@/lib/api/runners";
 
 const CONFIRM_LABEL = "Confirm";
 
 // The confirm copy the dialog actually renders. Delete carries the same copy but
 // no `action` — it is a DELETE verb, not one of the three PATCH admin actions —
-// so the copy shape is factored out rather than widening RunnerAdminAction.
+// so the copy shape is factored out rather than widening RunnerStateAction.
 export type RunnerConfirmCopy = {
   runner: RunnerListItem;
   label: string;
@@ -17,7 +17,7 @@ export type RunnerConfirmCopy = {
   errorAction: string;
 };
 
-export type RunnerActionConfirmTarget = (RunnerConfirmCopy & { action: RunnerAdminAction }) | null;
+export type RunnerActionConfirmTarget = (RunnerConfirmCopy & { action: RunnerStateAction }) | null;
 export type RunnerDeleteConfirmTarget = RunnerConfirmCopy | null;
 
 // Generic over the target so both callers keep their exact shape: the PATCH

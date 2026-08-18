@@ -31,16 +31,41 @@ pub const INSERT_RUNNER_WITH_EVENT =
 pub const SELECT_RUNNER_SELF =
     \\SELECT id::text, admin_state, host_id, sandbox_tier, last_seen_at,
     \\       network_policy, registry_allowlist::text, worker_count,
-    \\       capability_report::text, degraded, degraded_reason
+    \\       capability_report::text, degraded, degraded_reason, extra_binds::text
     \\FROM fleet.runners WHERE id = $1::uuid
 ;
 
 /// Heartbeat's policy read — assignment, stored capability, and the prior
 /// verdict, so every beat reconciles and carries the current truth back.
+/// `selftest_requested_at` rides the same read: an outstanding operator request
+/// reaches the host on the next beat without a second query or a second
+/// endpoint.
 pub const SELECT_RUNNER_ASSIGNED_POLICY =
     \\SELECT sandbox_tier, network_policy, registry_allowlist::text, worker_count,
-    \\       degraded, degraded_reason, capability_report::text
+    \\       degraded, degraded_reason, capability_report::text, selftest_requested_at,
+    \\       extra_binds::text
     \\FROM fleet.runners WHERE id = $1::uuid
+;
+
+/// Store a reported self-test verdict and retire the request that asked for it,
+/// in one write.
+///
+/// `selftest_requested_at = NULL` is what makes the request one-shot: the beat
+/// that reports a verdict is the beat that clears the ask, so a runner cannot
+/// re-run the probe every interval until an operator intervenes.
+///
+/// The clear is unconditional rather than matched against the request that
+/// prompted it. A startup probe arrives with no request outstanding and simply
+/// writes NULL over NULL; and if an operator re-requests while a verdict is in
+/// flight, losing that request costs one click, whereas matching would need a
+/// request token on the wire to gain it.
+pub const UPDATE_RUNNER_SELFTEST =
+    \\UPDATE fleet.runners
+    \\SET selftest_checks = $2::jsonb, selftest_all_ok = $3::bool,
+    \\    selftest_sandbox_tier = $4::text, selftest_network_policy = $5::text,
+    \\    selftest_completed_at = $6::bigint, selftest_requested_at = NULL,
+    \\    updated_at = $6::bigint
+    \\WHERE id = $1::uuid
 ;
 
 /// Store a fresh capability report and the reconciled verdict in one write.
