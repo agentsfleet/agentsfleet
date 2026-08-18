@@ -162,7 +162,10 @@ describe("AddSecretDialog", () => {
     await renderDialog();
     await user.click(screen.getByRole("button", { name: "Create secret" }));
     const link = await screen.findByRole("link", { name: /learn more/i });
-    expect(link.getAttribute("href")).toBe("https://docs.agentsfleet.net/fleets/credentials");
+    // Pinned to a page the docs site actually serves — `fleets/secrets.mdx`.
+    // The earlier value, `/fleets/credentials`, is a page that has never existed
+    // and carries no redirect, so this assertion held a 404 in place.
+    expect(link.getAttribute("href")).toBe("https://docs.agentsfleet.net/fleets/secrets");
     expect(link.getAttribute("target")).toBe("_blank");
   });
 

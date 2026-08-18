@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Form } from "@agentsfleet/design-system";
+import { Button, Form } from "@agentsfleet/design-system";
 
 import { GitHubSourceField, LibrarySourceTabs } from "./LibrarySourceTabs";
 import { SKILL_FILE_NAME, TRIGGER_FILE_NAME } from "./bundle-files";
@@ -54,6 +54,24 @@ function Harness({
       ) : (
         <LibrarySourceTabs form={form} onSourceChange={onSourceChange} />
       )}
+    </Form>
+  );
+}
+
+// The plain harness never submits, so zod never runs and no field refusal
+// exists to clear. This one does, which is what makes the two clearing tests
+// above assert something rather than pass vacuously.
+function HarnessWithSubmit() {
+  const form = useForm<LibrarySourceValues>({
+    resolver: zodResolver(librarySourceSchema),
+    defaultValues: EMPTY_LIBRARY_SOURCE,
+  });
+  return (
+    <Form {...form}>
+      <form onSubmit={(e) => { void form.handleSubmit(() => {})(e); }}>
+        <LibrarySourceTabs form={form} />
+        <Button type="submit">submit</Button>
+      </form>
     </Form>
   );
 }
@@ -129,6 +147,42 @@ describe("LibrarySourceTabs", () => {
     );
     expect((screen.getByLabelText(TRIGGER_FILE_NAME) as HTMLTextAreaElement).value).toBe(TRIGGER_BODY);
     expect(latest()?.trigger_markdown).toBe(TRIGGER_BODY);
+  });
+
+  // A refusal the other tab earned explains a field this one does not have.
+  it("drops a field refusal when the operator changes source", async () => {
+    const user = userEvent.setup();
+    render(<HarnessWithSubmit />);
+
+    await user.type(screen.getByLabelText("Repository"), "notarepo");
+    await user.click(screen.getByRole("button", { name: /^submit$/i }));
+    expect(await screen.findByText(/use owner\/repo/i)).toBeTruthy();
+
+    await user.click(screen.getByRole("tab", { name: UPLOAD_TAB }));
+
+    await waitFor(() => expect(screen.queryByText(/use owner\/repo/i)).toBeNull());
+  });
+
+  // The refusal names the empty box; a folder that fills it has answered it.
+  it("drops the missing-body refusal once a folder fills the boxes", async () => {
+    const user = userEvent.setup();
+    render(<HarnessWithSubmit />);
+    await user.click(screen.getByRole("tab", { name: UPLOAD_TAB }));
+    await user.click(screen.getByRole("button", { name: /^submit$/i }));
+    expect(await screen.findByText(`Add the ${SKILL_FILE_NAME} body`)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText(CHOOSE_FOLDER_LABEL), {
+      target: {
+        files: [
+          pickedFile(`${BUNDLE_DIR}/${SKILL_FILE_NAME}`, SKILL_BODY),
+          pickedFile(`${BUNDLE_DIR}/${TRIGGER_FILE_NAME}`, TRIGGER_BODY),
+        ],
+      },
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByText(`Add the ${SKILL_FILE_NAME} body`)).toBeNull(),
+    );
   });
 
   it("links the authoring guide and a real importable example from the GitHub tab", () => {
