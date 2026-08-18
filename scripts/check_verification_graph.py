@@ -151,7 +151,7 @@ def validate_shards(candidates, shards):
 
 
 def current_identity(graph_path=DEFAULT_GRAPH, environment_label=None):
-    diff = subprocess.run(["git", "diff", "HEAD", "--binary"], check=True,
+    diff = subprocess.run(["git", "diff", "--binary", "HEAD"], check=True,
                           capture_output=True).stdout
     untracked = subprocess.run(
         ["git", "ls-files", "--others", "--exclude-standard", "-z"], check=True,

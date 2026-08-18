@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import check_verification_graph as check
 import verification_evidence as evidence
@@ -187,6 +188,30 @@ class ResultTests(unittest.TestCase):
             report.write_text("replacement", encoding="utf-8")
             with self.assertRaisesRegex(check.VerificationError, "tampered report"):
                 check.validate_result(manifest, self.identity, "unit")
+
+    def test_identity_places_git_options_before_the_revision(self):
+        calls = []
+
+        def run(command, **_):
+            calls.append(command)
+            values = {
+                ("git", "diff", "--binary", "HEAD"): b"diff",
+                ("git", "ls-files", "--others", "--exclude-standard", "-z"): b"",
+                ("git", "rev-parse", "HEAD"): "source\n",
+                ("zig", "version"): "0.16.0\n",
+            }
+            return type("Result", (), {"stdout": values[tuple(command)]})()
+
+        with tempfile.TemporaryDirectory() as directory:
+            graph = Path(directory) / "graph.json"
+            graph.write_text('{"graph_digest":"graph"}', encoding="utf-8")
+            with patch.object(check.subprocess, "run", side_effect=run), \
+                    patch.object(check.platform, "system", return_value="Linux"), \
+                    patch.object(check.platform, "machine", return_value="x86_64"):
+                identity = check.current_identity(graph)
+
+        self.assertIn(["git", "diff", "--binary", "HEAD"], calls)
+        self.assertEqual("source+", identity["source_revision"][:7])
 
 
 class TimingTests(unittest.TestCase):
