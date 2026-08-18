@@ -12,7 +12,7 @@ import {
 import { IntentDialogStatus } from "./IntentDialogStatus";
 
 const CREATE_FLEET_LIBRARY_TOOLTIP =
-  "Create a fleet library entry from GitHub.";
+  "Create a fleet library entry from GitHub or a bundle on your machine.";
 const addLibraryDialogLoader = createIntentModuleLoader(
   () =>
     import(

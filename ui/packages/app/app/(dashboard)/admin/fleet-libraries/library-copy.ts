@@ -5,7 +5,7 @@
 export const FLEET_LIBRARY_TITLE = "Fleet library";
 
 export const FLEET_LIBRARIES_DESCRIPTION =
-  "Add a fleet from its GitHub repository, write what its install gate says, then publish it. Only a published fleet reaches a workspace.";
+  "Add a fleet from its GitHub repository or a bundle on your machine, write what its install gate says, then publish it. Only a published fleet reaches a workspace.";
 
 export const ADMIN_FLEET_LIBRARIES_PATH = "/admin/fleet-libraries";
 
@@ -39,7 +39,7 @@ export const DELETE_ACTION = "delete the fleet library";
 export const CATALOG_READ_ACTION = "load the fleet catalog";
 
 export const ADD_TOOLTIP =
-  "Fetch a fleet bundle from GitHub. Saved as a draft — publish to make it visible to every workspace.";
+  "Fetch a fleet bundle from GitHub, or upload one from your machine. Saved as a draft — publish to make it visible to every workspace.";
 export const FETCH_UPDATE_DESCRIPTION =
   "Fetch the latest bundle from this repository. The entry returns to Draft so you can review it before publishing.";
 export const FETCHING_UPDATE = "Fetching update";
@@ -73,7 +73,7 @@ export const COLUMN_ACTIONS = "Actions";
 
 export const EMPTY_TITLE = "No fleets in the catalog";
 export const EMPTY_DESCRIPTION =
-  "Add a fleet from its GitHub repository. Nothing is published until you say so.";
+  "Add a fleet from its GitHub repository or a bundle on your machine. Nothing is published until you say so.";
 
 // The hash is long and an operator only ever compares it — enough to tell two
 // bundles apart, not enough to dominate the row.
@@ -122,9 +122,4 @@ export const COPY_HASH_LABEL = "Copy the full bundle hash";
 // with the workspace onboarding dialog — see lib/fleet-library-source.ts. It is
 // deliberately NOT re-spelled here: both surfaces feed the same importer, so a
 // tightening must reach both.
-export {
-  SOURCE_REF_PATTERN,
-  SOURCE_SEGMENT_PATTERN,
-  SAMPLE_LIBRARY_REPO,
-  LIBRARY_AUTHORING_DOC_URL,
-} from "@/lib/fleet-library-source";
+export { SOURCE_REF_PATTERN, SOURCE_SEGMENT_PATTERN } from "@/lib/fleet-library-source";

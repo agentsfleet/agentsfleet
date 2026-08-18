@@ -22,6 +22,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { SAMPLE_LIBRARY_REPO } from "@/lib/fleet-library-source";
 import { signInAs } from "./fixtures/auth";
+import { skillMd, triggerMd } from "./fixtures/seed";
 import { workspaceUrlPattern } from "./fixtures/nav";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
@@ -35,6 +36,10 @@ const SAMPLE_ENTRY_ID = SAMPLE_LIBRARY_REPO.slice(SAMPLE_LIBRARY_REPO.indexOf("/
 // A repository that does not exist, to drive the importer's fetch failure into the
 // dialog rather than a crash or a silent close.
 const MISSING_REPO = "agentsfleet/definitely-not-a-fleet-bundle";
+
+// The catalog id an uploaded bundle lands under — its SKILL.md frontmatter name.
+// Owned by this suite so a leftover from an interrupted run can be swept.
+const UPLOADED_ENTRY_ID = "acceptance-uploaded-bundle";
 
 const IMPORT_TIMEOUT = 60_000;
 const CLERK_TOKEN_EXPIRY_PROOF_MS = 70_000;
@@ -83,10 +88,30 @@ async function addSampleFleet(page: Page) {
   }
   await page.getByRole("button", { name: /create fleet library/i }).click();
   await page.getByLabel(/repository/i).fill(SAMPLE_LIBRARY_REPO);
-  await page.getByRole("button", { name: /^create fleet library$/i }).click();
+  await submitCreate(page);
   await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: IMPORT_TIMEOUT });
   await expect(sampleRow(page)).toBeVisible({ timeout: IMPORT_TIMEOUT });
   await expect(sampleRow(page).getByText("Draft")).toBeVisible();
+}
+
+// The dialog's submit; the page's own "Create fleet library" trigger sits behind
+// the modal overlay and is not it.
+async function submitCreate(page: Page) {
+  await page.getByRole("dialog").getByRole("button", { name: /^create$/i }).click();
+}
+
+// Removes the uploaded entry if it is there. Used both to self-heal an
+// interrupted run and to clean up after this suite's own upload.
+async function removeUploadedFleet(page: Page) {
+  const row = uploadedRow(page);
+  if (!(await row.getByRole("button", { name: /^delete$/i }).isVisible())) return;
+  await row.getByRole("button", { name: /^delete$/i }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /^delete$/i }).click();
+  await expect(uploadedRow(page)).toHaveCount(0, { timeout: 30_000 });
+}
+
+function uploadedRow(page: Page) {
+  return page.getByRole("row", { name: new RegExp(`Copy fleet id: ${UPLOADED_ENTRY_ID}`) });
 }
 
 function sampleRow(page: Page) {
@@ -129,12 +154,40 @@ test.describe("platform fleet catalog", () => {
 
     await page.getByRole("button", { name: /create fleet library/i }).click();
     await page.getByLabel(/repository/i).fill(MISSING_REPO);
-    await page.getByRole("button", { name: /^create fleet library$/i }).click();
+    await submitCreate(page);
 
     // The dialog stays mounted with the failure shown — the operator corrects the
     // repository in place rather than losing what they typed.
     await expect(page.getByRole("alert")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByLabel(/repository/i)).toBeVisible();
+  });
+
+  // GitHub is not the only source the importer takes — `resolve.resolve` has always
+  // routed `upload` on the platform tier too. Until now only the operator's screen
+  // was GitHub-only, so a bundle that lived on a laptop had to be pushed to a
+  // repository first just to be reviewed.
+  test("an operator creates a fleet library from a bundle on their machine", async ({ page }) => {
+    await signInAs(page, FIXTURE_KEY.operator);
+    await page.goto(ADMIN_PATH);
+    await removeUploadedFleet(page);
+
+    await page.getByRole("button", { name: /create fleet library/i }).click();
+    await page.getByRole("tab", { name: /upload from computer/i }).click();
+    await page.getByLabel("SKILL.md").fill(skillMd(UPLOADED_ENTRY_ID));
+    await page.getByLabel("TRIGGER.md").fill(triggerMd(UPLOADED_ENTRY_ID));
+    await submitCreate(page);
+
+    await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: IMPORT_TIMEOUT });
+    const row = uploadedRow(page);
+    await expect(row).toBeVisible({ timeout: IMPORT_TIMEOUT });
+    // Same publish gate as every other source: an upload is not a shortcut into
+    // a tenant's gallery.
+    await expect(row.getByText("Draft")).toBeVisible();
+    // Pasted bytes came from no revision, so the row advertises no repository to
+    // click through to.
+    await expect(row.getByRole("link", { name: /open on github/i })).toHaveCount(0);
+
+    await removeUploadedFleet(page);
   });
 
   // The heart of the milestone. A fleet an operator has added is NOT live: the
