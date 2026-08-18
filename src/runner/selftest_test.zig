@@ -17,6 +17,7 @@ const std = @import("std");
 const contract = @import("contract");
 
 const selftest = @import("selftest.zig");
+const selftest_probe = @import("selftest_probe.zig");
 const sandbox_args = @import("sandbox_args.zig");
 const Config = @import("daemon/config.zig");
 
@@ -410,4 +411,56 @@ test "operator binds are confirmed under every posture, including deny_all" {
 
     const open = selftest.targetsFor(cfg(.allow_all, &binds));
     try std.testing.expectEqual(@as(usize, 1), open.binds.len);
+}
+
+/// A config that DECLARES a registry, unlike `cfg` above — every existing case
+/// leaves `registry_allowlist` empty, so `targetsFor` returned no resolve or
+/// dial target and the flag-building half of the argv never ran once.
+fn cfgWithRegistry(comptime registry: []const u8, binds: []const contract.protocol.ExtraBind) Config {
+    var c = cfg(.allow_all, binds);
+    c.registry_allowlist = &.{registry};
+    return c;
+}
+
+/// Every probe flag the child parses, present exactly once, in the argv the
+/// pure composition builds.
+fn flagValue(argv: []const []const u8, prefix: []const u8) ?[]const u8 {
+    for (argv) |a| {
+        if (std.mem.startsWith(u8, a, prefix)) return a[prefix.len..];
+    }
+    return null;
+}
+
+test "a declared registry becomes the probe's resolve and dial targets" {
+    // The probe can only aim at what the assignment declared, and with a
+    // registry declared that is the registry — resolve the NAME, dial the
+    // host:port. Asserted through the pure composition so it holds on any
+    // platform, the same reason Dimension 2.1 is proven that way.
+    const alloc = std.testing.allocator;
+    const binds = [_]contract.protocol.ExtraBind{.{ .path = "/srv/models", .note = "model cache" }};
+    const argv = try selftest.composeProbeArgv(alloc, FAKE_BWRAP, FAKE_SELF_EXE, cfgWithRegistry("registry.internal.example", &binds), WORKSPACE);
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    try std.testing.expectEqualStrings("registry.internal.example", flagValue(argv, selftest_probe.RESOLVE_FLAG_PREFIX).?);
+    // A bare host is dialled at the registry default rather than left for the
+    // child to guess — a guess there would read as an egress fault on a
+    // perfectly healthy runner.
+    try std.testing.expectEqualStrings("registry.internal.example:" ++ selftest.DEFAULT_REGISTRY_PORT, flagValue(argv, selftest_probe.DIAL_FLAG_PREFIX).?);
+    // The operator's mount is named too: binds are confirmed under every
+    // posture, so a declared registry must not displace them.
+    try std.testing.expectEqualStrings("/srv/models", flagValue(argv, selftest_probe.BIND_FLAG_PREFIX).?);
+}
+
+test "a registry that already carries a port keeps it, and resolves the name alone" {
+    // The other arm of the dial flag. Appending the default to a host that
+    // already states its port would dial `host:5000:443` and report every
+    // healthy runner as unreachable.
+    const alloc = std.testing.allocator;
+    const argv = try selftest.composeProbeArgv(alloc, FAKE_BWRAP, FAKE_SELF_EXE, cfgWithRegistry("registry.internal.example:5000", &.{}), WORKSPACE);
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    try std.testing.expectEqualStrings("registry.internal.example:5000", flagValue(argv, selftest_probe.DIAL_FLAG_PREFIX).?);
+    // Resolution takes the host WITHOUT the port: a resolver asked for
+    // `name:5000` answers nothing, which would read as dead DNS.
+    try std.testing.expectEqualStrings("registry.internal.example", flagValue(argv, selftest_probe.RESOLVE_FLAG_PREFIX).?);
 }
