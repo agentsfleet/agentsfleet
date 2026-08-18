@@ -108,14 +108,31 @@ pub fn extraBindsValid(binds: []const ExtraBind) bool {
     for (binds) |b| {
         if (!bindPathValid(b.path)) return false;
         if (b.note.len > MAX_BIND_NOTE_LEN) return false;
-        for (BASELINE_RO_PATHS) |p| {
-            if (pathsOverlap(b.path, p)) return false;
-        }
-        for (SENSITIVE_PATHS) |p| {
-            if (pathsOverlap(b.path, p)) return false;
-        }
+        if (pathOverlapsProtected(b.path)) return false;
     }
     return true;
+}
+
+/// True when `path` names, nests under, or contains a path the daemon binds or
+/// refuses. Split out of `extraBindsValid` so the RUNNER can ask the same
+/// question of a path it has resolved on its own host.
+///
+/// That split is the whole point. Every check in `extraBindsValid` is lexical,
+/// and it has to be — the control plane validates an assignment from a machine
+/// where the operator's paths do not exist, so a string is all it has. But
+/// bubblewrap resolves symlinks itself when it opens a bind source, so a
+/// declared `/srv/shared` that links to `/etc` satisfies every string check and
+/// still mounts the host's `/etc` into the lease, writable if the assignment
+/// said so. Only the runner can close that, and it closes it by asking this
+/// function about the resolved path (`sandbox_args.assertBindTargetsSafe`).
+pub fn pathOverlapsProtected(path: []const u8) bool {
+    for (BASELINE_RO_PATHS) |p| {
+        if (pathsOverlap(path, p)) return true;
+    }
+    for (SENSITIVE_PATHS) |p| {
+        if (pathsOverlap(path, p)) return true;
+    }
+    return false;
 }
 
 /// True when two absolute paths name the same mount or one contains the other.

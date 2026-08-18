@@ -170,6 +170,7 @@ pub const MAX_EXTRA_BINDS = bind.MAX_EXTRA_BINDS;
 pub const MAX_BIND_PATH_LEN = bind.MAX_BIND_PATH_LEN;
 pub const MAX_BIND_NOTE_LEN = bind.MAX_BIND_NOTE_LEN;
 pub const extraBindsValid = bind.extraBindsValid;
+pub const pathOverlapsProtected = bind.pathOverlapsProtected;
 
 // The self-test verdict, split for the same reason and re-exported the same way.
 pub const SelftestCheck = selftest.SelftestCheck;

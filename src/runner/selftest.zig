@@ -65,6 +65,10 @@ pub const DETAIL_EGRESS_BLOCKED = "the endpoint did not accept a connection";
 pub const DETAIL_EGRESS_DENIED_EXPECTED = "no egress by assignment (deny_all_egress) — expected, not a fault";
 pub const DETAIL_TIMEOUT = "the probe exceeded its time bound and was reaped";
 pub const DETAIL_NO_BWRAP = "no bubblewrap binary on this host — a sandboxed tier cannot be established";
+/// An assigned bind resolves onto a path the sandbox protects. Named for the
+/// operator who assigned it: the spelling they entered is not the thing that
+/// got refused, so the message says what the check was actually about.
+pub const DETAIL_UNSAFE_BIND = "an assigned bind resolves onto a protected host path — leases are refused until it is removed";
 pub const DETAIL_SPAWN_FAILED = "the sandbox could not be established";
 
 /// Under `deny_all_egress` no name can resolve, by assignment. Graded the same
