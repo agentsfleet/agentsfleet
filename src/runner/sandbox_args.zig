@@ -142,14 +142,15 @@ pub fn buildArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_pa
     return list.toOwnedSlice(alloc);
 }
 
-/// One spelling for every `--flag=value` tail argument the child parses.
+/// One spelling for every `--flag=value` tail argument the child parses (UFS).
 const FLAG_JOIN_FMT = "{s}{s}";
 
 /// Forward the operator binds to the child, mode-explicit, so its landlock
-/// ruleset admits the same mounts bwrap just made. Without this the child
-/// denies every operator bind: bwrap mounts the path, landlock refuses the
-/// read, and the assignment fails only at first use inside a lease.
-fn appendBindFlags(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), extra_binds: []const contract.protocol.ExtraBind) !void {
+/// ruleset admits the same mounts bwrap just made. Without this bwrap mounts
+/// the path, landlock refuses the read, and the assignment fails only at first
+/// use inside a lease. `pub` like `composeSandboxPrefix` — `buildArgv` reaches
+/// it on Linux only, so the mode mapping would be proven on one host and no other.
+pub fn appendBindFlags(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), extra_binds: []const contract.protocol.ExtraBind) !void {
     for (extra_binds) |b| {
         const prefix = switch (b.mode) {
             .read_only => sandbox_hardening.BIND_RO_FLAG_PREFIX,

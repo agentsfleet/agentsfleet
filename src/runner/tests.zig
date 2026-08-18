@@ -78,6 +78,7 @@ test {
     _ = @import("child_exec_edge_test.zig");
     _ = @import("sandbox_args_edge_test.zig");
     _ = @import("sandbox_args_bind_test.zig");
+    _ = @import("sandbox_args_child_bind_test.zig");
     _ = @import("selftest.zig");
     _ = @import("selftest_probe.zig");
     _ = @import("selftest_exec.zig");
