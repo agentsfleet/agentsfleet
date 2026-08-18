@@ -151,8 +151,12 @@ def validate_shards(candidates, shards):
 
 
 def current_identity(graph_path=DEFAULT_GRAPH, environment_label=None):
-    diff = subprocess.run(["git", "diff", "--binary", "HEAD"], check=True,
-                          capture_output=True).stdout
+    command = ["git", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--binary", "HEAD"]
+    try:
+        diff = subprocess.run(command, check=True, capture_output=True).stdout
+    except subprocess.CalledProcessError as error:
+        detail = error.stderr.decode(errors="replace").strip() if error.stderr else "no stderr"
+        raise VerificationError(f"provenance diff failed ({error.returncode}): {detail}") from error
     untracked = subprocess.run(
         ["git", "ls-files", "--others", "--exclude-standard", "-z"], check=True,
         capture_output=True,

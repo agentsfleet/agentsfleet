@@ -1,3 +1,4 @@
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -189,13 +190,13 @@ class ResultTests(unittest.TestCase):
             with self.assertRaisesRegex(check.VerificationError, "tampered report"):
                 check.validate_result(manifest, self.identity, "unit")
 
-    def test_identity_places_git_options_before_the_revision(self):
+    def test_identity_uses_raw_git_options_before_the_revision(self):
         calls = []
 
         def run(command, **_):
             calls.append(command)
             values = {
-                ("git", "diff", "--binary", "HEAD"): b"diff",
+                ("git", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--binary", "HEAD"): b"diff",
                 ("git", "ls-files", "--others", "--exclude-standard", "-z"): b"",
                 ("git", "rev-parse", "HEAD"): "source\n",
                 ("zig", "version"): "0.16.0\n",
@@ -210,8 +211,14 @@ class ResultTests(unittest.TestCase):
                     patch.object(check.platform, "machine", return_value="x86_64"):
                 identity = check.current_identity(graph)
 
-        self.assertIn(["git", "diff", "--binary", "HEAD"], calls)
+        self.assertIn(["git", "diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--binary", "HEAD"], calls)
         self.assertEqual("source+", identity["source_revision"][:7])
+
+    def test_identity_names_provenance_diff_error(self):
+        error = subprocess.CalledProcessError(129, ["git", "diff"], stderr=b"usage: git diff")
+        with patch.object(check.subprocess, "run", side_effect=error):
+            with self.assertRaisesRegex(check.VerificationError, "provenance diff failed.*usage: git diff"):
+                check.current_identity()
 
 
 class TimingTests(unittest.TestCase):
