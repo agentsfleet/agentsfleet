@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M166
 **Workstream:** 001
 **Date:** Aug 16, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — Pull Request (PR) feedback is dominated by an instrumented integration run that is serial and then repeated by another canonical lane.
 **Categories:** INFRA
 **Batch:** B1 — starts after M164_002 fixes the coverage denominator and its required-component assertions.
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** perf/m166-verification-critical-path
+**Test Baseline:** unit=4124 integration=704
 **Depends on:** M164_002 (the faster graph must preserve its product-only denominator, folder floors, and required-component checks)
 **Provenance:** agent-generated from the live M136 verification run and the current Make and workflow sources, Aug 16, 2026
 **Canonical architecture:** `docs/architecture/testing.md` §Coverage
