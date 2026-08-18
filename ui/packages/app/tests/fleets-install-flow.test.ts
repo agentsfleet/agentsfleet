@@ -106,19 +106,6 @@ function useEntryButton(index: number): HTMLElement {
   return button;
 }
 
-// Drive the confirm step that sits between picking a template and the live
-// states: optionally type a fleet-name override, then click Install.
-async function confirmInstall(
-  user: ReturnType<typeof userEvent.setup>,
-  name?: string,
-): Promise<void> {
-  await waitFor(() => expect(screen.getByRole("button", { name: "Install" })).toBeTruthy());
-  if (name !== undefined) {
-    await user.type(screen.getByLabelText("Fleet name"), name);
-  }
-  await user.click(screen.getByRole("button", { name: "Install" }));
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
   resetCommonMocks();
@@ -143,20 +130,20 @@ describe("test_install_template_gallery_render", () => {
   });
 });
 
-// ── 9.3: picking a template proceeds INLINE to the states (no review page) ───
+// ── 9.3: one click installs — the states follow INLINE (no confirm page) ─────
 
 describe("test_install_inline_state_driven", () => {
-  it("Use template → confirm → fires create with the platform body", async () => {
-    installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_new" } });
+  it("Install fires create with the platform body — one step, no confirm", async () => {
+    installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_new", name: "github-pr-reviewer" } });
     const user = userEvent.setup({ delay: null });
     renderFlow({ presentCredentialNames: ["github"] });
 
     await user.click(useEntryButton(0));
-    await confirmInstall(user);
 
-    // Inline states — NOT the retired review page.
+    // Inline states — no confirm step, no retired review page, no name field.
     await waitFor(() => expect(screen.getByLabelText("Install states")).toBeTruthy());
     expect(screen.queryByText("Review what it needs")).toBeNull();
+    expect(screen.queryByLabelText("Fleet name")).toBeNull();
     await waitFor(() =>
       expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
         platform_library_id: "github-pr-reviewer",
@@ -165,12 +152,11 @@ describe("test_install_inline_state_driven", () => {
   });
 
   it("a tenant template installs with the tenant body", async () => {
-    installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_tenant" } });
+    installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_tenant", name: "platform-ops" } });
     const user = userEvent.setup({ delay: null });
     renderFlow({ presentCredentialNames: [] });
 
     await user.click(useEntryButton(1)); // TEMPLATE_TENANT
-    await confirmInstall(user);
     await waitFor(() => expect(screen.getByLabelText("Install states")).toBeTruthy());
     await waitFor(() =>
       expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
@@ -179,65 +165,29 @@ describe("test_install_inline_state_driven", () => {
     );
   });
 
-  it("an operator-supplied name overrides the SKILL.md name in the create body", async () => {
-    installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_named" } });
+  it("renders the server-chosen name, so an auto-suffixed install reads honestly", async () => {
+    // Two installs of one template: the server suffixes the second
+    // (`{template}-NNN`) rather than 409ing. The UI must show the name the
+    // server actually persisted, never the template's own.
+    installFleetActionMock.mockResolvedValue({
+      ok: true,
+      data: { fleet_id: "zom_suffixed", name: "github-pr-reviewer-042" },
+    });
     const user = userEvent.setup({ delay: null });
     renderFlow({ presentCredentialNames: ["github"] });
 
     await user.click(useEntryButton(0));
-    await confirmInstall(user, "pr-reviewer-frontend");
-    await waitFor(() =>
-      expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
-        platform_library_id: "github-pr-reviewer",
-        name: "pr-reviewer-frontend",
-      }),
-    );
+    await waitFor(() => expect(screen.getByText(/github-pr-reviewer-042/)).toBeTruthy());
   });
 
-  it("an operator-supplied name overrides the SKILL.md name for a tenant template too", async () => {
-    installFleetActionMock.mockResolvedValue({ ok: true, data: { fleet_id: "zom_tenant_named" } });
-    const user = userEvent.setup({ delay: null });
-    renderFlow({ presentCredentialNames: [] });
-
-    await user.click(useEntryButton(1)); // TEMPLATE_TENANT — installs by UUID
-    await confirmInstall(user, "ops-frontend");
-    await waitFor(() =>
-      expect(installFleetActionMock).toHaveBeenCalledWith("ws_1", {
-        tenant_library_id: "01932d4e-7c10-7a3a-9f00-000000000001",
-        name: "ops-frontend",
-      }),
-    );
-  });
-
-  it("the confirm step renders no description paragraph when the template has none", async () => {
-    installFleetActionMock.mockReturnValue(new Promise(() => {}));
-    const user = userEvent.setup({ delay: null });
-    // A template whose SKILL.md carried no `description:` → the confirm panel
-    // shows the name but skips the description line (the `: null` branch).
-    const noDesc = { ...TEMPLATE_GH, id: "no-desc", name: "No description template", description: "" };
-    renderFlow({ entries: [noDesc], presentCredentialNames: ["github"] });
-
-    await user.click(useEntryButton(0));
-    // Reaching the confirm step (Install button) renders InstallConfirm with a
-    // falsy description; the panel still surfaces the template name.
-    await waitFor(() => expect(screen.getByRole("button", { name: "Install" })).toBeTruthy());
-    expect(screen.getByText("No description template")).toBeTruthy();
-  });
-
-  it("renders a DownloadIcon on the Install confirm button (test_install_confirm_renders_icon)", async () => {
-    installFleetActionMock.mockReturnValue(new Promise(() => {}));
-    const user = userEvent.setup({ delay: null });
+  it("renders a DownloadIcon on the gallery card Install button (test_install_renders_icon)", () => {
     renderFlow({ presentCredentialNames: ["github"] });
-    await user.click(useEntryButton(0));
-    const install = await screen.findByRole("button", { name: "Install" });
-    expect(install.querySelector("svg.lucide-download")).toBeTruthy();
+    expect(useEntryButton(0).querySelector("svg.lucide-download")).toBeTruthy();
   });
 
-  it("preselects a library entry from a ?library= deep link and lands on the confirm step", async () => {
+  it("preselects a library entry from a ?library= deep link and lands straight in the states", async () => {
     installFleetActionMock.mockReturnValue(new Promise(() => {}));
-    const user = userEvent.setup({ delay: null });
     renderFlow({ initialLibraryId: "github-pr-reviewer", presentCredentialNames: ["github"] });
-    await confirmInstall(user);
     await waitFor(() => expect(screen.getByLabelText("Install states")).toBeTruthy());
   });
 
@@ -251,7 +201,6 @@ describe("test_install_inline_state_driven", () => {
     const user = userEvent.setup({ delay: null });
     renderFlow({ presentCredentialNames: ["github"] });
     await user.click(useEntryButton(0));
-    await confirmInstall(user);
     await waitFor(() => expect(screen.getByLabelText("Install states")).toBeTruthy());
     await user.click(screen.getByRole("button", { name: /Back to library/ }));
     expect(screen.getByText("Fleet library")).toBeTruthy();

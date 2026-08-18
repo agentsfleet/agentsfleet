@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useFieldArray, type Control } from "react-hook-form";
-import { CircleHelpIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { InfoIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -46,7 +46,7 @@ export const REMOVE_BIND_LABEL = "Remove mount";
 export const BIND_PATH_PLACEHOLDER = "/srv/models";
 export const BIND_NOTE_PLACEHOLDER = "why this host needs it (optional)";
 export const DEFAULT_MOUNTS_LABEL = "Default mounts";
-export const DEFAULT_MOUNTS_NOTE = "Read-only in every leased sandbox; an assignment can only add to them.";
+export const DEFAULT_MOUNTS_NOTE = "Always mounted, read-only.";
 
 /// The disclosure's single item value; also what the trigger toggles against.
 const BINDS_SECTION_VALUE = "extra-binds";
@@ -105,7 +105,7 @@ export function PolicyBindsField({
                   aria-label={DEFAULT_MOUNTS_LABEL}
                   className="text-muted-foreground"
                 >
-                  <CircleHelpIcon size={14} aria-hidden="true" />
+                  <InfoIcon size={14} aria-hidden="true" />
                 </button>
               </TooltipTrigger>
               <TooltipContent>

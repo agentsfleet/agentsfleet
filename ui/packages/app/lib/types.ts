@@ -85,6 +85,9 @@ export type InstallFleetRequest =
 
 export type InstallFleetResponse = {
   fleet_id: string;
+  /** The persisted name — the server's, not the template's: a defaulted name
+   * that collided comes back auto-suffixed (`{template}-NNN`). */
+  name: string;
   status: string;
 };
 
