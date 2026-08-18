@@ -60,7 +60,7 @@ test.describe("template onboarding", () => {
 
     const card = page.getByRole("article").filter({ hasText: templateName });
     await expect(card).toBeVisible({ timeout: FLOW_TIMEOUT_MS });
-    await expect(card.getByRole("button", { name: "Use entry" })).toBeVisible();
+    await expect(card.getByRole("button", { name: "Install" })).toBeVisible();
   });
 
   test("test_github_source_error_stays_in_dialog", async ({ page }) => {

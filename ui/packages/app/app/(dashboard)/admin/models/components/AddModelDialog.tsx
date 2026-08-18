@@ -34,8 +34,8 @@ import { createAdminModelAction } from "../actions";
 // turned into integer nanos; non-negative so a self-managed-only model prices 0.
 const rate = z.string().trim().refine((s) => s !== "" && !Number.isNaN(Number(s)) && Number(s) >= 0, "must be a number >= 0");
 const schema = z.object({
-  provider: z.string().trim().min(1).max(64),
-  model_id: z.string().trim().min(1).max(256),
+  provider: z.string().trim().min(1, "Name the provider").max(64, "At most 64 characters"),
+  model_id: z.string().trim().min(1, "Name the model").max(256, "At most 256 characters"),
   context_cap_tokens: z.string().trim().refine((s) => Number.isInteger(Number(s)) && Number(s) > 0, "must be a positive integer"),
   input_usd: rate,
   cached_usd: rate,

@@ -42,7 +42,7 @@ describe("AddRunnerDialog assigns policy", () => {
   it("refuses a bad registry entry in-form and never calls the action", async () => {
     openDialog();
     fireEvent.change(screen.getByLabelText(/host name/i), { target: { value: "web-prod-1" } });
-    fireEvent.change(screen.getByLabelText(/registry allowlist/i), {
+    fireEvent.change(screen.getByLabelText(/allowlist/i), {
       target: { value: "http://not a host" },
     });
     fireEvent.submit(screen.getByLabelText(/host name/i).closest("form") as HTMLFormElement);
@@ -70,7 +70,7 @@ describe("AddRunnerDialog assigns policy", () => {
     // All four assignment fields render.
     expect(screen.getByText("Isolation")).toBeTruthy();
     expect(screen.getByText("Network policy")).toBeTruthy();
-    expect(screen.getByLabelText(/registry allowlist/i)).toBeTruthy();
+    expect(screen.getByLabelText(/allowlist/i)).toBeTruthy();
     expect(screen.getByLabelText("Workers")).toBeTruthy();
 
     // Isolation defaults to the strongest tier.
@@ -84,7 +84,7 @@ describe("AddRunnerDialog assigns policy", () => {
     expect(screen.getAllByText(NETWORK_POLICY_LABELS[DEFAULT_ASSIGNED_NETWORK_POLICY]).length).toBeGreaterThan(0);
 
     // Registry starts empty; workers start at the shared default.
-    expect((screen.getByLabelText(/registry allowlist/i) as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText(/allowlist/i) as HTMLInputElement).value).toBe("");
     expect((screen.getByLabelText("Workers") as HTMLInputElement).value).toBe(String(DEFAULT_WORKER_COUNT));
   });
 });
