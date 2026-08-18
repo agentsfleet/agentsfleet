@@ -203,7 +203,7 @@ export default function AddLibraryDialog({
             <Tabs value={sourceKind} onValueChange={handleSourceChange}>
               <TabsList>
                 <TabsTrigger value={SOURCE_KIND_GITHUB}>GitHub</TabsTrigger>
-                <TabsTrigger value={SOURCE_KIND_UPLOAD}>Local folder</TabsTrigger>
+                <TabsTrigger value={SOURCE_KIND_UPLOAD}>Upload from computer</TabsTrigger>
               </TabsList>
               <TabsContent value={SOURCE_KIND_UPLOAD} className="space-y-4">
                 <BundleFolderPicker onLoaded={handleBundleLoaded} />

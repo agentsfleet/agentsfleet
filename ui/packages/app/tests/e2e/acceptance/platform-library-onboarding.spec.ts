@@ -185,7 +185,10 @@ test.describe("platform fleet catalog", () => {
   // The pencil: the install-gate copy is the platform's voice, and the operator owns
   // it. A bundle refetch must never undo what they wrote.
   test("the operator's install-gate copy survives a bundle refetch", async ({ page }) => {
-    const COPY = "Reads your Fly.io app state to diagnose the incident.";
+    // Real install-gate copy, deliberately distinct from the bundle's own
+    // frontmatter description so the survives-refetch assertion can tell the
+    // operator's voice from the bundle's. This is what dev's catalog shows.
+    const COPY = "Reviews pull requests and posts focused review comments.";
 
     await signInAs(page, FIXTURE_KEY.operator);
     await addSampleFleet(page);
