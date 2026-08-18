@@ -22,6 +22,8 @@ const common = @import("common");
 const contract = @import("contract");
 
 const Config = @import("daemon/config.zig");
+const child_exec = @import("child_exec.zig");
+const sandbox_hardening = @import("sandbox_hardening.zig");
 const doctor = @import("cmd/doctor.zig");
 const sandbox_args = @import("sandbox_args.zig");
 const selftest_probe = @import("selftest_probe.zig");
@@ -166,12 +168,31 @@ pub fn targetsFor(cfg: Config) ProbeTargets {
     // filesystem question, and a locked-down network says nothing about whether
     // the path landed.
     if (cfg.network_policy == .deny_all_egress) return .{ .binds = cfg.extra_binds };
-    const first = if (cfg.registry_allowlist.len > 0) cfg.registry_allowlist[0] else return .{ .binds = cfg.extra_binds };
+    // No registry declared: resolve the daemon's own control-plane host —
+    // resolve, never dial, so no egress requirement is invented. Without this
+    // a default assignment graded DNS "not tested" and `all_ok` overstated on
+    // exactly the host whose sandbox could not resolve anything.
+    const first = if (cfg.registry_allowlist.len > 0)
+        cfg.registry_allowlist[0]
+    else
+        return .{ .resolve = controlPlaneHost(cfg.control_plane_url), .binds = cfg.extra_binds };
     const colon = std.mem.lastIndexOfScalar(u8, first, ':');
     return .{
         .resolve = if (colon) |c| first[0..c] else first,
         .dial = first,
         .binds = cfg.extra_binds,
+    };
+}
+
+/// The host component of the daemon's own control-plane URL, or null when it
+/// does not parse — then the DNS check stays untested rather than probing a
+/// name nobody configured.
+fn controlPlaneHost(url: []const u8) ?[]const u8 {
+    const uri = std.Uri.parse(url) catch return null;
+    const host = uri.host orelse return null;
+    return switch (host) {
+        .raw => |s| s,
+        .percent_encoded => |s| s,
     };
 }
 
@@ -182,7 +203,7 @@ pub fn buildProbeArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspa
     defer sandbox_args.freeArgv(alloc, prefix);
     const self_exe = try sandbox_args.resolveChildExe(io, alloc);
     defer alloc.free(self_exe);
-    return appendProbeCommand(alloc, prefix, self_exe, targetsFor(cfg));
+    return appendProbeCommand(alloc, prefix, self_exe, workspace_path, targetsFor(cfg));
 }
 
 /// The probe argv for a GIVEN bwrap binary and child exe — the pure twin of
@@ -193,7 +214,7 @@ pub fn buildProbeArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspa
 pub fn composeProbeArgv(alloc: std.mem.Allocator, bwrap: []const u8, self_exe: []const u8, cfg: Config, workspace_path: []const u8) ![]const []const u8 {
     const prefix = try sandbox_args.composeSandboxPrefix(alloc, bwrap, self_exe, cfg, workspace_path, null);
     defer sandbox_args.freeArgv(alloc, prefix);
-    return appendProbeCommand(alloc, prefix, self_exe, targetsFor(cfg));
+    return appendProbeCommand(alloc, prefix, self_exe, workspace_path, targetsFor(cfg));
 }
 
 /// Copy `prefix` and append the probe's child command, transferring ownership
@@ -204,7 +225,7 @@ pub fn composeProbeArgv(alloc: std.mem.Allocator, bwrap: []const u8, self_exe: [
 /// Deliberately NOT `__execute`: a self-test must never run the real executor
 /// (Invariant 1). Deliberately not a host tool either — see `selftest_probe`'s
 /// header for why `curl`/`getent` cannot be assumed present.
-fn appendProbeCommand(alloc: std.mem.Allocator, prefix: []const []const u8, self_exe: []const u8, targets: ProbeTargets) ![]const []const u8 {
+fn appendProbeCommand(alloc: std.mem.Allocator, prefix: []const []const u8, self_exe: []const u8, workspace_path: []const u8, targets: ProbeTargets) ![]const []const u8 {
     var list: std.ArrayList([]const u8) = .empty;
     errdefer {
         for (list.items) |s| alloc.free(s);
@@ -213,9 +234,23 @@ fn appendProbeCommand(alloc: std.mem.Allocator, prefix: []const []const u8, self
     for (prefix) |s| try appendCopy(alloc, &list, s);
     try appendCopy(alloc, &list, self_exe);
     try appendCopy(alloc, &list, selftest_probe.SUBCOMMAND);
+    // A non-empty prefix means a sandboxed tier: the probe then applies the
+    // lease child's exact in-child hardening (no_new_privs → landlock →
+    // seccomp), so its verdicts hold under the SAME constraints a lease runs
+    // under — the flags are `child_exec`'s own (RULE UFS: one wire).
+    if (prefix.len > 0) {
+        try appendCopy(alloc, &list, child_exec.SANDBOXED_FLAG);
+        try appendFlag(alloc, &list, child_exec.WORKSPACE_FLAG_PREFIX, workspace_path);
+    }
     if (targets.resolve) |h| try appendFlag(alloc, &list, selftest_probe.RESOLVE_FLAG_PREFIX, h);
     if (targets.dial) |d| try appendDialFlag(alloc, &list, d);
-    for (targets.binds) |b| try appendFlag(alloc, &list, selftest_probe.BIND_FLAG_PREFIX, b.path);
+    for (targets.binds) |b| {
+        const bind_prefix = switch (b.mode) {
+            .read_only => sandbox_hardening.BIND_RO_FLAG_PREFIX,
+            .read_write => sandbox_hardening.BIND_RW_FLAG_PREFIX,
+        };
+        try appendFlag(alloc, &list, bind_prefix, b.path);
+    }
     return list.toOwnedSlice(alloc);
 }
 

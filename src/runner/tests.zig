@@ -47,6 +47,7 @@ test {
     _ = @import("cmd/plane_stub_test.zig");
     _ = @import("cmd/doctor.zig");
     _ = @import("sandbox_args.zig");
+    _ = @import("sandbox_hardening.zig");
     _ = @import("bundle_extract.zig");
     _ = @import("bundle_extract_test.zig");
     _ = @import("pipe_proto.zig");

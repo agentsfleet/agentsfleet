@@ -20,6 +20,7 @@ const contract = @import("contract");
 const Config = @import("daemon/config.zig");
 const Policy = @import("network/Policy.zig");
 const child_exec = @import("child_exec.zig");
+const sandbox_hardening = @import("sandbox_hardening.zig");
 const sandbox_bind_guard = @import("sandbox_bind_guard.zig");
 
 const BWRAP_PATHS = [_][]const u8{ "/usr/bin/bwrap", "/usr/local/bin/bwrap" };
@@ -128,7 +129,7 @@ pub fn buildArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_pa
     try dup(alloc, &list, self_exe);
     try dup(alloc, &list, child_exec.SUBCOMMAND);
     if (sandboxed) try dup(alloc, &list, child_exec.SANDBOXED_FLAG);
-    const ws_flag = try std.fmt.allocPrint(alloc, "{s}{s}", .{ child_exec.WORKSPACE_FLAG_PREFIX, workspace_path });
+    const ws_flag = try std.fmt.allocPrint(alloc, FLAG_JOIN_FMT, .{ child_exec.WORKSPACE_FLAG_PREFIX, workspace_path });
     {
         // Scoped so a failed append frees ws_flag exactly once; once appended it
         // is owned by `list` (the outer freeList errdefer), so a later
@@ -136,8 +137,28 @@ pub fn buildArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_pa
         errdefer alloc.free(ws_flag);
         try list.append(alloc, ws_flag);
     }
+    if (sandboxed) try appendBindFlags(alloc, &list, cfg.extra_binds);
 
     return list.toOwnedSlice(alloc);
+}
+
+/// One spelling for every `--flag=value` tail argument the child parses.
+const FLAG_JOIN_FMT = "{s}{s}";
+
+/// Forward the operator binds to the child, mode-explicit, so its landlock
+/// ruleset admits the same mounts bwrap just made. Without this the child
+/// denies every operator bind: bwrap mounts the path, landlock refuses the
+/// read, and the assignment fails only at first use inside a lease.
+fn appendBindFlags(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), extra_binds: []const contract.protocol.ExtraBind) !void {
+    for (extra_binds) |b| {
+        const prefix = switch (b.mode) {
+            .read_only => sandbox_hardening.BIND_RO_FLAG_PREFIX,
+            .read_write => sandbox_hardening.BIND_RW_FLAG_PREFIX,
+        };
+        const flag = try std.fmt.allocPrint(alloc, FLAG_JOIN_FMT, .{ prefix, b.path });
+        errdefer alloc.free(flag);
+        try list.append(alloc, flag);
+    }
 }
 
 /// Whether this tier gets a bubblewrap wrapper. `dev_none` and every
