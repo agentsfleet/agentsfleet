@@ -3,7 +3,7 @@ coverage:
     project:
       default:
         target: auto
-        threshold: 1%
+        threshold: 0%
         informational: false
     # Patch targets bind PER FLAG, not once across the repository. One global
     # number cannot judge six lanes that sit thirteen points apart: the Zig
@@ -21,30 +21,31 @@ coverage:
     # when make/test.mk's floors move, and keep the TypeScript entry at 100 for
     # exactly as long as those three configs say 100.
     #
-    # Every target carries 1% of give, matching the `project` block above. A
-    # patch status grades only the lines this diff touched, so its denominator
-    # is often tiny: on a twelve-line diff one unhit line is 8.3 points, and a
-    # 0% threshold reds the build over it. The 1% band absorbs that granularity
-    # without moving the bar the lane is held to — a real regression clears it
-    # immediately.
+    # Every threshold is 0%: the target IS the bar, with no give (decided
+    # Aug 18, 2026). A patch status grades only the lines this diff touched,
+    # so on a small diff one unhit line can cost several points and red the
+    # build — that is intentional. A red always names a genuinely unhit added
+    # line, and the answer is a test or an explicit target change in this
+    # file, never absorbed slack. Holding every PR to the exact bar is what
+    # lets the targets themselves ratchet upward over time.
     patch:
       zig-agentsfleetd:
         flags:
           - zig-agentsfleetd
         target: 90%
-        threshold: 1%
+        threshold: 0%
         informational: false
       zig-runner:
         flags:
           - zig-runner
         target: 87%
-        threshold: 1%
+        threshold: 0%
         informational: false
       zig-lib:
         flags:
           - zig-lib
         target: 94%
-        threshold: 1%
+        threshold: 0%
         informational: false
       typescript:
         flags:
@@ -52,7 +53,7 @@ coverage:
           - website
           - cli
         target: 100%
-        threshold: 1%
+        threshold: 0%
         informational: false
 
   # The badge colour scale, tightened to where the code actually sits. At
