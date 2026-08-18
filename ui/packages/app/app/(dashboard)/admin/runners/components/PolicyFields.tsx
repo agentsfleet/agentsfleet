@@ -3,6 +3,7 @@
 import { useId } from "react";
 import { z } from "zod";
 import type { Control } from "react-hook-form";
+import { CircleHelpIcon } from "lucide-react";
 import {
   FormControl,
   FormDescription,
@@ -58,6 +59,10 @@ export const DEFAULT_ASSIGNED_SANDBOX_TIER: SandboxTier = "landlock_full";
 
 export const ISOLATION_ASSIGNMENT_DESCRIPTION =
   "A host that cannot enforce the assigned tier is degraded and receives no work.";
+// Every field below is an assignment with a default and a range an operator has
+// to choose within, and the degraded verdict is the consequence of choosing
+// wrong. That belongs on a page, not in five form descriptions.
+const RUNNER_POLICY_DOC_URL = "https://docs.agentsfleet.net/runners";
 const NETWORK_ASSIGNMENT_LABEL = "Network policy";
 const REGISTRY_ASSIGNMENT_LABEL = "Allowlist (optional)";
 const REGISTRY_ASSIGNMENT_DESCRIPTION = "Registry hosts the sandbox may reach.";
@@ -201,7 +206,16 @@ export function PolicyFields({
               </RadioGroup>
             </FormControl>
             <FormDescription>
-              {ISOLATION_ASSIGNMENT_DESCRIPTION}
+              {ISOLATION_ASSIGNMENT_DESCRIPTION}{" "}
+              <a
+                href={RUNNER_POLICY_DOC_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-pulse underline-offset-2 hover:underline focus-visible:underline"
+              >
+                <CircleHelpIcon size={13} aria-hidden="true" />
+                Learn more<span className="sr-only"> about runner policy (opens in a new tab)</span>
+              </a>
             </FormDescription>
             <FormMessage />
           </FormItem>

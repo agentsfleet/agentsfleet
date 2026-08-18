@@ -22,6 +22,18 @@ const CURRENT: AssignedPolicy = {
 };
 
 describe("EditPolicyDialog", () => {
+  // Every field here is an assignment with a default and a range, and getting one
+  // wrong degrades the host silently from the operator's point of view. The form
+  // cannot hold that much explanation, so it points at the page that can.
+  it("points at the runner policy page", () => {
+    render(<EditPolicyDialog runnerId="r-edit-1" current={CURRENT} onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
+
+    expect(screen.getByRole("link", { name: /^learn more/i }).getAttribute("href")).toBe(
+      "https://docs.agentsfleet.net/runners",
+    );
+  });
+
   it("pre-fills from the stored assignment and PATCHes the edited one", async () => {
     // The Indy-requested row action: reuse the four-field form, call the
     // landed PATCH — the dashboard is the fix path for a degraded runner.
