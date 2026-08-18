@@ -106,6 +106,11 @@ pub fn run(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_path: []
         // the operator needs to read that, not an empty panel.
         if (err == error.BwrapUnavailable)
             return selftest.unavailable(alloc, cfg, selftest.DETAIL_NO_BWRAP);
+        // A bind that resolves onto protected host state refuses every lease on
+        // this runner. That is precisely what a self-test exists to surface, so
+        // it is a named check rather than an error the panel cannot render.
+        if (err == error.UnsafeBindTarget)
+            return selftest.unavailable(alloc, cfg, selftest.DETAIL_UNSAFE_BIND);
         return err;
     };
     defer sandbox_args.freeArgv(alloc, argv);

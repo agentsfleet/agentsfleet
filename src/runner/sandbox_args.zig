@@ -20,6 +20,7 @@ const contract = @import("contract");
 const Config = @import("daemon/config.zig");
 const Policy = @import("network/Policy.zig");
 const child_exec = @import("child_exec.zig");
+const sandbox_bind_guard = @import("sandbox_bind_guard.zig");
 
 const BWRAP_PATHS = [_][]const u8{ "/usr/bin/bwrap", "/usr/local/bin/bwrap" };
 /// System paths bound read-only when present (`--ro-bind-try` tolerates absence).
@@ -256,6 +257,7 @@ fn bindTry(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), bind: con
 /// `deny_all` stays fully unshared (no network).
 fn appendBwrap(io: std.Io, alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), self_exe: []const u8, workspace: []const u8, egress: ?EgressFiles, net_policy: Policy.Mode, extra_binds: []const contract.protocol.ExtraBind) !void {
     const bwrap = bwrapPath(io) orelse return error.BwrapUnavailable;
+    try sandbox_bind_guard.assertBindTargetsSafe(io, extra_binds);
     return appendBwrapAt(alloc, list, bwrap, self_exe, workspace, egress, net_policy, extra_binds);
 }
 

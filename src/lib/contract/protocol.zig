@@ -129,6 +129,9 @@ pub const MAX_REGISTRY_ENTRIES = policy.MAX_REGISTRY_ENTRIES;
 pub const registryAllowlistValid = policy.registryAllowlistValid;
 pub const capabilityReportBounded = policy.capabilityReportBounded;
 pub const extraBindsValid = policy.extraBindsValid;
+/// Re-exported for the runner alone: it asks this of a path it has RESOLVED,
+/// which is the half `extraBindsValid` cannot do from the control plane.
+pub const pathOverlapsProtected = policy.pathOverlapsProtected;
 pub const ExtraBind = policy.ExtraBind;
 pub const BindMode = policy.BindMode;
 pub const MAX_EXTRA_BINDS = policy.MAX_EXTRA_BINDS;

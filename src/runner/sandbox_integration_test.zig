@@ -385,3 +385,124 @@ test "the resolver config a lease inherits is readable inside a real sandbox" {
 test {
     _ = @import("selftest_integration_test.zig");
 }
+
+test "a bind that SYMLINKS onto a protected path is refused, however it is spelled" {
+    // The lexical rules cannot see this one, and they never will: the control
+    // plane validates an assignment from a machine where these paths do not
+    // exist, so a string is all it has. bubblewrap resolves the link itself
+    // when it opens the bind source, so `/tmp/...-link` -> `/etc` clears every
+    // name check and mounts the host's `/etc` into the lease. At `read_write`,
+    // that is agent code with a writable handle on host system state.
+    //
+    // Planted for real rather than stubbed: the whole defect is that the string
+    // and the filesystem disagree, so a fake filesystem would reproduce the
+    // check and not the bug.
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+
+    const ws = "/tmp/agentsfleet-symlink-bind-test-ws";
+    std.Io.Dir.createDirAbsolute(io, ws, .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+    defer std.Io.Dir.cwd().deleteTree(io, ws) catch {};
+
+    // Under `/srv`, not `/tmp`: `/tmp` is itself in `SENSITIVE_PATHS`, so a link
+    // placed there is refused by the lexical rules and would prove nothing about
+    // resolution. `/srv` is the prefix the bind unit tests already treat as
+    // legitimately assignable, which is exactly the shape of the hole — a path
+    // an operator may name, pointing where they may not.
+    std.Io.Dir.createDirAbsolute(io, "/srv", .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        // Unprivileged hosts cannot plant the fixture; that is a harness fact.
+        error.AccessDenied, error.PermissionDenied => return error.SkipZigTest,
+        else => return err,
+    };
+    const link = "/srv/agentsfleet-symlink-bind-test-link";
+    std.Io.Dir.cwd().deleteFile(io, link) catch {};
+    std.Io.Dir.symLinkAbsolute(io, "/etc", link, .{}) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        error.AccessDenied, error.PermissionDenied => return error.SkipZigTest,
+        else => return err,
+    };
+    defer std.Io.Dir.cwd().deleteFile(io, link) catch {};
+
+    // The declared path passes every lexical rule — that is the premise. If this
+    // ever fails, the bug moved and the rest of this test proves nothing.
+    const declared = [_]contract.protocol.ExtraBind{
+        .{ .path = link, .mode = .read_write, .note = "looks like a scratch dir" },
+    };
+    try std.testing.expect(contract.protocol.extraBindsValid(&declared));
+
+    var cfg = sandbox_args_test_cfg;
+    cfg.extra_binds = &declared;
+    try std.testing.expectError(
+        error.UnsafeBindTarget,
+        sandbox_args.buildArgv(io, alloc, cfg, ws, null),
+    );
+}
+
+test "a symlink pointing somewhere harmless still builds a lease" {
+    // The guard refuses what a path RESOLVES to, not the fact that it resolved.
+    // Without this, "refuse every symlink" would pass the test above and quietly
+    // break every operator who mounts through one.
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+
+    const ws = "/tmp/agentsfleet-symlink-ok-test-ws";
+    std.Io.Dir.createDirAbsolute(io, ws, .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+    defer std.Io.Dir.cwd().deleteTree(io, ws) catch {};
+
+    // Both ends under `/srv`, for the same reason as the test above: a `/tmp`
+    // target resolves into `SENSITIVE_PATHS` and would be refused on its merits,
+    // which would make this pass for the wrong reason.
+    const target = "/srv/agentsfleet-symlink-ok-test-target";
+    std.Io.Dir.createDirAbsolute(io, "/srv", .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        error.AccessDenied, error.PermissionDenied => return error.SkipZigTest,
+        else => return err,
+    };
+    std.Io.Dir.createDirAbsolute(io, target, .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        error.AccessDenied, error.PermissionDenied => return error.SkipZigTest,
+        else => return err,
+    };
+    defer std.Io.Dir.cwd().deleteTree(io, target) catch {};
+
+    const link = "/srv/agentsfleet-symlink-ok-test-link";
+    std.Io.Dir.cwd().deleteFile(io, link) catch {};
+    std.Io.Dir.symLinkAbsolute(io, target, link, .{}) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        error.AccessDenied, error.PermissionDenied => return error.SkipZigTest,
+        else => return err,
+    };
+    defer std.Io.Dir.cwd().deleteFile(io, link) catch {};
+
+    const declared = [_]contract.protocol.ExtraBind{
+        .{ .path = link, .mode = .read_write, .note = "a real scratch dir" },
+    };
+    var cfg = sandbox_args_test_cfg;
+    cfg.extra_binds = &declared;
+    const argv = sandbox_args.buildArgv(io, alloc, cfg, ws, null) catch |err| {
+        try std.testing.expectEqual(error.BwrapUnavailable, err);
+        return error.SkipZigTest;
+    };
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    // The bind is emitted at the DECLARED path: an operator's mount has to
+    // appear where they asked for it, not at whatever it happened to resolve to.
+    var found = false;
+    for (argv) |a| {
+        if (std.mem.eql(u8, a, link)) found = true;
+    }
+    try std.testing.expect(found);
+}
