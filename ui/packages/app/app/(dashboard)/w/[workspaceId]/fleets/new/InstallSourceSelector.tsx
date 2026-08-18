@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Button, EmptyState, SectionLabel } from "@agentsfleet/design-system";
-import { LayoutTemplateIcon } from "lucide-react";
+import { DownloadIcon, LayoutTemplateIcon } from "lucide-react";
 import type { FleetLibraryPageResult } from "@/lib/api/fleet-library";
 import { LIBRARY_AFTER_PARAM, LIBRARY_ERROR_KIND, readErrorFrom, type LibraryError } from "@/lib/api/library-types";
 import type { FleetLibraryGalleryEntry } from "@/lib/types";
@@ -188,6 +188,7 @@ export function InstallSourceSelector({
                 entry={entry}
                 action={
                   <Button type="button" onClick={() => onUseLibraryEntry(entry)}>
+                    <DownloadIcon size={14} />
                     Install
                   </Button>
                 }
