@@ -30,11 +30,8 @@ type Props = {
   // failed — in which case the connect gate holds nothing back (the server's 424
   // stays authoritative).
   presentCredentialNames: string[] | null;
-  // Optional operator-supplied fleet name. Absent ⇒ the library entry's
-  // SKILL.md `name:` is used, so two installs of one library entry collide;
   // present ⇒ overrides it so one library entry can back several fleets in
   // the workspace.
-  name?: string;
   onBack: () => void;
 };
 
@@ -43,7 +40,7 @@ type Props = {
 // beat. After create it hands off to InstallStreamSteps, which advances the
 // creating→provisioning→ready steps off the existing fleet-event stream and
 // lands "Open fleet".
-export function InstallStates({ workspaceId, source, presentCredentialNames, name, onBack }: Props) {
+export function InstallStates({ workspaceId, source, presentCredentialNames, onBack }: Props) {
   const router = useRouter();
   const requirements = requirementsOf(source);
   // Pre-create stages the flow drives directly. Post-create, InstallStreamSteps
@@ -61,17 +58,13 @@ export function InstallStates({ workspaceId, source, presentCredentialNames, nam
   // by slug `platform_library_id`, a tenant entry by its UUID
   // `tenant_library_id`. No import step — the server reads SKILL/TRIGGER from
   // the onboarded library row.
+  // No name rides the body: the dashboard installs one-step, and the server
+  // auto-suffixes a taken default (`{template}-NNN`). An explicit name stays
+  // the CLI's affair (`agentsfleet install --library <id> --name`).
   const resolveCreateBody = useCallback((): Parameters<typeof installFleetAction>[1] => {
-    const override = name?.trim();
-    if (source.visibility === "platform") {
-      return override
-        ? { platform_library_id: source.id, name: override }
-        : { platform_library_id: source.id };
-    }
-    return override
-      ? { tenant_library_id: source.id, name: override }
-      : { tenant_library_id: source.id };
-  }, [source, name]);
+    if (source.visibility === "platform") return { platform_library_id: source.id };
+    return { tenant_library_id: source.id };
+  }, [source]);
 
   const runCreate = useCallback(async () => {
     setInstallStage("creating");
@@ -86,8 +79,8 @@ export function InstallStates({ workspaceId, source, presentCredentialNames, nam
     }
     captureProductEvent(EVENTS.fleet_created, { fleet_id: created.data.fleet_id });
     requestOnboardingRefresh(workspaceId);
-    setFleet({ id: created.data.fleet_id, name: name?.trim() || requirements.name });
-  }, [resolveCreateBody, workspaceId, requirements.name, name]);
+    setFleet({ id: created.data.fleet_id, name: created.data.name });
+  }, [resolveCreateBody, workspaceId]);
 
   // Drive the flow once on mount: a source with no unmet credential creates
   // immediately; otherwise we sit on the connect gate until the operator

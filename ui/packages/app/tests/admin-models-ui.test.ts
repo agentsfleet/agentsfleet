@@ -83,7 +83,7 @@ describe("AddModelDialog", () => {
     render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
     await userEvent.setup().click(screen.getByRole("button", { name: "Create model library" }));
     const dialog = within(screen.getByRole("dialog"));
-    expect(dialog.getByText("Create a priced model users can choose. Rates are per 1M tokens.")).toBeTruthy();
+    expect(dialog.getByText("Create a priced model users can choose. Prices are US dollars per 1M tokens.")).toBeTruthy();
   });
 
   it("should convert $/1M entry to integer nanos when creating a model", async () => {
@@ -95,7 +95,7 @@ describe("AddModelDialog", () => {
     await user.click(screen.getByRole("button", { name: "Create model library" }));
     fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "fireworks" } });
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: "glm-5.2" } });
-    fireEvent.change(screen.getByLabelText("Input $/1M"), { target: { value: "0.55" } });
+    fireEvent.change(screen.getByLabelText("Input"), { target: { value: "0.55" } });
 
     const dialog = screen.getByRole("dialog");
     fireEvent.submit(dialog.querySelector("form")!);
@@ -158,7 +158,7 @@ describe("CatalogueList — rows + rates + empty state", () => {
   it("sorts each catalogue data column from its header arrow", () => {
     renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
 
-    for (const name of ["Provider", "Model", "Context", "Rates ($ / 1M · in / cached / out)"]) {
+    for (const name of ["Provider", "Model", "Context", "Rates $/1M (in / cached / out)"]) {
       fireEvent.click(screen.getByRole("button", { name }));
       expect(screen.getByRole("columnheader", { name }).getAttribute("aria-sort")).not.toBe("none");
     }
@@ -258,12 +258,12 @@ describe("CatalogueList — Edit (rates dialog wired to updateAdminModelAction)"
     renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated }));
 
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
-    const dialog = await loadedEditDialog("Input $/1M");
+    const dialog = await loadedEditDialog("Input");
     // Pre-filled from the row: 550_000_000 nanos → $0.55, cap 128000.
-    expect((dialog.getByLabelText("Input $/1M") as HTMLInputElement).value).toBe("0.55");
+    expect((dialog.getByLabelText("Input") as HTMLInputElement).value).toBe("0.55");
     expect((dialog.getByLabelText("Context cap (tokens)") as HTMLInputElement).value).toBe("128000");
 
-    fireEvent.change(dialog.getByLabelText("Input $/1M"), { target: { value: "0.99" } });
+    fireEvent.change(dialog.getByLabelText("Input"), { target: { value: "0.99" } });
     fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
 
     await waitFor(() => expect(updateAdminModelActionMock).toHaveBeenCalledTimes(1));
@@ -309,7 +309,7 @@ describe("CatalogueList — Edit (rates dialog wired to updateAdminModelAction)"
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
     const dialog = within(await screen.findByRole("dialog"));
     fireEvent.change(dialog.getByLabelText("Context cap (tokens)"), { target: { value: "0" } });
-    fireEvent.change(dialog.getByLabelText("Input $/1M"), { target: { value: "-1" } });
+    fireEvent.change(dialog.getByLabelText("Input"), { target: { value: "-1" } });
     fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
 
     await new Promise((r) => setTimeout(r, 50));
@@ -486,7 +486,7 @@ describe("ModelsView", () => {
 
     fireEvent.click(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" }));
     const dialog = within(await screen.findByRole("dialog"));
-    fireEvent.change(dialog.getByLabelText("Input $/1M"), { target: { value: "0.99" } });
+    fireEvent.change(dialog.getByLabelText("Input"), { target: { value: "0.99" } });
     fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
 
     // 0.99 $/1M → $0.99 in the rates cell; the old 0.55 is gone.

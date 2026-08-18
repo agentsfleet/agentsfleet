@@ -49,3 +49,19 @@ pub fn generate(alloc: std.mem.Allocator) ![]u8 {
         suffix,
     });
 }
+
+/// Collision breaker for a taken DEFAULT name: `{base}-{NNN}` under `max_len`,
+/// truncating the base (never the random tail) when it would not fit, and
+/// never leaving a trailing `-` before the tail. Used by fleet install when
+/// the operator named nothing and the template's name is already running in
+/// the workspace — the same random tail the workspace names carry, so one
+/// naming mechanism serves both. Caller owns the slice.
+pub fn suffixed(alloc: std.mem.Allocator, base: []const u8, max_len: usize) ![]u8 {
+    var rb: [4]u8 = undefined;
+    try constants.secureRandomBytes(&rb);
+    const tail = std.mem.readInt(u32, rb[0..4], .little) % SUFFIX_MAX;
+    const reserve = 4; // "-NNN"
+    var keep = @min(base.len, max_len -| reserve);
+    while (keep > 0 and base[keep - 1] == '-') keep -= 1;
+    return std.fmt.allocPrint(alloc, "{s}-{d:0>3}", .{ base[0..keep], tail });
+}

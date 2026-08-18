@@ -560,7 +560,7 @@ describe("fleets routes", () => {
     expect(markup).toContain("not on this page");
   });
 
-  it("a deep link whose entry IS on the page resolves straight to the confirm step", async () => {
+  it("a deep link whose entry IS on the page resolves straight to the install states", async () => {
     // The resolver's positive path. An inverted or typo'd match predicate
     // would turn every valid deep link into "not on this page" with the rest
     // of the suite green — this is the assertion that catches it.
@@ -578,9 +578,9 @@ describe("fleets routes", () => {
         }),
       ),
     );
-    // Confirm step, first paint: the name field is present, the gallery is not
-    // — no frame in which the gallery is wrong.
-    expect(markup).toContain("Fleet name");
+    // One-step install, first paint: the states shell is present, the gallery
+    // is not — no frame in which the gallery is wrong, and no confirm step.
+    expect(markup).toContain("Install states");
     expect(markup).not.toContain("Fleet library");
     expect(markup).not.toContain("not on this page");
   });

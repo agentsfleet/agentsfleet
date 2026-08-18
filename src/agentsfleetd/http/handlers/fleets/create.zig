@@ -18,6 +18,7 @@ const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const fleet_config = @import("../../../fleet_runtime/config.zig");
 const config_validate = @import("../../../fleet_runtime/config_validate.zig");
+const heroku_names = @import("../../../state/heroku_names.zig");
 const markdown_limits = @import("../../../fleet_runtime/markdown_limits.zig");
 const create_stream = @import("create_stream.zig");
 const create_install_steps = @import("create_install_steps.zig");
@@ -34,6 +35,9 @@ const log = logging.scoped(.fleet_api);
 const Hx = hx_mod.Hx;
 const DEFAULT_TRIGGER_DAILY_DOLLARS = "1.0";
 const HINT_ROW_ORPHANED_MANUAL_RECOVERY = "row_orphaned_manual_recovery";
+/// Bounded retries for the defaulted-name collision path — the 3-digit tail
+/// space is 1000, so three losing draws means something else is wrong.
+const AUTO_NAME_ATTEMPTS: usize = 3;
 
 pub const MAX_SOURCE_LEN = markdown_limits.MAX_SOURCE_LEN;
 pub const MAX_TRIGGER_LEN = markdown_limits.MAX_TRIGGER_LEN;
@@ -166,15 +170,33 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
     };
     const now_ms = clock.nowMillis();
 
-    fleet_row.insertFleetOnConn(db.conn, workspace_id, source.source_markdown, trigger_markdown, parsed, skill_meta.tags, source.bundle_ref, fleet_id, now_ms) catch |err| {
-        if (fleet_row.isUniqueViolation(db.conn)) {
-            hx.fail(ec.ERR_AGENTSFLEET_NAME_EXISTS, ec.MSG_AGENTSFLEET_NAME_EXISTS);
+    // An EXPLICIT name that collides is an honest conflict the caller must see.
+    // A DEFAULTED name (nothing sent; the template's own name) that collides is
+    // the second-install-from-one-template case — auto-suffix and retry, so the
+    // dashboard's one-step install never dead-ends on a name nobody typed.
+    // Bounded: the 3-digit tail space is 1000; three draws losing every race is
+    // a stuck workspace, not bad luck, and reports as the plain conflict.
+    var insert_attempts: usize = 0;
+    while (true) {
+        fleet_row.insertFleetOnConn(db.conn, workspace_id, source.source_markdown, trigger_markdown, parsed, skill_meta.tags, source.bundle_ref, fleet_id, now_ms) catch |err| {
+            if (fleet_row.isUniqueViolation(db.conn)) {
+                if (body.name == null and insert_attempts < AUTO_NAME_ATTEMPTS) {
+                    insert_attempts += 1;
+                    parsed.config.name = heroku_names.suffixed(hx.alloc, skill_meta.name, config_validate.MAX_NAME_LEN) catch {
+                        common.internalOperationError(hx.res, "name generation failed", hx.req_id);
+                        return;
+                    };
+                    continue;
+                }
+                hx.fail(ec.ERR_AGENTSFLEET_NAME_EXISTS, ec.MSG_AGENTSFLEET_NAME_EXISTS);
+                return;
+            }
+            log.err("create_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .req_id = hx.req_id });
+            common.internalDbError(hx.res, hx.req_id);
             return;
-        }
-        log.err("create_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .req_id = hx.req_id });
-        common.internalDbError(hx.res, hx.req_id);
-        return;
-    };
+        };
+        break;
+    }
     db.end();
     db_open = false;
 
