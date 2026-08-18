@@ -184,8 +184,6 @@ jobs:
   zig-coverage-grade:
     runs-on: ubuntu-latest
     needs: [zig-unit-coverage, zig-integration-shard, zig-runner-kernel]
-    container:
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v7
@@ -195,9 +193,20 @@ jobs:
           merge-multiple: true
       - name: Validate provenance and grade the complete coverage union
         run: |
-          python3 scripts/check_verification_graph.py validate --output .tmp/verification-graph.json
-          make _test-integration-grade
-          make _test-integration-timing
+          docker run --rm \
+            -v "${{ github.workspace }}":"${{ github.workspace }}" \
+            -w "${{ github.workspace }}" \
+            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+            ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4@sha256:b27550eb4910e77e532f061a7c1f3453815cb275dd188bdcc7db0448dd656948 \
+            sh -c "set +e; \
+              git config --global --add safe.directory \"${{ github.workspace }}\" && \
+              python3 scripts/check_verification_graph.py validate --output .tmp/verification-graph.json && \
+              make _test-integration-grade && \
+              make _test-integration-timing; rc=\$?; \
+              chown -R \"\${HOST_UID}:\${HOST_GID}\" coverage/zig \
+                .tmp/verification-graph.json .tmp/verification-results \
+                .tmp/zig-coverage.txt 2>/dev/null || true; \
+              exit \$rc"
       - name: Publish Zig coverage summary
         if: always()
         run: |

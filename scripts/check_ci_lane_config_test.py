@@ -105,21 +105,24 @@ class TestVerificationDag(unittest.TestCase):
 
     def test_coverage_containers_return_artifacts_to_the_host_user(self) -> None:
         body = read_workflow("test.yml")
-        self.assertEqual(3, body.count('-e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)"'))
-        self.assertEqual(3, body.count(r'chown -R \"\${HOST_UID}:\${HOST_GID}\" coverage/zig'))
+        self.assertEqual(4, body.count('-e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)"'))
+        self.assertEqual(4, body.count(r'chown -R \"\${HOST_UID}:\${HOST_GID}\" coverage/zig'))
         for artifact in (
             ".tmp/verification-results/unit",
             '.tmp/verification-results/integration-shard-${{ matrix.shard }}',
             ".tmp/verification-results/runner-kernel",
+            ".tmp/zig-coverage.txt",
         ):
             self.assertIn(artifact, body)
         unit = body.split("  zig-integration-shard:", 1)[0]
         runner = body.split("  zig-runner-kernel:", 1)[1].split("  zig-coverage-grade:", 1)[0]
-        self.assertIn("docker run --rm", unit)
-        self.assertNotIn("\n    container:\n", unit)
+        grade = body.split("  zig-coverage-grade:", 1)[1].split("  test-unit-cli:", 1)[0]
+        for lane in (unit, runner, grade):
+            self.assertIn("docker run --rm", lane)
+            self.assertNotIn("\n    container:\n", lane)
         self.assertNotIn("--privileged", unit)
         self.assertIn("docker run --rm --privileged --cgroupns=private", runner)
-        self.assertNotIn("\n    container:\n", runner)
+        self.assertNotIn("--privileged", grade)
 
 
 # Flags that widen what a job holds beyond the default container posture.
@@ -182,12 +185,8 @@ def privilege_grants(body: str) -> list[str]:
 
 class TestContainerPrivilege(unittest.TestCase):
     def test_coverage_job_keeps_kcovs_two_relaxations_explicit(self) -> None:
-        # kcov needs personality(ADDR_NO_RANDOMIZE), which the default seccomp
-        # profile's personality allow-list omits, plus ptrace on its child.
-        # `--privileged` now subsumes both, but they stay spelled out: the day
-        # the privilege is narrowed back, kcov's own needs must not leave with
-        # it. These two also carry the non-vacuity load: on a parser that
-        # matched nothing, `grants` is empty, `joined` is empty, and both fail.
+        # kcov needs an unconfined personality syscall and ptrace. Keep both
+        # explicit so a future privilege narrowing cannot drop either one.
         grants = privilege_grants(read_workflow("test.yml"))
         joined = " ".join(grants)
         self.assertIn("--security-opt seccomp=unconfined", joined)
