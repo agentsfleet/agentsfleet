@@ -117,7 +117,7 @@ export default function AddLibraryDialog({
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={(e) => { void form.handleSubmit(onSubmit)(e); }} className="space-y-4">
-            <LibrarySourceTabs form={form} onSourceChange={() => setApiError(null)} />
+            <LibrarySourceTabs form={form} disabled={pending} onSourceChange={() => setApiError(null)} />
             {apiError ? (
               <Alert variant="destructive">
                 <div>{apiError.title}</div>

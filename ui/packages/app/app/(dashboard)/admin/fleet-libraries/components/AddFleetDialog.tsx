@@ -155,6 +155,7 @@ export default function AddFleetDialog({
             ) : (
               <LibrarySourceTabs
                 form={form}
+                disabled={pending}
                 onSourceChange={() => {
                   setApiError(null);
                   setCollision(false);

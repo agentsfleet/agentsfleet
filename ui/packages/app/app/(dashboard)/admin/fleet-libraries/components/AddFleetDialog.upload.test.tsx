@@ -142,6 +142,69 @@ describe("AddFleetDialog upload source", () => {
     expect(props).toEqual({ source_kind: "upload", outcome: "success", entry_id: ENTRY.id });
   });
 
+  // The answer to an in-flight request lands against whatever the form holds when
+  // it arrives. Leaving the source switchable meanwhile lets a refusal earned by
+  // the repository be answered on behalf of an upload.
+  it("locks the source while a submit is in flight", async () => {
+    const user = userEvent.setup();
+    let release: (v: unknown) => void = () => {};
+    onboardPlatformLibraryActionMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: /^open$/i }));
+    await user.type(await screen.findByLabelText(/repository/i), REPO);
+    await user.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: UPLOAD_TAB }).hasAttribute("disabled")).toBe(true),
+    );
+    expect(screen.getByRole("tab", { name: "GitHub" }).hasAttribute("disabled")).toBe(true);
+
+    release({ ok: true, data: ENTRY });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  // The Replace button retries whatever the form currently holds. Left standing
+  // across a tab switch it would offer to overwrite a name on behalf of a source
+  // the collision was never reported for.
+  it("withdraws the replace offer when the operator changes source", async () => {
+    const user = userEvent.setup();
+    onboardPlatformLibraryActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: "name taken",
+      errorCode: "UZ-CATALOG-004",
+    });
+
+    await user.click(screen.getByRole("button", { name: /^open$/i }));
+    await user.type(await screen.findByLabelText(/repository/i), REPO);
+    await user.click(screen.getByRole("button", { name: "Create" }));
+    expect(await screen.findByRole("button", { name: /replace anyway/i })).toBeTruthy();
+
+    await user.click(screen.getByRole("tab", { name: UPLOAD_TAB }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /replace anyway/i })).toBeNull(),
+    );
+  });
+
+  // Closing is how an operator abandons a bundle. Reopening on to the previous
+  // one would offer to publish bytes they walked away from.
+  it("clears an abandoned bundle so a reopen starts empty", async () => {
+    const user = userEvent.setup();
+    const { skill } = await openUploadTab(user);
+    await user.type(skill, SKILL_BODY);
+    await user.click(screen.getByRole("button", { name: /^cancel$/i }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    const reopened = await openUploadTab(user);
+    expect((reopened.skill as HTMLTextAreaElement).value).toBe("");
+    expect((reopened.trigger as HTMLTextAreaElement).value).toBe("");
+    expect(onboardPlatformLibraryActionMock).not.toHaveBeenCalled();
+  });
+
   // Switching tabs must drop the other source's refusal, or the upload form keeps
   // explaining a failure the repository earned.
   it("clears a server error when the operator changes source", async () => {

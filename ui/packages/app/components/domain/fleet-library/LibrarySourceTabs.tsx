@@ -138,10 +138,20 @@ function MarkdownBodyField({
 export function LibrarySourceTabs({
   form,
   onSourceChange,
+  disabled = false,
 }: {
   form: SourceForm;
   /** Fires on a tab switch, so the caller can drop a server error the other tab earned. */
   onSourceChange?: () => void;
+  /**
+   * Locks the source while a submit is in flight.
+   *
+   * Without it the answer to an in-flight request lands against whichever tab the
+   * operator has moved to since — so a name collision reported for a repository
+   * could be confirmed with Replace while the form already holds an upload, and
+   * the retry would send that upload instead.
+   */
+  disabled?: boolean;
 }) {
   const sourceKind = form.watch("source_kind");
 
@@ -165,8 +175,8 @@ export function LibrarySourceTabs({
   return (
     <Tabs value={sourceKind} onValueChange={handleSourceChange}>
       <TabsList>
-        <TabsTrigger value={SOURCE_KIND_GITHUB}>{TAB_GITHUB}</TabsTrigger>
-        <TabsTrigger value={SOURCE_KIND_UPLOAD}>{TAB_UPLOAD}</TabsTrigger>
+        <TabsTrigger value={SOURCE_KIND_GITHUB} disabled={disabled}>{TAB_GITHUB}</TabsTrigger>
+        <TabsTrigger value={SOURCE_KIND_UPLOAD} disabled={disabled}>{TAB_UPLOAD}</TabsTrigger>
       </TabsList>
       <TabsContent value={SOURCE_KIND_GITHUB}>
         <GitHubSourceField form={form} />

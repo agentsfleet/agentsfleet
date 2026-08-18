@@ -103,6 +103,7 @@ async function submitCreate(page: Page) {
 // Removes the uploaded entry if it is there. Used both to self-heal an
 // interrupted run and to clean up after this suite's own upload.
 async function removeUploadedFleet(page: Page) {
+  await expect(page.getByRole("button", { name: /create fleet library/i })).toBeVisible();
   const row = uploadedRow(page);
   if (!(await row.getByRole("button", { name: /^delete$/i }).isVisible())) return;
   await row.getByRole("button", { name: /^delete$/i }).click();
@@ -186,6 +187,9 @@ test.describe("platform fleet catalog", () => {
     // Pasted bytes came from no revision, so the row advertises no repository to
     // click through to.
     await expect(row.getByRole("link", { name: /open on github/i })).toHaveCount(0);
+    // And no Fetch either — there is no revision to re-read. The affordance is
+    // absent rather than disabled, so it cannot open a dialog with nothing in it.
+    await expect(row.getByRole("button", { name: /^fetch/i })).toHaveCount(0);
 
     await removeUploadedFleet(page);
   });
