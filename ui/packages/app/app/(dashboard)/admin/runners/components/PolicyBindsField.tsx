@@ -8,9 +8,9 @@ import {
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
+  Badge,
   Button,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormMessage,
@@ -23,8 +23,8 @@ import {
   SelectValue,
 } from "@agentsfleet/design-system";
 import {
+  BASELINE_RO_PATHS,
   BIND_MODES,
-  BIND_MODE_DESCRIPTIONS,
   BIND_MODE_LABELS,
   BIND_ROW_DEFAULT,
   MAX_EXTRA_BINDS,
@@ -36,15 +36,15 @@ import type { PolicyFormValues } from "./PolicyFields";
 // through to the host on every lease, and a mode hidden inside free text is a
 // mode nobody reviewed. The select makes the widening an explicit choice.
 
-export const BINDS_ASSIGNMENT_LABEL = "Extra sandbox binds (optional)";
+export const BINDS_ASSIGNMENT_LABEL = "Sandbox binds";
 export const BINDS_ASSIGNMENT_DESCRIPTION =
-  "Host paths mounted into every lease's sandbox, in addition to the daemon-owned baseline. An assignment can only add paths — it can never drop or re-mode one the sandbox depends on.";
+  "Paths mounted into every lease's sandbox — additions only; the baseline can't be dropped or re-moded.";
 export const ADD_BIND_LABEL = "Add bind";
 export const REMOVE_BIND_LABEL = "Remove bind";
 export const BIND_PATH_PLACEHOLDER = "/srv/models";
 export const BIND_NOTE_PLACEHOLDER = "why this host needs it (optional)";
-export const NO_BINDS_DESCRIPTION =
-  "No extra binds — the sandbox gets the daemon-owned baseline only.";
+export const NO_BINDS_DESCRIPTION = "No extra binds — baseline only.";
+export const BASELINE_HEADING = "Baseline (always bound)";
 
 /// The disclosure's single item value; also what the trigger toggles against.
 const BINDS_SECTION_VALUE = "extra-binds";
@@ -95,6 +95,24 @@ export function PolicyBindsField({
             {BINDS_ASSIGNMENT_DESCRIPTION}
           </p>
 
+          {/* The daemon-owned baseline, shown disabled: an operator deciding
+              what to add must see what is already bound — and that none of it
+              is editable from here. */}
+          <div className="flex flex-col gap-2xs">
+            <span className="text-label uppercase text-text-subtle">{BASELINE_HEADING}</span>
+            <ul className="flex flex-col gap-2xs" aria-label={BASELINE_HEADING}>
+              {BASELINE_RO_PATHS.map((path) => (
+                <li
+                  key={path}
+                  className="flex items-baseline gap-sm font-mono text-body-sm text-muted-foreground"
+                >
+                  <span>{path}</span>
+                  <Badge variant="default">{BIND_MODE_LABELS.read_only}</Badge>
+                </li>
+              ))}
+            </ul>
+          </div>
+
           <div className="flex flex-col gap-md">
             {fields.map((row, index) => (
               <div
@@ -140,9 +158,6 @@ export function PolicyBindsField({
                           ))}
                         </SelectContent>
                       </Select>
-                      <FormDescription>
-                        {BIND_MODE_DESCRIPTIONS[field.value]}
-                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

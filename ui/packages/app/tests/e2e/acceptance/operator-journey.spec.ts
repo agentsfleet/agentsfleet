@@ -224,7 +224,7 @@ test.describe("operator journey", () => {
     const createKeyDialog = page.getByRole("dialog", { name: "Create API key" });
     await createKeyDialog.getByLabel(/^name$/i).fill(apiKeyName);
     createdApiKeyName = apiKeyName;
-    await createKeyDialog.getByRole("button", { name: "Create key", exact: true }).click();
+    await createKeyDialog.getByRole("button", { name: "Create", exact: true }).click();
 
     const revealField = page.getByLabel(/api key value/i);
     await expect(revealField).toBeVisible();

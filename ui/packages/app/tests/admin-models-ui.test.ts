@@ -113,7 +113,7 @@ describe("AddModelDialog", () => {
     await user.click(screen.getByRole("button", { name: "Create model library" }));
     await user.type(screen.getByLabelText("Model"), "glm-5.2");
     const dialog = screen.getByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "Create model library" }));
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
     await new Promise((r) => setTimeout(r, 50));
     expect(createAdminModelActionMock).not.toHaveBeenCalled();
   });

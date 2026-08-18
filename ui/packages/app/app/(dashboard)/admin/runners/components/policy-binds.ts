@@ -42,14 +42,6 @@ export const BIND_MODE_LABELS: Record<BindMode, string> = {
   read_write: "Read-write",
 };
 
-// Named on the control, not buried in a description: read_write lets tenant
-// agent code modify host state outside its workspace on every lease this
-// runner takes.
-export const BIND_MODE_DESCRIPTIONS: Record<BindMode, string> = {
-  read_only: "The sandbox can read the path. The host copy is never modified.",
-  read_write: "The sandbox can write through to the host path. Widens the isolation boundary for every lease.",
-};
-
 /** One editable row. All-strings plus the mode enum, so react-hook-form's
  * input and output types stay identical (the worker_count convention). */
 export interface BindFormRow {

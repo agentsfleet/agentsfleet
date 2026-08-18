@@ -55,7 +55,7 @@ describe("AddRunnerDialog assigns policy", () => {
     // never a description of the host.
     openDialog();
     expect(screen.getByText(/assigned to the host/i)).toBeTruthy();
-    expect(screen.getByText(/the isolation this host must enforce/i)).toBeTruthy();
+    expect(screen.getByText(/cannot enforce the assigned tier is degraded/i)).toBeTruthy();
     // The pre-inversion framing is gone: nothing calls the tier self-reported.
     expect(screen.queryByText(/self-reported/i)).toBeNull();
   });
@@ -68,7 +68,7 @@ describe("AddRunnerDialog assigns policy", () => {
     openDialog();
 
     // All four assignment fields render.
-    expect(screen.getByText("Isolation to assign")).toBeTruthy();
+    expect(screen.getByText("Isolation")).toBeTruthy();
     expect(screen.getByText("Network policy")).toBeTruthy();
     expect(screen.getByLabelText(/registry allowlist/i)).toBeTruthy();
     expect(screen.getByLabelText("Workers")).toBeTruthy();

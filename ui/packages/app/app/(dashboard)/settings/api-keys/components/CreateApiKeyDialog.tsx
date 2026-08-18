@@ -146,7 +146,7 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
                   </Button>
                   <TooltipButton type="submit" disabled={pending} tooltip={CREATE_KEY_TOOLTIP}>
                     {pending ? <Spinner size="sm" srLabel="Creating" /> : null}
-                    Create key
+                    Create
                   </TooltipButton>
                 </DialogFooter>
               </form>
