@@ -142,9 +142,12 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
 
     // Optional operator name override (multi-instance): the same bundle can back
     // many fleets in a workspace, each with its own name + webhooks/cron. The
-    // runner leases by content_hash (name-agnostic) and nothing reads
-    // config_json's name downstream, so overriding the persisted `name` column
-    // is safe. Validated against the same slug rules as a SKILL.md name.
+    // runner leases by content_hash (name-agnostic), and the `name` COLUMN is
+    // the instance identity every human-facing surface reads — `FleetSession`
+    // loads it beside the config for exactly that reason. `config_json` keeps
+    // the bundle's declared name and is deliberately not rewritten here: it
+    // describes the bundle, which the override did not change. Validated
+    // against the same slug rules as a SKILL.md name.
     if (body.name) |override_name| {
         config_validate.validateSkillName(override_name) catch {
             hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_AGENTSFLEET_NAME_REQUIRED);
