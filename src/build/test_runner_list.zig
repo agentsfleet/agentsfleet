@@ -17,15 +17,15 @@ const std = @import("std");
 const builtin = @import("builtin");
 const Io = std.Io;
 
-/// Emitted once, proving this lane ran even when it registers no tests at all.
+/// Emitted once as `ROOT\t<lane>\t<root_dir>`, proving this lane ran even when
+/// it registers no tests at all.
 const ROOT_PREFIX = "ROOT\t";
-/// Emitted once per registered test as `TEST\t<root_dir>\t<name>`, where `<name>` is
-/// the compiler's fully-qualified `<namespace>.test.<description>` and `<namespace>`
-/// is the source path relative to `<root_dir>` with `/` replaced by `.` and `.zig`
-/// stripped. Each line carries its own root because `zig build` runs the lanes on a
-/// thread pool: attributing a test to the most recent `ROOT` line would misfile it
-/// the day two lanes interleave on stdout, silently flipping a file's live/dead
-/// verdict — the exact failure this gate exists to catch.
+/// Emitted once per registered test as `TEST\t<lane>\t<root_dir>\t<name>`, where
+/// `<name>` is the compiler's fully-qualified `<namespace>.test.<description>` and
+/// `<namespace>` is the source path relative to `<root_dir>` with `/` replaced by
+/// `.` and `.zig` stripped. Each line carries its own lane and root because `zig
+/// build` runs the lanes on a thread pool: positional attribution would misfile an
+/// interleaved test and silently flip both ownership and reachability verdicts.
 const TEST_PREFIX = "TEST\t";
 const FIELD_SEP = "\t";
 const LINE_END = "\n";
@@ -43,11 +43,12 @@ pub fn main(init: std.process.Init.Minimal) void {
     const args = init.args.toSlice(fba.allocator()) catch
         @panic("test_runner_list: cannot read argv");
 
-    const root_dir = if (args.len > 1) args[1] else "";
+    const lane = if (args.len > 1) args[1] else "";
+    const root_dir = if (args.len > 2) args[2] else "";
     const stdout = Io.File.stdout();
-    emit(stdout, &.{ ROOT_PREFIX, root_dir });
+    emit(stdout, &.{ ROOT_PREFIX, lane, FIELD_SEP, root_dir });
     for (builtin.test_functions) |test_fn| {
-        emit(stdout, &.{ TEST_PREFIX, root_dir, FIELD_SEP, test_fn.name });
+        emit(stdout, &.{ TEST_PREFIX, lane, FIELD_SEP, root_dir, FIELD_SEP, test_fn.name });
     }
 }
 

@@ -11,6 +11,7 @@ const S_INTEGRATION_NAME = "agentsfleetd-integration-tests";
 const S_INTEGRATION_ROOT = "src/agentsfleetd/integration_tests.zig";
 const S_INTEGRATION_FILE_FILTER = "_integration_test";
 const S_INTEGRATION_NAME_FILTER = "integration:";
+const S_INTEGRATION_RUNNER = "src/build/test_runner_shard.zig";
 const S_ROOT_DIR = "src/agentsfleetd";
 
 pub fn addTestSteps(
@@ -21,7 +22,7 @@ pub fn addTestSteps(
     imports: []const std.Build.Module.Import,
     list_step: *std.Build.Step,
 ) void {
-    const unit_tests = addTest(b, S_UNIT_NAME, S_UNIT_ROOT, target, optimize, filters, imports);
+    const unit_tests = addTest(b, S_UNIT_NAME, S_UNIT_ROOT, target, optimize, filters, imports, false);
     fixtures.addDaemon(b, unit_tests.root_module);
     b.step("test", "Run agentsfleetd unit tests").dependOn(&b.addRunArtifact(unit_tests).step);
     installTest(b, "test-bin", "Install the agentsfleetd unit test binary", unit_tests);
@@ -39,6 +40,7 @@ pub fn addTestSteps(
         optimize,
         integration_filters,
         imports,
+        true,
     );
     fixtures.addDaemon(b, integration_tests.root_module);
     b.step("test-integration", "Run agentsfleetd live-service integration tests")
@@ -60,6 +62,7 @@ fn addTest(
     optimize: std.builtin.OptimizeMode,
     filters: []const []const u8,
     imports: []const std.Build.Module.Import,
+    use_shard_runner: bool,
 ) *std.Build.Step.Compile {
     return b.addTest(.{
         .use_llvm = shared.TEST_USE_LLVM,
@@ -71,6 +74,10 @@ fn addTest(
             .imports = imports,
         }),
         .filters = filters,
+        .test_runner = if (use_shard_runner) .{
+            .path = b.path(S_INTEGRATION_RUNNER),
+            .mode = .simple,
+        } else null,
     });
 }
 

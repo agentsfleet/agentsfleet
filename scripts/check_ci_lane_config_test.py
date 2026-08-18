@@ -30,7 +30,7 @@ SELECTOR = ROOT / "scripts" / "select-prunable-caches.sh"
 
 # Zig workflows whose jobs restore a cache keyed on the same hashFiles inputs.
 # A `main` push trigger is what makes those caches reachable from a fresh branch.
-CACHE_WARMED_WORKFLOWS = ("test.yml", "test-integration.yml", "memleak.yml")
+CACHE_WARMED_WORKFLOWS = ("test.yml", "memleak.yml")
 
 
 def read_workflow(name: str) -> str:
@@ -55,11 +55,53 @@ class TestCacheWarming(unittest.TestCase):
 
 class TestPrewarmArtifacts(unittest.TestCase):
     def test_integration_workflow_prewarms_integration_binary(self) -> None:
-        body = read_workflow("test-integration.yml")
-        self.assertIn("zig build install test-integration-bin", body)
+        body = read_workflow("test.yml")
+        self.assertIn("make _test-integration-daemon-build", body)
         # `test-bin` is the unit artifact since the daemon roots were split;
         # warming it here compiles a binary this job never executes.
         self.assertNotIn("zig build install test-bin", body)
+
+
+class TestVerificationDag(unittest.TestCase):
+    def test_one_workflow_owns_every_canonical_recipe(self) -> None:
+        body = read_workflow("test.yml")
+        self.assertEqual(1, body.count("run: make test-coverage-zig"))
+        self.assertEqual(1, body.count("make _test-integration-shard SHARD_INDEX="))
+        self.assertEqual(1, body.count("make _test-integration-runner-coverage-native"))
+        self.assertEqual(1, body.count("make _test-integration-grade"))
+        for duplicate in (
+            "make test-unit-agentsfleetd",
+            "make test-unit-agentsfleet-runner",
+            "make test-unit-agentsfleet-lib",
+        ):
+            self.assertNotIn(duplicate, body)
+
+    def test_same_run_artifacts_are_provenance_gated(self) -> None:
+        body = read_workflow("test.yml")
+        self.assertIn("actions/upload-artifact@v6", body)
+        self.assertIn("actions/download-artifact@v7", body)
+        self.assertIn("pattern: zig-verification-*", body)
+        self.assertIn("python3 scripts/check_verification_graph.py validate", body)
+        self.assertIn("needs: [zig-unit-coverage, zig-integration-shard, zig-runner-kernel]", body)
+
+    def test_worker_timing_spans_setup_and_is_graded(self) -> None:
+        body = read_workflow("test.yml")
+        self.assertEqual(2, body.count("scripts/verification_evidence.py start"))
+        self.assertEqual(2, body.count("--started-at-file"))
+        self.assertEqual(2, body.count("--timing-output"))
+        self.assertIn("make _test-integration-timing", body)
+        self.assertIn("timing-summary.json", body)
+
+    def test_legacy_workflow_executes_no_registered_root(self) -> None:
+        body = read_workflow("test-integration.yml")
+        self.assertIn("workflow_dispatch:", body)
+        self.assertNotIn("make test-integration", body)
+        self.assertNotIn("zig build test-integration", body)
+
+    def test_shards_declare_disjoint_worker_identity(self) -> None:
+        body = read_workflow("test.yml")
+        self.assertIn("INTEGRATION_SHARD_ISOLATION_KEY", body)
+        self.assertIn("${{ matrix.shard }}", body)
 
 
 # Flags that widen what a job holds beyond the default container posture.
@@ -73,9 +115,8 @@ GRANT_FLAGS = ("--privileged", "--security-opt", "--cap-add")
 # convenience, and neither has a narrower capability that substitutes (measured:
 # `--cap-add=SYS_ADMIN` alone does not).
 PRIVILEGED_LANES = {
-    # Delegating a cgroup-v2 controller subtree.
-    "test-integration.yml": "cgroup-v2 controller delegation",
-    # bubblewrap creating the namespaces the real-sandbox proofs run in. The CI
+    # bubblewrap creates namespaces in daemon shards; the runner job delegates
+    # a cgroup-v2 controller subtree. The CI
     # image has baked bwrap in since r3, so without this the four
     # `selftest_integration_test` cases do not FAIL here — they skip, on the
     # `probeRanHere` guard that reads a silent probe as a harness fact rather
@@ -84,13 +125,13 @@ PRIVILEGED_LANES = {
     # measured at 33%, which then read as structurally unreachable rather than
     # as one missing flag. Measured on this image: unprivileged all four skip,
     # privileged all four pass.
-    "test.yml": "bubblewrap namespace creation",
+    "test.yml": "bubblewrap namespace creation and cgroup-v2 controller delegation",
 }
 
 # Lanes whose privilege is cgroup delegation must also SCOPE it. bubblewrap
 # needs no cgroup namespace of its own, so this is asserted per lane rather
 # than demanded of every privileged grant.
-CGROUP_DELEGATION_LANES = ("test-integration.yml",)
+CGROUP_DELEGATION_LANES = ("test.yml",)
 
 
 def logical_lines(body: str) -> list[str]:
@@ -188,13 +229,12 @@ class TestContainerPrivilege(unittest.TestCase):
                     "recorded kernel reason. Name the lane and the operation "
                     "that earns it in PRIVILEGED_LANES, or drop the flag.",
                 )
-                if path.name in CGROUP_DELEGATION_LANES:
-                    self.assertIn(
-                        "--cgroupns=private",
-                        value,
-                        f"{path.name} is privileged for "
-                        f"{PRIVILEGED_LANES[path.name]} but does not scope it",
-                    )
+        for name in CGROUP_DELEGATION_LANES:
+            grants = privilege_grants(read_workflow(name))
+            self.assertTrue(
+                any("--privileged" in value and "--cgroupns=private" in value for value in grants),
+                f"{name} has no private cgroup namespace for its delegated kernel lane",
+            )
 
     def test_a_privileged_lane_cannot_be_listed_without_being_used(self) -> None:
         # The table grants privilege, so a stale entry silently pre-approves a

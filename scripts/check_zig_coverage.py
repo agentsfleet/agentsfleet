@@ -134,7 +134,7 @@ def union_components(
         for key, covered in component.items():
             merged[key] = merged.get(key, False) or covered
 
-    regressed = [name for name in required if name in empty]
+    regressed = [name for name in required if name not in collected]
     if regressed:
         raise ValueError(
             "required components contributed no measured lines: "
@@ -218,6 +218,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--coverage-dir", type=Path, required=True)
     parser.add_argument("--component", action="append", required=True, dest="components")
+    parser.add_argument("--integration-shard", action="append", default=[], dest="integration_shards")
+    parser.add_argument("--lifecycle-shard", default=None)
+    parser.add_argument("--expected-integration-shards", type=int, default=0)
     parser.add_argument(
         "--require-component",
         action="append",
@@ -243,9 +246,32 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        merged, collected, empty, counts = union_components(
-            args.coverage_dir, args.components, args.repo_root.resolve(), args.required
+        shard_reports = len(args.integration_shards) + int(args.lifecycle_shard is not None)
+        if shard_reports != args.expected_integration_shards:
+            raise ValueError(
+                "integration shard count mismatch: "
+                f"expected {args.expected_integration_shards}, got {shard_reports}"
+            )
+        if args.lifecycle_shard is not None and args.lifecycle_shard not in args.components:
+            raise ValueError("lifecycle shard must also be a coverage component")
+        required_components = [name for name in args.required if name != "integration"]
+        if args.lifecycle_shard is not None and args.lifecycle_shard not in required_components:
+            required_components.append(args.lifecycle_shard)
+        merged, collected_reports, empty_reports, counts = union_components(
+            args.coverage_dir,
+            args.components + args.integration_shards,
+            args.repo_root.resolve(),
+            required_components,
         )
+        empty_shards = [name for name in args.integration_shards if name in empty_reports]
+        if empty_shards:
+            raise ValueError("integration shards contributed no measured lines: " + ", ".join(empty_shards))
+        collected = [name for name in collected_reports if name not in args.integration_shards]
+        empty = [name for name in empty_reports if name not in args.integration_shards]
+        if args.integration_shards:
+            collected.append("integration")
+        elif "integration" in args.required:
+            raise ValueError("required components absent from coverage input: integration")
         files, covered, valid, percentage = summarise(merged)
         folder_floors = floors.parse_scope_pct(args.folder_floors, "--folder-floor")
         folder_targets = floors.parse_scope_pct(args.folder_targets, "--folder-target")
@@ -270,7 +296,10 @@ def main(argv: list[str] | None = None) -> int:
         f"zig_measured_lines={valid}\n"
         f"zig_components_measured={len(collected)}\n"
         f"zig_components_total={len(collected) + len(empty)}\n"
-        f"zig_components_empty={','.join(sorted(empty))}\n" + floors.summary_keys(scopes),
+        f"zig_components_empty={','.join(sorted(empty))}\n"
+        f"zig_integration_shards_expected={args.expected_integration_shards}\n"
+        f"zig_integration_shards_collected={shard_reports - len(empty_shards)}\n"
+        + floors.summary_keys(scopes),
         encoding="utf-8",
     )
 

@@ -37,6 +37,7 @@ DOC_TABLE_ROW = re.compile(r"^\|\s*`?([a-z0-9_]+)`?\s*\|\s*(\d+)\s*\|\s*(\d+)\s*
 DOC_COMPONENT_BULLET = re.compile(r"^-\s+`([a-z0-9_]+)`\s+—", re.MULTILINE)
 # `components="agentsfleetd:agentsfleetd-tests runner:agentsfleet-runner-tests"`
 MAKE_COMPONENT_LIST = re.compile(r'components="([^"]*)"')
+MAKE_UNIT_COMPONENTS = re.compile(r"^ZIG_UNIT_COVERAGE_COMPONENTS\s*=\s*(.*)$", re.MULTILINE)
 # The two components announced by name rather than iterated: they run serially.
 MAKE_LITERAL_COMPONENT = re.compile(r"kcov component=([a-z0-9_]+) binary=")
 
@@ -93,7 +94,10 @@ def gate_components() -> set[str]:
             name, separator, _ = token.partition(":")
             if separator:
                 components.add(name)
+    for group in MAKE_UNIT_COMPONENTS.findall(text):
+        components.update(token.partition(":")[0] for token in group.split())
     components.update(MAKE_LITERAL_COMPONENT.findall(text))
+    components.update(make_variables()["ZIG_INTEGRATION_COVERAGE_COMPONENTS"].split())
     return components
 
 
@@ -124,7 +128,7 @@ class ArchitectureDocMatchesTheGate(unittest.TestCase):
             documented_components(),
             gate_components(),
             "the component list in docs/architecture/testing.md disagrees with the "
-            "components make/test-unit.mk runs under kcov",
+            "components the Make verification graph runs under kcov",
         )
 
     def test_architecture_doc_names_no_retired_variable(self) -> None:

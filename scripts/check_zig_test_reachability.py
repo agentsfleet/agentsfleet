@@ -74,8 +74,8 @@ INTEGRATION_LINE_PREFIX = 'test "integration:'
 WAIVER_MARKER = "// no-test-root:"
 
 # Wire format emitted by src/build/test_runner_list.zig. Each TEST line is
-# `TEST\t<root_dir>\t<name>` — self-describing, so attribution never depends on
-# stdout ordering between concurrently-run lanes.
+# `TEST\t<lane>\t<root_dir>\t<name>` — self-describing, so attribution never
+# depends on stdout ordering between concurrently-run lanes.
 ROOT_PREFIX = "ROOT\t"
 TEST_PREFIX = "TEST\t"
 FIELD_SEP = "\t"
@@ -112,10 +112,13 @@ def registered_names():
             if line.startswith(ROOT_PREFIX):
                 # Proves the lane ran. A lane that registers nothing still lands here,
                 # so its files are correctly judged dead rather than silently skipped.
-                groups.setdefault(line[len(ROOT_PREFIX):], set())
+                _lane, separator, root = line[len(ROOT_PREFIX):].partition(FIELD_SEP)
+                if separator and root:
+                    groups.setdefault(root, set())
             elif line.startswith(TEST_PREFIX):
-                root, _, name = line[len(TEST_PREFIX):].partition(FIELD_SEP)
-                if name:
+                lane, separator, remainder = line[len(TEST_PREFIX):].partition(FIELD_SEP)
+                root, separator2, name = remainder.partition(FIELD_SEP)
+                if lane and separator and root and separator2 and name:
                     groups[root].add(name)
     if not groups:
         sys.stderr.write(f"no `{LIST_STEP}` output parsed -- is the lane wired?\n")

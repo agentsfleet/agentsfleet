@@ -435,7 +435,13 @@ test "integration: PATCH malformed trigger_markdown — 400, next PATCH on same 
     defer r_good.deinit();
     try r_good.expectStatus(.ok);
     const elapsed_ms = clock.nowMillis() - t0;
-    try std.testing.expect(elapsed_ms < MS_PER_SECOND);
+    // kcov instruments every mapped source line, so its elapsed time does not
+    // measure the lock-release contract. The shard's process-group timeout
+    // still bounds a real hang; keep the sub-second assertion for direct,
+    // uninstrumented integration runs.
+    if (@import("common").env.testLiveValue("AGENTSFLEET_TEST_INSTRUMENTED") == null) {
+        try std.testing.expect(elapsed_ms < MS_PER_SECOND);
+    }
 
     const c = try h.acquireConn();
     defer h.releaseConn(c);

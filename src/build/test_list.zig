@@ -1,10 +1,10 @@
 //! The `list-tests` lane — a second, list-only compilation of every test binary.
 //!
 //! Each lane shares its root module with the real `test` step but swaps in
-//! `test_runner_list.zig`, which prints the registered test names instead of running
-//! them. Sharing the module is what makes the listing trustworthy: it is the same
-//! import graph the real suite compiles, so a block that registers here registers
-//! there.
+//! `test_runner_list.zig`, which prints the lane, root, and registered test names
+//! instead of running them. Sharing the module is what makes the listing trustworthy:
+//! it is the same import graph the real suite compiles, so a block that registers
+//! here registers there.
 //!
 //! The real `test` steps are deliberately left on Zig's default runner. Swapping
 //! them would mean re-implementing the `std.zig.Server` stdio protocol that
@@ -41,6 +41,7 @@ pub fn addLane(
         .test_runner = .{ .path = b.path(RUNNER_PATH), .mode = .simple },
     });
     const run = b.addRunArtifact(listing);
+    run.addArg(name);
     run.addArg(root_dir);
     step.dependOn(&run.step);
 }

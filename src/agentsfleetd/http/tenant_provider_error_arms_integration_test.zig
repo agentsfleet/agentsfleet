@@ -55,7 +55,8 @@ fn seedTenantWorkspace(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO workspaces (id, tenant_id, created_at)
         \\VALUES ($1::uuid, $2, 0)
-        \\ON CONFLICT (id) DO UPDATE SET tenant_id = EXCLUDED.tenant_id
+        \\ON CONFLICT (id) DO UPDATE
+        \\SET tenant_id = EXCLUDED.tenant_id, created_at = EXCLUDED.created_at
     , .{ TEST_WS_ID, TEST_TENANT_ID });
 }
 

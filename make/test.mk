@@ -4,6 +4,7 @@
 
 include make/test-unit.mk
 include make/test-integration.mk
+include make/test-verification.mk
 include make/acceptance.mk
 include make/dry.mk
 include make/bench.mk
@@ -26,6 +27,13 @@ include make/bench.mk
 ZIG_GLOBAL_CACHE_DIR ?= $(HOME)/.cache/agentsfleet/zig-global-cache
 ZIG_LOCAL_CACHE_DIR  ?= $(CURDIR)/.tmp/zig-local-cache
 ZIG_COVERAGE_DIR ?= $(CURDIR)/coverage/zig
+VERIFICATION_GRAPH_FILE ?= $(CURDIR)/.tmp/verification-graph.json
+VERIFICATION_RESULTS_DIR ?= $(CURDIR)/.tmp/verification-results
+VERIFICATION_TIMING_DIR ?= $(CURDIR)/.tmp/verification-timings
+VERIFICATION_CACHE_STATE ?= warm
+INTEGRATION_SHARD_COUNT ?= 5
+INTEGRATION_SHARD_TIMEOUT_SECONDS ?= 900
+ZIG_INTEGRATION_COVERAGE_COMPONENTS ?= runner_integration integration lifecycle
 # Per-component kcov logs and exit statuses live under ZIG_COVERAGE_DIR beside
 # the reports they explain. They were at a hardcoded relative `.tmp/`, which the
 # lane self-tests share with a real run even though they redirect the coverage
@@ -167,5 +175,5 @@ MEMLEAK_CPU ?= baseline
 
 .PHONY: test-unit-all
 
-test-unit-all: test-unit-agentsfleetd test-unit-agentsfleet-runner test-unit-agentsfleet-lib test-coverage-all  ## Run all unit lanes (Zig + multi-package coverage)
+test-unit-all: test-coverage-all  ## Run every unit owner once with coverage
 	@echo "✓ All unit lanes passed"

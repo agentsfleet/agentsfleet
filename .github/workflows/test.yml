@@ -14,6 +14,7 @@ on:
       - 'build.zig.zon'
       - 'build_runner.zig'
       - 'make/**'
+      - 'scripts/**'
       - 'schema/**'
       - '.github/workflows/test.yml'
   pull_request:
@@ -36,200 +37,155 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  test-unit-agentsfleetd:
+  zig-unit-coverage:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     container:
       image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
+      options: --security-opt seccomp=unconfined --cap-add=SYS_PTRACE
     steps:
       - uses: actions/checkout@v6
       - name: Cache Zig build
         uses: actions/cache@v5
         with:
-          # Only the LOCAL cache is persisted. Zig writes nothing to the global
-          # cache for this build graph — a build with a warm local cache and a
-          # freshly created global one leaves that directory at 0 bytes and
-          # takes the same time. Listing it here cached a directory the make
-          # targets never even create (their default global path is under
-          # $HOME), so actions/cache skipped it with a warning every run.
           path: .tmp/zig-local-cache
           key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
           restore-keys: |
-            zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-
-      - name: Test agentsfleetd (Zig units)
-        run: make test-unit-agentsfleetd
+      - name: Run every Zig unit owner once under coverage
+        run: make test-coverage-zig
+      - name: Upload unit verification evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: zig-verification-unit
+          path: |
+            coverage/zig
+            .tmp/verification-graph.json
+            .tmp/verification-results/unit
+          if-no-files-found: error
 
-  test-unit-agentsfleet-runner:
+  zig-integration-shard:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v6
       - name: Cache Zig build
         uses: actions/cache@v5
         with:
-          # Only the LOCAL cache is persisted. Zig writes nothing to the global
-          # cache for this build graph — a build with a warm local cache and a
-          # freshly created global one leaves that directory at 0 bytes and
-          # takes the same time. Listing it here cached a directory the make
-          # targets never even create (their default global path is under
-          # $HOME), so actions/cache skipped it with a warning every run.
           path: .tmp/zig-local-cache
-          key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
+          key: zig-${{ runner.os }}-integration-${{ matrix.shard }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
           restore-keys: |
-            zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
-            zig-${{ runner.os }}-${{ github.job }}-0.16.0-
-      - name: Test agentsfleet-runner (Zig units)
-        run: make test-unit-agentsfleet-runner
-
-  test-unit-agentsfleet-lib:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
-    steps:
-      - uses: actions/checkout@v6
-      - name: Cache Zig build
-        uses: actions/cache@v5
-        with:
-          # Only the LOCAL cache is persisted. Zig writes nothing to the global
-          # cache for this build graph — a build with a warm local cache and a
-          # freshly created global one leaves that directory at 0 bytes and
-          # takes the same time. Listing it here cached a directory the make
-          # targets never even create (their default global path is under
-          # $HOME), so actions/cache skipped it with a warning every run.
-          path: .tmp/zig-local-cache
-          key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
-          restore-keys: |
-            zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
-            zig-${{ runner.os }}-${{ github.job }}-0.16.0-
-      - name: Test shared src/lib (Zig units)
-        run: make test-unit-agentsfleet-lib
-
-  test-coverage-zig:
-    runs-on: ubuntu-latest
-    # The suite runs under kcov's ptrace, and this lane now measures the
-    # integration binary as well as the five unit ones, so it is the long pole.
-    timeout-minutes: 30
-    # No job-level `container:`. The coverage target now runs the integration
-    # binary, which needs a live Postgres and Redis, and a GitHub Actions job
-    # container is forced onto GitHub's own managed network where `--network
-    # host` is rejected. `test-integration.yml` documents the same constraint
-    # and resolves it the same way — `docker run` below, which also carries
-    # kcov's two required permissions.
-    steps:
-      - uses: actions/checkout@v6
-      - name: Cache Zig build
-        uses: actions/cache@v5
-        with:
-          # Only the LOCAL cache is persisted. Zig writes nothing to the global
-          # cache for this build graph — a build with a warm local cache and a
-          # freshly created global one leaves that directory at 0 bytes and
-          # takes the same time. Listing it here cached a directory the make
-          # targets never even create (their default global path is under
-          # $HOME), so actions/cache skipped it with a warning every run.
-          path: .tmp/zig-local-cache
-          key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-r2-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
-          restore-keys: |
-            zig-${{ runner.os }}-${{ github.job }}-0.16.0-r2-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
-            zig-${{ runner.os }}-${{ github.job }}-0.16.0-r2-
-      - name: Gate merged Zig line coverage
+            zig-${{ runner.os }}-integration-${{ matrix.shard }}-0.16.0-
+      - name: Provision this shard's isolated datastores
         run: |
-          # The HOST does every step that needs docker, with the same recipes the
-          # gate runs locally — no forked logic — as memleak.yml does. This
-          # replaces a bare `docker compose up -d`: that left the container to
-          # boot and reset the datastores itself, which is the only reason it
-          # ever needed the host's Docker socket. It does not need it now.
-          #
-          # `_reset-test-db` rather than `_ensure-test-infra`: it depends on the
-          # latter, so this boots AND drops schemas / flushes Redis. Both are
-          # required, because the coverage target runs the full integration suite
-          # and several suites leave fixture rows that break the next run — and
-          # both reach for `docker compose exec`, which the container cannot do.
+          python3 scripts/verification_evidence.py start \
+            --output .tmp/verification-timings/integration-shard-${{ matrix.shard }}.started
           make _reset-test-db
-          # Run inside the project's CI image via `docker run` rather than a job
-          # `container:`, for the reason test-integration.yml already records:
-          # --network host keeps localhost:5432/6379 pointing at the compose-
-          # published ports, and a GitHub Actions job container is forced onto
-          # GitHub's managed network, which rejects it. kcov's two required
-          # permissions ride the same invocation — it calls
-          # personality(ADDR_NO_RANDOMIZE) to pin addresses across runs, which
-          # Docker's default seccomp profile omits from its personality
-          # allow-list, and it drives the binary under ptrace.
-          #
-          # NO `-v /var/run/docker.sock`. This job runs branch-controlled make
-          # targets on a pull_request trigger, so mounting the host socket would
-          # let any contributor spawn privileged sibling containers, mount host
-          # paths, and take over the runner. TEST_INFRA=provided removes the
-          # reason it was ever mounted, and fails closed: it re-verifies the CA
-          # cert the host extracted and dies loudly if infra was claimed but not
-          # provided. `--privileged` below does NOT walk that back: it bounds a
-          # contributor to this container, where the socket would have handed
-          # them the host.
-          #
-          # `--privileged` is what lets bubblewrap create namespaces, and this
-          # lane measures the code that needs them. The image has baked bwrap in
-          # since r3, so the real-sandbox proofs in `selftest_integration_test`
-          # do not fail here without it — they SKIP, on a `probeRanHere` guard
-          # that reads a silent probe as a harness fact rather than a verdict.
-          # Skipping is the correct behaviour and it left `selftest_exec.run` —
-          # the whole spawn/bound/reap half of the self-test — measured at 33%,
-          # which then read as "structurally unreachable in the coverage lane"
-          # rather than as one missing flag. Measured on this image:
-          # unprivileged all four skip, privileged all four pass. No narrower
-          # capability substitutes; `--cap-add=SYS_ADMIN` alone still skips.
-          #
-          # kcov's own two relaxations stay spelled out below even though this
-          # subsumes them, so narrowing the privilege later cannot silently take
-          # kcov's requirements with it. `scripts/check_ci_lane_config_test.py`
-          # holds this lane, its reason, and that pairing together.
+      - name: Run integration shard once under coverage
+        run: |
+          python3 scripts/run_with_timeout.py --seconds 1200 \
+            --label integration-shard-${{ matrix.shard }} \
+            --started-at-file .tmp/verification-timings/integration-shard-${{ matrix.shard }}.started \
+            --timing-output .tmp/verification-timings/integration-shard-${{ matrix.shard }}.json -- \
           docker run --rm --network host --privileged \
             --security-opt seccomp=unconfined --cap-add=SYS_PTRACE \
             -v "${{ github.workspace }}":"${{ github.workspace }}" \
             -w "${{ github.workspace }}" \
             -e TEST_INFRA=provided \
-            -e KEEP_TEST_STATE=1 \
             -e TEST_DATABASE_URL="postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb?sslmode=disable" \
             -e TEST_REDIS_TLS_URL="rediss://:agentsfleet@localhost:6379" \
+            -e AGENTSFLEET_QSTASH_LIVE_URL="http://localhost:8080" \
+            -e INTEGRATION_SHARD_ISOLATION_KEY="ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}" \
             ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4@sha256:b27550eb4910e77e532f061a7c1f3453815cb275dd188bdcc7db0448dd656948 \
-            sh -c 'make test-coverage-zig'
-      # Runs on the HOST, after the container step above has produced
-      # zig-out/bin/agentsfleetd: the host has compose (and therefore `docker
-      # compose exec`) but no Zig toolchain, while the container has the reverse.
-      # The lane takes the already-built binary, so neither needs the other's half.
-      #
-      # It migrates a scratch database from empty as a NON-superuser role shaped
-      # like the one managed databases hand the migrator. Every other lane here
-      # connects as the compose superuser, where PostgreSQL bypasses privilege
-      # checks — which is exactly how migration 110 shipped green and then
-      # refused to install on PlanetScale with 42501.
-      - name: Migrate from empty as a non-superuser (managed-database shape)
+            sh -c 'git config --global --add safe.directory "${{ github.workspace }}" && \
+              make _test-integration-daemon-build && \
+              python3 scripts/check_verification_graph.py shards --count 5 \
+                --binary zig-out/bin/agentsfleetd-integration-tests \
+                --output .tmp/verification-graph.json && \
+              make _test-integration-shard SHARD_INDEX=${{ matrix.shard }}'
+      - name: Migrate from empty as a non-superuser
+        if: matrix.shard == 0
         run: make check-migrate-unprivileged
+      - name: Upload shard verification evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: zig-verification-shard-${{ matrix.shard }}
+          path: |
+            coverage/zig
+            .tmp/verification-results/integration-shard-${{ matrix.shard }}
+            .tmp/verification-timings/integration-shard-${{ matrix.shard }}.json
+          if-no-files-found: error
+      - name: Stop services
+        if: always()
+        run: docker compose down
+
+  zig-runner-kernel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
+      options: --privileged --cgroupns=private
+    steps:
+      - uses: actions/checkout@v6
+      - name: Cache Zig build
+        uses: actions/cache@v5
+        with:
+          path: .tmp/zig-local-cache
+          key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
+          restore-keys: |
+            zig-${{ runner.os }}-${{ github.job }}-0.16.0-
+      - name: Run runner kernel owner once under coverage
+        run: |
+          python3 scripts/verification_evidence.py start \
+            --output .tmp/verification-timings/runner-kernel.started
+          python3 scripts/check_verification_graph.py validate --output .tmp/verification-graph.json
+          make _test-integration-runner-build
+          python3 scripts/run_with_timeout.py --seconds 900 --label runner-kernel \
+            --started-at-file .tmp/verification-timings/runner-kernel.started \
+            --timing-output .tmp/verification-timings/runner-kernel.json -- \
+            sh scripts/cgroup-delegate.sh make _test-integration-runner-coverage-native
+      - name: Upload runner-kernel verification evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: zig-verification-runner-kernel
+          path: |
+            coverage/zig
+            .tmp/verification-results/runner-kernel
+            .tmp/verification-timings/runner-kernel.json
+          if-no-files-found: error
+
+  zig-coverage-grade:
+    runs-on: ubuntu-latest
+    needs: [zig-unit-coverage, zig-integration-shard, zig-runner-kernel]
+    container:
+      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: zig-verification-*
+          path: .
+          merge-multiple: true
+      - name: Validate provenance and grade the complete coverage union
+        run: |
+          python3 scripts/check_verification_graph.py validate --output .tmp/verification-graph.json
+          make _test-integration-grade
+          make _test-integration-timing
       - name: Publish Zig coverage summary
         if: always()
         run: |
           test -s .tmp/zig-coverage.txt || exit 0
-          coverage="$(sed -n 's/^zig_line_coverage_pct=//p' .tmp/zig-coverage.txt)"
-          minimum="$(sed -n 's/^zig_line_coverage_min_pct=//p' .tmp/zig-coverage.txt)"
           {
-            echo "## Zig coverage"
-            echo
-            echo "| Measured | Required |"
-            echo "| ---: | ---: |"
-            echo "| ${coverage}% | ${minimum}% |"
+            cat .tmp/zig-coverage.txt
+            printf '\n### Verification concurrency\n\n```json\n'
+            cat .tmp/verification-results/timing-summary.json
+            printf '```\n'
           } >> "$GITHUB_STEP_SUMMARY"
-      # The merged union only. Uploading the per-component kcov reports would let
-      # Codecov build its own union over its own denominator — counting the
-      # harness files and the inline `test {}` blocks this gate excludes — and
-      # the badge would read about two points above the number the gate
-      # enforced. This file is what `check_zig_coverage.py` published.
-      #
-      # Three uploads of that ONE file, one per product folder. Each flag
-      # carries a `paths` filter in codecov.yml, so Codecov scopes the same
-      # union three ways rather than re-measuring anything: the badges then
-      # publish exactly what the gate's own per-folder floors enforce. A single
-      # blended `zig` flag averaged three trees that move independently, which
-      # is the failure make/test.mk's per-folder floors exist to prevent.
-      - name: Upload zig agentsfleetd coverage to Codecov
+      - name: Upload agentsfleetd coverage to Codecov
         if: success()
         uses: codecov/codecov-action@v5
         with:
@@ -238,7 +194,7 @@ jobs:
           flags: zig-agentsfleetd
           disable_search: true
           fail_ci_if_error: true
-      - name: Upload zig runner coverage to Codecov
+      - name: Upload runner coverage to Codecov
         if: success()
         uses: codecov/codecov-action@v5
         with:
@@ -247,7 +203,7 @@ jobs:
           flags: zig-runner
           disable_search: true
           fail_ci_if_error: true
-      - name: Upload zig lib coverage to Codecov
+      - name: Upload library coverage to Codecov
         if: success()
         uses: codecov/codecov-action@v5
         with:
@@ -256,7 +212,7 @@ jobs:
           flags: zig-lib
           disable_search: true
           fail_ci_if_error: true
-      - name: Upload Zig coverage report
+      - name: Upload merged Zig coverage report
         if: success()
         uses: actions/upload-artifact@v6
         with:
@@ -264,11 +220,6 @@ jobs:
           path: coverage/zig/merged
           if-no-files-found: error
           retention-days: 14
-      # The datastores were booted on the host by this job, not by a service
-      # block Actions tears down for us, so this job owns stopping them.
-      - name: Stop services
-        if: always()
-        run: docker compose down
 
   test-unit-cli:
     runs-on: ubuntu-latest
@@ -391,7 +342,14 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    needs: [test-unit-agentsfleetd, test-unit-agentsfleet-runner, test-unit-agentsfleet-lib, test-coverage-zig, test-unit-cli, test-unit-website, test-unit-app, test-unit-design-system, bundle-size-website, bundle-size-app]
+    needs: [zig-coverage-grade, test-unit-cli, test-unit-website, test-unit-app, test-unit-design-system, bundle-size-website, bundle-size-app]
     steps:
       - name: Preserve legacy test check name
         run: echo "All test lanes passed"
+
+  test-integration:
+    runs-on: ubuntu-latest
+    needs: [zig-coverage-grade]
+    steps:
+      - name: Preserve required integration check without re-executing a root
+        run: echo "The same-run integration shards and coverage union passed"

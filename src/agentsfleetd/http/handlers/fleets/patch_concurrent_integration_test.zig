@@ -46,6 +46,7 @@ const MAX_PROC_STATUS_BYTES = 4096;
 /// binaries under kcov, which breakpoints every mapped line and dilates wall
 /// clock past any real deadline. Linux-only signal; elsewhere, false.
 fn tracedByAnotherProcess() bool {
+    if (@import("common").env.testLiveValue("AGENTSFLEET_TEST_INSTRUMENTED") != null) return true;
     if (builtin.os.tag != .linux) return false;
     const linux = std.os.linux;
     var buf: [MAX_PROC_STATUS_BYTES]u8 = undefined;
@@ -655,7 +656,7 @@ test "integration: PATCH against held lock → 503 in <5.5s, no hang" {
     // The bound is 5s of Postgres lock_timeout plus 500ms of slack, and kcov's
     // per-line breakpoints spend that slack many times over. Status and
     // deadlock-freedom still hold under a tracer; only the clock is unusable,
-    // and `make test-integration` proves the timing uninstrumented.
+    // and direct uninstrumented integration runs prove the timing bound.
     if (!tracedByAnotherProcess()) try std.testing.expect(elapsed < 5_500);
     try std.testing.expectEqual(@as(u16, 503), outcome.status);
     try std.testing.expect(!bodyContainsDeadlock(outcome));

@@ -52,6 +52,9 @@ def run_gate(
     required_roots: list[str] | None = None,
     min_files: int | None = None,
     min_lines: int | None = None,
+    integration_shards: list[str] | None = None,
+    lifecycle_shard: str | None = None,
+    expected_integration_shards: int = 0,
 ) -> tuple[int, str, str]:
     """Invoke main() and capture (exit code, stdout, stderr)."""
     argv = ["--coverage-dir", str(root), "--min-pct", str(min_pct),
@@ -61,6 +64,11 @@ def run_gate(
         argv += ["--component", name]
     for name in required or []:
         argv += ["--require-component", name]
+    for name in integration_shards or []:
+        argv += ["--integration-shard", name]
+    if lifecycle_shard is not None:
+        argv += ["--lifecycle-shard", lifecycle_shard]
+    argv += ["--expected-integration-shards", str(expected_integration_shards)]
     for pair in folder_floors or []:
         argv += ["--folder-floor", pair]
     for pair in folder_targets or []:
@@ -188,6 +196,72 @@ class ComponentDropout(unittest.TestCase):
             code, _, err = run_gate(root, ["lib", "runner"], 50.0)
             self.assertEqual(code, 1)
             self.assertIn("no non-empty cobertura.xml", err)
+
+    def test_required_component_absent_from_inputs_fails_the_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "lib", {"small.zig": [(1, 1)]})
+            code, _, err = run_gate(root, ["lib"], 0.0, required=["lib", "runner"])
+            self.assertEqual(code, 1)
+            self.assertIn("runner", err)
+
+
+class IntegrationShardCompleteness(unittest.TestCase):
+    def test_sharded_coverage_preserves_logical_component_count(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "unit", {"src/agentsfleetd/a.zig": [(1, 1)]})
+            write_component(root, "integration-shard-0", {"src/agentsfleetd/b.zig": [(1, 1)]})
+            write_component(root, "integration-shard-1", {"src/agentsfleetd/c.zig": [(1, 1)]})
+            write_component(root, "lifecycle", {"src/agentsfleetd/d.zig": [(1, 1)]})
+            code, _, err = run_gate(
+                root,
+                ["unit", "lifecycle"],
+                100.0,
+                required=["unit", "integration", "lifecycle"],
+                integration_shards=["integration-shard-0", "integration-shard-1"],
+                lifecycle_shard="lifecycle",
+                expected_integration_shards=3,
+            )
+            self.assertEqual(code, 0, err)
+            summary = read_summary(root)
+            self.assertEqual("3", summary["zig_components_total"])
+            self.assertEqual("3", summary["zig_integration_shards_expected"])
+            self.assertEqual("3", summary["zig_integration_shards_collected"])
+
+    def test_missing_or_empty_shard_fails_before_rate_grading(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "unit", {"src/agentsfleetd/a.zig": [(1, 1)]})
+            write_component(root, "integration-shard-0", {})
+            code, _, err = run_gate(
+                root,
+                ["unit"],
+                0.0,
+                required=["unit", "integration"],
+                integration_shards=["integration-shard-0"],
+                expected_integration_shards=2,
+            )
+            self.assertEqual(code, 1)
+            self.assertIn("shard count mismatch", err)
+
+    def test_empty_lifecycle_shard_is_always_required(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_component(root, "unit", {"src/agentsfleetd/a.zig": [(1, 1)]})
+            write_component(root, "integration-shard-0", {"src/agentsfleetd/b.zig": [(1, 1)]})
+            write_component(root, "lifecycle", {})
+            code, _, err = run_gate(
+                root,
+                ["unit", "lifecycle"],
+                0.0,
+                required=["unit", "integration"],
+                integration_shards=["integration-shard-0"],
+                lifecycle_shard="lifecycle",
+                expected_integration_shards=2,
+            )
+            self.assertEqual(code, 1)
+            self.assertIn("required components contributed no measured lines: lifecycle", err)
 
 
 class TestBodiesExcluded(unittest.TestCase):

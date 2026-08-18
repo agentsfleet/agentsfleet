@@ -1,0 +1,22 @@
+FROM ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r4 AS zig
+
+FROM ubuntu:24.04 AS kcov-build
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        binutils-dev ca-certificates cmake g++ git libcurl4-openssl-dev \
+        libdw-dev libelf-dev libiberty-dev libssl-dev make python3 zlib1g-dev \
+    && git clone https://github.com/SimonKagstrom/kcov.git /src/kcov \
+    && cd /src/kcov \
+    && git checkout a39874f938ce13f7a65f253120d1ec946b349ffe \
+    && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build build --parallel \
+    && cmake --install build
+
+FROM ubuntu:24.04
+COPY --from=zig /opt/zig /opt/zig
+COPY --from=kcov-build /usr/local/bin/kcov /usr/local/bin/kcov
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        binutils bubblewrap ca-certificates git libcurl4 libdw1t64 libssl3 make python3 \
+    && rm -rf /var/lib/apt/lists/*
+ENV PATH=/opt/zig:${PATH}

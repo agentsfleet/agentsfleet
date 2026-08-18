@@ -17,10 +17,11 @@ compose those graphs. They do not rebuild a component's import list.
 | `src/lib/tests.zig` | shared-library barrel (`test-lib`) | `build.zig` |
 | `src/lib/logging/mod.zig` | logging named module (`test-lib`) | `build.zig` |
 | `src/lib/call_deadline/call_deadline.zig` | call-deadline named module (`test-lib`) | `build.zig` |
+| `src/lib/s3/r2.zig` | object-store named module (`test-s3`) | `build.zig` |
 | `src/runner/tests.zig` | runner unit (`test`) | `build_runner.zig` |
 | `src/runner/sandbox_integration_test.zig` | runner integration (`test-integration`) | `build_runner.zig` |
 
-Eight roots, not three. Two of them — the logging and call-deadline entries —
+Nine roots, not three. Three of them — logging, call-deadline, and object-store —
 are production module roots whose own `test` block doubles as the lane root, so
 they carry imports the module needs rather than an aggregate list. The runner's
 integration root is likewise a test file that force-imports three siblings, not
@@ -36,9 +37,34 @@ credentials. Its Linux kernel tests remain separate from daemon integration.
 ## Public lanes
 
 `make test-unit-agentsfleetd` runs only the daemon unit root.
-`make test-integration` prepares isolated services once and runs the daemon
-integration root. Component selectors reuse the same root with narrower
-environment configuration.
+`make test-unit-all` runs every unit owner once under coverage; it does not
+compile or execute either integration root. `make test-integration` is the sole
+owner of integration execution. It reuses provenance-matched unit reports,
+executes the runner-kernel root once under coverage, executes deterministic
+daemon shards against disjoint runtime state, and grades the final union.
+Component selectors still reuse the daemon root with narrower environment
+configuration, but they are diagnostic commands rather than the canonical gate.
+
+`scripts/check_verification_graph.py` derives root registration from
+`zig build list-tests` in both build graphs. Every root has one unit or
+integration owner.
+The graph digest, source revision (including uncommitted files), Zig toolchain,
+execution environment class, report digest, shard index/count, and isolation key
+travel with each result manifest. Missing, stale, tampered, duplicate, or
+wrong-environment evidence is rejected before coverage is graded.
+
+The daemon integration binary uses a custom runtime runner. FNV-1a over each
+compiler-registered test name assigns normal tests across four shards; changing
+the configured shard count rebalances work without changing membership. The
+fifth shard is reserved for the process-global boot → SIGTERM → drain proof.
+Preflight compares every runtime `--list-selected` shard with unsharded compiler
+discovery, rejecting omissions, duplicates, or an empty shard.
+
+Local shards use separate Compose project names and derived PostgreSQL, Redis,
+QStash, certificate, and HTTP-port allocations. CI gives each matrix shard a
+separate runner and records a unique worker isolation key. The aggregate local
+target rejects shared `TEST_INFRA=provided`, because concurrent shards must
+never drop or flush the same service. Every owner has a bounded timeout.
 
 `make memleak` builds and leak-gates the daemon, runner, and shared-library unit
 binaries concurrently. The Zig allocator is blocking on macOS. The `leaks`
@@ -48,7 +74,7 @@ after the component lanes converge.
 
 ## Coverage
 
-`make test-coverage-zig` installs and runs nine component binaries under kcov:
+The complete verification graph produces nine logical kcov components:
 
 - `agentsfleetd` — daemon unit tests;
 - `runner` — runner unit tests;
@@ -58,24 +84,41 @@ after the component lanes converge.
 - `s3` — object-store tests;
 - `runner_integration` — the runner integration suite, whose worker-pool tests
   fork the real stub child on Linux and macOS alike;
-- `integration` — the daemon integration suite, against live datastores, serially;
+- `integration` — four deterministic daemon shards against isolated live datastores;
 - `lifecycle` — the boot to SIGTERM to drain proof, alone in its own process
   against live datastores.
 
-`scripts/check_zig_coverage.py` unions those reports — a line counts as covered
+`make test-coverage-zig` produces the first six unit components only.
+`make test-integration` produces the last three and then invokes
+`scripts/check_zig_coverage.py` to union all reports — a line counts as covered
 when any component executed it, because the unit lanes and the integration
 suites reach largely disjoint code — publishes the union to
 `coverage/zig/merged`, and enforces `ZIG_COVERAGE_MIN_PCT` plus one floor per
 product folder.
 
-`lifecycle` measures the only test that drives the real `serve.run`. It runs
-last and costs a rebuild: the integration binary takes its test filter at build
-time, and this test cannot share a process with the rest of the suite, since it
+`lifecycle` measures the only test that drives the real `serve.run`. Its reserved
+runtime shard contains that test alone; no second filtered build is needed. The
+test cannot share a process with the rest of the suite, since it
 installs signal handlers, binds a port and moves process-global state the other
 tests read. Before it existed, `cmd/serve.zig` — the daemon's entire boot
-sequence — measured 0% of 116 lines. Both lanes that run it, this one and
-`make memleak`, grep its run marker: a test that skipped still yields a valid
-report, describing a process that started and stopped.
+sequence — measured 0% of 116 lines. Both coverage and `make memleak` grep its
+run marker: a test that skipped still yields a valid report, describing a
+process that started and stopped.
+
+### Continuous Integration ownership
+
+`.github/workflows/test.yml` is the only pull-request and main-push owner. Unit
+coverage, five daemon shards, and the privileged runner-kernel lane upload
+same-run artifacts. A final job downloads them, regenerates the graph, validates
+manifest and report provenance, and grades the union. Required checks named
+`test` and `test-integration` both depend on that final job; the latter is a
+compatibility aggregate and executes no root. The legacy workflow is manual and
+also executes no root.
+
+Critical-path timing evidence compares at least three baseline and candidate
+runs for cold and warm cache states on the same source and image. The comparison
+fails unless both local and CI median wall time improve by at least 35%; unlike
+source/image samples are not comparable evidence.
 
 ### The denominator holds shipped code only
 
@@ -220,7 +263,8 @@ The checker writes these keys to `.tmp/zig-coverage.txt` for the Continuous
 Integration (CI) job summary: `zig_line_coverage_pct`,
 `zig_line_coverage_min_pct`, `zig_line_coverage_target_pct`,
 `zig_line_coverage_gap_pts`, `zig_measured_files`, `zig_measured_lines`,
-`zig_components_measured`, `zig_components_total`, `zig_components_empty`, and
+`zig_components_measured`, `zig_components_total`, `zig_components_empty`,
+`zig_integration_shards_expected`, `zig_integration_shards_collected`, and
 one `zig_folder_pct_*`, `zig_folder_min_pct_*`, `zig_folder_target_pct_*` and
 `zig_folder_gap_pts_*` per product folder.
 

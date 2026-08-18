@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Self-tests for check_zig_test_reachability.py — listing parse and CLI dispatch.
 
-Covers the `zig build list-tests` wire format (each TEST line carries its own root,
-so concurrently-run lanes cannot misfile a test), candidate selection, and the
---check/--count/--counts-out surface. Reachability logic lives in the sibling
-check_zig_test_reachability_test.py.
+Covers the `zig build list-tests` wire format (each TEST line carries its own lane
+and root, so concurrently-run lanes cannot misfile a test), candidate selection,
+and the --check/--count/--counts-out surface. Reachability logic lives in the
+sibling check_zig_test_reachability_test.py.
 """
 
 import contextlib
@@ -25,8 +25,8 @@ from reachability_test_support import (  # noqa: E402
 class TestRegisteredNames(SubprocessFakeCase):
     def test_each_test_line_carries_its_own_root(self):
         self.fake_subprocess(
-            FakeProc("ROOT\tsrc/agentsfleetd\nTEST\tsrc/agentsfleetd\tdb.pool.test.a\n"),
-            FakeProc("ROOT\tsrc/runner\nTEST\tsrc/runner\tengine.test.b\n"),
+            FakeProc("ROOT\tagentsfleetd-tests\tsrc/agentsfleetd\nTEST\tagentsfleetd-tests\tsrc/agentsfleetd\tdb.pool.test.a\n"),
+            FakeProc("ROOT\tagentsfleet-runner-tests\tsrc/runner\nTEST\tagentsfleet-runner-tests\tsrc/runner\tengine.test.b\n"),
         )
         groups = checker.registered_names()
         self.assertEqual(groups["src/agentsfleetd"], {"db.pool.test.a"})
@@ -38,12 +38,12 @@ class TestRegisteredNames(SubprocessFakeCase):
         would misfile it and silently flip a file's live/dead verdict."""
         self.fake_subprocess(
             FakeProc(
-                "ROOT\tsrc/lib\n"
-                "TEST\tsrc/runner\tengine.test.b\n"   # runner's line lands mid-lib block
-                "ROOT\tsrc/runner\n"
-                "TEST\tsrc/lib\tclock.test.a\n"
+                "ROOT\tagentsfleet-lib-tests\tsrc/lib\n"
+                "TEST\tagentsfleet-runner-tests\tsrc/runner\tengine.test.b\n"
+                "ROOT\tagentsfleet-runner-tests\tsrc/runner\n"
+                "TEST\tagentsfleet-lib-tests\tsrc/lib\tclock.test.a\n"
             ),
-            FakeProc("ROOT\tsrc/agentsfleetd\n"),
+            FakeProc("ROOT\tagentsfleetd-tests\tsrc/agentsfleetd\n"),
         )
         groups = checker.registered_names()
         self.assertEqual(groups["src/lib"], {"clock.test.a"})
@@ -52,16 +52,16 @@ class TestRegisteredNames(SubprocessFakeCase):
     def test_two_binaries_sharing_a_root_accumulate(self):
         """The runner's unit and integration lanes both root at src/runner."""
         self.fake_subprocess(
-            FakeProc("ROOT\tsrc/runner\nTEST\tsrc/runner\ta.test.one\n"),
-            FakeProc("ROOT\tsrc/runner\nTEST\tsrc/runner\tb.test.two\n"),
+            FakeProc("ROOT\tagentsfleet-runner-tests\tsrc/runner\nTEST\tagentsfleet-runner-tests\tsrc/runner\ta.test.one\n"),
+            FakeProc("ROOT\tagentsfleet-runner-integration-tests\tsrc/runner\nTEST\tagentsfleet-runner-integration-tests\tsrc/runner\tb.test.two\n"),
         )
         self.assertEqual(checker.registered_names()["src/runner"], {"a.test.one", "b.test.two"})
 
     def test_a_lane_registering_nothing_still_records_its_root(self):
         """Otherwise a silently-empty binary looks like 'no candidates under it'."""
         self.fake_subprocess(
-            FakeProc("ROOT\tsrc/lib\n"),
-            FakeProc("ROOT\tsrc/runner\nTEST\tsrc/runner\tz.test.z\n"),
+            FakeProc("ROOT\tagentsfleet-lib-tests\tsrc/lib\n"),
+            FakeProc("ROOT\tagentsfleet-runner-tests\tsrc/runner\nTEST\tagentsfleet-runner-tests\tsrc/runner\tz.test.z\n"),
         )
         groups = checker.registered_names()
         self.assertIn("src/lib", groups)

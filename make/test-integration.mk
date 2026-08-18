@@ -2,7 +2,7 @@
 # TEST-INTEGRATION — all integration tests (Zig in-process, DB, Redis)
 # =============================================================================
 
-.PHONY: test-integration test-integration-db test-integration-redis test-integration-kernel _ensure-test-infra _reset-test-db
+.PHONY: test-integration test-integration-db test-integration-redis test-integration-kernel _ensure-test-infra _reset-test-db _test-integration-filtered _test-integration-build _test-integration-runner-coverage _test-integration-shard _test-integration-grade
 
 # The runner's own real-process integration lane (build_runner.zig, no datastore):
 # it forks real children and asserts real KERNEL behaviour — the env allowlist +
@@ -21,6 +21,10 @@
 # no false green. In production the runner's cgroup subtree is delegated by the
 # init system (systemd Delegate=) / container runtime; this script is never deployed.
 RUNNER_CI_IMAGE ?= ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r4
+RUNNER_COVERAGE_IMAGE ?= agentsfleet-runner-coverage:0.16.0-r4-kcov43
+RUNNER_INTEGRATION_TEST_BIN ?= zig-out/bin/agentsfleet-runner-integration-tests
+RUNNER_COVERAGE_ARCH ?= $(shell uname -m | sed 's/arm64/aarch64/;s/x86_64/x86_64/')
+RUNNER_COVERAGE_PLATFORM ?= $(shell uname -m | sed 's/arm64/arm64/;s/x86_64/amd64/')
 
 test-integration-kernel:  ## Run the runner's real-process kernel integration tests (env/kill-tree + seccomp/Landlock/cgroup); native on Linux, auto-containerized on macOS
 ifeq ($(shell uname),Darwin)
@@ -250,7 +254,7 @@ test-integration-redis: $(TEST_STATE_DEP)  ## Run Redis-backed integration suite
 	  zig build test-integration $(ZIG_TEST_FILTER_ARG)
 	@echo "✓ [agentsfleetd] Redis integration tests passed"
 
-test-integration: $(TEST_STATE_DEP)  ## Run worker integration tests against real DB + Redis
+_test-integration-filtered: $(TEST_STATE_DEP)
 	@db_url="$$TEST_DATABASE_URL"; \
 	if [ -z "$$db_url" ]; then db_url="$(TEST_DATABASE_URL_LOCAL)"; fi; \
 	case "$$db_url" in \
@@ -300,3 +304,39 @@ test-integration: $(TEST_STATE_DEP)  ## Run worker integration tests against rea
 	zig build test-integration $(ZIG_TEST_FILTER_ARG) $(if $(SEED),--seed $(SEED),)
 	@echo "✓ [agentsfleetd] Full integration suite passed"
 	@echo "✓ [agentsfleetd] All integration tests passed"
+
+test-integration:  ## Run the single instrumented integration graph in isolated shards
+	@set -eu; \
+	if [ -n "$(strip $(TEST_FILTER))" ]; then \
+	  $(MAKE) --no-print-directory _test-integration-filtered; \
+	else \
+	  command -v kcov >/dev/null 2>&1 || { echo "✗ kcov is required for canonical integration verification"; exit 1; }; \
+	  $(MAKE) --no-print-directory _test-integration-build; \
+	  python3 scripts/check_verification_graph.py shards --count "$(INTEGRATION_SHARD_COUNT)" \
+	    --binary zig-out/bin/agentsfleetd-integration-tests --output "$(VERIFICATION_GRAPH_FILE)"; \
+	  $(MAKE) --no-print-directory _test-integration-isolation; \
+	  rm -rf "$(VERIFICATION_TIMING_DIR)"; mkdir -p "$(VERIFICATION_TIMING_DIR)"; \
+	  if ! python3 scripts/check_verification_graph.py validate-result \
+	    --graph "$(VERIFICATION_GRAPH_FILE)" --manifest "$(VERIFICATION_RESULTS_DIR)/unit/manifest.json" \
+	    --execution unit --environment-label unit >/dev/null 2>&1; then \
+	    echo "→ [zig] Unit coverage evidence is absent or stale; rebuilding its owner once..."; \
+	    $(MAKE) --no-print-directory test-coverage-zig; \
+	  fi; \
+	  pids=""; failed=0; \
+	  python3 scripts/run_with_timeout.py --seconds "$(INTEGRATION_SHARD_TIMEOUT_SECONDS)" \
+	    --label runner-kernel --timing-output "$(VERIFICATION_TIMING_DIR)/runner-kernel.json" \
+	    -- $(MAKE) --no-print-directory _test-integration-runner-coverage & pids="$$pids $$!"; \
+	  index=0; while [ "$$index" -lt "$(INTEGRATION_SHARD_COUNT)" ]; do \
+	    python3 scripts/run_with_timeout.py --seconds "$(INTEGRATION_SHARD_TIMEOUT_SECONDS)" \
+	      --label "integration-shard-$$index" \
+	      --timing-output "$(VERIFICATION_TIMING_DIR)/integration-shard-$$index.json" \
+	      -- $(MAKE) --no-print-directory \
+	      _test-integration-shard SHARD_INDEX="$$index" & pids="$$pids $$!"; \
+	    index=$$((index + 1)); \
+	  done; \
+	  for pid in $$pids; do wait "$$pid" || failed=1; done; \
+	  [ "$$failed" -eq 0 ] || { echo "✗ one or more integration owners failed"; exit 1; }; \
+	  $(MAKE) --no-print-directory _test-integration-grade; \
+	  $(MAKE) --no-print-directory _test-integration-timing; \
+	  echo "✓ [zig] All integration owners passed exactly once"; \
+	fi

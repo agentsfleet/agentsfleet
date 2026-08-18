@@ -159,6 +159,25 @@ class TestMemleakLaneBinaries(unittest.TestCase):
 
 
 class TestLocalCost(unittest.TestCase):
+    def test_integration_coverage_rejects_swallowed_child_failures(self) -> None:
+        verification = (ROOT / "make/test-verification.mk").read_text(encoding="utf-8")
+        self.assertEqual(
+            verification.count("0 failed\\.$$' \"$$log\""),
+            2,
+            "both daemon shards and runner-kernel must inspect the Zig summary;"
+            " kcov can return zero after its child reports a failed test",
+        )
+        self.assertIn("AGENTSFLEET_TEST_INSTRUMENTED=1", verification)
+
+    def test_canonical_integration_propagates_every_setup_and_grade_failure(self) -> None:
+        integration = (ROOT / "make/test-integration.mk").read_text(encoding="utf-8")
+        recipe = integration.split("test-integration:  ##", 1)[1]
+        self.assertIn("@set -eu;", recipe)
+        self.assertLess(
+            recipe.index("_test-integration-grade"),
+            recipe.index("All integration owners passed exactly once"),
+        )
+
     def test_clean_removes_configured_cache(self) -> None:
         dev = (ROOT / "make/dev.mk").read_text(encoding="utf-8")
         self.assertIn('rm -rf "$(ZIG_LOCAL_CACHE_DIR)"', dev)
@@ -171,9 +190,10 @@ class TestLocalCost(unittest.TestCase):
             "TEST_STATE_DEP := $(if $(KEEP_TEST_STATE),_ensure-test-infra,_reset-test-db)",
             integration,
         )
-        # All three public integration targets share the switch; none may keep a
-        # hard-wired reset that the opt-out silently fails to cover.
-        self.assertEqual(integration.count("$(TEST_STATE_DEP)  ##"), 3)
+        # The two narrowed diagnostic targets share the switch; canonical
+        # verification owns isolated shard state and deliberately ignores this
+        # diagnostic-only opt-out.
+        self.assertEqual(integration.count("$(TEST_STATE_DEP)  ##"), 2)
         self.assertNotIn(": _reset-test-db  ##", integration)
 
 
