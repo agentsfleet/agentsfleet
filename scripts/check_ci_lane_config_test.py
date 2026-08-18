@@ -103,6 +103,18 @@ class TestVerificationDag(unittest.TestCase):
         self.assertIn("INTEGRATION_SHARD_ISOLATION_KEY", body)
         self.assertIn("${{ matrix.shard }}", body)
 
+    def test_shard_container_returns_coverage_to_the_host_user(self) -> None:
+        body = read_workflow("test.yml")
+        self.assertIn('-e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)"', body)
+        self.assertIn(
+            r'chown -R \"\${HOST_UID}:\${HOST_GID}\" coverage/zig',
+            body,
+        )
+        self.assertIn(
+            '.tmp/verification-results/integration-shard-${{ matrix.shard }}',
+            body,
+        )
+
 
 # Flags that widen what a job holds beyond the default container posture.
 GRANT_FLAGS = ("--privileged", "--security-opt", "--cap-add")

@@ -95,18 +95,23 @@ jobs:
             --security-opt seccomp=unconfined --cap-add=SYS_PTRACE \
             -v "${{ github.workspace }}":"${{ github.workspace }}" \
             -w "${{ github.workspace }}" \
+            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
             -e TEST_INFRA=provided \
             -e TEST_DATABASE_URL="postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb?sslmode=disable" \
             -e TEST_REDIS_TLS_URL="rediss://:agentsfleet@localhost:6379" \
             -e AGENTSFLEET_QSTASH_LIVE_URL="http://localhost:8080" \
             -e INTEGRATION_SHARD_ISOLATION_KEY="ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}" \
             ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4@sha256:b27550eb4910e77e532f061a7c1f3453815cb275dd188bdcc7db0448dd656948 \
-            sh -c 'git config --global --add safe.directory "${{ github.workspace }}" && \
+            sh -c "set +e; \
+              git config --global --add safe.directory \"${{ github.workspace }}\" && \
               make _test-integration-daemon-build && \
               python3 scripts/check_verification_graph.py shards --count 5 \
                 --binary zig-out/bin/agentsfleetd-integration-tests \
                 --output .tmp/verification-graph.json && \
-              make _test-integration-shard SHARD_INDEX=${{ matrix.shard }}'
+              make _test-integration-shard SHARD_INDEX=${{ matrix.shard }}; rc=\$?; \
+              chown -R \"\${HOST_UID}:\${HOST_GID}\" coverage/zig \
+                .tmp/verification-results/integration-shard-${{ matrix.shard }} 2>/dev/null || true; \
+              exit \$rc"
       - name: Migrate from empty as a non-superuser
         if: matrix.shard == 0
         run: make check-migrate-unprivileged
