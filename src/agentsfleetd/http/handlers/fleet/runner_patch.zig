@@ -90,7 +90,19 @@ fn applySelfTestRequest(hx: Hx, conn: *pg.Conn, runner_id: []const u8, current: 
 /// Stamp the ask, returning the instant recorded. A null row means the guard
 /// rejected the write, so the row is re-read to say WHICH guard: a runner that
 /// vanished and one revoked mid-request are different answers to the operator.
-fn requestSelfTest(conn: *pg.Conn, runner_id: []const u8, now_ms: i64) !i64 {
+///
+/// `pub` for its tests, and for nothing else — no production caller lives
+/// outside this file. Both failure arms need the row to disagree with what the
+/// handler already read, which no single HTTP request can arrange, so over the
+/// route they are unreachable and were asserted by nothing. Called directly
+/// they need no race at all: a row deleted before the call yields `RunnerGone`
+/// and one revoked before it yields `RevokedRace`, deterministically. The
+/// alternative was staging a flaky race to reach a deterministic branch.
+///
+/// Widening this costs no invariant: it takes a connection and an id, returns
+/// an instant, and every authorization decision was made before the caller
+/// reached it.
+pub fn requestSelfTest(conn: *pg.Conn, runner_id: []const u8, now_ms: i64) !i64 {
     var q = PgQuery.from(conn.query(sql.PATCH_RUNNER_SELFTEST_REQUEST, .{
         runner_id,
         now_ms,
