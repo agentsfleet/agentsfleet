@@ -64,7 +64,14 @@ pub fn innerPatchFleetRunner(hx: Hx, req: *httpz.Request, runner_id: []const u8)
 /// a verdict: the daemon picks the ask up on its next heartbeat and reports the
 /// result on a later one, so blocking here would hang the dashboard on exactly
 /// the offline host an operator most wants to test.
-fn applySelfTestRequest(hx: Hx, conn: *pg.Conn, runner_id: []const u8, current: protocol.AdminState) void {
+///
+/// `pub` for its tests, and for nothing else — no production caller lives
+/// outside this file. Each failure arm maps a `requestSelfTest` refusal onto
+/// the HTTP reply, and staging a refusal takes a row (or a connection)
+/// arranged to disagree with `current`, which no single request over the
+/// route can do. Widening it costs no invariant: authorization, body shape,
+/// and id shape were all decided before any caller reaches it.
+pub fn applySelfTestRequest(hx: Hx, conn: *pg.Conn, runner_id: []const u8, current: protocol.AdminState) void {
     if (current == .revoked) {
         hx.fail(ec.ERR_RUN_SELFTEST_REFUSED, S_REVOKED_NO_SELFTEST);
         return;
