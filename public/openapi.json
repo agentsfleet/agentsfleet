@@ -6868,7 +6868,7 @@
       "patch": {
         "operationId": "patch_fleet_runner",
         "summary": "Administer a fleet runner",
-        "description": "Platform-admin mutation on a single runner. The body carries exactly one of `action` or `assigned_policy`. `action` moves the admin state: `cordon` to cordoned, `drain` to draining, `revoke` to revoked. Revoked is terminal; a revoked runner cannot transition back. `assigned_policy` re-assigns the runner's policy, and the host picks it up on its next heartbeat. Sending the same policy again changes nothing and records no event.",
+        "description": "Platform-admin mutation on a single runner. The body carries exactly one of `action` or `assigned_policy`. `action` moves the admin state: `cordon` to cordoned, `drain` to draining, `revoke` to revoked. Revoked is terminal; a revoked runner cannot transition back. `self_test` moves no state. It records a request for the runner to test its own sandbox. The host picks the request up on its next heartbeat and answers on a later one. The reply is the recorded request, never a verdict. A revoked runner refuses it with 409 `UZ-RUN-018`, since it will never heartbeat again. `assigned_policy` re-assigns the runner's policy, and the host picks it up on its next heartbeat. Sending the same policy again changes nothing and records no event.",
         "tags": [
           "Fleet"
         ],
@@ -6894,11 +6894,12 @@
                 "properties": {
                   "action": {
                     "type": "string",
-                    "description": "The operator transition to apply.",
+                    "description": "The operator action to apply. The first three move the admin state; `self_test` records a sandbox self-test request and leaves the state alone.",
                     "enum": [
                       "cordon",
                       "drain",
-                      "revoke"
+                      "revoke",
+                      "self_test"
                     ]
                   },
                   "assigned_policy": {
@@ -6937,6 +6938,13 @@
                     },
                     "assigned_policy": {
                       "$ref": "#/components/schemas/RunnerAssignedPolicy",
+                      "x-stability": "stable"
+                    },
+                    "selftest_requested_at": {
+                      "type": "integer",
+                      "format": "int64",
+                      "nullable": true,
+                      "description": "Present on the `self_test` path only — epoch milliseconds the request was recorded. Age the pending state from this; the verdict itself arrives on a later heartbeat and is read from the runner, not from this reply.",
                       "x-stability": "stable"
                     }
                   }
@@ -8858,6 +8866,34 @@
           "allow_list_egress"
         ]
       },
+      "RunnerExtraBind": {
+        "type": "object",
+        "description": "One operator-assigned sandbox mount. Reported back by the runner's self-test as its own named check, so an operator can see which entry landed and which did not.",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Absolute host path. Bound with `-try` semantics — a path absent on this host is skipped rather than failing the lease, and shows up as a failed self-test check.",
+            "maxLength": 4096
+          },
+          "mode": {
+            "type": "string",
+            "description": "How the path is mounted. Omitted means `read_only`, so access never widens by omission. `read_write` is a real boundary widening. Tenant agent code can then modify host state outside its workspace, on every lease this runner takes. The runner page renders it as such.",
+            "default": "read_only",
+            "enum": [
+              "read_only",
+              "read_write"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "description": "The operator's reason for this entry, shown beside it on the runner page.",
+            "maxLength": 200
+          }
+        }
+      },
       "RunnerAssignedPolicy": {
         "type": "object",
         "description": "The policy assigned to one runner. agentsfleet delivers it to the host on enrollment and on every heartbeat. The host never declares its own policy.",
@@ -8887,6 +8923,14 @@
             "description": "Concurrent workers on the host. Clamped server-side into [1, 64]; the stored (clamped) value is echoed back.",
             "minimum": 1,
             "maximum": 64
+          },
+          "extra_binds": {
+            "type": "array",
+            "description": "Host paths bound into every sandbox this runner builds, in addition to the daemon-owned baseline. The list may only append. It cannot remove or re-mode a baseline path, so no assignment can un-bind the resolver. Absolute paths only. A relative path, a traversal, or one overlapping the baseline or the sensitive set is refused. A refused entry fails the whole list closed rather than applying part of it. Omit the field to bind the baseline alone. At most 16 entries.",
+            "maxItems": 16,
+            "items": {
+              "$ref": "#/components/schemas/RunnerExtraBind"
+            }
           }
         }
       },
@@ -9060,6 +9104,63 @@
           }
         }
       },
+      "RunnerSelftestCheck": {
+        "type": "object",
+        "description": "One check's verdict. The same `{name, ok, detail}` triple `agentsfleet-runner doctor` speaks, so an operator reads one vocabulary across both surfaces.",
+        "required": [
+          "name",
+          "ok",
+          "detail"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The check's operator-facing name, drawn from a fixed vocabulary.",
+            "maxLength": 128
+          },
+          "ok": {
+            "type": "boolean",
+            "description": "Whether this check passed. A failed check is a result, not an error — the request that produced it succeeded."
+          },
+          "detail": {
+            "type": "string",
+            "description": "Prose cause, present even when the check passed. Drawn from a fixed vocabulary, never raw child output, so no token or environment value can reach it.",
+            "maxLength": 256
+          }
+        }
+      },
+      "RunnerSelftestReport": {
+        "type": "object",
+        "description": "One probe run. It runs inside a sandbox built by the same argv builder a lease uses, so the verdict describes real lease conditions. The tier and policy travel with the verdict rather than being read live. A result outlives the assignment that produced it, so a mismatch against the runner's current assignment renders as stale.",
+        "required": [
+          "checks",
+          "all_ok",
+          "sandbox_tier",
+          "network_policy"
+        ],
+        "properties": {
+          "checks": {
+            "type": "array",
+            "description": "The ordered per-check verdicts. At most 32.",
+            "maxItems": 32,
+            "items": {
+              "$ref": "#/components/schemas/RunnerSelftestCheck"
+            }
+          },
+          "all_ok": {
+            "type": "boolean",
+            "description": "Whether every check passed, decided by the daemon that ran them. Stored rather than derived so the runner list can filter on it."
+          },
+          "sandbox_tier": {
+            "type": "string",
+            "description": "The isolation tier the probe ran under, not necessarily the one assigned now."
+          },
+          "network_policy": {
+            "type": "string",
+            "description": "The network policy the probe ran under, not necessarily the one assigned now."
+          }
+        }
+      },
       "RunnerDetail": {
         "type": "object",
         "description": "A single runner as the operator plane reads it. Carries the summary fields (including the assigned-vs-achievable policy pair and the degraded verdict), a live-work snapshot, and lifetime counters from durable lease and event rows. The auth `token_hash` and stored auth state are never returned.",
@@ -9176,6 +9277,22 @@
             "type": "integer",
             "format": "int64",
             "description": "Leases the runner stopped renewing; the work was re-leased to another runner."
+          },
+          "selftest_requested_at": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "An operator's outstanding self-test ask, epoch milliseconds. Non-null means asked but not yet answered. The daemon clears it on the beat that reports the matching verdict, so this is the pending state itself."
+          },
+          "selftest_completed_at": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "When the stored verdict landed, epoch milliseconds. Null until a first report. A runner may hold a request with no result, or a result with no request — the startup probe, which no operator asked for."
+          },
+          "selftest": {
+            "$ref": "#/components/schemas/RunnerSelftestReport",
+            "nullable": true
           }
         }
       },

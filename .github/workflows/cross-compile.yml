@@ -47,7 +47,7 @@ jobs:
       # Pre-baked: alpine:3.21 + Zig + apk deps + x86_64-linux-gnu OpenSSL
       # static-link symlinks already in place. Multi-arch image; the linux/amd64
       # variant is auto-selected on the x86_64 runner.
-      image: ghcr.io/agentsfleet/ci-zig-alpine:0.16.0
+      image: ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r4
     steps:
       - uses: actions/checkout@v6
 
@@ -148,7 +148,7 @@ jobs:
             -v "$RUNNER_TEMP/zig-xcache-aarch64:/zig-cache" \
             -e ZIG_GLOBAL_CACHE_DIR=/zig-cache/global \
             -e ZIG_LOCAL_CACHE_DIR=/zig-cache/local \
-            ghcr.io/agentsfleet/ci-zig-alpine:0.16.0 \
+            ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r4 \
             sh -c '
               set -e
               cp -a /src/. /build

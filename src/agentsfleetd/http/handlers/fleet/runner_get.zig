@@ -43,6 +43,15 @@ const RunnerDetail = struct {
     leases_succeeded: i64,
     leases_failed: i64,
     leases_expired: i64,
+    /// An operator's outstanding ask; null when none is pending. Non-null means
+    /// asked-but-not-yet-answered — the daemon clears it on the beat that
+    /// reports the matching verdict.
+    selftest_requested_at: ?i64,
+    /// When the stored verdict landed; null until a first report.
+    selftest_completed_at: ?i64,
+    /// The latest verdict, or null for a runner that has never self-tested —
+    /// which the page renders differently from "tested and found no checks".
+    selftest: ?protocol.SelftestReport,
 };
 
 pub fn innerGetFleetRunner(hx: Hx, runner_id: []const u8) void {
@@ -97,10 +106,22 @@ fn fetchDetail(conn: anytype, alloc: std.mem.Allocator, runner_id: []const u8, n
     const leases_failed = try row.get(i64, 11);
     const leases_expired = try row.get(i64, 12);
     const tier_raw = try row.get([]u8, 2);
-    // Columns 13–18: the shared M148 policy/verdict tail (same order as the
+    // Columns 13–19: the shared M148 policy/verdict tail (same order as the
     // list statement), decoded by the same helper so the two reads agree.
     const policy = try runner_row.readPolicyColumns(alloc, row, tier_raw, 13);
     errdefer if (policy.degraded_reason) |r| alloc.free(r);
+
+    // Columns 20–25: the self-test slot. The detail read carries it; the list
+    // read does not, because a per-check verdict list is a page, not a cell.
+    const selftest_requested_at = try row.get(?i64, 20);
+    const selftest_completed_at = try row.get(?i64, 21);
+    const selftest = runner_row.decodeSelftest(
+        alloc,
+        try row.get(?[]u8, 22),
+        try row.get(?bool, 23),
+        try row.get(?[]u8, 24),
+        try row.get(?[]u8, 25),
+    );
 
     const id = try alloc.dupe(u8, try row.get([]u8, 0));
     errdefer alloc.free(id);
@@ -128,6 +149,9 @@ fn fetchDetail(conn: anytype, alloc: std.mem.Allocator, runner_id: []const u8, n
         .leases_succeeded = leases_succeeded,
         .leases_failed = leases_failed,
         .leases_expired = leases_expired,
+        .selftest_requested_at = selftest_requested_at,
+        .selftest_completed_at = selftest_completed_at,
+        .selftest = selftest,
     };
 }
 

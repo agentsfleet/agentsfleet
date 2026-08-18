@@ -4,11 +4,11 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ExternalLinkIcon } from "lucide-react";
-import { Badge, Button, CopyButton } from "@agentsfleet/design-system";
+import { Alert, Badge, Button, CopyButton } from "@agentsfleet/design-system";
 import {
   SANDBOX_TIER_LABELS,
   type CapabilityReport,
-  type RunnerAdminAction,
+  type RunnerStateAction,
   type RunnerDetail,
   type RunnerListItem,
 } from "@/lib/api/runners";
@@ -18,15 +18,17 @@ import { presentErrorString } from "@/lib/errors";
 import {
   ACTION_CONFIG,
   DELETE_ACTION_CONFIG,
+  SELFTEST_ACTION_CONFIG,
   actionsFor,
   canDelete,
+  canSelftest,
 } from "../../components/RunnerListCells";
 import {
   RunnerActionConfirm,
   type RunnerActionConfirmTarget,
   type RunnerDeleteConfirmTarget,
 } from "../../components/RunnerDialogs";
-import { updateRunnerAdminStateAction, deleteRunnerAction } from "../../actions";
+import { updateRunnerAdminStateAction, deleteRunnerAction, requestRunnerSelftestAction } from "../../actions";
 import { DEGRADED_BADGE_LABEL, RunnerStatus } from "../../components/RunnerStatus";
 import {
   COPY_RUNNER_ID_LABEL,
@@ -67,17 +69,27 @@ function describeAchievable(cap: CapabilityReport): string {
 export function RunnerHeader({
   runner,
   grafanaHref,
+  canWrite,
 }: {
   runner: RunnerDetail;
   grafanaHref: string | null;
+  /** Whether this operator holds runner:write. Every mutating control is gated
+   * on it — the server actions refuse without the scope regardless, so a button
+   * a read-only operator can press is an error message pretending to be a
+   * feature. */
+  canWrite: boolean;
 }) {
   const router = useRouter();
   const [confirmAction, setConfirmAction] = useState<RunnerActionConfirmTarget>(null);
   const [confirmDelete, setConfirmDelete] = useState<RunnerDeleteConfirmTarget>(null);
   const [error, setError] = useState<string | null>(null);
+  // The self-test has its own error slot because it has no confirm dialog to
+  // carry one: `error` renders only inside RunnerActionConfirm, which stays
+  // closed for a self-test, so a shared slot would swallow the refusal.
+  const [selftestError, setSelftestError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
-  function requestAction(action: RunnerAdminAction) {
+  function requestAction(action: RunnerStateAction) {
     setError(null);
     setConfirmAction({ runner, action, ...ACTION_CONFIG[action] });
   }
@@ -95,6 +107,25 @@ export function RunnerHeader({
         return;
       }
       setConfirmAction(null);
+      router.refresh();
+    });
+  }
+
+  // No confirm step and no wait for a verdict: the request is recorded, the
+  // page re-reads, and the pending state renders from `selftest_requested_at`.
+  function runSelftest() {
+    setSelftestError(null);
+    startTransition(async () => {
+      const result = await requestRunnerSelftestAction(runner.id);
+      if (!result.ok) {
+        setSelftestError(
+          presentErrorString({
+            errorCode: result.errorCode,
+            message: result.error,
+            action: SELFTEST_ACTION_CONFIG.errorAction,
+          }),
+        );
+      }
       router.refresh();
     });
   }
@@ -132,22 +163,38 @@ export function RunnerHeader({
           <CopyButton value={runner.id} label={COPY_RUNNER_ID_LABEL} className="ml-md" />
         </nav>
         <div aria-label={RUNNER_ACTIONS_LABEL} className="flex flex-wrap items-center justify-end gap-sm">
-          <EditPolicyDialogDynamic
-            runnerId={runner.id}
-            current={runner.assigned_policy}
-            onSaved={() => router.refresh()}
-          />
-          {actionsFor(runner.admin_state).map((action) => (
+          {canWrite ? (
+            <EditPolicyDialogDynamic
+              runnerId={runner.id}
+              current={runner.assigned_policy}
+              onSaved={() => router.refresh()}
+            />
+          ) : null}
+          {canWrite && canSelftest(runner.admin_state) ? (
             <Button
-              key={action}
-              variant={ACTION_CONFIG[action].intent === "destructive" ? "destructive" : "outline"}
+              variant="outline"
               size="sm"
-              onClick={() => requestAction(action)}
+              disabled={runner.selftest_requested_at !== null}
+              onClick={runSelftest}
             >
-              {ACTION_CONFIG[action].label}
+              {runner.selftest_requested_at !== null
+                ? SELFTEST_ACTION_CONFIG.pendingLabel
+                : SELFTEST_ACTION_CONFIG.label}
             </Button>
-          ))}
-          {canDelete(runner.admin_state) ? (
+          ) : null}
+          {canWrite
+            ? actionsFor(runner.admin_state).map((action) => (
+                <Button
+                  key={action}
+                  variant={ACTION_CONFIG[action].intent === "destructive" ? "destructive" : "outline"}
+                  size="sm"
+                  onClick={() => requestAction(action)}
+                >
+                  {ACTION_CONFIG[action].label}
+                </Button>
+              ))
+            : null}
+          {canWrite && canDelete(runner.admin_state) ? (
             <Button
               variant="destructive"
               size="sm"
@@ -168,6 +215,11 @@ export function RunnerHeader({
           ) : null}
         </div>
       </div>
+
+      {/* The self-test refusal reads here, beside the control that asked for
+          it — the other two actions carry their errors inside their confirm
+          dialog, which a self-test never opens. */}
+      {selftestError ? <Alert variant="destructive" className="mb-md">{selftestError}</Alert> : null}
 
       <div className="mb-2xl flex flex-col gap-md">
         <div className="flex flex-wrap items-center gap-2xl text-body-sm text-muted-foreground">

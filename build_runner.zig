@@ -42,6 +42,9 @@ const S_RUNNER_ROOT_DIR = "src/runner";
 // referenced by the prod, stub-exe, and integration options modules below.
 const OPT_EXECUTOR_PROVIDER_STUB = "executor_provider_stub";
 const OPT_STUB_RUNNER_EXE_PATH = "stub_runner_exe_path";
+/// Absolute build root, so a relative stub path can be resolved without a cwd
+/// lookup (Zig 0.16 has no portable one) and without depending on who execs.
+const OPT_BUILD_ROOT = "build_root";
 const SRC_RUNNER_MAIN = "src/runner/main.zig";
 
 pub fn build(b: *std.Build) void {
@@ -91,6 +94,7 @@ pub fn build(b: *std.Build) void {
     const build_opts = b.addOptions();
     buildpkg.shared.addVersionOptions(build_opts, version, git_commit);
     build_opts.addOption(bool, OPT_EXECUTOR_PROVIDER_STUB, false);
+    build_opts.addOption([]const u8, OPT_BUILD_ROOT, "");
     build_opts.addOption([]const u8, OPT_STUB_RUNNER_EXE_PATH, "");
     const build_options_mod = build_opts.createModule();
 
@@ -168,6 +172,7 @@ pub fn build(b: *std.Build) void {
     buildpkg.shared.addVersionOptions(stub_exe_opts, version, git_commit);
     stub_exe_opts.addOption(bool, OPT_EXECUTOR_PROVIDER_STUB, true);
     stub_exe_opts.addOption([]const u8, OPT_STUB_RUNNER_EXE_PATH, "");
+    stub_exe_opts.addOption([]const u8, OPT_BUILD_ROOT, "");
     const stub_runner_exe = b.addExecutable(.{
         .name = "agentsfleet-runner-execstub",
         .root_module = b.createModule(.{
@@ -193,6 +198,12 @@ pub fn build(b: *std.Build) void {
     buildpkg.shared.addVersionOptions(integ_opts, version, git_commit);
     integ_opts.addOption(bool, OPT_EXECUTOR_PROVIDER_STUB, true);
     integ_opts.addOptionPath(OPT_STUB_RUNNER_EXE_PATH, stub_runner_exe.getEmittedBin());
+    // `addOptionPath` emits a path relative to the build root. bwrap resolves a
+    // BIND source against our cwd but execs the sandbox tail against the
+    // SANDBOX's cwd, which `--chdir` has moved to the lease workspace — so a
+    // relative target binds and then fails `execvp`. The runner absolutises it
+    // against this root; see `sandbox_args.resolveChildExe`.
+    integ_opts.addOption([]const u8, OPT_BUILD_ROOT, b.build_root.path orelse ".");
 
     // Runner integration tests — real-process proofs (fork/spawn at the real
     // environ_map boundary, kill(-pgid) tree reap, and the worker pool running N

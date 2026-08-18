@@ -82,6 +82,12 @@ pub const AssignedPolicy = struct {
     /// Empty = the runner substitutes its named default registry set.
     registry_allowlist: []const []const u8,
     worker_count: u32,
+    /// Extra host paths bound into every lease's sandbox, IN ADDITION to the
+    /// daemon-owned baseline (`sandbox_args.RO_SYSTEM_PATHS`) — an operator can
+    /// add a path a host needs, never remove or re-mode one the sandbox depends
+    /// on. Defaulted so an older control plane that omits the field still
+    /// decodes. Validated by `extraBindsValid` on both sides.
+    extra_binds: []const ExtraBind = &.{},
 };
 
 /// What this host's kernel can actually enforce — probed at startup, refreshed
@@ -151,6 +157,34 @@ fn registryHostValid(entry: []const u8) bool {
 }
 
 const std = @import("std");
+const bind = @import("protocol_bind.zig");
+const selftest = @import("protocol_selftest.zig");
+
+// The sandbox bind contract lives in its own module (RULE FLL); re-exported
+// here so `protocol.zig` and every existing consumer keep the same names.
+pub const BindMode = bind.BindMode;
+pub const ExtraBind = bind.ExtraBind;
+pub const BASELINE_RO_PATHS = bind.BASELINE_RO_PATHS;
+pub const SENSITIVE_PATHS = bind.SENSITIVE_PATHS;
+pub const MAX_EXTRA_BINDS = bind.MAX_EXTRA_BINDS;
+pub const MAX_BIND_PATH_LEN = bind.MAX_BIND_PATH_LEN;
+pub const MAX_BIND_NOTE_LEN = bind.MAX_BIND_NOTE_LEN;
+pub const extraBindsValid = bind.extraBindsValid;
+pub const pathOverlapsProtected = bind.pathOverlapsProtected;
+
+// The self-test verdict, split for the same reason and re-exported the same way.
+pub const SelftestCheck = selftest.SelftestCheck;
+pub const SelftestReport = selftest.SelftestReport;
+pub const MAX_SELFTEST_CHECKS = selftest.MAX_SELFTEST_CHECKS;
+pub const MAX_CHECK_NAME_LEN = selftest.MAX_CHECK_NAME_LEN;
+pub const MAX_CHECK_DETAIL_LEN = selftest.MAX_CHECK_DETAIL_LEN;
+pub const SelftestRejection = selftest.Rejection;
+pub const selftestReportRejection = selftest.selftestReportRejection;
+
+test {
+    _ = bind;
+    _ = selftest;
+}
 
 test "registryAllowlistValid accepts host[:port] names and refuses everything else" {
     try std.testing.expect(registryAllowlistValid(&.{ "pypi.org", "registry.npmjs.org:5000" }));
@@ -161,6 +195,18 @@ test "registryAllowlistValid accepts host[:port] names and refuses everything el
     try std.testing.expect(!registryAllowlistValid(&.{"pypi.org:"})); // bare colon
     try std.testing.expect(!registryAllowlistValid(&.{"pypi.org:70000x"})); // 6-char port
     try std.testing.expect(!registryAllowlistValid(&.{"a" ** 260})); // over length
+}
+
+test "test_assigned_policy_decodes_without_extra_binds" {
+    // Wire compatibility: a control plane that predates the field still decodes,
+    // and the absent list reads as "baseline only" rather than failing closed on
+    // a runner that would otherwise lease fine.
+    const older =
+        \\{"sandbox_tier":"landlock_full","network_policy":"allow_all","registry_allowlist":[],"worker_count":1}
+    ;
+    const parsed = try std.json.parseFromSlice(AssignedPolicy, std.testing.allocator, older, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(usize, 0), parsed.value.extra_binds.len);
 }
 
 test "test_sandbox_tier_vocabulary_excludes_seatbelt" {

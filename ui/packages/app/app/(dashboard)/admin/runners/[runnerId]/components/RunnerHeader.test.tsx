@@ -24,10 +24,12 @@ vi.mock("@/components/domain/island-dynamic/EditPolicyDialogDynamic", async () =
 const updateRunnerAdminStateActionMock = vi.fn();
 const updateRunnerPolicyActionMock = vi.fn();
 const deleteRunnerActionMock = vi.fn();
+const requestRunnerSelftestActionMock = vi.fn();
 vi.mock("../../actions", () => ({
   updateRunnerAdminStateAction: (...args: unknown[]) => updateRunnerAdminStateActionMock(...args),
   updateRunnerPolicyAction: (...args: unknown[]) => updateRunnerPolicyActionMock(...args),
   deleteRunnerAction: (...args: unknown[]) => deleteRunnerActionMock(...args),
+  requestRunnerSelftestAction: (...args: unknown[]) => requestRunnerSelftestActionMock(...args),
   listRunnerLeasesAction: vi.fn(),
   listRunnersAction: vi.fn(),
   createRunnerAction: vi.fn(),
@@ -41,6 +43,7 @@ beforeEach(() => {
   push.mockReset();
   updateRunnerAdminStateActionMock.mockReset();
   deleteRunnerActionMock.mockReset();
+  requestRunnerSelftestActionMock.mockReset();
 });
 
 function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
@@ -57,6 +60,9 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
     achievable: null,
     degraded: false,
     degraded_reason: null,
+    selftest_requested_at: null,
+    selftest_completed_at: null,
+    selftest: null,
     active_lease_count: 2,
     active_fleet_count: 2,
     leases_acquired: 4021,
@@ -69,7 +75,7 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
 
 describe("RunnerHeader", () => {
   it("test_runner_header_has_no_visible_second_title", () => {
-    render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     // The host name appears once as visible text, inside the breadcrumb; the
     // page's own heading is present but screen-reader-only.
     const heading = screen.getByRole("heading", { level: 1 });
@@ -81,7 +87,7 @@ describe("RunnerHeader", () => {
   });
 
   it("test_runner_header_identity_line", () => {
-    render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     expect(screen.getByText("Linux · Landlock (full)")).toBeTruthy();
     expect(screen.getByText("gpu")).toBeTruthy();
     expect(screen.getByText("prod")).toBeTruthy();
@@ -107,8 +113,7 @@ describe("RunnerHeader", () => {
             egress_enforcement: false,
           },
         })}
-        grafanaHref={null}
-      />,
+        grafanaHref={null} canWrite />,
     );
     expect(screen.getByText("degraded")).toBeTruthy();
     expect(screen.getByText(/assignment unmet: landlock unavailable/)).toBeTruthy();
@@ -116,7 +121,7 @@ describe("RunnerHeader", () => {
   });
 
   it("a healthy runner shows neither the degraded badge nor the mismatch line", () => {
-    render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     expect(screen.queryByText("degraded")).toBeNull();
     expect(screen.queryByText(/assignment unmet/)).toBeNull();
   });
@@ -125,8 +130,7 @@ describe("RunnerHeader", () => {
     render(
       <RunnerHeader
         runner={detail({ degraded: true, degraded_reason: "no assigned policy", achievable: null })}
-        grafanaHref={null}
-      />,
+        grafanaHref={null} canWrite />,
     );
     expect(screen.getByText(/assignment unmet: no assigned policy/)).toBeTruthy();
     expect(screen.queryByText(/host reports/)).toBeNull();
@@ -146,8 +150,7 @@ describe("RunnerHeader", () => {
             egress_enforcement: true,
           },
         })}
-        grafanaHref={null}
-      />,
+        grafanaHref={null} canWrite />,
     );
     expect(screen.getByText(/seccomp ✗/)).toBeTruthy();
     expect(screen.getByText(/cgroups ✗/)).toBeTruthy();
@@ -156,21 +159,20 @@ describe("RunnerHeader", () => {
   });
 
   it("saving a policy re-assignment refreshes the header (the row must show the new truth)", async () => {
-    render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     // The island stub fires onSaved directly — the wiring under test.
     fireEvent.click(screen.getByRole("button", { name: "Edit policy" }));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
 
   it("test_grafana_action_hidden_without_configured_base", () => {
-    render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     expect(screen.queryByText("Grafana")).toBeNull();
     cleanup();
     render(
       <RunnerHeader
         runner={detail()}
-        grafanaHref="https://grafana.example/d/runners?var-runner_id=01J2WQ8F3K7VZ9XB4N6MTYD5AR"
-      />,
+        grafanaHref="https://grafana.example/d/runners?var-runner_id=01J2WQ8F3K7VZ9XB4N6MTYD5AR" canWrite />,
     );
     const grafana = screen.getByText("Grafana").closest("a");
     expect(grafana?.getAttribute("href")).toContain("var-runner_id=");
@@ -182,7 +184,7 @@ describe("RunnerHeader", () => {
       errorCode: "UZ-RUN-016",
       error: "Active runner must be revoked before deletion",
     });
-    render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
     // Confirm inside the dialog — its confirm button shares the header
     // button's label, so the query scopes to the alertdialog.
@@ -204,7 +206,7 @@ describe("RunnerHeader", () => {
       value: { writeText },
       configurable: true,
     });
-    render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: /copy runner id/i }));
     // The copy control announces the failure in its own accessible name and
     // never shows a success state (the design system's documented behaviour).
@@ -217,7 +219,7 @@ describe("RunnerHeader", () => {
       ok: true,
       data: { admin_state: "cordoned" },
     });
-    render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: "Cordon" }));
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Cordon" }));
@@ -233,7 +235,7 @@ describe("RunnerHeader", () => {
 
   it("should delete a revoked runner and route back to the wall", async () => {
     deleteRunnerActionMock.mockResolvedValueOnce({ ok: true, data: undefined });
-    render(<RunnerHeader runner={detail({ admin_state: "revoked", liveness: "offline" })} grafanaHref={null} />);
+    render(<RunnerHeader runner={detail({ admin_state: "revoked", liveness: "offline" })} grafanaHref={null} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
@@ -249,7 +251,7 @@ describe("RunnerHeader", () => {
       errorCode: "UZ-RUN-016",
       error: "Runner must be revoked before deletion",
     });
-    render(<RunnerHeader runner={detail({ admin_state: "revoked", liveness: "offline" })} grafanaHref={null} />);
+    render(<RunnerHeader runner={detail({ admin_state: "revoked", liveness: "offline" })} grafanaHref={null} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
@@ -264,14 +266,14 @@ describe("RunnerHeader", () => {
   });
 
   it("should not offer delete before the runner is revoked", () => {
-    render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
   });
 
   it("should walk away from either confirm without acting when the operator cancels", async () => {
     // Cancelling the admin-action confirm fires no state change. (An active
     // runner — a revoked one no longer offers the action buttons.)
-    const { unmount } = render(<RunnerHeader runner={detail()} grafanaHref={null} />);
+    const { unmount } = render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
     let dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -282,7 +284,7 @@ describe("RunnerHeader", () => {
     unmount();
 
     // Cancelling the delete confirm deletes nothing and routes nowhere.
-    render(<RunnerHeader runner={detail({ admin_state: "revoked", liveness: "offline" })} grafanaHref={null} />);
+    render(<RunnerHeader runner={detail({ admin_state: "revoked", liveness: "offline" })} grafanaHref={null} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));

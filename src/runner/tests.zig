@@ -76,9 +76,16 @@ test {
     // W2 runner-engine coverage
     _ = @import("child_exec_edge_test.zig");
     _ = @import("sandbox_args_edge_test.zig");
+    _ = @import("sandbox_args_bind_test.zig");
+    _ = @import("selftest.zig");
+    _ = @import("selftest_probe.zig");
+    _ = @import("selftest_exec.zig");
+    _ = @import("daemon/selftest_beat.zig");
+    _ = @import("daemon/selftest_heartbeat_wire_test.zig");
     _ = @import("tool_bridge_resolution_test.zig");
     // Pre-fork lease lifecycle + control-loop coverage
     _ = @import("daemon/lease_run_exec_test.zig");
+    _ = @import("daemon/applied_policy_bind_test.zig");
     _ = @import("daemon/loop_poll_test.zig");
     _ = @import("daemon/loop_heartbeat_seq_test.zig");
     _ = @import("child_supervisor_prefork_test.zig");

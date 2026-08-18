@@ -50,6 +50,19 @@ fn indexOfStr(argv: []const []const u8, needle: []const u8) ?usize {
     return null;
 }
 
+/// Sandbox prefix for a GIVEN bwrap path — no host probe, no `os.tag` read,
+/// so wrapper shape is asserted on every platform. These tests used to gate on
+/// a real bubblewrap binary and skipped on macOS (not Linux) AND in continuous
+/// integration (no bubblewrap in the CI image), so the flags below — the
+/// terminal detach, the egress posture, the resolver binds — were verified
+/// nowhere at all.
+const FAKE_BWRAP = "/usr/bin/bwrap";
+const FAKE_SELF_EXE = "/opt/agentsfleet/bin/agentsfleet-runner";
+
+fn prefixFor(alloc: std.mem.Allocator, cfg: Config, egress: ?sandbox_args.EgressFiles) ![]const []const u8 {
+    return sandbox_args.composeSandboxPrefix(alloc, FAKE_BWRAP, FAKE_SELF_EXE, cfg, WORKSPACE, egress);
+}
+
 test "should build dev_none argv without bwrap when tier is dev_none" {
     const alloc = std.testing.allocator;
     const argv = try sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(DEV_NONE), WORKSPACE, null);
@@ -133,15 +146,11 @@ test "should skip bwrap on non-Linux even when tier is required" {
     try std.testing.expect(std.mem.startsWith(u8, ws_flag, child_exec.WORKSPACE_FLAG_PREFIX));
 }
 
-test "should omit --share-net under the deny_all network policy on Linux" {
-    if (builtin.os.tag != .linux) return error.SkipZigTest;
+test "should omit --share-net under the deny_all network policy" {
     const alloc = std.testing.allocator;
-    // cfgWithTier pins network_policy = .deny_all_egress, so buildArgv unshares the net
-    // and adds NO --share-net (host network stays isolated) regardless of env.
-    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE, null) catch |err| {
-        try std.testing.expectEqual(error.BwrapUnavailable, err);
-        return error.SkipZigTest;
-    };
+    // cfgWithTier pins network_policy = .deny_all_egress, so the wrapper unshares
+    // the net and adds NO --share-net (host network stays isolated).
+    const argv = try prefixFor(alloc, cfgWithTier(LANDLOCK_FULL), null);
     defer sandbox_args.freeArgv(alloc, argv);
 
     try std.testing.expect(indexOfStr(argv, "--unshare-all") != null);
@@ -164,13 +173,9 @@ fn cfgAllowListEgress(tier: contract.protocol.SandboxTier) Config {
     return c;
 }
 
-test "should detach the controlling terminal with --new-session in the bwrap prefix on Linux" {
-    if (builtin.os.tag != .linux) return error.SkipZigTest;
+test "should detach the controlling terminal with --new-session in the bwrap prefix" {
     const alloc = std.testing.allocator;
-    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE, null) catch |err| {
-        try std.testing.expectEqual(error.BwrapUnavailable, err);
-        return error.SkipZigTest;
-    };
+    const argv = try prefixFor(alloc, cfgWithTier(LANDLOCK_FULL), null);
     defer sandbox_args.freeArgv(alloc, argv);
 
     // --new-session sits among the namespace flags, BEFORE the bwrap `--`
@@ -182,38 +187,30 @@ test "should detach the controlling terminal with --new-session in the bwrap pre
 }
 
 test "allow_all (opt-in) re-shares host net; allow_list_egress does NOT" {
-    if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     // allow_all (opt-in posture): re-shares the host netns (--share-net)
     // so the lease has full egress until enforcement lands (2.0.1).
-    const open = sandbox_args.buildArgv(common.globalIo(), alloc, cfgAllowAll(LANDLOCK_FULL), WORKSPACE, null) catch |err| {
-        try std.testing.expectEqual(error.BwrapUnavailable, err);
-        return error.SkipZigTest;
-    };
+    const open = try prefixFor(alloc, cfgAllowAll(LANDLOCK_FULL), null);
     defer sandbox_args.freeArgv(alloc, open);
     try std.testing.expect(indexOfStr(open, "--share-net") != null);
     try std.testing.expect(indexOfStr(open, "--unshare-all") != null);
     try std.testing.expect(indexOfStr(open, "--new-session") != null);
 
     // allow_list_egress keeps its own (filtered) netns — never re-shares.
-    const strict = try sandbox_args.buildArgv(common.globalIo(), alloc, cfgAllowListEgress(LANDLOCK_FULL), WORKSPACE, null);
+    const strict = try prefixFor(alloc, cfgAllowListEgress(LANDLOCK_FULL), null);
     defer sandbox_args.freeArgv(alloc, strict);
     try std.testing.expect(indexOfStr(strict, "--share-net") == null);
     try std.testing.expect(indexOfStr(strict, "--unshare-all") != null);
 }
 
 test "egress files are ro-bound over /etc/hosts + /etc/resolv.conf when supplied" {
-    if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const egress = sandbox_args.EgressFiles{
         .hosts_path = "/run/uz/lease0/hosts",
         .resolv_path = "/run/uz/lease0/resolv.conf",
     };
     // Strict posture: resolver files bound + no --share-net (the option-D path).
-    const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgAllowListEgress(LANDLOCK_FULL), WORKSPACE, egress) catch |err| {
-        try std.testing.expectEqual(error.BwrapUnavailable, err);
-        return error.SkipZigTest;
-    };
+    const argv = try prefixFor(alloc, cfgAllowListEgress(LANDLOCK_FULL), egress);
     defer sandbox_args.freeArgv(alloc, argv);
 
     // The host-side rendered file is the source; the in-sandbox target is the
@@ -240,15 +237,13 @@ test "should have no memory leaks freeing dev_none argv over many iterations" {
 }
 
 test "should have no memory leaks freeing bwrap argv over many iterations" {
-    if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     // The bwrap path allocates many more entries (namespaces + ro binds); prove
-    // freeArgv reclaims all of them across 50 cycles. Skip if bwrap is absent.
+    // freeArgv reclaims all of them across 50 cycles. This is the allocation-
+    // heaviest arm in the file and it used to skip everywhere, so freeArgv was
+    // only ever leak-proven on the three-entry dev_none argv.
     for (0..50) |_| {
-        const argv = sandbox_args.buildArgv(common.globalIo(), alloc, cfgWithTier(LANDLOCK_FULL), WORKSPACE, null) catch |err| {
-            try std.testing.expectEqual(error.BwrapUnavailable, err);
-            return error.SkipZigTest;
-        };
+        const argv = try prefixFor(alloc, cfgWithTier(LANDLOCK_FULL), null);
         sandbox_args.freeArgv(alloc, argv);
     }
 }

@@ -559,6 +559,31 @@ On a Mac, running `agentsfleet-runner` inside a Linux VM (Docker Desktop / OrbSt
 
 > **Tiers ≠ egress policy.** `sandbox_tier` reports *isolation strength* (filesystem / syscall / process) — it is **orthogonal** to network egress. `landlock_full` does not constrain which hosts the child reaches (Landlock governs the filesystem; its recent network support is TCP *port* binding/connect only, not host allowlisting). `container_nested` gives a ready net-namespace boundary that the egress model can build on, but still needs the allowlist. So none of the tiers substitutes for the egress model below.
 
+## The sandbox filesystem contract
+
+A sandboxed lease sees a mount namespace the daemon builds from a **declared** set of host paths. The set is two layers, and the split is the security property: a daemon-owned baseline that no assignment can touch, plus an operator list that may only **append** to it.
+
+The baseline is `contract.protocol.BASELINE_RO_PATHS`, bound read-only (`--ro-bind-try`, so a path absent on this host is skipped rather than failing the lease). This table is the contract, and `test_architecture_doc_matches_the_contract` fails if it drifts from the constant — the list below is not documentation *about* the code, it is checked *against* it.
+
+| Host path | Mode | Why the sandbox needs it |
+|---|---|---|
+| `/etc` | read-only | System configuration: resolver, certificate bundle, user database |
+| `/lib` | read-only | Shared libraries the child's dynamic linker resolves |
+| `/lib64` | read-only | 64-bit loader path on multilib hosts |
+| `/bin` | read-only | Core executables tool subprocesses invoke |
+| `/sbin` | read-only | System executables on hosts that split them from `/bin` |
+| `/opt` | read-only | Vendor-installed runtimes (a self-managed toolchain lands here) |
+| `/run/systemd/resolve` | read-only | The systemd-resolved stub `resolv.conf` that `/etc/resolv.conf` symlinks to. Without it the symlink dangles inside every lease and **all** DNS fails `HostResolutionFailed` regardless of network policy — the M167 incident |
+
+Beyond the baseline the bwrap argv establishes the sandbox's own floor (`/usr` read-only, a private `/proc`, `/dev`, and a `tmpfs` `/tmp`), ro-binds the runner binary so the sandbox can exec it, and binds the lease workspace read-write. **The workspace is the only writable mount unless an operator named another one.**
+
+An operator may add paths through the assigned policy's extra-bind list, each carrying its own mode and a note. Two rules keep the baseline intact:
+
+- **Additive only.** An entry that overlaps a protected path *in either direction* is refused — naming it outright (`/etc`), nesting under it (`/etc/ssl`), or containing it (`/run` contains `/run/systemd/resolve`). bwrap applies binds in argv order and the last operation on a target wins, so without this an appended entry would silently re-mode the daemon's own mount.
+- **Closed by default.** The mode is explicit, and an assignment that omits it decodes as `read_only`, so an older or malformed control plane cannot widen access by omission.
+
+`read_write` is assignable and is a real widening: tenant agent code can modify host state outside its workspace on **every lease that runner takes**, so the blast radius is per-runner, not per-lease. It is bounded by being named rather than defaulted, by the operator note that travels with it, and by the self-test reporting each entry with its mode so a writable mount is never silent.
+
 ## Egress model — outbound is the only network surface
 
 The runner box is **outbound-only**: it runs no inbound listener (the daemon dials the control plane via an outbound `std.http.Client`; see §Datastore role model), and holds no co-located datastore. So the network threat is entirely **outbound secret exfiltration** — the sandboxed fleet legitimately holds the lease's inference `api_key` and tool secrets (e.g. a GitHub token), and the fleet's *only* required egress is its inference endpoint (or a gateway) plus operator-declared `allow_hosts` for tools.

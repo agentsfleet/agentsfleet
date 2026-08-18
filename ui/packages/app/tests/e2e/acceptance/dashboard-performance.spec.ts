@@ -57,7 +57,7 @@ test.describe("authenticated dashboard fluidity", () => {
       await expect(page).toHaveURL(workspaceUrlPattern("events"), {
         timeout: ROUTE_TIMEOUT_MS,
       });
-      await expect(page.getByRole("heading", { name: "Events" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Events", exact: true })).toBeVisible();
 
       const switcher = page.getByTestId("workspace-switcher");
       await switcher.click();
@@ -122,7 +122,7 @@ test.describe("authenticated dashboard fluidity", () => {
       await expect(page).toHaveURL(workspaceUrlPattern("events"), {
         timeout: ROUTE_TIMEOUT_MS,
       });
-      await expect(page.getByRole("heading", { name: "Events" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Events", exact: true })).toBeVisible();
       expect(await blankFrameCount(page)).toBe(0);
     },
   );
