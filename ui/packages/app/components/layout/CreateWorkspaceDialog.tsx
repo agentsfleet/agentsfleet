@@ -32,7 +32,7 @@ type Props = {
 };
 
 const WORKSPACE_DESCRIPTION =
-  "Use workspaces to organize fleets, teammates, and credentials within your tenant.";
+  "Use workspaces to organize fleets, teammates, and credentials within your organization.";
 const WORKSPACE_NAME_FIELD = "workspace-name";
 const WORKSPACE_NAME_REQUIRED = "Enter a workspace name.";
 const WORKSPACE_NAME_TOO_LONG = `Use ${WORKSPACE_NAME_MAX_CODEPOINTS} characters or fewer.`;
@@ -131,7 +131,7 @@ export default function CreateWorkspaceDialog({
               data-testid="workspace-create-submit"
             >
               {pending ? <Spinner size="sm" srLabel="Creating" /> : null}
-              Create workspace
+              Create
             </Button>
           </DialogFooter>
         </ActionForm>

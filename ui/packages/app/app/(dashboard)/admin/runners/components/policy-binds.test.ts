@@ -37,7 +37,7 @@ describe("bindPathIssue", () => {
   });
 
   it("asks for a path when the row is blank", () => {
-    expect(bindPathIssue("")).toBe("Name a host path to bind");
+    expect(bindPathIssue("")).toBe("Name a host path to mount");
   });
 
   it("refuses a relative path", () => {
@@ -65,9 +65,9 @@ describe("bindPathIssue", () => {
   });
 
   it.each(["/etc", "/etc/ssl", "/opt", "/run/systemd/resolve"])(
-    "refuses %s because the daemon already binds that subtree",
+    "refuses %s because the daemon already mounts that subtree",
     (path) => {
-      expect(bindPathIssue(path)).toContain("already binds");
+      expect(bindPathIssue(path)).toContain("already mounts");
     },
   );
 
@@ -75,7 +75,7 @@ describe("bindPathIssue", () => {
     // bwrap applies binds in argv order and the last write to a target wins, so
     // an operator entry that CONTAINS /run/systemd/resolve would swallow the
     // resolver mount whole — the M167 incident, spelled the other way round.
-    expect(bindPathIssue("/run")).toContain("already binds /run/systemd/resolve");
+    expect(bindPathIssue("/run")).toContain("already mounts /run/systemd/resolve");
   });
 
   it.each(["/usr", "/proc/self", "/root", "/var/lib/agentsfleet", "/var/run"])(

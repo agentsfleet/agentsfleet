@@ -59,9 +59,8 @@ export const DEFAULT_ASSIGNED_SANDBOX_TIER: SandboxTier = "landlock_full";
 export const ISOLATION_ASSIGNMENT_DESCRIPTION =
   "A host that cannot enforce the assigned tier is degraded and receives no work.";
 const NETWORK_ASSIGNMENT_LABEL = "Network policy";
-const REGISTRY_ASSIGNMENT_LABEL = "Registry allowlist (optional)";
-const REGISTRY_ASSIGNMENT_DESCRIPTION =
-  "Comma-separated hosts merged into each lease's egress allowlist; empty = the default set.";
+const REGISTRY_ASSIGNMENT_LABEL = "Allowlist (optional)";
+const REGISTRY_ASSIGNMENT_DESCRIPTION = "Registry hosts the sandbox may reach.";
 const WORKERS_ASSIGNMENT_LABEL = "Workers";
 const WORKERS_ASSIGNMENT_DESCRIPTION = `Concurrent workers on the host (${MIN_WORKER_COUNT}–${MAX_WORKER_COUNT}).`;
 
@@ -99,7 +98,7 @@ export const policyFormSchema = z.object({
       if (filled.length > MAX_EXTRA_BINDS) {
         ctx.addIssue({
           code: "custom",
-          message: `At most ${MAX_EXTRA_BINDS} binds per runner`,
+          message: `At most ${MAX_EXTRA_BINDS} mounts per runner`,
         });
       }
       rows.forEach((r, i) => {

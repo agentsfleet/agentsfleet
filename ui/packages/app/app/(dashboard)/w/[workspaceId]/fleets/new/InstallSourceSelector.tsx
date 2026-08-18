@@ -188,7 +188,7 @@ export function InstallSourceSelector({
                 entry={entry}
                 action={
                   <Button type="button" onClick={() => onUseLibraryEntry(entry)}>
-                    Use entry
+                    Install
                   </Button>
                 }
               />

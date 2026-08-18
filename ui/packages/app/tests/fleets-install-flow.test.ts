@@ -101,8 +101,8 @@ function renderFlow(props: FlowProps = {}) {
 }
 
 function useEntryButton(index: number): HTMLElement {
-  const button = screen.getAllByRole("button", { name: "Use entry" })[index];
-  if (!button) throw new Error(`no "Use entry" button at index ${index}`);
+  const button = screen.getAllByRole("button", { name: "Install" })[index];
+  if (!button) throw new Error(`no "Install" button at index ${index}`);
   return button;
 }
 
@@ -134,7 +134,7 @@ describe("test_install_template_gallery_render", () => {
     expect(screen.getByText("Fleet library")).toBeTruthy();
     expect(screen.getByText("GitHub PR reviewer")).toBeTruthy();
     expect(screen.getByText("needs: github")).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "Use entry" }).length).toBe(2);
+    expect(screen.getAllByRole("button", { name: "Install" }).length).toBe(2);
   });
 
   it("shows an empty state when no library entries are available", () => {

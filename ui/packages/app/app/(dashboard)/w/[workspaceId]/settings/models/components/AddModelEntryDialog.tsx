@@ -43,7 +43,7 @@ const REGISTER_ACTION = "register the model entry";
 const ACTIVATE_ACTION = "activate this model";
 const STORE_ACTION = "store the credential";
 const NAME_PROVIDER_MISMATCH = "That name is already used by a different provider or secret — pick another one.";
-const CREATE_MODEL_TOOLTIP = "Create a model entry for this workspace.";
+const CREATE_MODEL_TOOLTIP = "Create a model used by fleets.";
 const SECRETS_LOADING = "Checking your stored secrets…";
 const SECRETS_LOAD_FAILED =
   "Couldn't load your stored secrets. Saving is disabled until the list loads, so a held name is never routed to the wrong write.";

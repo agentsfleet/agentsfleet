@@ -372,7 +372,7 @@ describe("fleets routes", () => {
     );
     expect(markup).toContain("Fleet library");
     expect(markup).toContain("GitHub PR reviewer");
-    expect(markup).toContain("Use entry"); // the gallery card's install action
+    expect(markup).toContain("Install"); // the gallery card's install action
   });
 
   it("fleets new page surfaces a failed library read instead of an empty gallery", async () => {
@@ -581,7 +581,7 @@ describe("fleets routes", () => {
     // Confirm step, first paint: the name field is present, the gallery is not
     // — no frame in which the gallery is wrong.
     expect(markup).toContain("Fleet name");
-    expect(markup).not.toContain("Use entry");
+    expect(markup).not.toContain("Fleet library");
     expect(markup).not.toContain("not on this page");
   });
 
