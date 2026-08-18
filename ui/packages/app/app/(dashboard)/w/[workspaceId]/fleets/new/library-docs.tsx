@@ -8,7 +8,8 @@ import { LIBRARY_AUTHORING_DOC_URL } from "@/lib/fleet-library-source";
 // authoring guide: the fleet-library page explains the catalog, but the steps
 // for writing SKILL.md / TRIGGER.md live on /fleets/authoring.
 export const CREATE_LIBRARY_DOC_URL = LIBRARY_AUTHORING_DOC_URL;
-export const CREATE_FLEET_LIBRARY_TOOLTIP = "Create a fleet library entry from GitHub.";
+export const CREATE_FLEET_LIBRARY_TOOLTIP =
+  "Create a fleet library entry from GitHub or a bundle on your machine.";
 export const INSTALL_FLEET_TOOLTIP = "Start from the fleet library.";
 
 // Shared copy for the Fleet library empty state (dashboard embed + install
