@@ -40,9 +40,6 @@ jobs:
   zig-unit-coverage:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    container:
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
-      options: --security-opt seccomp=unconfined --cap-add=SYS_PTRACE
     steps:
       - uses: actions/checkout@v6
       - name: Cache Zig build
@@ -53,7 +50,19 @@ jobs:
           restore-keys: |
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-
       - name: Run every Zig unit owner once under coverage
-        run: make test-coverage-zig
+        run: |
+          docker run --rm \
+            --security-opt seccomp=unconfined --cap-add=SYS_PTRACE \
+            -v "${{ github.workspace }}":"${{ github.workspace }}" \
+            -w "${{ github.workspace }}" \
+            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+            ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4@sha256:b27550eb4910e77e532f061a7c1f3453815cb275dd188bdcc7db0448dd656948 \
+            sh -c "set +e; \
+              git config --global --add safe.directory \"${{ github.workspace }}\" && \
+              make test-coverage-zig; rc=\$?; \
+              chown -R \"\${HOST_UID}:\${HOST_GID}\" coverage/zig \
+                .tmp/verification-graph.json .tmp/verification-results/unit 2>/dev/null || true; \
+              exit \$rc"
       - name: Upload unit verification evidence
         uses: actions/upload-artifact@v6
         with:
@@ -131,9 +140,6 @@ jobs:
   zig-runner-kernel:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    container:
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
-      options: --privileged --cgroupns=private
     steps:
       - uses: actions/checkout@v6
       - name: Cache Zig build
@@ -147,12 +153,24 @@ jobs:
         run: |
           python3 scripts/verification_evidence.py start \
             --output .tmp/verification-timings/runner-kernel.started
-          python3 scripts/check_verification_graph.py validate --output .tmp/verification-graph.json
-          make _test-integration-runner-build
-          python3 scripts/run_with_timeout.py --seconds 900 --label runner-kernel \
-            --started-at-file .tmp/verification-timings/runner-kernel.started \
-            --timing-output .tmp/verification-timings/runner-kernel.json -- \
-            sh scripts/cgroup-delegate.sh make _test-integration-runner-coverage-native
+          docker run --rm --privileged --cgroupns=private \
+            --security-opt seccomp=unconfined --cap-add=SYS_PTRACE \
+            -v "${{ github.workspace }}":"${{ github.workspace }}" \
+            -w "${{ github.workspace }}" \
+            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+            ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4@sha256:b27550eb4910e77e532f061a7c1f3453815cb275dd188bdcc7db0448dd656948 \
+            sh -c "set +e; \
+              git config --global --add safe.directory \"${{ github.workspace }}\" && \
+              python3 scripts/check_verification_graph.py validate --output .tmp/verification-graph.json && \
+              make _test-integration-runner-build && \
+              python3 scripts/run_with_timeout.py --seconds 900 --label runner-kernel \
+                --started-at-file .tmp/verification-timings/runner-kernel.started \
+                --timing-output .tmp/verification-timings/runner-kernel.json -- \
+                sh scripts/cgroup-delegate.sh make _test-integration-runner-coverage-native; rc=\$?; \
+              chown -R \"\${HOST_UID}:\${HOST_GID}\" coverage/zig \
+                .tmp/verification-graph.json .tmp/verification-results/runner-kernel \
+                .tmp/verification-timings/runner-kernel.json 2>/dev/null || true; \
+              exit \$rc"
       - name: Upload runner-kernel verification evidence
         uses: actions/upload-artifact@v6
         with:

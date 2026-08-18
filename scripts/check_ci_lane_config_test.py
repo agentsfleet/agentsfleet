@@ -65,7 +65,7 @@ class TestPrewarmArtifacts(unittest.TestCase):
 class TestVerificationDag(unittest.TestCase):
     def test_one_workflow_owns_every_canonical_recipe(self) -> None:
         body = read_workflow("test.yml")
-        self.assertEqual(1, body.count("run: make test-coverage-zig"))
+        self.assertEqual(1, body.count("make test-coverage-zig"))
         self.assertEqual(1, body.count("make _test-integration-shard SHARD_INDEX="))
         self.assertEqual(1, body.count("make _test-integration-runner-coverage-native"))
         self.assertEqual(1, body.count("make _test-integration-grade"))
@@ -103,40 +103,32 @@ class TestVerificationDag(unittest.TestCase):
         self.assertIn("INTEGRATION_SHARD_ISOLATION_KEY", body)
         self.assertIn("${{ matrix.shard }}", body)
 
-    def test_shard_container_returns_coverage_to_the_host_user(self) -> None:
+    def test_coverage_containers_return_artifacts_to_the_host_user(self) -> None:
         body = read_workflow("test.yml")
-        self.assertIn('-e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)"', body)
-        self.assertIn(
-            r'chown -R \"\${HOST_UID}:\${HOST_GID}\" coverage/zig',
-            body,
-        )
-        self.assertIn(
+        self.assertEqual(3, body.count('-e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)"'))
+        self.assertEqual(3, body.count(r'chown -R \"\${HOST_UID}:\${HOST_GID}\" coverage/zig'))
+        for artifact in (
+            ".tmp/verification-results/unit",
             '.tmp/verification-results/integration-shard-${{ matrix.shard }}',
-            body,
-        )
+            ".tmp/verification-results/runner-kernel",
+        ):
+            self.assertIn(artifact, body)
+        unit = body.split("  zig-integration-shard:", 1)[0]
+        runner = body.split("  zig-runner-kernel:", 1)[1].split("  zig-coverage-grade:", 1)[0]
+        self.assertIn("docker run --rm", unit)
+        self.assertNotIn("\n    container:\n", unit)
+        self.assertNotIn("--privileged", unit)
+        self.assertIn("docker run --rm --privileged --cgroupns=private", runner)
+        self.assertNotIn("\n    container:\n", runner)
 
 
 # Flags that widen what a job holds beyond the default container posture.
 GRANT_FLAGS = ("--privileged", "--security-opt", "--cap-add")
 
-# The only lanes allowed to hold `--privileged`, each against the kernel
-# operation that earns it. A workflow absent from this table fails the sweep
-# below: the gate's job is that privilege is argued for once, in the open,
-# rather than acquired by a flag nobody re-reads afterwards. Both entries are
-# operations the kernel refuses to an unprivileged container — neither is a
-# convenience, and neither has a narrower capability that substitutes (measured:
-# `--cap-add=SYS_ADMIN` alone does not).
+# The listed kernel operations require privilege; `SYS_ADMIN` alone leaves their
+# tests skipped. The sweep below rejects every unlisted privileged workflow.
 PRIVILEGED_LANES = {
-    # bubblewrap creates namespaces in daemon shards; the runner job delegates
-    # a cgroup-v2 controller subtree. The CI
-    # image has baked bwrap in since r3, so without this the four
-    # `selftest_integration_test` cases do not FAIL here — they skip, on the
-    # `probeRanHere` guard that reads a silent probe as a harness fact rather
-    # than a verdict. Skipping is correct behaviour and it left
-    # `selftest_exec.run` — the entire spawn/bound/reap half of the self-test —
-    # measured at 33%, which then read as structurally unreachable rather than
-    # as one missing flag. Measured on this image: unprivileged all four skip,
-    # privileged all four pass.
+    # Daemon shards create bubblewrap namespaces; runner kernels delegate cgroups.
     "test.yml": "bubblewrap namespace creation and cgroup-v2 controller delegation",
 }
 
