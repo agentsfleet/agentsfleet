@@ -88,7 +88,7 @@ describe("RunnerHeader", () => {
 
   it("test_runner_header_identity_line", () => {
     render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
-    expect(screen.getByText("Linux · Landlock (full)")).toBeTruthy();
+    expect(screen.getByText("Landlock")).toBeTruthy();
     expect(screen.getByText("gpu")).toBeTruthy();
     expect(screen.getByText("prod")).toBeTruthy();
     // The raw runner id never renders as visible text; it is reachable only

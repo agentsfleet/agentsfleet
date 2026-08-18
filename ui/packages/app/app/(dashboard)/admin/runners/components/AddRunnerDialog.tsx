@@ -235,7 +235,7 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
                   </Button>
                   <TooltipButton type="submit" disabled={pending} tooltip={CREATE_RUNNER_TOOLTIP}>
                     {pending ? <Spinner size="sm" srLabel="Enrolling" /> : null}
-                    Create runner
+                    Create
                   </TooltipButton>
                 </DialogFooter>
               </form>

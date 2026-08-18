@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Form } from "@agentsfleet/design-system";
 import { PolicyBindsField } from "./PolicyBindsField";
 import { POLICY_FORM_DEFAULTS, policyFormSchema, type PolicyFormValues } from "./PolicyFields";
-import { MAX_EXTRA_BINDS } from "./policy-binds";
+import { BASELINE_RO_PATHS, MAX_EXTRA_BINDS } from "./policy-binds";
 
 afterEach(() => cleanup());
 
@@ -32,7 +32,7 @@ const ROW = { path: "/srv/models", mode: "read_only" as const, note: "gpu weight
 // the dialog to the full viewport for an edit that never touches binds. A test
 // that wants the controls has to open it, exactly as an operator does.
 function openBinds() {
-  fireEvent.click(screen.getByRole("button", { name: /Extra sandbox binds/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Sandbox binds/ }));
 }
 
 describe("PolicyBindsField", () => {
@@ -73,9 +73,20 @@ describe("PolicyBindsField", () => {
     expect(screen.getByLabelText("Bind mode 1").textContent).toContain("Read-only");
   });
 
-  it("names what read-write actually widens rather than leaving it a label", () => {
+  it("renders a read-write row's mode on its select, not behind a description", () => {
     render(<Harness initial={[{ ...ROW, mode: "read_write" }]} />);
-    expect(screen.getByText(/write through to the host path/)).toBeTruthy();
+    expect(screen.getByLabelText("Bind mode 1").textContent).toContain("Read-write");
+  });
+
+  it("shows the daemon-owned baseline as read-only rows an operator cannot edit", () => {
+    render(<Harness />);
+    openBinds();
+    // Every baseline path is visible, none of it behind an input: the list is
+    // informational, so no "Bind path N" control exists for a baseline row.
+    for (const path of BASELINE_RO_PATHS) {
+      expect(screen.getByText(path)).toBeTruthy();
+    }
+    expect(screen.queryByLabelText("Bind path 1")).toBeNull();
   });
 
   it("removes the row the operator pointed at, not the last one", () => {

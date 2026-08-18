@@ -19,9 +19,9 @@ export type SandboxTier = (typeof SANDBOX_TIERS)[number];
 // tags are the wire shape (sent verbatim), these are the human strings the
 // dropdown and list render. Keyed so a new tier can't be added without a label.
 export const SANDBOX_TIER_LABELS: Record<SandboxTier, string> = {
-  landlock_full: "Linux · Landlock (full)",
+  landlock_full: "Landlock",
   container_nested: "Nested container",
-  dev_none: "None (dev only)",
+  dev_none: "None",
 };
 
 // One-line descriptions for the isolation-mode OptionCard picker. Keyed by
@@ -29,9 +29,9 @@ export const SANDBOX_TIER_LABELS: Record<SandboxTier, string> = {
 // docs/architecture/runner_fleet.md §Sandbox tiers — do not restate from the
 // label alone; that table is the source of truth for what each tier means.
 export const SANDBOX_TIER_DESCRIPTIONS: Record<SandboxTier, string> = {
-  landlock_full: "Bare Linux host with kernel-level Landlock sandboxing — full isolation, eligible for any work.",
-  container_nested: "Runner runs inside a container on a Linux host or VM — same full-isolation tier as Landlock.",
-  dev_none: "No real sandbox — for local development builds only; a non-debug runner build refuses to start with this tier.",
+  landlock_full: "Linux kernel level sandboxing with full isolation.",
+  container_nested: "Runs inside a container on a Linux host or VM.",
+  dev_none: "No sandbox — for development only.",
 };
 
 // Egress posture assigned per runner — mirrors `protocol.NetworkPolicy` verbatim
@@ -55,7 +55,7 @@ export const NETWORK_POLICY_LABELS: Record<NetworkPolicy, string> = {
 export const NETWORK_POLICY_DESCRIPTIONS: Record<NetworkPolicy, string> = {
   allow_all: "All outbound traffic allowed — the interim open posture.",
   deny_all_egress: "No outbound network at all.",
-  allow_list_egress: "Outbound only to an approved list. Enforcement has not shipped yet — a runner assigned this is degraded and receives no work until it does.",
+  allow_list_egress: "Outbound only to an approved list — enforcement unshipped; a runner assigned this is degraded.",
 };
 
 // Enrollment defaults for the policy fields. Network defaults to the explicit

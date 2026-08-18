@@ -168,7 +168,7 @@ export default function AddModelDialog({
               </Button>
               <TooltipButton type="submit" disabled={pending} tooltip={CREATE_MODEL_LIBRARY_TOOLTIP}>
                 {pending ? <Spinner size="sm" srLabel="Creating" /> : null}
-                Create model library
+                Create
               </TooltipButton>
             </DialogFooter>
           </form>

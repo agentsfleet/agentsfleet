@@ -57,11 +57,11 @@ import { PolicyBindsField } from "./PolicyBindsField";
 export const DEFAULT_ASSIGNED_SANDBOX_TIER: SandboxTier = "landlock_full";
 
 export const ISOLATION_ASSIGNMENT_DESCRIPTION =
-  "The isolation this host must enforce. Assigned by you, applied by the host — a host that cannot deliver it is marked degraded and receives no work.";
+  "A host that cannot enforce the assigned tier is degraded and receives no work.";
 const NETWORK_ASSIGNMENT_LABEL = "Network policy";
 const REGISTRY_ASSIGNMENT_LABEL = "Registry allowlist (optional)";
 const REGISTRY_ASSIGNMENT_DESCRIPTION =
-  "Comma-separated registry hosts merged into each lease's egress allowlist. Empty = the runner's default registry set.";
+  "Comma-separated hosts merged into each lease's egress allowlist; empty = the default set.";
 const WORKERS_ASSIGNMENT_LABEL = "Workers";
 const WORKERS_ASSIGNMENT_DESCRIPTION = `Concurrent workers on the host (${MIN_WORKER_COUNT}–${MAX_WORKER_COUNT}).`;
 
@@ -180,7 +180,7 @@ export function PolicyFields({
                 labelable HTML element — FormLabel's htmlFor (built for a
                 single input/button/select) can't auto-focus it, so the
                 group is named directly via aria-labelledby instead. */}
-            <FormLabel id={isolationModeLabelId}>Isolation to assign</FormLabel>
+            <FormLabel id={isolationModeLabelId}>Isolation</FormLabel>
             <FormControl>
               <RadioGroup
                 value={field.value}

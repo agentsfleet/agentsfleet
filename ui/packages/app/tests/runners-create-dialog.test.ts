@@ -62,14 +62,14 @@ describe("AddRunnerDialog component", () => {
   async function reachReveal(user: ReturnType<typeof userEvent.setup>) {
     createRunnerActionMock.mockResolvedValue(MINTED);
     await user.type(screen.getByLabelText(/host name/i), "web-prod-1");
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /create runner/i }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^create$/i }));
     await screen.findByLabelText("Runner token");
   }
 
   it("client-side rejects an invalid host id and never calls the action", async () => {
     const { user } = await openDialog();
     await user.type(screen.getByLabelText(/host name/i), "bad host!");
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /create runner/i }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^create$/i }));
     await waitFor(() => expect(screen.getByText(/letters, digits, dot, hyphen, underscore/i)).toBeTruthy());
     expect(createRunnerActionMock).not.toHaveBeenCalled();
   });
@@ -86,7 +86,7 @@ describe("AddRunnerDialog component", () => {
     const { user } = await openDialog();
     await user.type(screen.getByLabelText(/host name/i), "web-prod-1");
     await user.type(screen.getByLabelText(/labels/i), "gpu, bad label!");
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /create runner/i }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^create$/i }));
     await waitFor(() => expect(screen.getByText(/must be 1.64 chars/i)).toBeTruthy());
     expect(screen.getByText(/bad label!/)).toBeTruthy();
     expect(createRunnerActionMock).not.toHaveBeenCalled();
@@ -97,7 +97,7 @@ describe("AddRunnerDialog component", () => {
     const { user, onCreated } = await openDialog();
     await user.type(screen.getByLabelText(/host name/i), "web-prod-1");
     await user.type(screen.getByLabelText(/labels/i), "gpu, us-east, gpu");
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /create runner/i }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^create$/i }));
 
     const field = await screen.findByLabelText("Runner token");
     expect((field as HTMLInputElement).value).toBe("agt_rdeadbeef");
@@ -146,10 +146,10 @@ describe("AddRunnerDialog component", () => {
     // Named via aria-labelledby (a div[role=radiogroup] isn't a labelable
     // HTML element, so FormLabel's htmlFor can't reach it) — not a duplicated
     // literal aria-label string.
-    expect(screen.getByRole("radiogroup", { name: /isolation to assign/i })).toBeTruthy();
+    expect(screen.getByRole("radiogroup", { name: /^isolation$/i })).toBeTruthy();
     // M148 Dimension 4.3: the copy describes an assignment the host must
     // satisfy; the pre-inversion self-reported framing is gone.
-    expect(screen.getByText(/the isolation this host must enforce/i)).toBeTruthy();
+    expect(screen.getByText(/cannot enforce the assigned tier is degraded/i)).toBeTruthy();
     expect(screen.queryByText(/self-reported/i)).toBeNull();
   });
 
@@ -168,7 +168,7 @@ describe("AddRunnerDialog component", () => {
     );
 
     await user.type(screen.getByLabelText(/host name/i), "web-prod-1");
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /create runner/i }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^create$/i }));
     expect(createRunnerActionMock).toHaveBeenCalledWith({
       host_id: "web-prod-1",
       assigned_policy: {
@@ -190,7 +190,7 @@ describe("AddRunnerDialog component", () => {
     });
     const { user, onCreated } = await openDialog();
     await user.type(screen.getByLabelText(/host name/i), "web-prod-1");
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /create runner/i }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^create$/i }));
     await waitFor(() => expect(screen.getByText(/additional scope/i)).toBeTruthy());
     expect(screen.queryByLabelText("Runner token")).toBeNull();
     expect(onCreated).not.toHaveBeenCalled();

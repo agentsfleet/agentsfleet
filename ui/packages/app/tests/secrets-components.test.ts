@@ -175,7 +175,7 @@ describe("AddSecretDialog", () => {
     await user.type(screen.getByLabelText(/secret name/i), "stripe");
     await user.type(screen.getByLabelText("Field 1 name"), "api_key");
     await user.type(screen.getByLabelText("Field 1 value"), "sk-test");
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create secret" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(routerRefresh).toHaveBeenCalled();
   });
@@ -213,7 +213,7 @@ describe("AddSecretForm component", () => {
     render(React.createElement(AddSecretForm, { workspaceId: "ws_1" } as never));
   }
 
-  const ADD_SECRET = { name: /^create secret$/i } as const;
+  const ADD_SECRET = { name: /^create$/i } as const;
   const ADD_FIELD = { name: /\+ add field/i } as const;
 
   it("renders secret name, one field row, add-field, and submit", async () => {

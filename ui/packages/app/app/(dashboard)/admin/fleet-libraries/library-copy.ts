@@ -23,6 +23,8 @@ export const NOT_PLATFORM_ADMIN = "/settings?notice=fleet-libraries-platform-adm
 // is the honest one: this page adds no *fleet*. A fleet exists only once a
 // workspace installs one; what lands here is a library.
 export const CREATE_FLEET_LIBRARY = "Create fleet library";
+export const CREATE_SUBMIT = "Create";
+export const CREATING = "Creating";
 export const FETCH_BUNDLE = "Fetch bundle";
 export const FETCH_UPDATE = "Fetch update";
 export const PUBLISH = "Publish";
@@ -37,7 +39,7 @@ export const DELETE_ACTION = "delete the fleet library";
 export const CATALOG_READ_ACTION = "load the fleet catalog";
 
 export const ADD_TOOLTIP =
-  "Fetch a fleet's bundle from GitHub. It lands as a draft — no workspace sees it until you publish.";
+  "Fetch a fleet bundle from GitHub. Saved as a draft — publish to make it visible to every workspace.";
 export const FETCH_UPDATE_DESCRIPTION =
   "Fetch the latest bundle from this repository. The entry returns to Draft so you can review it before publishing.";
 export const FETCHING_UPDATE = "Fetching update";

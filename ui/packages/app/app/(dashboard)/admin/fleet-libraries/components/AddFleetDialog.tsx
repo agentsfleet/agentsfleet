@@ -33,6 +33,8 @@ import {
   ADD_ACTION,
   ADD_TOOLTIP,
   CREATE_FLEET_LIBRARY,
+  CREATE_SUBMIT,
+  CREATING,
   FETCHING_UPDATE,
   FETCH_UPDATE,
   FETCH_UPDATE_ACTION,
@@ -230,8 +232,8 @@ export default function AddFleetDialog({
                 Cancel
               </Button>
               <Button type="submit" disabled={pending}>
-                {pending ? <Spinner size="sm" srLabel={isRefetch ? FETCHING_UPDATE : CREATE_FLEET_LIBRARY} /> : null}
-                {dialogTitle}
+                {pending ? <Spinner size="sm" srLabel={isRefetch ? FETCHING_UPDATE : CREATING} /> : null}
+                {isRefetch ? FETCH_UPDATE : CREATE_SUBMIT}
               </Button>
             </DialogFooter>
           </form>
