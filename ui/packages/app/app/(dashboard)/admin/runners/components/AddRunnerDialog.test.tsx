@@ -29,6 +29,17 @@ function openDialog() {
 }
 
 describe("AddRunnerDialog assigns policy", () => {
+  // Enrollment is where an operator picks a policy for the first time, so the
+  // page the fields point at has to be reachable from here too, not only from
+  // the edit dialog they reach after something is already wrong.
+  it("points at the runner policy page", () => {
+    openDialog();
+
+    expect(screen.getByRole("link", { name: /^learn more/i }).getAttribute("href")).toBe(
+      "https://docs.agentsfleet.net/runners",
+    );
+  });
+
   // Same policy form as the edit dialog, plus the post-create token panel, so it
   // overflows a short viewport for the same reason and needs the same scroll.
   it("test_add_runner_dialog_body_scrolls: keeps the footer reachable on a short viewport", () => {
