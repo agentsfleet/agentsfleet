@@ -18,6 +18,12 @@ export const FILTER_KEY = {
 const KEY_VALUE_SEPARATOR = ":";
 const QUOTE = '"';
 
+// The one bare word read as a connective between pairs — accepted so the query
+// can be typed the way the hint reads ("workspace:<id> and fleet:<name>"), and
+// skipped so it never becomes a filter. `and:value` still carries a key, so it
+// stays an unknown-key drop, never a connective.
+const CONNECTIVE_AND = "and";
+
 export type LeaseFilters = {
   /** The workspace id the feed is narrowed to, or null when unfiltered. */
   workspace: string | null;
@@ -62,6 +68,7 @@ export function parseLeaseFilterQuery(raw: string): LeaseFilters {
   let workspace: string | null = null;
   let fleet: string | null = null;
   for (const token of tokenize(raw)) {
+    if (token.toLowerCase() === CONNECTIVE_AND) continue;
     const separator = token.indexOf(KEY_VALUE_SEPARATOR);
     if (separator <= 0) continue;
     const key = token.slice(0, separator).toLowerCase();

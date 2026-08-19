@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { TooltipProvider } from "@agentsfleet/design-system";
 import type { AssignedPolicy, RunnerDetail, SelftestReport } from "@/lib/api/runners";
 import { RunnerSandboxPanel } from "./RunnerSandboxPanel";
 
 afterEach(() => cleanup());
+
+// The panel's relative stamp is a tooltip trigger (the app's root provider
+// serves it in production); the wrapper stands in for that root here.
+const renderPanel = (ui: ReactElement) => render(ui, { wrapper: TooltipProvider });
 
 const ASSIGNED: AssignedPolicy = {
   sandbox_tier: "landlock_full",
@@ -55,7 +61,7 @@ function panel() {
 
 describe("RunnerSandboxPanel — self-test half", () => {
   it("says the runner has never been tested rather than showing an empty verdict", () => {
-    render(<RunnerSandboxPanel runner={detail()} />);
+    renderPanel(<RunnerSandboxPanel runner={detail()} />);
     expect(within(panel()).getByText(/Never self-tested/)).toBeTruthy();
     expect(screen.queryByText("all checks passed")).toBeNull();
   });
@@ -71,20 +77,20 @@ describe("RunnerSandboxPanel — self-test half", () => {
         selftest_requested_at: undefined,
       }),
     ) as RunnerDetail;
-    render(<RunnerSandboxPanel runner={older} />);
+    renderPanel(<RunnerSandboxPanel runner={older} />);
     expect(within(panel()).getByText(/Never self-tested/)).toBeTruthy();
     expect(within(panel()).queryByText(/Invalid Date/)).toBeNull();
   });
 
   it("names an outstanding request so a blank verdict does not read as a healthy one", () => {
-    render(<RunnerSandboxPanel runner={detail({ selftest_requested_at: 1_760_000_000_000 })} />);
+    renderPanel(<RunnerSandboxPanel runner={detail({ selftest_requested_at: 1_760_000_000_000 })} />);
     expect(within(panel()).getByText(/A self-test is outstanding/)).toBeTruthy();
   });
 
   // Dimension 1.2 — each check the host reported gets its own name and detail
   // line, so "DNS failed inside the sandbox" reads without a journal.
   it("test_selftest_result_renders_per_check", () => {
-    render(
+    renderPanel(
       <RunnerSandboxPanel
         runner={detail({ selftest: PASSING, selftest_completed_at: 1_760_000_000_000 })}
       />,
@@ -104,15 +110,34 @@ describe("RunnerSandboxPanel — self-test half", () => {
         { name: "the inference endpoint is reachable", ok: true, detail: "no fault detected" },
       ],
     };
-    render(<RunnerSandboxPanel runner={detail({ selftest: failing, selftest_completed_at: 1 })} />);
+    renderPanel(<RunnerSandboxPanel runner={detail({ selftest: failing, selftest_completed_at: 1 })} />);
     expect(within(panel()).getByText("2 failed")).toBeTruthy();
     expect(within(panel()).getByText("the stub is not bound")).toBeTruthy();
+  });
+
+  it("titles the verdict half after the header's own word for it", () => {
+    renderPanel(<RunnerSandboxPanel runner={detail()} />);
+    expect(within(panel()).getByRole("heading", { name: "Checks" })).toBeTruthy();
+  });
+
+  it("checks timestamp reveals the absolute time", () => {
+    renderPanel(
+      <RunnerSandboxPanel
+        runner={detail({ selftest: PASSING, selftest_completed_at: 1_760_000_000_000 })}
+      />,
+    );
+    const stamp = panel().querySelector("time");
+    expect(stamp).not.toBeNull();
+    // Wired as a tooltip trigger — Radix stamps its trigger with an open-state
+    // attribute — so the absolute instant is one hover away from the relative
+    // label. `tooltip={false}` here is the regression this pins against.
+    expect(stamp?.getAttribute("data-state")).not.toBeNull();
   });
 
   // Dimension 1.3 — the result is history, and the page has to say so or an
   // operator reads a passing verdict as proof of the current policy.
   it("test_stale_selftest_result_is_labelled", () => {
-    render(
+    renderPanel(
       <RunnerSandboxPanel
         runner={detail({
           selftest: { ...PASSING, network_policy: "allow_all" },
@@ -125,24 +150,24 @@ describe("RunnerSandboxPanel — self-test half", () => {
   });
 
   it("shows no stale marking when the verdict names the assignment still in force", () => {
-    render(<RunnerSandboxPanel runner={detail({ selftest: PASSING, selftest_completed_at: 1 })} />);
+    renderPanel(<RunnerSandboxPanel runner={detail({ selftest: PASSING, selftest_completed_at: 1 })} />);
     expect(within(panel()).queryByText("stale")).toBeNull();
   });
 });
 
 describe("RunnerSandboxPanel — bind half", () => {
   it("states the baseline-only case rather than rendering an empty list", () => {
-    render(<RunnerSandboxPanel runner={detail()} />);
+    renderPanel(<RunnerSandboxPanel runner={detail()} />);
     expect(within(panel()).getByText(/Baseline only/)).toBeTruthy();
   });
 
   it("reads binds as baseline-only when the runner carries no assignment at all", () => {
-    render(<RunnerSandboxPanel runner={detail({ assigned_policy: null })} />);
+    renderPanel(<RunnerSandboxPanel runner={detail({ assigned_policy: null })} />);
     expect(within(panel()).getByText(/Baseline only/)).toBeTruthy();
   });
 
   it("lists each assigned path with its mode and the operator's note", () => {
-    render(
+    renderPanel(
       <RunnerSandboxPanel
         runner={detail({
           assigned_policy: {
@@ -158,7 +183,7 @@ describe("RunnerSandboxPanel — bind half", () => {
   });
 
   it("defaults an entry that names no mode to read-only", () => {
-    render(
+    renderPanel(
       <RunnerSandboxPanel
         runner={detail({ assigned_policy: { ...ASSIGNED, extra_binds: [{ path: "/srv/models" }] } })}
       />,
@@ -167,7 +192,7 @@ describe("RunnerSandboxPanel — bind half", () => {
   });
 
   it("marks a writable mount — it widens the isolation boundary for every lease", () => {
-    render(
+    renderPanel(
       <RunnerSandboxPanel
         runner={detail({
           assigned_policy: { ...ASSIGNED, extra_binds: [{ path: "/srv/cache", mode: "read_write" }] },

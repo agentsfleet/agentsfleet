@@ -2,6 +2,7 @@
 // and glyphs, shared by the detail header (and formerly the table rows the
 // wall replaced). Presentation-only; the callers own state and data flow.
 
+import { BanIcon, HourglassIcon, ListChecksIcon, ShieldXIcon, type LucideIcon } from "lucide-react";
 import {
   RUNNER_ADMIN_ACTION,
   RUNNER_ADMIN_STATE,
@@ -9,16 +10,26 @@ import {
   type RunnerAdminState,
 } from "@/lib/api/runners";
 
+// Cordon and drain render but do not operate yet: their PATCH verbs land in a
+// later milestone, and a control that pretends to work is worse than one that
+// says why it will not. One string, both entries.
+const NOT_ACTIVE_YET_REASON = "Not active yet";
+
 // Each admin action carries its confirm-dialog copy. `label` is the single
-// source of the accessible name; revoke is offered until the runner is
-// revoked, delete only after (DELETE /v1/fleets/runners/{id} 409s on a live
-// runner), exactly as ApiKeyList alternates the two.
+// source of the accessible name; `icon` is the leading glyph its header button
+// renders; revoke is offered until the runner is revoked, delete only after
+// (DELETE /v1/fleets/runners/{id} 409s on a live runner), exactly as
+// ApiKeyList alternates the two.
 export const ACTION_CONFIG: Record<RunnerStateAction, {
   label: string;
   title: string;
   description: string;
   intent: "default" | "destructive";
   errorAction: string;
+  icon: LucideIcon;
+  /** Present while the action renders but cannot be taken yet; the button is
+   * disabled and this string reads as its reason. */
+  disabledReason?: string;
 }> = {
   [RUNNER_ADMIN_ACTION.cordon]: {
     label: "Cordon",
@@ -26,6 +37,8 @@ export const ACTION_CONFIG: Record<RunnerStateAction, {
     description: "Runner-plane calls stop immediately. Existing lease rows stay fenced until expiry or reassignment.",
     intent: "default",
     errorAction: "cordon this runner",
+    icon: BanIcon,
+    disabledReason: NOT_ACTIVE_YET_REASON,
   },
   [RUNNER_ADMIN_ACTION.drain]: {
     label: "Drain",
@@ -33,6 +46,8 @@ export const ACTION_CONFIG: Record<RunnerStateAction, {
     description: "The runner stops taking new work and becomes drained automatically once active leases reach zero.",
     intent: "default",
     errorAction: "drain this runner",
+    icon: HourglassIcon,
+    disabledReason: NOT_ACTIVE_YET_REASON,
   },
   [RUNNER_ADMIN_ACTION.revoke]: {
     label: "Revoke",
@@ -40,6 +55,7 @@ export const ACTION_CONFIG: Record<RunnerStateAction, {
     description: "The runner token is blocked immediately. This is terminal for the enrolled host.",
     intent: "destructive",
     errorAction: "revoke this runner",
+    icon: ShieldXIcon,
   },
 };
 
@@ -63,9 +79,10 @@ export const DELETE_ACTION_CONFIG = {
 // runner's own sandbox and changes nothing an operator would want to undo, so a
 // confirmation would be ceremony without a decision behind it.
 export const SELFTEST_ACTION_CONFIG = {
-  label: "Run self-test",
-  pendingLabel: "Self-test requested",
-  errorAction: "run a self-test on this runner",
+  label: "Run checks",
+  pendingLabel: "Checks requested",
+  errorAction: "run checks on this runner",
+  icon: ListChecksIcon,
 };
 
 /** Only a revoked runner is deletable — the daemon 409s (UZ-RUN-016) otherwise. */

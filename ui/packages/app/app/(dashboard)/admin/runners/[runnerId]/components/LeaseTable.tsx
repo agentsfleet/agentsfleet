@@ -85,8 +85,8 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
         ),
       },
       {
-        key: "when",
-        header: "When",
+        key: "time",
+        header: "Time",
         sortValue: (lease) => lease.created_at,
         cell: (lease) => (
           <Time
@@ -97,8 +97,8 @@ export function LeaseTable({ initial, pageSize }: { initial: RunnerLeaseResponse
         ),
       },
       {
-        key: "took",
-        header: "Took",
+        key: "duration",
+        header: "Duration",
         numeric: true,
         hideOnMobile: true,
         cell: (lease) => (
