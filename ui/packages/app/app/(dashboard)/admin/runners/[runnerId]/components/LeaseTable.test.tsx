@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import type { RunnerLease } from "@/lib/api/runners";
+import { APPLY_LEASE_FILTER_LABEL, LEASE_FILTER_LABEL } from "./runner-copy";
 
 // The wrapper stands in for a real ancestor, not a missing one: the app mounts
 // exactly one TooltipProvider in `app/layout.tsx`, above every route group, and
@@ -250,10 +251,10 @@ describe("LeaseTable", () => {
         }}
         pageSize={25}
       />, { wrapper: TooltipProvider });
-    fireEvent.change(screen.getByLabelText("Filter leases"), {
+    fireEvent.change(screen.getByLabelText(LEASE_FILTER_LABEL), {
       target: { value: "workspace:ws-0123456789 fleet:pr-reviewer" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Apply filter" }));
+    fireEvent.click(screen.getByRole("button", { name: APPLY_LEASE_FILTER_LABEL }));
     expect(routerPush).toHaveBeenCalledTimes(1);
     const url = routerPush.mock.calls[0]?.[0] as string;
     const params = new URLSearchParams(url.split("?")[1]);
@@ -340,7 +341,24 @@ describe("LeaseTable", () => {
     expect(routerPush).toHaveBeenCalledWith(MOCK_PATHNAME, { scroll: true });
   });
 
-  it("should sort by When through the standard header control", () => {
+  it("lease and activity tables use the shared time vocabulary (lease half)", () => {
+    render(
+      <LeaseTable
+        initial={{
+          items: [lease({ id: "vocab-1" })],
+          total: 1,
+          next_cursor: null,
+        }}
+        pageSize={25}
+      />, { wrapper: TooltipProvider });
+    // The app-wide column names (EventsList's), not this table's own dialect.
+    expect(screen.getByRole("columnheader", { name: "Time" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Duration" })).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: "When" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Took" })).toBeNull();
+  });
+
+  it("should sort by Time through the standard header control", () => {
     render(
       <LeaseTable
         initial={{
@@ -359,11 +377,19 @@ describe("LeaseTable", () => {
         .getAllByRole("row")
         .slice(1)
         .map((row) => (row.textContent?.includes("Alpha Fleet") ? "older" : "newer"));
-    fireEvent.click(screen.getByRole("button", { name: /when/i }));
+    fireEvent.click(screen.getByRole("button", { name: /time/i }));
     const firstSort = orderOf();
-    fireEvent.click(screen.getByRole("button", { name: /when/i }));
+    fireEvent.click(screen.getByRole("button", { name: /time/i }));
     // Two clicks walk both directions of the same comparator: the order must
     // invert, proving the column sorts on the lease's real timestamp.
     expect(orderOf()).toEqual([...firstSort].reverse());
   });
+});
+
+it("the filter copy reads Filter and Apply — pinned literals, not constants", () => {
+  // The interaction tests import the constants so plumbing refactors stay
+  // cheap; these literals pin the user-facing words themselves, the same way
+  // the vocabulary test pins Time/Duration.
+  expect(LEASE_FILTER_LABEL).toBe("Filter");
+  expect(APPLY_LEASE_FILTER_LABEL).toBe("Apply");
 });

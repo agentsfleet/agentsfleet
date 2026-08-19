@@ -7,11 +7,13 @@ import { BIND_MODE, isSelftestStale, type ExtraBind, type RunnerDetail } from "@
 // verdict beside it is an assignment nobody has tested.
 
 const PANEL_LABEL = "Sandbox";
-const SELFTEST_HEADING = "Self-test";
+// Renders uppercased by the heading's own class — the header button says "Run
+// checks", so the panel carrying the verdict answers to the same word.
+const CHECKS_HEADING = "Checks";
 const BINDS_HEADING = "Extra mounts";
 
-const NEVER_TESTED = "Never self-tested. The verdict appears here once the host answers.";
-const PENDING_NOTE = "A self-test is outstanding — the host answers on its next heartbeat.";
+const NEVER_TESTED = "Never checked. The verdict appears here once the host answers.";
+const PENDING_NOTE = "Checks are outstanding — the host answers on its next heartbeat.";
 const STALE_BADGE = "stale";
 const STALE_NOTE =
   "This verdict was recorded against an assignment the runner no longer carries, so it proves nothing about the current one.";
@@ -40,7 +42,7 @@ export function RunnerSandboxPanel({ runner }: { runner: RunnerDetail }) {
     <Card className="flex flex-col gap-2xl p-lg" aria-label={PANEL_LABEL}>
       <Section className="flex flex-col gap-md">
         <div className="flex flex-wrap items-center gap-md">
-          <h2 className="font-mono text-body-sm uppercase text-muted-foreground">{SELFTEST_HEADING}</h2>
+          <h2 className="font-mono text-body-sm uppercase text-muted-foreground">{CHECKS_HEADING}</h2>
           {report ? (
             <Badge variant={report.all_ok ? "green" : "error"}>
               {report.all_ok ? ALL_OK_LABEL : `${failed} ${FAILED_SUFFIX}`}
@@ -49,7 +51,10 @@ export function RunnerSandboxPanel({ runner }: { runner: RunnerDetail }) {
           {stale ? <Badge variant="amber">{STALE_BADGE}</Badge> : null}
           {completedAt !== null ? (
             <span className="text-body-sm text-muted-foreground">
-              <Time value={new Date(completedAt)} format="relative" tooltip={false} />
+              {/* Relative keeps the row scannable; the tooltip (the primitive's
+                  default for relative) keeps the absolute instant one hover
+                  away — the operator pasting a verdict into a ticket needs it. */}
+              <Time value={new Date(completedAt)} format="relative" />
             </span>
           ) : null}
         </div>

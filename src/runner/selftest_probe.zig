@@ -85,6 +85,7 @@ pub const KEY_RESOLVER = "resolver=";
 pub const KEY_DNS = "dns=";
 pub const KEY_EGRESS = "egress=";
 pub const KEY_BINDS = "binds=";
+pub const KEY_SCRATCH = "scratch=";
 
 /// Run the probe. Always exits 0 on a completed run — a FAILED CHECK is a
 /// result, not an error. A non-zero exit means the child could not run at all,
@@ -122,11 +123,12 @@ pub fn run(argv: []const [:0]const u8, io: std.Io) u8 {
     const binds_seen = extra_binds.len;
 
     const resolver = Verdict.of(resolverResolves(io));
+    const scratch = Verdict.of(scratchWritable(io));
     const dns = if (resolve_host) |h| Verdict.of(nameResolves(io, h)) else .untested;
     const egress = if (dial_target) |t| Verdict.of(endpointAccepts(io, t)) else .untested;
     const binds: Verdict = if (binds_seen == 0) .untested else Verdict.of(binds_present);
 
-    writeVerdict(io, resolver, dns, egress, binds);
+    writeVerdict(io, resolver, scratch, dns, egress, binds);
     return 0;
 }
 
@@ -149,6 +151,29 @@ fn pathPresent(io: std.Io, path: []const u8) bool {
 fn resolverResolves(io: std.Io) bool {
     const file = std.Io.Dir.openFileAbsolute(io, RESOLV_PATH, .{}) catch return false;
     file.close(io);
+    return true;
+}
+
+/// Can this constrained child create a file in its scratch tmpfs? The engine
+/// writes credentialed dial headers there, so a floor entry the policy layer
+/// refuses fails every lease at its first credentialed call
+/// (TempFileCreateFailed) — exactly the fault the write floor exists to
+/// prevent, detected here rather than assumed from the lists agreeing.
+fn scratchWritable(io: std.Io) bool {
+    inline for (contract.protocol.BASELINE_RW_TMPFS) |dir| {
+        // Unique per run: under dev_none the probe runs on the HOST /tmp, so a
+        // fixed name could collide with a concurrent probe's file or a crashed
+        // predecessor's leftover. Exclusive: proves MAKE_REG precisely (an
+        // existing file cannot stand in for a create), and O_EXCL refuses to
+        // follow a planted symlink outside the private tmpfs.
+        var path_buf: [dir.len + 64]u8 = undefined;
+        const path = std.fmt.bufPrint(&path_buf, "{s}/agentsfleet_selftest_scratch_{d}", .{ dir, std.c.getpid() }) catch return false;
+        const f = std.Io.Dir.createFileAbsolute(io, path, .{ .exclusive = true }) catch return false;
+        f.close(io);
+        // Removal is part of the check: the floor grants REMOVE_FILE too, and
+        // a scratch that fills with undeletable probe files is its own fault.
+        std.Io.Dir.deleteFileAbsolute(io, path) catch return false;
+    }
     return true;
 }
 
@@ -194,12 +219,13 @@ fn endpointAccepts(io: std.Io, target: []const u8) bool {
 /// closed stdout means the parent already reaped us, and there is no one left
 /// to tell. The parent reads a missing line as every check failing, which is
 /// the fail-closed reading.
-fn writeVerdict(io: std.Io, resolver: Verdict, dns: Verdict, egress: Verdict, binds: Verdict) void {
-    var out_buf: [64]u8 = undefined;
+fn writeVerdict(io: std.Io, resolver: Verdict, scratch: Verdict, dns: Verdict, egress: Verdict, binds: Verdict) void {
+    var out_buf: [80]u8 = undefined;
     var stdout_w = std.Io.File.stdout().writer(io, &out_buf);
     const stdout = &stdout_w.interface;
-    stdout.print("{s}{c} {s}{c} {s}{c} {s}{c}\n", .{
+    stdout.print("{s}{c} {s}{c} {s}{c} {s}{c} {s}{c}\n", .{
         KEY_RESOLVER, @intFromEnum(resolver),
+        KEY_SCRATCH,  @intFromEnum(scratch),
         KEY_DNS,      @intFromEnum(dns),
         KEY_EGRESS,   @intFromEnum(egress),
         KEY_BINDS,    @intFromEnum(binds),

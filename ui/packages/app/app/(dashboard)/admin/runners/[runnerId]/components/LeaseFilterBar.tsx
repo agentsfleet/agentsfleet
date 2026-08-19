@@ -7,7 +7,7 @@ import {
   useSearchParams,
   type ReadonlyURLSearchParams,
 } from "next/navigation";
-import { XIcon } from "lucide-react";
+import { FilterIcon, XIcon } from "lucide-react";
 import { Badge, Button, IconAction, Input, Label } from "@agentsfleet/design-system";
 import { CURSOR_PAGE_SIZE_PARAM, CURSOR_TRAIL_PARAM } from "@/lib/pagination/cursor-trail";
 import {
@@ -117,7 +117,7 @@ export function LeaseFilterBar({ filters }: { filters: LeaseFilterState }) {
           }}
         />
         <Button type="button" onClick={submit}>
-          {APPLY_LEASE_FILTER_LABEL}
+          <FilterIcon aria-hidden="true" /> {APPLY_LEASE_FILTER_LABEL}
         </Button>
         {hasActiveFilter ? (
           <Button type="button" variant="ghost" onClick={filters.clearAll}>

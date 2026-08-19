@@ -15,6 +15,7 @@ const logging = @import("log");
 const cgroup = @import("engine/CgroupScope.zig");
 const client_errors = @import("engine/client_errors.zig");
 const sandbox = @import("sandbox_args.zig");
+const sandbox_env = @import("sandbox_env.zig");
 const Config = @import("daemon/config.zig");
 
 const log = logging.scoped(.runner_supervisor);
@@ -69,7 +70,7 @@ fn requireAbsoluteArgv0(argv: []const []const u8) error{SandboxArgvNotAbsolute}!
 }
 
 /// Build the sandboxed child's environment: ONLY the allowlisted daemon vars
-/// that are actually set (`sandbox.ENV_PASSTHROUGH_ALLOWLIST`, RULE UFS).
+/// that are actually set (`sandbox_env.ENV_PASSTHROUGH_ALLOWLIST`, RULE UFS).
 /// Fail-closed — anything off the allowlist (incl. the `AGENTSFLEET_` control-plane
 /// credentials) is simply never copied in. Caller owns the map and must `deinit`
 /// it after the spawn consumes it. Pub so the integration lane can spawn a real
@@ -77,12 +78,12 @@ fn requireAbsoluteArgv0(argv: []const []const u8) error{SandboxArgvNotAbsolute}!
 pub fn buildChildEnviron(alloc: std.mem.Allocator, daemon_env: *const std.process.Environ.Map) !std.process.Environ.Map {
     var env: std.process.Environ.Map = .init(alloc);
     errdefer env.deinit();
-    inline for (sandbox.ENV_PASSTHROUGH_ALLOWLIST) |name| {
+    inline for (sandbox_env.ENV_PASSTHROUGH_ALLOWLIST) |name| {
         // Defense-in-depth: the deny-prefix must never be allowlisted, so a
         // daemon secret can never reach the child no matter how the allowlist is
         // edited. Comptime — validated at every build, release included, at zero
         // runtime cost; an offending allowlist edit fails compilation, not Debug.
-        comptime std.debug.assert(!std.mem.startsWith(u8, name, sandbox.ENV_DENY_PREFIX));
+        comptime std.debug.assert(!std.mem.startsWith(u8, name, sandbox_env.ENV_DENY_PREFIX));
         if (daemon_env.get(name)) |value| try env.put(name, value);
     }
     return env;
@@ -146,7 +147,7 @@ test "forkExec env filter omits every AGENTSFLEET_ daemon secret from the child 
     // The deny-prefix is provably absent regardless of allowlist contents.
     var it = child.array_hash_map.iterator();
     while (it.next()) |entry| {
-        try testing.expect(!std.mem.startsWith(u8, entry.key_ptr.*, sandbox.ENV_DENY_PREFIX));
+        try testing.expect(!std.mem.startsWith(u8, entry.key_ptr.*, sandbox_env.ENV_DENY_PREFIX));
     }
     try testing.expect(child.get("AGENTSFLEET_RUNNER_TOKEN") == null);
     try testing.expect(child.get("AGENTSFLEET_API_URL") == null);

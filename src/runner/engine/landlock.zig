@@ -103,10 +103,12 @@ const LandlockPathBeneathAttr = extern struct {
     parent_fd: i32,
 };
 
-/// Read-only paths landlock needs beyond the bind contract's baseline: the
-/// sandbox floor bwrap constructs (tmpfs, devtmpfs, proc) rather than binds,
-/// so the contract does not list them.
-const LANDLOCK_FLOOR_RO_PATHS = [_][]const u8{ "/usr", "/dev", "/proc", "/tmp" };
+/// Read-only paths landlock needs beyond the bind list's baseline: the
+/// sandbox floor bwrap constructs (devtmpfs, proc) or ro-binds (/usr) rather
+/// than bind-declares, so the shared lists do not carry them. The writable
+/// tmpfs floor is NOT here — it takes `WORKSPACE_ACCESS` below, from the same
+/// shared list bwrap mounts it from.
+const LANDLOCK_FLOOR_RO_PATHS = [_][]const u8{ "/usr", "/dev", "/proc" };
 
 /// System paths that get read-only access in the sandbox. Derived from the
 /// bind contract so bwrap and landlock can never disagree on what a lease may
@@ -141,6 +143,16 @@ pub fn applyPolicy(workspace_path: []const u8, extra_binds: []const protocol.Ext
 
     // Add workspace rule (RW).
     try addPathRule(ruleset_fd, workspace_path, WORKSPACE_ACCESS);
+
+    // The writable floor: every tmpfs bwrap constructs writable is granted
+    // write here too, from the same shared list — so mount layer and policy
+    // layer can never disagree on where a lease may write. This once diverged
+    // by hand: `/tmp` was writable at the mount and read-only here, and every
+    // credentialed dial died writing its header file (TempFileCreateFailed)
+    // while the un-landlocked host wrote it fine.
+    for (protocol.BASELINE_RW_TMPFS) |path| {
+        try addPathRule(ruleset_fd, path, WORKSPACE_ACCESS);
+    }
 
     // Add system readonly paths.
     for (SYSTEM_READONLY_PATHS) |path| {
@@ -200,6 +212,18 @@ fn addPathRule(ruleset_fd: i32, path: []const u8, access: u64) LandlockError!voi
 test "applyPolicy returns UnsupportedPlatform on non-linux" {
     if (builtin.os.tag == .linux) return error.SkipZigTest;
     try std.testing.expectError(LandlockError.UnsupportedPlatform, applyPolicy("/tmp/test", &.{}));
+}
+
+test "landlock write set contains every writable-floor path" {
+    // The write-side twin of the read-set pin below: a path bwrap mounts
+    // writable is never demoted to read-only by the policy layer. (That every
+    // floor entry is operator-unbindable is enforced at comptime in
+    // protocol_bind.zig — a runtime arm for it here could never fire.)
+    for (protocol.BASELINE_RW_TMPFS) |rw| {
+        for (SYSTEM_READONLY_PATHS) |ro| {
+            try std.testing.expect(!std.mem.eql(u8, ro, rw));
+        }
+    }
 }
 
 test "landlock read set contains every bind-contract path" {

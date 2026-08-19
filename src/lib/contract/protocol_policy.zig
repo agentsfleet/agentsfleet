@@ -165,6 +165,7 @@ const selftest = @import("protocol_selftest.zig");
 pub const BindMode = bind.BindMode;
 pub const ExtraBind = bind.ExtraBind;
 pub const BASELINE_RO_PATHS = bind.BASELINE_RO_PATHS;
+pub const BASELINE_RW_TMPFS = bind.BASELINE_RW_TMPFS;
 pub const SENSITIVE_PATHS = bind.SENSITIVE_PATHS;
 pub const MAX_EXTRA_BINDS = bind.MAX_EXTRA_BINDS;
 pub const MAX_BIND_PATH_LEN = bind.MAX_BIND_PATH_LEN;

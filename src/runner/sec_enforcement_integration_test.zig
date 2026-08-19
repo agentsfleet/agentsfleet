@@ -165,13 +165,16 @@ test "integration: seccomp filter traps a denied syscall to the violation exit c
 
 // ── Landlock: a write outside the workspace is denied ────────────────────────
 
-// /tmp is bound read-only by applyPolicy; a workspace *under* /tmp gets a more
-// specific RW path-beneath rule. So a write under the workspace is allowed while
-// a sibling write elsewhere under /tmp is denied — the exact boundary the policy
-// promises, proven without leaving the writable test tmp.
-const LL_WORKSPACE: [*:0]const u8 = "/tmp/enforce-ws";
-const LL_INSIDE: [*:0]const u8 = "/tmp/enforce-ws/inside.txt";
-const LL_OUTSIDE: [*:0]const u8 = "/tmp/enforce-outside.txt";
+// The policy's write boundary has three arms now that /tmp is on the writable
+// floor: a write under the WORKSPACE is allowed (its own rule), a write under
+// the FLOOR is allowed (the shared tmpfs grant), and a write anywhere else is
+// denied (default-deny). /var/tmp is the denied target — world-writable at the
+// DAC layer like /tmp, so only landlock stands between the child and the file,
+// and on no rule list (not workspace, not floor, not a read-only baseline).
+const LL_WORKSPACE: [*:0]const u8 = "/var/tmp/enforce-ws";
+const LL_INSIDE: [*:0]const u8 = "/var/tmp/enforce-ws/inside.txt";
+const LL_OUTSIDE: [*:0]const u8 = "/var/tmp/enforce-outside.txt";
+const LL_FLOOR: [*:0]const u8 = "/tmp/enforce-floor.txt";
 
 test "integration: Landlock denies a write outside the workspace and allows one inside" {
     if (builtin.os.tag != .linux) return error.SkipZigTest;
@@ -184,10 +187,13 @@ test "integration: Landlock denies a write outside the workspace and allows one 
         // CHILD — the real in-child filesystem wall (no_new_privs → restrict_self).
         if (!setNoNewPrivs()) linux.exit(EXIT_SETUP_FAILED);
         landlock.applyPolicy(std.mem.span(LL_WORKSPACE), &.{}) catch linux.exit(EXIT_SETUP_FAILED);
-        // OUTSIDE the workspace → denied (default-deny; /tmp is read-only).
+        // OUTSIDE workspace and floor → denied (default-deny, no rule names it).
         if (tryCreateWrite(LL_OUTSIDE)) linux.exit(EXIT_NOT_ENFORCED);
         // INSIDE the workspace → still allowed (workspace RW) — not a deny-all.
         if (!tryCreateWrite(LL_INSIDE)) linux.exit(EXIT_CONTROL_DENIED);
+        // UNDER the writable floor → allowed: the kernel-level proof that the
+        // shared tmpfs grant reaches a real ruleset, not just the list tests.
+        if (!tryCreateWrite(LL_FLOOR)) linux.exit(EXIT_CONTROL_DENIED);
         linux.exit(EXIT_ALL_CORRECT);
     }
     try expectExit(pid, EXIT_ALL_CORRECT);
