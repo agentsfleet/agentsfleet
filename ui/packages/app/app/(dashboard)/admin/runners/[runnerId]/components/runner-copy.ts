@@ -12,10 +12,10 @@ export const COPY_RUNNER_ID_LABEL = "Copy runner ID";
 export const OPEN_GRAFANA_LABEL = "Grafana";
 export const REFRESH_RUNNER_LABEL = "Refresh";
 
-// The states chip's learn-more target: the published section explaining the
+// The states chip's learn-more target: the published section defining the
 // exact admin-state and liveness vocabulary the chip renders.
 export const RUNNER_STATES_DOC_URL =
-  "https://docs.agentsfleet.net/runners#when-a-runner-stops-taking-work";
+  "https://docs.agentsfleet.net/runners#the-states-a-runner-shows";
 
 export const RAIL_LABEL = "Runner sections";
 export const RAIL_LEASES_LABEL = "Leases";
