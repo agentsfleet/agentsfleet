@@ -57,8 +57,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `make/test.mk` | EDIT | One definition site for the unit and live component inventories, the evidence paths, and the `test-coverage-grade` owner. |
 | `make/test-unit.mk` | EDIT | `test-coverage-zig` keeps the unit components, executes no live daemon binary, and records unit evidence instead of grading. |
 | `make/test-integration.mk` | EDIT | `test-integration` runs the daemon suite once under kcov, runs the isolated boot-to-drain proof, records integration evidence, and grades on matched unit evidence. |
-| `scripts/verification_evidence.py` | CREATE | Record and validate producer manifests, refuse unusable evidence naming the field, and reject unlike timing samples. |
-| `scripts/verification_evidence_test.py` | CREATE | Failure-injecting tests for every record, validation and comparison rule. |
+| `scripts/verification_evidence.py` | CREATE | Record and validate producer manifests, refusing unusable evidence naming the field. |
+| `scripts/verification_evidence_test.py` | CREATE | Failure-injecting tests for every record and validation rule. |
+| `scripts/verification_timing.py` | CREATE | Compare critical-path samples; refuse unlike commits, images and cache states before any median. |
+| `scripts/verification_timing_test.py` | CREATE | Failure-injecting tests for every comparison refusal and the verdict. |
+| `scripts/check-kcov-components.sh` | CREATE | The shared per-component kcov verdict both producer lanes call. |
+| `scripts/check_zig_coverage_lanes_test.py` | CREATE | Drive both producer recipes against a stubbed kcov; hold the one-owner, evidence and CI-wiring rules. |
+| `make/test-infra.mk` | CREATE | The compose, ports, certificate and reset concern, split from `make/test-integration.mk` at the length cap. |
+| `scripts/check_lane_concurrency_test.py`, `scripts/check_readme_badges_test.py`, `scripts/check_zig_coverage_doc_test.py` | EDIT | Re-point structural guards at the new owners and both uploading workflows. |
 | `scripts/check_zig_test_lanes_test.py` | EDIT | Re-point the lane assertions at their new owners and add the single-owner assertions over the Make sources. |
 | `scripts/check_ci_lane_config_test.py` | EDIT | Prove one workflow run holds both producers and the grade, and that exactly one job executes the live daemon binary. |
 | `.github/workflows/test.yml` | EDIT | Drop the coverage job and its needs entry; the `test` context keeps the unit and package lanes. |
@@ -240,7 +246,7 @@ Replay rows: running the canonical sequence twice on unchanged sources produces 
 | R3 | The canonical sequence executes the daemon integration binary once (§1, §3) | `make test-unit-all && make test-integration` with the lane-test kcov stub logging every binary | exactly 1 unfiltered and 1 filtered invocation of `agentsfleetd-integration-tests` | P0 | |
 | R4 | Evidence rules and lane ownership hold under injection (§1–§3, §5) | `python3 -m unittest discover -s scripts -t scripts -p '*_test.py'` | exit 0 | P0 | |
 | R5 | CI runs one live daemon owner and a fail-closed grade in one run (§4) | `make check-gh-actions-valid && python3 -m unittest scripts.check_ci_lane_config_test` | exit 0 | P0 | |
-| R6 | Measured CI critical path improves against the same-commit, same-image baseline (§4) | `python3 scripts/verification_evidence.py compare-timings --samples .tmp/verification/ci-samples.json` | exit 0; medians reported for cold and warm separately with a positive change | P0 | |
+| R6 | Measured CI critical path improves against the same-commit, same-image baseline (§4) | `python3 scripts/verification_timing.py --samples .tmp/verification/ci-samples.json` | exit 0; medians reported for cold and warm separately with a positive change | P0 | |
 | R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Repository verification stays green | `make harness-verify && make lint-all && make check-version` | exit 0 | P0 | |
 | S2 | No leaks | `make memleak` | exit 0 | P0 | |
