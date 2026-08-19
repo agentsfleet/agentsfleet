@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M171
 **Workstream:** 001
 **Date:** Aug 19, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the rejection surface is the first thing a new operator meets, and it currently answers in two dialects
 **Categories:** CLI
 **Batch:** B1 — standalone; no other workstream touches `cli/src/cli.ts`
-**Branch:** {feat/mNN-name — added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m171-cli-arg-rejection
+**Test Baseline:** unit=4157 integration=709
 **Depends on:** none
 **Provenance:** LLM-drafted (claude-opus-5, Aug 19, 2026) from a hand-rolled probe session by Indy
 **Canonical architecture:** `docs/architecture/cli.md` — the CLI surface and its output discipline
