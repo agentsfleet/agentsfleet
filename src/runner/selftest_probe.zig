@@ -165,7 +165,10 @@ fn resolverResolves(io: std.Io) bool {
 fn scratchWritable(io: std.Io) bool {
     inline for (contract.protocol.BASELINE_RW_TMPFS) |dir| {
         const path = dir ++ "/agentsfleet_selftest_scratch";
-        const f = std.Io.Dir.createFileAbsolute(io, path, .{}) catch return false;
+        // Exclusive: proves MAKE_REG precisely (an existing file cannot stand
+        // in for a create), and O_EXCL refuses to follow a planted symlink if
+        // this probe is ever hand-run outside its private tmpfs.
+        const f = std.Io.Dir.createFileAbsolute(io, path, .{ .exclusive = true }) catch return false;
         f.close(io);
         // Removal is part of the check: the floor grants REMOVE_FILE too, and
         // a scratch that fills with undeletable probe files is its own fault.
