@@ -52,7 +52,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/pending/M169_001_P1_API_DOCS_UI_RUNNER_DETAIL_POLISH_TMPFS_WRITE_FLOOR.md` | CREATE | This spec; Dimensions marked DONE as work lands. |
+| `docs/v2/active/M169_001_P1_API_DOCS_UI_RUNNER_DETAIL_POLISH_TMPFS_WRITE_FLOOR.md` | CREATE | This spec (moved from `pending/` at CHORE(open)); Dimensions marked DONE as work lands. |
 | `src/lib/contract/protocol_bind.zig` | EDIT | Add the writable-mounts floor beside the read-only baseline; sensitive-path refusal unchanged. |
 | `src/runner/sandbox_args.zig` | EDIT | Build the `--tmpfs` argv entries from the shared floor instead of a hand-written literal. |
 | `src/runner/engine/landlock.zig` | EDIT | Write rules derive from the floor; `/tmp` leaves the read-only list; add the write-set property pin. |
@@ -205,19 +205,19 @@ Unchanged surfaces (must not drift):
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Both sandbox layers derive from the floor (§1) | `TEST_FILTER="writable-floor" zig build test --summary all; echo RC=$?` and `zig build list-tests \| grep -c "writable-floor"` | `RC=0`; count ≥ 2 | P0 | |
-| R2 | Old copy is gone (§2–§3) | `grep -rn "Apply filter\|Filter leases\|Run self-test" ui/packages/app --include='*.ts' --include='*.tsx'` | 0 matches | P0 | |
-| R3 | Time vocabulary aligned (§4) | `grep -n '"When"\|"Took"' ui/packages/app/app/\(dashboard\)/admin/runners/\[runnerId\]/components/LeaseTable.tsx ui/packages/app/app/\(dashboard\)/admin/runners/\[runnerId\]/components/ActivityTable.tsx` | 0 matches | P0 | |
-| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the table | P0 | |
+| R1 | Both sandbox layers derive from the floor (§1) | `zig build --build-file build_runner.zig test --summary all; echo RC=$?` and `zig build --build-file build_runner.zig list-tests \| grep -icE "writable[-_ ]floor"` | `RC=0`; count ≥ 3 | P0 | ✅ RC=0 (638/641, 3 skipped); count=3 |
+| R2 | Old copy is gone (§2–§3) | `grep -rn "Apply filter\|Filter leases\|Run self-test" ui/packages/app --include='*.ts' --include='*.tsx'` | 0 matches | P0 | ✅ 0 matches |
+| R3 | Time vocabulary aligned (§4) | `grep -n '"When"\|"Took"' ui/packages/app/app/\(dashboard\)/admin/runners/\[runnerId\]/components/LeaseTable.tsx ui/packages/app/app/\(dashboard\)/admin/runners/\[runnerId\]/components/ActivityTable.tsx` | 0 matches | P0 | ✅ 0 matches |
+| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the table | P0 | ✅ 30 files, all in this table |
 | R5 | Dev evidence + sweep (§1.5, §6) | documented lease query + fleet delete calls against dev; counts pasted to PR Session Notes | `TempFileCreateFailed` rows captured; `acc-*` fleet count 0 | P1 | |
 | R6 | Docs States section paired (§5) | `gh pr checks <docs-pr> --repo agentsfleet/docs` | exit 0 | P1 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 — all unit lanes passed |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ exit 0 — All lint checks passed |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ exit 0 |
 | S4 | App smoke walks the rendered page | `make dry-app` | exit 0 | P0 | |
-| S5 | No leaks | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile | `zig build --build-file build_runner.zig -Dtarget=x86_64-linux-musl && zig build --build-file build_runner.zig -Dtarget=aarch64-linux-musl; echo RC=$?` | `RC=0` | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| S5 | No leaks | `make memleak` | exit 0 | P0 | ✅ exit 0 |
+| S6 | Cross-compile | `zig build --build-file build_runner.zig -Dtarget=x86_64-linux-musl && zig build --build-file build_runner.zig -Dtarget=aarch64-linux-musl; echo RC=$?` | `RC=0` | P0 | ✅ RC=0 both targets |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
