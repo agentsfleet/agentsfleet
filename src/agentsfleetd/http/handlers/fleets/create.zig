@@ -23,6 +23,7 @@ const markdown_limits = @import("../../../fleet_runtime/markdown_limits.zig");
 const create_stream = @import("create_stream.zig");
 const create_install_steps = @import("create_install_steps.zig");
 const create_fleet_bundle = @import("create_fleet_bundle.zig");
+const create_failure = @import("create_failure.zig");
 const create_grants = @import("create_grants.zig");
 const cron_sync = @import("cron_sync.zig");
 // Request-independent core.fleets row-write primitives (insert/activate/delete +
@@ -182,21 +183,29 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
     var insert_attempts: usize = 0;
     while (true) {
         fleet_row.insertFleetOnConn(db.conn, workspace_id, source.source_markdown, trigger_markdown, parsed, skill_meta.tags, source.bundle_ref, fleet_id, now_ms) catch |err| {
-            if (fleet_row.isUniqueViolation(db.conn)) {
-                if (body.name == null and insert_attempts < AUTO_NAME_ATTEMPTS) {
+            switch (fleet_row.classifyInsertFailure(
+                fleet_row.isUniqueViolation(db.conn),
+                body.name != null,
+                insert_attempts,
+                AUTO_NAME_ATTEMPTS,
+            )) {
+                .retry_suffixed => {
                     insert_attempts += 1;
                     parsed.config.name = heroku_names.suffixed(hx.alloc, skill_meta.name, config_validate.MAX_NAME_LEN) catch {
-                        common.internalOperationError(hx.res, "name generation failed", hx.req_id);
+                        create_failure.nameGenerationFailed(hx);
                         return;
                     };
                     continue;
-                }
-                hx.fail(ec.ERR_AGENTSFLEET_NAME_EXISTS, ec.MSG_AGENTSFLEET_NAME_EXISTS);
-                return;
+                },
+                .conflict => {
+                    hx.fail(ec.ERR_AGENTSFLEET_NAME_EXISTS, ec.MSG_AGENTSFLEET_NAME_EXISTS);
+                    return;
+                },
+                .hard_failure => {
+                    create_failure.insertFailed(hx, err);
+                    return;
+                },
             }
-            log.err("create_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .req_id = hx.req_id });
-            common.internalDbError(hx.res, hx.req_id);
-            return;
         };
         break;
     }

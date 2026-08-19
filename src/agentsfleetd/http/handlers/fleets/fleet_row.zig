@@ -100,3 +100,75 @@ test "isUniqueViolationCode matches 23505 only" {
     try std.testing.expect(!isUniqueViolationCode("XX000"));
     try std.testing.expect(!isUniqueViolationCode(""));
 }
+
+/// What a failed `insertFleetOnConn` means for the create path.
+///
+/// A bare enum rather than a tagged union: no variant carries a reason the
+/// caller cannot already see — the `pg` error and the connection are both in
+/// scope at the call site — so this is the input-classification shape, not a
+/// result type that must carry its context.
+pub const InsertFailure = enum {
+    /// A defaulted name lost the race and retries remain: re-suffix, re-insert.
+    retry_suffixed,
+    /// A collision the caller must see — either a human chose the name, or the
+    /// bounded retries are spent.
+    conflict,
+    /// Not a unique violation. Never retryable.
+    hard_failure,
+};
+
+/// Decide what a failed insert means, as a pure function of the three facts
+/// that decide it.
+///
+/// Extracted from `innerCreateFleet` so all three arms are provable without
+/// staging a database failure. The `hard_failure` arm needs an insert that
+/// fails for a reason other than the unique constraint, which this schema will
+/// not produce on demand: the INSERT is `SELECT ... FROM core.workspaces`, so a
+/// missing workspace writes zero rows and raises nothing, and the only
+/// deterministic alternative — a trigger that raises — is global to
+/// `core.fleets` and would break the seven unit lanes that insert concurrently
+/// against one database. The same move `hx.classifyAcquireError` makes for a
+/// pool failure no test can stage: the branch is the whole content of the
+/// decision, and a pure function over it is testable without any of that.
+pub fn classifyInsertFailure(
+    is_unique_violation: bool,
+    name_explicit: bool,
+    attempts: usize,
+    max_attempts: usize,
+) InsertFailure {
+    if (!is_unique_violation) return .hard_failure;
+    if (name_explicit) return .conflict;
+    if (attempts >= max_attempts) return .conflict;
+    return .retry_suffixed;
+}
+
+test "classifyInsertFailure: a non-unique violation is never retried" {
+    // The arm with no reachable database failure — this is its only proof.
+    try std.testing.expectEqual(InsertFailure.hard_failure, classifyInsertFailure(false, false, 0, 3));
+    try std.testing.expectEqual(InsertFailure.hard_failure, classifyInsertFailure(false, true, 0, 3));
+    // Not retryable even with every retry still available.
+    try std.testing.expectEqual(InsertFailure.hard_failure, classifyInsertFailure(false, false, 0, 99));
+}
+
+test "classifyInsertFailure: an explicit name collides honestly" {
+    // A human typed the name, so the conflict is the answer at every attempt
+    // count — auto-suffixing would rename what they asked for.
+    try std.testing.expectEqual(InsertFailure.conflict, classifyInsertFailure(true, true, 0, 3));
+    try std.testing.expectEqual(InsertFailure.conflict, classifyInsertFailure(true, true, 2, 3));
+}
+
+test "classifyInsertFailure: a defaulted name retries up to the bound" {
+    try std.testing.expectEqual(InsertFailure.retry_suffixed, classifyInsertFailure(true, false, 0, 3));
+    try std.testing.expectEqual(InsertFailure.retry_suffixed, classifyInsertFailure(true, false, 1, 3));
+    // The last attempt the bound allows.
+    try std.testing.expectEqual(InsertFailure.retry_suffixed, classifyInsertFailure(true, false, 2, 3));
+}
+
+test "classifyInsertFailure: the retry bound is inclusive and stops the loop" {
+    // Off-by-one here is a workspace that retries forever, so pin both sides of
+    // the boundary rather than trusting the comparison to read correctly.
+    try std.testing.expectEqual(InsertFailure.conflict, classifyInsertFailure(true, false, 3, 3));
+    try std.testing.expectEqual(InsertFailure.conflict, classifyInsertFailure(true, false, 4, 3));
+    // A zero bound disables retrying entirely.
+    try std.testing.expectEqual(InsertFailure.conflict, classifyInsertFailure(true, false, 0, 0));
+}
