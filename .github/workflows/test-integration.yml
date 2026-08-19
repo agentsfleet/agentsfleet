@@ -225,6 +225,10 @@ jobs:
           path: |
             coverage/zig/integration
             coverage/zig/lifecycle
+            coverage/zig/kcov-integration.log
+            coverage/zig/kcov-integration.rc
+            coverage/zig/kcov-lifecycle.log
+            coverage/zig/kcov-lifecycle.rc
             .tmp/verification/integration.json
           include-hidden-files: true
           if-no-files-found: error

@@ -158,43 +158,48 @@ test-integration: $(TEST_STATE_DEP)  ## Run the daemon integration suite once ag
 	( set +e; \
 	  $(ZIG_COVERAGE_ENV) \
 	  $(ZIG_COVERAGE_KCOV) \
-	    "$$output" "zig-out/bin/$(ZIG_INTEGRATION_TEST_BIN)" $(if $(SEED),--seed $(SEED),) \
+	    "$$output" "zig-out/bin/$(ZIG_INTEGRATION_TEST_BIN)" $(if $(SEED),--seed "$(SEED)",) \
 	    >"$(ZIG_COVERAGE_DIR)/kcov-integration.log" 2>&1; echo $$? >"$(ZIG_COVERAGE_DIR)/kcov-integration.rc" ); \
-	tail -n 40 "$(ZIG_COVERAGE_DIR)/kcov-integration.log"
-	@# The lifecycle component costs a rebuild. `cmd/serve.zig` is the daemon's
-	@# boot sequence and read 0% — 115 reachable lines — because nothing in the
-	@# unfiltered run drives it: the one test that boots the real `serve.run`
-	@# skips unless it is isolated, since it installs signal handlers, binds a
-	@# port and perturbs process-global state the other ~2000 tests share. The
-	@# binary takes its filter at BUILD time, so measuring that test means
-	@# rebuilding filtered — which is why this runs after the unfiltered
-	@# component rather than replacing it. No test runs twice: the one this
-	@# executes is the one the unfiltered run skipped.
+	tail -n 40 "$(ZIG_COVERAGE_DIR)/kcov-integration.log"; \
+	names="integration"; \
+	if [ -z "$(strip $(TEST_FILTER))" ]; then \
+	  output="$(ZIG_COVERAGE_DIR)/lifecycle"; \
+	  echo "→ [zig] rebuilding the integration binary filtered to the lifecycle proof"; \
+	  ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	  ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	  zig build test-integration-bin -Dtest-filter="$(LIFECYCLE_TEST_FILTER)" \
+	    || { echo "✗ [agentsfleetd] Filtered lifecycle binary build failed — a stale binary must not be measured"; exit 1; }; \
+	  echo "→ [zig] kcov component=lifecycle binary=$(ZIG_INTEGRATION_TEST_BIN) (real serve.run, isolated, serial)"; \
+	  rm -rf "$$output"; mkdir -p "$$output"; \
+	  rm -f "$(ZIG_COVERAGE_DIR)/kcov-lifecycle.rc"; \
+	  ( set +e; \
+	    $(LIFECYCLE_ISOLATION_ENV)=1 \
+	    $(ZIG_COVERAGE_ENV) \
+	    $(ZIG_COVERAGE_KCOV) \
+	      "$$output" "zig-out/bin/$(ZIG_INTEGRATION_TEST_BIN)" \
+	      >"$(ZIG_COVERAGE_DIR)/kcov-lifecycle.log" 2>&1; echo $$? >"$(ZIG_COVERAGE_DIR)/kcov-lifecycle.rc" ); \
+	fi
+	@# The lifecycle component above runs in the SAME shell as the unfiltered
+	@# suite so both live components inherit ONE URL derivation — the sslmode
+	@# fixup and the REDIS_URL fallback included. A previous shape re-derived
+	@# bare URLs in a second block: `integration` connected while `lifecycle`
+	@# failed at connect, self-skipped, and the lane died at the marker check
+	@# blaming the test instead of the URL.
 	@#
-	@# Skipped under a narrowing TEST_FILTER, which has already replaced the
-	@# graph's own filters; rebuilding a second time from a narrowed tree would
-	@# measure whatever that filter happened to select.
+	@# The lifecycle component itself costs a rebuild. `cmd/serve.zig` is the
+	@# daemon's boot sequence and read 0% — 115 reachable lines — because
+	@# nothing in the unfiltered run drives it: the one test that boots the real
+	@# `serve.run` skips unless it is isolated, since it installs signal
+	@# handlers, binds a port and perturbs process-global state the other ~2000
+	@# tests share. The binary takes its filter at BUILD time, so measuring that
+	@# test means rebuilding filtered — which is why it runs after the
+	@# unfiltered component rather than replacing it. No test runs twice: the
+	@# one it executes is the one the unfiltered run skipped. Skipped entirely
+	@# under a narrowing TEST_FILTER, which has already replaced the graph's own
+	@# filters.
 	@set -eu; \
-	 db_url="$${TEST_DATABASE_URL:-$(TEST_DATABASE_URL_LOCAL)}"; \
-	 redis_url="$${TEST_REDIS_TLS_URL:-$(TEST_REDIS_TLS_URL_LOCAL)}"; \
 	 names="integration"; \
-	 if [ -z "$(strip $(TEST_FILTER))" ]; then \
-	   output="$(ZIG_COVERAGE_DIR)/lifecycle"; \
-	   echo "→ [zig] rebuilding the integration binary filtered to the lifecycle proof"; \
-	   ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
-	   ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	   zig build test-integration-bin -Dtest-filter="$(LIFECYCLE_TEST_FILTER)"; \
-	   echo "→ [zig] kcov component=lifecycle binary=$(ZIG_INTEGRATION_TEST_BIN) (real serve.run, isolated, serial)"; \
-	   rm -rf "$$output"; mkdir -p "$$output"; \
-	   rm -f "$(ZIG_COVERAGE_DIR)/kcov-lifecycle.rc"; \
-	   ( set +e; \
-	     $(LIFECYCLE_ISOLATION_ENV)=1 \
-	     $(ZIG_COVERAGE_ENV) \
-	     $(ZIG_COVERAGE_KCOV) \
-	       "$$output" "zig-out/bin/$(ZIG_INTEGRATION_TEST_BIN)" \
-	       >"$(ZIG_COVERAGE_DIR)/kcov-lifecycle.log" 2>&1; echo $$? >"$(ZIG_COVERAGE_DIR)/kcov-lifecycle.rc" ); \
-	   names="$$names lifecycle"; \
-	 fi; \
+	 [ -n "$(strip $(TEST_FILTER))" ] || names="$$names lifecycle"; \
 	 bash scripts/check-kcov-components.sh "$(ZIG_COVERAGE_DIR)" \
 	   '$(ZIG_TEST_FAILURE_GREP)' '$(ZIG_TEST_LOG_NOISE)' $$names
 	@# The verdict. Read off the tally because the binary's exit status cannot

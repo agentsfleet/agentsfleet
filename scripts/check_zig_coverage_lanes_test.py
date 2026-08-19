@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import textwrap
@@ -27,11 +28,9 @@ from check_zig_test_lanes_test import LIFECYCLE_MARKER_ECHO, ROOT, write_executa
 class LaneCase(unittest.TestCase):
     """Drive the real Make recipes against stub `zig` and `kcov` binaries.
 
-    Nothing here compiles or runs a test suite. What is under test is the lane:
-    which binaries it hands kcov, what it does with a component that fails, and
-    what it refuses to grade. Stubbing is what makes those assertions cheap
-    enough to keep; driving the real recipe is what stops them drifting from the
-    file they describe.
+    Nothing compiles and no suite runs; what is under test is the lane itself —
+    which binaries it hands kcov, what it does with a failing component, and
+    what it refuses to grade.
     """
 
     def setUp(self) -> None:
@@ -53,6 +52,9 @@ class LaneCase(unittest.TestCase):
         # argument is what a test asserts a lane executed.
         preamble = (
             "#!/bin/sh\n"
+            # The evidence recorder asks the instrument its version; the real
+            # kcov prints one line and exits 0.
+            '[ "$1" = "--version" ] && { echo "kcov stub-43"; exit 0; }\n'
             "kcov_seen=0\n"
             'for kcov_arg in "$@"; do\n'
             '  case "$kcov_arg" in --*) continue;; esac\n'
@@ -68,6 +70,11 @@ class LaneCase(unittest.TestCase):
     def run_target(self, target: str, *extra: str) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
         env["PATH"] = f"{self.tool_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+        return self.run_target_with_env(target, env, *extra)
+
+    def run_target_with_env(
+        self, target: str, env: dict[str, str], *extra: str
+    ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [
                 "make", target,
@@ -172,12 +179,13 @@ class TestUnitCoverageLane(LaneCase):
         self.assertIn("component runner produced no Cobertura report", self.output(result))
 
     def test_missing_kcov_names_install_hint(self) -> None:
+        # PATH holds make's own directory and an empty one — never /usr/bin,
+        # where an apt-installed kcov lives. With kcov visible this would run
+        # the REAL lane, schema-dropping reset included, from a lint target.
+        make_dir = str(Path(shutil.which("make")).parent)
         env = os.environ.copy()
-        env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
-        result = subprocess.run(
-            ["make", "test-coverage-zig"],
-            cwd=ROOT, env=env, text=True, capture_output=True, check=False,
-        )
+        env["PATH"] = f"{make_dir}:{self.tool_dir}"
+        result = self.run_target_with_env("test-coverage-zig", env)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("install: brew install kcov", self.output(result))
 
@@ -238,11 +246,9 @@ class TestIntegrationLane(LaneCase):
 
 
 # The stub report is one file of ten lines, so every denominator assertion but
-# the rate would fail on shape alone. Relaxing them is what leaves the rate as
-# the only thing a floor test is testing; `test_below_floor_fails` then moves the
-# one number it is about. Both lanes get the identical overrides, because the
-# graph digest is taken over exactly these and evidence recorded under one graph
-# must not validate under another.
+# the rate would fail on shape alone. Relaxing them leaves the rate as the one
+# thing a floor test tests. Both lanes get identical overrides — the graph
+# digest covers these, and evidence from one graph must not validate in another.
 STUB_SHAPED_GRAPH = (
     "ZIG_COVERAGE_MIN_FILES=0",
     "ZIG_COVERAGE_MIN_MEASURED_LINES=0",
