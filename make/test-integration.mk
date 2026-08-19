@@ -149,7 +149,8 @@ test-integration: $(TEST_STATE_DEP)  ## Run the daemon integration suite once ag
 	echo "→ [agentsfleetd] Building the integration test binary (silent zig compile first, then the suite)..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	zig build install test-integration-bin $(ZIG_TEST_FILTER_ARG); \
+	zig build install test-integration-bin $(ZIG_TEST_FILTER_ARG) \
+	  || { echo "✗ [agentsfleetd] Integration test binary build failed — a stale binary must not be measured"; exit 1; }; \
 	output="$(ZIG_COVERAGE_DIR)/integration"; \
 	echo "→ [zig] kcov component=integration binary=$(ZIG_INTEGRATION_TEST_BIN) (live datastores, serial)"; \
 	rm -rf "$$output"; mkdir -p "$$output"; \
@@ -220,7 +221,15 @@ test-integration: $(TEST_STATE_DEP)  ## Run the daemon integration suite once ag
 	     echo "✗ the boot→drain lifecycle test did not run (it skips without live datastores); the component would measure a process that started and stopped, and the daemon's boot sequence would read dark"; \
 	     tail -n 20 "$(ZIG_COVERAGE_DIR)/kcov-lifecycle.log"; exit 1; \
 	   }; \
-	   echo "✓ [agentsfleetd] lifecycle boot→drain executed (the real serve.run is measured)"; \
+	   lifecycle_summary=$$(grep -E '^[0-9]+ passed;' "$(ZIG_COVERAGE_DIR)/kcov-lifecycle.log" | tail -n 1); \
+	   lifecycle_failed=$$(printf '%s' "$$lifecycle_summary" | sed -n 's/.*; \([0-9][0-9]*\) failed.*/\1/p'); \
+	   if [ -n "$$lifecycle_failed" ] && [ "$$lifecycle_failed" -ne 0 ]; then \
+	     echo "✗ the boot→drain lifecycle test FAILED ($$lifecycle_summary) — the marker proves it ran, the tally proves it broke"; \
+	     grep -v -E '$(ZIG_TEST_LOG_NOISE)' "$(ZIG_COVERAGE_DIR)/kcov-lifecycle.log" \
+	       | grep -B 1 -E '$(ZIG_TEST_FAILURE_GREP)' | head -n 20 || true; \
+	     exit 1; \
+	   fi; \
+	   echo "✓ [agentsfleetd] lifecycle boot→drain executed and passed ($$lifecycle_summary)"; \
 	 fi
 	@# A narrowed run records its evidence marked filtered, and the grade refuses
 	@# a filtered manifest. Recording nothing would be worse: the previous run's

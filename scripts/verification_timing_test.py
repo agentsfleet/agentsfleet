@@ -180,6 +180,26 @@ class TestMalformedInput(TimingCase):
         self.assertEqual(status, 1)
         self.assertIn("non-empty list", output)
 
+    def test_a_negative_duration_is_refused(self) -> None:
+        # A fabricated negative candidate time would read as a saving.
+        samples = comparable_set()
+        samples[1]["seconds"] = -30.0
+        status, output = self.run_compare(samples)
+        self.assertEqual(status, 1)
+        self.assertIn("non-positive or non-finite duration", output)
+
+    def test_an_unknown_arm_is_refused(self) -> None:
+        samples = comparable_set()
+        samples[0]["arm"] = "control"
+        status, output = self.run_compare(samples)
+        self.assertEqual(status, 1)
+        self.assertIn("unknown arm", output)
+
+    def test_a_zero_minimum_cannot_bypass_the_depth_gate(self) -> None:
+        status, output = self.run_compare(comparable_set(), "--min-samples", "0")
+        self.assertEqual(status, 1)
+        self.assertIn("at least 1", output)
+
 
 if __name__ == "__main__":
     unittest.main()
