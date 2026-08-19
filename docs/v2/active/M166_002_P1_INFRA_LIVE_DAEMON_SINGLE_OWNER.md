@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M166
 **Workstream:** 002
 **Date:** Aug 19, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — every full local verification and every Pull Request (PR) pays for the live daemon integration suite twice, once instrumented and once bare.
 **Categories:** INFRA
 **Batch:** B1 — no other workstream owns the verification lanes.
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** perf/m166-live-daemon-single-owner
+**Test Baseline:** unit=4124 integration=704
 **Depends on:** M166_001 (parked — this workstream carries its audit finding and its recorded follow-up shape), M164_002 (the product-only coverage denominator, folder floors and required-component assertions this must preserve unchanged)
 **Provenance:** agent-generated from the Make and workflow sources at `e0dcbb01d` and the M166_001 parking record, Aug 19, 2026
 **Canonical architecture:** `docs/architecture/testing.md` §Coverage
@@ -64,7 +64,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `.github/workflows/test.yml` | EDIT | Drop the coverage job and its needs entry; the `test` context keeps the unit and package lanes. |
 | `.github/workflows/test-integration.yml` | EDIT | Carry both coverage producers, the fail-closed grade, the unprivileged migration check and the required aggregate in one run. |
 | `docs/architecture/testing.md` | EDIT | Record which lane owns which component, the evidence rule, and the grade command. |
-| `docs/v2/pending/M166_002_P1_INFRA_LIVE_DAEMON_SINGLE_OWNER.md` | EDIT | Mark Dimensions DONE and carry acceptance evidence during execution. |
+| `docs/v2/active/M166_002_P1_INFRA_LIVE_DAEMON_SINGLE_OWNER.md` | EDIT | Mark Dimensions DONE and carry acceptance evidence during execution. |
 
 ## Applicable Rules
 
