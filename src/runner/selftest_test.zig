@@ -122,6 +122,21 @@ test "test_probe_argv_frees_its_partial_copy_when_an_allocation_fails" {
     }
 }
 
+test "grade frees its partial check list when an allocation fails" {
+    // grade appends one row per check + one per assigned bind; a failure on
+    // any append must free the rows already collected (errdefer) or the daemon
+    // leaks a check list per self-test on a host that is already unhealthy.
+    // checkAllAllocationFailures fails each allocation site in turn — the only
+    // proof the errdefer chain is right, "looks right" is not.
+    const c = cfg(.allow_all, &.{});
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, gradeAndFree, .{ c, HEALTHY });
+}
+
+fn gradeAndFree(alloc: std.mem.Allocator, c: Config, o: selftest.Outcome) !void {
+    const r = try selftest.grade(alloc, c, o);
+    r.deinit(alloc);
+}
+
 test "test_probe_uses_the_lease_argv_builder" {
     const alloc = std.testing.allocator;
     // Dimension 2.1 / Invariant 1 — the probe's sandbox must be the SAME
