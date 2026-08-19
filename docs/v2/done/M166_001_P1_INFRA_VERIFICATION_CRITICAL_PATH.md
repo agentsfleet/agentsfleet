@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M166
 **Workstream:** 001
 **Date:** Aug 16, 2026
-**Status:** PENDING
+**Status:** PARKED
 **Priority:** P1 — Pull Request (PR) feedback is dominated by an instrumented integration run that is serial and then repeated by another canonical lane.
 **Categories:** INFRA
 **Batch:** B1 — starts after M164_002 fixes the coverage denominator and its required-component assertions.
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** perf/m166-verification-critical-path
+**Test Baseline:** unit=4124 integration=704
 **Depends on:** M164_002 (the faster graph must preserve its product-only denominator, folder floors, and required-component checks)
 **Provenance:** agent-generated from the live M136 verification run and the current Make and workflow sources, Aug 16, 2026
 **Canonical architecture:** `docs/architecture/testing.md` §Coverage
@@ -32,7 +32,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** The unchanged canonical verification commands execute every registered test root exactly once per full verification, preserve every coverage and isolation guarantee, and reduce the median local and Continuous Integration (CI) critical path by at least 35% against the same-commit baseline.
 **Problem:** `make test-unit-all` reaches `test-coverage-zig`, which runs the full live-service integration binary under kcov after the unit components. `make test-integration` then resets the datastores and runs that same integration graph again. CI repeats the shape across `test.yml` and `test-integration.yml`; the coverage job names its serial integration component as the long pole. Developers pay for duplicate work locally, while CI still waits on one serial instrumented suite even when its unit components run concurrently.
-**Solution summary:** One machine-readable verification graph owns every test root, its coverage role, and its isolation requirements. The unit lane produces reusable unit coverage components without running the live integration root. The integration lane executes that root once under coverage, split across deterministic shards with isolated datastore state, then grades the union only after every shard reports a non-empty result. CI calls the same Make recipes, moves coverage artifacts between jobs when needed, and publishes comparable cold- and warm-cache timings. Structural checks fail duplicate roots, missing roots, stale artifacts, unisolated shards, and workflow drift before a flattering timing can pass.
+**Solution summary:** One machine-readable verification graph owns every test root, its coverage role, and its isolation requirements. The unit lane produces reusable unit coverage components without running the live integration roots. The integration lane executes the daemon root in deterministic coverage shards with isolated datastore state and executes the runner-kernel root once under coverage, then grades the union only after every owner reports a non-empty result. CI calls the same Make recipes in one workflow-run-scoped Directed Acyclic Graph (DAG), moves provenance-matched artifacts only between jobs in that run, and preserves the existing required check names without executing a compatibility copy of any root. Structural checks fail duplicate roots, missing roots, stale artifacts, unisolated shards, and workflow drift before a flattering timing can pass.
 
 ## PR Intent & comprehension handshake
 
@@ -55,15 +55,19 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `make/test.mk` | EDIT | Define one verification graph surface and its timing and coverage invariants. |
 | `make/test-unit.mk` | EDIT | Produce unit coverage components without owning the live integration execution. |
 | `make/test-integration.mk` | EDIT | Own the single sharded live integration execution, reset, aggregation, and failure result. |
-| `build.zig`, `src/build/daemon_tests.zig` | EDIT | Build deterministic integration shard artifacts from the existing registered root. |
+| `make/test-verification.mk` | CREATE | Hold bounded integration workers, runtime isolation, provenance manifests, and final grading below the file-size ceiling. |
+| `src/build/daemon_tests.zig`, `src/build/test_list.zig`, `src/build/test_runner_list.zig` | EDIT | Build deterministic integration shards and emit lane-qualified compiler registrations. |
+| `src/build/test_runner_shard.zig` | CREATE | Select and execute compiler-registered tests by stable runtime shard assignment. |
 | `scripts/check_verification_graph.py` | CREATE | Validate root ownership, artifact provenance, shard completeness, isolation, and timing evidence. |
 | `scripts/check_verification_graph_test.py` | CREATE | Failure-injecting unit tests for every graph and evidence assertion. |
+| `scripts/verification_evidence.py`, `scripts/run_with_timeout.py`, `scripts/run_with_timeout_test.py` | CREATE | Validate runtime/timing/workflow evidence and bound each owner process group. |
+| `scripts/check_zig_test_reachability.py`, `scripts/check_zig_test_reachability_cli_test.py`, `scripts/check_zig_test_lanes_test.py` | EDIT | Consume lane-qualified listings and pin the new ownership graph. |
 | `scripts/check_zig_coverage.py`, `scripts/check_zig_coverage_test.py` | EDIT | Union integration shard reports while preserving required components, files, lines, roots, and floors. |
 | `scripts/check_ci_lane_config_test.py` | EDIT | Prove CI calls the canonical recipes once and transfers only provenance-matched artifacts. |
-| `.github/workflows/test.yml` | EDIT | Publish unit coverage components and critical-path timing from the shared graph. |
-| `.github/workflows/test-integration.yml` | EDIT | Consume the shared graph, run integration shards, grade the final union, and publish timing evidence. |
+| `.github/workflows/test.yml` | EDIT | Run the complete same-run Zig verification DAG, grade its final union, and publish timing evidence. |
+| `.github/workflows/test-integration.yml` | EDIT | Preserve the required integration check context without executing a second registered root. |
 | `docs/architecture/testing.md` | EDIT | Record single ownership, sharding, isolation, artifact provenance, and timing evidence. |
-| `docs/v2/pending/M166_001_P1_INFRA_VERIFICATION_CRITICAL_PATH.md` | EDIT | Mark Dimensions DONE and capture acceptance evidence during execution. |
+| `docs/v2/done/M166_001_P1_INFRA_VERIFICATION_CRITICAL_PATH.md` | EDIT | Archive the user-directed parking decision and its measured evidence. |
 
 ## Applicable Rules
 
@@ -119,7 +123,7 @@ The long serial kcov component becomes deterministic shards. Every shard gets is
 
 ### §4 — CI runs the same graph and proves the speedup
 
-CI uses the same Make-owned graph, moves only provenance-matched artifacts between jobs, and reports cold- and warm-cache critical paths. No workflow embeds a second test list or direct replacement command. **Implementation default:** CI orchestrates caches and artifacts; Make owns test selection and verdicts.
+CI uses the same Make-owned graph, moves only provenance-matched artifacts between jobs in one workflow run, and reports cold- and warm-cache critical paths. No workflow embeds a second test list or direct replacement command. The separately required `test-integration` context remains as a compatibility aggregate and owns no registered root; the substantive `test` context cannot turn green until the same-run integration aggregate succeeds. **Implementation default:** CI orchestrates caches and artifacts; Make owns test selection and verdicts.
 
 - **Dimension 4.1** — workflow source invokes each canonical graph owner once and contains no duplicate direct integration execution → Test `test_ci_workflows_call_each_graph_owner_once`
 - **Dimension 4.2** — a missing, stale, or tampered cross-job artifact makes the consuming job rebuild or fail; it never grades stale coverage → Test `test_ci_artifact_provenance_is_mandatory`
@@ -258,7 +262,29 @@ No files are planned for deletion. During REVIEW, `scripts/check_verification_gr
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: none at creation.
+- **Consults** — Architecture: the implementation keeps every coverage producer and consumer in one `test.yml` workflow-run DAG. GitHub artifact storage is run-scoped; splitting producers and the final grader across independently triggered workflows would require polling for another run by commit and defending cancellation, rerun, merge-SHA, and stale-attempt races that have no local equivalent. Branch protection requires contexts named `test` and `test-integration`, so the latter remains a compatibility aggregate while `test` owns the complete substantive graph. Legacy-Design / gate-flag triage: none.
 - **Metrics review** — operational verification summaries added; no product analytics or funnel playbook change because no user journey changes.
-- **Skill-chain outcomes** — `/write-unit-test`, `/write-integration-test`, `/review`, and `kishore-babysit-prs`: pending execution.
-- **Deferrals** — none.
+- **Skill-chain outcomes** — `/write-unit-test`, `/write-integration-test`, `/review`, and `kishore-babysit-prs`: not completed because this workstream is parked before a ship decision.
+- **Deferrals** — the ownership split and final-grade redesign move to a smaller follow-up workstream; evidence and the user acknowledgment appear below.
+
+## Parking decision
+
+**Decision:** PARKED. No code from this workstream is accepted for `main`; Pull Request (PR) #612 closes after this record lands.
+
+**Section and Dimension status:** §1–§5 and Dimensions 1.1–5.2 remain `IN_PROGRESS`. None are marked `DONE` because the required coverage and timing evidence did not pass.
+
+> Indy (Aug 19, 2026: 06:29 AM): "Agreed on parking it." — context: Milestone 166 (M166) missed its correctness and measured-savings gates; retain the audited ownership finding for a smaller follow-up.
+
+### Audit findings
+
+1. The duplicate is real on `e0dcbb01d` (`main` at workstream start). `make test-unit-all` calls `test-coverage-zig`; that target runs `agentsfleetd-integration-tests` under kcov. `make test-integration` then runs the same daemon integration graph again. CI repeats the work in the separate coverage and integration workflows.
+2. The M166 branch removes that live-root duplication structurally. `test-coverage-zig` owns only the six unit coverage components; `test-integration` owns the five daemon shards and runner-kernel test. After `make test-unit-all`, the integration command validates and reuses the matching unit manifest instead of rerunning unit coverage. The seven worker jobs in PR #612 each completed successfully once.
+3. That design is not acceptable to land. Its latest CI coverage grade reported `agentsfleetd` line coverage of 89.51%, below the required 90.00%. The only indicative CI comparison was 10m53 against 14m33, a 25.20% reduction; it used different source and cache conditions, and therefore does not prove the required 35% median reduction.
+4. The next serial bottleneck is provenance validation, not a second daemon test run. The final grade rebuilt the test listing for about 2m39 after all workers completed. Its cross-worker timing evidence is also invalid: independently clocked runners cannot prove overlap without a shared CI-side clock.
+5. Commit and push are not paying for this duplicate live suite today. Pre-commit runs conformance and scoped lint, while pre-push runs a fast Zig unit lane only. The duplicate consumes local canonical verification and CI worker time; CI is the material wait-time opportunity.
+
+### Follow-up shape
+
+Create a focused workstream for one change: make `test-coverage-zig` unit-only, make `test-integration` the sole producer of daemon integration coverage, and reuse source/toolchain/graph-matched unit evidence when the canonical commands run in sequence. Keep daemon execution serial initially; prove coverage parity and one-owner reuse before adding shards or worker timing claims.
+
+The CI version must put unit evidence, the single integration result, and final coverage grading in one workflow run. It must use central CI job timestamps for any overlap claim. The final grader may only stop recompiling the graph after a provenance design proves that the received graph is current and untampered. No coverage floor, required component, root, or isolation rule may be weakened.
