@@ -188,15 +188,33 @@ fn scratchWritable(io: std.Io) bool {
 /// died, because HOME pointed at `/run/agentsfleet` and no list carried it.
 /// Reading the variable the child was handed is what turns that class of fault
 /// from invisible into a failed check.
+/// Is this a `HOME` worth attempting a write under? Pure over the value, so the
+/// three ways a home is unusable before any I/O happens are unit-testable
+/// without a sandbox — the same decider/probe split `preflight` uses.
+///
+/// Absent is the case that shipped: the child had no `HOME` the sandbox could
+/// reach, and grading that as anything but a failure is what let `all_ok=true`
+/// stand on a host where every lease died.
+pub fn homePathUsable(home: ?[]const u8) bool {
+    const h = home orelse return false;
+    if (h.len == 0) return false;
+    // Relative is unusable, not merely odd: the probe resolves it against its
+    // own cwd, which is the workspace, so a write would land somewhere the
+    // engine never looks and report a home that works when it does not.
+    if (!std.fs.path.isAbsolute(h)) return false;
+    return true;
+}
+
 fn homeWritable(io: std.Io, env_map: *const std.process.Environ.Map) bool {
     // Read from the process map rather than a libc getenv: same source the lease
     // child's own env is built from, so the probe grades the value a lease sees.
-    const home = env_map.get("HOME") orelse return false;
-    if (home.len == 0 or !std.fs.path.isAbsolute(home)) return false;
+    const home = env_map.get("HOME");
+    if (!homePathUsable(home)) return false;
+    const h = home.?;
     // Same exclusive create/remove as the scratch check: O_EXCL proves MAKE_REG
     // precisely and refuses to follow a planted symlink out of the sandbox.
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const path = std.fmt.bufPrint(&path_buf, "{s}/agentsfleet_selftest_home_{d}", .{ home, std.c.getpid() }) catch return false;
+    const path = std.fmt.bufPrint(&path_buf, "{s}/agentsfleet_selftest_home_{d}", .{ h, std.c.getpid() }) catch return false;
     const f = std.Io.Dir.createFileAbsolute(io, path, .{ .exclusive = true }) catch return false;
     f.close(io);
     std.Io.Dir.deleteFileAbsolute(io, path) catch return false;
