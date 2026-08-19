@@ -3,6 +3,7 @@
 # =============================================================================
 
 include make/test-unit.mk
+include make/test-infra.mk
 include make/test-integration.mk
 include make/acceptance.mk
 include make/dry.mk
@@ -162,10 +163,135 @@ endif
 LIFECYCLE_ISOLATION_ENV ?= AGENTSFLEET_LIFECYCLE_ISOLATED
 LIFECYCLE_TEST_FILTER ?= daemon boot -> SIGTERM -> drain
 LIFECYCLE_RUN_MARKER ?= SERVE_LIFECYCLE_BOOT_DRAIN_RAN
+# ---------------------------------------------------------------------------
+# Component inventory — split by which lane executes it, one definition site.
+#
+# The split IS the ownership. `test-coverage-zig` runs the unit components;
+# `test-integration` runs the live ones, because it is the lane that already
+# stands up datastores, migrates them and builds the runner binary. Before the
+# split both lanes ran the daemon integration suite — the coverage lane under
+# kcov and the integration lane bare — so a full verification paid for it twice
+# and Continuous Integration (CI) paid for it on two runners.
+#
+# `runner_integration` is a unit component despite its name: it drives the
+# runner's own build graph and needs no datastore.
+ZIG_COVERAGE_UNIT_COMPONENTS ?= agentsfleetd:agentsfleetd-tests runner:agentsfleet-runner-tests lib:agentsfleet-lib-tests logging:agentsfleet-logging-tests deadline:agentsfleet-call-deadline-tests s3:agentsfleet-s3-tests runner_integration:agentsfleet-runner-integration-tests
+# The two live components share one binary: `integration` runs it unfiltered and
+# `lifecycle` runs it rebuilt under the boot-to-drain filter, which the
+# unfiltered run skips. Two executions, no test run twice.
+ZIG_COVERAGE_LIVE_COMPONENTS ?= integration lifecycle
+ZIG_INTEGRATION_TEST_BIN ?= agentsfleetd-integration-tests
+ZIG_COVERAGE_UNIT_NAMES = $(foreach pair,$(ZIG_COVERAGE_UNIT_COMPONENTS),$(firstword $(subst :, ,$(pair))))
+ZIG_COVERAGE_ALL_NAMES = $(ZIG_COVERAGE_UNIT_NAMES) $(ZIG_COVERAGE_LIVE_COMPONENTS)
+
+# What a failing component's log is grepped for when a lane reports it. The Zig
+# test runner puts its verdict on its OWN line — `FAIL (TestExpectedEqual)` —
+# while the test's name and the assertion message sit on the line ABOVE, so the
+# match is taken with `grep -B 1` or the report names nothing. Every other
+# alternative is anchored: an unanchored `panic` matched the *passing* test
+# "…instead of @intCast-panicking" and printed it as the failure for a whole
+# round of red CI. Both lanes grep the same way, so both read from here.
+ZIG_TEST_FAILURE_GREP = (^|\.\.\.)FAIL\b|^error: .* failed:|error return trace|^thread [0-9]+ panic|^panic:
+# Dropped before the `-B 1` window is taken: valgrind writes its own commentary
+# (`--PID-- …`, `==PID== …`) into the same stream, and a single interleaved
+# warning is enough to push the failing test's name out of the window.
+ZIG_TEST_LOG_NOISE = ^--[0-9]+--|^==[0-9]+==
+
+# The environment every kcov component runs under, whichever lane runs it. One
+# definition site so a component measures the same thing after it moves lanes.
+# `$$db_url` and `$$redis_url` are resolved by the recipe shell at run time.
+ZIG_COVERAGE_ENV = \
+	 LIVE_DB=1 \
+	 TEST_DATABASE_URL="$$db_url" \
+	 TEST_REDIS_TLS_URL="$$redis_url" \
+	 REDIS_URL_API="$$redis_url" \
+	 REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
+	 AGENTSFLEET_RUNNER_BIN="$(CURDIR)/zig-out/bin/agentsfleet-runner" \
+	 AGENTSFLEET_QSTASH_LIVE_URL="$(QSTASH_DEV_URL_LOCAL)" \
+	 AGENTSFLEET_QSTASH_LIVE_TOKEN="$(QSTASH_DEV_TOKEN_LOCAL)"
+# `--exclude-pattern` keeps test bodies OUT of the denominator. They are ~23k of
+# the measured lines and are themselves ~90% covered — counting them inflated the
+# figure by roughly seven points and, worse, made the gate satisfiable by writing
+# more test files rather than covering more product.
+ZIG_COVERAGE_KCOV = kcov --clean --include-pattern="$(CURDIR)/src" --exclude-pattern=_test.zig
+
+# ---------------------------------------------------------------------------
+# Producer evidence. Each coverage lane records what it measured and what it
+# measured it against; the grade refuses anything that no longer fits. A
+# `coverage/zig/` tree outlives a branch switch, a toolchain bump and a rebuild,
+# so "the reports are on disk" is not evidence that they describe this build.
+# ---------------------------------------------------------------------------
+ZIG_EVIDENCE_DIR ?= $(CURDIR)/.tmp/verification
+ZIG_EVIDENCE_UNIT ?= $(ZIG_EVIDENCE_DIR)/unit.json
+ZIG_EVIDENCE_INTEGRATION ?= $(ZIG_EVIDENCE_DIR)/integration.json
+# The sources that reach the measured binaries. A digest over these is what
+# makes evidence from another commit refuse itself.
+ZIG_EVIDENCE_SOURCE_ARGS = \
+	 --source-path src --source-path schema \
+	 --source-path build.zig --source-path build.zig.zon --source-path build_runner.zig
+# The graph the evidence was recorded against: change any of it and the union is
+# grading a different question, so recorded evidence must not survive the change.
+ZIG_EVIDENCE_GRAPH_ARGS = \
+	 --graph "$(ZIG_COVERAGE_UNIT_COMPONENTS)" \
+	 --graph "$(ZIG_COVERAGE_LIVE_COMPONENTS)" \
+	 --graph "$(ZIG_COVERAGE_REQUIRED_COMPONENTS)" \
+	 --graph "$(ZIG_COVERAGE_REQUIRED_ROOTS)" \
+	 --graph "$(ZIG_COVERAGE_FOLDER_FLOORS)" \
+	 --graph "$(ZIG_COVERAGE_MIN_PCT)"
+ZIG_EVIDENCE_ARGS = --repo-root "$(CURDIR)" $(ZIG_EVIDENCE_SOURCE_ARGS) $(ZIG_EVIDENCE_GRAPH_ARGS)
+ZIG_EVIDENCE_RECORD = python3 scripts/verification_evidence.py record $(ZIG_EVIDENCE_ARGS)
+
 # Use baseline CPU so valgrind can execute SHA/AVX instructions it can't emulate.
 MEMLEAK_CPU ?= baseline
 
-.PHONY: test-unit-all
+.PHONY: test-unit-all test-coverage-grade
 
 test-unit-all: test-unit-agentsfleetd test-unit-agentsfleet-runner test-unit-agentsfleet-lib test-coverage-all  ## Run all unit lanes (Zig + multi-package coverage)
 	@echo "✓ All unit lanes passed"
+
+# The merged floor has one owner, and it is neither producer. Neither lane can
+# see the union on its own — the unit lane no longer runs the live components and
+# the integration lane never runs the unit ones — so grading from inside either
+# would be grading half a codebase and calling it the whole one.
+#
+# It validates before it grades. Every component report on disk is accepted only
+# when its producer's manifest still matches this build's sources, toolchain,
+# component inventory and platform, and only when every component in the
+# inventory was produced exactly once. Omission would shrink the denominator
+# silently; duplication would mean two lanes ran one binary, which is the
+# duplication this split removed.
+test-coverage-grade:  ## Validate both producers' evidence, then grade the merged Zig coverage union
+	@python3 scripts/verification_evidence.py validate \
+	  $(ZIG_EVIDENCE_ARGS) \
+	  --manifest "test-coverage-zig:$(ZIG_EVIDENCE_UNIT)" \
+	  --manifest "test-integration:$(ZIG_EVIDENCE_INTEGRATION)" \
+	  $(foreach name,$(ZIG_COVERAGE_ALL_NAMES),--expect-component $(name))
+	@set -eu; \
+	 component_flags=""; \
+	 for name in $(ZIG_COVERAGE_ALL_NAMES); do \
+	   component_flags="$$component_flags --component $$name"; done; \
+	 for name in $(ZIG_COVERAGE_REQUIRED_COMPONENTS); do \
+	   component_flags="$$component_flags --require-component $$name"; done; \
+	 for name in $(ZIG_COVERAGE_REQUIRED_ROOTS); do \
+	   component_flags="$$component_flags --require-root $$name"; done; \
+	 for pair in $(ZIG_COVERAGE_FOLDER_FLOORS); do \
+	   component_flags="$$component_flags --folder-floor $$pair"; done; \
+	 for pair in $(ZIG_COVERAGE_FOLDER_TARGETS); do \
+	   component_flags="$$component_flags --folder-target $$pair"; done; \
+	 python3 scripts/check_zig_coverage.py \
+	   --coverage-dir "$(ZIG_COVERAGE_DIR)" \
+	   $$component_flags \
+	   --min-pct "$(ZIG_COVERAGE_MIN_PCT)" \
+	   --target-pct "$(ZIG_COVERAGE_TARGET_PCT)" \
+	   --min-files "$(ZIG_COVERAGE_MIN_FILES)" \
+	   --min-lines "$(ZIG_COVERAGE_MIN_MEASURED_LINES)" \
+	   --merged-report "$(ZIG_COVERAGE_DIR)/merged" \
+	   --repo-root "$(CURDIR)" \
+	   --summary-file "$(ZIG_COVERAGE_SUMMARY_FILE)" \
+	 || { \
+	   echo "--- kcov stderr tails (why a capture came back empty) ---"; \
+	   for f in $(ZIG_COVERAGE_DIR)/kcov-*.log; do \
+	     echo "── $$f"; tail -n 12 "$$f"; \
+	   done; \
+	   exit 1; \
+	 }
