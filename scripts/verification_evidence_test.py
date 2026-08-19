@@ -74,7 +74,14 @@ class EvidenceCase(unittest.TestCase):
         report.write_text(body, encoding="utf-8")
         return report
 
-    def record(self, producer: str, manifest: Path, components: list[str], *extra: str) -> int:
+    def record(
+        self,
+        producer: str,
+        manifest: Path,
+        components: list[str],
+        *extra: str,
+        source_paths: list[str] | None = None,
+    ) -> int:
         argv = [
             "record",
             "--repo-root", str(ROOT),
@@ -82,7 +89,7 @@ class EvidenceCase(unittest.TestCase):
             "--manifest", str(manifest),
             "--coverage-dir", str(self.coverage),
         ]
-        for path in SOURCE_PATHS:
+        for path in source_paths if source_paths is not None else SOURCE_PATHS:
             argv += ["--source-path", path]
         for part in GRAPH:
             argv += ["--graph", part]
@@ -90,16 +97,21 @@ class EvidenceCase(unittest.TestCase):
             argv += ["--component", component]
         return evidence.main(argv + list(extra))
 
-    def validate(self, expected: list[str] | None = None) -> int:
+    def validate(
+        self,
+        expected: list[str] | None = None,
+        source_paths: list[str] | None = None,
+        graph: list[str] | None = None,
+    ) -> int:
         argv = [
             "validate",
             "--repo-root", str(ROOT),
             "--manifest", f"test-coverage-zig:{self.unit}",
             "--manifest", f"test-integration:{self.integration}",
         ]
-        for path in SOURCE_PATHS:
+        for path in source_paths if source_paths is not None else SOURCE_PATHS:
             argv += ["--source-path", path]
-        for part in GRAPH:
+        for part in graph if graph is not None else GRAPH:
             argv += ["--graph", part]
         for component in expected if expected is not None else ALL_COMPONENTS:
             argv += ["--expect-component", component]
@@ -227,6 +239,74 @@ class TestUnion(EvidenceCase):
         with CaptureStderr() as captured:
             self.assertEqual(self.validate(), 1)
         self.assertIn("component stowaway is not in the inventory", captured.text)
+
+
+
+class TestRecomputedProvenance(EvidenceCase):
+    """Mismatches detected by RECOMPUTING, not by editing the manifest.
+
+    The provenance tests above flip a recorded field, which proves the
+    comparison but not the computation — a digest function that returned a
+    constant would still pass them. These change the actual input instead.
+    """
+
+    def test_a_changed_source_file_refuses_old_evidence(self) -> None:
+        source = ROOT / ".tmp" / f"src-{self.temp.name}.zig"
+        source.write_text("const answer = 41;\n", encoding="utf-8")
+        self.addCleanup(source.unlink)
+        paths = [*SOURCE_PATHS, str(source.relative_to(ROOT))]
+        self.record_both_over(paths)
+        self.assertEqual(self.validate_over(paths), 0)
+        source.write_text("const answer = 42;\n", encoding="utf-8")
+        with CaptureStderr() as captured:
+            self.assertEqual(self.validate_over(paths), 1)
+        self.assertIn("source_digest mismatch", captured.text)
+
+    def test_a_changed_graph_refuses_old_evidence(self) -> None:
+        self.record_both()
+        with CaptureStderr() as captured:
+            self.assertEqual(
+                self.validate(graph=[*GRAPH, "agentsfleetd=99"]), 1
+            )
+        self.assertIn("graph_digest mismatch", captured.text)
+
+    def test_graph_whitespace_does_not_change_identity(self) -> None:
+        # Make hands these through as strings whose spacing depends on how the
+        # variable was written; two spaces must not read as a different graph.
+        self.record_both()
+        respaced = [part.replace(" ", "  ") for part in GRAPH]
+        self.assertEqual(self.validate(graph=respaced), 0)
+
+    def record_both_over(self, paths: list[str]) -> None:
+        for component in ALL_COMPONENTS:
+            self.write_report(component)
+        self.record("test-coverage-zig", self.unit, UNIT_COMPONENTS, source_paths=paths)
+        self.record("test-integration", self.integration, LIVE_COMPONENTS, source_paths=paths)
+
+    def validate_over(self, paths: list[str]) -> int:
+        return self.validate(source_paths=paths)
+
+
+class TestMalformedInputs(EvidenceCase):
+    def test_unreadable_manifest_json_is_named(self) -> None:
+        self.record_both()
+        self.unit.write_text("{not json", encoding="utf-8")
+        with CaptureStderr() as captured:
+            self.assertEqual(self.validate(), 1)
+        self.assertIn("not readable JSON", captured.text)
+
+    def test_recording_a_component_with_no_report_fails(self) -> None:
+        # Only one of the two components has a report on disk.
+        self.write_report("agentsfleetd")
+        with CaptureStderr() as captured:
+            self.assertEqual(self.record("test-coverage-zig", self.unit, UNIT_COMPONENTS), 1)
+        self.assertIn("cobertura.xml", captured.text)
+        self.assertFalse(self.unit.exists(), "a failed recording must not leave a manifest")
+
+    def test_a_manifest_argument_without_a_producer_is_refused(self) -> None:
+        with CaptureStderr(), self.assertRaises(SystemExit) as caught:
+            evidence.main(["validate", "--repo-root", str(ROOT), "--manifest", "just-a-path"])
+        self.assertNotEqual(caught.exception.code, 0)
 
 
 if __name__ == "__main__":
