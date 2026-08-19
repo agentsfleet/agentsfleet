@@ -117,7 +117,7 @@ export function LeaseFilterBar({ filters }: { filters: LeaseFilterState }) {
           }}
         />
         <Button type="button" onClick={submit}>
-          <FilterIcon size={14} aria-hidden="true" /> {APPLY_LEASE_FILTER_LABEL}
+          <FilterIcon aria-hidden="true" /> {APPLY_LEASE_FILTER_LABEL}
         </Button>
         {hasActiveFilter ? (
           <Button type="button" variant="ghost" onClick={filters.clearAll}>

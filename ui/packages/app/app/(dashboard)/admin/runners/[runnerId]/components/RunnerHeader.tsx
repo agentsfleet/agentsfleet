@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CircleHelpIcon, ExternalLinkIcon, RefreshCwIcon } from "lucide-react";
-import { Alert, Badge, Button, CopyButton, IconAction } from "@agentsfleet/design-system";
+import { Alert, Badge, Button, CopyButton, IconAction, TooltipButton } from "@agentsfleet/design-system";
 import {
   SANDBOX_TIER_LABELS,
   type CapabilityReport,
@@ -180,7 +180,7 @@ export function RunnerHeader({
               disabled={runner.selftest_requested_at !== null}
               onClick={runSelftest}
             >
-              <SelftestIcon size={14} aria-hidden="true" />
+              <SelftestIcon aria-hidden="true" />
               {runner.selftest_requested_at !== null
                 ? SELFTEST_ACTION_CONFIG.pendingLabel
                 : SELFTEST_ACTION_CONFIG.label}
@@ -194,18 +194,33 @@ export function RunnerHeader({
                 // never a hidden control, never one that pretends to work. The
                 // handler stays wired: the native disabled attribute is what
                 // keeps the dialog closed and the PATCH unsent.
-                const notReady = config.disabledReason !== undefined;
+                // TooltipButton, not title=: a title attribute is mouse-only,
+                // and a natively disabled button leaves keyboard and screen-
+                // reader users two dead controls with no discoverable reason.
+                // The primitive's span wrapper keeps hover working while
+                // disabled, and the tooltip reads out as the reason.
+                if (config.disabledReason !== undefined) {
+                  return (
+                    <TooltipButton
+                      key={action}
+                      variant={config.intent === "destructive" ? "destructive" : "outline"}
+                      size="sm"
+                      disabled
+                      tooltip={config.disabledReason}
+                    >
+                      <ActionIcon aria-hidden="true" />
+                      {config.label}
+                    </TooltipButton>
+                  );
+                }
                 return (
                   <Button
                     key={action}
                     variant={config.intent === "destructive" ? "destructive" : "outline"}
                     size="sm"
-                    disabled={notReady}
-                    title={config.disabledReason}
-                    aria-disabled={notReady || undefined}
                     onClick={() => requestAction(action)}
                   >
-                    <ActionIcon size={14} aria-hidden="true" />
+                    <ActionIcon aria-hidden="true" />
                     {config.label}
                   </Button>
                 );
@@ -234,7 +249,7 @@ export function RunnerHeader({
               when the page is stale. Rides the same router refresh every
               action above already ends on. */}
           <IconAction label={REFRESH_RUNNER_LABEL} onClick={() => router.refresh()}>
-            <RefreshCwIcon size={14} aria-hidden="true" />
+            <RefreshCwIcon aria-hidden="true" />
           </IconAction>
         </div>
       </div>

@@ -62,7 +62,7 @@ function panel() {
 describe("RunnerSandboxPanel — self-test half", () => {
   it("says the runner has never been tested rather than showing an empty verdict", () => {
     renderPanel(<RunnerSandboxPanel runner={detail()} />);
-    expect(within(panel()).getByText(/Never self-tested/)).toBeTruthy();
+    expect(within(panel()).getByText(/Never checked/)).toBeTruthy();
     expect(screen.queryByText("all checks passed")).toBeNull();
   });
 
@@ -78,13 +78,13 @@ describe("RunnerSandboxPanel — self-test half", () => {
       }),
     ) as RunnerDetail;
     renderPanel(<RunnerSandboxPanel runner={older} />);
-    expect(within(panel()).getByText(/Never self-tested/)).toBeTruthy();
+    expect(within(panel()).getByText(/Never checked/)).toBeTruthy();
     expect(within(panel()).queryByText(/Invalid Date/)).toBeNull();
   });
 
   it("names an outstanding request so a blank verdict does not read as a healthy one", () => {
     renderPanel(<RunnerSandboxPanel runner={detail({ selftest_requested_at: 1_760_000_000_000 })} />);
-    expect(within(panel()).getByText(/A self-test is outstanding/)).toBeTruthy();
+    expect(within(panel()).getByText(/Checks are outstanding/)).toBeTruthy();
   });
 
   // Dimension 1.2 — each check the host reported gets its own name and detail

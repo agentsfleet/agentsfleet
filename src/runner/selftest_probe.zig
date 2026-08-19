@@ -154,9 +154,6 @@ fn resolverResolves(io: std.Io) bool {
     return true;
 }
 
-/// Does a name resolve from in here? Any returned address is a pass; the
-/// address itself is discarded without being formatted, so it cannot reach the
-/// output line.
 /// Can this constrained child create a file in its scratch tmpfs? The engine
 /// writes credentialed dial headers there, so a floor entry the policy layer
 /// refuses fails every lease at its first credentialed call
@@ -164,10 +161,13 @@ fn resolverResolves(io: std.Io) bool {
 /// prevent, detected here rather than assumed from the lists agreeing.
 fn scratchWritable(io: std.Io) bool {
     inline for (contract.protocol.BASELINE_RW_TMPFS) |dir| {
-        const path = dir ++ "/agentsfleet_selftest_scratch";
-        // Exclusive: proves MAKE_REG precisely (an existing file cannot stand
-        // in for a create), and O_EXCL refuses to follow a planted symlink if
-        // this probe is ever hand-run outside its private tmpfs.
+        // Unique per run: under dev_none the probe runs on the HOST /tmp, so a
+        // fixed name could collide with a concurrent probe's file or a crashed
+        // predecessor's leftover. Exclusive: proves MAKE_REG precisely (an
+        // existing file cannot stand in for a create), and O_EXCL refuses to
+        // follow a planted symlink outside the private tmpfs.
+        var path_buf: [dir.len + 64]u8 = undefined;
+        const path = std.fmt.bufPrint(&path_buf, "{s}/agentsfleet_selftest_scratch_{d}", .{ dir, std.c.getpid() }) catch return false;
         const f = std.Io.Dir.createFileAbsolute(io, path, .{ .exclusive = true }) catch return false;
         f.close(io);
         // Removal is part of the check: the floor grants REMOVE_FILE too, and
@@ -177,6 +177,9 @@ fn scratchWritable(io: std.Io) bool {
     return true;
 }
 
+/// Does a name resolve from in here? Any returned address is a pass; the
+/// address itself is discarded without being formatted, so it cannot reach the
+/// output line.
 fn nameResolves(io: std.Io, host: []const u8) bool {
     const name = std.Io.net.HostName.init(host) catch return false;
     var buf: [LOOKUP_CAPACITY]std.Io.net.HostName.LookupResult = undefined;
