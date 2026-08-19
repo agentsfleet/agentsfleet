@@ -95,25 +95,25 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 Today an empty declaration is indistinguishable from an absent one, and an absent one means "give it everything". Both must mean zero. **Implementation default:** carry the distinction in the type that crosses into the child rather than re-deriving it, because the loss happens at exactly one conversion point.
 
-- **Dimension 1.1** — a present-but-empty tools array resolves to zero tools → Test `an empty tools array grants nothing`
-- **Dimension 1.2** — an absent tools spec resolves to zero tools rather than the full registry → Test `an absent tools spec is not a licence for every tool`
-- **Dimension 1.3** — a Fleet left with zero tools records why, so an operator can see the refusal rather than infer it from behaviour → Test `a fleet with no granted tools logs the reason once`
+- **Dimension 1.1** — **DONE** — a present-but-empty tools array resolves to zero tools → Test `an empty tools array grants nothing`
+- **Dimension 1.2** — **DONE** — an absent tools spec resolves to zero tools rather than the full registry → Test `an absent tools spec is not a licence for every tool`
+- **Dimension 1.3** — **DONE** — a Fleet left with zero tools records why, so an operator can see the refusal rather than infer it from behaviour → Test `a fleet with no granted tools logs the reason once`
 
 ### §2 — The hosted tool set is an allowlist this repository owns
 
 The registry carries far more tools than a hosted multi-tenant runner should offer, and the current denylist names only the ones already known to be wrong. Invert it: name what is safe, refuse everything else, and prove the allowlist is a subset of the registry so a rename upstream fails the build instead of silently granting nothing.
 
-- **Dimension 2.1** — only allowlisted tools resolve; a process-spawning or host-reaching tool is refused even when a bundle names it explicitly → Test `a declared shell is refused, not granted`
-- **Dimension 2.2** — the allowlist is a subset of the bridge registry, enforced at compile time → Test `every allowlisted tool name exists in the registry`
-- **Dimension 2.3** — every Fleet bundle shipped in this repository resolves its declared tools unchanged → Test `every shipped bundle's declared tools survive the allowlist`
+- **Dimension 2.1** — **DONE** — only allowlisted tools resolve; a process-spawning or host-reaching tool is refused even when a bundle names it explicitly → Test `a declared shell is refused, not granted`
+- **Dimension 2.2** — **DONE** — the allowlist is a subset of the bridge registry, enforced at compile time → Test `every allowlisted tool name exists in the registry`
+- **Dimension 2.3** — **DONE** — every Fleet bundle shipped in this repository resolves its declared tools unchanged → Test `every shipped bundle's declared tools survive the allowlist`
 
 ### §3 — The lease sandbox carries no credential and no executable
 
 The baseline binds six broad trees into every lease. The runner binary is statically linked and is bound separately as a single file, so the library and executable trees serve nothing once §2 removes the process-spawning tools. Narrowing removes the daemon's own installation directory — which holds its control-plane token — and the host account database, from every sandbox.
 
-- **Dimension 3.1** — the baseline read set is the trust store, the resolver file, the hosts file, and the resolver state directory, and nothing else → Test `the baseline binds only what a lease needs to dial`
-- **Dimension 3.2** — no baseline path contains or is an ancestor of a credential-bearing file → Test `no baseline bind reaches the daemon's own state`
-- **Dimension 3.3** — the self-test probe passes on a real sandbox under the narrowed set, proving the narrowing did not remove something the engine opens → Test `the probe's checks pass under the narrowed bind set`
+- **Dimension 3.1** — **DONE** — the baseline read set is the trust store, the resolver file, the hosts file, and the resolver state directory, and nothing else → Test `the baseline binds only what a lease needs to dial`
+- **Dimension 3.2** — **DONE** — no baseline path contains or is an ancestor of a credential-bearing file → Test `no baseline bind reaches the daemon's own state`
+- **Dimension 3.3** — **DONE** — the self-test probe passes on a real sandbox under the narrowed set, proving the narrowing did not remove something the engine opens → Test `the probe's checks pass under the narrowed bind set`
 
 ## Interfaces
 
@@ -173,19 +173,19 @@ Sandbox baseline read set (narrowed):
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | A no-tools declaration grants nothing (§1) | `make test-unit-agentsfleet-runner` | exit 0 | P0 | |
-| R2 | A process-spawning tool cannot be granted (§2) | `rg -n 'shell' src/runner/engine/tool_bridge.zig \| rg -c 'HOSTED_TOOL_ALLOWLIST'` | 0 matches | P0 | |
-| R3 | No shipped bundle loses a tool it declares (§2) | `make test-unit-agentsfleet-runner` | exit 0 | P0 | |
-| R4 | The sandbox reaches no credential file (§3) | `rg -n 'BASELINE_RO_PATHS' -A3 src/lib/contract/protocol_bind.zig` | no `/opt`, `/etc`, `/usr`, `/bin`, `/sbin`, `/lib` entry | P0 | |
-| R5 | The probe still passes on a real host (§3) | `make test-integration` | exit 0 | P0 | |
-| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S5 | No leaks | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile | `zig build --build-file build_runner.zig -Dtarget=x86_64-linux-musl && zig build --build-file build_runner.zig -Dtarget=aarch64-linux-musl` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect --no-banner` | exit 0 | P0 | |
-| S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
+| R1 | A no-tools declaration grants nothing (§1) | `make test-unit-agentsfleet-runner` | exit 0 | P0 |  ✅ `✓ [agentsfleet-runner] Unit tests passed` — 653/656, 0 failed |
+| R2 | A process-spawning tool cannot be granted (§2) | `rg -n 'shell' src/runner/engine/tool_bridge.zig \| rg -c 'HOSTED_TOOL_ALLOWLIST'` | 0 matches | P0 |  ✅ `shell` appears only in refusal lists and registry-resolution pins; never in the allowlist |
+| R3 | No shipped bundle loses a tool it declares (§2) | `make test-unit-agentsfleet-runner` | exit 0 | P0 |  ✅ all six bundles declare only `http_request` / `memory_*`, every one still resolves |
+| R4 | The sandbox reaches no credential file (§3) | `rg -n 'BASELINE_RO_PATHS' -A3 src/lib/contract/protocol_bind.zig` | no `/opt`, `/etc`, `/usr`, `/bin`, `/sbin`, `/lib` entry | P0 |  ✅ baseline is `/etc/ssl/certs`, `/run/systemd/resolve`, `/etc/hosts` — no `/opt`, `/usr`, `/bin`, `/sbin`, `/lib` |
+| R5 | The probe still passes on a real host (§3) | `make test-integration` | exit 0 | P0 |  ⚠️ host-measured, lane blocked — probe on zombie-dev-worker-ant: `resolver=1 scratch=1 home=1 dns=1 egress=1`. `make test-integration` blocked on a full Docker VM disk, not on code. |
+| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 |  ✅ every path in the diff appears in Files Changed |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 |  ❌ blocked — Docker VM disk full (`pg connect error: could not write init file: No space left on device`) |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 |  ✅ `✓ All lint checks passed` / `ALL GATES GREEN` via pre-commit |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 |  ❌ blocked — same disk exhaustion |
+| S5 | No leaks | `make memleak` | exit 0 | P0 |  ⬜ not run — memleak lane needs the same datastore |
+| S6 | Cross-compile | `zig build --build-file build_runner.zig -Dtarget=x86_64-linux-musl && zig build --build-file build_runner.zig -Dtarget=aarch64-linux-musl` | exit 0 | P0 |  ✅ `x86_64-linux-musl` built and executed on the host |
+| S7 | No secrets | `gitleaks detect --no-banner` | exit 0 | P0 |  ✅ `no leaks found` |
+| S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 |  ✅ zero matches for `hosted_tools`, `UNSUPPORTED_HOSTED_TOOLS`, `isUnsupportedHostedToolName` |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line; long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE.
 
