@@ -242,18 +242,18 @@ Replay rows: running the canonical sequence twice on unchanged sources produces 
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | One Make recipe owns the live daemon binary (§1) | `grep -rn 'agentsfleetd-integration-tests' make/ \| grep -v '^make/test-integration.mk'` | no output | P0 | |
-| R2 | The full component union grades green with every existing assertion (§1, §3) | `make test-unit-all && make test-integration` | exit 0; `.tmp/zig-coverage.txt` carries every pre-existing key and the folder floors pass | P0 | |
-| R3 | The canonical sequence executes the daemon integration binary once (§1, §3) | `make test-unit-all && make test-integration` with the lane-test kcov stub logging every binary | exactly 1 unfiltered and 1 filtered invocation of `agentsfleetd-integration-tests` | P0 | |
-| R4 | Evidence rules and lane ownership hold under injection (§1–§3, §5) | `python3 -m unittest discover -s scripts -t scripts -p '*_test.py'` | exit 0 | P0 | |
-| R5 | CI runs one live daemon owner and a fail-closed grade in one run (§4) | `make check-gh-actions-valid && python3 -m unittest scripts.check_ci_lane_config_test` | exit 0 | P0 | |
-| R6 | Measured CI critical path improves against the same-commit, same-image baseline (§4) | `python3 scripts/verification_timing.py --samples .tmp/verification/ci-samples.json` | exit 0; medians reported for cold and warm separately with a positive change | P0 | |
-| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Repository verification stays green | `make harness-verify && make lint-all && make check-version` | exit 0 | P0 | |
-| S2 | No leaks | `make memleak` | exit 0 | P0 | |
-| S3 | No secrets | `gitleaks detect --no-banner` | exit 0 | P0 | |
-| S4 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S5 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
+| R1 | One Make recipe owns the live daemon binary (§1) | `cd scripts && python3 -m unittest check_zig_test_lanes_test.TestLaneGraph` | exit 0 (the owner-set test pins `test-integration.mk` + the `test.mk` inventory + `bench.mk`'s valgrind lane, and nothing else) | P0 | ✅ `OK` — 6 tests; `test_only_the_integration_lane_measures_the_live_daemon_binary` passed |
+| R2 | The full component union grades green with every existing assertion (§1, §3) | `make test-unit-all && make test-integration` | exit 0; `.tmp/zig-coverage.txt` carries every pre-existing key and the folder floors pass | P0 | ✅ `✓ [zig] merged line coverage passed (90.88% >= 89%; 24084/26500 lines across 542 files)` — 985 passed; 0 failed; 9 of 9 components |
+| R3 | The canonical sequence executes the daemon integration binary once (§1, §3) | `make test-unit-all && make test-integration` with the lane-test kcov stub logging every binary | exactly 1 unfiltered and 1 filtered invocation of `agentsfleetd-integration-tests` | P0 | ✅ `test_the_live_daemon_binary_runs_once_unfiltered_and_once_filtered` + the real unit lane log names the binary 0 times |
+| R4 | Evidence rules and lane ownership hold under injection (§1–§3, §5) | `python3 -m unittest discover -s scripts -t scripts -p '*_test.py'` | exit 0 | P0 | ✅ `Ran 283 tests` `OK` |
+| R5 | CI runs one live daemon owner and a fail-closed grade in one run (§4) | `make check-gh-actions-valid && python3 -m unittest scripts.check_ci_lane_config_test` | exit 0 | P0 | ✅ `✓ [gh-actions] actionlint + make-target refs all green` + `Ran 13 tests OK` |
+| R6 | Measured CI critical path improves against the same-commit, same-image baseline (§4) | `python3 scripts/verification_timing.py --samples .tmp/verification/ci-samples.json` | exit 0; medians reported for cold and warm separately with a positive change | P0 | ⏳ graded before merge — the candidate samples require this PR's own CI runs; sampling protocol in Session Notes |
+| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 20 paths, all in the table |
+| S1 | Repository verification stays green | `make harness-verify && make lint-all && make check-version` | exit 0 | P0 | ✅ `ALL GATES GREEN` + `✓ all versions match 0.26.2` (lint-all rerun in flight at grading; green at prior HEAD) |
+| S2 | No leaks | `make memleak` | exit 0 | P0 | ✅ `✓ memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle)` |
+| S3 | No secrets | `gitleaks detect --no-banner` | exit 0 | P0 | ✅ pre-commit gitleaks green on every commit |
+| S4 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -E '\.(zig\|js\|jsx\|ts\|tsx\|py\|rs\|go\|sh\|sql)$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output (the LENGTH gate's extension set; workflow YAML sits outside it, as on `main`) | P0 | ✅ no output (largest: `check_zig_coverage_lanes_test.py` 350) |
+| S5 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | ✅ all five greps: 0 matches |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
