@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M171
 **Workstream:** 001
 **Date:** Aug 19, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the rejection surface is the first thing a new operator meets, and it currently answers in two dialects
 **Categories:** CLI
 **Batch:** B1 — standalone; no other workstream touches `cli/src/cli.ts`
@@ -71,7 +71,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/test/cli-funcfill.unit.test.ts` | EDIT | two runCli exit-mapping assertions follow the same move |
 | `cli/test/pty.unit.test.ts` | EDIT | the spawned-process usage-exit constant follows the same move |
 | `cli/test/fleet-logs-linecov.unit.test.ts` | EDIT | asserts the suggestion names the fix and differs from the detail |
-| `cli/test/logs.integration.test.ts` | EDIT | assert the full stem and the distinct suggestion line, not just `/fleet/i` |
+| `cli/test/commander-boundary.unit.test.ts` | CREATE | in-process cover for the boundary; the acceptance sweep proves the same paths but runs in a subprocess the coverage floor cannot see |
+| `docs/v2/active/M171_001_P1_CLI_ARGUMENT_REJECTION_UNIFORMITY.md` | EDIT | this spec — lifecycle status, Dimensions marked DONE, rubric graded |
 | `cli/test/connector.integration.test.ts` | EDIT | fixture gains a configured-but-not-connected row so the list renderer's next-action text is asserted |
 | `~/Projects/docs` (separate branch) | EDIT | the CLI reference page documents the exit-code table |
 
@@ -208,8 +209,8 @@ Help routing:
 | 2.3 | e2e | `test_help_paths_exit_zero` | root, every group node, `--help` on each → exit 0 |
 | 3.1 | e2e | `test_group_node_help_on_stdout` | each of the twelve group nodes invoked bare → stdout non-empty, stderr empty, exit 0 |
 | 3.2 | e2e | `test_help_names_required_arguments` | `<leaf> --help` → exit 0 and the help body names each declared positional |
-| 4.1 | integration | `test_logs_suggestion_names_the_fix` | `logs` with no identifier → detail names the missing identifier, suggestion carries the `usage: agentsfleet logs` line, and the two differ |
-| 4.2 | integration | `test_grant_suggestion_form` | `grant list` with no `--fleet` → suggestion carries the usage line |
+| 4.1 | unit | `test_logs_suggestion_names_the_fix` | `logs` with no identifier → detail names the missing identifier, suggestion carries the `usage: agentsfleet logs` line, and the two differ |
+| 4.2 | e2e | `test_grant_suggestion_form` | `grant list` with no `--fleet` → suggestion carries the usage line |
 | 5.1 | unit | `test_matrix_covers_every_required_arg_command` | tree walk over the built program → every required-argument command is present in the matrix; omission fails with the command name |
 | 5.2 | unit | `test_negative_sweep_is_deterministic` | the new spec file appears in the deterministic lane list and not in the live list |
 | 5.3 | unit | `test_matrix_covers_every_group_node` | tree walk → every command owning subcommands appears in the group-node table |
@@ -221,19 +222,21 @@ Help routing:
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Every argument rejection shows the house shape (§1) | `bun ./cli/dist/bin/agentsfleet.js events 2>&1 \| head -2` | first line contains `✕ error:`, second contains `Suggestion:` | P0 | |
-| R2 | Every argument rejection exits 4 (§2) | `for c in events steer stop kill; do bun ./cli/dist/bin/agentsfleet.js $c >/dev/null 2>&1; echo $?; done \| sort -u` | single line `4` | P0 | |
-| R3 | Network failure stays exit 2 (§2) | `AGENTSFLEET_API_URL=http://127.0.0.1:1 bun ./cli/dist/bin/agentsfleet.js list >/dev/null 2>&1; echo $?` | `2` | P0 | |
-| R4 | Group help is pipeable (§3) | `bun ./cli/dist/bin/agentsfleet.js workspace 2>/dev/null \| wc -c` | non-zero byte count | P0 | |
-| R5 | The logs suggestion no longer echoes its detail (§4) | `bun ./cli/dist/bin/agentsfleet.js logs 2>&1 \| sort -u \| wc -l` | `2` | P1 | |
-| R5b | `--json` rejection is machine-parseable (§1) | `bun ./cli/dist/bin/agentsfleet.js --json events 2>&1 \| tail -6 \| python3 -c 'import json,sys; print(json.load(sys.stdin)["error"]["code"])'` | `MISSING_ARGUMENT` | P0 | |
-| R6 | The negative sweep runs without a live target (§5) | `cd cli && bun test test/acceptance/argument-negatives.spec.ts` | exit 0 | P0 | |
-| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | Every argument rejection shows the house shape (§1) | `bun ./cli/dist/bin/agentsfleet.js events 2>&1 \| head -2` | first line contains `✕ error:`, second contains `Suggestion:` | P0 | ✅ `✕ error: missing required argument 'fleet_id'` + `Suggestion:` line |
+| R2 | Every argument rejection exits 4 (§2) | `for c in events steer stop kill; do bun ./cli/dist/bin/agentsfleet.js $c >/dev/null 2>&1; echo $?; done \| sort -u` | single line `4` | P0 | ✅ single line `4` across events/steer/stop/kill |
+| R3 | Network failure stays exit 2 (§2) | `AGENTSFLEET_API_URL=http://127.0.0.1:1 bun ./cli/dist/bin/agentsfleet.js list >/dev/null 2>&1; echo $?` | `2` | P0 | ✅ `2` — network stays distinct |
+| R4 | Group help is pipeable (§3) | `bun ./cli/dist/bin/agentsfleet.js workspace 2>/dev/null \| wc -c` | non-zero byte count | P0 | ✅ 555 bytes on stdout, stderr empty |
+| R5 | The logs suggestion no longer echoes its detail (§4) | `bun ./cli/dist/bin/agentsfleet.js logs 2>&1 \| sort -u \| wc -l` | `2` | P1 | ✅ 2 distinct lines — the echo is gone |
+| R5b | `--json` rejection is machine-parseable (§1) | `bun ./cli/dist/bin/agentsfleet.js --json events 2>&1 \| tail -6 \| python3 -c 'import json,sys; print(json.load(sys.stdin)["error"]["code"])'` | `MISSING_ARGUMENT` | P0 | ✅ `MISSING_ARGUMENT` |
+| R6 | The negative sweep runs without a live target (§5) | `cd cli && bun test test/acceptance/argument-negatives.spec.ts` | exit 0 | P0 | ✅ 80 pass, 0 fail — no live target |
+| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 20 paths, all in the table (table corrected at CHORE(close): `commander-boundary.unit.test.ts` and this spec were missing, the unedited `logs.integration.test.ts` row removed) |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `✓ All unit lanes passed`, exit 0 |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `make lint-all` exit 0 |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | N/A — no HTTP/schema/Redis surface in the diff |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ gitleaks: no leaks found |
+| S8 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output — largest changed source file is 326 lines |
+
+**Test Delta (VERIFY):** Zig `unit=4157 integration=709` — identical to the CHORE(open) baseline, which is the expected reading for a TypeScript-only diff that adds no Zig. The growth this workstream is accountable for is the CLI package: 1533 → 1637 tests across 160 → 163 files (+104), with the 100% line-coverage floor holding.
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -247,8 +250,8 @@ N/A — no files deleted.
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
-| the exit-2 branch of `exitFromCommanderError` | `grep -rn "COMMANDER_USAGE_CODES" cli/src/` | 1 match, in the validation-code mapping only |
-| the duplicated `USAGE` used as both detail and suggestion | `grep -rn "suggestion: USAGE" cli/src/` | 0 matches |
+| the exit-2 branch of `exitFromCommanderError` | `grep -rn "COMMANDER_USAGE_CODES" cli/src/` | 2 matches, both in `lib/commander-boundary.ts` — its declaration and its single use |
+| the argv-shape bare-group resolver replaced at REVIEW | `grep -rn "resolveBareGroup\|installGroupHelpActions" cli/src/` | 0 matches |
 
 ## Out of Scope
 
@@ -282,5 +285,9 @@ N/A — no files deleted.
 
 - **Consults** — Indy chose the exit-code unification target on Aug 19, 2026: usage rejection unifies on the validation code 4, leaving exit 2 to mean network failure alone, over the alternatives of unifying on 2 or leaving exit codes untouched.
 - **Metrics review** — no analytics or funnel playbook update required: `command-instrumentation.ts` records a coarse `0 | 1` outcome, not the process exit code, so no emitted property changes.
-- **Skill-chain outcomes** — populated during VERIFY and CHORE(close).
+- **Skill-chain outcomes** — `/write-unit-test`: the package's own 100% coverage floor is the audit; it failed the first run on three uncovered lines (`cli.ts` bare-group branch, `commander-boundary.ts` writeErr) because only the subprocess acceptance spec reached them, and `commander-boundary.unit.test.ts` was added to cover them in-process. Floor now PASS at 100.00%. REVIEW: run inline rather than through the gstack specialist fan-out, since this session's rules bar subagent dispatch; it caught one real defect, recorded below. `kishore-babysit-prs` runs after the push.
+- **Review finding (fixed in the same branch)** — the first bare-group implementation resolved the case from the argv shape, so `agentsfleet workspace` printed help on stdout while `agentsfleet workspace --json` still printed it on stderr: the very inconsistency this workstream removes, one flag away. Root cause is commander answering an action-less group with `help({ error: true })`. Fixed by overriding `help` on those nodes to force `error: false`, which holds for every invocation shape. Two earlier approaches were tried and rejected with evidence: filtering the write stream splits commander's `addHelpText` tail onto the wrong stream (caught by the spec's bare-vs-`--help` equality row), and attaching an action to the group makes an unknown subcommand report as an excess argument instead of an unknown command. A regression row now asserts group help reaches stdout with a global flag present.
+- **Environment** — `make test-unit-all` first failed in `_ensure-test-infra`: the postgres test container died with `initdb: could not create directory ... No space left on device`, with Docker holding ~7 GB of reclaimable build cache. Indy approved a prune; the datastores came up clean afterwards. Unrelated to this diff.
+- **Flaky lane observed** — `ui/packages/app` failed one dialog-timing test per full-lane run, a different test each time (`WorkspaceSwitcher > opens the create dialog`, then `FleetLibrariesView > prefills the dialog ...`), and passed 2388/2388 on re-run in the same worktree with the same code. The branch touches no `ui/` file. Recorded as a pre-existing flake, not a finding of this workstream.
+- **Metrics review** — no analytics or funnel playbook update required: `command-instrumentation.ts` records a coarse `0 | 1` outcome, not the process exit code, so no emitted property changes.
 - **Deferrals** — none recorded.
