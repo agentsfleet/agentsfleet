@@ -103,7 +103,7 @@ describe("RunnerHeader self-test control", () => {
     // The control opens no dialog, so the refusal has to read on the header
     // itself — the daemon's message behind the operator-facing lead.
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe("Couldn't run a self-test on this runner — Revoked runner cannot self-test.");
+    expect(alert.textContent).toBe("Couldn't run checks on this runner — Revoked runner cannot self-test.");
     expect(refresh).toHaveBeenCalled();
   });
 
