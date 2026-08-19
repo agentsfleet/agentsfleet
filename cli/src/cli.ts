@@ -19,7 +19,7 @@ import {
   captureRejection,
   exitFromCommanderError,
   rejectionCodeFor,
-  resolveBareGroup,
+  routeGroupHelpToStdout,
   renderRejection,
   type PendingRejection,
 } from "./lib/commander-boundary.ts";
@@ -286,13 +286,9 @@ export async function runCli(
     pendingRejection = captureRejection(text, cmd, pendingRejection);
   });
 
-  // A bare group node prints its own help on stdout and exits 0; leaving it
-  // to commander routes the body through the error stream instead.
-  const bareGroup = resolveBareGroup(program, effectiveArgv);
-  if (bareGroup) {
-    bareGroup.outputHelp();
-    return 0;
-  }
+  // A bare group node prints its help on stdout at exit 0; commander would
+  // otherwise route that body through the error stream.
+  routeGroupHelpToStdout(program);
 
   installPreAction(program, ctx, state);
 
