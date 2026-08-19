@@ -306,7 +306,9 @@ Replay rows: running the canonical sequence twice on unchanged sources produces 
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: none at creation.
+- **Consults** — Architecture: none beyond the spec's own §4 run-scoped-artifact reasoning. Legacy-Design / gate-flag triage: none.
 - **Metrics review** — no product or operator signal changes; no analytics or funnel playbook update required, because no user journey changes.
-- **Skill-chain outcomes** — `/write-unit-test`, `/write-integration-test`, `/review` and `kishore-babysit-prs`: pending execution.
+- **Skill-chain outcomes** — `/write-unit-test`: diff ledger resolved (48 new tests across `verification_evidence_test.py`, `verification_timing_test.py`, `check_zig_coverage_lanes_test.py`; one `won't-test` — the shared reporter's arity guard, whose callers are recipe lines the lane tests execute). `/write-integration-test`: no Zig service surface changed; tiers satisfied by the driven-recipe suite plus the real canonical runs against live datastores. `/review`: three passes (structured, Claude adversarial subagent, Codex adversarial); twelve findings — six fixed in `4513d649f`, five in the follow-up commit, and the fail-closed tally refused to grade a real `987 passed; 1 failed` run mid-review. `kishore-babysit-prs`: runs after push.
+- **Review findings reviewed and not taken** — evidence reuse of a matched manifest from an earlier run of the same tree is the requested behaviour, not staleness; the absent-evidence notice on a bare `make test-integration` is the grade rule Indy selected; the unit components' missing tally assertion predates this split and is unchanged; digesting `samples/fixtures/**` and compose topology into provenance is accepted residual — the instrument and its arguments are digested, the datastore versions are not.
+- **Ratchet pending on CI evidence** — `lifecycle` joins `ZIG_COVERAGE_REQUIRED_COMPONENTS` on Linux in the commit where this branch's first green CI run shows it collecting there, per that list's own evidence rule.
 - **Deferrals** — none.
