@@ -51,6 +51,7 @@ comptime {
 /// in the stored result, so a historical result stays readable after a rename
 /// (RULE UFS: the dashboard and the daemon spell them the same way).
 pub const CHECK_RESOLVER = "resolver file resolves inside the sandbox";
+pub const CHECK_SCRATCH = "the scratch dir accepts a write inside the sandbox";
 pub const CHECK_DNS = "a hostname resolves inside the sandbox";
 pub const CHECK_EGRESS = "the inference endpoint is reachable";
 pub const CHECK_SANDBOX = "a sandbox can be established";
@@ -61,6 +62,7 @@ pub const CHECK_SANDBOX = "a sandbox can be established";
 /// Prose, never empty — the dashboard reads a whitespace-free cause as a leaked
 /// internal identifier and hides it, losing the check's explanation.
 pub const DETAIL_OK = "no fault detected";
+pub const DETAIL_SCRATCH_READONLY = "the sandbox refused a write to its scratch tmpfs — every credentialed dial fails as TempFileCreateFailed until the write floor is granted";
 pub const DETAIL_RESOLVER_DANGLING = "/etc/resolv.conf does not resolve to a readable file — the systemd-resolved stub is not bound into the sandbox";
 pub const DETAIL_DNS_FAILED = "the resolver did not answer inside the sandbox";
 pub const DETAIL_EGRESS_BLOCKED = "the endpoint did not accept a connection";
@@ -311,6 +313,20 @@ pub fn grade(alloc: std.mem.Allocator, cfg: Config, outcome: Outcome) !Result {
         .detail = if (outcome.resolver_readable) DETAIL_OK else DETAIL_RESOLVER_DANGLING,
     });
 
+    // Scratch is graded unconditionally: every posture's leases write their
+    // credentialed dial headers there, so no assignment makes a refused write
+    // expected. A timed-out probe observed nothing — say that, not "refused".
+    try checks.append(alloc, .{
+        .name = CHECK_SCRATCH,
+        .ok = if (outcome.timed_out) false else outcome.scratch_writable,
+        .detail = if (outcome.timed_out)
+            DETAIL_TIMEOUT
+        else if (outcome.scratch_writable)
+            DETAIL_OK
+        else
+            DETAIL_SCRATCH_READONLY,
+    });
+
     // DNS is graded against the ASSIGNED posture too. Under deny_all there is
     // no network to resolve through, so a failure there is the assignment
     // working — the same reasoning the egress arm below has always used.
@@ -378,6 +394,10 @@ fn bindDetail(mode: contract.protocol.BindMode, present: bool) []const u8 {
 /// leaves the probe, which is what keeps a secret out of a stored result.
 pub const Outcome = struct {
     resolver_readable: bool,
+    /// No default on purpose: `grade` always reads it, so every construction
+    /// site must decide — a silently-defaulted pass here is the exact false
+    /// confidence the probe exists to remove.
+    scratch_writable: bool,
     dns_resolved: bool,
     egress_reachable: bool,
     extra_binds_present: bool = true,

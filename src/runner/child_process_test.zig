@@ -14,7 +14,7 @@
 
 const std = @import("std");
 const child_process = @import("child_process.zig");
-const sandbox = @import("sandbox_args.zig");
+const sandbox_env = @import("sandbox_env.zig");
 
 const HOME = "HOME";
 const HOME_VALUE = "/run/agentsfleet";
@@ -61,9 +61,9 @@ test "an unset HOME is never substituted or defaulted" {
 
 test "HOME is on the passthrough allowlist and the deny prefix is not" {
     var saw_home = false;
-    for (sandbox.ENV_PASSTHROUGH_ALLOWLIST) |name| {
+    for (sandbox_env.ENV_PASSTHROUGH_ALLOWLIST) |name| {
         if (std.mem.eql(u8, name, HOME)) saw_home = true;
-        try std.testing.expect(!std.mem.startsWith(u8, name, sandbox.ENV_DENY_PREFIX));
+        try std.testing.expect(!std.mem.startsWith(u8, name, sandbox_env.ENV_DENY_PREFIX));
     }
     try std.testing.expect(saw_home);
 }
