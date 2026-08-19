@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const selftest_probe = @import("selftest_probe.zig");
+const contract = @import("contract");
 const child_exec = @import("child_exec.zig");
 const sandbox_hardening = @import("sandbox_hardening.zig");
 const selftest_exec = @import("selftest_exec.zig");
@@ -73,4 +74,23 @@ test "the resolver path is the one the incident dangled" {
     // into an unbound `/run/systemd/resolve`. A probe checking any other path
     // would not have caught it.
     try std.testing.expectEqualStrings("/etc/resolv.conf", selftest_probe.RESOLV_PATH);
+}
+
+test "a home the sandbox cannot provide is graded unusable before any write" {
+    // The absent case is the one that shipped: HOME pointed at a host path the
+    // sandbox never mounted, and nothing graded it. Each of these must fail
+    // WITHOUT attempting I/O — a probe that tries to write to a relative path
+    // resolves it against the workspace and reports a healthy home that isn't.
+    try std.testing.expect(!selftest_probe.homePathUsable(null));
+    try std.testing.expect(!selftest_probe.homePathUsable(""));
+    try std.testing.expect(!selftest_probe.homePathUsable("relative/home"));
+    try std.testing.expect(!selftest_probe.homePathUsable("."));
+    try std.testing.expect(!selftest_probe.homePathUsable(".."));
+}
+
+test "the home a lease actually receives is usable" {
+    // The positive arm, pinned against the real constant rather than a literal:
+    // if CHILD_HOME ever stops being absolute the probe must stop passing it.
+    try std.testing.expect(selftest_probe.homePathUsable(contract.protocol.CHILD_HOME));
+    try std.testing.expect(selftest_probe.homePathUsable("/tmp"));
 }
