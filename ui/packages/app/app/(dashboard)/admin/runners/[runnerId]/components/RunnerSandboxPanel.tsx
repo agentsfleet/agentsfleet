@@ -8,7 +8,7 @@ import { BIND_MODE, isSelftestStale, type ExtraBind, type RunnerDetail } from "@
 
 const PANEL_LABEL = "Sandbox";
 const SELFTEST_HEADING = "Self-test";
-const BINDS_HEADING = "Extra binds";
+const BINDS_HEADING = "Extra mounts";
 
 const NEVER_TESTED = "Never self-tested. The verdict appears here once the host answers.";
 const PENDING_NOTE = "A self-test is outstanding — the host answers on its next heartbeat.";

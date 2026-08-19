@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useFieldArray, type Control } from "react-hook-form";
-import { PlusIcon, Trash2Icon } from "lucide-react";
+import { InfoIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -10,7 +10,6 @@ import {
   AccordionTrigger,
   Button,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormMessage,
@@ -21,10 +20,14 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@agentsfleet/design-system";
 import {
+  BASELINE_RO_PATHS,
   BIND_MODES,
-  BIND_MODE_DESCRIPTIONS,
   BIND_MODE_LABELS,
   BIND_ROW_DEFAULT,
   MAX_EXTRA_BINDS,
@@ -36,15 +39,14 @@ import type { PolicyFormValues } from "./PolicyFields";
 // through to the host on every lease, and a mode hidden inside free text is a
 // mode nobody reviewed. The select makes the widening an explicit choice.
 
-export const BINDS_ASSIGNMENT_LABEL = "Extra sandbox binds (optional)";
-export const BINDS_ASSIGNMENT_DESCRIPTION =
-  "Host paths mounted into every lease's sandbox, in addition to the daemon-owned baseline. An assignment can only add paths — it can never drop or re-mode one the sandbox depends on.";
-export const ADD_BIND_LABEL = "Add bind";
-export const REMOVE_BIND_LABEL = "Remove bind";
+export const BINDS_ASSIGNMENT_LABEL = "Sandbox mounts (optional)";
+export const BINDS_ASSIGNMENT_DESCRIPTION = "Paths mounted into every leased sandbox.";
+export const ADD_BIND_LABEL = "Add mount";
+export const REMOVE_BIND_LABEL = "Remove mount";
 export const BIND_PATH_PLACEHOLDER = "/srv/models";
 export const BIND_NOTE_PLACEHOLDER = "why this host needs it (optional)";
-export const NO_BINDS_DESCRIPTION =
-  "No extra binds — the sandbox gets the daemon-owned baseline only.";
+export const DEFAULT_MOUNTS_LABEL = "Default mounts";
+export const DEFAULT_MOUNTS_NOTE = "Always mounted, read-only.";
 
 /// The disclosure's single item value; also what the trigger toggles against.
 const BINDS_SECTION_VALUE = "extra-binds";
@@ -78,18 +80,48 @@ export function PolicyBindsField({
       onValueChange={(value) => setOpen(value === BINDS_SECTION_VALUE)}
     >
       <AccordionItem value={BINDS_SECTION_VALUE} className="border-0">
-        <AccordionTrigger className="py-xs hover:no-underline">
-          <span className="flex flex-col items-start gap-2xs text-left">
-            <Label asChild>
-              <span>{BINDS_ASSIGNMENT_LABEL}</span>
-            </Label>
-            <span className="text-body-sm text-muted-foreground">
-              {fields.length === 0
-                ? NO_BINDS_DESCRIPTION
-                : `${fields.length} assigned`}
+        {/* The tooltip's affordance is a real button and a SIBLING of the
+            accordion trigger — a focusable element nested inside the trigger
+            button would be invalid markup and unreachable by keyboard. */}
+        <div className="flex items-center gap-sm">
+          <AccordionTrigger className="py-xs hover:no-underline">
+            <span className="flex flex-col items-start gap-2xs text-left">
+              <Label asChild>
+                <span>{BINDS_ASSIGNMENT_LABEL}</span>
+              </Label>
+              {fields.length > 0 ? (
+                <span className="text-body-sm text-muted-foreground">{`${fields.length} assigned`}</span>
+              ) : null}
             </span>
-          </span>
-        </AccordionTrigger>
+          </AccordionTrigger>
+          {/* The daemon-owned baseline lives behind a hover, not in the body:
+              an operator deciding what to add can see what is already mounted
+              without the list crowding the form. */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={DEFAULT_MOUNTS_LABEL}
+                  className="text-muted-foreground"
+                >
+                  <InfoIcon size={14} aria-hidden="true" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <span className="flex flex-col gap-2xs text-left">
+                  <span className="text-label uppercase">{DEFAULT_MOUNTS_LABEL}</span>
+                  <span className="text-body-sm text-muted-foreground">{DEFAULT_MOUNTS_NOTE}</span>
+                  <span className="flex flex-col font-mono text-body-sm">
+                    {BASELINE_RO_PATHS.map((path) => (
+                      <span key={path}>{path}</span>
+                    ))}
+                  </span>
+                </span>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
         <AccordionContent className="flex flex-col gap-md">
           <p className="text-body-sm text-muted-foreground">
             {BINDS_ASSIGNMENT_DESCRIPTION}
@@ -110,7 +142,7 @@ export function PolicyBindsField({
                         <Input
                           placeholder={BIND_PATH_PLACEHOLDER}
                           autoComplete="off"
-                          aria-label={`Bind path ${index + 1}`}
+                          aria-label={`Mount path ${index + 1}`}
                           {...field}
                         />
                       </FormControl>
@@ -128,7 +160,7 @@ export function PolicyBindsField({
                         onValueChange={field.onChange}
                       >
                         <FormControl>
-                          <SelectTrigger aria-label={`Bind mode ${index + 1}`}>
+                          <SelectTrigger aria-label={`Mount mode ${index + 1}`}>
                             <SelectValue />
                           </SelectTrigger>
                         </FormControl>
@@ -140,9 +172,6 @@ export function PolicyBindsField({
                           ))}
                         </SelectContent>
                       </Select>
-                      <FormDescription>
-                        {BIND_MODE_DESCRIPTIONS[field.value]}
-                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -156,7 +185,7 @@ export function PolicyBindsField({
                         <Input
                           placeholder={BIND_NOTE_PLACEHOLDER}
                           autoComplete="off"
-                          aria-label={`Bind note ${index + 1}`}
+                          aria-label={`Mount note ${index + 1}`}
                           {...field}
                         />
                       </FormControl>
@@ -187,7 +216,7 @@ export function PolicyBindsField({
             <PlusIcon size={14} aria-hidden="true" /> {ADD_BIND_LABEL}
           </Button>
           {atCap ? (
-            <p className="text-body-sm text-muted-foreground">{`At most ${MAX_EXTRA_BINDS} binds per runner.`}</p>
+            <p className="text-body-sm text-muted-foreground">{`At most ${MAX_EXTRA_BINDS} mounts per runner.`}</p>
           ) : null}
         </AccordionContent>
       </AccordionItem>

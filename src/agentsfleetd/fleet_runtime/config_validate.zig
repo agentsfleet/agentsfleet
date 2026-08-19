@@ -31,7 +31,7 @@ fn validateSecretName(cred: []const u8) FleetConfigError!void {
         }
     }
 }
-const MAX_NAME_LEN: usize = 64;
+pub const MAX_NAME_LEN: usize = 64;
 
 /// SKILL.md / TRIGGER.md `name:` shape — kebab slug `^[a-z0-9-]+$` with
 /// length 1..=64. Mirrors the regex from `docs/SKILL_FRONTMATTER_SCHEMA.md`.

@@ -990,3 +990,77 @@ test "integration: fleet create 404s an unknown tenant template" {
     defer r.deinit();
     try std.testing.expectEqual(@as(u16, 404), r.status);
 }
+
+test "integration: a second no-name install of one template auto-suffixes instead of failing" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = clock.nowMillis();
+    try seedWorkspace(conn, now_ms);
+
+    const skill =
+        \\---
+        \\name: auto-namer
+        \\description: reviews prs
+        \\version: 0.1.0
+        \\---
+        \\Body.
+    ;
+    const trigger =
+        \\---
+        \\name: auto-namer
+        \\x-agentsfleet:
+        \\  triggers:
+        \\    - type: api
+        \\  tools: []
+        \\  budget:
+        \\    daily_dollars: 1.0
+        \\---
+    ;
+    const tid = try seedTenantTemplate(conn, alloc, "auto-namer", skill, trigger);
+    defer alloc.free(tid);
+    const body = try std.fmt.allocPrint(alloc, "{{\"tenant_library_id\":\"{s}\"}}", .{tid});
+    defer alloc.free(body);
+    const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/fleets", .{TEST_WORKSPACE_ID});
+    defer alloc.free(url);
+
+    // First install takes the template's own name.
+    const r_a = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    defer r_a.deinit();
+    try r_a.expectStatus(.created);
+    try std.testing.expectEqual(@as(i64, 1), try fleetCountByName(conn, "auto-namer"));
+
+    // Second no-name install: the one-step dashboard flow. The defaulted name
+    // collides and the server suffixes (`auto-namer-NNN`) rather than 409ing —
+    // an EXPLICIT name colliding still fails below, so the conflict stays
+    // honest where a human actually chose the name.
+    const r_b = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    defer r_b.deinit();
+    try r_b.expectStatus(.created);
+    try std.testing.expectEqual(@as(i64, 1), try fleetCountByName(conn, "auto-namer"));
+
+    var q = try conn.query("SELECT name FROM core.fleets WHERE workspace_id = $1 AND name LIKE 'auto-namer-%'", .{TEST_WORKSPACE_ID});
+    defer q.deinit();
+    var suffixed_count: usize = 0;
+    while (try q.next()) |row| {
+        const name = try row.get([]const u8, 0);
+        try std.testing.expectEqual(@as(usize, "auto-namer-".len + 3), name.len);
+        for (name["auto-namer-".len..]) |c| try std.testing.expect(c >= '0' and c <= '9');
+        suffixed_count += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 1), suffixed_count);
+
+    // Explicit duplicate: still the honest conflict.
+    const body_named = try std.fmt.allocPrint(alloc, "{{\"tenant_library_id\":\"{s}\",\"name\":\"auto-namer\"}}", .{tid});
+    defer alloc.free(body_named);
+    const r_c = try (try (try h.post(url).bearer(TOKEN_USER)).json(body_named)).send();
+    defer r_c.deinit();
+    try r_c.expectStatus(.conflict);
+}

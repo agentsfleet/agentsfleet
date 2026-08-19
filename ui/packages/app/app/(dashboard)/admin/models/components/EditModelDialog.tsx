@@ -121,21 +121,21 @@ export default function EditModelDialog({
             <div className="grid grid-cols-3 gap-3">
               <FormField control={form.control} name="input_usd" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Input $/1M</FormLabel>
+                  <FormLabel>Input</FormLabel>
                   <FormControl><Input type="number" min={0} step="0.01" className="font-mono" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormField control={form.control} name="cached_usd" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Cached $/1M</FormLabel>
+                  <FormLabel>Cached</FormLabel>
                   <FormControl><Input type="number" min={0} step="0.01" className="font-mono" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormField control={form.control} name="output_usd" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Output $/1M</FormLabel>
+                  <FormLabel>Output</FormLabel>
                   <FormControl><Input type="number" min={0} step="0.01" className="font-mono" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>

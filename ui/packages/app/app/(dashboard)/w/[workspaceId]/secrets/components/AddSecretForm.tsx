@@ -38,7 +38,7 @@ type Props = {
 
 const STORE_ACTION = "store the secret";
 const ADD_FIELD_LABEL = "Add field";
-const ADD_SECRET_LABEL = "Create secret";
+const ADD_SECRET_LABEL = "Create";
 // Secret names become a vault key; field names become JSON object keys resolved
 // at runtime as ${secrets.<name>.<field>}, so both must be reference-safe.
 const NAME_PATTERN = /^[A-Za-z0-9_-]+$/;

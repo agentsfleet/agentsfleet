@@ -12,7 +12,6 @@
 //! (a path, not a secret).
 
 const std = @import("std");
-const builtin = @import("builtin");
 const build_options = @import("build_options");
 const logging = @import("log");
 const common = @import("common");
@@ -22,8 +21,7 @@ const contract = @import("contract");
 const engine = @import("engine/runner.zig");
 const credential_request = @import("engine/credential_request.zig");
 const types = @import("engine/types.zig");
-const landlock = @import("engine/landlock.zig");
-const seccomp = @import("engine/seccomp.zig");
+const sandbox_hardening = @import("sandbox_hardening.zig");
 const context_budget = @import("engine/context_budget.zig");
 const client_errors = @import("engine/client_errors.zig");
 const input = @import("child_exec_input.zig");
@@ -78,18 +76,13 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
     // mounts and is the precondition landlock_restrict_self will rely on once a
     // later cap-drop removes the userns CAP_SYS_ADMIN it rides today.
     if (hasFlag(argv, SANDBOXED_FLAG)) {
-        applyNoNewPrivs() catch |err| {
-            log.err("no_new_privs_failed_fail_closed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .err = @errorName(err) });
+        var bind_buf: [contract.protocol.MAX_EXTRA_BINDS]contract.protocol.ExtraBind = undefined;
+        const extra_binds = sandbox_hardening.collectBindFlags(argv, &bind_buf) catch {
+            log.err("bind_flags_overflow_fail_closed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED });
             return SANDBOX_FAIL_EXIT;
         };
-        landlock.applyPolicy(workspace) catch |err| {
-            log.err("landlock_failed_fail_closed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .err = @errorName(err) });
-            return SANDBOX_FAIL_EXIT;
-        };
-        // Syscall wall atop Landlock — establish failure fails closed; a runtime
-        // trap exits SECCOMP_VIOLATION_EXIT -> landlock_deny (see seccomp.zig).
-        seccomp.applyFilter() catch |err| {
-            log.err("seccomp_failed_fail_closed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .err = @errorName(err) });
+        sandbox_hardening.applySandboxHardening(workspace, extra_binds) catch |err| {
+            log.err("sandbox_hardening_failed_fail_closed", .{ .error_code = ERR_RUN_SANDBOX_ESTABLISH_FAILED, .err = @errorName(err) });
             return SANDBOX_FAIL_EXIT;
         };
     }
@@ -251,20 +244,6 @@ fn hasFlag(argv: []const [:0]const u8, name: []const u8) bool {
         if (std.mem.eql(u8, arg, name)) return true;
     }
     return false;
-}
-
-/// Set `PR_SET_NO_NEW_PRIVS`: after this, no exec in this child or any
-/// descendant can gain privilege via a setuid/setgid binary — the setuid helpers
-/// in the RO-bound /usr,/bin,/sbin become inert. It is additive (does NOT remove
-/// the userns CAP_SYS_ADMIN that Landlock rides today, so Landlock keeps working)
-/// and must run BEFORE landlock_restrict_self. Linux-only: the `--sandboxed` flag
-/// is set only on Linux tiers (the parent's establishSandbox fail-closes any
-/// other host), so the non-Linux branch is just compile-portability.
-fn applyNoNewPrivs() error{NoNewPrivsFailed}!void {
-    if (builtin.os.tag != .linux) return;
-    // prctl(PR_SET_NO_NEW_PRIVS=38, 1=set, 0,0,0) → 0 on success.
-    if (std.os.linux.prctl(@intFromEnum(std.os.linux.PR.SET_NO_NEW_PRIVS), 1, 0, 0, 0) != 0)
-        return error.NoNewPrivsFailed;
 }
 
 // ── tests ────────────────────────────────────────────────────────────────────

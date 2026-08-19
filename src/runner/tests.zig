@@ -47,6 +47,7 @@ test {
     _ = @import("cmd/plane_stub_test.zig");
     _ = @import("cmd/doctor.zig");
     _ = @import("sandbox_args.zig");
+    _ = @import("sandbox_hardening.zig");
     _ = @import("bundle_extract.zig");
     _ = @import("bundle_extract_test.zig");
     _ = @import("pipe_proto.zig");
@@ -77,6 +78,7 @@ test {
     _ = @import("child_exec_edge_test.zig");
     _ = @import("sandbox_args_edge_test.zig");
     _ = @import("sandbox_args_bind_test.zig");
+    _ = @import("sandbox_args_child_bind_test.zig");
     _ = @import("selftest.zig");
     _ = @import("selftest_probe.zig");
     _ = @import("selftest_exec.zig");

@@ -6,7 +6,7 @@ const NEEDS_PREFIX = "needs:";
 
 type Props = {
   entry: FleetLibraryGalleryEntry;
-  // The call-to-action slot — the install picker's "Use entry" button. Kept
+  // The call-to-action slot — the install picker's "Install" button. Kept
   // as a slot so this card stays presentational.
   action: ReactNode;
 };

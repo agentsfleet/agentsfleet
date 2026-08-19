@@ -81,9 +81,12 @@ pub fn parkEvent(
         return .unavailable;
     };
 
+    // THIS fleet's name, not the bundle's. `config.name` is the TRIGGER.md
+    // declaration every install from that bundle shares, so a workspace running
+    // two of them would get two approval cards naming the same fleet.
     const slack_msg = approval_gate.buildSlackApprovalMessage(
         alloc,
-        session.config.name,
+        session.name,
         action_id,
         detail,
         "", // callback_url resolved at delivery time by the notification provider

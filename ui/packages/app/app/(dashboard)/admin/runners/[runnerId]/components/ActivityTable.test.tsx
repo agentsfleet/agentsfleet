@@ -100,7 +100,7 @@ describe("ActivityTable", () => {
         pageSize={25}
       />, { wrapper: TooltipProvider });
     expect(screen.getByText("registered")).toBeTruthy();
-    expect(screen.getByText("runner-prod-ams-01.internal · Linux · Landlock (full)")).toBeTruthy();
+    expect(screen.getByText("runner-prod-ams-01.internal · Landlock")).toBeTruthy();
   });
 
   it("test_activity_uses_data_table", () => {
