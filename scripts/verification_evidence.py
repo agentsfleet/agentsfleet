@@ -92,8 +92,12 @@ def source_digest(repo_root: Path, paths: list[str]) -> str:
 
 
 def toolchain_identity() -> str:
-    result = subprocess.run(["zig", "version"], capture_output=True, text=True, check=True)
-    return result.stdout.strip()
+    """The compiler AND the instrument. Codegen decides which lines exist;
+    kcov decides which of them get read — a kcov bump behind an unchanged
+    `zig version` once dropped 534 of 558 files from the union silently."""
+    zig = subprocess.run(["zig", "version"], capture_output=True, text=True, check=True)
+    kcov = subprocess.run(["kcov", "--version"], capture_output=True, text=True, check=True)
+    return f"zig={zig.stdout.strip()} {kcov.stdout.strip()}"
 
 
 def graph_digest(parts: list[str]) -> str:

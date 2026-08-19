@@ -304,6 +304,7 @@ test-coverage-grade:  ## Validate both producers' evidence, then grade the merge
 	 || { \
 	   echo "--- kcov stderr tails (why a capture came back empty) ---"; \
 	   for f in $(ZIG_COVERAGE_DIR)/kcov-*.log; do \
+	     [ -e "$$f" ] || continue; \
 	     echo "── $$f"; tail -n 12 "$$f"; \
 	   done; \
 	   exit 1; \
