@@ -1,8 +1,10 @@
 # =============================================================================
 # TEST-INTEGRATION — all integration tests (Zig in-process, DB, Redis)
 # =============================================================================
+# The compose infra these lanes consume — ports, URLs, cert, reset — lives in
+# make/test-infra.mk.
 
-.PHONY: test-integration test-integration-db test-integration-redis test-integration-kernel _ensure-test-infra _reset-test-db
+.PHONY: test-integration test-integration-db test-integration-redis test-integration-kernel
 
 # The runner's own real-process integration lane (build_runner.zig, no datastore):
 # it forks real children and asserts real KERNEL behaviour — the env allowlist +
@@ -44,164 +46,6 @@ else
 	@echo "✓ [kernel] Runner integration tests passed (Linux real-process proofs)"
 endif
 
-# Host ports are FIXED. scripts/test-infra-ports.sh decides them: a LINKED
-# worktree gets three ports derived from its project name (so worktrees cannot
-# collide); a primary checkout — which is what CI always has — keeps the
-# conventional 5432/6379/8080.
-#
-# Exported into the environment rather than written to `.env`. Compose reads
-# `.env` automatically, which is why the first attempt used it, but in CI the
-# make target runs inside a container as root: the `.env` it wrote was unreadable
-# by the host runner and moved the published ports out from under the connection
-# strings the workflow had already pinned. An exported variable crosses no
-# ownership boundary.
-#
-# `?=` so an explicit override still wins. Computed once per make invocation.
-TEST_INFRA_PORTS := $(shell bash scripts/test-infra-ports.sh 2>/dev/null)
-AGENTSFLEET_PG_HOST_PORT     ?= $(or $(word 1,$(TEST_INFRA_PORTS)),5432)
-AGENTSFLEET_REDIS_HOST_PORT  ?= $(or $(word 2,$(TEST_INFRA_PORTS)),6379)
-AGENTSFLEET_QSTASH_HOST_PORT ?= $(or $(word 3,$(TEST_INFRA_PORTS)),8080)
-export AGENTSFLEET_PG_HOST_PORT
-export AGENTSFLEET_REDIS_HOST_PORT
-export AGENTSFLEET_QSTASH_HOST_PORT
-
-# The live ports are still discovered from the running container rather than
-# assumed from the values above, so these stay the single source of truth about
-# what is actually bound.
-#
-# Resolved lazily with `=` -- NOT `:=` -- because the containers may not be
-# running when this Makefile is first parsed; the shell runs at first use, which
-# is always after _ensure-test-infra.
-#
-# The pinning is what makes that safe. While the host side was ephemeral, this
-# lookup was correct when it ran and wrong afterwards: a container restart moved
-# the port, the URL built from it did not follow, and every Redis test failed at
-# TCP connect against a port nothing was listening on.
-#
-# Each falls back to the declared port when the lookup yields nothing. That is
-# not defensive padding — it is the `TEST_INFRA=provided` lane: `make memleak`
-# runs inside a valgrind container that carries NO docker CLI, so
-# `docker compose port` there produces an empty string and the URL built from it
-# became `postgres://…@localhost:/agentsfleetdb`, which the daemon rejects as
-# InvalidDatabaseUrl. The declared port is the right answer in exactly that case,
-# because the caller provisioned the infra itself and told us where it is.
-COMPOSE_PG_PORT = $(or $(strip $(shell docker compose port postgres 5432 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_PG_HOST_PORT))
-COMPOSE_REDIS_PORT = $(or $(strip $(shell docker compose port redis 6379 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_REDIS_HOST_PORT))
-COMPOSE_QSTASH_PORT = $(or $(strip $(shell docker compose port qstash 8080 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_QSTASH_HOST_PORT))
-
-# Optional narrowing, for studying ONE failure without the rest of the lane's
-# cascade noise:  make test-integration TEST_FILTER='integration(model_library)'
-#
-# Exposes build.zig's existing `-Dtest-filter` on the existing targets rather
-# than adding a parallel one, because everything BUT the test selection has to
-# stay identical: the schema reset, the migrate, the `docker compose port`
-# discovery, and the CA-freshness check are the parts a hand-rolled `zig build
-# test-integration` gets wrong. §Discovery's "why the lane was lying" is what
-# that costs — a suite dialling a dead port, read as behaviour. Skipping the
-# reset is the other half: a second run against un-reset state goes 457/0 →
-# 447/10.
-#
-# NOTE: a filter REPLACES the integration graph's own default filters (the
-# `_integration_test` file filter and the `integration:` name filter), so a
-# narrowed run selects across the whole integration root rather than within
-# those. Check your filter actually matches something — a filter that matches
-# nothing exits 0 and reads as a pass.
-#
-# Empty by default, so the R1-graded invocation is always the full suite.
-TEST_FILTER ?=
-ZIG_TEST_FILTER_ARG = $(if $(strip $(TEST_FILTER)),-Dtest-filter="$(TEST_FILTER)",)
-
-# sslmode=disable: the local docker Postgres has no TLS and parseUrl defaults to
-# `.require` (hosted providers mandate it) — without it every local DB-lane test
-# fails at connect with SSLNotSupportedByServer before it can run.
-TEST_DATABASE_URL_LOCAL ?= postgres://agentsfleet:agentsfleet@localhost:$(COMPOSE_PG_PORT)/agentsfleetdb?sslmode=disable
-TEST_REDIS_TLS_URL_LOCAL ?= rediss://:agentsfleet@localhost:$(COMPOSE_REDIS_PORT)
-# Cert path — populated by _ensure-test-infra after Redis is healthy. Do NOT shell-expand
-# at parse time; Redis may not be running yet when the Makefile is first evaluated.
-TEST_REDIS_TLS_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
-# QStash local dev server (docker-compose `qstash` service). The emulator ships a
-# hardcoded local identity and rejects anything else (a different user 404s, a
-# different password 401s), so this is a fixture we reproduce, not a credential we
-# choose — and nothing it authenticates to holds real data. Derived here from its
-# two plain parts so no credential-shaped blob is stored in the repo.
-# The opt-in live QStash tests read these vars; unset (or server down) → self-skip.
-QSTASH_DEV_URL_LOCAL ?= http://localhost:$(COMPOSE_QSTASH_PORT)
-QSTASH_DEV_IDENTITY ?= defaultUser
-QSTASH_DEV_SECRET ?= defaultPassword
-QSTASH_DEV_TOKEN_LOCAL ?= $(shell printf '{"UserID":"%s","Password":"%s"}' '$(QSTASH_DEV_IDENTITY)' '$(QSTASH_DEV_SECRET)' | base64 | tr -d '\n')
-
-# Bring postgres + redis up via docker compose and wait for healthchecks to pass.
-# Idempotent — if already healthy, docker compose up --wait is a no-op. Safe to call
-# multiple times. Extracts the Redis TLS CA cert after the container is healthy so
-# subsequent targets can rely on $(TEST_REDIS_TLS_CA_CERT) being present.
-#
-# TEST_INFRA=provided — the caller already booted postgres/redis and extracted the
-# CA cert by running THIS recipe in an environment that has docker (CI: the memleak
-# workflow runs it on the host, then the valgrind container — which carries no
-# docker CLI — runs the gate with the flag). Fail-closed: the flag never bypasses
-# the cert check, so a caller that claims infra without providing it dies loudly.
-_ensure-test-infra:
-ifeq ($(TEST_INFRA),provided)
-	@test -s "$(TEST_REDIS_TLS_CA_CERT)" || { echo "✗ TEST_INFRA=provided but $(TEST_REDIS_TLS_CA_CERT) is missing — the caller did not actually provision infra"; exit 1; }
-	@echo "✓ [infra] postgres + redis provided by caller (TEST_INFRA=provided); compose skipped"
-else
-	@if ! docker info >/dev/null 2>&1; then \
-	  echo "✗ Docker daemon is not running — start Docker Desktop / dockerd and retry."; \
-	  exit 1; \
-	fi
-	@# No stale-container sweep: compose namespaces these services per project, so a
-	@# sibling worktree's containers are simply different containers. The sweep that
-	@# used to live here force-removed them by fixed name, which is what let one
-	@# worktree's test run destroy another's mid-flight.
-	@echo "→ [infra] Host ports: postgres=$(AGENTSFLEET_PG_HOST_PORT) redis=$(AGENTSFLEET_REDIS_HOST_PORT) qstash=$(AGENTSFLEET_QSTASH_HOST_PORT)"
-	@echo "→ [infra] Starting postgres + redis + qstash (waiting for healthchecks)..."
-	@docker compose up -d --wait postgres redis qstash
-	@mkdir -p "$(CURDIR)/.tmp"
-	@echo "→ [infra] Extracting Redis TLS CA cert..."
-	@# No `>/dev/null`: a failed copy used to be silent, and the `test -s` below
-	@# only proved the file was non-empty — which a STALE cert from a destroyed
-	@# container satisfies. Every TLS connection then failed signature
-	@# verification, which reads as dozens of unrelated Redis test failures.
-	@docker compose cp redis:/tls/server.crt "$(TEST_REDIS_TLS_CA_CERT)"
-	@test -s "$(TEST_REDIS_TLS_CA_CERT)" || { echo "✗ Failed to extract Redis TLS cert"; exit 1; }
-	@# Freshness, not size: the copied cert must be byte-identical to the one the
-	@# server is actually presenting.
-	@container_sha=$$(docker compose exec -T redis sha256sum /tls/server.crt | awk '{print $$1}'); \
-	local_sha=$$(shasum -a 256 "$(TEST_REDIS_TLS_CA_CERT)" | awk '{print $$1}'); \
-	if [ "$$container_sha" != "$$local_sha" ]; then \
-	  echo "✗ [infra] Redis CA cert is stale (container $$container_sha != local $$local_sha)"; \
-	  exit 1; \
-	fi
-	@echo "✓ [infra] postgres + redis ready; Redis CA cert at $(TEST_REDIS_TLS_CA_CERT)"
-endif
-
-# Drop and recreate all app schemas so every test-integration run starts from a clean
-# state. Needed because several tests in the suite (rbac, tenant_provider, event_loop) leave
-# fixture rows behind (paused agents, lingering secrets) that break subsequent runs.
-# Uses the same teardown.sql as the PlanetScale playbook for consistency.
-# Redis is flushed in the same reset: fixture agent ids are fixed, so streams,
-# consumer groups, and unacked PEL entries persist across runs — and the strand
-# recovery path (own-PEL read + reclaim sweep) makes that stale state reachable,
-# replaying prior-run events into a freshly reset DB (shared-tenant balance drift).
-_reset-test-db: _ensure-test-infra
-	@echo "→ [infra] Resetting test database schemas to a clean state..."
-	@docker compose cp playbooks/operations/teardown/database/teardown.sql postgres:/tmp/teardown.sql >/dev/null
-	@out=$$(docker compose exec -T postgres psql -U agentsfleet -d agentsfleetdb -v ON_ERROR_STOP=1 -q -f /tmp/teardown.sql 2>&1) || { echo "✗ [infra] teardown.sql failed"; echo "$$out"; exit 1; }; echo "$$out" | grep -v "^NOTICE:" | grep -v "^psql:" || true
-	@docker compose exec -T postgres rm -f /tmp/teardown.sql >/dev/null
-	@echo "✓ [infra] Schemas dropped; migrations will rebuild on next step"
-	@echo "→ [infra] Flushing test Redis (prior-run streams/groups/PELs)..."
-	@docker compose exec -T redis redis-cli --tls --cacert /tls/server.crt -a agentsfleet --no-auth-warning FLUSHALL >/dev/null
-	@echo "✓ [infra] Redis flushed"
-
-# Every integration target starts by dropping schemas and flushing Redis,
-# because several suites leave fixture rows behind that break the next run. That
-# is the right default for a gate and the wrong one for an edit-run-edit loop,
-# where the reset plus re-migrate dominates a narrow `-Dtest-filter` run.
-#
-# KEEP_TEST_STATE=1 swaps the reset for a plain infra check. It is deliberately
-# opt-in and never set by CI: a green run under it proves nothing about a clean
-# checkout, which is exactly what the third verification tier exists to check.
-TEST_STATE_DEP := $(if $(KEEP_TEST_STATE),_ensure-test-infra,_reset-test-db)
 
 test-integration-db: $(TEST_STATE_DEP)  ## Run real DB-backed integration suite only
 	@db_url="$$TEST_DATABASE_URL"; \
@@ -250,7 +94,23 @@ test-integration-redis: $(TEST_STATE_DEP)  ## Run Redis-backed integration suite
 	  zig build test-integration $(ZIG_TEST_FILTER_ARG)
 	@echo "✓ [agentsfleetd] Redis integration tests passed"
 
-test-integration: $(TEST_STATE_DEP)  ## Run worker integration tests against real DB + Redis
+# The ONE lane that executes the daemon integration suite against live services,
+# and therefore the one that measures it. It used to run the suite bare while
+# `test-coverage-zig` ran the same binary again under kcov, so a full
+# verification executed ~2000 live-service tests twice and Continuous
+# Integration (CI) paid for it on two runners. Instrumenting the run this lane
+# was already making is what removes the second one: the same execution yields
+# the integration verdict and the integration coverage.
+#
+# It runs the built binary rather than `zig build test-integration`, because kcov
+# needs a binary to drive. That binary exits 0 whether or not its tests ran AND
+# whether or not they passed — every one of its tests bails at a guard without a
+# live database and Redis — so its exit status proves nothing and the verdict is
+# read off the tally below. Zero passes means the suite never ran; any failure
+# means the number describes a broken suite. Both fail the lane rather than
+# yielding a report that is technically valid and completely wrong.
+test-integration: $(TEST_STATE_DEP)  ## Run the daemon integration suite once against real DB + Redis, under coverage
+	@command -v kcov >/dev/null 2>&1 || { echo "✗ kcov is required for Zig coverage (install: brew install kcov or apt-get install kcov)"; exit 1; }
 	@db_url="$$TEST_DATABASE_URL"; \
 	if [ -z "$$db_url" ]; then db_url="$(TEST_DATABASE_URL_LOCAL)"; fi; \
 	case "$$db_url" in \
@@ -261,14 +121,14 @@ test-integration: $(TEST_STATE_DEP)  ## Run worker integration tests against rea
 	      *) db_url="$$db_url?sslmode=disable" ;; \
 	    esac ;; \
 	esac; \
-	redis_tls_test_url="$$TEST_REDIS_TLS_URL"; \
-	if [ -z "$$redis_tls_test_url" ] && [ -n "$$REDIS_URL" ]; then \
+	redis_url="$$TEST_REDIS_TLS_URL"; \
+	if [ -z "$$redis_url" ] && [ -n "$$REDIS_URL" ]; then \
 	  case "$$REDIS_URL" in \
-	    rediss://*) redis_tls_test_url="$$REDIS_URL" ;; \
+	    rediss://*) redis_url="$$REDIS_URL" ;; \
 	  esac; \
 	fi; \
-	if [ -z "$$redis_tls_test_url" ]; then redis_tls_test_url="$(TEST_REDIS_TLS_URL_LOCAL)"; fi; \
-	mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"; \
+	if [ -z "$$redis_url" ]; then redis_url="$(TEST_REDIS_TLS_URL_LOCAL)"; fi; \
+	mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)" "$(ZIG_COVERAGE_DIR)"; \
 	echo "→ [agentsfleet-runner] Building the runner binary in the background so it overlaps the migrate compile (separate build graph, no datastore; silent until it links)..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
@@ -286,17 +146,115 @@ test-integration: $(TEST_STATE_DEP)  ## Run worker integration tests against rea
 	echo "→ [catalogue] model_library seeding is SELF-SERVE: the Zig seed tests apply"; \
 	echo "  samples/fixtures/model-library/seed.sql over their own pg connection —"; \
 	echo "  the CI zig container has neither node nor psql, so no make step seeds here."; \
-	echo "→ [agentsfleetd] Building the integration test binary, then running the suite against real DB + Redis (silent zig compile first, then tests)..."; \
+	echo "→ [agentsfleetd] Building the integration test binary (silent zig compile first, then the suite)..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	AGENTSFLEET_RUNNER_BIN="$$(pwd)/zig-out/bin/agentsfleet-runner" \
-	LIVE_DB=1 \
-	TEST_DATABASE_URL="$$db_url" \
-	TEST_REDIS_TLS_URL="$$redis_tls_test_url" \
-	REDIS_URL_API="$$redis_tls_test_url" \
-	REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
-	AGENTSFLEET_QSTASH_LIVE_URL="$(QSTASH_DEV_URL_LOCAL)" \
-	AGENTSFLEET_QSTASH_LIVE_TOKEN="$(QSTASH_DEV_TOKEN_LOCAL)" \
-	zig build test-integration $(ZIG_TEST_FILTER_ARG) $(if $(SEED),--seed $(SEED),)
-	@echo "✓ [agentsfleetd] Full integration suite passed"
+	zig build install test-integration-bin $(ZIG_TEST_FILTER_ARG) \
+	  || { echo "✗ [agentsfleetd] Integration test binary build failed — a stale binary must not be measured"; exit 1; }; \
+	output="$(ZIG_COVERAGE_DIR)/integration"; \
+	echo "→ [zig] kcov component=integration binary=$(ZIG_INTEGRATION_TEST_BIN) (live datastores, serial)"; \
+	rm -rf "$$output"; mkdir -p "$$output"; \
+	rm -f "$(ZIG_COVERAGE_DIR)/kcov-integration.rc"; \
+	( set +e; \
+	  $(ZIG_COVERAGE_ENV) \
+	  $(ZIG_COVERAGE_KCOV) \
+	    "$$output" "zig-out/bin/$(ZIG_INTEGRATION_TEST_BIN)" $(if $(SEED),--seed "$(SEED)",) \
+	    >"$(ZIG_COVERAGE_DIR)/kcov-integration.log" 2>&1; echo $$? >"$(ZIG_COVERAGE_DIR)/kcov-integration.rc" ); \
+	tail -n 40 "$(ZIG_COVERAGE_DIR)/kcov-integration.log"; \
+	names="integration"; \
+	if [ -z "$(strip $(TEST_FILTER))" ]; then \
+	  output="$(ZIG_COVERAGE_DIR)/lifecycle"; \
+	  echo "→ [zig] rebuilding the integration binary filtered to the lifecycle proof"; \
+	  ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	  ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	  zig build test-integration-bin -Dtest-filter="$(LIFECYCLE_TEST_FILTER)" \
+	    || { echo "✗ [agentsfleetd] Filtered lifecycle binary build failed — a stale binary must not be measured"; exit 1; }; \
+	  echo "→ [zig] kcov component=lifecycle binary=$(ZIG_INTEGRATION_TEST_BIN) (real serve.run, isolated, serial)"; \
+	  rm -rf "$$output"; mkdir -p "$$output"; \
+	  rm -f "$(ZIG_COVERAGE_DIR)/kcov-lifecycle.rc"; \
+	  ( set +e; \
+	    $(LIFECYCLE_ISOLATION_ENV)=1 \
+	    $(ZIG_COVERAGE_ENV) \
+	    $(ZIG_COVERAGE_KCOV) \
+	      "$$output" "zig-out/bin/$(ZIG_INTEGRATION_TEST_BIN)" \
+	      >"$(ZIG_COVERAGE_DIR)/kcov-lifecycle.log" 2>&1; echo $$? >"$(ZIG_COVERAGE_DIR)/kcov-lifecycle.rc" ); \
+	fi
+	@# The lifecycle component above runs in the SAME shell as the unfiltered
+	@# suite so both live components inherit ONE URL derivation — the sslmode
+	@# fixup and the REDIS_URL fallback included. A previous shape re-derived
+	@# bare URLs in a second block: `integration` connected while `lifecycle`
+	@# failed at connect, self-skipped, and the lane died at the marker check
+	@# blaming the test instead of the URL.
+	@#
+	@# The lifecycle component itself costs a rebuild. `cmd/serve.zig` is the
+	@# daemon's boot sequence and read 0% — 115 reachable lines — because
+	@# nothing in the unfiltered run drives it: the one test that boots the real
+	@# `serve.run` skips unless it is isolated, since it installs signal
+	@# handlers, binds a port and perturbs process-global state the other ~2000
+	@# tests share. The binary takes its filter at BUILD time, so measuring that
+	@# test means rebuilding filtered — which is why it runs after the
+	@# unfiltered component rather than replacing it. No test runs twice: the
+	@# one it executes is the one the unfiltered run skipped. Skipped entirely
+	@# under a narrowing TEST_FILTER, which has already replaced the graph's own
+	@# filters.
+	@set -eu; \
+	 names="integration"; \
+	 [ -n "$(strip $(TEST_FILTER))" ] || names="$$names lifecycle"; \
+	 bash scripts/check-kcov-components.sh "$(ZIG_COVERAGE_DIR)" \
+	   '$(ZIG_TEST_FAILURE_GREP)' '$(ZIG_TEST_LOG_NOISE)' $$names
+	@# The verdict. Read off the tally because the binary's exit status cannot
+	@# carry it, and asserted before any report is offered as evidence: a report
+	@# over a suite that never ran, or over one that failed, is not a measurement.
+	@set -eu; \
+	 summary=$$(grep -E '^[0-9]+ passed;' "$(ZIG_COVERAGE_DIR)/kcov-integration.log" | tail -n 1); \
+	 passed=$$(printf '%s' "$$summary" | sed -n 's/^\([0-9][0-9]*\) passed;.*/\1/p'); \
+	 suite_failed=$$(printf '%s' "$$summary" | sed -n 's/.*; \([0-9][0-9]*\) failed.*/\1/p'); \
+	 if [ -z "$$passed" ] || [ "$$passed" -eq 0 ]; then \
+	   echo "✗ the integration suite reported no passing tests — coverage would be measured over a suite that never ran"; \
+	   tail -n 20 "$(ZIG_COVERAGE_DIR)/kcov-integration.log"; exit 1; \
+	 fi; \
+	 if [ -n "$$suite_failed" ] && [ "$$suite_failed" -ne 0 ]; then \
+	   echo "✗ the integration suite reported $$suite_failed failing test(s) — coverage over a failing suite is not a measurement"; \
+	   echo "--- failing tests (component=integration) ---"; \
+	   grep -v -E '$(ZIG_TEST_LOG_NOISE)' "$(ZIG_COVERAGE_DIR)/kcov-integration.log" \
+	     | grep -B 1 -E '$(ZIG_TEST_FAILURE_GREP)' | head -n 60 || true; \
+	   exit 1; \
+	 fi; \
+	 echo "✓ [agentsfleetd] integration suite executed ($$summary)"; \
+	 if [ -z "$(strip $(TEST_FILTER))" ]; then \
+	   grep -q "$(LIFECYCLE_RUN_MARKER)" "$(ZIG_COVERAGE_DIR)/kcov-lifecycle.log" || { \
+	     echo "✗ the boot→drain lifecycle test did not run (it skips without live datastores); the component would measure a process that started and stopped, and the daemon's boot sequence would read dark"; \
+	     tail -n 20 "$(ZIG_COVERAGE_DIR)/kcov-lifecycle.log"; exit 1; \
+	   }; \
+	   lifecycle_summary=$$(grep -E '^[0-9]+ passed;' "$(ZIG_COVERAGE_DIR)/kcov-lifecycle.log" | tail -n 1); \
+	   lifecycle_failed=$$(printf '%s' "$$lifecycle_summary" | sed -n 's/.*; \([0-9][0-9]*\) failed.*/\1/p'); \
+	   if [ -n "$$lifecycle_failed" ] && [ "$$lifecycle_failed" -ne 0 ]; then \
+	     echo "✗ the boot→drain lifecycle test FAILED ($$lifecycle_summary) — the marker proves it ran, the tally proves it broke"; \
+	     grep -v -E '$(ZIG_TEST_LOG_NOISE)' "$(ZIG_COVERAGE_DIR)/kcov-lifecycle.log" \
+	       | grep -B 1 -E '$(ZIG_TEST_FAILURE_GREP)' | head -n 20 || true; \
+	     exit 1; \
+	   fi; \
+	   echo "✓ [agentsfleetd] lifecycle boot→drain executed and passed ($$lifecycle_summary)"; \
+	 fi
+	@# A narrowed run records its evidence marked filtered, and the grade refuses
+	@# a filtered manifest. Recording nothing would be worse: the previous run's
+	@# manifest would survive and read as this run's.
+	@$(ZIG_EVIDENCE_RECORD) \
+	  --producer test-integration \
+	  --manifest "$(ZIG_EVIDENCE_INTEGRATION)" \
+	  --coverage-dir "$(ZIG_COVERAGE_DIR)" \
+	  $(if $(strip $(TEST_FILTER)),--filtered --component integration,$(foreach name,$(ZIG_COVERAGE_LIVE_COMPONENTS),--component $(name)))
+	@# Grading is `test-coverage-grade`'s job, invoked here only when the other
+	@# producer has already run — which is what the canonical sequence does. No
+	@# unit evidence is not a failure of this lane: producing it was never this
+	@# lane's work. Evidence that exists but does not fit IS a failure, and the
+	@# grade is what says which field disagreed.
+	@if [ -n "$(strip $(TEST_FILTER))" ]; then \
+	  echo "→ [zig] merged coverage floor not graded — TEST_FILTER narrowed this run"; \
+	elif [ -f "$(ZIG_EVIDENCE_UNIT)" ]; then \
+	  $(MAKE) --no-print-directory test-coverage-grade; \
+	else \
+	  echo "→ [zig] merged coverage floor not graded — no unit evidence at $(ZIG_EVIDENCE_UNIT);"; \
+	  echo "  run 'make test-unit-all' first, or 'make test-coverage-grade' once both lanes have run"; \
+	fi
 	@echo "✓ [agentsfleetd] All integration tests passed"

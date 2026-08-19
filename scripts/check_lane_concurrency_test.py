@@ -39,13 +39,23 @@ class TestCoverageConcurrency(unittest.TestCase):
         )
 
     def test_coverage_failure_is_still_attributed_and_fatal(self) -> None:
-        # Concurrency must not lose which component failed, nor the non-zero exit.
-        # The status files live under the coverage directory, not a hardcoded
-        # relative path, so a stubbed lane run and a real one cannot read each
-        # other's output.
-        self.assertIn('rc=$$(cat "$(ZIG_COVERAGE_DIR)/kcov-$$name.rc"', self.makefile)
-        self.assertIn('echo "✗ Zig coverage component $$name exited $$rc"', self.makefile)
-        self.assertIn('[ "$$failed" -eq 0 ] || exit 1', self.makefile)
+        # Concurrency must not lose which component failed, nor the non-zero
+        # exit. The attribution moved to scripts/check-kcov-components.sh when
+        # the producers split, so both lanes report identically; each lane must
+        # still call it, and the script must still name the component, read the
+        # status file from the coverage directory (not a hardcoded relative
+        # path, so a stubbed lane run and a real one cannot read each other's
+        # output), and exit non-zero.
+        checker = (ROOT / "scripts/check-kcov-components.sh").read_text(encoding="utf-8")
+        self.assertIn('status=$(cat "$status_file"', checker)
+        self.assertIn('echo "✗ Zig coverage component $name exited $status"', checker)
+        self.assertIn('exit "$failed"', checker)
+        for lane in ("make/test-unit.mk", "make/test-integration.mk"):
+            self.assertIn(
+                "bash scripts/check-kcov-components.sh",
+                (ROOT / lane).read_text(encoding="utf-8"),
+                f"{lane} no longer grades its kcov components",
+            )
 
 
 class TestMemleakOverlap(unittest.TestCase):
@@ -166,10 +176,13 @@ class TestLocalCost(unittest.TestCase):
         self.assertIn("if [ -n \"$(strip $(ZIG_LOCAL_CACHE_DIR))\" ]", dev)
 
     def test_integration_keep_state_opt_out(self) -> None:
+        # The switch moved to make/test-infra.mk with the rest of the infra
+        # concern; the lanes that consume it stayed put.
+        infra = (ROOT / "make/test-infra.mk").read_text(encoding="utf-8")
         integration = (ROOT / "make/test-integration.mk").read_text(encoding="utf-8")
         self.assertIn(
             "TEST_STATE_DEP := $(if $(KEEP_TEST_STATE),_ensure-test-infra,_reset-test-db)",
-            integration,
+            infra,
         )
         # All three public integration targets share the switch; none may keep a
         # hard-wired reset that the opt-out silently fails to cover.
