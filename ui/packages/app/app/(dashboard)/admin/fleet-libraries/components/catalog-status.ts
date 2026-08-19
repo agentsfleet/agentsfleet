@@ -8,6 +8,7 @@ import {
   type PlatformCatalogEntry,
 } from "@/lib/types";
 import {
+  SOURCE_REF_PATTERN,
   STATUS_HELP_BROKEN,
   STATUS_HELP_DRAFT,
   STATUS_HELP_NO_BUNDLE,
@@ -76,6 +77,8 @@ export type RowActions = {
   canUnpublish: boolean;
   /** Withdraw before deleting: never take a live fleet from the tenants using it. */
   canDelete: boolean;
+  /** A row built from an uploaded bundle has no repository to fetch from again. */
+  canFetch: boolean;
 };
 
 export function rowActions(entry: PlatformCatalogEntry): RowActions {
@@ -85,5 +88,9 @@ export function rowActions(entry: PlatformCatalogEntry): RowActions {
     canPublish: status === CATALOG_STATUS_DRAFT,
     canUnpublish: isPublic,
     canDelete: !isPublic,
+    // The same predicate the Repository cell uses to decide whether a source is a
+    // real slug. An upload stores the empty string, so there is no revision to
+    // re-read — the operator uploads the corrected bundle again instead.
+    canFetch: SOURCE_REF_PATTERN.test(entry.source_repo),
   };
 }

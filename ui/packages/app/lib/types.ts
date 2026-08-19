@@ -85,6 +85,9 @@ export type InstallFleetRequest =
 
 export type InstallFleetResponse = {
   fleet_id: string;
+  /** The persisted name — the server's, not the template's: a defaulted name
+   * that collided comes back auto-suffixed (`{template}-NNN`). */
+  name: string;
   status: string;
 };
 
@@ -161,6 +164,11 @@ export type OnboardLibraryEntryRequest =
       source_kind: typeof SOURCE_KIND_UPLOAD;
       skill_markdown: string;
       trigger_markdown?: string;
+      // Same platform-tier overwrite as above. An upload stores no repository,
+      // so a second upload of the same name updates in place — but a name a
+      // GitHub-sourced row already owns still collides, and the operator needs
+      // the same confirm-and-retry to take it over.
+      replace?: boolean;
     };
 
 // The onboard response — identical on both tiers except which catalogue the

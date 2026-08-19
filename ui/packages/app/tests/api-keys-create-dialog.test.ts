@@ -52,8 +52,7 @@ describe("CreateApiKeyDialog component", () => {
     // The dialog's own interactivity is what the assertions prove.
     const user = userEvent.setup({ delay: null, pointerEventsCheck: 0 });
     render(React.createElement(CreateApiKeyDialog, { onCreated } as never));
-    // Trigger and dialog submit share the "Create key" label — only the
-    // trigger matches before the dialog opens.
+        // The dialog submit is just "Create"; the trigger keeps the noun.
     await user.click(screen.getByRole("button", { name: /create key/i }));
     await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toBeTruthy());
     return { user, onCreated };
@@ -62,7 +61,7 @@ describe("CreateApiKeyDialog component", () => {
   // Once open, the trigger stays mounted behind the dialog, so scope to the
   // dialog to disambiguate the submit button from it.
   function submitButton() {
-    return within(screen.getByRole("dialog")).getByRole("button", { name: /create key/i });
+    return within(screen.getByRole("dialog")).getByRole("button", { name: /^create$/i });
   }
 
   it("renders a PlusIcon on the create trigger (test_create_triggers_render_plus_icon)", async () => {

@@ -34,8 +34,8 @@ import { createAdminModelAction } from "../actions";
 // turned into integer nanos; non-negative so a self-managed-only model prices 0.
 const rate = z.string().trim().refine((s) => s !== "" && !Number.isNaN(Number(s)) && Number(s) >= 0, "must be a number >= 0");
 const schema = z.object({
-  provider: z.string().trim().min(1).max(64),
-  model_id: z.string().trim().min(1).max(256),
+  provider: z.string().trim().min(1, "Name the provider").max(64, "At most 64 characters"),
+  model_id: z.string().trim().min(1, "Name the model").max(256, "At most 256 characters"),
   context_cap_tokens: z.string().trim().refine((s) => Number.isInteger(Number(s)) && Number(s) > 0, "must be a positive integer"),
   input_usd: rate,
   cached_usd: rate,
@@ -106,7 +106,7 @@ export default function AddModelDialog({
         <DialogHeader>
           <DialogTitle>Create model library</DialogTitle>
           <DialogDescription>
-            Create a priced model users can choose. Rates are per 1M tokens.
+            Create a priced model users can choose. Prices are US dollars per 1M tokens.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -136,21 +136,21 @@ export default function AddModelDialog({
             <div className="grid grid-cols-3 gap-3">
               <FormField control={form.control} name="input_usd" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Input $/1M</FormLabel>
+                  <FormLabel>Input</FormLabel>
                   <FormControl><Input type="number" min={0} step="0.01" className="font-mono" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormField control={form.control} name="cached_usd" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Cached $/1M</FormLabel>
+                  <FormLabel>Cached</FormLabel>
                   <FormControl><Input type="number" min={0} step="0.01" className="font-mono" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormField control={form.control} name="output_usd" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Output $/1M</FormLabel>
+                  <FormLabel>Output</FormLabel>
                   <FormControl><Input type="number" min={0} step="0.01" className="font-mono" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
@@ -168,7 +168,7 @@ export default function AddModelDialog({
               </Button>
               <TooltipButton type="submit" disabled={pending} tooltip={CREATE_MODEL_LIBRARY_TOOLTIP}>
                 {pending ? <Spinner size="sm" srLabel="Creating" /> : null}
-                Create model library
+                Create
               </TooltipButton>
             </DialogFooter>
           </form>

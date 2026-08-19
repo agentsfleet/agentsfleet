@@ -35,11 +35,10 @@ test.describe("settings api-keys page", () => {
 
     const name = `e2e-${Date.now()}`;
 
-    // Mint. Trigger and dialog submit share the "Create key" label — only the
-    // trigger matches before the dialog opens.
+    // Mint. The dialog submit is just "Create"; the trigger keeps the noun.
     await page.getByRole("button", { name: /^create key$/i }).click();
     await page.getByLabel(/^name$/i).fill(name);
-    await page.getByRole("dialog").getByRole("button", { name: /^create key$/i }).click();
+    await page.getByRole("dialog").getByRole("button", { name: /^create$/i }).click();
 
     // Reveal exactly once — the raw value starts with the tenant key prefix.
     const field = page.getByLabel(/api key value/i);

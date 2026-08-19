@@ -11,6 +11,7 @@
 const std = @import("std");
 const logging = @import("log");
 const builtin = @import("builtin");
+const protocol = @import("contract").protocol;
 
 const log = logging.scoped(.runner_landlock);
 
@@ -102,25 +103,25 @@ const LandlockPathBeneathAttr = extern struct {
     parent_fd: i32,
 };
 
-/// System paths that get read-only access in the sandbox.
-const SYSTEM_READONLY_PATHS = [_][]const u8{
-    "/usr",
-    "/bin",
-    "/sbin",
-    "/lib",
-    "/lib64",
-    "/etc",
-    "/dev",
-    "/proc",
-    "/tmp",
-};
+/// Read-only paths landlock needs beyond the bind contract's baseline: the
+/// sandbox floor bwrap constructs (tmpfs, devtmpfs, proc) rather than binds,
+/// so the contract does not list them.
+const LANDLOCK_FLOOR_RO_PATHS = [_][]const u8{ "/usr", "/dev", "/proc", "/tmp" };
+
+/// System paths that get read-only access in the sandbox. Derived from the
+/// bind contract so bwrap and landlock can never disagree on what a lease may
+/// read: this list once omitted `/run/systemd/resolve` while bwrap bound it,
+/// so `open("/etc/resolv.conf")` followed the symlink into a landlock-denied
+/// target and every lease's DNS died — while the self-test, which did not
+/// apply landlock, reported the resolver healthy.
+const SYSTEM_READONLY_PATHS = protocol.BASELINE_RO_PATHS ++ LANDLOCK_FLOOR_RO_PATHS;
 
 /// Apply Landlock filesystem policy.
 /// After this call, the current process can only access:
 /// - workspace_path with full RW
 /// - system paths with read-only + execute
 /// - everything else is denied
-pub fn applyPolicy(workspace_path: []const u8) LandlockError!void {
+pub fn applyPolicy(workspace_path: []const u8, extra_binds: []const protocol.ExtraBind) LandlockError!void {
     if (builtin.os.tag != .linux) return LandlockError.UnsupportedPlatform;
 
     // Create ruleset.
@@ -147,6 +148,17 @@ pub fn applyPolicy(workspace_path: []const u8) LandlockError!void {
             // Path may not exist on all systems (e.g. /lib64).
             continue;
         };
+    }
+
+    // Operator-assigned binds, at the assigned mode. `catch continue` mirrors
+    // bwrap's `-try` semantics: a path absent on THIS host is skipped and the
+    // self-test reports it, rather than every lease failing on the runner.
+    for (extra_binds) |b| {
+        const access: u64 = switch (b.mode) {
+            .read_only => SYSTEM_READONLY_ACCESS,
+            .read_write => WORKSPACE_ACCESS,
+        };
+        addPathRule(ruleset_fd, b.path, access) catch continue;
     }
 
     // Restrict self.
@@ -187,5 +199,17 @@ fn addPathRule(ruleset_fd: i32, path: []const u8, access: u64) LandlockError!voi
 
 test "applyPolicy returns UnsupportedPlatform on non-linux" {
     if (builtin.os.tag == .linux) return error.SkipZigTest;
-    try std.testing.expectError(LandlockError.UnsupportedPlatform, applyPolicy("/tmp/test"));
+    try std.testing.expectError(LandlockError.UnsupportedPlatform, applyPolicy("/tmp/test", &.{}));
+}
+
+test "landlock read set contains every bind-contract path" {
+    // The derivation is comptime, but this pins the PROPERTY the M136 incident
+    // violated: a path bwrap binds read-only is never landlock-denied.
+    for (protocol.BASELINE_RO_PATHS) |contract_path| {
+        var found = false;
+        for (SYSTEM_READONLY_PATHS) |p| {
+            if (std.mem.eql(u8, p, contract_path)) found = true;
+        }
+        try std.testing.expect(found);
+    }
 }

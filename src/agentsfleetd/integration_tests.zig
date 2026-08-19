@@ -95,6 +95,8 @@ test {
     _ = @import("http/handlers/fleets/cron_lifecycle_integration_test.zig");
     _ = @import("http/handlers/fleet_bundles/api_integration_test.zig");
     _ = @import("http/handlers/library/onboard_integration_test.zig");
+    _ = @import("http/handlers/library/onboard_platform_upload_integration_test.zig");
+    _ = @import("fleet/fleet_session_name_integration_test.zig");
     _ = @import("http/handlers/library/catalog_integration_test.zig");
     _ = @import("http/handlers/library/catalog_patch_integration_test.zig");
     _ = @import("http/handlers/workspaces/dashboard_integration_test.zig");
