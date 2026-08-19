@@ -35,6 +35,16 @@ describe("connector commands", () => {
               configured: true,
               connected: true,
             },
+            // Configured by the platform but not yet connected by this
+            // workspace — the state an operator actually sees most often, and
+            // the only one whose next action they can act on themselves.
+            {
+              id: "linear",
+              archetype: "oauth2",
+              display_name: "Linear",
+              configured: true,
+              connected: false,
+            },
           ]),
       };
       await withMockApi(routes, async (apiUrl, calls) => {
@@ -53,6 +63,11 @@ describe("connector commands", () => {
         expect(text).toContain("github");
         expect(text).toContain("configured");
         expect(text).toContain("connected");
+        // The disconnected row must render its own next action through the
+        // LIST renderer, not just through `connector status`.
+        expect(text).toContain("linear");
+        expect(text).toContain("not_connected");
+        expect(text).toMatch(/Connect linear/i);
         expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
           `GET /v1/workspaces/${WS_ID}/connectors`,
         ]);

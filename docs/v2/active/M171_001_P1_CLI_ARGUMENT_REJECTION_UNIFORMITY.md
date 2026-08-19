@@ -54,17 +54,23 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `cli/src/cli.ts` | EDIT | `applyOutputToTree` gains the `outputError` re-render; `exitFromCommanderError` maps usage codes to the validation exit code |
+| `cli/src/cli.ts` | EDIT | delegates the commander boundary to the new module and renders the captured rejection; drops below the length cap in the process |
+| `cli/src/lib/commander-boundary.ts` | CREATE | the whole commander boundary: output wiring, rejection capture and render, exit mapping, bare-group resolution |
+| `cli/src/constants/rejection.ts` | CREATE | rejection stems, usage prefix, and the stable `--json` codes, declared once (RULE UFS) |
 | `cli/src/program/cli-tree.ts` | EDIT | group nodes route bare-invocation help to stdout instead of stderr |
 | `cli/src/commands/fleet_logs.ts` | EDIT | the suggestion stops echoing the detail and names the fix |
 | `cli/src/commands/grant.ts` | EDIT | suggestion adopts the `usage: agentsfleet …` form the other handlers use |
-| `cli/src/errors/index.ts` | EDIT | comment on the exit-code map records that usage rejection is validation, not network |
+| `cli/src/errors/index.ts` | EDIT | imports the shared suggestion prefix instead of declaring its own copy (RULE UFS/NLR) |
+| `cli/src/errors/auth.ts` | EDIT | same — the second of the two duplicate declarations |
 | `cli/test/acceptance/argument-negatives.spec.ts` | CREATE | the table-driven negative sweep over every command |
+| `cli/test/command-matrix-parity.unit.test.ts` | CREATE | walks the built tree and fails when the matrix falls behind it |
 | `cli/test/acceptance/run-lane.ts` | EDIT | classify the new spec into the deterministic lane |
 | `cli/test/acceptance/fixtures/command-matrix.ts` | EDIT | add `events`/`steer`, the group-node table, and the option-value-missing table |
 | `cli/test/did-you-mean.integration.test.ts` | EDIT | unknown-command assertions move from exit 2 to the validation exit code |
 | `cli/test/json-contract.test.ts` | EDIT | one usage-rejection exit assertion follows the same move |
-| `cli/test/cli-tree.parse.unit.test.ts` | EDIT | one parse-state exit assertion follows the same move |
+| `cli/test/cli-funcfill.unit.test.ts` | EDIT | two runCli exit-mapping assertions follow the same move |
+| `cli/test/pty.unit.test.ts` | EDIT | the spawned-process usage-exit constant follows the same move |
+| `cli/test/fleet-logs-linecov.unit.test.ts` | EDIT | asserts the suggestion names the fix and differs from the detail |
 | `cli/test/logs.integration.test.ts` | EDIT | assert the full stem and the distinct suggestion line, not just `/fleet/i` |
 | `cli/test/connector.integration.test.ts` | EDIT | fixture gains a configured-but-not-connected row so the list renderer's next-action text is asserted |
 | `~/Projects/docs` (separate branch) | EDIT | the CLI reference page documents the exit-code table |
@@ -97,41 +103,42 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 Commander's parse-time rejections are reformatted at the output boundary so they read like the handler-side ones. The `<required>` and `requiredOption` declarations are untouched, so help text, suggestion-after-error, and excess-argument detection all keep working. **Implementation default:** re-render inside `applyOutputToTree`'s `configureOutput`, because that walk already reaches every subcommand and is the one place that cannot be bypassed.
 
-- **Dimension 1.1** — a missing required positional prints `✕ error: …` and a `Suggestion:` line → Test `test_missing_positional_uses_house_shape`
-- **Dimension 1.2** — a missing required option and a missing option value take the same shape → Test `test_missing_option_uses_house_shape`
-- **Dimension 1.3** — an unknown command keeps its did-you-mean text inside the new shape → Test `test_unknown_command_keeps_suggestion`
-- **Dimension 1.4** — the suggestion always names the fix and never repeats the detail verbatim → Test `test_suggestion_never_echoes_detail`
+- **Dimension 1.1** [DONE] — a missing required positional prints `✕ error: …` and a `Suggestion:` line → Test `test_missing_positional_uses_house_shape`
+- **Dimension 1.2** [DONE] — a missing required option and a missing option value take the same shape → Test `test_missing_option_uses_house_shape`
+- **Dimension 1.3** [DONE] — an unknown command keeps its did-you-mean text inside the new shape → Test `test_unknown_command_keeps_suggestion`
+- **Dimension 1.4** [DONE] — the suggestion always names the fix and never repeats the detail verbatim → Test `test_suggestion_never_echoes_detail`
+- **Dimension 1.5** [DONE] — in `--json` mode the same rejection emits the machine envelope with a stable code instead of human text (RULE JCL) → Test `test_json_mode_emits_error_envelope`
 
 ### §2 — One exit code for a bad invocation
 
 Every argument-shape rejection exits with the validation code, freeing exit 2 to mean network failure alone. **Implementation default:** map the whole `COMMANDER_USAGE_CODES` set to the validation code rather than enumerating a subset, because every member of that set is by definition an invocation error.
 
-- **Dimension 2.1** — commander usage rejections exit with the validation code → Test `test_usage_rejection_exit_code`
-- **Dimension 2.2** — a transport failure still exits with the network code → Test `test_network_failure_exit_code_unchanged`
-- **Dimension 2.3** — `--help` and a bare group node still exit 0 → Test `test_help_paths_exit_zero`
+- **Dimension 2.1** [DONE] — commander usage rejections exit with the validation code → Test `test_usage_rejection_exit_code`
+- **Dimension 2.2** [DONE] — a transport failure still exits with the network code → Test `test_network_failure_exit_code_unchanged`
+- **Dimension 2.3** [DONE] — `--help` and a bare group node still exit 0 → Test `test_help_paths_exit_zero`
 
 ### §3 — Help lands on the stream that can be piped
 
 A group node invoked bare currently writes its help to stderr while exiting 0, which is incoherent and breaks piping. It moves to stdout, matching `--help` and the bare root invocation. **Implementation default:** route through the same stdout path the root already uses, rather than special-casing each group.
 
-- **Dimension 3.1** — every group node invoked bare writes help to stdout at exit 0 → Test `test_group_node_help_on_stdout`
-- **Dimension 3.2** — every group node and every leaf accepts `--help`, exits 0, and names its required arguments → Test `test_help_names_required_arguments`
+- **Dimension 3.1** [DONE] — every group node invoked bare writes help to stdout at exit 0 → Test `test_group_node_help_on_stdout`
+- **Dimension 3.2** [DONE] — every group node and every leaf accepts `--help`, exits 0, and names its required arguments → Test `test_help_names_required_arguments`
 
 ### §4 — Repair the handler-side messages that drifted
 
 Three handlers already speak the house shape; one echoes its detail as its suggestion and one uses a terser form than its siblings. They converge on the `usage: agentsfleet …` wording. **Implementation default:** the usage line spells the full invocation including optional flags, matching `memory list`, because that is the version an operator can copy and run.
 
-- **Dimension 4.1** — `logs` rejected without an identifier suggests the usage line, not its own complaint → Test `test_logs_suggestion_names_the_fix`
-- **Dimension 4.2** — `grant list` adopts the same usage-line form → Test `test_grant_suggestion_form`
+- **Dimension 4.1** [DONE] — `logs` rejected without an identifier suggests the usage line, not its own complaint → Test `test_logs_suggestion_names_the_fix`
+- **Dimension 4.2** [DONE] — `grant list` adopts the same usage-line form → Test `test_grant_suggestion_form`
 
 ### §5 — A deterministic negative matrix that runs on every commit
 
 Today `events` and `steer` prove their rejection only in the live acceptance lane, which needs a real API target and credentials, so `make test-unit-all` never sees them. The sweep moves into the deterministic lane and reads its command list from the existing matrix fixture. **Implementation default:** extend `command-matrix.ts` rather than starting a second list, because it already declares itself the single source of truth and a second list would drift.
 
-- **Dimension 5.1** — the matrix enumerates every command carrying a required positional or required option, `events` and `steer` included → Test `test_matrix_covers_every_required_arg_command`
-- **Dimension 5.2** — the sweep runs in the deterministic lane and needs no live target → Test `test_negative_sweep_is_deterministic`
-- **Dimension 5.3** — the matrix enumerates every group node for the help sweep → Test `test_matrix_covers_every_group_node`
-- **Dimension 5.4** — the connector list fixture carries a configured-but-not-connected row so the next-action text is asserted through the list renderer → Test `test_connector_list_renders_next_action`
+- **Dimension 5.1** [DONE] — the matrix enumerates every command carrying a required positional or required option, `events` and `steer` included → Test `test_matrix_covers_every_required_arg_command`
+- **Dimension 5.2** [DONE] — the sweep runs in the deterministic lane and needs no live target → Test `test_negative_sweep_is_deterministic`
+- **Dimension 5.3** [DONE] — the matrix enumerates every group node for the help sweep → Test `test_matrix_covers_every_group_node`
+- **Dimension 5.4** [DONE] — the connector list fixture carries a configured-but-not-connected row so the next-action text is asserted through the list renderer → Test `test_connector_list_renders_next_action`
 
 ## Interfaces
 
@@ -195,6 +202,7 @@ Help routing:
 | 1.2 | e2e | `test_missing_option_uses_house_shape` | `logs --fleet` (no value) and `schedule add <id>` (no `--cron`) → same two lines |
 | 1.3 | e2e | `test_unknown_command_keeps_suggestion` | `pogo` → house shape whose suggestion still carries the nearest command name |
 | 1.4 | e2e | `test_suggestion_never_echoes_detail` | every matrix row → the suggestion line differs from the detail line |
+| 1.5 | e2e | `test_json_mode_emits_error_envelope` | `--json events` → stderr parses as JSON carrying `error.code = MISSING_ARGUMENT`; `--json zzzz` → `UNKNOWN_COMMAND` naming the token |
 | 2.1 | e2e | `test_usage_rejection_exit_code` | every matrix row → exit 4 |
 | 2.2 | integration | `test_network_failure_exit_code_unchanged` | valid `list` against an unroutable base URL → exit 2, not 4 |
 | 2.3 | e2e | `test_help_paths_exit_zero` | root, every group node, `--help` on each → exit 0 |
@@ -218,6 +226,7 @@ Help routing:
 | R3 | Network failure stays exit 2 (§2) | `AGENTSFLEET_API_URL=http://127.0.0.1:1 bun ./cli/dist/bin/agentsfleet.js list >/dev/null 2>&1; echo $?` | `2` | P0 | |
 | R4 | Group help is pipeable (§3) | `bun ./cli/dist/bin/agentsfleet.js workspace 2>/dev/null \| wc -c` | non-zero byte count | P0 | |
 | R5 | The logs suggestion no longer echoes its detail (§4) | `bun ./cli/dist/bin/agentsfleet.js logs 2>&1 \| sort -u \| wc -l` | `2` | P1 | |
+| R5b | `--json` rejection is machine-parseable (§1) | `bun ./cli/dist/bin/agentsfleet.js --json events 2>&1 \| tail -6 \| python3 -c 'import json,sys; print(json.load(sys.stdin)["error"]["code"])'` | `MISSING_ARGUMENT` | P0 | |
 | R6 | The negative sweep runs without a live target (§5) | `cd cli && bun test test/acceptance/argument-negatives.spec.ts` | exit 0 | P0 | |
 | R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |

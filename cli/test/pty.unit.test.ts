@@ -48,7 +48,9 @@ const UNKNOWN_ARGS = ["definitely-not-a-real-command"] as const;
 // Pinned exit codes: commander exits 0 on --version/--help; an unrecognised
 // command maps through COMMANDER_USAGE_CODES to POSIX usage-error exit 2.
 const EXIT_OK = 0;
-const EXIT_UNKNOWN_COMMAND = 2;
+// An unknown command is a rejected invocation: the validation code, not
+// the transport code it used to share with a dead network.
+const EXIT_UNKNOWN_COMMAND = 4;
 
 // Output shapes (substrings/predicates), each asserted from the real CLI.
 // The version line is plain under NO_COLOR=1 (no leading status dot).

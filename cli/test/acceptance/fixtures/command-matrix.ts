@@ -10,6 +10,12 @@
  * and the spec sweeps pick it up automatically.
  */
 
+// A well-formed uuidv7 for rows that need a syntactically valid id to reach
+// the rejection under test. Declared before first use — these arrays are
+// evaluated at module load, so a bottom-declared const would land in the
+// temporal dead zone.
+export const EXAMPLE_FLEET_ID = "0192a3b4-c5d6-7e8f-9012-345678901234";
+
 export const COMMAND_GROUPS: ReadonlyArray<string> = [
   "workspace",
   "api-key",
@@ -119,6 +125,10 @@ export const REQUIRES_IDENTIFIER: ReadonlyArray<RequiresIdentifierRow> = [
 export interface RequiresPositionalArgRow {
   readonly args: ReadonlyArray<string>;
   readonly missingArgName: string;
+  // The token the rejection actually names, when it differs from the
+  // positional. commander validates required OPTIONS before positionals, so
+  // a bare `schedule add` is told about --cron first.
+  readonly reportedToken?: string;
 }
 
 // Commands whose first positional is `<required>` in cli-tree and so
@@ -128,16 +138,87 @@ export interface RequiresPositionalArgRow {
 // `logs [fleet_id]` has an optional positional. Bare `logs` exits 2 with a
 // domain-specific stem that the generic missing-argument check does not match.
 export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = [
+  { args: ["workspace", "create"], missingArgName: "name" },
   { args: ["workspace", "use"], missingArgName: "workspace_id" },
   { args: ["workspace", "delete"], missingArgName: "workspace_id" },
+  { args: ["api-key", "revoke"], missingArgName: "api_key_id" },
   { args: ["api-key", "delete"], missingArgName: "api_key_id" },
   { args: ["grant", "delete"], missingArgName: "grant_id" },
   { args: ["connector", "status"], missingArgName: "provider" },
   { args: ["kill"], missingArgName: "fleet_id" },
   { args: ["stop"], missingArgName: "fleet_id" },
   { args: ["resume"], missingArgName: "fleet_id" },
+  { args: ["delete"], missingArgName: "fleet_id" },
+  { args: ["events"], missingArgName: "fleet_id" },
+  { args: ["steer"], missingArgName: "fleet_id" },
+  { args: ["fleet", "update"], missingArgName: "fleet_id" },
   { args: ["memory", "search"], missingArgName: "query" },
+  { args: ["secret", "create"], missingArgName: "name" },
+  { args: ["secret", "update"], missingArgName: "name" },
+  { args: ["secret", "show"], missingArgName: "name" },
+  { args: ["secret", "delete"], missingArgName: "name" },
+  { args: ["schedule", "add"], missingArgName: "fleet_id", reportedToken: "--cron" },
+  { args: ["schedule", "list"], missingArgName: "fleet_id" },
+  { args: ["schedule", "update"], missingArgName: "fleet_id" },
+  { args: ["schedule", "rm"], missingArgName: "fleet_id" },
+  { args: ["schedule", "status"], missingArgName: "fleet_id" },
+  { args: ["schedule", "sync"], missingArgName: "fleet_id" },
 ];
+
+// Every command node that owns subcommands. Invoked bare each must print its
+// help on STDOUT and exit 0 — the body has to survive a pipe, which it did
+// not before M171 (commander routes a group's bare invocation through
+// `help({ error: true })`, i.e. stderr).
+export const GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
+  ["auth"],
+  ["workspace"],
+  ["api-key"],
+  ["connector"],
+  ["grant"],
+  ["tenant"],
+  ["tenant", "provider"],
+  ["billing"],
+  ["fleet"],
+  ["secret"],
+  ["schedule"],
+  ["memory"],
+];
+
+// A value-taking flag with its value omitted. commander raises
+// optionMissingArgument at parse time, so no state or network is involved.
+export const MISSING_OPTION_VALUE: ReadonlyArray<ReadonlyArray<string>> = [
+  ["logs", "--fleet"],
+  ["list", "--limit"],
+  ["billing", "show", "--limit"],
+  ["memory", "list", "--fleet"],
+  ["grant", "list", "--fleet"],
+  ["connector", "list", "--workspace"],
+];
+
+// A required option omitted entirely — commander's missingMandatoryOptionValue.
+export const MISSING_REQUIRED_OPTION: ReadonlyArray<ReadonlyArray<string>> = [
+  ["schedule", "add", EXAMPLE_FLEET_ID],
+];
+
+// Commands whose required input is a FLAG the handler validates, not a
+// commander declaration. They already spoke the house error shape before
+// M171; they are swept alongside the commander rows so both dialects are
+// proven to have converged on one shape and one exit code.
+export const HANDLER_VALIDATED_REQUIRED_FLAG: ReadonlyArray<ReadonlyArray<string>> = [
+  ["logs"],
+  ["grant", "list"],
+  ["memory", "list"],
+  ["install"],
+];
+
+// A syntactically valid invocation whose identifier is malformed. The guard
+// runs client-side, so the rejection carries the same shape with no request.
+export const MALFORMED_ID_INVOCATIONS: ReadonlyArray<ReadonlyArray<string>> = [
+  ["logs", "--fleet", "not-a-uuid"],
+  ["stop", "not-a-uuid"],
+  ["kill", "not-a-uuid"],
+];
+
 
 export const INVALID_ID_SAMPLES: ReadonlyArray<string> = [
   "not-a-uuid",
