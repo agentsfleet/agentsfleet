@@ -55,7 +55,7 @@ def load_samples(path: Path) -> list[dict]:
         seconds = sample["seconds"]
         # A negative or non-finite duration is not a slow run, it is a broken
         # collector — and a fabricated negative candidate would read as a saving.
-        if not isinstance(seconds, (int, float)) or not math.isfinite(seconds) or seconds <= 0:
+        if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or not math.isfinite(seconds) or seconds <= 0:
             raise ValueError(f"sample {index} has a non-positive or non-finite duration: {seconds!r}")
     return samples
 
