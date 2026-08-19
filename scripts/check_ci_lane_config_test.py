@@ -73,23 +73,25 @@ GRANT_FLAGS = ("--privileged", "--security-opt", "--cap-add")
 # convenience, and neither has a narrower capability that substitutes (measured:
 # `--cap-add=SYS_ADMIN` alone does not).
 PRIVILEGED_LANES = {
-    # Delegating a cgroup-v2 controller subtree.
-    "test-integration.yml": "cgroup-v2 controller delegation",
-    # bubblewrap creating the namespaces the real-sandbox proofs run in. The CI
-    # image has baked bwrap in since r3, so without this the four
-    # `selftest_integration_test` cases do not FAIL here — they skip, on the
-    # `probeRanHere` guard that reads a silent probe as a harness fact rather
-    # than a verdict. Skipping is correct behaviour and it left
+    # Two grants, each argued for separately. The kernel job's container
+    # delegates a cgroup-v2 controller subtree. The unit coverage job's `docker
+    # run` is what lets bubblewrap create the namespaces the real-sandbox
+    # proofs run in: the CI image has baked bwrap in since r3, so without it
+    # the four `selftest_integration_test` cases do not FAIL — they skip, on
+    # the `probeRanHere` guard that reads a silent probe as a harness fact
+    # rather than a verdict. Skipping is correct behaviour and it left
     # `selftest_exec.run` — the entire spawn/bound/reap half of the self-test —
     # measured at 33%, which then read as structurally unreachable rather than
     # as one missing flag. Measured on this image: unprivileged all four skip,
-    # privileged all four pass.
-    "test.yml": "bubblewrap namespace creation",
+    # privileged all four pass. Both grants moved here together with the jobs
+    # that need them when the coverage graph consolidated into one workflow.
+    "test-integration.yml": "cgroup-v2 controller delegation + bubblewrap namespace creation",
 }
 
-# Lanes whose privilege is cgroup delegation must also SCOPE it. bubblewrap
-# needs no cgroup namespace of its own, so this is asserted per lane rather
-# than demanded of every privileged grant.
+# Lanes whose privilege includes cgroup delegation must also SCOPE it on the
+# grant that delegates — the kernel job's container. bubblewrap needs no cgroup
+# namespace of its own, so this asserts that at least one grant in the lane
+# carries the scoping rather than demanding it of every grant.
 CGROUP_DELEGATION_LANES = ("test-integration.yml",)
 
 
@@ -143,10 +145,13 @@ class TestContainerPrivilege(unittest.TestCase):
         # the privilege is narrowed back, kcov's own needs must not leave with
         # it. These two also carry the non-vacuity load: on a parser that
         # matched nothing, `grants` is empty, `joined` is empty, and both fail.
-        grants = privilege_grants(read_workflow("test.yml"))
-        joined = " ".join(grants)
-        self.assertIn("--security-opt seccomp=unconfined", joined)
-        self.assertIn("--cap-add=SYS_PTRACE", joined)
+        grants = privilege_grants(read_workflow("test-integration.yml"))
+        kcov_grants = [value for value in grants if "--cap-add=SYS_PTRACE" in value]
+        # Both producer jobs run kcov — the unit components and the live suite —
+        # and each carries its own `docker run`, so each must spell them out.
+        self.assertEqual(len(kcov_grants), 2, grants)
+        for value in kcov_grants:
+            self.assertIn("--security-opt seccomp=unconfined", value)
 
     def test_a_docker_run_grant_is_visible_to_the_sweep(self) -> None:
         # The sweep below is only worth running if it can see the spelling the
@@ -188,13 +193,13 @@ class TestContainerPrivilege(unittest.TestCase):
                     "recorded kernel reason. Name the lane and the operation "
                     "that earns it in PRIVILEGED_LANES, or drop the flag.",
                 )
-                if path.name in CGROUP_DELEGATION_LANES:
-                    self.assertIn(
-                        "--cgroupns=private",
-                        value,
-                        f"{path.name} is privileged for "
-                        f"{PRIVILEGED_LANES[path.name]} but does not scope it",
-                    )
+        for name in CGROUP_DELEGATION_LANES:
+            grants = privilege_grants(read_workflow(name))
+            self.assertTrue(
+                any("--cgroupns=private" in value for value in grants),
+                f"{name} is privileged for {PRIVILEGED_LANES[name]} but no "
+                "grant scopes the cgroup delegation",
+            )
 
     def test_a_privileged_lane_cannot_be_listed_without_being_used(self) -> None:
         # The table grants privilege, so a stale entry silently pre-approves a
