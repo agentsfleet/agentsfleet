@@ -17,13 +17,13 @@ const context_budget = @import("engine/context_budget.zig");
 const Config = nullclaw.config.Config;
 const WORKSPACE = "/tmp/fleet-ws-bridge";
 const TOOL_SCHEDULE = "schedule";
-const UNSUPPORTED_HOSTED_TOOLS = [_][]const u8{
-    TOOL_SCHEDULE,
-    "cron_add",
-    "cron_list",
-    "cron_remove",
-    "cron_run",
-    "cron_runs",
+/// Names a lease must never receive. The scheduler entries were the whole of
+/// the list this replaced; `shell` and its siblings are the ones that made a
+/// no-tools Fleet dangerous, and each must fail the lease when declared.
+const REFUSED_TOOLS = [_][]const u8{
+    "shell",       "spawn",       "git",         "browser",
+    "web_fetch",   "delegate",    TOOL_SCHEDULE, "cron_add",
+    "cron_list",   "cron_remove", "cron_run",    "cron_runs",
     "cron_update",
 };
 
@@ -74,11 +74,11 @@ test "should resolve every canonical tool name to its own registry entry" {
     }
 }
 
-test "should reject hosted NullClaw scheduler tools before execution" {
+test "a declared shell is refused, not granted" {
     const alloc = std.testing.allocator;
     const cfg = defaultCfg();
 
-    for (UNSUPPORTED_HOSTED_TOOLS) |tool_name| {
+    for (REFUSED_TOOLS) |tool_name| {
         const spec = try specOf(alloc, &.{tool_name});
         defer freeSpec(alloc, spec);
 
@@ -89,7 +89,11 @@ test "should reject hosted NullClaw scheduler tools before execution" {
     }
 }
 
-test "should filter local scheduler from fallback default tools" {
+test "an absent tools spec is not a licence for every tool" {
+    // This test used to assert the fallback merely FILTERED the registry — it
+    // accepted a Fleet receiving every unfiltered tool as correct. That default
+    // is what handed `shell` to a bundle declaring nothing. An absent spec now
+    // grants nothing at all.
     const alloc = std.testing.allocator;
     const cfg = defaultCfg();
     const tools = try runner_helpers.buildToolsFromSpec(alloc, WORKSPACE, null, &cfg, null, null);
@@ -97,11 +101,40 @@ test "should filter local scheduler from fallback default tools" {
         for (tools) |t| t.deinit(alloc);
         alloc.free(tools);
     }
+    try std.testing.expectEqual(@as(usize, 0), tools.len);
+}
 
-    for (tools) |tool| {
-        try std.testing.expect(!std.mem.eql(u8, TOOL_SCHEDULE, tool.name()));
-        try std.testing.expect(!tool_bridge.isUnsupportedHostedToolName(tool.name()));
+test "an empty tools array grants nothing" {
+    // The operator's own words: `tools: []`. The empty array reaches the
+    // resolver intact now, and resolves to exactly what it says.
+    const alloc = std.testing.allocator;
+    const cfg = defaultCfg();
+    const spec = try specOf(alloc, &.{});
+    defer freeSpec(alloc, spec);
+
+    const tools = try runner_helpers.buildToolsFromSpec(alloc, WORKSPACE, spec, &cfg, null, null);
+    defer {
+        for (tools) |t| t.deinit(alloc);
+        alloc.free(tools);
     }
+    try std.testing.expectEqual(@as(usize, 0), tools.len);
+}
+
+test "a declared allowlisted tool still resolves" {
+    // The narrowing must remove nothing a Fleet legitimately asked for — every
+    // shipped bundle declares http_request.
+    const alloc = std.testing.allocator;
+    const cfg = defaultCfg();
+    const spec = try specOf(alloc, &.{"http_request"});
+    defer freeSpec(alloc, spec);
+
+    const tools = try runner_helpers.buildToolsFromSpec(alloc, WORKSPACE, spec, &cfg, null, null);
+    defer {
+        for (tools) |t| t.deinit(alloc);
+        alloc.free(tools);
+    }
+    try std.testing.expectEqual(@as(usize, 1), tools.len);
+    try std.testing.expectEqualStrings("http_request", tools[0].name());
 }
 
 test "should return null when resolving an unknown tool name" {
@@ -113,13 +146,15 @@ test "should return null when resolving an unknown tool name" {
 test "should skip unknown tool and report UZ-TOOL-005 in buildTools" {
     const alloc = std.testing.allocator;
     const cfg = defaultCfg();
-    const spec = try specOf(alloc, &.{ "shell", "unknown_tool" });
+    const spec = try specOf(alloc, &.{ "file_read", "unknown_tool" });
     defer freeSpec(alloc, spec);
 
     const result = try tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, null, null);
     defer result.deinit(alloc);
 
-    // shell builds; unknown_tool lands in `skipped` (never a built tool).
+    // file_read builds; unknown_tool lands in `skipped` (never a built tool).
+    // An allowlisted tool stands in for what used to be `shell` here: the
+    // subject is the SKIP path, and shell now fails the lease outright.
     try std.testing.expectEqual(@as(usize, 1), result.tools.len);
     try std.testing.expectEqual(@as(usize, 1), result.skipped.len);
     try std.testing.expectEqualStrings("unknown_tool", result.skipped[0]);
@@ -200,7 +235,7 @@ test "should have no memory leaks when buildTools skips unknown tools repeatedly
     // leak, so a clean run proves both the tools slice and the skipped[] (with
     // its dup'd names) are fully freed by BuildResult.deinit each time.
     for (0..50) |_| {
-        const spec = try specOf(alloc, &.{ "shell", "ghost_tool", "calculator", "phantom" });
+        const spec = try specOf(alloc, &.{ "file_read", "ghost_tool", "calculator", "phantom" });
         defer freeSpec(alloc, spec);
         const result = try tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, null, null);
         defer result.deinit(alloc);

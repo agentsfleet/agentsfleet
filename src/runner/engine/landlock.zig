@@ -103,12 +103,17 @@ const LandlockPathBeneathAttr = extern struct {
     parent_fd: i32,
 };
 
-/// Read-only paths landlock needs beyond the bind list's baseline: the
-/// sandbox floor bwrap constructs (devtmpfs, proc) or ro-binds (/usr) rather
-/// than bind-declares, so the shared lists do not carry them. The writable
-/// tmpfs floor is NOT here — it takes `WORKSPACE_ACCESS` below, from the same
-/// shared list bwrap mounts it from.
-const LANDLOCK_FLOOR_RO_PATHS = [_][]const u8{ "/usr", "/dev", "/proc" };
+/// Read-only paths landlock needs beyond the bind list's baseline: the sandbox
+/// floor bwrap constructs (devtmpfs, proc) rather than bind-declares, so the
+/// shared lists do not carry them. The writable tmpfs floor is NOT here — it
+/// takes `WORKSPACE_ACCESS` below, from the same shared list bwrap mounts it
+/// from.
+///
+/// `/usr` left this floor with the executable trees. The runner binary is
+/// statically linked and rides its own single-file bind, so nothing in a lease
+/// needs an interpreter or a shared library — and with no hosted tool able to
+/// spawn a process, an executable tree is reachable surface that buys nothing.
+const LANDLOCK_FLOOR_RO_PATHS = [_][]const u8{ "/dev", "/proc" };
 
 /// System paths that get read-only access in the sandbox. Derived from the
 /// bind contract so bwrap and landlock can never disagree on what a lease may

@@ -30,24 +30,87 @@ const log = logging.scoped(.tool_bridge);
 
 const ERR_TOOL_UNKNOWN = client_errors.ERR_TOOL_UNKNOWN;
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
-const TOOL_SCHEDULE = "schedule";
-const TOOL_CRON_ADD = "cron_add";
-const TOOL_CRON_LIST = "cron_list";
-const TOOL_CRON_REMOVE = "cron_remove";
-const TOOL_CRON_RUN = "cron_run";
-const TOOL_CRON_RUNS = "cron_runs";
-const TOOL_CRON_UPDATE = "cron_update";
-/// Public for `tool_bridge_test.zig` alone: the extracted tests assert this
-/// registry fact directly, and no production caller outside this file reads it.
-pub const UNSUPPORTED_HOSTED_TOOLS = [_][]const u8{
-    TOOL_SCHEDULE,
-    TOOL_CRON_ADD,
-    TOOL_CRON_LIST,
-    TOOL_CRON_REMOVE,
-    TOOL_CRON_RUN,
-    TOOL_CRON_RUNS,
-    TOOL_CRON_UPDATE,
+/// Tool names the registry and the hosted allowlist BOTH reference. Named so
+/// the two lists cannot drift on a spelling (RULE UFS) — a rename now moves
+/// one constant instead of two literals that look alike.
+const TOOL_HTTP_REQUEST = "http_request";
+const TOOL_MEMORY_RECALL = "memory_recall";
+const TOOL_MEMORY_STORE = "memory_store";
+const TOOL_MEMORY_LIST = "memory_list";
+const TOOL_MEMORY_FORGET = "memory_forget";
+const TOOL_FILE_READ = "file_read";
+const TOOL_FILE_READ_HASHED = "file_read_hashed";
+const TOOL_FILE_WRITE = "file_write";
+const TOOL_FILE_EDIT = "file_edit";
+const TOOL_FILE_EDIT_HASHED = "file_edit_hashed";
+const TOOL_FILE_APPEND = "file_append";
+const TOOL_FILE_DELETE = "file_delete";
+const TOOL_CALCULATOR = "calculator";
+
+/// The refusal event both fatal arms emit — one name, two sites (RULE UFS).
+const LOG_TOOL_REFUSED = "tool_refused_not_hosted";
+
+/// Every tool a hosted Fleet may reach. An ALLOWLIST, and the direction is the
+/// whole point: the list it replaced named seven tools to exclude out of a
+/// registry of thirty-five, so `shell`, `spawn`, `git`, `browser`, `web_fetch`
+/// and the rest were reachable by default, and a tool added upstream enrolled
+/// itself into hosted execution with no decision taken here.
+///
+/// That is the same rot `protocol_bind.zig` records about paths — "a denylist
+/// alone would fail open on everything unlisted and go stale the moment a host
+/// gains a new sensitive path". The reasoning was never carried across to
+/// tools; this carries it.
+///
+/// The membership rule: a tool earns a place only if it runs IN-PROCESS and
+/// reaches nothing beyond the workspace and the Fleet's own declared network
+/// allowance. Anything that spawns a process, opens a browser, reaches the host,
+/// or calls a third-party service stays out — a lease sandbox shares the host
+/// network namespace under the interim `allow_all` posture, so a spawned
+/// process is a foothold on the host's network, not just on its filesystem.
+///
+/// Public for the test suite and `runner_helpers`: both assert membership.
+pub const HOSTED_TOOL_ALLOWLIST = [_][]const u8{
+    // Outbound, already bounded by the Fleet's declared network allowance.
+    TOOL_HTTP_REQUEST,
+    // Fleet memory — the control plane owns the store; these only read/write it.
+    TOOL_MEMORY_RECALL,
+    TOOL_MEMORY_STORE,
+    TOOL_MEMORY_LIST,
+    TOOL_MEMORY_FORGET,
+    // Files, every one workspace-scoped with symlink-escape resolution.
+    TOOL_FILE_READ,
+    TOOL_FILE_READ_HASHED,
+    TOOL_FILE_WRITE,
+    TOOL_FILE_EDIT,
+    TOOL_FILE_EDIT_HASHED,
+    TOOL_FILE_APPEND,
+    TOOL_FILE_DELETE,
+    // Pure computation, no I/O at all.
+    TOOL_CALCULATOR,
 };
+
+/// Real engine tools this platform never hosts, which `BRIDGE_REGISTRY` does not
+/// carry. Kept separate from the allowlist because they answer a different
+/// question: the allowlist says what a Fleet MAY have, this says which absences
+/// are deliberate rather than accidental.
+const NEVER_HOSTED_TOOLS = [_][]const u8{
+    "schedule", "cron_add",  "cron_list",   "cron_remove",
+    "cron_run", "cron_runs", "cron_update",
+};
+
+comptime {
+    // The allowlist is a subset of the registry. A name that drifts — an
+    // upstream rename, a typo — fails the build rather than silently granting
+    // nothing, which would read as "that Fleet just has no tools" at runtime.
+    for (HOSTED_TOOL_ALLOWLIST) |allowed| {
+        var found = false;
+        for (BRIDGE_REGISTRY) |entry| {
+            if (std.mem.eql(u8, entry.name, allowed)) found = true;
+        }
+        if (!found)
+            @compileError("HOSTED_TOOL_ALLOWLIST names a tool absent from BRIDGE_REGISTRY: " ++ allowed);
+    }
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -84,35 +147,37 @@ const ToolEntry = struct {
 // ── Static registry ────────────────────────────────────────────────────────
 // Every hosted NullClaw built-in tool. Skills are dynamic — no entries here.
 //
-// When tools: null → runner_helpers filters NullClaw fallback tools against
-// this file's unsupported hosted-tool list before exposing them.
-// When tools: ["shell", "file_read"] → the bridge resolves only those.
+// When tools: [] or absent → zero tools. There is no fallback that grants more
+// than the Fleet declared; the registry default that once filled that gap is
+// what handed `shell` to a Fleet asking for nothing.
+// When tools: ["http_request"] → the bridge resolves only that, and only
+// because it is on HOSTED_TOOL_ALLOWLIST above.
 
 const BRIDGE_REGISTRY = [_]ToolEntry{
     // Core file tools
     .{ .name = "shell", .buildFn = builders.buildShell },
-    .{ .name = "file_read", .buildFn = builders.buildFileRead },
-    .{ .name = "file_write", .buildFn = builders.buildFileWrite },
-    .{ .name = "file_edit", .buildFn = builders.buildFileEdit },
-    .{ .name = "file_append", .buildFn = builders.buildFileAppend },
-    .{ .name = "file_delete", .buildFn = builders.buildFileDelete },
-    .{ .name = "file_read_hashed", .buildFn = builders.buildFileReadHashed },
-    .{ .name = "file_edit_hashed", .buildFn = builders.buildFileEditHashed },
+    .{ .name = TOOL_FILE_READ, .buildFn = builders.buildFileRead },
+    .{ .name = TOOL_FILE_WRITE, .buildFn = builders.buildFileWrite },
+    .{ .name = TOOL_FILE_EDIT, .buildFn = builders.buildFileEdit },
+    .{ .name = TOOL_FILE_APPEND, .buildFn = builders.buildFileAppend },
+    .{ .name = TOOL_FILE_DELETE, .buildFn = builders.buildFileDelete },
+    .{ .name = TOOL_FILE_READ_HASHED, .buildFn = builders.buildFileReadHashed },
+    .{ .name = TOOL_FILE_EDIT_HASHED, .buildFn = builders.buildFileEditHashed },
     // Git
     .{ .name = "git", .buildFn = builders.buildGit },
     // Stateless
     .{ .name = "image", .buildFn = builders.buildImage },
-    .{ .name = "calculator", .buildFn = builders.buildCalculator },
+    .{ .name = TOOL_CALCULATOR, .buildFn = builders.buildCalculator },
     // Memory
-    .{ .name = "memory_store", .buildFn = builders.buildMemoryStore },
-    .{ .name = "memory_recall", .buildFn = builders.buildMemoryRecall },
-    .{ .name = "memory_list", .buildFn = builders.buildMemoryList },
-    .{ .name = "memory_forget", .buildFn = builders.buildMemoryForget },
+    .{ .name = TOOL_MEMORY_STORE, .buildFn = builders.buildMemoryStore },
+    .{ .name = TOOL_MEMORY_RECALL, .buildFn = builders.buildMemoryRecall },
+    .{ .name = TOOL_MEMORY_LIST, .buildFn = builders.buildMemoryList },
+    .{ .name = TOOL_MEMORY_FORGET, .buildFn = builders.buildMemoryForget },
     // Fleet orchestration
     .{ .name = "delegate", .buildFn = builders.buildDelegate },
     .{ .name = "spawn", .buildFn = builders.buildSpawn },
     // Network (HTTP/search/fetch)
-    .{ .name = "http_request", .buildFn = builders.buildHttpRequest },
+    .{ .name = TOOL_HTTP_REQUEST, .buildFn = builders.buildHttpRequest },
     .{ .name = "web_search", .buildFn = builders.buildWebSearch },
     .{ .name = "web_fetch", .buildFn = builders.buildWebFetch },
     .{ .name = "pushover", .buildFn = builders.buildPushover },
@@ -127,7 +192,7 @@ const BRIDGE_REGISTRY = [_]ToolEntry{
 // ── Public API ─────────────────────────────────────────────────────────────
 
 /// Total number of registered tools.
-/// Public for `tool_bridge_test.zig` alone (see UNSUPPORTED_HOSTED_TOOLS).
+/// Public for `tool_bridge_test.zig` alone (see HOSTED_TOOL_ALLOWLIST).
 pub const TOOL_COUNT = BRIDGE_REGISTRY.len;
 
 /// Resolve a tool name to its registry entry.
@@ -138,11 +203,27 @@ pub fn resolve(tool_name: []const u8) ?*const ToolEntry {
     return null;
 }
 
-/// True when a NullClaw tool manages local scheduler state and is therefore
-/// unsupported in hosted runs. Hosted scheduling goes through agentsfleetd cron.
-pub fn isUnsupportedHostedToolName(tool_name: []const u8) bool {
-    for (UNSUPPORTED_HOSTED_TOOLS) |unsupported| {
-        if (std.mem.eql(u8, unsupported, tool_name)) return true;
+/// True when a hosted Fleet may reach this tool. The allowlist is the control;
+/// everything outside it is refused, whether or not anyone thought of it.
+pub fn isHostedToolAllowed(tool_name: []const u8) bool {
+    for (HOSTED_TOOL_ALLOWLIST) |allowed| {
+        if (std.mem.eql(u8, allowed, tool_name)) return true;
+    }
+    return false;
+}
+
+/// True when a name is a real engine tool this platform deliberately does not
+/// host, as opposed to a name nobody has heard of.
+///
+/// The distinction earns its keep because `BRIDGE_REGISTRY` never carried the
+/// scheduler tools: `resolve` returns null for them exactly as it does for a
+/// typo, so without this they would be skipped as "unknown" and a bundle that
+/// asked for scheduling would run silently without it. Hosted scheduling goes
+/// through agentsfleetd cron instead, and asking for the local one is a
+/// misconfiguration worth failing loudly.
+fn isNeverHosted(tool_name: []const u8) bool {
+    for (NEVER_HOSTED_TOOLS) |never| {
+        if (std.mem.eql(u8, never, tool_name)) return true;
     }
     return false;
 }
@@ -204,8 +285,14 @@ pub fn buildTools(
         if (item != .object) continue;
         const tool_name = jsonGetStr(item, "name") orelse continue;
         if (!jsonGetBoolDefault(item, "enabled", true)) continue;
-        if (isUnsupportedHostedToolName(tool_name)) {
-            log.err("unsupported_hosted_tool", .{ .error_code = ERR_TOOL_UNKNOWN, .name = tool_name });
+        // Order is the behaviour, and each arm answers a different question.
+        // A deliberately-unhosted engine tool fails the lease even though the
+        // registry cannot resolve it — otherwise it reads as a typo. A name
+        // nobody knows is skipped, as it always has been: it grants nothing
+        // either way. A name that RESOLVES but is not allowlisted is a real
+        // tool this Fleet may not have, and that is worth failing over.
+        if (isNeverHosted(tool_name)) {
+            log.err(LOG_TOOL_REFUSED, .{ .error_code = ERR_TOOL_UNKNOWN, .name = tool_name });
             return error.UnsupportedHostedTool;
         }
 
@@ -215,6 +302,16 @@ pub fn buildTools(
             try skipped.append(alloc, duped);
             continue;
         };
+
+        // Refusal fails the LEASE rather than dropping the tool and continuing.
+        // A bundle asking for a real tool it may not have is misconfigured or
+        // hostile; running it with a quietly different tool set would change its
+        // behaviour in a way its author never wrote. Same disposition the
+        // cron/schedule refusal has always had, now covering the whole set.
+        if (!isHostedToolAllowed(tool_name)) {
+            log.err(LOG_TOOL_REFUSED, .{ .error_code = ERR_TOOL_UNKNOWN, .name = tool_name });
+            return error.UnsupportedHostedTool;
+        }
 
         const t = entry.buildFn(ctx) catch |err| {
             log.err("build_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .name = tool_name, .err = @errorName(err) });

@@ -57,9 +57,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/runner/child_exec_input.zig` | EDIT | Preserve a present-but-empty tools array instead of collapsing it to absent. |
 | `src/runner/engine/runner_helpers.zig` | EDIT | An absent tools spec resolves to zero tools rather than the whole registry. |
 | `src/runner/engine/tool_bridge.zig` | EDIT | Replace the unsupported-tool denylist with the hosted allowlist, and refuse a declared name outside it. |
-| `src/runner/engine/hosted_tools.zig` | EDIT | The default builder consumes the allowlist rather than the full registry. |
-| `src/runner/engine/{tool_bridge,hosted_tools}_test.zig` | EDIT | Prove refusal by name, allowlist membership, and that every shipped bundle still resolves. |
-| `src/runner/child_exec_input_test.zig` | EDIT | Pin empty-array and absent-key resolution separately. |
+| `src/runner/engine/hosted_tools.zig` · `hosted_tools_test.zig` | DELETE | Both callers of the registry-default builder are gone, so the module is dead (RULE NDC). |
+| `src/runner/engine/tool_bridge_test.zig` | EDIT | Prove allowlist membership, that no spawning tool is hosted, and that the scheduler set stays unreachable. |
+| `src/runner/tool_bridge_resolution_test.zig` | EDIT | Pin refusal, empty-array and absent-spec resolution, and that an allowlisted tool still resolves. |
+| `src/runner/engine/runner_helpers_test.zig` | EDIT | The non-array arm degrades to zero tools rather than to a default set. |
+| `src/runner/child_exec_input_test.zig` | EDIT | An empty policy yields a null fleet_config but an EMPTY tools array. |
 | `src/lib/contract/protocol_bind.zig` | EDIT | Narrow `BASELINE_RO_PATHS` to the four paths a lease needs; comptime-prove the allowlist is a registry subset. |
 | `src/runner/sandbox_args_bind_test.zig` | EDIT | Pin the narrowed argv and the absence of credential-bearing trees. |
 | `src/runner/engine/landlock.zig` | EDIT | The read set derives from the narrowed list; confirm no floor entry re-widens it. |
@@ -132,9 +134,9 @@ Sandbox baseline read set (narrowed):
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
-| Declared tool not allowlisted | a bundle names a process-spawning or host-reaching tool | The tool is refused and recorded by name; the Fleet runs with its remaining allowlisted tools rather than failing the lease. |
-| Every declared tool refused | a bundle names only non-allowlisted tools | The Fleet runs with zero tools and the refusal is recorded, so the cause is readable without host access. |
-| Unknown tool name | a bundle names a tool absent from the registry | Existing skip-and-record behaviour is preserved; an unknown name is not silently equivalent to an allowlisted one. |
+| Declared tool not allowlisted | a bundle names a real tool that is not hosted (`shell`, `git`, `spawn`, …) | The lease FAILS, with the refusal recorded by name. Matches the disposition the scheduler refusal already had: running a Fleet with a quietly different tool set changes behaviour its author never wrote. |
+| Declared tool never hosted | a bundle names a scheduler tool the bridge registry does not carry | The lease fails rather than skipping. Without a distinct arm these read as typos, and a Fleet that asked for scheduling would run silently without it. |
+| Unknown tool name | a bundle names a tool absent from the registry | Skipped and recorded, exactly as before — a name nobody knows grants nothing either way, so a typo must not cost the lease. Resolution order is what keeps this distinct from a refusal. |
 | Allowlist drifts from the registry | an upstream rename removes a name the allowlist carries | The build fails at the comptime subset assertion rather than granting an empty set at runtime. |
 | Engine opens a path the narrowed set removed | a runtime dependency nobody enumerated | The self-test probe's check for that surface fails on the host and the runner reports degraded, rather than every lease failing opaquely. |
 | Bundle depends on the removed default | an existing Fleet relied on the full-registry fallback | No shipped bundle does; the case is proven absent by Dimension 2.3 before the fallback is removed. |
@@ -191,7 +193,10 @@ Sandbox baseline read set (narrowed):
 
 **1. Orphaned files — deleted from disk and git.**
 
-N/A — no files deleted.
+| File to delete | Verify |
+|----------------|--------|
+| `src/runner/engine/hosted_tools.zig` | `test ! -f src/runner/engine/hosted_tools.zig` |
+| `src/runner/engine/hosted_tools_test.zig` | `test ! -f src/runner/engine/hosted_tools_test.zig` |
 
 **2. Orphaned references — zero remaining imports/uses.**
 
@@ -199,6 +204,7 @@ N/A — no files deleted.
 |-----------------------|------|----------|
 | `UNSUPPORTED_HOSTED_TOOLS` | `grep -rn "UNSUPPORTED_HOSTED_TOOLS" src/ \| head` | 0 matches |
 | `isUnsupportedHostedToolName` | `grep -rn "isUnsupportedHostedToolName" src/ \| head` | 0 matches |
+| `hosted_tools` | `grep -rn "hosted_tools" src/ \| head` | 0 matches |
 
 ## Out of Scope
 
@@ -231,6 +237,10 @@ N/A — no files deleted.
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage:
+  - **Refusal disposition (implementation deviation).** The spec first said a refused tool leaves the Fleet running with its remaining tools. Implemented as failing the lease instead, because `buildTools` already did exactly that for the scheduler set — a second disposition beside the first would be two answers to one question. Failure Modes amended to match the code.
+  - **Resolution order is behaviour, not style.** The allowlist check was first written ahead of `resolve`, which made an unknown NAME fail the lease — collapsing "typo" into "refused". Three arms now: never-hosted (fatal), unknown (skip), resolved-but-not-allowlisted (fatal). `NEVER_HOSTED_TOOLS` exists because the scheduler names are not in `BRIDGE_REGISTRY`, so `resolve` cannot tell them from a typo.
+  - **`/opt` protection was named for a directory the token does not live in.** `SENSITIVE_PATHS` carried `/var/lib/agentsfleet` while the deploy writes the token to `/opt/agentsfleet/.env`. Invisible while `/opt` sat in the baseline — an operator cannot bind what the daemon already binds — so narrowing the baseline is what made naming it load-bearing. Added in the same change.
+- **Host evidence — the narrowed bind set dials (Aug 19, 2026).** Run on `zombie-dev-worker-ant` with no `/usr`, `/bin`, `/lib`, `/lib64`, `/sbin`, `/opt` tree and no wholesale `/etc`: `resolver=1 scratch=1 dns=1 egress=1 binds=x`. Transport Layer Security (TLS) to the inference host succeeds with only `/etc/ssl/certs` present, which is what makes removing the executable and library trees a fact rather than a claim. That run exercised the mount layer only (probe without `--sandboxed`, deployed binary); the landlock-applied run is recorded separately.
 - **Metrics review** —
 - **Skill-chain outcomes** —
 - **Deferrals** —

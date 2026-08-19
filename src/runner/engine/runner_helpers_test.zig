@@ -194,9 +194,11 @@ test "buildToolsFromSpec frees every tool name the bridge could not resolve" {
     try std.testing.expectEqual(@as(usize, 0), tools.len);
 }
 
-test "a non-array tools spec falls back to the default tool set" {
+test "a non-array tools spec degrades to zero tools, never to a default set" {
     // The wire type is `?std.json.Value`; a malformed fleet can send an object
-    // or a string. That must degrade to the default set, never error the lease.
+    // or a string. That must still never error the lease — but it degrades to
+    // NOTHING now. It used to degrade to the whole registry, which handed a
+    // malformed bundle more capability than a well-formed one could ask for.
     const alloc = std.testing.allocator;
     var parsed = try std.json.parseFromSlice(std.json.Value, alloc, "{\"not\":\"an array\"}", .{});
     defer parsed.deinit();
@@ -214,7 +216,7 @@ test "a non-array tools spec falls back to the default tool set" {
         null,
     );
     defer tools_mod.deinitTools(alloc, tools);
-    try std.testing.expect(tools.len > 0);
+    try std.testing.expectEqual(@as(usize, 0), tools.len);
 }
 
 // ── ProviderBundle + the tool-spec skip path ────────────────────────────────
