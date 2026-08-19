@@ -98,39 +98,39 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The unit coverage lane stops executing live daemon binaries and the integration lane takes them, so a full verification runs the suite once instead of twice. The two executions the union needs — the unfiltered suite and the isolated boot-to-drain proof, which the unfiltered suite skips — both come from the lane that already owns live datastores, a migrated database and the runner binary. **Implementation default:** move the existing blocks rather than rewrite them, because their tally parsing and marker assertions are the accumulated defence against measuring a suite that never ran.
 
-- **Dimension 1.1** — the unit coverage lane executes no live daemon binary and its recipe names none → Test `test_unit_coverage_lane_runs_no_live_daemon_binary`
-- **Dimension 1.2** — the integration lane executes the unfiltered suite once and the filtered boot-to-drain proof once, and still fails on zero passes, on any failure, and on a skipped proof → Test `test_integration_lane_owns_every_live_daemon_execution`
-- **Dimension 1.3** — the components produced across both lanes equal the registered inventory with no omission and no duplicate → Test `test_component_union_matches_inventory_exactly`
+- **Dimension 1.1** — DONE — the unit coverage lane executes no live daemon binary and its recipe names none → Test `test_unit_coverage_lane_runs_no_live_daemon_binary`
+- **Dimension 1.2** — DONE — the integration lane executes the unfiltered suite once and the filtered boot-to-drain proof once, and still fails on zero passes, on any failure, and on a skipped proof → Test `test_integration_lane_owns_every_live_daemon_execution`
+- **Dimension 1.3** — DONE — the components produced across both lanes equal the registered inventory with no omission and no duplicate → Test `test_component_union_matches_inventory_exactly`
 
 ### §2 — Evidence is provenance-matched or it is refused
 
 A grade that reads whatever reports happen to be on disk is a grade of an unknown build. Each producer records what it measured and what it measured against; each consumer refuses anything that does not match the run it is grading. **Implementation default:** compare a digest over the working-tree sources that reach the binaries, the toolchain identity, the component inventory digest and the platform, because those are exactly the four things that change which lines exist and which components are required.
 
-- **Dimension 2.1** — a manifest recorded and then validated against the same source, toolchain, inventory and platform is accepted → Test `test_matched_evidence_validates`
-- **Dimension 2.2** — changing any single provenance field is refused, and the failure names that field and both values → Test `test_mismatched_provenance_field_is_named`
-- **Dimension 2.3** — evidence that is missing, failed, empty, tampered with on disk, or recorded from a narrowed run is refused, each naming its reason → Test `test_unusable_evidence_fails_the_aggregate`
+- **Dimension 2.1** — DONE — a manifest recorded and then validated against the same source, toolchain, inventory and platform is accepted → Test `test_matched_evidence_validates`
+- **Dimension 2.2** — DONE — changing any single provenance field is refused, and the failure names that field and both values → Test `test_mismatched_provenance_field_is_named`
+- **Dimension 2.3** — DONE — evidence that is missing, failed, empty, tampered with on disk, or recorded from a narrowed run is refused, each naming its reason → Test `test_unusable_evidence_fails_the_aggregate`
 
 ### §3 — Grading has one owner and one command
 
 The merged floor moves out of the unit lane, which can no longer see the union, into a command that owns nothing but the grade. The canonical two-command sequence still grades automatically, so the developer-facing behaviour of `make test-unit-all && make test-integration` is unchanged in what it proves. **Implementation default:** the grade is invoked by the integration lane when matched unit evidence exists and refuses when evidence exists but does not match; an absent manifest is reported and does not fail the integration lane, because producing unit evidence was never that lane's job.
 
-- **Dimension 3.1** — the grade enforces every floor, target, required component, required root, minimum file count and minimum measured-line count unchanged over the nine-component union, and writes the published summary file → Test `test_grade_preserves_every_coverage_assertion`
-- **Dimension 3.2** — the integration lane grades on matched evidence, exits non-zero on mismatched evidence naming the field, and on absent evidence reports the ungraded floor and the command that grades it without failing → Test `test_integration_grade_reuse_rules`
-- **Dimension 3.3** — running the canonical sequence executes the unit component binaries once, in the unit lane only, and the integration lane rebuilds and reruns none of them → Test `test_sequence_reuses_unit_evidence_without_rerun`
+- **Dimension 3.1** — DONE — the grade enforces every floor, target, required component, required root, minimum file count and minimum measured-line count unchanged over the nine-component union, and writes the published summary file → Test `test_grade_preserves_every_coverage_assertion`
+- **Dimension 3.2** — DONE — the integration lane grades on matched evidence, exits non-zero on mismatched evidence naming the field, and on absent evidence reports the ungraded floor and the command that grades it without failing → Test `test_integration_grade_reuse_rules`
+- **Dimension 3.3** — DONE — running the canonical sequence executes the unit component binaries once, in the unit lane only, and the integration lane rebuilds and reruns none of them → Test `test_sequence_reuses_unit_evidence_without_rerun`
 
 ### §4 — Continuous Integration carries the whole graph in one run
 
 Artifact storage is run-scoped, so the two producers and the grade have to share a workflow run or the grade cannot see what it grades. Both required check contexts stay substantive: `test` keeps the unit and package lanes, `test-integration` gains the whole Zig coverage graph and cannot go green while the grade is red. **Implementation default:** the producers run concurrently and the grade is a third job that needs both, so the critical path becomes the longer producer plus a report union rather than a producer plus a full suite.
 
-- **Dimension 4.1** — exactly one job in the repository executes the live daemon integration binary, and both coverage producers plus the grade live in one workflow → Test `test_ci_runs_one_live_daemon_owner`
-- **Dimension 4.2** — the grade job needs both producers, validates their manifests before grading, and no workflow step grades from unvalidated or absent artifacts → Test `test_ci_grade_is_fail_closed`
-- **Dimension 4.3** — timing samples are refused for comparison unless they share commit, runner image and cache state, so a median improvement is computed only across like samples → Test `test_unlike_timing_samples_are_refused`
+- **Dimension 4.1** — DONE — exactly one job in the repository executes the live daemon integration binary, and both coverage producers plus the grade live in one workflow → Test `test_ci_runs_one_live_daemon_owner`
+- **Dimension 4.2** — DONE — the grade job needs both producers, validates their manifests before grading, and no workflow step grades from unvalidated or absent artifacts → Test `test_ci_grade_is_fail_closed`
+- **Dimension 4.3** — DONE — timing samples are refused for comparison unless they share commit, runner image and cache state, so a median improvement is computed only across like samples → Test `test_unlike_timing_samples_are_refused`
 
 ### §5 — The architecture page states the ownership it enforces
 
 `docs/architecture/testing.md` currently says the coverage lane runs nine components. After this diff it runs seven and the integration lane runs two. A page that describes the previous ownership is worse than no page, because the next person reads it before the recipes.
 
-- **Dimension 5.1** — the architecture page names each lane's components, the evidence rule and the grade command, and the lane sources agree with it → Test `test_testing_architecture_matches_lane_ownership`
+- **Dimension 5.1** — DONE — the architecture page names each lane's components, the evidence rule and the grade command, and the lane sources agree with it → Test `test_testing_architecture_matches_lane_ownership`
 
 ## Interfaces
 

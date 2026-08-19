@@ -20,13 +20,19 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKE_TEST = REPO_ROOT / "make" / "test.mk"
-MAKE_TEST_UNIT = REPO_ROOT / "make" / "test-unit.mk"
 ARCHITECTURE_DOC = REPO_ROOT / "docs" / "architecture" / "testing.md"
 
 MERGED_SCOPE = "merged"
 # Variables retired by this lane. Naming one in the doc sends a reader to a
 # definition site that no longer exists.
 RETIRED_MAKE_VARIABLES = ("ZIG_COVERAGE_MIN_LINES",)
+# The two halves of the component inventory, one definition site each in
+# make/test.mk. Reading both is deliberate: a component dropped from either
+# lane's variable must fail this parity, not quietly shrink the doc.
+COMPONENT_INVENTORY_VARIABLES = (
+    "ZIG_COVERAGE_UNIT_COMPONENTS",
+    "ZIG_COVERAGE_LIVE_COMPONENTS",
+)
 
 # `NAME ?= value`, the form every coverage variable in make/test.mk uses.
 MAKE_ASSIGNMENT = re.compile(r"^([A-Z_]+)\s*\?=\s*(.*)$", re.MULTILINE)
@@ -35,10 +41,7 @@ MAKE_ASSIGNMENT = re.compile(r"^([A-Z_]+)\s*\?=\s*(.*)$", re.MULTILINE)
 DOC_TABLE_ROW = re.compile(r"^\|\s*`?([a-z0-9_]+)`?\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*$", re.MULTILINE)
 # `- `lifecycle` — the boot to SIGTERM to drain proof, ...`
 DOC_COMPONENT_BULLET = re.compile(r"^-\s+`([a-z0-9_]+)`\s+—", re.MULTILINE)
-# `components="agentsfleetd:agentsfleetd-tests runner:agentsfleet-runner-tests"`
-MAKE_COMPONENT_LIST = re.compile(r'components="([^"]*)"')
-# The two components announced by name rather than iterated: they run serially.
-MAKE_LITERAL_COMPONENT = re.compile(r"kcov component=([a-z0-9_]+) binary=")
+
 
 
 def make_variables() -> dict[str, str]:
@@ -85,15 +88,13 @@ def documented_floors_and_targets() -> dict[str, tuple[int, int]]:
 
 
 def gate_components() -> set[str]:
-    """Every component the coverage recipe measures, iterated or named."""
-    text = MAKE_TEST_UNIT.read_text(encoding="utf-8")
+    """Every component the two producer lanes measure, from the inventory."""
+    variables = make_variables()
     components: set[str] = set()
-    for group in MAKE_COMPONENT_LIST.findall(text):
-        for token in group.split():
-            name, separator, _ = token.partition(":")
-            if separator:
-                components.add(name)
-    components.update(MAKE_LITERAL_COMPONENT.findall(text))
+    for variable in COMPONENT_INVENTORY_VARIABLES:
+        for token in variables[variable].split():
+            name, _, _ = token.partition(":")
+            components.add(name)
     return components
 
 
@@ -123,8 +124,8 @@ class ArchitectureDocMatchesTheGate(unittest.TestCase):
         self.assertEqual(
             documented_components(),
             gate_components(),
-            "the component list in docs/architecture/testing.md disagrees with the "
-            "components make/test-unit.mk runs under kcov",
+            "the component lists in docs/architecture/testing.md disagree with the "
+            "inventory make/test.mk declares for the two producer lanes",
         )
 
     def test_architecture_doc_names_no_retired_variable(self) -> None:

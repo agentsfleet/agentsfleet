@@ -11,8 +11,10 @@ files and the inline `test {}` blocks `check_zig_coverage.py` excludes, and the
 badge would read roughly two points above the figure that gated the branch.
 
 So the README, the upload steps, and the merged report path are checked against
-each other here. The paths and flags live in `.github/workflows/test.yml` and
-`make/test.mk`; this module owns no numbers of its own.
+each other here. The package flags upload from `.github/workflows/test.yml`,
+the zig flags from `.github/workflows/test-integration.yml` — where the grade
+job and the merged report live — and the paths from `make/test.mk`; this module
+owns no numbers of its own.
 
 Run: python3 -m unittest discover -s scripts -t scripts -p '*_test.py'
 """
@@ -25,7 +27,12 @@ from urllib.parse import parse_qs, urlsplit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 README = REPO_ROOT / "README.md"
-WORKFLOW = REPO_ROOT / ".github" / "workflows" / "test.yml"
+# Both workflows that upload to Codecov: the package lanes stayed in test.yml;
+# the three zig flags moved with the coverage grade into test-integration.yml.
+WORKFLOWS = (
+    REPO_ROOT / ".github" / "workflows" / "test.yml",
+    REPO_ROOT / ".github" / "workflows" / "test-integration.yml",
+)
 MAKE_TEST = REPO_ROOT / "make" / "test.mk"
 
 CODECOV_ACTION = "codecov/codecov-action@"
@@ -82,8 +89,15 @@ def readme_badges() -> dict[str, dict[str, str]]:
 def codecov_uploads() -> list[dict[str, str]]:
     """Every `codecov-action` step's settings, in workflow order, with its step name."""
     uploads: list[dict[str, str]] = []
+    for workflow in WORKFLOWS:
+        uploads.extend(workflow_codecov_uploads(workflow))
+    return uploads
+
+
+def workflow_codecov_uploads(workflow: Path) -> list[dict[str, str]]:
+    uploads: list[dict[str, str]] = []
     current: dict[str, str] | None = None
-    for line in WORKFLOW.read_text(encoding="utf-8").splitlines():
+    for line in workflow.read_text(encoding="utf-8").splitlines():
         step = WORKFLOW_STEP_START.match(line)
         if step is not None:
             if current is not None and CODECOV_ACTION in current.get("uses", ""):

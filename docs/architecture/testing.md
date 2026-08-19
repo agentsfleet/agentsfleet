@@ -37,8 +37,10 @@ credentials. Its Linux kernel tests remain separate from daemon integration.
 
 `make test-unit-agentsfleetd` runs only the daemon unit root.
 `make test-integration` prepares isolated services once and runs the daemon
-integration root. Component selectors reuse the same root with narrower
-environment configuration.
+integration root — once, under kcov, so the same execution yields the
+integration verdict and the integration half of the coverage union. Component
+selectors reuse the same root with narrower environment configuration; a
+narrowed run records its evidence marked filtered and grades nothing.
 
 `make memleak` builds and leak-gates the daemon, runner, and shared-library unit
 binaries concurrently. The Zig allocator is blocking on macOS. The `leaks`
@@ -48,7 +50,11 @@ after the component lanes converge.
 
 ## Coverage
 
-`make test-coverage-zig` installs and runs nine component binaries under kcov:
+Nine components, two producers, one grade. Each lane owns the components only it
+can run, each records a provenance manifest naming what it measured, and
+`make test-coverage-grade` is the single owner of the merged verdict.
+
+`make test-coverage-zig` runs the seven unit components under kcov:
 
 - `agentsfleetd` — daemon unit tests;
 - `runner` — runner unit tests;
@@ -57,25 +63,44 @@ after the component lanes converge.
 - `deadline` — call-deadline tests;
 - `s3` — object-store tests;
 - `runner_integration` — the runner integration suite, whose worker-pool tests
-  fork the real stub child on Linux and macOS alike;
-- `integration` — the daemon integration suite, against live datastores, serially;
+  fork the real stub child on Linux and macOS alike.
+
+`make test-integration` runs the two live components:
+
+- `integration` — the daemon integration suite, against live datastores,
+  serially;
 - `lifecycle` — the boot to SIGTERM to drain proof, alone in its own process
   against live datastores.
 
-`scripts/check_zig_coverage.py` unions those reports — a line counts as covered
+The split is the ownership. Before it, `test-coverage-zig` ran the daemon
+integration suite under kcov and `test-integration` ran the same graph again
+bare, so one full verification executed the live suite twice and CI paid for it
+on two runners. `scripts/check_zig_coverage_lanes_test.py` drives both recipes
+against a stubbed kcov and fails if either lane ever reaches into the other's
+half again.
+
+`make test-coverage-grade` validates both manifests — same sources, same
+toolchain, same component inventory, same platform, every component produced
+exactly once, no report changed since it was recorded, no narrowed run — then
+unions the reports via `scripts/check_zig_coverage.py`: a line counts as covered
 when any component executed it, because the unit lanes and the integration
-suites reach largely disjoint code — publishes the union to
-`coverage/zig/merged`, and enforces `ZIG_COVERAGE_MIN_PCT` plus one floor per
-product folder.
+suites reach largely disjoint code. It publishes the union to
+`coverage/zig/merged` and enforces `ZIG_COVERAGE_MIN_PCT` plus one floor per
+product folder. The canonical sequence `make test-unit-all &&
+make test-integration` invokes it automatically once both manifests exist;
+evidence that exists but does not match fails, evidence that is absent is
+named, not punished. In CI the two producers run as parallel jobs of the
+`test-integration` workflow and the grade is a third job consuming their
+artifacts, all in one workflow run because artifact storage is run-scoped.
 
 `lifecycle` measures the only test that drives the real `serve.run`. It runs
 last and costs a rebuild: the integration binary takes its test filter at build
 time, and this test cannot share a process with the rest of the suite, since it
 installs signal handlers, binds a port and moves process-global state the other
 tests read. Before it existed, `cmd/serve.zig` — the daemon's entire boot
-sequence — measured 0% of 116 lines. Both lanes that run it, this one and
-`make memleak`, grep its run marker: a test that skipped still yields a valid
-report, describing a process that started and stopped.
+sequence — measured 0% of 116 lines. Both lanes that run it, `test-integration`
+and `make memleak`, grep its run marker: a test that skipped still yields a
+valid report, describing a process that started and stopped.
 
 ### The denominator holds shipped code only
 

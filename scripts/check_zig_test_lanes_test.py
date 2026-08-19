@@ -38,9 +38,45 @@ class TestLaneGraph(unittest.TestCase):
 
     def test_public_integration_targets_run_integration_graph(self) -> None:
         makefile = (ROOT / "make/test-integration.mk").read_text()
-        self.assertEqual(makefile.count("zig build test-integration"), 3)
+        # The narrow selectors still run the graph through the build system. The
+        # full lane builds the binary instead, because kcov needs one to drive,
+        # and that instrumented run is now the only one there is.
+        self.assertEqual(makefile.count("zig build test-integration $(ZIG_TEST_FILTER_ARG)"), 2)
+        self.assertIn("zig build install test-integration-bin", makefile)
         self.assertNotIn("zig build test\n", makefile)
         self.assertIn("test-integration: $(TEST_STATE_DEP)", makefile)
+
+    def test_only_the_integration_lane_measures_the_live_daemon_binary(self) -> None:
+        # The duplicate this removed: the unit coverage lane ran this binary
+        # under kcov and the integration lane ran it again bare, so one full
+        # verification executed ~2000 live-service tests twice.
+        #
+        # `bench.mk` names it too and is not a second owner: the memleak lane
+        # drives one filtered test under valgrind for a leak proof, a different
+        # instrument answering a different question, contributing nothing to the
+        # coverage union.
+        owners = set()
+        for path in (ROOT / "make").glob("*.mk"):
+            body = path.read_text()
+            if "agentsfleetd-integration-tests" in body or "ZIG_INTEGRATION_TEST_BIN" in body:
+                owners.add(path.name)
+        self.assertEqual(owners, {"test.mk", "test-integration.mk", "bench.mk"})
+        self.assertNotIn(
+            "agentsfleetd-integration-tests", (ROOT / "make/test-unit.mk").read_text()
+        )
+
+    def test_the_merged_grade_has_one_owner(self) -> None:
+        # Neither producer can see the union — the unit lane no longer runs the
+        # live components and the integration lane never runs the unit ones — so
+        # a floor graded from inside either would be a floor over half a
+        # codebase. The published summary file CI reads has the same one owner.
+        graders = {
+            path.name
+            for path in (ROOT / "make").glob("*.mk")
+            if "check_zig_coverage.py" in path.read_text()
+        }
+        self.assertEqual(graders, {"test.mk"})
+        self.assertIn("test-coverage-grade:", (ROOT / "make/test.mk").read_text())
 
     def test_integration_reset_is_the_default_dependency(self) -> None:
         # The reset dependency became a variable so an iterative local loop can
@@ -74,137 +110,6 @@ class TestLaneGraph(unittest.TestCase):
         self.assertIn("zig build test-integration-bin", makefile)
         self.assertIn("zig-out/bin/agentsfleetd-integration-tests", makefile)
         self.assertNotIn("zig build test-bin $$opt -Dtest-filter", makefile)
-
-
-class TestCoverageLane(unittest.TestCase):
-    def run_coverage(
-        self,
-        kcov_body: str,
-        minimum: str = "60",
-        lifecycle_ran: bool = True,
-    ) -> subprocess.CompletedProcess[str]:
-        with tempfile.TemporaryDirectory() as raw:
-            temp = Path(raw)
-            tool_dir = temp / "bin"
-            tool_dir.mkdir()
-            write_executable(tool_dir / "zig", "#!/bin/sh\nexit 0\n")
-            # Dedent before appending: an unindented line would otherwise become
-            # the common prefix and leave the body's own indentation in place.
-            stub = textwrap.dedent(kcov_body)
-            if lifecycle_ran:
-                stub += LIFECYCLE_MARKER_ECHO
-            write_executable(tool_dir / "kcov", stub)
-            # The lane now measures the integration binary too, which needs a
-            # live Postgres and Redis. These tests are about the gate's
-            # arithmetic and its failure messages, not about provisioning, so
-            # they declare the datastores already supplied — the same escape
-            # hatch continuous integration uses when it boots them itself.
-            cert = temp / "redis-ca.crt"
-            cert.write_text("stub cert: TEST_INFRA=provided only checks it is non-empty\n")
-            env = os.environ.copy()
-            env["PATH"] = f"{tool_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
-            return subprocess.run(
-                [
-                    "make",
-                    "test-coverage-zig",
-                    f"ZIG_COVERAGE_DIR={temp / 'coverage'}",
-                    f"ZIG_GLOBAL_CACHE_DIR={temp / 'global'}",
-                    f"ZIG_LOCAL_CACHE_DIR={temp / 'local'}",
-                    f"ZIG_COVERAGE_MIN_PCT={minimum}",
-                    # Redirected for the same reason as the coverage directory:
-                    # the default path is the one a real run publishes and CI
-                    # reads, and a stubbed run must not overwrite it.
-                    f"ZIG_COVERAGE_SUMMARY_FILE={temp / 'zig-coverage.txt'}",
-                    "TEST_INFRA=provided",
-                    "KEEP_TEST_STATE=1",
-                    f"TEST_REDIS_TLS_CA_CERT={cert}",
-                ],
-                cwd=ROOT,
-                env=env,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-
-    def test_below_floor_fails(self) -> None:
-        # The report carries per-line hits, not a `line-rate` summary attribute.
-        # The gate counts lines now precisely because trusting that attribute is
-        # how a 24-file report read as 93.70% of the codebase.
-        result = self.run_coverage(
-            """\
-            #!/bin/sh
-            for arg in "$@"; do case "$arg" in --*) ;; *) out=$arg; break;; esac; done
-            mkdir -p "$out"
-            {
-              printf '<coverage><packages><package><classes>\\n'
-              printf '<class filename="a.zig"><lines>\\n'
-              printf '<line number="1" hits="1"/>\\n'
-              i=2
-              while [ "$i" -le 10 ]; do
-                printf '<line number="%s" hits="0"/>\\n' "$i"
-                i=$((i+1))
-              done
-              printf '</lines></class></classes></package></packages></coverage>\\n'
-            } > "$out/cobertura.xml"
-            : > "$out/index.html"
-            echo "781 passed; 7 skipped; 0 failed."
-            """,
-        )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("below threshold", result.stdout + result.stderr)
-
-    def test_missing_component_report_fails(self) -> None:
-        result = self.run_coverage(
-            """\
-            #!/bin/sh
-            for arg in "$@"; do case "$arg" in --*) ;; *) out=$arg; break;; esac; done
-            case "$out" in */runner) exit 0;; esac
-            mkdir -p "$out"
-            printf '<coverage line-rate="0.50"/>\\n' > "$out/cobertura.xml"
-            echo "781 passed; 7 skipped; 0 failed."
-            """,
-        )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("component runner produced no Cobertura report", result.stdout + result.stderr)
-
-    def test_a_skipped_lifecycle_proof_fails_the_lane(self) -> None:
-        # The boot->drain proof skips itself when the datastores or the isolation
-        # variable are missing, and kcov still writes a perfectly valid report for
-        # the process that started and stopped. Without this check the lane would
-        # grade that as `cmd/serve.zig` being genuinely uncovered, which is the
-        # same number an honest regression produces.
-        result = self.run_coverage(
-            """\
-            #!/bin/sh
-            for arg in "$@"; do case "$arg" in --*) ;; *) out=$arg; break;; esac; done
-            mkdir -p "$out"
-            {
-              printf '<coverage><packages><package><classes>\\n'
-              printf '<class filename="a.zig"><lines>\\n'
-              printf '<line number="1" hits="1"/>\\n'
-              printf '</lines></class></classes></package></packages></coverage>\\n'
-            } > "$out/cobertura.xml"
-            : > "$out/index.html"
-            echo "781 passed; 7 skipped; 0 failed."
-            """,
-            lifecycle_ran=False,
-        )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("lifecycle test did not run", result.stdout + result.stderr)
-
-    def test_missing_kcov_names_install_hint(self) -> None:
-        env = os.environ.copy()
-        env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
-        result = subprocess.run(
-            ["make", "test-coverage-zig"],
-            cwd=ROOT,
-            env=env,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("install: brew install kcov", result.stdout + result.stderr)
 
 
 class TestMemleakLane(unittest.TestCase):
