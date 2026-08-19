@@ -2,18 +2,13 @@
 """Drive the two Zig coverage lanes and assert what each one executes.
 
 `make test-coverage-zig` and `make test-integration` own disjoint halves of the
-coverage union, and the whole point of the split is that neither reaches into
-the other's half. That is a claim about recipes, so these tests run the real
-recipes — against stub `zig` and `kcov` binaries, so nothing compiles and no
-suite runs — and read back which binaries each lane handed the instrument.
-
-The shared harness pieces come from `check_zig_test_lanes_test`, which owns the
-lifecycle run marker and the executable-stub helper for the memleak lane too.
-Two copies of a marker string is how one of them stops matching in silence.
-
-The workflow-wiring class at the end holds CI to the same ownership: the same
-one-owner rule these recipes prove locally, asserted over the workflow sources
-that invoke them.
+coverage union; neither may reach into the other's half. That is a claim about
+recipes, so these tests run the real recipes — against stub `zig` and `kcov`
+binaries, so nothing compiles and no suite runs — and read back which binaries
+each lane handed the instrument. The shared harness pieces (the lifecycle run
+marker, the executable-stub helper) come from `check_zig_test_lanes_test`. The
+workflow-wiring class at the end holds CI to the same one-owner rule, asserted
+over the workflow sources that invoke these recipes.
 """
 
 from __future__ import annotations
@@ -143,6 +138,23 @@ class TestUnitCoverageLane(LaneCase):
         self.assertFalse((self.temp / "zig-coverage.txt").exists())
         self.assertIn("make test-coverage-grade", self.output(result))
         self.assertTrue((self.temp / "evidence" / "unit.json").exists())
+
+    def test_a_failing_component_is_named_with_its_exit_status(self) -> None:
+        # The attribution lives in scripts/check-kcov-components.sh now; this
+        # proves it executes, not merely that its text survives.
+        self.install_stubs(
+            """\
+            #!/bin/sh
+            for arg in "$@"; do case "$arg" in --*) ;; *) out=$arg; break;; esac; done
+            mkdir -p "$out"
+            printf '<coverage/>\\n' > "$out/cobertura.xml"
+            case "$out" in */deadline) echo "FAIL (TestExpectedEqual)"; exit 7;; esac
+            echo "781 passed; 7 skipped; 0 failed."
+            """,
+        )
+        result = self.run_target("test-coverage-zig")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("component deadline exited 7", self.output(result))
 
     def test_missing_component_report_fails(self) -> None:
         self.install_stubs(
@@ -280,10 +292,8 @@ class TestMergedGrade(LaneCase):
 class TestWorkflowWiring(unittest.TestCase):
     """CI invokes the same owners, once, and grades fail-closed.
 
-    Source-level assertions, like `check_ci_lane_config_test`'s: the wiring
-    they hold is what makes the local one-owner proofs above mean anything in
-    CI, where a second `make test-integration` in another workflow would
-    silently reintroduce the duplicate execution this split removed.
+    Source-level assertions: a second `make test-integration` in another
+    workflow would silently reintroduce the duplicate this split removed.
     """
 
     WORKFLOWS = ROOT / ".github" / "workflows"

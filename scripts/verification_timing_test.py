@@ -155,6 +155,18 @@ class TestVerdict(TimingCase):
         self.assertIn("not faster in every cache state", output)
 
 
+    def test_a_candidate_with_equal_medians_is_not_an_improvement(self) -> None:
+        # A zero-change reading must not be publishable as a saving.
+        samples = []
+        for state in ("cold", "warm"):
+            for offset in (-5.0, 0.0, 5.0):
+                samples.append(sample(timing.BASELINE, state, 600.0 + offset))
+                samples.append(sample(timing.CANDIDATE, state, 600.0 + offset))
+        status, output = self.run_compare(samples)
+        self.assertEqual(status, 1)
+        self.assertIn("not faster in every cache state", output)
+
+
 class TestMalformedInput(TimingCase):
     def test_a_sample_missing_a_key_names_it(self) -> None:
         samples = comparable_set()
