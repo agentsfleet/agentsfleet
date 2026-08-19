@@ -567,13 +567,12 @@ The baseline is `contract.protocol.BASELINE_RO_PATHS`, bound read-only (`--ro-bi
 
 | Host path | Mode | Why the sandbox needs it |
 |---|---|---|
-| `/etc` | read-only | System configuration: resolver, certificate bundle, user database |
-| `/lib` | read-only | Shared libraries the child's dynamic linker resolves |
-| `/lib64` | read-only | 64-bit loader path on multilib hosts |
-| `/bin` | read-only | Core executables tool subprocesses invoke |
-| `/sbin` | read-only | System executables on hosts that split them from `/bin` |
-| `/opt` | read-only | Vendor-installed runtimes (a self-managed toolchain lands here) |
+| `/etc/ssl/certs` | read-only | The certificate bundle a credentialed dial verifies against — the only filesystem input the inference call needs |
+| `/etc/resolv.conf` | symlink | **Not a bind.** Recreated as a link into the directory below, because bwrap resolves a symlink when it binds and would drop the target file into an `/etc` landlock does not cover — measured on a real host as `resolver=0 dns=0 egress=0`, every lease losing name resolution |
+| `/etc/hosts` | read-only | Static name resolution, consulted before the resolver |
 | `/run/systemd/resolve` | read-only | The systemd-resolved stub `resolv.conf` that `/etc/resolv.conf` symlinks to. Without it the symlink dangles inside every lease and **all** DNS fails `HostResolutionFailed` regardless of network policy — the M167 incident |
+
+This list was six broad trees — `/etc`, `/usr`, `/lib`, `/lib64`, `/bin`, `/sbin`, `/opt` — and two of them carried credentials into every lease. `/etc` brought the host account database; `/opt` brought the daemon's own installation directory, whose `.env` holds the control-plane token. Nothing read it, because nothing needed to: the runner binary is statically linked and rides its own single-file bind, so a lease needs no interpreter and no shared library, and once no hosted tool can spawn a process it needs no executable at all. What remains is what a lease must have to reach its inference endpoint.
 
 Beyond the baseline the bwrap argv establishes the sandbox's own floor (`/usr` read-only, a private `/proc`, `/dev`, and one `tmpfs` per `BASELINE_RW_TMPFS` entry — today `/tmp`), ro-binds the runner binary so the sandbox can exec it, and binds the lease workspace read-write. **The workspace is the only writable bind unless an operator named another one; the tmpfs floor is the sandbox's own writable scratch, private per lease and gone at exit.**
 

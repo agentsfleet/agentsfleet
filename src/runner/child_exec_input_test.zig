@@ -230,15 +230,18 @@ test "buildCallArgs uses the raw body when the request JSON is not an object" {
     try testing.expectEqualStrings("[1,2,3]", args.message.?);
 }
 
-test "buildCallArgs yields null fleet_config and tools_spec for an empty policy" {
+test "an empty policy yields a null fleet_config but an EMPTY tools array" {
     const alloc = testing.allocator;
-    // No model, no provider/key, no tools → the `count() > 0`/`items.len > 0`
-    // guards take their null side; a mutant that wraps an empty object/array
-    // (e.g. `if (true)`) is caught here.
+    // fleet_config keeps its `count() > 0` guard — an absent config is genuinely
+    // absent. tools does NOT: the array crosses empty, because "this Fleet
+    // declared no tools" and "no preference" were collapsing into one null and
+    // the resolver read that null as a licence for the whole registry. An empty
+    // array reaching the resolver is what makes `tools: []` mean what it says.
     var args = try input.buildCallArgs(alloc, testLease(.{}));
     defer args.deinit(alloc);
     try testing.expect(args.fleet_config == null);
-    try testing.expect(args.tools_spec == null);
+    try testing.expect(args.tools_spec != null);
+    try testing.expectEqual(@as(usize, 0), args.tools_spec.?.array.items.len);
     try testing.expectEqualStrings("hi", args.message.?); // message still resolves
 }
 

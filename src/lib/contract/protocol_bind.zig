@@ -48,82 +48,17 @@ pub const ExtraBind = struct {
     mode: BindMode = .read_only,
     note: []const u8 = "",
 };
+/// The daemon-owned path lists this module validates against. Re-exported so
+/// `protocol_policy.zig` keeps one import point and consumers keep the
+/// `protocol.X` spelling they already use.
+const paths = @import("protocol_bind_paths.zig");
 
-/// System paths the daemon binds read-only into every sandbox. Lives in the
-/// contract layer, not in the runner, because BOTH sides validate an operator
-/// list against it: the runner before `buildArgv`, and the control plane at the
-/// API boundary — neither trusts the other's check, and a second copy of this
-/// list would let the two disagree about what is protected.
-/// `sandbox_args.RO_SYSTEM_PATHS` aliases this (RULE UFS: one source).
-pub const BASELINE_RO_PATHS = [_][]const u8{ "/etc", "/lib", "/lib64", "/bin", "/sbin", "/opt", "/run/systemd/resolve" };
-
-/// Paths bwrap constructs as a fresh private tmpfs in every sandbox — writable
-/// at the mount layer, per-lease, gone at exit. Both enforcement layers consume
-/// this one list (`sandbox_args` emits a `--tmpfs` per entry; landlock grants
-/// write), so mount and policy can never disagree about where a lease may
-/// write — the write-side twin of the resolver drift `BASELINE_RO_PATHS`
-/// exists to prevent. The engine writes credentialed dial headers here, so a
-/// floor entry landlock demotes to read-only fails every lease at its first
-/// credentialed call.
-pub const BASELINE_RW_TMPFS = [_][]const u8{"/tmp"};
-
-/// The sandboxed child's `HOME`. The daemon's own `HOME` is deliberately NOT
-/// forwarded: the unit sets it to its `RuntimeDirectory` (`/run/agentsfleet`),
-/// a host path no bind list carries and no landlock rule covers, so the engine
-/// resolved its configuration directory onto a path that answers `EACCES`. Every
-/// dev lease died there as `AccessDenied`, at zero wall seconds, before its first
-/// model call — and the mount layer was innocent: bwrap builds a writable tmpfs at
-/// `/run` for the resolver bind's mountpoint, so the `mkdir` SUCCEEDS and only the
-/// policy layer refuses.
-///
-/// A path on the writable floor closes it from both sides at once: bwrap builds
-/// the tmpfs per lease, landlock grants it write from that same list, and the
-/// directory dies with the lease rather than accumulating agent state on the host.
-pub const CHILD_HOME = "/tmp/agentsfleet-home";
-
-// The child's home must sit INSIDE the writable floor. Outside it, this constant
-// would reintroduce exactly the fault it exists to close — a home the mount layer
-// never builds and the policy layer never grants.
-comptime {
-    var inside = false;
-    for (BASELINE_RW_TMPFS) |rw| {
-        if (containsPath(rw, CHILD_HOME)) inside = true;
-    }
-    if (!inside)
-        @compileError("CHILD_HOME must nest under a BASELINE_RW_TMPFS entry: " ++ CHILD_HOME);
-}
-
-/// Paths an operator bind may never name, beyond the baseline itself. Two
-/// groups: mounts the bwrap base argv already establishes (`/usr`, `/proc`,
-/// `/dev`, `/tmp` — re-binding one changes the sandbox's own floor), and host
-/// surfaces where a WRITABLE mount is host control rather than a repair
-/// (`/root`, `/home`, `/boot`, `/sys`, `/run`, `/var/run` and the daemon's own
-/// state dir — the last covers the runner token and the container socket).
-///
-/// This is a backstop, not the security model. A denylist alone fails open on
-/// everything unlisted, so the load-bearing controls stay structural: overlap
-/// with a protected path is refused outright, the mode is explicit and defaults
-/// closed, and the self-test reports every entry. The list exists because
-/// `read_write` is assignable, and the cost of missing the obvious host-control
-/// paths is a runner-wide escalation rather than one failed lease.
-pub const SENSITIVE_PATHS = [_][]const u8{
-    "/usr",  "/proc",    "/dev",                 "/tmp",
-    "/root", "/home",    "/boot",                "/sys",
-    "/run",  "/var/run", "/var/lib/agentsfleet",
-};
-
-// A mount the sandbox constructs is never an operator's to re-mode: every
-// writable-floor path must sit in the refusal list above, or an extra bind
-// could shadow the per-lease tmpfs with a host directory.
-comptime {
-    for (BASELINE_RW_TMPFS) |rw| {
-        var protected = false;
-        for (SENSITIVE_PATHS) |sp| {
-            if (std.mem.eql(u8, rw, sp)) protected = true;
-        }
-        if (!protected) @compileError("BASELINE_RW_TMPFS entry missing from SENSITIVE_PATHS: " ++ rw);
-    }
-}
+pub const BASELINE_RO_PATHS = paths.BASELINE_RO_PATHS;
+pub const BASELINE_RW_TMPFS = paths.BASELINE_RW_TMPFS;
+pub const SENSITIVE_PATHS = paths.SENSITIVE_PATHS;
+pub const RESOLV_LINK = paths.RESOLV_LINK;
+pub const RESOLV_LINK_TARGET = paths.RESOLV_LINK_TARGET;
+pub const CHILD_HOME = paths.CHILD_HOME;
 
 /// Extra-bind bounds. The operator list is ADDITIVE to the daemon-owned
 /// baseline: an assignment can only append, never drop or re-mode a path the
@@ -176,31 +111,12 @@ pub fn extraBindsValid(binds: []const ExtraBind) bool {
 /// function about the resolved path (`sandbox_args.assertBindTargetsSafe`).
 pub fn pathOverlapsProtected(path: []const u8) bool {
     for (BASELINE_RO_PATHS) |p| {
-        if (pathsOverlap(path, p)) return true;
+        if (paths.pathsOverlap(path, p)) return true;
     }
     for (SENSITIVE_PATHS) |p| {
-        if (pathsOverlap(path, p)) return true;
+        if (paths.pathsOverlap(path, p)) return true;
     }
     return false;
-}
-
-/// True when two absolute paths name the same mount or one contains the other.
-/// Segment-aware: `/etc` contains `/etc/ssl` but NOT `/etcetera`, so a prefix
-/// compare alone would refuse legitimate paths and admit nothing extra.
-///
-/// Compares the strings as given, so it is only sound on canonical paths.
-/// `extraBindsValid` runs `bindPathValid` first for exactly that reason — the
-/// two are one check split in half, not two independent ones.
-fn pathsOverlap(a: []const u8, b: []const u8) bool {
-    if (std.mem.eql(u8, a, b)) return true;
-    return containsPath(a, b) or containsPath(b, a);
-}
-
-/// True when `parent` contains `child` as a directory subtree.
-fn containsPath(parent: []const u8, child: []const u8) bool {
-    if (child.len <= parent.len) return false;
-    if (!std.mem.startsWith(u8, child, parent)) return false;
-    return child[parent.len] == '/';
 }
 
 /// One path's grammar: absolute, already canonical, no NUL, no trailing slash.
@@ -323,6 +239,30 @@ test "test_bind_mode_defaults_closed_and_maps_to_its_bwrap_flag" {
     try std.testing.expectEqualStrings("--bind-try", BindMode.read_write.bwrapFlag());
     try std.testing.expectEqualStrings("read-only", BindMode.read_only.label());
     try std.testing.expectEqualStrings("read-write", BindMode.read_write.label());
+}
+
+test "no operator bind can reach the resolver link or a credential file" {
+    // Found by adversarial review of the narrowing itself: dropping /etc from
+    // the baseline removed the overlap that used to refuse these. The resolver
+    // entry is the sharp one — it is a symlink the base argv emits, and an
+    // operator bind lands AFTER that argv, so bwrap's last-write-wins would let
+    // a bind replace it and redirect DNS for every lease.
+    const must_refuse = [_][]const u8{
+        "/etc/resolv.conf", "/etc/shadow",           "/etc/gshadow",
+        "/etc/ssl/certs",   "/etc/hosts",            "/etc",
+        "/opt/agentsfleet", "/opt/agentsfleet/.env",
+    };
+    for (must_refuse) |path| {
+        try std.testing.expect(pathOverlapsProtected(path));
+        try std.testing.expect(!extraBindsValid(&.{.{ .path = path }}));
+    }
+}
+
+test "a legitimate operator bind is still admitted" {
+    // The refusals above must not have swallowed the feature: a path that
+    // overlaps nothing the daemon owns still binds.
+    try std.testing.expect(!pathOverlapsProtected("/srv/models"));
+    try std.testing.expect(extraBindsValid(&.{.{ .path = "/srv/models", .mode = .read_write }}));
 }
 
 test "test_extra_binds_are_bounded" {

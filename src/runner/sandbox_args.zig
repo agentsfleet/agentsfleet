@@ -272,11 +272,13 @@ fn appendBwrapAt(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), bwr
     // `--new-session` detaches the controlling terminal (no TIOCSTI input
     // injection if a tty is ever attached); it sits with the other namespace
     // flags so every sandboxed tier gets it.
+    // No /usr: the engine is a static binary on its own single-file bind, and
+    // no hosted tool spawns a process, so an executable tree inside a lease is
+    // reachable surface with no consumer.
     const base = [_][]const u8{
         bwrap,           "--die-with-parent", "--unshare-all",
         "--new-session", "--proc",            "/proc",
-        "--dev",         "/dev",              RO_BIND,
-        "/usr",          "/usr",
+        "--dev",         "/dev",
     };
     for (base) |a| try dup(alloc, list, a);
     // One private tmpfs per writable-floor entry, from the shared list landlock
@@ -289,6 +291,15 @@ fn appendBwrapAt(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), bwr
     // missing parent fails one caller and not the other. Ordered after the tmpfs
     // mounts because the directory has to land ON the tmpfs, not under it.
     for ([_][]const u8{ "--dir", contract.protocol.CHILD_HOME }) |a| try dup(alloc, list, a);
+    // The resolver, as a LINK into the granted resolver directory. Binding it
+    // instead makes bwrap resolve the symlink and drop the target file into an
+    // `/etc` landlock does not cover — measured on a real host as
+    // `resolver=0 dns=0 egress=0`, every lease losing DNS.
+    for ([_][]const u8{
+        "--symlink",
+        contract.protocol.RESOLV_LINK_TARGET,
+        contract.protocol.RESOLV_LINK,
+    }) |a| try dup(alloc, list, a);
     // Baseline then operator additions, composed by the pure helper so the
     // additive-only invariant is asserted independently of this platform arm.
     // `extra_binds` is validated (`extraBindsValid`) before it reaches the

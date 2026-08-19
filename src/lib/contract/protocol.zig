@@ -140,6 +140,8 @@ pub const MAX_BIND_NOTE_LEN = policy.MAX_BIND_NOTE_LEN;
 pub const BASELINE_RO_PATHS = policy.BASELINE_RO_PATHS;
 pub const BASELINE_RW_TMPFS = policy.BASELINE_RW_TMPFS;
 pub const CHILD_HOME = policy.CHILD_HOME;
+pub const RESOLV_LINK = policy.RESOLV_LINK;
+pub const RESOLV_LINK_TARGET = policy.RESOLV_LINK_TARGET;
 pub const SENSITIVE_PATHS = policy.SENSITIVE_PATHS;
 
 /// How tenant secrets reach the runner. S0 ships `inline` only (secrets travel
