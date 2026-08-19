@@ -224,11 +224,21 @@ ZIG_COVERAGE_KCOV = kcov --clean --include-pattern="$(CURDIR)/src" --exclude-pat
 ZIG_EVIDENCE_DIR ?= $(CURDIR)/.tmp/verification
 ZIG_EVIDENCE_UNIT ?= $(ZIG_EVIDENCE_DIR)/unit.json
 ZIG_EVIDENCE_INTEGRATION ?= $(ZIG_EVIDENCE_DIR)/integration.json
-# The sources that reach the measured binaries. A digest over these is what
-# makes evidence from another commit refuse itself.
+# The sources that reach the measured binaries, PLUS the machinery that runs
+# and grades them: the lane recipes, the component reporter, the recorder and
+# the union grader. A digest over the first group is what makes evidence from
+# another commit refuse itself; digesting the second group means an edit to how
+# coverage is collected or judged also refuses evidence collected the old way,
+# instead of grading it under new rules.
 ZIG_EVIDENCE_SOURCE_ARGS = \
 	 --source-path src --source-path schema \
-	 --source-path build.zig --source-path build.zig.zon --source-path build_runner.zig
+	 --source-path build.zig --source-path build.zig.zon --source-path build_runner.zig \
+	 --source-path make/test.mk --source-path make/test-unit.mk \
+	 --source-path make/test-integration.mk --source-path make/test-infra.mk \
+	 --source-path scripts/check-kcov-components.sh \
+	 --source-path scripts/verification_evidence.py \
+	 --source-path scripts/check_zig_coverage.py \
+	 --source-path scripts/check_zig_coverage_floors.py
 # The graph the evidence was recorded against: change any of it and the union is
 # grading a different question, so recorded evidence must not survive the change.
 ZIG_EVIDENCE_GRAPH_ARGS = \
@@ -237,7 +247,10 @@ ZIG_EVIDENCE_GRAPH_ARGS = \
 	 --graph "$(ZIG_COVERAGE_REQUIRED_COMPONENTS)" \
 	 --graph "$(ZIG_COVERAGE_REQUIRED_ROOTS)" \
 	 --graph "$(ZIG_COVERAGE_FOLDER_FLOORS)" \
-	 --graph "$(ZIG_COVERAGE_MIN_PCT)"
+	 --graph "$(ZIG_COVERAGE_FOLDER_TARGETS)" \
+	 --graph "$(ZIG_COVERAGE_MIN_PCT)" \
+	 --graph "$(ZIG_COVERAGE_MIN_FILES) $(ZIG_COVERAGE_MIN_MEASURED_LINES)" \
+	 --graph "$(subst $(CURDIR),.,$(ZIG_COVERAGE_KCOV))"
 ZIG_EVIDENCE_ARGS = --repo-root "$(CURDIR)" $(ZIG_EVIDENCE_SOURCE_ARGS) $(ZIG_EVIDENCE_GRAPH_ARGS)
 ZIG_EVIDENCE_RECORD = python3 scripts/verification_evidence.py record $(ZIG_EVIDENCE_ARGS)
 

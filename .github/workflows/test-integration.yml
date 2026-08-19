@@ -202,7 +202,7 @@ jobs:
             -e KEEP_TEST_STATE=1 \
             -e TEST_DATABASE_URL="postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb?sslmode=disable" \
             -e TEST_REDIS_TLS_URL="rediss://:agentsfleet@localhost:6379" \
-            ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4 \
+            ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4@sha256:b27550eb4910e77e532f061a7c1f3453815cb275dd188bdcc7db0448dd656948 \
             sh -c 'mkdir -p "$ZIG_GLOBAL_CACHE_DIR" "$ZIG_LOCAL_CACHE_DIR" && zig build install test-integration-bin && make test-integration'
       # Runs on the HOST, after the container step has produced
       # zig-out/bin/agentsfleetd: the host has compose (and therefore `docker
@@ -247,7 +247,10 @@ jobs:
     # It must be the SAME image as the producers, because the evidence records
     # the toolchain identity it was built with and the grade refuses a mismatch.
     container:
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
+      # The same digest the producers run — the evidence records the toolchain
+      # identity, and a retagged image could carry a different kcov or libc under
+      # the same Zig version string.
+      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4@sha256:b27550eb4910e77e532f061a7c1f3453815cb275dd188bdcc7db0448dd656948
     steps:
       - uses: actions/checkout@v6
       - name: Fetch the unit coverage evidence
@@ -332,7 +335,7 @@ jobs:
   test-integration-kernel:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
+      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4@sha256:b27550eb4910e77e532f061a7c1f3453815cb275dd188bdcc7db0448dd656948
       # Privileged + private cgroup namespace so the security-enforcement proofs
       # can delegate a cgroup-v2 controller subtree (cgroup pids/OOM cage). The
       # GitHub runner is native amd64, so seccomp's arch-matched BPF filter is
@@ -374,6 +377,17 @@ jobs:
   test-integration:
     runs-on: ubuntu-latest
     needs: [test-coverage-zig, test-integration-suite, zig-coverage-grade, test-integration-kernel]
+    # `if: always()` + an explicit result check, not a bare `needs`: a needs-only
+    # aggregate is SKIPPED when a dependency fails, and branch protection treats
+    # a skipped required check as passing — one failed producer would leave the
+    # required context green.
+    if: always()
     steps:
-      - name: Preserve the required integration check name
-        run: echo "The live daemon suite ran once, and the merged union graded green"
+      - name: Fail unless every needed job succeeded
+        run: |
+          results='${{ join(needs.*.result, ' ') }}'
+          echo "needed job results: $results"
+          for result in $results; do
+            [ "$result" = "success" ] || { echo "✗ a needed job finished '$result'"; exit 1; }
+          done
+          echo "The live daemon suite ran once, and the merged union graded green"

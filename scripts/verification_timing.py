@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
 import sys
 from pathlib import Path
@@ -49,6 +50,13 @@ def load_samples(path: Path) -> list[dict]:
         missing = [key for key in REQUIRED_KEYS if key not in sample]
         if missing:
             raise ValueError(f"sample {index} is missing {', '.join(missing)}")
+        if sample["arm"] not in (BASELINE, CANDIDATE):
+            raise ValueError(f"sample {index} has unknown arm {sample['arm']!r}")
+        seconds = sample["seconds"]
+        # A negative or non-finite duration is not a slow run, it is a broken
+        # collector — and a fabricated negative candidate would read as a saving.
+        if not isinstance(seconds, (int, float)) or not math.isfinite(seconds) or seconds <= 0:
+            raise ValueError(f"sample {index} has a non-positive or non-finite duration: {seconds!r}")
     return samples
 
 
@@ -114,6 +122,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--samples", type=Path, required=True)
     parser.add_argument("--min-samples", type=int, default=DEFAULT_MIN_SAMPLES)
     args = parser.parse_args(argv)
+    if args.min_samples < 1:
+        print("✗ [timing] --min-samples must be at least 1", file=sys.stderr)
+        return 1
 
     try:
         samples = load_samples(args.samples)
