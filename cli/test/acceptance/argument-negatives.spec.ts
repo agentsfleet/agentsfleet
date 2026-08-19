@@ -171,6 +171,16 @@ describe("group nodes print help that survives a pipe", () => {
       assert.equal(result.stderr.trim(), "", `${label}: help leaked to stderr: ${result.stderr}`);
     });
 
+    // Regression: resolving this from the argv shape instead of from
+    // commander's own help path sent the body to stderr the moment any
+    // global flag was present.
+    it(`"${label}" writes help to stdout with a global flag present`, async () => {
+      const result = await runFleetctl([...args, "--json"], { env: env() });
+      assert.equal(result.code, 0, `${label} --json: expected exit 0; stderr=${result.stderr}`);
+      assert.ok(result.stdout.length > 0, `${label} --json: help body did not reach stdout`);
+      assert.equal(result.stderr.trim(), "", `${label} --json: help leaked to stderr`);
+    });
+
     it(`"${label} --help" matches the bare invocation`, async () => {
       const bare = await runFleetctl([...args], { env: env() });
       const flagged = await runFleetctl([...args, "--help"], { env: env() });

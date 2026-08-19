@@ -146,27 +146,25 @@ export function applyOutputToTree(
 }
 
 // A group node carries subcommands but no action of its own, so commander
-// answers a bare `agentsfleet workspace` with `help({ error: true })`: the
-// body lands on stderr while the process exits 0, so `| less` reads nothing.
+// answers a bare `agentsfleet workspace` with `help({ error: true })` — which
+// routes the body through writeErr and would exit 1, so `| less` reads
+// nothing. Forcing `error: false` on those nodes sends the same body to
+// stdout at exit 0.
 //
-// Resolving the invocation here, before parse, is what fixes it. Inferring it
-// from the write stream instead does not work — commander emits the help body
-// and any addHelpText tail as separate writes, so a body-matching filter
-// splits the tail onto the other stream. Attaching an action to the group
-// does not work either: commander then treats an unknown subcommand as an
-// excess argument and stops reporting it as an unknown command.
+// Overriding `help` is what makes this hold for EVERY invocation. Resolving
+// the argv instead only catches a bare path, so `agentsfleet workspace
+// --json` kept going to stderr; filtering the write stream splits
+// commander's addHelpText tail onto the wrong stream, because the tail is a
+// separate write; and attaching an action makes an unknown subcommand report
+// as an excess argument instead of an unknown command.
 //
-// Only a bare path qualifies. Anything carrying a flag stays with commander.
-export function resolveBareGroup(root: Command, argv: readonly string[]): Command | null {
-  if (argv.length === 0 || argv.some((token) => token.startsWith("-"))) return null;
-  let cmd: Command = root;
-  for (const token of argv) {
-    const next: Command | undefined = cmd.commands.find(
-      (c) => c.name() === token || c.aliases().includes(token),
-    );
-    if (!next) return null;
-    cmd = next;
-  }
+// `--help` is unaffected: it already calls help() with no context, and
+// `error` is falsy there.
+export function routeGroupHelpToStdout(cmd: Command): void {
+  for (const sub of cmd.commands) routeGroupHelpToStdout(sub);
   const hasAction = typeof (cmd as { _actionHandler?: unknown })._actionHandler === "function";
-  return cmd.commands.length > 0 && !hasAction ? cmd : null;
+  if (cmd.commands.length === 0 || hasAction) return;
+  const inherited = cmd.help.bind(cmd);
+  cmd.help = ((contextOptions?: Record<string, unknown>): never =>
+    inherited({ ...(contextOptions ?? {}), error: false })) as Command["help"];
 }
