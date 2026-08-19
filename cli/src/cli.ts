@@ -14,6 +14,16 @@ import {
 import { loadState } from "./lib/state-load.ts";
 import { Effect } from "effect";
 import { runCommanderParse } from "./lib/commander-bridge.ts";
+import {
+  applyOutputToTree,
+  captureRejection,
+  exitFromCommanderError,
+  rejectionCodeFor,
+  resolveBareGroup,
+  renderRejection,
+  type PendingRejection,
+} from "./lib/commander-boundary.ts";
+import { EXIT_CODE } from "./errors/index.ts";
 import { isString } from "./lib/guards.ts";
 import { resolveApiKeyFromEnv } from "./services/config.ts";
 import { printJson, writeError, writeLine } from "./program/io.ts";
@@ -169,53 +179,9 @@ function installPreAction(
   });
 }
 
-// commander.* error codes that map to POSIX "usage error" exit 2.
-// Commander itself uses 1 for these; we override to 2 so the
-// did-you-mean / unknown-subcommand rule matches POSIX.
-const COMMANDER_USAGE_CODES: ReadonlySet<string> = new Set([
-  "commander.unknownCommand",
-  "commander.unknownOption",
-  "commander.invalidArgument",
-  "commander.missingArgument",
-  "commander.missingMandatoryOptionValue",
-  "commander.optionMissingArgument",
-  "commander.excessArguments",
-]);
-
-function exitFromCommanderError(
-  err: CommanderError,
-  state: ProgramState,
-): number {
-  if (err.code === "commander.help" || err.code === "commander.helpDisplayed")
-    return 0;
-  if (state.exitCode !== 0) return state.exitCode;
-  return COMMANDER_USAGE_CODES.has(err.code) ? 2 : err.exitCode;
-}
-
 function errMessage(err: unknown): string {
   if (err instanceof Error && isString(err.message)) return err.message;
   return String(err);
-}
-
-// Apply exitOverride + the injected stdout/stderr to a command AND every
-// subcommand recursively. commander 14 scopes both to the command they're
-// called on; without the walk, a subcommand option-validation error escapes
-// the Effect bridge via process.exit and writes to the real stderr.
-function applyOutputToTree(
-  cmd: Command,
-  stdout: WritableStreamLike,
-  stderr: WritableStreamLike,
-): void {
-  cmd.exitOverride();
-  cmd.configureOutput({
-    writeOut: (s: string) => {
-      stdout.write(s);
-    },
-    writeErr: (s: string) => {
-      stderr.write(s);
-    },
-  });
-  for (const sub of cmd.commands) applyOutputToTree(sub, stdout, stderr);
 }
 
 export async function runCli(
@@ -313,7 +279,20 @@ export async function runCli(
   // the injected test streams. Apply both to the whole tree so every parse-stage
   // rejection throws (caught by runCommanderParse) and routes through the
   // configured output instead.
-  applyOutputToTree(program, stdout, stderr);
+  // commander writes its rejection text before it throws, so the text is
+  // recorded here and joined with the commander.* code at the catch site.
+  let pendingRejection: PendingRejection | null = null;
+  applyOutputToTree(program, stdout, stderr, (text, cmd) => {
+    pendingRejection = captureRejection(text, cmd, pendingRejection);
+  });
+
+  // A bare group node prints its own help on stdout and exits 0; leaving it
+  // to commander routes the body through the error stream instead.
+  const bareGroup = resolveBareGroup(program, effectiveArgv);
+  if (bareGroup) {
+    bareGroup.outputHelp();
+    return 0;
+  }
 
   installPreAction(program, ctx, state);
 
@@ -329,9 +308,14 @@ export async function runCli(
     const err = parseResult.commanderError ?? parseResult.otherError;
     if (err instanceof CommanderError) {
       // InvalidArgumentError is a CommanderError subclass, so it is caught
-      // here too; its commander.invalidArgument code maps to exit 2 via the
-      // usage-code set. No separate branch is reachable below.
-      return exitFromCommanderError(err, state);
+      // here too; its commander.invalidArgument code is one of the usage
+      // codes. No separate branch is reachable below.
+      const pending: PendingRejection | null = pendingRejection;
+      if (pending) {
+        const body = renderRejection(pending, rejectionCodeFor(err.code), jsonMode);
+        writeLine(stderr, jsonMode ? body : ui.err(`error: ${body}`));
+      }
+      return exitFromCommanderError(err, state, EXIT_CODE.ValidationError);
     }
     const message = errMessage(err);
     if (ctx.jsonMode) {
