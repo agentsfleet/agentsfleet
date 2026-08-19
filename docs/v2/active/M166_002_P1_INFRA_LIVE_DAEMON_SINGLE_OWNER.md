@@ -71,6 +71,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `.github/workflows/test-integration.yml` | EDIT | Carry both coverage producers, the fail-closed grade, the unprivileged migration check and the required aggregate in one run. |
 | `docs/architecture/testing.md` | EDIT | Record which lane owns which component, the evidence rule, and the grade command. |
 | `docs/v2/active/M166_002_P1_INFRA_LIVE_DAEMON_SINGLE_OWNER.md` | EDIT | Mark Dimensions DONE and carry acceptance evidence during execution. |
+| `scripts/scopes.admin` | DELETE | Orphaned fixture with zero callers, swept under RULE ORP at Indy's request. |
 
 ## Applicable Rules
 
@@ -260,7 +261,9 @@ Replay rows: running the canonical sequence twice on unchanged sources produces 
 
 **1. Orphaned files — deleted from disk and git.**
 
-N/A — no files deleted.
+| File to delete | Verify |
+|----------------|--------|
+| `scripts/scopes.admin` | `test ! -f scripts/scopes.admin` |
 
 **2. Orphaned references — zero remaining imports/uses.**
 
@@ -270,6 +273,7 @@ N/A — no files deleted.
 | the removed coverage job in `test.yml` | `grep -n 'test-coverage-zig' .github/workflows/test.yml` | 0 matches |
 | the merged grade inside the unit lane | `grep -n 'check_zig_coverage.py' make/test-unit.mk` | 0 matches |
 | the nine-component claim for the unit lane | `grep -n 'nine component binaries' docs/architecture/testing.md` | 0 matches |
+| `scopes.admin` | `grep -rn 'scopes.admin' scripts/ make/ src/ .github/` | 0 matches |
 
 ## Out of Scope
 
