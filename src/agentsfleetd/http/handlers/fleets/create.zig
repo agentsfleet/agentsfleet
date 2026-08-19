@@ -18,10 +18,12 @@ const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const fleet_config = @import("../../../fleet_runtime/config.zig");
 const config_validate = @import("../../../fleet_runtime/config_validate.zig");
+const heroku_names = @import("../../../state/heroku_names.zig");
 const markdown_limits = @import("../../../fleet_runtime/markdown_limits.zig");
 const create_stream = @import("create_stream.zig");
 const create_install_steps = @import("create_install_steps.zig");
 const create_fleet_bundle = @import("create_fleet_bundle.zig");
+const create_failure = @import("create_failure.zig");
 const create_grants = @import("create_grants.zig");
 const cron_sync = @import("cron_sync.zig");
 // Request-independent core.fleets row-write primitives (insert/activate/delete +
@@ -34,6 +36,9 @@ const log = logging.scoped(.fleet_api);
 const Hx = hx_mod.Hx;
 const DEFAULT_TRIGGER_DAILY_DOLLARS = "1.0";
 const HINT_ROW_ORPHANED_MANUAL_RECOVERY = "row_orphaned_manual_recovery";
+/// Bounded retries for the defaulted-name collision path — the 3-digit tail
+/// space is 1000, so three losing draws means something else is wrong.
+const AUTO_NAME_ATTEMPTS: usize = 3;
 
 pub const MAX_SOURCE_LEN = markdown_limits.MAX_SOURCE_LEN;
 pub const MAX_TRIGGER_LEN = markdown_limits.MAX_TRIGGER_LEN;
@@ -138,9 +143,12 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
 
     // Optional operator name override (multi-instance): the same bundle can back
     // many fleets in a workspace, each with its own name + webhooks/cron. The
-    // runner leases by content_hash (name-agnostic) and nothing reads
-    // config_json's name downstream, so overriding the persisted `name` column
-    // is safe. Validated against the same slug rules as a SKILL.md name.
+    // runner leases by content_hash (name-agnostic), and the `name` COLUMN is
+    // the instance identity every human-facing surface reads — `FleetSession`
+    // loads it beside the config for exactly that reason. `config_json` keeps
+    // the bundle's declared name and is deliberately not rewritten here: it
+    // describes the bundle, which the override did not change. Validated
+    // against the same slug rules as a SKILL.md name.
     if (body.name) |override_name| {
         config_validate.validateSkillName(override_name) catch {
             hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_AGENTSFLEET_NAME_REQUIRED);
@@ -166,15 +174,41 @@ pub fn innerCreateFleet(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
     };
     const now_ms = clock.nowMillis();
 
-    fleet_row.insertFleetOnConn(db.conn, workspace_id, source.source_markdown, trigger_markdown, parsed, skill_meta.tags, source.bundle_ref, fleet_id, now_ms) catch |err| {
-        if (fleet_row.isUniqueViolation(db.conn)) {
-            hx.fail(ec.ERR_AGENTSFLEET_NAME_EXISTS, ec.MSG_AGENTSFLEET_NAME_EXISTS);
-            return;
-        }
-        log.err("create_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err), .req_id = hx.req_id });
-        common.internalDbError(hx.res, hx.req_id);
-        return;
-    };
+    // An EXPLICIT name that collides is an honest conflict the caller must see.
+    // A DEFAULTED name (nothing sent; the template's own name) that collides is
+    // the second-install-from-one-template case — auto-suffix and retry, so the
+    // dashboard's one-step install never dead-ends on a name nobody typed.
+    // Bounded: the 3-digit tail space is 1000; three draws losing every race is
+    // a stuck workspace, not bad luck, and reports as the plain conflict.
+    var insert_attempts: usize = 0;
+    while (true) {
+        fleet_row.insertFleetOnConn(db.conn, workspace_id, source.source_markdown, trigger_markdown, parsed, skill_meta.tags, source.bundle_ref, fleet_id, now_ms) catch |err| {
+            switch (fleet_row.classifyInsertFailure(
+                fleet_row.isUniqueViolation(db.conn),
+                body.name != null,
+                insert_attempts,
+                AUTO_NAME_ATTEMPTS,
+            )) {
+                .retry_suffixed => {
+                    insert_attempts += 1;
+                    parsed.config.name = heroku_names.suffixed(hx.alloc, skill_meta.name, config_validate.MAX_NAME_LEN) catch {
+                        create_failure.nameGenerationFailed(hx);
+                        return;
+                    };
+                    continue;
+                },
+                .conflict => {
+                    hx.fail(ec.ERR_AGENTSFLEET_NAME_EXISTS, ec.MSG_AGENTSFLEET_NAME_EXISTS);
+                    return;
+                },
+                .hard_failure => {
+                    create_failure.insertFailed(hx, err);
+                    return;
+                },
+            }
+        };
+        break;
+    }
     db.end();
     db_open = false;
 

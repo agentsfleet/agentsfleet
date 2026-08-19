@@ -34,7 +34,7 @@ export default function AddSecretDialog({ workspaceId }: { workspaceId: string }
             Name it and add one or more fields (like api_key). Values are encrypted on save — you
             can replace them later, but never view them again.{" "}
             <a
-              href="https://docs.agentsfleet.net/fleets/credentials"
+              href="https://docs.agentsfleet.net/fleets/secrets"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-pulse underline-offset-2 hover:underline focus-visible:underline"

@@ -53,7 +53,7 @@ function renderDialog(prefillRepo?: string, prefillRef?: string) {
   render(<Harness prefillRepo={prefillRepo} prefillRef={prefillRef} />);
 }
 
-async function openAndSubmit(user: ReturnType<typeof userEvent.setup>, repo: string, action = "Create fleet library") {
+async function openAndSubmit(user: ReturnType<typeof userEvent.setup>, repo: string, action = "Create") {
   await user.click(screen.getByRole("button", { name: /^open$/i }));
   const input = await screen.findByLabelText(/repository/i);
   if (repo) await user.type(input, repo);
@@ -210,7 +210,7 @@ describe("AddFleetDialog", () => {
 
     // A slow importer (GitHub fetch + validate + object-store write) must not let
     // the operator fire a second add on top of the first.
-    const submit = await screen.findByRole("button", { name: /creating fleet library|create fleet library$/i });
+    const submit = await screen.findByRole("button", { name: /creating|^create$/i });
     await waitFor(() => expect(submit.hasAttribute("disabled")).toBe(true));
     expect(screen.getByRole("button", { name: /^cancel$/i }).hasAttribute("disabled")).toBe(true);
 

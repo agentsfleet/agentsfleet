@@ -22,6 +22,18 @@ const CURRENT: AssignedPolicy = {
 };
 
 describe("EditPolicyDialog", () => {
+  // Every field here is an assignment with a default and a range, and getting one
+  // wrong degrades the host silently from the operator's point of view. The form
+  // cannot hold that much explanation, so it points at the page that can.
+  it("points at the runner policy page", () => {
+    render(<EditPolicyDialog runnerId="r-edit-1" current={CURRENT} onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
+
+    expect(screen.getByRole("link", { name: /^learn more/i }).getAttribute("href")).toBe(
+      "https://docs.agentsfleet.net/runners",
+    );
+  });
+
   it("pre-fills from the stored assignment and PATCHes the edited one", async () => {
     // The Indy-requested row action: reuse the four-field form, call the
     // landed PATCH — the dashboard is the fix path for a degraded runner.
@@ -33,11 +45,11 @@ describe("EditPolicyDialog", () => {
     render(<EditPolicyDialog runnerId="r-edit-1" current={CURRENT} onSaved={onSaved} />);
 
     fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
-    expect((screen.getByLabelText(/registry allowlist/i) as HTMLInputElement).value).toBe("pypi.org");
+    expect((screen.getByLabelText(/allowlist/i) as HTMLInputElement).value).toBe("pypi.org");
     expect((screen.getByLabelText("Workers") as HTMLInputElement).value).toBe("2");
 
     fireEvent.change(screen.getByLabelText("Workers"), { target: { value: "4" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save assignment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     // PATCH replaces the WHOLE assignment, so the bind list is always sent —
     // explicitly empty here, never omitted. Omitting it is what wiped an
@@ -64,9 +76,9 @@ describe("EditPolicyDialog", () => {
     render(<EditPolicyDialog runnerId="r-edit-3" current={withBind} onSaved={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
 
-    expect((screen.getByLabelText("Bind path 1") as HTMLInputElement).value).toBe("/srv/models");
+    expect((screen.getByLabelText("Mount path 1") as HTMLInputElement).value).toBe("/srv/models");
     fireEvent.change(screen.getByLabelText("Workers"), { target: { value: "4" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save assignment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
       expect(updateRunnerPolicyActionMock).toHaveBeenCalledWith("r-edit-3", {
@@ -77,7 +89,7 @@ describe("EditPolicyDialog", () => {
   });
 
   // Reported from a real assignment attempt: the dialog could not be scrolled,
-  // so "Save assignment" sat below the fold and the policy could only be saved
+  // so the Save control sat below the fold and the policy could only be saved
   // by maximising the window. Assigning a policy is the one action that makes a
   // runner able to take work, so an unreachable footer blocks the whole flow.
   it("test_policy_dialog_body_scrolls: keeps the footer reachable on a short viewport", () => {
@@ -95,7 +107,7 @@ describe("EditPolicyDialog", () => {
     render(<EditPolicyDialog runnerId="r-edit-5" current={CURRENT} onSaved={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
 
-    const group = screen.getByRole("radiogroup", { name: /isolation to assign/i });
+    const group = screen.getByRole("radiogroup", { name: /isolation/i });
     expect(group.className).toContain("sm:grid-cols-3");
     // Pinned against the tier list: a fourth tier would re-orphan the layout.
     expect(screen.getAllByRole("radio")).toHaveLength(3);
@@ -105,10 +117,10 @@ describe("EditPolicyDialog", () => {
     const onSaved = vi.fn();
     render(<EditPolicyDialog runnerId="r-edit-3" current={CURRENT} onSaved={onSaved} />);
     fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
-    fireEvent.change(screen.getByLabelText(/registry allowlist/i), {
+    fireEvent.change(screen.getByLabelText(/allowlist/i), {
       target: { value: "http://not a host" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save assignment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.getByText(/must be a host name/i)).toBeTruthy());
     expect(updateRunnerPolicyActionMock).not.toHaveBeenCalled();
     expect(onSaved).not.toHaveBeenCalled();
@@ -144,7 +156,7 @@ describe("EditPolicyDialog", () => {
     render(<EditPolicyDialog runnerId="r-edit-2" current={CURRENT} onSaved={onSaved} />);
 
     fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
-    fireEvent.click(screen.getByRole("button", { name: "Save assignment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(updateRunnerPolicyActionMock).toHaveBeenCalled());
     // The dialog stays open with the error presented (the set happens inside

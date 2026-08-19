@@ -4,7 +4,6 @@ import { useState } from "react";
 import type { FleetLibraryPageResult } from "@/lib/api/fleet-library";
 import type { LibraryError } from "@/lib/api/library-types";
 import type { FleetLibraryGalleryEntry } from "@/lib/types";
-import { InstallConfirm } from "./InstallConfirm";
 import { InstallSourceSelector } from "./InstallSourceSelector";
 import { InstallStates } from "./InstallStates";
 import type { InstallSource } from "./install-flow";
@@ -30,10 +29,11 @@ type Props = {
 };
 
 // Orchestrates the library-entry-only install flow: pick a library entry from
-// the gallery (platform ∪ this workspace's tenant entries), optionally name
-// the fleet on the confirm step (so one library entry can back several
-// fleets), then proceed inline to the live install states. Create
-// auto-proceeds once the instant connect gate is satisfied. The states own
+// the gallery (platform ∪ this workspace's tenant entries) and proceed straight
+// to the live install states — one click, no confirm step. Naming is the
+// server's job: an install that lands on a taken default name is auto-suffixed
+// (`{template}-NNN`), and an explicit name stays a CLI affair
+// (`agentsfleet install --library <id> --name`). The states own
 // connect → creating → done and land "Open fleet".
 export function InstallFleet({
   workspaceId,
@@ -48,34 +48,19 @@ export function InstallFleet({
   // Seeded from the server-resolved selection. This used to start null and be
   // filled by an effect that matched `?library=<id>` against the entries after
   // hydration, so a deep link painted the gallery and then replaced it with the
-  // confirm step a frame later. Seeding state directly removes that frame.
+  // install states a frame later. Seeding state directly removes that frame.
   const [selection, setSelection] = useState<InstallSource | null>(initialSelection);
-  // `null` ⇒ the operator has not confirmed the install yet (the confirm step is
-  // showing); a string (possibly empty) ⇒ confirmed, carrying the optional name.
-  const [installName, setInstallName] = useState<string | null>(null);
 
   function reset() {
     setSelection(null);
-    setInstallName(null);
   }
 
-  if (selection && installName !== null) {
+  if (selection) {
     return (
       <InstallStates
         workspaceId={workspaceId}
         source={selection}
         presentCredentialNames={presentCredentialNames}
-        name={installName || undefined}
-        onBack={reset}
-      />
-    );
-  }
-
-  if (selection) {
-    return (
-      <InstallConfirm
-        entry={selection}
-        onInstall={(name) => setInstallName(name)}
         onBack={reset}
       />
     );

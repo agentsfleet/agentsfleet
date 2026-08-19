@@ -14,6 +14,12 @@ const Self = @This();
 
 fleet_id: []const u8,
 workspace_id: []const u8,
+/// The fleet's own name, from `core.fleets.name` — the instance identity, and
+/// what an operator sees. NOT `config.name`: that one is the bundle's declared
+/// name from TRIGGER.md, shared by every fleet installed from that bundle. The
+/// two diverge whenever a name is server-derived or operator-overridden at
+/// create, so anything naming THIS fleet to a human reads this field.
+name: []const u8,
 config: fleet_config.FleetConfig,
 instructions: []const u8,
 /// Session context (conversation memory) from core.fleet_sessions.
@@ -34,12 +40,13 @@ execution_started_at: i64 = 0,
 
 comptime {
     const actual = @sizeOf(Self);
-    if (actual != 408) @compileError(std.fmt.comptimePrint("FleetSession size changed: {d}, expected 408", .{actual}));
+    if (actual != 424) @compileError(std.fmt.comptimePrint("FleetSession size changed: {d}, expected 424", .{actual}));
 }
 
 pub fn deinit(self: *Self, alloc: Allocator) void {
     alloc.free(self.fleet_id);
     alloc.free(self.workspace_id);
+    alloc.free(self.name);
     self.config.deinit(alloc);
     alloc.free(self.source_markdown);
     alloc.free(self.context_json);
@@ -60,7 +67,7 @@ pub fn claimFleet(
     defer pool.release(conn);
 
     var q = PgQuery.from(try conn.query(
-        \\SELECT workspace_id::text, config_json::text, source_markdown, status, bundle_content_hash
+        \\SELECT workspace_id::text, config_json::text, source_markdown, status, bundle_content_hash, name
         \\FROM core.fleets WHERE id = $1
     , .{fleet_id_input}));
     defer q.deinit();
@@ -85,6 +92,8 @@ pub fn claimFleet(
     // Bundle ref (nullable column): present only for fleets created from a bundle.
     const bundle_content_hash: ?[]const u8 = if (try row.get(?[]const u8, 4)) |bch| try alloc.dupe(u8, bch) else null;
     errdefer if (bundle_content_hash) |bch| alloc.free(bch);
+    const name = try alloc.dupe(u8, try row.get([]const u8, 5));
+    errdefer alloc.free(name);
 
     if (!status.isRunnable()) {
         log.warn("fleet_event_loop_claim_skipped", .{ .error_code = error_codes.ERR_AGENTSFLEET_PAUSED_INGRESS, .fleet_id = fleet_id_input });
@@ -116,6 +125,7 @@ pub fn claimFleet(
     var session = Self{
         .fleet_id = fleet_id,
         .workspace_id = workspace_id,
+        .name = name,
         .config = config,
         .instructions = instructions,
         .context_json = context_json,

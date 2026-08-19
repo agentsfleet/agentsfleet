@@ -141,7 +141,7 @@ describe("CreateWorkspaceDialog component", () => {
     await renderDialog();
     expect(
       screen.getByText(
-        "Use workspaces to organize fleets, teammates, and credentials within your tenant.",
+        "Use workspaces to organize fleets, teammates, and credentials within your organization.",
       ),
     ).toBeTruthy();
     expect(screen.getByLabelText("Name")).toBeTruthy();

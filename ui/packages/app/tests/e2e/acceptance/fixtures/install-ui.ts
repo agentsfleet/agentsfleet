@@ -3,7 +3,7 @@
  * flow like a real human. M103 removed paste/github-import authoring — a fleet
  * is now installed from a template card, so this helper first onboards a tenant
  * template over the API (there is no UI/CLI onboard verb), then drives the
- * gallery → confirm → live-states walk in the browser. Used by the
+ * gallery → live-states walk in the browser. Used by the
  * full-lifecycle scenarios, which deliberately install through the interface
  * rather than via API seeding so the whole signup → install → observe → halt
  * walk is browser-driven end-to-end.
@@ -19,7 +19,6 @@
  * `router.push("/w/${workspaceId}/fleets/${fleet_id}")`; this helper waits for
  * that navigation and returns the new fleet id.
  */
-import * as crypto from "node:crypto";
 import { expect, type Page } from "@playwright/test";
 import { SOURCE_KIND_UPLOAD } from "@/lib/types";
 import { clientFor, type ClientHandle } from "./api-client";
@@ -100,23 +99,21 @@ async function onboardTemplate(auth: InstallAuth, templateName: string): Promise
 }
 
 export async function installViaUI(page: Page, name: string, auth: InstallAuth): Promise<string> {
-  // Onboard a uniquely-named tenant template so the gallery has exactly one
-  // card we can disambiguate (workspaces accumulate templates across runs —
-  // cleanup only deletes fleets). By the seed convention the SKILL `name:` is
-  // both the returned id and the card's rendered name.
-  const templateName = `tmpl-${crypto.randomBytes(4).toString("hex")}`;
-  await onboardTemplate(auth, templateName);
+  // Onboard a tenant template under the CALLER'S unique name: the one-step
+  // install takes the template's own name (no confirm step, no name field), so
+  // naming the template names the fleet. Callers pass per-run unique slugs,
+  // and workspaces accumulate templates across runs — cleanup only deletes
+  // fleets — so uniqueness also disambiguates the gallery card.
+  await onboardTemplate(auth, name);
 
   await page.goto(workspaceHref(auth.workspaceId, "fleets/new"));
   await expect(page).toHaveURL(workspaceUrlPattern("fleets/new"));
 
-  // Gallery → confirm: click this template's card action, then name the fleet
-  // and Install. Scope to the card's <article> so the click targets the right
-  // "Use entry" among any sibling cards.
-  const card = page.getByRole("article").filter({ hasText: templateName });
-  await card.getByRole("button", { name: "Use entry" }).click();
-  await page.getByLabel("Fleet name").fill(name);
-  await page.getByRole("button", { name: "Install", exact: true }).click();
+  // One step: click this template's card action — the install starts. Scope to
+  // the card's <article> so the click targets the right "Install" among any
+  // sibling cards.
+  const card = page.getByRole("article").filter({ hasText: name });
+  await card.getByRole("button", { name: "Install" }).click();
 
   // Install runs inline through the live "Install states" stream; on
   // install:ready it surfaces "Open fleet →", whose click does

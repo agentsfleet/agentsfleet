@@ -68,3 +68,29 @@ fn inList(list: []const []const u8, needle: []const u8) bool {
     }
     return false;
 }
+
+test "suffixed appends a 3-digit tail and respects the length cap" {
+    const alloc = std.testing.allocator;
+    const name = try heroku_names.suffixed(alloc, "github-pr-reviewer", 64);
+    defer alloc.free(name);
+    // `{base}-NNN`: the template name survives verbatim, the tail is numeric.
+    try std.testing.expect(std.mem.startsWith(u8, name, "github-pr-reviewer-"));
+    try std.testing.expectEqual(@as(usize, "github-pr-reviewer-".len + 3), name.len);
+    for (name["github-pr-reviewer-".len..]) |c| try std.testing.expect(c >= '0' and c <= '9');
+}
+
+test "suffixed truncates the base, never the tail, and never leaves a double dash" {
+    const alloc = std.testing.allocator;
+    // A 64-char base must shed room for "-NNN" — and when the cut lands on a
+    // '-', the dash goes too, or the result reads `base--042`.
+    const base = "a" ** 59 ++ "-tail";
+    const name = try heroku_names.suffixed(alloc, base, 64);
+    defer alloc.free(name);
+    try std.testing.expect(name.len <= 64);
+    try std.testing.expect(std.mem.indexOf(u8, name, "--") == null);
+    // Still a valid skill name shape end to end.
+    for (name) |c| {
+        const ok = (c >= 'a' and c <= 'z') or (c >= '0' and c <= '9') or c == '-';
+        try std.testing.expect(ok);
+    }
+}
