@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M166
 **Workstream:** 002
 **Date:** Aug 19, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — every full local verification and every Pull Request (PR) pays for the live daemon integration suite twice, once instrumented and once bare.
 **Categories:** INFRA
 **Batch:** B1 — no other workstream owns the verification lanes.
@@ -70,7 +70,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `.github/workflows/test.yml` | EDIT | Drop the coverage job and its needs entry; the `test` context keeps the unit and package lanes. |
 | `.github/workflows/test-integration.yml` | EDIT | Carry both coverage producers, the fail-closed grade, the unprivileged migration check and the required aggregate in one run. |
 | `docs/architecture/testing.md` | EDIT | Record which lane owns which component, the evidence rule, and the grade command. |
-| `docs/v2/active/M166_002_P1_INFRA_LIVE_DAEMON_SINGLE_OWNER.md` | EDIT | Mark Dimensions DONE and carry acceptance evidence during execution. |
+| `docs/v2/done/M166_002_P1_INFRA_LIVE_DAEMON_SINGLE_OWNER.md` | EDIT | Mark Dimensions DONE and carry acceptance evidence during execution. |
 | `scripts/scopes.admin` | DELETE | Orphaned fixture with zero callers, swept under RULE ORP at Indy's request. |
 
 ## Applicable Rules
