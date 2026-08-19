@@ -283,6 +283,12 @@ fn appendBwrapAt(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), bwr
     // also consumes — mount layer and policy layer cannot disagree on writes.
     for (contract.protocol.BASELINE_RW_TMPFS) |p|
         for ([_][]const u8{ "--tmpfs", p }) |a| try dup(alloc, list, a);
+    // The child's HOME, created on the floor above. `--dir` rather than trusting
+    // the engine to make it: its credential path calls `makePath` (which creates
+    // parents) but its config path calls `makeDirAbsolute` (which does not), so a
+    // missing parent fails one caller and not the other. Ordered after the tmpfs
+    // mounts because the directory has to land ON the tmpfs, not under it.
+    for ([_][]const u8{ "--dir", contract.protocol.CHILD_HOME }) |a| try dup(alloc, list, a);
     // Baseline then operator additions, composed by the pure helper so the
     // additive-only invariant is asserted independently of this platform arm.
     // `extra_binds` is validated (`extraBindsValid`) before it reaches the

@@ -67,6 +67,32 @@ pub const BASELINE_RO_PATHS = [_][]const u8{ "/etc", "/lib", "/lib64", "/bin", "
 /// credentialed call.
 pub const BASELINE_RW_TMPFS = [_][]const u8{"/tmp"};
 
+/// The sandboxed child's `HOME`. The daemon's own `HOME` is deliberately NOT
+/// forwarded: the unit sets it to its `RuntimeDirectory` (`/run/agentsfleet`),
+/// a host path no bind list carries and no landlock rule covers, so the engine
+/// resolved its configuration directory onto a path that answers `EACCES`. Every
+/// dev lease died there as `AccessDenied`, at zero wall seconds, before its first
+/// model call — and the mount layer was innocent: bwrap builds a writable tmpfs at
+/// `/run` for the resolver bind's mountpoint, so the `mkdir` SUCCEEDS and only the
+/// policy layer refuses.
+///
+/// A path on the writable floor closes it from both sides at once: bwrap builds
+/// the tmpfs per lease, landlock grants it write from that same list, and the
+/// directory dies with the lease rather than accumulating agent state on the host.
+pub const CHILD_HOME = "/tmp/agentsfleet-home";
+
+// The child's home must sit INSIDE the writable floor. Outside it, this constant
+// would reintroduce exactly the fault it exists to close — a home the mount layer
+// never builds and the policy layer never grants.
+comptime {
+    var inside = false;
+    for (BASELINE_RW_TMPFS) |rw| {
+        if (containsPath(rw, CHILD_HOME)) inside = true;
+    }
+    if (!inside)
+        @compileError("CHILD_HOME must nest under a BASELINE_RW_TMPFS entry: " ++ CHILD_HOME);
+}
+
 /// Paths an operator bind may never name, beyond the baseline itself. Two
 /// groups: mounts the bwrap base argv already establishes (`/usr`, `/proc`,
 /// `/dev`, `/tmp` — re-binding one changes the sandbox's own floor), and host

@@ -52,6 +52,7 @@ comptime {
 /// (RULE UFS: the dashboard and the daemon spell them the same way).
 pub const CHECK_RESOLVER = "resolver file resolves inside the sandbox";
 pub const CHECK_SCRATCH = "the scratch dir accepts a write inside the sandbox";
+pub const CHECK_HOME = "the child's home accepts a write inside the sandbox";
 pub const CHECK_DNS = "a hostname resolves inside the sandbox";
 pub const CHECK_EGRESS = "the inference endpoint is reachable";
 pub const CHECK_SANDBOX = "a sandbox can be established";
@@ -63,6 +64,7 @@ pub const CHECK_SANDBOX = "a sandbox can be established";
 /// internal identifier and hides it, losing the check's explanation.
 pub const DETAIL_OK = "no fault detected";
 pub const DETAIL_SCRATCH_READONLY = "the sandbox refused a write to its scratch tmpfs — every credentialed dial fails as TempFileCreateFailed until the write floor is granted";
+pub const DETAIL_HOME_UNREACHABLE = "the sandbox refused a write under the child's HOME — the engine cannot create its configuration directory, and every lease fails as AccessDenied before its first model call";
 pub const DETAIL_RESOLVER_DANGLING = "/etc/resolv.conf does not resolve to a readable file — the systemd-resolved stub is not bound into the sandbox";
 pub const DETAIL_DNS_FAILED = "the resolver did not answer inside the sandbox";
 pub const DETAIL_EGRESS_BLOCKED = "the endpoint did not accept a connection";
@@ -327,6 +329,22 @@ pub fn grade(alloc: std.mem.Allocator, cfg: Config, outcome: Outcome) !Result {
             DETAIL_SCRATCH_READONLY,
     });
 
+    // Graded unconditionally for the same reason scratch is, and separately from
+    // it because they answer different questions: scratch proves the writable
+    // FLOOR exists, this proves the child's HOME is ON it. A runner that passes
+    // the first and fails the second runs no lease at all — which is precisely
+    // the state that reported `all_ok=true, checks=4` while every lease died.
+    try checks.append(alloc, .{
+        .name = CHECK_HOME,
+        .ok = if (outcome.timed_out) false else outcome.home_writable,
+        .detail = if (outcome.timed_out)
+            DETAIL_TIMEOUT
+        else if (outcome.home_writable)
+            DETAIL_OK
+        else
+            DETAIL_HOME_UNREACHABLE,
+    });
+
     // DNS is graded against the ASSIGNED posture too. Under deny_all there is
     // no network to resolve through, so a failure there is the assignment
     // working — the same reasoning the egress arm below has always used.
@@ -398,6 +416,10 @@ pub const Outcome = struct {
     /// site must decide — a silently-defaulted pass here is the exact false
     /// confidence the probe exists to remove.
     scratch_writable: bool,
+    /// No default, for the same reason `scratch_writable` has none: `grade`
+    /// always reads it, so every construction site must decide rather than
+    /// inherit a pass it never observed.
+    home_writable: bool,
     dns_resolved: bool,
     egress_reachable: bool,
     extra_binds_present: bool = true,

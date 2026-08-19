@@ -43,6 +43,7 @@ fn cfg(policy: contract.protocol.NetworkPolicy, binds: []const contract.protocol
 const HEALTHY: selftest.Outcome = .{
     .resolver_readable = true,
     .scratch_writable = true,
+    .home_writable = true,
     .dns_resolved = true,
     .egress_reachable = true,
 };
@@ -78,6 +79,52 @@ test "a refused scratch write grades failed under every posture" {
         try std.testing.expectEqualStrings(selftest.DETAIL_SCRATCH_READONLY, c.detail);
         try std.testing.expect(!r.allOk());
     }
+}
+
+test "an unreachable child home fails the self-test under every posture" {
+    // The M136 fault, graded. This host reported all_ok=true on four green checks
+    // while every lease died at AccessDenied, because the probe proved the tmpfs
+    // FLOOR was writable and nothing proved the child's HOME sat on it. No
+    // assignment makes an unreachable home expected, so — like scratch, unlike
+    // DNS and egress — deny_all must not excuse it either.
+    const alloc = std.testing.allocator;
+    var o = HEALTHY;
+    o.home_writable = false;
+    inline for (.{ .allow_all, .deny_all_egress }) |posture| {
+        const r = try selftest.grade(alloc, cfg(posture, &.{}), o);
+        defer r.deinit(alloc);
+        const c = findCheck(r, selftest.CHECK_HOME) orelse return error.TestUnexpectedResult;
+        try std.testing.expect(!c.ok);
+        try std.testing.expectEqualStrings(selftest.DETAIL_HOME_UNREACHABLE, c.detail);
+        try std.testing.expect(!r.allOk());
+    }
+}
+
+test "a writable floor does not vouch for the home — the two checks are independent" {
+    // Precisely the shape that shipped: scratch green, home red. If one check
+    // could stand in for the other, this host would grade healthy again.
+    const alloc = std.testing.allocator;
+    var o = HEALTHY;
+    o.home_writable = false;
+    const r = try selftest.grade(alloc, cfg(.allow_all, &.{}), o);
+    defer r.deinit(alloc);
+    const scratch = findCheck(r, selftest.CHECK_SCRATCH) orelse return error.TestUnexpectedResult;
+    const home = findCheck(r, selftest.CHECK_HOME) orelse return error.TestUnexpectedResult;
+    try std.testing.expect(scratch.ok);
+    try std.testing.expect(!home.ok);
+    try std.testing.expect(!r.allOk());
+}
+
+test "a timed-out probe grades the home as timeout, not as refused" {
+    const alloc = std.testing.allocator;
+    var o = HEALTHY;
+    o.home_writable = false;
+    o.timed_out = true;
+    const r = try selftest.grade(alloc, cfg(.allow_all, &.{}), o);
+    defer r.deinit(alloc);
+    const c = findCheck(r, selftest.CHECK_HOME) orelse return error.TestUnexpectedResult;
+    try std.testing.expect(!c.ok);
+    try std.testing.expectEqualStrings(selftest.DETAIL_TIMEOUT, c.detail);
 }
 
 test "a timed-out probe grades scratch as timeout, not as refused" {
@@ -192,6 +239,7 @@ test "test_probe_detects_a_dangling_resolver" {
     const r = try selftest.grade(alloc, cfg(.allow_all, &.{}), .{
         .resolver_readable = false,
         .scratch_writable = true,
+        .home_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
     });
@@ -213,6 +261,7 @@ test "test_probe_reports_deny_all_as_expected" {
     const r = try selftest.grade(alloc, cfg(.deny_all_egress, &.{}), .{
         .resolver_readable = true,
         .scratch_writable = true,
+        .home_writable = true,
         .dns_resolved = true,
         .egress_reachable = false,
     });
@@ -231,6 +280,7 @@ test "test_probe_reports_deny_all_as_expected" {
     const open = try selftest.grade(alloc, open_cfg, .{
         .resolver_readable = true,
         .scratch_writable = true,
+        .home_writable = true,
         .dns_resolved = true,
         .egress_reachable = false,
     });
@@ -246,6 +296,7 @@ test "an open posture with no declared registry reports egress as untested, not 
     const r = try selftest.grade(alloc, cfg(.allow_all, &.{}), .{
         .resolver_readable = true,
         .scratch_writable = true,
+        .home_writable = true,
         .dns_resolved = true,
         .egress_reachable = false,
     });
@@ -265,6 +316,7 @@ test "under deny_all_egress an unresolvable name is the assignment working, not 
     const r = try selftest.grade(alloc, cfg(.deny_all_egress, &.{}), .{
         .resolver_readable = true,
         .scratch_writable = true,
+        .home_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
     });
@@ -284,6 +336,7 @@ test "a sandbox with no resolver tool reports DNS untested rather than broken" {
     const r = try selftest.grade(alloc, cfg(.allow_all, &.{}), .{
         .resolver_readable = true,
         .scratch_writable = true,
+        .home_writable = true,
         .dns_resolved = false,
         .egress_reachable = true,
         .dns_testable = false,
@@ -303,6 +356,7 @@ test "a timeout still outranks the posture arms — a hung probe proves nothing"
     const r = try selftest.grade(alloc, cfg(.deny_all_egress, &.{}), .{
         .resolver_readable = true,
         .scratch_writable = true,
+        .home_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
         .timed_out = true,
@@ -322,6 +376,7 @@ test "test_probe_timeout_reaps_and_reports" {
     const r = try selftest.grade(alloc, cfg(.allow_all, &.{}), .{
         .resolver_readable = true,
         .scratch_writable = true,
+        .home_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
         .timed_out = true,
@@ -345,6 +400,7 @@ test "test_probe_result_carries_no_secrets" {
     const r = try selftest.grade(alloc, c, .{
         .resolver_readable = false,
         .scratch_writable = true,
+        .home_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
     });

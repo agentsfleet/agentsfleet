@@ -220,6 +220,7 @@ pub fn outcomeFrom(line: []const u8, timed_out: bool) selftest.Outcome {
     if (timed_out) return .{
         .resolver_readable = false,
         .scratch_writable = false,
+        .home_writable = false,
         .dns_resolved = false,
         .egress_reachable = false,
         .extra_binds_present = false,
@@ -230,6 +231,9 @@ pub fn outcomeFrom(line: []const u8, timed_out: bool) selftest.Outcome {
         // Absent key reads as failed (an old probe paired with this parser
         // cannot certify a write it never attempted) — fail-closed like binds.
         .scratch_writable = verdictOf(line, selftest_probe.KEY_SCRATCH) == .passed,
+        // Same fail-closed reading as scratch: an absent key is a probe that
+        // never attempted the write, and a write nobody attempted is not a pass.
+        .home_writable = verdictOf(line, selftest_probe.KEY_HOME) == .passed,
         .dns_resolved = verdictOf(line, selftest_probe.KEY_DNS) == .passed,
         .egress_reachable = verdictOf(line, selftest_probe.KEY_EGRESS) == .passed,
         // An assigned bind is healthy ONLY on an explicit pass. Treating

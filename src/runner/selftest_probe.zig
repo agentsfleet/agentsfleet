@@ -86,11 +86,12 @@ pub const KEY_DNS = "dns=";
 pub const KEY_EGRESS = "egress=";
 pub const KEY_BINDS = "binds=";
 pub const KEY_SCRATCH = "scratch=";
+pub const KEY_HOME = "home=";
 
 /// Run the probe. Always exits 0 on a completed run — a FAILED CHECK is a
 /// result, not an error. A non-zero exit means the child could not run at all,
 /// which the parent reports as an unestablished sandbox instead of a verdict.
-pub fn run(argv: []const [:0]const u8, io: std.Io) u8 {
+pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, io: std.Io) u8 {
     var resolve_host: ?[]const u8 = null;
     var dial_target: ?[]const u8 = null;
     var sandboxed = false;
@@ -124,11 +125,12 @@ pub fn run(argv: []const [:0]const u8, io: std.Io) u8 {
 
     const resolver = Verdict.of(resolverResolves(io));
     const scratch = Verdict.of(scratchWritable(io));
+    const home = Verdict.of(homeWritable(io, env_map));
     const dns = if (resolve_host) |h| Verdict.of(nameResolves(io, h)) else .untested;
     const egress = if (dial_target) |t| Verdict.of(endpointAccepts(io, t)) else .untested;
     const binds: Verdict = if (binds_seen == 0) .untested else Verdict.of(binds_present);
 
-    writeVerdict(io, resolver, scratch, dns, egress, binds);
+    writeVerdict(io, resolver, scratch, home, dns, egress, binds);
     return 0;
 }
 
@@ -177,6 +179,30 @@ fn scratchWritable(io: std.Io) bool {
     return true;
 }
 
+/// Can this constrained child write under the HOME it was actually given?
+///
+/// Distinct from `scratchWritable`, and the distinction is the whole point.
+/// That check walks `BASELINE_RW_TMPFS` and proves the FLOOR is writable; it
+/// says nothing about whether the child's `$HOME` is on that floor. It was
+/// passing — `all_ok=true`, four checks green — on a host where every lease
+/// died, because HOME pointed at `/run/agentsfleet` and no list carried it.
+/// Reading the variable the child was handed is what turns that class of fault
+/// from invisible into a failed check.
+fn homeWritable(io: std.Io, env_map: *const std.process.Environ.Map) bool {
+    // Read from the process map rather than a libc getenv: same source the lease
+    // child's own env is built from, so the probe grades the value a lease sees.
+    const home = env_map.get("HOME") orelse return false;
+    if (home.len == 0 or !std.fs.path.isAbsolute(home)) return false;
+    // Same exclusive create/remove as the scratch check: O_EXCL proves MAKE_REG
+    // precisely and refuses to follow a planted symlink out of the sandbox.
+    var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const path = std.fmt.bufPrint(&path_buf, "{s}/agentsfleet_selftest_home_{d}", .{ home, std.c.getpid() }) catch return false;
+    const f = std.Io.Dir.createFileAbsolute(io, path, .{ .exclusive = true }) catch return false;
+    f.close(io);
+    std.Io.Dir.deleteFileAbsolute(io, path) catch return false;
+    return true;
+}
+
 /// Does a name resolve from in here? Any returned address is a pass; the
 /// address itself is discarded without being formatted, so it cannot reach the
 /// output line.
@@ -219,13 +245,14 @@ fn endpointAccepts(io: std.Io, target: []const u8) bool {
 /// closed stdout means the parent already reaped us, and there is no one left
 /// to tell. The parent reads a missing line as every check failing, which is
 /// the fail-closed reading.
-fn writeVerdict(io: std.Io, resolver: Verdict, scratch: Verdict, dns: Verdict, egress: Verdict, binds: Verdict) void {
-    var out_buf: [80]u8 = undefined;
+fn writeVerdict(io: std.Io, resolver: Verdict, scratch: Verdict, home: Verdict, dns: Verdict, egress: Verdict, binds: Verdict) void {
+    var out_buf: [96]u8 = undefined;
     var stdout_w = std.Io.File.stdout().writer(io, &out_buf);
     const stdout = &stdout_w.interface;
-    stdout.print("{s}{c} {s}{c} {s}{c} {s}{c} {s}{c}\n", .{
+    stdout.print("{s}{c} {s}{c} {s}{c} {s}{c} {s}{c} {s}{c}\n", .{
         KEY_RESOLVER, @intFromEnum(resolver),
         KEY_SCRATCH,  @intFromEnum(scratch),
+        KEY_HOME,     @intFromEnum(home),
         KEY_DNS,      @intFromEnum(dns),
         KEY_EGRESS,   @intFromEnum(egress),
         KEY_BINDS,    @intFromEnum(binds),

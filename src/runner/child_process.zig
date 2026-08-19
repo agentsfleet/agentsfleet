@@ -16,6 +16,7 @@ const cgroup = @import("engine/CgroupScope.zig");
 const client_errors = @import("engine/client_errors.zig");
 const sandbox = @import("sandbox_args.zig");
 const sandbox_env = @import("sandbox_env.zig");
+const contract = @import("contract");
 const Config = @import("daemon/config.zig");
 
 const log = logging.scoped(.runner_supervisor);
@@ -86,6 +87,13 @@ pub fn buildChildEnviron(alloc: std.mem.Allocator, daemon_env: *const std.proces
         comptime std.debug.assert(!std.mem.startsWith(u8, name, sandbox_env.ENV_DENY_PREFIX));
         if (daemon_env.get(name)) |value| try env.put(name, value);
     }
+    // HOME is ASSIGNED, never inherited. The daemon's own HOME names a host path
+    // outside every bind and landlock rule, so a child that inherited it resolved
+    // its config directory onto EACCES and died before its first model call. This
+    // value sits on the writable tmpfs floor bwrap builds per lease, so it exists
+    // and is writable by construction — and it is set unconditionally, because a
+    // child with no HOME cannot resolve a config directory at all.
+    try env.put("HOME", contract.protocol.CHILD_HOME);
     return env;
 }
 
@@ -125,12 +133,42 @@ test "forkExec env filter forwards only the allowlist and drops daemon vars" {
     var child = try buildChildEnviron(alloc, &daemon);
     defer child.deinit();
 
-    try testing.expectEqualStrings("/home/runner", child.get("HOME").?);
+    // HOME is assigned, not forwarded: the daemon's value names a host path the
+    // sandbox never mounts, so forwarding it is what killed every lease.
+    try testing.expectEqualStrings(contract.protocol.CHILD_HOME, child.get("HOME").?);
     try testing.expectEqualStrings("/usr/bin:/bin", child.get("PATH").?);
     try testing.expect(child.get("RUNNER_DAEMON_ONLY_A") == null);
     try testing.expect(child.get("RUNNER_DAEMON_ONLY_B") == null);
     // An allowlisted-but-unset var is simply absent (pass-through-if-set).
     try testing.expect(child.get("SSL_CERT_FILE") == null);
+}
+
+test "the child environ carries a HOME the sandbox provides, never the daemon's" {
+    const alloc = testing.allocator;
+    var daemon: std.process.Environ.Map = .init(alloc);
+    defer daemon.deinit();
+    // The exact value the unit sets, and the exact value that broke every lease:
+    // a host path no bind list carries and no landlock rule covers.
+    try daemon.put("HOME", "/run/agentsfleet");
+
+    var child = try buildChildEnviron(alloc, &daemon);
+    defer child.deinit();
+
+    const home = child.get("HOME").?;
+    try testing.expectEqualStrings(contract.protocol.CHILD_HOME, home);
+    try testing.expect(!std.mem.eql(u8, "/run/agentsfleet", home));
+}
+
+test "the child is given a HOME even when the daemon has none" {
+    const alloc = testing.allocator;
+    var daemon: std.process.Environ.Map = .init(alloc);
+    defer daemon.deinit();
+    // No HOME on the daemon side at all. A child with no HOME cannot resolve a
+    // config directory, so the assignment is unconditional rather than a fallback.
+    var child = try buildChildEnviron(alloc, &daemon);
+    defer child.deinit();
+
+    try testing.expectEqualStrings(contract.protocol.CHILD_HOME, child.get("HOME").?);
 }
 
 test "forkExec env filter omits every AGENTSFLEET_ daemon secret from the child environ" {

@@ -19,8 +19,15 @@ pub const ENV_DENY_PREFIX = "AGENTSFLEET_";
 /// NullClaw engine, and tool subprocesses). `RUNNER_*` (parent-only daemon
 /// config) and `NULLCLAW_PROVIDER`/`NULLCLAW_MODEL` (delivered on the lease, not
 /// env) are deliberately excluded.
+/// `HOME` is NOT here, and its absence is the point. It was forwarded for years
+/// so the engine could resolve a configuration directory — but the value it
+/// forwarded named a HOST path (`/run/agentsfleet`) that no sandbox list carries,
+/// so the child inherited a home it could not reach and every lease died at
+/// `AccessDenied`. The child's home is now assigned, not lent:
+/// `child_process.buildChildEnviron` sets it to `contract.protocol.CHILD_HOME`,
+/// which lives on the writable tmpfs floor bwrap builds per lease. A daemon path
+/// is never the right answer for a process that cannot see the daemon's mounts.
 pub const ENV_PASSTHROUGH_ALLOWLIST = [_][]const u8{
-    "HOME", // NullClaw config dir; absence → error.HomeDirNotFound (load-bearing)
     "PATH", // tool subprocess + wasmtime executable resolution (load-bearing)
     "NULLCLAW_OBSERVER", // optional observer-backend selector (safe default: log)
     "SSL_CERT_FILE", // TLS CA bundle override — pass-through-if-set
