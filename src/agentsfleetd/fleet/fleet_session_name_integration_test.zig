@@ -25,6 +25,7 @@ const ALLOC = std.testing.allocator;
 // UUIDv7 literals (version nibble 7, variant 8) so the schema id CHECK passes.
 const WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0df011";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dfc01";
+const STOPPED_FLEET_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0dfc02";
 
 /// What the bundle's TRIGGER.md declares — every install from it says this.
 const BUNDLE_NAME = "github-pr-reviewer";
@@ -73,4 +74,27 @@ test "integration: a claimed fleet carries its own name, not the bundle's" {
     try std.testing.expectEqualStrings(BUNDLE_NAME, session.config.name);
 
     _ = try conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{FLEET_ID});
+}
+
+test "integration: claiming a stopped fleet fails without leaking what it had loaded" {
+    const h = startHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    _ = try conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{STOPPED_FLEET_ID});
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleetWithStatus(conn, STOPPED_FLEET_ID, WORKSPACE_ID, "stopped-fleet", "stopped");
+
+    // The status check sits AFTER the row's owned copies are taken, so this is
+    // the path every one of those errdefers exists for. `std.testing.allocator`
+    // is the assertion: it fails the test on any byte the early return orphans,
+    // which is the only proof the errdefer chain is actually correct.
+    try std.testing.expectError(error.FleetNotActive, FleetSession.claimFleet(ALLOC, STOPPED_FLEET_ID, h.pool));
+
+    _ = try conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{STOPPED_FLEET_ID});
 }
