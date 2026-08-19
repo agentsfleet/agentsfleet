@@ -52,8 +52,7 @@ class LaneCase(unittest.TestCase):
         # argument is what a test asserts a lane executed.
         preamble = (
             "#!/bin/sh\n"
-            # The evidence recorder asks the instrument its version; the real
-            # kcov prints one line and exits 0.
+            # The evidence recorder asks the instrument its version.
             '[ "$1" = "--version" ] && { echo "kcov stub-43"; exit 0; }\n'
             "kcov_seen=0\n"
             'for kcov_arg in "$@"; do\n'
@@ -103,8 +102,7 @@ class LaneCase(unittest.TestCase):
         return result.stdout + result.stderr
 
 
-# What kcov would have written: one covered line and nine uncovered, so the
-# union grades at 10% and any floor above that is red.
+# One covered line, nine uncovered: the union grades at 10%.
 SPARSE_REPORT = """\
 #!/bin/sh
 for arg in "$@"; do case "$arg" in --*) ;; *) out=$arg; break;; esac; done
@@ -136,9 +134,8 @@ class TestUnitCoverageLane(LaneCase):
         self.assertIn("zig-out/bin/agentsfleetd-tests", measured)
 
     def test_unit_lane_does_not_grade_the_merged_floor(self) -> None:
-        # It can see seven components of nine. A floor over those is a floor
-        # over a different codebase, so it records what it measured and names
-        # who grades it.
+        # Seven components of nine: a floor over those is a floor over a
+        # different codebase, so it records and names who grades.
         self.install_stubs(SPARSE_REPORT)
         result = self.run_target("test-coverage-zig")
         self.assertEqual(result.returncode, 0, self.output(result))
@@ -147,8 +144,8 @@ class TestUnitCoverageLane(LaneCase):
         self.assertTrue((self.temp / "evidence" / "unit.json").exists())
 
     def test_a_failing_component_is_named_with_its_exit_status(self) -> None:
-        # The attribution lives in scripts/check-kcov-components.sh now; this
-        # proves it executes, not merely that its text survives.
+        # Proves scripts/check-kcov-components.sh executes, not merely that its
+        # text survives.
         self.install_stubs(
             """\
             #!/bin/sh
@@ -179,9 +176,8 @@ class TestUnitCoverageLane(LaneCase):
         self.assertIn("component runner produced no Cobertura report", self.output(result))
 
     def test_missing_kcov_names_install_hint(self) -> None:
-        # PATH holds make's own directory and an empty one — never /usr/bin,
-        # where an apt-installed kcov lives. With kcov visible this would run
-        # the REAL lane, schema-dropping reset included, from a lint target.
+        # PATH holds make's directory and an empty one — never /usr/bin, where
+        # an apt kcov would send a lint target into the REAL lane, reset included.
         make_dir = str(Path(shutil.which("make")).parent)
         env = os.environ.copy()
         env["PATH"] = f"{make_dir}:{self.tool_dir}"
@@ -195,8 +191,8 @@ class TestIntegrationLane(LaneCase):
         self.install_stubs(SPARSE_REPORT)
         result = self.run_target("test-integration")
         self.assertEqual(result.returncode, 0, self.output(result))
-        # Two executions of one binary, not two runs of one suite: the filtered
-        # rebuild runs the boot-to-drain proof that the unfiltered run skips.
+        # Two executions of one binary, not two runs of one suite: the
+        # filtered rebuild runs the proof the unfiltered run skips.
         self.assertEqual(
             self.binaries_measured(),
             ["zig-out/bin/agentsfleetd-integration-tests"] * 2,
@@ -245,10 +241,9 @@ class TestIntegrationLane(LaneCase):
         self.assertTrue(manifest["filtered"])
 
 
-# The stub report is one file of ten lines, so every denominator assertion but
-# the rate would fail on shape alone. Relaxing them leaves the rate as the one
-# thing a floor test tests. Both lanes get identical overrides — the graph
-# digest covers these, and evidence from one graph must not validate in another.
+# The stub report is one file of ten lines; every denominator assertion but the
+# rate would fail on shape alone, so those relax. Both lanes get identical
+# overrides — the graph digest covers these.
 STUB_SHAPED_GRAPH = (
     "ZIG_COVERAGE_MIN_FILES=0",
     "ZIG_COVERAGE_MIN_MEASURED_LINES=0",
