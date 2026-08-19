@@ -25,10 +25,18 @@
 //! output (Invariant 7).
 
 const std = @import("std");
+const contract = @import("contract");
+const child_exec = @import("child_exec.zig");
+const sandbox_hardening = @import("sandbox_hardening.zig");
 
 /// argv subcommand selecting probe mode. Deliberately `__`-prefixed like
 /// `__execute`: dispatched before the operator registry, absent from help.
 pub const SUBCOMMAND = "__selftest_probe";
+
+/// Exit for a probe whose sandbox hardening could not be established. Non-zero
+/// so the parent grades it as an unestablished sandbox, never as a verdict —
+/// the same fail-closed posture `__execute` takes.
+const HARDENING_FAIL_EXIT: u8 = 1;
 
 /// The name to resolve, supplied by the parent from the ASSIGNED registry
 /// allowlist. Absent → the DNS check reports untested rather than inventing a
@@ -39,12 +47,12 @@ pub const RESOLVE_FLAG_PREFIX = "--resolve=";
 /// `host:port` to dial, likewise drawn from the assignment. Absent → untested.
 pub const DIAL_FLAG_PREFIX = "--dial=";
 
-/// An operator-assigned extra bind to confirm landed, repeatable up to
-/// `MAX_EXTRA_BINDS`. Both bind modes use bwrap's `-try` form, so a path absent
-/// on THIS host is skipped silently rather than failing the sandbox — without
-/// this check the operator's only signal that an entry never landed is a
-/// tenant's failed run (Dimension 4.5).
-pub const BIND_FLAG_PREFIX = "--bind=";
+// Operator binds arrive on `child_exec`'s mode-explicit flags — the SAME wire a
+// lease child reads (RULE UFS: one vocabulary) — repeatable up to
+// `MAX_EXTRA_BINDS`. Each is confirmed landed (Dimension 4.5: without the
+// check, the operator's only signal that an entry never landed is a tenant's
+// failed run) AND admitted into the probe's own landlock ruleset at its mode,
+// exactly as a lease admits it.
 
 /// The file whose dangling symlink was the M167 incident: on a systemd host it
 /// links into `/run/systemd/resolve`, which the sandbox did not bind, so every
@@ -84,18 +92,34 @@ pub const KEY_BINDS = "binds=";
 pub fn run(argv: []const [:0]const u8, io: std.Io) u8 {
     var resolve_host: ?[]const u8 = null;
     var dial_target: ?[]const u8 = null;
-    var binds_seen: usize = 0;
-    var binds_present = true;
+    var sandboxed = false;
+    var workspace: ?[]const u8 = null;
     for (argv[2..]) |a| {
         if (std.mem.startsWith(u8, a, RESOLVE_FLAG_PREFIX))
             resolve_host = a[RESOLVE_FLAG_PREFIX.len..];
         if (std.mem.startsWith(u8, a, DIAL_FLAG_PREFIX))
             dial_target = a[DIAL_FLAG_PREFIX.len..];
-        if (std.mem.startsWith(u8, a, BIND_FLAG_PREFIX)) {
-            binds_seen += 1;
-            if (!pathPresent(io, a[BIND_FLAG_PREFIX.len..])) binds_present = false;
-        }
+        if (std.mem.eql(u8, a, child_exec.SANDBOXED_FLAG)) sandboxed = true;
+        if (std.mem.startsWith(u8, a, child_exec.WORKSPACE_FLAG_PREFIX))
+            workspace = a[child_exec.WORKSPACE_FLAG_PREFIX.len..];
     }
+    var bind_buf: [contract.protocol.MAX_EXTRA_BINDS]contract.protocol.ExtraBind = undefined;
+    const extra_binds = sandbox_hardening.collectBindFlags(argv, &bind_buf) catch return HARDENING_FAIL_EXIT;
+
+    // The lease child's exact hardening, BEFORE any check runs — a probe
+    // outside the landlock/seccomp wall reported the M136 resolver fault as
+    // healthy, because only the constrained child could not read the resolver
+    // target. Failure is an unestablished sandbox, not a verdict.
+    if (sandboxed) {
+        const ws = workspace orelse return HARDENING_FAIL_EXIT;
+        sandbox_hardening.applySandboxHardening(ws, extra_binds) catch return HARDENING_FAIL_EXIT;
+    }
+
+    var binds_present = true;
+    for (extra_binds) |b| {
+        if (!pathPresent(io, b.path)) binds_present = false;
+    }
+    const binds_seen = extra_binds.len;
 
     const resolver = Verdict.of(resolverResolves(io));
     const dns = if (resolve_host) |h| Verdict.of(nameResolves(io, h)) else .untested;

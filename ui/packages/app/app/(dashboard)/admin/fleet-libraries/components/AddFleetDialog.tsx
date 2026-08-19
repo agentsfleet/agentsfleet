@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { z } from "zod";
 import {
   Alert,
   Button,
@@ -14,52 +13,40 @@ import {
   DialogHeader,
   DialogTitle,
   Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-  Input,
   Spinner,
 } from "@agentsfleet/design-system";
-import { CircleHelpIcon } from "lucide-react";
 import { captureProductEvent } from "@/lib/analytics/posthog";
 import { EVENTS } from "@/lib/analytics/events";
 import { presentError, type ErrorPresentation } from "@/lib/errors";
-import { SOURCE_KIND_GITHUB } from "@/lib/types";
+import { GitHubSourceField, LibrarySourceTabs } from "@/components/domain/fleet-library/LibrarySourceTabs";
+import {
+  EMPTY_LIBRARY_SOURCE,
+  librarySourcePayload,
+  librarySourceSchema,
+  type LibrarySourceValues,
+} from "@/components/domain/fleet-library/library-source-form";
 import { onboardPlatformLibraryAction } from "../actions";
 import {
   ADD_ACTION,
   ADD_TOOLTIP,
   CREATE_FLEET_LIBRARY,
+  CREATE_SUBMIT,
+  CREATING,
   FETCHING_UPDATE,
   FETCH_UPDATE,
   FETCH_UPDATE_ACTION,
   FETCH_UPDATE_DESCRIPTION,
-  LIBRARY_AUTHORING_DOC_URL,
   REPLACE_ACTION,
   REPLACE_CONFIRM,
-  SAMPLE_LIBRARY_REPO,
-  SOURCE_REF_PATTERN,
 } from "../library-copy";
 
 const OUTCOME_SUCCESS = "success";
 const OUTCOME_FAILURE = "failure";
 
-// The server refuses a repository whose bundle name is already owned by a
-// DIFFERENT repository, rather than silently swapping the content every workspace
-// installs. The operator confirms the overwrite; the UI never decides it.
+// The server refuses a bundle whose name is already owned by a DIFFERENT source,
+// rather than silently swapping the content every workspace installs. The
+// operator confirms the overwrite; the dashboard never decides it.
 const ERR_ID_COLLISION = "UZ-CATALOG-004";
-
-const schema = z.object({
-  source_ref: z
-    .string()
-    .trim()
-    .regex(SOURCE_REF_PATTERN, `Use owner/repo, for example ${SAMPLE_LIBRARY_REPO}`),
-});
-
-type FormValues = z.infer<typeof schema>;
 
 // One dialog serves create and refetch: validation, double-submit protection,
 // and error mapping stay shared while each operation keeps honest copy.
@@ -91,13 +78,13 @@ export default function AddFleetDialog({
   // Monotonic id so a response from a submit the operator has already abandoned
   // (dialog closed, or a second submit raced past it) can never land.
   const requestIdRef = useRef(0);
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { source_ref: prefillRepo ?? "" },
+  const form = useForm<LibrarySourceValues>({
+    resolver: zodResolver(librarySourceSchema),
+    defaultValues: { ...EMPTY_LIBRARY_SOURCE, source_ref: prefillRepo ?? "" },
   });
 
   useEffect(() => {
-    if (open) form.reset({ source_ref: prefillRepo ?? "" });
+    if (open) form.reset({ ...EMPTY_LIBRARY_SOURCE, source_ref: prefillRepo ?? "" });
   }, [open, prefillRepo, form]);
 
   // Radix reports only closes here: the dialog is controlled and carries no
@@ -111,23 +98,21 @@ export default function AddFleetDialog({
     setCollision(false);
   }
 
-  async function submit(values: FormValues, replace: boolean) {
+  async function submit(values: LibrarySourceValues, replace: boolean) {
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     setApiError(null);
     setPending(true);
     try {
-      const result = await onboardPlatformLibraryAction({
-        source_kind: SOURCE_KIND_GITHUB,
-        source_ref: values.source_ref,
-        // Only the refetch path pins: a fresh add fetches the default branch.
-        ...(prefillRef ? { ref: prefillRef } : {}),
-        ...(replace ? { replace: true } : {}),
-      });
+      // Only the refetch path pins a ref; a fresh add fetches the default branch,
+      // and an upload carries none at all.
+      const result = await onboardPlatformLibraryAction(
+        librarySourcePayload(values, { ...(prefillRef ? { ref: prefillRef } : {}), replace }),
+      );
       if (requestId !== requestIdRef.current) return;
       if (!result.ok) {
         captureProductEvent(EVENTS.platform_library_onboarded, {
-          source_kind: SOURCE_KIND_GITHUB,
+          source_kind: values.source_kind,
           outcome: OUTCOME_FAILURE,
         });
         if (result.errorCode === ERR_ID_COLLISION) {
@@ -140,7 +125,7 @@ export default function AddFleetDialog({
         return;
       }
       captureProductEvent(EVENTS.platform_library_onboarded, {
-        source_kind: SOURCE_KIND_GITHUB,
+        source_kind: values.source_kind,
         outcome: OUTCOME_SUCCESS,
         entry_id: result.data.id,
       });
@@ -164,38 +149,19 @@ export default function AddFleetDialog({
             }}
             className="space-y-4"
           >
-            <FormField
-              control={form.control}
-              name="source_ref"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Repository</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="owner/repo"
-                      autoComplete="off"
-                      spellCheck={false}
-                      {...field}
-                      readOnly={isRefetch}
-                    />
-                  </FormControl>
-                  <FormDescription className="space-y-1">
-                    <span className="block">Example: {SAMPLE_LIBRARY_REPO}</span>
-                    <a
-                      href={LIBRARY_AUTHORING_DOC_URL}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-pulse underline-offset-2 hover:underline focus-visible:underline"
-                    >
-                      <CircleHelpIcon size={13} aria-hidden="true" />
-                      Learn more
-                      <span className="sr-only"> about authoring fleet libraries (opens in a new tab)</span>
-                    </a>
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* Refetch re-reads a row's own source, so it offers no choice of one. */}
+            {isRefetch ? (
+              <GitHubSourceField form={form} readOnly />
+            ) : (
+              <LibrarySourceTabs
+                form={form}
+                disabled={pending}
+                onSourceChange={() => {
+                  setApiError(null);
+                  setCollision(false);
+                }}
+              />
+            )}
 
             {collision ? (
               <Alert variant="destructive">
@@ -230,8 +196,8 @@ export default function AddFleetDialog({
                 Cancel
               </Button>
               <Button type="submit" disabled={pending}>
-                {pending ? <Spinner size="sm" srLabel={isRefetch ? FETCHING_UPDATE : CREATE_FLEET_LIBRARY} /> : null}
-                {dialogTitle}
+                {pending ? <Spinner size="sm" srLabel={isRefetch ? FETCHING_UPDATE : CREATING} /> : null}
+                {isRefetch ? FETCH_UPDATE : CREATE_SUBMIT}
               </Button>
             </DialogFooter>
           </form>

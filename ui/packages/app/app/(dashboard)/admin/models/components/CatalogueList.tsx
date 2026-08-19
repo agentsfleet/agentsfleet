@@ -134,7 +134,7 @@ function buildColumns({
     },
     {
       key: "rates",
-      header: "Rates ($ / 1M · in / cached / out)",
+      header: "Rates $/1M (in / cached / out)",
       numeric: true,
       sortValue: (m) => m.input_nanos_per_mtok,
       cell: (m) => (

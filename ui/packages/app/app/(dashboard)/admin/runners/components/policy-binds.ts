@@ -42,14 +42,6 @@ export const BIND_MODE_LABELS: Record<BindMode, string> = {
   read_write: "Read-write",
 };
 
-// Named on the control, not buried in a description: read_write lets tenant
-// agent code modify host state outside its workspace on every lease this
-// runner takes.
-export const BIND_MODE_DESCRIPTIONS: Record<BindMode, string> = {
-  read_only: "The sandbox can read the path. The host copy is never modified.",
-  read_write: "The sandbox can write through to the host path. Widens the isolation boundary for every lease.",
-};
-
 /** One editable row. All-strings plus the mode enum, so react-hook-form's
  * input and output types stay identical (the worker_count convention). */
 export interface BindFormRow {
@@ -80,16 +72,16 @@ function containsPath(parent: string, child: string): boolean {
  * "invalid path" would send the operator back to the daemon's source.
  */
 export function bindPathIssue(path: string): string | null {
-  if (path.length === 0) return "Name a host path to bind";
-  if (!path.startsWith("/")) return "Bind paths are absolute — start with /";
+  if (path.length === 0) return "Name a host path to mount";
+  if (!path.startsWith("/")) return "Mount paths are absolute — start with /";
   if (path.length < 2 || path.length > MAX_BIND_PATH_LEN) {
     return `Between 2 and ${MAX_BIND_PATH_LEN} characters`;
   }
   if (path.endsWith("/")) return "Drop the trailing slash — one spelling per path";
-  if (path.includes("\0")) return "Bind paths cannot contain a NUL byte";
-  if (path.split("/").some((seg) => seg === "..")) return "No .. segment — a bind cannot escape the path it names";
+  if (path.includes("\0")) return "Mount paths cannot contain a NUL byte";
+  if (path.split("/").some((seg) => seg === "..")) return "No .. segment — a mount cannot escape the path it names";
   for (const p of BASELINE_RO_PATHS) {
-    if (pathsOverlap(path, p)) return `The daemon already binds ${p} — an assignment can only add paths, never re-mode one`;
+    if (pathsOverlap(path, p)) return `The daemon already mounts ${p} — an assignment can only add paths, never re-mode one`;
   }
   for (const p of SENSITIVE_PATHS) {
     if (pathsOverlap(path, p)) return `${p} is the sandbox's own floor or host control — it cannot be bound`;

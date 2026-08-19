@@ -90,6 +90,19 @@ describe("statusView", () => {
 });
 
 describe("rowActions", () => {
+  // Fetch re-reads a row's own repository. An uploaded bundle came from none, so
+  // the action would open the dialog with nothing to prefill — and `isRefetch`
+  // reads an empty repository as create-mode, so an operator asking to fetch an
+  // update would be handed a blank Create dialog instead.
+  it("withholds Fetch from a row that came from no repository", () => {
+    const uploaded = { ...entry(CATALOG_DRAFT, "sha256:abc"), source_repo: "" };
+    expect(rowActions(uploaded).canFetch).toBe(false);
+  });
+
+  it("offers Fetch to a row that names a repository", () => {
+    expect(rowActions(entry(CATALOG_DRAFT, "sha256:abc")).canFetch).toBe(true);
+  });
+
   // Dimension 1.3 — the broken row must be recoverable, and must not offer a
   // button the route will refuse.
   it("offers a broken row the two actions that resolve it", () => {
@@ -111,17 +124,20 @@ describe("rowActions", () => {
       canPublish: false,
       canUnpublish: true,
       canDelete: false,
+      canFetch: true,
     });
     expect(rowActions(entry(CATALOG_DRAFT, HASH))).toEqual({
       canPublish: true,
       canUnpublish: false,
       canDelete: true,
+      canFetch: true,
     });
     // No bundle: nothing to publish, but safe to delete — it is not public.
     expect(rowActions(entry(CATALOG_DRAFT, null))).toEqual({
       canPublish: false,
       canUnpublish: false,
       canDelete: true,
+      canFetch: true,
     });
   });
 });

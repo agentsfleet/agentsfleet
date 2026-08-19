@@ -577,6 +577,8 @@ The baseline is `contract.protocol.BASELINE_RO_PATHS`, bound read-only (`--ro-bi
 
 Beyond the baseline the bwrap argv establishes the sandbox's own floor (`/usr` read-only, a private `/proc`, `/dev`, and a `tmpfs` `/tmp`), ro-binds the runner binary so the sandbox can exec it, and binds the lease workspace read-write. **The workspace is the only writable mount unless an operator named another one.**
 
+The in-child landlock ruleset **derives its read set from the same contract** (`BASELINE_RO_PATHS` plus the floor paths above), and the parent forwards operator binds to the child on mode-explicit argv flags so landlock admits them at their assigned mode. A parallel landlock list once omitted `/run/systemd/resolve` after bwrap gained it: the mount existed and the read was denied, so every lease's DNS failed while the self-test — then outside the landlock wall — graded the resolver healthy. The self-test probe now applies the lease child's exact hardening (`no_new_privs` → landlock → seccomp) before any check, and with no registry declared it resolves the control-plane host (resolve, never dial) so DNS is exercised even on a default assignment.
+
 An operator may add paths through the assigned policy's extra-bind list, each carrying its own mode and a note. Two rules keep the baseline intact:
 
 - **Additive only.** An entry that overlaps a protected path *in either direction* is refused — naming it outright (`/etc`), nesting under it (`/etc/ssl`), or containing it (`/run` contains `/run/systemd/resolve`). bwrap applies binds in argv order and the last operation on a target wins, so without this an appended entry would silently re-mode the daemon's own mount.

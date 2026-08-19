@@ -19,6 +19,8 @@ const contract = @import("contract");
 const selftest = @import("selftest.zig");
 const selftest_probe = @import("selftest_probe.zig");
 const sandbox_args = @import("sandbox_args.zig");
+const child_exec = @import("child_exec.zig");
+const sandbox_hardening = @import("sandbox_hardening.zig");
 const Config = @import("daemon/config.zig");
 
 const WORKSPACE = "/tmp/fleet-ws-selftest";
@@ -368,13 +370,16 @@ test "the result records the policy it ran under, so a stale result is detectabl
 
 test "the probe only ever aims at what the assignment declared" {
     // `targetsFor` decides what the child is asked to reach. It is the guard
-    // against the false red this milestone exists to remove: probing a name or
-    // an endpoint the operator never declared red-flags a runner that is
-    // configured exactly as intended.
+    // against the false red this milestone exists to remove: probing an
+    // ENDPOINT the operator never declared red-flags a runner that is
+    // configured exactly as intended. Name resolution is the one exception:
+    // with nothing declared, the control-plane host — which the daemon already
+    // talks to — is resolved (never dialled), so a dead sandbox resolver can
+    // no longer hide behind an empty allowlist.
 
-    // Nothing declared → nothing dialled, nothing resolved.
+    // Nothing declared → nothing dialled; the control-plane host is resolved.
     const bare = selftest.targetsFor(cfg(.allow_all, &.{}));
-    try std.testing.expectEqual(@as(?[]const u8, null), bare.resolve);
+    try std.testing.expectEqualStrings("127.0.0.1", bare.resolve.?);
     try std.testing.expectEqual(@as(?[]const u8, null), bare.dial);
 
     // A declared registry is both the name to resolve and the endpoint to dial.
@@ -446,9 +451,10 @@ test "a declared registry becomes the probe's resolve and dial targets" {
     // child to guess — a guess there would read as an egress fault on a
     // perfectly healthy runner.
     try std.testing.expectEqualStrings("registry.internal.example:" ++ selftest.DEFAULT_REGISTRY_PORT, flagValue(argv, selftest_probe.DIAL_FLAG_PREFIX).?);
-    // The operator's mount is named too: binds are confirmed under every
-    // posture, so a declared registry must not displace them.
-    try std.testing.expectEqualStrings("/srv/models", flagValue(argv, selftest_probe.BIND_FLAG_PREFIX).?);
+    // The operator's mount is named too, on the lease wire's mode-explicit
+    // flag: binds are confirmed under every posture, so a declared registry
+    // must not displace them.
+    try std.testing.expectEqualStrings("/srv/models", flagValue(argv, sandbox_hardening.BIND_RO_FLAG_PREFIX).?);
 }
 
 test "a registry that already carries a port keeps it, and resolves the name alone" {
@@ -463,4 +469,54 @@ test "a registry that already carries a port keeps it, and resolves the name alo
     // Resolution takes the host WITHOUT the port: a resolver asked for
     // `name:5000` answers nothing, which would read as dead DNS.
     try std.testing.expectEqualStrings("registry.internal.example", flagValue(argv, selftest_probe.RESOLVE_FLAG_PREFIX).?);
+}
+
+test "an undeclared registry still resolves the control-plane host, and never dials it" {
+    // The earlier leave-as-is posture let a default assignment report ALL
+    // CHECKS PASSED while every lease died on dead sandbox DNS, because
+    // nothing was tested. The daemon already talks to its control plane, so
+    // resolving that host proves sandbox DNS without inventing an egress
+    // requirement — resolve only, never dial.
+    const alloc = std.testing.allocator;
+    const argv = try selftest.composeProbeArgv(alloc, FAKE_BWRAP, FAKE_SELF_EXE, cfg(.allow_all, &.{}), WORKSPACE);
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    try std.testing.expectEqualStrings("127.0.0.1", flagValue(argv, selftest_probe.RESOLVE_FLAG_PREFIX).?);
+    try std.testing.expect(flagValue(argv, selftest_probe.DIAL_FLAG_PREFIX) == null);
+}
+
+test "a control-plane URL that does not parse leaves DNS untested rather than guessed" {
+    // And under deny_all_egress no name is resolved at all — the posture, not
+    // the fallback, decides whether the network is asked anything.
+    const alloc = std.testing.allocator;
+    var c = cfg(.allow_all, &.{});
+    c.control_plane_url = "not a url";
+    const argv = try selftest.composeProbeArgv(alloc, FAKE_BWRAP, FAKE_SELF_EXE, c, WORKSPACE);
+    defer sandbox_args.freeArgv(alloc, argv);
+    try std.testing.expect(flagValue(argv, selftest_probe.RESOLVE_FLAG_PREFIX) == null);
+
+    const denied = try selftest.composeProbeArgv(alloc, FAKE_BWRAP, FAKE_SELF_EXE, cfg(.deny_all_egress, &.{}), WORKSPACE);
+    defer sandbox_args.freeArgv(alloc, denied);
+    try std.testing.expect(flagValue(denied, selftest_probe.RESOLVE_FLAG_PREFIX) == null);
+}
+
+test "a sandboxed probe carries the lease child's hardening flags" {
+    // The probe applies `__execute`'s exact in-child hardening (no_new_privs →
+    // landlock → seccomp), so its verdicts hold under the same constraints a
+    // lease runs under — a probe outside that wall graded the M136 resolver
+    // fault healthy. The flags are child_exec's own: one wire, not a twin.
+    const alloc = std.testing.allocator;
+    const binds = [_]contract.protocol.ExtraBind{.{ .path = "/srv/models", .mode = .read_write }};
+    const argv = try selftest.composeProbeArgv(alloc, FAKE_BWRAP, FAKE_SELF_EXE, cfg(.allow_all, &binds), WORKSPACE);
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    var sandboxed = false;
+    for (argv) |s| {
+        if (std.mem.eql(u8, s, child_exec.SANDBOXED_FLAG)) sandboxed = true;
+    }
+    try std.testing.expect(sandboxed);
+    try std.testing.expectEqualStrings(WORKSPACE, flagValue(argv, child_exec.WORKSPACE_FLAG_PREFIX).?);
+    // The mode rides the flag: a read_write bind must reach the child's
+    // landlock ruleset as read_write, or the mount is unwritable at first use.
+    try std.testing.expectEqualStrings("/srv/models", flagValue(argv, sandbox_hardening.BIND_RW_FLAG_PREFIX).?);
 }

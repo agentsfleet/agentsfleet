@@ -183,7 +183,7 @@ test "integration: Landlock denies a write outside the workspace and allows one 
     if (pid == 0) {
         // CHILD — the real in-child filesystem wall (no_new_privs → restrict_self).
         if (!setNoNewPrivs()) linux.exit(EXIT_SETUP_FAILED);
-        landlock.applyPolicy(std.mem.span(LL_WORKSPACE)) catch linux.exit(EXIT_SETUP_FAILED);
+        landlock.applyPolicy(std.mem.span(LL_WORKSPACE), &.{}) catch linux.exit(EXIT_SETUP_FAILED);
         // OUTSIDE the workspace → denied (default-deny; /tmp is read-only).
         if (tryCreateWrite(LL_OUTSIDE)) linux.exit(EXIT_NOT_ENFORCED);
         // INSIDE the workspace → still allowed (workspace RW) — not a deny-all.

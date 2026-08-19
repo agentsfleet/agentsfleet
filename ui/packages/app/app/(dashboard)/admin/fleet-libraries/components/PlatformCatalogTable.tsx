@@ -261,17 +261,22 @@ export default function PlatformCatalogTable({
                 <EyeOffIcon size={14} />
               </IconAction>
             ) : null}
-            <IconAction
-              label={row.content_hash ? FETCH_UPDATE : FETCH_BUNDLE}
-              disabled={busy}
-              onFocus={preloadAddFleetDialog}
-              onPointerEnter={() => {
-                if (maySpeculateOnHover()) preloadAddFleetDialog();
-              }}
-              onClick={() => onFetch(row)}
-            >
-              <DownloadIcon size={14} />
-            </IconAction>
+            {/* An uploaded row has no repository behind it, so there is nothing to
+                re-read; the affordance is absent rather than disabled, same as
+                Delete on a published row. */}
+            {actions.canFetch ? (
+              <IconAction
+                label={row.content_hash ? FETCH_UPDATE : FETCH_BUNDLE}
+                disabled={busy}
+                onFocus={preloadAddFleetDialog}
+                onPointerEnter={() => {
+                  if (maySpeculateOnHover()) preloadAddFleetDialog();
+                }}
+                onClick={() => onFetch(row)}
+              >
+                <DownloadIcon size={14} />
+              </IconAction>
+            ) : null}
             <IconAction
               label={EDIT}
               disabled={busy}

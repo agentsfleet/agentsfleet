@@ -203,7 +203,7 @@ describe("AddLibraryDialog — local bundle source", () => {
     render(React.createElement(AddLibraryDialog, { workspaceId: "ws_1" }));
     await user.click(screen.getByRole("button", { name: /^create fleet library$/i }));
     await screen.findByLabelText("Repository");
-    await user.click(screen.getByRole("tab", { name: /^local folder$/i }));
+    await user.click(screen.getByRole("tab", { name: /^upload from computer$/i }));
     await screen.findByLabelText("SKILL.md");
     return user;
   }

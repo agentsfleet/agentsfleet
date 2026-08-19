@@ -267,13 +267,12 @@ describe("ApiKeyList component", () => {
       ok: true,
       data: { id: "k", key_name: "ci-runner", key: "agt_tnew", created_at: 1 },
     });
-    // Trigger and dialog submit share the "Create key" label — only the
-    // trigger matches before the dialog opens.
+        // The dialog submit is just "Create"; the trigger keeps the noun.
     await user.click(screen.getByRole("button", { name: /create key/i }));
     await user.type(screen.getByLabelText(/^name$/i), "ci-runner");
     // Once open, scope to the dialog to disambiguate the submit from the
     // still-mounted trigger.
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /create key/i }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^create$/i }));
     await screen.findByLabelText(/API key value/i);
     const before = listApiKeysActionMock.mock.calls.length;
     await user.click(screen.getByRole("button", { name: /done/i }));

@@ -57,7 +57,7 @@ test.describe("secrets lifecycle", () => {
     await addDialog.getByLabel("Secret name").fill(name);
     await addDialog.getByLabel("Field 1 name").fill("api_key");
     await addDialog.getByLabel("Field 1 value").fill("FLY_API_TOKEN");
-    await addDialog.getByRole("button", { name: "Create secret", exact: true }).click();
+    await addDialog.getByRole("button", { name: "Create", exact: true }).click();
 
     // Successful submit closes the dialog and refreshes the list.
     await expect(addDialog).toBeHidden({ timeout: ACTION_TIMEOUT_MS });

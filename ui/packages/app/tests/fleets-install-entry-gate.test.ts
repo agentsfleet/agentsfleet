@@ -81,7 +81,7 @@ describe("InstallSourceSelector", () => {
     );
 
     expect(screen.getByRole("button", { name: "Create fleet library" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Use entry" }));
+    await user.click(screen.getByRole("button", { name: "Install" }));
     expect(onUseLibraryEntry).toHaveBeenCalledWith(TEMPLATE);
   });
 

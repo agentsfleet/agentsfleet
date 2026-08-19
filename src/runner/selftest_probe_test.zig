@@ -7,6 +7,8 @@
 
 const std = @import("std");
 const selftest_probe = @import("selftest_probe.zig");
+const child_exec = @import("child_exec.zig");
+const sandbox_hardening = @import("sandbox_hardening.zig");
 const selftest_exec = @import("selftest_exec.zig");
 
 test "the probe arm is hidden, like __execute" {
@@ -47,12 +49,14 @@ test "a line built from the child's own keys parses back to the same verdicts" {
 }
 
 test "the flag prefixes are distinct and each ends at its value" {
-    // `--dial=` must not prefix-match `--bind=` (or vice versa) or one target
-    // would be parsed as the other.
+    // `--dial=` must not prefix-match `--bind-ro=` (or vice versa) or one
+    // target would be parsed as the other.
     const flags = [_][]const u8{
         selftest_probe.RESOLVE_FLAG_PREFIX,
         selftest_probe.DIAL_FLAG_PREFIX,
-        selftest_probe.BIND_FLAG_PREFIX,
+        sandbox_hardening.BIND_RO_FLAG_PREFIX,
+        sandbox_hardening.BIND_RW_FLAG_PREFIX,
+        child_exec.WORKSPACE_FLAG_PREFIX,
     };
     for (flags, 0..) |a, i| {
         try std.testing.expect(std.mem.endsWith(u8, a, "="));
