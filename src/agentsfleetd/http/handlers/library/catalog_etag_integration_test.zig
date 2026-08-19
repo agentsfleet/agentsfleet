@@ -172,6 +172,18 @@ const PatchWorker = struct {
 fn waitForCatalogLockWaiter(conn: *pg.Conn, outcome: *const PatchOutcome) !void {
     var attempts: usize = 0;
     while (attempts < LOCK_POLL_LIMIT) : (attempts += 1) {
+        // Discard this transaction's cached statistics snapshot before every
+        // read. `stats_fetch_consistency` defaults to `cache` (PostgreSQL 15+),
+        // which freezes `pg_stat_activity` at its FIRST access inside a
+        // transaction — and this probe polls from inside the very transaction
+        // holding the row lock. Without this, whether the test passes is a race
+        // the probe cannot win once instrumentation slows the worker: if the
+        // worker has not yet parked when round one reads, every later round
+        // re-reads that same waiter-free snapshot and the loop can only time
+        // out. Measured on PostgreSQL 18.6: a backend that appears mid
+        // transaction stays invisible for the transaction's life without this
+        // call, and is seen immediately with it.
+        _ = try conn.exec("SELECT pg_stat_clear_snapshot()", .{});
         var q = PgQuery.from(try conn.query(
             "SELECT count(*)::bigint FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE '%core.fleet_library%'",
             .{},
