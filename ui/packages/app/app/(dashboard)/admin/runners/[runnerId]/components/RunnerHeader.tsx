@@ -199,11 +199,17 @@ export function RunnerHeader({
                 // reader users two dead controls with no discoverable reason.
                 // The primitive's span wrapper keeps hover working while
                 // disabled, and the tooltip reads out as the reason.
+                // One variant expression for both shapes: duplicating the
+                // ternary inside the disabled arm leaves its destructive half
+                // unreachable (only cordon and drain carry a reason, and both
+                // are default-intent), which is a branch no test can honestly
+                // cover.
+                const variant = config.intent === "destructive" ? "destructive" : "outline";
                 if (config.disabledReason !== undefined) {
                   return (
                     <TooltipButton
                       key={action}
-                      variant={config.intent === "destructive" ? "destructive" : "outline"}
+                      variant={variant}
                       size="sm"
                       disabled
                       tooltip={config.disabledReason}
@@ -216,7 +222,7 @@ export function RunnerHeader({
                 return (
                   <Button
                     key={action}
-                    variant={config.intent === "destructive" ? "destructive" : "outline"}
+                    variant={variant}
                     size="sm"
                     onClick={() => requestAction(action)}
                   >
