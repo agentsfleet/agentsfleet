@@ -240,9 +240,9 @@ describe("RunnerHeader", () => {
     render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     for (const name of ["Cordon", "Drain"]) {
       const button = screen.getByRole("button", { name });
-      // Disabled with the reason readable on the control itself.
+      // Disabled; the reason rides the TooltipButton, not a mouse-only title.
       expect(button.hasAttribute("disabled")).toBe(true);
-      expect(button.getAttribute("title")).toBe("Not active yet");
+      expect(button.getAttribute("title")).toBeNull();
       // Clicking opens no confirm and PATCHes nothing.
       fireEvent.click(button);
     }

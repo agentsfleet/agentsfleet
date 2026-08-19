@@ -216,14 +216,13 @@ test "applyPolicy returns UnsupportedPlatform on non-linux" {
 
 test "landlock write set contains every writable-floor path" {
     // The write-side twin of the read-set pin below: a path bwrap mounts
-    // writable is never demoted to read-only by the policy layer.
+    // writable is never demoted to read-only by the policy layer. (That every
+    // floor entry is operator-unbindable is enforced at comptime in
+    // protocol_bind.zig — a runtime arm for it here could never fire.)
     for (protocol.BASELINE_RW_TMPFS) |rw| {
         for (SYSTEM_READONLY_PATHS) |ro| {
             try std.testing.expect(!std.mem.eql(u8, ro, rw));
         }
-        for (protocol.SENSITIVE_PATHS) |sp| {
-            if (std.mem.eql(u8, sp, rw)) break;
-        } else return error.WritableFloorNotOperatorProtected;
     }
 }
 

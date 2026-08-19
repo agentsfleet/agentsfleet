@@ -12,8 +12,8 @@ const PANEL_LABEL = "Sandbox";
 const CHECKS_HEADING = "Checks";
 const BINDS_HEADING = "Extra mounts";
 
-const NEVER_TESTED = "Never self-tested. The verdict appears here once the host answers.";
-const PENDING_NOTE = "A self-test is outstanding — the host answers on its next heartbeat.";
+const NEVER_TESTED = "Never checked. The verdict appears here once the host answers.";
+const PENDING_NOTE = "Checks are outstanding — the host answers on its next heartbeat.";
 const STALE_BADGE = "stale";
 const STALE_NOTE =
   "This verdict was recorded against an assignment the runner no longer carries, so it proves nothing about the current one.";

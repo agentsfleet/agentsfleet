@@ -91,7 +91,7 @@ export function EditPolicyDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button type="button" variant="outline" size="sm">
-          <PencilIcon size={14} aria-hidden="true" /> {EDIT_POLICY_LABEL}
+          <PencilIcon aria-hidden="true" /> {EDIT_POLICY_LABEL}
         </Button>
       </DialogTrigger>
       {/* The policy form is taller than a short viewport: three isolation cards,

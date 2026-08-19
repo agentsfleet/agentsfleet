@@ -385,3 +385,11 @@ describe("LeaseTable", () => {
     expect(orderOf()).toEqual([...firstSort].reverse());
   });
 });
+
+it("the filter copy reads Filter and Apply — pinned literals, not constants", () => {
+  // The interaction tests import the constants so plumbing refactors stay
+  // cheap; these literals pin the user-facing words themselves, the same way
+  // the vocabulary test pins Time/Duration.
+  expect(LEASE_FILTER_LABEL).toBe("Filter");
+  expect(APPLY_LEASE_FILTER_LABEL).toBe("Apply");
+});
