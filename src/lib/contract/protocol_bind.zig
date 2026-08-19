@@ -57,6 +57,16 @@ pub const ExtraBind = struct {
 /// `sandbox_args.RO_SYSTEM_PATHS` aliases this (RULE UFS: one source).
 pub const BASELINE_RO_PATHS = [_][]const u8{ "/etc", "/lib", "/lib64", "/bin", "/sbin", "/opt", "/run/systemd/resolve" };
 
+/// Paths bwrap constructs as a fresh private tmpfs in every sandbox — writable
+/// at the mount layer, per-lease, gone at exit. Both enforcement layers consume
+/// this one list (`sandbox_args` emits a `--tmpfs` per entry; landlock grants
+/// write), so mount and policy can never disagree about where a lease may
+/// write — the write-side twin of the resolver drift `BASELINE_RO_PATHS`
+/// exists to prevent. The engine writes credentialed dial headers here, so a
+/// floor entry landlock demotes to read-only fails every lease at its first
+/// credentialed call.
+pub const BASELINE_RW_TMPFS = [_][]const u8{"/tmp"};
+
 /// Paths an operator bind may never name, beyond the baseline itself. Two
 /// groups: mounts the bwrap base argv already establishes (`/usr`, `/proc`,
 /// `/dev`, `/tmp` — re-binding one changes the sandbox's own floor), and host
@@ -75,6 +85,19 @@ pub const SENSITIVE_PATHS = [_][]const u8{
     "/root", "/home",    "/boot",                "/sys",
     "/run",  "/var/run", "/var/lib/agentsfleet",
 };
+
+// A mount the sandbox constructs is never an operator's to re-mode: every
+// writable-floor path must sit in the refusal list above, or an extra bind
+// could shadow the per-lease tmpfs with a host directory.
+comptime {
+    for (BASELINE_RW_TMPFS) |rw| {
+        var protected = false;
+        for (SENSITIVE_PATHS) |sp| {
+            if (std.mem.eql(u8, rw, sp)) protected = true;
+        }
+        if (!protected) @compileError("BASELINE_RW_TMPFS entry missing from SENSITIVE_PATHS: " ++ rw);
+    }
+}
 
 /// Extra-bind bounds. The operator list is ADDITIVE to the daemon-owned
 /// baseline: an assignment can only append, never drop or re-mode a path the

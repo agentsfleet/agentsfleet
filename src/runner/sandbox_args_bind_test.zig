@@ -253,6 +253,41 @@ test "test_workspace_is_the_only_writable_bind" {
     try std.testing.expect(bindTripleIndex(widened, "--bind-try", "/srv/models") != null);
 }
 
+test "test_every_writable_floor_path_is_a_tmpfs_in_argv" {
+    const alloc = std.testing.allocator;
+    // Dimension 1.1 — the writable floor is not prose: every entry reaches the
+    // argv as a `--tmpfs` mount, and nothing else does. Reading the real
+    // shared list is the point; a copy would stay green while the list rotted.
+    const argv = try prefixWith(alloc, &.{});
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    var tmpfs_count: usize = 0;
+    for (argv, 0..) |s_, i| {
+        if (std.mem.eql(u8, s_, "--tmpfs")) {
+            tmpfs_count += 1;
+            var in_floor = false;
+            for (contract.protocol.BASELINE_RW_TMPFS) |p_| {
+                if (std.mem.eql(u8, argv[i + 1], p_)) in_floor = true;
+            }
+            try std.testing.expect(in_floor);
+        }
+    }
+    try std.testing.expectEqual(contract.protocol.BASELINE_RW_TMPFS.len, tmpfs_count);
+}
+
+test "test_writable_floor_is_never_operator_bindable" {
+    // Dimension 1.4 — a mount the sandbox constructs is not an operator's to
+    // re-mode: an extra bind naming a floor path is refused in either mode.
+    for (contract.protocol.BASELINE_RW_TMPFS) |p_| {
+        try std.testing.expect(!contract.protocol.extraBindsValid(&.{
+            .{ .path = p_, .mode = .read_write },
+        }));
+        try std.testing.expect(!contract.protocol.extraBindsValid(&.{
+            .{ .path = p_, .mode = .read_only },
+        }));
+    }
+}
+
 test "test_contract_and_argv_agree_exactly" {
     const alloc = std.testing.allocator;
     // Dimension 3.3 — the agreement is BIDIRECTIONAL. One direction (every

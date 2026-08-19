@@ -176,6 +176,31 @@ test "the resolver check passes in an unmodified sandbox" {
     try std.testing.expect(o.resolver_readable);
 }
 
+test "the scratch check passes in an unmodified sandbox" {
+    // Dimension 1.3 — the write floor is DETECTED, not derived twice: the
+    // probe runs under the full lease hardening (bwrap + landlock + seccomp)
+    // and creates a real file in its private tmpfs. Before the shared write
+    // floor this exact probe failed, which is how TempFileCreateFailed shipped.
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+    try makeWorkspace(io);
+    if (!try probeRanHere(io, alloc)) return error.SkipZigTest;
+
+    const argv = selftest.buildProbeArgv(io, alloc, baseCfg(), WORKSPACE) catch |err| {
+        try std.testing.expectEqual(error.BwrapUnavailable, err);
+        return error.SkipZigTest;
+    };
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    var buf: [128]u8 = undefined;
+    const line = try runProbeArgv(io, argv, &buf);
+    const o = selftest_exec.outcomeFrom(line, false);
+    try std.testing.expect(o.scratch_writable);
+}
+
 test "test_probe_reports_deny_all_as_expected" {
     // Dimension 2.3 — under `deny_all_egress` the sandbox has no network by
     // assignment, so an unreachable endpoint is the assignment WORKING. Graded

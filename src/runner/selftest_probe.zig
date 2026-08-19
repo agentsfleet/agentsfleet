@@ -85,6 +85,7 @@ pub const KEY_RESOLVER = "resolver=";
 pub const KEY_DNS = "dns=";
 pub const KEY_EGRESS = "egress=";
 pub const KEY_BINDS = "binds=";
+pub const KEY_SCRATCH = "scratch=";
 
 /// Run the probe. Always exits 0 on a completed run — a FAILED CHECK is a
 /// result, not an error. A non-zero exit means the child could not run at all,
@@ -122,11 +123,12 @@ pub fn run(argv: []const [:0]const u8, io: std.Io) u8 {
     const binds_seen = extra_binds.len;
 
     const resolver = Verdict.of(resolverResolves(io));
+    const scratch = Verdict.of(scratchWritable(io));
     const dns = if (resolve_host) |h| Verdict.of(nameResolves(io, h)) else .untested;
     const egress = if (dial_target) |t| Verdict.of(endpointAccepts(io, t)) else .untested;
     const binds: Verdict = if (binds_seen == 0) .untested else Verdict.of(binds_present);
 
-    writeVerdict(io, resolver, dns, egress, binds);
+    writeVerdict(io, resolver, scratch, dns, egress, binds);
     return 0;
 }
 
@@ -155,6 +157,23 @@ fn resolverResolves(io: std.Io) bool {
 /// Does a name resolve from in here? Any returned address is a pass; the
 /// address itself is discarded without being formatted, so it cannot reach the
 /// output line.
+/// Can this constrained child create a file in its scratch tmpfs? The engine
+/// writes credentialed dial headers there, so a floor entry the policy layer
+/// refuses fails every lease at its first credentialed call
+/// (TempFileCreateFailed) — exactly the fault the write floor exists to
+/// prevent, detected here rather than assumed from the lists agreeing.
+fn scratchWritable(io: std.Io) bool {
+    inline for (contract.protocol.BASELINE_RW_TMPFS) |dir| {
+        const path = dir ++ "/agentsfleet_selftest_scratch";
+        const f = std.Io.Dir.createFileAbsolute(io, path, .{}) catch return false;
+        f.close(io);
+        // Removal is part of the check: the floor grants REMOVE_FILE too, and
+        // a scratch that fills with undeletable probe files is its own fault.
+        std.Io.Dir.deleteFileAbsolute(io, path) catch return false;
+    }
+    return true;
+}
+
 fn nameResolves(io: std.Io, host: []const u8) bool {
     const name = std.Io.net.HostName.init(host) catch return false;
     var buf: [LOOKUP_CAPACITY]std.Io.net.HostName.LookupResult = undefined;
@@ -194,12 +213,13 @@ fn endpointAccepts(io: std.Io, target: []const u8) bool {
 /// closed stdout means the parent already reaped us, and there is no one left
 /// to tell. The parent reads a missing line as every check failing, which is
 /// the fail-closed reading.
-fn writeVerdict(io: std.Io, resolver: Verdict, dns: Verdict, egress: Verdict, binds: Verdict) void {
-    var out_buf: [64]u8 = undefined;
+fn writeVerdict(io: std.Io, resolver: Verdict, scratch: Verdict, dns: Verdict, egress: Verdict, binds: Verdict) void {
+    var out_buf: [80]u8 = undefined;
     var stdout_w = std.Io.File.stdout().writer(io, &out_buf);
     const stdout = &stdout_w.interface;
-    stdout.print("{s}{c} {s}{c} {s}{c} {s}{c}\n", .{
+    stdout.print("{s}{c} {s}{c} {s}{c} {s}{c} {s}{c}\n", .{
         KEY_RESOLVER, @intFromEnum(resolver),
+        KEY_SCRATCH,  @intFromEnum(scratch),
         KEY_DNS,      @intFromEnum(dns),
         KEY_EGRESS,   @intFromEnum(egress),
         KEY_BINDS,    @intFromEnum(binds),
