@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { PencilIcon } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -90,7 +91,7 @@ export function EditPolicyDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button type="button" variant="outline" size="sm">
-          {EDIT_POLICY_LABEL}
+          <PencilIcon aria-hidden="true" /> {EDIT_POLICY_LABEL}
         </Button>
       </DialogTrigger>
       {/* The policy form is taller than a short viewport: three isolation cards,

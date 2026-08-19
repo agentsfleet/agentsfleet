@@ -37,6 +37,28 @@ describe("parseLeaseFilterQuery", () => {
     });
   });
 
+  it("tokenizer accepts the and connective", () => {
+    // The hint reads "workspace:<id> and fleet:<name or id>", so typing it
+    // back verbatim must narrow to both — `and` is a connective, not a token
+    // that silently narrows nothing extra or worse.
+    expect(parseLeaseFilterQuery("workspace:x and fleet:y")).toEqual({
+      workspace: "x",
+      fleet: "y",
+    });
+    // Case-insensitively, like the keys.
+    expect(parseLeaseFilterQuery("workspace:x AND fleet:y")).toEqual({
+      workspace: "x",
+      fleet: "y",
+    });
+  });
+
+  it("keeps and:x a dropped unknown key, never a connective", () => {
+    expect(parseLeaseFilterQuery("and:x fleet:y")).toEqual({
+      workspace: null,
+      fleet: "y",
+    });
+  });
+
   it("ignores a key with no value", () => {
     expect(parseLeaseFilterQuery("fleet: workspace:ws-1")).toEqual({
       workspace: "ws-1",

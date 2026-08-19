@@ -34,6 +34,14 @@ describe("EditPolicyDialog", () => {
     );
   });
 
+  it("leads its trigger with an icon beside the label", () => {
+    // The header's icon-presence test covers its own buttons; this trigger
+    // mounts there as a stub, so its glyph is pinned here instead.
+    render(<EditPolicyDialog runnerId="r-edit-icon" current={CURRENT} onSaved={vi.fn()} />);
+    const trigger = screen.getByRole("button", { name: EDIT_POLICY_LABEL });
+    expect(trigger.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+  });
+
   it("pre-fills from the stored assignment and PATCHes the edited one", async () => {
     // The Indy-requested row action: reuse the four-field form, call the
     // landed PATCH — the dashboard is the fix path for a degraded runner.

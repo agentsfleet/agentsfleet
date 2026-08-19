@@ -63,6 +63,9 @@ export function parseLeaseFilterQuery(raw: string): LeaseFilters {
   let fleet: string | null = null;
   for (const token of tokenize(raw)) {
     const separator = token.indexOf(KEY_VALUE_SEPARATOR);
+    // A bare token carries no key, so the connective the hint prints
+    // ("workspace:<id> and fleet:<name>") is dropped here by construction —
+    // typing the query the way the hint reads always works. Pinned by tests.
     if (separator <= 0) continue;
     const key = token.slice(0, separator).toLowerCase();
     const value = token.slice(separator + 1);

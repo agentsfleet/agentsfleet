@@ -112,9 +112,11 @@ describe("ActivityTable", () => {
     // The shared table structure, not bespoke markup: a real table with the
     // shared caption and column headers.
     expect(screen.getByRole("table")).toBeTruthy();
-    for (const header of ["When", "What", "Detail"]) {
+    for (const header of ["Time", "What", "Detail"]) {
       expect(screen.getByRole("columnheader", { name: header })).toBeTruthy();
     }
+    // The shared time vocabulary (activity half): the old column name is gone.
+    expect(screen.queryByRole("columnheader", { name: "When" })).toBeNull();
   });
 
   it("should degrade detail honestly — absent metadata, host-only registration, unknown tier tag", () => {
@@ -141,7 +143,7 @@ describe("ActivityTable", () => {
     expect(screen.getByText(/quantum_jail/)).toBeTruthy();
   });
 
-  it("should sort by When through the standard header control, on an uncounted feed", () => {
+  it("should sort by Time through the standard header control, on an uncounted feed", () => {
     render(
       <ActivityTable
         initial={{
@@ -160,9 +162,9 @@ describe("ActivityTable", () => {
         .getAllByRole("row")
         .slice(1)
         .map((row) => (row.textContent?.includes("came online") ? "older" : "newer"));
-    fireEvent.click(screen.getByRole("button", { name: /when/i }));
+    fireEvent.click(screen.getByRole("button", { name: /time/i }));
     const firstSort = orderOf();
-    fireEvent.click(screen.getByRole("button", { name: /when/i }));
+    fireEvent.click(screen.getByRole("button", { name: /time/i }));
     // Two clicks walk both directions of the same comparator: the order must
     // invert, proving the column sorts on the record's real timestamp.
     expect(orderOf()).toEqual([...firstSort].reverse());

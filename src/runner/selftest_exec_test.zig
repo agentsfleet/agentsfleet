@@ -14,16 +14,31 @@ const sandbox_args = @import("sandbox_args.zig");
 const selftest = @import("selftest.zig");
 const selftest_exec = @import("selftest_exec.zig");
 
-const PASSING = "resolver=1 dns=1 egress=1 binds=1\n";
+const PASSING = "resolver=1 scratch=1 dns=1 egress=1 binds=1\n";
 
 test "every check reads back off a full passing line" {
     const o = selftest_exec.outcomeFrom(PASSING, false);
     try std.testing.expect(o.resolver_readable);
+    try std.testing.expect(o.scratch_writable);
     try std.testing.expect(o.dns_resolved);
     try std.testing.expect(o.egress_reachable);
     try std.testing.expect(o.extra_binds_present);
     try std.testing.expect(o.dns_testable);
     try std.testing.expect(!o.timed_out);
+}
+
+test "a refused scratch write reads back failed" {
+    const o = selftest_exec.outcomeFrom("resolver=1 scratch=0 dns=1 egress=1 binds=1", false);
+    try std.testing.expect(!o.scratch_writable);
+}
+
+test "a line with no scratch key reads scratch as failed" {
+    // Fail-closed: a probe that never attempted the write cannot certify it.
+    // The probe and parser ship in one binary, so this line is unreachable in
+    // production — the pin exists for exactly the day that stops being true.
+    const o = selftest_exec.outcomeFrom("resolver=1 dns=1 egress=1 binds=1", false);
+    try std.testing.expect(!o.scratch_writable);
+    try std.testing.expect(o.resolver_readable);
 }
 
 test "a check the probe never ran is untested, not failed" {

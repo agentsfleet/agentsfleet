@@ -42,6 +42,7 @@ fn cfg(policy: contract.protocol.NetworkPolicy, binds: []const contract.protocol
 
 const HEALTHY: selftest.Outcome = .{
     .resolver_readable = true,
+    .scratch_writable = true,
     .dns_resolved = true,
     .egress_reachable = true,
 };
@@ -51,6 +52,44 @@ fn findCheck(r: selftest.Result, name: []const u8) ?selftest.Check {
         if (std.mem.eql(u8, c.name, name)) return c;
     }
     return null;
+}
+
+test "a healthy probe grades the scratch check ok" {
+    const alloc = std.testing.allocator;
+    const r = try selftest.grade(alloc, cfg(.allow_all, &.{}), HEALTHY);
+    defer r.deinit(alloc);
+    const c = findCheck(r, selftest.CHECK_SCRATCH) orelse return error.TestUnexpectedResult;
+    try std.testing.expect(c.ok);
+    try std.testing.expectEqualStrings(selftest.DETAIL_OK, c.detail);
+}
+
+test "a refused scratch write grades failed under every posture" {
+    // The regression this check exists for: mount writable, policy read-only —
+    // every credentialed dial dies. No assignment makes that expected, so the
+    // deny-all posture must NOT excuse it the way it excuses DNS and egress.
+    const alloc = std.testing.allocator;
+    var o = HEALTHY;
+    o.scratch_writable = false;
+    inline for (.{ .allow_all, .deny_all_egress }) |posture| {
+        const r = try selftest.grade(alloc, cfg(posture, &.{}), o);
+        defer r.deinit(alloc);
+        const c = findCheck(r, selftest.CHECK_SCRATCH) orelse return error.TestUnexpectedResult;
+        try std.testing.expect(!c.ok);
+        try std.testing.expectEqualStrings(selftest.DETAIL_SCRATCH_READONLY, c.detail);
+        try std.testing.expect(!r.allOk());
+    }
+}
+
+test "a timed-out probe grades scratch as timeout, not as refused" {
+    const alloc = std.testing.allocator;
+    var o = HEALTHY;
+    o.scratch_writable = false;
+    o.timed_out = true;
+    const r = try selftest.grade(alloc, cfg(.allow_all, &.{}), o);
+    defer r.deinit(alloc);
+    const c = findCheck(r, selftest.CHECK_SCRATCH) orelse return error.TestUnexpectedResult;
+    try std.testing.expect(!c.ok);
+    try std.testing.expectEqualStrings(selftest.DETAIL_TIMEOUT, c.detail);
 }
 
 const FAKE_BWRAP = "/usr/bin/bwrap";
@@ -81,6 +120,21 @@ test "test_probe_argv_frees_its_partial_copy_when_an_allocation_fails" {
             selftest.composeProbeArgv(fa.allocator(), FAKE_BWRAP, FAKE_SELF_EXE, c, WORKSPACE),
         );
     }
+}
+
+test "grade frees its partial check list when an allocation fails" {
+    // grade appends one row per check + one per assigned bind; a failure on
+    // any append must free the rows already collected (errdefer) or the daemon
+    // leaks a check list per self-test on a host that is already unhealthy.
+    // checkAllAllocationFailures fails each allocation site in turn — the only
+    // proof the errdefer chain is right, "looks right" is not.
+    const c = cfg(.allow_all, &.{});
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, gradeAndFree, .{ c, HEALTHY });
+}
+
+fn gradeAndFree(alloc: std.mem.Allocator, c: Config, o: selftest.Outcome) !void {
+    const r = try selftest.grade(alloc, c, o);
+    r.deinit(alloc);
 }
 
 test "test_probe_uses_the_lease_argv_builder" {
@@ -137,6 +191,7 @@ test "test_probe_detects_a_dangling_resolver" {
     // reads the cause instead of "leases keep dying".
     const r = try selftest.grade(alloc, cfg(.allow_all, &.{}), .{
         .resolver_readable = false,
+        .scratch_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
     });
@@ -157,6 +212,7 @@ test "test_probe_reports_deny_all_as_expected" {
     // there when the sandbox really breaks.
     const r = try selftest.grade(alloc, cfg(.deny_all_egress, &.{}), .{
         .resolver_readable = true,
+        .scratch_writable = true,
         .dns_resolved = true,
         .egress_reachable = false,
     });
@@ -174,6 +230,7 @@ test "test_probe_reports_deny_all_as_expected" {
     open_cfg.registry_allowlist = &.{"pypi.org"};
     const open = try selftest.grade(alloc, open_cfg, .{
         .resolver_readable = true,
+        .scratch_writable = true,
         .dns_resolved = true,
         .egress_reachable = false,
     });
@@ -188,6 +245,7 @@ test "an open posture with no declared registry reports egress as untested, not 
     // intended — a red row nobody can act on, which is how an alert gets muted.
     const r = try selftest.grade(alloc, cfg(.allow_all, &.{}), .{
         .resolver_readable = true,
+        .scratch_writable = true,
         .dns_resolved = true,
         .egress_reachable = false,
     });
@@ -206,6 +264,7 @@ test "under deny_all_egress an unresolvable name is the assignment working, not 
     // correctly locked-down runner read unhealthy.
     const r = try selftest.grade(alloc, cfg(.deny_all_egress, &.{}), .{
         .resolver_readable = true,
+        .scratch_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
     });
@@ -224,6 +283,7 @@ test "a sandbox with no resolver tool reports DNS untested rather than broken" {
     // operator hunting a network fault that does not exist.
     const r = try selftest.grade(alloc, cfg(.allow_all, &.{}), .{
         .resolver_readable = true,
+        .scratch_writable = true,
         .dns_resolved = false,
         .egress_reachable = true,
         .dns_testable = false,
@@ -242,6 +302,7 @@ test "a timeout still outranks the posture arms — a hung probe proves nothing"
     // fault" would turn a hang into a green check.
     const r = try selftest.grade(alloc, cfg(.deny_all_egress, &.{}), .{
         .resolver_readable = true,
+        .scratch_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
         .timed_out = true,
@@ -260,6 +321,7 @@ test "test_probe_timeout_reaps_and_reports" {
     // hanging the heartbeat or reporting a false negative.
     const r = try selftest.grade(alloc, cfg(.allow_all, &.{}), .{
         .resolver_readable = true,
+        .scratch_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
         .timed_out = true,
@@ -282,6 +344,7 @@ test "test_probe_result_carries_no_secrets" {
     });
     const r = try selftest.grade(alloc, c, .{
         .resolver_readable = false,
+        .scratch_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
     });

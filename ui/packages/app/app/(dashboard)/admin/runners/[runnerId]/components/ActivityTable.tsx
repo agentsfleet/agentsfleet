@@ -86,15 +86,15 @@ function tierLabelFor(tier: string): string {
 
 // The detail column: a state change renders its from- and to-state from the
 // event's own metadata; registration renders the host identity and isolation
-// tier it recorded, with the real date in the When column.
+// tier it recorded, with the real date in the Time column.
 //
 // Online and offline records carry `last_seen_at` — the last contact BEFORE the
 // transition — and it is the only honest answer to "when did this actually
 // happen?". An offline record's `occurred_at` is when the sweeper NOTICED, one
 // RUNNER_OFFLINE_AFTER_MS (three lease TTLs) after the runner really went dark,
-// so the When column reads late by construction. An online record's is the gap
+// so the Time column reads late by construction. An online record's is the gap
 // the runner was away. Rendering it absolute rather than relative keeps it from
-// reading as a second, contradictory version of the When column.
+// reading as a second, contradictory version of the Time column.
 function detailFor(item: RunnerEventItem): string {
   const from = metaString(item.metadata, META_FROM_ADMIN_STATE);
   const to = metaString(item.metadata, META_TO_ADMIN_STATE);
@@ -134,8 +134,8 @@ export function ActivityTable({ initial, pageSize }: { initial: RunnerEventsResp
   const columns = useMemo<DataTableColumn<LifecycleEventItem>[]>(
     () => [
       {
-        key: "when",
-        header: "When",
+        key: "time",
+        header: "Time",
         sortValue: (item) => item.occurred_at,
         cell: (item) => (
           <Time
