@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M169
 **Workstream:** 001
 **Date:** Aug 19, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the sandbox write defect fails every credentialed lease on hardened runners and blocks the M136 §1–§5 live pass; the rest is operator-facing polish on the page fronting that proof.
 **Categories:** API, DOCS, UI
 **Batch:** B1 — single stream, no parallel sibling.
 **Branch:** feat/m169-runner-detail-polish
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Test Baseline:** unit=4147 integration=709
 **Depends on:** none (M136_001 resumes its live pass once this merges and deploys)
 **Provenance:** LLM-drafted (Claude Opus 5, Aug 19, 2026) from decisions Indy made in-session; behaviour claims verified against source at `3c98605ba`.
 **Canonical architecture:** `docs/architecture/runner_fleet.md` §System guarantees
