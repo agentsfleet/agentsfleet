@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M170
 **Workstream:** 001
 **Date:** Aug 19, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — a Fleet that declares no tools currently receives a shell on the runner host, and that host holds a public address and a private-network interface.
 **Categories:** INFRA, ZIG
 **Batch:** B1 — no dependency on another unstarted workstream
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** `feat/m136-live-connector-proof-followup` — shared with M136_001, which this workstream unblocks
+**Test Baseline:** unit=4166 integration=709
 **Depends on:** M136_001 (the child's `HOME` must resolve inside its own sandbox; until that lands every lease fails on `HOME` regardless of this spec)
 **Provenance:** agent-generated during M136_001's live-proof investigation, Aug 19, 2026
 **Canonical architecture:** `docs/architecture/runner_fleet.md` §Process boundary
