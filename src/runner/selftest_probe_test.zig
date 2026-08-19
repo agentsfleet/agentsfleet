@@ -33,10 +33,11 @@ test "a line built from the child's own keys parses back to the same verdicts" {
     // exported keys, and read it with the parent's parser. Catches a key
     // renamed on one side only — which would silently degrade every check to
     // "failed" and red-flag every healthy runner.
-    var buf: [80]u8 = undefined;
-    const line = try std.fmt.bufPrint(&buf, "{s}1 {s}1 {s}0 {s}x {s}1", .{
+    var buf: [96]u8 = undefined;
+    const line = try std.fmt.bufPrint(&buf, "{s}1 {s}1 {s}1 {s}0 {s}x {s}1", .{
         selftest_probe.KEY_RESOLVER,
         selftest_probe.KEY_SCRATCH,
+        selftest_probe.KEY_HOME,
         selftest_probe.KEY_DNS,
         selftest_probe.KEY_EGRESS,
         selftest_probe.KEY_BINDS,
@@ -44,6 +45,7 @@ test "a line built from the child's own keys parses back to the same verdicts" {
     const o = selftest_exec.outcomeFrom(line, false);
     try std.testing.expect(o.resolver_readable);
     try std.testing.expect(o.scratch_writable);
+    try std.testing.expect(o.home_writable);
     try std.testing.expect(!o.dns_resolved);
     try std.testing.expect(o.dns_testable);
     try std.testing.expect(!o.egress_reachable);

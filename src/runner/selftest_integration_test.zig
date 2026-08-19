@@ -199,6 +199,11 @@ test "the scratch check passes in an unmodified sandbox" {
     const line = try runProbeArgv(io, argv, &buf);
     const o = selftest_exec.outcomeFrom(line, false);
     try std.testing.expect(o.scratch_writable);
+    // The M136 fix, proven against a real bubblewrap sandbox under the lease
+    // child's own hardening rather than against the lists agreeing: the HOME the
+    // child is actually handed accepts a write. This is the assertion that would
+    // have failed for the whole week every dev lease died at AccessDenied.
+    try std.testing.expect(o.home_writable);
 }
 
 test "test_probe_reports_deny_all_as_expected" {

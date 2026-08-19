@@ -343,3 +343,37 @@ test "test_architecture_doc_matches_the_contract" {
 
 const DOC_PATH = "docs/architecture/runner_fleet.md";
 const MAX_DOC_BYTES = 1024 * 1024;
+
+test "the child home nests under the writable tmpfs floor" {
+    // The comptime guard in protocol_bind.zig proves this at build time; this
+    // pins the PROPERTY at runtime so the reason survives a refactor of the
+    // guard. A home outside the floor is a home bwrap never builds and landlock
+    // never grants — which is the fault the constant exists to close.
+    var inside = false;
+    for (contract.protocol.BASELINE_RW_TMPFS) |rw| {
+        if (std.mem.startsWith(u8, contract.protocol.CHILD_HOME, rw) and
+            contract.protocol.CHILD_HOME.len > rw.len and
+            contract.protocol.CHILD_HOME[rw.len] == '/') inside = true;
+    }
+    try std.testing.expect(inside);
+}
+
+test "the bwrap argv creates the child home on the floor it mounts" {
+    // Order is load-bearing: --dir must follow the --tmpfs that owns the mount,
+    // or the directory lands under the tmpfs and vanishes when it is mounted.
+    const alloc = std.testing.allocator;
+    const argv = try prefixWith(alloc, &.{});
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    var tmpfs_at: ?usize = null;
+    var dir_at: ?usize = null;
+    for (argv, 0..) |a, i| {
+        if (i + 1 >= argv.len) continue;
+        if (std.mem.eql(u8, a, "--tmpfs") and std.mem.eql(u8, argv[i + 1], "/tmp")) tmpfs_at = i;
+        if (std.mem.eql(u8, a, "--dir") and
+            std.mem.eql(u8, argv[i + 1], contract.protocol.CHILD_HOME)) dir_at = i;
+    }
+    try std.testing.expect(tmpfs_at != null);
+    try std.testing.expect(dir_at != null);
+    try std.testing.expect(tmpfs_at.? < dir_at.?);
+}
