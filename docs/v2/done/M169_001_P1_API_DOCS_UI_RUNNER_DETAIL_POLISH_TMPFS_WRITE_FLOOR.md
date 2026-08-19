@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M169
 **Workstream:** 001
 **Date:** Aug 19, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the sandbox write defect fails every credentialed lease on hardened runners and blocks the M136 §1–§5 live pass; the rest is operator-facing polish on the page fronting that proof.
 **Categories:** API, DOCS, UI
 **Batch:** B1 — single stream, no parallel sibling.
@@ -78,6 +78,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/RunnerSandboxPanel.test.tsx` | EDIT | Tooltip-enabled Time + heading proofs. |
 | `ui/packages/app/app/(dashboard)/admin/runners/components/EditPolicyDialog.test.tsx` | EDIT | The trigger's PencilIcon is pinned where the real trigger mounts (the header suite stubs the island). |
 | `cli/test/acceptance/fixtures/teardown.ts` | EDIT | Finish the kill→delete state machine; stop skipping a prior run's terminal rows — the fixture-leak source. |
+| `docs/architecture/runner_fleet.md` | EDIT | The sandbox boundary section gains the write-floor derivation and the TempFileCreateFailed record. |
 | `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/RunnerHeader.tsx` | EDIT | Leading icons on all five actions; Cordon/Drain disabled with reason; refresh button; states-chip learn-more link. |
 | `ui/packages/app/app/(dashboard)/admin/runners/components/RunnerListCells.tsx` | EDIT | "Run self-test"→"Run checks", pending label "Checks requested"; Cordon/Drain configs carry the disabled reason. |
 | `ui/packages/app/app/(dashboard)/admin/runners/components/EditPolicyDialog.tsx` | EDIT | Leading icon on the Edit policy trigger. |
@@ -142,7 +143,7 @@ One list names every path bwrap mounts writable; both enforcement layers consume
 ### §5 — States are explained where they are shown
 
 - **Dimension 5.1** — DONE — a CircleHelp learn-more beside the states chip links `https://docs.agentsfleet.net/runners#when-a-runner-stops-taking-work` → Test `states chip links the runners page`
-- **Dimension 5.2** — the paired docs branch adds a States section covering the chip vocabulary and the anchor above → graded in rubric R6
+- **Dimension 5.2** — DONE — the paired docs branch adds a States section covering the chip vocabulary and the anchor above → graded in rubric R6
 
 ### §6 — The dev workspace stops showing test debris
 
@@ -212,11 +213,11 @@ Unchanged surfaces (must not drift):
 | R3 | Time vocabulary aligned (§4) | `grep -n '"When"\|"Took"' ui/packages/app/app/\(dashboard\)/admin/runners/\[runnerId\]/components/LeaseTable.tsx ui/packages/app/app/\(dashboard\)/admin/runners/\[runnerId\]/components/ActivityTable.tsx` | 0 matches | P0 | ✅ 0 matches |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the table | P0 | ✅ 30 files, all in this table |
 | R5 | Dev evidence + sweep (§1.5, §6) | documented lease query + fleet delete calls against dev; counts pasted to PR Session Notes | `TempFileCreateFailed` rows captured; `acc-*` fleet count 0 | P1 | ✅ 2 TempFileCreateFailed leases (88/90ms) + 10 HostResolutionFailed captured; 98 fixtures deleted, count now 0 |
-| R6 | Docs States section paired (§5) | `gh pr checks <docs-pr> --repo agentsfleet/docs` | exit 0 | P1 | |
+| R6 | Docs States section paired (§5) | `gh pr checks 180 --repo agentsfleet/docs` | exit 0 | P1 | ✅ #180 green (Greptile, gitleaks, lint pass) |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 — all unit lanes passed |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ exit 0 — All lint checks passed |
 | S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ exit 0 |
-| S4 | App smoke walks the rendered page | `make dry-app` | exit 0 | P0 | |
+| S4 | App smoke walks the rendered page | `make dry-app` | exit 0 | P0 | ✅ exit 0 |
 | S5 | No leaks | `make memleak` | exit 0 | P0 | ✅ exit 0 |
 | S6 | Cross-compile | `zig build --build-file build_runner.zig -Dtarget=x86_64-linux-musl && zig build --build-file build_runner.zig -Dtarget=aarch64-linux-musl; echo RC=$?` | `RC=0` | P0 | ✅ RC=0 both targets |
 | S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
