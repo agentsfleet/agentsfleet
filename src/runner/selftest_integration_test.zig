@@ -206,6 +206,57 @@ test "the scratch check passes in an unmodified sandbox" {
     try std.testing.expect(o.home_writable);
 }
 
+test "no executable is reachable inside a real lease sandbox" {
+    // M170 §3's claim, pinned. The narrowed baseline drops /usr, /bin, /sbin,
+    // /lib and /lib64, so a lease holds exactly one executable: the statically
+    // linked runner on its own single-file bind. That is the second half of the
+    // tool-allowlist defence — even a tool that slipped the allowlist would have
+    // nothing to exec — and nothing else in the suite fails if someone puts one
+    // of those trees back.
+    //
+    // Asserted against the REAL lease argv, not a hand-composed one: the whole
+    // failure class this milestone kept hitting is the composed argv and the
+    // list disagreeing, so a test that rebuilds the argv itself proves nothing.
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+    try makeWorkspace(io);
+    if (!try probeRanHere(io, alloc)) return error.SkipZigTest;
+
+    const argv = selftest.buildProbeArgv(io, alloc, baseCfg(), WORKSPACE) catch |err| {
+        try std.testing.expectEqual(error.BwrapUnavailable, err);
+        return error.SkipZigTest;
+    };
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    // The probe binary is the LAST argv element; swap it for a shell and the
+    // same sandbox must refuse to exec. Everything before it — every bind, every
+    // tmpfs, the resolver link — stays byte-identical to a real lease.
+    const shells = [_][]const u8{ "/bin/sh", "/usr/bin/sh", "/bin/busybox" };
+    for (shells) |shell| {
+        const attempt = try alloc.dupe([]const u8, argv);
+        defer alloc.free(attempt);
+        attempt[attempt.len - 1] = shell;
+
+        var child = std.process.spawn(io, .{
+            .argv = attempt,
+            .stdin = .ignore,
+            .stdout = .ignore,
+            .stderr = .ignore,
+            .pgid = 0,
+        }) catch continue; // spawn refused outright is also a pass
+        const term = child.wait(io) catch continue;
+        // bwrap exits non-zero when execvp cannot find the target. A zero exit
+        // would mean the shell RAN, which is the regression.
+        switch (term) {
+            .Exited => |code| try std.testing.expect(code != 0),
+            else => {},
+        }
+    }
+}
+
 test "test_probe_reports_deny_all_as_expected" {
     // Dimension 2.3 — under `deny_all_egress` the sandbox has no network by
     // assignment, so an unreachable endpoint is the assignment WORKING. Graded
