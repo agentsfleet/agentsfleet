@@ -36,6 +36,7 @@ vi.mock("../../actions", () => ({
 }));
 
 import { RunnerHeader } from "./RunnerHeader";
+import { RUNNER_STATES_DOC_URL } from "./runner-copy";
 
 afterEach(() => cleanup());
 beforeEach(() => {
@@ -215,22 +216,62 @@ describe("RunnerHeader", () => {
   });
 
   it("should close the confirm and refresh when an admin action succeeds", async () => {
+    // Revoke carries the case: it is the one confirm-backed action still
+    // operable (cordon and drain render disabled until their verbs land).
     updateRunnerAdminStateActionMock.mockResolvedValueOnce({
       ok: true,
-      data: { admin_state: "cordoned" },
+      data: { admin_state: "revoked" },
     });
     render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
-    fireEvent.click(screen.getByRole("button", { name: "Cordon" }));
+    fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
     const dialog = await screen.findByRole("alertdialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cordon" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Revoke" }));
     await waitFor(() => {
-      expect(updateRunnerAdminStateActionMock).toHaveBeenCalledWith(detail().id, "cordon");
+      expect(updateRunnerAdminStateActionMock).toHaveBeenCalledWith(detail().id, "revoke");
       expect(refresh).toHaveBeenCalled();
     });
     // Success closes the confirm — no error is left behind.
     await waitFor(() => {
       expect(screen.queryByRole("alertdialog")).toBeNull();
     });
+  });
+
+  it("cordon and drain are disabled and inert", () => {
+    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
+    for (const name of ["Cordon", "Drain"]) {
+      const button = screen.getByRole("button", { name });
+      // Disabled with the reason readable on the control itself.
+      expect(button.hasAttribute("disabled")).toBe(true);
+      expect(button.getAttribute("title")).toBe("Not active yet");
+      // Clicking opens no confirm and PATCHes nothing.
+      fireEvent.click(button);
+    }
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(updateRunnerAdminStateActionMock).not.toHaveBeenCalled();
+  });
+
+  it("every header action renders an icon beside its label", () => {
+    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
+    // The edit-policy trigger's icon is asserted in EditPolicyDialog.test.tsx —
+    // this suite mounts its island as a stub.
+    for (const name of ["Run checks", "Cordon", "Drain", "Revoke", "Refresh"]) {
+      const button = screen.getByRole("button", { name });
+      expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    }
+  });
+
+  it("refresh button requests a router refresh", () => {
+    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("states chip links the runners page", () => {
+    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
+    const link = screen.getByRole("link", { name: /learn more/i });
+    expect(link.getAttribute("href")).toBe(RUNNER_STATES_DOC_URL);
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
   });
 
   it("should delete a revoked runner and route back to the wall", async () => {

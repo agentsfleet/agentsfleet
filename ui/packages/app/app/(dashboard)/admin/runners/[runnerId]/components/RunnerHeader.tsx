@@ -3,8 +3,8 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ExternalLinkIcon } from "lucide-react";
-import { Alert, Badge, Button, CopyButton } from "@agentsfleet/design-system";
+import { CircleHelpIcon, ExternalLinkIcon, RefreshCwIcon } from "lucide-react";
+import { Alert, Badge, Button, CopyButton, IconAction } from "@agentsfleet/design-system";
 import {
   SANDBOX_TIER_LABELS,
   type CapabilityReport,
@@ -33,8 +33,10 @@ import { DEGRADED_BADGE_LABEL, RunnerStatus } from "../../components/RunnerStatu
 import {
   COPY_RUNNER_ID_LABEL,
   OPEN_GRAFANA_LABEL,
+  REFRESH_RUNNER_LABEL,
   RUNNER_ACTIONS_LABEL,
   RUNNER_BREADCRUMB_LABEL,
+  RUNNER_STATES_DOC_URL,
   RUNNERS_CRUMB_LABEL,
 } from "./runner-copy";
 
@@ -47,6 +49,7 @@ import {
 // Activity's registered record carries it with the real date.
 
 const ASSIGNMENT_UNMET_PREFIX = "assignment unmet: ";
+const SelftestIcon = SELFTEST_ACTION_CONFIG.icon;
 const ACHIEVABLE_PREFIX = "host reports";
 const MECHANISM_YES = "✓";
 const MECHANISM_NO = "✗";
@@ -177,22 +180,36 @@ export function RunnerHeader({
               disabled={runner.selftest_requested_at !== null}
               onClick={runSelftest}
             >
+              <SelftestIcon size={14} aria-hidden="true" />
               {runner.selftest_requested_at !== null
                 ? SELFTEST_ACTION_CONFIG.pendingLabel
                 : SELFTEST_ACTION_CONFIG.label}
             </Button>
           ) : null}
           {canWrite
-            ? actionsFor(runner.admin_state).map((action) => (
-                <Button
-                  key={action}
-                  variant={ACTION_CONFIG[action].intent === "destructive" ? "destructive" : "outline"}
-                  size="sm"
-                  onClick={() => requestAction(action)}
-                >
-                  {ACTION_CONFIG[action].label}
-                </Button>
-              ))
+            ? actionsFor(runner.admin_state).map((action) => {
+                const config = ACTION_CONFIG[action];
+                const ActionIcon = config.icon;
+                // A not-yet-operable action renders disabled with its reason —
+                // never a hidden control, never one that pretends to work. The
+                // handler stays wired: the native disabled attribute is what
+                // keeps the dialog closed and the PATCH unsent.
+                const notReady = config.disabledReason !== undefined;
+                return (
+                  <Button
+                    key={action}
+                    variant={config.intent === "destructive" ? "destructive" : "outline"}
+                    size="sm"
+                    disabled={notReady}
+                    title={config.disabledReason}
+                    aria-disabled={notReady || undefined}
+                    onClick={() => requestAction(action)}
+                  >
+                    <ActionIcon size={14} aria-hidden="true" />
+                    {config.label}
+                  </Button>
+                );
+              })
             : null}
           {canWrite && canDelete(runner.admin_state) ? (
             <Button
@@ -213,6 +230,12 @@ export function RunnerHeader({
               </a>
             </Button>
           ) : null}
+          {/* Manual re-read, chosen over polling: the platform admin decides
+              when the page is stale. Rides the same router refresh every
+              action above already ends on. */}
+          <IconAction label={REFRESH_RUNNER_LABEL} onClick={() => router.refresh()}>
+            <RefreshCwIcon size={14} aria-hidden="true" />
+          </IconAction>
         </div>
       </div>
 
@@ -223,7 +246,18 @@ export function RunnerHeader({
 
       <div className="mb-2xl flex flex-col gap-md">
         <div className="flex flex-wrap items-center gap-2xl text-body-sm text-muted-foreground">
-          <RunnerStatus adminState={runner.admin_state} liveness={runner.liveness} />
+          <span className="inline-flex items-center gap-md">
+            <RunnerStatus adminState={runner.admin_state} liveness={runner.liveness} />
+            <a
+              href={RUNNER_STATES_DOC_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-pulse underline-offset-2 hover:underline focus-visible:underline"
+            >
+              <CircleHelpIcon size={13} aria-hidden="true" />
+              Learn more<span className="sr-only"> about runner states (opens in a new tab)</span>
+            </a>
+          </span>
           <span className="inline-flex flex-wrap gap-sm">
             <Badge>{SANDBOX_TIER_LABELS[runner.sandbox_tier]}</Badge>
             {runner.degraded ? <Badge variant="error">{DEGRADED_BADGE_LABEL}</Badge> : null}

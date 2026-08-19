@@ -57,7 +57,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/runner/sandbox_args.zig` | EDIT | Build the `--tmpfs` argv entries from the shared floor instead of a hand-written literal. |
 | `src/runner/engine/landlock.zig` | EDIT | Write rules derive from the floor; `/tmp` leaves the read-only list; add the write-set property pin. |
 | `src/runner/sandbox_args_bind_test.zig` | EDIT | Extend argv proofs to assert every floor path is a tmpfs mount. |
-| `src/runner/sandbox_integration_test.zig` | EDIT | Real-sandbox proof: the lease child creates, writes, and unlinks a file under `/tmp`. |
+| `src/runner/sandbox_env.zig` | CREATE | Child-environment policy, split out of `sandbox_args.zig` on the 350-line bound (RULE FLL). |
+| `src/runner/child_process.zig` | EDIT | Env-policy consumer follows the split; no behaviour change. |
+| `src/runner/child_process_test.zig` | EDIT | Same follow. |
+| `src/lib/contract/protocol.zig` | EDIT | Re-export the writable floor beside the read-only baseline. |
+| `src/lib/contract/protocol_policy.zig` | EDIT | Same re-export chain. |
+| `src/runner/selftest_probe.zig` | EDIT | The probe gains the scratch check (`scratch=` key), run under full lease hardening. |
+| `src/runner/selftest.zig` | EDIT | Scratch check name, details, grading arm; `Outcome.scratch_writable` carries no default on purpose. |
+| `src/runner/selftest_exec.zig` | EDIT | Parse the `scratch=` key fail-closed. |
+| `src/runner/selftest_test.zig` | EDIT | Grading proofs: ok, refused-under-every-posture, timeout. |
+| `src/runner/selftest_integration_test.zig` | EDIT | Real-sandbox proof: the hardened probe writes and removes its scratch file. |
 | `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/runner-copy.ts` | EDIT | "Filter leases"→"Filter", "Apply filter"→"Apply". |
 | `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/LeaseFilterBar.tsx` | EDIT | Leading FilterIcon on Apply. |
 | `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/lease-filter-query.ts` | EDIT | The bare token `and` between pairs is an accepted connective, still never a filter. |
@@ -65,6 +74,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/LeaseTable.tsx` | EDIT | "When"→"Time", "Took"→"Duration". |
 | `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/LeaseTable.test.tsx` | EDIT | Replace the two hardcoded filter strings with constant imports; column assertions follow the rename. |
 | `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/ActivityTable.tsx` | EDIT | "When"→"Time". |
+| `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/ActivityTable.test.tsx` | EDIT | Header assertions follow the rename. |
+| `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/RunnerSandboxPanel.test.tsx` | EDIT | Tooltip-enabled Time + heading proofs. |
+| `ui/packages/app/app/(dashboard)/admin/runners/components/EditPolicyDialog.test.tsx` | EDIT | The trigger's PencilIcon is pinned where the real trigger mounts (the header suite stubs the island). |
 | `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/RunnerHeader.tsx` | EDIT | Leading icons on all five actions; Cordon/Drain disabled with reason; refresh button; states-chip learn-more link. |
 | `ui/packages/app/app/(dashboard)/admin/runners/components/RunnerListCells.tsx` | EDIT | "Run self-test"→"Run checks", pending label "Checks requested"; Cordon/Drain configs carry the disabled reason. |
 | `ui/packages/app/app/(dashboard)/admin/runners/components/EditPolicyDialog.tsx` | EDIT | Leading icon on the Edit policy trigger. |
@@ -103,32 +115,32 @@ A paired branch in `~/Projects/docs` (separate repository, own Pull Request (PR)
 
 One list names every path bwrap mounts writable; both enforcement layers consume it. **Implementation default:** the floor starts as exactly `["/tmp"]`; landlock grants it the same access set as the workspace rule.
 
-- **Dimension 1.1** — the writable floor lives in `protocol_bind.zig` and `sandbox_args.zig` emits one `--tmpfs` per floor entry → Test `test_every_writable_floor_path_is_a_tmpfs_in_argv`
-- **Dimension 1.2** — landlock write rules enumerate the floor and `/tmp` is gone from the read-only list → Test `landlock write set contains every writable-floor path`
-- **Dimension 1.3** — inside a real sandbox the lease child creates, writes, and unlinks `/tmp/probe` → Test `a lease child writes its private tmpfs` (Linux privileged lane)
-- **Dimension 1.4** — an operator bind naming `/tmp` is still refused → Test `test_sensitive_paths_still_refuse_tmp`
+- **Dimension 1.1** — DONE — the writable floor lives in `protocol_bind.zig` and `sandbox_args.zig` emits one `--tmpfs` per floor entry → Test `test_every_writable_floor_path_is_a_tmpfs_in_argv`
+- **Dimension 1.2** — DONE — landlock write rules enumerate the floor and `/tmp` is gone from the read-only list → Test `landlock write set contains every writable-floor path`
+- **Dimension 1.3** — DONE — the self-test probe gains a scratch check (create + remove under the floor, inside full lease hardening, keyed `scratch=`, parsed fail-closed, graded under every posture), proven in a real sandbox → Tests `the scratch check passes in an unmodified sandbox` (Linux privileged lane) · `a healthy probe grades the scratch check ok` · `a refused scratch write grades failed under every posture` · `a timed-out probe grades scratch as timeout, not as refused`
+- **Dimension 1.4** — DONE — an operator bind naming `/tmp` is still refused → Test `test_sensitive_paths_still_refuse_tmp`
 - **Dimension 1.5** — the failing dev lease rows (`TempFileCreateFailed`, and the prior `HostResolutionFailed` class) are pulled and pasted into PR Session Notes as evidence → graded in rubric R5
 
 ### §2 — Header actions speak product
 
-- **Dimension 2.1** — "Run self-test"→"Run checks", pending "Checks requested", panel heading "CHECKS" → Test `runner header runs checks and shows the requested state`
-- **Dimension 2.2** — all five actions and Apply carry a leading lucide icon, `size={14} aria-hidden` (defaults: PencilIcon, ListChecksIcon, BanIcon, HourglassIcon, ShieldXIcon, FilterIcon; RefreshCwIcon for §2.4) → Test `every header action renders an icon beside its label`
-- **Dimension 2.3** — Cordon and Drain render disabled with the reason "Not active yet"; clicking opens nothing and PATCHes nothing → Test `cordon and drain are disabled and inert`
-- **Dimension 2.4** — a refresh button re-reads the page via router refresh; no polling anywhere → Test `refresh button requests a router refresh`
+- **Dimension 2.1** — DONE — "Run self-test"→"Run checks", pending "Checks requested", panel heading "CHECKS" → Test `runner header runs checks and shows the requested state`
+- **Dimension 2.2** — DONE — all five actions and Apply carry a leading lucide icon, `size={14} aria-hidden` (defaults: PencilIcon, ListChecksIcon, BanIcon, HourglassIcon, ShieldXIcon, FilterIcon; RefreshCwIcon for §2.4) → Test `every header action renders an icon beside its label`
+- **Dimension 2.3** — DONE — Cordon and Drain render disabled with the reason "Not active yet"; clicking opens nothing and PATCHes nothing → Test `cordon and drain are disabled and inert`
+- **Dimension 2.4** — DONE — a refresh button re-reads the page via router refresh; no polling anywhere → Test `refresh button requests a router refresh`
 
 ### §3 — The filter reads plain
 
-- **Dimension 3.1** — label "Filter", button "Apply"; the two hardcoded test strings now import the constants → Test `LeaseFilterBar renders the renamed copy` (constant-importing suite)
-- **Dimension 3.2** — `workspace:x and fleet:y` parses to both filters; `and` is an accepted connective, never a filter value → Test `tokenizer accepts the and connective`
+- **Dimension 3.1** — DONE — label "Filter", button "Apply"; the two hardcoded test strings now import the constants → Test `LeaseFilterBar renders the renamed copy` (constant-importing suite)
+- **Dimension 3.2** — DONE — `workspace:x and fleet:y` parses to both filters; `and` is an accepted connective, never a filter value → Test `tokenizer accepts the and connective`
 
 ### §4 — Time vocabulary matches the app
 
-- **Dimension 4.1** — LeaseTable "Time"/"Duration", ActivityTable "Time", matching `EventsList` → Test `lease and activity tables use the shared time vocabulary`
-- **Dimension 4.2** — the checks panel's relative stamp shows the absolute time on hover, same `Time` primitive as the table → Test `checks timestamp reveals the absolute time`
+- **Dimension 4.1** — DONE — LeaseTable "Time"/"Duration", ActivityTable "Time", matching `EventsList` → Test `lease and activity tables use the shared time vocabulary`
+- **Dimension 4.2** — DONE — the checks panel's relative stamp shows the absolute time on hover, same `Time` primitive as the table → Test `checks timestamp reveals the absolute time`
 
 ### §5 — States are explained where they are shown
 
-- **Dimension 5.1** — a CircleHelp learn-more beside the states chip links `https://docs.agentsfleet.net/runners#when-a-runner-stops-taking-work` → Test `states chip links the runners page`
+- **Dimension 5.1** — DONE — a CircleHelp learn-more beside the states chip links `https://docs.agentsfleet.net/runners#when-a-runner-stops-taking-work` → Test `states chip links the runners page`
 - **Dimension 5.2** — the paired docs branch adds a States section covering the chip vocabulary and the anchor above → graded in rubric R6
 
 ### §6 — The dev workspace stops showing test debris
@@ -176,7 +188,7 @@ Unchanged surfaces (must not drift):
 |-----------|------|------|---------------------------------------------|
 | 1.1 | unit | `test_every_writable_floor_path_is_a_tmpfs_in_argv` | argv built for a lease contains `--tmpfs <p>` for every floor path; no writable mount outside the floor |
 | 1.2 | unit | `landlock write set contains every writable-floor path` | ruleset write rules == workspace + rw binds + floor; `/tmp` absent from read-only rules |
-| 1.3 | integration | `a lease child writes its private tmpfs` | create/write/unlink `/tmp/probe` inside a real sandbox succeeds (Linux privileged lane) |
+| 1.3 | integration | `the scratch check passes in an unmodified sandbox` | the hardened probe creates + removes a file under the floor; verdict parses `scratch=` fail-closed |
 | 1.4 | unit | `test_sensitive_paths_still_refuse_tmp` | extra bind naming `/tmp` → refused, same error as today |
 | 2.1 | unit | `runner header runs checks and shows the requested state` | button "Run checks"; after request, disabled with "Checks requested" |
 | 2.2 | unit | `every header action renders an icon beside its label` | 6 buttons each contain an svg with `aria-hidden="true"` |

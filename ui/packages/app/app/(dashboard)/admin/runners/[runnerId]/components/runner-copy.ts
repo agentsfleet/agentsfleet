@@ -10,6 +10,12 @@ export const RUNNER_BREADCRUMB_LABEL = "Breadcrumb";
 export const RUNNER_ACTIONS_LABEL = "Runner admin actions";
 export const COPY_RUNNER_ID_LABEL = "Copy runner ID";
 export const OPEN_GRAFANA_LABEL = "Grafana";
+export const REFRESH_RUNNER_LABEL = "Refresh";
+
+// The states chip's learn-more target: the published section explaining the
+// exact admin-state and liveness vocabulary the chip renders.
+export const RUNNER_STATES_DOC_URL =
+  "https://docs.agentsfleet.net/runners#when-a-runner-stops-taking-work";
 
 export const RAIL_LABEL = "Runner sections";
 export const RAIL_LEASES_LABEL = "Leases";
@@ -55,11 +61,11 @@ export const CLEAR_FLEET_FILTER_LABEL = "Clear fleet filter";
 // issue search uses: `workspace:<id> fleet:<name-or-id>`. Tokens the parser does
 // not recognise are dropped rather than guessed at, so a typo narrows nothing
 // instead of silently filtering to the wrong set.
-export const LEASE_FILTER_LABEL = "Filter leases";
+export const LEASE_FILTER_LABEL = "Filter";
 export const LEASE_FILTER_PLACEHOLDER = "workspace:<id> fleet:<name or id>";
 export const LEASE_FILTER_HINT =
   "Filter by workspace:<id> and fleet:<name or id>. A fleet name matches exactly, ignoring case.";
-export const APPLY_LEASE_FILTER_LABEL = "Apply filter";
+export const APPLY_LEASE_FILTER_LABEL = "Apply";
 export const CLEAR_LEASE_FILTER_LABEL = "Clear all filters";
 
 export const IDLE_SENTENCE = "Idle. No active leases.";

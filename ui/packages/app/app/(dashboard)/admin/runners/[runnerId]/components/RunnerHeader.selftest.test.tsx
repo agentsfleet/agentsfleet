@@ -34,8 +34,8 @@ vi.mock("../../actions", () => ({
 import { RunnerHeader } from "./RunnerHeader";
 
 const RUNNER_ID = "01J2WQ8F3K7VZ9XB4N6MTYD5AR";
-const SELFTEST_LABEL = "Run self-test";
-const SELFTEST_PENDING_LABEL = "Self-test requested";
+const SELFTEST_LABEL = "Run checks";
+const SELFTEST_PENDING_LABEL = "Checks requested";
 
 afterEach(() => cleanup());
 beforeEach(() => {
