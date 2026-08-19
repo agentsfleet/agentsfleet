@@ -77,6 +77,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/ActivityTable.test.tsx` | EDIT | Header assertions follow the rename. |
 | `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/RunnerSandboxPanel.test.tsx` | EDIT | Tooltip-enabled Time + heading proofs. |
 | `ui/packages/app/app/(dashboard)/admin/runners/components/EditPolicyDialog.test.tsx` | EDIT | The trigger's PencilIcon is pinned where the real trigger mounts (the header suite stubs the island). |
+| `cli/test/acceptance/fixtures/teardown.ts` | EDIT | Finish the kill→delete state machine; stop skipping a prior run's terminal rows — the fixture-leak source. |
 | `ui/packages/app/app/(dashboard)/admin/runners/[runnerId]/components/RunnerHeader.tsx` | EDIT | Leading icons on all five actions; Cordon/Drain disabled with reason; refresh button; states-chip learn-more link. |
 | `ui/packages/app/app/(dashboard)/admin/runners/components/RunnerListCells.tsx` | EDIT | "Run self-test"→"Run checks", pending label "Checks requested"; Cordon/Drain configs carry the disabled reason. |
 | `ui/packages/app/app/(dashboard)/admin/runners/components/EditPolicyDialog.tsx` | EDIT | Leading icon on the Edit policy trigger. |
@@ -119,7 +120,7 @@ One list names every path bwrap mounts writable; both enforcement layers consume
 - **Dimension 1.2** — DONE — landlock write rules enumerate the floor and `/tmp` is gone from the read-only list → Test `landlock write set contains every writable-floor path`
 - **Dimension 1.3** — DONE — the self-test probe gains a scratch check (create + remove under the floor, inside full lease hardening, keyed `scratch=`, parsed fail-closed, graded under every posture), proven in a real sandbox → Tests `the scratch check passes in an unmodified sandbox` (Linux privileged lane) · `a healthy probe grades the scratch check ok` · `a refused scratch write grades failed under every posture` · `a timed-out probe grades scratch as timeout, not as refused`
 - **Dimension 1.4** — DONE — an operator bind naming `/tmp` is still refused → Test `test_sensitive_paths_still_refuse_tmp`
-- **Dimension 1.5** — the failing dev lease rows (`TempFileCreateFailed`, and the prior `HostResolutionFailed` class) are pulled and pasted into PR Session Notes as evidence → graded in rubric R5
+- **Dimension 1.5** — DONE — the failing dev lease rows (`TempFileCreateFailed`, and the prior `HostResolutionFailed` class) are pulled and pasted into PR Session Notes as evidence → graded in rubric R5
 
 ### §2 — Header actions speak product
 
@@ -145,7 +146,8 @@ One list names every path bwrap mounts writable; both enforcement layers consume
 
 ### §6 — The dev workspace stops showing test debris
 
-- **Dimension 6.1** — every leaked `acc-*` acceptance fixture fleet in the dev workspace is deleted through the product's delete path; count after sweep is zero → graded in rubric R5
+- **Dimension 6.1** — DONE — every leaked `acc-*` acceptance fixture fleet in the dev workspace is deleted through the product's delete path; count after sweep is zero → graded in rubric R5
+- **Dimension 6.2** — DONE — the leak's source is closed: the CLI acceptance teardown finishes the product's kill→delete state machine instead of stopping at kill, and no longer skips a prior run's terminal rows → CLI suite green (the teardown is exercised by every acceptance spec's cleanup path)
 
 ## Interfaces
 
@@ -209,7 +211,7 @@ Unchanged surfaces (must not drift):
 | R2 | Old copy is gone (§2–§3) | `grep -rn "Apply filter\|Filter leases\|Run self-test" ui/packages/app --include='*.ts' --include='*.tsx'` | 0 matches | P0 | ✅ 0 matches |
 | R3 | Time vocabulary aligned (§4) | `grep -n '"When"\|"Took"' ui/packages/app/app/\(dashboard\)/admin/runners/\[runnerId\]/components/LeaseTable.tsx ui/packages/app/app/\(dashboard\)/admin/runners/\[runnerId\]/components/ActivityTable.tsx` | 0 matches | P0 | ✅ 0 matches |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the table | P0 | ✅ 30 files, all in this table |
-| R5 | Dev evidence + sweep (§1.5, §6) | documented lease query + fleet delete calls against dev; counts pasted to PR Session Notes | `TempFileCreateFailed` rows captured; `acc-*` fleet count 0 | P1 | |
+| R5 | Dev evidence + sweep (§1.5, §6) | documented lease query + fleet delete calls against dev; counts pasted to PR Session Notes | `TempFileCreateFailed` rows captured; `acc-*` fleet count 0 | P1 | ✅ 2 TempFileCreateFailed leases (88/90ms) + 10 HostResolutionFailed captured; 98 fixtures deleted, count now 0 |
 | R6 | Docs States section paired (§5) | `gh pr checks <docs-pr> --repo agentsfleet/docs` | exit 0 | P1 | |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0 — all unit lanes passed |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ exit 0 — All lint checks passed |
