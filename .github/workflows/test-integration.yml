@@ -246,15 +246,16 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test-coverage-zig, test-integration-suite]
     timeout-minutes: 10
-    # A plain job container is right here precisely because this job needs
-    # nothing from the host: no compose, no host network, no kernel relaxation.
-    # It must be the SAME image as the producers, because the evidence records
-    # the toolchain identity it was built with and the grade refuses a mismatch.
-    container:
-      # The same digest the producers run — the evidence records the toolchain
-      # identity, and a retagged image could carry a different kcov or libc under
-      # the same Zig version string.
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4@sha256:b27550eb4910e77e532f061a7c1f3453815cb275dd188bdcc7db0448dd656948
+    # NOT a job container, deliberately. kcov's Cobertura reports carry the
+    # absolute paths the producers ran under — the standard runner workspace —
+    # while a job container mounts the same checkout at `/__w/...`. The union
+    # grader attributes lines to product roots by path, so grading from a job
+    # container resolved zero product lines and failed every required root on
+    # this workflow's first real run. `docker run` with the workspace mounted
+    # at its own host path keeps every recorded path resolvable, in the same
+    # digest-pinned image the producers used — the evidence records the
+    # toolchain identity and the grade refuses a mismatch. No network, no
+    # privilege, no socket: this job unions reports and runs nothing else.
     steps:
       - uses: actions/checkout@v6
       - name: Fetch the unit coverage evidence
@@ -268,7 +269,12 @@ jobs:
           name: zig-coverage-integration
           path: .
       - name: Grade the merged Zig coverage union
-        run: make test-coverage-grade
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}":"${{ github.workspace }}" \
+            -w "${{ github.workspace }}" \
+            ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4@sha256:b27550eb4910e77e532f061a7c1f3453815cb275dd188bdcc7db0448dd656948 \
+            sh -c 'make test-coverage-grade'
       - name: Publish Zig coverage summary
         if: always()
         run: |
