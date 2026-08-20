@@ -298,6 +298,33 @@ code is out of scope and reverts.
 | `src/agentsfleetd/auth/jwks.zig` `parseJwks` | The three owned fields were built inside the `append` argument list. A decode failure on `modulus` or `exponent` left `kid` allocated and unreferenced — the `errdefer` block only reaches keys already appended, so it never freed it. 15 bytes per key, and the daemon refetches this key set from a config-controlled provider URL for the life of the process, so it compounds per refresh. | Each field owned one at a time behind its own `errdefer` rung, then appended. | `test_jwks_parse_unwinds_without_leaking` — fails at `fail_index 4/8` with 536 allocated / 521 freed before the fix |
 | `src/agentsfleetd/fleet_runtime/yaml_frontmatter.zig` `yamlFrontmatterToJson` | The vendored `zig_yaml` parser allocates an `ErrorBundle` inside `Parser.init` before the allocation that fails, and `Yaml.deinit` cleans the document rather than the half-built parser — so a failed load leaked the parser's own scratch. The defect is upstream; the exposure is ours, on every library import and every fleet-config parse. | The YAML load runs under an arena, so whatever the dependency takes dies with it on success and failure alike. Caller ownership of the returned JSON is unchanged. | `test_bundle_prepare_unwinds_without_leaking` — fails at `fail_index 1/43` with 129 allocated / 0 freed before the fix |
 
+  - **The harness client cannot send a bodiless PUT/POST (Aug 21, 2026).**
+    `TestHarness`'s `send()` calls `std.http.Client`'s `sendBodiless()` when no
+    body is set, and that fails at the transport for these verbs — the first
+    §2 test to try it took the whole integration lane down. So the
+    "Request body required" arms (`preferences.zig:47`, `api_keys/tenant.zig:86`
+    and their siblings) are NOT reachable from the harness: an empty body is
+    sendable and lands on the adjacent malformed-JSON arm instead. Those arms
+    stay open, to be closed either by a raw-socket request helper or by §4
+    triage deciding they are defensive. Recorded rather than papered over —
+    asserting the empty-body case and calling the bodiless arm covered is
+    exactly the padding Dimension 4.4 bans.
+  - **A skipped integration test reports as passing (Aug 21, 2026).** The three
+    rejection-arm tests added for §2 were green on `zig build test-integration`
+    and had not executed a single assertion. `TestHarness.start` returns
+    `error.SkipZigTest` when the database OR Redis is unconfigured, every test
+    in the suite converts that to a skip, and the lane exits 0. Deliberately
+    breaking an assertion still produced a green run; only injecting an error as
+    the test's FIRST statement proved the body ran at all.
+    Consequences for the rest of §2, which is entirely integration work:
+    (a) `make test-integration` is the only lane that configures both
+    datastores — `zig build test-integration` and even `make
+    test-integration-db` (no `REDIS_URL_API`) skip the whole HTTP-harness
+    family; (b) a new arm test is not evidence until it is seen to FAIL when its
+    expectation is wrong, so every §2 test lands with a recorded mutation check
+    rather than a green tick; (c) the same trap hides existing tests — a run of
+    the built binary with DB but no Redis reported `301 passed; 706 skipped`,
+    and all four PRE-EXISTING preferences tests were among the skips.
   - **Scope widened to the full test shape (Aug 20, 2026).** Indy: "Ensure you
     cover the positive, edge cases, performance, concurrency tests". The sweep
     as authored produces allocation-failure proofs only. Every module this spec

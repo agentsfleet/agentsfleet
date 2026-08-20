@@ -237,3 +237,76 @@ test "integration: test_preferences_cross_tenant_isolation — another user neve
     try std.testing.expectEqual(@as(i64, 1), try prefRowCount(conn));
     cleanup(conn);
 }
+
+test "integration: test_preferences_malformed_json_rejected — a value that is not JSON is refused at the boundary" {
+    // The stored value is opaque and re-emitted verbatim, so well-formedness is
+    // checked exactly once, here. If this arm stops firing, a malformed blob
+    // reaches the column and every later GET of that bag serves broken JSON.
+    base.setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = seededHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const path = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/preferences/{s}", .{ base.TEST_WS_ID, PREF_DISMISSED });
+    defer alloc.free(path);
+
+    // Truncated object, unquoted key, and a bare trailing comma — three
+    // distinct ways a hand-rolled client breaks the same arm.
+    // An empty body belongs here rather than in a bodiless test: the HTTP
+    // client this harness uses cannot send a PUT with no body at all, so the
+    // "Request body required" arm is not reachable from here. An
+    // empty body IS sendable, and is refused by the same code on the next arm.
+    for ([_][]const u8{ "", "{\"a\":", "{a:1}", "[1,2,]" }) |bad| {
+        const r = try (try (try h.put(path).bearer(base.TOKEN_OPERATOR)).json(bad)).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try r.expectErrorCode(error_codes.ERR_INVALID_REQUEST);
+        // Code pinned, message not: an empty body may answer from the
+        // body-required arm and a malformed one from the JSON arm. Both are
+        // UZ-REQ-001/400, which is the contract a client actually branches on.
+        try std.testing.expect(r.bodyContains("Malformed JSON") or r.bodyContains("Request body required"));
+    }
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try std.testing.expectEqual(@as(i64, 0), try prefRowCount(conn));
+    cleanup(conn);
+}
+
+test "integration: test_preferences_malformed_workspace_id_rejected — the path id is validated before any query" {
+    // Refused on shape, so a malformed id never reaches a statement. Both verbs
+    // share the guard; both are driven because they enter it from different
+    // handlers.
+    base.setTestEncryptionKey();
+    const alloc = std.testing.allocator;
+    const h = seededHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const bag = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/preferences", .{"not-a-uuid"});
+    defer alloc.free(bag);
+    {
+        const r = try (try h.get(bag).bearer(base.TOKEN_OPERATOR)).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try r.expectErrorCode(error_codes.ERR_INVALID_REQUEST);
+    }
+
+    const one = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/preferences/{s}", .{ "not-a-uuid", PREF_DISMISSED });
+    defer alloc.free(one);
+    {
+        const r = try (try (try h.put(one).bearer(base.TOKEN_OPERATOR)).json("true")).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try r.expectErrorCode(error_codes.ERR_INVALID_REQUEST);
+    }
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    cleanup(conn);
+}

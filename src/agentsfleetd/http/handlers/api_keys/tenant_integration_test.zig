@@ -21,6 +21,7 @@ const pg = @import("pg");
 const auth_mw = @import("../../../auth/middleware/mod.zig");
 const api_key_lookup = @import("../../../cmd/api_key_lookup.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const ec = @import("../../../errors/error_registry.zig");
 
 const harness_mod = @import("../../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
@@ -93,6 +94,28 @@ fn seedTestData(conn: *pg.Conn) !void {
 
 fn cleanupApiKeys(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM core.api_keys WHERE tenant_id IN ($1::uuid, $2::uuid)", .{ TEST_TENANT_ID, OTHER_TENANT_ID }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+}
+
+/// Rows this tenant owns, whatever their state — proves a refused write wrote
+/// nothing rather than merely returning an error.
+fn countKeys(conn: *pg.Conn, tenant_id: []const u8) !i64 {
+    var q = PgQuery.from(try conn.query(
+        \\SELECT COUNT(*)::bigint FROM core.api_keys WHERE tenant_id = $1::uuid
+    , .{tenant_id}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestExpectedEqual;
+    return try row.get(i64, 0);
+}
+
+/// Rows still usable for authentication — a refused PATCH must not revoke.
+fn countActiveKeys(conn: *pg.Conn, tenant_id: []const u8) !i64 {
+    var q = PgQuery.from(try conn.query(
+        \\SELECT COUNT(*)::bigint FROM core.api_keys
+        \\WHERE tenant_id = $1::uuid AND revoked_at IS NULL
+    , .{tenant_id}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestExpectedEqual;
+    return try row.get(i64, 0);
 }
 
 fn finalCleanup(h: *TestHarness) void {
@@ -501,4 +524,158 @@ test "integration: test_api_keys_key_name_sort_pages_without_loss" {
         for (ids.items[i + 1 ..]) |b| try std.testing.expect(!std.mem.eql(u8, a, b));
     }
     finalCleanup(h);
+}
+
+// ── Rejection arms ────────────────────────────────────────────────────────
+//
+// Every arm below answers a caller who got the request wrong. Each is reached
+// by sending the request that arm exists to refuse, never by calling it
+// directly: an arm reached directly proves it compiles, not that the handler
+// routes to it.
+
+test "integration: test_api_keys_mint_rejects_malformed_bodies_with_declared_codes" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    defer finalCleanup(h);
+
+    { // an empty body. Not a bodiless request: the harness's HTTP client
+        // cannot send a POST with no body at all, so the "Request body required"
+        // arm is unreachable from here and is recorded in the spec instead.
+        const r = try (try (try h.post("/v1/api-keys").bearer(TOKEN_OPERATOR)).json("")).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try r.expectErrorCode(ec.ERR_INVALID_REQUEST);
+    }
+    { // present but not JSON
+        const r = try (try (try h.post("/v1/api-keys").bearer(TOKEN_OPERATOR)).json("{\"key_name\":")).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try r.expectErrorCode(ec.ERR_INVALID_REQUEST);
+        try std.testing.expect(r.bodyContains("Malformed JSON body"));
+    }
+
+    // No key survived any refusal — a rejected mint is not a partial insert.
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try std.testing.expectEqual(@as(i64, 0), try countKeys(conn, TEST_TENANT_ID));
+}
+
+test "integration: test_api_keys_mint_rejects_out_of_bounds_names_and_descriptions" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    defer finalCleanup(h);
+
+    // Empty, one past the 64-char cap, and a character outside the allowed set.
+    // The boundary itself (exactly 64) must still be accepted, so the cap is
+    // pinned from both sides rather than only from the rejecting side.
+    const long_name = "n" ** 65;
+    const at_cap_name = "n" ** 64;
+    for ([_][]const u8{ "", long_name, "has space", "has/slash" }) |name| {
+        const body = try std.fmt.allocPrint(ALLOC, "{{\"key_name\":\"{s}\"}}", .{name});
+        defer ALLOC.free(body);
+        const r = try (try (try h.post("/v1/api-keys").bearer(TOKEN_OPERATOR)).json(body)).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try r.expectErrorCode(ec.ERR_INVALID_REQUEST);
+        try std.testing.expect(r.bodyContains("key_name must be"));
+    }
+
+    { // one byte past the description cap, with a name that is otherwise fine
+        const desc = "d" ** 257;
+        const body = try std.fmt.allocPrint(ALLOC, "{{\"key_name\":\"desc-cap\",\"description\":\"{s}\"}}", .{desc});
+        defer ALLOC.free(body);
+        const r = try (try (try h.post("/v1/api-keys").bearer(TOKEN_OPERATOR)).json(body)).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try r.expectErrorCode(ec.ERR_INVALID_REQUEST);
+        try std.testing.expect(r.bodyContains("description must be"));
+    }
+
+    { // the accepting side of the same boundary
+        const body = try std.fmt.allocPrint(ALLOC, "{{\"key_name\":\"{s}\"}}", .{at_cap_name});
+        defer ALLOC.free(body);
+        const r = try (try (try h.post("/v1/api-keys").bearer(TOKEN_OPERATOR)).json(body)).send();
+        defer r.deinit();
+        try r.expectStatus(.created);
+    }
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    // Exactly one key: the four bad names and the oversize description wrote
+    // nothing, the at-cap name wrote one.
+    try std.testing.expectEqual(@as(i64, 1), try countKeys(conn, TEST_TENANT_ID));
+}
+
+test "integration: test_api_keys_patch_and_delete_reject_bad_ids_and_bodies" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    defer finalCleanup(h);
+
+    { // a path id that is not a UUIDv7 is refused before any statement runs
+        const r = try (try (try h.patch("/v1/api-keys/not-a-uuid").bearer(TOKEN_OPERATOR)).json("{\"active\":false}")).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try r.expectErrorCode(ec.ERR_INVALID_REQUEST);
+        try std.testing.expect(r.bodyContains("id must be a valid UUIDv7"));
+    }
+    { // same guard on the delete verb, which enters it from its own handler
+        const r = try (try h.delete("/v1/api-keys/not-a-uuid").bearer(TOKEN_OPERATOR)).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try r.expectErrorCode(ec.ERR_INVALID_REQUEST);
+    }
+
+    // Mint one real key so the body arms below are reached on a row that exists
+    // — otherwise a not-found would mask the body validation being tested.
+    const mint = try (try (try h.post("/v1/api-keys").bearer(TOKEN_OPERATOR)).json("{\"key_name\":\"patch-arms\"}")).send();
+    defer mint.deinit();
+    try mint.expectStatus(.created);
+    const key_id = (try parseJsonString(ALLOC, mint.body, "id")).?;
+    defer ALLOC.free(key_id);
+    const path = try std.fmt.allocPrint(ALLOC, "/v1/api-keys/{s}", .{key_id});
+    defer ALLOC.free(path);
+
+    { // a body that is not JSON at all
+        const r = try (try (try h.patch(path).bearer(TOKEN_OPERATOR)).json("nonsense")).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try r.expectErrorCode(ec.ERR_INVALID_REQUEST);
+    }
+    { // well-formed JSON carrying the wrong field
+        const r = try (try (try h.patch(path).bearer(TOKEN_OPERATOR)).json("{\"name\":\"x\"}")).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+        try r.expectErrorCode(ec.ERR_INVALID_REQUEST);
+    }
+    { // active:true is refused by its OWN code — revocation is one-way, and a
+        // client that tries to un-revoke must learn that, not a generic 400
+        const r = try (try (try h.patch(path).bearer(TOKEN_OPERATOR)).json("{\"active\":true}")).send();
+        defer r.deinit();
+        // 409, not 400: the registry classes re-activation as a conflict with
+        // the key's terminal state, not as a malformed request.
+        try r.expectStatus(.conflict);
+        try r.expectErrorCode(ec.ERR_APIKEY_READONLY_FIELD);
+    }
+    { // a well-formed id that names no row
+        const missing = try std.fmt.allocPrint(ALLOC, "/v1/api-keys/{s}", .{FOREIGN_KEY_ID});
+        defer ALLOC.free(missing);
+        const r = try (try (try h.patch(missing).bearer(TOKEN_OPERATOR)).json("{\"active\":false}")).send();
+        defer r.deinit();
+        try r.expectStatus(.not_found);
+        try r.expectErrorCode(ec.ERR_APIKEY_NOT_FOUND);
+    }
+
+    // The key is still active: every refusal above left it untouched.
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try std.testing.expectEqual(@as(i64, 1), try countActiveKeys(conn, TEST_TENANT_ID));
 }
