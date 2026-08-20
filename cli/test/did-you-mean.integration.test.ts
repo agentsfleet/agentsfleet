@@ -1,6 +1,11 @@
 import { describe, test, expect } from "bun:test";
 import { runCli } from "../src/cli.ts";
 import { bufferStream } from "./helpers-cli-state.ts";
+import { EXIT_CODE } from "../src/errors/index.ts";
+
+// An unknown command is a rejected invocation, not a transport failure —
+// exit 2 belongs to NetworkError alone.
+const EXIT_VALIDATION = EXIT_CODE.ValidationError;
 
 describe("did-you-mean integration", () => {
   test("'docto' suggests 'doctor'", async () => {
@@ -11,7 +16,7 @@ describe("did-you-mean integration", () => {
       stderr: err.stream,
       env: { ...process.env, NO_COLOR: "1" },
     });
-    expect(code).toBe(2);
+    expect(code).toBe(EXIT_VALIDATION);
     const errText = err.read();
     expect(errText).toContain("unknown command");
     expect(errText).toContain("docto");
@@ -29,13 +34,13 @@ describe("did-you-mean integration", () => {
       stderr: err.stream,
       env: { ...process.env, NO_COLOR: "1" },
     });
-    expect(code).toBe(2);
+    expect(code).toBe(EXIT_VALIDATION);
     const errText = err.read();
     expect(errText).toContain("unknown command");
     expect(errText).toContain("workspace");
   });
 
-  test("completely unrelated input shows help hint", async () => {
+  test("completely unrelated input points at the command list", async () => {
     const out = bufferStream();
     const err = bufferStream();
     const code = await runCli(["zzzzzzzzzzzzzzzzz"], {
@@ -43,7 +48,7 @@ describe("did-you-mean integration", () => {
       stderr: err.stream,
       env: { ...process.env, NO_COLOR: "1" },
     });
-    expect(code).toBe(2);
+    expect(code).toBe(EXIT_VALIDATION);
     const errText = err.read();
     expect(errText).toContain("unknown command");
     expect(errText).toContain("--help");
@@ -57,7 +62,7 @@ describe("did-you-mean integration", () => {
       stderr: err.stream,
       env: { ...process.env, NO_COLOR: "1" },
     });
-    expect(code).toBe(2);
+    expect(code).toBe(EXIT_VALIDATION);
     const errText = err.read();
     expect(errText).toContain("login");
   });
