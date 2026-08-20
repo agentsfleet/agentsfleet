@@ -67,48 +67,74 @@ pub const DELETE_TENANT_KEY =
     \\LIMIT 1
 ;
 
-/// Page-stable total for the tenant key list.
-pub const SELECT_TENANT_KEY_COUNT =
-    \\SELECT COUNT(*)::bigint FROM core.api_keys WHERE tenant_id = $1::uuid
-;
+// ── List page — ONE statement carries the page AND the page-stable total ────
+// The count CTE has no keyset predicate, so `total` is the tenant's whole key
+// count on every page (what the separate count read used to answer). The LEFT
+// JOIN LATERAL guarantees at least one row: an empty page still returns a
+// single marker row (NULL key columns, real total), so the handler never needs
+// a second round trip to learn the total. The outer ORDER BY names output
+// aliases, re-asserting the lateral's order so the plan cannot reorder rows.
+//
+// Positional `{0s}`/`{1s}` slots come from `sortSpecFor`'s fixed allowlist,
+// never from user input. No index serves these orderings, deliberately: a
+// tenant holds roughly a hundred human-created keys, which the page limit
+// already covers. Sorting at that size is free.
 
-/// One keyset page of the tenant key list. One `{s}` slot — the ORDER BY
-/// clause — fed from `sortSpecFor`'s fixed allowlist, never from user input.
-/// No index serves these orderings, deliberately: schema slot 033 names
-/// `core.api_keys` list sorts as intentionally unindexed because a tenant holds
-/// roughly a hundred human-created keys, which the page limit already covers.
-/// Sorting at that size is free; revisit with slot 033 if key counts climb.
-/// `$1` tenant_id, `$2` limit.
+/// First page. `{0s}` ORDER BY clause · `$1` tenant_id, `$2` limit.
 pub const SELECT_TENANT_KEY_KEYSET_FIRST_FMT =
-    \\SELECT id::text, key_name, active, created_at, last_used_at, revoked_at
-    \\FROM core.api_keys
-    \\WHERE tenant_id = $1::uuid
-    \\ORDER BY {s}
-    \\LIMIT $2
+    \\WITH tenant_total AS (
+    \\    SELECT COUNT(*)::bigint AS total FROM core.api_keys WHERE tenant_id = $1::uuid
+    \\)
+    \\SELECT p.id, p.key_name, p.active, p.created_at, p.last_used_at, p.revoked_at, t.total
+    \\FROM tenant_total t
+    \\LEFT JOIN LATERAL (
+    \\    SELECT id::text AS id, key_name, active, created_at, last_used_at, revoked_at
+    \\    FROM core.api_keys
+    \\    WHERE tenant_id = $1::uuid
+    \\    ORDER BY {0s}
+    \\    LIMIT $2
+    \\) p ON TRUE
+    \\ORDER BY {0s}
 ;
 
-/// Continuation for the created_at orderings. Two `{s}` slots — the row-value
-/// comparator (direction) and the ORDER BY clause — both from the allowlist.
-/// `$1` tenant_id, `$2` boundary created_at, `$3` boundary id, `$4` limit.
+/// Continuation for the created_at orderings. `{0s}` row-value comparator,
+/// `{1s}` ORDER BY clause · `$1` tenant_id, `$2` boundary created_at,
+/// `$3` boundary id, `$4` limit.
 pub const SELECT_TENANT_KEY_KEYSET_AFTER_CREATED_FMT =
-    \\SELECT id::text, key_name, active, created_at, last_used_at, revoked_at
-    \\FROM core.api_keys
-    \\WHERE tenant_id = $1::uuid
-    \\  AND (created_at, id) {s} ($2::bigint, $3::uuid)
-    \\ORDER BY {s}
-    \\LIMIT $4
+    \\WITH tenant_total AS (
+    \\    SELECT COUNT(*)::bigint AS total FROM core.api_keys WHERE tenant_id = $1::uuid
+    \\)
+    \\SELECT p.id, p.key_name, p.active, p.created_at, p.last_used_at, p.revoked_at, t.total
+    \\FROM tenant_total t
+    \\LEFT JOIN LATERAL (
+    \\    SELECT id::text AS id, key_name, active, created_at, last_used_at, revoked_at
+    \\    FROM core.api_keys
+    \\    WHERE tenant_id = $1::uuid
+    \\      AND (created_at, id) {0s} ($2::bigint, $3::uuid)
+    \\    ORDER BY {1s}
+    \\    LIMIT $4
+    \\) p ON TRUE
+    \\ORDER BY {1s}
 ;
 
 /// Continuation for the key_name orderings — the boundary sort value is the
-/// text key the cursor carried. Same two allowlist-fed `{s}` slots.
+/// text key the cursor carried. Same allowlist-fed positional slots.
 /// `$1` tenant_id, `$2` boundary key_name, `$3` boundary id, `$4` limit.
 pub const SELECT_TENANT_KEY_KEYSET_AFTER_NAME_FMT =
-    \\SELECT id::text, key_name, active, created_at, last_used_at, revoked_at
-    \\FROM core.api_keys
-    \\WHERE tenant_id = $1::uuid
-    \\  AND (key_name, id) {s} ($2::text, $3::uuid)
-    \\ORDER BY {s}
-    \\LIMIT $4
+    \\WITH tenant_total AS (
+    \\    SELECT COUNT(*)::bigint AS total FROM core.api_keys WHERE tenant_id = $1::uuid
+    \\)
+    \\SELECT p.id, p.key_name, p.active, p.created_at, p.last_used_at, p.revoked_at, t.total
+    \\FROM tenant_total t
+    \\LEFT JOIN LATERAL (
+    \\    SELECT id::text AS id, key_name, active, created_at, last_used_at, revoked_at
+    \\    FROM core.api_keys
+    \\    WHERE tenant_id = $1::uuid
+    \\      AND (key_name, id) {0s} ($2::text, $3::uuid)
+    \\    ORDER BY {1s}
+    \\    LIMIT $4
+    \\) p ON TRUE
+    \\ORDER BY {1s}
 ;
 
 // ── Per-fleet keys ──────────────────────────────────────────────────────────

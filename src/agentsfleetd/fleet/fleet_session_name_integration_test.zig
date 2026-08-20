@@ -18,6 +18,7 @@ const auth_mw = @import("../auth/middleware/mod.zig");
 const harness_mod = @import("../http/test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
 const base = @import("../db/test_fixtures.zig");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const FleetSession = @import("fleet_session.zig");
 
 const ALLOC = std.testing.allocator;
@@ -74,6 +75,61 @@ test "integration: a claimed fleet carries its own name, not the bundle's" {
     try std.testing.expectEqualStrings(BUNDLE_NAME, session.config.name);
 
     _ = try conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{FLEET_ID});
+}
+
+test "integration: claim folds the checkpoint into the fleet read and clears only a stale execution" {
+    const h = startHarness() catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    _ = try conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{FLEET_ID});
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedFleet(conn, FLEET_ID, WORKSPACE_ID, INSTANCE_NAME, CONFIG_JSON, SOURCE_MD);
+
+    { // No session row yet: the LEFT JOIN yields a fresh context.
+        var session = try FleetSession.claimFleet(ALLOC, FLEET_ID, h.pool);
+        defer session.deinit(ALLOC);
+        try std.testing.expectEqualStrings("{}", session.context_json);
+    }
+
+    // A checkpoint plus a stale execution handle left by a dead holder.
+    _ = try conn.exec(
+        \\INSERT INTO core.fleet_sessions (fleet_id, context_json, execution_id, execution_started_at, checkpoint_at, created_at, updated_at)
+        \\VALUES ($1::uuid, '{"cursor":"c1"}', 'stale-exec', 7, 0, 0, 0)
+        \\ON CONFLICT (fleet_id) DO UPDATE SET context_json = EXCLUDED.context_json,
+        \\  execution_id = EXCLUDED.execution_id, execution_started_at = EXCLUDED.execution_started_at
+    , .{FLEET_ID});
+
+    { // The claim carries the checkpoint AND clears the stale handle.
+        var session = try FleetSession.claimFleet(ALLOC, FLEET_ID, h.pool);
+        defer session.deinit(ALLOC);
+        try std.testing.expect(std.mem.indexOf(u8, session.context_json, "c1") != null);
+    }
+    {
+        var q = PgQuery.from(try conn.query(
+            "SELECT execution_id FROM core.fleet_sessions WHERE fleet_id = $1::uuid",
+            .{FLEET_ID},
+        ));
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expectEqual(@as(?[]const u8, null), try row.get(?[]const u8, 0));
+    }
+
+    _ = try conn.exec("DELETE FROM core.fleet_sessions WHERE fleet_id = $1::uuid", .{FLEET_ID});
+    _ = try conn.exec("DELETE FROM core.fleets WHERE id = $1::uuid", .{FLEET_ID});
+}
+
+test "the execution clear is guarded so the steady-state claim writes nothing" {
+    // Structural: the IS NOT NULL guard is the whole point — without it every
+    // claim takes a row lock and a write-ahead-log record to write NULL over NULL.
+    const sql = @import("sql.zig");
+    try std.testing.expect(std.mem.indexOf(u8, sql.CLEAR_STALE_EXECUTION, "execution_id IS NOT NULL") != null);
+    try std.testing.expect(std.mem.indexOf(u8, sql.SELECT_FLEET_WITH_SESSION, "LEFT JOIN core.fleet_sessions") != null);
 }
 
 test "integration: claiming a stopped fleet fails without leaking what it had loaded" {

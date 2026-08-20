@@ -12,6 +12,10 @@ import {
 import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
 import { GUIDANCE, OUTCOME, outcomeFor } from "@/lib/events/event-summary";
 import { __resetFleetDeliveryFailuresForTests } from "@/components/domain/useFleetDeliveryFailure";
+import { REFRESH_DEBOUNCE_MS } from "@/components/domain/useRefreshOnCompletion";
+
+/** Headroom over the debounce window so the wait is not a race with it. */
+const REFRESH_SETTLE_SLACK_MS = 1_000;
 
 // ── Hoisted mocks ────────────────────────────────────────────────────────
 
@@ -346,7 +350,11 @@ describe("FleetThread — summary refresh", () => {
       }),
     );
 
-    await waitFor(() => expect(routerRefreshMock).toHaveBeenCalledTimes(1));
+    // The refresh is debounced (a completion burst re-runs the whole page
+    // fetch graph once, not once per frame), so the wait outlasts that window.
+    await waitFor(() => expect(routerRefreshMock).toHaveBeenCalledTimes(1), {
+      timeout: REFRESH_DEBOUNCE_MS + REFRESH_SETTLE_SLACK_MS,
+    });
     view.rerender(
       React.createElement(FleetThread, {
         workspaceId: WS,

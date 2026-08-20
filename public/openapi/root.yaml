@@ -204,7 +204,7 @@ paths:
   /v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants/{grant_id}:
     $ref: ./paths/integration-grants.yaml#/~1v1~1workspaces~1{workspace_id}~1fleets~1{fleet_id}~1integration-grants~1{grant_id}
   /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages:
-    $ref: ./paths/fleets.yaml#/~1v1~1workspaces~1{workspace_id}~1fleets~1{fleet_id}~1messages
+    $ref: ./paths/fleet-messages.yaml#/~1v1~1workspaces~1{workspace_id}~1fleets~1{fleet_id}~1messages
   /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events:
     $ref: ./paths/fleets.yaml#/~1v1~1workspaces~1{workspace_id}~1fleets~1{fleet_id}~1events
   /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}:

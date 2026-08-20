@@ -57,8 +57,12 @@ pub fn lookup(
     const conn = self.pool.acquire() catch return error.DbUnavailable;
     defer self.pool.release(conn);
 
+    // `degraded` rides the same indexed single-row read: the lease gate used
+    // to re-read this exact row for that one flag, which doubled every idle
+    // poll's Postgres cost. Same freshness — both values are re-read per
+    // request, so revoke/cordon/degrade all land immediately.
     var q = PgQuery.from(conn.query(
-        \\SELECT id::text, admin_state
+        \\SELECT id::text, admin_state, degraded
         \\FROM fleet.runners
         \\WHERE token_hash = $1
         \\LIMIT 1
@@ -72,10 +76,11 @@ pub fn lookup(
 fn copyRow(alloc: std.mem.Allocator, row: pg.Row) !LookupResult {
     const runner_id_raw = row.get([]u8, 0) catch return error.DbRowShape;
     const admin_state_raw = row.get([]u8, 1) catch return error.DbRowShape;
+    const degraded = row.get(bool, 2) catch return error.DbRowShape;
     const active = std.mem.eql(u8, admin_state_raw, protocol.ADMIN_STATE_ACTIVE);
 
     const runner_id = try alloc.dupe(u8, runner_id_raw);
-    return .{ .runner_id = runner_id, .active = active };
+    return .{ .runner_id = runner_id, .active = active, .degraded = degraded };
 }
 
 // Referenced to silence "unused" warnings when the host isn't wired yet.

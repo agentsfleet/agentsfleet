@@ -193,6 +193,28 @@ pub const UPDATE_FLEET_EVENT_RESULT =
 ;
 
 /// Checkpoint a fleet's session. One row per fleet, replaced in place.
+/// The claim read: fleet row and session checkpoint in ONE statement — the
+/// per-claim shape used to spend three pool acquires on three single-row
+/// statements. `context_json` is NULL for a fleet with no checkpoint yet; the
+/// caller substitutes the fresh-context sentinel.
+pub const SELECT_FLEET_WITH_SESSION =
+    \\SELECT f.workspace_id::text, f.config_json::text, f.source_markdown, f.status,
+    \\       f.bundle_content_hash, f.name, s.context_json::text
+    \\FROM core.fleets f
+    \\LEFT JOIN core.fleet_sessions s ON s.fleet_id = f.id
+    \\WHERE f.id = $1
+;
+
+/// Crash-recovery clear for an execution handle a dead holder left behind.
+/// The IS NOT NULL guard makes the steady-state claim write nothing — no row
+/// lock, no write-ahead-log record — instead of rewriting NULL over NULL on
+/// every lease.
+pub const CLEAR_STALE_EXECUTION =
+    \\UPDATE core.fleet_sessions
+    \\SET execution_id = NULL, execution_started_at = NULL
+    \\WHERE fleet_id = $1::uuid AND execution_id IS NOT NULL
+;
+
 pub const UPSERT_FLEET_SESSION =
     \\INSERT INTO core.fleet_sessions (fleet_id, context_json, checkpoint_at, created_at, updated_at)
     \\VALUES ($1::uuid, $2::jsonb, $3, $3, $3)
