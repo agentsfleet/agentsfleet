@@ -226,3 +226,26 @@ test "an OOM after the emit slice exists still frees it and leaves the carry who
         }
     }
 }
+
+fn pushUnderAllocator(alloc: std.mem.Allocator) !void {
+    const secrets = [_]Secret{.{ .value = "sk-abc123", .placeholder = "[REDACTED]" }};
+    var carry: std.ArrayListUnmanaged(u8) = .empty;
+    defer carry.deinit(alloc);
+
+    // Two pushes: the first seeds a held tail, the second joins across the
+    // boundary. A single push never exercises the carry-replacement arm.
+    const first = try push(alloc, &carry, "hello sk-ab", &secrets);
+    alloc.free(first);
+    const second = try push(alloc, &carry, "c123 world", &secrets);
+    alloc.free(second);
+}
+
+test "test_stream_redactor_push_unwinds_without_leaking" {
+    // The fail-index sweep above walks 0..6 and claims that reaches the two
+    // unwind arms past `emit`. It does not — `push` makes more allocations than
+    // that before the dupe, so both rungs read unhit in the coverage report
+    // while the test that targets them passes. Sweeping a guessed range is what
+    // failed; this fails EVERY site in turn, so the arms are reached by
+    // construction rather than by an arithmetic hope.
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, pushUnderAllocator, .{});
+}
