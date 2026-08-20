@@ -279,3 +279,112 @@ test "integration: enumerate frees every id when an allocation fails mid-refresh
         cache.refreshIfStale(db.conn, WS_A, now());
     }
 }
+
+// ── Concurrency + complexity ────────────────────────────────────────────────
+//
+// The two properties this type exists for that the tests above do not reach:
+// that its mutex actually protects the refcount under real contention, and
+// that V viewers of one workspace cost ONE entry rather than V.
+
+const CONC_THREADS = 128;
+const CONC_ROUNDS = 16;
+
+const ConcWorker = struct {
+    /// Retain, read, and release in a tight loop — the interleaving that a
+    /// missing or mis-scoped lock corrupts.
+    fn hammer(cache: *FleetSetCache, start: *std.atomic.Value(bool), failed: *std.atomic.Value(bool)) void {
+        while (!start.load(.acquire)) std.atomic.spinLoopHint();
+        var i: usize = 0;
+        while (i < CONC_ROUNDS) : (i += 1) {
+            cache.retain(WS_A) catch {
+                failed.store(true, .release);
+                return;
+            };
+            _ = cache.version(WS_A);
+            if (cache.snapshot(WS_A) catch null) |s| s.deinit(cache.alloc);
+            cache.release(WS_A);
+        }
+    }
+};
+
+test "cache: 128 concurrent viewers never corrupt the refcount or duplicate the entry" {
+    // Catches: a retain/release pair moved outside the locked section (refs
+    // drifts, so the workspace either leaks forever or is freed while a viewer
+    // still holds it), and a map insert racing another insert for the same key.
+    // testing.allocator is the arbiter for the second failure mode.
+    var cache = FleetSetCache.init(testing.allocator, common.globalIo());
+    defer cache.deinit();
+
+    // One reference held for the whole run, so the entry cannot be evicted and
+    // recreated mid-race: the invariant under test is refcount arithmetic, not
+    // create/destroy churn.
+    try cache.retain(WS_A);
+
+    var start = std.atomic.Value(bool).init(false);
+    var failed = std.atomic.Value(bool).init(false);
+    var threads: [CONC_THREADS]std.Thread = undefined;
+    var spawned: usize = 0;
+    for (&threads) |*t| {
+        t.* = std.Thread.spawn(.{}, ConcWorker.hammer, .{ &cache, &start, &failed }) catch break;
+        spawned += 1;
+    }
+    // Released even on a partial spawn, so already-started workers never spin
+    // forever on a flag nobody will set.
+    start.store(true, .release);
+    for (threads[0..spawned]) |t| t.join();
+
+    try testing.expectEqual(@as(usize, CONC_THREADS), spawned);
+    try testing.expect(!failed.load(.acquire));
+    // Exactly one entry despite 128 threads racing to create it.
+    try testing.expectEqual(@as(u32, 1), cache.entries.count());
+    // Every retain was paired with a release, so only this test's own
+    // reference remains — releasing it evicts, exactly once.
+    cache.release(WS_A);
+    try testing.expectEqual(@as(u32, 0), cache.entries.count());
+}
+
+test "cache: V viewers of one workspace hold ONE entry's memory, not V" {
+    // The sharing property proven by counter rather than by clock: the memory
+    // still HELD after V viewers retain must stay flat as V doubles. A
+    // per-viewer entry here is the per-viewer cost this type was built to
+    // remove, and no correctness test above would notice it.
+    //
+    // Held bytes, not allocation calls: `retain` deliberately allocates a spare
+    // key and entry BEFORE taking the lock and returns them when the entry
+    // already exists, so the CALL count is linear in viewers by design (it is
+    // what keeps the critical section non-fallible). What must not grow is what
+    // survives the call.
+    const ladder = [_]usize{ 32, 64, 128 };
+    var held: [ladder.len]usize = undefined;
+
+    for (ladder, 0..) |viewers, idx| {
+        var counting = std.testing.FailingAllocator.init(testing.allocator, .{ .fail_index = std.math.maxInt(usize) });
+        var cache = FleetSetCache.init(counting.allocator(), common.globalIo());
+        defer cache.deinit();
+
+        var i: usize = 0;
+        while (i < viewers) : (i += 1) try cache.retain(WS_A);
+        held[idx] = counting.allocated_bytes - counting.freed_bytes;
+        while (i > 0) : (i -= 1) cache.release(WS_A);
+    }
+
+    // Flat across a 4x viewer increase — O(1) in viewers, not O(V).
+    try testing.expectEqual(held[0], held[1]);
+    try testing.expectEqual(held[1], held[2]);
+}
+
+test "cache: the spares a contended retain allocates are all returned" {
+    // The other half of the design above: every speculative key/entry that did
+    // not win the map slot must come back. A leak on that path would be
+    // invisible to the held-bytes ladder, which only samples the total.
+    var counting = std.testing.FailingAllocator.init(testing.allocator, .{ .fail_index = std.math.maxInt(usize) });
+    {
+        var cache = FleetSetCache.init(counting.allocator(), common.globalIo());
+        defer cache.deinit();
+        var i: usize = 0;
+        while (i < 64) : (i += 1) try cache.retain(WS_A);
+        while (i > 0) : (i -= 1) cache.release(WS_A);
+    }
+    // Every byte the 64 retains took is back — the 63 losing spares included.
+    try testing.expectEqual(counting.allocated_bytes, counting.freed_bytes);
+}

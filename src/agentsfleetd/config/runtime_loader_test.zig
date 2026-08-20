@@ -434,3 +434,27 @@ test "loadSizes rejects PORT overflow (>u16 max)" {
 // loadAuthPeppers tests live in runtime_pepper_loader_test.zig — extracted
 // to keep this file reviewable. Discovery happens via the test {} block in
 // runtime.zig.
+
+fn loadMiscUnderAllocator(alloc: std.mem.Allocator) !void {
+    // All three set to non-defaults: `envOrDefaultOwned` owns its result either
+    // way, but a rung that frees the wrong variable stays invisible while two
+    // of the three are the same default literal.
+    var env_map = try common.env.fromPairs(alloc, &.{
+        .{ "APP_URL", "https://app.proof.example" },
+        .{ "API_URL", "https://api.proof.example" },
+        .{ "PLATFORM_ADMIN_WORKSPACE_ID", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01" },
+    });
+    defer env_map.deinit();
+
+    const misc = try loader.loadMisc(&env_map, alloc);
+    alloc.free(misc.app_url);
+    alloc.free(misc.api_url);
+    alloc.free(misc.platform_admin_workspace_id);
+}
+
+test "test_misc_config_load_unwinds_without_leaking" {
+    // Boot reads these three once and holds them for the process lifetime, so a
+    // leak here is charged forever. The two rungs only run when a later read
+    // fails, which no ordinary load test reaches.
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, loadMiscUnderAllocator, .{});
+}
