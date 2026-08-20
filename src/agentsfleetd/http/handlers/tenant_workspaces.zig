@@ -49,35 +49,50 @@ const SQL_PROLOGUE =
     \\SELECT w.id, w.name, w.created_at, t.tenant_id::text
     \\FROM t
     \\LEFT JOIN LATERAL (
-    \\    SELECT id::text AS id, name, created_at
-    \\    FROM core.workspaces
-    \\    WHERE tenant_id = t.tenant_id
+    \\    SELECT ws.id::text AS id, ws.name, ws.created_at
+    \\    FROM core.workspaces AS ws
+    \\    WHERE ws.tenant_id = t.tenant_id
+    \\
+;
+// The inner sort. It must precede the per-variant LIMIT: SQL rejects the other
+// order outright, and the keyset needs the limit to cut a sorted set rather
+// than an arbitrary one. Qualified `ws.` so the sort reads the uuid column and
+// not the `::text` alias the select list binds to the same name — unqualified
+// `id` here resolves to the alias, which sorts a different type than the
+// boundary comparison below uses.
+const SQL_INNER_ORDER =
+    \\    ORDER BY ws.created_at ASC, ws.id ASC
     \\
 ;
 const SQL_EPILOGUE =
-    \\    ORDER BY created_at ASC, id ASC
     \\) w ON TRUE
     \\WHERE t.tenant_id IS NOT NULL
     \\ORDER BY w.created_at ASC NULLS LAST, w.id ASC
 ;
 
-const SQL_FIRST = SQL_PROLOGUE ++
+const SQL_FIRST = SQL_PROLOGUE ++ SQL_INNER_ORDER ++
     \\    LIMIT $3
     \\
 ++ SQL_EPILOGUE;
 const SQL_AFTER = SQL_PROLOGUE ++
-    \\      AND (created_at, id) > ($3, $4::uuid)
+    \\      AND (ws.created_at, ws.id) > ($3, $4::uuid)
+    \\
+++ SQL_INNER_ORDER ++
     \\    LIMIT $5
     \\
 ++ SQL_EPILOGUE;
 const SQL_FIRST_BY_NAME = SQL_PROLOGUE ++
-    \\      AND name = $3
+    \\      AND ws.name = $3
+    \\
+++ SQL_INNER_ORDER ++
     \\    LIMIT $4
     \\
 ++ SQL_EPILOGUE;
 const SQL_AFTER_BY_NAME = SQL_PROLOGUE ++
-    \\      AND name = $3
-    \\      AND (created_at, id) > ($4, $5::uuid)
+    \\      AND ws.name = $3
+    \\      AND (ws.created_at, ws.id) > ($4, $5::uuid)
+    \\
+++ SQL_INNER_ORDER ++
     \\    LIMIT $6
     \\
 ++ SQL_EPILOGUE;

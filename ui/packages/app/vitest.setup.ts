@@ -1,10 +1,14 @@
 import { afterEach, vi } from "vitest";
+import { configure } from "@testing-library/dom";
 
 // Unit tests declare their backend origin explicitly — lib/api/client.ts
 // throws on an unset NEXT_PUBLIC_API_URL instead of falling back (a silent
 // fallback once pointed env-less worktrees at the shared dev API). `??=`
 // keeps a caller-provided value intact.
 process.env.NEXT_PUBLIC_API_URL ??= "https://api-test.agentsfleet.net";
+
+/// Async ceiling for waitFor/findBy* across the suite.
+const ASYNC_UTIL_TIMEOUT_MS = 5_000;
 
 // No unit test may touch a real network. Without this, a fetch that a test does
 // not explicitly mock resolves against the dev-API origin (localhost:3000),
@@ -34,3 +38,12 @@ globalThis.fetch = (async () =>
 afterEach(() => {
   vi.useRealTimers();
 });
+
+// testing-library's 1s async ceiling is a quiet-machine number. Under the whole
+// suite — 235 files in parallel — mounting a Radix dialog and settling its focus
+// guard routinely costs longer than that, which surfaced as FleetLibrariesView
+// failing to find a dialog it had rendered correctly. Raising the ceiling weakens
+// no assertion: a test that would fail still fails, it just stops failing for
+// having been run on a loaded machine. It costs wall time only on runs that are
+// already failing.
+configure({ asyncUtilTimeout: ASYNC_UTIL_TIMEOUT_MS });

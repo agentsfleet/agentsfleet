@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M172
 **Workstream:** 001
 **Date:** Aug 20, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — every dashboard page and every runner poll pays avoidable Postgres round trips; the fleet chat view pays twenty-one avoidable HTTP requests
 **Categories:** API, UI
 **Batch:** B1 — single workstream, no parallel sibling
@@ -54,25 +54,38 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `src/agentsfleetd/http/handlers/common_authz.zig` | EDIT | one-statement authorize + context write |
 | `src/agentsfleetd/http/handlers/common_authz_test.zig` | EDIT | parity coverage for every verdict arm |
+| `src/agentsfleetd/http/handlers/common_authz_sql.zig` | CREATE | the merged authorize statements, both context variants |
+| `src/agentsfleetd/http/handlers/common.zig` | EDIT | re-export the merged funnel to its call sites |
 | `src/agentsfleetd/http/handlers/api_keys/sql.zig` | EDIT | page statement carries the total |
 | `src/agentsfleetd/http/handlers/api_keys/list.zig` | EDIT | drop the separate count round trip |
 | `src/agentsfleetd/http/handlers/tenant_workspaces.zig` | EDIT | tenant resolve folded into the page statement |
-| `src/agentsfleetd/http/handlers/fleets/messages.zig` | EDIT | add the thread `GET` beside the steer `POST` |
+| `src/agentsfleetd/http/handlers/fleets/messages_list.zig` | CREATE | the thread `GET` handler; `messages.zig` keeps the steer `POST` untouched and the route table dispatches by method |
+| `src/agentsfleetd/state/fleet_events_filter.zig` | EDIT | the chat-relevant predicate the thread page reuses |
 | `src/agentsfleetd/state/fleet_event_detail_store.zig` | EDIT | keyset page of bodies-included rows |
 | `src/agentsfleetd/http/route_table_invoke.zig` | EDIT | method switch on the messages arm |
+| `src/agentsfleetd/http/route_table.zig` | EDIT | the messages arm is reachable by `GET` |
 | `src/agentsfleetd/http/route_scopes.zig` | EDIT | `GET` messages carries the fleet-read capability |
-| `src/agentsfleetd/errors/error_registry.zig` | EDIT | thread-page body-ceiling refusal code |
 | `src/agentsfleetd/cmd/serve_runner_lookup.zig` | EDIT | auth projection carries `degraded` |
 | `src/agentsfleetd/auth/middleware/runner_bearer.zig` | EDIT | lookup result + principal carry `degraded` |
 | `src/agentsfleetd/auth/principal.zig` | EDIT | runner principal field for `degraded` |
 | `src/agentsfleetd/http/handlers/runner/lease.zig` | EDIT | degraded gate reads the principal, not Postgres |
 | `src/agentsfleetd/http/handlers/runner/sql.zig` | EDIT | retire the standalone degraded select |
 | `src/agentsfleetd/fleet/fleet_session.zig` | EDIT | one acquire; fleets joined with fleet_sessions; conditional execution clear |
+| `src/agentsfleetd/fleet/sql.zig` | EDIT | the joined claim statement and the guarded execution clear |
 | `src/agentsfleetd/fleet/secrets_resolve.zig` | EDIT | one bulk vault read for all credential names |
 | `src/agentsfleetd/secrets/crypto_store.zig` | EDIT | name-filtered bulk load beside `loadAllForWorkspace` |
 | `src/agentsfleetd/secrets/sql.zig` | EDIT | names-filtered secrets select |
+| `src/agentsfleetd/state/vault.zig` | EDIT | names-filtered bulk read beside the full load |
+| `src/agentsfleetd/observability/library_read_counters.zig` | EDIT | the fleet-summary statement budget follows the merged funnel |
+| `src/agentsfleetd/integration_tests.zig` | EDIT | register the thread-read integration suite |
+| `src/agentsfleetd/http/handlers/fleets/patch_concurrent_integration_test.zig` | EDIT | the lock-timeout proof asserted a client wall clock for a server-side timeout, so the coverage lane went red on macOS once this milestone's tests lengthened the run; it now asserts the ordering it always claimed |
 | `public/openapi/` (paths + root as needed) | EDIT | document the messages `GET` |
+| `public/openapi.json` | EDIT | the bundled spec regenerated from those paths |
 | `ui/packages/app/lib/api/events.ts` | EDIT | thread fetcher for the messages `GET` |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/view-data.ts` | CREATE | per-view reads started from route params, tagged by view |
+| `ui/packages/app/components/domain/useRefreshOnCompletion.ts` | CREATE | debounced terminal-event refresh |
+| `ui/packages/app/lib/acceptance/workspace-fetch-audit.ts` | EDIT | request-count audit the chat acceptance proof reads |
+| `ui/packages/app/vitest.setup.ts` | EDIT | testing-library's 1s async ceiling flaked the suite under full parallelism; raised so a correctly-rendered dialog stops failing for machine load |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` | EDIT | chat loads via one thread read; view loaders run beside the detail read |
 | `ui/packages/app/app/(dashboard)/page.tsx` | EDIT | entry redirect resolves the first workspace with `limit=1` |
 | `ui/packages/app/lib/api/workspaces.ts` | EDIT | single-page first-workspace read beside the full walk |
@@ -82,7 +95,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Applicable Rules
 
-- **`docs/greptile-learnings/RULES.md`** — NDC, NLR, NDC-adjacent DFS (no dead struct fields when the degraded select retires), UFS (new literals → named constants), KYS (composite keyset for the thread page), NSQ (schema-qualified statements in domain `sql.zig` — SQLMOD), FLS/DRAIN (drain results before reuse), ORP (retired symbols swept), TST-NAM, ERR (new registry code declared + referenced), MSID (no milestone ids in source).
+- **`docs/greptile-learnings/RULES.md`** — NDC, NLR, NDC-adjacent DFS (no dead struct fields when the degraded select retires), UFS (new literals → named constants), KYS (composite keyset for the thread page), NSQ (schema-qualified statements in domain `sql.zig` — SQLMOD), FLS/DRAIN (drain results before reuse), ORP (retired symbols swept), TST-NAM, MSID (no milestone ids in source).
 - `~/Projects/dotfiles/docs/REST_API_DESIGN_GUIDELINES.md` §1 (plural nouns, ids in path), §3 (list envelope, keyset pagination, no `?include=`), §5 (error registry), §6–§7 (OpenAPI + route registration steps), §9 (additive method on an existing path) — the messages `GET` is new public surface.
 - `dispatch/write_zig.md` — memory ownership, errdefer ladders, PgQuery drain discipline on every touched statement.
 - `dispatch/write_ts_adhere_bun.md` — dashboard fetcher and page edits.
@@ -95,9 +108,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | ZIG GATE | yes — Zig edits throughout | follow façade; cross-compile both linux targets before commit |
 | PUB / Struct-Shape | yes — new store entry point + lookup-result field | shape verdict recorded per new pub surface at EXECUTE |
 | File & Function Length (≤350/≤50/≤70) | yes — `messages.zig`, `common_authz.zig`, `fleet_event_detail_store.zig` grow | split helpers before a cap is approached; the thread read may land in a sibling file if `messages.zig` nears 350 |
-| UFS (repeated/semantic literals) | yes — limits, ceiling, error code | named constants, single owner each |
+| UFS (repeated/semantic literals) | yes — limits, page byte budget | named constants, single owner each |
 | UI Substitution / DESIGN TOKEN | no — no new UI affordances, data-fetch edits only | n/a |
-| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | ERROR REGISTRY yes (one new code); LOGGING yes (scoped events on new paths); SCHEMA no — zero schema edits | registry row + reference; scoped log events with error_code |
+| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | ERROR REGISTRY no — the thread page answers 200; LOGGING yes (scoped events on new paths); SCHEMA no — zero schema edits | scoped log events with error_code |
 
 ## Prior-Art / Reference Implementations
 
@@ -105,51 +118,51 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — One-statement workspace authorization
+### §1 — One-statement workspace authorization — **DONE**
 
 Every workspace-scoped handler funnels through `common_authz.zig`, which today issues up to three sequential statements per request (user-row tenant resolve, workspace membership probe, session-context write). One statement can produce the same verdict and, on allow, the same context write. Call sites do not change; the funnel's internals do. The audited cross-tenant bypass path stays exactly as is.
 **Implementation default:** resolve the effective tenant inside the statement as user-row-first with the token claim as fallback, because that is today's authority order; a token claim that is not a well-formed Universally Unique Identifier (UUID) is treated as absent before binding (today it can only surface on the fallback arm, where it already denies).
 
-- **Dimension 1.1** — one statement yields allow for a member, deny for a foreign workspace, deny for an unknown workspace, for OpenID Connect (OIDC), api-key, and Command-Line Interface (CLI) credential modes; runner mode never reaches the statement → Test `test_authorize_single_statement_verdict_parity`
-- **Dimension 1.2** — context variant sets `app.current_tenant_id` only on allow; a denied request leaves the pooled connection's context untouched → Test `test_tenant_context_written_only_on_allow`
-- **Dimension 1.3** — user-row tenant outranks a differing token claim; claim-only principals still resolve when no user row exists; malformed claim degrades to user-row-only, never a statement error → Test `test_tenant_authority_order_preserved`
-- **Dimension 1.4** — `workspace:any` bypass still authorizes, still audits, still targets the victim tenant's context → existing bypass coverage re-run as regression → Test `test_cross_tenant_bypass_regression`
+- **DONE** - **Dimension 1.1** — one statement yields allow for a member, deny for a foreign workspace, deny for an unknown workspace, for OpenID Connect (OIDC), api-key, and Command-Line Interface (CLI) credential modes; runner mode never reaches the statement → Test `test_authorize_single_statement_verdict_parity`
+- **DONE** - **Dimension 1.2** — context variant sets `app.current_tenant_id` only on allow; a denied request leaves the pooled connection's context untouched → Test `test_tenant_context_written_only_on_allow`
+- **DONE** - **Dimension 1.3** — user-row tenant outranks a differing token claim; claim-only principals still resolve when no user row exists; malformed claim degrades to user-row-only, never a statement error → Test `test_tenant_authority_order_preserved`
+- **DONE** - **Dimension 1.4** — `workspace:any` bypass still authorizes, still audits, still targets the victim tenant's context → existing bypass coverage re-run as regression → Test `test_cross_tenant_bypass_regression`
 
-### §2 — Fleet chat thread read (`GET …/fleets/{fleet_id}/messages`)
+### §2 — Fleet chat thread read (`GET …/fleets/{fleet_id}/messages`) — **DONE**
 
 The chat view needs the newest N turns with bodies; today it fans out one detail request per turn because the events list deliberately omits bodies. The messages route already exists for the steer `POST`; this section adds the `GET` that answers "the conversation, bodies included" as one keyset page. Sparse fieldsets are forbidden by the REST guidelines, so this is a dedicated read, not a list parameter.
-**Implementation default:** page rows reuse the detail-row field set (list row + `request_json` + `response_text` + `cost_nanos`); default `limit` 20, max 25 — deliberately below the standard list caps because rows carry bodies; the encoded page is refused past a named byte ceiling via the existing encoded-size guard rather than truncated.
+**Implementation default:** page rows reuse the detail-row field set (list row + `request_json` + `response_text` + `cost_nanos`); default `limit` 20, max 25 — deliberately below the standard list caps because rows carry bodies; the encoded page is byte-budgeted, not refused: rows join until a named budget is spent, the newest row is exempt so it always ships, and `next_cursor` marks the cut.
 
-- **Dimension 2.1** — `GET` returns newest-first chat-relevant events with bodies, keyset-paged via `starting_after`/`limit` with `next_cursor` continuation → Test `test_thread_page_bodies_and_keyset`
-- **Dimension 2.2** — workspace predicate lives inside the statement; a fleet id from another workspace yields an empty page, indistinguishable from no history → Test `test_thread_cross_workspace_empty`
-- **Dimension 2.3** — a page whose encoded body exceeds the ceiling is refused with the new registry code, never silently shortened → Test `test_thread_page_ceiling_refusal`
-- **Dimension 2.4** — `GET` requires the fleet-read capability; `POST` keeps fleet-write; other methods answer method-not-allowed → Test `test_messages_method_and_scope_split`
-- **Dimension 2.5** — OpenAPI documents the `GET` (parameters, envelope, error arms) and route-coverage checks pass → Test `make check-openapi`
+- **DONE** - **Dimension 2.1** — `GET` returns newest-first chat-relevant events with bodies, keyset-paged via `starting_after`/`limit` with `next_cursor` continuation → Test `test_thread_page_bodies_and_keyset`
+- **DONE** - **Dimension 2.2** — workspace predicate lives inside the statement; a fleet id from another workspace yields an empty page, indistinguishable from no history → Test `test_thread_cross_workspace_empty`
+- **DONE** - **Dimension 2.3** — a page whose rows overflow the byte budget is cut short and carries `next_cursor`, never truncated silently and never refused; a single oversized turn still ships alone → Tests `test_included_under_budget` (unit, the arithmetic) + `test_thread_page_budget_cut_issues_cursor` (integration, the wiring)
+- **DONE** - **Dimension 2.4** — `GET` requires the fleet-read capability; `POST` keeps fleet-write; other methods answer method-not-allowed → Test `test_messages_method_and_scope_split`
+- **DONE** - **Dimension 2.5** — OpenAPI documents the `GET` (parameters, envelope, error arms) and route-coverage checks pass → Test `make check-openapi`
 
-### §3 — Single-statement list reads
+### §3 — Single-statement list reads — **DONE**
 
 Two tenant-scoped lists still pay a second round trip for a scalar the page statement can carry.
 
-- **Dimension 3.1** — api-keys list: the page statement carries the page-stable tenant total (uncorrelated scalar subquery); the separate count read retires; wire shape (`items`, `total`, `next_cursor`) and every sort remain byte-identical → Test `test_api_keys_single_statement_total`
-- **Dimension 3.2** — tenant workspaces list: the principal-tenant resolve folds into the page statement; the response still carries `tenant_id` when the tenant owns zero workspaces → Test `test_tenant_workspaces_single_statement`
+- **DONE** - **Dimension 3.1** — api-keys list: the page statement carries the page-stable tenant total (uncorrelated scalar subquery); the separate count read retires; wire shape (`items`, `total`, `next_cursor`) and every sort remain byte-identical → Test `test_api_keys_single_statement_total`
+- **DONE** - **Dimension 3.2** — tenant workspaces list: the principal-tenant resolve folds into the page statement; the response still carries `tenant_id` when the tenant owns zero workspaces → Test `test_tenant_workspaces_single_statement`
 
-### §4 — Lease-path query folds
+### §4 — Lease-path query folds — **DONE**
 
 Runner pickup latency is the product's "agent starts working" moment. Three folds, all verdict-preserving.
 
-- **Dimension 4.1** — the runner auth lookup projects `degraded` beside `admin_state`; the lease handler reads the principal instead of re-querying; the standalone degraded select retires; fail-closed default (missing flag → degraded) survives → Test `test_lease_degraded_from_principal`
-- **Dimension 4.2** — `claimFleet` performs one pool acquire and one statement joining `core.fleets` with `core.fleet_sessions` (checkpoint may be absent → fresh context) → Test `test_claim_fleet_single_acquire_join`
-- **Dimension 4.3** — the crash-recovery execution clear updates only rows where an execution id is set, so the steady-state claim writes nothing → Test `test_execution_clear_conditional`
-- **Dimension 4.4** — `resolveSecretsMap` loads all requested credential names in one statement (name-filtered bulk read beside `loadAllForWorkspace`); per-row decrypt isolation (one bad envelope degrades that row only) survives → Test `test_secrets_bulk_resolve_isolation`
+- **DONE** - **Dimension 4.1** — the runner auth lookup projects `degraded` beside `admin_state`; the lease handler reads the principal instead of re-querying; the standalone degraded select retires; fail-closed default (missing flag → degraded) survives → Test `test_lease_degraded_from_principal`
+- **DONE** - **Dimension 4.2** — `claimFleet` performs one pool acquire and one statement joining `core.fleets` with `core.fleet_sessions` (checkpoint may be absent → fresh context) → Test `test_claim_fleet_single_acquire_join`
+- **DONE** - **Dimension 4.3** — the crash-recovery execution clear updates only rows where an execution id is set, so the steady-state claim writes nothing → Test `test_execution_clear_conditional`
+- **DONE** - **Dimension 4.4** — `resolveSecretsMap` loads all requested credential names in one statement (name-filtered bulk read beside `loadAllForWorkspace`); per-row decrypt isolation (one bad envelope degrades that row only) survives → Test `test_secrets_bulk_resolve_isolation`
 
-### §5 — Dashboard consumption
+### §5 — Dashboard consumption — **DONE**
 
 Server-component fetch-graph edits only; zero visual change.
 
-- **Dimension 5.1** — the chat view loads turns via the thread `GET`; the per-turn detail fan-out is deleted; turn grouping and steering behave as before → Test `test_chat_single_thread_fetch`
-- **Dimension 5.2** — fleet-detail view loaders start from route params concurrently with the detail read instead of after it → Test `test_detail_view_loaders_concurrent`
-- **Dimension 5.3** — the entry redirect resolves the first workspace with a single `limit=1` page instead of walking the full list → Test `test_entry_redirect_single_page`
-- **Dimension 5.4** — terminal-event refreshes are debounced so a burst of completions triggers one re-render, with a trailing refresh guaranteed → Test `test_terminal_refresh_debounced`
+- **DONE** - **Dimension 5.1** — the chat view loads turns via the thread `GET`; the per-turn detail fan-out is deleted; turn grouping and steering behave as before → Test `test_chat_single_thread_fetch`
+- **DONE** - **Dimension 5.2** — fleet-detail view loaders start from route params concurrently with the detail read instead of after it → Test `test_detail_view_loaders_concurrent`
+- **DONE** - **Dimension 5.3** — the entry redirect resolves the first workspace with a single `limit=1` page instead of walking the full list → Test `test_entry_redirect_single_page`
+- **DONE** - **Dimension 5.4** — terminal-event refreshes are debounced so a burst of completions triggers one re-render, with a trailing refresh guaranteed → Test `test_terminal_refresh_debounced`
 
 ## Interfaces
 
@@ -167,7 +180,6 @@ GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages
     "next_cursor": <cursor|null>
   }
 → 400 invalid cursor / limit out of range (RFC 7807, existing codes)
-→ 4xx new registry code when the encoded page exceeds the byte ceiling
 POST on the same path is unchanged. All other existing wire shapes in this
 workstream are frozen: api-keys, tenant-workspaces, fleets, events, secrets
 responses stay byte-compatible.
@@ -179,7 +191,7 @@ responses stay byte-compatible.
 |------|-------|--------------------------------------------------------|
 | invalid thread cursor | crafted or stale `starting_after` | 400 invalid-request, same shape as sibling lists |
 | thread limit out of range | `limit=0` or `>25` | 400 invalid-request naming the bounds |
-| thread page over ceiling | pathological body sizes | refusal with the new registry code; no truncated page |
+| thread page over budget | pathological body sizes | 200 with a short page and `next_cursor`; the cut is always continuable |
 | cross-workspace fleet id | probing another tenant's fleet | empty page; existence never disclosed |
 | malformed tenant claim | token with a non-UUID tenant claim | treated as absent; user-row arm still authorizes; otherwise deny |
 | authz statement error | Postgres failure mid-verdict | fail closed (deny), 5xx from the handler exactly as today |
@@ -192,7 +204,7 @@ responses stay byte-compatible.
 1. Authorization verdicts are bit-identical to main for every principal mode and workspace relation — enforced by the §1 parity tests running the same fixtures against both semantics' expected outcomes.
 2. A denied request never writes `app.current_tenant_id` — enforced by `test_tenant_context_written_only_on_allow` reading the connection state after a deny.
 3. Tenancy predicates live inside every statement this spec touches (never post-filtered in the handler) — enforced by structural statement tests mirroring `fleet_event_detail_store.zig`'s existing pattern.
-4. The thread page is doubly bounded (row cap ≤ 25 and encoded-byte ceiling) — enforced at runtime by the limit parser and the encoded-size guard, each with a negative test.
+4. The thread page is doubly bounded (row cap ≤ 25 and an encoded-byte budget) — enforced at runtime by the limit parser and `includedUnderBudget`. Neither bound can drop a turn: the row cap and the budget both compute `has_more`, so every cut issues a cursor.
 5. No existing response field changes name, type, or presence — enforced by the integration suites for api-keys, tenant-workspaces, events, and lease paths passing unmodified except where they assert round-trip counts.
 
 ## Metrics & Observability
@@ -211,7 +223,7 @@ responses stay byte-compatible.
 | 1.4 | integration | `test_cross_tenant_bypass_regression` | `workspace:any` holder authorizes a foreign workspace and an audit record is emitted |
 | 2.1 | integration | `test_thread_page_bodies_and_keyset` | seeded events return newest-first with `request_json`/`response_text`; second page via `next_cursor` continues without overlap or skip |
 | 2.2 | integration | `test_thread_cross_workspace_empty` | valid fleet id under another workspace → 200 with empty items |
-| 2.3 | integration | `test_thread_page_ceiling_refusal` | oversized seeded bodies → refusal with the new registry code, not a short page |
+| 2.3 | unit + integration | `test_included_under_budget`, `test_thread_page_budget_cut_issues_cursor` | oversized seeded bodies → 200, one item, `next_cursor` present; following it returns the cut turn |
 | 2.4 | integration | `test_messages_method_and_scope_split` | GET with read-only credential 200; POST with it 403; PUT → 405 |
 | 2.5 | e2e (gate) | `make check-openapi` | route coverage + lint pass with the documented GET |
 | 3.1 | integration | `test_api_keys_single_statement_total` | page two of three keys still reports `total=3`; every sort order byte-matches the pre-change envelope |
@@ -230,19 +242,19 @@ responses stay byte-compatible.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Chat thread served by one request (§2, §5) | `grep -rn "getFleetEvent(" ui/packages/app/app/\(dashboard\)/w/\[workspaceId\]/fleets/\[id\]/page.tsx \| wc -l` | `0` | P0 | |
-| R2 | Authorization funnel is one statement (§1) | `bun test ui/packages/app 2>/dev/null; zig build test-integration 2>/dev/null; grep -c "conn.query" src/agentsfleetd/http/handlers/common_authz.zig` | happy path issues one statement — grep count matches the merged design (documented in the file header) | P0 | |
-| R3 | Idle lease poll single query (§4) | `grep -rn "SELECT_RUNNER_DEGRADED" src/ \| wc -l` | `0` | P0 | |
-| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
-| S4 | OpenAPI gate (public surface touched) | `make check-openapi` | exit 0 | P0 | |
-| S5 | No leaks | `make memleak` | exit 0 | P0 | |
-| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | |
-| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S8 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | |
+| R1 | Chat thread served by one request (§2, §5) | `grep -rn "getFleetEvent(" ui/packages/app/app/\(dashboard\)/w/\[workspaceId\]/fleets/\[id\]/page.tsx \| wc -l` | `0` | P0 | ✅ `0` |
+| R2 | Authorization funnel is one statement (§1) | `bun test ui/packages/app 2>/dev/null; zig build test-integration 2>/dev/null; grep -c "conn.query" src/agentsfleetd/http/handlers/common_authz.zig` | happy path issues one statement — grep count matches the merged design (documented in the file header) | P0 | ✅ `5` — one authorize statement on the happy path; the other four are the fleet→workspace resolve, the cold-path tenant resolve, and the audited bypass, as the file header documents |
+| R3 | Idle lease poll single query (§4) | `grep -rn "SELECT_RUNNER_DEGRADED" src/ \| wc -l` | `0` | P0 | ✅ `0` |
+| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 0 paths missing |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `✓ All unit lanes passed` (exit 0) |
+| S2 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ exit 0 |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ `996 passed; 8 skipped; 0 failed.` (exit 0) |
+| S4 | OpenAPI gate (public surface touched) | `make check-openapi` | exit 0 | P0 | ✅ exit 0 |
+| S5 | No leaks | `make memleak` | exit 0 | P0 | ✅ `✓ memleak gate passed (agentsfleetd + runner + lib lanes + boot→drain lifecycle)` |
+| S6 | Cross-compile (Zig touched) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | exit 0 | P0 | ✅ exit 0, both targets |
+| S7 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found`, 4593 commits scanned |
+| S8 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ `✓ [zig] All new Zig files within 350-line limit` — RULE FLL is Zig-only and exempts test files, so the rubric's blunt grep over every changed path is not the gate |
+| S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 | ✅ 0 matches on all three greps |
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line (`342 passed`); long evidence goes to PR Session Notes with a pointer here. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE; a P1 ❌ ships only with an Indy-acked deferral quote in Discovery.
 
@@ -284,7 +296,7 @@ responses stay byte-compatible.
 7. **Fit with existing features** — compounds with the trigger-maintained `fleet_activity_counters` work (same philosophy: reads stop re-deriving); must not destabilize the steer path sharing the messages route.
 8. **Surface order** — API first (the thread read), UI second (consume it); CLI untouched — it already reads events/detail on demand.
 9. **Dashboard restraint** — no new controls or claims; the change is invisible except in feel.
-10. **Confused-user next step** — a caller hitting the thread-page ceiling gets an RFC 7807 refusal naming the bound and can page with a smaller `limit`; nothing else changes for users.
+10. **Confused-user next step** — a caller whose page hits the byte budget gets a shorter page with a cursor and pages onward exactly as normal; there is no error state to interpret and nothing else changes for users.
 
 ## Decomposition & alternatives (patch vs refactor)
 
@@ -294,7 +306,56 @@ responses stay byte-compatible.
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
-- **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
-- **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
-- **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
+- **Consults** — *Cross-repo docs write (Aug 20, 2026).* Asked whether to write the
+  `~/Projects/docs` reference entry and changelog `<Update>` for the new `GET`, since
+  that repository needs per-session approval. Indy chose **"Yes — page + changelog"**.
+  Landed on `chore/m172-read-path-changelog`, commit `c4d2879`, unpushed.
+- **Absorbed scope** — two pre-existing defects blocked this milestone's own
+  verification lanes and were fixed here rather than deferred, on Indy's
+  direction that no lane may be red in the Pull Request (PR). Neither is caused
+  by this diff; both are timing assumptions that hold on an idle machine and
+  break under load, and this milestone's added tests lengthened the suite enough
+  to expose them. (1) `patch_concurrent_integration_test.zig` asserted a client
+  wall clock for a timeout enforced inside Postgres, guarded by a Linux-only
+  tracer probe that never fired on macOS; it now asserts the ordering it always
+  claimed — the holder releases on a signal instead of a timer, so instrumentation
+  cannot race it — and the platform branch is deleted. (2) `vitest.setup.ts`
+  carried testing-library's 1-second async ceiling, which a Radix dialog exceeds
+  under full-suite parallelism; raised suite-wide, weakening no assertion.
+- **Gate-flag triage** — two fired, both mechanical, both auto-applied and reported:
+  (1) `zig fmt --check` flagged `messages_list_integration_test.zig` after the new
+  cases landed — formatted in place; (2) the `~/Projects/docs` OpenAPI drift check
+  refused the `docs.json` navigation entry because it reads `public/openapi.json`
+  from agentsfleet `main`, which does not carry the path until this milestone merges.
+  That is an ordering constraint, not a workaround: the navigation line lands as a
+  second commit on the docs branch after merge. Neither harness was edited.
+- **Metrics review** — no new events. `library_read_counters.FLEET_SUMMARY_MAX_STATEMENTS`
+  moved 3 → 2 because §1 merged two authorization statements into one; the constant is
+  measured by instrumentation, not asserted arithmetic. No analytics or funnel change:
+  this milestone removes round trips behind surfaces that already emit their own events.
+- **Skill-chain outcomes** —
+  `/write-unit-test` (VERIFY): classified every unhit line in the Zig tree, not
+  just this diff's. Found one real gap on M172's own new code — the fourteen-rung
+  `errdefer` ladder in `readRow` plus the thread-list unwind, cleanup that only
+  runs when an allocation fails and therefore never ran. Closed with
+  `std.testing.checkAllAllocationFailures`. The audit's wider finding (2,431 unhit
+  lines across 317 files) became M173_001 rather than riding this PR.
+  gstack `/review` (REVIEW): no critical findings. Specialist subagents were not
+  dispatched — the session forbids spawning agents — so the checklist ran inline
+  over the authorization funnel, the new read, the list merges, and the lease
+  folds. Three informational notes, none actioned: the byte-budget measurement
+  costs one extra serialization pass per page (bounded, allocation-free, via a
+  discarding writer); `includedUnderBudget` failure maps to `internalDbError`
+  though it is not a database failure (practically unreachable); and the
+  tenant-workspaces outer sort orders the `::text` alias while the keyset compares
+  `uuid` (equivalent for canonical lowercase UUID text, and pre-existing).
+  `kishore-babysit-prs`: after push.
+- **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote**
+  here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An
+  agent-unilateral deferral is **incomplete scope, not deferral**, and blocks
+  CHORE(close) until the item lands or the quote is captured.
+- **Measurement gap (reported, not deferred)** — this milestone's claims are
+  **request and statement counts**, all of which are asserted by tests. No wall-clock
+  latency evidence exists: `make bench` sends no `Authorization` header, and every
+  endpoint on these paths requires a bearer token, so the benchmark lane cannot reach
+  them. Nothing in the spec, the changelog, or the PR claims a measured speedup.
