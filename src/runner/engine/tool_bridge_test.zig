@@ -10,8 +10,8 @@ const tool_bridge = @import("tool_bridge.zig");
 const resolve = tool_bridge.resolve;
 const buildTools = tool_bridge.buildTools;
 const TOOL_COUNT = tool_bridge.TOOL_COUNT;
-const UNSUPPORTED_HOSTED_TOOLS = tool_bridge.UNSUPPORTED_HOSTED_TOOLS;
-const isUnsupportedHostedToolName = tool_bridge.isUnsupportedHostedToolName;
+const HOSTED_TOOL_ALLOWLIST = tool_bridge.HOSTED_TOOL_ALLOWLIST;
+const isHostedToolAllowed = tool_bridge.isHostedToolAllowed;
 
 test "resolve: canonical name found" {
     const entry = resolve("file_read").?;
@@ -34,10 +34,43 @@ test "resolve: all core tools resolvable" {
     try std.testing.expectEqual(@as(usize, core.len), TOOL_COUNT);
 }
 
-test "resolve: hosted local scheduler tools are unsupported" {
-    for (UNSUPPORTED_HOSTED_TOOLS) |name| {
+test "every allowlisted tool name exists in the registry" {
+    // The comptime guard proves this at build time; this pins the PROPERTY at
+    // runtime so the reason survives a refactor of the guard. An allowlist
+    // entry the registry cannot resolve grants nothing and reads at runtime as
+    // "that Fleet just has no tools".
+    for (HOSTED_TOOL_ALLOWLIST) |name| {
+        try std.testing.expect(resolve(name) != null);
+        try std.testing.expect(isHostedToolAllowed(name));
+    }
+}
+
+test "no process-spawning or host-reaching tool is hosted-allowlisted" {
+    // Named individually rather than derived: this list is the security claim,
+    // and a derivation could quietly start agreeing with a widened allowlist.
+    // Every one of these spawns a process, drives a browser, reaches the host,
+    // or calls a third-party service — and the lease shares the host network
+    // namespace, so any of them is a foothold rather than a capability.
+    const must_never_be_hosted = [_][]const u8{
+        "shell",      "spawn",        "git",        "delegate",
+        "browser",    "browser_open", "screenshot", "web_fetch",
+        "web_search", "pushover",     "message",
+    };
+    for (must_never_be_hosted) |name| {
+        try std.testing.expect(!isHostedToolAllowed(name));
+    }
+}
+
+test "the local scheduler tools remain unreachable" {
+    // They were the whole of the list this allowlist replaced; they must not
+    // have become reachable by the inversion.
+    const scheduler = [_][]const u8{
+        "schedule", "cron_add",  "cron_list",   "cron_remove",
+        "cron_run", "cron_runs", "cron_update",
+    };
+    for (scheduler) |name| {
+        try std.testing.expect(!isHostedToolAllowed(name));
         try std.testing.expect(resolve(name) == null);
-        try std.testing.expect(isUnsupportedHostedToolName(name));
     }
 }
 
@@ -103,7 +136,7 @@ test "a tool that cannot be appended is freed rather than stranded mid-build" {
     const spec_json =
         \\[{"name":"file_read","enabled":true},
         \\ {"name":"file_write","enabled":true},
-        \\ {"name":"shell","enabled":true}]
+        \\ {"name":"calculator","enabled":true}]
     ;
     for (0..12) |fail_index| {
         var parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, spec_json, .{});

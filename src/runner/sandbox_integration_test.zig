@@ -24,6 +24,7 @@ const child_supervisor = @import("child_supervisor.zig");
 const cgroup = @import("engine/CgroupScope.zig");
 const pipe_proto = @import("pipe_proto.zig");
 const sandbox_args = @import("sandbox_args.zig");
+const selftest_fixtures = @import("selftest_test_fixtures.zig");
 const Config = @import("daemon/config.zig");
 const contract = @import("contract");
 
@@ -107,11 +108,14 @@ test "a planted daemon token never reaches a real spawned child's environment" {
     defer alloc.free(dump);
     _ = child.wait(io) catch {};
 
-    // The fleet's real read path (cat /proc/self/environ) shows the allowlisted
-    // HOME but never the planted token nor its AGENTSFLEET_ key.
+    // The fleet's real read path (cat /proc/self/environ) shows the ASSIGNED
+    // HOME on the writable floor — never the daemon's own HOME, whose
+    // inheritance is the exact fault that killed every dev lease at
+    // AccessDenied — and never the planted token nor its AGENTSFLEET_ key.
     try std.testing.expect(std.mem.indexOf(u8, dump, PLANTED_TOKEN) == null);
     try std.testing.expect(std.mem.indexOf(u8, dump, "AGENTSFLEET_RUNNER_TOKEN") == null);
-    try std.testing.expect(std.mem.indexOf(u8, dump, "HOME=/home/agentsfleet-runner") != null);
+    try std.testing.expect(std.mem.indexOf(u8, dump, "HOME=" ++ contract.protocol.CHILD_HOME) != null);
+    try std.testing.expect(std.mem.indexOf(u8, dump, "/home/agentsfleet-runner") == null);
 }
 
 /// Spawn `sh -c <script>` as its own process-group leader (pgid=0) with a piped
@@ -314,6 +318,16 @@ test "the resolver config a lease inherits is readable inside a real sandbox" {
     };
     defer std.Io.Dir.cwd().deleteTree(io, ws) catch {};
 
+    // A symlink can only resolve to a target that exists. The baseline assumes
+    // the systemd-resolved layout, which the kernel lane's Alpine container
+    // does not have — so provide it (as root, there) or skip. Without this the
+    // dangling arm below grades a PLATFORM gap as a product defect: that arm
+    // exists to catch a broken BIND, not a host that never had the layout.
+    // The gap itself is real and documented on
+    // `DANGER_HOST_NETWORK_RESOLVER_DIR`; it is not this test's subject.
+    const resolver = selftest_fixtures.ensureResolverTarget(io) orelse return error.SkipZigTest;
+    defer resolver.deinit(io);
+
     // The REAL production argv, under the posture that shares host networking.
     var cfg = sandbox_args_test_cfg;
     cfg.network_policy = .allow_all;
@@ -384,6 +398,8 @@ test "the resolver config a lease inherits is readable inside a real sandbox" {
 // list rather than one growing file (write_zig, §Must).
 test {
     _ = @import("selftest_integration_test.zig");
+    _ = @import("lease_transport_integration_test.zig");
+    _ = @import("lease_hardening_integration_test.zig");
 }
 
 test "a bind that SYMLINKS onto a protected path is refused, however it is spelled" {

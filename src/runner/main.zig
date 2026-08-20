@@ -141,7 +141,7 @@ fn dispatchCli(argv: []const [:0]const u8, env_map: *const std.process.Environ.M
     // connectivity questions and exit. Sits beside `__execute` (before the
     // operator registry) so it stays out of `--help`: `doctor` remains the one
     // host-side entry point, per the spec's UNCHANGED command surface.
-    if (std.mem.eql(u8, a1, selftest_probe.SUBCOMMAND)) return selftest_probe.run(argv, io);
+    if (std.mem.eql(u8, a1, selftest_probe.SUBCOMMAND)) return selftest_probe.run(argv, env_map, io);
     if (std.mem.eql(u8, a1, "--version") or std.mem.eql(u8, a1, "-V")) return version_cmd.run();
     // Operator subcommands reach the control plane, so they need the process
     // scheduler — OWNED here (this branch always returns, so a process still
