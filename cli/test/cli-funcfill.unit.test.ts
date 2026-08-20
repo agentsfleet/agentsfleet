@@ -22,6 +22,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { runCli } from "../src/cli.ts";
+import { EXIT_CODE } from "../src/errors/index.ts";
 import { bufferStream, makeNoop, cliEnv, withAuthedStateDir, withFreshStateDir } from "./helpers-cli-state.ts";
 
 const VALID_ID = "01900000-0000-7000-8000-000000000001";
@@ -42,7 +43,7 @@ async function withBrokenStateBase<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 describe("runCli exit-code mapping (exitFromCommanderError reachable branches)", () => {
-  test("root-level unknown command maps a usage CommanderError to exit 2", async () => {
+  test("root-level unknown command maps a usage CommanderError to the validation exit", async () => {
     await withFreshStateDir(async () => {
       const out = bufferStream();
       const err = bufferStream();
@@ -51,23 +52,23 @@ describe("runCli exit-code mapping (exitFromCommanderError reachable branches)",
         stderr: err.stream,
         env: cliEnv({ NO_COLOR: "1" }),
       });
-      expect(code).toBe(2);
+      expect(code).toBe(EXIT_CODE.ValidationError);
       expect(err.read()).toContain("unknown command");
     });
   });
 
-  test("root-level option missing its argument maps to exit 2", async () => {
+  test("root-level option missing its argument maps to the validation exit", async () => {
     // `--api` is a global value option; a dangling `--api` is emitted by
     // the ROOT command (which carries exitOverride), so it routes through
-    // the bridge as commander.optionMissingArgument → usage code → 2,
-    // rather than crashing at a leaf via process.exit.
+    // the bridge as commander.optionMissingArgument → usage code → the
+    // validation exit, rather than crashing at a leaf via process.exit.
     await withFreshStateDir(async () => {
       const code = await runCli(["--api"], {
         stdout: makeNoop(),
         stderr: makeNoop(),
         env: cliEnv({ NO_COLOR: "1" }),
       });
-      expect(code).toBe(2);
+      expect(code).toBe(EXIT_CODE.ValidationError);
     });
   });
 
