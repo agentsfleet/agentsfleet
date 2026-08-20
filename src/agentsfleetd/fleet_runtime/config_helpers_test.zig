@@ -386,3 +386,23 @@ test "test_dupe_string_array_unwinds_without_leaking" {
     // the success path every other test in this file takes.
     try std.testing.checkAllAllocationFailures(std.testing.allocator, dupeStringArrayUnderAllocator, .{});
 }
+
+const PROOF_WEBHOOK_TRIGGER =
+    \\{"type":"webhook","source":"github","events":["pull_request","push"],
+    \\ "repositories":["acme/one","acme/two"],"credential_name":"gh-token"}
+;
+
+fn parseWebhookTriggerUnderAllocator(alloc: std.mem.Allocator) !void {
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, PROOF_WEBHOOK_TRIGGER, .{});
+    defer parsed.deinit();
+    const trigger = try config_helpers.parseFleetTrigger(alloc, parsed.value.object);
+    config_types.freeFleetTrigger(alloc, trigger);
+}
+
+test "test_webhook_trigger_parse_unwinds_without_leaking" {
+    // The webhook arm owns five values behind four rungs, two of them slices
+    // of slices whose rung must free the entries before the backing array.
+    // Every field is populated here: an absent `events` or `repositories`
+    // leaves its rung holding null, which frees nothing and proves nothing.
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, parseWebhookTriggerUnderAllocator, .{});
+}

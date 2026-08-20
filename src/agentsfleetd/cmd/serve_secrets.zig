@@ -41,3 +41,22 @@ pub fn resolve(env_map: *const EnvMap, alloc: std.mem.Allocator) std.mem.Allocat
         .alloc = alloc,
     };
 }
+
+fn resolveUnderAllocator(alloc: std.mem.Allocator) !void {
+    var env_map = try common.env.fromPairs(alloc, &.{
+        .{ env_resolve.CLERK_WEBHOOK_SECRET_ENV, "whsec_proof_value" },
+        .{ env_resolve.APPROVAL_SIGNING_SECRET_ENV, "approval_proof_value" },
+        .{ clerk_backend.SECRET_ENV_VAR, "sk_proof_value" },
+    });
+    defer env_map.deinit();
+    var secrets = try resolve(&env_map, alloc);
+    secrets.deinit();
+}
+
+test "test_boot_secrets_resolve_unwinds_without_leaking" {
+    // All three vars are set, so every rung holds a real allocation rather than
+    // the null an unset var leaves behind — a rung that frees the wrong
+    // variable is invisible when the value it guards is null. Boot is the one
+    // path here, and a leak on it is charged to the process for its lifetime.
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, resolveUnderAllocator, .{});
+}
