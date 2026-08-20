@@ -156,11 +156,13 @@ pub const GLOBAL_MODELS_MAX_STATEMENTS_HIT: usize = 1;
 pub const GLOBAL_MODELS_MAX_STATEMENTS_MISS: usize = 2;
 pub const GLOBAL_MODELS_MAX_BODY_BYTES: usize = 256 * 1024;
 
-/// Fleet gallery summary and detail: three statements each, measured.
+/// Fleet gallery summary and detail: two statements each, measured.
 ///
-/// Two of those three are `common.authorizeWorkspace` — one resolving the
-/// principal's tenant through `core.users`, one checking the workspace belongs
-/// to it — and they are inside the window rather than before it. §3 states the
+/// One of those two is `common.authorizeWorkspace`, which resolves the
+/// principal's tenant through `core.users` and checks the workspace belongs to
+/// it in a single statement — and it is inside the window rather than before
+/// it. It cost two statements until the merged funnel folded them; the budget
+/// moved with it. §3 states the
 /// budget "after middleware auth", which reads as though authorization were
 /// already behind us; it is not. The bearer chain AUTHENTICATES, and only the
 /// handler knows which workspace the path names, so authorization is the
@@ -168,9 +170,9 @@ pub const GLOBAL_MODELS_MAX_BODY_BYTES: usize = 256 * 1024;
 ///
 /// The read then issues exactly ONE statement of its own — the summary's
 /// merged `UNION ALL` across both libraries — and that is the number `limit`
-/// cannot move. Drafted at 1; corrected here to what the instrumentation
-/// reports, as the tenant registry row was, twice.
-pub const FLEET_SUMMARY_MAX_STATEMENTS: usize = 3;
+/// cannot move. The total is always what the instrumentation reports, never
+/// arithmetic spelled out in a test.
+pub const FLEET_SUMMARY_MAX_STATEMENTS: usize = 2;
 pub const FLEET_SUMMARY_MAX_BODY_BYTES: usize = 512 * 1024;
 
 /// Every library read path uses exactly one pooled connection. A read that
@@ -290,7 +292,7 @@ test "the §3 ceilings are the numbers the spec table states" {
     // pin test: literal is the contract
     try testing.expectEqual(@as(usize, 256 * 1024), GLOBAL_MODELS_MAX_BODY_BYTES);
 
-    try testing.expectEqual(@as(usize, 3), FLEET_SUMMARY_MAX_STATEMENTS);
+    try testing.expectEqual(@as(usize, 2), FLEET_SUMMARY_MAX_STATEMENTS);
 
     // One connection per read, on every path without exception.
     try testing.expectEqual(@as(usize, 1), MAX_CONNECTIONS_PER_READ);

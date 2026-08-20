@@ -322,9 +322,47 @@ test "integration: tenant workspaces reconcile create and paginate without cross
     try expectApiKeyUsesIssuingTenant(h, conn, alloc);
     try seedPaginatedWorkspaces(conn);
     try expectCompletePagination(h, alloc);
+    try expectNameFilterWithCursor(h, alloc);
     try expectRequestFailures(h);
     try expectZeroWorkspaceTenantStillCarriesTenantId(h, conn, alloc);
     cleanupFixtures(conn);
+}
+
+/// The name filter combined with a keyset cursor — the one statement variant no
+/// other case reaches. A tenant's names are unique, so this page holds at most
+/// one row; both arms matter: the match that sits AFTER the cursor is returned,
+/// and the match that sits AT it is excluded rather than repeated.
+fn expectNameFilterWithCursor(h: *TestHarness, alloc: std.mem.Allocator) !void {
+    const first = try (try h.get("/v1/tenants/me/workspaces?limit=1").bearer(TOKEN_USER)).send();
+    defer first.deinit();
+    try first.expectStatus(.ok);
+    const head = try std.json.parseFromSlice(WorkspaceResponse, alloc, first.body, .{ .ignore_unknown_fields = true });
+    defer head.deinit();
+    const cursor = head.value.next_cursor orelse return error.TestUnexpectedResult;
+
+    { // a later name, past the cursor: returned
+        const url = try std.fmt.allocPrint(alloc, "/v1/tenants/me/workspaces?name=reconcile-2&limit=5&starting_after={s}", .{cursor});
+        defer alloc.free(url);
+        const r = try (try h.get(url).bearer(TOKEN_USER)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        const parsed = try std.json.parseFromSlice(WorkspaceResponse, alloc, r.body, .{ .ignore_unknown_fields = true });
+        defer parsed.deinit();
+        try std.testing.expectEqualStrings(DATABASE_TENANT_ID, parsed.value.tenant_id);
+        try std.testing.expectEqual(@as(usize, 1), parsed.value.items.len);
+        try std.testing.expectEqualStrings("reconcile-2", parsed.value.items[0].name.?);
+    }
+    { // the name AT the cursor: excluded, and the marker row stays out of items
+        const url = try std.fmt.allocPrint(alloc, "/v1/tenants/me/workspaces?name=reconcile-1&limit=5&starting_after={s}", .{cursor});
+        defer alloc.free(url);
+        const r = try (try h.get(url).bearer(TOKEN_USER)).send();
+        defer r.deinit();
+        try r.expectStatus(.ok);
+        const parsed = try std.json.parseFromSlice(WorkspaceResponse, alloc, r.body, .{ .ignore_unknown_fields = true });
+        defer parsed.deinit();
+        try std.testing.expectEqual(@as(usize, 0), parsed.value.items.len);
+        try std.testing.expectEqualStrings(DATABASE_TENANT_ID, parsed.value.tenant_id);
+    }
 }
 
 /// The merged single-statement read must not lose the tenant when the tenant

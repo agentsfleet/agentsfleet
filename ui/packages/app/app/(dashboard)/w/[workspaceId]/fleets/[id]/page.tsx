@@ -7,7 +7,13 @@ import { workspacePath } from "@/lib/workspace-routes";
 import { ApiError } from "@/lib/api/errors";
 import { getFleet, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
-import { startViewData, type ViewData } from "./components/view-data";
+import {
+  startViewData,
+  type ChatViewData,
+  type EventsViewData,
+  type MemoryViewData,
+  type ViewData,
+} from "./components/view-data";
 import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import { EventsList } from "@/components/domain/EventsList";
 import {
@@ -33,7 +39,6 @@ import {
   FleetSubnavigation,
   FLEET_VIEW,
   resolveFleetView,
-  type FleetView,
 } from "./components/FleetSubnavigation";
 import {
   BREADCRUMB_LABEL,
@@ -105,7 +110,6 @@ export default async function FleetDetailPage({
 
   const { fleet, etag } = fleetResult;
   const content = await loadFleetView(
-    view,
     {
       workspaceId,
       fleet,
@@ -189,11 +193,10 @@ async function loadFleet(workspaceId: string, id: string, token: string) {
 }
 
 async function loadFleetView(
-  view: FleetView,
   context: PageContext,
   data: ViewData,
 ): Promise<ReactNode> {
-  switch (view) {
+  switch (data.view) {
     case FLEET_VIEW.events:
       return loadEventsView(context, data);
     case FLEET_VIEW.memory:
@@ -207,13 +210,16 @@ async function loadFleetView(
   }
 }
 
-async function loadChatView({ workspaceId, fleet }: PageContext, data: ViewData) {
+async function loadChatView(
+  { workspaceId, fleet }: PageContext,
+  data: ChatViewData,
+) {
   // The transcript is the one surface that genuinely wants the bodies: it
   // renders what was said. The thread read carries them in ONE request — the
   // list-then-one-detail-per-turn fan-out this view used to issue is gone.
   const [threadResult, approvalsResult] = await Promise.all([
-    data.thread ?? Promise.resolve(null),
-    data.approvals ?? Promise.resolve(null),
+    data.thread,
+    data.approvals,
   ]);
   const turns = threadResult?.items ?? [];
   const approvals = approvalsResult ?? { items: [], next_cursor: null };
@@ -243,12 +249,11 @@ async function loadChatView({ workspaceId, fleet }: PageContext, data: ViewData)
 
 async function loadEventsView(
   { fleet, eventsPageSize }: PageContext,
-  data: ViewData,
+  data: EventsViewData,
 ) {
-  const initial = (await (data.eventsInitial ?? Promise.resolve(null))) ?? {
-    items: [],
-    next_cursor: null,
-  };
+  // startViewData always starts this read for the events view, and its catch
+  // turns an upstream failure into an empty page, so a page always arrives.
+  const initial = await data.eventsInitial;
   return (
     <EventsList
       fleetId={fleet.id}
@@ -260,9 +265,9 @@ async function loadEventsView(
 
 async function loadMemoryView(
   { workspaceId, fleet }: PageContext,
-  data: ViewData,
+  data: MemoryViewData,
 ) {
-  const memories = await (data.memories ?? Promise.resolve(null));
+  const memories = await data.memories;
   return (
     <MemoryPanel
       workspaceId={workspaceId}

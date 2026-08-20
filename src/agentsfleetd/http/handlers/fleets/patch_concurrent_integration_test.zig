@@ -22,11 +22,16 @@
 //
 // Lock-timeout fixture: a holder thread takes SELECT FOR UPDATE in its
 // own txn + sleeps 7s. A second PATCH must observe 503
-// ERR_INTERNAL_DB_UNAVAILABLE in <5.5s (the handler's lock_timeout=5s
-// path), proving fail-fast.
+// ERR_INTERNAL_DB_UNAVAILABLE while the holder STILL HOLDS the row lock
+// (the handler's lock_timeout=5s path), proving fail-fast.
+//
+// The proof is ordering, not a stopwatch. What bounds the wait is Postgres's
+// per-txn lock_timeout, enforced inside the database; the coverage lane runs
+// this binary under kcov, which dilates the client's clock and not the
+// server's. Asserting the response arrives before the holder releases states
+// the actual claim and holds on every platform, instrumented or not.
 
 const std = @import("std");
-const builtin = @import("builtin");
 const scope_fixtures = @import("../../test_scope_tokens.zig");
 const common = @import("common");
 const clock = common.clock;
@@ -36,32 +41,12 @@ const auth_mw = @import("../../../auth/middleware/mod.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const harness_mod = @import("../../test_harness.zig");
 
-const PROC_STATUS_PATH = "/proc/self/status";
-/// The field naming the attached tracer's process id, or 0 when untraced.
-const TRACER_PID_FIELD = "TracerPid:";
-/// `/proc/self/status` runs ~1.3 KB and carries TracerPid in its first lines.
-const MAX_PROC_STATUS_BYTES = 4096;
-
-/// True when a ptrace-based tool is attached. The coverage lane runs these
-/// binaries under kcov, which breakpoints every mapped line and dilates wall
-/// clock past any real deadline. Linux-only signal; elsewhere, false.
-fn tracedByAnotherProcess() bool {
-    if (builtin.os.tag != .linux) return false;
-    const linux = std.os.linux;
-    var buf: [MAX_PROC_STATUS_BYTES]u8 = undefined;
-    const fd: isize = @bitCast(linux.openat(linux.AT.FDCWD, PROC_STATUS_PATH, .{ .ACCMODE = .RDONLY }, 0));
-    if (fd < 0) return false;
-    const n: isize = @bitCast(linux.read(@intCast(fd), &buf, buf.len));
-    _ = linux.close(@intCast(fd));
-    if (n <= 0) return false;
-
-    const status = buf[0..@intCast(n)];
-    const field = std.mem.indexOf(u8, status, TRACER_PID_FIELD) orelse return false;
-    const rest = status[field + TRACER_PID_FIELD.len ..];
-    const line = rest[0 .. std.mem.indexOfScalar(u8, rest, '\n') orelse rest.len];
-    const tracer = std.fmt.parseInt(std.posix.pid_t, std.mem.trim(u8, line, " \t"), 10) catch return false;
-    return tracer != 0;
-}
+/// The holder releases on a signal, not a timer. The backstop only exists so a
+/// hung handler fails the test instead of deadlocking it: 20s is far past the
+/// handler's 5s lock_timeout and its 10s statement_timeout, so a healthy run
+/// never reaches it.
+const HOLDER_POLL_NANOS = 10 * std.time.ns_per_ms;
+const HOLDER_MAX_POLLS = 2_000;
 
 const EVAL_BRANCH_QUOTA = 100_000;
 const PATCH_WRITER_COUNT = 2;
@@ -601,7 +586,7 @@ test "integration: concurrent PATCH on different fleets — parallel, sub-linear
 
 // ── §6 — Lock-timeout fails fast under sustained row-lock contention ────
 
-test "integration: PATCH against held lock → 503 in <5.5s, no hang" {
+test "integration: PATCH against held lock → 503 while the lock is still held, no hang" {
     suite_lock.lock();
     defer suite_lock.unlock();
 
@@ -618,21 +603,46 @@ test "integration: PATCH against held lock → 503 in <5.5s, no hang" {
     // the handler's 5s lock_timeout, so the contending PATCH must fail
     // fast with 503, not hang for the full 7s.
     const Holder = struct {
-        fn run(harness: *TestHarness, zid: []const u8, started: *std.atomic.Value(bool)) void {
+        fn run(
+            harness: *TestHarness,
+            zid: []const u8,
+            started: *std.atomic.Value(bool),
+            release_now: *std.atomic.Value(bool),
+            released: *std.atomic.Value(bool),
+        ) void {
             const c = harness.pool.acquire() catch return;
             defer harness.pool.release(c);
+            // Registered BEFORE the ROLLBACK defer so it runs AFTER it: the flag
+            // publishes that the row lock is gone, never that it is about to be.
+            defer released.store(true, .release);
             _ = c.exec("BEGIN", .{}) catch return;
             defer _ = c.exec("ROLLBACK", .{}) catch {};
             _ = c.exec("SELECT id FROM core.fleets WHERE id = $1::uuid FOR UPDATE", .{zid}) catch return;
             // safe because: release pairs with the waiter acquire before issuing PATCH.
             started.store(true, .release);
-            @import("common").sleepNanos(7 * std.time.ns_per_s);
+            // Hold until the contending PATCH has answered, not for a fixed
+            // span. A timed hold races the client: kcov dilates the client and
+            // not the server, so an instrumented run can spend the whole gap
+            // between lock_timeout and the hold before the response is read.
+            // Waiting on the signal removes the race; the cap is the backstop
+            // for a handler that hangs and therefore never signals.
+            var waited: usize = 0;
+            while (!release_now.load(.acquire)) : (waited += 1) {
+                if (waited >= HOLDER_MAX_POLLS) break;
+                @import("common").sleepNanos(HOLDER_POLL_NANOS);
+            }
         }
     };
 
     var started = std.atomic.Value(bool).init(false);
-    const holder = try std.Thread.spawn(.{}, Holder.run, .{ h, ids.a, &started });
+    var release_now = std.atomic.Value(bool).init(false);
+    var released = std.atomic.Value(bool).init(false);
+    const holder = try std.Thread.spawn(.{}, Holder.run, .{ h, ids.a, &started, &release_now, &released });
     defer holder.join();
+    // Registered AFTER the join so it runs BEFORE it: the holder is told to let
+    // go, and only then waited on. The other order joins a holder that is still
+    // polling and stalls every run until its backstop fires.
+    defer release_now.store(true, .release);
     // Wait up to 2s for the holder's SELECT FOR UPDATE to grab the lock. Zig 0.16
     // removed Thread.ResetEvent.timedWait, so this is a bounded poll (200 × 10ms).
     {
@@ -647,16 +657,18 @@ test "integration: PATCH against held lock → 503 in <5.5s, no hang" {
     const body = "{\"trigger_markdown\":" ++ TRIGGER_VARIANT_A_JSON ++ "}";
     var outcome: Outcome = .{};
     defer if (outcome.body) |b| ALLOC.free(b);
-    const t0 = clock.nowMillis();
     Worker.run(h, body, ids.a, &outcome);
-    const elapsed = clock.nowMillis() - t0;
+    // Read the instant the response lands: any work between the call and this
+    // load is time the holder could use to release, weakening the ordering.
+    const holder_still_held = !released.load(.acquire);
 
-    // Fail-fast: should return well before holder's 7s sleep completes.
-    // The bound is 5s of Postgres lock_timeout plus 500ms of slack, and kcov's
-    // per-line breakpoints spend that slack many times over. Status and
-    // deadlock-freedom still hold under a tracer; only the clock is unusable,
-    // and `make test-integration` proves the timing uninstrumented.
-    if (!tracedByAnotherProcess()) try std.testing.expect(elapsed < 5_500);
+    // Fail-fast means the handler gave up on the lock rather than waiting for
+    // the holder to release it. The ordering is what proves it: the holder does
+    // not let go until told, so a response that arrives while the lock is still
+    // held can only have come from lock_timeout. A hang instead waits out the
+    // holder's backstop, takes the lock, and answers 200 — which the status row
+    // below catches.
+    try std.testing.expect(holder_still_held);
     try std.testing.expectEqual(@as(u16, 503), outcome.status);
     try std.testing.expect(!bodyContainsDeadlock(outcome));
 }
