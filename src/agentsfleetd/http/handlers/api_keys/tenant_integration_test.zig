@@ -451,6 +451,38 @@ test "integration: test_api_keys_list_uses_keyset_envelope_and_keeps_sorts" {
     finalCleanup(h);
 }
 
+test "integration: test_api_keys_single_statement_total" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    // Three keys, a full first page of three: the continuation page is EMPTY,
+    // which is exactly the case the merged statement's marker row exists for —
+    // the total must survive a page that carries no key rows.
+    for ([_][]const u8{ "total-a", "total-b", "total-c" }) |name| try mintKey(h, name);
+
+    const first = try (try h.get("/v1/api-keys?limit=3").bearer(TOKEN_OPERATOR)).send();
+    defer first.deinit();
+    try first.expectStatus(.ok);
+    const first_parsed = try std.json.parseFromSlice(std.json.Value, ALLOC, first.body, .{});
+    defer first_parsed.deinit();
+    try std.testing.expectEqual(@as(i64, 3), first_parsed.value.object.get("total").?.integer);
+    const cursor = first_parsed.value.object.get("next_cursor").?.string;
+
+    const next_url = try std.fmt.allocPrint(ALLOC, "/v1/api-keys?limit=3&starting_after={s}", .{cursor});
+    defer ALLOC.free(next_url);
+    const empty_page = try (try h.get(next_url).bearer(TOKEN_OPERATOR)).send();
+    defer empty_page.deinit();
+    try empty_page.expectStatus(.ok);
+    const empty_parsed = try std.json.parseFromSlice(std.json.Value, ALLOC, empty_page.body, .{});
+    defer empty_parsed.deinit();
+    try std.testing.expectEqual(@as(usize, 0), empty_parsed.value.object.get("items").?.array.items.len);
+    try std.testing.expectEqual(@as(i64, 3), empty_parsed.value.object.get("total").?.integer);
+
+    finalCleanup(h);
+}
+
 test "integration: test_api_keys_key_name_sort_pages_without_loss" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,

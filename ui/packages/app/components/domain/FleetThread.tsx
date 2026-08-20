@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback } from "react";
 import {
   AssistantRuntimeProvider,
   ThreadPrimitive,
@@ -20,11 +19,9 @@ import {
   CONNECTION_STATUS,
   useFleetEventStream,
   type ConnectionStatus,
-  type FleetEvent,
-  type FleetEventStatus,
 } from "./useFleetEventStream";
-import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-frames";
 import { useFleetThreadEntries, type FleetThreadEntry } from "./useFleetThreadEntries";
+import { useRefreshSummariesOnCompletion } from "./useRefreshOnCompletion";
 import type { EventRow } from "@/lib/api/events";
 import { SteerComposer } from "./SteerComposer";
 import { renderFleetMessage } from "./fleetMessageRenderers";
@@ -43,12 +40,6 @@ const EMPTY_HINT =
 const JUMP_TO_LATEST = "Jump to latest";
 const JUMP_TO_LATEST_LABEL = "↓ latest";
 const BACKFILL_LABEL = "Loading recent activity";
-
-const TERMINAL_EVENT_STATUSES: ReadonlySet<FleetEventStatus> = new Set([
-  AGENTSFLEET_EVENT_STATUS.PROCESSED,
-  AGENTSFLEET_EVENT_STATUS.AGENT_ERROR,
-  AGENTSFLEET_EVENT_STATUS.GATE_BLOCKED,
-]);
 
 export type FleetThreadProps = {
   workspaceId: string;
@@ -147,33 +138,6 @@ export function FleetThread({ workspaceId, fleetId, fleetName, initial }: FleetT
 }
 
 // ── internals ────────────────────────────────────────────────────────────
-
-function useRefreshSummariesOnCompletion(initial: EventRow[], events: FleetEvent[]) {
-  const router = useRouter();
-  const terminalEventIds = useRef(
-    new Set([
-      ...events
-        .filter((event) => TERMINAL_EVENT_STATUSES.has(event.status))
-        .map((event) => event.id),
-      ...initial
-        .filter((event) => event.status !== AGENTSFLEET_EVENT_STATUS.RECEIVED)
-        .map((event) => event.event_id),
-    ]),
-  );
-  useEffect(() => {
-    let completed = false;
-    for (const event of events) {
-      if (
-        TERMINAL_EVENT_STATUSES.has(event.status) &&
-        terminalEventIds.current.has(event.id) === false
-      ) {
-        terminalEventIds.current.add(event.id);
-        completed = true;
-      }
-    }
-    if (completed) router.refresh();
-  }, [events, router]);
-}
 
 function ThreadViewport({
   eventsCount,

@@ -38,7 +38,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** perf: collapse dashboard and lease read-path round trips
 - **Intent (one sentence):** make the dashboard and runner pickup visibly snappier by removing repeated per-request queries and the chat view's per-turn request fan-out, without changing any verdict or wire shape.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** (filled at PLAN) — Restatement: remove repeated statements and requests from the hot read paths — one authorization statement per request, one HTTP request per chat render, one Postgres query per idle lease poll — while every verdict, wire shape, and visual stays identical. ASSUMPTIONS I'M MAKING: 1. The messages `GET` is the guideline-conformant home for the bodies-included thread page (sparse fieldsets are forbidden). 2. `~/Projects/docs` pages and the changelog `<Update>` are blocked on Indy's cross-repo approval and tracked as the one red pre-PR criterion. 3. Deploy sizing (`DATABASE_POOL_SIZE`, `fly.toml`) stays untouched. 4. Surface-area: OpenAPI YES (one added method), CLI NO (unchanged), user docs YES (blocked item), schema NO, version sync via `make check-version` at close. Quality ceiling: an authorization cache would beat the merged statement per-request but adds staleness/security surface — surfaced in Decomposition, not built.
 
 ## Implementing agent — read these first
 

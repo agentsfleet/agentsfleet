@@ -165,6 +165,129 @@ test "integration: null-tenant principal is denied workspace authorization (IDOR
     try std.testing.expect(common.authorizeWorkspace(db_ctx.conn, ok, http_auth.WS_PRIMARY));
 }
 
+test "integration: a denied authorize-with-context leaves app.current_tenant_id untouched" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    http_auth.cleanup(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
+
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_PRIMARY);
+
+    // Seed a sentinel context, then have a cross-tenant stranger (no bypass
+    // scope) fail the context-writing authorize. The sentinel must survive:
+    // set_config lives inside the WHERE-gated row, so a deny writes nothing.
+    const sentinel = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f99";
+    try std.testing.expect(common.setTenantSessionContext(db_ctx.conn, sentinel));
+
+    const stranger = common.AuthPrincipal{
+        .mode = .jwt_oidc,
+        .tenant_id = http_auth.TENANT_UNRELATED,
+    };
+    try std.testing.expect(!common.authorizeWorkspaceAndSetTenantContext(
+        db_ctx.conn,
+        stranger,
+        http_auth.WS_PRIMARY,
+    ));
+
+    var q = PgQuery.from(try db_ctx.conn.query(
+        "SELECT current_setting('app.current_tenant_id', true)",
+        .{},
+    ));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    const current_tenant = try row.get(?[]const u8, 0);
+    try std.testing.expectEqualStrings(sentinel, current_tenant.?);
+}
+
+test "integration: malformed tenant claim degrades to absent, never a statement error" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    http_auth.cleanup(db_ctx.conn);
+    try cleanupMappedUser(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
+    defer cleanupMappedUser(db_ctx.conn) catch unreachable;
+
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_PRIMARY);
+
+    // No user row + a claim that is not a UUID: the claim can only ever deny,
+    // so it is treated as absent — a clean deny, not a cast error surfacing 500.
+    const claim_only = common.AuthPrincipal{
+        .mode = .jwt_oidc,
+        .tenant_id = "not-a-uuid",
+    };
+    try std.testing.expect(!common.authorizeWorkspace(db_ctx.conn, claim_only, http_auth.WS_PRIMARY));
+
+    // With an authoritative user row present, the malformed claim is irrelevant:
+    // the user-row arm decides and the request authorizes.
+    _ = try db_ctx.conn.exec(
+        \\INSERT INTO core.users
+        \\  (id, tenant_id, oidc_subject, email, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3, $4, $5, $5)
+    , .{
+        MAPPED_USER_ID,
+        http_auth.TENANT_ID,
+        MAPPED_SUBJECT,
+        MAPPED_EMAIL,
+        MAPPED_CREATED_AT,
+    });
+    const mapped_with_bad_claim = common.AuthPrincipal{
+        .mode = .jwt_oidc,
+        .user_id = MAPPED_SUBJECT,
+        .tenant_id = "not-a-uuid",
+    };
+    try std.testing.expect(common.authorizeWorkspace(db_ctx.conn, mapped_with_bad_claim, http_auth.WS_PRIMARY));
+}
+
+test "integration: claim-bound api-key principal authorizes its own workspace and no other" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    http_auth.cleanup(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
+
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_PRIMARY);
+
+    const key_principal = common.AuthPrincipal{
+        .mode = .api_key,
+        .tenant_id = http_auth.TENANT_ID,
+    };
+    try std.testing.expect(common.authorizeWorkspace(db_ctx.conn, key_principal, http_auth.WS_PRIMARY));
+
+    const foreign_key = common.AuthPrincipal{
+        .mode = .api_key,
+        .tenant_id = http_auth.TENANT_UNRELATED,
+    };
+    try std.testing.expect(!common.authorizeWorkspace(db_ctx.conn, foreign_key, http_auth.WS_PRIMARY));
+}
+
+test "integration: runner principal is denied workspace authorization outright" {
+    const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    http_auth.cleanup(db_ctx.conn);
+    defer http_auth.cleanup(db_ctx.conn);
+
+    try http_auth.seedTenant(db_ctx.conn);
+    try http_auth.seedScopeWorkspace(db_ctx.conn, http_auth.WS_PRIMARY);
+
+    // A runner token names a machine, not a tenant — even one whose row was
+    // seeded with a tenant claim must never satisfy a workspace route.
+    const runner = common.AuthPrincipal{
+        .mode = .runner,
+        .tenant_id = http_auth.TENANT_ID,
+    };
+    try std.testing.expect(!common.authorizeWorkspace(db_ctx.conn, runner, http_auth.WS_PRIMARY));
+}
+
 test "integration: tenant context helper writes app.current_tenant_id" {
     const db_ctx = (try common.openHandlerTestConn(std.testing.allocator)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();

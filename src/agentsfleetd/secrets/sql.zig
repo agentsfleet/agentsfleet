@@ -151,6 +151,17 @@ pub const SELECT_SECRET =
     \\ WHERE workspace_id = $1 AND key_name = $2
 ;
 
+/// The requested credentials of a workspace, ciphertext and all, in one read —
+/// the lease's `secrets_map` resolve used to issue one `SELECT_SECRET` per
+/// declared name. Same column block as `SELECT_SECRETS_FOR_WORKSPACE`, so the
+/// one decrypt routine serves all three statements.
+pub const SELECT_SECRETS_BY_NAMES =
+    \\SELECT key_name, created_at,
+    \\       encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, kek_version
+    \\  FROM vault.secrets
+    \\ WHERE workspace_id = $1 AND key_name = ANY($2::text[])
+;
+
 /// Every credential in a workspace, ciphertext and all, in one read.
 ///
 /// Column order deliberately puts `key_name` and `created_at` first so the

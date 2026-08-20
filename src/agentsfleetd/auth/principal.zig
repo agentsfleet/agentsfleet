@@ -36,6 +36,12 @@ pub const AuthPrincipal = struct {
     /// Set only when `mode == .runner` — the `fleet.runners` row id resolved
     /// from the presented runner token. Freed with the other principal fields.
     runner_id: ?[]const u8 = null,
+    /// Set only when `mode == .runner` — the row's reconciled `degraded`
+    /// verdict, carried from the same auth lookup that proved the token so the
+    /// lease gate needs no second read of the row it just authenticated
+    /// against. Null (any non-runner principal, or a constructor that never
+    /// looked) reads as degraded: the gate fails closed.
+    runner_degraded: ?bool = null,
     /// Explicit capability set parsed from the verified token's `scopes` claim.
     /// A bitset — no allocation, no lifetime. Hierarchy-expanded at
     /// parse time, so a gate is a single `contains`. Absent claim ⇒ empty set ⇒

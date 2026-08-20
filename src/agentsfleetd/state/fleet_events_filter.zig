@@ -22,7 +22,7 @@ pub const Filter = struct {
     since_ms: ?i64 = null,
 };
 
-const ParsedCursor = struct {
+pub const ParsedCursor = struct {
     created_at: i64,
     event_id: []u8,
 };

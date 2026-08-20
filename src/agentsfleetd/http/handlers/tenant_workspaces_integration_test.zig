@@ -323,5 +323,27 @@ test "integration: tenant workspaces reconcile create and paginate without cross
     try seedPaginatedWorkspaces(conn);
     try expectCompletePagination(h, alloc);
     try expectRequestFailures(h);
+    try expectZeroWorkspaceTenantStillCarriesTenantId(h, conn, alloc);
     cleanupFixtures(conn);
+}
+
+/// The merged single-statement read must not lose the tenant when the tenant
+/// owns no workspaces: the marker row carries `tenant_id` beside empty items.
+fn expectZeroWorkspaceTenantStillCarriesTenantId(
+    h: *TestHarness,
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+) !void {
+    _ = try conn.exec(
+        "DELETE FROM core.workspaces WHERE tenant_id = $1::uuid",
+        .{DATABASE_TENANT_ID},
+    );
+    const response = try (try h.get("/v1/tenants/me/workspaces?limit=5").bearer(TOKEN_USER)).send();
+    defer response.deinit();
+    try response.expectStatus(.ok);
+    const parsed = try std.json.parseFromSlice(WorkspaceResponse, alloc, response.body, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+    try std.testing.expectEqualStrings(DATABASE_TENANT_ID, parsed.value.tenant_id);
+    try std.testing.expectEqual(@as(usize, 0), parsed.value.items.len);
+    try std.testing.expect(parsed.value.next_cursor == null);
 }
