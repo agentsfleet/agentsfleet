@@ -7,9 +7,13 @@ import { workspacePath } from "@/lib/workspace-routes";
 import { ApiError } from "@/lib/api/errors";
 import { getFleet, AGENTSFLEET_STATUS } from "@/lib/api/fleets";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
-import { getFleetEvent, listFleetEvents } from "@/lib/api/events";
-import { listApprovals } from "@/lib/api/approvals";
-import { listAllMemories } from "@/lib/api/memory";
+import {
+  startViewData,
+  type ChatViewData,
+  type EventsViewData,
+  type MemoryViewData,
+  type ViewData,
+} from "./components/view-data";
 import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import { EventsList } from "@/components/domain/EventsList";
 import {
@@ -35,7 +39,6 @@ import {
   FleetSubnavigation,
   FLEET_VIEW,
   resolveFleetView,
-  type FleetView,
 } from "./components/FleetSubnavigation";
 import {
   BREADCRUMB_LABEL,
@@ -90,6 +93,15 @@ export default async function FleetDetailPage({
   );
   if (!view) redirect(workspacePath(workspaceId, `fleets/${id}`));
 
+  // View data that needs only route params starts HERE, beside the fleet
+  // read — the detail read used to serialize every view fetch behind it.
+  const viewData = startViewData(view, {
+    workspaceId,
+    fleetId: id,
+    token,
+    eventsCursor,
+    eventsPageSize,
+  });
   const [fleetResult, billing] = await Promise.all([
     loadFleet(workspaceId, id, token),
     getTenantBillingCached(token).catch(() => null),
@@ -97,14 +109,17 @@ export default async function FleetDetailPage({
   if (!fleetResult) notFound();
 
   const { fleet, etag } = fleetResult;
-  const content = await loadFleetView(view, {
-    workspaceId,
-    fleet,
-    etag,
-    token,
-    eventsCursor,
-    eventsPageSize,
-  });
+  const content = await loadFleetView(
+    {
+      workspaceId,
+      fleet,
+      etag,
+      token,
+      eventsCursor,
+      eventsPageSize,
+    },
+    viewData,
+  );
   // The chat is a conversation surface, not a document: it claims the frame so
   // its composer stays on screen and only the message list scrolls. Every
   // other view is ordinary page content and scrolls with the page.
@@ -178,60 +193,47 @@ async function loadFleet(workspaceId: string, id: string, token: string) {
 }
 
 async function loadFleetView(
-  view: FleetView,
   context: PageContext,
+  data: ViewData,
 ): Promise<ReactNode> {
-  switch (view) {
+  switch (data.view) {
     case FLEET_VIEW.events:
-      return loadEventsView(context);
+      return loadEventsView(context, data);
     case FLEET_VIEW.memory:
-      return loadMemoryView(context);
+      return loadMemoryView(context, data);
     case FLEET_VIEW.skill:
       return <SourceView context={context} field={SOURCE_FIELD.skill} />;
     case FLEET_VIEW.trigger:
       return loadTriggerView(context);
     default:
-      return loadChatView(context);
+      return loadChatView(context, data);
   }
 }
 
-/// Turns the chat view opens with. It bounds two things at once: the events
-/// page requested, and the per-turn detail reads that follow it — so raising
-/// this raises the fan-out with it.
-const CHAT_TURNS = 20;
-
-async function loadChatView({ workspaceId, fleet, token }: PageContext) {
-  const [eventsResult, approvalsResult] = await Promise.all([
-    listFleetEvents(workspaceId, fleet.id, token, { limit: CHAT_TURNS }).catch(
-      () => null,
-    ),
-    listApprovals(workspaceId, token, { fleetId: fleet.id, limit: 50 }).catch(
-      () => null,
-    ),
+async function loadChatView(
+  { workspaceId, fleet }: PageContext,
+  data: ChatViewData,
+) {
+  // The transcript is the one surface that genuinely wants the bodies: it
+  // renders what was said. The thread read carries them in ONE request — the
+  // list-then-one-detail-per-turn fan-out this view used to issue is gone.
+  const [threadResult, approvalsResult] = await Promise.all([
+    data.thread,
+    data.approvals,
   ]);
-  const events = eventsResult ?? { items: [], next_cursor: null };
+  const turns = threadResult?.items ?? [];
   const approvals = approvalsResult ?? { items: [], next_cursor: null };
-  // A transcript is the one surface that genuinely wants the bodies: it renders
-  // what was said, not a summary of it. The list read carries none, so the
-  // turns are re-read as details here — server-side, in parallel, bounded by
-  // CHAT_TURNS. A turn whose detail fails keeps its list row and renders its
-  // header and outcome rather than taking the page down with it.
-  const turns = await Promise.all(
-    events.items.map((row) =>
-      getFleetEvent(workspaceId, row.fleet_id, row.event_id, token).catch(() => row),
-    ),
-  );
   const approvalsHref = `${workspacePath(workspaceId, "approvals")}?fleetId=${encodeURIComponent(fleet.id)}`;
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-md overflow-hidden">
       <div className="shrink-0">
         <RunMetricsStrip
           status={fleet.status}
-          latest={events.items[0] ?? null}
+          latest={turns[0] ?? null}
           pendingApprovals={approvals.items.length}
           pendingApprovalsHasMore={approvals.next_cursor !== null}
           approvalsHref={approvalsHref}
-          summaryAvailable={eventsResult !== null}
+          summaryAvailable={threadResult !== null}
           approvalsAvailable={approvalsResult !== null}
         />
       </div>
@@ -245,19 +247,13 @@ async function loadChatView({ workspaceId, fleet, token }: PageContext) {
   );
 }
 
-async function loadEventsView({
-  workspaceId,
-  fleet,
-  token,
-  eventsCursor,
-  eventsPageSize,
-}: PageContext) {
-  // Fetched on the server for the cursor the URL names, so a reload or a
-  // shared link opens the page the operator was actually looking at.
-  const initial = await listFleetEvents(workspaceId, fleet.id, token, {
-    limit: eventsPageSize,
-    ...(eventsCursor ? { cursor: eventsCursor } : {}),
-  }).catch(() => ({ items: [], next_cursor: null }));
+async function loadEventsView(
+  { fleet, eventsPageSize }: PageContext,
+  data: EventsViewData,
+) {
+  // startViewData always starts this read for the events view, and its catch
+  // turns an upstream failure into an empty page, so a page always arrives.
+  const initial = await data.eventsInitial;
   return (
     <EventsList
       fleetId={fleet.id}
@@ -267,8 +263,11 @@ async function loadEventsView({
   );
 }
 
-async function loadMemoryView({ workspaceId, fleet, token }: PageContext) {
-  const memories = await listAllMemories(workspaceId, fleet.id, token).catch(() => null);
+async function loadMemoryView(
+  { workspaceId, fleet }: PageContext,
+  data: MemoryViewData,
+) {
+  const memories = await data.memories;
   return (
     <MemoryPanel
       workspaceId={workspaceId}

@@ -167,6 +167,21 @@ export async function listTenantWorkspaces(
   };
 }
 
+// GET /v1/tenants/me/workspaces?limit=1 — the entry redirect's read. It only
+// needs the FIRST workspace (or proof there is none), so it must not pay the
+// complete cursor walk the switcher needs; one page of one is the whole ask.
+export async function firstTenantWorkspace(
+  token: string,
+): Promise<TenantWorkspace | null> {
+  const response = await request<unknown>(
+    "/v1/tenants/me/workspaces?limit=1",
+    { method: "GET" },
+    token,
+  );
+  const page = decodeWorkspacePage(response);
+  return page.items[0] ?? null;
+}
+
 // POST /v1/workspaces — the caller supplies the tenant-unique name and the
 // backend assigns the workspace ID from its authenticated tenant context.
 export async function createTenantWorkspace(

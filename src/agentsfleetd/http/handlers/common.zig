@@ -311,6 +311,8 @@ pub const getFleetWorkspaceId = authz.getFleetWorkspaceId;
 pub const authorizeWorkspace = authz.authorizeWorkspace;
 pub const setTenantSessionContext = authz.setTenantSessionContext;
 pub const resolvePrincipalTenant = authz.resolvePrincipalTenant;
+pub const principalTenantBinds = authz.principalTenantBinds;
+pub const TenantBinds = authz.TenantBinds;
 pub const authorizeWorkspaceAndSetTenantContext = authz.authorizeWorkspaceAndSetTenantContext;
 pub const openHandlerTestConn = authz.openHandlerTestConn;
 

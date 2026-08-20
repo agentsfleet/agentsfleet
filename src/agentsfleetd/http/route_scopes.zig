@@ -150,7 +150,11 @@ pub fn requiredScopes(route: router.Route, method: httpz.Method) []const S {
             .DELETE => &FLEET_ADMIN,
             else => &FLEET_WRITE,
         },
-        .workspace_fleet_messages => &FLEET_WRITE,
+        // The thread read is a read; steering stays a write.
+        .workspace_fleet_messages => switch (method) {
+            .GET => &FLEET_READ,
+            else => &FLEET_WRITE,
+        },
         // Forgetting mutates what the fleet knows, so it takes the write scope;
         // it is not a lifecycle transition, so not fleet:admin.
         .workspace_fleet_memory_item => &FLEET_WRITE,

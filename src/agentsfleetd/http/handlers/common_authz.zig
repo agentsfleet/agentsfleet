@@ -1,3 +1,19 @@
+//! Workspace authorization funnel — ONE Postgres round trip on the happy path.
+//!
+//! `authorizeWorkspace` / `authorizeWorkspaceAndSetTenantContext` decide
+//! ownership with a single statement (`common_authz_sql.zig`): the effective
+//! tenant (user row first, token claim as fallback) and the workspace match
+//! resolve together, and the `_SET_CONTEXT` variant writes the Row-Level
+//! Security (RLS) session context inside the same statement — only on allow,
+//! because `set_config` lives in the SELECT list of a WHERE-gated row. The
+//! pre-merge shape spent two to three sequential round trips per request on
+//! exactly this decision.
+//!
+//! The statement count in this file is the design: one authorize statement per
+//! request on the happy path; `resolvePrincipalTenant` (cold paths that need a
+//! tenant with no workspace), the audited cross-tenant bypass, and the
+//! fleet→workspace resolve each keep their own.
+
 const std = @import("std");
 const constants = @import("common");
 const pg = @import("pg");
@@ -5,15 +21,15 @@ const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const db = @import("../../db/pool.zig");
 const AuthPrincipal = @import("../../auth/principal.zig").AuthPrincipal;
 const cross_tenant_audit = @import("../../auth/cross_tenant_audit.zig");
+const id_format = @import("../../types/id_format.zig");
+const sql = @import("common_authz_sql.zig");
 const logging = @import("log");
 
 const log = logging.scoped(.auth);
 const TENANT_ID_BUFFER_BYTES: usize = 64;
 
 pub fn getFleetWorkspaceId(conn: *pg.Conn, alloc: std.mem.Allocator, fleet_id: []const u8) ?[]const u8 {
-    var q = PgQuery.from(conn.query(
-        \\SELECT workspace_id::text FROM core.fleets WHERE id = $1::uuid LIMIT 1
-    , .{fleet_id}) catch return null);
+    var q = PgQuery.from(conn.query(sql.SELECT_FLEET_WORKSPACE, .{fleet_id}) catch return null);
     defer q.deinit();
     const row_opt = q.next() catch return null;
     const row = row_opt orelse return null;
@@ -21,45 +37,91 @@ pub fn getFleetWorkspaceId(conn: *pg.Conn, alloc: std.mem.Allocator, fleet_id: [
     return alloc.dupe(u8, ws) catch null;
 }
 
-/// Resolve tenant ownership from the user row for OIDC principals, then verify
-/// the workspace belongs to that tenant. API keys remain claim-bound and runner
-/// principals fail closed. The cross-tenant override stays an additive fallback.
+const ContextWrite = enum { none, on_allow };
+
+/// The two binds a merged tenant-resolving statement needs: the OIDC subject
+/// (user-row arm) and the well-formed tenant claim (fallback arm). Null when
+/// the principal carries no tenant authority at all (runner, or nothing to
+/// bind) — callers deny without a round trip. Shared by the authorize funnel
+/// and the tenant-scoped list statements that fold the same resolve.
+pub const TenantBinds = struct {
+    subject: ?[]const u8,
+    claim: ?[]const u8,
+};
+
+pub fn principalTenantBinds(principal: AuthPrincipal) ?TenantBinds {
+    if (principal.mode == .runner) return null;
+    const subject: ?[]const u8 = if (principal.mode == .jwt_oidc) principal.user_id else null;
+    // A malformed claim can only ever deny (it sits behind COALESCE), so it
+    // degrades to absent rather than becoming a statement-level cast error.
+    const claim: ?[]const u8 = if (principal.tenant_id) |t|
+        (if (id_format.isUuid(t)) t else null)
+    else
+        null;
+    if (subject == null and claim == null) return null;
+    return .{ .subject = subject, .claim = claim };
+}
+
+/// The merged verdict. Returns the owning tenant (copied into `tenant_buf`)
+/// when the principal's effective tenant owns the workspace; null denies.
+///
+/// Ordering is load-bearing: the workspace-scope claim check runs BEFORE the
+/// statement, so the `_SET_CONTEXT` variant can never write RLS context for a
+/// request that a later app-side check would deny — and a scope mismatch costs
+/// no round trip at all.
 fn authoritativeWorkspaceTenant(
     conn: *pg.Conn,
     principal: AuthPrincipal,
     workspace_id: []const u8,
     tenant_buf: []u8,
+    context: ContextWrite,
 ) ?[]const u8 {
-    const tenant_id =
-        (resolvePrincipalTenant(conn, principal, tenant_buf) catch return null) orelse return null;
-
-    var q = PgQuery.from(conn.query(
-        "SELECT 1 FROM core.workspaces WHERE id = $1::uuid AND tenant_id = $2::uuid",
-        .{ workspace_id, tenant_id },
-    ) catch return null);
-    defer q.deinit();
-    _ = (q.next() catch return null) orelse return null;
-
     if (principal.workspace_scope_id) |scoped_workspace_id| {
         if (!std.mem.eql(u8, scoped_workspace_id, workspace_id)) return null;
     }
-    return tenant_id;
+
+    // The user row is authoritative for OIDC principals; claim-bound modes
+    // (api_key, cli_credential) already resolved their tenant at auth time,
+    // so their subject binds NULL and the claim alone decides. No tenant
+    // source at all — the statement could never match; skip the round trip.
+    const binds = principalTenantBinds(principal) orelse return null;
+
+    var q = PgQuery.from(switch (context) {
+        .none => conn.query(sql.AUTHORIZE_WORKSPACE, .{ workspace_id, binds.subject, binds.claim }),
+        .on_allow => conn.query(sql.AUTHORIZE_WORKSPACE_SET_CONTEXT, .{ workspace_id, binds.subject, binds.claim }),
+    } catch return null);
+    defer q.deinit();
+    const row = (q.next() catch return null) orelse return null;
+    const tenant_id = row.get([]const u8, 0) catch return null;
+    if (tenant_id.len == 0 or tenant_id.len > tenant_buf.len) {
+        log.err("workspace_tenant_id_out_of_bounds", .{ .workspace_id = workspace_id, .len = tenant_id.len, .cap = tenant_buf.len });
+        return null;
+    }
+    @memcpy(tenant_buf[0..tenant_id.len], tenant_id);
+    return tenant_buf[0..tenant_id.len];
 }
 
 pub fn authorizeWorkspace(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
     var tenant_buf: [TENANT_ID_BUFFER_BYTES]u8 = undefined;
-    if (authoritativeWorkspaceTenant(conn, principal, workspace_id, &tenant_buf) != null) return true;
+    if (authoritativeWorkspaceTenant(conn, principal, workspace_id, &tenant_buf, .none) != null) return true;
     return crossTenantBypass(conn, principal, workspace_id, .authorize_only);
 }
 
+pub fn authorizeWorkspaceAndSetTenantContext(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
+    var tenant_buf: [TENANT_ID_BUFFER_BYTES]u8 = undefined;
+    if (authoritativeWorkspaceTenant(conn, principal, workspace_id, &tenant_buf, .on_allow) != null) return true;
+    return crossTenantBypass(conn, principal, workspace_id, .set_context);
+}
+
 pub fn setTenantSessionContext(conn: *pg.Conn, tenant_id: []const u8) bool {
-    _ = conn.exec("SELECT set_config('app.current_tenant_id', $1, false)", .{tenant_id}) catch return false;
+    _ = conn.exec(sql.SET_TENANT_CONTEXT, .{tenant_id}) catch return false;
     return true;
 }
 
 /// Resolve OIDC users through the authoritative user row when one exists.
-/// Database-backed API keys remain bound to their issuing tenant; runners
-/// carry no tenant authority.
+/// Cold-path only (workspace create, tenant-scoped lists that carry no
+/// workspace id); the workspace-scoped hot path resolves inside the merged
+/// authorize statement instead.
 pub fn resolvePrincipalTenant(
     conn: *pg.Conn,
     principal: AuthPrincipal,
@@ -74,10 +136,7 @@ pub fn resolvePrincipalTenant(
         .jwt_oidc => {},
     }
     if (principal.user_id) |subject| {
-        var q = PgQuery.from(try conn.query(
-            "SELECT tenant_id::text FROM core.users WHERE oidc_subject = $1 LIMIT 1",
-            .{subject},
-        ));
+        var q = PgQuery.from(try conn.query(sql.SELECT_USER_TENANT_BY_SUBJECT, .{subject}));
         defer q.deinit();
         if (try q.next()) |row| {
             const tenant_id = try row.get([]const u8, 0);
@@ -89,19 +148,6 @@ pub fn resolvePrincipalTenant(
         }
     }
     return principal.tenant_id;
-}
-
-pub fn authorizeWorkspaceAndSetTenantContext(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
-    // Authorize BEFORE writing the RLS context, so a denied request never mutates
-    // app.current_tenant_id. set_config here is session-level (not transaction-
-    // scoped), so writing on the failure path would leak a tenant onto the pooled
-    // connection for the next request that reuses it — there is no Postgres RLS
-    // backstop today. Context is written only on success.
-    var tenant_buf: [TENANT_ID_BUFFER_BYTES]u8 = undefined;
-    if (authoritativeWorkspaceTenant(conn, principal, workspace_id, &tenant_buf)) |tenant_id| {
-        return setTenantSessionContext(conn, tenant_id);
-    }
-    return crossTenantBypass(conn, principal, workspace_id, .set_context);
 }
 
 const BypassMode = enum { authorize_only, set_context };
@@ -121,10 +167,7 @@ fn crossTenantBypass(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []c
     // the same conn (the read must be drained first — RULE DRAIN).
     var tenant_buf: [TENANT_ID_BUFFER_BYTES]u8 = undefined;
     const target_tenant = blk: {
-        var q = PgQuery.from(conn.query(
-            "SELECT tenant_id::text FROM core.workspaces WHERE id = $1::uuid",
-            .{workspace_id},
-        ) catch return false);
+        var q = PgQuery.from(conn.query(sql.SELECT_WORKSPACE_TENANT, .{workspace_id}) catch return false);
         defer q.deinit();
         const row = (q.next() catch return false) orelse return false;
         const t = row.get([]u8, 0) catch return false;
