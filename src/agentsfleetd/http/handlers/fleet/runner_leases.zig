@@ -301,3 +301,48 @@ test "test_runner_leases_outcome_mapping" {
     try std.testing.expectEqual(LeaseOutcome.unknown, outcomeFor(protocol.RUNNER_LEASE_STATUS_REPORTED, event_rows.STATUS_RECEIVED));
     try std.testing.expectEqual(LeaseOutcome.unknown, outcomeFor("mystery", null));
 }
+
+/// A row whose every column decodes, so the only failure the proof below can
+/// induce is the allocator's. Column types follow what `readItem` asks for.
+const ProofRow = struct {
+    const TEXT: []const u8 = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
+
+    fn get(_: @This(), comptime T: type, _: usize) !T {
+        return switch (T) {
+            i64 => 1,
+            bool => false,
+            ?i64 => @as(?i64, 1),
+            []u8 => @constCast(TEXT),
+            ?[]u8 => @as(?[]u8, @constCast(TEXT)),
+            else => @compileError("unhandled column type " ++ @typeName(T)),
+        };
+    }
+};
+
+fn freeProofItem(alloc: std.mem.Allocator, item: LeaseItem) void {
+    alloc.free(item.id);
+    alloc.free(item.fleet_id);
+    if (item.fleet_name) |v| alloc.free(v);
+    alloc.free(item.workspace_id);
+    alloc.free(item.event_id);
+    alloc.free(item.event_type);
+    alloc.free(item.actor);
+    alloc.free(item.provider);
+    alloc.free(item.model);
+    alloc.free(item.posture);
+    if (item.failure_label) |v| alloc.free(v);
+    if (item.failure_detail) |v| alloc.free(v);
+}
+
+fn readItemUnderAllocator(alloc: std.mem.Allocator) !void {
+    freeProofItem(alloc, try readItem(alloc, ProofRow{}));
+}
+
+test "test_lease_row_read_unwinds_without_leaking" {
+    // `readItem` frees twelve owned slices through an `errdefer` rung each, and
+    // production hands it a request arena — so a missing rung leaks nothing
+    // there and shows up only under the pooled allocator a long-running daemon
+    // actually uses. Failing every site in turn is what proves each rung frees
+    // what it claims to; reading the ladder and agreeing it looks right is not.
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, readItemUnderAllocator, .{});
+}

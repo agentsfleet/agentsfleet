@@ -59,7 +59,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/lib/**/*_test.zig` | CREATE / EDIT | same, for the shared library component |
 | `src/agentsfleetd/**/*.zig` | EDIT | deletion of branches §4 proves unreachable; no behaviour change to any reachable path |
 | `src/agentsfleetd/integration_tests.zig` | EDIT | register each new integration test file |
-| `scripts/check_zig_coverage_floors.py` | EDIT | raise each component's enforced floor to what the landed tests measurably clear |
+| `make/test.mk` | EDIT | the enforced floor and target VALUES live here (`ZIG_COVERAGE_FOLDER_FLOORS`, `ZIG_COVERAGE_MIN_PCT`), not in the grading script |
+| `scripts/check_zig_coverage_floors.py` | EDIT | floor grading logic, if the raise needs it; the values themselves move in `make/test.mk` |
 | `scripts/classify_unhit_lines.py` | CREATE | classifies every unhit line in the merged kcov report into the class that names its mechanism; rubric rows R1-R4 grade from its count output |
 | `scripts/classify_unhit_lines_test.py` | CREATE | its self-test, discovered by the `*_test.py` pattern `make lint-governance` already runs |
 | `docs/architecture/testing.md` | EDIT | record the new floors and the allocation-failure proof as the standing shape for error paths |
@@ -147,7 +148,7 @@ spec.
 
 The one machine-readable surface it does change is the coverage floor table:
 
-  scripts/check_zig_coverage_floors.py
+  make/test.mk (ZIG_COVERAGE_FOLDER_FLOORS / ZIG_COVERAGE_MIN_PCT)
     merged        floor 89  -> raise-only, to the landed measured rate
     agentsfleetd  floor 90  -> raise-only, to the landed measured rate
     runner        floor 87  -> raise-only, to the landed measured rate
@@ -276,6 +277,18 @@ code is out of scope and reverts.
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
+  - **PR staging (Aug 20, 2026).** The classifier's first run measured 2,414 unhit
+    lines across 316 files — errdefer 318, failure-response 512, failure-log 298,
+    error-return 132, other 1,110, brace 44 — with a flat tail (errdefer's top 12
+    files hold only 36% of its lines). Asked whether to stage the sweep across
+    workstreams or run it on one branch. Indy chose **full sweep, one long
+    branch**: all four classes reach zero before the PR opens. No section defers,
+    so this spec carries no deferral quote.
+  - **Floor location (Aug 20, 2026).** The spec named
+    `scripts/check_zig_coverage_floors.py` as the file carrying the enforced
+    floors. It carries the grading logic; the values are `ZIG_COVERAGE_FOLDER_
+    FLOORS` and `ZIG_COVERAGE_MIN_PCT` in `make/test.mk`. Files Changed and
+    Interfaces amended to name both — spec is an instance, the measured tree wins.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
