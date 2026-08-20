@@ -72,8 +72,8 @@ export const grantListEffectFromArgs = (
     const token = yield* resolveAuthToken;
     const fleetId = yield* requireFlag(
       fleetIdFlag ?? fleetIdPositional,
-      "grant list requires --fleet <id>",
-      "pass --fleet <fleet_id>",
+      FLEET_REQUIRED,
+      GRANT_LIST_USAGE,
     );
 
     const res = yield* http.request<GrantListResponse>({
@@ -128,14 +128,14 @@ export const grantDeleteEffectFromArgs = (
     const token = yield* resolveAuthToken;
     const fleetIdRaw = yield* requireFlag(
       fleetIdFlag,
-      GRANT_DELETE_USAGE_ERROR,
-      "pass --fleet <fleet_id> <grant_id>",
+      FLEET_REQUIRED,
+      GRANT_DELETE_USAGE,
     );
     const fleetId = yield* requireValidId(fleetIdRaw, "fleet_id");
     const grantIdRaw = yield* requireFlag(
       grantIdPositional,
-      GRANT_DELETE_USAGE_ERROR,
-      "pass <grant_id> as positional",
+      GRANT_ID_REQUIRED,
+      GRANT_DELETE_USAGE,
     );
     const grantId = yield* requireValidId(grantIdRaw, GRANT_ID_FIELD);
 
@@ -153,4 +153,8 @@ export const grantDeleteEffectFromArgs = (
       );
     }
   });
-const GRANT_DELETE_USAGE_ERROR = "grant delete requires --fleet <id> <grant_id>" as const;
+const FLEET_REQUIRED = "--fleet <id> is required" as const;
+const GRANT_ID_REQUIRED = "<grant_id> is required" as const;
+const GRANT_LIST_USAGE = "usage: agentsfleet grant list --fleet <id>" as const;
+const GRANT_DELETE_USAGE =
+  "usage: agentsfleet grant delete <grant_id> --fleet <id>" as const;

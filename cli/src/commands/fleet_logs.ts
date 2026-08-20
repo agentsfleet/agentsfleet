@@ -18,7 +18,12 @@ import {
 } from "../errors/index.ts";
 
 const DEFAULT_LOGS_LIMIT = "20";
-const USAGE = "logs requires --fleet <id>";
+// The detail says what is wrong; the suggestion says what to run. Before
+// M171 both carried the same sentence, so the rendered failure repeated
+// itself and told the operator nothing new on the second line.
+const FLEET_REQUIRED = "--fleet <id> is required";
+const USAGE =
+  "usage: agentsfleet logs --fleet <id> [--limit <n>] [--cursor <token>]";
 const TYPE_STRING = "string" as const;
 const LITERAL = "—" as const;
 
@@ -48,7 +53,7 @@ const requireFleetId = (
   Effect.gen(function* () {
     if (!raw) {
       return yield* Effect.fail(
-        new ValidationError({ detail: USAGE, suggestion: USAGE }),
+        new ValidationError({ detail: FLEET_REQUIRED, suggestion: USAGE }),
       );
     }
     const check = validateRequiredId(raw, "fleet_id");

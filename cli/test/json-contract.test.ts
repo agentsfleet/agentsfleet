@@ -10,6 +10,7 @@ import path from "node:path";
 import type { Command } from "commander";
 import { makeBufferStream, ui } from "./helpers.ts";
 import { runCli } from "../src/cli.ts";
+import { EXIT_CODE } from "../src/errors/index.ts";
 import { STATE_DIR_ENV } from "../src/lib/config-dir.ts";
 import { writeError } from "../src/program/io.ts";
 import { buildProgram } from "../src/program/cli-tree.ts";
@@ -152,7 +153,7 @@ describe("JSON error envelope", () => {
     expect(parsed?.error.code).toBe("AUTH_REQUIRED");
   });
 
-  test("removed v1 commands surface as commander unknown-command (exit 2)", async () => {
+  test("removed v1 commands surface as commander unknown-command (validation exit)", async () => {
     for (const argv of [["run"], ["runs", "list"], ["spec", "init"]]) {
       const out = makeBufferStream();
       const err = makeBufferStream();
@@ -161,7 +162,7 @@ describe("JSON error envelope", () => {
         stderr: err.stream,
         env: { ...process.env, AGENTSFLEET_API_KEY: "agt_t_test" },
       });
-      expect(code).toBe(2);
+      expect(code).toBe(EXIT_CODE.ValidationError);
       expect(err.read()).toMatch(/unknown command/);
     }
   });

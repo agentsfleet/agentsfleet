@@ -1,7 +1,8 @@
 // Auth-flow tagged error classes. Each variant owns a stable `_tag` so
 // Effect.catchTag and the shared renderer can classify login failures.
 
-const SUGGESTION_PREFIX = "\n  Suggestion: " as const;
+import { SUGGESTION_PREFIX } from "../constants/rejection.ts";
+
 export const ERR_UNAUTHORIZED = "UZ-AUTH-002" as const;
 export const AUTH_FLOW_ERROR_TAG = {
   invalidSession: "InvalidSessionError",
