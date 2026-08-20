@@ -27,12 +27,15 @@ const sandbox_hardening = @import("sandbox_hardening.zig");
 const doctor = @import("cmd/doctor.zig");
 const sandbox_args = @import("sandbox_args.zig");
 const selftest_probe = @import("selftest_probe.zig");
+const selftest_transport = @import("selftest_transport.zig");
 
 pub const Check = doctor.Check;
 
-/// How long a probe child may run before it is reaped. A probe is three
+/// How long a probe child may run before it is reaped. A probe is a handful of
 /// filesystem/DNS operations; anything past this is a hung resolver, which is
-/// itself the fault we are looking for.
+/// itself the fault we are looking for. Deliberately not a count — the count
+/// grows as checks are added, and a stale number here reads as a budget
+/// derivation that no longer holds.
 ///
 /// It MUST stay well under the heartbeat interval. The probe runs on the
 /// heartbeat path, so a probe that burns its whole bound delays the NEXT beat
@@ -55,6 +58,7 @@ pub const CHECK_SCRATCH = "the scratch dir accepts a write inside the sandbox";
 pub const CHECK_HOME = "the child's home accepts a write inside the sandbox";
 pub const CHECK_DNS = "a hostname resolves inside the sandbox";
 pub const CHECK_EGRESS = "the inference endpoint is reachable";
+pub const CHECK_TRANSPORT = "the model transport runs inside the sandbox";
 pub const CHECK_SANDBOX = "a sandbox can be established";
 
 /// Every `detail` a check may carry. A fixed vocabulary is what makes
@@ -69,6 +73,8 @@ pub const DETAIL_RESOLVER_DANGLING = "/etc/resolv.conf does not resolve to a rea
 pub const DETAIL_DNS_FAILED = "the resolver did not answer inside the sandbox";
 pub const DETAIL_EGRESS_BLOCKED = "the endpoint did not accept a connection";
 pub const DETAIL_EGRESS_DENIED_EXPECTED = "no egress by assignment (deny_all_egress) — expected, not a fault";
+pub const DETAIL_TRANSPORT_UNEXECUTABLE = "the sandbox could not execute the model transport — the engine spawns curl for every model call, so every lease dies at execvp before its first one";
+pub const DETAIL_TRANSPORT_ABSENT = "no curl binary at /usr/bin/curl or /bin/curl on this host — the engine spawns one for every model call, so no lease can reach a model";
 pub const DETAIL_TIMEOUT = "the probe exceeded its time bound and was reaped";
 pub const DETAIL_NO_BWRAP = "no bubblewrap binary on this host — a sandboxed tier cannot be established";
 /// An assigned bind resolves onto a path the sandbox protects. Named for the
@@ -151,7 +157,18 @@ pub const ProbeTargets = struct {
     /// Operator-assigned binds to confirm landed. Borrowed from the config —
     /// the argv builder copies each path before the caller's config can go.
     binds: []const contract.protocol.ExtraBind = &.{},
+    /// Absolute path of the engine's model transport, resolved on the HOST.
+    ///
+    /// Set by `buildProbeArgv`, which has an `Io` to look with; `targetsFor` is
+    /// pure and leaves it null, so the pure argv twin composes a probe that
+    /// reports the transport untested rather than one that guesses a path.
+    transport: ?[]const u8 = null,
 };
+
+/// The first transport binary present on this host, or null. Re-exported from
+/// `selftest_transport` so the parent and the probe resolve the same list
+/// (RULE UFS) and callers keep one entry point.
+pub const transportPath = selftest_transport.hostPath;
 
 /// Port assumed when a declared registry names a bare host. Registries are
 /// pulled over Transport Layer Security (TLS), so 443 is the reachability
@@ -207,7 +224,11 @@ pub fn buildProbeArgv(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspa
     defer sandbox_args.freeArgv(alloc, prefix);
     const self_exe = try sandbox_args.resolveChildExe(io, alloc);
     defer alloc.free(self_exe);
-    return appendProbeCommand(alloc, prefix, self_exe, workspace_path, targetsFor(cfg));
+    var targets = targetsFor(cfg);
+    // Resolved here rather than in `targetsFor` because it is a HOST fact, and
+    // `targetsFor` is pure so the argv twin stays testable without a filesystem.
+    targets.transport = transportPath(io);
+    return appendProbeCommand(alloc, prefix, self_exe, workspace_path, targets);
 }
 
 /// The probe argv for a GIVEN bwrap binary and child exe — the pure twin of
@@ -248,6 +269,7 @@ fn appendProbeCommand(alloc: std.mem.Allocator, prefix: []const []const u8, self
     }
     if (targets.resolve) |h| try appendFlag(alloc, &list, selftest_probe.RESOLVE_FLAG_PREFIX, h);
     if (targets.dial) |d| try appendDialFlag(alloc, &list, d);
+    if (targets.transport) |t| try appendFlag(alloc, &list, selftest_probe.TRANSPORT_FLAG_PREFIX, t);
     for (targets.binds) |b| {
         const bind_prefix = switch (b.mode) {
             .read_only => sandbox_hardening.BIND_RO_FLAG_PREFIX,
@@ -379,6 +401,22 @@ pub fn grade(alloc: std.mem.Allocator, cfg: Config, outcome: Outcome) !Result {
         });
     }
 
+    // The transport is graded under EVERY posture, including `deny_all_egress`:
+    // "can this sandbox execute the binary the engine spawns" is a filesystem
+    // question, and a lease with no network still dies at `execvp` if the answer
+    // is no. Absence is a fault rather than untested — a host with no transport
+    // runs no lease, and reporting that as "nothing to measure" is exactly the
+    // green-probe/dead-sandbox reading this milestone exists to remove.
+    if (!outcome.transport_testable) {
+        try checks.append(alloc, .{ .name = CHECK_TRANSPORT, .ok = false, .detail = DETAIL_TRANSPORT_ABSENT });
+    } else {
+        try checks.append(alloc, .{
+            .name = CHECK_TRANSPORT,
+            .ok = outcome.transport_execs,
+            .detail = if (outcome.transport_execs) DETAIL_OK else DETAIL_TRANSPORT_UNEXECUTABLE,
+        });
+    }
+
     // One named check per operator-added bind, so an operator sees WHICH entry
     // did not land rather than one aggregate verdict (Dimension 4.5). The mode
     // travels with it — a writable mount is never reported silently.
@@ -428,6 +466,15 @@ pub const Outcome = struct {
     /// true so an existing caller keeps grading DNS as before; the executor
     /// sets it false rather than reporting an untested resolver as broken.
     dns_testable: bool = true,
+    /// Did the transport the engine spawns actually execute inside the sandbox?
+    /// No default, for the reason `scratch_writable` has none: `grade` always
+    /// reads it, and a silently-defaulted pass here would re-create the exact
+    /// unmeasured claim that removed the executable trees.
+    transport_execs: bool,
+    /// False when this host carries no transport binary at all, which `grade`
+    /// reports as a fault distinct from one that failed to run — an operator
+    /// fixes "install curl" and "fix the bind set" differently.
+    transport_testable: bool,
 };
 
 test {

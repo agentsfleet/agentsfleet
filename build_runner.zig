@@ -173,19 +173,34 @@ pub fn build(b: *std.Build) void {
     stub_exe_opts.addOption(bool, OPT_EXECUTOR_PROVIDER_STUB, true);
     stub_exe_opts.addOption([]const u8, OPT_STUB_RUNNER_EXE_PATH, "");
     stub_exe_opts.addOption([]const u8, OPT_BUILD_ROOT, "");
+    // The DEPLOYED runner is static: release targets are bare `*-linux` (musl),
+    // and `build-linux-alpine` asserts zero NEEDED + no INTERP. The narrowed
+    // sandbox leans on exactly that — a lease binds the runner as ONE file, so
+    // a dynamically linked child dies at execvp on its absent interpreter. A
+    // `native` stub inherits the HOST libc (dynamic musl on alpine, glibc on
+    // ubuntu), which made every real-sandbox selftest proof skip silently via
+    // the probeRanHere gate. Pin the stub to the static musl the release ships;
+    // its own SharedDeps instance carries the matching nullclaw target.
+    const stub_target = b.resolveTargetQuery(.{
+        .cpu_arch = target.result.cpu.arch,
+        .os_tag = .linux,
+        .abi = .musl,
+    });
+    const stub_deps = buildpkg.shared.SharedDeps.init(b, stub_target, optimize);
     const stub_runner_exe = b.addExecutable(.{
         .name = "agentsfleet-runner-execstub",
+        .linkage = .static,
         .root_module = b.createModule(.{
             .root_source_file = b.path(SRC_RUNNER_MAIN),
-            .target = target,
+            .target = stub_target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = S_LOG, .module = log_mod },
-                .{ .name = S_CONTRACT, .module = contract_mod },
-                .{ .name = S_COMMON, .module = common_mod },
-                .{ .name = S_CALL_DEADLINE, .module = call_deadline_mod },
-                .{ .name = S_HTTP_PIN, .module = http_pin_mod },
-                .{ .name = S_NULLCLAW, .module = nullclaw_mod },
+                .{ .name = S_LOG, .module = stub_deps.log },
+                .{ .name = S_CONTRACT, .module = stub_deps.protocol },
+                .{ .name = S_COMMON, .module = stub_deps.common },
+                .{ .name = S_CALL_DEADLINE, .module = stub_deps.call_deadline },
+                .{ .name = S_HTTP_PIN, .module = stub_deps.http_pin },
+                .{ .name = S_NULLCLAW, .module = stub_deps.nullclaw },
                 .{ .name = S_BUILD_OPTIONS, .module = stub_exe_opts.createModule() },
             },
         }),

@@ -28,7 +28,7 @@ pub const ENV_DENY_PREFIX = "AGENTSFLEET_";
 /// which lives on the writable tmpfs floor bwrap builds per lease. A daemon path
 /// is never the right answer for a process that cannot see the daemon's mounts.
 pub const ENV_PASSTHROUGH_ALLOWLIST = [_][]const u8{
-    "PATH", // tool subprocess + wasmtime executable resolution (load-bearing)
+    "PATH", // resolves `curl` for the engine's model transport (load-bearing)
     "NULLCLAW_OBSERVER", // optional observer-backend selector (safe default: log)
     "SSL_CERT_FILE", // TLS CA bundle override — pass-through-if-set
     "SSL_CERT_DIR", // TLS CA directory override — pass-through-if-set

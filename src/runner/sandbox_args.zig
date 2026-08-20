@@ -137,9 +137,14 @@ pub fn appendBindFlags(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8
 }
 
 /// Whether this tier gets a bubblewrap wrapper. `dev_none` and every
-/// non-Linux host exec the child directly. Private: both callers live here,
-/// and the probe asks for a prefix rather than asking whether to build one.
-fn isSandboxed(cfg: Config) bool {
+/// non-Linux host exec the child directly.
+///
+/// `pub` for `child_process.forkExec`, which must know whether anything will
+/// construct the child's `HOME`: on a wrapped tier bwrap's `--dir` builds it
+/// per lease, on a direct-exec tier nothing does, and the environ assigns it
+/// either way. One predicate rather than a second copy of the tier test (RULE
+/// UFS) — a copy is how the mount layer and the policy layer drifted before.
+pub fn isSandboxed(cfg: Config) bool {
     return builtin.os.tag == .linux and cfg.sandbox_tier != .dev_none;
 }
 
@@ -272,9 +277,9 @@ fn appendBwrapAt(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), bwr
     // `--new-session` detaches the controlling terminal (no TIOCSTI input
     // injection if a tty is ever attached); it sits with the other namespace
     // flags so every sandboxed tier gets it.
-    // No /usr: the engine is a static binary on its own single-file bind, and
-    // no hosted tool spawns a process, so an executable tree inside a lease is
-    // reachable surface with no consumer.
+    // The executable and library trees arrive through `RO_SYSTEM_PATHS`, not
+    // from this base argv: the runner is static, but the engine's transport
+    // spawns `curl`. Sourcing them there keeps landlock derived from bwrap.
     const base = [_][]const u8{
         bwrap,           "--die-with-parent", "--unshare-all",
         "--new-session", "--proc",            "/proc",

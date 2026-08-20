@@ -14,6 +14,7 @@ const logging = @import("log");
 
 const cgroup = @import("engine/CgroupScope.zig");
 const client_errors = @import("engine/client_errors.zig");
+const common = @import("common");
 const sandbox = @import("sandbox_args.zig");
 const sandbox_env = @import("sandbox_env.zig");
 const contract = @import("contract");
@@ -42,6 +43,14 @@ pub fn forkExec(io: std.Io, alloc: std.mem.Allocator, cfg: Config, daemon_env: *
 
     try requireAbsoluteArgv0(argv);
 
+    // On a wrapped tier bwrap's `--dir` builds the child's HOME on the lease
+    // tmpfs. A direct-exec tier (`dev_none`, and every non-Linux host) emits no
+    // bwrap argv and therefore no `--dir`, while `buildChildEnviron` assigns
+    // HOME unconditionally — so without this the child is handed a HOME that
+    // does not exist and dies resolving its config directory: the exact fault
+    // the assignment was introduced to fix, just on the other tier.
+    if (!sandbox.isSandboxed(cfg)) try ensureChildHome(io);
+
     // Build the child's environ from the allowlist only; freed after spawn
     // bakes it into the child's envp (the returned Child does not retain it).
     var child_env = try buildChildEnviron(alloc, daemon_env);
@@ -57,6 +66,16 @@ pub fn forkExec(io: std.Io, alloc: std.mem.Allocator, cfg: Config, daemon_env: *
     }) catch |err| {
         log.err("child_spawn_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
         return err;
+    };
+}
+
+/// Create the child's assigned HOME on the host, for tiers that exec directly.
+/// Idempotent — after the first lease on a host the directory already exists,
+/// which is the normal case, not an error.
+fn ensureChildHome(io: std.Io) !void {
+    std.Io.Dir.createDirAbsolute(io, contract.protocol.CHILD_HOME, .default_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
     };
 }
 
@@ -189,6 +208,24 @@ test "forkExec env filter omits every AGENTSFLEET_ daemon secret from the child 
     }
     try testing.expect(child.get("AGENTSFLEET_RUNNER_TOKEN") == null);
     try testing.expect(child.get("AGENTSFLEET_API_URL") == null);
+}
+
+test "the child home is created for a direct-exec tier, and creating it twice is not an error" {
+    // `dev_none` and every non-Linux host emit no bwrap argv, so bwrap's
+    // `--dir` never runs and NOTHING else builds CHILD_HOME — while
+    // `buildChildEnviron` assigns HOME unconditionally. Without this the child
+    // is handed a path that does not exist and dies resolving its config
+    // directory: the same fault the assignment was introduced to fix, moved to
+    // the other tier. The probe would report it; the lease would still be dead.
+    const io = common.globalIo();
+    try ensureChildHome(io);
+    try std.Io.Dir.accessAbsolute(io, contract.protocol.CHILD_HOME, .{});
+
+    // Idempotent, because the second lease on a host finds it already there —
+    // an `error.PathAlreadyExists` escaping here would fail every lease after
+    // the first, which is worse than the bug being fixed.
+    try ensureChildHome(io);
+    try std.Io.Dir.accessAbsolute(io, contract.protocol.CHILD_HOME, .{});
 }
 
 test "requireAbsoluteArgv0 rejects a relative argv[0] and accepts an absolute one" {

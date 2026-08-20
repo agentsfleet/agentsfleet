@@ -28,6 +28,7 @@ const std = @import("std");
 const contract = @import("contract");
 const child_exec = @import("child_exec.zig");
 const sandbox_hardening = @import("sandbox_hardening.zig");
+const selftest_transport = @import("selftest_transport.zig");
 
 /// argv subcommand selecting probe mode. Deliberately `__`-prefixed like
 /// `__execute`: dispatched before the operator registry, absent from help.
@@ -46,6 +47,19 @@ pub const RESOLVE_FLAG_PREFIX = "--resolve=";
 
 /// `host:port` to dial, likewise drawn from the assignment. Absent → untested.
 pub const DIAL_FLAG_PREFIX = "--dial=";
+
+/// Absolute path of the binary the ENGINE's model transport spawns, resolved by
+/// the parent on the host. Absent → untested, never invented: a probe that
+/// guessed a path would report on a transport this host does not have.
+///
+/// This check exists because the egress check above cannot answer the question.
+/// `endpointAccepts` opens a TCP stream from inside the statically linked
+/// runner and spawns nothing, so it measured the one path in a lease that needs
+/// no executable — and M170 §3 removed the executable trees on the strength of
+/// it, which would have killed every lease at `execvp` before its first model
+/// call. Reachability and executability are different facts; this key is the
+/// second one.
+pub const TRANSPORT_FLAG_PREFIX = "--transport=";
 
 // Operator binds arrive on `child_exec`'s mode-explicit flags — the SAME wire a
 // lease child reads (RULE UFS: one vocabulary) — repeatable up to
@@ -87,6 +101,7 @@ pub const KEY_EGRESS = "egress=";
 pub const KEY_BINDS = "binds=";
 pub const KEY_SCRATCH = "scratch=";
 pub const KEY_HOME = "home=";
+pub const KEY_TRANSPORT = "transport=";
 
 /// Run the probe. Always exits 0 on a completed run — a FAILED CHECK is a
 /// result, not an error. A non-zero exit means the child could not run at all,
@@ -94,6 +109,7 @@ pub const KEY_HOME = "home=";
 pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, io: std.Io) u8 {
     var resolve_host: ?[]const u8 = null;
     var dial_target: ?[]const u8 = null;
+    var transport_path: ?[]const u8 = null;
     var sandboxed = false;
     var workspace: ?[]const u8 = null;
     for (argv[2..]) |a| {
@@ -101,6 +117,8 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
             resolve_host = a[RESOLVE_FLAG_PREFIX.len..];
         if (std.mem.startsWith(u8, a, DIAL_FLAG_PREFIX))
             dial_target = a[DIAL_FLAG_PREFIX.len..];
+        if (std.mem.startsWith(u8, a, TRANSPORT_FLAG_PREFIX))
+            transport_path = a[TRANSPORT_FLAG_PREFIX.len..];
         if (std.mem.eql(u8, a, child_exec.SANDBOXED_FLAG)) sandboxed = true;
         if (std.mem.startsWith(u8, a, child_exec.WORKSPACE_FLAG_PREFIX))
             workspace = a[child_exec.WORKSPACE_FLAG_PREFIX.len..];
@@ -128,9 +146,10 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
     const home = Verdict.of(homeWritable(io, env_map));
     const dns = if (resolve_host) |h| Verdict.of(nameResolves(io, h)) else .untested;
     const egress = if (dial_target) |t| Verdict.of(endpointAccepts(io, t)) else .untested;
+    const transport = if (transport_path) |p| Verdict.of(selftest_transport.execs(p)) else .untested;
     const binds: Verdict = if (binds_seen == 0) .untested else Verdict.of(binds_present);
 
-    writeVerdict(io, resolver, scratch, home, dns, egress, binds);
+    writeVerdict(io, resolver, scratch, home, dns, egress, transport, binds);
     return 0;
 }
 
@@ -179,15 +198,6 @@ fn scratchWritable(io: std.Io) bool {
     return true;
 }
 
-/// Can this constrained child write under the HOME it was actually given?
-///
-/// Distinct from `scratchWritable`, and the distinction is the whole point.
-/// That check walks `BASELINE_RW_TMPFS` and proves the FLOOR is writable; it
-/// says nothing about whether the child's `$HOME` is on that floor. It was
-/// passing — `all_ok=true`, four checks green — on a host where every lease
-/// died, because HOME pointed at `/run/agentsfleet` and no list carried it.
-/// Reading the variable the child was handed is what turns that class of fault
-/// from invisible into a failed check.
 /// Is this a `HOME` worth attempting a write under? Pure over the value, so the
 /// three ways a home is unusable before any I/O happens are unit-testable
 /// without a sandbox — the same decider/probe split `preflight` uses.
@@ -205,6 +215,15 @@ pub fn homePathUsable(home: ?[]const u8) bool {
     return true;
 }
 
+/// Can this constrained child write under the HOME it was actually given?
+///
+/// Distinct from `scratchWritable`, and the distinction is the whole point.
+/// That check walks `BASELINE_RW_TMPFS` and proves the FLOOR is writable; it
+/// says nothing about whether the child's `$HOME` is on that floor. It was
+/// passing — `all_ok=true`, four checks green — on a host where every lease
+/// died, because HOME pointed at `/run/agentsfleet` and no list carried it.
+/// Reading the variable the child was handed is what turns that class of fault
+/// from invisible into a failed check.
 fn homeWritable(io: std.Io, env_map: *const std.process.Environ.Map) bool {
     // Read from the process map rather than a libc getenv: same source the lease
     // child's own env is built from, so the probe grades the value a lease sees.
@@ -263,17 +282,21 @@ fn endpointAccepts(io: std.Io, target: []const u8) bool {
 /// closed stdout means the parent already reaped us, and there is no one left
 /// to tell. The parent reads a missing line as every check failing, which is
 /// the fail-closed reading.
-fn writeVerdict(io: std.Io, resolver: Verdict, scratch: Verdict, home: Verdict, dns: Verdict, egress: Verdict, binds: Verdict) void {
+fn writeVerdict(io: std.Io, resolver: Verdict, scratch: Verdict, home: Verdict, dns: Verdict, egress: Verdict, transport: Verdict, binds: Verdict) void {
+    // 96 holds the seven keys with room to spare (the line is ~63 bytes); the
+    // parent's own read cap is `selftest_exec.VERDICT_READ_CAP` = 128, and an
+    // eighth key would need both raised together.
     var out_buf: [96]u8 = undefined;
     var stdout_w = std.Io.File.stdout().writer(io, &out_buf);
     const stdout = &stdout_w.interface;
-    stdout.print("{s}{c} {s}{c} {s}{c} {s}{c} {s}{c} {s}{c}\n", .{
-        KEY_RESOLVER, @intFromEnum(resolver),
-        KEY_SCRATCH,  @intFromEnum(scratch),
-        KEY_HOME,     @intFromEnum(home),
-        KEY_DNS,      @intFromEnum(dns),
-        KEY_EGRESS,   @intFromEnum(egress),
-        KEY_BINDS,    @intFromEnum(binds),
+    stdout.print("{s}{c} {s}{c} {s}{c} {s}{c} {s}{c} {s}{c} {s}{c}\n", .{
+        KEY_RESOLVER,  @intFromEnum(resolver),
+        KEY_SCRATCH,   @intFromEnum(scratch),
+        KEY_HOME,      @intFromEnum(home),
+        KEY_DNS,       @intFromEnum(dns),
+        KEY_EGRESS,    @intFromEnum(egress),
+        KEY_TRANSPORT, @intFromEnum(transport),
+        KEY_BINDS,     @intFromEnum(binds),
     }) catch |err| {
         std.log.warn("selftest probe verdict write ignored: {s}", .{@errorName(err)});
         return;
