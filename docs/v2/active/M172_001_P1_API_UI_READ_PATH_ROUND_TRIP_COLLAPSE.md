@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M172
 **Workstream:** 001
 **Date:** Aug 20, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — every dashboard page and every runner poll pays avoidable Postgres round trips; the fleet chat view pays twenty-one avoidable HTTP requests
 **Categories:** API, UI
 **Batch:** B1 — single workstream, no parallel sibling
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m172-read-path-collapse
+**Test Baseline:** unit=4157 integration=709
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Fable 5, Aug 20, 2026) — grounded in a source walk of every named handler, statement, and dashboard fetcher on main
 **Canonical architecture:** `docs/architecture/scaling.md` §Which recurring Postgres reads are index-served; `docs/architecture/web_app.md`
