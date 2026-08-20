@@ -46,6 +46,8 @@ const HEALTHY: selftest.Outcome = .{
     .home_writable = true,
     .dns_resolved = true,
     .egress_reachable = true,
+    .transport_execs = true,
+    .transport_testable = true,
 };
 
 fn findCheck(r: selftest.Result, name: []const u8) ?selftest.Check {
@@ -242,6 +244,8 @@ test "test_probe_detects_a_dangling_resolver" {
         .home_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
+        .transport_execs = true,
+        .transport_testable = true,
     });
     defer r.deinit(alloc);
 
@@ -264,6 +268,8 @@ test "test_probe_reports_deny_all_as_expected" {
         .home_writable = true,
         .dns_resolved = true,
         .egress_reachable = false,
+        .transport_execs = true,
+        .transport_testable = true,
     });
     defer r.deinit(alloc);
 
@@ -283,6 +289,8 @@ test "test_probe_reports_deny_all_as_expected" {
         .home_writable = true,
         .dns_resolved = true,
         .egress_reachable = false,
+        .transport_execs = true,
+        .transport_testable = true,
     });
     defer open.deinit(alloc);
     try std.testing.expect(!findCheck(open, selftest.CHECK_EGRESS).?.ok);
@@ -299,6 +307,8 @@ test "an open posture with no declared registry reports egress as untested, not 
         .home_writable = true,
         .dns_resolved = true,
         .egress_reachable = false,
+        .transport_execs = true,
+        .transport_testable = true,
     });
     defer r.deinit(alloc);
 
@@ -319,6 +329,8 @@ test "under deny_all_egress an unresolvable name is the assignment working, not 
         .home_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
+        .transport_execs = true,
+        .transport_testable = true,
     });
     defer r.deinit(alloc);
 
@@ -339,6 +351,8 @@ test "a sandbox with no resolver tool reports DNS untested rather than broken" {
         .home_writable = true,
         .dns_resolved = false,
         .egress_reachable = true,
+        .transport_execs = true,
+        .transport_testable = true,
         .dns_testable = false,
     });
     defer r.deinit(alloc);
@@ -359,6 +373,8 @@ test "a timeout still outranks the posture arms — a hung probe proves nothing"
         .home_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
+        .transport_execs = false,
+        .transport_testable = true,
         .timed_out = true,
     });
     defer r.deinit(alloc);
@@ -379,6 +395,8 @@ test "test_probe_timeout_reaps_and_reports" {
         .home_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
+        .transport_execs = false,
+        .transport_testable = true,
         .timed_out = true,
     });
     defer r.deinit(alloc);
@@ -403,6 +421,8 @@ test "test_probe_result_carries_no_secrets" {
         .home_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
+        .transport_execs = true,
+        .transport_testable = true,
     });
     defer r.deinit(alloc);
 

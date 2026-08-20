@@ -18,6 +18,7 @@ const std = @import("std");
 const common = @import("common");
 const logging = @import("log");
 
+const child_process = @import("child_process.zig");
 const Config = @import("daemon/config.zig");
 const sandbox_args = @import("sandbox_args.zig");
 const selftest = @import("selftest.zig");
@@ -100,7 +101,12 @@ const Reaper = struct {
 
 /// Run one probe under `cfg` and return its graded verdict. Caller owns the
 /// result and frees it with `Result.deinit`.
-pub fn run(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_path: []const u8) !selftest.Result {
+///
+/// `daemon_env` is filtered through the same allowlist a lease child gets:
+/// spawned with the daemon's own environ, the probe graded the daemon's HOME —
+/// a host path no lease ever sees — and carried the control-plane token into
+/// the sandbox it exists to distrust.
+pub fn run(io: std.Io, alloc: std.mem.Allocator, cfg: Config, daemon_env: *const std.process.Environ.Map, workspace_path: []const u8) !selftest.Result {
     const argv = selftest.buildProbeArgv(io, alloc, cfg, workspace_path) catch |err| {
         // No bubblewrap means no sandboxed tier can be established at all —
         // the operator needs to read that, not an empty panel.
@@ -115,12 +121,19 @@ pub fn run(io: std.Io, alloc: std.mem.Allocator, cfg: Config, workspace_path: []
     };
     defer sandbox_args.freeArgv(alloc, argv);
 
+    // The lease child's environ builder, not a copy of it: allowlist-only, with
+    // HOME assigned onto the writable floor — so what the probe grades is the
+    // environment a lease actually runs under.
+    var child_env = try child_process.buildChildEnviron(alloc, daemon_env);
+    defer child_env.deinit();
+
     var child = std.process.spawn(io, .{
         .argv = argv,
         .stdin = .ignore,
         .stdout = .pipe,
         .stderr = .ignore,
         .pgid = 0,
+        .environ_map = &child_env,
     }) catch |err| {
         log.warn("selftest_probe_spawn_failed", .{ .err = @errorName(err) });
         return selftest.unavailable(alloc, cfg, selftest.DETAIL_SPAWN_FAILED);
@@ -224,6 +237,9 @@ pub fn outcomeFrom(line: []const u8, timed_out: bool) selftest.Outcome {
         .dns_resolved = false,
         .egress_reachable = false,
         .extra_binds_present = false,
+        // A reaped probe executed nothing, so it certifies no transport either.
+        .transport_execs = false,
+        .transport_testable = true,
         .timed_out = true,
     };
     return .{
@@ -244,6 +260,12 @@ pub fn outcomeFrom(line: []const u8, timed_out: bool) selftest.Outcome {
         // A resolver tool is never missing now that the probe IS the runner, so
         // the only untestable DNS is one nothing asked for.
         .dns_testable = verdictOf(line, selftest_probe.KEY_DNS) != .untested,
+        // Fail-closed like scratch and home: an absent key is a probe that never
+        // tried to spawn the transport, and a spawn nobody attempted is not a
+        // pass. `untested` means the parent found no transport on the host,
+        // which `grade` reports as its own fault rather than as a failed exec.
+        .transport_execs = verdictOf(line, selftest_probe.KEY_TRANSPORT) == .passed,
+        .transport_testable = verdictOf(line, selftest_probe.KEY_TRANSPORT) != .untested,
     };
 }
 

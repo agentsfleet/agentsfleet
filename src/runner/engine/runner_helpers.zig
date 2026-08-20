@@ -222,6 +222,13 @@ fn ensureProviderEntry(cfg: *Config) !*nullclaw.config.ProviderEntry {
     return &new_providers[0];
 }
 
+/// Zero tools, allocated so the caller's `deinitTools` frees it like any other
+/// result. Named rather than inlined twice (RULE UFS) — both fail-closed arms
+/// return the same thing and must keep returning the same thing.
+fn emptyToolSet(alloc: std.mem.Allocator) ![]tools_mod.Tool {
+    return alloc.alloc(tools_mod.Tool, 0);
+}
+
 /// Build tools from the lease's tools array. A declaration can only SUBTRACT:
 /// there is no fallback that grants more than was asked for.
 ///
@@ -238,13 +245,6 @@ fn ensureProviderEntry(cfg: *Config) !*nullclaw.config.ProviderEntry {
 /// consult per-execution policy (currently only http_request) construct
 /// the policy-aware variant. Null is the legitimate path for harness/test
 /// paths that don't drive the bridge.
-/// Zero tools, allocated so the caller's `deinitTools` frees it like any other
-/// result. Named rather than inlined twice (RULE UFS) — both fail-closed arms
-/// return the same thing and must keep returning the same thing.
-fn emptyToolSet(alloc: std.mem.Allocator) ![]tools_mod.Tool {
-    return alloc.alloc(tools_mod.Tool, 0);
-}
-
 pub fn buildToolsFromSpec(
     alloc: std.mem.Allocator,
     workspace_path: []const u8,

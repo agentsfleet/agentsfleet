@@ -178,7 +178,9 @@ test "a host without bubblewrap reports an unestablished sandbox, not an empty p
     if (sandbox_args.bwrapPath(io) != null) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
-    const r = try selftest_exec.run(io, alloc, probeCfg(), "/tmp");
+    var daemon_env: std.process.Environ.Map = .init(alloc);
+    defer daemon_env.deinit();
+    const r = try selftest_exec.run(io, alloc, probeCfg(), &daemon_env, "/tmp");
     defer r.deinit(alloc);
 
     // A missing mechanism is a named failed CHECK, never an error return — the

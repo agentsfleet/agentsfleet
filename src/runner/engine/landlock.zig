@@ -2,7 +2,7 @@
 //!
 //! Applies a Landlock ruleset to restrict filesystem access:
 //! - Workspace directory: read + write
-//! - System paths (/usr, /bin, /lib, /etc): read-only + execute
+//! - System paths (the bind contract's `BASELINE_RO_PATHS`): read-only + execute
 //! - Everything else: denied by default
 //!
 //! Uses raw syscalls (Landlock has no libc wrapper).
@@ -86,6 +86,19 @@ const SYSTEM_READONLY_ACCESS: u64 = LANDLOCK_ACCESS_FS_READ_FILE |
     LANDLOCK_ACCESS_FS_READ_DIR |
     LANDLOCK_ACCESS_FS_EXECUTE;
 
+/// The rights landlock accepts on a NON-directory (`ACCESS_FILE` in the
+/// kernel's `fs/landlock/syscalls.c`). A rule whose access carries anything
+/// outside this set is refused WHOLESALE with `EINVAL` when the target is not
+/// a directory — the rule never lands, so the path stays bound and unreadable.
+///
+/// This matters because the narrowed baseline is the first read set to name a
+/// regular FILE: `/etc/hosts`. Every earlier entry (`/etc`, `/usr`, `/lib`,
+/// `/run/systemd/resolve`) was a directory, so `READ_DIR` rode along harmlessly
+/// and this constraint never fired.
+const FILE_ONLY_ACCESS: u64 = LANDLOCK_ACCESS_FS_READ_FILE |
+    LANDLOCK_ACCESS_FS_WRITE_FILE |
+    LANDLOCK_ACCESS_FS_EXECUTE;
+
 const LandlockError = error{
     UnsupportedPlatform,
     RulesetCreationFailed,
@@ -109,10 +122,10 @@ const LandlockPathBeneathAttr = extern struct {
 /// takes `WORKSPACE_ACCESS` below, from the same shared list bwrap mounts it
 /// from.
 ///
-/// `/usr` left this floor with the executable trees. The runner binary is
-/// statically linked and rides its own single-file bind, so nothing in a lease
-/// needs an interpreter or a shared library — and with no hosted tool able to
-/// spawn a process, an executable tree is reachable surface that buys nothing.
+/// `/usr` is NOT listed here even though a lease reads it: it arrives through
+/// `BASELINE_RO_PATHS` instead, so the mount layer and the policy layer take it
+/// from the same source. A second entry here would be the exact drift this
+/// derivation exists to prevent.
 const LANDLOCK_FLOOR_RO_PATHS = [_][]const u8{ "/dev", "/proc" };
 
 /// System paths that get read-only access in the sandbox. Derived from the
@@ -159,11 +172,17 @@ pub fn applyPolicy(workspace_path: []const u8, extra_binds: []const protocol.Ext
         try addPathRule(ruleset_fd, path, WORKSPACE_ACCESS);
     }
 
-    // Add system readonly paths.
+    // Add system readonly paths. The two failure kinds are NOT the same event
+    // and no longer share an arm: a path absent on this host is tolerated
+    // (bwrap skips it too, via `-try`, so mount and policy still agree), while
+    // a rule the KERNEL refused means the path IS present, IS bound, and would
+    // be unreadable — the mount-vs-policy divergence this list exists to
+    // prevent. Refusing the lease is the fail-closed reading (Invariant 7);
+    // swallowing it is how a lease runs with a dead resolver and a green panel.
     for (SYSTEM_READONLY_PATHS) |path| {
-        addPathRule(ruleset_fd, path, SYSTEM_READONLY_ACCESS) catch {
-            // Path may not exist on all systems (e.g. /lib64).
-            continue;
+        addPathRule(ruleset_fd, path, SYSTEM_READONLY_ACCESS) catch |err| switch (err) {
+            LandlockError.PathOpenFailed => continue,
+            else => return err,
         };
     }
 
@@ -175,7 +194,10 @@ pub fn applyPolicy(workspace_path: []const u8, extra_binds: []const protocol.Ext
             .read_only => SYSTEM_READONLY_ACCESS,
             .read_write => WORKSPACE_ACCESS,
         };
-        addPathRule(ruleset_fd, b.path, access) catch continue;
+        addPathRule(ruleset_fd, b.path, access) catch |err| switch (err) {
+            LandlockError.PathOpenFailed => continue,
+            else => return err,
+        };
     }
 
     // Restrict self.
@@ -199,6 +221,28 @@ fn addPathRule(ruleset_fd: i32, path: []const u8, access: u64) LandlockError!voi
     };
     defer _ = std.os.linux.close(fd);
 
+    addRuleForFd(ruleset_fd, fd, access) catch {
+        // A refusal here is most likely a directory right offered on a regular
+        // file (see `FILE_ONLY_ACCESS`), so retry with the subset the kernel
+        // accepts for one rather than lose the rule and leave the path bound
+        // but unreadable. Narrowing the MASK, never the path set: a file that
+        // only ever needed READ_FILE loses nothing, and a genuine failure
+        // still surfaces below.
+        //
+        // Retried rather than decided from an `fstat`: this asks the kernel
+        // what it will accept instead of predicting it, so it stays correct if
+        // `ACCESS_FILE` gains a member, and it costs one syscall only on the
+        // path that would otherwise have been silently dropped.
+        const file_only = access & FILE_ONLY_ACCESS;
+        if (file_only == access) return LandlockError.RuleAddFailed;
+        return addRuleForFd(ruleset_fd, fd, file_only);
+    };
+}
+
+/// Attach one rule to `ruleset_fd` for an already-open `fd`. Split from
+/// `addPathRule` so the mask-narrowing retry above reuses the exact same
+/// syscall on the same descriptor — reopening the path would race a rename.
+fn addRuleForFd(ruleset_fd: i32, fd: i32, access: u64) LandlockError!void {
     var rule_attr = LandlockPathBeneathAttr{
         .allowed_access = access,
         .parent_fd = fd,
@@ -229,6 +273,35 @@ test "landlock write set contains every writable-floor path" {
             try std.testing.expect(!std.mem.eql(u8, ro, rw));
         }
     }
+}
+
+test "the system read mask carries a directory right a regular file cannot take" {
+    // Why `addPathRule` retries at all. Landlock refuses a rule on a
+    // NON-directory whose access carries any right outside the kernel's
+    // ACCESS_FILE set, and `READ_DIR` is outside it — so the full read mask is
+    // rejected WHOLESALE (EINVAL) on a regular file. That refusal was being
+    // swallowed by `catch continue`, leaving `/etc/hosts` bind-mounted and
+    // unreadable with every list test still green.
+    //
+    // All three halves matter. Drop the first and the retry is dead code; drop
+    // the second and the retry cannot succeed; drop the third and the retry
+    // lands a rule that grants nothing, which is unreadable by another name.
+    try std.testing.expect(SYSTEM_READONLY_ACCESS & LANDLOCK_ACCESS_FS_READ_DIR != 0);
+    try std.testing.expectEqual(@as(u64, 0), FILE_ONLY_ACCESS & LANDLOCK_ACCESS_FS_READ_DIR);
+    try std.testing.expect(FILE_ONLY_ACCESS & LANDLOCK_ACCESS_FS_READ_FILE != 0);
+}
+
+test "the baseline read set names at least one regular file" {
+    // The pair to the mask test above: the retry exists because the read set
+    // contains FILES, not only directories. `/etc/hosts` was the first, and
+    // before it every entry was a directory — which is exactly why the mask
+    // was wrong for years without failing anything.
+    var has_regular_file = false;
+    for (protocol.BASELINE_RO_PATHS) |p| {
+        if (std.mem.eql(u8, p, "/etc/hosts")) has_regular_file = true;
+        if (std.mem.eql(u8, p, "/etc/nsswitch.conf")) has_regular_file = true;
+    }
+    try std.testing.expect(has_regular_file);
 }
 
 test "landlock read set contains every bind-contract path" {

@@ -8,22 +8,39 @@
 //! the comptime guards below need them, and a second copy would let the guard
 //! and the validator disagree about what "contains" means (RULE UFS).
 
-/// System paths the daemon binds read-only into every sandbox — the three a
-/// lease needs to dial its inference endpoint, and nothing else.
+/// System paths the daemon binds read-only into every sandbox: what a lease
+/// needs to dial its inference endpoint and run the transport that dials it.
 ///
-/// This list used to be six broad trees: `/etc`, `/usr`, `/lib`, `/lib64`,
-/// `/bin`, `/sbin`, `/opt`. Two of them carried credentials into every lease.
-/// `/etc` brought the host account database; `/opt` brought the daemon's own
-/// installation directory, whose `.env` holds the control-plane token — readable
-/// only by the accident that its owning uid is not mapped into the sandbox's
-/// user namespace, which one change of deploy user would erase.
+/// This list used to be seven broad trees: `/etc`, `/usr`, `/lib`, `/lib64`,
+/// `/bin`, `/sbin`, `/opt`. TWO of them carried credentials into every lease,
+/// and those two are the ones that stay gone. `/etc` brought the host account
+/// database; `/opt` brought the daemon's own installation directory, whose
+/// `.env` holds the control-plane token — readable only by the accident that
+/// its owning uid is not mapped into the sandbox's user namespace, which one
+/// change of deploy user would erase. Neither is needed by anything a lease
+/// runs, so removing them costs nothing and closes a real exposure.
 ///
-/// The trees cost nothing to remove because the runner binary is statically
-/// linked and is bound separately as a single file: no interpreter, no shared
-/// library, and — once no hosted tool can spawn a process — no executable is
-/// needed inside a lease at all. Measured on a real host: every executable path
-/// answers `execvp: No such file or directory` inside a lease, while the
-/// inference dial still succeeds.
+/// The EXECUTABLE trees are a different question, and the first answer here was
+/// wrong. It reasoned that the runner binary is statically linked and rides its
+/// own single-file bind — true — and concluded that no executable is needed
+/// inside a lease at all. That conclusion holds only if the runner is the sole
+/// thing that runs in a lease, and it is not: the lease child runs the NullClaw
+/// engine, whose model transport SPAWNS `curl` (ten provider modules reach
+/// `sse.curlStream*` / `http_util.curlPost*`), as does the `http_request` tool.
+/// With these trees unbound, `curl` and its shared libraries are absent and
+/// every lease dies at `execvp` before its first model call.
+///
+/// The measurement that was said to prove otherwise did not. The self-test's
+/// egress check opens a TCP stream and closes it — its own comment reads "this
+/// proves reachability, it does not speak a protocol" — and it runs inside the
+/// statically-linked runner, never spawning anything. It confirmed the one path
+/// that needs no executable, which is why the gap survived review.
+///
+/// Restoring them retracts the "nothing executable in a lease" property, which
+/// was defence-in-depth, and keeps the credential property, which was the
+/// actual exposure. Earning the first one back means removing the `curl`
+/// dependency (an in-process transport upstream, or a vetted static binary on
+/// its own single-file bind) — not asserting it while the engine shells out.
 ///
 /// Lives in the contract layer, not in the runner, because BOTH sides validate
 /// an operator list against it: the runner before `buildArgv`, and the control
@@ -31,17 +48,135 @@
 /// copy of this list would let the two disagree about what is protected.
 /// `sandbox_args.RO_SYSTEM_PATHS` aliases this (RULE UFS: one source).
 pub const BASELINE_RO_PATHS = [_][]const u8{
-    // The TLS trust store — the only filesystem input a credentialed dial needs.
-    "/etc/ssl/certs",
-    // The directory the resolver symlink resolves into. `/etc/resolv.conf` is
-    // NOT bound: bwrap resolves a symlink when it binds, which would drop the
-    // target file into an `/etc` no landlock rule covers, and every lease would
-    // lose DNS. It is emitted as a symlink instead (`RESOLV_LINK` below), so the
-    // read lands inside this granted directory exactly as it does on the host.
-    "/run/systemd/resolve",
-    // Static name resolution, consulted before the resolver.
-    "/etc/hosts",
+    DANGER_HOST_SSL_CERTS,
+    DANGER_HOST_NETWORK_RESOLVER_DIR,
+    DANGER_HOST_NETWORK_HOSTS,
+    DANGER_HOST_NETWORK_NSSWITCH,
+    DANGER_HOST_SYSTEM_CORE_USR,
+    DANGER_HOST_SYSTEM_CORE_LIB,
+    DANGER_HOST_SYSTEM_CORE_LIB64,
+    DANGER_HOST_SYSTEM_CORE_BIN,
+    DANGER_HOST_SYSTEM_CORE_SBIN,
 };
+
+// ── DANGER_HOST_ — every host path a lease can reach ────────────────────────
+//
+// EVERY entry in `BASELINE_RO_PATHS` is named here, and every name carries the
+// `DANGER_HOST_` prefix, because every one of them is HOST filesystem mounted
+// into a sandbox that runs prompt-injectable agent code. The prefix exists so
+// no reference site — here, in landlock's derived read set, in the dashboard
+// mirror — can read as routine plumbing. Grep `DANGER_HOST_` to see the
+// complete lease-reachable host surface in one list.
+//
+// Each group states what it buys, because "it is in the baseline" is not a
+// reason. A path that cannot answer "which lease-side consumer opens this"
+// does not belong here — that question is what removed `/opt` (the daemon's
+// control-plane token) and the broad `/etc` (the host account database), both
+// now refused at compile time above.
+
+/// TLS trust store. The only filesystem input a credentialed dial needs, and
+/// the reason a lease can verify its inference endpoint at all. Read-only and
+/// public by nature — the lowest-risk entry in this file.
+///
+/// PLATFORM ASSUMPTION: the Debian-family and Alpine location. Red Hat family
+/// hosts keep their bundle under `/etc/pki/tls/certs`, which this does not
+/// carry. `SSL_CERT_FILE` / `SSL_CERT_DIR` ride the environment allowlist
+/// (`sandbox_env`), so an operator can point the transport at another bundle —
+/// but the path they name must ALSO be bound, or the override resolves to
+/// nothing inside the lease and every TLS dial fails.
+const DANGER_HOST_SSL_CERTS = "/etc/ssl/certs";
+
+/// Name resolution. Three host paths, all read by the libc resolver inside a
+/// lease; without them every hostname fails and no model is reachable.
+///
+/// The resolver DIRECTORY is bound rather than `/etc/resolv.conf` itself:
+/// bwrap resolves a symlink when it binds, which would drop the target file
+/// into an `/etc` no landlock rule covers, and every lease would lose DNS.
+/// `/etc/resolv.conf` is emitted as a symlink into this directory instead
+/// (`RESOLV_LINK` below), so the read lands inside a granted path exactly as
+/// it does on the host. Measured: binding the resolved file gave
+/// `resolver=0 dns=0 egress=0`; the symlink gave all three passing.
+///
+/// PLATFORM ASSUMPTION, and the sharpest one in this file: this is the
+/// **systemd-resolved** layout. It is present on the deploy target (the unit
+/// in `deploy/baremetal/` is a systemd service) and absent on Alpine, on
+/// containers, and on any host resolving through NetworkManager or a static
+/// `/etc/resolv.conf`.
+///
+/// Absence does NOT degrade gracefully, and that is the part worth knowing.
+/// The directory bind is `--ro-bind-try`, so a missing directory is skipped
+/// silently — but the symlink is emitted unconditionally, so the lease ends up
+/// with a DANGLING `/etc/resolv.conf` and no name resolution at all. Before
+/// the narrowing `/etc` was bound wholesale and the host's own `resolv.conf`
+/// worked on any layout, so this is a portability REGRESSION, not a
+/// pre-existing limit. It surfaces as a red self-test resolver row rather than
+/// silently, which is the improvement working — but on a non-systemd host the
+/// runner is degraded from first boot. Binding the host's own
+/// `/etc/resolv.conf` as a single file when this directory is absent is the
+/// fix; it is not written yet.
+const DANGER_HOST_NETWORK_RESOLVER_DIR = "/run/systemd/resolve";
+/// Static name resolution, consulted before the resolver.
+const DANGER_HOST_NETWORK_HOSTS = "/etc/hosts";
+/// Name-service switch configuration — the libc reads it to know it may
+/// consult DNS at all. A single file, never the `/etc` tree it lives in.
+const DANGER_HOST_NETWORK_NSSWITCH = "/etc/nsswitch.conf";
+
+/// System core: the host's executables and shared libraries. The widest
+/// surface in this file by a wide margin, and the one carrying real risk.
+///
+/// What it costs: `/usr` alone is tens of thousands of files — every
+/// interpreter, every system utility, every installed package's data — all
+/// readable and executable by agent code inside a lease. Landlock grants
+/// exactly what bwrap binds, so nothing downstream narrows it further.
+///
+/// Why it is here anyway: the NullClaw engine's model transport SPAWNS `curl`
+/// (ten provider modules reach `sse.curlStream*` / `http_util.curlPost*`), as
+/// does the `http_request` tool. Without these trees `curl` and its shared
+/// libraries do not exist inside a lease, and every lease dies at `execvp`
+/// before its first model call. They buy a WORKING PRODUCT, not security.
+///
+/// What removes them: making the transport need no subprocess — an in-process
+/// HTTP client upstream, or a vetted static `curl` on its own single-file
+/// bind. Until one lands this group is a standing debt, and the prefix is here
+/// so it reads as one every time somebody touches this list.
+const DANGER_HOST_SYSTEM_CORE_USR = "/usr";
+const DANGER_HOST_SYSTEM_CORE_LIB = "/lib";
+const DANGER_HOST_SYSTEM_CORE_LIB64 = "/lib64";
+const DANGER_HOST_SYSTEM_CORE_BIN = "/bin";
+const DANGER_HOST_SYSTEM_CORE_SBIN = "/sbin";
+
+// Every baseline entry must come from a `DANGER_HOST_` constant above — a bare
+// path literal appended to the list is refused at compile time.
+//
+// The prefix is the whole control. A reviewer scanning `BASELINE_RO_PATHS`
+// should not have to know which of its entries is a broad host tree and which
+// is one harmless file; the NAME says so at the definition and at every
+// reference. Without this guard the rule survives exactly as long as whoever
+// adds the next path remembers it, which is how the six trees accumulated in
+// the first place.
+comptime {
+    const named = [_][]const u8{
+        DANGER_HOST_SSL_CERTS,
+        DANGER_HOST_NETWORK_RESOLVER_DIR,
+        DANGER_HOST_NETWORK_HOSTS,
+        DANGER_HOST_NETWORK_NSSWITCH,
+        DANGER_HOST_SYSTEM_CORE_USR,
+        DANGER_HOST_SYSTEM_CORE_LIB,
+        DANGER_HOST_SYSTEM_CORE_LIB64,
+        DANGER_HOST_SYSTEM_CORE_BIN,
+        DANGER_HOST_SYSTEM_CORE_SBIN,
+    };
+    if (named.len != BASELINE_RO_PATHS.len)
+        @compileError("BASELINE_RO_PATHS has an entry with no DANGER_HOST_ constant — name it, so the risk is legible at every reference site");
+    for (BASELINE_RO_PATHS) |p| {
+        var found = false;
+        for (named) |n| {
+            if (std.mem.eql(u8, n, p)) found = true;
+        }
+        if (!found)
+            @compileError("BASELINE_RO_PATHS entry is not a DANGER_HOST_ constant: " ++ p);
+    }
+}
 
 /// Paths bwrap constructs as a fresh private tmpfs in every sandbox — writable
 /// at the mount layer, per-lease, gone at exit. Both enforcement layers consume
@@ -65,7 +200,7 @@ pub const BASELINE_RW_TMPFS = [_][]const u8{"/tmp"};
 /// on hosts without bubblewrap. A host with no systemd-resolved has no
 /// `/run/systemd/resolve` to bind either, so the baseline already assumes this.
 pub const RESOLV_LINK = "/etc/resolv.conf";
-pub const RESOLV_LINK_TARGET = "/run/systemd/resolve/stub-resolv.conf";
+pub const RESOLV_LINK_TARGET = DANGER_HOST_NETWORK_RESOLVER_DIR ++ "/stub-resolv.conf";
 
 /// The sandboxed child's `HOME`. The daemon's own `HOME` is deliberately NOT
 /// forwarded: the unit sets it to its `RuntimeDirectory` (`/run/agentsfleet`),
@@ -105,8 +240,41 @@ comptime {
         @compileError("RESOLV_LINK_TARGET must nest under a BASELINE_RO_PATHS entry: " ++ RESOLV_LINK_TARGET);
 }
 
+// The two credential-bearing trees stay out, pinned at compile time on every
+// platform. Nothing else refuses a quiet re-add: leases keep working and every
+// probe check stays green either way, because the exposure is what an injected
+// prompt can READ, never anything the runner itself touches.
+//
+// This is the half of the narrowing that survived contact with reality. The
+// executable trees came back (see `BASELINE_RO_PATHS` above — the engine's
+// transport spawns `curl`); these two never had a consumer to begin with.
+//
+// Checked in BOTH directions, because the first version of this guard only
+// looked down. Naming `/opt` re-admits the daemon's token directly; naming an
+// ANCESTOR of it re-admits it just as completely while matching no exact name.
+// `/` is called out separately: it is an ancestor of everything but contains no
+// path by the segment rule below, so it would slip a containment test.
+comptime {
+    for (BASELINE_RO_PATHS) |p| {
+        if (std.mem.eql(u8, p, "/"))
+            @compileError("BASELINE_RO_PATHS may not name the filesystem root");
+
+        // `/opt` holds the daemon's install directory and its `.env`. No path
+        // under it has a lease-side consumer, so the whole subtree is refused.
+        if (std.mem.eql(u8, p, "/opt") or containsPath("/opt", p) or containsPath(p, "/opt"))
+            @compileError("credential-bearing /opt back in BASELINE_RO_PATHS: " ++ p);
+
+        // `/etc` holds the host account database. Unlike `/opt` the tree DOES
+        // have lease-side consumers, so specific files under it stay legal
+        // (`/etc/ssl/certs`, `/etc/hosts`, `/etc/nsswitch.conf` above) and only
+        // the whole tree — or an ancestor that would re-admit it — is refused.
+        if (std.mem.eql(u8, p, "/etc") or containsPath(p, "/etc"))
+            @compileError("broad /etc back in BASELINE_RO_PATHS — bind the specific file instead: " ++ p);
+    }
+}
+
 /// Paths an operator bind may never name, beyond the baseline itself. Two
-/// groups: mounts the bwrap base argv already establishes (`/usr`, `/proc`,
+/// groups: mounts the sandbox already establishes (`/usr`, `/proc`,
 /// `/dev`, `/tmp` — re-binding one changes the sandbox's own floor), and host
 /// surfaces where a WRITABLE mount is host control rather than a repair
 /// (`/root`, `/home`, `/boot`, `/sys`, `/run`, `/var/run` and BOTH of the
@@ -121,8 +289,9 @@ comptime {
 ///
 /// `/etc` is here for the same reason and was caught the same way. While the
 /// whole tree sat in the baseline, an operator bind anywhere under it was
-/// refused by overlap; narrowing to three files opened `/etc/shadow` — and,
-/// worse, `/etc/resolv.conf`, which is no longer a bind at all but a symlink
+/// refused by overlap; narrowing it to the individual files a lease actually
+/// reads opened `/etc/shadow` — and, worse,
+/// `/etc/resolv.conf`, which is no longer a bind at all but a symlink
 /// the base argv emits. Operator binds are appended AFTER that argv and bwrap's
 /// last operation on a target wins, so a bind there would replace the resolver
 /// link and redirect name resolution for every lease this runner takes. Naming

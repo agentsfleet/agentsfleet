@@ -16,8 +16,53 @@ export const MAX_BIND_PATH_LEN = 4096;
 /** `protocol_bind.MAX_BIND_NOTE_LEN` — one line of operator intent. */
 export const MAX_BIND_NOTE_LEN = 200;
 
-/** `protocol_bind.BASELINE_RO_PATHS` — the mounts the daemon already binds. */
-export const BASELINE_RO_PATHS = ["/etc", "/lib", "/lib64", "/bin", "/sbin", "/opt", "/run/systemd/resolve"];
+/** `protocol_bind.BASELINE_RO_PATHS` — the mounts the daemon already binds.
+ *
+ * `/etc` and `/opt` left this list: they carried the host account database and
+ * the daemon's own control-plane token into every lease, and nothing a lease
+ * runs reads them. The individual `/etc` files a lease DOES read are named
+ * instead. The executable and library trees stayed, because the engine's model
+ * transport spawns `curl`. */
+/* DANGER_HOST_ — every host path a lease can reach. Names mirror
+ * `protocol_bind_paths.zig` (RULE UFS: cross-runtime constants share a name).
+ * Every baseline entry carries the prefix because every one is HOST filesystem
+ * mounted into a sandbox running prompt-injectable agent code; grep
+ * `DANGER_HOST_` to see the whole lease-reachable surface at once. */
+
+/** TLS trust store — the only filesystem input a credentialed dial needs.
+ * PLATFORM ASSUMPTION: Debian-family and Alpine location; Red Hat family keeps
+ * its bundle under `/etc/pki/tls/certs`, which is not carried. */
+export const DANGER_HOST_SSL_CERTS = "/etc/ssl/certs";
+
+/** Name resolution. Read by the libc resolver inside a lease; without these
+ * every hostname fails and no model is reachable. `/etc/resolv.conf` is a
+ * symlink into the resolver directory, never a bind of its own.
+ *
+ * PLATFORM ASSUMPTION: the systemd-resolved layout, present on the deploy
+ * target and absent on Alpine, containers, and NetworkManager hosts. Absence
+ * does not degrade gracefully — the directory bind is skipped but the symlink
+ * is still emitted, leaving a dangling `/etc/resolv.conf` and no resolution.
+ * `nsswitch.conf` is glibc-only and simply absent under musl. */
+export const DANGER_HOST_NETWORK_RESOLVER_DIR = "/run/systemd/resolve";
+export const DANGER_HOST_NETWORK_HOSTS = "/etc/hosts";
+export const DANGER_HOST_NETWORK_NSSWITCH = "/etc/nsswitch.conf";
+
+/** System core: the host's executables and shared libraries — the widest
+ * surface here and the one carrying real risk. `/usr` alone is tens of
+ * thousands of files, all readable and executable by agent code in a lease.
+ * Bound only because the engine's model transport spawns `curl`; without them
+ * every lease dies at `execvp` before its first model call. They buy a working
+ * product, not security, and they leave when the transport needs no
+ * subprocess. */
+export const DANGER_HOST_SYSTEM_CORE = ["/usr", "/lib", "/lib64", "/bin", "/sbin"];
+
+export const BASELINE_RO_PATHS = [
+  DANGER_HOST_SSL_CERTS,
+  DANGER_HOST_NETWORK_RESOLVER_DIR,
+  DANGER_HOST_NETWORK_HOSTS,
+  DANGER_HOST_NETWORK_NSSWITCH,
+  ...DANGER_HOST_SYSTEM_CORE,
+];
 
 /** `protocol_bind.SENSITIVE_PATHS` — the sandbox's own floor plus the host
  * surfaces where a writable mount is host control rather than a repair. */
@@ -33,6 +78,13 @@ export const SENSITIVE_PATHS = [
   "/run",
   "/var/run",
   "/var/lib/agentsfleet",
+  // The deploy writes the runner token to `/opt/agentsfleet/.env`; the entry
+  // above named a directory the token does not live in.
+  "/opt/agentsfleet",
+  // Refused as a tree now that the baseline binds only individual files under
+  // it — otherwise an operator bind could reach `/etc/shadow`, or replace the
+  // `/etc/resolv.conf` symlink and redirect name resolution for every lease.
+  "/etc",
 ];
 
 export const BIND_MODES = [BIND_MODE.read_only, BIND_MODE.read_write] as const;

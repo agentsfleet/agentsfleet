@@ -1,17 +1,24 @@
-//! Tool bridge — table-driven NullClaw built-in tool resolver for the runner.
+//! Tool bridge — the POLICY half of hosted tool resolution.
 //!
-//! Replaces the hardcoded if/else chain in runner.buildToolsFromSpec().
-//! The bridge owns a static registry of {name, builderFn} entries for
-//! every hosted NullClaw built-in tool.
+//! The registry of {name, builderFn} entries moved to
+//! `tool_bridge_registry.zig`; this file answers the narrower question "which
+//! of those may a hosted Fleet actually have, and what happens when it asks
+//! for one it may not". The registry is the lower layer, so the allowlist
+//! below can prove itself a subset of it at comptime.
 //!
 //! To add a new runner-side hosted NullClaw tool:
 //!   1. Write a builder function in tool_builders.zig.
-//!   2. Add one ToolEntry to BRIDGE_REGISTRY below.
-//!   Zero other changes required.
+//!   2. Add one ToolEntry to BRIDGE_REGISTRY in tool_bridge_registry.zig.
+//!   3. Add its name to HOSTED_TOOL_ALLOWLIST below, against the membership
+//!      rule documented there.
+//!   Step 3 is NOT optional: a tool in the registry but off the allowlist is
+//!   refused, and the refusal FAILS THE LEASE. Stopping after step 2 ships a
+//!   tool that kills every Fleet declaring it.
 //!
 //! This file is NOT about skill tools (Slack, GitHub, AgentMail). Skills are
-//! dynamic — the fleet uses NullClaw's shell/HTTP tools to interact with
-//! skill APIs using injected credentials. No compiled Zig per skill.
+//! dynamic — the fleet reaches skill APIs through `http_request` with injected
+//! credentials. No compiled Zig per skill. (`shell` is deliberately NOT part of
+//! that story any more; it is refused by the allowlist below.)
 //!
 //! Binary boundary: the runner imports only `nullclaw`. This file must
 //! NOT import anything from src/fleet/, src/pipeline/, or src/main.zig.
@@ -146,8 +153,9 @@ pub const BuildResult = struct {
 /// Build NullClaw tools from a JSON tools-spec array.
 ///
 /// Unknown names are logged and collected in `result.skipped`.
-/// Disabled tools are skipped silently. Callers that need allTools()
-/// fallback (null/non-array spec) handle that logic themselves.
+/// Disabled tools are skipped silently. A null or non-array spec yields ZERO
+/// tools — there is no registry-default fallback any more, and its removal is
+/// what turned a silent producer/consumer mismatch into a visible one.
 pub fn buildTools(
     alloc: std.mem.Allocator,
     spec: std.json.Value,
