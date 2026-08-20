@@ -17,93 +17,21 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const contract = @import("contract");
 
-const Config = @import("daemon/config.zig");
 const sandbox_args = @import("sandbox_args.zig");
 const selftest = @import("selftest.zig");
 const selftest_exec = @import("selftest_exec.zig");
-const selftest_probe = @import("selftest_probe.zig");
+const fixtures = @import("selftest_test_fixtures.zig");
 
-const WORKSPACE = "/tmp/agentsfleet-selftest-probe-test";
-
-fn baseCfg() Config {
-    return .{
-        .control_plane_url = "http://127.0.0.1:8080",
-        .runner_token = "agt_rtest",
-        .sandbox_tier = contract.protocol.SandboxTier.landlock_full,
-        .storage_home = "/tmp/agentsfleet-runner",
-        .network_policy = .allow_all,
-        .worker_count = 1,
-        .cp_deadlines = .{},
-        .registry_allowlist = &.{},
-        // SAFETY: the probe path takes its allocator as a parameter and never
-        // reads `cfg.alloc`; every test below passes `std.testing.allocator`
-        // explicitly, so this field is never observed.
-        .alloc = undefined,
-    };
-}
-
-fn spawnIo(threaded: *std.Io.Threaded) std.Io {
-    threaded.* = .init(std.testing.allocator, .{});
-    return threaded.io();
-}
-
-fn makeWorkspace(io: std.Io) !void {
-    std.Io.Dir.createDirAbsolute(io, WORKSPACE, .default_dir) catch |err| switch (err) {
-        error.PathAlreadyExists => {},
-        else => return err,
-    };
-}
-
-/// Index of the probe's own tail (`<self_exe> __selftest_probe ...`) in a built
-/// argv — everything before it is bwrap's option list.
-fn probeTailIndex(argv: []const []const u8) ?usize {
-    for (argv, 0..) |a, i| {
-        if (std.mem.eql(u8, a, selftest_probe.SUBCOMMAND)) return i - 1;
-    }
-    return null;
-}
-
-/// Did the probe actually execute here? A silent probe means the child exe this
-/// build baked in (`stub_runner_exe_path`) does not resolve on THIS filesystem
-/// — true when a cross-compiled binary is run somewhere other than where it was
-/// built. That is a harness fact, not a verdict.
-///
-/// Every real-execution test below gates on this. Without the gate,
-/// `test_probe_detects_a_dangling_resolver` passes when the probe never ran at
-/// all: an empty line parses to every check failing, which looks exactly like a
-/// correctly detected dangling resolver. A test that green-lights on a probe
-/// that did not run is the same false confidence the milestone exists to
-/// remove — so it is checked, not assumed.
-fn probeRanHere(io: std.Io, alloc: std.mem.Allocator) !bool {
-    const argv = selftest.buildProbeArgv(io, alloc, baseCfg(), WORKSPACE) catch |err| {
-        try std.testing.expectEqual(error.BwrapUnavailable, err);
-        return error.SkipZigTest;
-    };
-    defer sandbox_args.freeArgv(alloc, argv);
-    var buf: [128]u8 = undefined;
-    const line = try runProbeArgv(io, argv, &buf);
-    return line.len > 0;
-}
-
-/// Spawn a probe argv directly and return its verdict line (into `buf`).
-/// Bypasses `selftest_exec.run` deliberately: these tests need to MUTATE the
-/// sandbox the probe runs in, which the production path rightly does not allow.
-fn runProbeArgv(io: std.Io, argv: []const []const u8, buf: []u8) ![]const u8 {
-    var child = try std.process.spawn(io, .{
-        .argv = argv,
-        .stdin = .ignore,
-        .stdout = .pipe,
-        .stderr = .ignore,
-        .pgid = 0,
-    });
-    const out = child.stdout orelse return error.NoProbeStdout;
-    var fr = out.reader(io, &.{});
-    const len = fr.interface.readSliceShort(buf) catch 0;
-    _ = child.wait(io) catch |err| std.debug.print("probe wait: {s}\n", .{@errorName(err)});
-    return buf[0..len];
-}
+const WORKSPACE = fixtures.WORKSPACE;
+const baseCfg = fixtures.baseCfg;
+const spawnIo = fixtures.spawnIo;
+const makeWorkspace = fixtures.makeWorkspace;
+const probeTailIndex = fixtures.probeTailIndex;
+const probeRanHere = fixtures.probeRanHere;
+const buildArgvOrSkip = fixtures.buildArgvOrSkip;
+const runProbeArgv = fixtures.runProbeArgv;
+const ensureResolverTarget = fixtures.ensureResolverTarget;
 
 test "test_probe_detects_a_dangling_resolver" {
     // Dimension 2.2 — THE incident, reproduced. `/etc/resolv.conf` is
@@ -118,10 +46,7 @@ test "test_probe_detects_a_dangling_resolver" {
     try makeWorkspace(io);
     if (!try probeRanHere(io, alloc)) return error.SkipZigTest;
 
-    const argv = selftest.buildProbeArgv(io, alloc, baseCfg(), WORKSPACE) catch |err| {
-        try std.testing.expectEqual(error.BwrapUnavailable, err);
-        return error.SkipZigTest;
-    };
+    const argv = try buildArgvOrSkip(io, alloc);
     defer sandbox_args.freeArgv(alloc, argv);
 
     // Splice `--tmpfs /etc` in AFTER the baseline binds and before the probe's
@@ -135,7 +60,7 @@ test "test_probe_detects_a_dangling_resolver" {
     try broken.appendSlice(alloc, argv[tail..]);
 
     var buf: [128]u8 = undefined;
-    const line = try runProbeArgv(io, broken.items, &buf);
+    const line = try runProbeArgv(io, alloc, broken.items, &buf);
     const o = selftest_exec.outcomeFrom(line, false);
     try std.testing.expect(!o.resolver_readable);
 
@@ -163,15 +88,16 @@ test "the resolver check passes in an unmodified sandbox" {
     defer threaded.deinit();
     try makeWorkspace(io);
     if (!try probeRanHere(io, alloc)) return error.SkipZigTest;
+    // A host with neither the systemd-resolved layout nor the privilege to
+    // fake it (root in the kernel-lane container) proves nothing here.
+    const resolver = ensureResolverTarget(io) orelse return error.SkipZigTest;
+    defer resolver.deinit(io);
 
-    const argv = selftest.buildProbeArgv(io, alloc, baseCfg(), WORKSPACE) catch |err| {
-        try std.testing.expectEqual(error.BwrapUnavailable, err);
-        return error.SkipZigTest;
-    };
+    const argv = try buildArgvOrSkip(io, alloc);
     defer sandbox_args.freeArgv(alloc, argv);
 
     var buf: [128]u8 = undefined;
-    const line = try runProbeArgv(io, argv, &buf);
+    const line = try runProbeArgv(io, alloc, argv, &buf);
     const o = selftest_exec.outcomeFrom(line, false);
     try std.testing.expect(o.resolver_readable);
 }
@@ -189,14 +115,11 @@ test "the scratch check passes in an unmodified sandbox" {
     try makeWorkspace(io);
     if (!try probeRanHere(io, alloc)) return error.SkipZigTest;
 
-    const argv = selftest.buildProbeArgv(io, alloc, baseCfg(), WORKSPACE) catch |err| {
-        try std.testing.expectEqual(error.BwrapUnavailable, err);
-        return error.SkipZigTest;
-    };
+    const argv = try buildArgvOrSkip(io, alloc);
     defer sandbox_args.freeArgv(alloc, argv);
 
     var buf: [128]u8 = undefined;
-    const line = try runProbeArgv(io, argv, &buf);
+    const line = try runProbeArgv(io, alloc, argv, &buf);
     const o = selftest_exec.outcomeFrom(line, false);
     try std.testing.expect(o.scratch_writable);
     // The M136 fix, proven against a real bubblewrap sandbox under the lease
@@ -206,17 +129,21 @@ test "the scratch check passes in an unmodified sandbox" {
     try std.testing.expect(o.home_writable);
 }
 
-test "no executable is reachable inside a real lease sandbox" {
-    // M170 §3's claim, pinned. The narrowed baseline drops /usr, /bin, /sbin,
-    // /lib and /lib64, so a lease holds exactly one executable: the statically
-    // linked runner on its own single-file bind. That is the second half of the
-    // tool-allowlist defence — even a tool that slipped the allowlist would have
-    // nothing to exec — and nothing else in the suite fails if someone puts one
-    // of those trees back.
+test "the daemon's credentials are unreachable inside a real lease sandbox" {
+    // M170 §3's SURVIVING claim, pinned. The executable trees came back — the
+    // engine's model transport spawns `curl`, so a lease without `/usr` and
+    // `/lib` dies at execvp before its first model call — but the two trees
+    // that carried CREDENTIALS stayed out, and that was always the real
+    // exposure: `/opt` holds the daemon's control-plane token in its `.env`,
+    // `/etc` holds the host account database. Neither has a lease-side
+    // consumer, so a prompt-injected agent reaching either is pure loss.
     //
-    // Asserted against the REAL lease argv, not a hand-composed one: the whole
-    // failure class this milestone kept hitting is the composed argv and the
-    // list disagreeing, so a test that rebuilds the argv itself proves nothing.
+    // Proven by READING, from inside a real lease, rather than by inspecting
+    // the bind list: the failure class this milestone kept hitting is the
+    // composed argv and the list disagreeing, so a test that re-derives the
+    // answer from the same list proves nothing. Each path is confirmed
+    // readable on the HOST first — otherwise "cat failed" means "file absent"
+    // and the test passes vacuously on any box that lacks it.
     if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     var threaded: std.Io.Threaded = undefined;
@@ -225,36 +152,59 @@ test "no executable is reachable inside a real lease sandbox" {
     try makeWorkspace(io);
     if (!try probeRanHere(io, alloc)) return error.SkipZigTest;
 
-    const argv = selftest.buildProbeArgv(io, alloc, baseCfg(), WORKSPACE) catch |err| {
-        try std.testing.expectEqual(error.BwrapUnavailable, err);
-        return error.SkipZigTest;
-    };
+    const argv = try buildArgvOrSkip(io, alloc);
     defer sandbox_args.freeArgv(alloc, argv);
 
-    // The probe binary is the LAST argv element; swap it for a shell and the
-    // same sandbox must refuse to exec. Everything before it — every bind, every
-    // tmpfs, the resolver link — stays byte-identical to a real lease.
-    const shells = [_][]const u8{ "/bin/sh", "/usr/bin/sh", "/bin/busybox" };
-    for (shells) |shell| {
-        const attempt = try alloc.dupe([]const u8, argv);
-        defer alloc.free(attempt);
-        attempt[attempt.len - 1] = shell;
+    // Keep every bind, tmpfs, and the resolver link byte-identical to a real
+    // lease, and replace the probe's whole tail with a read of the secret.
+    // Composed from `probeTailIndex`, not by patching the last element: the
+    // tail ends in `--workspace=…`, so the first version of this test
+    // overwrote an argument, ran the REAL probe, and passed on the probe's own
+    // failure — it asserted nothing.
+    const tail = probeTailIndex(argv) orelse return error.NoProbeTail;
+    const secrets = [_][]const u8{
+        // The daemon's control-plane token lives in this file.
+        "/opt/agentsfleet/.env",
+        // The host account database.
+        "/etc/shadow",
+    };
+    // A run where every arm took a harness exit must not read as proof — the
+    // same vacuous green `probeRanHere` exists to prevent, one layer up.
+    var proven: usize = 0;
+    for (secrets) |path| {
+        // Readable from HERE, outside the sandbox? If not, a failed read
+        // inside proves nothing about the bind set.
+        std.Io.Dir.accessAbsolute(io, path, .{}) catch continue;
+
+        var attempt: std.ArrayList([]const u8) = .empty;
+        defer attempt.deinit(alloc);
+        try attempt.appendSlice(alloc, argv[0..tail]);
+        try attempt.appendSlice(alloc, &.{ "/bin/cat", path });
 
         var child = std.process.spawn(io, .{
-            .argv = attempt,
+            .argv = attempt.items,
             .stdin = .ignore,
             .stdout = .ignore,
             .stderr = .ignore,
             .pgid = 0,
-        }) catch continue; // spawn refused outright is also a pass
+        }) catch continue; // bwrap itself would not start — a harness fact
         const term = child.wait(io) catch continue;
-        // bwrap exits non-zero when execvp cannot find the target. A zero exit
-        // would mean the shell RAN, which is the regression.
         switch (term) {
-            .Exited => |code| try std.testing.expect(code != 0),
+            // `cat` exits non-zero when the path is absent from the lease's
+            // mount namespace. A ZERO exit means the lease read the host's
+            // secret, which is the regression this pins.
+            .exited => |code| {
+                try std.testing.expect(code != 0);
+                proven += 1;
+            },
+            // Signalled: the sandbox never reported on the read, so this arm
+            // proves nothing either way.
             else => {},
         }
     }
+    // Nothing was both host-readable and cleanly observed → report the
+    // harness, do not claim the property.
+    if (proven == 0) return error.SkipZigTest;
 }
 
 test "test_probe_reports_deny_all_as_expected" {
@@ -270,11 +220,17 @@ test "test_probe_reports_deny_all_as_expected" {
     try makeWorkspace(io);
 
     if (!try probeRanHere(io, alloc)) return error.SkipZigTest;
+    // `allOk` below includes the resolver row, so this test needs the layout
+    // (real or faked) just like the unmodified-sandbox control above.
+    const resolver = ensureResolverTarget(io) orelse return error.SkipZigTest;
+    defer resolver.deinit(io);
 
     var cfg = baseCfg();
     cfg.network_policy = .deny_all_egress;
 
-    const r = selftest_exec.run(io, alloc, cfg, WORKSPACE) catch |err| {
+    var daemon_env: std.process.Environ.Map = .init(alloc);
+    defer daemon_env.deinit();
+    const r = selftest_exec.run(io, alloc, cfg, &daemon_env, WORKSPACE) catch |err| {
         try std.testing.expectEqual(error.BwrapUnavailable, err);
         return error.SkipZigTest;
     };
@@ -299,8 +255,14 @@ test "test_probe_reports_deny_all_as_expected" {
         }
     }
     try std.testing.expect(saw_resolver);
-    // A correctly configured deny_all runner is HEALTHY, not merely tolerated.
-    try std.testing.expect(r.allOk());
+    // A correctly configured deny_all runner is HEALTHY, not merely tolerated —
+    // on a host that HAS the transport the engine spawns. Where there is none
+    // (the kernel-lane image ships no `curl`) the transport row is CORRECTLY
+    // red: no lease on that host could reach a model, and `allOk` papering over
+    // it would be the green-probe/dead-runner reading this milestone removes.
+    // Gated rather than dropped, so the strong claim still runs wherever a
+    // transport exists — including the deploy target and any Debian-family CI.
+    if (selftest.transportPath(io) != null) try std.testing.expect(r.allOk());
 }
 
 test "a completed probe leaves no process behind" {
@@ -318,7 +280,9 @@ test "a completed probe leaves no process behind" {
     if (!try probeRanHere(io, alloc)) return error.SkipZigTest;
 
     const before = try childCount(io, alloc);
-    const r = selftest_exec.run(io, alloc, baseCfg(), WORKSPACE) catch |err| {
+    var daemon_env: std.process.Environ.Map = .init(alloc);
+    defer daemon_env.deinit();
+    const r = selftest_exec.run(io, alloc, baseCfg(), &daemon_env, WORKSPACE) catch |err| {
         try std.testing.expectEqual(error.BwrapUnavailable, err);
         return error.SkipZigTest;
     };

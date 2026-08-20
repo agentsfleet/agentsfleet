@@ -34,13 +34,14 @@ test "a line built from the child's own keys parses back to the same verdicts" {
     // exported keys, and read it with the parent's parser. Catches a key
     // renamed on one side only — which would silently degrade every check to
     // "failed" and red-flag every healthy runner.
-    var buf: [96]u8 = undefined;
-    const line = try std.fmt.bufPrint(&buf, "{s}1 {s}1 {s}1 {s}0 {s}x {s}1", .{
+    var buf: [128]u8 = undefined;
+    const line = try std.fmt.bufPrint(&buf, "{s}1 {s}1 {s}1 {s}0 {s}x {s}1 {s}1", .{
         selftest_probe.KEY_RESOLVER,
         selftest_probe.KEY_SCRATCH,
         selftest_probe.KEY_HOME,
         selftest_probe.KEY_DNS,
         selftest_probe.KEY_EGRESS,
+        selftest_probe.KEY_TRANSPORT,
         selftest_probe.KEY_BINDS,
     });
     const o = selftest_exec.outcomeFrom(line, false);
@@ -50,7 +51,38 @@ test "a line built from the child's own keys parses back to the same verdicts" {
     try std.testing.expect(!o.dns_resolved);
     try std.testing.expect(o.dns_testable);
     try std.testing.expect(!o.egress_reachable);
+    try std.testing.expect(o.transport_execs);
+    try std.testing.expect(o.transport_testable);
     try std.testing.expect(o.extra_binds_present);
+}
+
+test "an untested transport is not read as a failed one" {
+    // The two are different operator instructions — "install curl" versus "fix
+    // the bind set" — so the parser must keep them apart. Collapsing them is
+    // how `grade` would tell an operator to repair a sandbox that is fine.
+    var buf: [128]u8 = undefined;
+    const line = try std.fmt.bufPrint(&buf, "{s}1 {s}1 {s}1 {s}1 {s}1 {s}x {s}1", .{
+        selftest_probe.KEY_RESOLVER,
+        selftest_probe.KEY_SCRATCH,
+        selftest_probe.KEY_HOME,
+        selftest_probe.KEY_DNS,
+        selftest_probe.KEY_EGRESS,
+        selftest_probe.KEY_TRANSPORT,
+        selftest_probe.KEY_BINDS,
+    });
+    const o = selftest_exec.outcomeFrom(line, false);
+    try std.testing.expect(!o.transport_execs);
+    try std.testing.expect(!o.transport_testable);
+}
+
+test "a probe that never reported a transport key does not certify one" {
+    // Fail-closed, the same reading `scratch` and `home` take: an older probe
+    // paired with this parser attempted no spawn, and a spawn nobody attempted
+    // is not a pass. `testable` stays true so `grade` reports the exec fault
+    // rather than "no curl on this host", which would be a false instruction.
+    const o = selftest_exec.outcomeFrom("resolver=1 scratch=1 home=1 dns=1 egress=1 binds=1", false);
+    try std.testing.expect(!o.transport_execs);
+    try std.testing.expect(o.transport_testable);
 }
 
 test "the flag prefixes are distinct and each ends at its value" {
@@ -59,6 +91,7 @@ test "the flag prefixes are distinct and each ends at its value" {
     const flags = [_][]const u8{
         selftest_probe.RESOLVE_FLAG_PREFIX,
         selftest_probe.DIAL_FLAG_PREFIX,
+        selftest_probe.TRANSPORT_FLAG_PREFIX,
         sandbox_hardening.BIND_RO_FLAG_PREFIX,
         sandbox_hardening.BIND_RW_FLAG_PREFIX,
         child_exec.WORKSPACE_FLAG_PREFIX,

@@ -184,7 +184,7 @@ test "buildToolsFromSpec frees every tool name the bridge could not resolve" {
         "/tmp/agentsfleet-tools-spec-test",
         parsed.value,
         &cfg,
-        null, // policy — the allTools fallback path
+        null, // policy — no session, so the plain (non-policy-aware) builders
         null, // cred_channel
     );
     defer tools_mod.deinitTools(alloc, tools);
@@ -209,7 +209,7 @@ test "a non-array tools spec degrades to zero tools, never to a default set" {
 
     const tools = try runner_helpers.buildToolsFromSpec(
         alloc,
-        "/tmp/agentsfleet-tools-fallback-test",
+        "/tmp/agentsfleet-tools-zero-set-test",
         parsed.value,
         &cfg,
         null,
