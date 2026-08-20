@@ -49,14 +49,16 @@ EnvironmentFile=-/etc/default/agentsfleet-runner
 RuntimeDirectory=agentsfleet
 RuntimeDirectoryMode=0755
 
-# systemd supplies no HOME to a service that declares no User=, and the value is
-# load-bearing two layers down: the sandboxed child inherits HOME through the
-# passthrough allowlist (src/runner/sandbox_args.zig), and the folded-in NullClaw
-# engine resolves its config directory from it. With HOME unset the child cannot
-# resolve one, its config load fails closed, and EVERY lease dies at init before
-# the fleet runs. It points at the runtime directory above rather than a real
-# home because ProtectHome=yes makes /root and /home unreadable here and
-# ProtectSystem=strict leaves only the ReadWritePaths below writable.
+# systemd supplies no HOME to a service that declares no User=. This value is the
+# DAEMON's only — it is deliberately not forwarded to the sandboxed child, and the
+# comment that once claimed otherwise described the bug rather than the design.
+# A child that inherited this path resolved its config directory onto
+# /run/agentsfleet, which no bind list carries and no landlock rule covers, so
+# every lease died at AccessDenied before its first model call. The child's home is
+# assigned instead (contract.protocol.CHILD_HOME), on the per-lease tmpfs floor
+# bwrap builds and landlock grants write to. It points at the runtime directory
+# above rather than a real home because ProtectHome=yes makes /root and /home
+# unreadable here and ProtectSystem=strict leaves only the ReadWritePaths writable.
 Environment=HOME=/run/agentsfleet
 
 # Security hardening — the runner forks bwrap user-namespace sandboxes per lease

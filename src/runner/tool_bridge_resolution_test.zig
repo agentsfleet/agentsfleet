@@ -11,19 +11,21 @@ const std = @import("std");
 const nullclaw = @import("nullclaw");
 const tool_bridge = @import("engine/tool_bridge.zig");
 const runner_helpers = @import("engine/runner_helpers.zig");
+const child_exec_input = @import("child_exec_input.zig");
+const fixtures = @import("child_exec_test_fixtures.zig");
 const client_errors = @import("engine/client_errors.zig");
 const context_budget = @import("engine/context_budget.zig");
 
 const Config = nullclaw.config.Config;
 const WORKSPACE = "/tmp/fleet-ws-bridge";
 const TOOL_SCHEDULE = "schedule";
-const UNSUPPORTED_HOSTED_TOOLS = [_][]const u8{
-    TOOL_SCHEDULE,
-    "cron_add",
-    "cron_list",
-    "cron_remove",
-    "cron_run",
-    "cron_runs",
+/// Names a lease must never receive. The scheduler entries were the whole of
+/// the list this replaced; `shell` and its siblings are the ones that made a
+/// no-tools Fleet dangerous, and each must fail the lease when declared.
+const REFUSED_TOOLS = [_][]const u8{
+    "shell",       "spawn",       "git",         "browser",
+    "web_fetch",   "delegate",    TOOL_SCHEDULE, "cron_add",
+    "cron_list",   "cron_remove", "cron_run",    "cron_runs",
     "cron_update",
 };
 
@@ -74,11 +76,11 @@ test "should resolve every canonical tool name to its own registry entry" {
     }
 }
 
-test "should reject hosted NullClaw scheduler tools before execution" {
+test "a declared shell is refused, not granted" {
     const alloc = std.testing.allocator;
     const cfg = defaultCfg();
 
-    for (UNSUPPORTED_HOSTED_TOOLS) |tool_name| {
+    for (REFUSED_TOOLS) |tool_name| {
         const spec = try specOf(alloc, &.{tool_name});
         defer freeSpec(alloc, spec);
 
@@ -89,7 +91,11 @@ test "should reject hosted NullClaw scheduler tools before execution" {
     }
 }
 
-test "should filter local scheduler from fallback default tools" {
+test "an absent tools spec is not a licence for every tool" {
+    // This test used to assert the fallback merely FILTERED the registry — it
+    // accepted a Fleet receiving every unfiltered tool as correct. That default
+    // is what handed `shell` to a bundle declaring nothing. An absent spec now
+    // grants nothing at all.
     const alloc = std.testing.allocator;
     const cfg = defaultCfg();
     const tools = try runner_helpers.buildToolsFromSpec(alloc, WORKSPACE, null, &cfg, null, null);
@@ -97,11 +103,40 @@ test "should filter local scheduler from fallback default tools" {
         for (tools) |t| t.deinit(alloc);
         alloc.free(tools);
     }
+    try std.testing.expectEqual(@as(usize, 0), tools.len);
+}
 
-    for (tools) |tool| {
-        try std.testing.expect(!std.mem.eql(u8, TOOL_SCHEDULE, tool.name()));
-        try std.testing.expect(!tool_bridge.isUnsupportedHostedToolName(tool.name()));
+test "an empty tools array grants nothing" {
+    // The operator's own words: `tools: []`. The empty array reaches the
+    // resolver intact now, and resolves to exactly what it says.
+    const alloc = std.testing.allocator;
+    const cfg = defaultCfg();
+    const spec = try specOf(alloc, &.{});
+    defer freeSpec(alloc, spec);
+
+    const tools = try runner_helpers.buildToolsFromSpec(alloc, WORKSPACE, spec, &cfg, null, null);
+    defer {
+        for (tools) |t| t.deinit(alloc);
+        alloc.free(tools);
     }
+    try std.testing.expectEqual(@as(usize, 0), tools.len);
+}
+
+test "a declared allowlisted tool still resolves" {
+    // The narrowing must remove nothing a Fleet legitimately asked for — every
+    // shipped bundle declares http_request.
+    const alloc = std.testing.allocator;
+    const cfg = defaultCfg();
+    const spec = try specOf(alloc, &.{"http_request"});
+    defer freeSpec(alloc, spec);
+
+    const tools = try runner_helpers.buildToolsFromSpec(alloc, WORKSPACE, spec, &cfg, null, null);
+    defer {
+        for (tools) |t| t.deinit(alloc);
+        alloc.free(tools);
+    }
+    try std.testing.expectEqual(@as(usize, 1), tools.len);
+    try std.testing.expectEqualStrings("http_request", tools[0].name());
 }
 
 test "should return null when resolving an unknown tool name" {
@@ -113,13 +148,15 @@ test "should return null when resolving an unknown tool name" {
 test "should skip unknown tool and report UZ-TOOL-005 in buildTools" {
     const alloc = std.testing.allocator;
     const cfg = defaultCfg();
-    const spec = try specOf(alloc, &.{ "shell", "unknown_tool" });
+    const spec = try specOf(alloc, &.{ "file_read", "unknown_tool" });
     defer freeSpec(alloc, spec);
 
     const result = try tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, null, null);
     defer result.deinit(alloc);
 
-    // shell builds; unknown_tool lands in `skipped` (never a built tool).
+    // file_read builds; unknown_tool lands in `skipped` (never a built tool).
+    // An allowlisted tool stands in for what used to be `shell` here: the
+    // subject is the SKIP path, and shell now fails the lease outright.
     try std.testing.expectEqual(@as(usize, 1), result.tools.len);
     try std.testing.expectEqual(@as(usize, 1), result.skipped.len);
     try std.testing.expectEqualStrings("unknown_tool", result.skipped[0]);
@@ -184,6 +221,51 @@ test "should drop a disabled tool without building or skipping it" {
     try std.testing.expectEqual(@as(usize, 0), result.skipped.len);
 }
 
+test "a spec entry that is neither a string nor an object grants nothing and does not abort the array" {
+    // The third arm of the item switch — the one added when the producer/
+    // consumer shape mismatch was fixed. A `42` or a `null` in the list cannot
+    // NAME a tool, so it grants nothing; the open question this pins is whether
+    // it also kills the entries around it. It must not: a malformed element is
+    // the same disposition as an unknown name, and a Fleet that declared one
+    // real tool beside it still gets that tool.
+    const alloc = std.testing.allocator;
+    const cfg = defaultCfg();
+
+    var arr = std.json.Array.init(alloc);
+    defer arr.deinit();
+    try arr.append(.{ .integer = 42 });
+    try arr.append(.{ .null = {} });
+    try arr.append(.{ .string = "http_request" });
+
+    const result = try tool_bridge.buildTools(alloc, .{ .array = arr }, WORKSPACE, &cfg, null, null);
+    defer result.deinit(alloc);
+
+    // The one nameable entry survives; the two shapeless ones are not even
+    // reported as skipped, because "skipped" means a NAME nobody knows.
+    try std.testing.expectEqual(@as(usize, 1), result.tools.len);
+    try std.testing.expectEqual(@as(usize, 0), result.skipped.len);
+}
+
+test "a refusal after a successful build frees what was already built" {
+    // The allowlist refusal returns from the MIDDLE of the loop, so everything
+    // built on earlier iterations unwinds through `errdefer` alone. Every other
+    // refusal test uses a single-element spec, so that unwind has never run —
+    // a regression in it would leak silently, and `std.testing.allocator` is
+    // what turns that from silent into a failed test.
+    const alloc = std.testing.allocator;
+    const cfg = defaultCfg();
+
+    // Order is the point: an allowlisted tool that BUILDS, then one that is
+    // refused. Reverse them and the refusal fires before anything is owned.
+    const spec = try specOf(alloc, &.{ "http_request", "shell" });
+    defer freeSpec(alloc, spec);
+
+    try std.testing.expectError(
+        error.UnsupportedHostedTool,
+        tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, null, null),
+    );
+}
+
 test "should return empty result when spec is not an array" {
     const alloc = std.testing.allocator;
     const cfg = defaultCfg();
@@ -200,11 +282,61 @@ test "should have no memory leaks when buildTools skips unknown tools repeatedly
     // leak, so a clean run proves both the tools slice and the skipped[] (with
     // its dup'd names) are fully freed by BuildResult.deinit each time.
     for (0..50) |_| {
-        const spec = try specOf(alloc, &.{ "shell", "ghost_tool", "calculator", "phantom" });
+        const spec = try specOf(alloc, &.{ "file_read", "ghost_tool", "calculator", "phantom" });
         defer freeSpec(alloc, spec);
         const result = try tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, null, null);
         defer result.deinit(alloc);
         try std.testing.expectEqual(@as(usize, 2), result.tools.len);
         try std.testing.expectEqual(@as(usize, 2), result.skipped.len);
     }
+}
+
+test "a tool declared on a REAL lease resolves — producer and consumer agree on one shape" {
+    // The test this suite was missing, and the reason a total outage sat green.
+    // Every other resolution test builds its spec with `specOf`, which emits
+    // `{name: …}` OBJECTS. The lease wire carries `tools: []const []const u8`
+    // and `buildCallArgs` emits bare STRINGS, so production sent a shape the
+    // bridge skipped outright — every declared tool dropped before any refusal
+    // arm ran. Going through buildCallArgs is what makes this assertion real.
+    const alloc = std.testing.allocator;
+    const cfg = defaultCfg();
+
+    var args = try child_exec_input.buildCallArgs(alloc, fixtures.testLease(.{
+        .tools = &.{"http_request"},
+    }));
+    defer args.deinit(alloc);
+
+    const tools = try runner_helpers.buildToolsFromSpec(
+        alloc,
+        WORKSPACE,
+        args.tools_spec,
+        &cfg,
+        null,
+        null,
+    );
+    defer {
+        for (tools) |t| t.deinit(alloc);
+        alloc.free(tools);
+    }
+    try std.testing.expectEqual(@as(usize, 1), tools.len);
+    try std.testing.expectEqualStrings("http_request", tools[0].name());
+}
+
+test "a refused tool declared on a REAL lease still fails the lease" {
+    // The refusal arms must be reachable from the shape production actually
+    // sends, not only from the object shape the other tests build. If the
+    // producer/consumer seam ever drifts again, this fails instead of silently
+    // granting nothing and calling it safety.
+    const alloc = std.testing.allocator;
+    const cfg = defaultCfg();
+
+    var args = try child_exec_input.buildCallArgs(alloc, fixtures.testLease(.{
+        .tools = &.{"shell"},
+    }));
+    defer args.deinit(alloc);
+
+    try std.testing.expectError(
+        error.UnsupportedHostedTool,
+        runner_helpers.buildToolsFromSpec(alloc, WORKSPACE, args.tools_spec, &cfg, null, null),
+    );
 }

@@ -106,7 +106,12 @@ pub fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) error{OutO
 
     return .{
         .fleet_config = if (fleet_obj.count() > 0) .{ .object = fleet_obj } else null,
-        .tools_spec = if (tools_arr.items.len > 0) .{ .array = tools_arr } else null,
+        // The array ALWAYS crosses, empty or not. Collapsing an empty one to null
+        // made "this Fleet declared no tools" indistinguishable from "no preference",
+        // and the resolver read the second as a licence for the whole registry — so a
+        // bundle declaring `tools: []` received shell. The wire already normalises an
+        // absent key to an empty slice, so both facts are one fact: declared nothing.
+        .tools_spec = .{ .array = tools_arr },
         .message = message,
         .fleet_obj = fleet_obj,
         .tools_arr = tools_arr,

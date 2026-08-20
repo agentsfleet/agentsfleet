@@ -223,7 +223,7 @@ pub fn runLoop(io: std.Io, alloc: std.mem.Allocator, sched: *call_deadline.Proce
         // renders it against; it rides the NEXT beat, never delaying this one.
         if (selftest_beat.shouldCapture(selftest_asked, startup_probed, applied.currentWorkerCount() != null)) {
             // Only a verdict counts as probed — a failed capture retries next beat.
-            if (pending.capture(io, &applied, cfg)) startup_probed = true;
+            if (pending.capture(io, &applied, cfg, env_map)) startup_probed = true;
         }
 
         // The pool comes up on the first OK heartbeat that carries an

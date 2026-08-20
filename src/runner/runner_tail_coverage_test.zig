@@ -5,7 +5,8 @@
 //!     the only proof that its hand-rolled errdefer ladder frees on every
 //!     partial build (it duplicates two owned fields per secret and unwinds by
 //!     hand, so a missed free is invisible to the happy path);
-//!   - `buildToolsFromSpec`'s two fall-back-to-default arms;
+//!   - `buildToolsFromSpec`'s two fail-closed arms (null spec, non-array spec),
+//!     each of which now yields zero tools rather than the whole registry;
 //!   - `policy_apply`'s invalid / cleared heartbeat arms, which decide whether a
 //!     runner leases at all;
 //!   - `StorageHome.claimAndSweep`'s two refusals — a home that cannot be opened
