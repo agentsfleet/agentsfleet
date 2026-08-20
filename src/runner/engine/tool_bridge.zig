@@ -21,31 +21,22 @@ const logging = @import("log");
 const nullclaw = @import("nullclaw");
 const tools_mod = nullclaw.tools;
 const Config = nullclaw.config.Config;
-const builders = @import("tool_builders.zig");
 const context_budget = @import("context_budget.zig");
 const client_errors = @import("client_errors.zig");
 const credential_request = @import("credential_request.zig");
 
 const log = logging.scoped(.tool_bridge);
 
+/// The registry this file gates. Lower layer by construction: the allowlist
+/// below proves itself a subset of it at comptime.
+const registry = @import("tool_bridge_registry.zig");
+pub const BuildCtx = registry.BuildCtx;
+pub const TOOL_COUNT = registry.TOOL_COUNT;
+pub const resolve = registry.resolve;
+const BRIDGE_REGISTRY = registry.BRIDGE_REGISTRY;
+
 const ERR_TOOL_UNKNOWN = client_errors.ERR_TOOL_UNKNOWN;
 const ERR_EXEC_RUNNER_FLEET_INIT = client_errors.ERR_EXEC_RUNNER_FLEET_INIT;
-/// Tool names the registry and the hosted allowlist BOTH reference. Named so
-/// the two lists cannot drift on a spelling (RULE UFS) — a rename now moves
-/// one constant instead of two literals that look alike.
-const TOOL_HTTP_REQUEST = "http_request";
-const TOOL_MEMORY_RECALL = "memory_recall";
-const TOOL_MEMORY_STORE = "memory_store";
-const TOOL_MEMORY_LIST = "memory_list";
-const TOOL_MEMORY_FORGET = "memory_forget";
-const TOOL_FILE_READ = "file_read";
-const TOOL_FILE_READ_HASHED = "file_read_hashed";
-const TOOL_FILE_WRITE = "file_write";
-const TOOL_FILE_EDIT = "file_edit";
-const TOOL_FILE_EDIT_HASHED = "file_edit_hashed";
-const TOOL_FILE_APPEND = "file_append";
-const TOOL_FILE_DELETE = "file_delete";
-const TOOL_CALCULATOR = "calculator";
 
 /// The refusal event both fatal arms emit — one name, two sites (RULE UFS).
 const LOG_TOOL_REFUSED = "tool_refused_not_hosted";
@@ -71,22 +62,22 @@ const LOG_TOOL_REFUSED = "tool_refused_not_hosted";
 /// Public for the test suite and `runner_helpers`: both assert membership.
 pub const HOSTED_TOOL_ALLOWLIST = [_][]const u8{
     // Outbound, already bounded by the Fleet's declared network allowance.
-    TOOL_HTTP_REQUEST,
+    registry.TOOL_HTTP_REQUEST,
     // Fleet memory — the control plane owns the store; these only read/write it.
-    TOOL_MEMORY_RECALL,
-    TOOL_MEMORY_STORE,
-    TOOL_MEMORY_LIST,
-    TOOL_MEMORY_FORGET,
+    registry.TOOL_MEMORY_RECALL,
+    registry.TOOL_MEMORY_STORE,
+    registry.TOOL_MEMORY_LIST,
+    registry.TOOL_MEMORY_FORGET,
     // Files, every one workspace-scoped with symlink-escape resolution.
-    TOOL_FILE_READ,
-    TOOL_FILE_READ_HASHED,
-    TOOL_FILE_WRITE,
-    TOOL_FILE_EDIT,
-    TOOL_FILE_EDIT_HASHED,
-    TOOL_FILE_APPEND,
-    TOOL_FILE_DELETE,
+    registry.TOOL_FILE_READ,
+    registry.TOOL_FILE_READ_HASHED,
+    registry.TOOL_FILE_WRITE,
+    registry.TOOL_FILE_EDIT,
+    registry.TOOL_FILE_EDIT_HASHED,
+    registry.TOOL_FILE_APPEND,
+    registry.TOOL_FILE_DELETE,
     // Pure computation, no I/O at all.
-    TOOL_CALCULATOR,
+    registry.TOOL_CALCULATOR,
 };
 
 /// Real engine tools this platform never hosts, which `BRIDGE_REGISTRY` does not
@@ -110,97 +101,6 @@ comptime {
         if (!found)
             @compileError("HOSTED_TOOL_ALLOWLIST names a tool absent from BRIDGE_REGISTRY: " ++ allowed);
     }
-}
-
-// ── Types ──────────────────────────────────────────────────────────────────
-
-/// Context passed to every builder function.
-///
-/// `policy` is borrowed from the session for the lifetime of the stage.
-/// When non-null, builders for tools that consult per-execution policy
-/// (currently only http_request) construct the policy-aware variant
-/// and capture the borrow. `null` keeps the plain NullClaw behaviour
-/// for callers that don't have a session yet (e.g. unit tests, the
-/// register-only fallback path before policy-aware execution lands everywhere).
-pub const BuildCtx = struct {
-    alloc: std.mem.Allocator,
-    workspace_path: []const u8,
-    cfg: *const Config,
-    policy: ?*const context_budget.ExecutionPolicy = null,
-    /// The child→runner on-demand mint channel (M102 §4), threaded to the
-    /// policy-aware http tool. Null on the no-session path (unit tests, the
-    /// register-only fallback) — a mintable placeholder then fails closed.
-    cred_channel: ?credential_request.Channel = null,
-};
-
-/// Factory function type — receives context, returns a NullClaw Tool.
-const BuildFn = *const fn (ctx: BuildCtx) anyerror!tools_mod.Tool;
-
-/// One entry in the bridge registry.
-const ToolEntry = struct {
-    /// Canonical tool name (matches RPC "name" field).
-    name: []const u8,
-    /// Factory — instantiates the NullClaw Tool.
-    buildFn: BuildFn,
-};
-
-// ── Static registry ────────────────────────────────────────────────────────
-// Every hosted NullClaw built-in tool. Skills are dynamic — no entries here.
-//
-// When tools: [] or absent → zero tools. There is no fallback that grants more
-// than the Fleet declared; the registry default that once filled that gap is
-// what handed `shell` to a Fleet asking for nothing.
-// When tools: ["http_request"] → the bridge resolves only that, and only
-// because it is on HOSTED_TOOL_ALLOWLIST above.
-
-const BRIDGE_REGISTRY = [_]ToolEntry{
-    // Core file tools
-    .{ .name = "shell", .buildFn = builders.buildShell },
-    .{ .name = TOOL_FILE_READ, .buildFn = builders.buildFileRead },
-    .{ .name = TOOL_FILE_WRITE, .buildFn = builders.buildFileWrite },
-    .{ .name = TOOL_FILE_EDIT, .buildFn = builders.buildFileEdit },
-    .{ .name = TOOL_FILE_APPEND, .buildFn = builders.buildFileAppend },
-    .{ .name = TOOL_FILE_DELETE, .buildFn = builders.buildFileDelete },
-    .{ .name = TOOL_FILE_READ_HASHED, .buildFn = builders.buildFileReadHashed },
-    .{ .name = TOOL_FILE_EDIT_HASHED, .buildFn = builders.buildFileEditHashed },
-    // Git
-    .{ .name = "git", .buildFn = builders.buildGit },
-    // Stateless
-    .{ .name = "image", .buildFn = builders.buildImage },
-    .{ .name = TOOL_CALCULATOR, .buildFn = builders.buildCalculator },
-    // Memory
-    .{ .name = TOOL_MEMORY_STORE, .buildFn = builders.buildMemoryStore },
-    .{ .name = TOOL_MEMORY_RECALL, .buildFn = builders.buildMemoryRecall },
-    .{ .name = TOOL_MEMORY_LIST, .buildFn = builders.buildMemoryList },
-    .{ .name = TOOL_MEMORY_FORGET, .buildFn = builders.buildMemoryForget },
-    // Fleet orchestration
-    .{ .name = "delegate", .buildFn = builders.buildDelegate },
-    .{ .name = "spawn", .buildFn = builders.buildSpawn },
-    // Network (HTTP/search/fetch)
-    .{ .name = TOOL_HTTP_REQUEST, .buildFn = builders.buildHttpRequest },
-    .{ .name = "web_search", .buildFn = builders.buildWebSearch },
-    .{ .name = "web_fetch", .buildFn = builders.buildWebFetch },
-    .{ .name = "pushover", .buildFn = builders.buildPushover },
-    // Browser
-    .{ .name = "browser", .buildFn = builders.buildBrowser },
-    .{ .name = "screenshot", .buildFn = builders.buildScreenshot },
-    .{ .name = "browser_open", .buildFn = builders.buildBrowserOpen },
-    // Misc
-    .{ .name = "message", .buildFn = builders.buildMessage },
-};
-
-// ── Public API ─────────────────────────────────────────────────────────────
-
-/// Total number of registered tools.
-/// Public for `tool_bridge_test.zig` alone (see HOSTED_TOOL_ALLOWLIST).
-pub const TOOL_COUNT = BRIDGE_REGISTRY.len;
-
-/// Resolve a tool name to its registry entry.
-pub fn resolve(tool_name: []const u8) ?*const ToolEntry {
-    for (&BRIDGE_REGISTRY) |*entry| {
-        if (std.mem.eql(u8, entry.name, tool_name)) return entry;
-    }
-    return null;
 }
 
 /// True when a hosted Fleet may reach this tool. The allowlist is the control;
@@ -282,9 +182,31 @@ pub fn buildTools(
     };
 
     for (spec.array.items) |item| {
-        if (item != .object) continue;
-        const tool_name = jsonGetStr(item, "name") orelse continue;
-        if (!jsonGetBoolDefault(item, "enabled", true)) continue;
+        // TWO shapes reach here, and only one of them was ever handled. The
+        // lease wire carries `tools: []const []const u8` — bare strings
+        // (`protocol_lease_v1.ExecutionPolicy`), and `child_exec_input` emits
+        // them as `.string`. This loop required `.object` and skipped anything
+        // else, so in production EVERY declared tool was dropped before any
+        // refusal arm ran. The suite never saw it because its `specOf` helper
+        // builds `{name: …}` objects — the one shape the wire does not send.
+        //
+        // It stayed invisible while an empty list fell back to the whole
+        // registry: a Fleet got tools by accident, not by declaration. Removing
+        // that fallback is what turned a silent mismatch into "no Fleet gets any
+        // tool", which is how it finally surfaced.
+        const tool_name = switch (item) {
+            .string => |s| s,
+            .object => blk: {
+                // `enabled` exists only on the object shape; a bare string is
+                // enabled by construction (naming it IS the declaration).
+                if (!jsonGetBoolDefault(item, "enabled", true)) continue;
+                break :blk jsonGetStr(item, "name") orelse continue;
+            },
+            // A shape that is neither cannot name a tool, so it grants nothing.
+            // It is skipped rather than fatal for the same reason an unknown
+            // name is: it asks for nothing, so it gets nothing.
+            else => continue,
+        };
         // Order is the behaviour, and each arm answers a different question.
         // A deliberately-unhosted engine tool fails the lease even though the
         // registry cannot resolve it — otherwise it reads as a typo. A name
