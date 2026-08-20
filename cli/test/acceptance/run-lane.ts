@@ -34,6 +34,7 @@ export interface LaneCounts {
 
 export const DETERMINISTIC_ACCEPTANCE_FILES: ReadonlyArray<string> = [
   "test/acceptance/acceptance-lanes.test.ts",
+  "test/acceptance/argument-negatives.spec.ts",
   "test/acceptance/fixtures/clerk-admin.test.ts",
   "test/acceptance/fixtures/workspace-hydration.test.ts",
   "test/acceptance/flags-and-env.spec.ts",

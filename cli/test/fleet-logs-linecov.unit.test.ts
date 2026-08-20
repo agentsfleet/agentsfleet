@@ -140,7 +140,10 @@ describe("logsEffectFromFlags — id validation guard", () => {
       expect(err).toBeInstanceOf(ValidationError);
       if (err instanceof ValidationError) {
         expect(err.detail).toMatch(/invalid fleet_id/i);
-        expect(err.suggestion).toMatch(/logs requires --fleet/);
+        // The suggestion names the fix; asserting it differs from the detail is
+        // what keeps the pre-M171 echo from coming back.
+        expect(err.suggestion).toMatch(/usage: agentsfleet logs --fleet <id>/);
+        expect(err.suggestion).not.toBe(err.detail);
       }
     }
     // Guard fires before any network call.

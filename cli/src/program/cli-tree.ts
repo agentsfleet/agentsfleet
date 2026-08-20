@@ -93,7 +93,6 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
     .version(version, "-v, --version", "Show version")
     .helpOption("-h, --help", "Show this help")
     .showSuggestionAfterError(true)
-    .showHelpAfterError("(use --help for usage)")
     .addHelpText("after", helpTail());
 
   // Global options. --api and --json are read by every command via

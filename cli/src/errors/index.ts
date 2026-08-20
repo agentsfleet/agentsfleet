@@ -16,6 +16,7 @@ import {
   VerificationFailedError,
   type AuthFlowError,
 } from "./auth.ts";
+import { SUGGESTION_PREFIX } from "../constants/rejection.ts";
 
 export {
   DecryptError,
@@ -31,7 +32,6 @@ export {
   type AuthFlowError,
 };
 
-const SUGGESTION_PREFIX = "\n  Suggestion: " as const;
 const CLI_ERROR_TAG = {
   auth: "AuthError",
   network: "NetworkError",
