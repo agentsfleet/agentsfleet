@@ -12,9 +12,7 @@ const std = @import("std");
 const httpz = @import("httpz");
 const constants = @import("common");
 const hx_mod = @import("../hx.zig");
-const sql = @import("sql.zig");
 const service = @import("../../../fleet/service.zig");
-const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const protocol = @import("contract").protocol;
 
 const Hx = hx_mod.Hx;
@@ -46,14 +44,9 @@ test "lease wire version defaults old and clamps future versions" {
     try std.testing.expectEqual(protocol.LEASE_WIRE_VERSION_CURRENT, leaseWireVersion(std.testing.allocator, "{\"wire_version\":99}"));
 }
 
-/// The row's reconciled verdict — true also on any read failure (no verdict,
-/// no lease). The connection is released before the service acquires its own.
+/// The row's reconciled verdict, carried on the principal from the auth
+/// lookup's own read of `fleet.runners` — same row, same request, zero extra
+/// round trips. Null (no verdict) reads as degraded: no verdict, no lease.
 fn runnerDegraded(hx: Hx) bool {
-    const runner_id = hx.principal.runner_id orelse return true;
-    const conn = hx.ctx.pool.acquire() catch return true;
-    defer hx.ctx.pool.release(conn);
-    var q = PgQuery.from(conn.query(sql.SELECT_RUNNER_DEGRADED, .{runner_id}) catch return true);
-    defer q.deinit();
-    const row = (q.next() catch return true) orelse return true;
-    return row.get(bool, 0) catch true;
+    return hx.principal.runner_degraded orelse true;
 }

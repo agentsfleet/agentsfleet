@@ -5771,6 +5771,102 @@
       }
     },
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages": {
+      "get": {
+        "operationId": "list_fleet_messages",
+        "summary": "List a fleet's chat thread with bodies",
+        "description": "Returns the newest chat events first. Each item carries the trigger payload (`request_json`) and the agent's full answer (`response_text`). One request replaces reading the event list and then each event's detail. A page holds at most `limit` items and at most 512 KiB of encoded items. The newest item always ships, even alone. Follow `next_cursor` to read the rest.\n",
+        "tags": [
+          "Fleets"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fleet_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the fleet.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "required": false,
+            "description": "Opaque continuation cursor from a previous page's `next_cursor`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 25,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "next_cursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/FleetEventDetail"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "nullable": true,
+                      "description": "Always null — the thread is cursor-walked, never counted."
+                    },
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "operationId": "post_fleet_message",
         "summary": "Post a chat message to a fleet",

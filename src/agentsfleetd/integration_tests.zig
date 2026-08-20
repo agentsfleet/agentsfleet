@@ -119,6 +119,7 @@ test {
     _ = @import("cmd/serve_webhook_lookup_integration_test.zig");
     _ = @import("http/handlers/webhooks/approval_integration_test.zig");
     _ = @import("http/handlers/fleets/messages_integration_test.zig");
+    _ = @import("http/handlers/fleets/messages_list_integration_test.zig");
     _ = @import("http/handlers/schedules/api_integration_test.zig");
     _ = @import("http/handlers/memory/memories_integration_test.zig");
     _ = @import("http/handlers/runner/assigned_policy_integration_test.zig");

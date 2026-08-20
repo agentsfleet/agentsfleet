@@ -85,11 +85,6 @@ pub const UPDATE_RUNNER_VERDICT =
     \\  AND (degraded IS DISTINCT FROM $2::bool OR degraded_reason IS DISTINCT FROM $3::text)
 ;
 
-/// The lease gate's single-column read: a degraded runner is issued nothing.
-pub const SELECT_RUNNER_DEGRADED =
-    \\SELECT degraded FROM fleet.runners WHERE id = $1::uuid
-;
-
 /// Resolve a live lease's billing scope before minting a credential for it.
 /// The status and expiry predicates are the authorization: an expired or
 /// released lease resolves nothing, so no credential can be minted against it.

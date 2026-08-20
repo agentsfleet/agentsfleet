@@ -24,10 +24,7 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 // on `(event_id, charge_type)`), so a bare LEFT JOIN would duplicate the row
 // per leg. The correlated subselect keeps one row and yields SQL NULL when no
 // telemetry exists: an unbilled run reads as "unknown", never as zero.
-//
-// Bounded by construction — the WHERE clause names the full primary key, so
-// this executes for exactly one event no matter how much history the fleet has.
-const DETAIL_SELECT =
+const DETAIL_COLUMNS =
     \\SELECT fleet_id::text, event_id, workspace_id::text, actor, event_type,
     \\       status, request_json::text, response_text, tokens, wall_ms,
     \\       failure_label, failure_detail, checkpoint_id, resumes_event_id,
@@ -37,7 +34,28 @@ const DETAIL_SELECT =
     \\         WHERE te.event_id = core.fleet_events.event_id
     \\           AND te.fleet_id = core.fleet_events.fleet_id) AS cost_nanos
     \\FROM core.fleet_events
+    \\
+;
+
+// Bounded by construction — the WHERE clause names the full primary key, so
+// this executes for exactly one event no matter how much history the fleet has.
+const DETAIL_SELECT = DETAIL_COLUMNS ++
     \\WHERE fleet_id = $1::uuid AND event_id = $2 AND workspace_id = $3::uuid
+;
+
+// The chat-thread page: same bodies-included row, keyset-paged newest-first
+// over the per-fleet index. One statement serves the whole thread window the
+// chat view used to assemble with one detail request per turn.
+const THREAD_PAGE_FIRST = DETAIL_COLUMNS ++
+    \\WHERE fleet_id = $1::uuid AND workspace_id = $2::uuid
+    \\ORDER BY created_at DESC, event_id DESC
+    \\LIMIT $3
+;
+const THREAD_PAGE_AFTER = DETAIL_COLUMNS ++
+    \\WHERE fleet_id = $1::uuid AND workspace_id = $2::uuid
+    \\  AND (created_at, event_id) < ($3, $4)
+    \\ORDER BY created_at DESC, event_id DESC
+    \\LIMIT $5
 ;
 
 /// One event with everything recorded about it. The two body columns —
@@ -157,10 +175,60 @@ fn readRow(alloc: std.mem.Allocator, row: pg.Row) !EventDetailRow {
     };
 }
 
+/// The newest-first chat-thread window, bodies included. `after` continues a
+/// keyset walk; `fetch_limit` is the row cap the caller sized (page limit plus
+/// one, so the caller learns whether more history exists without a count).
+/// Caller owns the slice and each row (`freeThreadRows`).
+pub fn listThreadForFleet(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    workspace_id: []const u8,
+    fleet_id: []const u8,
+    after: ?struct { created_at: i64, event_id: []const u8 },
+    fetch_limit: u32,
+) ![]EventDetailRow {
+    const lim: i32 = @intCast(fetch_limit);
+    var q = if (after) |a|
+        PgQuery.from(try conn.query(THREAD_PAGE_AFTER, .{ fleet_id, workspace_id, a.created_at, a.event_id, lim }))
+    else
+        PgQuery.from(try conn.query(THREAD_PAGE_FIRST, .{ fleet_id, workspace_id, lim }));
+    defer q.deinit();
+
+    var rows: std.ArrayList(EventDetailRow) = .empty;
+    errdefer {
+        for (rows.items) |*r| r.deinit(alloc);
+        rows.deinit(alloc);
+    }
+    while (try q.next()) |row| {
+        var detail = try readRow(alloc, row);
+        errdefer detail.deinit(alloc);
+        try rows.append(alloc, detail);
+    }
+    return rows.toOwnedSlice(alloc);
+}
+
+pub fn freeThreadRows(alloc: std.mem.Allocator, rows: []EventDetailRow) void {
+    for (rows) |*r| r.deinit(alloc);
+    alloc.free(rows);
+}
+
 fn dupeOptionalString(alloc: std.mem.Allocator, row: pg.Row, idx: usize) !?[]u8 {
     const val = try row.get(?[]const u8, idx);
     if (val) |v| return try alloc.dupe(u8, v);
     return null;
+}
+
+test "thread page statements carry the workspace predicate and the composite keyset" {
+    // Tenancy lives INSIDE the statement (never post-filtered), and the cursor
+    // is the composite (created_at, event_id) tuple — a bare timestamp would
+    // skip same-millisecond rows.
+    try std.testing.expect(std.mem.indexOf(u8, THREAD_PAGE_FIRST, "WHERE fleet_id = $1::uuid AND workspace_id = $2::uuid") != null);
+    try std.testing.expect(std.mem.indexOf(u8, THREAD_PAGE_AFTER, "AND (created_at, event_id) < ($3, $4)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, THREAD_PAGE_AFTER, "workspace_id = $2::uuid") != null);
+    // Bodies ride the shared column block — the thread page and the detail
+    // read cannot drift apart.
+    try std.testing.expect(std.mem.indexOf(u8, THREAD_PAGE_FIRST, "request_json::text") != null);
+    try std.testing.expect(std.mem.indexOf(u8, THREAD_PAGE_FIRST, "response_text") != null);
 }
 
 test "DETAIL_SELECT keys on the primary key and scopes to the workspace" {

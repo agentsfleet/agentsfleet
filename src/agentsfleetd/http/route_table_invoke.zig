@@ -30,6 +30,7 @@ const api_keys_invokes = @import("route_table_invoke_api_keys.zig");
 pub const invokeTenantApiKeys = api_keys_invokes.invokeTenantApiKeys;
 pub const invokeTenantApiKeyById = api_keys_invokes.invokeTenantApiKeyById;
 const fleet_messages = @import("handlers/fleets/messages.zig");
+const fleet_messages_list = @import("handlers/fleets/messages_list.zig");
 
 // Sibling invoke files keep this file ≤ 350 lines per RULE FLL.
 const events_invokes = @import("route_table_invoke_events.zig");
@@ -277,12 +278,15 @@ pub fn invokeWorkspaceOnboarding(hx: *Hx, req: *httpz.Request, route: router.Rou
     onboarding_h.innerGetOnboarding(hx.*, route.workspace_onboarding);
 }
 
-// ── Fleet messages (chat ingress) ────────────────────────────────────────
+// ── Fleet messages (chat ingress + thread read) ──────────────────────────
 
-pub fn invokeFleetMessagesPost(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (!common.requireMethod(hx.res, req.method, .POST)) return;
+pub fn invokeFleetMessages(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     const r = route.workspace_fleet_messages;
-    fleet_messages.innerFleetMessagesPost(hx.*, req, r.workspace_id, r.fleet_id);
+    switch (req.method) {
+        .POST => fleet_messages.innerFleetMessagesPost(hx.*, req, r.workspace_id, r.fleet_id),
+        .GET => fleet_messages_list.innerListFleetMessages(hx.*, req, r.workspace_id, r.fleet_id),
+        else => common.respondMethodNotAllowed(hx.res),
+    }
 }
 
 // ── Integration grants ────────────────────────────────────────────────────

@@ -141,7 +141,18 @@ pub fn loadJson(
 ) !std.json.Parsed(std.json.Value) {
     const plaintext = try crypto_store.load(alloc, conn, workspace_id, key_name);
     defer secure_memory.freeBytes(alloc, plaintext);
+    return parseSecretJson(alloc, workspace_id, key_name, plaintext);
+}
 
+/// Parse + shape-gate one decrypted credential body — the gate `loadJson`
+/// applies, shared with the bulk `secrets_resolve` path so a credential parses
+/// identically whether it was loaded alone or in a batch.
+pub fn parseSecretJson(
+    alloc: std.mem.Allocator,
+    workspace_id: []const u8,
+    key_name: []const u8,
+    plaintext: []const u8,
+) !std.json.Parsed(std.json.Value) {
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, plaintext, .{}) catch |err| {
         // AEAD + validateObject make this unreachable for rows written via
         // storeJson. storeJsonPlaintext skips the shape gate by design, so a

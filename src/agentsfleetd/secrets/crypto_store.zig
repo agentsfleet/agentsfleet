@@ -190,6 +190,32 @@ pub fn loadAllForWorkspace(
     conn: *pg.Conn,
     workspace_id: []const u8,
 ) ![]WorkspaceSecret {
+    var result = PgQuery.from(try conn.query(sql.SELECT_SECRETS_FOR_WORKSPACE, .{workspace_id}));
+    defer result.deinit();
+    return collectDecrypted(alloc, &result, workspace_id);
+}
+
+/// The REQUESTED credentials of a workspace, decrypted, in ONE query and ONE
+/// KEK unwrap — the lease's per-name loop cost one round trip per declared
+/// credential. Missing names are simply absent from the result (the caller
+/// decides whether absence is fatal); a row whose envelope will not decrypt
+/// arrives with a null `plaintext`, same isolation as the workspace-wide read.
+pub fn loadManyForWorkspace(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    names: []const []const u8,
+) ![]WorkspaceSecret {
+    var result = PgQuery.from(try conn.query(sql.SELECT_SECRETS_BY_NAMES, .{ workspace_id, names }));
+    defer result.deinit();
+    return collectDecrypted(alloc, &result, workspace_id);
+}
+
+fn collectDecrypted(
+    alloc: std.mem.Allocator,
+    result: *PgQuery,
+    workspace_id: []const u8,
+) ![]WorkspaceSecret {
     var kek = try cp.loadKek();
     defer std.crypto.secureZero(u8, &kek);
 
@@ -202,8 +228,6 @@ pub fn loadAllForWorkspace(
         out.deinit(alloc);
     }
 
-    var result = PgQuery.from(try conn.query(sql.SELECT_SECRETS_FOR_WORKSPACE, .{workspace_id}));
-    defer result.deinit();
     var undecryptable: usize = 0;
     while (try result.next()) |row| {
         const key_name = try alloc.dupe(u8, try row.get([]const u8, 0));

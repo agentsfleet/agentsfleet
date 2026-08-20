@@ -111,11 +111,11 @@ pub fn innerListApiKeys(hx: Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    const total = fetchTotal(conn, tenant_id) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return;
-    };
-    const items = fetchPage(hx, conn, tenant_id, q) orelse return;
+    // ONE statement returns the page and the page-stable total together; the
+    // separate count read this used to issue is gone.
+    const page = fetchPage(hx, conn, tenant_id, q) orelse return;
+    const items = page.items;
+    const total = page.total;
 
     const next_cursor: ?[]const u8 = if (items.len == q.limit and items.len > 0) blk: {
         const last = items[items.len - 1];
@@ -137,14 +137,12 @@ fn hasRetiredPageParams(req: *httpz.Request) bool {
     return qs.get(QUERY_PAGE) != null or qs.get(QUERY_PAGE_SIZE) != null;
 }
 
-fn fetchTotal(conn: anytype, tenant_id: []const u8) !i64 {
-    var q = PgQuery.from(try conn.query(sql.SELECT_TENANT_KEY_COUNT, .{tenant_id}));
-    defer q.deinit();
-    const row = (try q.next()) orelse return error.DbRowShape;
-    return try row.get(i64, 0);
-}
+const PageResult = struct {
+    items: []ListRow,
+    total: i64,
+};
 
-fn fetchPage(hx: Hx, conn: anytype, tenant_id: []const u8, q: ListQuery) ?[]ListRow {
+fn fetchPage(hx: Hx, conn: anytype, tenant_id: []const u8, q: ListQuery) ?PageResult {
     // Both `{s}` slots come from sortSpecFor's fixed allowlist, never user input.
     const limit: i64 = @intCast(q.limit);
     var rows_q = if (q.cursor) |cursor| switch (cursor.sort) {
@@ -192,28 +190,35 @@ fn fetchPage(hx: Hx, conn: anytype, tenant_id: []const u8, q: ListQuery) ?[]List
     };
 }
 
-/// Drain the page into owned rows. A row that fails to decode is skipped and
+/// Drain the page into owned rows plus the tenant total the statement carries
+/// on every row. An empty page arrives as one marker row (NULL key columns,
+/// real total) — the LEFT JOIN LATERAL guarantees the total is never lost to
+/// an empty continuation page. A row that fails to decode is skipped and
 /// logged; a mid-iteration transport error propagates so the caller fails
 /// closed. `alloc` is the request arena.
-fn collectRows(alloc: std.mem.Allocator, q: *PgQuery) ![]ListRow {
+fn collectRows(alloc: std.mem.Allocator, q: *PgQuery) !PageResult {
     var items: std.ArrayList(ListRow) = .empty;
     errdefer items.deinit(alloc);
+    var total: i64 = 0;
     while (try q.next()) |row| {
-        const item = readRow(alloc, row) catch |err| {
+        total = try row.get(i64, 6);
+        const maybe_id = try row.get(?[]u8, 0);
+        const id_raw = maybe_id orelse continue; // empty-page marker row
+        const item = readRow(alloc, row, id_raw) catch |err| {
             log.warn("key_row_decode_skipped", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err) });
             continue;
         };
         try items.append(alloc, item);
     }
-    return items.toOwnedSlice(alloc);
+    return .{ .items = try items.toOwnedSlice(alloc), .total = total };
 }
 
-fn readRow(alloc: std.mem.Allocator, row: anytype) !ListRow {
+fn readRow(alloc: std.mem.Allocator, row: anytype, id_raw: []const u8) !ListRow {
     const active = try row.get(bool, 2);
     const created_at = try row.get(i64, 3);
     const last_used_at = try row.get(?i64, 4);
     const revoked_at = try row.get(?i64, 5);
-    const id = try alloc.dupe(u8, try row.get([]u8, 0));
+    const id = try alloc.dupe(u8, id_raw);
     errdefer alloc.free(id);
     const key_name = try alloc.dupe(u8, try row.get([]u8, 1));
     errdefer alloc.free(key_name);

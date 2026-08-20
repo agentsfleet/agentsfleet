@@ -773,7 +773,13 @@ describe("fleets routes", () => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => happyBilling };
       }
-      if (url.includes("/events") || url.includes("/approvals")) {
+      // `/messages` is the chat's thread read — the one request that replaced
+      // the events-list-plus-per-turn-detail fan-out this view used to issue.
+      if (
+        url.includes("/messages") ||
+        url.includes("/events") ||
+        url.includes("/approvals")
+      ) {
         throw new Error("summary down");
       }
       return detailResponse();

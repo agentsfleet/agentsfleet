@@ -105,6 +105,43 @@ export async function listFleetEvents(
   );
 }
 
+export type ThreadPage = {
+  items: EventDetail[];
+  total: null;
+  next_cursor: string | null;
+};
+
+export type ThreadQuery = {
+  starting_after?: string;
+  /** Server default 20, max 25 — thread rows carry full bodies. */
+  limit?: number;
+};
+
+/**
+ * The chat thread, bodies included, one request — replaces reading the event
+ * list and then one detail per turn. Newest first; pages are byte-budgeted on
+ * the server (the newest turn always ships) and `next_cursor` continues a
+ * long thread.
+ */
+export async function listFleetMessages(
+  workspaceId: string,
+  fleetId: string,
+  token: string,
+  opts?: ThreadQuery,
+  retry?: RetryOptions,
+): Promise<ThreadPage> {
+  const params = new URLSearchParams();
+  if (opts?.starting_after) params.set("starting_after", opts.starting_after);
+  if (opts?.limit != null) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  return requestWithRetry<ThreadPage>(
+    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/messages${qs.length > 0 ? `?${qs}` : ""}`,
+    { method: "GET" },
+    token,
+    retry,
+  );
+}
+
 /**
  * Read one event's full record. A 404 covers both an unknown identifier and an
  * event in another workspace — the server does not distinguish them, so neither

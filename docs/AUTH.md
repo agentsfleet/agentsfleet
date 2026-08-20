@@ -452,7 +452,7 @@ Every later call carries `Bearer agt_r` and hits a dedicated `runnerBearer` midd
 
 ```
 parse Bearer → require "agt_r" prefix          (else 401 — no JWKS fall-through)
-SELECT id, admin_state FROM fleet.runners WHERE token_hash = sha256(token)   (timing-safe)
+SELECT id, admin_state, degraded FROM fleet.runners WHERE token_hash = sha256(token)   (timing-safe)
   admin_state='active' → AuthPrincipal{ mode=runner, runner_id, tenant_id=null }
   miss                 → 401 UZ-RUN-001
   non-active           → 401 UZ-RUN-009
@@ -466,7 +466,7 @@ That lookup is where a cordon, drain, revoke or delete takes effect, because **a
 
 A per-process memo used to front this read, with entries living at most `HEARTBEAT_INTERVAL_MS`. It was removed in M143_001 because it made revocation deterministic only on the machine that served the operator's write: every *other* control-plane machine kept authenticating the runner until its own entry expired. Reading the row every time means a runner taken out of service authenticates **nowhere, immediately**, with no window to reason about and no per-machine state to reconcile.
 
-What that costs: one indexed single-row read per runner request. The lease verb is not a blocking long poll — it returns 200 with `retry_after_ms` (`NO_WORK_RETRY_AFTER_MS` = 1 s) — so an idle runner authenticates about once a second per worker. At the ~100 runners the sizing assumes (`fleet.runners`, `schema/600_runners.sql`), that is a few hundred index probes a second against a table whose pages never leave cache.>>>>>>> origin/main
+What that costs: one indexed single-row read per runner request. The lease verb is not a blocking long poll — it returns 200 with `retry_after_ms` (`NO_WORK_RETRY_AFTER_MS` = 1 s) — so an idle runner authenticates about once a second per worker. At the ~100 runners the sizing assumes (`fleet.runners`, `schema/600_runners.sql`), that is a few hundred index probes a second against a table whose pages never leave cache. The `degraded` flag rides the same read onto the principal, so the lease gate never re-reads the row it just authenticated against.
 
 It also means a Postgres outage fails runner auth immediately rather than being absorbed for up to one heartbeat. That surfaces as `503 UZ-AUTH-004`, which the runner classifies as transport loss and backs off from — **not** as an auth rejection, so an outage cannot trip the daemon's `MAX_CONSECUTIVE_AUTH_REJECTS` exit.
 
