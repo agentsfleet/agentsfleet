@@ -345,6 +345,7 @@ N/A — no files deleted.
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage:
+  - **The self-test probe graded the daemon's environment, not the lease's (Aug 20, 2026).** `selftest_exec.run` spawned the probe with the daemon environ inherited, so the probe graded the daemon's own HOME — a host path no lease ever sees — and carried `AGENTSFLEET_RUNNER_TOKEN` into the sandbox it exists to distrust. It now routes through `child_process.buildChildEnviron`, the same filtered allowlist + assigned-HOME map a lease child gets (`daemon_env` threaded from `runLoop` through `selftest_beat.capture`). Proven in the kernel lane: the scratch/home proof runs under the filtered environ and passes.
 - **Metrics review** —
 - **Skill-chain outcomes** —
 - **Live-setup defect scope (Aug 15, 2026).** Indy asked for the defects in this PR so M136 can continue after deployment: "Just add these in your PR these are the testing bugz" and later "Orly I need a PR for this so we could keep the M136_001 and continue the test." The GitHub correction is explicit: "bug 1 is on GH not slack slack connection worked if you notice in my integrations". External authorization can survive outside `agentsfleet` for any provider after datastore teardown. Every connector therefore gets the same retry surface. GitHub additionally needs installation discovery because its existing-install path does not return through the callback. `Disconnect` clears only `agentsfleet` state and never revokes or uninstalls the external provider app.

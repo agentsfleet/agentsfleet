@@ -221,6 +221,51 @@ test "should drop a disabled tool without building or skipping it" {
     try std.testing.expectEqual(@as(usize, 0), result.skipped.len);
 }
 
+test "a spec entry that is neither a string nor an object grants nothing and does not abort the array" {
+    // The third arm of the item switch — the one added when the producer/
+    // consumer shape mismatch was fixed. A `42` or a `null` in the list cannot
+    // NAME a tool, so it grants nothing; the open question this pins is whether
+    // it also kills the entries around it. It must not: a malformed element is
+    // the same disposition as an unknown name, and a Fleet that declared one
+    // real tool beside it still gets that tool.
+    const alloc = std.testing.allocator;
+    const cfg = defaultCfg();
+
+    var arr = std.json.Array.init(alloc);
+    defer arr.deinit();
+    try arr.append(.{ .integer = 42 });
+    try arr.append(.{ .null = {} });
+    try arr.append(.{ .string = "http_request" });
+
+    const result = try tool_bridge.buildTools(alloc, .{ .array = arr }, WORKSPACE, &cfg, null, null);
+    defer result.deinit(alloc);
+
+    // The one nameable entry survives; the two shapeless ones are not even
+    // reported as skipped, because "skipped" means a NAME nobody knows.
+    try std.testing.expectEqual(@as(usize, 1), result.tools.len);
+    try std.testing.expectEqual(@as(usize, 0), result.skipped.len);
+}
+
+test "a refusal after a successful build frees what was already built" {
+    // The allowlist refusal returns from the MIDDLE of the loop, so everything
+    // built on earlier iterations unwinds through `errdefer` alone. Every other
+    // refusal test uses a single-element spec, so that unwind has never run —
+    // a regression in it would leak silently, and `std.testing.allocator` is
+    // what turns that from silent into a failed test.
+    const alloc = std.testing.allocator;
+    const cfg = defaultCfg();
+
+    // Order is the point: an allowlisted tool that BUILDS, then one that is
+    // refused. Reverse them and the refusal fires before anything is owned.
+    const spec = try specOf(alloc, &.{ "http_request", "shell" });
+    defer freeSpec(alloc, spec);
+
+    try std.testing.expectError(
+        error.UnsupportedHostedTool,
+        tool_bridge.buildTools(alloc, spec, WORKSPACE, &cfg, null, null),
+    );
+}
+
 test "should return empty result when spec is not an array" {
     const alloc = std.testing.allocator;
     const cfg = defaultCfg();
