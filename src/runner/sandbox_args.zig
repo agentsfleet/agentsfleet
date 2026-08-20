@@ -137,9 +137,14 @@ pub fn appendBindFlags(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8
 }
 
 /// Whether this tier gets a bubblewrap wrapper. `dev_none` and every
-/// non-Linux host exec the child directly. Private: both callers live here,
-/// and the probe asks for a prefix rather than asking whether to build one.
-fn isSandboxed(cfg: Config) bool {
+/// non-Linux host exec the child directly.
+///
+/// `pub` for `child_process.forkExec`, which must know whether anything will
+/// construct the child's `HOME`: on a wrapped tier bwrap's `--dir` builds it
+/// per lease, on a direct-exec tier nothing does, and the environ assigns it
+/// either way. One predicate rather than a second copy of the tier test (RULE
+/// UFS) — a copy is how the mount layer and the policy layer drifted before.
+pub fn isSandboxed(cfg: Config) bool {
     return builtin.os.tag == .linux and cfg.sandbox_tier != .dev_none;
 }
 
@@ -272,17 +277,34 @@ fn appendBwrapAt(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), bwr
     // `--new-session` detaches the controlling terminal (no TIOCSTI input
     // injection if a tty is ever attached); it sits with the other namespace
     // flags so every sandboxed tier gets it.
+    // The executable and library trees arrive through `RO_SYSTEM_PATHS`, not
+    // from this base argv: the runner is static, but the engine's transport
+    // spawns `curl`. Sourcing them there keeps landlock derived from bwrap.
     const base = [_][]const u8{
         bwrap,           "--die-with-parent", "--unshare-all",
         "--new-session", "--proc",            "/proc",
-        "--dev",         "/dev",              RO_BIND,
-        "/usr",          "/usr",
+        "--dev",         "/dev",
     };
     for (base) |a| try dup(alloc, list, a);
     // One private tmpfs per writable-floor entry, from the shared list landlock
     // also consumes — mount layer and policy layer cannot disagree on writes.
     for (contract.protocol.BASELINE_RW_TMPFS) |p|
         for ([_][]const u8{ "--tmpfs", p }) |a| try dup(alloc, list, a);
+    // The child's HOME, created on the floor above. `--dir` rather than trusting
+    // the engine to make it: its credential path calls `makePath` (which creates
+    // parents) but its config path calls `makeDirAbsolute` (which does not), so a
+    // missing parent fails one caller and not the other. Ordered after the tmpfs
+    // mounts because the directory has to land ON the tmpfs, not under it.
+    for ([_][]const u8{ "--dir", contract.protocol.CHILD_HOME }) |a| try dup(alloc, list, a);
+    // The resolver, as a LINK into the granted resolver directory. Binding it
+    // instead makes bwrap resolve the symlink and drop the target file into an
+    // `/etc` landlock does not cover — measured on a real host as
+    // `resolver=0 dns=0 egress=0`, every lease losing DNS.
+    for ([_][]const u8{
+        "--symlink",
+        contract.protocol.RESOLV_LINK_TARGET,
+        contract.protocol.RESOLV_LINK,
+    }) |a| try dup(alloc, list, a);
     // Baseline then operator additions, composed by the pure helper so the
     // additive-only invariant is asserted independently of this platform arm.
     // `extra_binds` is validated (`extraBindsValid`) before it reaches the

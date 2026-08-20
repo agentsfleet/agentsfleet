@@ -147,6 +147,11 @@ test "test_fleet_write_can_blank_gate_policy" {
     try testing.expectEqual(scopes.Scope.fleet_write, onlyScope(wake).?);
     try testing.expectEqual(scopes.Scope.fleet_write, onlyScope(reconfigure).?);
 
+    // The thread READ on the same route is a read: a fleet:read holder can see
+    // the conversation without holding the wake-the-fleet capability.
+    const thread_read = route_scopes.requiredScopes(.{ .workspace_fleet_messages = .{ .workspace_id = "ws1", .fleet_id = "z1" } }, .GET);
+    try testing.expectEqual(scopes.Scope.fleet_read, onlyScope(thread_read).?);
+
     // The bypass, stated as the identity it actually is: one scope opens both
     // doors, so holding the wake implies holding the rewrite.
     try testing.expectEqual(onlyScope(wake).?, onlyScope(reconfigure).?);

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  AUDITED_PATH,
   WORKSPACE_LIST_PATH,
   isWorkspaceFetchAuditEnabled,
   readWorkspaceFetchAudit,
@@ -46,6 +47,31 @@ describe("workspace fetch acceptance audit", () => {
       byPath: { [WORKSPACE_LIST_PATH]: 2 },
     });
     expect(resetWorkspaceFetchAudit()).toEqual({ total: 0, byPath: {} });
+  });
+
+  it("strips query strings and counts thread and detail reads under template keys", () => {
+    vi.stubEnv("AGENTSFLEET_E2E_AUDIT", "1");
+
+    // Real calls carry queries — the exact-match era silently counted zero.
+    recordWorkspaceFetchForAcceptance(`${WORKSPACE_LIST_PATH}?limit=100`);
+    recordWorkspaceFetchForAcceptance(
+      "/v1/workspaces/ws_1/fleets/zom_1/messages?limit=20",
+    );
+    recordWorkspaceFetchForAcceptance(
+      "/v1/workspaces/ws_1/fleets/zom_1/events/1700000000000-0",
+    );
+    // The events LIST and the live tail are deliberately unaudited.
+    recordWorkspaceFetchForAcceptance("/v1/workspaces/ws_1/fleets/zom_1/events?limit=25");
+    recordWorkspaceFetchForAcceptance("/v1/workspaces/ws_1/fleets/zom_1/events/stream");
+
+    expect(readWorkspaceFetchAudit()).toEqual({
+      total: 3,
+      byPath: {
+        [AUDITED_PATH.workspaceList]: 1,
+        [AUDITED_PATH.fleetMessages]: 1,
+        [AUDITED_PATH.fleetEventDetail]: 1,
+      },
+    });
   });
 
   it("guards the route while disabled", async () => {

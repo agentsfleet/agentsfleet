@@ -47,6 +47,11 @@ const S_RUNNER_ADMIN_STATE_BLOCKED = "Runner admin state blocks runner-plane acc
 pub const LookupResult = struct {
     runner_id: []const u8,
     active: bool,
+    /// The row's reconciled `degraded` verdict, read in the same statement as
+    /// the token hash so the lease gate never re-reads the row. Defaults to
+    /// true (fail closed) so a lookup that does not project it cannot
+    /// accidentally mint a leasable principal.
+    degraded: bool = true,
 };
 
 /// Host-supplied callback resolving a SHA-256 hex digest to a runner row.
@@ -109,6 +114,7 @@ fn resolve(self: *RunnerBearer, ctx: *AuthCtx, raw_token: []const u8) !chain.Out
     ctx.principal = .{
         .mode = .runner,
         .runner_id = row.runner_id,
+        .runner_degraded = row.degraded,
         .tenant_id = null,
         // Self-plane only — a runner holds no tenant authority of its own.
         .scopes = scopes.RUNNER_SCOPES,
@@ -132,7 +138,14 @@ const MockLookup = struct {
         self.call_count += 1;
         if (self.return_err) |e| return e;
         if (self.return_row) |row| {
-            return .{ .runner_id = try alloc.dupe(u8, row.runner_id), .active = row.active };
+            // Carries `degraded` through like the real lookup's projection —
+            // dropping it here would silently mint the fail-closed default and
+            // hide whether the middleware forwards the row's own verdict.
+            return .{
+                .runner_id = try alloc.dupe(u8, row.runner_id),
+                .active = row.active,
+                .degraded = row.degraded,
+            };
         }
         return null;
     }
@@ -260,7 +273,7 @@ test "runner_bearer populates a runner principal on active match" {
     ht.header("authorization", "Bearer agt_r" ++ "b" ** 64);
 
     var mock = MockLookup{
-        .return_row = .{ .runner_id = "22222222-2222-7222-8222-222222222222", .active = true },
+        .return_row = .{ .runner_id = "22222222-2222-7222-8222-222222222222", .active = true, .degraded = false },
     };
     var mw = RunnerBearer{ .host = &mock, .lookup = MockLookup.fn_ };
     var ctx = makeCtx(ht.res);
@@ -275,6 +288,31 @@ test "runner_bearer populates a runner principal on active match" {
     try testing.expectEqual(principal_mod.AuthMode.runner, ctx.principal.?.mode);
     try testing.expectEqualStrings("22222222-2222-7222-8222-222222222222", ctx.principal.?.runner_id.?);
     try testing.expect(ctx.principal.?.tenant_id == null);
+    // The degraded verdict rides the lookup onto the principal — the lease
+    // gate reads it there instead of re-reading the row.
+    try testing.expectEqual(@as(?bool, false), ctx.principal.?.runner_degraded);
+}
+
+test "runner_bearer carries a degraded verdict onto the principal" {
+    test_fixtures.reset();
+    var ht = httpz.testing.init(.{});
+    defer ht.deinit();
+    ht.header("authorization", "Bearer agt_r" ++ "c" ** 64);
+
+    // Active but degraded: auth still succeeds (the runner may heartbeat and
+    // report), and the flag arrives for the lease gate to refuse on.
+    var mock = MockLookup{
+        .return_row = .{ .runner_id = "33333333-3333-7333-8333-333333333333", .active = true, .degraded = true },
+    };
+    var mw = RunnerBearer{ .host = &mock, .lookup = MockLookup.fn_ };
+    var ctx = makeCtx(ht.res);
+    const outcome = try mw.execute(&ctx, ht.req);
+    defer if (ctx.principal) |p| {
+        if (p.runner_id) |v| testing.allocator.free(v);
+    };
+
+    try testing.expectEqual(chain.Outcome.next, outcome);
+    try testing.expectEqual(@as(?bool, true), ctx.principal.?.runner_degraded);
 }
 
 test "RUNNER_TOKEN_PREFIX is the documented agt_r literal" {

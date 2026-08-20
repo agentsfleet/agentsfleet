@@ -14,10 +14,17 @@ const redirect = vi.fn((path: string) => {
 });
 const auth = vi.fn();
 const listTenantWorkspacesCached = vi.fn();
+// The entry redirect reads ONE page (`limit=1`); the switcher's full walk is a
+// different call on a different surface, so the two are mocked separately.
+const firstTenantWorkspace = vi.fn();
 
 vi.mock("next/navigation", () => ({ notFound, redirect }));
 vi.mock("@clerk/nextjs/server", () => ({ auth }));
 vi.mock("@/lib/workspace", () => ({ listTenantWorkspacesCached }));
+vi.mock("@/lib/api/workspaces", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api/workspaces")>()),
+  firstTenantWorkspace,
+}));
 // The zero-workspace entry state is a client island — stub it so the server
 // component test stays synchronous and doesn't pull the dynamic dialog chunk.
 vi.mock("@/components/layout/NoWorkspaceEmptyState", () => ({
@@ -134,13 +141,16 @@ describe("dashboard entry page", () => {
   }
 
   it("redirects to the first owned workspace fleet wall without an intermediate route", async () => {
-    listTenantWorkspacesCached.mockResolvedValue(OWNED);
+    firstTenantWorkspace.mockResolvedValue(OWNED.items[0]);
     const Page = await importEntry();
     await expect(Page()).rejects.toThrow("redirect:/w/ws_first/fleets");
+    // The redirect fires before the layout tree renders, so it cannot share the
+    // switcher's cached walk — reading one page is the whole ask.
+    expect(listTenantWorkspacesCached).not.toHaveBeenCalled();
   });
 
   it("test_no_workspace_empty_state: zero workspaces → create-workspace empty state, no throw", async () => {
-    listTenantWorkspacesCached.mockResolvedValue({ items: [], total: 0 });
+    firstTenantWorkspace.mockResolvedValue(null);
     const Page = await importEntry();
     const markup = renderToStaticMarkup((await Page()) as React.ReactElement);
     expect(markup).toContain("no-workspace-empty-state");
@@ -151,9 +161,7 @@ describe("dashboard entry page", () => {
     // Symmetric with the guard's fail-open: an operator who owns workspaces must
     // never be shown "create a workspace" on a blip (→ duplicate). The error
     // propagates to (dashboard)/error.tsx instead.
-    listTenantWorkspacesCached.mockRejectedValue(
-      new Error("list endpoint down"),
-    );
+    firstTenantWorkspace.mockRejectedValue(new Error("list endpoint down"));
     const Page = await importEntry();
     await expect(Page()).rejects.toThrow("list endpoint down");
   });

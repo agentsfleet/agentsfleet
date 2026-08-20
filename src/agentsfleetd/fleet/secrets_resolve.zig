@@ -12,6 +12,7 @@ const Allocator = std.mem.Allocator;
 
 const error_codes = @import("../errors/error_registry.zig");
 const vault = @import("../state/vault.zig");
+const crypto_store = @import("../secrets/crypto_store.zig");
 const integration = @import("../credentials/integration.zig");
 const logging = @import("log");
 
@@ -22,9 +23,13 @@ pub const ResolvedSecret = struct {
     parsed: std.json.Parsed(std.json.Value), // caller calls .deinit()
 };
 
-/// Resolve every credential name to its parsed JSON object. Order is
-/// preserved. Any missing name aborts with `error.CredentialNotFound`
-/// (the fleet loop surfaces this as `secret_not_found`).
+/// Resolve every credential name to its parsed JSON object in ONE vault read
+/// (`crypto_store.loadManyForWorkspace`) — the per-name loop cost one round
+/// trip per declared credential. Order follows `names`. Any missing name
+/// aborts with `error.CredentialNotFound` (the fleet loop surfaces this as
+/// `secret_not_found`); an envelope that will not decrypt aborts with
+/// `error.DecryptFailed` — a fleet must never run with a credential it
+/// declared but cannot read.
 ///
 /// On success the caller owns the slice — call `freeResolved`, or hand the
 /// allocation to a request arena (the fleet service path's choice)
@@ -38,21 +43,27 @@ pub fn resolveSecretsMap(
 ) ![]ResolvedSecret {
     var out: std.ArrayList(ResolvedSecret) = .empty;
     errdefer freeBuilder(alloc, &out);
+    if (names.len == 0) return out.toOwnedSlice(alloc);
 
     const conn = try pool.acquire();
     defer pool.release(conn);
 
+    const entries = try crypto_store.loadManyForWorkspace(alloc, conn, workspace_id, names);
+    defer crypto_store.freeEntries(alloc, entries);
+
     for (names) |name| {
-        const parsed = vault.loadJson(alloc, conn, workspace_id, name) catch |err| {
-            if (err == error.NotFound) {
-                log.warn(
-                    "credential_not_found",
-                    .{ .workspace_id = workspace_id, .name = name, .error_code = error_codes.ERR_AGENTSFLEET_CREDENTIAL_MISSING },
-                );
-                return error.CredentialNotFound;
-            }
-            return err;
+        const entry = findEntry(entries, name) orelse {
+            log.warn(
+                "credential_not_found",
+                .{ .workspace_id = workspace_id, .name = name, .error_code = error_codes.ERR_AGENTSFLEET_CREDENTIAL_MISSING },
+            );
+            return error.CredentialNotFound;
         };
+        // A null plaintext is a row whose envelope did not decrypt —
+        // decryptRowAt already logged the cause with row context.
+        const plaintext = entry.plaintext orelse return error.DecryptFailed;
+
+        const parsed = try vault.parseSecretJson(alloc, workspace_id, name, plaintext);
         errdefer parsed.deinit();
 
         const name_dup = try alloc.dupe(u8, name);
@@ -61,6 +72,13 @@ pub fn resolveSecretsMap(
         try out.append(alloc, .{ .name = name_dup, .parsed = parsed });
     }
     return out.toOwnedSlice(alloc);
+}
+
+fn findEntry(entries: []const crypto_store.WorkspaceSecret, name: []const u8) ?*const crypto_store.WorkspaceSecret {
+    for (entries) |*e| {
+        if (std.mem.eql(u8, e.key_name, name)) return e;
+    }
+    return null;
 }
 
 /// Classify a resolved vault handle as ON-DEMAND mintable (returns its integration

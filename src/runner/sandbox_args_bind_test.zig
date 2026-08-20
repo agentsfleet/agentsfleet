@@ -343,3 +343,72 @@ test "test_architecture_doc_matches_the_contract" {
 
 const DOC_PATH = "docs/architecture/runner_fleet.md";
 const MAX_DOC_BYTES = 1024 * 1024;
+
+test "the child home nests under the writable tmpfs floor" {
+    // The comptime guard in protocol_bind.zig proves this at build time; this
+    // pins the PROPERTY at runtime so the reason survives a refactor of the
+    // guard. A home outside the floor is a home bwrap never builds and landlock
+    // never grants — which is the fault the constant exists to close.
+    var inside = false;
+    for (contract.protocol.BASELINE_RW_TMPFS) |rw| {
+        if (std.mem.startsWith(u8, contract.protocol.CHILD_HOME, rw) and
+            contract.protocol.CHILD_HOME.len > rw.len and
+            contract.protocol.CHILD_HOME[rw.len] == '/') inside = true;
+    }
+    try std.testing.expect(inside);
+}
+
+test "the resolver is emitted as a link, never as a bind" {
+    // The regression this pins, measured rather than reasoned: binding
+    // /etc/resolv.conf makes bwrap resolve the symlink and mount the target file
+    // into an /etc no landlock rule covers, and the probe reports
+    // `resolver=0 dns=0 egress=0` — every lease without DNS. As a link into the
+    // granted resolver directory, the same mount set passes all three.
+    const alloc = std.testing.allocator;
+    const argv = try prefixWith(alloc, &.{});
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    var linked = false;
+    for (argv, 0..) |a, i| {
+        // No bind may ever name the resolver path.
+        if (std.mem.eql(u8, a, contract.protocol.RESOLV_LINK) and i > 0)
+            try std.testing.expect(!std.mem.startsWith(u8, argv[i - 1], "--ro-bind"));
+        if (std.mem.eql(u8, a, "--symlink") and i + 2 < argv.len and
+            std.mem.eql(u8, argv[i + 1], contract.protocol.RESOLV_LINK_TARGET) and
+            std.mem.eql(u8, argv[i + 2], contract.protocol.RESOLV_LINK)) linked = true;
+    }
+    try std.testing.expect(linked);
+}
+
+test "the resolver link target sits inside a granted baseline path" {
+    // The link is only as good as the directory it lands in: if the target ever
+    // moves outside the baseline, landlock stops covering the read and DNS dies
+    // exactly as it did when this was a bind.
+    var covered = false;
+    for (contract.protocol.BASELINE_RO_PATHS) |p| {
+        if (std.mem.startsWith(u8, contract.protocol.RESOLV_LINK_TARGET, p) and
+            contract.protocol.RESOLV_LINK_TARGET.len > p.len and
+            contract.protocol.RESOLV_LINK_TARGET[p.len] == '/') covered = true;
+    }
+    try std.testing.expect(covered);
+}
+
+test "the bwrap argv creates the child home on the floor it mounts" {
+    // Order is load-bearing: --dir must follow the --tmpfs that owns the mount,
+    // or the directory lands under the tmpfs and vanishes when it is mounted.
+    const alloc = std.testing.allocator;
+    const argv = try prefixWith(alloc, &.{});
+    defer sandbox_args.freeArgv(alloc, argv);
+
+    var tmpfs_at: ?usize = null;
+    var dir_at: ?usize = null;
+    for (argv, 0..) |a, i| {
+        if (i + 1 >= argv.len) continue;
+        if (std.mem.eql(u8, a, "--tmpfs") and std.mem.eql(u8, argv[i + 1], "/tmp")) tmpfs_at = i;
+        if (std.mem.eql(u8, a, "--dir") and
+            std.mem.eql(u8, argv[i + 1], contract.protocol.CHILD_HOME)) dir_at = i;
+    }
+    try std.testing.expect(tmpfs_at != null);
+    try std.testing.expect(dir_at != null);
+    try std.testing.expect(tmpfs_at.? < dir_at.?);
+}

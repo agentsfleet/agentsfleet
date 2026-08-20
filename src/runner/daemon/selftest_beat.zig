@@ -95,7 +95,7 @@ pub const Pending = struct {
     /// decide whether the startup proof is done: a transient workspace or
     /// allocation failure must not count as "probed", or one bad boot suppresses
     /// the startup self-test for the life of the daemon.
-    pub fn capture(self: *Pending, io: std.Io, applied: *AppliedPolicy, cfg: Config) bool {
+    pub fn capture(self: *Pending, io: std.Io, applied: *AppliedPolicy, cfg: Config, env_map: *const std.process.Environ.Map) bool {
         self.clear();
         const pol = applied.snapshot(self.alloc) orelse {
             log.debug("selftest_skipped_no_assignment", .{});
@@ -114,7 +114,7 @@ pub const Pending = struct {
         };
         defer self.alloc.free(workspace);
 
-        const r = selftest_exec.run(io, self.alloc, eff, workspace) catch |err| {
+        const r = selftest_exec.run(io, self.alloc, eff, env_map, workspace) catch |err| {
             AppliedPolicy.freePolicy(self.alloc, pol);
             log.warn("selftest_probe_failed", .{ .err = @errorName(err) });
             return false;

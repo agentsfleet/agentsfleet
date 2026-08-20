@@ -124,7 +124,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) Route
         .workspace_secrets => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceSecrets },
         .workspace_secret => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceSecretItem },
         // Chat ingress (workspace-scoped) — POST /messages
-        .workspace_fleet_messages => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetMessagesPost },
+        .workspace_fleet_messages => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetMessages },
         // Per-Fleet event history + Server-Sent Events live tail (Bearer this slice;
         // cookie auth path lands with the dashboard slice).
         .workspace_fleet_events => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeFleetEvents },
