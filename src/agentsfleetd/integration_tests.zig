@@ -65,6 +65,7 @@ test {
     _ = @import("http/tenant_model_entries_error_arms_integration_test.zig");
     _ = @import("http/tenant_model_entries_paging_integration_test.zig");
     _ = @import("http/user_preferences_integration_test.zig");
+    _ = @import("http/pool_exhaustion_integration_test.zig");
     _ = @import("http/workspace_onboarding_integration_test.zig");
     _ = @import("session/session_store_redis_integration_test.zig");
     _ = @import("session/session_store_redis_ttl_integration_test.zig");
