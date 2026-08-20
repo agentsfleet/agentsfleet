@@ -8,6 +8,13 @@ source "$SCRIPT_DIR/common.sh"
 # shellcheck source=../egress_host_deps.sh
 source "$SCRIPT_DIR/../egress_host_deps.sh"
 
+# Readiness probe budget: ~60s of tunnel reconnect, then fail. Overridable so
+# the suite can exercise the retry without sleeping through it.
+READYZ_ATTEMPTS="${RUNNER_READYZ_ATTEMPTS:-6}"
+READYZ_RETRY_SECONDS="${RUNNER_READYZ_RETRY_SECONDS:-10}"
+readonly READYZ_ATTEMPTS READYZ_RETRY_SECONDS
+readonly READYZ_TIMEOUT_SECONDS=10
+
 verify_files_and_service() {
   runner_remote "
     set -e
@@ -62,8 +69,33 @@ verify_cgroup_controllers() {
   done
 }
 
+# The runner reaches the control plane through Cloudflare, so this probe reads
+# the edge as well as the box. A cloudflared connector re-registers for a few
+# seconds after every API deploy, and Cloudflare answers 530 (error 1033 — no
+# connector for the hostname) for that whole window. The development lane ships
+# the API and the runner in the same run, so a single-shot curl lands inside it
+# and fails a runner that is fine: run 32385110520 died that way one second
+# after the deploy reported the service active, with /readyz green moments
+# later. Retry over a bounded window and name the last status, so a genuine
+# outage still fails loud — and says what the edge answered.
 verify_control_plane() {
-  runner_remote "curl -fsS '$RUNNER_API_URL/readyz' >/dev/null"
+  local attempt=1 status=""
+  while [ "$attempt" -le "$READYZ_ATTEMPTS" ]; do
+    status="$(
+      runner_remote "curl -sS -o /dev/null -m $READYZ_TIMEOUT_SECONDS -w '%{http_code}' '$RUNNER_API_URL/readyz' || true"
+    )"
+    if [ "$status" = 200 ]; then
+      echo "  ✓ control plane: $RUNNER_API_URL/readyz 200 (attempt $attempt/$READYZ_ATTEMPTS)"
+      return 0
+    fi
+    echo "  … control plane: $RUNNER_API_URL/readyz answered ${status:-000} (attempt $attempt/$READYZ_ATTEMPTS)"
+    attempt=$((attempt + 1))
+    if [ "$attempt" -le "$READYZ_ATTEMPTS" ]; then
+      sleep "$READYZ_RETRY_SECONDS"
+    fi
+  done
+  echo "ERROR: control plane unreachable from $RUNNER_ITEM after $READYZ_ATTEMPTS attempts: $RUNNER_API_URL/readyz answered ${status:-000}" >&2
+  return 1
 }
 
 verify_runner_identity() {
