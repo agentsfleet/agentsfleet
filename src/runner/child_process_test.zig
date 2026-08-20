@@ -15,6 +15,7 @@
 const std = @import("std");
 const child_process = @import("child_process.zig");
 const sandbox_env = @import("sandbox_env.zig");
+const contract = @import("contract");
 
 const HOME = "HOME";
 const HOME_VALUE = "/run/agentsfleet";
@@ -22,7 +23,7 @@ const DENIED_VAR = "AGENTSFLEET_RUNNER_TOKEN";
 const DENIED_VALUE = "agt_r_not_a_real_token";
 const OFF_ALLOWLIST_VAR = "SHELL";
 
-test "test_home_reaches_sandboxed_child: HOME crosses when the daemon has it, credentials never do" {
+test "test_home_reaches_sandboxed_child: the sandbox's HOME crosses, the daemon's never does" {
     const alloc = std.testing.allocator;
 
     var daemon_env: std.process.Environ.Map = .init(alloc);
@@ -35,14 +36,18 @@ test "test_home_reaches_sandboxed_child: HOME crosses when the daemon has it, cr
     defer child_env.deinit();
 
     const home = child_env.get(HOME) orelse return error.TestUnexpectedResult;
-    try std.testing.expectEqualStrings(HOME_VALUE, home);
+    // HOME_VALUE is the unit's real setting, and forwarding it is the defect:
+    // it names a host RuntimeDirectory outside every bind and landlock rule, so
+    // a child holding it dies at AccessDenied. The child gets the sandbox's own.
+    try std.testing.expectEqualStrings(contract.protocol.CHILD_HOME, home);
+    try std.testing.expect(!std.mem.eql(u8, HOME_VALUE, home));
     // Fail-closed: the control-plane credential and anything else off the
     // allowlist are absent, not merely empty.
     try std.testing.expect(child_env.get(DENIED_VAR) == null);
     try std.testing.expect(child_env.get(OFF_ALLOWLIST_VAR) == null);
 }
 
-test "an unset HOME is never substituted or defaulted" {
+test "an unset HOME is still assigned, never left for the child to resolve" {
     const alloc = std.testing.allocator;
 
     var daemon_env: std.process.Environ.Map = .init(alloc);
@@ -52,18 +57,20 @@ test "an unset HOME is never substituted or defaulted" {
     var child_env = try child_process.buildChildEnviron(alloc, &daemon_env);
     defer child_env.deinit();
 
-    // The regression this pins: with no HOME on the daemon the child gets none,
-    // its config load fails, and no lease can run. The fix lives in the unit
-    // file, not here — this test exists so that stays a deliberate contract
-    // rather than something a future allowlist edit appears to paper over.
-    try std.testing.expect(child_env.get(HOME) == null);
+    // This test previously pinned the OPPOSITE: with no daemon HOME the child got
+    // none. That made a failure mode into a contract — a child with no HOME cannot
+    // resolve a config directory, so no lease could run. The sandbox now assigns
+    // one, so the daemon's environment stops deciding whether a lease is possible.
+    try std.testing.expectEqualStrings(contract.protocol.CHILD_HOME, child_env.get(HOME).?);
 }
 
-test "HOME is on the passthrough allowlist and the deny prefix is not" {
-    var saw_home = false;
+test "HOME is off the passthrough allowlist, and the deny prefix stays off it" {
+    // The inverse of what this once asserted. Forwarding the daemon's HOME is
+    // what pointed the child at /run/agentsfleet — a host path outside every bind
+    // and landlock rule — so the allowlist must NOT carry it: an entry here would
+    // land the daemon's value in the map and re-break every lease.
     for (sandbox_env.ENV_PASSTHROUGH_ALLOWLIST) |name| {
-        if (std.mem.eql(u8, name, HOME)) saw_home = true;
+        try std.testing.expect(!std.mem.eql(u8, name, HOME));
         try std.testing.expect(!std.mem.startsWith(u8, name, sandbox_env.ENV_DENY_PREFIX));
     }
-    try std.testing.expect(saw_home);
 }
