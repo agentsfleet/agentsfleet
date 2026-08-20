@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M170
 **Workstream:** 001
 **Date:** Aug 19, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — a Fleet that declares no tools currently receives a shell on the runner host, and that host holds a public address and a private-network interface.
 **Categories:** INFRA, ZIG
 **Batch:** B1 — no dependency on another unstarted workstream
@@ -214,14 +214,14 @@ Sandbox baseline read set (narrowed to the credential half — see §3):
 | R2 | A process-spawning tool cannot be granted (§2) | `rg -n 'shell' src/runner/engine/tool_bridge.zig \| rg -c 'HOSTED_TOOL_ALLOWLIST'` | 0 matches | P0 |  ✅ `shell` appears only in refusal lists and registry-resolution pins; never in the allowlist |
 | R3 | No shipped bundle loses a tool it declares (§2) | `make test-unit-agentsfleet-runner` | exit 0 | P0 |  ✅ all six bundles declare only `http_request` / `memory_*`, every one still resolves |
 | R4 | The sandbox reaches no credential file (§3) | `rg -n -A14 'pub const BASELINE_RO_PATHS' src/lib/contract/protocol_bind_paths.zig` | no `/opt` and no broad `/etc` entry | P0 |  ✅ baseline names `/etc` only as the three files a lease reads (`ssl/certs`, `hosts`, `nsswitch.conf`); `/opt` absent. A comptime guard refuses either tree — and any ancestor that would re-admit one — on every platform. |
-| R5 | A real lease cannot read the daemon's credentials (§3) | `make test-integration-kernel` | exit 0 | P0 |  (regrade at VERIFY) — proven by reading `/opt/agentsfleet/.env` and `/etc/shadow` from inside a real bwrap+landlock+seccomp lease, each confirmed host-readable first so a missing file cannot pass the test vacuously. |
-| R7 | A real lease can exec the transport the engine spawns (§3) | `make test-integration-kernel` | exit 0 | P0 |  (regrade at VERIFY) — the inverse of R5: `/usr/bin/env` (and `curl` where the host has one) runs inside a composed lease, and the trust bundle reads, each with a host control arm so absence cannot pass vacuously. |
-| R8 | The runner measures transport executability every heartbeat (§3) | `rg -n 'KEY_TRANSPORT\|CHECK_TRANSPORT' src/runner` | the probe emits the row and `grade` names it | P0 |  (regrade at VERIFY) — the parent resolves the host's `curl`, the probe spawns it from behind `no_new_privs` → landlock → seccomp, and a host carrying no transport reads as a named fault rather than a silent pass. |
+| R5 | A real lease cannot read the daemon's credentials (§3) | `make test-integration-kernel` | exit 0 | P0 | ✅ `make test-integration-kernel` exit 0 — 438 pass, 6 skip (444). `the daemon's credentials are unreachable inside a real lease sandbox` reads `/opt/agentsfleet/.env` and `/etc/shadow` from inside a real bwrap+landlock+seccomp lease, each confirmed host-readable first so a missing file cannot pass vacuously. |
+| R7 | A real lease can exec the transport the engine spawns (§3) | `make test-integration-kernel` | exit 0 | P0 | ✅ `make test-integration-kernel` exit 0 — same run. Four proofs execute: `/usr/bin/env` runs in a composed lease, FAILS with only the system-core bind triples removed, the trust bundle reads, and the transport spawns under the full `no_new_privs` → landlock → seccomp wall. `curl` skips where the host has none (the kernel-lane image), which is reported, not silent. |
+| R8 | The runner measures transport executability every heartbeat (§3) | `rg -n 'KEY_TRANSPORT\|CHECK_TRANSPORT' src/runner` | the probe emits the row and `grade` names it | P0 | ✅ `rg -n 'KEY_TRANSPORT\|CHECK_TRANSPORT' src/runner` → 4 files: the probe emits the key (`selftest_probe.zig:104,298`), the parser decodes it (`selftest_exec.zig:267`), `grade` names the check (`selftest.zig:61,411,414`), and the key round-trip is pinned (`selftest_probe_test.zig:44,70`). |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 |  ✅ every path in the diff appears in Files Changed |
-| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 |  ❌ blocked — Docker VM disk full (`pg connect error: could not write init file: No space left on device`) |
+| S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `make test-unit-all` exit 0 — the disk exhaustion that blocked this row is gone; full lane green including the TypeScript suite. |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 |  ✅ `✓ All lint checks passed` / `ALL GATES GREEN` via pre-commit |
-| S3 | Integration passes | `make test-integration` | exit 0 | P0 |  ❌ blocked — same disk exhaustion |
-| S5 | No leaks | `make memleak` | exit 0 | P0 |  ⬜ not run — memleak lane needs the same datastore |
+| S3 | Integration passes | `make test-integration` | exit 0 | P0 | ✅ CI `test-integration` + `test-integration-suite` both pass on `208a9895b`. Locally the lane reported 985 pass / 0 fail on one run and lost one test to a wall-clock flake on two others (`patch_concurrent` asserts `elapsed < 5_500`; it passes 3/3 in isolation on an idle machine and is outside this diff). Graded from CI, which is the unloaded arbiter. |
+| S5 | No leaks | `make memleak` | exit 0 | P0 | ✅ `make memleak` exit 0. |
 | S6 | Cross-compile | `zig build --build-file build_runner.zig -Dtarget=x86_64-linux-musl && zig build --build-file build_runner.zig -Dtarget=aarch64-linux-musl` | exit 0 | P0 |  ✅ `x86_64-linux-musl` built and executed on the host |
 | S7 | No secrets | `gitleaks detect --no-banner` | exit 0 | P0 |  ✅ `no leaks found` |
 | S9 | Orphan sweep | Dead Code Sweep greps | 0 matches | P0 |  ✅ zero matches for `hosted_tools`, `UNSUPPORTED_HOSTED_TOOLS`, `isUnsupportedHostedToolName` |
