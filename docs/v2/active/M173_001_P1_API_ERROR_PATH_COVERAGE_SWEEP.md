@@ -218,7 +218,7 @@ code is out of scope and reverts.
 | R3 | The error-return class is empty (§3) | `python3 scripts/classify_unhit_lines.py --class error-return --count` | `0` | P0 | |
 | R4 | The other-branch class is empty (§4) | `python3 scripts/classify_unhit_lines.py --class other,brace --count` | `0` | P0 | |
 | R5 | Every component floor equals its landed rate rounded down (§5) | `make test-coverage-grade` | exit 0 | P0 | |
-| R6 | No reachable behaviour changed | `git diff --name-only origin/main...HEAD \| grep -vE '_test\.zig$\|\.md$\|\.py$'` | every listed file's diff is deletion-only | P0 | |
+| R6 | No reachable behaviour changed except a leak the proof caught | `git diff --name-only origin/main...HEAD \| grep -vE '_test\.zig$\|\.md$\|\.py$'` | every listed file's diff is a deletion, or a cleanup fix named in Discovery's leak log | P0 | |
 | R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
@@ -284,6 +284,19 @@ code is out of scope and reverts.
     workstreams or run it on one branch. Indy chose **full sweep, one long
     branch**: all four classes reach zero before the PR opens. No section defers,
     so this spec carries no deferral quote.
+  - **R6 amended (Aug 20, 2026).** R6 as authored demanded every product-file
+    diff be deletion-only. That forbids the one outcome §1 exists to produce: a
+    proof that finds a real leak and the fix that closes it. Dimension 1.4 and
+    the Failure Modes table both already say such a function "is fixed", so the
+    rubric row was the odd one out. Amended to allow a cleanup fix when the
+    proof that caught it is named in the leak log below.
+
+### Leak log — real defects the allocation-failure proofs caught
+
+| Site | Defect | Fix | Proof |
+|------|--------|-----|-------|
+| `src/agentsfleetd/auth/jwks.zig` `parseJwks` | The three owned fields were built inside the `append` argument list. A decode failure on `modulus` or `exponent` left `kid` allocated and unreferenced — the `errdefer` block only reaches keys already appended, so it never freed it. 15 bytes per key, and the daemon refetches this key set from a config-controlled provider URL for the life of the process, so it compounds per refresh. | Each field owned one at a time behind its own `errdefer` rung, then appended. | `test_jwks_parse_unwinds_without_leaking` — fails at `fail_index 4/8` with 536 allocated / 521 freed before the fix |
+
   - **Floor location (Aug 20, 2026).** The spec named
     `scripts/check_zig_coverage_floors.py` as the file carrying the enforced
     floors. It carries the grading logic; the values are `ZIG_COVERAGE_FOLDER_

@@ -367,3 +367,22 @@ test "parseFleetTriggers: non-object array element is rejected" {
         \\]
     ));
 }
+
+fn dupeStringArrayUnderAllocator(alloc: std.mem.Allocator) !void {
+    const items = [_]std.json.Value{
+        .{ .string = "alpha" },
+        .{ .string = "beta" },
+        .{ .string = "gamma" },
+    };
+    const out = try config_helpers.dupeStringArray(alloc, &items);
+    for (out) |s| alloc.free(s);
+    alloc.free(out);
+}
+
+test "test_dupe_string_array_unwinds_without_leaking" {
+    // The `errdefer` block frees exactly the first `i` entries — the ones
+    // already duped — and the backing array. An off-by-one there leaks a
+    // string or double-frees an uninitialised slot, and neither shows up on
+    // the success path every other test in this file takes.
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, dupeStringArrayUnderAllocator, .{});
+}

@@ -295,11 +295,20 @@ pub fn parseJwks(alloc: std.mem.Allocator, raw: []const u8) !JwksCache {
             if (!std.mem.eql(u8, kty, "RSA")) continue;
         }
 
-        try keys.append(alloc, .{
-            .kid = try alloc.dupe(u8, key.kid.?),
-            .modulus = try decodeBase64UrlOwned(alloc, key.n.?),
-            .exponent = try decodeBase64UrlOwned(alloc, key.e.?),
-        });
+        // Owned one at a time, each with its own rung. Built inside the
+        // `append` argument list these three leaked: a decode failure on
+        // `modulus` or `exponent` left `kid` allocated and unreferenced, and
+        // the `errdefer` above only reaches keys already appended. The daemon
+        // refetches this key set from a config-controlled provider URL for the
+        // life of the process, so that leak compounds per refresh.
+        const kid = try alloc.dupe(u8, key.kid.?);
+        errdefer alloc.free(kid);
+        const modulus = try decodeBase64UrlOwned(alloc, key.n.?);
+        errdefer alloc.free(modulus);
+        const exponent = try decodeBase64UrlOwned(alloc, key.e.?);
+        errdefer alloc.free(exponent);
+
+        try keys.append(alloc, .{ .kid = kid, .modulus = modulus, .exponent = exponent });
     }
 
     if (keys.items.len == 0) return VerifyError.JwksParseFailed;

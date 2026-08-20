@@ -1139,3 +1139,17 @@ test "jwks fetch rejects an unparseable issuer url without touching the network"
     const r = jwks_fetch.fetchCapped(std.testing.allocator, "not-a-url");
     try std.testing.expectError(jwks_fetch.FetchError.FetchFailed, r);
 }
+
+fn parseJwksUnderAllocator(alloc: std.mem.Allocator) !void {
+    var cache = try parseJwks(alloc, TEST_JWKS);
+    cache.deinit(alloc);
+}
+
+test "test_jwks_parse_unwinds_without_leaking" {
+    // Every key `parseJwks` has already appended is freed by the `errdefer`
+    // block when a later key's dupe or base64 decode fails. That block runs on
+    // no other path, so an ordinary parse test never touches it — and a key set
+    // arrives from a config-controlled provider URL that can hand the daemon
+    // more keys than it has memory for.
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, parseJwksUnderAllocator, .{});
+}
