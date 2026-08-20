@@ -24,7 +24,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Categories:** DOCS, INFRA
 **Batch:** B1 — starts after the development runner is online
 **Branch:** `feat/m136-live-connector-proof-followup`
-**Test Baseline:** unit=3907 integration=638
+**Test Baseline:** unit=4157 integration=709
 **Depends on:** M135_002 (online runner with advancing heartbeat); M135_001 (provider bags, callback routes, and registration grants); M133_001 (workspace-multiplexed Live Wall, visually accepted with exhaustive deployed proof delegated here)
 **Provenance:** human-directed successor to M135_001 after the Jul 20, 2026 scope decision
 **Canonical architecture:** `docs/architecture/scenarios/github-pr-reviewer.md` §Remaining proof punch list
@@ -103,6 +103,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/e2e/acceptance/_smoke.spec.ts` | EDIT | Name the runner readiness and advancing-heartbeat proof before every mutating project. |
 | `ui/packages/app/tests/e2e/acceptance/fixtures/preflight.ts` | EDIT | Add bounded same-runner heartbeat comparison with redacted failure output. |
 | `ui/packages/app/tests/release-gate-suite-config.test.ts` | EDIT | Pin offline readiness and same-runner heartbeat advancement without a deployed dependency. |
+| `src/lib/contract/{protocol_bind,protocol_policy,protocol}.zig` | EDIT | Own `CHILD_HOME` beside the writable tmpfs floor, with a comptime proof it nests inside that floor. |
+| `src/runner/sandbox_env.zig` | EDIT | Drop `HOME` from the passthrough allowlist — the daemon's home is not the child's. |
+| `src/runner/child_process.zig` | EDIT | Set the child's `HOME` to `CHILD_HOME` rather than inheriting one that resolves nowhere inside the sandbox. |
+| `src/runner/sandbox_args.zig` | EDIT | Emit `--dir CHILD_HOME` so the parent exists for engine paths that do not create parents. |
+| `src/runner/{selftest,selftest_probe}.zig` | EDIT | Grade the child's real `$HOME` for write access, so an unreachable home cannot pass as `all_ok`. |
+| `deploy/baremetal/agentsfleet-runner.service` | EDIT | Correct the comment that claimed the child inherits this `HOME`. |
 | `src/runner/sandbox_hardening.zig` | CREATE | Own the `no_new_privs` → landlock → seccomp trio the lease child and the self-test probe both apply. |
 | `src/agentsfleetd/state/heroku_names.zig` · `heroku_names_test.zig` | EDIT | Derive a free name from a taken one by appending a three-digit suffix. |
 | `src/agentsfleetd/http/handlers/fleets/create.zig` · `api_integration_test.zig` | EDIT | Retry a taken DEFAULT name under a derived one; an explicitly requested duplicate stays `UZ-AGT-006`. |
@@ -159,6 +165,9 @@ The development proof exposed common drift: an external provider authorization c
 - **Dimension 0.10** — the platform fleet-library dialog offers GitHub and upload through the one field set the workspace dialog uses; an upload never carries a `ref`, and a name collision from either source is confirmable → Tests `never lets a ref ride an upload, even when the caller supplies one` · `sends both bundle bodies and no repository` · `retries an upload collision with replace once the operator confirms` · `offers no choice of source` (Fetch-update)
 - **Dimension 0.11** — both runner policy dialogs link the published runner page, so the policy fields point at their defaults and ranges instead of restating them → Tests `points at the runner policy page` (enrollment and re-assignment dialogs)
 - **Dimension 0.12** — the create path's insert-failure decision is a pure function over the three facts that decide it, and both failure responses no test can trigger through the handler are emitted by tested code, so the retry bound is pinned on both sides and neither 500 is trusted to read correctly → Tests `classifyInsertFailure: a non-unique violation is never retried` · `classifyInsertFailure: an explicit name collides honestly` · `classifyInsertFailure: a defaulted name retries up to the bound` · `classifyInsertFailure: the retry bound is inclusive and stops the loop` · `create failure: a name the server could not generate is a 500 UZ-INTERNAL-003` · `create failure: a non-unique insert failure is a 500 UZ-INTERNAL-002` · `create failure: the insert response is application/problem+json` · `create failure: the underlying error name never reaches the response body`
+
+- **Dimension 0.13** — **DONE** — the sandboxed child's `HOME` resolves to a path inside its own sandbox, so the engine can create its configuration directory: the daemon's `HOME` is no longer passed through to the child, and the child receives a fixed path on the writable tmpfs floor that bwrap creates per lease → Tests `the child environ carries a HOME the sandbox provides, never the daemon's` · `HOME is absent from the passthrough allowlist` · `the child home nests under the writable tmpfs floor`
+- **Dimension 0.14** — **DONE** — the self-test probe writes and removes a file under the child's actual `$HOME` and grades the result, so a runner whose engine cannot reach its configuration directory can no longer report `all_ok` → Tests `the probe grades a home it cannot write` · `an unreachable child home fails the self-test`
 
 ### §1 — Preconditions are live facts
 
@@ -267,6 +276,8 @@ Evidence records redacted resource identifiers, delivery identifiers, and counts
 | 0.6 | integration | `integration: completion rejects a different identity without consuming the starter state` | a different authenticated identity receives 400 `UZ-CONN-002`; the starter identity can still consume the same state and complete the connector binding |
 | 0.7 | unit | `landlock read set contains every bind-contract path` | every `BASELINE_RO_PATHS` entry is in the landlock read set; an operator bind rides the child argv at its assigned mode |
 | 0.8 | unit + integration | `an undeclared registry still resolves the control-plane host, and never dials it` · real-sandbox probe proofs | empty allowlist → resolve control-plane host, no dial; probe under full hardening still passes the resolver check in an unmodified sandbox and detects a dangled one |
+| 0.13 | unit | `the child environ carries a HOME the sandbox provides, never the daemon's` | a daemon environ carrying `HOME=/run/agentsfleet` yields a child environ whose `HOME` is `CHILD_HOME`; `CHILD_HOME` nests under a `BASELINE_RW_TMPFS` entry |
+| 0.14 | unit + integration | `the probe grades a home it cannot write` | a probe whose `$HOME` is unwritable reports the home check failed and the self-test does not read `all_ok` |
 | 1.1 | end-to-end | `test_connector_proof_requires_online_runner` | stale runner prevents external mutation |
 | 1.2 | end-to-end | `test_runner_last_seen_advances` | bounded reads show advancing `last_seen_at` |
 | 2.1 | end-to-end | `test_slack_workspace_connection_status` | connector status matches intended workspace |
@@ -334,6 +345,7 @@ N/A — no files deleted.
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage:
+  - **The self-test probe graded the daemon's environment, not the lease's (Aug 20, 2026).** `selftest_exec.run` spawned the probe with the daemon environ inherited, so the probe graded the daemon's own HOME — a host path no lease ever sees — and carried `AGENTSFLEET_RUNNER_TOKEN` into the sandbox it exists to distrust. It now routes through `child_process.buildChildEnviron`, the same filtered allowlist + assigned-HOME map a lease child gets (`daemon_env` threaded from `runLoop` through `selftest_beat.capture`). Proven in the kernel lane: the scratch/home proof runs under the filtered environ and passes.
 - **Metrics review** —
 - **Skill-chain outcomes** —
 - **Live-setup defect scope (Aug 15, 2026).** Indy asked for the defects in this PR so M136 can continue after deployment: "Just add these in your PR these are the testing bugz" and later "Orly I need a PR for this so we could keep the M136_001 and continue the test." The GitHub correction is explicit: "bug 1 is on GH not slack slack connection worked if you notice in my integrations". External authorization can survive outside `agentsfleet` for any provider after datastore teardown. Every connector therefore gets the same retry surface. GitHub additionally needs installation discovery because its existing-install path does not return through the callback. `Disconnect` clears only `agentsfleet` state and never revokes or uninstalls the external provider app.
@@ -389,6 +401,16 @@ N/A — no files deleted.
     > Indy (2026-08-18): "leverage the common codebase so we dont have to reinvent it" — recorded in `HANDOFF_M136_AUG18.md`.
 
   Two consequences read from source rather than assumed. `resolveUpload` refuses a request carrying `ref` with `InvalidSourceRef`, so the shared payload builder drops a ref on the upload branch — the platform Fetch-update path is the only caller that has one. And `INSERT_PLATFORM`'s conflict guard compares `source_repo`, which an upload leaves empty: a second upload of the same name updates in place, while a name a repository-sourced row owns still collides, so `replace` had to ride the upload request or the Replace button would retry into the same refusal forever.
+- **RESOLVED — every dev lease died because the child's `HOME` resolved outside its own sandbox (Aug 19, 2026).** After §0's landlock fix cleared `HostResolutionFailed`, the dev runner's leases moved to the next broken thing and died at `wall_seconds=0` with `fleet_run_failed UZ-EXEC-013 err=AccessDenied`. Read from the host, not inferred: `agentsfleet-runner.service` sets `Environment=HOME=/run/agentsfleet`, `HOME` rides `ENV_PASSTHROUGH_ALLOWLIST` into the sandboxed child, and the engine resolves its configuration directory from it — but the only `/run` path any sandbox list carries is `/run/systemd/resolve`. Inside a lease-shaped sandbox on `zombie-dev-worker-ant`, `ls /run` returns `systemd` alone.
+
+  The mount layer is not the denier — a manual `mkdir -p /run/agentsfleet/.nullclaw` inside that sandbox SUCCEEDS, because bwrap builds a writable tmpfs at `/run` to host the resolver bind's mountpoint. Landlock is: no rule covers `/run/agentsfleet`, and an uncovered path returns `EACCES`, which is exactly the `AccessDenied` observed. The same sandbox accepts `mkdir -p /tmp/home/.nullclaw` and a write into it, because M169 granted the tmpfs floor write at the policy layer.
+
+  Not an M169 regression. The `HOME` line landed Aug 1 (M156) and was invisible while leases died earlier.
+
+  **Why the self-test graded this host healthy:** `selftest_completed all_ok=true checks=4`. `CHECK_SCRATCH` iterates `BASELINE_RW_TMPFS` and proves the *floor* is writable; nothing proved the child's `$HOME` was inside that floor. Dimension 0.14 closes the class rather than the instance — the probe now grades the home the child actually receives.
+
+  Rejected: adding `/run/agentsfleet` as an operator sandbox mount. `pathOverlapsProtected` refuses it (`/run` is in `SENSITIVE_PATHS`, and overlap is refused in either direction), and it would mount the daemon's runtime directory — which holds its control-plane token — into every lease.
+
 - **Deferrals** —
   > Indy (2026-07-20 22:23): "And move th 2,3,4 to the next milestone and read and move this milestone to done?" — context: live Slack authorization/signed mention and real GitHub review/replay proof move from M135_001 to this successor; runner activation remains M135_002 and is this workstream's prerequisite.
   > Indy (2026-07-26): "I think move this to DONE. I have eyeballed it, on fleets getting added, i will do an exhaustive check in M136_001" — context: M133 closes on direct visual acceptance; M136 inherits the unrun deployed `live-counter` and `pulse-wall` proof and must exercise them with the real `github-pr-reviewer` Fleet.

@@ -12,7 +12,6 @@ const providers = nullclaw.providers;
 const json = @import("json_helpers.zig");
 const wire = @import("wire.zig");
 const tool_bridge = @import("tool_bridge.zig");
-const hosted_tools = @import("hosted_tools.zig");
 const context_budget = @import("context_budget.zig");
 const credential_request = @import("credential_request.zig");
 const runner_progress = @import("runner_progress.zig");
@@ -223,14 +222,29 @@ fn ensureProviderEntry(cfg: *Config) !*nullclaw.config.ProviderEntry {
     return &new_providers[0];
 }
 
-/// Build tools from RPC tools array, or fall back to allTools.
-/// Unknown names are logged to stderr and collected in BuildResult.skipped.
+/// Zero tools, allocated so the caller's `deinitTools` frees it like any other
+/// result. Named rather than inlined twice (RULE UFS) — both fail-closed arms
+/// return the same thing and must keep returning the same thing.
+fn emptyToolSet(alloc: std.mem.Allocator) ![]tools_mod.Tool {
+    return alloc.alloc(tools_mod.Tool, 0);
+}
+
+/// Build tools from the lease's tools array. A declaration can only SUBTRACT:
+/// there is no fallback that grants more than was asked for.
+///
+/// The removed fallback is the reason this reads the way it does. An absent or
+/// non-array spec used to mean "no preference" and returned the entire tool
+/// registry — so a Fleet declaring `tools: []` received every tool, shell
+/// included, on a runner host with a public address. "Declared nothing" now
+/// means nothing, which is what an operator writing an empty list intends.
+///
+/// Unknown names are logged and collected in BuildResult.skipped; a name that
+/// is not hosted-allowlisted fails the lease inside `tool_bridge.buildTools`.
 ///
 /// `policy` is the session-owned ExecutionPolicy. When non-null, tools that
 /// consult per-execution policy (currently only http_request) construct
-/// the policy-aware variant. Null is the legitimate path for the
-/// `allTools()` fallback (no spec) and for harness/test paths that don't
-/// drive the bridge.
+/// the policy-aware variant. Null is the legitimate path for harness/test
+/// paths that don't drive the bridge.
 pub fn buildToolsFromSpec(
     alloc: std.mem.Allocator,
     workspace_path: []const u8,
@@ -239,8 +253,10 @@ pub fn buildToolsFromSpec(
     policy: ?*const context_budget.ExecutionPolicy,
     cred_channel: ?credential_request.Channel,
 ) ![]tools_mod.Tool {
-    const spec = tools_spec orelse return hosted_tools.buildDefault(alloc, workspace_path, cfg);
-    if (spec != .array) return hosted_tools.buildDefault(alloc, workspace_path, cfg);
+    // Fail closed on both shapes: no spec at all, and a spec that is not an
+    // array, each yield zero tools rather than the registry default.
+    const spec = tools_spec orelse return emptyToolSet(alloc);
+    if (spec != .array) return emptyToolSet(alloc);
 
     const result = try tool_bridge.buildTools(alloc, spec, workspace_path, cfg, policy, cred_channel);
     for (result.skipped) |name| {

@@ -64,7 +64,12 @@ describe("bindPathIssue", () => {
     expect(bindPathIssue("/srv/../root")).toContain("..");
   });
 
-  it.each(["/etc", "/etc/ssl", "/opt", "/run/systemd/resolve"])(
+  // `/usr` and `/bin` are here rather than below because the daemon MOUNTS
+  // them: the engine's model transport spawns `curl`, so the executable trees
+  // are part of the baseline. The refusal an operator sees is "already
+  // mounted", not "forbidden", and the distinction is the honest one — adding
+  // them changes nothing rather than being dangerous.
+  it.each(["/etc", "/etc/ssl", "/run/systemd/resolve", "/usr", "/bin"])(
     "refuses %s because the daemon already mounts that subtree",
     (path) => {
       expect(bindPathIssue(path)).toContain("already mounts");
@@ -78,7 +83,12 @@ describe("bindPathIssue", () => {
     expect(bindPathIssue("/run")).toContain("already mounts /run/systemd/resolve");
   });
 
-  it.each(["/usr", "/proc/self", "/root", "/var/lib/agentsfleet", "/var/run"])(
+  // `/opt` moved HERE from the already-mounted list, and that move is the
+  // security change: the daemon writes its control-plane token to
+  // `/opt/agentsfleet/.env`, so `/opt` is no longer bound into a lease and an
+  // operator naming it is now refused as host control rather than waved off as
+  // redundant. Same for the broad `/etc`, which carries the account database.
+  it.each(["/opt", "/proc/self", "/root", "/var/lib/agentsfleet", "/var/run"])(
     "refuses %s as the sandbox floor or host control",
     (path) => {
       expect(bindPathIssue(path)).toContain("cannot be bound");

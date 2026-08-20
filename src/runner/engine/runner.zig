@@ -187,7 +187,7 @@ pub fn executeInner(
     defer provider_bundle.deinit();
     const provider_i = deps.acquireProvider(alloc, &cfg, &provider_bundle) catch return RunnerError.FleetInitFailed;
 
-    // 3. Build tools from spec (or allTools as fallback).
+    // 3. Build tools from the declared spec — no fallback; absent means zero.
     const tools = buildToolsFromSpec(alloc, workspace_path, tools_spec, &cfg, policy, deps.cred_channel) catch {
         log.err("tool_build_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT });
         return RunnerError.FleetInitFailed;

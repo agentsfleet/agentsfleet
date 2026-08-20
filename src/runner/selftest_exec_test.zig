@@ -14,12 +14,13 @@ const sandbox_args = @import("sandbox_args.zig");
 const selftest = @import("selftest.zig");
 const selftest_exec = @import("selftest_exec.zig");
 
-const PASSING = "resolver=1 scratch=1 dns=1 egress=1 binds=1\n";
+const PASSING = "resolver=1 scratch=1 home=1 dns=1 egress=1 binds=1\n";
 
 test "every check reads back off a full passing line" {
     const o = selftest_exec.outcomeFrom(PASSING, false);
     try std.testing.expect(o.resolver_readable);
     try std.testing.expect(o.scratch_writable);
+    try std.testing.expect(o.home_writable);
     try std.testing.expect(o.dns_resolved);
     try std.testing.expect(o.egress_reachable);
     try std.testing.expect(o.extra_binds_present);
@@ -39,6 +40,23 @@ test "a line with no scratch key reads scratch as failed" {
     const o = selftest_exec.outcomeFrom("resolver=1 dns=1 egress=1 binds=1", false);
     try std.testing.expect(!o.scratch_writable);
     try std.testing.expect(o.resolver_readable);
+}
+
+test "a refused home write reads back failed" {
+    const o = selftest_exec.outcomeFrom("resolver=1 scratch=1 home=0 dns=1 egress=1 binds=1", false);
+    try std.testing.expect(!o.home_writable);
+    // The shape that shipped: the floor is writable, the home is not.
+    try std.testing.expect(o.scratch_writable);
+}
+
+test "a line with no home key reads home as failed" {
+    // Same fail-closed reading as scratch: an absent key is a write nobody
+    // attempted, and a write nobody attempted is not a pass. This is also the
+    // exact line an OLD probe emits, so an unupgraded probe grades red rather
+    // than certifying a home it never looked at.
+    const o = selftest_exec.outcomeFrom("resolver=1 scratch=1 dns=1 egress=1 binds=1", false);
+    try std.testing.expect(!o.home_writable);
+    try std.testing.expect(o.scratch_writable);
 }
 
 test "a check the probe never ran is untested, not failed" {
@@ -160,7 +178,9 @@ test "a host without bubblewrap reports an unestablished sandbox, not an empty p
     if (sandbox_args.bwrapPath(io) != null) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
-    const r = try selftest_exec.run(io, alloc, probeCfg(), "/tmp");
+    var daemon_env: std.process.Environ.Map = .init(alloc);
+    defer daemon_env.deinit();
+    const r = try selftest_exec.run(io, alloc, probeCfg(), &daemon_env, "/tmp");
     defer r.deinit(alloc);
 
     // A missing mechanism is a named failed CHECK, never an error return — the
