@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M173
 **Workstream:** 001
 **Date:** Aug 20, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — 274 allocation-failure cleanup paths in a long-running daemon have never executed, so a leak on any of them reaches operators as unexplained memory growth; `agentsfleetd` also sits 0.36 points above a floor it cannot fall below
 **Categories:** API
 **Batch:** B1 — single workstream, no parallel sibling
-**Branch:** {feat/m173-error-path-coverage — added at CHORE(open)}
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` via `make _lint_zig_test_depth`
+**Branch:** feat/m173-error-path-coverage
+**Test Baseline:** unit=4205 integration=719
 **Depends on:** M173 inherits the inventory produced by M172_001's `/write-unit-test` audit; M172_001 also lands the first worked example (the thread read's allocation-failure proof)
 **Provenance:** LLM-drafted (Claude Opus 5, Aug 20, 2026) — grounded in the merged kcov report at `coverage/zig/merged/cobertura.xml`, classified line by line against the sources it names
 **Canonical architecture:** `docs/architecture/testing.md` §Coverage, §The denominator holds shipped code only, §Floors bind per folder
