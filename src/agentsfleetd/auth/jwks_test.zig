@@ -1153,3 +1153,74 @@ test "test_jwks_parse_unwinds_without_leaking" {
     // more keys than it has memory for.
     try std.testing.checkAllAllocationFailures(std.testing.allocator, parseJwksUnderAllocator, .{});
 }
+
+// ── Cache-hit ladder + contention ───────────────────────────────────────
+
+fn cachedVerifyUnderAllocator(alloc: std.mem.Allocator) !void {
+    // A verifier of its own per attempt, so the cache is warmed inside the
+    // failing allocator's view and the cache-hit dupes are among the sites
+    // being failed rather than allocated once before the sweep starts.
+    var v = try Verifier.init(alloc, .{
+        .jwks_url = "https://clerk.dev.agentsfleet.net/.well-known/jwks.json",
+        .issuer = "https://clerk.dev.agentsfleet.net",
+        .audience = "https://api.agentsfleet.net",
+        .inline_jwks_json = TEST_JWKS,
+    });
+    defer v.deinit();
+    const vc = try v.verifyAndDecode(alloc, "Bearer " ++ TEST_VALID_TOKEN);
+    alloc.free(vc.subject);
+    alloc.free(vc.issuer);
+    alloc.free(vc.claims_json);
+}
+
+test "test_cached_key_lookup_unwinds_without_leaking" {
+    // The cache hit dupes kid, modulus and exponent behind two rungs. Those
+    // rungs run only when a later dupe fails, and every verification in this
+    // file takes the success path — so the ladder that protects the hot path
+    // of every authenticated request has never unwound under test.
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, cachedVerifyUnderAllocator, .{});
+}
+
+const VERIFY_THREADS = 128;
+
+const VerifyWorker = struct {
+    fn run(v: *Verifier, start: *std.atomic.Value(bool), failures: *std.atomic.Value(u32)) void {
+        while (!start.load(.acquire)) std.atomic.spinLoopHint();
+        var i: usize = 0;
+        while (i < 8) : (i += 1) {
+            const vc = v.verifyAndDecode(std.testing.allocator, "Bearer " ++ TEST_VALID_TOKEN) catch {
+                _ = failures.fetchAdd(1, .monotonic);
+                return;
+            };
+            defer freeClaims(vc);
+            if (!std.mem.eql(u8, "user_test", vc.subject)) _ = failures.fetchAdd(1, .monotonic);
+        }
+    }
+};
+
+test "test_concurrent_verification_returns_identical_claims_under_contention" {
+    // Every authenticated request reaches this path, so it is the most
+    // contended read in the daemon. Catches: a dupe hoisted outside the locked
+    // section (use-after-free once a refresh swaps the cache), and any leak on
+    // the contended hit path — testing.allocator arbitrates the leak.
+    var v = try makeTestVerifier(null);
+    defer v.deinit();
+    // Warm the cache before the barrier so the race is reader-vs-reader on a
+    // populated cache, not 128 threads serialising behind one first fetch.
+    const warm = try v.verifyAndDecode(std.testing.allocator, "Bearer " ++ TEST_VALID_TOKEN);
+    freeClaims(warm);
+
+    var start = std.atomic.Value(bool).init(false);
+    var failures = std.atomic.Value(u32).init(0);
+    var threads: [VERIFY_THREADS]std.Thread = undefined;
+    var spawned: usize = 0;
+    for (&threads) |*t| {
+        t.* = std.Thread.spawn(.{}, VerifyWorker.run, .{ &v, &start, &failures }) catch break;
+        spawned += 1;
+    }
+    start.store(true, .release);
+    for (threads[0..spawned]) |t| t.join();
+
+    try std.testing.expectEqual(@as(usize, VERIFY_THREADS), spawned);
+    try std.testing.expectEqual(@as(u32, 0), failures.load(.acquire));
+}

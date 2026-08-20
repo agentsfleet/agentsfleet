@@ -298,6 +298,26 @@ code is out of scope and reverts.
 | `src/agentsfleetd/auth/jwks.zig` `parseJwks` | The three owned fields were built inside the `append` argument list. A decode failure on `modulus` or `exponent` left `kid` allocated and unreferenced — the `errdefer` block only reaches keys already appended, so it never freed it. 15 bytes per key, and the daemon refetches this key set from a config-controlled provider URL for the life of the process, so it compounds per refresh. | Each field owned one at a time behind its own `errdefer` rung, then appended. | `test_jwks_parse_unwinds_without_leaking` — fails at `fail_index 4/8` with 536 allocated / 521 freed before the fix |
 | `src/agentsfleetd/fleet_runtime/yaml_frontmatter.zig` `yamlFrontmatterToJson` | The vendored `zig_yaml` parser allocates an `ErrorBundle` inside `Parser.init` before the allocation that fails, and `Yaml.deinit` cleans the document rather than the half-built parser — so a failed load leaked the parser's own scratch. The defect is upstream; the exposure is ours, on every library import and every fleet-config parse. | The YAML load runs under an arena, so whatever the dependency takes dies with it on success and failure alike. Caller ownership of the returned JSON is unchanged. | `test_bundle_prepare_unwinds_without_leaking` — fails at `fail_index 1/43` with 129 allocated / 0 freed before the fix |
 
+  - **Scope widened to the full test shape (Aug 20, 2026).** Indy: "Ensure you
+    cover the positive, edge cases, performance, concurrency tests". The sweep
+    as authored produces allocation-failure proofs only. Every module this spec
+    touches now also carries, where the module supports it: a behaviour
+    assertion on the success path, boundary/edge cases, a >=100-thread
+    contention proof with an exactly-once invariant, and a counter-based
+    complexity bound. `/write-unit-test`'s Definition of Done is the checklist.
+    First module done to the full shape is `events/fleet_set_cache.zig`; the
+    JWKS verifier follows.
+  - **A complexity assertion measured the wrong thing (Aug 20, 2026).** The
+    first cache ladder asserted allocation CALL count was flat across 32/64/128
+    viewers and failed 33/65/129. `retain` allocates its spare key and entry
+    BEFORE taking the lock and returns them when the entry already exists —
+    that is a documented trade that keeps the critical section non-fallible, so
+    linear call count is correct. Rewritten to assert HELD bytes stay flat,
+    which is what "V viewers cost one entry" actually claims, plus a second test
+    pinning that every losing spare comes back. Recorded because the failure was
+    the test misreading a deliberate design, not a defect — and a perf assertion
+    that names the wrong quantity would have been "fixed" by damaging the code.
+
   - **`errdefer` lines do register hits (Aug 20, 2026).** Worth settling before
     the sweep scales, because R1 expecting `0` is only meaningful if the class
     can be emptied by writing tests. `stream_redactor.zig:47,52` read unhit in a
