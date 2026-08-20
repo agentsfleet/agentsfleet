@@ -166,3 +166,33 @@ pub fn freeView(alloc: std.mem.Allocator, v: EntryView) void {
     if (v.base_url) |b| alloc.free(b);
     // v.kind is a static @tagName slice — not owned, never freed.
 }
+
+const PROOF_ENTRY: entries_state.Entry = .{
+    .id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01",
+    .tenant_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f02",
+    .model_id = "anthropic/claude-opus-5",
+    .secret_ref = "vault://tenant/model-key",
+    .created_at = 1_700_000_000_000,
+    .updated_at = 1_700_000_000_000,
+};
+
+fn projectEntryUnderAllocator(alloc: std.mem.Allocator) !void {
+    // Both exits allocate: the metadata-present path owns five slices, the
+    // degraded path returns after three. Proving only one leaves the other's
+    // rungs unrun, so each is failed in turn.
+    freeView(alloc, try projectEntry(alloc, PROOF_ENTRY, true, .{
+        .kind = .custom_secret,
+        .provider = "anthropic",
+        .base_url = "https://api.anthropic.com",
+        .has_key = true,
+    }, null));
+    freeView(alloc, try projectEntry(alloc, PROOF_ENTRY, true, null, null));
+}
+
+test "test_model_entry_projection_unwinds_without_leaking" {
+    // A missing credential degrades to an opaque custom_secret and returns
+    // early — carrying three owned slices past three rungs that must not fire.
+    // The full path adds two optional dupes behind conditional rungs, where an
+    // `if (v) |x| free(x)` on the wrong variable is invisible until pressure.
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, projectEntryUnderAllocator, .{});
+}

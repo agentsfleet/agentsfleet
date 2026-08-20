@@ -97,3 +97,27 @@ test "test_import_still_persists_support_manifest" {
     try std.testing.expect(std.mem.indexOf(u8, sql.SELECT_ADMIN_CATALOG, "support_files_json") == null);
     try std.testing.expect(std.mem.indexOf(u8, sql.SELECT_ADMIN_CATALOG_ROW, "support_files_json") == null);
 }
+
+const PROOF_BODY = ImportBody{
+    .source_kind = importer.SOURCE_KIND_UPLOAD,
+    .source_ref = "unit",
+    .skill_markdown = "---\nname: unwind-proof\ndescription: d\nversion: 0.1.0\n---\nBody.\n",
+    .support_files = &.{
+        .{ .path = "docs/one.md", .content = "first" },
+        .{ .path = "docs/two.md", .content = "second" },
+    },
+};
+
+fn prepareUnderAllocator(alloc: std.mem.Allocator) !void {
+    const bundle = try importer.prepare(alloc, PROOF_BODY);
+    bundle.deinit(alloc);
+}
+
+test "test_bundle_prepare_unwinds_without_leaking" {
+    // `prepare` carries six owned slices to its return, each behind its own
+    // rung, and a `defer` that frees the per-file manifest hashes on every
+    // path. Support files make the ladder deeper than a single-file import
+    // reaches, so two are seeded: the manifest allocates per entry, and a rung
+    // that frees the array without its entries only shows up with more than one.
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, prepareUnderAllocator, .{});
+}

@@ -21,10 +21,17 @@ const S_TRUE = "true";
 const S_PUNCT_FC763C = ", ";
 
 pub fn yamlFrontmatterToJson(alloc: Allocator, source: []const u8) (Allocator.Error || YamlError)![]u8 {
-    var doc: yaml.Yaml = .{ .source = source };
-    defer doc.deinit(alloc);
+    // The vendored parser leaks its own scratch when `Parser.init` fails
+    // partway: it allocates an ErrorBundle before the allocation that fails,
+    // and `Yaml.deinit` cleans the document rather than the half-built parser.
+    // An arena bounds that — whatever the dependency takes dies here, on the
+    // load's success and failure paths alike. The returned JSON is written
+    // through `alloc` below, so the caller's ownership is unchanged.
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
 
-    doc.load(alloc) catch |err| switch (err) {
+    var doc: yaml.Yaml = .{ .source = source };
+    doc.load(arena.allocator()) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return error.ParseFailure,
     };
