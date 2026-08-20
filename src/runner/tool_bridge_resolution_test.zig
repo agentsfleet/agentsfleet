@@ -11,6 +11,8 @@ const std = @import("std");
 const nullclaw = @import("nullclaw");
 const tool_bridge = @import("engine/tool_bridge.zig");
 const runner_helpers = @import("engine/runner_helpers.zig");
+const child_exec_input = @import("child_exec_input.zig");
+const fixtures = @import("child_exec_test_fixtures.zig");
 const client_errors = @import("engine/client_errors.zig");
 const context_budget = @import("engine/context_budget.zig");
 
@@ -242,4 +244,54 @@ test "should have no memory leaks when buildTools skips unknown tools repeatedly
         try std.testing.expectEqual(@as(usize, 2), result.tools.len);
         try std.testing.expectEqual(@as(usize, 2), result.skipped.len);
     }
+}
+
+test "a tool declared on a REAL lease resolves — producer and consumer agree on one shape" {
+    // The test this suite was missing, and the reason a total outage sat green.
+    // Every other resolution test builds its spec with `specOf`, which emits
+    // `{name: …}` OBJECTS. The lease wire carries `tools: []const []const u8`
+    // and `buildCallArgs` emits bare STRINGS, so production sent a shape the
+    // bridge skipped outright — every declared tool dropped before any refusal
+    // arm ran. Going through buildCallArgs is what makes this assertion real.
+    const alloc = std.testing.allocator;
+    const cfg = defaultCfg();
+
+    var args = try child_exec_input.buildCallArgs(alloc, fixtures.testLease(.{
+        .tools = &.{"http_request"},
+    }));
+    defer args.deinit(alloc);
+
+    const tools = try runner_helpers.buildToolsFromSpec(
+        alloc,
+        WORKSPACE,
+        args.tools_spec,
+        &cfg,
+        null,
+        null,
+    );
+    defer {
+        for (tools) |t| t.deinit(alloc);
+        alloc.free(tools);
+    }
+    try std.testing.expectEqual(@as(usize, 1), tools.len);
+    try std.testing.expectEqualStrings("http_request", tools[0].name());
+}
+
+test "a refused tool declared on a REAL lease still fails the lease" {
+    // The refusal arms must be reachable from the shape production actually
+    // sends, not only from the object shape the other tests build. If the
+    // producer/consumer seam ever drifts again, this fails instead of silently
+    // granting nothing and calling it safety.
+    const alloc = std.testing.allocator;
+    const cfg = defaultCfg();
+
+    var args = try child_exec_input.buildCallArgs(alloc, fixtures.testLease(.{
+        .tools = &.{"shell"},
+    }));
+    defer args.deinit(alloc);
+
+    try std.testing.expectError(
+        error.UnsupportedHostedTool,
+        runner_helpers.buildToolsFromSpec(alloc, WORKSPACE, args.tools_spec, &cfg, null, null),
+    );
 }
