@@ -298,6 +298,26 @@ code is out of scope and reverts.
 | `src/agentsfleetd/auth/jwks.zig` `parseJwks` | The three owned fields were built inside the `append` argument list. A decode failure on `modulus` or `exponent` left `kid` allocated and unreferenced — the `errdefer` block only reaches keys already appended, so it never freed it. 15 bytes per key, and the daemon refetches this key set from a config-controlled provider URL for the life of the process, so it compounds per refresh. | Each field owned one at a time behind its own `errdefer` rung, then appended. | `test_jwks_parse_unwinds_without_leaking` — fails at `fail_index 4/8` with 536 allocated / 521 freed before the fix |
 | `src/agentsfleetd/fleet_runtime/yaml_frontmatter.zig` `yamlFrontmatterToJson` | The vendored `zig_yaml` parser allocates an `ErrorBundle` inside `Parser.init` before the allocation that fails, and `Yaml.deinit` cleans the document rather than the half-built parser — so a failed load leaked the parser's own scratch. The defect is upstream; the exposure is ours, on every library import and every fleet-config parse. | The YAML load runs under an arena, so whatever the dependency takes dies with it on success and failure alike. Caller ownership of the returned JSON is unchanged. | `test_bundle_prepare_unwinds_without_leaking` — fails at `fail_index 1/43` with 129 allocated / 0 freed before the fix |
 
+  - **`errdefer` lines do register hits (Aug 20, 2026).** Worth settling before
+    the sweep scales, because R1 expecting `0` is only meaningful if the class
+    can be emptied by writing tests. `stream_redactor.zig:47,52` read unhit in a
+    report taken three days AFTER a test that targets exactly those arms landed,
+    which looked like kcov mis-attributing `errdefer` cleanup. It is not. The
+    lease-row ladder proved in the first commit reads 11, 10, 8, 7, 6, 5, 4, 3,
+    2, 2 across its rungs on a fresh run — descending exactly as progressively
+    later failure sites predict. The redactor's own test was the problem: it
+    sweeps `fail_index` 0..6 and `push` allocates more than six times before the
+    dupe, so the sweep stopped short while still passing. Replaced with
+    `checkAllAllocationFailures`; both lines now read `hits=1`. Lesson for the
+    rest of §1: a guessed fail-index range is not a proof — only the exhaustive
+    helper is.
+  - **Grading needs BOTH producers (Aug 20, 2026).** Classified against the unit
+    lanes alone the counts read errdefer 353 / failure-response 732 /
+    failure-log 356 / error-return 528 / other 6460 / brace 78 over 568 files —
+    far above the merged figures, because the integration lane covers much of
+    the daemon. R1-R4 must be graded from the merged report `make
+    test-coverage-grade` builds, never from a single lane.
+
   - **Floor location (Aug 20, 2026).** The spec named
     `scripts/check_zig_coverage_floors.py` as the file carrying the enforced
     floors. It carries the grading logic; the values are `ZIG_COVERAGE_FOLDER_
