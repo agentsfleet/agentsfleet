@@ -246,6 +246,12 @@ if (!isLive) {
         // carried whole and only the tail is new.
         const secondName = envelope?.name;
         assert.equal(typeof secondName, "string", `second install missing name: ${result.stdout}`);
+        // Both halves: the tail alone would pass for any same-length base that
+        // happens to end in `-NNN`, which proves a shape rather than a name.
+        assert.ok(
+          (secondName as string).startsWith(target2.name),
+          `auto-suffixed name must keep the template name "${target2.name}"; got ${secondName}`,
+        );
         assert.match(
           (secondName as string).slice(target2.name.length),
           /^-\d{3}$/,
