@@ -36,6 +36,10 @@ export interface InstallOptions {
   // Defaults to the per-process `ACCEPTANCE_RUN_PREFIX`. Pass a custom
   // prefix only when a spec needs an isolated sub-namespace.
   readonly runPrefix?: string;
+  // Overrides the model the fixture pins into its `{{model}}` slot. Only the
+  // invalid-model negative needs this: it installs on an id no provider serves
+  // so the spec can pin what a mistyped model looks like from the outside.
+  readonly model?: string;
 }
 
 export interface InstalledFleet {
@@ -91,7 +95,7 @@ export async function installPlatformOpsFleet(opts: InstallOptions): Promise<Ins
 }
 
 export async function installSteerProbeFleet(opts: InstallOptions): Promise<InstalledFleet> {
-  return installFixtureFleet(opts, "steer-probe", buildSteerProbeContent, false);
+  return installFixtureFleet(opts, "steer-probe", (name) => buildSteerProbeContent(name, opts.model), false);
 }
 
 async function installFixtureFleet(
