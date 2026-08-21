@@ -147,6 +147,7 @@ test {
     _ = @import("state/secret_reference_txn.zig");
     _ = @import("state/vault_test.zig");
     _ = @import("state/vault_metadata_alloc_test.zig");
+    _ = @import("state/secret_probe_alloc_test.zig");
     _ = @import("secrets/crypto_store.zig");
     _ = @import("secrets/crypto_store_test.zig");
     _ = @import("secrets/secure_memory_test.zig");
