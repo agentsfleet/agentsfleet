@@ -55,6 +55,7 @@ pub const extractFleetInstructions = config_markdown.extractFleetInstructions;
 // once; config.zig fans out to the implementation + test modules.
 test {
     _ = @import("config_helpers_test.zig");
+    _ = @import("config_ladders_test.zig");
     _ = @import("config_repositories_test.zig");
     _ = @import("config_types_test.zig");
     _ = @import("config_parser_test.zig");
