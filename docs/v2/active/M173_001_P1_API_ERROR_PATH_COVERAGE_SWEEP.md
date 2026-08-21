@@ -292,6 +292,22 @@ code is out of scope and reverts.
     rubric row was the odd one out. Amended to allow a cleanup fix when the
     proof that caught it is named in the leak log below.
 
+  - **Runner-plane acquire arms need a pool-free lookup (Aug 21, 2026).** The
+    five runner-authed acquire arms were blocked on a harness question — widen
+    the shared seed fixture, or stand up a second starvation test. Both answers
+    were wrong: `cmd/serve_runner_lookup.zig` resolves the `agt_r` token by
+    acquiring a connection of its own, so a drained pool answers `UZ-AUTH-004`
+    at the middleware and no handler runs. Wiring the real lookup would have
+    produced a green test proving nothing. The proof instead wires a resolving
+    lookup that never touches the pool, which models what these arms answer in
+    production: auth takes a connection and returns it, and the pool is empty by
+    the time the handler acquires — an ordinary interleaving under contention.
+    The total-outage path stops at the middleware and is already proven by
+    `runner_bearer.zig`'s "maps a lookup failure to UZ-AUTH-004". Verified by
+    mutation: with the drain removed the same five probes answer 401/401/404/404/404
+    from their own post-acquire arms, so the 503s are caused by starvation and
+    not by anything incidental.
+
 ### Leak log — real defects the allocation-failure proofs caught
 
 | Site | Defect | Fix | Proof |

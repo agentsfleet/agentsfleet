@@ -19,18 +19,18 @@ commit.
 
 **Class counts** — Aug 21, 2026 re-measurement, after re-running both producers
 (`make test-coverage-zig`, `make test-integration`) and `make test-coverage-grade`
-(exit 0: merged 91.16% / floor 89, `agentsfleetd` 90.78% / floor 90, `lib` 95.30%,
-`runner` 92.64%; integration 1003 passed, 8 skipped, 0 failed):
+(exit 0: merged 91.39% / floor 89, `agentsfleetd` 91.04% / floor 90, `lib` 95.30%,
+`runner` 92.68%; integration 1003 passed, 8 skipped, 0 failed):
 
 | class | Aug 20 authored | Aug 21 measured | mechanism |
 |---|---|---|---|
-| errdefer | 318 | **308** | `checkAllAllocationFailures` |
-| failure-response | 512 | **510** | inject the failure the arm answers |
-| failure-log | 298 | **304** | same tests, assert the log line |
+| errdefer | 318 | **295** | `checkAllAllocationFailures` |
+| failure-response | 512 | **463** | inject the failure the arm answers |
+| failure-log | 298 | **303** | same tests, assert the log line |
 | error-return | 132 | **128** | construct the triggering input |
-| other | 1110 | **1093** | triage: test / delete / annotate |
+| other | 1110 | **1094** | triage: test / delete / annotate |
 | brace | 44 | **16** | report artefact, no test owed |
-| **total** | **2414** | **2359** | |
+| **total** | **2414** | **2299** | |
 
 **Read the deltas as NET, not as work done.** A proof that catches a leak
 produces a fix that adds `errdefer` rungs — the `parseJwks` fix alone added 6 —

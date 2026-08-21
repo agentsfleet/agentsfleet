@@ -57,7 +57,7 @@ const PLATFORM = scope_tokens.PLATFORM_ADMIN;
 /// `owner` is what stops the table being padding: each row names a distinct
 /// arm, so a row that duplicates its neighbour's coverage is visible on sight
 /// rather than hidden behind an identical 503.
-const Probe = struct {
+pub const Probe = struct {
     method: std.http.Method,
     path: []const u8,
     token: []const u8,
@@ -132,14 +132,16 @@ const PROBES = [_]Probe{
     .{ .method = .PATCH, .path = "/v1/admin/models/" ++ ABSENT_MODEL_ID, .token = PLATFORM, .owner = "admin/model_library_admin.innerPatchAdminModel", .body = "{\"context_cap_tokens\":200000,\"input_nanos_per_mtok\":3000,\"cached_input_nanos_per_mtok\":300,\"output_nanos_per_mtok\":15000}" },
     .{ .method = .PUT, .path = "/v1/admin/platform-keys", .token = PLATFORM, .owner = "admin/platform_keys.innerPutAdminPlatformKey", .body = "{\"provider\":\"anthropic\",\"source_workspace_id\":\"" ++ base.TEST_WS_ID ++ "\",\"model\":\"claude-sonnet-4-6\"}" },
     // Enrollment is the one runner-plane route a session token reaches; the
-    // rest take a minted `agt_r` this table has no way to carry yet.
+    // rest take an `agt_r`, and are starved by the sibling
+    // pool_exhaustion_runner_integration_test.zig against a harness this
+    // fixture deliberately does not build.
     .{ .method = .POST, .path = "/v1/runners", .token = PLATFORM, .owner = "runner/register.innerRegisterRunner", .body = "{\"host_id\":\"pool-starved\",\"assigned_policy\":{\"sandbox_tier\":\"dev_none\",\"network_policy\":\"allow_all\",\"registry_allowlist\":[],\"worker_count\":1},\"labels\":[]}" },
     .{ .method = .POST, .path = FLEET ++ "/messages", .token = ADMIN, .owner = "fleets/messages.innerFleetMessagesPost", .body = "{\"message\":\"pool-starved\"}" },
     .{ .method = .POST, .path = WS ++ "/connectors/slack/connect", .token = ADMIN, .owner = "connectors/connect.innerConnect", .body = "{}" },
     .{ .method = .POST, .path = WS ++ "/approvals/" ++ ABSENT_GATE_ID ++ ":approve", .token = ADMIN, .owner = "approvals/resolve.innerResolveApproval", .body = "{}" },
 };
 
-const Held = std.ArrayListUnmanaged(*pg.Conn);
+pub const Held = std.ArrayListUnmanaged(*pg.Conn);
 
 /// Take every connection the pool will give, so the next acquire cannot be
 /// served.
@@ -148,7 +150,7 @@ const Held = std.ArrayListUnmanaged(*pg.Conn);
 /// count would quietly stop exhausting anything the day the default moves —
 /// the tests would keep passing while asserting nothing. Draining until the
 /// pool refuses costs one acquire timeout, once.
-fn drainPool(h: *TestHarness, held: *Held) !void {
+pub fn drainPool(h: *TestHarness, held: *Held) !void {
     while (true) {
         const conn = h.acquireConn() catch break;
         try held.append(ALLOC, conn);
@@ -158,7 +160,7 @@ fn drainPool(h: *TestHarness, held: *Held) !void {
     try std.testing.expect(held.items.len > 0);
 }
 
-fn releaseAll(h: *TestHarness, held: *Held) void {
+pub fn releaseAll(h: *TestHarness, held: *Held) void {
     for (held.items) |conn| h.releaseConn(conn);
     held.deinit(ALLOC);
 }
@@ -169,7 +171,7 @@ fn releaseAll(h: *TestHarness, held: *Held) void {
 /// the integration lane is the only place this can run — so a stop-at-first-
 /// failure loop would spend a whole lane to learn about one bad row. Every
 /// mismatch is printed with the arm it was aiming at; the count is what fails.
-fn probeAll(h: *TestHarness, probes: []const Probe) !void {
+pub fn probeAll(h: *TestHarness, probes: []const Probe) !void {
     var bad: usize = 0;
     for (probes) |p| {
         var req = h.request(p.method, p.path);
