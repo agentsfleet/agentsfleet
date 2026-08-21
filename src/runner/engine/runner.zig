@@ -31,6 +31,7 @@ const runner_observer = @import("runner_observer.zig");
 const runner_capture = @import("runner_capture.zig");
 const context_budget = @import("context_budget.zig");
 const client_errors = @import("client_errors.zig");
+const failure_detail = @import("failure_detail.zig");
 const run_context = @import("run_context.zig");
 const credential_request = @import("credential_request.zig");
 
@@ -88,12 +89,15 @@ pub fn execute(
     const result = executeInner(.{ .cred_channel = cred_channel }, env_map, alloc, workspace_path, fleet_config, tools_spec, msg, context, policy, progress_fd, hydrated_memory) catch |err| {
         const elapsed = elapsedSeconds(start);
         const failure = mapError(err);
+        // Provider's words when captured, else the bare name. Log and event
+        // read the SAME line so they never disagree about the cause.
+        const detail = failure_detail.compose(err);
         log.err("runner_execute_failed", .{
             .error_code = errorCodeForFailure(failure),
-            .err = @errorName(err),
+            .err = detail,
             .wall_seconds = elapsed,
         });
-        return .{ .wall_seconds = elapsed, .outcome = .{ .failed = .{ .class = failure, .detail = @errorName(err) } } };
+        return .{ .wall_seconds = elapsed, .outcome = .{ .failed = .{ .class = failure, .detail = detail } } };
     };
 
     const elapsed = elapsedSeconds(start);
@@ -108,16 +112,6 @@ pub fn execute(
         .wall_seconds = elapsed,
         .outcome = .{ .completed = .{} },
     };
-}
-
-/// Record a config-load failure WITH its cause. Split from `executeInner` so the
-/// record's shape is drivable in a test: this runs inside the sandboxed child,
-/// where the usual fault is an environment the cage did not carry (`NoHomeDir`
-/// when the daemon itself has no HOME). Dropping the error name leaves the
-/// journal showing a code and nothing else, which is the difference between
-/// reading the fault and reproducing it on the host to find it.
-fn logConfigLoadFailure(err: anyerror) void {
-    log.err("config_load_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
 }
 
 pub const InnerResult = struct {
@@ -151,7 +145,7 @@ pub fn executeInner(
 ) !InnerResult {
     // 1. Build config from env defaults + fleet_config overrides.
     var cfg = Config.load(alloc) catch |err| {
-        logConfigLoadFailure(err);
+        failure_detail.logConfigLoadFailure(err);
         return RunnerError.FleetInitFailed;
     };
     defer cfg.deinit();
@@ -225,6 +219,10 @@ pub fn executeInner(
         return RunnerError.FleetInitFailed;
     };
     defer freeSecrets(alloc, secrets_list);
+    // Every error unwinding past here carries the provider's cause line (init,
+    // compose, dial, final redaction). Scoped below `secrets_list` so the scrub
+    // set is in hand when it runs (RULE VLT).
+    errdefer failure_detail.capture(alloc, secrets_list);
     // SAFETY: set by selectObserver when progress_fd is present; else unread.
     var writer: runner_progress.ProgressWriter = undefined;
     // SAFETY: set by selectObserver when progress_fd is present; else unread.
@@ -294,17 +292,10 @@ pub const composeMessage = runner_helpers.composeMessage;
 pub const collectSecrets = runner_helpers.collectSecrets;
 pub const freeSecrets = runner_helpers.freeSecrets;
 
-/// Map a runner error to a FailureClass.
-pub fn mapError(err: anyerror) types.FailureClass {
-    return switch (err) {
-        RunnerError.InvalidConfig => .startup_posture,
-        RunnerError.FleetInitFailed => .startup_posture,
-        RunnerError.Timeout => .timeout_kill,
-        RunnerError.OutOfMemory => .oom_kill,
-        RunnerError.FleetRunFailed => .runner_crash,
-        else => .runner_crash,
-    };
-}
+/// Map a runner error to a FailureClass. Defined in `failure_detail` (beside
+/// the cause line it is reported with, and out of this file for RULE FLL) and
+/// re-exported so call sites and tests keep using `runner.mapError`.
+pub const mapError = failure_detail.mapError;
 
 /// Canonical `FailureClass` → `UZ-EXEC-*` error code. Lives in `client_errors`
 /// (colocated with the code constants, kept out of this file for RULE FLL) and
@@ -325,26 +316,5 @@ test {
     _ = inrun_memory; // discovery via the existing import binding (RULE UFS: no re-spelled path)
     _ = @import("runner_progress_memory_test.zig");
     _ = @import("runner_usage_test.zig");
-}
-
-test "test_config_load_failure_names_error: the record carries the cause, not just the code" {
-    // The regression: `Config.load(alloc) catch { log.err(...) }` discarded the
-    // error, so a dev fleet where every lease died at init logged only
-    // UZ-EXEC-012 with no cause — and the real fault (no HOME in the daemon's
-    // environment) could only be found by reproducing it on the host.
-    var bs = logging.sinks.BufferedSink.init(std.testing.allocator);
-    defer bs.deinit();
-
-    logging.sinks.clearSinksForTest();
-    defer logging.sinks.clearSinksForTest();
-    logging.sinks.registerSink(bs.sink());
-
-    logConfigLoadFailure(error.NoHomeDir);
-
-    const captured = try bs.snapshot();
-    defer std.testing.allocator.free(captured);
-    try std.testing.expect(std.mem.indexOf(u8, captured, "config_load_failed") != null);
-    try std.testing.expect(std.mem.indexOf(u8, captured, ERR_EXEC_RUNNER_FLEET_INIT) != null);
-    // The assertion that would have failed before the fix.
-    try std.testing.expect(std.mem.indexOf(u8, captured, "NoHomeDir") != null);
+    _ = failure_detail; // discovery via the existing import binding (RULE UFS)
 }
