@@ -62,6 +62,7 @@ test {
     _ = @import("engine/cgroup_scope_test.zig");
     _ = @import("engine/capability_probe_test.zig");
     _ = @import("engine/landlock.zig");
+    _ = @import("engine/landlock_policy.zig");
     _ = @import("engine/seccomp.zig");
     _ = @import("engine/stream_redactor.zig");
     _ = @import("engine/runner_progress_redact_oom_test.zig");
