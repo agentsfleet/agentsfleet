@@ -34,6 +34,7 @@ const EMPTY_LINE = "";
 const TEXT_ENCODING = "utf8";
 const EXIT_OK = 0;
 const EXIT_SIGINT = 130;
+const EVENT_CLOSE = "close";
 
 export const shouldEnterSteerRepl = (
   stdin: IsTtyStream,
@@ -68,9 +69,24 @@ export async function runSteerRepl(options: ReplOptions): Promise<typeof EXIT_OK
 
   signalSource.on(SIGINT, interrupt);
   rl.on(SIGINT, interrupt);
+  // Bun 1.4 hardened readline: prompt() on a closed interface throws
+  // ERR_USE_AFTER_CLOSE instead of returning silently. Both call sites can run
+  // against a closed interface — an interrupt closes it, and stdin EOF closes
+  // it before the loop body's re-prompt — so track the close and ask, rather
+  // than catching a throw that would be indistinguishable from a real fault.
+  // The runtime carries `rl.closed`, but the readline typings do not declare
+  // it, and a cast to reach it would buy nothing this listener does not.
+  let closed = false;
+  rl.on(EVENT_CLOSE, () => {
+    closed = true;
+  });
+  const prompt = (): void => {
+    if (!closed) rl.prompt();
+  };
+
   try {
     rl.setPrompt(STEER_REPL_PROMPT);
-    rl.prompt();
+    prompt();
     for await (const raw of rl) {
       const line = raw.trim();
       if (line !== EMPTY_LINE) {
@@ -84,7 +100,7 @@ export async function runSteerRepl(options: ReplOptions): Promise<typeof EXIT_OK
         }
       }
       if (interrupted) return EXIT_SIGINT;
-      rl.prompt();
+      prompt();
     }
     return interrupted ? EXIT_SIGINT : EXIT_OK;
   } finally {
