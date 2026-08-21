@@ -298,6 +298,24 @@ code is out of scope and reverts.
 | `src/agentsfleetd/auth/jwks.zig` `parseJwks` | The three owned fields were built inside the `append` argument list. A decode failure on `modulus` or `exponent` left `kid` allocated and unreferenced — the `errdefer` block only reaches keys already appended, so it never freed it. 15 bytes per key, and the daemon refetches this key set from a config-controlled provider URL for the life of the process, so it compounds per refresh. | Each field owned one at a time behind its own `errdefer` rung, then appended. | `test_jwks_parse_unwinds_without_leaking` — fails at `fail_index 4/8` with 536 allocated / 521 freed before the fix |
 | `src/agentsfleetd/fleet_runtime/yaml_frontmatter.zig` `yamlFrontmatterToJson` | The vendored `zig_yaml` parser allocates an `ErrorBundle` inside `Parser.init` before the allocation that fails, and `Yaml.deinit` cleans the document rather than the half-built parser — so a failed load leaked the parser's own scratch. The defect is upstream; the exposure is ours, on every library import and every fleet-config parse. | The YAML load runs under an arena, so whatever the dependency takes dies with it on success and failure alike. Caller ownership of the returned JSON is unchanged. | `test_bundle_prepare_unwinds_without_leaking` — fails at `fail_index 1/43` with 129 allocated / 0 freed before the fix |
 
+  - **Re-measured against a fresh report (Aug 21, 2026).** Every count above
+    was taken before any M173 test landed, and the classifier reads whatever
+    merged report is on disk — so the numbers had to be re-derived before R1–R4
+    could be graded. Both producers were re-run (`make test-coverage-zig`,
+    `make test-integration`) and `make test-coverage-grade` passed: merged
+    91.16% (floor 89), `agentsfleetd` 90.78% (floor 90), `lib` 95.30%,
+    `runner` 92.64%; integration 1003 passed / 8 skipped / 0 failed. Against
+    that report the classes read **errdefer 308, failure-response 510,
+    failure-log 304, error-return 128, other 1093, brace 16 — 2,359 unhit
+    lines**, from 2,414. Two things this settles. The class count is a NET
+    figure, not a progress meter: the `parseJwks` fix alone added 6 new
+    `errdefer` rungs to the denominator, so proofs that find leaks partly
+    cancel their own class reduction. And `failure-log` moved the wrong way
+    (298 to 304), which is the same effect — the arms the proofs added carry
+    log lines of their own. From here the sweep grades fresh-report to
+    fresh-report; the Aug 20 counts are the authored baseline, not a
+    comparison basis.
+
   - **The harness client cannot send a bodiless PUT/POST (Aug 21, 2026).**
     `TestHarness`'s `send()` calls `std.http.Client`'s `sendBodiless()` when no
     body is set, and that fails at the transport for these verbs — the first

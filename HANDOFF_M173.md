@@ -17,16 +17,26 @@ commit.
   >=100-thread contention proof, and a counter-based complexity bound where the
   module supports them. `/write-unit-test`'s Definition of Done is the checklist.
 
-**Baseline class counts** (pre-M173 merged report, `coverage/zig/merged/cobertura.xml`):
+**Class counts** — Aug 21, 2026 re-measurement, after re-running both producers
+(`make test-coverage-zig`, `make test-integration`) and `make test-coverage-grade`
+(exit 0: merged 91.16% / floor 89, `agentsfleetd` 90.78% / floor 90, `lib` 95.30%,
+`runner` 92.64%; integration 1003 passed, 8 skipped, 0 failed):
 
-| class | lines | mechanism |
-|---|---|---|
-| errdefer | 317 | `checkAllAllocationFailures` |
-| failure-response | 512 | inject the failure the arm answers |
-| failure-log | 298 | same tests, assert the log line |
-| error-return | 130 | construct the triggering input |
-| other | 1109 | triage: test / delete / annotate |
-| brace | 48 | report artefact, no test owed |
+| class | Aug 20 authored | Aug 21 measured | mechanism |
+|---|---|---|---|
+| errdefer | 318 | **308** | `checkAllAllocationFailures` |
+| failure-response | 512 | **510** | inject the failure the arm answers |
+| failure-log | 298 | **304** | same tests, assert the log line |
+| error-return | 132 | **128** | construct the triggering input |
+| other | 1110 | **1093** | triage: test / delete / annotate |
+| brace | 44 | **16** | report artefact, no test owed |
+| **total** | **2414** | **2359** | |
+
+**Read the deltas as NET, not as work done.** A proof that catches a leak
+produces a fix that adds `errdefer` rungs — the `parseJwks` fix alone added 6 —
+and the arms those fixes introduce carry log lines, which is why `failure-log`
+moved *up*. Grade fresh-report to fresh-report from here; the Aug 20 column is
+the authored baseline, not a comparison basis.
 
 - ✅ Classifier built (`scripts/classify_unhit_lines.py` + 20 self-tests) — the
   grading instrument for rubric rows R1–R4.
@@ -88,8 +98,16 @@ agentsfleet-m173-qstash-1     :25798 -> 8080
    re-classify against the FRESH merged report. Every count in this document is
    a pre-M173 baseline.
 2. Extend the pool-exhaustion suite — the mechanism in
-   `src/agentsfleetd/http/pool_exhaustion_integration_test.zig` is one line per
-   additional endpoint. 81 arms are reachable this way; 4 are closed.
+   `src/agentsfleetd/http/pool_exhaustion_integration_test.zig` is one table row
+   per endpoint. Measured against the Aug 21 report, **86 unhit lines sit inside
+   an acquire-catch body**: 68 in 46 files under `http/handlers/` (HTTP-
+   reachable) and 18 in 10 background files (`fleet/service*.zig`,
+   `fleet_runtime/metering.zig`, `cmd/serve_qstash.zig`) that no HTTP request
+   reaches — those need §2.1 or a direct unit test, not this mechanism.
+   Re-derive the list with the acquire-body probe: classify, then walk back up
+   to 6 lines from each unhit line looking for `pool.acquire() catch`. Grepping
+   for unhit `pool.acquire() catch` LINES finds almost nothing — that line runs
+   on the success path too; it is the catch BODY that never ran.
 3. Build the §2.1 mechanism (terminate the backend mid-statement) for the 83
    db-failure + 80 internal-op arms. Nothing exists for it yet.
 4. Continue §1 on the DB-free targets — 255 of 317 errdefer lines need no
