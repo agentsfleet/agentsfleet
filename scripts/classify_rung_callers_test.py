@@ -128,6 +128,55 @@ class ClassifyRungCallersTest(unittest.TestCase):
         """)
         self.assertEqual(self.rungs()["agentsfleetd/cmd/thing.zig"], 2)
 
+    def test_why_prints_a_chain_from_a_root_to_the_target(self) -> None:
+        """The chain is what makes the class label checkable against a function."""
+        write(self.src, "agentsfleetd/cron/FireService.zig", """
+            const mid = @import("../state/mid.zig");
+        """)
+        write(self.src, "agentsfleetd/state/mid.zig", """
+            const leaf = @import("leaf.zig");
+        """)
+        write(self.src, "agentsfleetd/state/leaf.zig", """
+            fn f() void {
+                errdefer cleanup();
+            }
+        """)
+        files = [f for f in classifier.zig_sources(str(self.src)) if not classifier.is_test_path(f)]
+        edges = classifier.import_graph(files)
+        root = str(self.src / "agentsfleetd/cron/FireService.zig")
+        target = str(self.src / "agentsfleetd/state/leaf.zig")
+        chain = classifier.shortest_path(edges, [root], target)
+        self.assertIsNotNone(chain)
+        self.assertEqual(chain[0], root)
+        self.assertEqual(chain[-1], target)
+
+    def test_why_reports_no_chain_for_a_handler_only_file(self) -> None:
+        """The arena boundary must block the chain search too, not only classify().
+
+        Otherwise `--why` would print a route through the handler tree and tell
+        an author to prove a rung that cannot leak.
+        """
+        write(self.src, "agentsfleetd/cron/FireService.zig", """
+            const h = @import("../http/handlers/thing.zig");
+        """)
+        write(self.src, "agentsfleetd/http/handlers/thing.zig", """
+            fn f() void {
+                errdefer cleanup();
+            }
+        """)
+        files = [f for f in classifier.zig_sources(str(self.src)) if not classifier.is_test_path(f)]
+        edges = classifier.import_graph(files)
+        handlers = frozenset(
+            f for f in files if "/http/handlers/" in f.replace("\\", "/")
+        )
+        chain = classifier.shortest_path(
+            edges,
+            [str(self.src / "agentsfleetd/cron/FireService.zig")],
+            str(self.src / "agentsfleetd/http/handlers/thing.zig"),
+            handlers,
+        )
+        self.assertIsNone(chain)
+
     def test_leak_capable_expands_to_repeating_and_boot_once(self) -> None:
         self.assertEqual(
             set(classifier.LEAK_CAPABLE),

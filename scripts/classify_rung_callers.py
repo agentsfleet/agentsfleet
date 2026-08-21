@@ -187,6 +187,38 @@ def classify(src_root: str) -> list[dict]:
     return rows
 
 
+def shortest_path(edges, roots, target: str, blocked=frozenset()) -> list[str] | None:
+    """One concrete import chain from a root to `target`, or None.
+
+    The classifier answers "can this file leak"; a work list needs "through
+    which caller", because a `repeating` file can hold functions only handlers
+    reach and proving those is the cosmetic work this sweep excludes. Printing
+    the chain turns a class label into something the author can check the
+    function against.
+    """
+    prev: dict[str, str | None] = {}
+    queue: deque[str] = deque()
+    for root in roots:
+        if root not in blocked:
+            prev[root] = None
+            queue.append(root)
+    while queue:
+        cur = queue.popleft()
+        if cur == target:
+            chain = []
+            node: str | None = cur
+            while node is not None:
+                chain.append(node)
+                node = prev[node]
+            return list(reversed(chain))
+        for nxt in edges[cur]:
+            if nxt in blocked or nxt in prev or is_test_path(nxt):
+                continue
+            prev[nxt] = cur
+            queue.append(nxt)
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--src", default="src", help="source root to walk (default: src)")
@@ -198,7 +230,52 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--count", action="store_true", help="print the rung total and nothing else")
     parser.add_argument("--files", action="store_true", help="list matching files, densest first")
     parser.add_argument("--json", action="store_true", help="emit every row as JSON")
+    parser.add_argument(
+        "--why",
+        metavar="FILE",
+        help="print one import chain from a long-lived root to FILE (path relative to --src), "
+        "so a proof author can check whether the FUNCTION they are about to prove is on it",
+    )
     args = parser.parse_args(argv)
+
+    if args.why:
+        files = [f for f in zig_sources(args.src) if not is_test_path(f)]
+        edges = import_graph(files)
+        target = os.path.normpath(os.path.join(args.src, args.why))
+        if target not in files:
+            print(f"no such source file: {args.why}", file=sys.stderr)
+            return 2
+        handler_root = os.path.join(args.src, HANDLER_TREE)
+        handlers = [f for f in files if f.startswith(handler_root + os.sep)]
+
+        def under(prefixes):
+            return [
+                f
+                for f in files
+                if any(f.startswith(os.path.join(args.src, p) + os.sep) for p in prefixes)
+            ]
+
+        roots = [
+            os.path.join(args.src, p)
+            for p in REPEATING_ROOT_FILES
+            if os.path.exists(os.path.join(args.src, p))
+        ] + under(REPEATING_ROOT_DIRS)
+        chain = shortest_path(edges, roots, target, frozenset(handlers))
+        label = CLASS_REPEATING
+        if chain is None:
+            chain = shortest_path(edges, under(BOOT_ROOT_DIRS), target, frozenset(handlers))
+            label = CLASS_BOOT_ONCE
+        if chain is None:
+            print(f"{args.why}: no long-lived root reaches this file — every rung in it is arena-backed")
+            return 0
+        print(f"{args.why}: {label}, reached by")
+        for depth, node in enumerate(chain):
+            print(f"  {'  ' * depth}{os.path.relpath(node, args.src)}")
+        print(
+            "\nThe FILE is reachable. Confirm the FUNCTION you are proving is called on "
+            "this chain — if every caller of it passes hx.alloc, its rungs are arena-backed."
+        )
+        return 0
 
     rows = classify(args.src)
     if args.only:

@@ -834,6 +834,48 @@ the worked example above), so the live figure is 45 across 18 files.
 > or accept the limit. Recorded as Dimension 1.7; §1's existing Dimensions
 > continue first.
 
+### The work list is inflated by type-only imports (Aug 22, 2026)
+
+Two rung sets picked off the leak-capable list in a row turned out to be
+arena-backed once their FUNCTION's callers were read. Both for the same reason,
+and it is structural rather than bad luck.
+
+| File | Classified | Why | Reality |
+|---|---|---|---|
+| `state/vault.zig` | `repeating` | `loadJson` is called from `cron/Credentials`, `serve_broker`, `serve_webhook_lookup` | true for `loadJson`; but `loadMetadata`'s 3 rungs have ONE caller and it is a handler |
+| `state/tenant_provider.zig` | `repeating` | `observability/semconv.zig` imports it | it imports `Mode`, an ENUM. No long-lived caller executes any function in the file |
+
+The second is the sharper case. An import taken for a **type or a constant**
+marks the entire file long-lived, because the import graph cannot tell a type
+reference from a call. So the `repeating` set contains files nothing long-lived
+ever executes, and 301 is an over-estimate by an unknown amount.
+
+**This does not weaken the exclusion.** A file is `arena` only when NO root
+reaches it, so the excluded 234 stay safely excluded — the error runs one way.
+What it does is waste proof effort, which is exactly the cost this milestone
+re-scoped itself to avoid.
+
+**`--why` makes the check one command.** `scripts/classify_rung_callers.py --why <file>`
+prints an import chain from a long-lived root to the file, cut at the arena
+boundary like `classify()` is. Read the chain, then confirm the function being
+proven is actually called along it:
+
+```
+$ python3 scripts/classify_rung_callers.py --why agentsfleetd/state/tenant_provider.zig
+agentsfleetd/state/tenant_provider.zig: repeating, reached by
+  agentsfleetd/observability/otlp/exporter.zig
+    agentsfleetd/observability/otlp/config.zig
+      agentsfleetd/observability/semconv.zig
+        agentsfleetd/state/tenant_provider.zig
+```
+
+One look at `semconv.zig` settles it: `const Mode = @import("../state/tenant_provider.zig").Mode;`.
+
+**Cost already paid.** The `vault.loadMetadata` proof (`vault_metadata_alloc_test.zig`)
+is correct and mutation-checked but proves arena-backed rungs. It is kept — a
+sound proof is not worth deleting, and it documents the optional-rung fixture
+technique the next author needs — but it is NOT counted toward Dimension 1.1.
+
 ### Leak log — real defects the allocation-failure proofs caught
 
 | Site | Defect | Fix | Proof |
