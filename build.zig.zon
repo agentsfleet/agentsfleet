@@ -4,19 +4,23 @@
     .minimum_zig_version = "0.16.0",
     .fingerprint = 0x263fc42fde813fea,
     .dependencies = .{
-        // Fork release agentsfleet/nullclaw v2026.5.29-zmb.4 — current upstream
+        // Fork release agentsfleet/nullclaw v2026.5.29-zmb.5 — current upstream
         // main plus the maintained fork patches, now carried on the fork's main:
         //   - cumulative prompt/completion token-split accessors with normalization,
         //     reset, and restoration so the runner's by-side billing stays complete;
         //   - Server-Side Request Forgery (SSRF)-validated address pinning on the
         //     non-streaming POST dials, including direct routing past environment
-        //     proxies so proxy-side DNS cannot bypass curl --resolve.
+        //     proxies so proxy-side DNS cannot bypass curl --resolve;
+        //   - `compat` re-exported from the library root so the runner can call
+        //     `nullclaw.compat.initProcess(init)` at startup — without it the
+        //     engine's subprocess spawns fall back to Zig 0.16's failing-allocator
+        //     Io and die with a synthetic OutOfMemory before fork.
         // We have no push/release rights on upstream nullclaw/nullclaw, so the
         // patches ride our fork. Drop this pin and return to the upstream tag when
         // upstream exposes split accessors AND re-threads the resolve pin.
         .nullclaw = .{
-            .url = "git+https://github.com/agentsfleet/nullclaw.git?ref=v2026.5.29-zmb.4#e00bba78395698dd97a56e5c62feb9cd14a3fef7",
-            .hash = "nullclaw-2026.5.29-wlZZyWeOSAHc7sgCsTFllD7aXThbRkQIOIWIF1bZy7cD",
+            .url = "git+https://github.com/agentsfleet/nullclaw.git?ref=v2026.5.29-zmb.5#d20ab5db15c3eb915eb47d87cd857b4bd63df98f",
+            .hash = "nullclaw-2026.5.29-wlZZySmQSAGEoZNInbV-eXfDmYeAFVSfjFRYiqjzwjJx",
         },
         // Fork pin agentsfleet/pg.zig over upstream karlseguin/pg.zig commit 52b9f8a,
         // patched for a Zig 0.16 pool-acquire regression: upstream

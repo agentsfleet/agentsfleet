@@ -303,4 +303,12 @@ test "a binary spawns under the lease's full hardening, not just its mounts" {
     const outcome = selftest_exec.outcomeFrom(line, false);
     try std.testing.expect(outcome.transport_testable);
     try std.testing.expect(outcome.transport_execs);
+    // Same run, the stronger claim: not just "the binary execs" (raw
+    // fork+execve) but "the ENGINE's spawn path runs it" — the NullClaw compat
+    // layer with all-pipe stdio and pre-fork allocation through the process
+    // Io. This is the arm that catches a lost `compat.initProcess` wiring:
+    // without it the probe child's compat Io falls back to the failing
+    // allocator and this spawn dies pre-fork exactly as every lease did.
+    try std.testing.expect(outcome.engine_spawn_testable);
+    try std.testing.expect(outcome.engine_spawns);
 }
