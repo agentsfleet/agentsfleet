@@ -43,6 +43,7 @@ const FORK_EXIT_OK: u8 = 0;
 const FORK_EXIT_NO_NEW_PRIVS_FAILED: u8 = 91;
 const FORK_EXIT_LANDLOCK_FAILED: u8 = 92;
 const FORK_EXIT_EXECVE_REFUSED: u8 = 93;
+const FORK_EXIT_DEV_FILE_REFUSED: u8 = 94;
 
 /// Is `path` present on this host?
 fn presentPath(io: std.Io, path: []const u8) bool {
@@ -85,6 +86,60 @@ test "the filesystem wall alone permits executing a binary from the system trees
         const envp = [_:null]?[*:0]const u8{};
         _ = linux.execve(path, &argv, &envp);
         linux.exit(FORK_EXIT_EXECVE_REFUSED);
+    }
+
+    var status: u32 = 0;
+    _ = linux.wait4(@intCast(signed), &status, 0, null);
+    if (!std.posix.W.IFEXITED(status)) return error.SkipZigTest;
+    const code: u8 = @intCast(std.posix.W.EXITSTATUS(status));
+    try std.testing.expectEqual(FORK_EXIT_OK, code);
+}
+
+test "the filesystem wall permits opening the writable device files for writing" {
+    // The fault this proof exists for, at the layer that produced it.
+    //
+    // `/dev` rides the read-only floor, whose mask carries no WRITE_FILE, while
+    // bwrap's `--dev` builds a devtmpfs where `/dev/null` is writable. The
+    // engine's model transport spawns `curl` and wires an ignored stdio stream
+    // through that node, so on `zombie-dev-worker-ant` every lease died at
+    // `open("/dev/null", O_RDWR) = EACCES` — zero tokens, zero wall seconds,
+    // and six green self-test checks.
+    //
+    // Isolated the same way the exec proof above is, and for the same reason: a
+    // refusal under all three layers does not say which one refused. This forks,
+    // applies ONLY the filesystem wall, and calls `open` directly, so the
+    // kernel's answer is about landlock and nothing else. Read-write is the
+    // whole point — read-only would pass under the exact mask that produced the
+    // incident.
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+
+    // Skip rather than fail where the host itself refuses the open: the claim
+    // under test is that LANDLOCK does not, and a host that says no first
+    // cannot answer that question either way.
+    for (landlock.LANDLOCK_FLOOR_RW_FILES) |path| {
+        const path_z = std.posix.toPosixPath(path) catch return error.SkipZigTest;
+        const probe = std.posix.openatZ(std.posix.AT.FDCWD, &path_z, .{ .ACCMODE = .RDWR }, 0) catch
+            return error.SkipZigTest;
+        _ = linux.close(probe);
+    }
+
+    try makeWorkspace(io);
+    const signed: isize = @bitCast(linux.fork());
+    if (signed < 0) return error.SkipZigTest;
+    if (signed == 0) {
+        if (linux.prctl(@intFromEnum(linux.PR.SET_NO_NEW_PRIVS), 1, 0, 0, 0) != 0)
+            linux.exit(FORK_EXIT_NO_NEW_PRIVS_FAILED);
+        landlock.applyPolicy(WORKSPACE, &.{}) catch linux.exit(FORK_EXIT_LANDLOCK_FAILED);
+        for (landlock.LANDLOCK_FLOOR_RW_FILES) |path| {
+            const path_z = std.posix.toPosixPath(path) catch linux.exit(FORK_EXIT_DEV_FILE_REFUSED);
+            const fd = std.posix.openatZ(std.posix.AT.FDCWD, &path_z, .{ .ACCMODE = .RDWR }, 0) catch
+                linux.exit(FORK_EXIT_DEV_FILE_REFUSED);
+            _ = linux.close(fd);
+        }
+        linux.exit(FORK_EXIT_OK);
     }
 
     var status: u32 = 0;

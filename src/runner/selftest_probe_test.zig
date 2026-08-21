@@ -35,10 +35,11 @@ test "a line built from the child's own keys parses back to the same verdicts" {
     // renamed on one side only — which would silently degrade every check to
     // "failed" and red-flag every healthy runner.
     var buf: [128]u8 = undefined;
-    const line = try std.fmt.bufPrint(&buf, "{s}1 {s}1 {s}1 {s}0 {s}x {s}1 {s}1", .{
+    const line = try std.fmt.bufPrint(&buf, "{s}1 {s}1 {s}1 {s}1 {s}0 {s}x {s}1 {s}1", .{
         selftest_probe.KEY_RESOLVER,
         selftest_probe.KEY_SCRATCH,
         selftest_probe.KEY_HOME,
+        selftest_probe.KEY_DEV_FILES,
         selftest_probe.KEY_DNS,
         selftest_probe.KEY_EGRESS,
         selftest_probe.KEY_TRANSPORT,
@@ -48,6 +49,7 @@ test "a line built from the child's own keys parses back to the same verdicts" {
     try std.testing.expect(o.resolver_readable);
     try std.testing.expect(o.scratch_writable);
     try std.testing.expect(o.home_writable);
+    try std.testing.expect(o.device_files_writable);
     try std.testing.expect(!o.dns_resolved);
     try std.testing.expect(o.dns_testable);
     try std.testing.expect(!o.egress_reachable);
@@ -61,10 +63,11 @@ test "an untested transport is not read as a failed one" {
     // the bind set" — so the parser must keep them apart. Collapsing them is
     // how `grade` would tell an operator to repair a sandbox that is fine.
     var buf: [128]u8 = undefined;
-    const line = try std.fmt.bufPrint(&buf, "{s}1 {s}1 {s}1 {s}1 {s}1 {s}x {s}1", .{
+    const line = try std.fmt.bufPrint(&buf, "{s}1 {s}1 {s}1 {s}1 {s}1 {s}1 {s}x {s}1", .{
         selftest_probe.KEY_RESOLVER,
         selftest_probe.KEY_SCRATCH,
         selftest_probe.KEY_HOME,
+        selftest_probe.KEY_DEV_FILES,
         selftest_probe.KEY_DNS,
         selftest_probe.KEY_EGRESS,
         selftest_probe.KEY_TRANSPORT,
@@ -83,6 +86,25 @@ test "a probe that never reported a transport key does not certify one" {
     const o = selftest_exec.outcomeFrom("resolver=1 scratch=1 home=1 dns=1 egress=1 binds=1", false);
     try std.testing.expect(!o.transport_execs);
     try std.testing.expect(o.transport_testable);
+}
+
+test "a probe that never reported the device-file key does not certify one" {
+    // The same fail-closed reading, for the key added after the `/dev/null`
+    // incident. An older probe attempted no open, and reading its silence as a
+    // pass is exactly how a policy layer that refused that open kept grading
+    // the host healthy while every lease died on it.
+    const o = selftest_exec.outcomeFrom("resolver=1 scratch=1 home=1 dns=1 egress=1 transport=1 binds=1", false);
+    try std.testing.expect(!o.device_files_writable);
+}
+
+test "a refused device-file open is carried through as a failure" {
+    const o = selftest_exec.outcomeFrom("resolver=1 scratch=1 home=1 devfiles=0 dns=1 egress=1 transport=1 binds=1", false);
+    try std.testing.expect(o.scratch_writable);
+    try std.testing.expect(o.home_writable);
+    // The two writes above passing while this one fails is the whole shape of
+    // the incident: the floor was writable, the home was on it, and the lease
+    // still could not open the one file its transport spawn needed.
+    try std.testing.expect(!o.device_files_writable);
 }
 
 test "the flag prefixes are distinct and each ends at its value" {

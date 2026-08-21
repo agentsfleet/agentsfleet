@@ -56,6 +56,7 @@ comptime {
 pub const CHECK_RESOLVER = "resolver file resolves inside the sandbox";
 pub const CHECK_SCRATCH = "the scratch dir accepts a write inside the sandbox";
 pub const CHECK_HOME = "the child's home accepts a write inside the sandbox";
+pub const CHECK_DEV_FILES = "the writable device files open for writing inside the sandbox";
 pub const CHECK_DNS = "a hostname resolves inside the sandbox";
 pub const CHECK_EGRESS = "the inference endpoint is reachable";
 pub const CHECK_TRANSPORT = "the model transport runs inside the sandbox";
@@ -69,6 +70,7 @@ pub const CHECK_SANDBOX = "a sandbox can be established";
 pub const DETAIL_OK = "no fault detected";
 pub const DETAIL_SCRATCH_READONLY = "the sandbox refused a write to its scratch tmpfs — every credentialed dial fails as TempFileCreateFailed until the write floor is granted";
 pub const DETAIL_HOME_UNREACHABLE = "the sandbox refused a write under the child's HOME — the engine cannot create its configuration directory, and every lease fails as AccessDenied before its first model call";
+pub const DETAIL_DEV_FILES_READONLY = "the sandbox refused an open-for-write on /dev/null — the engine wires its model transport's stdio through it, so every lease fails as AccessDenied before its first model call";
 pub const DETAIL_RESOLVER_DANGLING = "/etc/resolv.conf does not resolve to a readable file — the systemd-resolved stub is not bound into the sandbox";
 pub const DETAIL_DNS_FAILED = "the resolver did not answer inside the sandbox";
 pub const DETAIL_EGRESS_BLOCKED = "the endpoint did not accept a connection";
@@ -367,6 +369,25 @@ pub fn grade(alloc: std.mem.Allocator, cfg: Config, outcome: Outcome) !Result {
             DETAIL_HOME_UNREACHABLE,
     });
 
+    // Graded unconditionally, and separately from the two writes above for the
+    // same reason they are separate from each other: they answer different
+    // questions. Scratch proves the writable FLOOR exists, home proves the
+    // child's HOME sits on it, and this proves the one thing outside that floor
+    // a lease must still be able to write. A runner passing the first two and
+    // failing this one runs no lease at all — the state that reported
+    // `all_ok=true, checks=6` while every lease died at `open("/dev/null",
+    // O_RDWR)`.
+    try checks.append(alloc, .{
+        .name = CHECK_DEV_FILES,
+        .ok = if (outcome.timed_out) false else outcome.device_files_writable,
+        .detail = if (outcome.timed_out)
+            DETAIL_TIMEOUT
+        else if (outcome.device_files_writable)
+            DETAIL_OK
+        else
+            DETAIL_DEV_FILES_READONLY,
+    });
+
     // DNS is graded against the ASSIGNED posture too. Under deny_all there is
     // no network to resolve through, so a failure there is the assignment
     // working — the same reasoning the egress arm below has always used.
@@ -458,6 +479,10 @@ pub const Outcome = struct {
     /// always reads it, so every construction site must decide rather than
     /// inherit a pass it never observed.
     home_writable: bool,
+    /// No default, for the reason the two above have none: `grade` always reads
+    /// it, and a construction site that inherits a pass it never observed is
+    /// how a policy layer that refused this open kept reporting a healthy host.
+    device_files_writable: bool,
     dns_resolved: bool,
     egress_reachable: bool,
     extra_binds_present: bool = true,

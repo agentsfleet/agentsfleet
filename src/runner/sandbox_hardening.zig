@@ -12,6 +12,11 @@ const builtin = @import("builtin");
 const contract = @import("contract");
 
 const landlock = @import("engine/landlock.zig");
+
+/// Re-exported so `selftest_probe` reaches the policy layer's own writable
+/// device set through the module that already carries the lease's hardening,
+/// rather than reaching past it into `engine/`.
+pub const FLOOR_RW_FILES = landlock.LANDLOCK_FLOOR_RW_FILES;
 const seccomp = @import("engine/seccomp.zig");
 
 /// Repeatable operator-bind flags the parent forwards so the child's landlock

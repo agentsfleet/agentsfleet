@@ -44,6 +44,7 @@ const HEALTHY: selftest.Outcome = .{
     .resolver_readable = true,
     .scratch_writable = true,
     .home_writable = true,
+    .device_files_writable = true,
     .dns_resolved = true,
     .egress_reachable = true,
     .transport_execs = true,
@@ -100,6 +101,55 @@ test "an unreachable child home fails the self-test under every posture" {
         try std.testing.expectEqualStrings(selftest.DETAIL_HOME_UNREACHABLE, c.detail);
         try std.testing.expect(!r.allOk());
     }
+}
+
+test "a refused device-file open fails the self-test under every posture" {
+    // The fault this check was added for, graded. `zombie-dev-worker-ant`
+    // reported `all_ok=true` on six green checks while every lease died at
+    // `open("/dev/null", O_RDWR) = EACCES`: bwrap's `--dev` had the node
+    // writable, the landlock floor had `/dev` read-only, and nothing measured
+    // the gap. No network assignment makes a refused open expected — the
+    // engine's transport spawn wires stdio through that node under every
+    // posture — so deny_all must not excuse it, exactly as it does not excuse
+    // scratch or home.
+    const alloc = std.testing.allocator;
+    var o = HEALTHY;
+    o.device_files_writable = false;
+    inline for (.{ .allow_all, .deny_all_egress }) |posture| {
+        const r = try selftest.grade(alloc, cfg(posture, &.{}), o);
+        defer r.deinit(alloc);
+        const c = findCheck(r, selftest.CHECK_DEV_FILES) orelse return error.TestUnexpectedResult;
+        try std.testing.expect(!c.ok);
+        try std.testing.expectEqualStrings(selftest.DETAIL_DEV_FILES_READONLY, c.detail);
+        try std.testing.expect(!r.allOk());
+    }
+}
+
+test "a healthy probe grades the device-file check ok" {
+    const alloc = std.testing.allocator;
+    const r = try selftest.grade(alloc, cfg(.allow_all, &.{}), HEALTHY);
+    defer r.deinit(alloc);
+    const c = findCheck(r, selftest.CHECK_DEV_FILES) orelse return error.TestUnexpectedResult;
+    try std.testing.expect(c.ok);
+    try std.testing.expectEqualStrings(selftest.DETAIL_OK, c.detail);
+}
+
+test "an executable transport does not vouch for the device files" {
+    // The exact reading that let the incident stand. `CHECK_TRANSPORT` asks
+    // whether the sandbox can EXECUTE the binary the engine spawns, and it was
+    // green — but executing a binary and wiring its stdio are different
+    // permissions, and only the second one was refused. If the transport check
+    // could stand in for this one, that host grades healthy all over again.
+    const alloc = std.testing.allocator;
+    var o = HEALTHY;
+    o.device_files_writable = false;
+    const r = try selftest.grade(alloc, cfg(.allow_all, &.{}), o);
+    defer r.deinit(alloc);
+    const transport = findCheck(r, selftest.CHECK_TRANSPORT) orelse return error.TestUnexpectedResult;
+    const dev_files = findCheck(r, selftest.CHECK_DEV_FILES) orelse return error.TestUnexpectedResult;
+    try std.testing.expect(transport.ok);
+    try std.testing.expect(!dev_files.ok);
+    try std.testing.expect(!r.allOk());
 }
 
 test "a writable floor does not vouch for the home — the two checks are independent" {
@@ -242,6 +292,7 @@ test "test_probe_detects_a_dangling_resolver" {
         .resolver_readable = false,
         .scratch_writable = true,
         .home_writable = true,
+        .device_files_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
         .transport_execs = true,
@@ -266,6 +317,7 @@ test "test_probe_reports_deny_all_as_expected" {
         .resolver_readable = true,
         .scratch_writable = true,
         .home_writable = true,
+        .device_files_writable = true,
         .dns_resolved = true,
         .egress_reachable = false,
         .transport_execs = true,
@@ -287,6 +339,7 @@ test "test_probe_reports_deny_all_as_expected" {
         .resolver_readable = true,
         .scratch_writable = true,
         .home_writable = true,
+        .device_files_writable = true,
         .dns_resolved = true,
         .egress_reachable = false,
         .transport_execs = true,
@@ -305,6 +358,7 @@ test "an open posture with no declared registry reports egress as untested, not 
         .resolver_readable = true,
         .scratch_writable = true,
         .home_writable = true,
+        .device_files_writable = true,
         .dns_resolved = true,
         .egress_reachable = false,
         .transport_execs = true,
@@ -327,6 +381,7 @@ test "under deny_all_egress an unresolvable name is the assignment working, not 
         .resolver_readable = true,
         .scratch_writable = true,
         .home_writable = true,
+        .device_files_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
         .transport_execs = true,
@@ -349,6 +404,7 @@ test "a sandbox with no resolver tool reports DNS untested rather than broken" {
         .resolver_readable = true,
         .scratch_writable = true,
         .home_writable = true,
+        .device_files_writable = true,
         .dns_resolved = false,
         .egress_reachable = true,
         .transport_execs = true,
@@ -371,6 +427,7 @@ test "a timeout still outranks the posture arms — a hung probe proves nothing"
         .resolver_readable = true,
         .scratch_writable = true,
         .home_writable = true,
+        .device_files_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
         .transport_execs = false,
@@ -393,6 +450,7 @@ test "test_probe_timeout_reaps_and_reports" {
         .resolver_readable = true,
         .scratch_writable = true,
         .home_writable = true,
+        .device_files_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
         .transport_execs = false,
@@ -419,6 +477,7 @@ test "test_probe_result_carries_no_secrets" {
         .resolver_readable = false,
         .scratch_writable = true,
         .home_writable = true,
+        .device_files_writable = true,
         .dns_resolved = false,
         .egress_reachable = false,
         .transport_execs = true,
