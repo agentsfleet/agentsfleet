@@ -21,18 +21,19 @@ commit.
 floor 89, `agentsfleetd` 91.04% / floor 90, `lib` 95.30%, `runner` 92.68%;
 integration 1003 passed, 8 skipped, 0 failed):
 
-| class | Aug 20 authored | Aug 21 measured | mechanism |
+| class | Aug 21 measured | Aug 21 re-measured | mechanism |
 |---|---|---|---|
-| errdefer | 318 | **295** | `checkAllAllocationFailures` |
-| failure-response | 512 | **463** | inject the failure the path answers |
-| failure-log | 298 | **303** | same tests, assert the log line |
-| error-return | 132 | **128** | construct the triggering input |
-| other | 1110 | **1094** | triage: test / delete / annotate |
-| brace | 44 | **16** | report artefact, no test owed |
-| **total** | **2414** | **2299** | |
+| errdefer | 295 | **295** | `checkAllAllocationFailures` |
+| failure-response | 463 | **454** | inject the failure the path answers |
+| failure-log | 303 | **300** | same tests, assert the log line |
+| error-return | 128 | **128** | construct the triggering input |
+| other | 1094 | **1088** | triage: test / delete / annotate |
+| brace | 16 | **16** | report artefact, no test owed |
+| **total** | **2299** | **2281** | |
 
-**These counts predate this session's three commits**, which closed 8 more
-connection-failure lines. Re-measure before grading anything — and read the
+**Re-measured Aug 21 after `ab2e251f7`** against a green lane (merged 91.46%,
+`agentsfleetd` 91.11%, `lib` 95.41%, `runner` 92.74%; integration 1006 passed,
+8 skipped, 0 failed). Re-measure again before grading anything — and read the
 deltas as NET, since leak fixes add `errdefer` rungs and those rungs carry log
 lines.
 
@@ -89,6 +90,19 @@ No tmux. Docker for this worktree: postgres :25796, redis :25797, qstash :25798.
   (401/401/404/404/404 from their own post-acquire paths); restored green.
 - ✅ `make harness-verify` — all gates green on each staged diff.
 - ✅ Depth gate `unit=4236 integration=727` (CHORE(open) baseline 4205/719).
+- ✅ Full lane green after `ab2e251f7` — `test-coverage-zig`, `test-integration`
+  and `test-coverage-grade` all exit 0. Integration 1006 passed, 8 skipped,
+  0 failed. Merged 91.46% (floor 89) / `agentsfleetd` 91.11% (floor 90) /
+  `lib` 95.41% / `runner` 92.74%.
+- ✅ `db/pool_test.zig:943` "migration lock serializes" failed once under load
+  (kcov + docker + concurrent polling) and passed on a quiet box. It is a
+  wall-clock assertion — `elapsed_ms < 1_000` — on advisory-lock contention,
+  with its own two pools and no HTTP. A flake, not a regression; worth a
+  tolerance if it recurs in CI.
+- ⚠️ `TEST_FILTER` matches module paths, not test descriptions, and it does not
+  reach `db/pool_test.zig` at all — `pool_test`, `db.pool_test`, `migration_lock`
+  and the full description each match zero named tests while `pool_exhaustion`
+  works. Isolating a failure in that file needs the full lane.
 - ⏳ `make lint-all`, `make test-unit-all`, `make memleak`, `make check-version`
   — NOT run. Every rubric S-row is still ungraded.
 
@@ -96,14 +110,10 @@ No tmux. Docker for this worktree: postgres :25796, redis :25797, qstash :25798.
 
 1. `git push origin feat/m173-error-path-coverage`.
 2. Re-measure (both producers + grade) before trusting any class count.
-3. Then either:
-   - **the 7 signature-blocked connection failures** — build the Svix fixture
-     once and it covers six of them (clerk ×2, identity-delete ×4); Slack is the
-     seventh. The probe table already carries `token: ?[]const u8` and
-     `headers`, which is what they need.
-   - **or §1's 295 `errdefer` lines** — the larger class, and the one the
-     milestone was originally justified on. Pick targets by reading the
-     function, never by the signature heuristic.
+3. **§1's 295 `errdefer` lines** — the largest class, and the one the milestone
+   was originally justified on. The signature-blocked seven are closed, so this
+   is the remaining leverage. Pick targets by reading the function, never by the
+   signature heuristic.
 4. §3, §4, §5 remain untouched — ~1,220 lines, §4 the bulk. Still multi-session.
 
 ## Risks / gotchas
