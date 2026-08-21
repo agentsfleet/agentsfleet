@@ -63,15 +63,27 @@ const MAX_TAR_ENTRIES: usize = 4096;
 /// `{parent}/{child}` path-join format (RULE UFS — 4 bufPrint sites).
 const PATH_JOIN_FMT = "{s}/{s}";
 
+/// Which half of materialization failed, and whether the bundle or the host is
+/// at fault. The caller turns this into the cause line an operator reads, so a
+/// host that ran out of memory never reads as a broken bundle.
+pub const MaterializeFailure = enum { download, malformed, memory };
+
 /// Outcome of materializing a leased bundle's support files into the workspace.
-pub const MaterializeResult = enum {
+pub const MaterializeResult = union(enum) {
     /// Proceed to execute — support files are in place, or the bundle is
     /// skill-only / carried none (nothing to materialize).
     ready,
     /// Download or extraction failed — the caller reports a startup failure and
     /// does not fork the child. Retry is deferred (see spec Failure Modes).
-    failed,
+    failed: MaterializeFailure,
 };
+
+/// Attribute a materialization error: an allocation failure is the host's, and
+/// every other error belongs to the stage that raised it. `pub` for the sibling
+/// `bundle_extract_test.zig`.
+pub fn causeOf(err: anyerror, stage: MaterializeFailure) MaterializeFailure {
+    return if (err == error.OutOfMemory) .memory else stage;
+}
 
 /// Materialize the leased bundle's SUPPORT FILES (and folders) into the per-lease
 /// `workspace_path` before the child forks: content-addressed cache → daemon
@@ -90,7 +102,7 @@ pub fn materialize(
 ) MaterializeResult {
     const tar = cacheOrDownload(io, alloc, cp, runner_token, storage_home, workspace_path, manifest.content_hash, deadline_ms) catch |err| {
         log.warn("bundle_download_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .content_hash = manifest.content_hash, .err = @errorName(err) });
-        return .failed;
+        return .{ .failed = causeOf(err, .download) };
     };
     const bytes = tar orelse {
         log.debug("bundle_skill_only", .{ .content_hash = manifest.content_hash });
@@ -99,7 +111,7 @@ pub fn materialize(
     defer alloc.free(bytes);
     const written = extractSupportFiles(io, alloc, bytes, workspace_path) catch |err| {
         log.warn("bundle_extract_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .content_hash = manifest.content_hash, .err = @errorName(err) });
-        return .failed;
+        return .{ .failed = causeOf(err, .malformed) };
     };
     log.debug("bundle_materialized", .{ .content_hash = manifest.content_hash, .files = written });
     return .ready;
@@ -248,7 +260,12 @@ fn writeEntry(io: std.Io, alloc: std.mem.Allocator, iter: *std.tar.Iterator, ent
 fn readEntry(alloc: std.mem.Allocator, iter: *std.tar.Iterator, entry: std.tar.Iterator.File) ![]u8 {
     var aw: std.Io.Writer.Allocating = .init(alloc);
     errdefer aw.deinit();
-    iter.streamRemaining(entry, &aw.writer) catch return error.CorruptArchive;
+    // The allocating writer raises `WriteFailed` only when it cannot allocate, so
+    // folding it into CorruptArchive blames the bundle for the host's memory.
+    iter.streamRemaining(entry, &aw.writer) catch |err| switch (err) {
+        error.WriteFailed => return error.OutOfMemory,
+        else => return error.CorruptArchive,
+    };
     return aw.toOwnedSlice();
 }
 

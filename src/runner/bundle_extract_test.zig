@@ -18,6 +18,7 @@ const SR_SKILL = @embedFile("security-reviewer-SKILL.md");
 const SR_TRIGGER = @embedFile("security-reviewer-TRIGGER.md");
 const SR_OWASP = @embedFile("security-reviewer-owasp.md");
 const SR_NESTED = "checklists/owasp.md";
+const SUPPORT_NAME = "README.md";
 
 const TarEntry = struct {
     name: []const u8,
@@ -57,7 +58,7 @@ test "extractSupportFiles writes support files and folders, skips SKILL/TRIGGER"
     const tar = try buildTar(alloc, &.{
         .{ .name = SKILL_NAME, .content = SR_SKILL },
         .{ .name = TRIGGER_NAME, .content = SR_TRIGGER },
-        .{ .name = "README.md", .content = "readme" },
+        .{ .name = SUPPORT_NAME, .content = "readme" },
         .{ .name = SR_NESTED, .content = SR_OWASP },
     });
     defer alloc.free(tar);
@@ -104,7 +105,7 @@ test "writeCache then readCache round-trips the tar bytes" {
     try std.Io.Dir.createDirAbsolute(io, ws, .default_dir);
 
     const hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-    const tar = try buildTar(alloc, &.{.{ .name = "README.md", .content = "cached" }});
+    const tar = try buildTar(alloc, &.{.{ .name = SUPPORT_NAME, .content = "cached" }});
     defer alloc.free(tar);
 
     try bundle_extract.writeCache(io, base, ws, hash, tar);
@@ -138,4 +139,39 @@ test "accumulateBytes rejects a corrupt/oversized/overflowing size field, no pan
     try std.testing.expectError(error.TooLarge, bundle_extract.accumulateBytes(after_first, half));
     // A valid in-range fold returns the running total unchanged in shape.
     try std.testing.expectEqual(@as(usize, 100), try bundle_extract.accumulateBytes(40, 60));
+}
+
+fn extractUnderAllocator(alloc: std.mem.Allocator, io: std.Io, tar: []const u8, ws: []const u8) !void {
+    _ = try bundle_extract.extractSupportFiles(io, alloc, tar, ws);
+}
+
+test "test_extract_support_files_unwinds_without_leaking" {
+    // Two rungs per entry: the allocating writer inside `readEntry` and the owned
+    // slice it hands back, so a rung that frees the wrong side scales with the
+    // archive rather than costing one allocation. Two support files, not one, is
+    // what makes that visible.
+    //
+    // The fixture is built OUTSIDE the proof and passed in. Building it inside
+    // fails the proof with no product defect at all: `std.tar.Writer` over an
+    // allocating writer turns an allocation failure into `error.WriteFailed`, and
+    // the helper requires the function under test to answer OutOfMemory.
+    const alloc = std.testing.allocator;
+    const io = @import("common").globalIo();
+    const ws = try freshDir(io, "unwind");
+    const tar = try buildTar(alloc, &.{
+        .{ .name = SUPPORT_NAME, .content = "readme" },
+        .{ .name = SR_NESTED, .content = "nested" },
+    });
+    defer alloc.free(tar);
+    try std.testing.checkAllAllocationFailures(alloc, extractUnderAllocator, .{ io, tar, ws });
+}
+
+test "causeOf blames the host for an allocation failure and the stage for everything else" {
+    // The pairing that matters: the same `error.OutOfMemory` the proof above
+    // forces out of `extractSupportFiles` must NOT read as a malformed bundle.
+    try std.testing.expectEqual(bundle_extract.MaterializeFailure.memory, bundle_extract.causeOf(error.OutOfMemory, .malformed));
+    try std.testing.expectEqual(bundle_extract.MaterializeFailure.memory, bundle_extract.causeOf(error.OutOfMemory, .download));
+    try std.testing.expectEqual(bundle_extract.MaterializeFailure.malformed, bundle_extract.causeOf(error.CorruptArchive, .malformed));
+    try std.testing.expectEqual(bundle_extract.MaterializeFailure.malformed, bundle_extract.causeOf(error.UnsafePath, .malformed));
+    try std.testing.expectEqual(bundle_extract.MaterializeFailure.download, bundle_extract.causeOf(error.ConnectionRefused, .download));
 }

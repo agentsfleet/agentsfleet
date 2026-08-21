@@ -345,3 +345,15 @@ test "the production MintForwarder fails the child's ask closed on a rejected mi
     // Fail-closed: the child aborts its tool call; no token, no fallback.
     try testing.expect(outcome == .rejected);
 }
+
+test "detailFor answers a distinct cause line for every materialize failure" {
+    // A startup failure is all the operator gets — there is no runner log for a
+    // hosted user to read — so the three causes must not share a line.
+    const download = lease_run.detailFor(.download);
+    const malformed = lease_run.detailFor(.malformed);
+    const memory = lease_run.detailFor(.memory);
+    for ([_][]const u8{ download, malformed, memory }) |line| try testing.expect(line.len > 0);
+    try testing.expect(!std.mem.eql(u8, download, malformed));
+    try testing.expect(!std.mem.eql(u8, malformed, memory));
+    try testing.expect(!std.mem.eql(u8, download, memory));
+}

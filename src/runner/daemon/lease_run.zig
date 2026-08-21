@@ -37,7 +37,9 @@ const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
 
 // Cause line for a pre-fork bundle-materialization failure. Static — the
 // report request borrows it for the POST; nothing frees it.
-const DETAIL_BUNDLE_MATERIALIZE = "fleet bundle download or extraction failed before start";
+const DETAIL_BUNDLE_DOWNLOAD = "the runner could not fetch the fleet bundle from the control plane";
+const DETAIL_BUNDLE_MALFORMED = "the fleet bundle archive could not be read - it is malformed or carries an unsafe path";
+const DETAIL_BUNDLE_MEMORY = "the runner ran out of memory materializing the fleet bundle - the bundle itself is intact";
 
 /// Fans the supervisor's renewal tick out to the periodic work that rides it:
 /// the activity batch's staleness flush, then the renewal decision itself.
@@ -184,11 +186,23 @@ fn materializeBundle(io: std.Io, alloc: std.mem.Allocator, cp: *client_mod, runn
     const manifest = payload.bundle orelse return true;
     switch (bundle_extract.materialize(io, alloc, cp, runner_token, cfg.storage_home, workspace_path, manifest, cfg.cp_deadlines.default_ms)) {
         .ready => return true,
-        .failed => {
-            reportStartupFailure(alloc, cp, runner_token, payload, cfg.cp_deadlines.report_ms, DETAIL_BUNDLE_MATERIALIZE);
+        .failed => |cause| {
+            reportStartupFailure(alloc, cp, runner_token, payload, cfg.cp_deadlines.report_ms, detailFor(cause));
             return false;
         },
     }
+}
+
+/// One cause line per distinguishable failure, matching the runner's convention
+/// (`child_supervisor_result`, `selftest`). A collapsed detail cannot tell an
+/// operator whether to fix their bundle or their host. `pub` for the sibling
+/// `lease_run_exec_test.zig`.
+pub fn detailFor(cause: bundle_extract.MaterializeFailure) []const u8 {
+    return switch (cause) {
+        .download => DETAIL_BUNDLE_DOWNLOAD,
+        .malformed => DETAIL_BUNDLE_MALFORMED,
+        .memory => DETAIL_BUNDLE_MEMORY,
+    };
 }
 
 /// Report a pre-execution bundle-materialization failure as a startup failure so

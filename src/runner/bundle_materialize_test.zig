@@ -6,7 +6,8 @@
 //! bundle's bytes reach disk. Pinned against a scripted plane: the 200 path
 //! extracts AND caches, the warm cache serves with the plane dead (the cache
 //! must be sufficient, not decorative), a 404 is the skill-only no-op, and a
-//! refusal is `.failed` with nothing written.
+//! refusal is `.failed` with nothing written, carrying the cause the operator
+//! reads: a plane refusal is `.download`, an unreadable archive `.malformed`.
 
 const std = @import("std");
 const testing = std.testing;
@@ -72,7 +73,7 @@ test "a downloaded bundle extracts into the workspace and writes the cache" {
     defer ALLOC.free(tar);
 
     const result = try materializeAgainst(.{ .line = "200 OK", .body = tar }, home, ws);
-    try testing.expectEqual(bundle_extract.MaterializeResult.ready, result);
+    try testing.expect(result == .ready);
 
     // The support file landed in the workspace…
     var path_buf: [256]u8 = undefined;
@@ -107,7 +108,7 @@ test "a warm cache serves the bundle with the control plane unreachable" {
     var c = client_mod.init(ALLOC, common.globalIo(), try deadlines.start(ALLOC), "http://127.0.0.1:1");
     defer c.deinit();
     const result = bundle_extract.materialize(io, ALLOC, &c, "agt_rtest", home, ws2, .{ .content_hash = HASH }, DEADLINE_MS);
-    try testing.expectEqual(bundle_extract.MaterializeResult.ready, result);
+    try testing.expect(result == .ready);
 
     var path_buf: [256]u8 = undefined;
     const support_path = try std.fmt.bufPrint(&path_buf, "{s}/{s}", .{ ws2, SUPPORT_NAME });
@@ -124,7 +125,7 @@ test "a 404 is the skill-only bundle: ready, nothing extracted" {
     defer std.Io.Dir.cwd().deleteTree(io, ws) catch |err| std.log.warn("cleanup: {s}", .{@errorName(err)});
 
     const result = try materializeAgainst(.{ .line = "404 Not Found", .body = "" }, home, ws);
-    try testing.expectEqual(bundle_extract.MaterializeResult.ready, result);
+    try testing.expect(result == .ready);
 
     var path_buf: [256]u8 = undefined;
     const support_path = try std.fmt.bufPrint(&path_buf, "{s}/{s}", .{ ws, SUPPORT_NAME });
@@ -139,6 +140,20 @@ test "a refusal fails the materialize and writes nothing" {
     defer std.Io.Dir.cwd().deleteTree(io, ws) catch |err| std.log.warn("cleanup: {s}", .{@errorName(err)});
 
     const result = try materializeAgainst(.{ .line = "500 Internal Server Error", .body = "{}" }, home, ws);
-    try testing.expectEqual(bundle_extract.MaterializeResult.failed, result);
+    try testing.expectEqual(bundle_extract.MaterializeFailure.download, result.failed);
     try testing.expect(bundle_extract.readCache(io, ALLOC, home, HASH) == null);
+}
+
+test "a 200 carrying a body that is not a tar fails as malformed, not as a download failure" {
+    // The two halves of materialize answer for different people: a refusal is the
+    // plane's problem, an unreadable archive is the bundle's. One collapsed detail
+    // told the operator neither.
+    const io = common.globalIo();
+    const home = try freshDir(io, "junk-home");
+    defer std.Io.Dir.cwd().deleteTree(io, home) catch |err| std.log.warn("cleanup: {s}", .{@errorName(err)});
+    const ws = try freshDir(io, "junk-ws");
+    defer std.Io.Dir.cwd().deleteTree(io, ws) catch |err| std.log.warn("cleanup: {s}", .{@errorName(err)});
+
+    const result = try materializeAgainst(.{ .line = "200 OK", .body = "not a tar archive at all" }, home, ws);
+    try testing.expectEqual(bundle_extract.MaterializeFailure.malformed, result.failed);
 }
