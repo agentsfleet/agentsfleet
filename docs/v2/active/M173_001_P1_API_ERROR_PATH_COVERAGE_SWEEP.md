@@ -65,8 +65,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `make/test.mk` | EDIT | the enforced floor and target VALUES live here (`ZIG_COVERAGE_FOLDER_FLOORS`, `ZIG_COVERAGE_MIN_PCT`), not in the grading script |
 | `scripts/check_zig_coverage_floors.py` | EDIT | floor grading logic, if the raise needs it; the values themselves move in `make/test.mk` |
 | `scripts/classify_unhit_lines.py` | CREATE | classifies every unhit line in the merged kcov report into the class that names its mechanism; rubric rows R1-R4 grade from its count output |
-| `scripts/classify_rung_callers.py` | CREATE | classifies every `errdefer` rung by whether its callers pass an allocator that outlives a request; `--class leak-capable` is §1's work list and R1 grades against it |
+| `scripts/classify_rung_callers.py` | CREATE | classifies every `errdefer` rung by whether its callers pass an allocator that outlives a request; `--class leak-capable` is §1's work list and R1 grades against it, and `--fn FILE:NAME` narrows it to one function before a proof is written |
+| `scripts/rung_call_edges.py` | CREATE | decides which `@import`s are calls — an import taken for a type or a constant is not an edge — and finds the callers of one named function; the classifier is built on it |
 | `scripts/classify_rung_callers_test.py` | CREATE | pins the arena boundary, transitive reach, severity precedence and the unreached-vs-arena distinction; discovered by the `*_test.py` pattern `make lint-governance` already runs |
+| `scripts/rung_call_edges_test.py` | CREATE | pins which imports count as edges, including the two shapes that must KEEP one, and pins `callers_of` answering per function where the class label answers per file |
 | `scripts/classify_unhit_lines_test.py` | CREATE | its self-test, discovered by the `*_test.py` pattern `make lint-governance` already runs |
 | `docs/architecture/testing.md` | EDIT | record the new floors and the allocation-failure proof as the standing shape for error paths |
 | `docs/v2/*/M173_001_P1_API_ERROR_PATH_COVERAGE_SWEEP.md` | EDIT | lifecycle status |
@@ -105,23 +107,29 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 Every HTTP handler receives `hx.alloc`, a per-request arena torn down on return
 (`http/server.zig:278`), so a missing rung on a handler-only path leaks NOTHING
 in production. Run `python3 scripts/classify_rung_callers.py --class leak-capable --files`
-and work that list: 301 rungs across 95 files, reached by callers whose
-allocators outlive a request.
+and work that list: **277 rungs across 88 files**, reached from cron, the queue
+workers, the event bus, the key-set refresh, the runner daemon, and boot — the
+callers whose allocators outlive a request. The other 258 are deliberately out
+of scope per Indy's Aug 21 decision, recorded in Discovery. Proving one of them
+is not neutral: it costs the same as proving one that can leak, and it makes the
+class counts look like progress.
 
-**Then narrow it per FUNCTION before writing the proof.** The classifier resolves
-at file level, so a `repeating` file can hold functions only handlers reach, and
-its rung count therefore OVERSTATES the real work. `git grep -n '<fn_name>' -- 'src/**/*.zig'`
-and confirm at least one caller passes something other than `hx.alloc`; if every
-caller is a handler, the rung is arena-backed no matter what its file says, and
-proving it is the cosmetic work this milestone stopped doing. This is not
-hypothetical — `vault.zig` classifies `repeating` because `loadJson` is called
-from `cron/Credentials`, `serve_broker` and `serve_webhook_lookup`, while
-`loadMetadata`'s three rungs have exactly one caller and it is a handler. A proof
-was written for them before this check existed — cron, the queue workers, the event bus, the key-set
-refresh, the runner daemon, and boot. The other 234 are deliberately out of scope
-per Indy's Aug 21 decision, recorded in Discovery. Proving one of them is not
-neutral: it costs the same as proving one that can leak, and it makes the class
-counts look like progress.
+**Then narrow it per FUNCTION, with `--fn`, before writing the proof.** The
+classifier resolves at file level, so a `repeating` file can hold functions only
+handlers reach, and its rung count therefore OVERSTATES the real work.
+
+```
+python3 scripts/classify_rung_callers.py --fn agentsfleetd/state/vault.zig:loadMetadata
+```
+
+answers with every caller that actually calls the function, each carrying its own
+class, and a verdict line. `ARENA-BACKED` means every caller is under the
+per-request arena and the rung is the cosmetic work this milestone stopped doing,
+whatever its file says. This is not hypothetical: `vault.zig` classifies
+`repeating` because `loadJson` reaches `cron/Credentials`, `serve_broker` and
+`serve_webhook_lookup`, while `loadMetadata` has exactly one caller and it is a
+handler. Three proofs were written against the file label before this check
+existed, and all three proved arena-backed rungs.
 
 **Before writing any proof in this section, read the four traps in Discovery.**
 Three produce a test that passes while proving nothing; the fourth refuses to
@@ -151,9 +159,10 @@ unit tier proves the ladder unwinds; the integration tier proves the ladder is
 on the path production actually takes. Neither alone discharges a Dimension —
 `/write-unit-test` and `/write-integration-test` both run, per rung module.
 
-- **Dimension 1.1** — every leak-capable rung in `src/agentsfleetd/state/**` (48) unwinds under induced failure at every site without leaking, proven in both tiers → Test `test_state_reads_unwind_without_leaking`
-- **Dimension 1.2** — every leak-capable rung in the daemon's long-lived services — `cron/**`, `queue/**`, `events/**`, `auth/**`, `secrets/**`, `session/**`, `db/**`, `observability/**` — does the same (≈120). These are the cron fire service, the Redis workers, the event bus and the key-set refresh: the callers whose allocators outlive every request, and the ones the milestone's justification names → Test `test_long_lived_services_unwind_without_leaking`
-- **Dimension 1.3** — every leak-capable rung in `src/agentsfleetd/fleet/**`, `fleet_runtime/**`, `fleet_library/**` (64) and in `src/runner/**` (≈45) does the same → Test `test_fleet_and_runner_paths_unwind_without_leaking`
+- **Dimension 1.1** — every leak-capable rung in `src/agentsfleetd/state/**` (48 across 8 files) unwinds under induced failure at every site without leaking, proven in both tiers → Test `test_state_reads_unwind_without_leaking`
+- **Dimension 1.2** — every leak-capable rung in the daemon's long-lived services — `cron/**`, `queue/**`, `events/**`, `auth/**`, `secrets/**`, `session/**`, `db/**`, `observability/**` — does the same (90 across 31 files). These are the cron fire service, the Redis workers, the event bus and the key-set refresh: the callers whose allocators outlive every request, and the ones the milestone's justification names → Test `test_long_lived_services_unwind_without_leaking`
+- **Dimension 1.3** — every leak-capable rung in `src/agentsfleetd/fleet/**`, `fleet_runtime/**`, `fleet_library/**` and in `src/runner/**` (97 across 33 files) does the same → Test `test_fleet_and_runner_paths_unwind_without_leaking`
+- **Dimension 1.8** — every leak-capable rung no Dimension above owns (42 across 16 files) does the same. The three Dimensions are cut by directory and the leak-capable set is not, so `cmd/**`, `config/**`, `credentials/**` and `http/stream_registry.zig` fall between them — the same directory-vs-class gap that re-cut §1 once already. Dimension 1.5 already puts them in scope; this names an owner → Test `test_remaining_leak_capable_paths_unwind_without_leaking`
 - **Dimension 1.4** — a function that swallows an allocation failure instead of propagating it fails the proof rather than passing it silently, and is fixed to propagate → Test `test_swallowed_allocation_failure_is_a_failure`
 - **Dimension 1.5** — **zero LEAK-CAPABLE `errdefer` rungs remain unproven.** The arena-backed and unreached rungs are explicitly NOT swept: §4 records them as reachable only under an allocator that frees them regardless, which is a triage outcome, not a gap → Test `test_no_unproven_leak_capable_rungs_remain`
 - **Dimension 1.7** — **a rung that RUNS is not a rung that WORKS.** Every leak-capable rung the coverage report calls hit carries a test that asserts its EFFECT, not merely a test that executes it. §1's other Dimensions work from unhit lines and are structurally blind to this: a rung executed by a test that asserts nothing about it is counted as covered. Worked example and the 46-rung floor in Discovery → Test `test_hit_rungs_assert_their_effect`
@@ -751,9 +760,11 @@ a function no caller reaches the way the proof reaches it — which is exactly t
 mistake the account_teardown correction above was made of.
 
 **The instrument is in the repo now, not in an agent's scratch directory.**
-`scripts/classify_rung_callers.py` reproduces the audit's numbers exactly (301
-leak-capable, 219 arena, 15 unreached), and `classify_rung_callers_test.py` pins
-the four decisions that would silently move scope: the arena boundary must stop a
+`scripts/classify_rung_callers.py` reads **277 leak-capable, 240 arena, 18
+unreached** of 535 rungs (it first reproduced the audit's 301/219/15 exactly;
+type-only import pruning, below, moved 24 rungs out of the work list on Aug 22),
+and `classify_rung_callers_test.py` pins the decisions that would silently move
+scope: the arena boundary must stop a
 long-lived root from claiming the handler tree; transitive reach counts;
 `repeating` beats `arena` when both reach a file; and a file no root reaches is
 `unreached`, never quietly folded into `arena`.
@@ -786,6 +797,11 @@ database incident reached through a memory-safety rung, which is exactly why
 counting unhit lines does not find it.
 
 **Size, measured rather than guessed.**
+
+> **Measured against the pre-pruning set of 301** (Aug 21). Type-only import
+> pruning has since moved the leak-capable total to 277, and the coverage report
+> behind "hit" is stale besides. Re-derive the whole table before grading R1d;
+> the 46 floor is the number most likely to move.
 
 | Leak-capable rungs | Count |
 |---|---|
@@ -848,7 +864,7 @@ and it is structural rather than bad luck.
 The second is the sharper case. An import taken for a **type or a constant**
 marks the entire file long-lived, because the import graph cannot tell a type
 reference from a call. So the `repeating` set contains files nothing long-lived
-ever executes, and 301 is an over-estimate by an unknown amount.
+ever executes, and 301 was an over-estimate by an unknown amount.
 
 **This does not weaken the exclusion.** A file is `arena` only when NO root
 reaches it, so the excluded 234 stay safely excluded — the error runs one way.
@@ -895,6 +911,53 @@ correction — this row IS the correction. What the proof does establish is
 undiminished: deleting the `api_key` rung leaves a plaintext credential in a
 freed heap block, and the mutation names the 29 bytes that escape. The exposure
 window is a request arena's lifetime, not the daemon's.
+
+### The instrument now resolves calls, not imports (Aug 22, 2026)
+
+> Indy (2026-08-22): chose "prune type-only imports" over a full function-level
+> call graph and over hand-checking each function — context: the three wasted
+> proofs above, and the ~229 rungs in Dimensions 1.2/1.3 waiting behind the same
+> signal.
+
+Two changes to `classify_rung_callers.py`, and the second is the one a proof
+author uses.
+
+**1. An import taken for a type or a constant is no longer an edge.** An edge
+A→B survives only when A executes something in B: a call through the binding, a
+binding taken directly on one of B's functions, or a reference to a type of B's
+that carries methods. `--pruned` lists what was dropped — **692 edges**. The
+leak-capable set moves 301 → 277; `arena` 219 → 240; `unreached` 15 → 18. Every
+number in this spec derived from the old graph is marked where it appears.
+
+**2. `--fn FILE:NAME` answers the question the class label cannot.** It finds
+every file that CALLS a named function, classifies each caller, and prints
+`LEAK-CAPABLE: n of m callers outlive a request` or `ARENA-BACKED`. Run against
+the three wasted proofs it returns exactly the verdicts that were reached by hand:
+
+```
+$ python3 scripts/classify_rung_callers.py --fn agentsfleetd/state/vault.zig:loadMetadata
+agentsfleetd/state/vault.zig:loadMetadata is called by
+  arena       agentsfleetd/http/handlers/tenant_model_entries_view.zig
+
+ARENA-BACKED: every caller is under the per-request arena.
+```
+
+`loadJson` on the same file answers `LEAK-CAPABLE: 3 of 11`. **Run `--fn` before
+every proof.** It is one command and it is the check that failed three times when
+it was a habit rather than a tool.
+
+**Where it still cannot see, stated rather than discovered later.** Both limits
+err toward KEEPING a file in the work list, so they waste effort and never hide a
+leak.
+
+| Shape | What happens | Why it is left |
+|---|---|---|
+| A methods-carrying type held as a value — `cli: ?*CliCredential`, then `cli.execute()` | edge KEPT, file stays leak-capable | the alias never appears in a call position; separating this from a genuinely unused type needs value flow. `bearer_or_api_key.zig` is the live example, and `tenant_provider.zig` stays `repeating` for the same reason — `Mode` is an enum with a method, held as a field |
+| A re-exported type — `pub const LookupResult = mw.LookupResult;` — whose methods a third file then calls | edge from the re-exporter DROPPED | the third file imports the re-exporter, not the origin, so no path reaches the origin. Narrow, and `--fn` is unaffected: it searches call sites directly |
+
+`--fn` is not subject to either. It matches call syntax on the function being
+proven, so a file importing the target for a type is absent from its answer by
+construction — which is why it, and not the class label, is what a proof rests on.
 
 ### Leak log — real defects the allocation-failure proofs caught
 

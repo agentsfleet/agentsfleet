@@ -25,11 +25,16 @@ long-lived root is cut at the handler tree, because that tree IS the arena
 boundary — otherwise `cmd/serve.zig` reaching the server that dispatches to a
 handler would mark the whole tree long-lived and the distinction would collapse.
 
+What counts as an edge lives in `rung_call_edges.py`: an import taken for a type
+or a constant is not one. `--pruned` lists what that dropped.
+
 Granularity is per FILE, and the direction of that error is deliberate: a file
 is `arena` only when NO long-lived root reaches it, so the arena set never
-absorbs a rung that can leak. The repeating set may contain a function only
+absorbs a rung that can leak. The repeating set may still contain a function only
 handlers call, which makes it an over-estimate of the work and never an
-under-estimate of the risk.
+under-estimate of the risk. `--fn FILE:NAME` closes that last gap for one
+function: it classifies every caller that actually calls NAME, so a proof author
+learns whether ANY of them outlives a request before writing a line.
 """
 
 from __future__ import annotations
@@ -40,7 +45,8 @@ import os
 import re
 import sys
 from collections import defaultdict, deque
-from pathlib import Path
+
+from rung_call_edges import callers_of, import_graph, is_test_path, read_source, zig_sources
 
 CLASS_REPEATING = "repeating"
 CLASS_BOOT_ONCE = "boot-once"
@@ -51,7 +57,6 @@ CLASS_UNREACHED = "unreached"
 #: milestone's justification. The sweep is graded on these.
 LEAK_CAPABLE = (CLASS_REPEATING, CLASS_BOOT_ONCE)
 
-IMPORT_RE = re.compile(r'@import\("([^"]+\.zig)"\)')
 ERRDEFER_RE = re.compile(r"^\s*errdefer\b")
 
 #: The handler tree is the arena boundary, not merely one more directory.
@@ -84,42 +89,6 @@ REPEATING_ROOT_DIRS = ("runner/daemon", "runner/engine")
 BOOT_ROOT_DIRS = ("agentsfleetd/cmd", "agentsfleetd/config", "runner/cmd")
 
 
-def is_test_path(path: str) -> bool:
-    base = os.path.basename(path)
-    return (
-        path.endswith("_test.zig")
-        or "/test/" in path
-        or base.startswith("test_")
-        or base.endswith("test_support.zig")
-        or "test_harness" in path
-        or "test_fixtures" in path
-    )
-
-
-def zig_sources(src_root: str) -> list[str]:
-    found = []
-    for dirpath, _dirs, names in os.walk(src_root):
-        for name in names:
-            if name.endswith(".zig"):
-                found.append(os.path.normpath(os.path.join(dirpath, name)))
-    return sorted(found)
-
-
-def import_graph(files: list[str]) -> dict[str, set[str]]:
-    edges: dict[str, set[str]] = defaultdict(set)
-    existing = set(files)
-    for path in files:
-        try:
-            text = Path(path).read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        for match in IMPORT_RE.finditer(text):
-            target = os.path.normpath(os.path.join(os.path.dirname(path), match.group(1)))
-            if target in existing:
-                edges[path].add(target)
-    return edges
-
-
 def reachable(edges, roots, blocked=frozenset()) -> set[str]:
     seen: set[str] = set()
     queue: deque[str] = deque()
@@ -136,19 +105,11 @@ def reachable(edges, roots, blocked=frozenset()) -> set[str]:
 
 
 def count_rungs(path: str) -> int:
-    try:
-        text = Path(path).read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return 0
-    return sum(1 for line in text.splitlines() if ERRDEFER_RE.match(line))
+    return sum(1 for line in read_source(path).splitlines() if ERRDEFER_RE.match(line))
 
 
-def classify(src_root: str) -> list[dict]:
-    files = [f for f in zig_sources(src_root) if not is_test_path(f)]
-    edges = import_graph(files)
-
-    handler_root = os.path.join(src_root, HANDLER_TREE)
-    handlers = [f for f in files if f.startswith(handler_root + os.sep)]
+def long_lived_roots(src_root: str, files: list[str]) -> tuple[list[str], list[str]]:
+    """(repeating roots, boot-once roots) that exist in this tree."""
 
     def under(prefixes) -> list[str]:
         return [
@@ -157,33 +118,50 @@ def classify(src_root: str) -> list[dict]:
             if any(f.startswith(os.path.join(src_root, p) + os.sep) for p in prefixes)
         ]
 
-    repeating_roots = [
+    repeating = [
         os.path.join(src_root, p)
         for p in REPEATING_ROOT_FILES
         if os.path.exists(os.path.join(src_root, p))
     ] + under(REPEATING_ROOT_DIRS)
+    return repeating, under(BOOT_ROOT_DIRS)
+
+
+def class_map(src_root: str, files: list[str], edges) -> dict[str, str]:
+    handler_root = os.path.join(src_root, HANDLER_TREE)
+    handlers = [f for f in files if f.startswith(handler_root + os.sep)]
+    repeating_roots, boot_roots = long_lived_roots(src_root, files)
 
     # The handler tree is the arena boundary: never walk INTO it from a
     # long-lived root, or every handler inherits that root's lifetime.
     boundary = frozenset(handlers)
     arena_set = reachable(edges, handlers)
     repeating_set = reachable(edges, repeating_roots, boundary)
-    boot_set = reachable(edges, under(BOOT_ROOT_DIRS), boundary)
+    boot_set = reachable(edges, boot_roots, boundary)
 
+    classes = {}
+    for path in files:
+        if path in repeating_set:
+            classes[path] = CLASS_REPEATING
+        elif path in boot_set:
+            classes[path] = CLASS_BOOT_ONCE
+        elif path in arena_set:
+            classes[path] = CLASS_ARENA
+        else:
+            classes[path] = CLASS_UNREACHED
+    return classes
+
+
+def classify(src_root: str) -> list[dict]:
+    files = [f for f in zig_sources(src_root) if not is_test_path(f)]
+    classes = class_map(src_root, files, import_graph(files))
     rows = []
     for path in files:
         rungs = count_rungs(path)
         if not rungs:
             continue
-        if path in repeating_set:
-            cls = CLASS_REPEATING
-        elif path in boot_set:
-            cls = CLASS_BOOT_ONCE
-        elif path in arena_set:
-            cls = CLASS_ARENA
-        else:
-            cls = CLASS_UNREACHED
-        rows.append({"class": cls, "rungs": rungs, "file": os.path.relpath(path, src_root)})
+        rows.append(
+            {"class": classes[path], "rungs": rungs, "file": os.path.relpath(path, src_root)}
+        )
     return rows
 
 
@@ -236,34 +214,76 @@ def main(argv: list[str] | None = None) -> int:
         help="print one import chain from a long-lived root to FILE (path relative to --src), "
         "so a proof author can check whether the FUNCTION they are about to prove is on it",
     )
+    parser.add_argument(
+        "--fn",
+        metavar="FILE:NAME",
+        help="classify every caller of one function, so a proof author learns whether ANY "
+        "of them outlives a request before writing a line",
+    )
+    parser.add_argument(
+        "--pruned",
+        action="store_true",
+        help="list the import edges dropped as type-only or constant-only",
+    )
     args = parser.parse_args(argv)
 
-    if args.why:
+    if args.why or args.fn or args.pruned:
+        pruned: list[tuple[str, str]] = []
         files = [f for f in zig_sources(args.src) if not is_test_path(f)]
-        edges = import_graph(files)
+        edges = import_graph(files, pruned)
+        handler_root = os.path.join(args.src, HANDLER_TREE)
+        handlers = [f for f in files if f.startswith(handler_root + os.sep)]
+        repeating_roots, boot_roots = long_lived_roots(args.src, files)
+
+    if args.pruned:
+        print(f"{len(pruned)} import edges dropped as type-only or constant-only:")
+        for importer, target in sorted(pruned):
+            print(
+                f"  {os.path.relpath(importer, args.src)}"
+                f" -x-> {os.path.relpath(target, args.src)}"
+            )
+        return 0
+
+    if args.fn:
+        if ":" not in args.fn:
+            print("--fn takes FILE:NAME, e.g. state/vault.zig:loadMetadata", file=sys.stderr)
+            return 2
+        rel, fn_name = args.fn.rsplit(":", 1)
+        target = os.path.normpath(os.path.join(args.src, rel))
+        if target not in files:
+            print(f"no such source file: {rel}", file=sys.stderr)
+            return 2
+        classes = class_map(args.src, files, edges)
+        hits = callers_of(files, target, fn_name)
+        if not hits:
+            print(
+                f"{rel}:{fn_name}: no caller found. Either nothing calls it, or it is "
+                "reached by a shape this tool cannot see — read the call sites before "
+                "trusting a proof either way."
+            )
+            return 0
+        print(f"{rel}:{fn_name} is called by")
+        for caller in sorted(hits, key=lambda f: (classes[f], f)):
+            print(f"  {classes[caller]:<10}  {os.path.relpath(caller, args.src)}")
+        leak = [c for c in hits if classes[c] in LEAK_CAPABLE]
+        if leak:
+            print(f"\nLEAK-CAPABLE: {len(leak)} of {len(hits)} callers outlive a request.")
+        else:
+            print(
+                "\nARENA-BACKED: every caller is under the per-request arena. "
+                "Proving these rungs is the cosmetic work this sweep excludes."
+            )
+        return 0
+
+    if args.why:
         target = os.path.normpath(os.path.join(args.src, args.why))
         if target not in files:
             print(f"no such source file: {args.why}", file=sys.stderr)
             return 2
-        handler_root = os.path.join(args.src, HANDLER_TREE)
-        handlers = [f for f in files if f.startswith(handler_root + os.sep)]
-
-        def under(prefixes):
-            return [
-                f
-                for f in files
-                if any(f.startswith(os.path.join(args.src, p) + os.sep) for p in prefixes)
-            ]
-
-        roots = [
-            os.path.join(args.src, p)
-            for p in REPEATING_ROOT_FILES
-            if os.path.exists(os.path.join(args.src, p))
-        ] + under(REPEATING_ROOT_DIRS)
-        chain = shortest_path(edges, roots, target, frozenset(handlers))
+        chain = shortest_path(edges, repeating_roots, target, frozenset(handlers))
         label = CLASS_REPEATING
         if chain is None:
-            chain = shortest_path(edges, under(BOOT_ROOT_DIRS), target, frozenset(handlers))
+            chain = shortest_path(edges, boot_roots, target, frozenset(handlers))
             label = CLASS_BOOT_ONCE
         if chain is None:
             print(f"{args.why}: no long-lived root reaches this file — every rung in it is arena-backed")
@@ -273,7 +293,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {'  ' * depth}{os.path.relpath(node, args.src)}")
         print(
             "\nThe FILE is reachable. Confirm the FUNCTION you are proving is called on "
-            "this chain — if every caller of it passes hx.alloc, its rungs are arena-backed."
+            "this chain — `--fn <file>:<name>` answers that directly."
         )
         return 0
 

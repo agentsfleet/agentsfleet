@@ -5,8 +5,13 @@ The classifier decides which `errdefer` rungs the sweep is graded on, so a rule
 that silently misfiles a file moves the milestone's scope without moving any
 code. These cases pin the decisions that are easy to get wrong: the arena
 boundary must stop a long-lived root from claiming the handler tree, a file two
-hops below a repeating root must still count, and a file no root reaches must
-not be quietly folded into the arena set.
+hops below a repeating root must still count, a file no root reaches must not be
+quietly folded into the arena set, and an import taken for a type or a constant
+must not be read as reachability — that last one cost this milestone three
+proofs before the rule existed.
+
+Every fixture CALLS through its imports, because an import alone is no longer an
+edge.
 """
 
 from __future__ import annotations
@@ -47,14 +52,17 @@ class ClassifyRungCallersTest(unittest.TestCase):
         """
         write(self.src, "agentsfleetd/cmd/serve.zig", """
             const server = @import("../http/server.zig");
+            fn main() void { server.listen(); }
         """)
         write(self.src, "agentsfleetd/http/server.zig", """
             const h = @import("handlers/thing.zig");
+            fn listen() void { h.f(); }
         """)
         write(self.src, "agentsfleetd/http/handlers/thing.zig", """
             const helper = @import("helper.zig");
             fn f() void {
                 errdefer cleanup();
+                helper.g();
             }
         """)
         write(self.src, "agentsfleetd/http/handlers/helper.zig", """
@@ -70,9 +78,11 @@ class ClassifyRungCallersTest(unittest.TestCase):
         """A rung two hops below the cron service leaks exactly as much as one hop."""
         write(self.src, "agentsfleetd/cron/FireService.zig", """
             const mid = @import("../state/mid.zig");
+            fn tick() void { mid.step(); }
         """)
         write(self.src, "agentsfleetd/state/mid.zig", """
             const leaf = @import("leaf.zig");
+            fn step() void { leaf.f(); }
         """)
         write(self.src, "agentsfleetd/state/leaf.zig", """
             fn f() void {
@@ -87,9 +97,11 @@ class ClassifyRungCallersTest(unittest.TestCase):
         """A file both a handler and a worker reach can still leak. Severity wins."""
         write(self.src, "agentsfleetd/queue/redis_subscriber.zig", """
             const shared = @import("../state/shared.zig");
+            fn work() void { shared.f(); }
         """)
         write(self.src, "agentsfleetd/http/handlers/thing.zig", """
             const shared = @import("../../state/shared.zig");
+            fn handle() void { shared.f(); }
         """)
         write(self.src, "agentsfleetd/state/shared.zig", """
             fn f() void {
@@ -132,9 +144,11 @@ class ClassifyRungCallersTest(unittest.TestCase):
         """The chain is what makes the class label checkable against a function."""
         write(self.src, "agentsfleetd/cron/FireService.zig", """
             const mid = @import("../state/mid.zig");
+            fn tick() void { mid.step(); }
         """)
         write(self.src, "agentsfleetd/state/mid.zig", """
             const leaf = @import("leaf.zig");
+            fn step() void { leaf.f(); }
         """)
         write(self.src, "agentsfleetd/state/leaf.zig", """
             fn f() void {
@@ -158,6 +172,7 @@ class ClassifyRungCallersTest(unittest.TestCase):
         """
         write(self.src, "agentsfleetd/cron/FireService.zig", """
             const h = @import("../http/handlers/thing.zig");
+            fn tick() void { h.f(); }
         """)
         write(self.src, "agentsfleetd/http/handlers/thing.zig", """
             fn f() void {

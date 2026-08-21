@@ -4,35 +4,33 @@
 
 ## ⚠️ Read this before writing a single proof
 
-**The work list is wrong more often than it is right, and it cost this session
-three wasted proofs.** `scripts/classify_rung_callers.py` resolves at FILE level
-over the **import** graph. An import taken for a *type or constant* marks the
-whole file long-lived, because an import graph cannot tell a type reference from
-a call. `observability/semconv.zig` does `const Mode = @import("../state/tenant_provider.zig").Mode;`
-— one enum — and that alone marks five `state/**` files `repeating`.
-
-Every rung proven this session against that list turned out arena-backed at
-FUNCTION level:
-
-| Proof written | File said | Function's real callers | Verdict |
-|---|---|---|---|
-| `vault_metadata_alloc_test.zig` | `repeating` | `loadMetadata` has ONE caller, a handler | cosmetic |
-| `secret_probe_alloc_test.zig` | `repeating` | reaches handlers only, via `tenant_provider` → `fleet/service.zig` → `handlers/runner/lease.zig` | cosmetic |
-| (`integration_grant_lookup`, not written) | `repeating` | `fleet/service.zig:218` calls `approvedSet(hx.alloc, …)` — the arena is IN the call | cosmetic |
-
-The proofs are sound and mutation-checked. They are simply not the work Indy
-asked for. **`secret_probe_alloc_test.zig`'s commit message asserts it is on a
-leak-capable path. That assertion is FALSE and is not yet corrected in the
-spec** — do that first if you touch this area.
-
-**Until the instrument is fixed, never write a proof without running:**
+**Run `--fn` first. Every time.**
 
 ```
-python3 scripts/classify_rung_callers.py --why <file-relative-to-src>
-git grep -n '<the function you are about to prove>' -- 'src/**/*.zig'
+python3 scripts/classify_rung_callers.py --fn <file-relative-to-src>:<function>
 ```
 
-and confirming at least one caller passes something other than `hx.alloc`.
+It prints every caller that actually CALLS the function, each with its class, and
+ends in `LEAK-CAPABLE: n of m callers outlive a request` or `ARENA-BACKED`. If it
+says `ARENA-BACKED`, the rung cannot leak in production whatever its file says,
+and proving it is the cosmetic work this milestone stopped doing.
+
+This exists because the class label is per FILE and a proof is per FUNCTION.
+Three proofs last session were written against the label and all three turned out
+arena-backed once their function's callers were read — `vault.loadMetadata`,
+`tenant_provider.probeSelfManaged`, and `integration_grant_lookup.approvedSet`.
+`--fn` now returns exactly those verdicts.
+
+Two changes landed on Aug 22 (Indy's ruling, recorded in Discovery):
+
+- **An import taken for a type or a constant is no longer an edge.** 692 edges
+  dropped; leak-capable 301 → 277, `arena` 219 → 240, `unreached` 15 → 18.
+  `--pruned` lists what went.
+- **`--fn FILE:NAME`** — the per-function check, above.
+
+Where the graph still cannot see is a table in Discovery. Both residual shapes
+err toward KEEPING a file in the work list, so they waste effort and never hide a
+leak — and `--fn` is subject to neither.
 
 ## Scope / status
 
