@@ -114,6 +114,37 @@ agentsfleet-m173-qstash-1     :25798 -> 8080
    database. Worklist recipe is in this file under "Gotchas".
 5. Only then §3 and §4, and §5 floors last.
 
+### Traps found Aug 21, 2026
+
+- **A class count is NET, not progress.** Proofs that catch leaks produce fixes
+  that add `errdefer` rungs, and the arms those fixes introduce carry log lines.
+  `failure-log` went UP (298 → 304) during a session that closed 33 arms.
+- **Grep the catch BODY, not the acquire line.** `pool.acquire() catch |err| {`
+  runs on the success path, so it is almost never unhit. Walk back up to 6 lines
+  from each unhit line instead.
+- **DB-free is not dependency-free.** The signature heuristic (look for
+  `pg.Conn` / `PgQuery` / `pool` across the WHOLE signature, not just its first
+  line) still overcounts: `queue/redis_pool.zig` has no `pg.Conn` and needs a
+  live Redis; `cron/Store.zig`'s row helpers take a `pg` row type. Treat the
+  heuristic as a first filter and read the function before committing to it.
+- **Read the validator before writing the body.** Six bodied probes answered 400
+  from a rejection arm on plausible-looking bodies. Catalogue writes validate
+  rates before acquiring; the runner patch needs exactly one of `action` /
+  `assigned_policy`; the tenant model-entry patch validates `model_id`, not
+  `secret_ref`. A 400 looks like a working test and colours the wrong line.
+- **`PATCH {workspace}/fleets/{id}` answers 200 with the pool starved.** Not a
+  bug: `patch.zig:65-74` short-circuits a patch carrying none of `config_json`,
+  `status`, `trigger_markdown`, `source_markdown` to a no-op 200 before any
+  acquire. Reaching its arm needs one of those four fields.
+- **The filtered lane cannot report success when nothing skips.** Zig prints
+  `All N tests passed.` with zero skips, and the lane's tally check only
+  recognises `N passed; M skipped; K failed.` — so a clean `make test-integration
+  TEST_FILTER=...` run ends with "reported no passing tests". The tests DID run;
+  read the line above it. The full lane always has skips, so it reads fine.
+- **A filtered lane clobbers the merged report.** It rewrites
+  `coverage/zig/integration` from a narrowed run, so re-run both producers in
+  full before grading anything.
+
 ## Risks / gotchas
 
 - **A skipped integration test reports as PASSING.** This is the big one.

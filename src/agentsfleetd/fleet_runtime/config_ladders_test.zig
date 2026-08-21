@@ -14,6 +14,7 @@
 const std = @import("std");
 
 const config_helpers = @import("config_helpers.zig");
+const config_parser = @import("config_parser.zig");
 const config_types = @import("config_types.zig");
 
 /// Every optional populated: schedule, timezone and message each own a
@@ -83,4 +84,32 @@ test "test_fleet_network_parse_unwinds_without_leaking" {
     // backing array; freeing only the array leaks every string in it, which
     // the success path cannot show because nothing frees them there either.
     try std.testing.checkAllAllocationFailures(std.testing.allocator, parseNetworkUnderAllocator, .{});
+}
+
+/// The whole-config ladder: nine rungs in `parseConfig`, of which the `network`
+/// and `repository_binding` ones had never unwound. Both need their optional
+/// block PRESENT to hold anything, and both need an allocation after them to
+/// unwind through — `skill` is the one that provides it.
+const PROOF_FULL_CONFIG =
+    \\{"name":"ladder-proof","x-agentsfleet":{
+    \\ "triggers":[{"type":"cron","schedule":"0 3 * * *","timezone":"Asia/Kolkata"}],
+    \\ "tools":["agentmail"],"credentials":["agentmail_api_key"],
+    \\ "network":{"allow":["api.agentmail.to"],"read_post_paths":["/graphql"]},
+    \\ "budget":{"daily_dollars":1.0},
+    \\ "repositories":["acme/one","acme/two"],"repository_access":"write",
+    \\ "repository_base":"main",
+    \\ "skill":"ops/triage"}}
+;
+
+fn parseFullConfigUnderAllocator(alloc: std.mem.Allocator) !void {
+    var cfg = try config_parser.parseFleetConfig(alloc, PROOF_FULL_CONFIG);
+    cfg.deinit(alloc);
+}
+
+test "test_full_config_parse_unwinds_without_leaking" {
+    // Nine rungs, two of them freeing slices of slices and one freeing a
+    // struct's two string arrays. A config missing `network` or the repository
+    // trio leaves those rungs holding null, which is why the parser's existing
+    // tests never exercised them.
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, parseFullConfigUnderAllocator, .{});
 }
