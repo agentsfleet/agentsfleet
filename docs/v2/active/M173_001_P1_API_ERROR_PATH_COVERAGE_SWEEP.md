@@ -145,6 +145,7 @@ on the path production actually takes. Neither alone discharges a Dimension —
 - **Dimension 1.3** — every leak-capable rung in `src/agentsfleetd/fleet/**`, `fleet_runtime/**`, `fleet_library/**` (64) and in `src/runner/**` (≈45) does the same → Test `test_fleet_and_runner_paths_unwind_without_leaking`
 - **Dimension 1.4** — a function that swallows an allocation failure instead of propagating it fails the proof rather than passing it silently, and is fixed to propagate → Test `test_swallowed_allocation_failure_is_a_failure`
 - **Dimension 1.5** — **zero LEAK-CAPABLE `errdefer` rungs remain unproven.** The arena-backed and unreached rungs are explicitly NOT swept: §4 records them as reachable only under an allocator that frees them regardless, which is a triage outcome, not a gap → Test `test_no_unproven_leak_capable_rungs_remain`
+- **Dimension 1.7** — **a rung that RUNS is not a rung that WORKS.** Every leak-capable rung the coverage report calls hit carries a test that asserts its EFFECT, not merely a test that executes it. §1's other Dimensions work from unhit lines and are structurally blind to this: a rung executed by a test that asserts nothing about it is counted as covered. Worked example and the 46-rung floor in Discovery → Test `test_hit_rungs_assert_their_effect`
 - **Dimension 1.6** — the boundary itself cannot rot. `classify_rung_callers.py` is the grading instrument, so a new long-lived caller reaching a file previously classed `arena` must move that file into the swept set rather than pass silently → Test `test_rung_caller_classification_is_pinned`
 
 ### §2 — Failure response arms reached by the failure they answer
@@ -260,6 +261,7 @@ code is out of scope and reverts.
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Every LEAK-CAPABLE `errdefer` rung is proven in both tiers (§1) | `python3 scripts/classify_unhit_lines.py --class errdefer --count` cross-read against `python3 scripts/classify_rung_callers.py --class leak-capable --files` | every unhit `errdefer` line sits in a file the caller classifier reports as `arena` or `unreached` — zero unhit lines in a `repeating` or `boot-once` file | P0 | |
 | R1b | The arena-backed rungs are excluded deliberately, not by accident | `python3 scripts/classify_rung_callers.py` | prints the four-class table; `arena` + `unreached` totals match the count §4 records as triaged-not-swept | P0 | |
+| R1d | No leak-capable rung is counted covered on the strength of a test that merely executes it (§1 Dimension 1.7) | mutation: delete the rung, rerun the suite that covers it | the suite goes RED; a rung whose deletion leaves every test green is unproven regardless of its coverage status | P0 | |
 | R1c | The classifier that decides R1's scope is itself pinned | `cd scripts && python3 -m unittest classify_rung_callers_test` | `OK`, 7 tests | P0 | |
 | R2 | The failure-response and failure-log classes are empty (§2), except the four single-request-unreachable sites named in Discovery | `python3 scripts/classify_unhit_lines.py --class failure-response,failure-log --count` | `4` | P0 | |
 | R3 | The error-return class is empty (§3) | `python3 scripts/classify_unhit_lines.py --class error-return --count` | `0` | P0 | |
@@ -750,6 +752,76 @@ outcome recorded in §4, not a coverage gap waved through. Each is reachable onl
 under an allocator that frees it regardless. They stay in the code, they keep
 their rungs, and the moment a non-arena caller appears the classifier moves the
 file into the swept set and R1 goes red.
+
+### §1 is blind to rungs that run without asserting (Aug 22, 2026)
+
+Every other Dimension in §1 works from the coverage report's UNHIT lines. A rung
+executed by a test that asserts nothing about its effect is therefore counted as
+covered and never appears in any work list — the milestone's instrument cannot
+see it.
+
+**Found by tripping over one.** `secret_reference_txn.begin` opens its
+transaction before step 1 can refuse, so the refusal path depends on
+`errdefer txn.abort()`. An existing integration test drove that exact path and
+asserted the error plus "nothing was written". Delete the rung and every
+assertion still passed: a reference count read inside a stray open transaction
+returns 0 just as happily as one read outside it. The line was hit, so R1 counted
+it, and the sweep would have shipped it green.
+
+**The harm is not the harm this milestone is named after.** Nothing leaks. The
+connection returns to the pool `idle in transaction`, holds its snapshot, stops
+vacuum reclaiming, and hands the next borrower a live transaction. That is a
+database incident reached through a memory-safety rung, which is exactly why
+counting unhit lines does not find it.
+
+**Size, measured rather than guessed.**
+
+| Leak-capable rungs | Count |
+|---|---|
+| Total | 301 |
+| Unhit — what §1's other Dimensions see | 107 |
+| Hit — invisible to them | 194 |
+| …of those, in a file with NO failure-injection test of any kind | **46** |
+
+The 46 are unproven with certainty. The remaining ~148 sit in files that DO carry
+a failure-injection test, so they are probably covered — the same file-level
+granularity caveat the caller classifier carries, and the reason 46 is a FLOOR on
+the problem rather than a measurement of it. The only exact answer is reading
+call sites, which is the Dimension itself.
+
+**Reproduce both numbers:** `scripts/classify_rung_callers.py --class leak-capable --files`
+cross-read against `scripts/classify_unhit_lines.py`. The coverage report backing
+"hit" must be re-measured first — a stale one moves these counts.
+
+**The 46, densest first.** `secret_reference_txn` is already closed (its rung is
+the worked example above), so the live figure is 45 across 18 files.
+
+| File | Hit rungs, no failure-injection test |
+|---|---|
+| `agentsfleetd/fleet_runtime/config_markdown.zig` | 9 |
+| `agentsfleetd/fleet_runtime/config_gates.zig` | 6 |
+| `agentsfleetd/queue/connector_outbound.zig` | 6 |
+| `agentsfleetd/cron/Store.zig` | 5 |
+| `agentsfleetd/cmd/serve_webhook_lookup.zig` | 3 |
+| `agentsfleetd/cmd/serve_secrets.zig` | 2 |
+| `agentsfleetd/fleet/liveness_sweeper.zig` | 2 |
+| `runner/engine/stream_redactor.zig` | 2 |
+| `agentsfleetd/auth/cli_credential.zig` | 1 |
+| `agentsfleetd/auth/jwks_standard_claims.zig` | 1 |
+| `agentsfleetd/auth/jwks_token.zig` | 1 |
+| `agentsfleetd/cmd/doctor_render.zig` | 1 |
+| `agentsfleetd/fleet_runtime/config_repositories.zig` | 1 |
+| `agentsfleetd/fleet_runtime/keyset_cursor.zig` | 1 |
+| `agentsfleetd/fleet_runtime/yaml_frontmatter.zig` | 1 |
+| `agentsfleetd/queue/redis_subscriber.zig` | 1 |
+| `agentsfleetd/state/secret_reference_txn.zig` | 1 |
+| `runner/daemon/selftest_beat.zig` | 1 |
+| `runner/daemon/worker_pool.zig` | 1 |
+
+> Indy (2026-08-22): "record a dimenstion and move on" — context: shown the
+> impact analysis above and asked whether to audit now, record and scope later,
+> or accept the limit. Recorded as Dimension 1.7; §1's existing Dimensions
+> continue first.
 
 ### Leak log — real defects the allocation-failure proofs caught
 
