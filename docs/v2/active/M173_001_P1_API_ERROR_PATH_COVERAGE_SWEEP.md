@@ -871,10 +871,30 @@ agentsfleetd/state/tenant_provider.zig: repeating, reached by
 
 One look at `semconv.zig` settles it: `const Mode = @import("../state/tenant_provider.zig").Mode;`.
 
-**Cost already paid.** The `vault.loadMetadata` proof (`vault_metadata_alloc_test.zig`)
-is correct and mutation-checked but proves arena-backed rungs. It is kept — a
-sound proof is not worth deleting, and it documents the optional-rung fixture
-technique the next author needs — but it is NOT counted toward Dimension 1.1.
+**Cost already paid.** Three proofs, two written and one abandoned mid-write:
+
+| Proof | The file said | The function's real callers | Verdict |
+|---|---|---|---|
+| `vault_metadata_alloc_test.zig` | `repeating` | `loadMetadata` has ONE caller, a handler | arena-backed |
+| `secret_probe_alloc_test.zig` | `repeating` | `tenant_provider` → `fleet/service.zig` → `handlers/runner/lease.zig`, handlers only | arena-backed |
+| `integration_grant_lookup` (not written) | `repeating` | `fleet/service.zig:218` calls `approvedSet(hx.alloc, …)` — the arena is IN the call | arena-backed |
+
+Both written proofs are kept. A sound, mutation-checked proof is not worth
+deleting, and each documents a technique the next author needs — the optional-rung
+fixture in the first, the owned-tenant fixture in the second. Neither counts
+toward Dimension 1.1.
+
+**Correcting the history.** Commit `911674eaf`'s message asserts
+`probeSelfManagedSecret` "is on a leak-capable path — tenant_provider resolves
+through it from the fleet runtime, not from a request arena". **That is false.**
+The chain it describes terminates in `handlers/runner/lease.zig`, which passes
+`hx.alloc`; the `repeating` label came from the type-only import documented
+above, not from any long-lived caller. The message stands in the history
+uncorrected because rewriting a pushed commit is worse than a recorded
+correction — this row IS the correction. What the proof does establish is
+undiminished: deleting the `api_key` rung leaves a plaintext credential in a
+freed heap block, and the mutation names the 29 bytes that escape. The exposure
+window is a request arena's lifetime, not the daemon's.
 
 ### Leak log — real defects the allocation-failure proofs caught
 
