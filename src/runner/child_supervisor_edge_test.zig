@@ -39,6 +39,22 @@ const NoopSink = struct {
     fn forward(_: *anyopaque, _: ActivityFrame) void {}
 };
 
+/// Counts what reaches the sink, so a test can prove a frame was DROPPED
+/// rather than merely assume it (a silent sink and a never-called sink look
+/// identical from outside).
+const CountingSink = struct {
+    forwarded: usize = 0,
+
+    fn forward(ctx: *anyopaque, _: ActivityFrame) void {
+        const self: *CountingSink = @ptrCast(@alignCast(ctx));
+        self.forwarded += 1;
+    }
+
+    fn sink(self: *CountingSink) ActivitySink {
+        return .{ .ctx = self, .forward = forward };
+    }
+};
+
 test "readResult should exit cleanly when the hook extends to an already-past deadline" {
     // A pipe with no data and an open write end: the read blocks, the short tick
     // fires, the hook "extends" to a past instant. The next wait sees the elapsed
@@ -151,4 +167,37 @@ test "a refused mint is answered on the wire, so the child fails closed instead 
     try std.testing.expect(reply == .frame);
     defer std.testing.allocator.free(reply.frame.payload);
     try std.testing.expect(std.mem.indexOf(u8, reply.frame.payload, "\"ok\":false") != null);
+}
+
+test "a malformed activity frame is dropped and the read loop keeps going" {
+    // Activity is cosmetic, so a frame that will not parse must not take the
+    // lease down with it — but it must not vanish either: a live tail that
+    // goes quiet is indistinguishable from a fleet that went quiet, which is
+    // the wrong thing to debug. The parse failure is logged and the loop
+    // carries on to the real result.
+    const fds = try pipe_proto.testOsPipe();
+    defer pipe_proto.testOsClose(fds[0]);
+
+    try pipe_proto.writeFrame(fds[1], .activity, "{not json at all");
+    try pipe_proto.writeFrame(fds[1], .result, "done");
+    pipe_proto.testOsClose(fds[1]);
+
+    var counting = CountingSink{};
+    const out = try supervisor.readResult(
+        std.testing.allocator,
+        fds[0],
+        fds[0],
+        clock.nowMillis() + 5_000,
+        counting.sink(),
+        NoopMem.sink(),
+        null,
+        null,
+    );
+    defer std.testing.allocator.free(out.bytes);
+
+    // Dropped: nothing reached the sink.
+    try std.testing.expectEqual(@as(usize, 0), counting.forwarded);
+    // And the loop survived it — the result behind the bad frame still arrived.
+    try std.testing.expectEqualStrings("done", out.bytes);
+    try std.testing.expect(!out.timed_out);
 }
