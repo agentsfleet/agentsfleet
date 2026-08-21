@@ -215,7 +215,7 @@ code is out of scope and reverts.
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | The `errdefer` class is empty (§1) | `python3 scripts/classify_unhit_lines.py --class errdefer --count` | `0` | P0 | |
-| R2 | The failure-response and failure-log classes are empty (§2) | `python3 scripts/classify_unhit_lines.py --class failure-response,failure-log --count` | `0` | P0 | |
+| R2 | The failure-response and failure-log classes are empty (§2), except the four single-request-unreachable sites named in Discovery | `python3 scripts/classify_unhit_lines.py --class failure-response,failure-log --count` | `4` | P0 | |
 | R3 | The error-return class is empty (§3) | `python3 scripts/classify_unhit_lines.py --class error-return --count` | `0` | P0 | |
 | R4 | The other-branch class is empty (§4) | `python3 scripts/classify_unhit_lines.py --class other,brace --count` | `0` | P0 | |
 | R5 | Every component floor equals its landed rate rounded down (§5) | `make test-coverage-grade` | exit 0 | P0 | |
@@ -307,6 +307,38 @@ code is out of scope and reverts.
     mutation: with the drain removed the same five probes answer 401/401/404/404/404
     from their own post-acquire arms, so the 503s are caused by starvation and
     not by anything incidental.
+
+### Connection failures unreachable within a single request
+
+Four connection-failure paths cannot be reached by exhausting the pool, because
+each runs only after an earlier acquire in the same request already succeeded.
+Draining the pool makes that first acquire fail and return, so the later one is
+unreachable by construction; shrinking the pool to one does not help either,
+since the first acquire takes the last connection and hands the same one back.
+Reaching them for real needs a competing thread to take the connection inside
+the window, or a seam that can fail a chosen acquire. Both were weighed against
+the size of the class and rejected: a timing-dependent test in a fifteen-minute
+lane costs more than it proves, and a production seam is a behaviour change R6
+does not sanction.
+
+| Site | Why a single request cannot reach it |
+|------|--------------------------------------|
+| `http/handlers/fleets/delete.zig:88` | Second acquire in `innerDeleteFleet`; the authorization guard at line 63 acquires and releases first |
+| `fleet/repair_verification_dispatcher.zig:209` | Second acquire in `cleanCompletedOnceKeys`; line 185 acquires first |
+| `http/handlers/fleets/create.zig:310` | Lives in `rollbackCreatedFleet`, which runs only once a create has already acquired and partially succeeded |
+| `http/handlers/fleets/create_grants.zig:97` | Lives in `seedOne`, best-effort grant seeding that runs only after the create succeeded |
+
+**Product finding, deliberately not fixed here.** `innerDeleteFleet` cancels the
+fleet's schedules through the cron service *before* it purges the rows, and
+releases its connection across that network call. When the re-acquire fails the
+caller is told the delete failed while the schedules are already gone, so the
+fleet still lists and silently never runs again until someone retries. The
+ordering is the defect, not the failure path: deleting the rows first would
+leave an orphan schedule that fires at a removed fleet, answers not-found and
+retires itself — loud and self-limiting instead of silent. `create.zig` carries
+the same shape, and says so in its own log line (`HINT_ROW_ORPHANED_MANUAL_RECOVERY`).
+Changing either is a behaviour change this spec's R6 forbids, so both belong to
+a follow-up workstream rather than this branch.
 
 ### Leak log — real defects the allocation-failure proofs caught
 
