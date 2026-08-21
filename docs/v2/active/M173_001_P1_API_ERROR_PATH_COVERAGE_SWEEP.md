@@ -340,6 +340,26 @@ the same shape, and says so in its own log line (`HINT_ROW_ORPHANED_MANUAL_RECOV
 Changing either is a behaviour change this spec's R6 forbids, so both belong to
 a follow-up workstream rather than this branch.
 
+### Signature-authenticated ingress: acquire order decides what a fixture costs
+
+Seven connection-failure arms sat behind webhook signature checks and were
+recorded as blocked on building signature fixtures. Reading the call order
+retired that blocker without writing a signer:
+
+| Route | Acquire vs verify | What the arm actually needs |
+|-------|-------------------|-----------------------------|
+| `ingress/github` | acquires first | delivery headers present; the secret is what the connection loads |
+| `connectors/slack/events` | acquires first | the two Slack headers and a cold secret cache — `resolveSigningSecret` takes the connection to load the `slack-app` vault row, so a starved pool answers before `slack_sig.verify` has anything to verify against |
+| `identity_events_clerk` (+ `identity_events_delete`) | verifies first | a genuine Svix signature — the Clerk secret comes off `hx.ctx`, never the pool |
+
+The Clerk pair is the only one owing a real signature, and that fixture already
+existed in `identity_events_clerk_integration_test.zig`; it had never been
+pointed at a drained pool. The two ingress routes need headers and nothing more.
+
+**The rule this leaves behind:** a signature check does not imply a fixture is
+owed. Read whether the handler acquires before or after it verifies — the
+handlers that load their own secret answer the starved arm with headers alone.
+
 ### Leak log — real defects the allocation-failure proofs caught
 
 | Site | Defect | Fix | Proof |

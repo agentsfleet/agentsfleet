@@ -22,6 +22,7 @@ const pg = @import("pg");
 const base = @import("secrets_json_integration_test.zig");
 const harness_mod = @import("test_harness.zig");
 const ec = @import("../errors/error_registry.zig");
+const slack_sig = @import("handlers/connectors/slack/slack_sig.zig");
 const scope_tokens = @import("test_scope_tokens.zig");
 
 const TestHarness = harness_mod.TestHarness;
@@ -163,6 +164,23 @@ const PROBES = [_]Probe{
             .{ "x-hub-signature-256", "sha256=pool-starved" },
         },
         .body = "{}",
+    },
+    // Same acquire-before-verify shape as the github row above, for a different
+    // reason: the signing secret lives in the `slack-app` vault row, so the
+    // FIRST request a process serves must take a connection to load it before
+    // `slack_sig.verify` has anything to verify against. A cold cache is what
+    // a fresh harness gives, and a starved pool answers at that load — the
+    // signature is never reached, so no fixture is owed.
+    .{
+        .method = .POST,
+        .path = "/v1/connectors/slack/events",
+        .token = null,
+        .owner = "connectors/slack/events.resolveSigningSecret",
+        .headers = &.{
+            .{ slack_sig.SIG_HEADER, "v0=pool-starved" },
+            .{ slack_sig.TS_HEADER, "1700000000" },
+        },
+        .body = "{\"type\":\"url_verification\",\"challenge\":\"pool-starved\"}",
     },
     .{ .method = .POST, .path = WS ++ "/connectors/slack/connect", .token = ADMIN, .owner = "connectors/connect.innerConnect", .body = "{}" },
     .{ .method = .POST, .path = WS ++ "/approvals/" ++ ABSENT_GATE_ID ++ ":approve", .token = ADMIN, .owner = "approvals/resolve.innerResolveApproval", .body = "{}" },

@@ -43,13 +43,13 @@ fn noopConfigureRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anye
     _ = h;
 }
 
-fn startHarness(alloc: std.mem.Allocator) !*TestHarness {
+pub fn startHarness(alloc: std.mem.Allocator) !*TestHarness {
     const h = try TestHarness.start(alloc, .{ .configureRegistry = noopConfigureRegistry });
     h.ctx.clerk_webhook_secret = WHSEC_KEY;
     return h;
 }
 
-fn cleanupAccount(conn: *pg.Conn, oidc_subject: []const u8) void {
+pub fn cleanupAccount(conn: *pg.Conn, oidc_subject: []const u8) void {
     // FK-safe order: fleets first (reference workspaces, no cascade), then
     // workspaces/memberships (reference tenant/user), then users + tenants in
     // a CTE so the RETURNING clause can feed the tenant delete after users are
@@ -78,7 +78,7 @@ fn cleanupAccount(conn: *pg.Conn, oidc_subject: []const u8) void {
 }
 
 /// Build a `v1,<base64_hmac>` entry against the test secret.
-fn signEntry(alloc: std.mem.Allocator, id: []const u8, ts: []const u8, body: []const u8) ![]u8 {
+pub fn signEntry(alloc: std.mem.Allocator, id: []const u8, ts: []const u8, body: []const u8) ![]u8 {
     const mac = hs.computeMac(RAW_KEY, &.{ id, ".", ts, ".", body });
     const Encoder = std.base64.standard.Encoder;
     const enc_len = Encoder.calcSize(mac.len);
@@ -88,17 +88,17 @@ fn signEntry(alloc: std.mem.Allocator, id: []const u8, ts: []const u8, body: []c
     return out;
 }
 
-fn nowTsAlloc(alloc: std.mem.Allocator) ![]u8 {
+pub fn nowTsAlloc(alloc: std.mem.Allocator) ![]u8 {
     return std.fmt.allocPrint(alloc, "{d}", .{clock.nowSeconds()});
 }
 
-fn userCreatedBody(alloc: std.mem.Allocator, clerk_user_id: []const u8, email: []const u8) ![]u8 {
+pub fn userCreatedBody(alloc: std.mem.Allocator, clerk_user_id: []const u8, email: []const u8) ![]u8 {
     return std.fmt.allocPrint(alloc,
         \\{{"type":"user.created","data":{{"id":"{s}","email_addresses":[{{"id":"idn_x","email_address":"{s}"}}],"primary_email_address_id":"idn_x","first_name":"Happy","last_name":"Path"}}}}
     , .{ clerk_user_id, email });
 }
 
-fn countUsers(conn: *pg.Conn, oidc_subject: []const u8) !i64 {
+pub fn countUsers(conn: *pg.Conn, oidc_subject: []const u8) !i64 {
     var q = PgQuery.from(try conn.query(
         "SELECT COUNT(*)::BIGINT FROM core.users WHERE oidc_subject = $1",
         .{oidc_subject},
@@ -108,7 +108,7 @@ fn countUsers(conn: *pg.Conn, oidc_subject: []const u8) !i64 {
     return row.get(i64, 0);
 }
 
-fn userDeletedBody(alloc: std.mem.Allocator, clerk_user_id: []const u8) ![]u8 {
+pub fn userDeletedBody(alloc: std.mem.Allocator, clerk_user_id: []const u8) ![]u8 {
     return std.fmt.allocPrint(alloc,
         \\{{"type":"user.deleted","data":{{"id":"{s}"}}}}
     , .{clerk_user_id});

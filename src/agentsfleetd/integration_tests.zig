@@ -112,6 +112,7 @@ test {
     _ = @import("http/handlers/admin/model_library_admin_integration_test.zig");
     _ = @import("http/handlers/admin/platform_keys_error_arms_integration_test.zig");
     _ = @import("http/handlers/auth/identity_events_clerk_integration_test.zig");
+    _ = @import("http/handlers/auth/identity_events_pool_exhaustion_integration_test.zig");
     _ = @import("http/handlers/auth/sessions_integration_test.zig");
     _ = @import("http/handlers/auth/cli_credentials_integration_test.zig");
     _ = @import("http/handlers/auth/cli_credentials_admission_integration_test.zig");

@@ -46,7 +46,7 @@ lines.
 | ✅ closed `133d6731d` | 5 | runner plane: `self`, `heartbeat`, `memory` ×2, `credentials_mint` |
 | ✅ closed `fbf466d99` | 1 | `fleets/patch` |
 | ✅ closed `e4a336aad` | 2 | `ingress/github` |
-| ⏳ blocked on signature fixtures | 7 | Svix: `identity_events_clerk` ×2, `identity_events_delete` ×4. Slack: `connectors/slack/events` ×1 |
+| ✅ closed this session | 7 | Slack `connectors/slack/events` ×1 — a probe row, it acquires before it verifies. Svix `identity_events_clerk` ×2 + `identity_events_delete` ×4 — the existing signer wired to a drained pool, in `handlers/auth/identity_events_pool_exhaustion_integration_test.zig`. Mutation-checked: all three go red without the drain/headers. |
 | ⏳ SSE | 2 | `fleets/events_stream:211`, `workspaces/events_stream:105` |
 | 📝 recorded, not tested | 4 | see spec Discovery; R2 amended `0` → `4` |
 
