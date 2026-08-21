@@ -130,8 +130,14 @@ services:
       - "3000:3000"
     env_file:
       # agentsfleetd's local override file (disambiguated from the app's .env.local and
-      # the runner's .env.runner.local). Optional — the inline `environment:` block
-      # below already satisfies a from-scratch `make up`.
+      # the runner's .env.runner.local). Marked optional so compose itself starts
+      # without it, but the daemon does NOT: a from-scratch `make up` needs
+      # OIDC_ISSUER, OIDC_AUDIENCE, AUTH_SESSION_CODE_PEPPER and AUDIT_LOG_PEPPER
+      # (both peppers 64 hex) from this file, and exits UZ-STARTUP-002 without
+      # them. The inline `environment:` block below covers everything else.
+      # Provision the four with provision-env-1password; docs/AUTH.md says what
+      # each one is. `make up` waits for health and reports this rather than
+      # advertising a URL nothing is listening on.
       - path: .env.agentsfleetd.local
         required: false
     environment:

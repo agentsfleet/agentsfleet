@@ -636,6 +636,41 @@ moves the silence:
 its own log line (`HINT_ROW_ORPHANED_MANUAL_RECOVERY`). It belongs to the same
 follow-up.
 
+### The four `make up` blockers, enumerated from a real boot (Aug 21, 2026)
+
+The prior session recorded the count without the detail. Reproduced here by
+running the target and reading the daemon's own startup log, one blocker at a
+time, each cleared with a placeholder to reach the next:
+
+| # | Blocker | Where it comes from |
+|---|---------|---------------------|
+| 1 | `OIDC_ISSUER` + `OIDC_AUDIENCE` unset — `UZ-STARTUP-002 OidcRequired` | the Clerk dev vault entry |
+| 2 | `AUTH_SESSION_CODE_PEPPER` unset, then rejected unless 64 hex | provisioned pepper |
+| 3 | `AUDIT_LOG_PEPPER` unset, same predicate | provisioned pepper |
+| 4 | `make up` exits **0** and prints `API: http://localhost:3000` while the API is dead | the target itself — no credential involved |
+
+With the first three supplied the daemon boots and serves, so the list is
+complete rather than merely the first failure.
+
+Blocker 4 is what made the other three hard to see. `docker compose up -d`
+succeeds when a container *starts*; `agentsfleetd` then exits on the config load,
+and the recipe's next lines announce a URL nothing is listening on. Every one of
+the three credential blockers was therefore reported to the developer as success.
+
+`docker-compose.yml` also asserted, in a comment, that "the inline `environment:`
+block below already satisfies a from-scratch `make up`". It does not, and has not
+since OIDC became required.
+
+> Indy (2026-08-21): "Only fix #4, document the rest" — context: offered the
+> choice between manufacturing local-dev defaults for the three credential
+> blockers and fixing only the target's false success. He chose the latter.
+
+**What landed.** `make up` waits on health (`--wait`, with a named timeout) and,
+on failure, prints the daemon's own last lines followed by the four variables and
+where to provision them — rather than a URL. The compose comment now says what
+the file actually requires. No default was invented for a credential, and no
+secret-scanner suppression was added.
+
 ### Leak log — real defects the allocation-failure proofs caught
 
 | Site | Defect | Fix | Proof |

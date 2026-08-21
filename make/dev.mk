@@ -17,9 +17,25 @@ LOCAL_DOCKER_ARCH := amd64
 LOCAL_ZIG_TARGET := x86_64-linux
 endif
 
+# Long enough for a cold image pull plus the daemon's own healthcheck budget
+# (10s interval x 5 retries), short enough that a dead API fails while the
+# developer is still watching.
+UP_WAIT_TIMEOUT_SECONDS ?= 180
+
 up: _prepare_local_agentsfleetd_binary ## Start all services and tail app logs
 	@echo "Starting agentsfleet..."
-	@TARGETARCH=$(LOCAL_DOCKER_ARCH) docker compose up -d --build
+	@TARGETARCH=$(LOCAL_DOCKER_ARCH) docker compose up -d --build --wait --wait-timeout $(UP_WAIT_TIMEOUT_SECONDS) || { \
+		echo ""; \
+		echo "agentsfleetd never became healthy. Its own last words:"; \
+		echo ""; \
+		TARGETARCH=$(LOCAL_DOCKER_ARCH) docker compose logs --tail 20 agentsfleetd; \
+		echo ""; \
+		echo "A from-scratch 'make up' also needs OIDC_ISSUER, OIDC_AUDIENCE,"; \
+		echo "AUTH_SESSION_CODE_PEPPER and AUDIT_LOG_PEPPER (both peppers 64 hex)"; \
+		echo "in .env.agentsfleetd.local. Provision them with provision-env-1password;"; \
+		echo "docs/AUTH.md documents what each one is."; \
+		exit 1; \
+	}
 	@echo ""
 	@echo "Services:"
 	@echo "  API:       http://localhost:3000"
