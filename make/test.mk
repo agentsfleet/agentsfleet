@@ -78,10 +78,11 @@ ZIG_COVERAGE_TARGET_PCT ?= 95
 # Raised again by the Dimension 4.3 tail (models/grants/billing/fleet-library/
 # auth cursor and SSRF suites, plus the repair-verification double-free fix):
 # measured 90.91 merged, 90.21 agentsfleetd (19898/22058) over 9 of 9
-# components. `agentsfleetd` now clears its own 90 target from the same run, so
-# floor becomes target here too, same as `runner`/`lib` above. Every floor here
-# sits at or below its measured value, which is the only condition under which
-# one may move.
+# components. `agentsfleetd` now clears its own then-90 target from the same
+# run, so floor becomes target here too, same as `runner`/`lib` above (the
+# target has since moved to 92 — see below; the floor stays at the measured 90
+# until a Linux run clears the new bar). Every floor here sits at or below its
+# measured value, which is the only condition under which one may move.
 #
 # `runner` lowered back to 87 once this branch finally ran on real Linux CI
 # instead of a dev Mac: measured 87.48% (2767/3163) there, not the 95.18% every
@@ -109,7 +110,14 @@ ZIG_COVERAGE_FOLDER_FLOORS ?= agentsfleetd=90 runner=87 lib=94
 # last point. 90 is a waypoint, not a lowered bar: the merged 95 above still
 # implies the daemon eventually goes past it, because the daemon is 86% of the
 # denominator.
-ZIG_COVERAGE_FOLDER_TARGETS ?= agentsfleetd=90 runner=95 lib=95
+#
+# Raised 90 → 92 on Aug 20, 2026, on Indy's call after reading `runner` and
+# `lib` sitting at 95 here. This moves the BAR, not the gate: only the floors
+# above can fail a run, so the daemon's next two points read as a reported gap
+# on every graded run instead of a red one. The floor follows the same rule it
+# always has — it moves to 92 the run a Linux-measured `agentsfleetd` clears 92,
+# never ahead of it.
+ZIG_COVERAGE_FOLDER_TARGETS ?= agentsfleetd=92 runner=95 lib=95
 # One floor under the shape of the whole report, deliberately NOT one per
 # component. The failure being caught is collapse — kcov once returned 24 files
 # where the tree holds 558 — and a pair of numbers at roughly half the measured

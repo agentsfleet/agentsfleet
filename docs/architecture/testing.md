@@ -126,7 +126,7 @@ now has its own.
 | Scope | Enforced floor | Target |
 |---|---|---|
 | merged | 89 | 95 |
-| `agentsfleetd` | 90 | 90 |
+| `agentsfleetd` | 90 | 92 |
 | `runner` | 87 | 95 |
 | `lib` | 94 | 95 |
 
@@ -173,16 +173,19 @@ PR #608. Floor corrected 90 → 89. All three corrections reproduced
 byte-identical across two separate CI runs on the same commit, so this is
 measurement, not flake.
 
-`agentsfleetd` targets 90, not 95, because Indy shortened the campaign on
+`agentsfleetd` targets 92, not 95, because Indy shortened the campaign on
 Aug 16, 2026 after `lib` and `runner` landed: 89.23% to 95% is 1,278 covered
 lines over a 22,130-line denominator, and the file-splitting lever that makes
 the daemon's big files testable had only just been ruled on. He first cut the
 target to 91, then to 90 the same day once the session's remaining commits had
 closed most of that gap on their own — banking the PR at 90 beat funding
-another round of file splits for the last point. 90 is a waypoint. The daemon
-is 86% of the merged denominator, so the merged 95 above cannot be reached
-until this number moves again — the two are reconciled by raising this target
-later, never by lowering that one.
+another round of file splits for the last point. On Aug 20, 2026 he moved it
+back up to 92, reading it against the 95 `runner` and `lib` carry. 92 is the
+next waypoint, and it moved the published bar only: the enforced floor stays at
+the measured 90 until a Linux run clears 92, per the raise-only rule above. The
+daemon is 86% of the merged denominator, so the merged 95 above cannot be
+reached until this number moves again — the two are reconciled by raising this
+target later, never by lowering that one.
 
 The ceiling is real and it is why the target is not 100: kcov attributes no
 instruction to a function signature, a parameter line, a closing brace or a
