@@ -15,6 +15,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const linux = std.os.linux;
+const contract = @import("contract");
 
 const landlock = @import("engine/landlock.zig");
 const sandbox_args = @import("sandbox_args.zig");
@@ -43,6 +44,20 @@ const FORK_EXIT_OK: u8 = 0;
 const FORK_EXIT_NO_NEW_PRIVS_FAILED: u8 = 91;
 const FORK_EXIT_LANDLOCK_FAILED: u8 = 92;
 const FORK_EXIT_EXECVE_REFUSED: u8 = 93;
+const FORK_EXIT_DEV_FILE_REFUSED: u8 = 94;
+const FORK_EXIT_BIND_RO_REFUSED: u8 = 95;
+const FORK_EXIT_BIND_RW_REFUSED: u8 = 96;
+const FORK_EXIT_UNASSIGNED_PATH_ALLOWED: u8 = 97;
+
+/// Where the operator-bind proof builds its assigned paths. `/var` is named by
+/// no baseline list, no floor and no tmpfs, so a path under it is reachable in
+/// that test ONLY because the bind rule granted it — which is the whole claim.
+/// `/tmp` could not answer the question: the writable floor already grants it.
+const UNGRANTED_ROOT = "/var/tmp";
+
+/// The one file the proof creates inside its `read_write` assignment. Named
+/// once because the forked child writes it and the parent removes it.
+const PROOF_FILE = "proof";
 
 /// Is `path` present on this host?
 fn presentPath(io: std.Io, path: []const u8) bool {
@@ -85,6 +100,150 @@ test "the filesystem wall alone permits executing a binary from the system trees
         const envp = [_:null]?[*:0]const u8{};
         _ = linux.execve(path, &argv, &envp);
         linux.exit(FORK_EXIT_EXECVE_REFUSED);
+    }
+
+    var status: u32 = 0;
+    _ = linux.wait4(@intCast(signed), &status, 0, null);
+    if (!std.posix.W.IFEXITED(status)) return error.SkipZigTest;
+    const code: u8 = @intCast(std.posix.W.EXITSTATUS(status));
+    try std.testing.expectEqual(FORK_EXIT_OK, code);
+}
+
+test "the filesystem wall permits opening the writable device files for writing" {
+    // The fault this proof exists for, at the layer that produced it.
+    //
+    // `/dev` rides the read-only floor, whose mask carries no WRITE_FILE, while
+    // bwrap's `--dev` builds a devtmpfs where `/dev/null` is writable. The
+    // engine's model transport spawns `curl` and wires an ignored stdio stream
+    // through that node, so on `zombie-dev-worker-ant` every lease died at
+    // `open("/dev/null", O_RDWR) = EACCES` — zero tokens, zero wall seconds,
+    // and six green self-test checks.
+    //
+    // Isolated the same way the exec proof above is, and for the same reason: a
+    // refusal under all three layers does not say which one refused. This forks,
+    // applies ONLY the filesystem wall, and calls `open` directly, so the
+    // kernel's answer is about landlock and nothing else. Read-write is the
+    // whole point — read-only would pass under the exact mask that produced the
+    // incident.
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+
+    // Skip rather than fail where the host itself refuses the open: the claim
+    // under test is that LANDLOCK does not, and a host that says no first
+    // cannot answer that question either way.
+    for (landlock.LANDLOCK_FLOOR_RW_FILES) |path| {
+        const path_z = std.posix.toPosixPath(path) catch return error.SkipZigTest;
+        const probe = std.posix.openatZ(std.posix.AT.FDCWD, &path_z, .{ .ACCMODE = .RDWR }, 0) catch
+            return error.SkipZigTest;
+        _ = linux.close(probe);
+    }
+
+    try makeWorkspace(io);
+    const signed: isize = @bitCast(linux.fork());
+    if (signed < 0) return error.SkipZigTest;
+    if (signed == 0) {
+        if (linux.prctl(@intFromEnum(linux.PR.SET_NO_NEW_PRIVS), 1, 0, 0, 0) != 0)
+            linux.exit(FORK_EXIT_NO_NEW_PRIVS_FAILED);
+        landlock.applyPolicy(WORKSPACE, &.{}) catch linux.exit(FORK_EXIT_LANDLOCK_FAILED);
+        for (landlock.LANDLOCK_FLOOR_RW_FILES) |path| {
+            const path_z = std.posix.toPosixPath(path) catch linux.exit(FORK_EXIT_DEV_FILE_REFUSED);
+            const fd = std.posix.openatZ(std.posix.AT.FDCWD, &path_z, .{ .ACCMODE = .RDWR }, 0) catch
+                linux.exit(FORK_EXIT_DEV_FILE_REFUSED);
+            _ = linux.close(fd);
+        }
+        linux.exit(FORK_EXIT_OK);
+    }
+
+    var status: u32 = 0;
+    _ = linux.wait4(@intCast(signed), &status, 0, null);
+    if (!std.posix.W.IFEXITED(status)) return error.SkipZigTest;
+    const code: u8 = @intCast(std.posix.W.EXITSTATUS(status));
+    try std.testing.expectEqual(FORK_EXIT_OK, code);
+}
+
+test "an operator-assigned bind lands at the mode it was assigned, and nothing else does" {
+    // The mode-to-mask mapping, proven end to end against a real kernel.
+    //
+    // Both arms shipped unexercised: every `applyPolicy` call in this tree
+    // passed an EMPTY assignment, so no lane ever ran the loop that reads them.
+    // They were wrong once already — bwrap mounted an operator bind and
+    // landlock denied it, and every lease on that runner read an assigned path
+    // as absent. `accessForBindMode` now decides it purely and is unit-tested;
+    // this proves the decision survives the syscall.
+    //
+    // The third path is what makes this a proof rather than a tautology: a
+    // sibling under the same root, assigned to nothing, must be REFUSED. Without
+    // it, a ruleset that failed to restrict at all would pass every assertion
+    // here.
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    var threaded: std.Io.Threaded = undefined;
+    const io = spawnIo(&threaded);
+    defer threaded.deinit();
+
+    const pid = std.c.getpid();
+    var ro_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var rw_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var none_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const ro = try std.fmt.bufPrintZ(&ro_buf, "{s}/agentsfleet-bindproof-ro-{d}", .{ UNGRANTED_ROOT, pid });
+    const rw = try std.fmt.bufPrintZ(&rw_buf, "{s}/agentsfleet-bindproof-rw-{d}", .{ UNGRANTED_ROOT, pid });
+    const none = try std.fmt.bufPrintZ(&none_buf, "{s}/agentsfleet-bindproof-none-{d}", .{ UNGRANTED_ROOT, pid });
+    var proof_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const proof = try std.fmt.bufPrintZ(&proof_buf, "{s}/{s}", .{ rw, PROOF_FILE });
+
+    // A host that refuses these creations cannot answer the question either
+    // way, so skip rather than fail — the claim is about landlock, not /var.
+    for ([_][:0]const u8{ ro, rw, none }) |dir| {
+        std.Io.Dir.createDirAbsolute(io, dir, .default_dir) catch |err| switch (err) {
+            error.PathAlreadyExists => {},
+            else => return error.SkipZigTest,
+        };
+    }
+    // The child creates exactly one file, so the teardown names it rather than
+    // walking a tree: `Io.Dir` has no absolute delete-tree, and a recursive
+    // sweep rooted at an interpolated path is the wrong tool for a directory
+    // whose entire contents this test wrote.
+    defer {
+        std.Io.Dir.deleteFileAbsolute(io, proof) catch {};
+        for ([_][:0]const u8{ ro, rw, none }) |dir| {
+            std.Io.Dir.deleteDirAbsolute(io, dir) catch {};
+        }
+    }
+
+    const binds = [_]contract.protocol.ExtraBind{
+        .{ .path = ro, .mode = .read_only },
+        .{ .path = rw, .mode = .read_write },
+    };
+
+    try makeWorkspace(io);
+    const signed: isize = @bitCast(linux.fork());
+    if (signed < 0) return error.SkipZigTest;
+    if (signed == 0) {
+        if (linux.prctl(@intFromEnum(linux.PR.SET_NO_NEW_PRIVS), 1, 0, 0, 0) != 0)
+            linux.exit(FORK_EXIT_NO_NEW_PRIVS_FAILED);
+        landlock.applyPolicy(WORKSPACE, &binds) catch linux.exit(FORK_EXIT_LANDLOCK_FAILED);
+
+        // read_only: the directory opens for reading.
+        const ro_fd = std.posix.openatZ(std.posix.AT.FDCWD, ro.ptr, .{ .ACCMODE = .RDONLY, .DIRECTORY = true }, 0) catch
+            linux.exit(FORK_EXIT_BIND_RO_REFUSED);
+        _ = linux.close(ro_fd);
+
+        // read_write: a file is created inside it. Creating, not opening — the
+        // read_write mask is MAKE_REG plus the writes, and an open of something
+        // already there would prove the weaker half.
+        const rw_fd = std.posix.openatZ(std.posix.AT.FDCWD, rw.ptr, .{ .ACCMODE = .RDONLY, .DIRECTORY = true }, 0) catch
+            linux.exit(FORK_EXIT_BIND_RW_REFUSED);
+        const made = std.posix.openatZ(rw_fd, PROOF_FILE, .{ .ACCMODE = .WRONLY, .CREAT = true, .EXCL = true }, 0o600) catch
+            linux.exit(FORK_EXIT_BIND_RW_REFUSED);
+        _ = linux.close(made);
+        _ = linux.close(rw_fd);
+
+        // assigned to nothing: refused, or this ruleset restricts nothing.
+        const none_fd = std.posix.openatZ(std.posix.AT.FDCWD, none.ptr, .{ .ACCMODE = .RDONLY, .DIRECTORY = true }, 0) catch
+            linux.exit(FORK_EXIT_OK);
+        _ = linux.close(none_fd);
+        linux.exit(FORK_EXIT_UNASSIGNED_PATH_ALLOWED);
     }
 
     var status: u32 = 0;

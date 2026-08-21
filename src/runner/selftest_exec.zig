@@ -34,7 +34,7 @@ const EVENT_WAIT_FAILED = "selftest_probe_wait_failed";
 /// The child prints one short fixed-shape line; anything longer is a wire skew,
 /// not a verdict. Bounded so a wedged or hostile child cannot stream into the
 /// daemon's memory while we wait for it.
-const VERDICT_READ_CAP = 128;
+const VERDICT_READ_CAP = 160;
 
 /// How often the reaper wakes to check whether the probe already finished. The
 /// probe is normally sub-second, so this keeps the thread joinable promptly
@@ -234,6 +234,7 @@ pub fn outcomeFrom(line: []const u8, timed_out: bool) selftest.Outcome {
         .resolver_readable = false,
         .scratch_writable = false,
         .home_writable = false,
+        .device_files_writable = false,
         .dns_resolved = false,
         .egress_reachable = false,
         .extra_binds_present = false,
@@ -250,6 +251,11 @@ pub fn outcomeFrom(line: []const u8, timed_out: bool) selftest.Outcome {
         // Same fail-closed reading as scratch: an absent key is a probe that
         // never attempted the write, and a write nobody attempted is not a pass.
         .home_writable = verdictOf(line, selftest_probe.KEY_HOME) == .passed,
+        // Same fail-closed reading again, and it carries the most weight of the
+        // three: a probe predating this key certifies nothing about the open the
+        // engine's transport performs, and reading its silence as a pass would
+        // reproduce the green-probe/dead-lease state this check was added for.
+        .device_files_writable = verdictOf(line, selftest_probe.KEY_DEV_FILES) == .passed,
         .dns_resolved = verdictOf(line, selftest_probe.KEY_DNS) == .passed,
         .egress_reachable = verdictOf(line, selftest_probe.KEY_EGRESS) == .passed,
         // An assigned bind is healthy ONLY on an explicit pass. Treating
