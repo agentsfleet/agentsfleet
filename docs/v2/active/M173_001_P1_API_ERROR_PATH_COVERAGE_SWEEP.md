@@ -60,7 +60,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/**/*.zig` | EDIT | deletion of branches §4 proves unreachable; no behaviour change to any reachable path |
 | `src/runner/**/*.zig` | EDIT | the runner carries twins of the daemon defects §1's proofs catch; each production fix is named in the leak log, per the amended R6 |
 | `src/agentsfleetd/integration_tests.zig` | EDIT | register each new integration test file |
-| `src/agentsfleetd/http/handlers/fleets/delete.zig` | EDIT | the delete-ordering fix Indy directed onto this branch — purge the rows before the schedules so a half-complete delete is loud, not silent |
+| `cli/src/lib/repl.ts` | EDIT | guard `prompt()` against a closed readline interface; Bun 1.4 throws `ERR_USE_AFTER_CLOSE` where 1.3.14 returned silently, which blocked this branch's push |
 | `docker-compose*.y*ml` / `make/*.mk` | EDIT | the `make up` blockers Indy directed onto this branch, to the extent each is a compose or target defect |
 | `make/test.mk` | EDIT | the enforced floor and target VALUES live here (`ZIG_COVERAGE_FOLDER_FLOORS`, `ZIG_COVERAGE_MIN_PCT`), not in the grading script |
 | `scripts/check_zig_coverage_floors.py` | EDIT | floor grading logic, if the raise needs it; the values themselves move in `make/test.mk` |
@@ -238,7 +238,7 @@ code is out of scope and reverts.
 | R3 | The error-return class is empty (§3) | `python3 scripts/classify_unhit_lines.py --class error-return --count` | `0` | P0 | |
 | R4 | The other-branch class is empty (§4) | `python3 scripts/classify_unhit_lines.py --class other,brace --count` | `0` | P0 | |
 | R5 | Every component floor equals its landed rate rounded down (§5) | `make test-coverage-grade` | exit 0 | P0 | |
-| R6 | No reachable behaviour changed except a leak the proof caught | `git diff --name-only origin/main...HEAD \| grep -vE '_test\.zig$\|\.md$\|\.py$'` | every listed file's diff is a deletion, a cleanup fix named in Discovery's leak log, one of the **two product findings Indy directed be fixed here** (see "Fixed on this branch by direction"), or **additive test-only code** — a `test {}` block, the helpers it calls, or a `_ = @import("..._test.zig")` registration line | P0 | ✅ 11 files listed: 5 named leak fixes, 6 additive test-only (audited line by line, Aug 21) |
+| R6 | No reachable behaviour changed except a leak the proof caught | `git diff --name-only origin/main...HEAD \| grep -vE '_test\.zig$\|\.md$\|\.py$'` | every listed file's diff is a deletion, a cleanup fix named in Discovery's leak log, one of the **`make up` blockers Indy directed be fixed here** (see "Fixed on this branch by direction"), or **additive test-only code** — a `test {}` block, the helpers it calls, or a `_ = @import("..._test.zig")` registration line | P0 | ✅ 11 files listed: 5 named leak fixes, 6 additive test-only (audited line by line, Aug 21) |
 | R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ one unlisted path, `HANDOFF_M173.md`, which CHORE(close) deletes — regrade after the delete |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
@@ -557,34 +557,84 @@ the fan-out — the split is already decisive enough to order the work.
 ### Fixed on this branch by direction, not deferred (Aug 21, 2026)
 
 Two product findings were written up above as out of scope because R6 forbids a
-reachable behaviour change. Indy overrode that, in session, for both:
+reachable behaviour change. Indy overrode that, in session, for both — then
+withdrew one of them once the code was read:
 
 > Indy (2026-08-21): "fix both" — context: asked whether the fleet-delete
 > ordering defect and the four `make up` blockers should be deferred to a
 > follow-up with his ack, or fixed here. He chose fixed here.
+
+> Indy (2026-08-21): "Stop — rethink the whole finding" — context: the
+> fleet-delete fix's premise did not survive a read of `ingress/qstash.zig`. That
+> finding is parked; the `make up` blockers stand as directed work.
 
 The spec is an instance and the rule is the constant, so the spec moved: R6's
 Expected now names this third permitted diff shape, and Files Changed carries the
 paths. What R6 still forbids is unchanged — an unnamed behaviour change. Both
 fixes are named here before either lands.
 
-1. **Fleet-delete ordering** (`http/handlers/fleets/delete.zig`). `innerDeleteFleet`
-   cancels the fleet's schedules through the cron service BEFORE it purges the
-   rows, and releases its connection across that network call. A failed re-acquire
-   tells the caller the delete failed while the schedules are already gone: the
-   fleet still lists and silently never runs again until someone retries. Fix is
-   the ordering, not the failure arm — purge the rows first, so the leftover is an
-   orphan schedule that fires at a removed fleet, answers not-found and retires
-   itself. Loud and self-limiting beats silent.
+1. ~~**Fleet-delete ordering**~~ — **withdrawn the same day, before any code
+   landed.** Reading `ingress/qstash.zig` showed the fix's own premise was false;
+   Indy parked it. See "The fleet-delete finding rests on a false premise" below.
+   No production file was touched for it.
 2. **The four `make up` blockers.** One is a pure compose defect with no credential
    involved. The remaining three are enumerated as they are reproduced, each with
    the failure it produces, since the prior session recorded the count without the
    detail.
 
-`http/handlers/fleets/create.zig` carries the same acquire-across-a-network-call
-shape and says so in its own log line (`HINT_ROW_ORPHANED_MANUAL_RECOVERY`). It is
-NOT covered by this direction — the direction named two findings — and stays out
-until Indy says otherwise.
+
+### The fleet-delete finding rests on a false premise — parked (Aug 21, 2026)
+
+The write-up above argued the ordering could be fixed because the leftover would
+be "an orphan schedule that fires at a removed fleet, answers not-found and
+retires itself — loud and self-limiting". **That is not what the code does.**
+Read from source on this branch, not from the write-up:
+
+- `cron/FireService.zig:69` — a fire whose schedule row is gone returns
+  `.{ .ignored = .schedule_missing }`. It is an outcome, not an error.
+- `http/handlers/ingress/qstash.zig` — `logOutcome` records EVERY outcome,
+  `.ignored` included, at **`log.debug`**; the handler then answers
+  `hx.ok(.ok, .{ .accepted = true })` unconditionally. There is no not-found
+  arm on this route.
+
+So an orphan schedule fires on its cron forever, is answered 200 every time,
+leaves no trace above debug level, and is billed by the provider for the life of
+the account. It is silent and permanent — the opposite of self-limiting.
+
+That premise was load-bearing. It is what made "cancel the schedules after the
+purge" look like a strict improvement over "cancel them before"; without it the
+choice is between a silent half-complete delete and a silent permanent schedule,
+and neither is obviously the lesser harm. The reordering is therefore NOT a
+settled fix, and this spec is the wrong place to design one.
+
+> Indy (2026-08-21): "Stop — rethink the whole finding" — context: told that the
+> self-limiting premise was false and offered the split anyway, he parked it.
+
+**Parked, with the reading recorded so the follow-up starts from the code.** Three
+things the follow-up has to decide together, because fixing any one alone just
+moves the silence:
+
+1. **Ordering.** A naive swap does NOT work: `removeAll` enumerates the schedules
+   from the very PG rows the purge cascades away, so after a swap `Store.list`
+   returns zero, `removeAll` returns `.skipped`, and every schedule leaks at the
+   provider. Its own doc comment says the current order is deliberate for exactly
+   this reason. Any real fix captures the identifiers first, then purges, then
+   unregisters with the identifiers in hand.
+2. **Visibility.** While `.schedule_missing` stays at debug, no ordering makes an
+   orphan observable. This is the cheapest of the three and the one that turns a
+   silent failure into a reported one.
+3. **A separate defect on the same path, found while reading.** `removeAll` runs
+   BEFORE `purgeFleetOnConn` classifies, and that classification is what produces
+   `.not_killed`. So `DELETE` against a fleet nobody killed first cancels every
+   schedule and THEN answers 409: the fleet keeps running, keeps listing, and
+   never fires on schedule again, with nothing said. This needs no ordering
+   debate and no premise — the classification simply belongs ahead of the
+   provider call — but it lands with the follow-up rather than here, because it
+   edits the same function.
+
+`create.zig` carries the same acquire-across-a-network-call shape and says so in
+its own log line (`HINT_ROW_ORPHANED_MANUAL_RECOVERY`). It belongs to the same
+follow-up.
 
 ### Leak log — real defects the allocation-failure proofs caught
 
