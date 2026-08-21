@@ -360,6 +360,29 @@ pointed at a drained pool. The two ingress routes need headers and nothing more.
 owed. Read whether the handler acquires before or after it verifies — the
 handlers that load their own secret answer the starved arm with headers alone.
 
+### An optional rung is only an allocation site when the column is non-null
+
+`checkAllAllocationFailures` fails allocation SITES. A rung guarding an
+optional dupe — `errdefer if (failure_label) |v| alloc.free(v);` — is not a site
+at all when the fixture leaves that column NULL: the dupe never happens, so
+there is nothing to fail, so the rung never runs. The proof still passes. It
+passes with the rung DELETED.
+
+Hit while proving `fleet_events_store.listForFleet`. The obvious home was
+`fleet_events_filters_integration_test.zig`, whose fixture seeds actor,
+event_type, status and request_json and leaves every failure column null. The
+proof went green there, and stayed green with `errdefer if (failure_detail)`
+removed from the product file — four of the five rungs were never sites. The
+proof moved to a fixture that populates ALL five, and the same mutation then
+went red.
+
+**The rule this leaves behind:** for an optional rung, the fixture is part of
+the proof. Before writing one, read which columns the rungs guard and seed every
+one of them non-null; a list read additionally needs more than one row, or the
+partial-list rung fails with an empty list and proves nothing. And mutation-check
+by deleting the RUNG, not by breaking the test — a green proof over a deleted
+rung is the only signal that separates the two.
+
 ### Leak log — real defects the allocation-failure proofs caught
 
 | Site | Defect | Fix | Proof |

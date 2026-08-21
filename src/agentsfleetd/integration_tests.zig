@@ -74,6 +74,7 @@ test {
     _ = @import("state/secret_reference_txn_integration_test.zig");
     _ = @import("state/repair_evidence_integration_test.zig");
     _ = @import("state/fleet_events_filters_integration_test.zig");
+    _ = @import("state/fleet_detail_grant_alloc_test.zig");
     _ = @import("state/repair_verifications_unwind_integration_test.zig");
     _ = @import("http/handlers/integration_grants/workspace_integration_test.zig");
     _ = @import("state/model_rate_cache_integration_test.zig");
