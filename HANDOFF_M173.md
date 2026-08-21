@@ -40,13 +40,38 @@ the authored baseline, not a comparison basis.
 
 - ✅ Classifier built (`scripts/classify_unhit_lines.py` + 20 self-tests) — the
   grading instrument for rubric rows R1–R4.
-- 🔄 §1 allocation-failure proofs — ~12% done (~40 of 317 lines).
-- 🔄 §2 failure arms — rejection arms started; **the pool-exhaustion mechanism
-  is built and proven**, which unlocks the 81 pool-acquire arms.
+- ✅ §2.2 pool exhaustion — the mechanism is a 50-row probe table covering 50
+  endpoints with zero misses. HTTP-reachable acquire arms went 68 → ~21.
+- 🔄 §1 allocation-failure proofs — 5 ladders landed this session (cron trigger,
+  signed webhook, fleet network, whole-config, tar bundle) on top of the earlier
+  work. `errdefer` class 308 and falling.
 - ⏳ §3 error returns — not started.
-- ⏳ §4 branch triage — not started.
+- ⏳ §4 branch triage — not started. Largest remaining class (1093 + 15 brace).
 - ⏳ §5 floors — not started; must move in the same commit as the tests that
-  clear them.
+  clear them. NOTE: the `agentsfleetd` target raise 90 → 92 exists ONLY as
+  uncommitted work in the MAIN worktree (`~/Projects/agentsfleet`), not on this
+  branch. Re-author it here when §5 lands; do not edit the other worktree.
+
+**Landed Aug 21 (commit `1fb96d3a7`)** — the approved runner-twin fix, plus the
+second half it turned out to need:
+
+1. `src/runner/bundle_extract.zig` `readEntry` — the `WriteFailed` -> `OutOfMemory`
+   switch, matching the daemon twin. ✅
+2. Spec Files Changed carries the `src/runner/**/*.zig` EDIT row. ✅
+3. `test_extract_support_files_unwinds_without_leaking` beside it. ✅ **Verified
+   load-bearing**: reverting the switch makes it fail, with the trace running
+   through `catch return error.CorruptArchive` into `checkAllAllocationFailures`.
+4. Two leak-log rows — the twin, and the collapse below. ✅
+
+**The twin fix alone was invisible.** `MaterializeResult` was `enum { ready,
+failed }`, so `materializeBundle` folded plane refusal, malformed archive and out
+of memory into one static detail covering both stages; a hosted user has no
+runner log, so that line was everything they got. It now carries
+`MaterializeFailure` (`download` / `malformed` / `memory`) — `causeOf` blames the
+host for an allocation failure and the stage for everything else, `detailFor`
+maps each to its own cause line. That restores the runner's own convention (six
+`DETAIL_*` in `child_supervisor_result.zig`, fourteen in `selftest.zig`); this
+call site was the only one that collapsed them.
 
 **Two real production leaks found and fixed** (logged in the spec's leak log):
 1. `src/agentsfleetd/auth/jwks.zig` `parseJwks` — built three owned fields inside
@@ -60,18 +85,30 @@ the authored baseline, not a comparison basis.
 
 ## Working tree
 
-Clean. `feat/m173-error-path-coverage` == `origin/...`, nothing unpushed.
+Clean but for this handoff. `feat/m173-error-path-coverage` is ONE commit ahead
+of `origin/...` (`1fb96d3a7`, unpushed).
 Worktree: `/Users/kishore/Projects/agentsfleet-m173` (stay inside it).
 
 ## Branch / PR (GitHub)
 
-- Branch: `feat/m173-error-path-coverage`, contains `origin/main` (`d09243bd1`).
+- Branch: `feat/m173-error-path-coverage`, **contains `origin/main` (`8a8a69345`)**
+  — merged Aug 21 (PR #619, playbooks only, no Zig).
 - PR: **none yet** — correct, the sweep is nowhere near CHORE(close).
-- 12 commits; every one passed `harness-verify` + lint + the depth gate.
+- 21 commits, 7 of them from the Aug 21 session:
+
+```
+88a8d1d02 starve runner enrollment, the one runner route a session reaches
+047992cc8 fix: a bundle import under memory pressure blamed the archive
+80b9c54f9 prove the whole-config ladder, and record the session's traps
+3fc037469 read the validators, then starve the six writes that rejected
+7519fa5f1 starve the bodied writes whose bodies clear validation
+27ec6f148 prove the cron, signed-webhook and network ladders
+fed95b9c5 starve the pool against 35 endpoints, not four
+```
 
 ## Running processes
 
-No tmux sessions. Docker infra is UP for this worktree (leave it, or `make down`):
+No tmux. Docker infra is UP for this worktree (leave it, or `make down`):
 
 ```
 agentsfleet-m173-postgres-1   :25796 -> 5432
@@ -79,40 +116,42 @@ agentsfleet-m173-redis-1      :25797 -> 6379
 agentsfleet-m173-qstash-1     :25798 -> 8080
 ```
 
+A full `make test-coverage-zig && make test-integration && make
+test-coverage-grade` was running when this handoff was written. Re-run it if the
+merged report looks stale — and read the digest trap below before doing anything
+else while a lane runs.
+
 ## Tests / checks
 
-- ✅ `make test-integration` — `1001 passed; 8 skipped; 0 failed`.
-- ✅ `zig build test` (full daemon unit suite) — green.
-- ✅ Test depth gate — `unit=4226 integration=726` (baseline `unit=4205
-  integration=719`), so +21 unit / +7 integration.
+- ✅ `make test-coverage-grade` — exit 0. Merged 91.28% (floor 89),
+  `agentsfleetd` 90.78% (floor 90), `lib` 95.30%, `runner` 92.64%.
+- ✅ `make test-integration` — 1003 passed; 8 skipped; 0 failed.
+- ✅ Filtered lane `make test-integration TEST_FILTER=pool_exhaustion` — all 83
+  pass, probe loop reports zero misses across 50 endpoints.
+- ✅ Test depth gate — `unit=4231 integration=726` (CHORE(open) baseline
+  `unit=4205 integration=719`), so +26 unit / +7 integration.
+- ✅ `make test-unit-agentsfleet-runner` — 670 pass, 3 skip (was 667).
+- ✅ Depth gate at commit time — `unit=4235 integration=726` (baseline 4205/719).
 - ⏳ `make lint-all`, `make test-unit-all`, `make memleak`, `make check-version`
-  — not run this session.
-- ⏳ `make test-coverage-grade` — **not green**: the unit-coverage evidence
-  digest went stale after later source edits. Re-run
-  `make test-coverage-zig && make test-integration && make test-coverage-grade`
-  to get a current merged report before grading R1–R4.
+  — NOT run this session. Every rubric S-row is still ungraded.
 
 ## Next steps
 
-1. Re-run both coverage producers, then `make test-coverage-grade`, and
-   re-classify against the FRESH merged report. Every count in this document is
-   a pre-M173 baseline.
-2. Extend the pool-exhaustion suite — the mechanism in
-   `src/agentsfleetd/http/pool_exhaustion_integration_test.zig` is one table row
-   per endpoint. Measured against the Aug 21 report, **86 unhit lines sit inside
-   an acquire-catch body**: 68 in 46 files under `http/handlers/` (HTTP-
-   reachable) and 18 in 10 background files (`fleet/service*.zig`,
-   `fleet_runtime/metering.zig`, `cmd/serve_qstash.zig`) that no HTTP request
-   reaches — those need §2.1 or a direct unit test, not this mechanism.
-   Re-derive the list with the acquire-body probe: classify, then walk back up
-   to 6 lines from each unhit line looking for `pool.acquire() catch`. Grepping
-   for unhit `pool.acquire() catch` LINES finds almost nothing — that line runs
-   on the success path too; it is the catch BODY that never ran.
-3. Build the §2.1 mechanism (terminate the backend mid-statement) for the 83
-   db-failure + 80 internal-op arms. Nothing exists for it yet.
-4. Continue §1 on the DB-free targets — 255 of 317 errdefer lines need no
-   database. Worklist recipe is in this file under "Gotchas".
-5. Only then §3 and §4, and §5 floors last.
+1. Re-run both producers and re-classify against the POST-fix tree. Expect ~21
+   HTTP-reachable acquire arms left; confirm rather than assume. The Aug 21
+   in-flight lane was killed mid-run (it measured the pre-fix tree, and any
+   `src/` edit refuses its evidence — `--source-path src`), so there is no
+   current merged report on disk.
+2. The remaining acquire arms are structural, not more rows:
+   - 5 runner-self arms need `runner_bearer_mw` wired into `seedAndHarness`, or
+     a second starvation test on the runner harness. **Pick deliberately.**
+   - ~10 need webhook-signature fixtures (`identity_events_clerk`,
+     `identity_events_delete`, `slack/events`, `ingress/github`).
+   - 2 are SSE `authorize` paths, 2 are rollback-only paths inside create.
+3. §1 continues. 308 `errdefer` lines; the PURE/DB split needs reading, not the
+   heuristic (see the trap below).
+4. §3 and §4 remain untouched — ~1,240 lines across ~250 files. This is still a
+   multi-session milestone.
 
 ### Traps found Aug 21, 2026
 
@@ -158,6 +197,15 @@ agentsfleet-m173-qstash-1     :25798 -> 8080
   `coverage/zig/integration` from a narrowed run, so re-run both producers in
   full before grading anything.
 
+- **A tar-fixture built INSIDE an allocation-failure proof fails it with no
+  product defect at all.** `std.tar.Writer` over an allocating writer converts
+  OOM to `error.WriteFailed`, and `checkAllAllocationFailures` requires the
+  function under test to answer `OutOfMemory`. Build fixtures outside the proof
+  and pass them in as `extra_args`. Same shape bit the config proof: an INVALID
+  fixture (a `write` repository binding with no `repository_base` in authoring
+  mode) fails on the SUCCESS path and reads exactly like a defect. Read the
+  trace before believing a red proof.
+
 ## Risks / gotchas
 
 - **A skipped integration test reports as PASSING.** This is the big one.
@@ -200,29 +248,80 @@ agentsfleet-m173-qstash-1     :25798 -> 8080
 
 ### Worklist recipe
 
+Two probes. The first splits the `errdefer` class; the second finds acquire arms.
+Run BOTH from the repo root — the classifier resolves the report path relative to
+the working directory and fails loudly (not silently) from anywhere else.
+
 ```bash
-cd scripts
+# errdefer worklist, split by whether the enclosing fn needs a connection.
+# Reads the WHOLE signature, not just its first line: a multi-line signature
+# carrying `conn: *pg.Conn` on line 3 scans as DB-free otherwise, which is how
+# the earlier "255 of 317 need no database" figure was produced. Real split is
+# 150 PURE / 158 DB. Still only a FIRST FILTER — `queue/redis_pool.zig` has no
+# `pg.Conn` and needs a live Redis; row helpers take a `pg` row type. Read the
+# function before committing to a target.
 python3 - <<'PY'
-import sys, collections, re; sys.path.insert(0, ".")
+import sys, collections, re
+sys.path.insert(0, "scripts")
 from pathlib import Path
 import classify_unhit_lines as C
-found = C.classify(Path("../coverage/zig/merged/cobertura.xml"), Path(".."))
+found = C.classify(Path("coverage/zig/merged/cobertura.xml"), Path("."))
 FN = re.compile(r"^(pub\s+)?fn\s+(\w+)\s*\(")
+def signature(lines, i):
+    out = []
+    for k in range(i, min(i + 14, len(lines))):
+        out.append(lines[k])
+        if lines[k].rstrip().endswith("{"):
+            break
+    return "\n".join(out)
 by_file = collections.defaultdict(list)
-for f in (x for x in found if x.kind == "errdefer"):
-    by_file[f.path].append(f.number)
-for path, nums in sorted(by_file.items(), key=lambda kv: -len(kv[1])):
-    lines = (Path("..")/path).read_text(errors="replace").splitlines()
+for f in found:
+    if f.kind == "errdefer":
+        by_file[f.path].append(f.number)
+rows = []
+for path, nums in by_file.items():
+    lines = (Path(".")/path).read_text(errors="replace").splitlines()
     for n in sorted(nums):
         for i in range(n-1, -1, -1):
-            m = FN.match(lines[i])
+            m = FN.match(lines[i].lstrip())
             if m:
-                sig = lines[i].strip()
-                needs_db = "*PgQuery" in sig or "pg.Conn" in sig or "conn" in sig.lower()
-                print(f"{path}:{i+1} {'DB ' if needs_db else 'PURE'} {m.group(2)}")
+                sig = signature(lines, i)
+                db = ("pg.Conn" in sig) or ("PgQuery" in sig) or ("pool" in sig.lower())
+                rows.append((path, n, "DB" if db else "PURE", m.group(2)))
                 break
+pure = [r for r in rows if r[2] == "PURE"]
+print(f"errdefer {len(rows)}  PURE={len(pure)}  DB={len(rows)-len(pure)}")
+for path, c in collections.Counter(r[0] for r in pure).most_common(25):
+    print(f"{c:>3}  {path}")
+PY
+
+# acquire arms: walk BACK from each unhit line looking for the opener. Grepping
+# for unhit `pool.acquire() catch` LINES finds ~1 hit in the whole tree, because
+# that line runs on the success path too. It is the catch BODY that never ran.
+python3 - <<'PY'
+import sys, collections
+sys.path.insert(0, "scripts")
+from pathlib import Path
+import classify_unhit_lines as C
+found = C.classify(Path("coverage/zig/merged/cobertura.xml"), Path("."))
+cache = {}
+def src(p):
+    if p not in cache:
+        try: cache[p] = (Path(".")/p).read_text(errors="replace").splitlines()
+        except Exception: cache[p] = []
+    return cache[p]
+hits = collections.defaultdict(list)
+for f in found:
+    lines = src(f.path); i = f.number - 1
+    if i >= len(lines): continue
+    for j in range(i, max(-1, i-6), -1):
+        if "pool.acquire() catch" in lines[j]:
+            hits[f.path].append(f.number); break
+hnd = {p: v for p, v in hits.items() if "/http/handlers/" in p}
+oth = {p: v for p, v in hits.items() if "/http/handlers/" not in p}
+print(f"HTTP-reachable {sum(map(len, hnd.values()))} lines / {len(hnd)} files")
+print(f"background     {sum(map(len, oth.values()))} lines / {len(oth)} files")
+for p, v in sorted(hnd.items()):
+    print(f"  {len(v)}  {p}")
 PY
 ```
-
-Split at last measurement: 255 of 317 errdefer lines need no database
-(131 private + 124 public); 63 need one.
