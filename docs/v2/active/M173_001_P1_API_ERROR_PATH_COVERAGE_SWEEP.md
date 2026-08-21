@@ -106,7 +106,18 @@ Every HTTP handler receives `hx.alloc`, a per-request arena torn down on return
 (`http/server.zig:278`), so a missing rung on a handler-only path leaks NOTHING
 in production. Run `python3 scripts/classify_rung_callers.py --class leak-capable --files`
 and work that list: 301 rungs across 95 files, reached by callers whose
-allocators outlive a request — cron, the queue workers, the event bus, the key-set
+allocators outlive a request.
+
+**Then narrow it per FUNCTION before writing the proof.** The classifier resolves
+at file level, so a `repeating` file can hold functions only handlers reach, and
+its rung count therefore OVERSTATES the real work. `git grep -n '<fn_name>' -- 'src/**/*.zig'`
+and confirm at least one caller passes something other than `hx.alloc`; if every
+caller is a handler, the rung is arena-backed no matter what its file says, and
+proving it is the cosmetic work this milestone stopped doing. This is not
+hypothetical — `vault.zig` classifies `repeating` because `loadJson` is called
+from `cron/Credentials`, `serve_broker` and `serve_webhook_lookup`, while
+`loadMetadata`'s three rungs have exactly one caller and it is a handler. A proof
+was written for them before this check existed — cron, the queue workers, the event bus, the key-set
 refresh, the runner daemon, and boot. The other 234 are deliberately out of scope
 per Indy's Aug 21 decision, recorded in Discovery. Proving one of them is not
 neutral: it costs the same as proving one that can leak, and it makes the class
