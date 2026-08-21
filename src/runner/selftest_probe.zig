@@ -103,6 +103,7 @@ pub const KEY_SCRATCH = "scratch=";
 pub const KEY_HOME = "home=";
 pub const KEY_DEV_FILES = "devfiles=";
 pub const KEY_TRANSPORT = "transport=";
+pub const KEY_ENGINE_SPAWN = "enginespawn=";
 
 /// Run the probe. Always exits 0 on a completed run — a FAILED CHECK is a
 /// result, not an error. A non-zero exit means the child could not run at all,
@@ -149,9 +150,12 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
     const dns = if (resolve_host) |h| Verdict.of(nameResolves(io, h)) else .untested;
     const egress = if (dial_target) |t| Verdict.of(endpointAccepts(io, t)) else .untested;
     const transport = if (transport_path) |p| Verdict.of(selftest_transport.execs(p)) else .untested;
+    // Same target, different machinery: `execs` proves the binary runs,
+    // `engineSpawns` proves the ENGINE's compat spawn path can run it.
+    const engine_spawn = if (transport_path) |p| Verdict.of(selftest_transport.engineSpawns(p)) else .untested;
     const binds: Verdict = if (binds_seen == 0) .untested else Verdict.of(binds_present);
 
-    writeVerdict(io, resolver, scratch, home, dev_files, dns, egress, transport, binds);
+    writeVerdict(io, resolver, scratch, home, dev_files, dns, egress, transport, engine_spawn, binds);
     return 0;
 }
 
@@ -312,22 +316,23 @@ fn endpointAccepts(io: std.Io, target: []const u8) bool {
 /// closed stdout means the parent already reaped us, and there is no one left
 /// to tell. The parent reads a missing line as every check failing, which is
 /// the fail-closed reading.
-fn writeVerdict(io: std.Io, resolver: Verdict, scratch: Verdict, home: Verdict, dev_files: Verdict, dns: Verdict, egress: Verdict, transport: Verdict, binds: Verdict) void {
-    // 128 holds the eight keys with room to spare (the line is ~74 bytes); the
+fn writeVerdict(io: std.Io, resolver: Verdict, scratch: Verdict, home: Verdict, dev_files: Verdict, dns: Verdict, egress: Verdict, transport: Verdict, engine_spawn: Verdict, binds: Verdict) void {
+    // 128 holds the nine keys with room to spare (the line is ~96 bytes); the
     // parent's own read cap is `selftest_exec.VERDICT_READ_CAP` = 160, and a
-    // ninth key would need both raised together.
+    // tenth key would need both re-checked together.
     var out_buf: [128]u8 = undefined;
     var stdout_w = std.Io.File.stdout().writer(io, &out_buf);
     const stdout = &stdout_w.interface;
-    stdout.print("{s}{c} {s}{c} {s}{c} {s}{c} {s}{c} {s}{c} {s}{c} {s}{c}\n", .{
-        KEY_RESOLVER,  @intFromEnum(resolver),
-        KEY_SCRATCH,   @intFromEnum(scratch),
-        KEY_HOME,      @intFromEnum(home),
-        KEY_DEV_FILES, @intFromEnum(dev_files),
-        KEY_DNS,       @intFromEnum(dns),
-        KEY_EGRESS,    @intFromEnum(egress),
-        KEY_TRANSPORT, @intFromEnum(transport),
-        KEY_BINDS,     @intFromEnum(binds),
+    stdout.print("{s}{c} {s}{c} {s}{c} {s}{c} {s}{c} {s}{c} {s}{c} {s}{c} {s}{c}\n", .{
+        KEY_RESOLVER,     @intFromEnum(resolver),
+        KEY_SCRATCH,      @intFromEnum(scratch),
+        KEY_HOME,         @intFromEnum(home),
+        KEY_DEV_FILES,    @intFromEnum(dev_files),
+        KEY_DNS,          @intFromEnum(dns),
+        KEY_EGRESS,       @intFromEnum(egress),
+        KEY_TRANSPORT,    @intFromEnum(transport),
+        KEY_ENGINE_SPAWN, @intFromEnum(engine_spawn),
+        KEY_BINDS,        @intFromEnum(binds),
     }) catch |err| {
         std.log.warn("selftest probe verdict write ignored: {s}", .{@errorName(err)});
         return;
