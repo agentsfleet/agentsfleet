@@ -4,8 +4,8 @@
     .minimum_zig_version = "0.16.0",
     .fingerprint = 0x263fc42fde813fea,
     .dependencies = .{
-        // Fork release agentsfleet/nullclaw v2026.5.29-zmb.5 — current upstream
-        // main plus the maintained fork patches, now carried on the fork's main:
+        // Fork pin agentsfleet/nullclaw — current upstream main plus the
+        // maintained fork patches, carried on the fork's own main:
         //   - cumulative prompt/completion token-split accessors with normalization,
         //     reset, and restoration so the runner's by-side billing stays complete;
         //   - Server-Side Request Forgery (SSRF)-validated address pinning on the
@@ -14,13 +14,23 @@
         //   - `compat` re-exported from the library root so the runner can call
         //     `nullclaw.compat.initProcess(init)` at startup — without it the
         //     engine's subprocess spawns fall back to Zig 0.16's failing-allocator
-        //     Io and die with a synthetic OutOfMemory before fork.
+        //     Io and die with a synthetic OutOfMemory before fork;
+        //   - the streaming dial records the provider's own error text before it
+        //     returns a narrowed error. Upstream records it on the three blocking
+        //     parse paths only, so a live steer — which always streams — reached
+        //     `failure_detail.capture` with an empty side channel and reported a
+        //     bare `ApiError`, identical for a model that does not exist and for
+        //     a rejected credential.
         // We have no push/release rights on upstream nullclaw/nullclaw, so the
-        // patches ride our fork. Drop this pin and return to the upstream tag when
-        // upstream exposes split accessors AND re-threads the resolve pin.
+        // patches ride our fork. Pinned to the fork's main by commit rather than
+        // to a release tag: the fork cuts no tag per patch, and the `#<commit>`
+        // is what makes the pin reproducible — `?ref=main` alone would drift to
+        // whatever main holds at fetch time. Drop this pin and return to the
+        // upstream tag when upstream exposes split accessors, re-threads the
+        // resolve pin, AND records streamed provider errors.
         .nullclaw = .{
-            .url = "git+https://github.com/agentsfleet/nullclaw.git?ref=v2026.5.29-zmb.5#d20ab5db15c3eb915eb47d87cd857b4bd63df98f",
-            .hash = "nullclaw-2026.5.29-wlZZySmQSAGEoZNInbV-eXfDmYeAFVSfjFRYiqjzwjJx",
+            .url = "git+https://github.com/agentsfleet/nullclaw.git?ref=main#f06ebfa3edcbdbbf14d56860dcaefdd619999d29",
+            .hash = "nullclaw-2026.5.29-wlZZyX2iSAHTij0-zuMMztsVJ09xGUEmLTxzOYyAIj3d",
         },
         // Fork pin agentsfleet/pg.zig over upstream karlseguin/pg.zig commit 52b9f8a,
         // patched for a Zig 0.16 pool-acquire regression: upstream
