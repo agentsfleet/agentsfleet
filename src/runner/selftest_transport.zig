@@ -15,6 +15,8 @@
 //! Reachability and executability are different facts.
 
 const std = @import("std");
+const builtin = @import("builtin");
+const nullclaw = @import("nullclaw");
 
 /// Where the engine's model transport lives, in the two locations a host puts
 /// it. The engine spawns it by NAME through `PATH`; the probe is handed an
@@ -56,7 +58,7 @@ pub fn hostPath(io: std.Io) ?[]const u8 {
 /// sandbox on a working one. A check that cannot tell its own plumbing from the
 /// fault it looks for is worse than no check.
 pub fn execs(path: []const u8) bool {
-    if (@import("builtin").os.tag != .linux) return false;
+    if (builtin.os.tag != .linux) return false;
     var path_buf: [std.fs.max_path_bytes]u8 = undefined;
     if (path.len >= path_buf.len) return false;
     @memcpy(path_buf[0..path.len], path);
@@ -85,6 +87,46 @@ pub fn execs(path: []const u8) bool {
     _ = std.os.linux.wait4(@intCast(forked), &status, 0, null);
     if (!std.posix.W.IFEXITED(status)) return false;
     return std.posix.W.EXITSTATUS(status) != EXEC_FAILED_EXIT;
+}
+
+/// Can the ENGINE's spawn plumbing run `path` from in here? The complement of
+/// `execs`, and the two must stay separate: `execs` proves the BINARY runs via
+/// raw `fork`+`execve`, deliberately bypassing `std.process.spawn`'s extra
+/// steps — so it kept passing while every lease died in exactly those steps.
+/// This check drives one spawn through the same NullClaw compat layer the
+/// engine dials its model transport with (all-pipe stdio, pre-fork argv
+/// allocation through the process `Io`), so it fails where a lease fails: a
+/// missing `compat.initProcess` leaves the fallback `Io` whose allocator
+/// refuses everything (a synthetic pre-fork `OutOfMemory` the event surface
+/// mislabels `oom_kill`), and a sandbox rule can refuse the spawn's own
+/// plumbing while the naked `execve` still works.
+///
+/// Graded on the spawn machinery, not the exit code, same as `execs`: any
+/// clean exit proves the engine can spawn its transport here.
+pub fn engineSpawns(path: []const u8) bool {
+    if (builtin.os.tag != .linux) return false;
+    // Only `Child.init`'s bookkeeping draws on this; the spawn itself
+    // allocates through the process `Io` — the very path under test.
+    var buf: [512]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const argv = [_][]const u8{ path, std.mem.span(VERSION_ARG) };
+    var child = nullclaw.compat.process.Child.init(&argv, fba.allocator());
+    child.stdin_behavior = .Pipe;
+    child.stdout_behavior = .Pipe;
+    child.stderr_behavior = .Pipe;
+    child.spawn() catch return false;
+    // EOF on stdin so a transport that reads it cannot wait on us; stdout and
+    // stderr stay open until `wait` reaps them — closing our read ends early
+    // would SIGPIPE the child mid-`--version` and grade a healthy spawn failed.
+    if (child.stdin) |f| {
+        f.close();
+        child.stdin = null;
+    }
+    const term = child.wait() catch return false;
+    return switch (term) {
+        .exited => true,
+        else => false,
+    };
 }
 
 test "every candidate transport path is absolute" {

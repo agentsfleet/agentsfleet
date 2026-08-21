@@ -56,9 +56,11 @@ comptime {
 pub const CHECK_RESOLVER = "resolver file resolves inside the sandbox";
 pub const CHECK_SCRATCH = "the scratch dir accepts a write inside the sandbox";
 pub const CHECK_HOME = "the child's home accepts a write inside the sandbox";
+pub const CHECK_DEV_FILES = "the writable device files open for writing inside the sandbox";
 pub const CHECK_DNS = "a hostname resolves inside the sandbox";
 pub const CHECK_EGRESS = "the inference endpoint is reachable";
 pub const CHECK_TRANSPORT = "the model transport runs inside the sandbox";
+pub const CHECK_ENGINE_SPAWN = "the engine's spawn path runs the model transport inside the sandbox";
 pub const CHECK_SANDBOX = "a sandbox can be established";
 
 /// Every `detail` a check may carry. A fixed vocabulary is what makes
@@ -69,12 +71,14 @@ pub const CHECK_SANDBOX = "a sandbox can be established";
 pub const DETAIL_OK = "no fault detected";
 pub const DETAIL_SCRATCH_READONLY = "the sandbox refused a write to its scratch tmpfs — every credentialed dial fails as TempFileCreateFailed until the write floor is granted";
 pub const DETAIL_HOME_UNREACHABLE = "the sandbox refused a write under the child's HOME — the engine cannot create its configuration directory, and every lease fails as AccessDenied before its first model call";
+pub const DETAIL_DEV_FILES_READONLY = "the sandbox refused an open-for-write on /dev/null — the engine wires its model transport's stdio through it, so every lease fails as AccessDenied before its first model call";
 pub const DETAIL_RESOLVER_DANGLING = "/etc/resolv.conf does not resolve to a readable file — the systemd-resolved stub is not bound into the sandbox";
 pub const DETAIL_DNS_FAILED = "the resolver did not answer inside the sandbox";
 pub const DETAIL_EGRESS_BLOCKED = "the endpoint did not accept a connection";
 pub const DETAIL_EGRESS_DENIED_EXPECTED = "no egress by assignment (deny_all_egress) — expected, not a fault";
 pub const DETAIL_TRANSPORT_UNEXECUTABLE = "the sandbox could not execute the model transport — the engine spawns curl for every model call, so every lease dies at execvp before its first one";
 pub const DETAIL_TRANSPORT_ABSENT = "no curl binary at /usr/bin/curl or /bin/curl on this host — the engine spawns one for every model call, so no lease can reach a model";
+pub const DETAIL_ENGINE_SPAWN_FAILED = "the engine's own spawn machinery could not run the model transport — the raw exec works, so the fault is in the spawn plumbing (process Io wiring or a sandbox rule on its pipes), and every lease dies before its first model call";
 pub const DETAIL_TIMEOUT = "the probe exceeded its time bound and was reaped";
 pub const DETAIL_NO_BWRAP = "no bubblewrap binary on this host — a sandboxed tier cannot be established";
 /// An assigned bind resolves onto a path the sandbox protects. Named for the
@@ -367,6 +371,25 @@ pub fn grade(alloc: std.mem.Allocator, cfg: Config, outcome: Outcome) !Result {
             DETAIL_HOME_UNREACHABLE,
     });
 
+    // Graded unconditionally, and separately from the two writes above for the
+    // same reason they are separate from each other: they answer different
+    // questions. Scratch proves the writable FLOOR exists, home proves the
+    // child's HOME sits on it, and this proves the one thing outside that floor
+    // a lease must still be able to write. A runner passing the first two and
+    // failing this one runs no lease at all — the state that reported
+    // `all_ok=true, checks=6` while every lease died at `open("/dev/null",
+    // O_RDWR)`.
+    try checks.append(alloc, .{
+        .name = CHECK_DEV_FILES,
+        .ok = if (outcome.timed_out) false else outcome.device_files_writable,
+        .detail = if (outcome.timed_out)
+            DETAIL_TIMEOUT
+        else if (outcome.device_files_writable)
+            DETAIL_OK
+        else
+            DETAIL_DEV_FILES_READONLY,
+    });
+
     // DNS is graded against the ASSIGNED posture too. Under deny_all there is
     // no network to resolve through, so a failure there is the assignment
     // working — the same reasoning the egress arm below has always used.
@@ -417,6 +440,23 @@ pub fn grade(alloc: std.mem.Allocator, cfg: Config, outcome: Outcome) !Result {
         });
     }
 
+    // The engine-spawn row is graded only when there was a transport to spawn:
+    // absence is already the transport row's named fault, and a second row
+    // reporting the same missing binary would read as two faults to fix. Under
+    // a timeout the probe observed nothing — say that, not "failed".
+    if (outcome.engine_spawn_testable) {
+        try checks.append(alloc, .{
+            .name = CHECK_ENGINE_SPAWN,
+            .ok = if (outcome.timed_out) false else outcome.engine_spawns,
+            .detail = if (outcome.timed_out)
+                DETAIL_TIMEOUT
+            else if (outcome.engine_spawns)
+                DETAIL_OK
+            else
+                DETAIL_ENGINE_SPAWN_FAILED,
+        });
+    }
+
     // One named check per operator-added bind, so an operator sees WHICH entry
     // did not land rather than one aggregate verdict (Dimension 4.5). The mode
     // travels with it — a writable mount is never reported silently.
@@ -458,6 +498,10 @@ pub const Outcome = struct {
     /// always reads it, so every construction site must decide rather than
     /// inherit a pass it never observed.
     home_writable: bool,
+    /// No default, for the reason the two above have none: `grade` always reads
+    /// it, and a construction site that inherits a pass it never observed is
+    /// how a policy layer that refused this open kept reporting a healthy host.
+    device_files_writable: bool,
     dns_resolved: bool,
     egress_reachable: bool,
     extra_binds_present: bool = true,
@@ -475,6 +519,16 @@ pub const Outcome = struct {
     /// reports as a fault distinct from one that failed to run — an operator
     /// fixes "install curl" and "fix the bind set" differently.
     transport_testable: bool,
+    /// Did the ENGINE's spawn path (the NullClaw compat layer a lease dials its
+    /// model through) run the transport? No default, same doctrine as
+    /// `transport_execs`: the raw exec above kept passing while every lease
+    /// died inside exactly this plumbing, so no construction site may inherit
+    /// a pass it never observed.
+    engine_spawns: bool,
+    /// False when there was no transport to spawn — the transport row already
+    /// reports that host state as its own fault, so this row stays silent
+    /// instead of doubling it.
+    engine_spawn_testable: bool,
 };
 
 test {

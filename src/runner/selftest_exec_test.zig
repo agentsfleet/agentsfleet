@@ -14,7 +14,7 @@ const sandbox_args = @import("sandbox_args.zig");
 const selftest = @import("selftest.zig");
 const selftest_exec = @import("selftest_exec.zig");
 
-const PASSING = "resolver=1 scratch=1 home=1 dns=1 egress=1 binds=1\n";
+const PASSING = "resolver=1 scratch=1 home=1 devfiles=1 dns=1 egress=1 binds=1\n";
 
 test "every check reads back off a full passing line" {
     const o = selftest_exec.outcomeFrom(PASSING, false);
@@ -203,4 +203,37 @@ fn probeCfg() Config {
         .registry_allowlist = &.{},
         .alloc = std.testing.allocator,
     };
+}
+
+test "the engine-spawn verdict parses each of its three states" {
+    // The class this key exists for: the raw transport exec passes while the
+    // engine's own spawn path fails (a lost `compat.initProcess`, or a sandbox
+    // rule on the spawn's plumbing). The two must never read as one fact.
+    const split = selftest_exec.outcomeFrom("transport=1 enginespawn=0", false);
+    try std.testing.expect(split.transport_execs);
+    try std.testing.expect(split.engine_spawn_testable);
+    try std.testing.expect(!split.engine_spawns);
+
+    const passed = selftest_exec.outcomeFrom("transport=1 enginespawn=1", false);
+    try std.testing.expect(passed.engine_spawns);
+
+    // No transport on the host → the probe never tried; the transport row owns
+    // that fault and this one stays silent.
+    const untested = selftest_exec.outcomeFrom("transport=x enginespawn=x", false);
+    try std.testing.expect(!untested.engine_spawn_testable);
+}
+
+test "an absent engine-spawn key is failed, never inherited as a pass" {
+    // An old probe paired with this parser never drove the engine's spawn
+    // path; reading its silence as a pass would reproduce the green-probe /
+    // dead-lease state the key was added to remove.
+    const o = selftest_exec.outcomeFrom("transport=1", false);
+    try std.testing.expect(o.engine_spawn_testable);
+    try std.testing.expect(!o.engine_spawns);
+}
+
+test "a reaped probe certifies no engine spawn either" {
+    const o = selftest_exec.outcomeFrom("enginespawn=1", true);
+    try std.testing.expect(o.timed_out);
+    try std.testing.expect(!o.engine_spawns);
 }
