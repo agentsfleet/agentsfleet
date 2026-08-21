@@ -114,6 +114,38 @@ pub const LANDLOCK_FLOOR_RW_FILES = [_][]const u8{"/dev/null"};
 /// apply landlock, reported the resolver healthy.
 pub const SYSTEM_READONLY_PATHS = protocol.BASELINE_RO_PATHS ++ LANDLOCK_FLOOR_RO_PATHS;
 
+/// The mask an operator-assigned bind is granted at, decided by the mode the
+/// operator declared and nothing else.
+///
+/// Pure, and split out of `applyPolicy` for the reason every decider in this
+/// tree is: the mapping is the whole content of the decision, and inside
+/// `applyPolicy` it could only be exercised on a landlock-capable kernel with a
+/// non-empty assignment — which no lane had, so both arms went unproven. They
+/// were wrong once already: bwrap mounted an operator bind and landlock denied
+/// it, and every lease on that runner read an assigned path as absent.
+pub fn accessForBindMode(mode: protocol.BindMode) u64 {
+    return switch (mode) {
+        .read_only => SYSTEM_READONLY_ACCESS,
+        .read_write => WORKSPACE_ACCESS,
+    };
+}
+
+test "an assigned bind takes the mask its declared mode names" {
+    try std.testing.expectEqual(SYSTEM_READONLY_ACCESS, accessForBindMode(.read_only));
+    try std.testing.expectEqual(WORKSPACE_ACCESS, accessForBindMode(.read_write));
+}
+
+test "a read_only assignment can never write, and a read_write one always can" {
+    // The property, not the constant: an edit that widened the read-only mask
+    // would keep the equality test above green while handing every lease write
+    // on an operator's read-only mount.
+    try std.testing.expectEqual(@as(u64, 0), accessForBindMode(.read_only) & LANDLOCK_ACCESS_FS_WRITE_FILE);
+    try std.testing.expect(accessForBindMode(.read_write) & LANDLOCK_ACCESS_FS_WRITE_FILE != 0);
+    // A read-only assignment still executes: operators bind tool and model
+    // trees read-only, and a mask without EXECUTE makes those mounts useless.
+    try std.testing.expect(accessForBindMode(.read_only) & LANDLOCK_ACCESS_FS_EXECUTE != 0);
+}
+
 test "the read-only floor mask cannot write, so a written device file needs its own rule" {
     // The M136 incident this list closes, stated as the two facts that produced
     // it. `/dev` rides the read-only floor, whose mask has no WRITE_FILE, so

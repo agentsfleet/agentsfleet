@@ -129,11 +129,7 @@ pub fn applyPolicy(workspace_path: []const u8, extra_binds: []const protocol.Ext
     // bwrap's `-try` semantics: a path absent on THIS host is skipped and the
     // self-test reports it, rather than every lease failing on the runner.
     for (extra_binds) |b| {
-        const access: u64 = switch (b.mode) {
-            .read_only => policy.SYSTEM_READONLY_ACCESS,
-            .read_write => policy.WORKSPACE_ACCESS,
-        };
-        addPathRule(ruleset_fd, b.path, access) catch |err| switch (err) {
+        addPathRule(ruleset_fd, b.path, policy.accessForBindMode(b.mode)) catch |err| switch (err) {
             LandlockError.PathOpenFailed => continue,
             else => return err,
         };
