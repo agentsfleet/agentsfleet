@@ -959,6 +959,36 @@ leak.
 proven, so a file importing the target for a type is absent from its answer by
 construction — which is why it, and not the class label, is what a proof rests on.
 
+### Dimension 1.1, resolved function by function (Aug 22, 2026)
+
+All 8 leak-capable files in `state/**` were run through `--fn`, then hand-traced
+one hop further where the answer depended on a caller's own label. **Only
+`repair_verifications` is genuinely leak-capable, and it was already proven**
+(`repair_verifications_unwind_integration_test.zig`).
+
+| File | Rungs | `--fn` says | Transitive truth |
+|---|---|---|---|
+| `repair_verifications.zig` | 19 | 5 fns leak-capable, 2 arena | **leak-capable** — `fleet/repair_verification_dispatcher.zig` is a genuine repeating root |
+| `tenant_provider_resolver.zig` | 11 | all 4 fns leak-capable | arena — every caller is `tenant_provider.zig`, whose own functions all resolve to handlers |
+| `tenant_model_entries.zig` | 6 | `ensureEntry` leak-capable | arena — same single caller, same resolution |
+| `secret_probe.zig` | 3 | `probeSelfManagedSecret` 2 of 2 | arena — both callers are `tenant_provider.zig` / `tenant_provider_resolver.zig` |
+| `tenant_provider.zig` | 3 | all 6 fns arena | arena |
+| `vault.zig` | 3 | `loadJson` 5 of 11 | **leak-capable** — `cron/Credentials`, `serve_broker`, `serve_webhook_lookup`; `loadMetadata` is arena |
+| `integration_grant_lookup.zig` | 2 | all 3 fns arena | arena |
+| `secret_reference_txn.zig` | 1 | `begin` 1 of 4 | arena — the one non-handler caller is `tenant_provider.zig` |
+
+**The limit this exposes, and it is the reason for the two-column table.** `--fn`
+classifies each CALLER by its file's class, so when a caller file carries an
+inflated label the per-function answer inherits it. Six of the eight rows above
+funnel through `state/tenant_provider.zig`, which is `repeating` for exactly one
+reason: `Mode` is an enum with a method, held as a value, and the pruning rule
+keeps such an edge deliberately. The verdict errs toward MORE work, never less —
+but it does not deliver per-function precision for the cluster that started this,
+and one hop of hand-tracing was still needed to reach the truth column.
+
+`vault.loadJson`'s 5-of-11 answer needs no hand-tracing: `cron/Credentials`,
+`serve_broker` and `serve_webhook_lookup` are roots themselves.
+
 ### Leak log — real defects the allocation-failure proofs caught
 
 | Site | Defect | Fix | Proof |
