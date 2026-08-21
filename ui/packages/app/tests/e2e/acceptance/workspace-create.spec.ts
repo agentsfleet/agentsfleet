@@ -58,7 +58,10 @@ test.describe("workspace create", () => {
     const dialog = page.getByRole("dialog", { name: "Create workspace" });
     await expect(dialog).toBeVisible();
     await dialog.getByLabel("Name").fill(workspaceName);
-    await dialog.getByRole("button", { name: "Create workspace" }).click();
+    // Submit by test id, not by label: the button's copy is an eyeball-pass
+    // surface ("Create workspace" -> "Create" once already) and a rename must
+    // not read as a broken create flow.
+    await dialog.getByTestId("workspace-create-submit").click();
     await expect(dialog).toBeHidden({ timeout: WORKSPACE_CREATE_TIMEOUT_MS });
 
     await expect(switcher).toContainText(workspaceName, {
@@ -78,9 +81,7 @@ test.describe("workspace create", () => {
         duplicateActionPosts += 1;
       }
     });
-    await duplicateDialog
-      .getByRole("button", { name: "Create workspace" })
-      .click();
+    await duplicateDialog.getByTestId("workspace-create-submit").click();
 
     await expect(duplicateDialog.getByTestId("workspace-create-error"))
       .toContainText(/already exists.*refreshing the workspace list/i);
@@ -114,9 +115,7 @@ test.describe("workspace create", () => {
       await route.abort("connectionreset");
     };
     await page.route("**/*", loseCommittedResponse);
-    await uncertainDialog
-      .getByRole("button", { name: "Create workspace" })
-      .click();
+    await uncertainDialog.getByTestId("workspace-create-submit").click();
 
     await expect(uncertainDialog.getByTestId("workspace-create-error"))
       .toContainText(/refreshing the workspace list.*before retrying/i);

@@ -107,7 +107,9 @@ async function removeUploadedFleet(page: Page) {
   const row = uploadedRow(page);
   if (!(await row.getByRole("button", { name: /^delete$/i }).isVisible())) return;
   await row.getByRole("button", { name: /^delete$/i }).click();
-  await page.getByRole("dialog").getByRole("button", { name: /^delete$/i }).click();
+  // ConfirmDialog is an `alertdialog`, not a `dialog` — getByRole("dialog")
+  // does not match it, so the confirm must be addressed by its real role.
+  await page.getByRole("alertdialog").getByRole("button", { name: /^delete$/i }).click();
   await expect(uploadedRow(page)).toHaveCount(0, { timeout: 30_000 });
 }
 
