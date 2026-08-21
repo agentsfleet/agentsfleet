@@ -152,7 +152,14 @@ pub fn fleetIdsByOidcSubject(conn: *pg.Conn, alloc: std.mem.Allocator, oidc_subj
         ids.deinit(alloc);
     }
     while (try q.next()) |row| {
-        try ids.append(alloc, try alloc.dupe(u8, try row.get([]const u8, 0)));
+        // Own the dupe behind its own rung BEFORE appending. Nested as
+        // `append(alloc, try dupe(...))` the dupe is live but unreferenced when
+        // the append fails, and the ladder above frees `ids.items` — which this
+        // one is not yet in. `integration_grant_lookup.approvedSet` is the
+        // in-repo shape this now matches.
+        const id = try alloc.dupe(u8, try row.get([]const u8, 0));
+        errdefer alloc.free(id);
+        try ids.append(alloc, id);
     }
     if (ids.items.len == 0) {
         ids.deinit(alloc);

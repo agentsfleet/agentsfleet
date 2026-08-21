@@ -226,7 +226,7 @@ pub fn probeAll(h: *TestHarness, probes: []const Probe) !void {
         const r = try req.send();
         defer r.deinit();
         const want: u16 = @intFromEnum(std.http.Status.service_unavailable);
-        const code_ok = std.mem.indexOf(u8, r.body, ec.ERR_INTERNAL_DB_UNAVAILABLE) != null;
+        const code_ok = r.bodyContains(ec.ERR_INTERNAL_DB_UNAVAILABLE);
         if (r.status != want or !code_ok) {
             bad += 1;
             std.debug.print(

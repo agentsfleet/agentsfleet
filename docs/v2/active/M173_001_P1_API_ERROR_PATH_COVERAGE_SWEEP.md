@@ -97,6 +97,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 274 unhit lines across 110 files are `errdefer` rungs: cleanup that runs only when a later allocation fails. No ordinary test touches a rung of one, and reading the ladder and agreeing it looks right is not proof — a missing rung is invisible until the daemon leaks under pressure. `checkAllAllocationFailures` fails each allocation site in turn and asserts the function leaked nothing on the resulting error return, which makes the proof exhaustive over sites and identical on every machine.
 **Implementation default:** one `!void` wrapper per allocating entry point, taking the allocator first and calling the real function beneath it, because that is the signature the standard-library helper requires; the wrapper lives in the test file beside the fixtures it needs, not in a shared harness, so each proof reads independently.
 
+**Before writing any proof in this section, read the four traps in Discovery.**
+Three produce a test that passes while proving nothing; the fourth refuses to
+run at all. None is visible from a green run: an optional rung is not an allocation site when its
+column is null; the helper's counting run commits, so a mutating entry point
+replays on every later run; and a `TEST_FILTER` that matches zero tests prints
+exactly what a pass prints. The only signal that separates a real proof from a
+decorative one is deleting the rung in the product file and watching the proof
+go red. Mutation-check every proof this way — one rung per module, minimum.
+
 - **Dimension 1.1** — every allocating read in `src/agentsfleetd/state/**` unwinds under induced failure at every site without leaking → Test `test_state_reads_unwind_without_leaking`
 - **Dimension 1.2** — every allocating handler read in `src/agentsfleetd/http/handlers/**` does the same, reusing each family's existing seeded fixtures → Test `test_handler_reads_unwind_without_leaking`
 - **Dimension 1.3** — every allocating path in `src/agentsfleetd/fleet/**`, `fleet_runtime/**`, and `fleet_library/**` does the same → Test `test_fleet_paths_unwind_without_leaking`
@@ -360,6 +369,63 @@ pointed at a drained pool. The two ingress routes need headers and nothing more.
 owed. Read whether the handler acquires before or after it verifies — the
 handlers that load their own secret answer the starved arm with headers alone.
 
+### A randomised generator makes an entry point untestable by this helper
+
+`checkAllAllocationFailures` compares allocation behaviour across runs and
+aborts with `NondeterministicMemoryUsage` when it differs — before failing a
+single site, so the proof reports neither pass nor leak.
+
+`bootstrapPersonalAccount` hard-codes `defaultHerokuNameGen`, which returns a
+random workspace name of VARYING LENGTH, so the byte count moves every run. Its
+retry loop compounds it: a name collision changes the allocation count too.
+
+**The rule this leaves behind:** when the entry point randomises, drive the
+inner function that takes the generator as a parameter and inject a
+fixed-length one. `bootstrapTransaction` already exposes exactly that seam —
+its own doc comment says tests inject a sequence — so no production change was
+needed. Before concluding an entry point cannot be proven, check whether the
+seam is already there.
+
+### The counting run commits, so a mutating entry point replays after it
+
+`checkAllAllocationFailures` runs the function ONCE on a working allocator to
+count its allocation sites before it starts failing them. That first run
+succeeds — and if the function under test writes, it commits.
+
+Every failing run afterwards then meets a database that already holds the row.
+An entry point with a replay branch takes it: `signup_bootstrap` returns through
+`replayExisting`, `repair_evidence.recordProduction` returns `.replayed` and
+skips `reconcile` entirely. The rungs past that branch are never reached, and
+the proof passes green having exercised none of them.
+
+**The rule this leaves behind:** if the entry point mutates, the wrapper must
+reset the fixture at the TOP of every run, through the connection — never
+through the failing allocator, which would shift the very allocation indices
+being walked. Where the reset is a plain DELETE this is easy
+(`signup_teardown_alloc_test.zig` does it). Where an append-only trigger blocks
+the delete it is not: `repair_evidence`'s tables need
+`SET LOCAL fleet.allow_gate_purge = 'on'` inside a transaction, and those eight
+rungs are parked rather than proven with a green test that reaches two of them.
+
+### `TEST_FILTER` is per-graph, and a zero-match run looks identical to a pass
+
+`make test-integration TEST_FILTER=x` filters the INTEGRATION binary only — the
+files registered in `src/agentsfleetd/integration_tests.zig`. A file registered
+through a product file's own `test { _ = @import(...); }` block is in the UNIT
+graph and matches nothing there. `db/pool_test.zig` and
+`state/tenant_provider_test.zig` and its siblings are all unit-graph.
+
+The trap is that both failure modes are silent: `zig build test` prints nothing
+when everything passes, and prints exactly the same nothing when the filter
+matched zero tests. Always pass `--summary all`, which prints the count:
+
+```
+ZIG_GLOBAL_CACHE_DIR=~/.cache/agentsfleet/zig-global-cache \
+ZIG_LOCAL_CACHE_DIR=.tmp/zig-local-cache LIVE_DB=1 \
+TEST_DATABASE_URL="postgres://agentsfleet:agentsfleet@localhost:<pg-port>/agentsfleetdb?sslmode=disable" \
+zig build test -Dtest-filter=<token> --summary all
+```
+
 ### An optional rung is only an allocation site when the column is non-null
 
 `checkAllAllocationFailures` fails allocation SITES. A rung guarding an
@@ -421,6 +487,7 @@ either subtract it or move the helpers first.
 
 | Site | Defect | Fix | Proof |
 |------|--------|-----|-------|
+| `src/agentsfleetd/state/account_teardown.zig` `fleetIdsByOidcSubject` | The row id was duped inside the `append` argument list — `try ids.append(alloc, try alloc.dupe(...))`. When the append fails the dupe is already live and unreferenced, and the `errdefer` ladder frees `ids.items`, which this id is not yet in. One leaked fleet id per failed append, on the account-deletion path, in a daemon that runs for months. The same read written correctly sits eight lines away in `integration_grant_lookup.approvedSet` — two functions doing one thing, one right and one wrong. | Own the dupe behind its own `errdefer` rung before appending, matching the in-repo shape `approvedSet` already sets. | `every allocation site in the teardown fleet scan unwinds without leaking` — failed with `MemoryLeakDetected` before the fix, passes after |
 | `src/agentsfleetd/auth/jwks.zig` `parseJwks` | The three owned fields were built inside the `append` argument list. A decode failure on `modulus` or `exponent` left `kid` allocated and unreferenced — the `errdefer` block only reaches keys already appended, so it never freed it. 15 bytes per key, and the daemon refetches this key set from a config-controlled provider URL for the life of the process, so it compounds per refresh. | Each field owned one at a time behind its own `errdefer` rung, then appended. | `test_jwks_parse_unwinds_without_leaking` — fails at `fail_index 4/8` with 536 allocated / 521 freed before the fix |
 | `src/agentsfleetd/fleet_runtime/yaml_frontmatter.zig` `yamlFrontmatterToJson` | The vendored `zig_yaml` parser allocates an `ErrorBundle` inside `Parser.init` before the allocation that fails, and `Yaml.deinit` cleans the document rather than the half-built parser — so a failed load leaked the parser's own scratch. The defect is upstream; the exposure is ours, on every library import and every fleet-config parse. | The YAML load runs under an arena, so whatever the dependency takes dies with it on success and failure alike. Caller ownership of the returned JSON is unchanged. | `test_bundle_prepare_unwinds_without_leaking` — fails at `fail_index 1/43` with 129 allocated / 0 freed before the fix |
 | `src/agentsfleetd/fleet_library/github_source.zig` `readEntry` | Every failure from `streamRemaining` was folded into `Error.CorruptArchive`, including the allocating writer's `WriteFailed` — which that writer raises only when it cannot allocate. An operator importing a fleet-library bundle under memory pressure was told the archive was corrupt while the archive was fine, and the retry that diagnosis invites cannot succeed. The same file's `writeCanonicalEntry` already maps `WriteFailed` to `OutOfMemory` with a comment saying why, so the two halves of one file disagreed. | The `catch` switches: `WriteFailed` propagates as `error.OutOfMemory`, everything else stays `CorruptArchive`. | `test_canonical_tar_unwinds_without_leaking` — the proof fails before the fix because `checkAllAllocationFailures` requires an induced allocation failure to answer OutOfMemory, and this answered CorruptArchive |

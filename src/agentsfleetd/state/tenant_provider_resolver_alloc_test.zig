@@ -77,15 +77,14 @@ fn resolveSelfManagedUnderAllocator(
 
 test "every allocation site in the tenant selection read unwinds without leaking" {
     fixture.setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
+    const db = (try base.TestDb.open(ALLOC)) orelse return error.SkipZigTest;
+    defer db.close();
 
-    try uc1.seed(db_ctx.conn, WS_ALLOC_SELF_MANAGED);
-    defer fixture.cleanupTeardown(db_ctx.conn, WS_ALLOC_SELF_MANAGED);
+    try uc1.seed(db.conn, WS_ALLOC_SELF_MANAGED);
+    defer fixture.cleanupTeardown(db.conn, WS_ALLOC_SELF_MANAGED);
 
     try fixture.seedSelfManagedCredential(
-        db_ctx.conn,
+        db.conn,
         ALLOC,
         WS_ALLOC_SELF_MANAGED,
         SELF_MANAGED_REF,
@@ -97,7 +96,7 @@ test "every allocation site in the tenant selection read unwinds without leaking
     // optional-dupe branch a platform row would leave null.
     try tenant_provider.upsertSelfManaged(
         ALLOC,
-        db_ctx.conn,
+        db.conn,
         uc1.TENANT_ID,
         SELF_MANAGED_REF,
         SELF_MANAGED_MODEL,
@@ -107,21 +106,20 @@ test "every allocation site in the tenant selection read unwinds without leaking
     try std.testing.checkAllAllocationFailures(
         ALLOC,
         loadProviderRowUnderAllocator,
-        .{db_ctx.conn},
+        .{db.conn},
     );
 }
 
 test "every allocation site in the active platform key read unwinds without leaking" {
     fixture.setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
+    const db = (try base.TestDb.open(ALLOC)) orelse return error.SkipZigTest;
+    defer db.close();
 
-    try uc1.seed(db_ctx.conn, WS_ALLOC_PLATFORM);
-    defer fixture.cleanupTeardown(db_ctx.conn, WS_ALLOC_PLATFORM);
+    try uc1.seed(db.conn, WS_ALLOC_PLATFORM);
+    defer fixture.cleanupTeardown(db.conn, WS_ALLOC_PLATFORM);
 
     try fixture.seedPlatformLlmKey(
-        db_ctx.conn,
+        db.conn,
         ALLOC,
         WS_ALLOC_PLATFORM,
         fixture.TP_TEST_PROVIDER,
@@ -131,21 +129,20 @@ test "every allocation site in the active platform key read unwinds without leak
     try std.testing.checkAllAllocationFailures(
         ALLOC,
         loadActivePlatformKeyUnderAllocator,
-        .{db_ctx.conn},
+        .{db.conn},
     );
 }
 
 test "every allocation site in the platform resolve unwinds without leaking the api key" {
     fixture.setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
+    const db = (try base.TestDb.open(ALLOC)) orelse return error.SkipZigTest;
+    defer db.close();
 
-    try uc1.seed(db_ctx.conn, WS_ALLOC_PLATFORM);
-    defer fixture.cleanupTeardown(db_ctx.conn, WS_ALLOC_PLATFORM);
+    try uc1.seed(db.conn, WS_ALLOC_PLATFORM);
+    defer fixture.cleanupTeardown(db.conn, WS_ALLOC_PLATFORM);
 
     try fixture.seedPlatformLlmKey(
-        db_ctx.conn,
+        db.conn,
         ALLOC,
         WS_ALLOC_PLATFORM,
         fixture.TP_TEST_PROVIDER,
@@ -158,21 +155,20 @@ test "every allocation site in the platform resolve unwinds without leaking the 
     try std.testing.checkAllAllocationFailures(
         ALLOC,
         resolvePlatformDefaultUnderAllocator,
-        .{db_ctx.conn},
+        .{db.conn},
     );
 }
 
 test "every allocation site in the self-managed resolve unwinds without leaking the api key" {
     fixture.setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
+    const db = (try base.TestDb.open(ALLOC)) orelse return error.SkipZigTest;
+    defer db.close();
 
-    try uc1.seed(db_ctx.conn, WS_ALLOC_SELF_MANAGED);
-    defer fixture.cleanupTeardown(db_ctx.conn, WS_ALLOC_SELF_MANAGED);
+    try uc1.seed(db.conn, WS_ALLOC_SELF_MANAGED);
+    defer fixture.cleanupTeardown(db.conn, WS_ALLOC_SELF_MANAGED);
 
     try fixture.seedSelfManagedCredential(
-        db_ctx.conn,
+        db.conn,
         ALLOC,
         WS_ALLOC_SELF_MANAGED,
         SELF_MANAGED_REF,
@@ -182,20 +178,20 @@ test "every allocation site in the self-managed resolve unwinds without leaking 
     );
     try tenant_provider.upsertSelfManaged(
         ALLOC,
-        db_ctx.conn,
+        db.conn,
         uc1.TENANT_ID,
         SELF_MANAGED_REF,
         SELF_MANAGED_MODEL,
         256_000,
     );
 
-    var row = (try resolver.loadProviderRow(ALLOC, db_ctx.conn, uc1.TENANT_ID)) orelse
+    var row = (try resolver.loadProviderRow(ALLOC, db.conn, uc1.TENANT_ID)) orelse
         return error.FixtureRowMissing;
     defer row.deinit(ALLOC);
 
     try std.testing.checkAllAllocationFailures(
         ALLOC,
         resolveSelfManagedUnderAllocator,
-        .{ db_ctx.conn, row },
+        .{ db.conn, row },
     );
 }

@@ -142,49 +142,46 @@ fn approvedSetUnderAllocator(alloc: std.mem.Allocator, conn: *pg.Conn) !void {
 // ── Proofs ────────────────────────────────────────────────────────────────
 
 test "integration: every allocation site in the event detail read unwinds without leaking" {
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
+    const db = (try base.TestDb.open(ALLOC)) orelse return error.SkipZigTest;
+    defer db.close();
 
-    teardown(db_ctx.conn);
-    try seed(db_ctx.conn);
-    defer teardown(db_ctx.conn);
+    teardown(db.conn);
+    try seed(db.conn);
+    defer teardown(db.conn);
 
     try std.testing.checkAllAllocationFailures(
         ALLOC,
         getForFleetUnderAllocator,
-        .{db_ctx.conn},
+        .{db.conn},
     );
 }
 
 test "integration: every allocation site in the approved grant set unwinds without leaking" {
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
+    const db = (try base.TestDb.open(ALLOC)) orelse return error.SkipZigTest;
+    defer db.close();
 
-    teardown(db_ctx.conn);
-    try seed(db_ctx.conn);
-    defer teardown(db_ctx.conn);
+    teardown(db.conn);
+    try seed(db.conn);
+    defer teardown(db.conn);
 
     try std.testing.checkAllAllocationFailures(
         ALLOC,
         approvedSetUnderAllocator,
-        .{db_ctx.conn},
+        .{db.conn},
     );
 }
 
 test "integration: every allocation site in the per-fleet event list unwinds without leaking" {
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
+    const db = (try base.TestDb.open(ALLOC)) orelse return error.SkipZigTest;
+    defer db.close();
 
-    teardown(db_ctx.conn);
-    try seed(db_ctx.conn);
-    defer teardown(db_ctx.conn);
+    teardown(db.conn);
+    try seed(db.conn);
+    defer teardown(db.conn);
 
     try std.testing.checkAllAllocationFailures(
         ALLOC,
         listForFleetUnderAllocator,
-        .{db_ctx.conn},
+        .{db.conn},
     );
 }
