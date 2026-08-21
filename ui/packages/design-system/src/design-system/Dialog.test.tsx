@@ -75,6 +75,24 @@ describe("Dialog", () => {
     expect(cls).toContain("rounded-xl");
   });
 
+  // Regression: a fixed, centre-translated panel is unreachable by page scroll,
+  // so a dialog taller than the viewport used to bury its own footer — the
+  // submit button rendered, was "visible and enabled", and could never be
+  // clicked. The cap plus in-panel scrolling is what keeps every footer
+  // reachable, so it is asserted rather than left to survive by accident.
+  it("DialogContent caps itself at the viewport and scrolls its own overflow", () => {
+    render(
+      <Dialog open>
+        <DialogContent data-testid="content">
+          <DialogTitle>T</DialogTitle>
+        </DialogContent>
+      </Dialog>,
+    );
+    const cls = screen.getByTestId("content").className;
+    expect(cls).toContain("max-h-[calc(100dvh-var(--spacing-3xl))]");
+    expect(cls).toContain("overflow-y-auto");
+  });
+
   it("DialogHeader/Footer apply layout utilities", () => {
     render(
       <Dialog open>
