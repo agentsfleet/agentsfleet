@@ -205,3 +205,30 @@ test "canonicalTar re-tars validated files at the bundle root (no wrapper)" {
     }
     try testing.expect(saw_skill and saw_trigger and saw_doc);
 }
+
+fn canonicalTarUnderAllocator(alloc: std.mem.Allocator, tar: []const u8) !void {
+    var bundle = try github_source.fromTarBytes(alloc, tar);
+    defer bundle.deinit();
+    const canon = try bundle.canonicalTar(alloc);
+    alloc.free(canon);
+}
+
+test "test_canonical_tar_unwinds_without_leaking" {
+    // Three rungs across two passes over the archive: the per-entry path and
+    // the accumulating writer inside the read, and the writer that builds the
+    // re-tarred output. A bundle import is the one path in the daemon that
+    // allocates per archive entry, so a rung that frees the wrong side of an
+    // entry scales with the archive rather than costing one allocation.
+    //
+    // The fixture is built OUTSIDE the proof and passed in. Building it inside
+    // fails the proof without any product defect: `std.tar.Writer` over an
+    // allocating writer turns an allocation failure into `error.WriteFailed`,
+    // and the helper requires the function under test to answer OutOfMemory.
+    const tar = try buildTar(testing.allocator, &.{
+        .{ .name = "wrap/SKILL.md", .content = "s" },
+        .{ .name = "wrap/TRIGGER.md", .content = "t" },
+        .{ .name = "wrap/docs/n.md", .content = "n" },
+    });
+    defer testing.allocator.free(tar);
+    try std.testing.checkAllAllocationFailures(testing.allocator, canonicalTarUnderAllocator, .{tar});
+}

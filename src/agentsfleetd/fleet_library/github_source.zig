@@ -255,7 +255,14 @@ fn handleFile(alloc: std.mem.Allocator, iter: *std.tar.Iterator, entry: std.tar.
 fn readEntry(alloc: std.mem.Allocator, iter: *std.tar.Iterator, entry: std.tar.Iterator.File) (Error || std.mem.Allocator.Error)![]u8 {
     var aw: std.Io.Writer.Allocating = .init(alloc);
     errdefer aw.deinit();
-    iter.streamRemaining(entry, &aw.writer) catch return Error.CorruptArchive;
+    // `WriteFailed` is the allocating writer running out of memory, not a bad
+    // archive — the same mapping `writeCanonicalEntry` already makes. Folding it
+    // into CorruptArchive told an operator under memory pressure that their
+    // bundle was broken, and the bundle was fine.
+    iter.streamRemaining(entry, &aw.writer) catch |err| switch (err) {
+        error.WriteFailed => return error.OutOfMemory,
+        else => return Error.CorruptArchive,
+    };
     return aw.toOwnedSlice();
 }
 
