@@ -14,7 +14,7 @@ const sandbox_args = @import("sandbox_args.zig");
 const selftest = @import("selftest.zig");
 const selftest_exec = @import("selftest_exec.zig");
 
-const PASSING = "resolver=1 scratch=1 home=1 dns=1 egress=1 binds=1\n";
+const PASSING = "resolver=1 scratch=1 home=1 devfiles=1 dns=1 egress=1 binds=1\n";
 
 test "every check reads back off a full passing line" {
     const o = selftest_exec.outcomeFrom(PASSING, false);

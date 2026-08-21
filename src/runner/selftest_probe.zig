@@ -101,6 +101,7 @@ pub const KEY_EGRESS = "egress=";
 pub const KEY_BINDS = "binds=";
 pub const KEY_SCRATCH = "scratch=";
 pub const KEY_HOME = "home=";
+pub const KEY_DEV_FILES = "devfiles=";
 pub const KEY_TRANSPORT = "transport=";
 
 /// Run the probe. Always exits 0 on a completed run — a FAILED CHECK is a
@@ -144,12 +145,13 @@ pub fn run(argv: []const [:0]const u8, env_map: *const std.process.Environ.Map, 
     const resolver = Verdict.of(resolverResolves(io));
     const scratch = Verdict.of(scratchWritable(io));
     const home = Verdict.of(homeWritable(io, env_map));
+    const dev_files = Verdict.of(deviceFilesWritable(io));
     const dns = if (resolve_host) |h| Verdict.of(nameResolves(io, h)) else .untested;
     const egress = if (dial_target) |t| Verdict.of(endpointAccepts(io, t)) else .untested;
     const transport = if (transport_path) |p| Verdict.of(selftest_transport.execs(p)) else .untested;
     const binds: Verdict = if (binds_seen == 0) .untested else Verdict.of(binds_present);
 
-    writeVerdict(io, resolver, scratch, home, dns, egress, transport, binds);
+    writeVerdict(io, resolver, scratch, home, dev_files, dns, egress, transport, binds);
     return 0;
 }
 
@@ -240,6 +242,34 @@ fn homeWritable(io: std.Io, env_map: *const std.process.Environ.Map) bool {
     return true;
 }
 
+/// Can this constrained child open the policy layer's writable device files for
+/// WRITING? `/dev/null` today, walked from the one list `applyPolicy` grants
+/// from, so an entry added there is graded here without a second edit.
+///
+/// The narrowest check in this probe, and it exists because the widest one
+/// missed it. `CHECK_TRANSPORT` proves the sandbox can EXECUTE the binary the
+/// engine spawns; it never proves the spawn can wire that binary's stdio. The
+/// engine's transport does exactly that — `open("/dev/null", O_RDWR)` on the way
+/// to `curl` — and on a host whose policy layer had `/dev` read-only while
+/// bwrap's `--dev` had it writable, every lease died there at zero tokens with
+/// six checks green.
+///
+/// Read-write is the whole check: opening read-only would pass under the exact
+/// mask that produced the incident, which is a check that cannot fail when it
+/// matters. Nothing is written through the handle — `/dev/null` accepts anything
+/// and reports nothing back, so a write proves less than the open already does.
+///
+/// The open mode is stated, never defaulted: `.read_write` is the whole check,
+/// and a call that let the mode default would be measuring something the engine
+/// never does.
+fn deviceFilesWritable(io: std.Io) bool {
+    inline for (sandbox_hardening.FLOOR_RW_FILES) |path| {
+        const f = std.Io.Dir.openFileAbsolute(io, path, .{ .mode = .read_write }) catch return false;
+        f.close(io);
+    }
+    return true;
+}
+
 /// Does a name resolve from in here? Any returned address is a pass; the
 /// address itself is discarded without being formatted, so it cannot reach the
 /// output line.
@@ -282,17 +312,18 @@ fn endpointAccepts(io: std.Io, target: []const u8) bool {
 /// closed stdout means the parent already reaped us, and there is no one left
 /// to tell. The parent reads a missing line as every check failing, which is
 /// the fail-closed reading.
-fn writeVerdict(io: std.Io, resolver: Verdict, scratch: Verdict, home: Verdict, dns: Verdict, egress: Verdict, transport: Verdict, binds: Verdict) void {
-    // 96 holds the seven keys with room to spare (the line is ~63 bytes); the
-    // parent's own read cap is `selftest_exec.VERDICT_READ_CAP` = 128, and an
-    // eighth key would need both raised together.
-    var out_buf: [96]u8 = undefined;
+fn writeVerdict(io: std.Io, resolver: Verdict, scratch: Verdict, home: Verdict, dev_files: Verdict, dns: Verdict, egress: Verdict, transport: Verdict, binds: Verdict) void {
+    // 128 holds the eight keys with room to spare (the line is ~74 bytes); the
+    // parent's own read cap is `selftest_exec.VERDICT_READ_CAP` = 160, and a
+    // ninth key would need both raised together.
+    var out_buf: [128]u8 = undefined;
     var stdout_w = std.Io.File.stdout().writer(io, &out_buf);
     const stdout = &stdout_w.interface;
-    stdout.print("{s}{c} {s}{c} {s}{c} {s}{c} {s}{c} {s}{c} {s}{c}\n", .{
+    stdout.print("{s}{c} {s}{c} {s}{c} {s}{c} {s}{c} {s}{c} {s}{c} {s}{c}\n", .{
         KEY_RESOLVER,  @intFromEnum(resolver),
         KEY_SCRATCH,   @intFromEnum(scratch),
         KEY_HOME,      @intFromEnum(home),
+        KEY_DEV_FILES, @intFromEnum(dev_files),
         KEY_DNS,       @intFromEnum(dns),
         KEY_EGRESS,    @intFromEnum(egress),
         KEY_TRANSPORT, @intFromEnum(transport),
