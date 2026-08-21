@@ -99,10 +99,23 @@ No tmux. Docker for this worktree: postgres :25796, redis :25797, qstash :25798.
   wall-clock assertion — `elapsed_ms < 1_000` — on advisory-lock contention,
   with its own two pools and no HTTP. A flake, not a regression; worth a
   tolerance if it recurs in CI.
-- ⚠️ `TEST_FILTER` matches module paths, not test descriptions, and it does not
-  reach `db/pool_test.zig` at all — `pool_test`, `db.pool_test`, `migration_lock`
-  and the full description each match zero named tests while `pool_exhaustion`
-  works. Isolating a failure in that file needs the full lane.
+- ⚠️ **`TEST_FILTER` is per-graph, and the two graphs are easy to confuse.**
+  `make test-integration TEST_FILTER=x` filters the INTEGRATION binary only —
+  the files registered in `src/agentsfleetd/integration_tests.zig`. Anything
+  registered through a product file's own `test { _ = @import(...); }` block
+  (`db/pool_test.zig`, `state/tenant_provider_test.zig` and its siblings) is in
+  the UNIT graph and matches nothing there, which reads as "the filter is
+  broken" — it is not. For a unit-graph file, run it directly:
+
+  ```
+  ZIG_GLOBAL_CACHE_DIR=~/.cache/agentsfleet/zig-global-cache \
+  ZIG_LOCAL_CACHE_DIR=.tmp/zig-local-cache LIVE_DB=1 \
+  TEST_DATABASE_URL="postgres://agentsfleet:agentsfleet@localhost:25796/agentsfleetdb?sslmode=disable" \
+  zig build test -Dtest-filter=<token> --summary all
+  ```
+
+  `--summary all` is load-bearing: without it a passing run prints nothing, and
+  a filter that matched ZERO tests prints exactly the same nothing.
 - ⏳ `make lint-all`, `make test-unit-all`, `make memleak`, `make check-version`
   — NOT run. Every rubric S-row is still ungraded.
 

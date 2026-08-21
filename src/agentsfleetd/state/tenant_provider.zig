@@ -320,5 +320,6 @@ test {
     _ = @import("tenant_provider_test.zig");
     _ = @import("tenant_provider_endpoint_test.zig");
     _ = @import("tenant_provider_upsert_test.zig");
+    _ = @import("tenant_provider_resolver_alloc_test.zig");
     _ = @import("base_url_guard.zig");
 }

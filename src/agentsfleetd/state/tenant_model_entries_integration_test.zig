@@ -244,3 +244,59 @@ test "integration: test_tenant_registry_page_is_bounded: the last page reports n
     try std.testing.expectEqual(@as(usize, SEEDED - 1), partial.rows.len);
     try std.testing.expect(partial.next_cursor != null);
 }
+
+// ── Allocation-failure proofs ─────────────────────────────────────────────
+// Both list reads build an ArrayList of Entry, each entry itself four dupes
+// deep, and guard the partial list with an `errdefer` that frees the entries
+// appended so far before freeing the list. Eight rungs across this module, and
+// no ordinary green read touches one: they run only when a LATER allocation
+// fails, part-way through a list that already owns memory.
+//
+// `checkAllAllocationFailures` fails each site in turn and asserts the read
+// propagated `error.OutOfMemory` and leaked nothing. It reaches `rowToEntry`'s
+// four rungs through the same call, because a row half-converted is exactly the
+// state a mid-list failure leaves behind.
+
+fn listUnderAllocator(alloc: std.mem.Allocator, conn: *pg.Conn) !void {
+    const rows = try entries_state.list(alloc, conn, TENANT);
+    entries_state.deinitEntryList(rows, alloc);
+}
+
+/// Asks for one fewer row than is seeded, so the probe row the keyset read
+/// fetches and drops is present — the branch a full-set read never takes.
+fn listPageUnderAllocator(alloc: std.mem.Allocator, conn: *pg.Conn) !void {
+    const page = try entries_state.listPage(alloc, conn, TENANT, SEEDED - 1, null);
+    entries_state.deinitEntryList(page.rows, alloc);
+}
+
+test "integration: every allocation site in the registry list unwinds without leaking" {
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+
+    teardown(db.conn);
+    try seedRegistry(alloc, db.conn);
+    defer teardown(db.conn);
+
+    try std.testing.checkAllAllocationFailures(
+        alloc,
+        listUnderAllocator,
+        .{db.conn},
+    );
+}
+
+test "integration: every allocation site in the registry page read unwinds without leaking" {
+    const alloc = std.testing.allocator;
+    const db = (try TestDb.open(alloc)) orelse return error.SkipZigTest;
+    defer db.close();
+
+    teardown(db.conn);
+    try seedRegistry(alloc, db.conn);
+    defer teardown(db.conn);
+
+    try std.testing.checkAllAllocationFailures(
+        alloc,
+        listPageUnderAllocator,
+        .{db.conn},
+    );
+}
