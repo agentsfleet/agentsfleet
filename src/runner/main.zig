@@ -6,6 +6,7 @@
 //! startup gate, and handing off to the loop.
 
 const std = @import("std");
+const nullclaw = @import("nullclaw");
 const clock = @import("common").clock;
 const builtin = @import("builtin");
 const logging = @import("log");
@@ -66,6 +67,19 @@ pub fn main(init: std.process.Init) void {
         log.err("argv_read_failed", .{ .error_code = ERR_EXEC_RUNNER_FLEET_INIT, .err = @errorName(err) });
         std.process.exit(1);
     };
+
+    // The sandboxed child arms hand the process Io to the engine's compat
+    // layer, exactly as NullClaw's own main does — without it, every engine
+    // subprocess spawn (the curl model transport) falls back to Zig 0.16's
+    // `Io.Threaded.init_single_threaded`, whose allocator is `.failing`, and
+    // dies pre-fork with a synthetic OutOfMemory that `mapError` mislabels
+    // `oom_kill`. Scoped to those two arms deliberately: a daemon-context
+    // NullClaw spawn stays on the failing fallback so it dies loud instead of
+    // inheriting the daemon's full environment (runner token included).
+    if (argv.len > 1 and
+        (std.mem.eql(u8, argv[1], child_exec.SUBCOMMAND) or
+            std.mem.eql(u8, argv[1], selftest_probe.SUBCOMMAND)))
+        nullclaw.compat.initProcess(init);
 
     // A CLI subcommand/flag (child-execute mode, --version, …) short-circuits
     // the daemon; a bare invocation (how the systemd unit starts us) returns

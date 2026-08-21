@@ -241,6 +241,8 @@ pub fn outcomeFrom(line: []const u8, timed_out: bool) selftest.Outcome {
         // A reaped probe executed nothing, so it certifies no transport either.
         .transport_execs = false,
         .transport_testable = true,
+        .engine_spawns = false,
+        .engine_spawn_testable = true,
         .timed_out = true,
     };
     return .{
@@ -272,6 +274,12 @@ pub fn outcomeFrom(line: []const u8, timed_out: bool) selftest.Outcome {
         // which `grade` reports as its own fault rather than as a failed exec.
         .transport_execs = verdictOf(line, selftest_probe.KEY_TRANSPORT) == .passed,
         .transport_testable = verdictOf(line, selftest_probe.KEY_TRANSPORT) != .untested,
+        // Fail-closed like transport, and for the same incident class: a probe
+        // predating this key never drove the engine's spawn path, and a spawn
+        // nobody attempted is not a pass. `untested` means no transport on the
+        // host — already reported as its own fault by the transport row.
+        .engine_spawns = verdictOf(line, selftest_probe.KEY_ENGINE_SPAWN) == .passed,
+        .engine_spawn_testable = verdictOf(line, selftest_probe.KEY_ENGINE_SPAWN) != .untested,
     };
 }
 
