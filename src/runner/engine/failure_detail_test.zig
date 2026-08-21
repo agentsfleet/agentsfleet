@@ -190,3 +190,36 @@ test "test_config_load_failure_names_error: the record carries the cause, not ju
     // The assertion that would have failed before the fix.
     try std.testing.expect(std.mem.indexOf(u8, captured, "NoHomeDir") != null);
 }
+
+test "a snapshot that cannot allocate is marked, not silently dropped" {
+    // The one failure `capture` can hit, and it lands exactly when the engine
+    // is dying of exhaustion — the moment an operator most needs to know a
+    // detail existed. An empty line here would read as "the provider said
+    // nothing", which is a different and misleading fact.
+    failure_detail.clear();
+    setProviderDetail(MODEL_NOT_FOUND);
+
+    var failing = std.testing.FailingAllocator.init(ALLOC, .{ .fail_index = 0 });
+    failure_detail.capture(failing.allocator(), &.{});
+
+    const line = failure_detail.compose(error.ApiError);
+    try std.testing.expect(std.mem.indexOf(u8, line, failure_detail.DETAIL_UNAVAILABLE) != null);
+    // Still prefixed by the name: a failed capture degrades the line, never
+    // replaces it.
+    try std.testing.expect(std.mem.startsWith(u8, line, "ApiError: "));
+}
+
+test "an error name too long to compose with returns the name alone, never a truncated buffer" {
+    // `compose` writes into a fixed buffer sized from MAX_NAME_BYTES. An error
+    // name past that bound must fall back to the name rather than run off the
+    // end — the guard is a memory-safety boundary, so it is proven reachable
+    // rather than assumed unreachable.
+    failure_detail.clear();
+    setProviderDetail(MODEL_NOT_FOUND);
+    failure_detail.capture(ALLOC, &.{});
+
+    const long_named = error.ADeliberatelyLongErrorNameUsedToProveTheComposeGuardIsReachableAndSafe;
+    const name = @errorName(long_named);
+    try std.testing.expect(name.len > 64); // precondition: the guard's own bound
+    try std.testing.expectEqualStrings(name, failure_detail.compose(long_named));
+}
