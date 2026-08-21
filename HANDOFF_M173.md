@@ -141,6 +141,19 @@ agentsfleet-m173-qstash-1     :25798 -> 8080
   recognises `N passed; M skipped; K failed.` — so a clean `make test-integration
   TEST_FILTER=...` run ends with "reported no passing tests". The tests DID run;
   read the line above it. The full lane always has skips, so it reads fine.
+- **Never run a lane while a commit is in its hooks.** The pre-commit self-test
+  `scripts/check_zig_coverage_lanes_test.py` runs a REAL `make test-integration`
+  inside itself. A lane running concurrently changes the coverage evidence
+  `source_digest` underneath it, and the self-test fails on a mismatch it was
+  never testing for — a red commit with nothing wrong in the diff.
+- **The runner-self arms are not reachable from `seedAndHarness`.** It never
+  wires `runner_bearer_mw`, so `heartbeat`, `self`, `memory` (x2) and
+  `credentials_mint` answer 401 before any acquire. The runner token is a static
+  fixture (`RUNNER_TOKEN_PREFIX ++ "f" ** 64`), not a mint — but it resolves only
+  in a harness that registers the lookup, as
+  `handlers/runner/memory_loop_integration_test.zig:81` does. Closing those five
+  means widening the shared seed fixture or standing up a second starvation test
+  on the runner harness; pick deliberately.
 - **A filtered lane clobbers the merged report.** It rewrites
   `coverage/zig/integration` from a narrowed run, so re-run both producers in
   full before grading anything.

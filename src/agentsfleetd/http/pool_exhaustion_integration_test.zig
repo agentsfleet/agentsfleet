@@ -131,6 +131,9 @@ const PROBES = [_]Probe{
     .{ .method = .POST, .path = "/v1/admin/models", .token = PLATFORM, .owner = "admin/model_library_admin.innerPostAdminModel", .body = "{\"provider\":\"anthropic\",\"model_id\":\"claude-sonnet-4-6\",\"context_cap_tokens\":200000,\"input_nanos_per_mtok\":3000,\"cached_input_nanos_per_mtok\":300,\"output_nanos_per_mtok\":15000}" },
     .{ .method = .PATCH, .path = "/v1/admin/models/" ++ ABSENT_MODEL_ID, .token = PLATFORM, .owner = "admin/model_library_admin.innerPatchAdminModel", .body = "{\"context_cap_tokens\":200000,\"input_nanos_per_mtok\":3000,\"cached_input_nanos_per_mtok\":300,\"output_nanos_per_mtok\":15000}" },
     .{ .method = .PUT, .path = "/v1/admin/platform-keys", .token = PLATFORM, .owner = "admin/platform_keys.innerPutAdminPlatformKey", .body = "{\"provider\":\"anthropic\",\"source_workspace_id\":\"" ++ base.TEST_WS_ID ++ "\",\"model\":\"claude-sonnet-4-6\"}" },
+    // Enrollment is the one runner-plane route a session token reaches; the
+    // rest take a minted `agt_r` this table has no way to carry yet.
+    .{ .method = .POST, .path = "/v1/runners", .token = PLATFORM, .owner = "runner/register.innerRegisterRunner", .body = "{\"host_id\":\"pool-starved\",\"assigned_policy\":{\"sandbox_tier\":\"dev_none\",\"network_policy\":\"allow_all\",\"registry_allowlist\":[],\"worker_count\":1},\"labels\":[]}" },
     .{ .method = .POST, .path = FLEET ++ "/messages", .token = ADMIN, .owner = "fleets/messages.innerFleetMessagesPost", .body = "{\"message\":\"pool-starved\"}" },
     .{ .method = .POST, .path = WS ++ "/connectors/slack/connect", .token = ADMIN, .owner = "connectors/connect.innerConnect", .body = "{}" },
     .{ .method = .POST, .path = WS ++ "/approvals/" ++ ABSENT_GATE_ID ++ ":approve", .token = ADMIN, .owner = "approvals/resolve.innerResolveApproval", .body = "{}" },
