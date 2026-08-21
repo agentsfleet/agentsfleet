@@ -60,6 +60,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `src/agentsfleetd/**/*.zig` | EDIT | deletion of branches §4 proves unreachable; no behaviour change to any reachable path |
 | `src/runner/**/*.zig` | EDIT | the runner carries twins of the daemon defects §1's proofs catch; each production fix is named in the leak log, per the amended R6 |
 | `src/agentsfleetd/integration_tests.zig` | EDIT | register each new integration test file |
+| `src/agentsfleetd/http/handlers/fleets/delete.zig` | EDIT | the delete-ordering fix Indy directed onto this branch — purge the rows before the schedules so a half-complete delete is loud, not silent |
+| `docker-compose*.y*ml` / `make/*.mk` | EDIT | the `make up` blockers Indy directed onto this branch, to the extent each is a compose or target defect |
 | `make/test.mk` | EDIT | the enforced floor and target VALUES live here (`ZIG_COVERAGE_FOLDER_FLOORS`, `ZIG_COVERAGE_MIN_PCT`), not in the grading script |
 | `scripts/check_zig_coverage_floors.py` | EDIT | floor grading logic, if the raise needs it; the values themselves move in `make/test.mk` |
 | `scripts/classify_unhit_lines.py` | CREATE | classifies every unhit line in the merged kcov report into the class that names its mechanism; rubric rows R1-R4 grade from its count output |
@@ -236,7 +238,7 @@ code is out of scope and reverts.
 | R3 | The error-return class is empty (§3) | `python3 scripts/classify_unhit_lines.py --class error-return --count` | `0` | P0 | |
 | R4 | The other-branch class is empty (§4) | `python3 scripts/classify_unhit_lines.py --class other,brace --count` | `0` | P0 | |
 | R5 | Every component floor equals its landed rate rounded down (§5) | `make test-coverage-grade` | exit 0 | P0 | |
-| R6 | No reachable behaviour changed except a leak the proof caught | `git diff --name-only origin/main...HEAD \| grep -vE '_test\.zig$\|\.md$\|\.py$'` | every listed file's diff is a deletion, a cleanup fix named in Discovery's leak log, or **additive test-only code** — a `test {}` block, the helpers it calls, or a `_ = @import("..._test.zig")` registration line | P0 | ✅ 11 files listed: 5 named leak fixes, 6 additive test-only (audited line by line, Aug 21) |
+| R6 | No reachable behaviour changed except a leak the proof caught | `git diff --name-only origin/main...HEAD \| grep -vE '_test\.zig$\|\.md$\|\.py$'` | every listed file's diff is a deletion, a cleanup fix named in Discovery's leak log, one of the **two product findings Indy directed be fixed here** (see "Fixed on this branch by direction"), or **additive test-only code** — a `test {}` block, the helpers it calls, or a `_ = @import("..._test.zig")` registration line | P0 | ✅ 11 files listed: 5 named leak fixes, 6 additive test-only (audited line by line, Aug 21) |
 | R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ one unlisted path, `HANDOFF_M173.md`, which CHORE(close) deletes — regrade after the delete |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
@@ -490,6 +492,99 @@ them means three new files and a full lane for 0.03 points on another agent's
 commits. Left in place deliberately. It matters most to §5 — a floor raised on
 an inflated rate cannot be met once the inflation is removed — so §5 should
 either subtract it or move the helpers first.
+
+### Caller/allocator audit — which rungs can actually leak (Aug 21, 2026)
+
+Indy's call, asked and answered: run the audit BEFORE writing the component
+milestones, so the fan-out targets the rungs that carry the justification rather
+than spreading agents evenly over a set where a large share is cosmetic.
+
+> Indy (2026-08-21): "Audit first" — context: the arena finding above dented §1's
+> own P1 justification, and the fan-out targeting depends on the answer.
+
+**Method.** One reverse-reachability pass over the import graph of every non-test
+`*.zig` under `src/`. The only request-scoped arena in production code is
+`http/server.zig:278` (`git grep ArenaAllocator.init -- 'src/**/*.zig'` confirms
+it; every other hit is a function-local arena or a test). Traversal from each
+long-lived root is cut at `http/handlers/**`, which IS the arena boundary, so a
+file only handlers reach classifies as arena-backed even though `cmd/` reaches
+the server that dispatches to it.
+
+Roots, by how long the allocator lives:
+
+- **Repeating** — cron fire service and its store, the Redis subscriber and queue
+  workers, the event bus and subscription hub, the liveness / reclaim /
+  approval-gate / repair-verification sweepers, the Clerk fetch worker, the
+  OpenTelemetry Protocol (OTLP) exporter, the call-deadline scheduler, and
+  `runner/daemon/**` + `runner/engine/**`.
+- **Boot-once** — `agentsfleetd/cmd/**`, `agentsfleetd/config/**`, `runner/cmd/**`.
+- **Arena-backed** — reachable only from below `server.zig:278`.
+
+**Result over all 535 non-test `errdefer` rungs in 161 files:**
+
+| Class | Rungs | Files | What a missing rung costs |
+|-------|-------|-------|---------------------------|
+| Repeating | 256 | 78 | Compounds per iteration — operator-visible memory growth. **This set carries §1's P1 justification.** |
+| Boot-once | 45 | 17 | Leaks once, dies with the process. Latent, never operator-visible. |
+| Arena-backed | 219 | 60 | Freed with the request regardless. Cannot leak in production at all. |
+| Unreached by any root | 15 | 6 | `lib/**` helpers no root imports — §4 triage input, not §1 work. |
+
+**Two independent checks the audit passes.** `auth/jwks.zig` — a leak this sweep
+proved real, refetched for the life of the process — lands in Repeating.
+`state/account_teardown.zig` — the leak whose severity was corrected above because
+its single caller passes `hx.alloc` — lands in Arena-backed. Neither classification
+was fed the leak log.
+
+**Granularity caveat, stated rather than buried.** Reachability is per FILE, not
+per function. A file in Repeating may hold functions only handlers call, so **256
+is an upper bound on the severe set**; a file in Arena-backed is reached by no
+long-lived root at all, so **219 is a firm lower bound on the cosmetic set**.
+Sharpening the middle costs a per-function call graph and is not worth it before
+the fan-out — the split is already decisive enough to order the work.
+
+**What this changes.**
+
+1. The component milestones are written against the Repeating set first,
+   Boot-once second, and Arena-backed last or not at all.
+2. §1's remaining line-work is ordered the same way, so the branch spends its
+   remaining rungs where they defend the justification.
+3. The rung counts here are over ALL rungs, not the unhit ones. Intersecting with
+   the classifier's unhit set needs a fresh merged coverage report — the on-disk
+   one is stale — so the intersection lands with the R1–R4 re-measure, not before.
+4. The audit script is reproducible from the method above in one pass; it reads
+   the tree and writes nothing, so it is not carried in Files Changed.
+
+### Fixed on this branch by direction, not deferred (Aug 21, 2026)
+
+Two product findings were written up above as out of scope because R6 forbids a
+reachable behaviour change. Indy overrode that, in session, for both:
+
+> Indy (2026-08-21): "fix both" — context: asked whether the fleet-delete
+> ordering defect and the four `make up` blockers should be deferred to a
+> follow-up with his ack, or fixed here. He chose fixed here.
+
+The spec is an instance and the rule is the constant, so the spec moved: R6's
+Expected now names this third permitted diff shape, and Files Changed carries the
+paths. What R6 still forbids is unchanged — an unnamed behaviour change. Both
+fixes are named here before either lands.
+
+1. **Fleet-delete ordering** (`http/handlers/fleets/delete.zig`). `innerDeleteFleet`
+   cancels the fleet's schedules through the cron service BEFORE it purges the
+   rows, and releases its connection across that network call. A failed re-acquire
+   tells the caller the delete failed while the schedules are already gone: the
+   fleet still lists and silently never runs again until someone retries. Fix is
+   the ordering, not the failure arm — purge the rows first, so the leftover is an
+   orphan schedule that fires at a removed fleet, answers not-found and retires
+   itself. Loud and self-limiting beats silent.
+2. **The four `make up` blockers.** One is a pure compose defect with no credential
+   involved. The remaining three are enumerated as they are reproduced, each with
+   the failure it produces, since the prior session recorded the count without the
+   detail.
+
+`http/handlers/fleets/create.zig` carries the same acquire-across-a-network-call
+shape and says so in its own log line (`HINT_ROW_ORPHANED_MANUAL_RECOVERY`). It is
+NOT covered by this direction — the direction named two findings — and stays out
+until Indy says otherwise.
 
 ### Leak log — real defects the allocation-failure proofs caught
 
