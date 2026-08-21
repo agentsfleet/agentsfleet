@@ -55,6 +55,10 @@ const FORK_EXIT_UNASSIGNED_PATH_ALLOWED: u8 = 97;
 /// `/tmp` could not answer the question: the writable floor already grants it.
 const UNGRANTED_ROOT = "/var/tmp";
 
+/// The one file the proof creates inside its `read_write` assignment. Named
+/// once because the forked child writes it and the parent removes it.
+const PROOF_FILE = "proof";
+
 /// Is `path` present on this host?
 fn presentPath(io: std.Io, path: []const u8) bool {
     std.Io.Dir.accessAbsolute(io, path, .{}) catch return false;
@@ -185,6 +189,8 @@ test "an operator-assigned bind lands at the mode it was assigned, and nothing e
     const ro = try std.fmt.bufPrintZ(&ro_buf, "{s}/agentsfleet-bindproof-ro-{d}", .{ UNGRANTED_ROOT, pid });
     const rw = try std.fmt.bufPrintZ(&rw_buf, "{s}/agentsfleet-bindproof-rw-{d}", .{ UNGRANTED_ROOT, pid });
     const none = try std.fmt.bufPrintZ(&none_buf, "{s}/agentsfleet-bindproof-none-{d}", .{ UNGRANTED_ROOT, pid });
+    var proof_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const proof = try std.fmt.bufPrintZ(&proof_buf, "{s}/{s}", .{ rw, PROOF_FILE });
 
     // A host that refuses these creations cannot answer the question either
     // way, so skip rather than fail — the claim is about landlock, not /var.
@@ -194,9 +200,16 @@ test "an operator-assigned bind lands at the mode it was assigned, and nothing e
             else => return error.SkipZigTest,
         };
     }
-    defer for ([_][:0]const u8{ ro, rw, none }) |dir| {
-        std.Io.Dir.deleteTreeAbsolute(io, dir) catch {};
-    };
+    // The child creates exactly one file, so the teardown names it rather than
+    // walking a tree: `Io.Dir` has no absolute delete-tree, and a recursive
+    // sweep rooted at an interpolated path is the wrong tool for a directory
+    // whose entire contents this test wrote.
+    defer {
+        std.Io.Dir.deleteFileAbsolute(io, proof) catch {};
+        for ([_][:0]const u8{ ro, rw, none }) |dir| {
+            std.Io.Dir.deleteDirAbsolute(io, dir) catch {};
+        }
+    }
 
     const binds = [_]contract.protocol.ExtraBind{
         .{ .path = ro, .mode = .read_only },
@@ -221,7 +234,7 @@ test "an operator-assigned bind lands at the mode it was assigned, and nothing e
         // already there would prove the weaker half.
         const rw_fd = std.posix.openatZ(std.posix.AT.FDCWD, rw.ptr, .{ .ACCMODE = .RDONLY, .DIRECTORY = true }, 0) catch
             linux.exit(FORK_EXIT_BIND_RW_REFUSED);
-        const made = std.posix.openatZ(rw_fd, "proof", .{ .ACCMODE = .WRONLY, .CREAT = true, .EXCL = true }, 0o600) catch
+        const made = std.posix.openatZ(rw_fd, PROOF_FILE, .{ .ACCMODE = .WRONLY, .CREAT = true, .EXCL = true }, 0o600) catch
             linux.exit(FORK_EXIT_BIND_RW_REFUSED);
         _ = linux.close(made);
         _ = linux.close(rw_fd);
