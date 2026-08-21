@@ -219,7 +219,14 @@ fn serviceCredentialRequest(
 /// round-trip is bounded by the lease deadline), so a wedged pipe never hangs the
 /// parent. The token, when present, is framed straight through — never logged.
 fn writePipeResponse(alloc: std.mem.Allocator, response_fd: std.posix.fd_t, resp: cred.PipeResponse) void {
-    const json = std.json.Stringify.valueAlloc(alloc, resp, .{}) catch return;
+    // Named, not swallowed: the child's only symptom is a timed-out credential
+    // read, which reads identically to a slow mint. Without this line the
+    // parent's own serialize failure is invisible and the fault is chased in
+    // the wrong process.
+    const json = std.json.Stringify.valueAlloc(alloc, resp, .{}) catch |err| {
+        log.warn("credential_response_encode_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
+        return;
+    };
     defer alloc.free(json);
     pipe_proto.writeFrame(response_fd, .credential_response, json) catch |err|
         log.warn("credential_response_write_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
@@ -247,6 +254,11 @@ fn applyTick(renew_hook: ?RenewHook, deadline: *i64, now_ms: i64, usage: pipe_pr
 fn forwardActivity(alloc: std.mem.Allocator, sink: ActivitySink, payload: []const u8) void {
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
-    const frame = std.json.parseFromSliceLeaky(ActivityFrame, arena.allocator(), payload, .{}) catch return;
+    // Dropped, but never silently: a malformed frame makes the live tail go
+    // quiet, and a quiet tail is indistinguishable from a quiet fleet.
+    const frame = std.json.parseFromSliceLeaky(ActivityFrame, arena.allocator(), payload, .{}) catch |err| {
+        log.warn("activity_frame_dropped", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .err = @errorName(err) });
+        return;
+    };
     sink.forward(sink.ctx, frame);
 }

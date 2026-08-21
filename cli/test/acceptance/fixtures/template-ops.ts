@@ -15,6 +15,7 @@ import url from "node:url";
 import fs from "node:fs/promises";
 
 import {
+  ACCEPTANCE_PROVIDER_MODEL,
   PLATFORM_OPS_FIXTURE_NAME,
   PLATFORM_OPS_SAMPLE_DIR,
   STEER_PROBE_FIXTURE_NAME,
@@ -66,14 +67,18 @@ export async function buildPlatformOpsContent(name: string): Promise<SampleConte
   return buildFixtureContent(PLATFORM_OPS_SAMPLE_DIR, PLATFORM_OPS_FIXTURE_NAME, name);
 }
 
-export async function buildSteerProbeContent(name: string): Promise<SampleContent> {
-  return buildFixtureContent(STEER_PROBE_SAMPLE_DIR, STEER_PROBE_FIXTURE_NAME, name);
+export async function buildSteerProbeContent(
+  name: string,
+  model: string = ACCEPTANCE_PROVIDER_MODEL,
+): Promise<SampleContent> {
+  return buildFixtureContent(STEER_PROBE_SAMPLE_DIR, STEER_PROBE_FIXTURE_NAME, name, model);
 }
 
 async function buildFixtureContent(
   sampleDir: string,
   fixtureName: string,
   name: string,
+  model: string = ACCEPTANCE_PROVIDER_MODEL,
 ): Promise<SampleContent> {
   const sourceDir = path.join(WORKTREE_ROOT, sampleDir);
   const skill = await fs.readFile(path.join(sourceDir, "SKILL.md"), "utf8");
@@ -84,7 +89,7 @@ async function buildFixtureContent(
       .replaceAll("{{slack_channel}}", "#agentsfleet-acceptance"),
     triggerMarkdown: trigger
       .replace(`name: ${fixtureName}`, `name: ${name}`)
-      .replaceAll("{{model}}", "accounts/fireworks/models/kimi-k2.6")
+      .replaceAll("{{model}}", model)
       .replaceAll("{{context_cap_tokens}}", "256000"),
   };
 }
