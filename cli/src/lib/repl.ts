@@ -59,6 +59,11 @@ export async function runSteerRepl(options: ReplOptions): Promise<typeof EXIT_OK
   });
 
   let interrupted = false;
+  // Bun 1.4 (matching modern Node) throws ERR_USE_AFTER_CLOSE from prompt() on
+  // a closed interface. stdin EOF closes `rl` before the loop body's trailing
+  // prompt runs, so a piped `steer` used to die on its own last line. Track the
+  // close ourselves rather than probing a property whose presence varies.
+  let closed = false;
   let currentTurn = new AbortController();
   const interrupt = (): void => {
     interrupted = true;
@@ -68,6 +73,9 @@ export async function runSteerRepl(options: ReplOptions): Promise<typeof EXIT_OK
 
   signalSource.on(SIGINT, interrupt);
   rl.on(SIGINT, interrupt);
+  rl.on("close", () => {
+    closed = true;
+  });
   try {
     rl.setPrompt(STEER_REPL_PROMPT);
     rl.prompt();
@@ -84,7 +92,10 @@ export async function runSteerRepl(options: ReplOptions): Promise<typeof EXIT_OK
         }
       }
       if (interrupted) return EXIT_SIGINT;
-      rl.prompt();
+      // Skip only the prompt, never the iteration: `close` fires as soon as the
+      // underlying stream ends, while the iterator still has buffered lines to
+      // deliver. Breaking here would silently drop them.
+      if (!closed) rl.prompt();
     }
     return interrupted ? EXIT_SIGINT : EXIT_OK;
   } finally {
