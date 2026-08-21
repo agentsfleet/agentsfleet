@@ -112,6 +112,22 @@ const PROBES = [_]Probe{
     .{ .method = .DELETE, .path = "/v1/api-keys/" ++ ABSENT_KEY_ID, .token = ADMIN, .owner = "api_keys/tenant.innerDeleteApiKey" },
     .{ .method = .POST, .path = "/v1/api-keys", .token = ADMIN, .owner = "api_keys/tenant.innerCreateApiKey", .body = "{\"key_name\":\"pool-starved\"}" },
     .{ .method = .PATCH, .path = "/v1/api-keys/" ++ ABSENT_KEY_ID, .token = ADMIN, .owner = "api_keys/tenant.innerPatchApiKey", .body = "{\"active\":false}" },
+
+    // Bodied verbs, each body the shape its handler's validator accepts —
+    // lifted from an integration test that already drives the endpoint green,
+    // because a body invented here lands on the rejection arm and credits the
+    // wrong line. Seven more bodied arms are NOT here for exactly that reason:
+    // a first pass with plausible bodies answered 400, so they wait for a pass
+    // that reads each validator. `PATCH` on a workspace fleet is separate
+    // again — it answered 200 while the pool was starved, so its acquire is
+    // not on the path a name-only patch takes.
+    .{ .method = .PUT, .path = "/v1/tenants/me/provider", .token = ADMIN, .owner = "tenant_provider.innerPutTenantProvider", .body = "{\"mode\":\"self_managed\",\"secret_ref\":\"pool-starved\"}" },
+    .{ .method = .POST, .path = "/v1/tenants/me/models", .token = ADMIN, .owner = "tenant_model_entries.innerCreateModelEntry", .body = "{\"model_id\":\"claude-sonnet-4-6\",\"secret_ref\":\"pool-starved\"}" },
+    .{ .method = .POST, .path = WS ++ "/secrets", .token = ADMIN, .owner = "fleets/secrets.innerStoreSecret", .body = "{\"name\":\"pool-starved\",\"data\":{\"provider\":\"anthropic\",\"api_key\":\"sk-starved\",\"model\":\"claude-sonnet-4-6\"}}" },
+    .{ .method = .PUT, .path = WS ++ "/secrets/pool-starved", .token = ADMIN, .owner = "fleets/secrets.innerReplaceSecret", .body = "{\"data\":{\"k\":\"v\"}}" },
+    .{ .method = .POST, .path = FLEET ++ "/messages", .token = ADMIN, .owner = "fleets/messages.innerFleetMessagesPost", .body = "{\"message\":\"pool-starved\"}" },
+    .{ .method = .POST, .path = WS ++ "/connectors/slack/connect", .token = ADMIN, .owner = "connectors/connect.innerConnect", .body = "{}" },
+    .{ .method = .POST, .path = WS ++ "/approvals/" ++ ABSENT_GATE_ID ++ ":approve", .token = ADMIN, .owner = "approvals/resolve.innerResolveApproval", .body = "{}" },
 };
 
 const Held = std.ArrayListUnmanaged(*pg.Conn);
