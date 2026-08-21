@@ -85,14 +85,15 @@ call site was the only one that collapsed them.
 
 ## Working tree
 
-Clean but for this handoff. `feat/m173-error-path-coverage` is ONE commit ahead
-of `origin/...` (`1fb96d3a7`, unpushed).
+Clean but for this handoff. `feat/m173-error-path-coverage` == `origin/...`;
+nothing unpushed.
 Worktree: `/Users/kishore/Projects/agentsfleet-m173` (stay inside it).
 
 ## Branch / PR (GitHub)
 
-- Branch: `feat/m173-error-path-coverage`, **contains `origin/main` (`8a8a69345`)**
-  — merged Aug 21 (PR #619, playbooks only, no Zig).
+- Branch: `feat/m173-error-path-coverage`. It contains `8a8a69345`, but **`origin/main`
+  has since moved to `faf563fa3`** — the branch is BEHIND. Merging it is a pre-PR
+  gate, not urgent now, but do it before CHORE(close) and never force-push.
 - PR: **none yet** — correct, the sweep is nowhere near CHORE(close).
 - 21 commits, 7 of them from the Aug 21 session:
 
@@ -108,7 +109,7 @@ fed95b9c5 starve the pool against 35 endpoints, not four
 
 ## Running processes
 
-No tmux. Docker infra is UP for this worktree (leave it, or `make down`):
+No tmux (`tmux ls` -> no server). Docker infra is UP for this worktree:
 
 ```
 agentsfleet-m173-postgres-1   :25796 -> 5432
@@ -116,10 +117,16 @@ agentsfleet-m173-redis-1      :25797 -> 6379
 agentsfleet-m173-qstash-1     :25798 -> 8080
 ```
 
-A full `make test-coverage-zig && make test-integration && make
-test-coverage-grade` was running when this handoff was written. Re-run it if the
-merged report looks stale — and read the digest trap below before doing anything
-else while a lane runs.
+**A full re-measurement is IN FLIGHT** (started 09:53, ~45 min), launched from the
+worktree root as:
+
+```
+make test-coverage-zig && make test-integration && make test-coverage-grade
+```
+
+It measures the POST-fix tree. Read the digest trap below before touching `src/`
+or committing Zig while it runs — a docs-only commit is safe (the pre-commit hook
+skips harness-verify when nothing lint-relevant is staged), a Zig one is not.
 
 ## Tests / checks
 
@@ -137,11 +144,11 @@ else while a lane runs.
 
 ## Next steps
 
-1. Re-run both producers and re-classify against the POST-fix tree. Expect ~21
-   HTTP-reachable acquire arms left; confirm rather than assume. The Aug 21
-   in-flight lane was killed mid-run (it measured the pre-fix tree, and any
-   `src/` edit refuses its evidence — `--source-path src`), so there is no
-   current merged report on disk.
+1. Read the in-flight lane's result, THEN re-classify with the two probes in the
+   Worklist recipe below. Expect ~21 HTTP-reachable acquire arms; confirm rather
+   than assume. If the lane was interrupted, re-run it whole — a filtered lane
+   clobbers the merged report, and any `src/` edit refuses recorded evidence
+   (`--source-path src`).
 2. The remaining acquire arms are structural, not more rows:
    - 5 runner-self arms need `runner_bearer_mw` wired into `seedAndHarness`, or
      a second starvation test on the runner harness. **Pick deliberately.**
