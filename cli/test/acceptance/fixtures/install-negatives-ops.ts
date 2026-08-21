@@ -7,9 +7,11 @@
  *
  *   - a `--library` id absent from the workspace gallery → ConfigError, exit 5;
  *   - `install` with no `--library` → ValidationError, exit 4, no network;
- *   - the SAME onboarded template installed twice → the second trips the
- *     `(workspace_id, name)` uniqueness constraint (UZ-AGT-006, exit 3), since
- *     both installs take the template's frontmatter `name:`.
+ *   - the SAME onboarded template installed twice → the second install's
+ *     DEFAULTED name (the template's frontmatter `name:`) is auto-suffixed
+ *     `-NNN` by the server and succeeds; only an EXPLICIT `--name` already in
+ *     use trips the `(workspace_id, name)` uniqueness constraint as a visible
+ *     conflict (UZ-AGT-006, exit 3).
  *
  * Every onboarded name is prefixed so `cleanWorkspaceFleets` reclaims any fleet
  * this run actually managed to create.
@@ -56,8 +58,10 @@ export interface DuplicateTemplate {
 
 /**
  * Onboard the canonical sample as a tenant template with a STABLE prefixed name.
- * Installing it twice (no `--name`) lands two fleets under the same frontmatter
- * `name:` → the second trips `uq_fleets_workspace_id_name` (UZ-AGT-006).
+ * Installing it twice (no `--name`) lands two fleets whose names both derive
+ * from that frontmatter `name:` — the second carries the server's `-NNN` tail,
+ * because a name nobody typed is re-drawn rather than refused. Passing the taken
+ * name back as `--name` is what trips `uq_fleets_workspace_id_name` (UZ-AGT-006).
  */
 export async function onboardDuplicateTemplate(
   env: Readonly<Record<string, string>>,

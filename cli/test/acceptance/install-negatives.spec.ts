@@ -7,11 +7,13 @@
  *   - `install --library <id absent from gallery>` → ConfigError, exit 5,
  *     "is not in this workspace's gallery", no fleet created.
  *   - `install` with no `--library`        → ValidationError, exit 4, no network.
- *   - duplicate name (same onboarded template installed twice) → second install
- *     rejected (UZ-AGT-006, exit 3) — the workspace's `(workspace_id, name)`
- *     uniqueness constraint. The template is the canonical `platform-ops` sample
- *     onboarded (upload) with a stable prefixed name, so both installs take that
- *     name and the first actually succeeds.
+ *   - duplicate name (same onboarded template installed twice) → the second
+ *     install keeps its DEFAULTED name by taking a `-NNN` suffix the server
+ *     appends, and only an EXPLICIT `--name` already in use conflicts
+ *     (UZ-AGT-006, exit 3) on the workspace's `(workspace_id, name)`
+ *     uniqueness constraint. The template is the canonical `platform-ops`
+ *     sample onboarded (upload) with a stable prefixed name, so every install
+ *     in the group starts from that same name.
  *
  * Every spawn runs `assertNoSecretLeak` against the minted JWT. Mutating
  * tests are prefix-scoped via ACCEPTANCE_RUN_PREFIX and reclaimed in
@@ -57,23 +59,30 @@ const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
 
 const FLAG_JSON = "--json";
+const FLAG_NAME = "--name";
 const INSTALL = "install";
 
 interface InstallEnvelope {
   readonly fleet_id?: string;
   readonly id?: string;
+  readonly name?: string;
   readonly [key: string]: unknown;
 }
 
-function parseInstallId(stdout: string): string | null {
+function parseInstallEnvelope(stdout: string): InstallEnvelope | null {
   const trimmed = stdout.trim();
   if (!trimmed) return null;
   try {
-    const parsed = JSON.parse(trimmed) as InstallEnvelope;
-    return parsed.fleet_id ?? parsed.id ?? null;
+    return JSON.parse(trimmed) as InstallEnvelope;
   } catch {
     return null;
   }
+}
+
+// The install envelope carries either key depending on the route the server
+// answered on; both name the same row.
+function installIdOf(envelope: InstallEnvelope | null): string | null {
+  return envelope?.fleet_id ?? envelope?.id ?? null;
 }
 
 if (!isLive) {
@@ -167,36 +176,48 @@ if (!isLive) {
     });
 
     // ── duplicate name: same onboarded template installed twice ──────────
-    // The first install must succeed (and is tracked for teardown); the
-    // second must be rejected by the `(workspace_id, name)` uniqueness
-    // constraint (both installs take the template's frontmatter `name:`). We do
-    // NOT assume the wire shape beyond "non-zero exit, no SECOND fleet row" —
-    // but when the server surfaces its conflict code we assert it is exactly
-    // UZ-AGT-006 (exit 3).
+    // Two installs, two different answers, and what decides is WHO chose the
+    // name. A DEFAULTED name (no `--name`, so the template's frontmatter
+    // `name:`) that collides is the second-copy case: the server appends a
+    // three-digit suffix and the install succeeds, so a one-step install never
+    // dead-ends on a name nobody typed. An EXPLICIT `--name` that collides is an
+    // honest conflict the caller must see — auto-suffixing would rename what
+    // they asked for — and stays UZ-AGT-006 (exit 3), the workspace's
+    // `(workspace_id, name)` uniqueness constraint surfaced verbatim.
     describe("duplicate fleet name", () => {
       let tmpl: DuplicateTemplate | null = null;
       let firstId: string | null = null;
+      let secondId: string | null = null;
 
       afterAll(async () => {
-        if (firstId) {
-          try { await runFleetctl(["kill", firstId, FLAG_JSON], { env }); } catch { /* teardown */ }
+        for (const id of [firstId, secondId]) {
+          if (!id) continue;
+          try { await runFleetctl(["kill", id, FLAG_JSON], { env }); } catch { /* teardown */ }
         }
         tmpl = null;
       });
 
       it("first install of a freshly onboarded template succeeds", async () => {
-        tmpl = await onboardDuplicateTemplate(env, ACCEPTANCE_RUN_PREFIX);
+        const created = await onboardDuplicateTemplate(env, ACCEPTANCE_RUN_PREFIX);
+        tmpl = created;
         const result = await runFleetctl(
-          [INSTALL, FLAG_LIBRARY, tmpl.templateId, FLAG_JSON],
+          [INSTALL, FLAG_LIBRARY, created.templateId, FLAG_JSON],
           { env, timeoutMs: 120_000 },
         );
         assertNoSecretLeak(result, sessionJwt);
         assert.equal(result.code, 0, `first install failed ${result.code}: ${merged(result)}`);
-        firstId = parseInstallId(result.stdout);
+        const envelope = parseInstallEnvelope(result.stdout);
+        firstId = installIdOf(envelope);
         assert.ok(firstId, `first install missing fleet id: ${result.stdout}`);
+        // Nothing was taken yet, so the first copy keeps the template's own name.
+        assert.equal(
+          envelope?.name,
+          created.name,
+          `first install must store the template's own name: ${result.stdout}`,
+        );
       }, 130_000);
 
-      it("second install of the same template is rejected, no duplicate created", async () => {
+      it("second install of the same template auto-suffixes the defaulted name", async () => {
         assert.ok(tmpl, "template must be onboarded by the first-install test");
         const target2 = tmpl as DuplicateTemplate;
         const result = await runFleetctl(
@@ -204,30 +225,63 @@ if (!isLive) {
           { env, timeoutMs: 120_000 },
         );
         assertNoSecretLeak(result, sessionJwt);
-        assert.notEqual(result.code, 0, `duplicate install should fail; got 0: ${result.stdout}`);
+        assert.equal(
+          result.code,
+          0,
+          `second install of a defaulted name must succeed; got ${result.code}: ${merged(result)}`,
+        );
 
-        // If the server surfaced its conflict code, pin the exact code+exit.
-        const secondId = parseInstallId(result.stdout);
-        const body = merged(result);
-        if (body.includes(ERR_AGENTSFLEET_NAME_TAKEN)) {
-          assert.equal(
-            result.code,
-            EXIT_SERVER_ERROR,
-            `name-taken conflict must exit ${EXIT_SERVER_ERROR}: ${body}`,
-          );
-        }
-        // Whatever the surface, the second call must not have minted a new
-        // fleet under a different id (a partial-create leak).
-        if (secondId && firstId) {
-          assert.equal(secondId, firstId, `duplicate install leaked a second fleet id: ${secondId}`);
-        } else {
-          assert.equal(secondId, null, `duplicate install must not return a new fleet id: ${secondId}`);
-        }
+        const envelope = parseInstallEnvelope(result.stdout);
+        secondId = installIdOf(envelope);
+        assert.ok(secondId, `second install missing fleet id: ${result.stdout}`);
+        assert.notEqual(
+          secondId,
+          firstId,
+          `the second copy must be its own row, not the first one's id: ${secondId}`,
+        );
+
+        // `heroku_names.suffixed` appends `-NNN` to the taken base, and the 201
+        // returns what was PERSISTED — the value every human-facing surface
+        // reads. The fixture name is well under the 64-char cap, so the base is
+        // carried whole and only the tail is new.
+        const secondName = envelope?.name;
+        assert.equal(typeof secondName, "string", `second install missing name: ${result.stdout}`);
+        assert.match(
+          (secondName as string).slice(target2.name.length),
+          /^-\d{3}$/,
+          `auto-suffixed name must be "${target2.name}" plus -NNN; got ${secondName}`,
+        );
       }, 130_000);
 
-      // Prefix-scoped leak audit — exactly one LIVE fleet for this template's
-      // name should exist after the duplicate attempt (the first install),
-      // never two. Confirms the rejected second install left no residue.
+      it("an explicit --name already in use conflicts with UZ-AGT-006", async () => {
+        assert.ok(tmpl, "template must be onboarded by the first-install test");
+        const target3 = tmpl as DuplicateTemplate;
+        const result = await runFleetctl(
+          [INSTALL, FLAG_LIBRARY, target3.templateId, FLAG_NAME, target3.name, FLAG_JSON],
+          { env, timeoutMs: 120_000 },
+        );
+        assertNoSecretLeak(result, sessionJwt);
+        const body = merged(result);
+        assert.equal(
+          result.code,
+          EXIT_SERVER_ERROR,
+          `an explicit name-taken conflict must exit ${EXIT_SERVER_ERROR}: ${body}`,
+        );
+        assert.ok(
+          body.includes(ERR_AGENTSFLEET_NAME_TAKEN),
+          `expected "${ERR_AGENTSFLEET_NAME_TAKEN}" in output: ${body}`,
+        );
+        // A refused create mints nothing — a returned id here is a partial-create leak.
+        assert.equal(
+          installIdOf(parseInstallEnvelope(result.stdout)),
+          null,
+          `a refused explicit-name install must not return a fleet id: ${result.stdout}`,
+        );
+      }, 130_000);
+
+      // Prefix-scoped leak audit — the template's OWN name belongs to exactly
+      // one live fleet: the second copy took a suffixed name, and the
+      // explicit-name attempt was refused outright.
       it("exactly one live fleet carries the template name", async () => {
         assert.ok(tmpl, "template must exist");
         const wanted = (tmpl as DuplicateTemplate).name;
