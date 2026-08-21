@@ -55,6 +55,34 @@ const SECRET_BODY =
 const LOCK_TIMEOUT = "SET lock_timeout = '400ms'";
 const LOCK_TIMEOUT_OFF = "SET lock_timeout = 0";
 
+/// `begin` issues its BEGIN before step 1 can refuse, so a refusal that does not
+/// roll back hands the pool a connection still inside a transaction. That is the
+/// operator-visible shape — a backend parked in `idle in transaction`, holding
+/// its snapshot and blocking vacuum — so it is what this asserts, rather than
+/// the presence of the rung in the source.
+const SUBJECT_BACKEND_PID = "SELECT pg_backend_pid()";
+const SUBJECT_IS_IN_TRANSACTION =
+    \\SELECT state = 'idle in transaction'
+    \\  FROM pg_stat_activity
+    \\ WHERE pid = $1
+;
+
+fn backendPid(conn: *pg.Conn) !i32 {
+    var q = PgQuery.from(try conn.query(SUBJECT_BACKEND_PID, .{}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.NoBackendPid;
+    return row.get(i32, 0);
+}
+
+/// Read from the OBSERVER connection: a subject asked about itself reports the
+/// state of the very query doing the asking.
+fn subjectLeftTransactionOpen(observer: *pg.Conn, subject_pid: i32) !bool {
+    var q = PgQuery.from(try observer.query(SUBJECT_IS_IN_TRANSACTION, .{subject_pid}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.SubjectSessionMissing;
+    return (try row.get(?bool, 0)) orelse false;
+}
+
 /// Step 1 of the protocol, issued directly by the contender so the test observes
 /// the lock itself rather than a side effect of it.
 const CONTEND_FOR_SECRET =
@@ -154,6 +182,14 @@ test "integration: test_secret_reference_paths_serialize: delete first makes the
     // And nothing was written on the way to that refusal.
     const count = try entries_state.referencedSecretCount(db.a, TENANT, KEY_NAME);
     try std.testing.expectEqual(@as(i64, 0), count);
+
+    // The refusal must also have CLOSED the transaction `begin` opened. Until
+    // this assertion existed the `errdefer txn.abort()` rung was executed by
+    // this very test and proven by nothing: delete the rung and everything
+    // above still passed, because a count read inside a stray open transaction
+    // returns 0 just as happily. A rung that runs is not a rung that works.
+    const pid = try backendPid(db.a);
+    try std.testing.expect(!(try subjectLeftTransactionOpen(db.b, pid)));
 }
 
 test "integration: test_secret_reference_paths_serialize: producer first makes the delete wait" {
