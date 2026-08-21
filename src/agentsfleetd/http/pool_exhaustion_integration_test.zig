@@ -60,8 +60,13 @@ const PLATFORM = scope_tokens.PLATFORM_ADMIN;
 pub const Probe = struct {
     method: std.http.Method,
     path: []const u8,
-    token: []const u8,
+    /// Null for the signature-authenticated ingress routes, which carry no
+    /// bearer at all — sending one would prove nothing about their arm.
+    token: ?[]const u8,
     owner: []const u8,
+    /// Name/value pairs set before the body. Only the ingress rows need these:
+    /// their handler reads the delivery headers before it acquires.
+    headers: []const [2][]const u8 = &.{},
     /// Only set where the verb requires one — see the note on the table.
     body: ?[]const u8 = null,
 };
@@ -142,6 +147,23 @@ const PROBES = [_]Probe{
     // gate and rejected).
     .{ .method = .PATCH, .path = FLEET, .token = ADMIN, .owner = "fleets/patch.innerPatchFleet", .body = "{\"status\":\"stopped\"}" },
     .{ .method = .POST, .path = FLEET ++ "/messages", .token = ADMIN, .owner = "fleets/messages.innerFleetMessagesPost", .body = "{\"message\":\"pool-starved\"}" },
+    // Signature-authenticated ingress: the connection is taken BEFORE the
+    // signature is checked, because the secret the check needs is what the
+    // connection loads. So the arm needs the delivery headers present and
+    // nothing more — a real signature would be verified further down, past
+    // the line this row aims at.
+    .{
+        .method = .POST,
+        .path = "/v1/ingress/github",
+        .token = null,
+        .owner = "ingress/github.innerGithubAppIngress",
+        .headers = &.{
+            .{ "x-github-event", "ping" },
+            .{ "x-github-delivery", "pool-starved" },
+            .{ "x-hub-signature-256", "sha256=pool-starved" },
+        },
+        .body = "{}",
+    },
     .{ .method = .POST, .path = WS ++ "/connectors/slack/connect", .token = ADMIN, .owner = "connectors/connect.innerConnect", .body = "{}" },
     .{ .method = .POST, .path = WS ++ "/approvals/" ++ ABSENT_GATE_ID ++ ":approve", .token = ADMIN, .owner = "approvals/resolve.innerResolveApproval", .body = "{}" },
 };
@@ -180,7 +202,8 @@ pub fn probeAll(h: *TestHarness, probes: []const Probe) !void {
     var bad: usize = 0;
     for (probes) |p| {
         var req = h.request(p.method, p.path);
-        req = try req.bearer(p.token);
+        if (p.token) |t| req = try req.bearer(t);
+        for (p.headers) |kv| req = try req.header(kv[0], kv[1]);
         if (p.body) |b| req = try req.json(b);
         const r = try req.send();
         defer r.deinit();
