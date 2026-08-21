@@ -9,103 +9,139 @@ Goal: every unhit line in the Zig tree is either executed by a test that asserts
 something, or proven unreachable and deleted, with floors raised in the same
 commit.
 
-**Indy's standing decisions (do not re-open):**
+- ✅ Connection-failure class closed except 2 SSE arms — the 7 filed as "blocked
+  on signature fixtures" needed no signer written (see Discovery).
+- ✅ §1 Dimension 1.1: **44 of 69** `state/**` `errdefer` rungs proven, each
+  mutation-checked.
+- ✅ **R6 and R7 graded** — first 2 of 15 rubric rows.
+- ✅ One real defect found and fixed (`account_teardown`), severity corrected —
+  see "The arena finding" below, it is the most important thing in this doc.
+- ⏳ Dimension 1.1 tail: `vault` (3), `user_preferences` (3),
+  `model_library_store` (2), `tenant_provider` (2), 3 singles.
+- 🛑 `repair_evidence` (8) **parked** — append-only triggers block the per-run
+  reset its wrapper needs. Reason recorded in Discovery.
+- ⏳ §1 Dimensions 1.2–1.5, §2–§5 untouched.
+
+### Indy's standing decisions (do not re-open)
+
 - **Full sweep on one long branch** — all four classes to zero before the PR opens.
 - **Cover positive, edge, performance and concurrency cases** for every module touched.
-- **The four single-request-unreachable connection failures are closed on paper**,
-  not with a fault seam and not with a racing thread. Decided Aug 21 after the
-  class was measured at four, not the fourteen a bad heuristic first reported.
+- **The four single-request-unreachable connection failures are closed on paper.**
+- **Sequencing, decided Aug 21:** land THIS branch first → then **M174**, a
+  test-fixture dedup milestone → then fan M173's remainder out across parallel
+  component milestones. Dedup and the sweep touch the same 53 test files, so
+  they cannot run concurrently, and every sweep commit manufactures more of the
+  duplication.
 
-**Class counts** — measured Aug 21 from the 09:53 lane (`make test-coverage-zig`
-+ `make test-integration` + `make test-coverage-grade`, exit 0: merged 91.39% /
-floor 89, `agentsfleetd` 91.04% / floor 90, `lib` 95.30%, `runner` 92.68%;
-integration 1003 passed, 8 skipped, 0 failed):
+## ⚠️ The arena finding — read before writing another leak up as severe
 
-| class | Aug 21 measured | Aug 21 re-measured | mechanism |
-|---|---|---|---|
-| errdefer | 295 | **295** | `checkAllAllocationFailures` |
-| failure-response | 463 | **454** | inject the failure the path answers |
-| failure-log | 303 | **300** | same tests, assert the log line |
-| error-return | 128 | **128** | construct the triggering input |
-| other | 1094 | **1088** | triage: test / delete / annotate |
-| brace | 16 | **16** | report artefact, no test owed |
-| **total** | **2299** | **2281** | |
+`hx.alloc` is a **per-request arena** (`http/server.zig:278`, `defer arena.deinit()`).
+Every HTTP handler path gets one. A missing `errdefer` rung on a handler-only
+path therefore leaks NOTHING in production — it is a latent defect, correct the
+moment a non-arena caller appears, but not operator-visible memory growth.
 
-**Re-measured Aug 21 after `ab2e251f7`** against a green lane (merged 91.46%,
-`agentsfleetd` 91.11%, `lib` 95.41%, `runner` 92.74%; integration 1006 passed,
-8 skipped, 0 failed). Re-measure again before grading anything — and read the
-deltas as NET, since leak fixes add `errdefer` rungs and those rungs carry log
-lines.
+This dents the spec's own P1 justification ("a leak reaches operators as
+unexplained memory growth"). 103 of the 295 `errdefer` rungs are in
+`http/handlers/**` outright; an unknown share of `state/**`'s 69 are only ever
+reached through handlers. Roughly 123 rungs sit behind long-lived callers (cron,
+queue workers, runner daemon, boot) and those are the ones carrying the original
+severity.
 
-### Connection-failure (`pool.acquire`) class — the part worked this session
+**Open question for Indy, asked and not yet answered:** run a caller/allocator
+audit BEFORE writing the component milestones, so the fan-out targets the ~123
+rungs that carry the justification instead of spreading agents evenly across 295
+where a large share is cosmetic. Estimated one pass, grep-able.
 
-39 connection-failure paths had never run. Current state:
-
-| state | count | detail |
-|---|---|---|
-| ✅ closed earlier | 50 endpoints | the original probe table |
-| ✅ closed `133d6731d` | 5 | runner plane: `self`, `heartbeat`, `memory` ×2, `credentials_mint` |
-| ✅ closed `fbf466d99` | 1 | `fleets/patch` |
-| ✅ closed `e4a336aad` | 2 | `ingress/github` |
-| ✅ closed this session | 7 | Slack `connectors/slack/events` ×1 — a probe row, it acquires before it verifies. Svix `identity_events_clerk` ×2 + `identity_events_delete` ×4 — the existing signer wired to a drained pool, in `handlers/auth/identity_events_pool_exhaustion_integration_test.zig`. Mutation-checked: all three go red without the drain/headers. |
-| ⏳ SSE | 2 | `fleets/events_stream:211`, `workspaces/events_stream:105` |
-| 📝 recorded, not tested | 4 | see spec Discovery; R2 amended `0` → `4` |
+The severity check is written into §1 so no agent repeats the mistake.
 
 ## Working tree
 
-`feat/m173-error-path-coverage`, clean but for this handoff. Four commits this
-session, all hooks-green. `e4a336aad` (github ingress) was unpushed at the time
-of writing — push it with this handoff.
+`feat/m173-error-path-coverage`. One uncommitted file: this handoff plus the
+spec's leak-log severity correction (`docs/v2/active/M173_001_...md`). Commit
+them together.
+
+Seven commits this session, all pushed, all hooks-green:
+`bec5d62c0` (merge main), `ab2e251f7` (7 ingress arms), `993865dda` (re-measure),
+`54c0819dd` (21 rungs), `6d3c4839e` (14 rungs), `0853d4fee` (R6/R7 graded),
+`67c5ad2b9` (leak fix + 9 rungs).
 
 ## Branch / PR (GitHub)
 
-- Branch: `feat/m173-error-path-coverage`. Four commits this session:
-  `133d6731d` (runner plane), `fbf466d99` (fleet patch), `f2e1f7f79` (spec
-  record), `e4a336aad` (github ingress).
-- PR: **none yet** — correct, nowhere near CHORE(close).
-- **The branch is BEHIND `origin/main`, which moved twice today** — it was
-  `faf563fa3` at session start and is now `224fa15e6` (PR #622
-  `fix/runner-nullclaw-process-io` merged). Merging main is a pre-PR gate.
-  Never force-push.
+- Branch: `feat/m173-error-path-coverage`, level with its remote.
+- PR: **none yet**. Per the sequencing decision this branch is meant to LAND —
+  so the next milestone-level action is CHORE(close) for a park, then the PR.
+- ⚠️ **Behind `origin/main` again** — it moved to `d0617c999` (5 commits) after
+  the merge in `bec5d62c0`. Merging is a pre-PR gate. **Never force-push.**
 
 ## Running processes
 
-No tmux. Docker for this worktree: postgres :25796, redis :25797, qstash :25798.
+**None.** Indy deleted all containers mid-session. `make test-integration`
+brings its own stack up (postgres :25796, redis :25797, qstash :25798) and
+recovers from an empty docker cleanly — verified this session. Only
+`buildx_buildkit_ci-zig-builder0` is up.
 
-**Unrelated stacks also up on this machine** — do not disturb:
-- `agentsfleet-*` on :5432/:6379/:3000 — a live product stack brought up on the
-  MAIN worktree this session (see "Live run" below).
-- `agentsfleet-fix-runner-io-*` on :22622-4 — **orphaned**. Its worktree no
-  longer exists on disk; #622 merged and the tree was pruned without `make down`.
-  Safe to `docker compose -p agentsfleet-fix-runner-io down` once Indy confirms.
-- `e2e-observability-platform_*` — a different project. Its api holds **:8080**,
-  which is what breaks `make up` (see below).
+No tmux.
 
 ## Tests / checks
 
-- ✅ `make test-coverage-zig` + `make test-integration` + `make test-coverage-grade`
-  — exit 0, numbers above.
-- ✅ Filtered lane `-Dtest-filter=pool_exhaustion` — 84 tests, all pass, 52 probes.
-- ✅ Red-proof on the runner test: removing the drain makes all five probes MISS
-  (401/401/404/404/404 from their own post-acquire paths); restored green.
-- ✅ `make harness-verify` — all gates green on each staged diff.
-- ✅ Depth gate `unit=4236 integration=727` (CHORE(open) baseline 4205/719).
-- ✅ Full lane green after `ab2e251f7` — `test-coverage-zig`, `test-integration`
-  and `test-coverage-grade` all exit 0. Integration 1006 passed, 8 skipped,
-  0 failed. Merged 91.46% (floor 89) / `agentsfleetd` 91.11% (floor 90) /
-  `lib` 95.41% / `runner` 92.74%.
-- ✅ `db/pool_test.zig:943` "migration lock serializes" failed once under load
-  (kcov + docker + concurrent polling) and passed on a quiet box. It is a
-  wall-clock assertion — `elapsed_ms < 1_000` — on advisory-lock contention,
-  with its own two pools and no HTTP. A flake, not a regression; worth a
-  tolerance if it recurs in CI.
-- ⚠️ **`TEST_FILTER` is per-graph, and the two graphs are easy to confuse.**
-  `make test-integration TEST_FILTER=x` filters the INTEGRATION binary only —
-  the files registered in `src/agentsfleetd/integration_tests.zig`. Anything
-  registered through a product file's own `test { _ = @import(...); }` block
-  (`db/pool_test.zig`, `state/tenant_provider_test.zig` and its siblings) is in
-  the UNIT graph and matches nothing there, which reads as "the filter is
-  broken" — it is not. For a unit-graph file, run it directly:
+- ✅ `make test-integration TEST_FILTER=pool_exhaustion` — **86/86**.
+- ✅ `make test-integration TEST_FILTER=alloc_test` — **16/16**.
+- ✅ `make test-integration TEST_FILTER=signup_teardown_alloc` — 16/16, and red
+  under mutation both ways.
+- ✅ `make harness-verify` green on every staged diff.
+- ✅ Full lane green at `ab2e251f7`: merged 91.46% (floor 89), `agentsfleetd`
+  91.11% (floor 90), `lib` 95.41%, `runner` 92.74%; integration 1006 passed,
+  8 skipped, 0 failed.
+- ✅ Depth gate `unit=4269 integration=737` (CHORE(open) baseline 4205/719).
+- ⏳ **Not re-measured since `54c0819dd`.** The on-disk classifier report is
+  stale — it still lists files already closed. Re-measure before grading R1–R4.
+- ⏳ `make lint-all`, `make test-unit-all`, `make memleak`, `make check-version`
+  — NEVER RUN on this branch. S1, S2, S5, S6, S7, S9 all ungraded. This is the
+  real distance to CHORE(close), independent of lines remaining.
+
+## Next steps
+
+1. Commit + push this handoff and the spec correction.
+2. **Get Indy's answer on the arena audit** — it may materially shrink §1 and
+   changes what the component milestones should contain.
+3. Merge `origin/main` (`d0617c999`), pre-PR gate.
+4. Finish the Dimension 1.1 tail (~10 rungs) OR stop line-work and grade the
+   S-rows so the distance to CHORE(close) is visible.
+5. CHORE(close) for a park: Dimensions marked, spec stays `active/`, changelog
+   `<Update>`, `~/Projects/docs` branch, PR `## Session notes`, delete this file.
+6. Then M174 (dedup), then the fan-out.
+
+## Risks / gotchas
+
+### The four §1 traps — all now in the spec's Discovery, §1 points at them
+
+Each produces a proof that passes while proving nothing, and none is visible
+from a green run.
+
+1. **An optional rung is only an allocation site when the column is non-null.**
+   Cost a proof that passed with the rung DELETED. For an optional rung the
+   fixture IS the proof: seed every guarded column non-null, and a list read
+   needs >1 row.
+2. **The counting run COMMITS.** `checkAllAllocationFailures` runs once on a
+   working allocator to count sites; if the function writes, that run commits,
+   and every failing run afterwards takes the replay branch. Reset at the top of
+   each run — through the connection, never the failing allocator.
+3. **A randomised generator aborts the proof** as `NondeterministicMemoryUsage`
+   before failing any site. Drive the inner function that takes the generator
+   and inject a fixed-length one. Check for the seam before concluding a
+   function cannot be proven.
+4. **Mutation-check by deleting the RUNG**, not by breaking the test. It is the
+   only signal separating a real proof from a decorative one. One per module,
+   minimum.
+
+### Harness traps
+
+- **A skipped integration test reports as PASSING.** Mutation-check every new one.
+- **`TEST_FILTER` is per-graph.** `make test-integration TEST_FILTER=x` filters
+  only files registered in `integration_tests.zig`. Anything registered through
+  a product file's own `test { _ = @import(...); }` block is UNIT-graph and
+  matches nothing there — `db/pool_test.zig`, `state/tenant_provider_test.zig`
+  and siblings. For those:
 
   ```
   ZIG_GLOBAL_CACHE_DIR=~/.cache/agentsfleet/zig-global-cache \
@@ -114,100 +150,39 @@ No tmux. Docker for this worktree: postgres :25796, redis :25797, qstash :25798.
   zig build test -Dtest-filter=<token> --summary all
   ```
 
-  `--summary all` is load-bearing: without it a passing run prints nothing, and
-  a filter that matched ZERO tests prints exactly the same nothing.
-- ⏳ `make lint-all`, `make test-unit-all`, `make memleak`, `make check-version`
-  — NOT run. Every rubric S-row is still ungraded.
+  `--summary all` is load-bearing: a pass and a zero-match run print identically.
+- **`make test-integration TEST_FILTER=…` exits non-zero on a clean run** — the
+  tally check does not recognise `All N tests passed.`. Read the line above.
+- **Never run a lane while a Zig commit is in its hooks** — pre-commit runs a
+  real `make test-integration` and a concurrent lane moves the coverage digest.
+- **A filtered lane clobbers the merged report.** Re-run both producers before grading.
+- **The harness cannot send a bodiless PUT/POST.** Those arms stay open.
+- **Milestone markers are banned in code comments** (RULE TST-NAM) and **UFS
+  rejects bare numeric literals** — both fired this session; fix the code, never
+  the gate.
+- **`db/pool_test.zig:943` "migration lock serializes" is a wall-clock flake**
+  (`elapsed_ms < 1_000`). Failed once under load, passed on a quiet box. Worth a
+  tolerance if CI hits it.
+- **Class counts are NET, not progress** — leak fixes add rungs, and rungs carry
+  log lines.
 
-## Next steps
+### Deferred, needing Indy's verbatim ack before CHORE(close)
 
-1. `git push origin feat/m173-error-path-coverage`.
-2. Re-measure (both producers + grade) before trusting any class count.
-3. **§1's 295 `errdefer` lines** — the largest class, and the one the milestone
-   was originally justified on. The signature-blocked seven are closed, so this
-   is the remaining leverage. Pick targets by reading the function, never by the
-   signature heuristic.
-4. §3, §4, §5 remain untouched — ~1,220 lines, §4 the bulk. Still multi-session.
+Two product findings written into Discovery, NOT fixed, R6 forbids them here:
+the **fleet-delete ordering defect** (delete can silently half-complete) and the
+**four `make up` blockers** (one is a pure compose bug, no credential involved).
+Agent-unilateral deferral is incomplete scope, not deferral — CHORE(close)
+blocks until Indy's quote is in PR Session Notes.
 
-## Risks / gotchas
+### Known residue
 
-Carried forward from the prior session (all still true):
+`inline_test_lines` drops lines inside a `test {}` block but not helpers beside
+one: **86 lines** of test support in the coverage denominator, ~100% covered,
+≈0.03 points of rate inflation. Left deliberately (moving them costs 3 new files
+for 0.03 points). Matters to §5 — a floor raised on an inflated rate cannot be
+met once the inflation goes.
 
-- **A skipped integration test reports as PASSING.** `TestHarness.start` returns
-  `SkipZigTest` when Postgres or Redis is unconfigured and the lane exits 0.
-  `make test-integration` is the only lane that configures both. Never trust a
-  green tick on a new integration test — mutation-check it.
-- **`make test-integration TEST_FILTER=…` exits 1 on a clean run.** With zero
-  skips Zig prints `All N tests passed.`, which the lane's tally check does not
-  recognise, so it reports "no passing tests". The tests DID run. Confirm by
-  running `zig-out/bin/agentsfleetd-integration-tests` directly with the lane's
-  env, or read the line above the error.
-- **Never run a lane while a Zig commit is in its hooks** — the pre-commit
-  self-test runs a real `make test-integration`, and a concurrent lane moves the
-  coverage `source_digest` and reds a commit whose diff is fine.
-- **A filtered lane clobbers the merged report.** Re-run both producers in full
-  before grading.
-- **The harness cannot send a bodiless PUT/POST.** Those "body required" paths
-  are unreachable from it and deliberately left open.
-- **Read the validator before writing a body**, and **read the error registry
-  before asserting a status** (`UZ-APIKEY-007` is 409, not 400).
-- **Milestone markers are banned in code comments** (RULE TST-NAM), and
-  **`zig fmt` before committing** or the pre-commit `make-graph` lane fails
-  unhelpfully.
-- **Class counts are NET, not progress.**
+### Not ours
 
-New this session:
-
-- **Do not classify a connection-failure path by its position in the file.**
-  Twice this produced a wrong answer. `memory.zig:181` and
-  `credentials_mint.zig:195` looked like second acquires but are separate
-  functions sharing a file — both closed by plain draining.
-  `identity_events_delete`'s four lines looked like two-plus-two but are all
-  reachable in one starved request, because `enumerateTenantFleets` returns null
-  and `runDelete` carries on to its own failed acquire. **Read the call order.**
-- **A handler that acquires before it verifies is free to reach.**
-  `ingress/github` takes the connection first, because the secret its signature
-  check needs is what that connection loads. Headers present is the whole
-  requirement. Check this before assuming a signature fixture is owed.
-- **Runner-plane paths need a pool-free lookup.** `cmd/serve_runner_lookup.zig`
-  resolves the `agt_r` by acquiring a connection itself, so a drained pool
-  answers `UZ-AUTH-004` at the middleware and no handler runs. Wiring the real
-  lookup produces a green test proving nothing. The middleware's own path is
-  already proven in `runner_bearer.zig`.
-
-## Product findings this session — NOT fixed, and not this branch's scope
-
-Both are written up in the spec's Discovery section. R6 forbids behaviour
-changes here, so both belong to a follow-up workstream.
-
-1. **Fleet delete can silently half-complete.** `innerDeleteFleet` cancels the
-   fleet's schedules through the cron service *before* purging its rows, and
-   releases its connection across that network call. When the re-acquire fails
-   the caller is told the delete failed while the schedules are already gone —
-   the fleet still lists and never fires again until someone retries. The
-   ordering is the defect: purging first would leave an orphan schedule that
-   fires at a removed fleet, answers not-found and retires itself. `create.zig`
-   has the same shape and says so in its own log (`HINT_ROW_ORPHANED_MANUAL_RECOVERY`).
-2. **`make up` cannot start the daemon from scratch** (found by trying to do one
-   full live run; the API does boot and answer correctly once past it):
-   - `OIDC_ISSUER` / `OIDC_AUDIENCE` unset — both derivable from
-     `ui/packages/app/.env.local`: the issuer is the base64 payload of
-     `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, the audience is `NEXT_PUBLIC_API_URL`.
-   - `AUTH_SESSION_CODE_PEPPER` and `AUDIT_LOG_PEPPER` unset — any local random
-     value works; they are hashing salts for a disposable database.
-   - `MIGRATE_ON_START=1` with `DATABASE_URL_MIGRATOR` never set — **a pure
-     compose bug, no credential involved, fails for everyone every time.**
-   - qstash hard-binds :8080; a collision surfaces as a raw docker networking
-     error. Override with `AGENTSFLEET_QSTASH_HOST_PORT`.
-   - `docker-compose.yml:130` claims the inline block "already satisfies a
-     from-scratch `make up`". It does not.
-   A generator writing `.env.agentsfleetd.local` from the app env, wired as a
-   `make up` prerequisite, closes all of it (~20 lines). Not started — needs its
-   own branch off `main`.
-
-## Not ours
-
-`deploy (dev)` / `cli-acceptance-dev` is red on `main` and has failed on **every
-run back to Aug 19** (`3c98605ba` onward) — it is not a #622 regression. The live
-lane's `steer` test gets `status: fleet_error`, `failure_label: runner_crash`,
-`failure_detail: ApiError`, zero tokens, 200 ms. **Another agent owns this.**
+`deploy (dev)` / `cli-acceptance-dev` red on `main` since Aug 19 — another
+agent's.
