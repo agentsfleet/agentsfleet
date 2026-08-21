@@ -65,6 +65,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `make/test.mk` | EDIT | the enforced floor and target VALUES live here (`ZIG_COVERAGE_FOLDER_FLOORS`, `ZIG_COVERAGE_MIN_PCT`), not in the grading script |
 | `scripts/check_zig_coverage_floors.py` | EDIT | floor grading logic, if the raise needs it; the values themselves move in `make/test.mk` |
 | `scripts/classify_unhit_lines.py` | CREATE | classifies every unhit line in the merged kcov report into the class that names its mechanism; rubric rows R1-R4 grade from its count output |
+| `scripts/classify_rung_callers.py` | CREATE | classifies every `errdefer` rung by whether its callers pass an allocator that outlives a request; `--class leak-capable` is §1's work list and R1 grades against it |
+| `scripts/classify_rung_callers_test.py` | CREATE | pins the arena boundary, transitive reach, severity precedence and the unreached-vs-arena distinction; discovered by the `*_test.py` pattern `make lint-governance` already runs |
 | `scripts/classify_unhit_lines_test.py` | CREATE | its self-test, discovered by the `*_test.py` pattern `make lint-governance` already runs |
 | `docs/architecture/testing.md` | EDIT | record the new floors and the allocation-failure proof as the standing shape for error paths |
 | `docs/v2/*/M173_001_P1_API_ERROR_PATH_COVERAGE_SWEEP.md` | EDIT | lifecycle status |
@@ -96,16 +98,19 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — Allocation-failure cleanup proven, not read
 
-274 unhit lines across 110 files are `errdefer` rungs: cleanup that runs only when a later allocation fails. No ordinary test touches a rung of one, and reading the ladder and agreeing it looks right is not proof — a missing rung is invisible until the daemon leaks under pressure. `checkAllAllocationFailures` fails each allocation site in turn and asserts the function leaked nothing on the resulting error return, which makes the proof exhaustive over sites and identical on every machine.
+274 unhit lines across 110 files are `errdefer` rungs: cleanup that runs only when a later allocation fails. **Not all of them can hurt anyone** — see the caller-class scope note below, which is what this section is graded on. No ordinary test touches a rung of one, and reading the ladder and agreeing it looks right is not proof — a missing rung is invisible until the daemon leaks under pressure. `checkAllAllocationFailures` fails each allocation site in turn and asserts the function leaked nothing on the resulting error return, which makes the proof exhaustive over sites and identical on every machine.
 **Implementation default:** one `!void` wrapper per allocating entry point, taking the allocator first and calling the real function beneath it, because that is the signature the standard-library helper requires; the wrapper lives in the test file beside the fixtures it needs, not in a shared harness, so each proof reads independently.
 
-**Severity check before you claim a leak.** Every HTTP handler receives
-`hx.alloc`, a per-request arena torn down on return (`http/server.zig:278`), so
-a missing rung on a handler-only path leaks NOTHING in production — it is a
-latent defect, not operator-visible memory growth. Before writing a leak up as
-severe, find the callers and name the allocator each one passes. The rungs that
-carry the severity this milestone was justified on are the ones reached by
-long-lived callers: cron, queue workers, the runner daemon, and boot.
+**Severity check before you claim a leak — and before you write a proof at all.**
+Every HTTP handler receives `hx.alloc`, a per-request arena torn down on return
+(`http/server.zig:278`), so a missing rung on a handler-only path leaks NOTHING
+in production. Run `python3 scripts/classify_rung_callers.py --class leak-capable --files`
+and work that list: 301 rungs across 95 files, reached by callers whose
+allocators outlive a request — cron, the queue workers, the event bus, the key-set
+refresh, the runner daemon, and boot. The other 234 are deliberately out of scope
+per Indy's Aug 21 decision, recorded in Discovery. Proving one of them is not
+neutral: it costs the same as proving one that can leak, and it makes the class
+counts look like progress.
 
 **Before writing any proof in this section, read the four traps in Discovery.**
 Three produce a test that passes while proving nothing; the fourth refuses to
@@ -116,11 +121,31 @@ exactly what a pass prints. The only signal that separates a real proof from a
 decorative one is deleting the rung in the product file and watching the proof
 go red. Mutation-check every proof this way — one rung per module, minimum.
 
-- **Dimension 1.1** — every allocating read in `src/agentsfleetd/state/**` unwinds under induced failure at every site without leaking → Test `test_state_reads_unwind_without_leaking`
-- **Dimension 1.2** — every allocating handler read in `src/agentsfleetd/http/handlers/**` does the same, reusing each family's existing seeded fixtures → Test `test_handler_reads_unwind_without_leaking`
-- **Dimension 1.3** — every allocating path in `src/agentsfleetd/fleet/**`, `fleet_runtime/**`, and `fleet_library/**` does the same → Test `test_fleet_paths_unwind_without_leaking`
+**Scope is the leak-capable set, not the directory tree (Indy, Aug 21).** The
+Dimensions below are cut by the allocator a rung's callers pass, because that is
+what decides whether a missing rung can reach an operator. `scripts/classify_rung_callers.py`
+is the instrument; `--class leak-capable` is the sweep's work list.
+
+> Indy (2026-08-21): "I wanna ensure the leak in production must be fixed with
+> unit test and integration tests added to prove we covered and we wont memleak
+> That is what the decision must be. I donot wish to fix the cosmetic ones" —
+> context: the audit found 219 of 535 rungs sit below the per-request arena and
+> cannot leak, while §1's Dimensions as written owned 122 of those and none of
+> the 189 leak-capable rungs outside `state/**` and `fleet*/`.
+
+**Every proven rung carries BOTH tiers.** A unit proof
+(`checkAllAllocationFailures`, exhaustive over sites) AND an integration proof
+that drives the same path through its real caller against live datastores. The
+unit tier proves the ladder unwinds; the integration tier proves the ladder is
+on the path production actually takes. Neither alone discharges a Dimension —
+`/write-unit-test` and `/write-integration-test` both run, per rung module.
+
+- **Dimension 1.1** — every leak-capable rung in `src/agentsfleetd/state/**` (48) unwinds under induced failure at every site without leaking, proven in both tiers → Test `test_state_reads_unwind_without_leaking`
+- **Dimension 1.2** — every leak-capable rung in the daemon's long-lived services — `cron/**`, `queue/**`, `events/**`, `auth/**`, `secrets/**`, `session/**`, `db/**`, `observability/**` — does the same (≈120). These are the cron fire service, the Redis workers, the event bus and the key-set refresh: the callers whose allocators outlive every request, and the ones the milestone's justification names → Test `test_long_lived_services_unwind_without_leaking`
+- **Dimension 1.3** — every leak-capable rung in `src/agentsfleetd/fleet/**`, `fleet_runtime/**`, `fleet_library/**` (64) and in `src/runner/**` (≈45) does the same → Test `test_fleet_and_runner_paths_unwind_without_leaking`
 - **Dimension 1.4** — a function that swallows an allocation failure instead of propagating it fails the proof rather than passing it silently, and is fixed to propagate → Test `test_swallowed_allocation_failure_is_a_failure`
-- **Dimension 1.5** — the `errdefer` class is empty when the sweep completes: zero unhit lines matching the class across every component → Test `test_no_unhit_errdefer_lines_remain`
+- **Dimension 1.5** — **zero LEAK-CAPABLE `errdefer` rungs remain unproven.** The arena-backed and unreached rungs are explicitly NOT swept: §4 records them as reachable only under an allocator that frees them regardless, which is a triage outcome, not a gap → Test `test_no_unproven_leak_capable_rungs_remain`
+- **Dimension 1.6** — the boundary itself cannot rot. `classify_rung_callers.py` is the grading instrument, so a new long-lived caller reaching a file previously classed `arena` must move that file into the swept set rather than pass silently → Test `test_rung_caller_classification_is_pinned`
 
 ### §2 — Failure response arms reached by the failure they answer
 
@@ -233,7 +258,9 @@ code is out of scope and reverts.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | The `errdefer` class is empty (§1) | `python3 scripts/classify_unhit_lines.py --class errdefer --count` | `0` | P0 | |
+| R1 | Every LEAK-CAPABLE `errdefer` rung is proven in both tiers (§1) | `python3 scripts/classify_unhit_lines.py --class errdefer --count` cross-read against `python3 scripts/classify_rung_callers.py --class leak-capable --files` | every unhit `errdefer` line sits in a file the caller classifier reports as `arena` or `unreached` — zero unhit lines in a `repeating` or `boot-once` file | P0 | |
+| R1b | The arena-backed rungs are excluded deliberately, not by accident | `python3 scripts/classify_rung_callers.py` | prints the four-class table; `arena` + `unreached` totals match the count §4 records as triaged-not-swept | P0 | |
+| R1c | The classifier that decides R1's scope is itself pinned | `cd scripts && python3 -m unittest classify_rung_callers_test` | `OK`, 7 tests | P0 | |
 | R2 | The failure-response and failure-log classes are empty (§2), except the four single-request-unreachable sites named in Discovery | `python3 scripts/classify_unhit_lines.py --class failure-response,failure-log --count` | `4` | P0 | |
 | R3 | The error-return class is empty (§3) | `python3 scripts/classify_unhit_lines.py --class error-return --count` | `0` | P0 | |
 | R4 | The other-branch class is empty (§4) | `python3 scripts/classify_unhit_lines.py --class other,brace --count` | `0` | P0 | |
@@ -670,6 +697,59 @@ on failure, prints the daemon's own last lines followed by the four variables an
 where to provision them — rather than a URL. The compose comment now says what
 the file actually requires. No default was invented for a credential, and no
 secret-scanner suppression was added.
+
+### §1 re-cut around what can actually leak (Aug 21, 2026)
+
+The audit above answered "how much of this is cosmetic". Indy's decision turned
+that answer into scope:
+
+> Indy (2026-08-21): "I wanna ensure the leak in production must be fixed with
+> unit test and integration tests added to prove we covered and we wont memleak
+> That is what the decision must be. I donot wish to fix the cosmetic ones"
+
+Applying it exposed something the rung totals alone had hidden. §1's Dimensions
+were cut by DIRECTORY, and the leak-capable rungs do not live where they point:
+
+| §1 Dimension, as written | Rungs it owned | Of those, leak-capable |
+|---|---|---|
+| 1.1 `state/**` | 69 | 48 |
+| 1.2 `http/handlers/**` | 122 across 40 files | **0** |
+| 1.3 `fleet/` `fleet_runtime/` `fleet_library/` | 93 | 64 |
+| *(nothing)* | — | **189** |
+
+Dimension 1.2 owned 122 rungs and **not one of them can leak** — no file in the
+handler tree is reached by any long-lived root, which is what being below the
+per-request arena means. Meanwhile 189 leak-capable rungs — the cron store, the
+Redis transport, the JSON Web Key Set refresh, the queue workers, the runner
+daemon, boot — belonged to no Dimension at all. The milestone was aimed almost
+exactly away from its own justification.
+
+**What changed.** Dimensions are now cut by the allocator a rung's callers pass:
+1.1 `state/**` (48), 1.2 the daemon's long-lived services (≈120), 1.3 the fleet
+tree plus `runner/**` (≈109). 1.5 becomes "zero leak-capable rungs unproven"
+rather than "the class is empty", which under this decision could never be true.
+A new 1.6 pins the boundary itself, so a future caller that reaches an
+arena-classed file moves it into scope instead of passing silently.
+
+**Both tiers per rung module.** A unit proof shows the ladder unwinds under
+induced failure at every site; an integration proof shows the ladder sits on the
+path production takes, against live datastores. The unit tier alone can pass on
+a function no caller reaches the way the proof reaches it — which is exactly the
+mistake the account_teardown correction above was made of.
+
+**The instrument is in the repo now, not in an agent's scratch directory.**
+`scripts/classify_rung_callers.py` reproduces the audit's numbers exactly (301
+leak-capable, 219 arena, 15 unreached), and `classify_rung_callers_test.py` pins
+the four decisions that would silently move scope: the arena boundary must stop a
+long-lived root from claiming the handler tree; transitive reach counts;
+`repeating` beats `arena` when both reach a file; and a file no root reaches is
+`unreached`, never quietly folded into `arena`.
+
+**What the excluded set is NOT.** Calling 234 rungs out of scope is a triage
+outcome recorded in §4, not a coverage gap waved through. Each is reachable only
+under an allocator that frees it regardless. They stay in the code, they keep
+their rungs, and the moment a non-arena caller appears the classifier moves the
+file into the swept set and R1 goes red.
 
 ### Leak log — real defects the allocation-failure proofs caught
 
