@@ -24,6 +24,7 @@ import path from "node:path";
 import url from "node:url";
 
 import {
+  ACCEPTANCE_PROVIDER_MODEL,
   PLATFORM_OPS_FIXTURE_NAME,
   PLATFORM_OPS_SAMPLE_DIR,
 } from "./constants.ts";
@@ -35,7 +36,7 @@ const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const WORKTREE_ROOT = path.resolve(HERE, "..", "..", "..", "..");
 
 const ACCEPTANCE_SLACK_CHANNEL = "#agentsfleet-acceptance";
-const ACCEPTANCE_MODEL = "accounts/fireworks/models/kimi-k2.6";
+const ACCEPTANCE_MODEL = ACCEPTANCE_PROVIDER_MODEL;
 const ACCEPTANCE_CONTEXT_CAP = "256000";
 const UPDATE_BUNDLE_DIR_PREFIX = "agentsfleet-update-bundle-";
 const SKILL_FILE = "SKILL.md";

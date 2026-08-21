@@ -8,6 +8,7 @@ const testing = std.testing;
 const common = @import("common");
 const metrics = @import("../observability/metrics.zig");
 const StreamRegistry = @import("stream_registry.zig");
+const logging = @import("log");
 
 const WS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const ZID_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aaa01";
@@ -20,6 +21,14 @@ const STARTED_C_MS: i64 = 3_000;
 const STARTED_D_MS: i64 = 4_000;
 /// Generous bound for the drained peer to observe EOF (instant in practice).
 const DRAIN_OBSERVE_TIMEOUT_MS: i32 = 5_000;
+/// Drain round for the straggler test — small so the first round completes
+/// quickly; correctness no longer depends on its size.
+const STRAGGLER_TEST_ROUND_MS: u64 = 60;
+/// How often the test checks for the drain's re-arm signal.
+const STRAGGLER_POLL_MS: u64 = 5;
+/// Safety bound on that wait: generous, because it is a deadlock guard rather
+/// than a timing assumption — a healthy drain re-arms in well under a second.
+const STRAGGLER_REARM_TIMEOUT_MS: u64 = 30_000;
 const RACE_THREADS: usize = 100;
 const RACE_CAP: u32 = 8;
 
@@ -220,33 +229,87 @@ fn listAndFree(alloc: std.mem.Allocator, reg: *StreamRegistry) !void {
 
 /// Straggler stimulus: deregisters after a few poll intervals so awaitEmpty
 /// must survive at least one incomplete round before the registry empties.
-const Straggler = struct {
-    const HOLD_MS: u64 = 180;
-    fn run(reg: *StreamRegistry, id: u64) void {
-        common.sleepNanos(HOLD_MS * std.time.ns_per_ms);
-        reg.deregister(id);
+/// Watches for the drain loop's OWN signal that a round finished with the
+/// registry still non-empty. Atomic because the drain runs on another thread.
+///
+/// In test builds every emit routes to the sink registry and never to
+/// `std.log` (see `logging/mod.zig`), so registering this both DELIVERS the
+/// warn here and keeps it off stderr — which is what previously made the
+/// build runner fail a passing test that warned.
+const DrainWatch = struct {
+    const EVENT = "drain_incomplete";
+
+    seen: std.atomic.Value(u32) = .init(0),
+
+    fn emit(ctx: *anyopaque, _: std.log.Level, _: []const u8, _: i64, body: []const u8) void {
+        const self: *DrainWatch = @ptrCast(@alignCast(ctx));
+        if (std.mem.indexOf(u8, body, EVENT) != null) _ = self.seen.fetchAdd(1, .monotonic);
+    }
+
+    fn sink(self: *DrainWatch) logging.sinks.Sink {
+        return .{ .emit = emit, .ctx = self };
+    }
+};
+
+/// Runs the drain on its own thread so the TEST thread decides when the
+/// straggler leaves, rather than racing it on a stopwatch.
+const Drain = struct {
+    reg: *StreamRegistry,
+    round_ms: u64,
+    rounds: u32 = 0,
+
+    fn run(self: *Drain) void {
+        self.rounds = self.reg.awaitEmptyRounds(self.round_ms);
     }
 };
 
 test "streaming_teardown_outlasts_straggler: awaitEmpty re-arms, never returns non-empty" {
-    // The incomplete rounds warn by design; the build runner fails a passing
-    // test that emits warn+ logs — silence them for this test only.
-    const saved_log_level = testing.log_level;
-    testing.log_level = .err;
-    defer testing.log_level = saved_log_level;
-
+    // The contract: `awaitEmptyRounds` must NOT return while a stream is still
+    // registered — it re-arms for another round. The pre-fix implementation
+    // returned after ONE bounded round with the stream live.
+    //
+    // Proven off the drain's OWN signal rather than a stopwatch. The previous
+    // shape raced a fixed 180ms straggler against a 60ms round and assumed the
+    // hold outlasted round one. Under coverage instrumentation it does not: a
+    // round is two 50ms polls PLUS a mutex-guarded `count()` per iteration, so
+    // the round inflates faster than the flat sleep, round one already found
+    // the registry empty, and the drain returned 0 rounds. Here the straggler
+    // leaves only AFTER the drain has logged an incomplete round, so no
+    // relative-speed assumption survives — instrumentation makes this slower,
+    // never wrong.
     var reg = StreamRegistry.init(testing.allocator, common.globalIo());
     defer reg.deinit();
 
-    const id = (try reg.tryRegister(WS, ZID_A, STARTED_A_MS, CAP)).?;
-    const t = try std.Thread.spawn(.{}, Straggler.run, .{ &reg, id });
-    defer t.join();
+    var watch = DrainWatch{};
+    logging.sinks.clearSinksForTest();
+    defer logging.sinks.clearSinksForTest();
+    logging.sinks.registerSink(watch.sink());
 
-    // Tiny rounds so the straggler forces re-arms: the pre-fix awaitEmpty
-    // returned after ONE bounded round with the stream still registered.
-    const STRAGGLER_TEST_ROUND_MS: u64 = 60;
-    const rounds = reg.awaitEmptyRounds(STRAGGLER_TEST_ROUND_MS);
-    try testing.expect(rounds >= 1);
+    const id = (try reg.tryRegister(WS, ZID_A, STARTED_A_MS, CAP)).?;
+
+    // Tiny rounds so the first one completes promptly; the stream outlives it
+    // because nothing deregisters until this thread says so.
+    var drain = Drain{ .reg = &reg, .round_ms = STRAGGLER_TEST_ROUND_MS };
+    const t = try std.Thread.spawn(.{}, Drain.run, .{&drain});
+
+    // Bounded, so a drain that never re-arms fails with a readable message
+    // instead of hanging the suite until the runner's own timeout.
+    var waited_ms: u64 = 0;
+    while (watch.seen.load(.monotonic) == 0) : (waited_ms += STRAGGLER_POLL_MS) {
+        if (waited_ms >= STRAGGLER_REARM_TIMEOUT_MS) {
+            reg.deregister(id); // release the drain so the join below returns
+            t.join();
+            return error.DrainNeverReArmed;
+        }
+        common.sleepNanos(STRAGGLER_POLL_MS * std.time.ns_per_ms);
+    }
+
+    // The drain has now provably completed a round with the registry non-empty
+    // and gone around again. Only now does the straggler leave.
+    reg.deregister(id);
+    t.join();
+
+    try testing.expect(drain.rounds >= 1);
     try testing.expectEqual(@as(usize, 0), reg.count());
     metrics.setSseInFlightStreams(0);
 }

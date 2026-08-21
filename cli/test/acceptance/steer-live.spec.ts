@@ -69,6 +69,14 @@ const STATUS_PROCESSED = "processed" as const;
 const STATE_DIR_PREFIX = "agentsfleet-steer-" as const;
 const ONE_SHOT_MESSAGE = "respond with a single short acknowledgement and stop" as const;
 const WHITESPACE_MESSAGE = "   " as const;
+// An id no provider serves. Deliberately shaped like a real Fireworks path so
+// the fleet installs and reaches its first model call — a malformed string
+// could be rejected earlier by validation and would prove nothing about the
+// dial. `k2.6` is the exact mistype this negative exists for: Fireworks writes
+// the decimal as `p` (`kimi-k2p6`), and the dotted spelling sat in this suite's
+// own fixtures for months.
+const NONEXISTENT_MODEL = "accounts/fireworks/models/kimi-k2.6" as const;
+const STATUS_FLEET_ERROR = "fleet_error" as const;
 const NO_COLOR = "1" as const;
 const OPEN_BRACE = "{" as const;
 const CLOSE_BRACE = "}" as const;
@@ -202,6 +210,50 @@ if (!isLive) {
       assert.match(`${result.stderr}\n${result.stdout}`, /message is required/i,
         `expected "message is required" stem; got stdout=${result.stdout} stderr=${result.stderr}`);
     });
+
+    it("a fleet pinned to a model no provider serves fails terminally, not silently", async () => {
+      // The failure this suite could not see until the runner's spawn was
+      // fixed: every live steer used to die BEFORE the provider was dialed, so
+      // a fixture pinned to a non-existent model looked identical to a broken
+      // sandbox. Now the dial happens, and this is what a mistyped model does.
+      //
+      // What it must NOT do is look like success: `steer` exits non-zero and
+      // the event reaches a TERMINAL error status rather than hanging or
+      // reporting `processed` with an empty reply.
+      const bad = await installSteerProbeFleet({
+        env,
+        seedFixtureSecrets: false,
+        model: NONEXISTENT_MODEL,
+      });
+      const badId = bad.id ?? bad.fleet_id;
+      assert.ok(badId, `install missing id: ${JSON.stringify(bad)}`);
+
+      const result = await runWithEnv([STEER_COMMAND, badId, ONE_SHOT_MESSAGE, JSON_FLAG]);
+      assert.notEqual(result.code, 0,
+        `a fleet on a non-existent model must not exit 0; stdout=${result.stdout} stderr=${result.stderr}`);
+      const envelope = parseSteerEnvelope(result.stdout);
+      assert.equal(envelope[ENVELOPE_KIND_KEY], KIND_COMPLETE,
+        `expected a terminal envelope, not a hang; got ${JSON.stringify(envelope)}`);
+      assert.notEqual(envelope[ENVELOPE_STATUS_KEY], STATUS_PROCESSED,
+        `a model that does not exist must never report ${STATUS_PROCESSED}; got ${JSON.stringify(envelope)}`);
+      assert.equal(envelope[ENVELOPE_STATUS_KEY], STATUS_FLEET_ERROR,
+        `expected ${STATUS_FLEET_ERROR}; got ${JSON.stringify(envelope)}`);
+
+      // The cause line must be DIAGNOSABLE, which is the half that cost days:
+      // `ApiError` alone is indistinguishable from a rejected credential,
+      // because nullclaw's `error_classify` collapses both into one bucket.
+      // The runner now carries the provider's own words onto the event, so the
+      // 404 and its "model not found" wording have to survive to here.
+      //
+      // Runner-version-dependent by nature: this asserts the behaviour of the
+      // runner deployed to the target, so it goes green once the worker deploy
+      // in this pipeline lands. A bare `ApiError` here means the target is
+      // still running a pre-fix runner.
+      const events = await runWithEnv(["events", badId, JSON_FLAG]);
+      assert.equal(events.code, 0, `events read failed: ${events.stderr}`);
+      assert.match(events.stdout, /not found|does not exist|unknown model/i,
+        `the failure must say WHY, not just "ApiError": ${events.stdout}`);
+    }, STEER_TIMEOUT_MS);
 
     it("steer with no <fleet_id> exits non-zero with a usage stem", async () => {
       const result = await runWithEnv([STEER_COMMAND, JSON_FLAG]);
