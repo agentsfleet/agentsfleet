@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "orly_version": "0.5.2",
+  "orly_version": "0.5.3",
   "packs": [
     "language.rust",
     "persona.indy",
@@ -30,6 +30,21 @@
         "make",
         "check-version"
       ]
+    ]
+  },
+  "surfaces": {
+    "user": [
+      "src/",
+      "cli/",
+      "ui/packages/app/",
+      "ui/packages/website/",
+      "public/openapi/",
+      "schema/"
+    ],
+    "docs": [
+      "docs/",
+      "README.md",
+      "public/openapi/"
     ]
   },
   "managed": [
@@ -81,25 +96,11 @@
     "docs/HARNESS_VERIFY_OUTPUT.md",
     "docs/LIFECYCLE_PATTERNS.md",
     "docs/LOGGING_STANDARD.md",
+    "docs/RELEASE_TEMPLATE.md",
     "docs/REST_API_DESIGN_GUIDELINES.md",
     "docs/SCHEMA_CONVENTIONS.md",
     "docs/TEMPLATE.md",
     "docs/VERIFY_TIERS.md",
     "docs/greptile-learnings/RULES.md"
-  ],
-  "surfaces": {
-    "user": [
-      "src/",
-      "cli/",
-      "ui/packages/app/",
-      "ui/packages/website/",
-      "public/openapi/",
-      "schema/"
-    ],
-    "docs": [
-      "docs/",
-      "README.md",
-      "public/openapi/"
-    ]
-  }
+  ]
 }

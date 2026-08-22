@@ -15,7 +15,7 @@ Triggers on every `Edit`/`Write` that adds, removes, or changes a log emit:
 Out of scope (explicitly):
 
 - Test-only diagnostic prints inside `*_test.zig`, `*.test.ts`, `*.spec.ts`. Tests render to humans, not collectors; gates ignore.
-- Build/release scripts in `~/Projects/dotfiles/`, `audits/release-*` — toolchain output, not application logs.
+- Build/release scripts — the harness's own `audits/*`, `audits/release-*`, and any governance-repo tooling — toolchain output, not application logs.
 - Generated framework noise (Next.js startup banners, Bun runtime warnings) — out of our control.
 
 The **LOGGING GATE** (`dispatch/write_any.md`, Logging Gate) sits on top of this file — it fires in addition to the language-level rules in `dispatch/write_zig.md` and `dispatch/write_ts_adhere_bun.md`, not instead of them.

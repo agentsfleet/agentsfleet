@@ -58,7 +58,7 @@ If the change is internal-only, emit instead:
 ## Family
 
 - `docs/CHANGELOG_VOICE.md` — the canonical Mintlify-style voice rules (deep reference).
-- `skills/release-template.md` — release template + version-bump matrix; re-source
+- `docs/RELEASE_TEMPLATE.md` — release template + version-bump matrix; re-source
   each release, never paraphrase.
 - `verify` — runs before CHORE(close); a changelog claim must be backed by the
   verification that dispatch reports.

@@ -32,7 +32,6 @@ Before doing anything else in a polling cycle, read the triage helper:
 
 ```bash
 GREPTILE_TRIAGE="$HOME/.local/share/gstack/review/greptile-triage.md"
-[ -r "$GREPTILE_TRIAGE" ] || GREPTILE_TRIAGE="$HOME/Projects/dotfiles/.unified-skills/review/greptile-triage.md"
 [ -r "$GREPTILE_TRIAGE" ] || { echo "BABYSIT: greptile-triage.md missing — abort cycle"; exit 1; }
 ```
 
@@ -312,15 +311,14 @@ BABYSIT REPORT — <PR|MR> #<n> @ <SHA>
 ## References
 
 - `~/.local/share/gstack/review/greptile-triage.md` — fetch / classify /
-  reply / suppressions / history-write mechanics. Also at
-  `~/Projects/dotfiles/.unified-skills/review/greptile-triage.md`.
+  reply / suppressions / history-write mechanics (installed by gstack).
 - `$HOME/.gstack/projects/<slug>/greptile-history.md` — per-project
   history; drives Suppressions Check.
 - `$HOME/.gstack/greptile-history.md` — global aggregate.
 - `docs/greptile-learnings/RULES.md` — project-level named rules
   (durable principles). New rule added here only when the finding
   generalizes; per-incident rows go to greptile-history.md.
-- `~/Projects/dotfiles/AGENTS.md` — CHORE(close) skill chain step 4
-  cites this skill.
+- this repository's `AGENTS.orly.md` / `AGENTS.orly.md` — CHORE(close) skill
+  chain step 4 cites this skill.
 - `gh api` docs: https://cli.github.com/manual/gh_api
 - `glab api` docs: https://gitlab.com/gitlab-org/cli (`glab api --help`)
