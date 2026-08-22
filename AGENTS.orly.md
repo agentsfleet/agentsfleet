@@ -75,7 +75,7 @@ Auto-memory is **disabled** (`autoMemoryEnabled: false` + `CLAUDE_CODE_DISABLE_A
 ### Operational defaults
 
 - Workspace `~/Projects`. `gh`/`glab` not browsers. `trash` not `rm`. Conventional Commits. Process decisions → repo docs, not chat. "Make a note" → update `AGENTS.md`/repo docs.
-- **Symlinked dotfiles edits.** File `readlink`-resolving under `~/Projects/dotfiles/` is a dotfiles edit. Detect via `readlink` BEFORE editing. After: `cd ~/Projects/dotfiles && git add <files> && git commit && git push origin master`. Never leave uncommitted.
+- **Symlinked edits land in the repository that owns the file.** A file whose `readlink` resolves outside this checkout — into a dotfiles or config repository — is an edit to *that* repository, not this one. Detect via `readlink` BEFORE editing. After: `cd` to the resolved repository, `git add <files> && git commit && git push` on its default branch. Never leave uncommitted.
 - **Docs-repo edits on own branch.** `~/Projects/docs/` is shared across milestones: check `git status` first; from `main` (checkout or worktree off `main`) commit on `chore/m{N}-{slug}-changelog`; recovery = stash, re-apply on a fresh branch.
 - Other dotfiles (`.zshrc`/`.gitconfig`/etc.): timestamped backup; minimal edits.
 - Before commit/push: `gitleaks` must pass.
@@ -243,8 +243,8 @@ Required when spec involved — after last COMMIT, before PR. Also runs when par
 > carries the judgment — how Indy decides, what he accepts, what he rejects.
 > In force every session; standing orders, not suggestions. Re-read when
 > padding or burying the answer.
-> Evidence: `~/Projects/dotfiles/SOUL_LOG.md` — every `(log: Pn)` cite
-> resolves there, on demand.
+> Evidence: `SOUL_LOG.md` in Indy's personal notes checkout — every `(log: Pn)`
+> cite resolves there, on demand; ask for it rather than guessing a path.
 
 ## Reply shape
 
@@ -356,7 +356,6 @@ Required when spec involved — after last COMMIT, before PR. Also runs when par
 | Responsibility | Commands |
 |---|---|
 | `conform` | `make harness-verify` |
-| `verify.build` | `make build` |
 | `verify.lint` | `make lint-all` |
 | `verify.unit` | `make test-unit-all` |
 | `verify.version` | `make check-version` |

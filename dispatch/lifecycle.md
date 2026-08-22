@@ -34,20 +34,23 @@ into the tree; on 🟠 run `provision-env-1password`, re-link. Post-merge:
 
 **agentsfleet CHORE(close) paths:** the `<Update>` lands in
 `~/Projects/docs/changelog.mdx` (template + version-bump matrix:
-`skills/release-template.md` in the governance checkout — re-source each
-release, never paraphrase). Version sync: `VERSION` touched → `make
+`docs/RELEASE_TEMPLATE.md` in this repository — re-source each release, never
+paraphrase). Version sync: `VERSION` touched → `make
 sync-version`; commit propagated `build.zig.zon` / `agentsfleet/package.json` /
 `agentsfleet/src/cli.js`; `make check-version` passes.
 
-**dotfiles takes NO worktree — feature branches in the main checkout.** Every
-agent-home symlink and every consumer's `ORLY_ROOT` resolves to
-`~/Projects/dotfiles`; a linked worktree's `.git` is a *file*, and the audit
-chain the hooks run spawns git against other directories. Under a hook that
-combination corrupted the real index and flipped `core.bare` (Aug 16, 2026).
-So: `git checkout -b feat/mNN-name` in `~/Projects/dotfiles` itself, and
-`orly update` always renders the one true root. One stream at a time —
-a second concurrent agent coordinates in-session rather than forking a tree.
-This is the dotfiles exception; product repos keep the worktree recipe above.
+
+**A governance/rules repository takes NO linked worktree — cut feature branches
+in its main checkout.** This applies to whichever repository owns the rules you
+are editing (the orly pack source, a dotfiles checkout, any repo whose own hooks
+run the governance audit chain). A linked worktree's `.git` is a *file*, and that
+audit chain spawns git against other directories; under a hook the combination
+corrupted the real index and flipped `core.bare` (Aug 16, 2026). So:
+`git checkout -b feat/mNN-name` in the rules repository's main checkout, and let
+`orly update` re-materialise consumers from there. One stream at a time — a
+second concurrent agent coordinates in-session rather than forking a tree.
+This is the governance-repo exception; product repos still create the worktree
+at CHORE(open).
 
 **Mid-stream spec → ask before hydrating (default: same tree).** A spec created
 inside an active worktree → ask the user before spinning up a second one. Lean
