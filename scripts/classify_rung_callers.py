@@ -28,11 +28,10 @@ handler would mark the whole tree long-lived and the distinction would collapse.
 What counts as an edge lives in `rung_call_edges.py`: an import taken for a type
 or a constant is not one. `--pruned` lists what that dropped.
 
-Granularity is per FILE, and the direction of that error is deliberate: a file
-is `arena` only when NO long-lived root reaches it, so the arena set never
-absorbs a rung that can leak. It may still hold a function only handlers call,
-which over-estimates the work and never under-estimates the risk. `--fn FILE:NAME`
-closes that gap for one function by walking the call graph in `rung_call_trace.py`.
+Granularity here is per FILE, and that error runs one way: a file is `arena` only
+when NO long-lived root reaches it, so the arena set never absorbs a rung that
+can leak. `--fn FILE:NAME` and `--sweep` answer per FUNCTION instead, by walking
+the call graph in `rung_call_trace.py`.
 """
 
 from __future__ import annotations
@@ -44,8 +43,8 @@ import re
 import sys
 from collections import defaultdict, deque
 
-from rung_call_edges import callers_of, import_graph, is_test_path, read_source, zig_sources
-from rung_call_trace import Site, Tree
+from rung_call_edges import import_graph, is_test_path, read_source, zig_sources
+from rung_call_trace import Site, Tree, render_sweep, sweep
 
 CLASS_REPEATING = "repeating"
 CLASS_BOOT_ONCE = "boot-once"
@@ -228,13 +227,19 @@ def main(argv: list[str] | None = None) -> int:
         "of them outlives a request before writing a line",
     )
     parser.add_argument(
+        "--sweep",
+        action="store_true",
+        help="the work list: every rung on the leak-capable list, attributed to its "
+        "function and resolved through the call graph, worst first",
+    )
+    parser.add_argument(
         "--pruned",
         action="store_true",
         help="list the import edges dropped as type-only or constant-only",
     )
     args = parser.parse_args(argv)
 
-    if args.why or args.fn or args.pruned:
+    if args.why or args.fn or args.pruned or args.sweep:
         pruned: list[tuple[str, str]] = []
         files = [f for f in zig_sources(args.src) if not is_test_path(f)]
         edges = import_graph(files, pruned)
@@ -249,6 +254,13 @@ def main(argv: list[str] | None = None) -> int:
                 f"  {os.path.relpath(importer, args.src)}"
                 f" -x-> {os.path.relpath(target, args.src)}"
             )
+        return 0
+
+    if args.sweep:
+        classes = class_map(args.src, files, edges)
+        wanted = [f for f in files if classes[f] in LEAK_CAPABLE]
+        tree = Tree(args.src, files, handler_root, repeating_roots, boot_roots, classes)
+        render_sweep(sweep(tree, wanted), args.src, LEAK_CAPABLE)
         return 0
 
     if args.fn:
@@ -275,12 +287,6 @@ def main(argv: list[str] | None = None) -> int:
                 "file's own class. The verdict is no sharper than the one-hop answer "
                 "there. Read that hop before acting on an ARENA-BACKED result."
             )
-
-        hops = callers_of(files, target, fn_name)
-        if hops:
-            print("\nDirect callers, by their own file class:")
-            for caller in sorted(hops, key=lambda f: (classes[f], f)):
-                print(f"  {classes[caller]:<10}  {os.path.relpath(caller, args.src)}")
         return 0
 
     if args.why:

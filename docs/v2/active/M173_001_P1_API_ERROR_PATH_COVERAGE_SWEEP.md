@@ -1003,6 +1003,30 @@ policy duplication and config load — those resolve to genuine long-lived loops
 with a clean chain. **A proof covers a function, not a rung**, so the clean set is
 61 proofs, not 113.
 
+### `--sweep` is the work list, and R1 grades from it (Aug 22, 2026)
+
+`python3 scripts/classify_rung_callers.py --sweep` prints every rung on the
+leak-capable list, attributed to its enclosing function and resolved through the
+call graph, worst first, and closes with the three totals Dimension 1.5 is graded
+on. It takes ~40s on the full tree.
+
+```
+leak-capable, clean chain: 113 rungs in 61 functions — these are the proofs
+leak-capable, degraded:    92 rungs in 47 functions — a file-class fallback decided some hop
+arena or unresolved:       58 rungs in 33 functions
+```
+
+**Rungs are counted per function because a proof covers a function.** 113 rungs
+is 61 proofs, not 113. Reading a file's rung count as a function's is what put
+`vault.zig`'s 3 rungs on `loadJson`, which carries none.
+
+**One blind spot, pinned and currently empty.** `errdefer` is counted only at the
+start of a line — here, in `count_rungs`, and in the coverage report R1 grades
+against. All three agree, so the totals are self-consistent, but a rung written
+`fn f() void { errdefer x(); }` is invisible to all of them. There are **zero**
+such occurrences in `src/` today; `rung_call_trace_test.py` pins the behaviour so
+the next one is a known gap rather than a silent one.
+
 ### A private helper is not an unreached one (Aug 22, 2026)
 
 The first walk skipped the function's own file, so a helper called only by the

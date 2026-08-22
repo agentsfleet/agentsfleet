@@ -228,5 +228,53 @@ class RungCallTraceTest(unittest.TestCase):
         self.assertEqual(edges.enclosing_fn(spans, body.index("leaf.probe")), "inner")
 
 
+class SweepTest(RungCallTraceTest):
+    def test_rungs_are_counted_per_function_not_per_file(self) -> None:
+        """The count that decides how many PROOFS the sweep owes.
+
+        One file, two functions, one worker and one handler. Counting rungs per
+        file says three; per function it is two proofs and one of them is
+        cosmetic. Reading the file count as the function's is how `vault.zig`'s
+        rungs were once attributed to `loadJson`, which carries none.
+        """
+        write(self.src, "agentsfleetd/cron/FireService.zig", """
+            const leaf = @import("../state/leaf.zig");
+            fn tick() void { leaf.worker(); }
+        """)
+        write(self.src, "agentsfleetd/http/handlers/thing.zig", """
+            const leaf = @import("../../state/leaf.zig");
+            fn handle() void { leaf.served(); }
+        """)
+        write(self.src, "agentsfleetd/state/leaf.zig", """
+            pub fn worker() void {
+                errdefer a();
+                errdefer b();
+            }
+            pub fn served() void {
+                errdefer c();
+            }
+        """)
+        rows = trace.sweep(self.tree(), [str(self.src / "agentsfleetd/state/leaf.zig")])
+        self.assertEqual(
+            [(r.fn, r.rungs, r.verdict.cls) for r in rows],
+            [("worker", 2, trace.CLASS_REPEATING), ("served", 1, trace.CLASS_ARENA)],
+        )
+
+    def test_a_rung_sharing_a_line_with_its_signature_is_not_counted(self) -> None:
+        """A blind spot pinned rather than papered over.
+
+        `errdefer` is counted only at the start of a line, here and in
+        `count_rungs` and in the coverage report R1 grades against. All three
+        agree, so the totals are self-consistent — but a rung written as
+        `fn f() void { errdefer x(); }` is invisible to every one of them.
+        """
+        write(self.src, "agentsfleetd/state/leaf.zig", """
+            pub fn inline_rung() void { errdefer a(); }
+        """)
+        self.assertEqual(
+            trace.sweep(self.tree(), [str(self.src / "agentsfleetd/state/leaf.zig")]), []
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

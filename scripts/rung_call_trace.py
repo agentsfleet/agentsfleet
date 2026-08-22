@@ -27,6 +27,7 @@ proofs.
 from __future__ import annotations
 
 import os
+import re
 from typing import NamedTuple
 
 from rung_call_edges import (
@@ -147,3 +148,62 @@ class Tree:
                 break
         self._memo[site] = best
         return best
+
+
+ERRDEFER_LINE_RE = re.compile(r"^[ \t]*errdefer\b", re.M)
+
+
+class Rungs(NamedTuple):
+    """One function's rungs and the allocator that reaches them."""
+
+    file: str
+    fn: str
+    rungs: int
+    verdict: Verdict
+
+
+def sweep(tree: Tree, paths: list[str]) -> list[Rungs]:
+    """Every `errdefer` rung in `paths`, attributed to its function and resolved.
+
+    The class label counts rungs per FILE, which is what made the work list
+    overstate itself twice over. This counts them per function and answers each
+    one, because a proof covers a function: 113 rungs across 61 functions is 61
+    proofs, not 113.
+    """
+    out: dict[tuple[str, str], Rungs] = {}
+    for path in paths:
+        text = tree._text.get(path) or read_source(path)
+        spans = function_spans(text)
+        for match in ERRDEFER_LINE_RE.finditer(text):
+            fn = enclosing_fn(spans, match.start())
+            if fn is None:
+                continue
+            key = (path, fn)
+            if key in out:
+                out[key] = out[key]._replace(rungs=out[key].rungs + 1)
+            else:
+                out[key] = Rungs(path, fn, 1, tree.resolve(Site(path, fn)))
+    return sorted(
+        out.values(),
+        key=lambda r: (SEVERITY.index(r.verdict.cls), r.verdict.degraded, -r.rungs, r.file),
+    )
+
+
+def render_sweep(rows: list[Rungs], src_root: str, leak_capable) -> None:
+    """The work list a proof author picks from, worst first."""
+    for row in rows:
+        mark = " ⚠" if row.verdict.degraded else "  "
+        print(
+            f"{row.rungs:>4}  {row.verdict.cls:<10}{mark} "
+            f"{os.path.relpath(row.file, src_root)}:{row.fn}"
+        )
+    clean = [r for r in rows if r.verdict.cls in leak_capable and not r.verdict.degraded]
+    degraded = [r for r in rows if r.verdict.cls in leak_capable and r.verdict.degraded]
+    rest = len(rows) - len(clean) - len(degraded)
+    print(
+        f"\nleak-capable, clean chain: {sum(r.rungs for r in clean)} rungs in "
+        f"{len(clean)} functions — these are the proofs"
+        f"\nleak-capable, degraded:    {sum(r.rungs for r in degraded)} rungs in "
+        f"{len(degraded)} functions — a file-class fallback decided some hop"
+        f"\narena or unresolved:       {sum(r.rungs for r in rows) - sum(r.rungs for r in clean) - sum(r.rungs for r in degraded)} rungs in {rest} functions"
+    )
