@@ -66,7 +66,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/check_zig_coverage_floors.py` | EDIT | floor grading logic, if the raise needs it; the values themselves move in `make/test.mk` |
 | `scripts/classify_unhit_lines.py` | CREATE | classifies every unhit line in the merged kcov report into the class that names its mechanism; rubric rows R1-R4 grade from its count output |
 | `scripts/classify_rung_callers.py` | CREATE | classifies every `errdefer` rung by whether its callers pass an allocator that outlives a request; `--class leak-capable` is §1's work list and R1 grades against it, and `--fn FILE:NAME` narrows it to one function before a proof is written |
-| `scripts/rung_call_edges.py` | CREATE | decides which `@import`s are calls — an import taken for a type or a constant is not an edge — and finds the callers of one named function; the classifier is built on it |
+| `scripts/rung_call_edges.py` | CREATE | decides which `@import`s are calls — an import taken for a type or a constant is not an edge — and finds the call sites of one named function with their enclosing function; the classifier is built on it |
+| `scripts/rung_call_trace.py` | CREATE | walks the (file, function) graph until each branch ends in a long-lived root, the handler tree, or a lost trail; `--fn` reports its worst branch with the witness chain |
+| `scripts/rung_call_trace_test.py` | CREATE | pins the mixed file, the inflated middle file, worst-branch-wins, the degraded fallback, the unresolved target and a cycle |
 | `scripts/classify_rung_callers_test.py` | CREATE | pins the arena boundary, transitive reach, severity precedence and the unreached-vs-arena distinction; discovered by the `*_test.py` pattern `make lint-governance` already runs |
 | `scripts/rung_call_edges_test.py` | CREATE | pins which imports count as edges, including the two shapes that must KEEP one, and pins `callers_of` answering per function where the class label answers per file |
 | `scripts/classify_unhit_lines_test.py` | CREATE | its self-test, discovered by the `*_test.py` pattern `make lint-governance` already runs |
@@ -961,33 +963,65 @@ construction — which is why it, and not the class label, is what a proof rests
 
 ### Dimension 1.1, resolved function by function (Aug 22, 2026)
 
-All 8 leak-capable files in `state/**` were run through `--fn`, then hand-traced
-one hop further where the answer depended on a caller's own label. **Only
-`repair_verifications` is genuinely leak-capable, and it was already proven**
-(`repair_verifications_unwind_integration_test.zig`).
+Every `pub fn` in the 8 leak-capable `state/**` files run through `--fn`, which
+now walks the call graph rather than reading one hop (see below). **Dimension 1.1
+is NOT done: `vault.loadJson` is leak-capable, carries 3 rungs, and has no
+allocation-failure proof in either tier.**
 
-| File | Rungs | `--fn` says | Transitive truth |
+| File | Rungs | Leak-capable functions | Status |
 |---|---|---|---|
-| `repair_verifications.zig` | 19 | 5 fns leak-capable, 2 arena | **leak-capable** — `fleet/repair_verification_dispatcher.zig` is a genuine repeating root |
-| `tenant_provider_resolver.zig` | 11 | all 4 fns leak-capable | arena — every caller is `tenant_provider.zig`, whose own functions all resolve to handlers |
-| `tenant_model_entries.zig` | 6 | `ensureEntry` leak-capable | arena — same single caller, same resolution |
-| `secret_probe.zig` | 3 | `probeSelfManagedSecret` 2 of 2 | arena — both callers are `tenant_provider.zig` / `tenant_provider_resolver.zig` |
-| `tenant_provider.zig` | 3 | all 6 fns arena | arena |
-| `vault.zig` | 3 | `loadJson` 5 of 11 | **leak-capable** — `cron/Credentials`, `serve_broker`, `serve_webhook_lookup`; `loadMetadata` is arena |
-| `integration_grant_lookup.zig` | 2 | all 3 fns arena | arena |
-| `secret_reference_txn.zig` | 1 | `begin` 1 of 4 | arena — the one non-handler caller is `tenant_provider.zig` |
+| `repair_verifications.zig` | 19 | `claimDue`, `complete`, `redisCleanupDue`, `completeRedisCleanup`, `freeRedisCleanup` — all via `fleet/repair_verification_dispatcher.zig:dispatchOnce` | **proven** (`repair_verifications_unwind_integration_test.zig`) |
+| `vault.zig` | 3 | `loadJson` — `cron/Credentials`, `serve_broker`, `serve_webhook_lookup` | **UNPROVEN — the work left in 1.1** |
+| `tenant_model_entries.zig` | 6 | none; `secretExistsForTenant` and `referencedSecretCount` resolve to `unreached` | read those two call sites |
+| `secret_probe.zig` | 3 | none; `loadTenantSecretJson` and `validateSecretEndpoint` resolve to `unreached` | read those two call sites |
+| `tenant_provider_resolver.zig` | 11 | none — every path ends in a handler | arena; `tenant_provider_resolver_alloc_test.zig` proves arena-backed rungs |
+| `tenant_provider.zig` | 3 | none | arena |
+| `integration_grant_lookup.zig` | 2 | none | arena |
+| `secret_reference_txn.zig` | 1 | none | arena (its Dimension 1.7 defect is separate and already closed) |
 
-**The limit this exposes, and it is the reason for the two-column table.** `--fn`
-classifies each CALLER by its file's class, so when a caller file carries an
-inflated label the per-function answer inherits it. Six of the eight rows above
-funnel through `state/tenant_provider.zig`, which is `repeating` for exactly one
-reason: `Mode` is an enum with a method, held as a value, and the pruning rule
-keeps such an edge deliberately. The verdict errs toward MORE work, never less —
-but it does not deliver per-function precision for the cluster that started this,
-and one hop of hand-tracing was still needed to reach the truth column.
+**Four `unreached` verdicts are not four cleared rungs.** They mean no call site
+matches, which is a shape the tool cannot follow — a method value, a function
+pointer — not proof that nothing calls them. Read them before grading 1.1.
 
-`vault.loadJson`'s 5-of-11 answer needs no hand-tracing: `cron/Credentials`,
-`serve_broker` and `serve_webhook_lookup` are roots themselves.
+### One hop was not enough (Aug 22, 2026)
+
+> Indy (2026-08-22): chose "make `--fn` transitive" over hand-tracing the extra
+> hop — context: 17 of Dimension 1.1's 48 rungs read leak-capable at one hop and
+> arena when traced, and Dimensions 1.2/1.3 hold ~187 rungs never checked at all.
+
+The first `--fn` classified each CALLER by that caller's FILE class, so an
+inflated label propagated one level down. Six of the eight files above funnel
+through `state/tenant_provider.zig`, which is `repeating` for exactly one reason:
+`Mode` is an enum carrying a method, held as a value, and the edge rule keeps such
+an import deliberately. One hop called those six leak-capable; every path out of
+them ends in a handler.
+
+`rung_call_trace.py` walks the (file, function) graph until each branch
+terminates in something that decides the answer — a long-lived root, the handler
+tree, or a lost trail — and prints the witness chain for the worst branch:
+
+```
+$ python3 scripts/classify_rung_callers.py --fn agentsfleetd/state/secret_probe.zig:probeSelfManagedSecret
+agentsfleetd/state/secret_probe.zig:probeSelfManagedSecret: arena, reached by
+  agentsfleetd/http/handlers/tenant_provider.zig:probeSelfManagedOrFail
+    agentsfleetd/state/tenant_provider.zig:probeSelfManaged
+      agentsfleetd/state/secret_probe.zig:probeSelfManagedSecret
+
+ARENA-BACKED: every path ends under the per-request arena. Cosmetic; skip it.
+```
+
+**Two terminations that decide nothing, kept apart on purpose.**
+
+- **The trail breaks mid-walk.** An intermediate hop has no findable caller —
+  `fleet/service.zig:resolveProviderForLease` is the live example. That branch
+  inherits the hop's own FILE class and the verdict is marked `⚠️ DEGRADED`.
+  Dropping it would be the one error direction that hides a leak.
+- **Nothing calls the function being proven.** The answer is `UNRESOLVED`, never
+  the file's class — inheriting it at the top of the walk would hand back exactly
+  the inflated label the walk replaces.
+
+Both are pinned by `rung_call_trace_test.py`, along with the mixed file, the
+inflated middle file, worst-branch-wins, and a cycle.
 
 ### Leak log — real defects the allocation-failure proofs caught
 

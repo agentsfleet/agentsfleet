@@ -233,36 +233,91 @@ def import_graph(files: list[str], pruned: list[tuple[str, str]] | None = None) 
     return edges
 
 
+def call_patterns(text: str, here: str, target: str, fn_name: str) -> list[str]:
+    """Regexes matching a call to `fn_name` on `target`, from a file at `here`.
+
+    Callers are found through the binding, so a file that merely imports the
+    target for a type is absent from the answer by construction.
+    """
+    patterns = []
+    for name, rel, symbol in BINDING_RE.findall(text):
+        if os.path.normpath(os.path.join(here, rel)) != target:
+            continue
+        if symbol == fn_name:
+            patterns.append(rf"\b{re.escape(name)}\s*\(")
+        else:
+            patterns.append(rf"\b{re.escape(name)}\s*\.\s*{re.escape(fn_name)}\s*\(")
+    rel_any = os.path.relpath(target, here).replace(os.sep, "/")
+    patterns.append(rf'@import\("{re.escape(rel_any)}"\)\s*\.\s*{re.escape(fn_name)}\s*\(')
+    return patterns
+
+
+def call_offsets(text: str, here: str, target: str, fn_name: str) -> list[int]:
+    """Where in `text` `fn_name` is called on `target`."""
+    return sorted(
+        m.start()
+        for pat in call_patterns(text, here, target, fn_name)
+        for m in re.finditer(pat, text)
+    )
+
+
 def callers_of(files: list[str], target: str, fn_name: str) -> list[str]:
     """Every file that CALLS `fn_name` on `target`.
 
     The class label answers "can this FILE leak". A proof needs "can this
     FUNCTION leak", and the two diverge whenever a file mixes a worker-called
     function with a handler-called one — which is how three proofs in this
-    milestone were written against arena-backed rungs. Callers are found through
-    the binding, so a file that merely imports the target for a type is absent
-    from the answer by construction.
+    milestone were written against arena-backed rungs.
     """
     hits = []
     for path in files:
         if path == target:
             continue
         text = read_source(path)
-        if not text:
-            continue
-        here = os.path.dirname(path)
-        patterns = []
-        for name, rel, symbol in BINDING_RE.findall(text):
-            if os.path.normpath(os.path.join(here, rel)) != target:
-                continue
-            if symbol == fn_name:
-                patterns.append(rf"\b{re.escape(name)}\s*\(")
-            else:
-                patterns.append(rf"\b{re.escape(name)}\s*\.\s*{re.escape(fn_name)}\s*\(")
-        rel_any = os.path.relpath(target, here).replace(os.sep, "/")
-        patterns.append(
-            rf'@import\("{re.escape(rel_any)}"\)\s*\.\s*{re.escape(fn_name)}\s*\('
-        )
-        if any(re.search(pat, text) for pat in patterns):
+        if text and call_offsets(text, os.path.dirname(path), target, fn_name):
             hits.append(path)
     return hits
+
+
+FN_SPAN_RE = re.compile(r"\bfn\s+(\w+)\s*\(")
+
+
+def function_spans(text: str) -> list[tuple[str, int, int]]:
+    """(name, start, end) for every function body, innermost resolvable by span.
+
+    A call site alone does not say which function performs it, and that is the
+    whole difference between "this FILE is reached from a worker" and "this
+    FUNCTION is". Nested declarations are kept, so `enclosing_fn` can pick the
+    innermost.
+    """
+    spans = []
+    for match in FN_SPAN_RE.finditer(text):
+        depth, i = 1, match.end()
+        while i < len(text) and depth:  # past the argument list
+            if text[i] == "(":
+                depth += 1
+            elif text[i] == ")":
+                depth -= 1
+            i += 1
+        brace = text.find("{", i)
+        semi = text.find(";", i)
+        if brace < 0 or (0 <= semi < brace):
+            continue  # a declaration with no body
+        depth, j = 1, brace + 1
+        while j < len(text) and depth:
+            if text[j] == "{":
+                depth += 1
+            elif text[j] == "}":
+                depth -= 1
+            j += 1
+        spans.append((match.group(1), match.start(), j))
+    return spans
+
+
+def enclosing_fn(spans: list[tuple[str, int, int]], offset: int) -> str | None:
+    """The innermost function whose body contains `offset`."""
+    best = None
+    for name, start, end in spans:
+        if start <= offset < end and (best is None or start > best[1]):
+            best = (name, start)
+    return best[0] if best else None

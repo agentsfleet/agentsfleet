@@ -21,16 +21,21 @@ arena-backed once their function's callers were read — `vault.loadMetadata`,
 `tenant_provider.probeSelfManaged`, and `integration_grant_lookup.approvedSet`.
 `--fn` now returns exactly those verdicts.
 
-Two changes landed on Aug 22 (Indy's ruling, recorded in Discovery):
+Three changes landed on Aug 22, on two rulings recorded in Discovery:
 
 - **An import taken for a type or a constant is no longer an edge.** 692 edges
   dropped; leak-capable 301 → 277, `arena` 219 → 240, `unreached` 15 → 18.
   `--pruned` lists what went.
 - **`--fn FILE:NAME`** — the per-function check, above.
+- **`--fn` walks the whole call graph**, not one hop. The first version
+  classified each caller by that caller's FILE class, so an inflated label
+  propagated: 17 of Dimension 1.1's 48 rungs read leak-capable and traced to
+  arena.
 
-Where the graph still cannot see is a table in Discovery. Both residual shapes
-err toward KEEPING a file in the work list, so they waste effort and never hide a
-leak — and `--fn` is subject to neither.
+Two verdicts decide nothing and are kept apart. `⚠️ DEGRADED` means a branch lost
+the trail mid-walk and fell back to that hop's file class — safe direction, but
+no sharper than the old answer there. `UNRESOLVED` means nothing calls the
+function being proven: read the call sites, do not treat it as cleared.
 
 ## Scope / status
 

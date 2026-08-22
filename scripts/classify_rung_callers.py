@@ -30,11 +30,9 @@ or a constant is not one. `--pruned` lists what that dropped.
 
 Granularity is per FILE, and the direction of that error is deliberate: a file
 is `arena` only when NO long-lived root reaches it, so the arena set never
-absorbs a rung that can leak. The repeating set may still contain a function only
-handlers call, which makes it an over-estimate of the work and never an
-under-estimate of the risk. `--fn FILE:NAME` closes that last gap for one
-function: it classifies every caller that actually calls NAME, so a proof author
-learns whether ANY of them outlives a request before writing a line.
+absorbs a rung that can leak. It may still hold a function only handlers call,
+which over-estimates the work and never under-estimates the risk. `--fn FILE:NAME`
+closes that gap for one function by walking the call graph in `rung_call_trace.py`.
 """
 
 from __future__ import annotations
@@ -47,6 +45,7 @@ import sys
 from collections import defaultdict, deque
 
 from rung_call_edges import callers_of, import_graph, is_test_path, read_source, zig_sources
+from rung_call_trace import Site, Tree
 
 CLASS_REPEATING = "repeating"
 CLASS_BOOT_ONCE = "boot-once"
@@ -58,6 +57,14 @@ CLASS_UNREACHED = "unreached"
 LEAK_CAPABLE = (CLASS_REPEATING, CLASS_BOOT_ONCE)
 
 ERRDEFER_RE = re.compile(r"^\s*errdefer\b")
+
+#: What `--fn` tells a proof author to do about its answer.
+VERDICT_LINES = {
+    CLASS_REPEATING: "LEAK-CAPABLE: the chain ends in a loop that outlives a request. Prove it.",
+    CLASS_BOOT_ONCE: "LEAK-CAPABLE: the chain ends in startup. Leaks once, but prove it.",
+    CLASS_ARENA: "ARENA-BACKED: every path ends under the per-request arena. Cosmetic; skip it.",
+    CLASS_UNREACHED: "UNRESOLVED: no caller found. Read the call sites before proving anything.",
+}
 
 #: The handler tree is the arena boundary, not merely one more directory.
 HANDLER_TREE = "agentsfleetd/http/handlers"
@@ -254,25 +261,26 @@ def main(argv: list[str] | None = None) -> int:
             print(f"no such source file: {rel}", file=sys.stderr)
             return 2
         classes = class_map(args.src, files, edges)
-        hits = callers_of(files, target, fn_name)
-        if not hits:
+        tree = Tree(args.src, files, handler_root, repeating_roots, boot_roots, classes)
+        verdict = tree.resolve(Site(target, fn_name))
+
+        print(f"{args.fn}: {verdict.cls}, reached by")
+        for depth, site in enumerate(verdict.chain):
+            print(f"  {'  ' * depth}{site.label(args.src)}")
+        print("\n" + VERDICT_LINES[verdict.cls])
+        if verdict.degraded:
             print(
-                f"{rel}:{fn_name}: no caller found. Either nothing calls it, or it is "
-                "reached by a shape this tool cannot see — read the call sites before "
-                "trusting a proof either way."
+                "\n⚠️  DEGRADED: one branch lost the call trail — a method value, a "
+                "function pointer, a shape regex cannot follow — and fell back to that "
+                "file's own class. The verdict is no sharper than the one-hop answer "
+                "there. Read that hop before acting on an ARENA-BACKED result."
             )
-            return 0
-        print(f"{rel}:{fn_name} is called by")
-        for caller in sorted(hits, key=lambda f: (classes[f], f)):
-            print(f"  {classes[caller]:<10}  {os.path.relpath(caller, args.src)}")
-        leak = [c for c in hits if classes[c] in LEAK_CAPABLE]
-        if leak:
-            print(f"\nLEAK-CAPABLE: {len(leak)} of {len(hits)} callers outlive a request.")
-        else:
-            print(
-                "\nARENA-BACKED: every caller is under the per-request arena. "
-                "Proving these rungs is the cosmetic work this sweep excludes."
-            )
+
+        hops = callers_of(files, target, fn_name)
+        if hops:
+            print("\nDirect callers, by their own file class:")
+            for caller in sorted(hops, key=lambda f: (classes[f], f)):
+                print(f"  {classes[caller]:<10}  {os.path.relpath(caller, args.src)}")
         return 0
 
     if args.why:
