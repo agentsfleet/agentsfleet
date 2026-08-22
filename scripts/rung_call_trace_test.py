@@ -98,6 +98,37 @@ class RungCallTraceTest(unittest.TestCase):
             ],
         )
 
+    def test_a_private_helper_is_reached_through_its_own_file(self) -> None:
+        """114 of 130 `unreached` rungs were this, and none of them were dead.
+
+        A private helper has no cross-file caller at all: the `pub fn` beside it
+        does the calling. A walk that skips the function's own file calls that
+        helper unreachable and drops it out of the sweep.
+        """
+        write(self.src, "agentsfleetd/cron/FireService.zig", """
+            const leaf = @import("../state/leaf.zig");
+            fn tick() void { leaf.entry(); }
+        """)
+        write(self.src, "agentsfleetd/state/leaf.zig", """
+            pub fn entry() void { helper(); }
+            fn helper() void { errdefer cleanup(); }
+        """)
+        self.assertEqual(self.resolve("agentsfleetd/state/leaf.zig", "helper").cls,
+                         trace.CLASS_REPEATING)
+
+    def test_a_method_call_inside_the_file_counts_too(self) -> None:
+        """`self.helper()` is a call, and the walk cannot tell it from any other."""
+        write(self.src, "agentsfleetd/cron/FireService.zig", """
+            const leaf = @import("../state/leaf.zig");
+            fn tick() void { leaf.entry(); }
+        """)
+        write(self.src, "agentsfleetd/state/leaf.zig", """
+            pub fn entry(self: Leaf) void { self.helper(); }
+            fn helper(self: Leaf) void { errdefer cleanup(); }
+        """)
+        self.assertEqual(self.resolve("agentsfleetd/state/leaf.zig", "helper").cls,
+                         trace.CLASS_REPEATING)
+
     def test_the_worst_branch_wins(self) -> None:
         write(self.src, "agentsfleetd/cron/FireService.zig", """
             const leaf = @import("../state/leaf.zig");

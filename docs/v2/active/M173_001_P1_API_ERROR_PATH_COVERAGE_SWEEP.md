@@ -961,27 +961,57 @@ leak.
 proven, so a file importing the target for a type is absent from its answer by
 construction — which is why it, and not the class label, is what a proof rests on.
 
-### Dimension 1.1, resolved function by function (Aug 22, 2026)
+### Dimension 1.1 is DONE, and the rest is not what was predicted (Aug 22, 2026)
 
-Every `pub fn` in the 8 leak-capable `state/**` files run through `--fn`, which
-now walks the call graph rather than reading one hop (see below). **Dimension 1.1
-is NOT done: `vault.loadJson` is leak-capable, carries 3 rungs, and has no
-allocation-failure proof in either tier.**
+Every `errdefer` rung in the 8 leak-capable `state/**` files attributed to its
+enclosing function and resolved through the call graph. **All 19 leak-capable
+rungs are `repair_verifications`, and all 19 were already proven**
+(`repair_verifications_unwind_integration_test.zig`). The other 29 are arena.
 
-| File | Rungs | Leak-capable functions | Status |
+| File | Rungs | Verdict |
+|---|---|---|
+| `repair_verifications.zig` | 19 | **repeating** via `fleet/repair_verification_dispatcher.zig:dispatchOnce` — proven |
+| `tenant_provider_resolver.zig` | 11 | arena — every path ends in a handler; `tenant_provider_resolver_alloc_test.zig` proves arena-backed rungs |
+| `tenant_model_entries.zig` | 6 | arena |
+| `secret_probe.zig` | 3 | arena |
+| `tenant_provider.zig` | 3 | arena |
+| `vault.zig` | 3 | arena — in `loadMetadata` and `rowToMetadata` |
+| `integration_grant_lookup.zig` | 2 | arena |
+| `secret_reference_txn.zig` | 1 | arena (its Dimension 1.7 defect is separate and already closed) |
+
+**Correction, same day.** An earlier revision of this section said `vault.loadJson`
+was leak-capable, carried 3 rungs and was unproven. `loadJson` IS leak-capable —
+`cron/Credentials`, `serve_broker`, `serve_webhook_lookup` — but it carries **no
+`errdefer` rung at all**. `vault.zig`'s 3 rungs sit in `loadMetadata` and
+`rowToMetadata`, both arena. The file's rung count was read as the function's.
+
+**The prediction for 1.2/1.3 was wrong, and by a lot.** Working from 1.1 alone the
+expectation was that most of the remaining rungs would also resolve arena. They
+do not:
+
+| Dimension | Leak-capable, clean chain | Leak-capable, degraded | Arena / unresolved |
 |---|---|---|---|
-| `repair_verifications.zig` | 19 | `claimDue`, `complete`, `redisCleanupDue`, `completeRedisCleanup`, `freeRedisCleanup` — all via `fleet/repair_verification_dispatcher.zig:dispatchOnce` | **proven** (`repair_verifications_unwind_integration_test.zig`) |
-| `vault.zig` | 3 | `loadJson` — `cron/Credentials`, `serve_broker`, `serve_webhook_lookup` | **UNPROVEN — the work left in 1.1** |
-| `tenant_model_entries.zig` | 6 | none; `secretExistsForTenant` and `referencedSecretCount` resolve to `unreached` | read those two call sites |
-| `secret_probe.zig` | 3 | none; `loadTenantSecretJson` and `validateSecretEndpoint` resolve to `unreached` | read those two call sites |
-| `tenant_provider_resolver.zig` | 11 | none — every path ends in a handler | arena; `tenant_provider_resolver_alloc_test.zig` proves arena-backed rungs |
-| `tenant_provider.zig` | 3 | none | arena |
-| `integration_grant_lookup.zig` | 2 | none | arena |
-| `secret_reference_txn.zig` | 1 | none | arena (its Dimension 1.7 defect is separate and already closed) |
+| 1.1 `state/**` | 19 rungs, 3 fns — all proven | 0 | 29 |
+| 1.2 long-lived services | 21 rungs, 10 fns | 37 rungs, 21 fns | 32 |
+| 1.3 fleet + runner | 41 rungs, 31 fns | 51 rungs, 22 fns | 5 |
+| 1.8 the remainder | 32 rungs, 17 fns | 4 rungs, 4 fns | 6 |
+| **Total** | **113 rungs, 61 functions** | **92 rungs, 47 functions** | 72 |
 
-**Four `unreached` verdicts are not four cleared rungs.** They mean no call site
-matches, which is a shape the tool cannot follow — a method value, a function
-pointer — not proof that nothing calls them. Read them before grading 1.1.
+`state/**` was the exception, not the pattern. The queue and Redis pool, the
+secrets crypto primitives, the liveness and reclaim sweepers, the runner daemon's
+policy duplication and config load — those resolve to genuine long-lived loops
+with a clean chain. **A proof covers a function, not a rung**, so the clean set is
+61 proofs, not 113.
+
+### A private helper is not an unreached one (Aug 22, 2026)
+
+The first walk skipped the function's own file, so a helper called only by the
+`pub fn` beside it reported no caller. That is not a rare shape: **114 of the 130
+rungs the sweep first called `unreached` were exactly it**, and none of them were
+dead. `intra_file_call_offsets` counts both spellings — the bare call and the
+method call on a value — and the method form can connect two same-named methods,
+which adds work rather than hiding any. After the fix, `unreached` falls from 130
+rungs to 21.
 
 ### One hop was not enough (Aug 22, 2026)
 

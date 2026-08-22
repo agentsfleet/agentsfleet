@@ -279,6 +279,25 @@ def callers_of(files: list[str], target: str, fn_name: str) -> list[str]:
     return hits
 
 
+def intra_file_call_offsets(text: str, fn_name: str, own_spans) -> list[int]:
+    """Where `fn_name` is called from elsewhere in its OWN file.
+
+    A private helper called only by a `pub fn` beside it has no cross-file caller
+    at all, so a walk that skips the file itself calls it unreachable — 114 of
+    130 such rungs in this repository. Both spellings count: the bare call, and
+    the method call on a value whose type may or may not be this file's. The
+    method form can over-connect two same-named methods, which adds work rather
+    than hiding any.
+    """
+    hits = [
+        m.start()
+        for pattern in (rf"(?<![A-Za-z0-9_.]){re.escape(fn_name)}\s*\(",
+                        rf"\.{re.escape(fn_name)}\s*\(")
+        for m in re.finditer(pattern, text)
+    ]
+    return sorted(h for h in hits if not any(lo <= h < hi for _, lo, hi in own_spans))
+
+
 FN_SPAN_RE = re.compile(r"\bfn\s+(\w+)\s*\(")
 
 

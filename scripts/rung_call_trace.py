@@ -29,7 +29,13 @@ from __future__ import annotations
 import os
 from typing import NamedTuple
 
-from rung_call_edges import call_offsets, enclosing_fn, function_spans, read_source
+from rung_call_edges import (
+    call_offsets,
+    enclosing_fn,
+    function_spans,
+    intra_file_call_offsets,
+    read_source,
+)
 
 CLASS_REPEATING = "repeating"
 CLASS_BOOT_ONCE = "boot-once"
@@ -88,6 +94,13 @@ class Tree:
 
     def callers(self, site: Site) -> list[Site]:
         found = []
+        own_spans = self.spans(site.file)
+        for offset in intra_file_call_offsets(
+            self._text[site.file], site.fn, [s for s in own_spans if s[0] == site.fn]
+        ):
+            caller = enclosing_fn(own_spans, offset)
+            if caller and caller != site.fn:
+                found.append(Site(site.file, caller))
         for path in self.files:
             if path == site.file:
                 continue
