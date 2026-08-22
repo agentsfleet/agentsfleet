@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M173
 **Workstream:** 001
 **Date:** Aug 20, 2026
-**Status:** IN_PROGRESS
+**Status:** IN_PROGRESS — PARKED. Filed under `done/` on Indy's direction (Aug 22, 2026) rather than on completion; §1 Dimension 1.1 is the only Dimension finished. See §Parked at for the 21 proofs §1 still owes.
 **Priority:** P1 — 274 allocation-failure cleanup paths in a long-running daemon have never executed, so a leak on any of them reaches operators as unexplained memory growth; `agentsfleetd` also sits 0.36 points above a floor it cannot fall below
 **Categories:** API
 **Batch:** B1 — single workstream, no parallel sibling
@@ -161,14 +161,14 @@ unit tier proves the ladder unwinds; the integration tier proves the ladder is
 on the path production actually takes. Neither alone discharges a Dimension —
 `/write-unit-test` and `/write-integration-test` both run, per rung module.
 
-- **Dimension 1.1** — every leak-capable rung in `src/agentsfleetd/state/**` (48 across 8 files) unwinds under induced failure at every site without leaking, proven in both tiers → Test `test_state_reads_unwind_without_leaking`
-- **Dimension 1.2** — every leak-capable rung in the daemon's long-lived services — `cron/**`, `queue/**`, `events/**`, `auth/**`, `secrets/**`, `session/**`, `db/**`, `observability/**` — does the same (90 across 31 files). These are the cron fire service, the Redis workers, the event bus and the key-set refresh: the callers whose allocators outlive every request, and the ones the milestone's justification names → Test `test_long_lived_services_unwind_without_leaking`
-- **Dimension 1.3** — every leak-capable rung in `src/agentsfleetd/fleet/**`, `fleet_runtime/**`, `fleet_library/**` and in `src/runner/**` (97 across 33 files) does the same → Test `test_fleet_and_runner_paths_unwind_without_leaking`
-- **Dimension 1.8** — every leak-capable rung no Dimension above owns (42 across 16 files) does the same. The three Dimensions are cut by directory and the leak-capable set is not, so `cmd/**`, `config/**`, `credentials/**` and `http/stream_registry.zig` fall between them — the same directory-vs-class gap that re-cut §1 once already. Dimension 1.5 already puts them in scope; this names an owner → Test `test_remaining_leak_capable_paths_unwind_without_leaking`
-- **Dimension 1.4** — a function that swallows an allocation failure instead of propagating it fails the proof rather than passing it silently, and is fixed to propagate → Test `test_swallowed_allocation_failure_is_a_failure`
-- **Dimension 1.5** — **zero LEAK-CAPABLE `errdefer` rungs remain unproven.** The arena-backed and unreached rungs are explicitly NOT swept: §4 records them as reachable only under an allocator that frees them regardless, which is a triage outcome, not a gap → Test `test_no_unproven_leak_capable_rungs_remain`
-- **Dimension 1.7** — **a rung that RUNS is not a rung that WORKS.** Every leak-capable rung the coverage report calls hit carries a test that asserts its EFFECT, not merely a test that executes it. §1's other Dimensions work from unhit lines and are structurally blind to this: a rung executed by a test that asserts nothing about it is counted as covered. Worked example and the 46-rung floor in Discovery → Test `test_hit_rungs_assert_their_effect`
-- **Dimension 1.6** — the boundary itself cannot rot. `classify_rung_callers.py` is the grading instrument, so a new long-lived caller reaching a file previously classed `arena` must move that file into the swept set rather than pass silently → Test `test_rung_caller_classification_is_pinned`
+- **Dimension 1.1 — DONE** — every leak-capable rung in `src/agentsfleetd/state/**` (48 across 8 files) unwinds under induced failure at every site without leaking, proven in both tiers → Test `test_state_reads_unwind_without_leaking`
+- **Dimension 1.2 — IN_PROGRESS** — every leak-capable rung in the daemon's long-lived services — `cron/**`, `queue/**`, `events/**`, `auth/**`, `secrets/**`, `session/**`, `db/**`, `observability/**` — does the same (90 across 31 files). These are the cron fire service, the Redis workers, the event bus and the key-set refresh: the callers whose allocators outlive every request, and the ones the milestone's justification names → Test `test_long_lived_services_unwind_without_leaking`
+- **Dimension 1.3 — IN_PROGRESS** — every leak-capable rung in `src/agentsfleetd/fleet/**`, `fleet_runtime/**`, `fleet_library/**` and in `src/runner/**` (97 across 33 files) does the same → Test `test_fleet_and_runner_paths_unwind_without_leaking`
+- **Dimension 1.8 — IN_PROGRESS** — every leak-capable rung no Dimension above owns (42 across 16 files) does the same. The three Dimensions are cut by directory and the leak-capable set is not, so `cmd/**`, `config/**`, `credentials/**` and `http/stream_registry.zig` fall between them — the same directory-vs-class gap that re-cut §1 once already. Dimension 1.5 already puts them in scope; this names an owner → Test `test_remaining_leak_capable_paths_unwind_without_leaking`
+- **Dimension 1.4 — IN_PROGRESS** — a function that swallows an allocation failure instead of propagating it fails the proof rather than passing it silently, and is fixed to propagate → Test `test_swallowed_allocation_failure_is_a_failure`
+- **Dimension 1.5 — IN_PROGRESS** — **zero LEAK-CAPABLE `errdefer` rungs remain unproven.** The arena-backed and unreached rungs are explicitly NOT swept: §4 records them as reachable only under an allocator that frees them regardless, which is a triage outcome, not a gap → Test `test_no_unproven_leak_capable_rungs_remain`
+- **Dimension 1.7 — IN_PROGRESS** — **a rung that RUNS is not a rung that WORKS.** Every leak-capable rung the coverage report calls hit carries a test that asserts its EFFECT, not merely a test that executes it. §1's other Dimensions work from unhit lines and are structurally blind to this: a rung executed by a test that asserts nothing about it is counted as covered. Worked example and the 46-rung floor in Discovery → Test `test_hit_rungs_assert_their_effect`
+- **Dimension 1.6 — IN_PROGRESS** — the boundary itself cannot rot. `classify_rung_callers.py` is the grading instrument, so a new long-lived caller reaching a file previously classed `arena` must move that file into the swept set rather than pass silently → Test `test_rung_caller_classification_is_pinned`
 
 ### §2 — Failure response arms reached by the failure they answer
 
@@ -206,6 +206,124 @@ A sweep that lands without moving the floor decays back to where it started, one
 - **Dimension 5.1** — each component's enforced floor equals the whole point below its landed measured rate, moved in the same commit as the tests that clear it → Test `test_floors_match_landed_rates`
 - **Dimension 5.2** — `agentsfleetd` carries a target above its floor again, so the component has somewhere to aim → Test `test_daemon_target_exceeds_floor`
 - **Dimension 5.3** — the architecture doc's floor table matches the enforced values, so the published policy and the gate cannot disagree → Test `make lint-governance`
+
+## Parked at (Aug 22, 2026)
+
+**Dimension 1.1 is DONE.** Every other Dimension and §2–§5 are `IN_PROGRESS`. The
+spec stays in `active/`; nothing here is deferred, because nothing was claimed
+complete. Datastores were left running and are now down (`make down`).
+
+### The instrument is finished; the proofs are not
+
+Four modules and four self-tests, all green under `make lint-all`:
+
+| Module | What it decides |
+|---|---|
+| `scripts/rung_call_edges.py` | which `@import`s are calls, and where one function is called |
+| `scripts/rung_call_trace.py` | the transitive `(file, function)` walk, and `--sweep`'s work list |
+| `scripts/classify_rung_callers.py` | the four-class file table, `--fn`, `--why`, `--pruned`, `--sweep` |
+| `scripts/classify_unhit_lines.py` | which lines the coverage report never executed |
+
+### The 21 proofs §1 owes
+
+`--sweep` reports 113 leak-capable rungs in 61 functions on a clean chain. **Most
+already run under an existing proof.** Crossed against the unhit `errdefer` class
+— which is what R1 actually grades — the remaining work is **31 rungs in 21
+functions**:
+
+```
+python3 scripts/classify_rung_callers.py --sweep          # the work list
+python3 scripts/classify_unhit_lines.py --class errdefer  # what R1 grades
+```
+
+Densest first: `cmd/cli_credential_lookup.zig:copyRow` (4) ·
+`runner/daemon/worker_pool.zig:spawn` · `fleet_runtime/approval_gate_sweeper.zig:fetchExpired` ·
+`events/subscription_hub.zig:start` · `secrets/crypto_store.zig:collectDecrypted` ·
+`cmd/serve_webhook_lookup.zig:{lookup,fetchHmacRow}` · `cmd/api_key_lookup.zig:copyRow`
+(2 each) · then 13 single-rung functions across `runner/**`, `config/**`,
+`queue/redis_subscriber.zig:nextMessage`, `fleet/liveness_sweeper.zig:sweepOfflineRunner`.
+
+**Two of the 21 are Linux-gated, not merely unproven.** `sandbox_args.buildArgv`
+and `buildSandboxPrefix` reach their rungs only when `isSandboxed(cfg)` holds,
+which is false on a macOS host — they need the Linux lane or a §4 triage entry,
+not a proof written here. `appendBindFlags` beside them is pure and was the
+intended first proof.
+
+**The count rests on a stale report.** The merged `cobertura.xml` is older than
+its own component reports. Re-run `make test-coverage-zig` and `make test-integration`
+before grading R1 — the 31 will move.
+
+### The 47 degraded functions are NOT in the 21
+
+92 rungs across 47 functions read leak-capable but had a file-class fallback
+decide some hop, so they are no sharper than the pre-walk answer. Proving one is
+a coin flip on whether it is cosmetic. They need either a sharper walk or a read
+of the hop that degraded — recorded, not deferred.
+
+### Ungraded
+
+`make test-unit-all`, `make memleak`, cross-compile ×2, `gitleaks detect`. Green
+at park: `make lint-all`, `make check-version` (0.26.2), the Zig unit graph at
+each commit, and the four Python self-test modules (33 tests).
+
+## Parked at (Aug 22, 2026)
+
+**Dimension 1.1 is DONE.** Every other Dimension and §2–§5 are `IN_PROGRESS`. The
+spec stays in `active/`; nothing here is deferred, because nothing was claimed
+complete.
+
+### The instrument is finished; the proofs are not
+
+Four modules and four self-tests:
+
+| Module | What it decides |
+|---|---|
+| `scripts/rung_call_edges.py` | which `@import`s are calls, and where one function is called |
+| `scripts/rung_call_trace.py` | the transitive `(file, function)` walk, and `--sweep`'s work list |
+| `scripts/classify_rung_callers.py` | the four-class file table, `--fn`, `--why`, `--pruned`, `--sweep` |
+| `scripts/classify_unhit_lines.py` | which lines the coverage report never executed |
+
+### The 21 proofs §1 owes
+
+`--sweep` reports 113 leak-capable rungs in 61 functions on a clean chain. **Most
+already run under an existing proof.** Crossed against the unhit `errdefer` class
+— which is what R1 actually grades — the remaining work is **31 rungs in 21
+functions**:
+
+```
+python3 scripts/classify_rung_callers.py --sweep          # the work list
+python3 scripts/classify_unhit_lines.py --class errdefer  # what R1 grades
+```
+
+Densest first: `cmd/cli_credential_lookup.zig:copyRow` (4) ·
+`runner/daemon/worker_pool.zig:spawn` · `fleet_runtime/approval_gate_sweeper.zig:fetchExpired` ·
+`events/subscription_hub.zig:start` · `secrets/crypto_store.zig:collectDecrypted` ·
+`cmd/serve_webhook_lookup.zig:{lookup,fetchHmacRow}` · `cmd/api_key_lookup.zig:copyRow`
+(2 each) · then 13 single-rung functions across `runner/**`, `config/**`,
+`queue/redis_subscriber.zig:nextMessage`, `fleet/liveness_sweeper.zig:sweepOfflineRunner`.
+
+**Two of the 21 are Linux-gated, not merely unproven.** `sandbox_args.buildArgv`
+and `buildSandboxPrefix` reach their rungs only when `isSandboxed(cfg)` holds,
+which is false on a macOS host — they need the Linux lane or a §4 triage entry,
+not a proof written here. `appendBindFlags` beside them is pure and was the
+intended first proof.
+
+**The count rests on a stale report.** The merged `cobertura.xml` is older than
+its own component reports. Re-run `make test-coverage-zig` and `make test-integration`
+before grading R1 — the 31 will move.
+
+### The 47 degraded functions are NOT in the 21
+
+92 rungs across 47 functions read leak-capable but had a file-class fallback
+decide some hop, so they are no sharper than the pre-walk answer. Proving one is
+a coin flip on whether it is cosmetic. They need either a sharper walk or a read
+of the hop that degraded — recorded, not deferred.
+
+### Ungraded
+
+`make test-unit-all`, `make memleak`, cross-compile ×2, `gitleaks detect`. Green
+at park: `make lint-all`, `make check-version` (0.26.2), the Zig unit graph at
+each commit, and the four Python self-test modules (33 tests).
 
 ## Interfaces
 
