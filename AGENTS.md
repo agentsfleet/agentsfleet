@@ -10,13 +10,16 @@ facts.
 
 - Write the product as `agentsfleet`; binaries are `agentsfleetd` and
   `agentsfleet-runner`. API entities use `fleet`, `fleet_id`, and `/fleets`.
-- Drive work with `orly gate` (work → verify → pr). The hooks run the cheap
-  tier only — `orly gate work` in pre-commit and pre-push. `orly gate pr` runs
-  by hand at CHORE(close), immediately before `gh pr create`, because it
-  executes the full declared verify set including `make memleak` and
-  `make test-integration`; those lanes belong to Continuous Integration (CI)
-  and to the pre-PR check, never to a push holding a Secure Shell (SSH)
-  session open. `make harness-verify`
+- Drive work with `orly gate` (work → verify → pr). Hooks run `orly gate work`;
+  `orly gate pr` runs by hand at CHORE(close), before `gh pr create`.
+  `.oracle/orly.json` declares `conform`, `verify.lint`, `verify.unit`, and
+  `verify.version` — deliberately not `test-integration` or `memleak`. orly
+  runs those two as its slow tier inside `orly gate pr`, and they belong to
+  Continuous Integration (CI): they need real Postgres and Redis, they take
+  minutes, and putting them behind a gate a developer runs to open a Pull
+  Request is how a push ends up holding a Secure Shell (SSH) session open.
+  Run them with `make test-integration` and `make memleak` when the diff
+  warrants it. `make harness-verify`
   satisfies CONFORM only; behavioral verification uses the profile's
   `verify.*` commands (`make lint-all`, `make test-unit-all`,
   `make test-integration`, `make memleak`, `make check-version`). REVIEW

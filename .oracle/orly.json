@@ -25,18 +25,6 @@
         "test-unit-all"
       ]
     ],
-    "verify.integration": [
-      [
-        "make",
-        "test-integration"
-      ]
-    ],
-    "verify.memory": [
-      [
-        "make",
-        "memleak"
-      ]
-    ],
     "verify.version": [
       [
         "make",
