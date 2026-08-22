@@ -66,7 +66,7 @@ async function createWorkspaceFromSwitcher(page: Page, name: string): Promise<vo
   const dialog = page.getByRole("dialog", { name: "Create workspace" });
   await expect(dialog).toBeVisible();
   await dialog.getByLabel("Name").fill(name);
-  await dialog.getByRole("button", { name: "Create workspace" }).click();
+  await dialog.getByTestId("workspace-create-submit").click();
   await expect(dialog).toBeHidden({ timeout: ACTION_TIMEOUT_MS });
   await expect(switcher).toContainText(name, { timeout: ACTION_TIMEOUT_MS });
 }
