@@ -39,7 +39,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Plan tiers | none in the cost function | future paid plans manifest as grants or top-ups, never a `compute_charge` branch | §2.4 |
 | Posture switch | claim-time snapshot wins | posture resolved once, at gate time, before the receive deduct | §7 |
 | Blocked rows | terminal | no automatic replay after top-up; resume writes a continuation event | §6 |
-| Live dollar values | never in this doc | canonical on `agentsfleet.net/#pricing`; constants pinned across 4 files by `~/Projects/dotfiles/audits/cross-tier-rates.sh` | preamble, §4.2 |
+| Live dollar values | never in this doc | canonical on `agentsfleet.net/#pricing`; constants pinned across 4 files by `audits/cross-tier-rates.sh` | preamble, §4.2 |
 
 ## Traps
 
@@ -254,7 +254,7 @@ pub fn computeStageCharge(
 
 One named constant drives the run fee — `RUN_NANOS_PER_SEC`, in `src/agentsfleetd/state/tenant_billing.zig`, applied identically to **both** postures. Under platform: the run fee plus a three-tier per-token component (input / cached-input / output) from the model-library rate cache (§10). Under self-managed: the run fee only — we did not pay for the tokens, only for running the fleet.
 
-Posture changes only whether the per-token component is added (platform) or not (self-managed); the run fee is the same. That gradient is the friction-reducing signal: on-ramp on platform without a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. `RUN_NANOS_PER_SEC` is pinned across the four rate files (`tenant_billing.zig` + `rates.ts` + `app/lib/types.ts` + `cli/src/constants/billing.ts`) by `~/Projects/dotfiles/audits/cross-tier-rates.sh` so a bump surfaces immediately.
+Posture changes only whether the per-token component is added (platform) or not (self-managed); the run fee is the same. That gradient is the friction-reducing signal: on-ramp on platform without a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. `RUN_NANOS_PER_SEC` is pinned across the four rate files (`tenant_billing.zig` + `rates.ts` + `app/lib/types.ts` + `cli/src/constants/billing.ts`) by `audits/cross-tier-rates.sh` so a bump surfaces immediately.
 
 Rates come from a process-local cache in front of `core.model_library` (`state/model_rate_cache.zig`), on the shared `common.CacheTable` primitive. The table is the single source of truth; the cache exists to keep the charge path off it in the common case.
 

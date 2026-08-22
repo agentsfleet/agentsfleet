@@ -42,6 +42,19 @@ if [ -n "$partial_paths" ]; then
   exit 1
 fi
 
+# --- orly gate work ----------------------------------------------------------
+# The rules this repository carries are materialised by orly, so the gate that
+# proves them runs here rather than living only in an agent's prose. `work`
+# is the cheap tier: branch shape and declared commands, no test execution.
+# The tree is dirty by construction inside a commit hook — that is what is
+# being committed — so the tree criterion is told so rather than failing.
+if command -v orly >/dev/null 2>&1; then
+  echo "pre-commit: orly gate work"
+  orly gate work --accept-dirty || exit 1
+else
+  echo "pre-commit: orly NOT INSTALLED — rule gate skipped (npm i -g @agentsfleet/orly)" >&2
+fi
+
 # --- gitleaks on staged content ----------------------------------------------
 if ! command -v gitleaks >/dev/null 2>&1; then
   echo "pre-commit: gitleaks not installed. See https://github.com/gitleaks/gitleaks/releases" >&2

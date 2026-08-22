@@ -95,18 +95,19 @@ export AGENTSFLEET_API_URL=http://localhost:3000   # or set it once
 git config core.hooksPath .githooks
 ```
 
-Project facts live in [`AGENTS.md`](AGENTS.md). The shared operating model and
-the deterministic gate scripts live in
-[indykish/dotfiles](https://github.com/indykish/dotfiles) — this repository
-keeps no copies, so a rules change reaches every agent session without a commit
-here.
-
-`make harness-verify` runs those gates. It expects the dotfiles checkout at
-`~/Projects/dotfiles`; point it elsewhere with `ORLY_ROOT`:
+Project facts live in [`AGENTS.md`](AGENTS.md). The operating model and the
+deterministic gate scripts are committed alongside them —
+[`AGENTS.orly.md`](AGENTS.orly.md), `dispatch/`, and `audits/` — materialised
+by [orly](https://github.com/agentsfleet/orly) and recorded in
+`.oracle/orly.json`. A clone carries its own rules; nothing resolves out of a
+developer's home directory.
 
 ```bash
-make harness-verify ORLY_ROOT=/path/to/dotfiles
+bunx @agentsfleet/orly update   # re-materialise at the installed version
+orly doctor                     # report drift between the lock and the tree
 ```
+
+`make harness-verify` runs the gates from `audits/` in this repository.
 
 Read about [architecture](docs/architecture/), start with the
 [operator playbooks](playbooks/README.md), or jump into

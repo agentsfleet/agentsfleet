@@ -48,7 +48,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 2. `docs/architecture/testing.md` §Coverage and §Floors bind per folder — which lane owns which component, why test bodies are excluded from the denominator, and the raise-only floor discipline this spec must follow.
 3. `scripts/check_zig_coverage.py` — the denominator rules. A line this spec "covers" that the script already excludes is wasted work; read the exclusions before picking targets.
 4. `src/agentsfleetd/http/runner_read_integration_test.zig` — the seeded runner and lease fixtures §1 and §2 reuse rather than re-seed, for every file in the runner and lease families.
-5. `~/Projects/dotfiles/docs/greptile-learnings/RULES.md` §NDC — the rule that governs §4: an unreachable branch is deleted, never given a test that exists only to colour a coverage report.
+5. `docs/greptile-learnings/RULES.md` §NDC — the rule that governs §4: an unreachable branch is deleted, never given a test that exists only to colour a coverage report.
 
 ## Files Changed (blast radius)
 
@@ -67,8 +67,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Applicable Rules
 
-- **`~/Projects/dotfiles/docs/greptile-learnings/RULES.md`** — **NDC** (§4 deletes unreachable branches at the moment it proves them unreachable, never later), **ORP** (deleting a branch orphans its helpers; sweep them in the same commit), **FLL** (test files are exempt from the 350-line cap, product files are not — a file that grows past it during §4 deletions is split, not excused), **UFS** (fixture identifiers repeated across the new test files become named constants).
-- **`~/Projects/dotfiles/dispatch/write_zig.md`** — every file in this spec is Zig: `errdefer` and init/deinit discipline is the subject matter, and the pg-drain rule binds every new test that opens a connection.
+- **`docs/greptile-learnings/RULES.md`** — **NDC** (§4 deletes unreachable branches at the moment it proves them unreachable, never later), **ORP** (deleting a branch orphans its helpers; sweep them in the same commit), **FLL** (test files are exempt from the 350-line cap, product files are not — a file that grows past it during §4 deletions is split, not excused), **UFS** (fixture identifiers repeated across the new test files become named constants).
+- **`dispatch/write_zig.md`** — every file in this spec is Zig: `errdefer` and init/deinit discipline is the subject matter, and the pg-drain rule binds every new test that opens a connection.
 - **`docs/architecture/testing.md`** — component ownership decides which lane a new test file runs in; a test placed in the wrong lane is measured by no producer and grades nothing.
 
 ## Applicable Gates
@@ -219,6 +219,7 @@ code is out of scope and reverts.
 | R5 | Every component floor equals its landed rate rounded down (§5) | `make test-coverage-grade` | exit 0 | P0 | |
 | R6 | No reachable behaviour changed | `git diff --name-only origin/main...HEAD \| grep -vE '_test\.zig$\|\.md$\|\.py$'` | every listed file's diff is deletion-only | P0 | |
 | R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| S0 | Deterministic gates pass | `make harness-verify` | exit 0 | P0 | |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S2 | Lint clean | `make lint-all` | exit 0 | P0 | |
 | S3 | Integration passes | `make test-integration` | exit 0 | P0 | |
