@@ -77,14 +77,11 @@ class TestRealCorpus(unittest.TestCase):
         self.assertGreater(len(targets), 10)
 
     def test_rest_guide_cited_targets_all_resolve(self):
+        # orly materialises the guide into this repository, so it is present in
+        # every clone and every CI checkout. A missing file is a real failure
+        # now, not an environment the test has to tolerate.
         doc_text = checker.read_file(REST_GUIDE)
-        if doc_text is None:
-            # The REST guide is committed as a symlink into a developer's dotfiles,
-            # so it dangles wherever those aren't checked out (CI, a fresh clone).
-            # The full gate is local-only for that reason (see the safety-gates
-            # job in .github/workflows/lint.yml); skip rather than fail here so the
-            # test file stays runnable everywhere.
-            self.skipTest(f"{REST_GUIDE} not present (dotfiles symlink not resolved)")
+        self.assertIsNotNone(doc_text, f"{REST_GUIDE} is missing — run `bunx @agentsfleet/orly update`")
         cited = set(checker.DOC_MAKE_TARGET_RE.findall(doc_text))
         self.assertTrue(cited, "guide cites no make targets — the scan proves nothing")
         self.assertEqual(checker.check_phantom_make_targets(doc_text, MAKE_DIR, MAKEFILE), [])

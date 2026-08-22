@@ -9,7 +9,7 @@ split). Channel and stream **names** are canonical in `data_flow.md`; this file
 owns the thread/lock/shutdown layer on top of them.
 
 The Allocator and concurrency rules `A1–A6` / `C1–C5` live in the Zig discipline
-façade (`~/Projects/dotfiles/dispatch/write_zig.md`); this doc is where the `C`-rules become the
+façade (`dispatch/write_zig.md`); this doc is where the `C`-rules become the
 system's concrete invariants, and it is the seed the discipline roster
 (`audits/zig-discipline-roster.txt`) expands against.
 
