@@ -48,7 +48,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 2. `src/agentsfleetd/db/pool_test.zig` around the migration-lock probe — the model termination ceiling. It bounds work that takes about fifteen milliseconds at one second and says why in a comment: a hang would take minutes. That ratio, not the presence of a clock, is what makes it sound.
 3. `src/agentsfleetd/queue/redis_subscriber_test.zig` — the floor assertions (`elapsed >= FLOOR`). Floors prove a timeout was honoured rather than short-circuited, and load only makes them more true. They are the one shape this spec leaves alone; read them so they are not converted by reflex.
 4. `docs/architecture/testing.md` §Coverage — which lane runs under kcov. Any assertion that survives this spec must hold under that instrumentation, on macOS as well as Linux.
-5. `~/Projects/dotfiles/docs/greptile-learnings/RULES.md` §UFS — every bound this spec keeps becomes a named constant carrying its margin, which is the same rule that bans bare semantic literals elsewhere.
+5. `docs/greptile-learnings/RULES.md` §UFS — every bound this spec keeps becomes a named constant carrying its margin, which is the same rule that bans bare semantic literals elsewhere.
 
 ## Files Changed (blast radius)
 
@@ -68,8 +68,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Applicable Rules
 
-- **`~/Projects/dotfiles/docs/greptile-learnings/RULES.md`** — **UFS** (every retained bound becomes a named constant carrying its margin, never a bare literal), **NDC** (a stopwatch replaced by an ordering assertion leaves no dead helper behind), **ORP** (deleting a platform probe orphans its constants; sweep them in the same commit, as the `patch_concurrent` conversion already did).
-- **`~/Projects/dotfiles/dispatch/write_zig.md`** — the bulk of the diff is Zig test code: thread spawn and join pairing, atomic ordering on the signals this spec introduces, and the pg-drain rule wherever a converted test holds a connection.
+- **`docs/greptile-learnings/RULES.md`** — **UFS** (every retained bound becomes a named constant carrying its margin, never a bare literal), **NDC** (a stopwatch replaced by an ordering assertion leaves no dead helper behind), **ORP** (deleting a platform probe orphans its constants; sweep them in the same commit, as the `patch_concurrent` conversion already did).
+- **`dispatch/write_zig.md`** — the bulk of the diff is Zig test code: thread spawn and join pairing, atomic ordering on the signals this spec introduces, and the pg-drain rule wherever a converted test holds a connection.
 - **`docs/architecture/testing.md`** — which component owns a test decides which lane runs it, and therefore whether it runs under kcov; §4's instrumentation rule depends on getting that right.
 
 ## Applicable Gates
@@ -228,6 +228,7 @@ reverts.
 | R6 | The suite is green under instrumentation (§4) | `make test-integration && make test-unit-all` | exit 0 | P0 | |
 | R7 | No shipped code path changed | `git diff --name-only origin/main...HEAD \| grep -vE '_test\.(zig\|ts\|tsx)$\|\.md$\|\.py$\|\.mk$'` | no output | P0 | |
 | R8 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| S0 | Deterministic gates pass | `make harness-verify` | exit 0 | P0 | |
 | S1 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S2 | Lint clean, gate wired | `make lint-all` | exit 0 | P0 | |
 | S3 | Integration passes | `make test-integration` | exit 0 | P0 | |

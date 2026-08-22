@@ -26,6 +26,23 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
+# --- orly gate work ----------------------------------------------------------
+# The cheap tier only: branch shape, tree state, declared commands. `orly gate
+# pr` belongs at CHORE(close), immediately before `gh pr create` — it runs the
+# whole declared verify set, `make memleak` and `make test-integration`
+# included, and those are the lanes this hook deliberately sent to Continuous
+# Integration (CI). Running them here would hold the push open for the 15-20
+# minutes that github.com kept dropping.
+if command -v orly >/dev/null 2>&1; then
+  # A scratch file in the tree is not part of what is being pushed — the
+  # commits are. The tree criterion belongs to `orly gate pr`, where the
+  # question is whether the reviewer sees what was graded.
+  echo "pre-push: orly gate work"
+  orly gate work --accept-dirty || exit 1
+else
+  echo "pre-push: orly NOT INSTALLED — rule gate skipped (npm i -g @agentsfleet/orly)" >&2
+fi
+
 if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
   upstream_ref='@{u}'
 else
