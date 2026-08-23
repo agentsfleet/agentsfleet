@@ -35,7 +35,11 @@ facts.
   test`, …) is inner-loop iteration; it proves a package, not the
   repository, and never satisfies a VERIFY row or a "tests pass" claim.
 - A fresh linked worktree requires `bun install`, followed by
-  `(cd cli && bun install && bun run build)` before repository tests.
+  `(cd cli && bun install && bun run build)` **and a `bun install` inside each
+  `ui/packages/*` package** before repository tests. The root install alone
+  leaves `ui/packages/app` short of its own dependencies, and
+  `make test-coverage-all` then fails resolving `next/headers` — a failure that
+  looks like a code defect and is not one.
   `.githooks/post-checkout` links `ui/packages/app/.env.local` and
   `.env.runner.local` from `~/.config/agentsfleet/`; a ⚠ from the hook
   means run `provision-env-1password` (dotfiles) first. The app throws on
