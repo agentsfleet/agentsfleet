@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B5 — after M178 (approvals + workspace surface it feeds)
 **Branch:** added at CHORE(open)
 **Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
-**Depends on:** M178_001 (approvals, workspace event surface); M177_001 (fleet services); M176_001 (substrate)
+**Depends on:** M178_001 (approvals, workspace event surface); M179_001 (shared seams — `afd_api`, `rustd/Cargo.toml`, `make/test-integration.mk` — settle before ingress starts); M177_001 (fleet services); M176_001 (substrate)
 **Provenance:** LLM-drafted (Claude Fable 5, Aug 23, 2026)
 **Canonical architecture:** `docs/architecture/data_flow.md` §B. TRIGGER (six producers, one ingress) + `docs/architecture/connectors.md`
 

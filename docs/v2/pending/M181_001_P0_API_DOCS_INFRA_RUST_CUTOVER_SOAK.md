@@ -93,7 +93,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — Full-route parity gate
 
-`agentsfleetd-rs routes --json` dumps the served route × method set from the Route enum. The coverage script today hard-codes the Zig route table as its served source and compares paths only — this milestone extends it to accept a served-route source argument and to compare **route × method**, then grades the Rust daemon with the same script that gates the Zig one. `doctor` and `backfill` subcommands reach behaviour parity so operations tooling does not fork.
+`agentsfleetd-rs routes --json` dumps the served route × method set from the Route enum. The coverage script today hard-codes the Zig route table as its served source and compares paths only — this milestone extends it with a `--served <file>` argument (the locked interface R1 invokes) and route × method comparison, then grades the Rust daemon with the same script that gates the Zig one. `doctor` and `backfill` subcommands reach behaviour parity so operations tooling does not fork.
 
 - **Dimension 1.1** — route dump equals the Zig daemon's served set exactly (diff empty both directions) → Test `test_route_dump_matches_zig_set`
 - **Dimension 1.2** — coverage script passes with the Rust source; a seeded missing route fails it → Test `test_coverage_gate_rust_source`
@@ -169,7 +169,7 @@ the first baseline run and recorded in the spec's Discovery, not invented here.
 2. The Zig binary stays built, shipped, and deployable until a post-cutover retirement milestone Indy opens — enforced by the release lane asserting both artifacts.
 3. Budgets are named constants compared mechanically — never prose judgments — `test_latency_budget`, `test_memory_ceiling_soak`.
 4. Every runbook step carries an executable probe in `playbooks/cutover/probes.sh`; a deviation surfaces as a failed probe run, not a judgment call — `test_runbook_probes` proves the script executable end-to-end.
-5. Cutover cannot proceed with any M175–M180 rubric row ungraded or red — enforced mechanically: `probes.sh` opens with a pre-swap section that re-runs those rubrics' S-row commands and exits non-zero on any failure.
+5. Cutover cannot proceed with any M175–M180 rubric row ungraded or red — enforced mechanically: `probes.sh` opens with a pre-swap section that re-runs the milestone-specific R-row parity oracles (wire round-trip, migration + crypto parity, the dual-run differ via `make test-integration DAEMON=rust`, the three route-inventory tests, the ingress signature suite) AND the S-row fast gates, exiting non-zero on any failure.
 
 ## Metrics & Observability
 
@@ -202,7 +202,7 @@ No product-analytics changes.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Full-route parity | `python3 scripts/check_openapi_route_coverage.py` (Rust source) | exit 0 | P0 | |
+| R1 | Full-route parity (§1) | `agentsfleetd-rs routes --json > /tmp/served-routes.json && python3 scripts/check_openapi_route_coverage.py --served /tmp/served-routes.json` | exit 0 | P0 | |
 | R2 | Whole-system soak green (§3) | `make test-integration DAEMON=rust` + `make dry-app` (Rust variant) + `make test-handoff` | exit 0 each | P0 | |
 | R3 | Budgets hold (§3) | `make bench-cutover` | exit 0 (tolerance constants embedded in the lane) | P0 | |
 | R4 | Rollback rehearsed (§4) | `bash playbooks/cutover/probes.sh` on staging, post-swap and post-rollback | exit 0 both runs | P0 | |
