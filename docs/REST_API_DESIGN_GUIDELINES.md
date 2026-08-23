@@ -45,7 +45,7 @@ Run this checklist as part of `CHORE(close)` (per `~/.claude/CLAUDE.md` lifecycl
 - [ ] **Tests** — happy path + one error per `hx.fail` + idempotency double-PATCH + `Idempotency-Key` replay (where applicable) + ETag mismatch (§10)
 - [ ] **Logging** — sensitive ID values are DEBUG-only or carry `// log-id-allowed:` comment; secret-shaped fields are write-only or one-time-read (§11)
 - [ ] **`make check-openapi` clean** — bundle in sync, redocly lint, error-schema + URL-shape checks pass (§6)
-- [ ] **`make test-unit-agentsfleetd` clean** — `route_scopes.zig`'s exhaustive switch + `route_scopes_test.zig` assertions cover the auth gate matrix (§10)
+- [ ] **`make test-unit-all` clean** — the auth gate matrix is covered by the port's own suite; the Zig `route_scopes_test.zig` lane retired with the Zig daemon (§10)
 - [ ] **No file over 350 lines** (§10)
 - [ ] **`gitleaks detect` clean** (§10)
 
@@ -573,7 +573,7 @@ When in doubt, mirror an existing handler:
 
 ## §8 — Handler signature rule
 
-Every HTTP handler in `agentsfleetd` follows this shape. Enforced by `make lint-zig` and by the dispatcher in `src/agentsfleetd/http/server.zig::dispatchMatchedRoute()`, which builds the per-request arena, runs the middleware chain, constructs `Hx`, and calls the route's invoke shim (§7) — a handler never constructs any of this itself.
+Every HTTP handler in `agentsfleetd` follows this shape. Enforced by the dispatcher in `src/agentsfleetd/http/server.zig::dispatchMatchedRoute()`, which builds the per-request arena, runs the middleware chain, constructs `Hx`, and calls the route's invoke shim (§7) — a handler never constructs any of this itself.
 
 ```zig
 pub fn innerMyEndpoint(hx: Hx, req: *httpz.Request, ...path_params) void {
@@ -701,10 +701,10 @@ Before opening a PR touching any handler:
 
 - [ ] `zig build` clean
 - [ ] `zig build test` passes
-- [ ] `make test-unit-agentsfleetd` passes — `route_scopes.zig`'s exhaustive switch + `route_scopes_test.zig` cover the auth gate matrix
-- [ ] `make test-integration` passes (HTTP + DB + Redis E2E)
+- [ ] `make test-unit-all` passes — the auth gate matrix is covered by the port's own suite
+- [ ] the port's integration suite passes (HTTP + DB + Redis end to end)
 - [ ] Cross-compile: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
-- [ ] `make lint-zig` — all Zig gates pass (350-line file cap, `check-pg-drain`, zlint)
+- [ ] `make lint-all` — every gate passes
 - [ ] Handler file ≤ 350 lines; split if it grows
 - [ ] Integration test covers the happy path AND at least one error path per `hx.fail` call in the handler
 - [ ] PATCH endpoints have an idempotency test: same body issued twice → identical 200 + identical row state. Skip only if the spec's "Failure Modes" explicitly declares non-idempotent PATCH with a reason (§2)

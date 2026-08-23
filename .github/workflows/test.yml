@@ -9,13 +9,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src/**'
-      - 'build.zig'
-      - 'build.zig.zon'
-      - 'build_runner.zig'
       - 'rustd/**'
       - 'make/**'
-      - 'schema/**'
       - '.github/workflows/test.yml'
   pull_request:
     types: [opened, synchronize, reopened]
@@ -37,81 +32,6 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  test-unit-agentsfleetd:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
-    steps:
-      - uses: actions/checkout@v6
-      - name: Cache Zig build
-        uses: actions/cache@v5
-        with:
-          # Only the LOCAL cache is persisted. Zig writes nothing to the global
-          # cache for this build graph — a build with a warm local cache and a
-          # freshly created global one leaves that directory at 0 bytes and
-          # takes the same time. Listing it here cached a directory the make
-          # targets never even create (their default global path is under
-          # $HOME), so actions/cache skipped it with a warning every run.
-          path: .tmp/zig-local-cache
-          key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
-          restore-keys: |
-            zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
-            zig-${{ runner.os }}-${{ github.job }}-0.16.0-
-      - name: Test agentsfleetd (Zig units)
-        run: make test-unit-agentsfleetd
-
-  test-unit-agentsfleet-runner:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
-    steps:
-      - uses: actions/checkout@v6
-      - name: Cache Zig build
-        uses: actions/cache@v5
-        with:
-          # Only the LOCAL cache is persisted. Zig writes nothing to the global
-          # cache for this build graph — a build with a warm local cache and a
-          # freshly created global one leaves that directory at 0 bytes and
-          # takes the same time. Listing it here cached a directory the make
-          # targets never even create (their default global path is under
-          # $HOME), so actions/cache skipped it with a warning every run.
-          path: .tmp/zig-local-cache
-          key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
-          restore-keys: |
-            zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
-            zig-${{ runner.os }}-${{ github.job }}-0.16.0-
-      - name: Test agentsfleet-runner (Zig units)
-        run: make test-unit-agentsfleet-runner
-
-  test-unit-agentsfleet-lib:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
-    steps:
-      - uses: actions/checkout@v6
-      - name: Cache Zig build
-        uses: actions/cache@v5
-        with:
-          # Only the LOCAL cache is persisted. Zig writes nothing to the global
-          # cache for this build graph — a build with a warm local cache and a
-          # freshly created global one leaves that directory at 0 bytes and
-          # takes the same time. Listing it here cached a directory the make
-          # targets never even create (their default global path is under
-          # $HOME), so actions/cache skipped it with a warning every run.
-          path: .tmp/zig-local-cache
-          key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
-          restore-keys: |
-            zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
-            zig-${{ runner.os }}-${{ github.job }}-0.16.0-
-      - name: Test shared src/lib (Zig units)
-        run: make test-unit-agentsfleet-lib
-
-  # NON-REQUIRED CONTEXT, deliberately. This job is absent from the `test`
-  # aggregate's `needs:` list below, so a red Rust lane cannot block a merge
-  # while the port is being built. Joining that list would make it required by
-  # proxy — the failure mode PR #627 recorded, where a required context that
-  # never reports blocks the Pull Request outright. Promoting it is an M181
-  # cutover decision, not this milestone's.
   test-unit-rustd:
     runs-on: ubuntu-latest
     steps:
@@ -271,7 +191,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    needs: [test-unit-agentsfleetd, test-unit-agentsfleet-runner, test-unit-agentsfleet-lib, test-unit-cli, test-unit-website, test-unit-app, test-unit-design-system, bundle-size-website, bundle-size-app]
+    needs: [test-unit-cli, test-unit-website, test-unit-app, test-unit-design-system, bundle-size-website, bundle-size-app]
     # `if: always()` + an explicit result check — a needs-only aggregate is
     # SKIPPED when a dependency fails, and branch protection treats a skipped
     # required check as passing.

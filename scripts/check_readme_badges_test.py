@@ -27,13 +27,9 @@ from urllib.parse import parse_qs, urlsplit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 README = REPO_ROOT / "README.md"
-# Both workflows that upload to Codecov: the package lanes stayed in test.yml;
-# the three zig flags moved with the coverage grade into test-integration.yml.
-WORKFLOWS = (
-    REPO_ROOT / ".github" / "workflows" / "test.yml",
-    REPO_ROOT / ".github" / "workflows" / "test-integration.yml",
-)
-MAKE_TEST = REPO_ROOT / "make" / "test.mk"
+# The one workflow that uploads to Codecov. test-integration.yml carried the
+# Zig flags and was deleted with the Zig lanes.
+WORKFLOWS = (REPO_ROOT / ".github" / "workflows" / "test.yml",)
 
 CODECOV_ACTION = "codecov/codecov-action@"
 # The merged report is the only Zig artefact Codecov may see. Every Zig flag is
@@ -41,9 +37,7 @@ CODECOV_ACTION = "codecov/codecov-action@"
 # be added here, which is the moment to ask whether it names the union too.
 # The three publish the SAME union scoped by the `paths` filters in
 # codecov.yml, matching the per-folder floors in make/test.mk.
-ZIG_FLAGS = frozenset({"zig-agentsfleetd", "zig-runner", "zig-lib"})
 ZIG_FLAG_PREFIX = "zig"
-MERGED_REPORT_NAME = "merged/cobertura.xml"
 
 # `[![zig coverage](https://img.shields.io/codecov/...)](https://codecov.io/...)`
 README_CODECOV_BADGE = re.compile(
@@ -55,19 +49,7 @@ WORKFLOW_STEP_START = re.compile(r"^\s*-\s+name:\s*(?P<name>.+?)\s*$")
 # `files: coverage/zig/merged/cobertura.xml` inside a step's `with:` mapping.
 WORKFLOW_SETTING = re.compile(r"^\s*(?P<key>[a-z_]+):\s*(?P<value>.*?)\s*$")
 # `ZIG_COVERAGE_DIR ?= $(CURDIR)/coverage/zig`
-MAKE_COVERAGE_DIR = re.compile(r"^ZIG_COVERAGE_DIR\s*\?=\s*(?P<value>.*)$", re.MULTILINE)
 MAKE_CURDIR = "$(CURDIR)/"
-
-
-def zig_coverage_dir() -> str:
-    """The repository-relative Zig coverage directory, read from its one make definition."""
-    match = MAKE_COVERAGE_DIR.search(MAKE_TEST.read_text(encoding="utf-8"))
-    if match is None:
-        raise AssertionError(f"ZIG_COVERAGE_DIR is not defined in {MAKE_TEST}")
-    value = match.group("value").strip()
-    if not value.startswith(MAKE_CURDIR):
-        raise AssertionError(f"ZIG_COVERAGE_DIR is not repository-relative: {value}")
-    return value[len(MAKE_CURDIR) :]
 
 
 def readme_badges() -> dict[str, dict[str, str]]:
@@ -145,45 +127,6 @@ class ReadmeBadgeRow(unittest.TestCase):
             upload_flags - badge_flags,
             set(),
             "coverage is uploaded under flags the README never shows",
-        )
-
-    def test_every_zig_upload_names_the_merged_report(self) -> None:
-        """Codecov sees the union this gate graded, never the per-component reports."""
-        uploads = [
-            upload for upload in codecov_uploads() if upload.get("flags") in ZIG_FLAGS
-        ]
-        self.assertEqual(
-            {upload["flags"] for upload in uploads},
-            set(ZIG_FLAGS),
-            f"expected one upload per Zig flag ({sorted(ZIG_FLAGS)})",
-        )
-        expected = f"{zig_coverage_dir()}/{MERGED_REPORT_NAME}"
-        for upload in uploads:
-            self.assertEqual(
-                upload.get("files"),
-                expected,
-                f"{upload['flags']!r} must name the merged report; a per-component"
-                " report lets Codecov build its own union over a denominator this"
-                " gate excludes",
-            )
-
-    def test_no_zig_flag_escapes_the_enumeration(self) -> None:
-        """A fourth Zig folder must join ZIG_FLAGS, not publish ungraded.
-
-        The assertion above only reaches the flags it already knows. Without
-        this, adding `zig-<folder>` to the workflow and the README would pass
-        every check here while nothing verified it names the union.
-        """
-        published = {
-            upload["flags"]
-            for upload in codecov_uploads()
-            if upload.get("flags", "").startswith(ZIG_FLAG_PREFIX)
-        }
-        self.assertEqual(
-            published - set(ZIG_FLAGS),
-            set(),
-            "a Zig flag is uploaded that ZIG_FLAGS does not enumerate — add it"
-            " there so its report path is checked too",
         )
 
     def test_every_upload_disables_report_search(self) -> None:

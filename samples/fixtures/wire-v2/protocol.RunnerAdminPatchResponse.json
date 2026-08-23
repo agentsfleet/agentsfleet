@@ -1,0 +1,1 @@
+{"id":"id","admin_state":"active","assigned_policy":{"sandbox_tier":"landlock_full","network_policy":"allow_all","registry_allowlist":["registry_allowlist"],"worker_count":168,"extra_binds":[{"path":"path","mode":"read_only","note":"note"}]},"selftest_requested_at":309}

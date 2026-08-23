@@ -1,0 +1,1 @@
+{"capability_report":{"landlock":true,"seccomp":true,"cgroup_controllers":["cgroup_controllers"],"bubblewrap":true,"egress_enforcement":true},"selftest":{"checks":[{"name":"name","ok":true,"detail":"detail"}],"all_ok":true,"sandbox_tier":"sandbox_tier","network_policy":"network_policy"}}

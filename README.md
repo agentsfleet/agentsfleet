@@ -3,9 +3,6 @@
 # A fleet of prebuilt AI teammates for recurring engineering work.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/agentsfleet/agentsfleet/test.yml?branch=main&label=CI&logo=github&logoColor=white)](https://github.com/agentsfleet/agentsfleet/actions/workflows/test.yml?query=branch%3Amain)
-[![zig-agentsfleetd coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=zig-agentsfleetd&label=zig-agentsfleetd&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=zig-agentsfleetd)
-[![zig-runner coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=zig-runner&label=zig-runner&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=zig-runner)
-[![zig-lib coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=zig-lib&label=zig-lib&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=zig-lib)
 [![rust-afd coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=rust-afd&label=rust-afd&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=rust-afd)
 [![app coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=app&label=app&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=app)
 [![website coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=website&label=website&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=website)
