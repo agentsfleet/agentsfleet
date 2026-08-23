@@ -212,7 +212,7 @@ Lane names               = make lint-all / test-unit-all / check-version
 | Fixture drift | Zig wire types change after fixtures committed | regen recipe re-runs the emitter; Rust round-trip goes red in `make test-unit-all`; fix = regenerate + Rust type update in the same commit |
 | Toolchain absent | CI or a fresh clone lacks the pinned toolchain | lane fails loud naming `rust-toolchain.toml` and the mise/brew install step; never silently skips |
 | Clippy noise | a pedantic lint blocks sound code | per-site allow with a justification comment (exonum pattern); never a blanket allow, never weakening `[workspace.lints]` |
-| Coverage context blocks merges | `rust-afd` flag made required prematurely | flag ships non-required (Invariant 5); the flip is an M181 cutover decision |
+| Coverage context blocks merges | `rust-afd` flag made required prematurely | the codecov flag ships non-required and stays so; the flip is an M181 cutover decision. The Continuous Integration (CI) JOB `test-unit-rustd` was promoted to required by Indy on Aug 23, 2026 — see Invariant 5 — which is a different surface: a job that always reports cannot strand a Pull Request the way an absent required context does |
 | Emitter divergence | fixture emitter re-declares types instead of importing them | emitter imports `src/lib/contract` modules directly; REVIEW checks the import list |
 | Corrupt fixture | hand edit or partial write in `samples/fixtures/wire-v2/` | Rust tests fail with the offending filename; regen recipe restores canonical bytes |
 
@@ -222,7 +222,7 @@ Lane names               = make lint-all / test-unit-all / check-version
 2. afd_core and afd_wire carry no async runtime, database, or HTTP dependency — enforced by `test_core_dependency_freeze` over `cargo metadata`.
 3. The `rustd/` workspace version equals `VERSION` — enforced by `make check-version`.
 4. Library crates deny `unwrap`/`expect`/`panic` — enforced by `[workspace.lints]` + `cargo clippy -- -D warnings` inside `make lint-all`.
-5. No new **required** branch-protection context lands in this milestone — enforced mechanically by rubric R4 (the diff must stay inside Files Changed, and no branch-protection surface is a repository file), with the PR #627 lesson (a required context that never reports blocks the PR) recorded as the reason.
+5. No branch-protection change lands from THIS BRANCH — enforced mechanically by rubric R4, since no branch-protection surface is a repository file. The invariant originally read "no new **required** context lands in this milestone", on the PR #627 lesson that a required context which never reports blocks the Pull Request outright. That lesson held, from the opposite direction: §6 deleted the workflows behind `memleak` and `test-integration` while both were still required on `main`, so Pull Request #629 could not merge until they were removed from the required set. Indy made that admin change on Aug 23, 2026 and, in the same edit, promoted `test-unit-rustd`, `test-unit-app`, `test-unit-cli` and `test-unit-design-system` to required. Recorded here rather than left contradicting the repository: the Rust job IS required from now on, which is stricter than this milestone planned and is the operator's call to make.
 
 ## Metrics & Observability
 
