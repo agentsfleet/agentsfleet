@@ -36,8 +36,8 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
   in isolation. Retry serially before suspecting the diff.
 - **`main` is branch-protected** (required checks; direct pushes are declined).
   Everything lands via a feature branch + PR — including specs.
-- `make test-integration` (real Postgres+Redis) and memleak run **in CI only**;
-  pre-push runs only the fast `test-unit-*` lanes.
+- Pre-push runs the lanes matching what you pushed: `*.rs` or anything under
+  `rustd/` triggers `test-unit-rustd`, and each TypeScript package triggers its own.
 
 ## Test lanes — what the names mean
 
@@ -48,21 +48,18 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
   Clerk DEV creds in the worktree-root `.env`) and `make cli-acceptance`
   (agentsfleet). CI runs the same suite against the dev deployment on PR and prod
   post-deploy.
-- **`make test-integration` owns the backend Zig suite** against ephemeral
-  Postgres+Redis. There is deliberately **no umbrella target** re-aliasing it
-  under an acceptance name — a proposal to add one produced a byte-identical
-  duplicate target and was removed.
+- **`make test-unit-all` is the repository's unit claim**: the Rust workspace
+  (`cargo test --workspace`) plus each TypeScript package's coverage gate. A
+  package-scoped runner proves that package, never the repository. There is
+  deliberately **no umbrella target** re-aliasing a lane under a second name — a
+  proposal to add one produced a byte-identical duplicate target and was removed.
 - **Daemon execute-loop without a language model:** build with
   `-Dexecutor-provider-stub` (`build_runner.zig`). The flag is comptime-eliminated
   in production (no env backdoor): `child_exec` emits a canned `result` frame,
   and the integration target forks a prebuilt stub-flagged
   `agentsfleet-runner-execstub` exe per lease. Exercised by
-  `src/runner/worker_pool_integration_test.zig` via `make test-integration-kernel`.
-- **Benign stderr in green runs:** `expected 5, found 1` /
-  `expected .worker_started, found .server_started` lines come from the
-  *negative* tests in `telemetry_test.zig` (deliberate mismatches asserted via
-  `expectError`). They print on every clean `make test-unit-agentsfleetd`. Not a
-  failure.
+  `src/runner/worker_pool_integration_test.zig`. That lane retired with the Zig
+  test lanes; the flag and the stub remain in the build graph.
 - **Cross-compile proof for the test graph:** on macOS,
   `zig build test -Dtarget=x86_64-linux` reports a RUN-step failure (can't exec
   a Linux ELF) — use `zig build test-bin -Dtarget=...` for a build-only EXIT=0
@@ -70,11 +67,13 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
 
 ## Linting
 
-- `make lint-zig` runs `zlint --deny-warnings` **bare** — zlint is git-root-aware
-  and walks every tracked `.zig` (all of `src/agentsfleetd`, `src/lib`, `src/runner`,
-  build files). **Never pass it a path argument**: `zlint src/agentsfleetd` scans
-  **0 files and exits 0** — a silent pass, not a scoped run. To lint a subset,
-  use stdin mode: `find <dirs> -name '*.zig' | zlint -S`.
+- `make lint-all` is the lint claim. `lint-rustd` runs `cargo fmt --check` plus
+  `cargo clippy --workspace --all-targets -- -D warnings`; `lint-scripts` runs
+  every `scripts/*_test.py`; the TypeScript, shell and OpenAPI checks follow.
+- Both cargo steps `cd` into `rustd/` rather than passing `--manifest-path`:
+  `rust-toolchain.toml` resolves from the working directory, so running cargo
+  from the repository root compiles with whatever toolchain the shell has active
+  instead of the pinned one.
 
 ## Dead-code auditing (`src/`)
 
