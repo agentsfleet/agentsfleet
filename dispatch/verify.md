@@ -11,8 +11,8 @@ edit. (This is the former Verification gate absorbed into the dispatch model.)
 
 - 🤔 DECIDE — judgment-only; the agent must run the targets below and report
   honestly. No script gates this — it blocks the *turn*, not a commit.
-- 🟣 delegated — the `make` targets themselves live in the product repo; dotfiles
-  carries only the discipline of *which* targets are canonical and when.
+- 🟣 delegated — the `make` targets themselves live in the product repository;
+  this pack carries only the discipline of *which* targets are canonical and when.
 
 ## Trigger
 
@@ -27,35 +27,35 @@ pass".
 
 ## Why `make` is canonical
 
-Package-scoped runners (`bun run test`, `vitest <file>`, `zig build test` without
-the integration tier) are **not** verification — they skip cross-package lint,
-cross-compile, pg-drain, and integration. `make` targets are the canonical gates.
+Package-scoped runners (`bun run test`, `vitest <file>`, `cargo test -p <crate>`)
+are **not** verification — they skip every other package's lint and tests and the
+cross-language gates. The declared `make` targets are the canonical gates.
 
 ## Required runs
 
 | Target | When |
 |---|---|
-| `make lint` | Always. |
-| `make test` | Always (tier 1, unit-only by definition). |
-| `make test-integration` | Tier 2: diff touches HTTP handlers, schema, DB code, Redis code, or any `_integration_test.zig`. Focused subsets: `make test-integration-db` / `make test-integration-redis`. |
-| `make test-integration` | Tier 3: at least once per branch before declaring ship-ready, from a clean state (e.g. after `make down`) when tier 2 is intermittent — fresh DB proves no state carry-over. |
-| `make memleak` | Server lifecycle (`src/http/**`, `src/cmd/serve.zig`), allocator wiring, cross-thread heap ownership. |
+| `make lint-all` | Always. The declared `verify.lint`. |
+| `make test-unit-all` | Always. The declared `verify.unit` — the cargo workspace plus every package coverage gate. |
+| `make harness-verify` | Always. The declared `conform` — the deterministic gate audit. |
+| `make check-version` | Always. The declared `verify.version`. |
+| `make wire-fixtures` | The `/v1/runners` wire types changed. Regenerate, then review the diff — a changed fixture IS the wire change. |
 | `make bench` (local) | Diff touches request-path code, allocator wiring, or startup/shutdown sequencing. |
 | `API_BENCH_URL=https://api-dev.agentsfleet.net/healthz make bench` | After branch deploys to dev. |
-| Cross-compile `x86_64-linux` + `aarch64-linux` | Whenever `*.zig` touched. |
-| `make check-pg-drain` | Whenever `*.zig` touched. |
 | `/orly-write-integration-test` (skill) | With `/orly-write-unit-test` at VERIFY when the diff crosses module boundaries with real I/O; otherwise record `N/A — <reason>`. |
-| Acceptance e2e (product repo's live tier) | Diff touches a surface the live/acceptance tier covers — relevant acceptance suites green, or their opt-in skip matrix recorded. |
+| Acceptance e2e (live tier) | Diff touches a surface the live/acceptance tier covers — relevant suites green, or their opt-in skip matrix recorded. |
 
-`make test` never substitutes for tier 2/3. Tier 2 passing but tier 3 failing
-means state pollution — fix isolation before shipping.
+There is no slow tier. The Zig integration and memory-leak lanes retired with the
+rest of the Zig gating, so nothing a developer runs needs live Postgres or Redis.
+A package-scoped runner (`cargo test -p afd_wire`, `bun run test` inside a
+package) proves that package and never the repository.
 
-## Memleak evidence rule
+## Wire-fixture evidence rule
 
-Before CHORE(close) reports green, paste the final `make memleak` result line into
-the PR Session Notes block OR cite the CI memleak job URL. Branches touching
-`src/http/**`, `src/cmd/serve.zig`, or allocator wiring MUST include the last 3
-lines verbatim. No "I ran it, trust me."
+A diff that regenerates `samples/fixtures/wire-v2/` carries the regenerated
+fixtures in the same commit as the type change, and the PR Session Notes say what
+moved. A fixture diff with no type change beside it means someone hand-edited
+generated output; a type change with no fixture diff means the emitter never ran.
 
 ## Coverage discipline
 
@@ -73,7 +73,7 @@ lines verbatim. No "I ran it, trust me."
 **Success:**
 
 ```
-✅ Verified: 🧪 lint ✓ · 🧪 test ✓ <N>p/<M>s · 🧩 test-integration ✓ (or N/A — no handler/schema/redis) · 🎯 cross-compile ✓ (zig only)
+✅ Verified: 🧪 lint-all ✓ · 🧪 test-unit-all ✓ <N>p/<M>s · 🔆 harness-verify ✓ · 🔆 check-version ✓
 ```
 
 **Failure (any required target failed):**
@@ -107,5 +107,4 @@ missing from the table counts as ❌.
 | 🟠 | Skipped per environment constraint — read the reason |
 | 🧪 | Lint / unit / integration test |
 | 🧩 | Integration test (cross-process) |
-| 🎯 | Cross-compile target |
 | 🔆 | Informational note (does not affect verdict) |
