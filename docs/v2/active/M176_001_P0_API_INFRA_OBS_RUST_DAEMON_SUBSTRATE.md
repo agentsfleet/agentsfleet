@@ -71,6 +71,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_state/**` | CREATE | repository crate, seeded with the auth-consumed lookups (api keys, CLI credentials); M178/M179 extend it |
 | `rustd/crates/agentsfleetd/**` | CREATE | binary: subcommand parsing (serve/migrate), boot choreography, task supervisor |
 | `rustd/Cargo.toml` | EDIT | new workspace members + workspace dependencies |
+| `rustd/Cargo.lock` | EDIT | the resolved graph for those dependencies; generated, committed |
+| `docs/v2/active/M176_001_*.md` | EDIT | this spec — moved from `pending/` at CHORE(open), amended at PLAN |
 | `rustd/crates/afd_core/**` | EDIT | two registry codes the crypto errors answer (`UZ-VAULT-001`, `UZ-INTERNAL-003`) |
 | `make/quality.mk`, `make/test-unit.mk` | EDIT | `--all-features` on the Rust lint and unit lanes, so `test-util` mocks are linted and run |
 | `make/test-integration-rustd.mk` | CREATE | the Rust-native integration lane; consumes the surviving `make/test-infra.mk` compose services |
@@ -108,6 +110,24 @@ So the honest shape is a lane this milestone **creates**:
 | Test placement | `rustd/crates/*/tests/integration_*.rs` per M-INTEGRATION-TESTS: tests touching only public API are integration tests and live under `tests/`. |
 | Declaration | `.oracle/orly.json` gains `verify.integration`, so `orly gate` and the rubric grade one boundary. Without it the lane would be a target nothing names — and `dispatch/lifecycle.md` already reads `verify.integration` "where declared". |
 | CI | A new workflow. `.github/workflows/test.yml` carries no `services:` block and its `test` aggregate is a required check; hanging a datastore-dependent job off it would make live Postgres required for every PR. |
+
+### Two mechanical rubric fixes, found by running the rubric rather than trusting it
+
+M175's recorded trap was asserting "the diff stays inside Files Changed" and
+being wrong by 31 paths until it was checked mechanically. Running R6 and S6
+verbatim against this branch caught two more:
+
+- **R6** — `rustd/Cargo.lock` and this spec file were in the diff and absent
+  from Files Changed. Both now have rows. The lockfile is not incidental: it
+  is the resolved graph for six added crypto dependencies and belongs in the
+  blast radius.
+- **S6** — the command as written flags `rustd/Cargo.lock`, which grew from
+  159 to 403 lines when those dependencies landed. A generated lockfile has no
+  length cap; its size is a function of the dependency graph, and "split the
+  lockfile" is not a thing. The command now excludes `Cargo.lock`, `bun.lock`
+  and `package-lock.json` by name. This widens what the gate ignores, so it is
+  recorded here rather than made quietly — the cap still applies to every
+  hand-written file, which is what it was for.
 
 ### The Zig emitter is cut (Indy, Aug 23, 2026)
 
@@ -441,7 +461,7 @@ Crate seams   afd_crypto::Envelope {seal, open} over Zeroizing buffers
 | S3 | Lint green | `make lint-all` | exit 0 | P0 | |
 | S4 | Version sync | `make check-version` | exit 0 | P0 | |
 | S5 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S6 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| S6 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -vE '\.md$\|(^\|/)(Cargo\.lock\|bun\.lock\|package-lock\.json)$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
 
 **Command source rule:** S1–S4 are copied verbatim from `.oracle/orly.json` (`conform`, `verify.lint`, `verify.unit`, `verify.version`) — the set `orly gate` runs — and R5 quotes the `verify.integration` this milestone adds to the same file; S5–S6 are the template's repository hygiene gates (secret scan, oversize sweep), deliberately outside the declared set; R-rows name oracles this spec's own Files Changed create, so every command is copy-paste by merge time.
 
