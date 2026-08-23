@@ -35,18 +35,20 @@
 #   function — pre-commit `HEAD` is the prior commit, so a `BASE...HEAD`
 #   check was blind to a fix the agent staged but had not yet committed.
 #
-# Shared gate scripts resolve from the dotfiles checkout — this repo carries
-# no copies. Repo-native gates keep living under audits/. Override the path
-# when your checkout lives elsewhere:
-#   make harness-verify ORLY_ROOT=/path/to/dotfiles
-ORLY_ROOT ?= $(HOME)/Projects/dotfiles
+# Gate scripts live in this repository's audits/. orly materialises the shared
+# ones there on `orly init`/`orly update`; repo-native gates are written there
+# by hand. Either way the path is the repository itself, so a clone runs the
+# gates with nothing else checked out:
+#   make harness-verify ORLY_ROOT=/path/to/another/checkout
+ORLY_ROOT ?= $(CURDIR)
 
 # Adding a gate:
-#   1. Land the gate script in dotfiles audits/ (or a repo-native audits/ file).
+#   1. Land the gate script in audits/ — as an orly pack source if the gate is
+#      shared across repositories, by hand if it is native to this one.
 #   2. Add a row in HARNESS_GATES below with the gate's short label + the
 #      command that runs the audit.
 #   3. Update docs/gates/<gate>.md with "Fires in: make harness-verify".
-#   4. Update dotfiles AGENTS.md HARNESS_KEYS array.
+#   4. Update docs/HARNESS_VERIFY_OUTPUT.md's required-row list.
 
 .PHONY: harness-verify harness-verify-all
 
@@ -77,10 +79,10 @@ endef
 
 define ORLY_PREFLIGHT
 @test -d "$(ORLY_ROOT)/audits" || { \
-  printf "\n  $(C_RED)✗$(C_RESET) shared gate scripts not found at $(C_BOLD)$(ORLY_ROOT)$(C_RESET)\n"; \
-  printf "    They live in the dotfiles repository, not here.\n"; \
-  printf "    Clone it, or point at your checkout:\n"; \
-  printf "      $(C_BOLD)make $@ ORLY_ROOT=/path/to/dotfiles$(C_RESET)\n\n"; \
+  printf "\n  $(C_RED)✗$(C_RESET) gate scripts not found at $(C_BOLD)$(ORLY_ROOT)/audits$(C_RESET)\n"; \
+  printf "    orly materialises them there — run it, or point at another checkout:\n"; \
+  printf "      $(C_BOLD)bunx @agentsfleet/orly update$(C_RESET)\n"; \
+  printf "      $(C_BOLD)make $@ ORLY_ROOT=/path/to/another/checkout$(C_RESET)\n\n"; \
   exit 1; \
 }
 endef
