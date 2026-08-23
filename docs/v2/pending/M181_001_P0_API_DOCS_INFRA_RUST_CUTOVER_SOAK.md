@@ -120,6 +120,10 @@ The whole-system proof on staging: full Zig integration suite + runner parity la
 
 Rollback is rehearsed BEFORE cutover: staging swaps Rust → Zig using the runbook and verifies clean service. Production cutover is all-at-once across the three machines with load-balancer drain (mixed-fleet operation is structurally tolerated — every cross-replica invariant is atomic in Postgres/Redis — but doubles the drift surface, so it is the contingency, not the plan; recorded decision). The runbook lands in `playbooks/cutover/rust_daemon.md` with drain order, per-step verification probes, abort criteria, and the one-move rollback. Post-swap, the OTLP dashboards must show continuous metric families across the boundary.
 
+The runbook also carries the **declared-divergence register** — every place the single-implementation parity rule left a superseded Zig path unported, so a parity differ reads it as declared rather than reporting it as a regression, and so the operator swapping binaries knows what genuinely differs. Its first entry, recorded at M175 (Indy, Aug 23, 2026):
+
+> **Lease wire version one.** Zig downgrades and refuses policy-bearing leases to version-one runners; Rust serves the current shape unconditionally and ignores `wire_version`. Unreachable in practice — no in-tree emitter, Indy signed off Aug 23, 2026 that no deployed runner is owed compatibility. Rollback runs the safe direction: Zig is strictly more permissive, so a Rust→Zig rollback cannot break a runner Rust was already serving.
+
 - **Dimension 4.1** — rollback rehearsal on staging: swap back, verify, documented in the runbook's own evidence section → Test `test_rollback_rehearsal`
 - **Dimension 4.2** — runbook probes are copy-paste commands that pass on staging post-swap → Test `test_runbook_probes`
 - **Dimension 4.3** — metric-family continuity across the swap (no renamed series, dashboards unbroken) → Test `test_metric_continuity`
@@ -168,6 +172,7 @@ the first baseline run and recorded in the spec's Discovery, not invented here.
 1. Rollback requires no schema or data migration — enforced by the family rule (no `schema/` changes in M175–M181) + `test_rollback_rehearsal`.
 2. The Zig binary stays built, shipped, and deployable until a post-cutover retirement milestone Indy opens — enforced by the release lane asserting both artifacts.
 3. Budgets are named constants compared mechanically — never prose judgments — `test_latency_budget`, `test_memory_ceiling_soak`.
+3b. Every declared divergence is registered in §4's register before cutover, and the parity oracles (the M177 dual-run differ, the soak suites) read it, so a declared divergence never surfaces as a regression and an UNdeclared one always does.
 4. Every runbook step carries an executable probe in `playbooks/cutover/probes.sh`; a deviation surfaces as a failed probe run, not a judgment call — `test_runbook_probes` proves the script executable end-to-end.
 5. Cutover cannot proceed with any M175–M180 rubric row ungraded or red — enforced mechanically: `probes.sh`'s pre-swap section is **derived from the Acceptance Rubric tables of the five merged specs**, and every row lands in exactly one of two buckets: (a) **covered** — one or more executable probes, each tagged with its source row id, normalized into runnable shell (a multi-command cell expands to several probes under the same row tag, stated prerequisites become setup steps), or (b) a **declared exclusion** — a row whose evidence is historical and not re-runnable (e.g. a one-time seeded-defect record), listed in an exclusion manifest the script prints on every run and Indy signs off in Discovery at PLAN. The completeness assert is over **rows, not probes**: every R+S row id in those rubrics is either tagged by ≥1 probe or named in the manifest, and every probe carries a row tag. An uncovered row, an untagged probe, or an undeclared skip is a red run, not a silent gap.
 
@@ -225,7 +230,9 @@ N/A — no files deleted (Zig daemon retirement is a separate post-cutover miles
 ## Out of Scope
 
 - Deleting or de-listing the Zig daemon, its lanes, or `make memleak` — retirement is its own milestone after a stable production window Indy defines.
-- Any behaviour improvement unlocked by Rust — the parity-first family rule holds through cutover.
+- Any behaviour improvement on a live surface — see the parity rule below, which bounds what the port owes rather than freezing every superseded path into it.
+
+**Single-implementation parity.** The Rust daemon implements exactly ONE implementation of each behaviour — the current one. Where the Zig daemon carries a superseded or compatibility path alongside it, the Rust port implements only the current path; the Zig copy is left in place and retires with that daemon. Live observable behaviour stays at parity: anything a client actually reaches today behaves identically, and the parity oracles compare the current path. "Superseded" is a claim requiring evidence recorded in Discovery — no in-tree emitter, plus Indy's sign-off on the specific path — never the implementing agent's judgment alone, and every instance is written into the declared-divergence register §4 reads at cutover. Behaviour improvement on live surfaces remains out of scope through cutover.
 - M136 activation: per Indy (Aug 23, 2026), M136 testing begins once `agentsfleetd-rs` is ready to replace the Zig daemon — that readiness is this milestone's R-rows going green; M173/M174 are revisited at the same point.
 - Public docs (`~/Projects/docs`): no endpoint/command/flag/behaviour changes ship, so no docs-repo branch — recorded here as the why-not.
 
