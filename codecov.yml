@@ -47,10 +47,15 @@ coverage:
         target: 94%
         threshold: 0%
         informational: false
-      # Measured, never guessed: `cargo llvm-cov --workspace --all-features`
-      # reported 96.64% lines on the first green suite (Aug 23, 2026), so the
-      # bar sits just under it, exactly like the Zig entries sit under theirs.
-      # A floor of 0 would be a gate that grades nothing.
+      # 100, not a measured-minus-margin floor. These crates are pure value and
+      # serialization with no input/output, no runtime and no external
+      # dependency, so every line is reachable from a test and `cargo llvm-cov`
+      # reports 100.00% lines and 100.00% functions today. A floor below what the
+      # suite actually achieves is slack nobody asked for, and the TypeScript
+      # packages are already held to exactly this bar.
+      #
+      # If a later milestone adds a genuinely untestable line, move this number
+      # in the same change and say why — do not let it drift down silently.
       #
       # NOT a required context — the Rust job is absent from test.yml's `test`
       # aggregate while the port is built. Promoting either is an M181 cutover
@@ -58,7 +63,7 @@ coverage:
       rust-afd:
         flags:
           - rust-afd
-        target: 95%
+        target: 100%
         threshold: 0%
         informational: false
 

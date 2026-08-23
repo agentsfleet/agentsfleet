@@ -197,7 +197,7 @@ pub struct RegisterRequest<'a> {
 /// `POST /v1/runners` reply: the durable identity plus its bearer token.
 ///
 /// The token is returned ONCE — the daemon stores only its hash.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RegisterResponse<'a> {
     /// The runner's durable identifier.

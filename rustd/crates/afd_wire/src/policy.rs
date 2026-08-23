@@ -159,7 +159,7 @@ pub struct ContextBudget<'a> {
 }
 
 /// Everything a single execution is permitted to do.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExecutionPolicy<'a> {
     /// Where the run may reach on the network.
