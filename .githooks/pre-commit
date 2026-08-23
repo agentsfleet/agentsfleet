@@ -73,7 +73,6 @@ gitleaks protect --staged --redact --verbose --no-banner
 # triggers app (DS is consumed by app, so a DS change might break app's tsc).
 staged="$(git diff --cached --name-only --diff-filter=ACMR)"
 
-needs_lint_zig=0
 needs_lint_rustd=0
 needs_lint_website=0
 needs_lint_app=0
