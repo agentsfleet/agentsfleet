@@ -58,6 +58,7 @@ pub enum FailureClass {
     reason = "the empty braces are the wire encoding; a unit struct serializes as null"
 )]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Completed {}
 
 /// Why a run failed.
@@ -65,6 +66,7 @@ pub struct Completed {}
 /// `class` is null only when the peer reported a failure without classifying it.
 /// A cause is never guessed from a bare failure.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Failure<'a> {
     /// The classified cause, when there is one.
     pub class: Option<FailureClass>,

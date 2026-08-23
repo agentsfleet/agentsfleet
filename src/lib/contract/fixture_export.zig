@@ -1,33 +1,28 @@
 //! Emits the canonical wire fixtures the Rust port proves itself against.
 //!
 //! Zig is the source of truth for the `/v1/runners` wire. This tool writes one
-//! canonical JSON document per exported wire type into a directory, plus a
-//! `manifest.json` describing what it wrote, and the Rust `afd_wire` suite
-//! deserializes and re-serializes each one and compares BYTES. The comparison
-//! only means something if the byte form is defined rather than incidental, so
-//! this file defines it: minified (no insignificant whitespace), fields in
-//! declaration order, optionals present and populated, enums rendered by tag
-//! name.
+//! canonical JSON document per exported wire type, plus a `manifest.json`
+//! describing what it wrote, and the Rust `afd_wire` suite deserializes and
+//! re-serializes each one and compares BYTES. That comparison only means
+//! something if the byte form is defined rather than incidental, so this file
+//! defines it: minified, fields in declaration order, optionals present and
+//! populated, enums by tag name, unions carrying every variant.
 //!
-//! Run it through `make wire-fixtures`, which reports what landed — this tool
-//! is silent on success and fails loudly, so its console surface is the recipe's
-//! rather than a log line the logging gate would rightly object to.
-//!
-//! Run it through `make wire-fixtures`. It imports the contract modules by
-//! sibling path, so it compiles under `zig run` with no entry in the build
-//! graph — this tool exists to prove the Rust port, not to change the Zig one.
-//!
-//! Sample values come from `fixture_sample.zig`.
+//! Run it through `make wire-fixtures`, which reports what landed. The tool is
+//! silent on success and fails loudly, so its console surface is the recipe's.
+//! It imports the contract modules by sibling path, compiling under `zig run`
+//! with no entry in the build graph — this exists to prove the Rust port, not to
+//! change the Zig one.
 //!
 //! The roster is comptime reflection over what the contract modules actually
-//! export, because a hand-written list is a list someone forgets to update and
-//! a forgotten wire type is the drift these fixtures exist to catch. Only two
+//! export, because a hand-written list is one someone forgets to update and a
+//! forgotten wire type is the drift these fixtures exist to catch. Only two
 //! things are hand-maintained, being what reflection cannot know: which modules
 //! are deliberately excluded, and which types the daemon parses leniently.
 //!
-//! Sample values derive from field names — every string is its own field name,
-//! every number a stable hash of it. Nothing is random or clock-derived, so
-//! regeneration is a no-op diff unless the wire genuinely changed.
+//! Values come from `fixture_sample.zig` and derive from field names, so nothing
+//! is random or clock-derived and regeneration is a no-op diff unless the wire
+//! genuinely changed.
 
 const std = @import("std");
 
@@ -53,11 +48,10 @@ const Excluded = struct { module: []const u8, why: Skip, reason: []const u8 };
 /// type gets a fixture" would emit a version-one lease and the Rust port would
 /// grow a version-one serde type to round-trip it — compatibility arriving
 /// through the back door. Indy's call, Aug 23, 2026: the port implements the
-/// current shape only. The evidence is that both wire-version constants were
-/// introduced in one commit, so "version one" names a pre-existing shape rather
-/// than a designed protocol, and no in-tree code path emits it — the runner
-/// posts the current request unconditionally. The Zig daemon keeps its
-/// version-one path and retires with it; nothing is deleted here.
+/// current shape only. Both wire-version constants were introduced in one
+/// commit, so "version one" names a pre-existing shape rather than a designed
+/// protocol, and no in-tree path emits it — the runner posts the current request
+/// unconditionally. The Zig daemon keeps its path and retires with it.
 const EXCLUDED = [_]Excluded{
     .{
         .module = "protocol_lease_v1",
@@ -166,11 +160,36 @@ fn emitAll(sink: *Sink) !void {
 }
 
 fn emitModule(sink: *Sink, comptime module_name: []const u8, comptime module: type) !void {
-    inline for (@typeInfo(module).@"struct".decls) |decl| {
-        const value = @field(module, decl.name);
+    try emitDecls(sink, module_name, "", module);
+}
+
+/// Emits every type `Container` declares, then the types those declare, one
+/// level down.
+///
+/// The second level is not optional. `ExecutionResult.Outcome` is a union
+/// declared INSIDE a struct: the module walk never reaches it, and the enclosing
+/// struct can only carry one of its variants, so the other arm's wire shape
+/// would never be compared. One level covers this wire and terminates obviously.
+fn emitDecls(
+    sink: *Sink,
+    comptime module_name: []const u8,
+    comptime prefix: []const u8,
+    comptime Container: type,
+) !void {
+    const decls = switch (@typeInfo(Container)) {
+        .@"struct" => |info| info.decls,
+        .@"union" => |info| info.decls,
+        else => return,
+    };
+    inline for (decls) |decl| {
+        const value = @field(Container, decl.name);
         if (@TypeOf(value) == type) {
             switch (@typeInfo(value)) {
-                .@"struct", .@"enum", .@"union" => try emitType(sink, module_name, decl.name, value),
+                .@"struct", .@"enum", .@"union" => {
+                    const name = prefix ++ decl.name;
+                    try emitType(sink, module_name, name, value);
+                    if (prefix.len == 0) try emitDecls(sink, module_name, name ++ ".", value);
+                },
                 else => {},
             }
         }
@@ -186,16 +205,29 @@ fn emitType(
     const qualified = module_name ++ "." ++ type_name;
     const file_name = qualified ++ ".json";
 
-    const body = if (@typeInfo(T) == .@"enum")
-        try std.json.Stringify.valueAlloc(sink.arena, allTags(T), .{})
-    else
-        try std.json.Stringify.valueAlloc(sink.arena, sample(T, sink.arena, type_name), .{});
+    const body = switch (@typeInfo(T)) {
+        // A vocabulary, not a sample: an enum fixture carries every tag and a
+        // union fixture every variant, because the thing most likely to drift
+        // between two implementations is exactly the spelling and payload shape
+        // of the variant a sampled value happened not to pick.
+        .@"enum" => try std.json.Stringify.valueAlloc(sink.arena, allTags(T), .{}),
+        .@"union" => try std.json.Stringify.valueAlloc(
+            sink.arena,
+            fixture_sample.allVariants(T, sink.arena),
+            .{},
+        ),
+        else => try std.json.Stringify.valueAlloc(sink.arena, sample(T, sink.arena, type_name), .{}),
+    };
 
     try sink.dir.writeFile(sink.io, .{ .sub_path = file_name, .data = body });
     try sink.entries.append(sink.arena, .{
         .name = qualified,
         .module = module_name,
-        .kind = if (@typeInfo(T) == .@"enum") "enum" else "object",
+        .kind = switch (@typeInfo(T)) {
+            .@"enum" => "enum",
+            .@"union" => "union",
+            else => "object",
+        },
         .unknown_fields = if (isLenient(type_name)) "ignore" else "reject",
         .file = file_name,
     });
