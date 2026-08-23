@@ -158,8 +158,9 @@ impl Envelope {
     /// damaged row is rejected here rather than panicking inside the AEAD.
     ///
     /// # Errors
-    /// Returns a malformed-envelope error when any fixed-width component has
-    /// the wrong length, or when `kek_version` is not the supported version.
+    /// Returns a malformed-envelope error when any fixed-width component —
+    /// the wrapped DEK included — has the wrong length, or when `kek_version`
+    /// is not the supported version.
     pub fn from_parts(
         wrapped_dek: Vec<u8>,
         dek_nonce: &[u8],
@@ -173,6 +174,17 @@ impl Envelope {
             return Err(Error::new(ErrorKind::UnsupportedVersion {
                 found: kek_version,
                 supported: crate::KEK_VERSION,
+            }));
+        }
+        // The wrapped DEK is fixed-width like the nonces and tags: a detached
+        // AES-GCM ciphertext is as long as its plaintext, and that plaintext is
+        // always a `KEY_LEN` key. Checking it here keeps the column honest at
+        // the boundary instead of surfacing as an unopenable envelope later.
+        if wrapped_dek.len() != KEY_LEN {
+            return Err(Error::new(ErrorKind::ComponentLength {
+                component: "wrapped dek",
+                expected: KEY_LEN,
+                actual: wrapped_dek.len(),
             }));
         }
         Ok(Self {

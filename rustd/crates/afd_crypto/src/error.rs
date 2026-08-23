@@ -27,7 +27,7 @@ pub struct Error {
 /// What actually went wrong. Private so a new variant is not a breaking change.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
-    #[error("master key must be {expected} lowercase hex characters, got {actual}")]
+    #[error("master key must be {expected} hexadecimal characters, got {actual}")]
     KeyHexLength { expected: usize, actual: usize },
 
     #[error("master key is not valid hexadecimal")]
@@ -61,7 +61,10 @@ impl Error {
         }
     }
 
-    /// Whether the configured master key was not 64 lowercase hex characters.
+    /// Whether the configured master key was not 64 hexadecimal characters.
+    ///
+    /// Either case decodes — operators paste the key from both — so this asks
+    /// about length and alphabet, not about capitalisation.
     #[must_use]
     pub fn is_key_hex(&self) -> bool {
         matches!(
