@@ -93,6 +93,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/check_readme_badges_test.py` | EDIT | §6: reads one workflow now; the Zig-flag assertions went with the flags |
 | `scripts/check_route_registration_doc_test.py` | EDIT | §6: fixtures repointed to underscore targets that still exist |
 | `docs/REST_API_DESIGN_GUIDELINES.md` | EDIT | §6: cited three retired targets; orly-MANAGED, see Discovery |
+| `docs/architecture/testing.md` | REWRITE | §6: the page described the retired Zig lanes end to end — replaced with the current architecture rather than patched |
+| `docs/architecture/README.md`, `docs/architecture/billing_and_provider_keys.md`, `docs/development.md` | EDIT | §6 orphan sweep: cited deleted targets and scripts; `check-architecture-doc` was red until fixed |
+| `AGENTS.md` | EDIT | §6: the operating instructions named `make test-integration`, `make memleak` and `make lint-governance` as repository claims |
 | `docs/v2/active/M175_001_*.md` | EDIT | this spec — CHORE(open/close), A1/A2, §6, rubric grades |
 | `docs/v2/pending/M180_001_*.md` | EDIT | layout repoint: `rustd/src/` → `rustd/crates/` |
 | `docs/v2/pending/M176_001_*.md` | EDIT | §6 consequence: the substrate no longer inherits Zig lanes |
@@ -161,7 +164,7 @@ The gating foundation. `make lint-all` gains `cargo fmt --check` + `cargo clippy
 - **Dimension 4.2 — DONE** — `make test-unit-all` runs the cargo suite and propagates failure → Test `test_unit_lane_rust`
 - **Dimension 4.3 — DONE** — `make check-version` fails when the workspace version diverges from `VERSION` → Test `test_version_lane_rust`
 - **Dimension 4.4 — DONE** — staged/pushed `*.rs` triggers the hook lanes → Test `test_hook_rs_dispatch`
-- **Dimension 4.5 — IN_PROGRESS** — CI Rust job + `rust-afd` coverage flag report, as non-required contexts → Test `test_ci_rust_job_reports`. Cannot be graded before the Pull Request exists: it asserts what a real Continuous Integration (CI) run reports. The job is wired and `make check-gh-actions-valid` confirms both make targets it calls resolve; `orly-babysit-prs` confirms the run and flips this to DONE.
+- **Dimension 4.5 — DONE** — CI Rust job + `rust-afd` coverage flag report, as non-required contexts → Test `test_ci_rust_job_reports`. Confirmed on Pull Request #629: `test-unit-rustd` SUCCESS and `codecov/patch/rust-afd` SUCCESS, neither in `main`'s required-context set.
 
 ### §6 — Zig lane retirement (Indy override, Aug 23, 2026)
 
