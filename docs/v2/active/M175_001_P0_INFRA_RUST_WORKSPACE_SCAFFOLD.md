@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M175
 **Workstream:** 001
 **Date:** Aug 23, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — every later port milestone (M176–M181) consumes these crates and lanes
 **Categories:** INFRA
 **Batch:** B1 — family opener, serial; nothing in the port family runs before it
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
+**Branch:** feat/m175-rust-workspace-scaffold
+**Test Baseline:** unit=4237 integration=719 (Zig `src/**`, `make _lint_zig_test_depth` at CHORE(open); VERIFY Test Delta compares against this. The Rust cargo suite starts at zero — this milestone creates it — and is tracked by its own `cargo test --workspace` count.)
 **Depends on:** none — opener of the M175–M181 Zig-to-Rust daemon port family
 **Provenance:** LLM-drafted (Claude Fable 5, Aug 23, 2026)
 **Canonical architecture:** `docs/architecture/runner_fleet.md` §The control protocol
@@ -38,7 +38,17 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** feat(rustd): scaffold Rust workspace with wire parity and lanes
 - **Intent (one sentence):** Rust becomes first-class gated work in this repository, with the daemon↔runner wire layer proven byte-identical to the Zig implementation before any daemon code is written.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** (filled at PLAN, Aug 23, 2026) — **Restatement:** Rust stops being ungated in this repository. I create a two-crate Cargo workspace under `rustd/`, join it to the existing make lanes, both git hooks, Continuous Integration (CI) and coverage, and prove `afd_wire` speaks the current `/v1/runners` wire byte-for-byte against fixtures the Zig `src/lib/contract` module generates — before any daemon code exists to disagree with it. Zig stays the wire source of truth; Rust conforms to it, never the reverse.
+- **ASSUMPTIONS I'M MAKING:**
+  1. **Fixtures flow one way.** Only `src/lib/contract/fixture_export.zig` writes `samples/fixtures/wire-v2/`; Rust never does. A disagreement is fixed by changing Rust or regenerating — never by hand-editing a fixture.
+  2. **The emitter needs no `build.zig` edit.** Every `src/lib/contract/*.zig` import is sibling-relative, so the emitter compiles standalone under `zig run`. If that proves false I stop and flag rather than touching the Zig build graph (Product Clarity 7).
+  3. **Rust learns the current lease shape only** (Addendum A1). `protocol_lease_v1` is an explicit, test-asserted exclusion; no version-one serde type exists in `afd_wire`.
+  4. **"Every exported type gets a fixture" means one canonical JSON document per type** — structs emit a fully-populated object (every optional present, so no field escapes the round-trip); enums emit the array of all their tag names, so every wire spelling is proven rather than only the one a sample happened to use.
+  5. **The CI Rust job stays out of the `test` aggregate's `needs:` list.** That aggregate is the required context, so joining it would make the Rust job required by proxy and break Invariant 5.
+  6. **The coverage floor is measured, never guessed.** `cargo llvm-cov` runs once and the `rust-afd` target is set from that number; a floor of 0 is not shipped.
+  7. **Neither crate performs I/O, spawns a thread, or pulls an async runtime** (Invariant 2). `afd_core`'s config types are value types; nothing reads a file or an environment variable.
+  8. **Edition 2024, everything inherited from the workspace root**, toolchain pinned to the repository's mise-managed Rust.
+  9. **The Zig daemon is untouched.** One Zig file is created; none is edited.
 
 ## Implementing agent — read these first
 
