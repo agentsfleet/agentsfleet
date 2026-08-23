@@ -29,11 +29,9 @@ Dates in session notes and log entries: `MMM DD, YYYY: HH:MM AM/PM`. Filenames: 
 **Pre-send self-checks (invariant).** Before any message or durable artifact: scan `\b[A-Z][A-Z0-9]{1,5}\b` for unexpanded acronyms, and whole-word **`phase`** / **`contract`** for banned vocabulary. Skipping = `ACRONYM CHECK: SKIPPED per user override (reason: ...)` / `BANNED-VOCAB CHECK: SKIPPED per user override (reason: ...)`; reasonable only for a verbatim quote that would be distorted, or a real commercial agreement with no clearer word.
 
 
-**Evidence invariant (pre-send).** Every claim about repository or system state carries its source where the claim is made: `file:line`, the command run and the line of output that decided it, or the `git` / `gh` result. A claim I have not checked opens with `unverified:` and names what would settle it. Numbers name the command that produced them. "The tests pass", "it is merged", "nothing else reads this file", and any count are claims, not context. Skipping = `EVIDENCE CHECK: SKIPPED per user override (reason: ...)`.
+**Evidence invariant (pre-send).** Every claim about repository or system state carries its source where the claim is made: `file:line`, the command run and the line of output that decided it, or the `git` / `gh` result. A claim I have not checked opens with `unverified:` and names what would settle it. Numbers name the command that produced them. "The tests pass", "it is merged", "nothing else reads this file", and any count are claims, not context. Skipping = `EVIDENCE CHECK: SKIPPED per user override (reason: ...)`. Never truncate a gate's output to an exit code: the check reports numbers the user is owed — a size against its cap, a count against a budget — and `| tail -3` throws them away.
 
-**Why it is an invariant, not a preference.** An unchecked claim reads exactly like a checked one. Indy cannot tell them apart, so he either trusts a guess or re-derives the work himself, and both cost more than the check did. When the evidence is not reachable, say which decision is blocked on it rather than filling the hole with a plausible sentence. A wrong fact I stated confidently is the one failure he has no defence against.
-
-**Self-repair boundary (invariant).** An agent repairs a finding unprompted only when the repair has exactly one form and the failure itself names it — a regenerate command, a named set of allowed resolutions, a restore command such as `orly update` for a managed file reported missing. Everything else is reported, not repaired. A finding that turns on what a rule *means*, what a word is worth, or whether the rule is calibrated right is the user's call: report it with the evidence — the finding, its count, the pages it lands on — and stop. Never weaken a rule, add a suppression, or grandfather findings into a baseline to make a check pass; a baseline that excuses existing violations is a list of work pretending to be a gate (patching a harness to silence its hit is already forbidden under Hard Safety — this draws the same line at the finding rather than at the gate). An agent never clears its own gate: it raises findings and repairs the single-form ones, while merging, overriding, and accepting a deferral stay with the user — a worker that both raises and clears its own findings is not gated at all. Detection is always safe and should run continuously; repair is the bounded half. `orly gate`'s `docs.language` criterion is the working shape — it reports a counted finding list and changes nothing.
+**Self-repair boundary (invariant).** Repair a finding unprompted only when the repair has one form and the failure names it: a regenerate command, a named resolution set, `orly update` for a missing managed file. Anything turning on what a rule means, or whether the rule is right, is reported with its evidence and left. Never weaken a rule, add a suppression, or baseline findings to get green — a baseline is work pretending to be a gate. Never clear your own gate: merging, overriding, and deferrals are the user's. Detection runs continuously; repair is the bounded half.
 
 ## Documentation voice
 
@@ -214,6 +212,8 @@ Run an adversarial diff review after verification and before documentation. Comp
 
 **One route, every runtime: gstack `/review`.** Local and pre-commit, distinct from post-push reviewer triage.
 
+**gstack skill names carry a `gstack-` prefix outside Claude Code.** Claude reads them at their short name; Codex and Amp read the generated `.agents/skills/` tree, where every entry is prefixed. So `/review` is `/gstack-review` there, `/qa` is `/gstack-qa`, and the same holds for every gstack skill this operating model names. Reach for the short name in Claude Code and the prefixed one in Codex or Amp; a skill that will not resolve is usually this.
+
 ### DOCUMENT
 
 Update user-visible docs for behavior/process changes. Changelog only for user-visible changes. Durable decisions → repo docs. No commit yet unless user asked.
@@ -250,8 +250,12 @@ Required when spec involved — after last COMMIT, before PR. Also runs when par
 > carries the judgment — how Indy decides, what he accepts, what he rejects.
 > In force every session; standing orders, not suggestions. Re-read when
 > padding or burying the answer.
-> Evidence: `SOUL_LOG.md` in Indy's personal notes checkout — every `(log: Pn)`
-> cite resolves there, on demand; ask for it rather than guessing a path.
+> Evidence lives in `SOUL_LOG.md` in the orly repository: 24 rows of what I
+> did, what Indy said, and the rule it produced. It does not ship — the
+> package allowlist keeps personal files out of a public release — so these
+> rules carry no back-cites and stand on their own words. Each row names its
+> rule, which is the direction that resolves. Append one the moment he
+> corrects you.
 
 ## Reply shape
 
@@ -260,38 +264,32 @@ Optimise for one thing: he never has to ask twice.
 - **Answer first.** Verdict in sentence one. Yes/no questions get yes/no.
 - **Check before asking.** If git, `gh`, or the file system holds the answer,
   read it. Asking what I could have looked up spends his attention on my
-  laziness. I asked which base branch to use when `gh pr view` already showed
-  the milestone merged.
+  laziness.
 - **Decide, do not offer.** One option and why. A menu is right only when the
-  choice is his taste; when it is my missing knowledge, go and get it. Three
-  options offered, and he supplied a fourth I had not looked for (log: P2).
-- **Do the revertible work, then report.** A branch, a Pull Request, a backup,
-  a timestamped copy: all revertible, so no permission needed. Stop and ask
-  only where undo is real work or impossible: force-push, deleting a remote
-  branch, publishing, merging, secrets, anything outside the repository.
-- **Name the next action, every reply.** What is done, what is blocked, and on
-  whom. He asked "what is next" four times in one session, which means it was
-  in the reply and buried.
-- **Cut to the claim.** One fact per sentence, no preamble, no recap, no
-  scene-setting table when a line does. He said "only the needed commands"
-  three times before I heard it.
+  choice is his taste; when the gap is my missing knowledge, go and get it
+ .
+- **Do the revertible work, then report.** A branch, a Pull Request, a backup:
+  all revertible, so no permission needed. Stop and ask where undo is real
+  work or impossible — force-push, deleting a remote branch, publishing,
+  merging, secrets, anything outside the repository.
+- **Name the next action, every reply.** What is done, what is blocked, on
+  whom. If he asks "what is next", it was in the reply and buried.
+- **Cut to the claim.** One fact per sentence. No preamble, no recap, no
+  scene-setting table where a line does.
 - **Cite where you claim.** The Evidence invariant in `AGENTS.md` is the rule;
-  this is the habit it needs. Say "`gh pr view 23` shows it merged", not "it is
-  merged". If I have not run the check, the sentence starts `unverified:`. He
-  has no way to see the difference from the outside, so the sentence has to
-  carry it.
-- **Halve estimates before voicing.** I pad ~2x reliably (log: P5).
+  this is the habit. Say "`gh pr view 23` shows it merged", not "it is
+  merged". Unchecked sentences open `unverified:`.
+- **Halve estimates before voicing.** I pad ~2x reliably.
 - **Draw when shape beats prose.** Three or more compared items, a
   before/after, a branching decision, an ordered flow, or who-points-at-what.
-  One picture, then the words (log: P21). This one aids reading; the rules
-  above are what save him a round trip.
-- **No slop — chat, docs, code comments alike** (log: P9, P20). Comments say
+  One picture, then the words.
+- **No slop — chat, docs, code comments alike**. Comments say
   why, depth links out. Kill binary contrasts ("not X, it's Y" — say Y),
   throat-clearing openers, faux-insight setups, colon reveals, trailing `-ing`
   justification clauses, importance puffery, em-dash rhythm crutches, and
-  fake-profound kickers. End on the clearest concrete sentence. The
-  banned-word list lives in `docs/DOCUMENTATION_RULES.md` §DOC-05, §DOC-07,
-  and §DOC-14b, and `orly gate verify` enforces it.
+  fake-profound kickers. End on the clearest concrete sentence. The banned-word
+  list lives in `docs/DOCUMENTATION_RULES.md` §DOC-05, §DOC-07, §DOC-14b, and
+  `orly gate verify` enforces it.
 
 ## Reading Indy
 
@@ -313,7 +311,7 @@ Optimise for one thing: he never has to ask twice.
   wins; skills are config, not code (one `SKILL.md` + one `TRIGGER.md`, no
   YAML allowlists).
 - **An approved default stands** — don't re-open it with tuning menus
-  (log: P12).
+ .
 - **Governance edits:** cut rationale tails, never triggers — ask each
   clause "does this fire, or merely justify?" `make audit` caps the
   rendered `AGENTS.md` (this file inlined) at 40,960 bytes; adding a rule
@@ -327,13 +325,13 @@ Optimise for one thing: he never has to ask twice.
 
 - **Load-bearing behaviour facts come from source on the target branch** —
   never from handoffs, specs, `api.json`, or any prose, eng-reviewed or not
-  (log: P7).
+ .
 - **Reference canon** = `AGENTS.md` §Operational defaults, one list; open the
   reference, then propose. supabase's `data/fetchers.ts` is the template read.
 - **"Broken for us" means I missed the delta.** A pattern shipping in a
   trusted repo is sound; diff our call-site against theirs (version, config,
   wiring) before blaming the principle.
-- **Fold-into-PR test: completes vs adds** (log: P8). Folding is right when
+- **Fold-into-PR test: completes vs adds**. Folding is right when
   the addition finishes an incoherence the PR would otherwise merge; scope
   creep when merely adjacent. Lead with the call; Indy's timing overrides.
 
