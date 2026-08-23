@@ -1,0 +1,21 @@
+[package]
+name = "afd_wire"
+description = "Serde port of the frozen /v1/runners control protocol the daemon and runner exchange."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+afd_core.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

@@ -52,12 +52,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/src/afd_fleet/**` | CREATE | lease assignment, billing/budget gates, report fencing, sweepers, memory store |
-| `rustd/src/afd_fleet_runtime/**` | CREATE | fleet config parsing (YAML frontmatter + markdown), ExecutionPolicy build, metering |
-| `rustd/src/afd_credentials/**` | CREATE | on-demand credential broker: cached short-lived integration-token minting from vault handles |
-| `rustd/src/afd_api/**` | EDIT | Route variants + handlers for the `/v1/runners` verb set; `runnerBearer` layer wiring |
-| `rustd/src/afd_auth/**` | EDIT | `runnerBearer` validator (`agt_r` prefix, timing-safe hash lookup, no memoization) |
-| `rustd/src/agentsfleetd/**` | EDIT | sweeper tasks join the supervisor; runner metric families registered |
+| `rustd/crates/afd_fleet/**` | CREATE | lease assignment, billing/budget gates, report fencing, sweepers, memory store |
+| `rustd/crates/afd_fleet_runtime/**` | CREATE | fleet config parsing (YAML frontmatter + markdown), ExecutionPolicy build, metering |
+| `rustd/crates/afd_credentials/**` | CREATE | on-demand credential broker: cached short-lived integration-token minting from vault handles |
+| `rustd/crates/afd_api/**` | EDIT | Route variants + handlers for the `/v1/runners` verb set; `runnerBearer` layer wiring |
+| `rustd/crates/afd_auth/**` | EDIT | `runnerBearer` validator (`agt_r` prefix, timing-safe hash lookup, no memoization) |
+| `rustd/crates/agentsfleetd/**` | EDIT | sweeper tasks join the supervisor; runner metric families registered |
 | `rustd/Cargo.toml` | EDIT | new members |
 | `make/test-integration.mk` | EDIT | `DAEMON=rust\|zig` daemon-under-test selector (default `zig`) + dual-run differ lane |
 | `src/build/**` | EDIT | integration test-build wiring for the selector and the row-dump/differ steps |
