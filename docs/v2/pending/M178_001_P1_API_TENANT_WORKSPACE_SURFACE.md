@@ -273,7 +273,7 @@ N/A — no files deleted.
 1. **Successful user moment** — a teammate uses the dashboard and the CLI against a staging `agentsfleetd-rs` for a full session — login, fleet install, steer, watch the stream, approve a gate — and nothing feels or behaves differently.
 2. **Preserved user behaviour** — every documented route, code, cursor, and stream semantic; `public/openapi.json` unchanged.
 3. **Optimal-way check** — group-by-group parallel port under two oracles (route-inventory test + integration subset) is the direct path for a ~165-handler tail; anything cleverer adds drift risk.
-4. **Rebuild-vs-iterate** — pure port; redesigns (route consolidation, envelope changes) are explicitly post-cutover.
+4. **Rebuild-vs-iterate** — pure port; redesigns (route consolidation, envelope changes) are explicitly post-cutover. "Pure port" bounds the redesign, not the parity rule: a superseded or compatibility path that meets M181's single-implementation evidence bar (no in-tree emitter plus Indy's sign-off, recorded in Discovery) is left unported and registered as a declared divergence, not reproduced.
 5. **What we build** — one repositories crate, handler groups over existing services, SSE plumbing, two supervised workers.
 6. **What we do NOT build** — new endpoints, response-shape "improvements", OpenAPI edits, admin surface.
 7. **Fit with existing features** — compounds with M177 (fleet service reuse); must not destabilize the live Zig integration lanes.

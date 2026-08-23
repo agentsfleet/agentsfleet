@@ -76,6 +76,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `.githooks/pre-push` | EDIT | pushed `*.rs` triggers the Rust fast lane |
 | `.github/workflows/test.yml` | EDIT | Rust job beside the Zig jobs (non-required context — see Invariant 5) |
 | `codecov.yml` | EDIT | `rust-afd` flag beside the `zig-*` flags, with an enforced floor |
+| `docs/v2/pending/M177_001_*.md` | EDIT | addendum A1 propagation: the Rust lease handler carries no version negotiation; the dual-run differ drives current-shape requests only |
+| `docs/v2/pending/M178_001_*.md`, `docs/v2/pending/M179_001_*.md` | EDIT | addendum A2 propagation: "pure port" bounds redesign, not the single-implementation parity rule |
+| `docs/v2/pending/M181_001_*.md` | EDIT | addendum A2: single-implementation parity replaces parity-first; declared-divergence register created with the lease-wire entry |
 
 ## Applicable Rules
 
@@ -121,7 +124,9 @@ Domain primitives with zero I/O: the `ERR_*`-style error-code registry (single-s
 
 The serde port of the daemon↔runner wire types. The Zig emitter writes one canonical JSON fixture per wire type into `samples/fixtures/wire-v2/`; Rust tests deserialize and re-serialize each, comparing bytes. The emitter DEFINES the canonical byte form — field order as declared, no insignificant whitespace, explicit null/optional-emission policy, integer spelling — and emits a machine-readable `manifest.json` beside the fixtures listing every exported type and its per-type unknown-field policy; the Rust serde attributes mirror the manifest, so "byte-identical" is a defined claim, not a hope. **Implementation default:** the emitter runs as a make recipe regenerating the committed fixtures — because committed fixtures make drift a red diff, not a silent skew.
 
-- **Dimension 3.1** — fixture set covers every type the Zig module exports (enumeration asserted against the emitted manifest, not hand-counted) → Test `test_fixture_set_complete`
+**Current-shape only — the version-one lease is excluded (Indy, Aug 23, 2026).** `contract.zig:16` re-exports `protocol_lease_v1`, so an unqualified "every exported type gets a fixture" rule would emit a version-one fixture and `afd_wire` would grow a version-one serde type to round-trip it. The emitter therefore carries a **declared exclusion list**, `protocol_lease_v1` its only entry, and `manifest.json` describes the current shape alone. The evidence: commit `312e09ced` (Aug 13, 2026) introduced `LEASE_WIRE_VERSION_V1` and `LEASE_WIRE_VERSION_CURRENT` in one commit, so "version one" names the pre-M157 shape rather than a designed protocol; `src/runner/daemon/control_plane_client.zig:96` posts `LEASE_REQUEST_CURRENT_JSON` unconditionally and 17 integration call sites do the same, so no in-tree code path emits version one. The exclusion is asserted, not assumed — an accidental re-admission fails `test_fixture_set_complete` rather than silently passing. `samples/fixtures/wire-v2/` is a literal directory name for the current shape, not one half of a versioned pair; no `wire-v1/` sibling exists or is planned. Nothing is deleted: the Zig daemon keeps its version-one path, which retires with the daemon.
+
+- **Dimension 3.1** — fixture set covers every CURRENT-shape wire type the Zig module exports, and the declared exclusion list is asserted too (both enumerations checked against the emitted manifest, never hand-counted; an accidental re-admission of the version-one lease fails the test) → Test `test_fixture_set_complete`
 - **Dimension 3.2** — deserialize→serialize byte-compare for every fixture → Test `test_wire_roundtrip_all_fixtures`
 - **Dimension 3.3** — the Rust wire-version constant equals the fixture-carried Zig value (2) → Test `test_wire_version_matches_fixture`
 - **Dimension 3.4** — unknown-field and optional-field handling mirrors the Zig parser's configured behaviour (read the parse options in `src/lib/contract/`, mirror via serde attributes) → Test `test_wire_unknown_field_policy`
@@ -157,7 +162,8 @@ afd_wire public surface  = /v1/runners wire types + path constants +
                            LEASE_WIRE_VERSION_CURRENT (= 2, fixture-asserted);
                            frozen inside the workspace until a runner-port family
 Fixture layout           = samples/fixtures/wire-v2/<type>.json — generated only
-                           by the Zig emitter, never edited by hand
+                           by the Zig emitter, never edited by hand; current
+                           shape only (protocol_lease_v1 declared-excluded)
 Lane names               = make lint-all / test-unit-all / check-version
                            (unchanged names; the only repository claims)
 ```
@@ -196,7 +202,7 @@ Lane names               = make lint-all / test-unit-all / check-version
 | 2.1 | unit | `test_uuid_v7_rejects_uppercase` | an otherwise-valid uppercase UUID v7 string → validation error, not normalization |
 | 2.2 | unit | `test_error_registry_unique` | duplicate or malformed code in the registry table → test failure naming the code |
 | 2.3 | unit | `test_core_dependency_freeze` | dependency graph of afd_core/afd_wire contains no tokio/sqlx/axum/reqwest/redis |
-| 3.1 | unit | `test_fixture_set_complete` | every exported wire type has exactly one fixture file; extras and gaps both fail |
+| 3.1 | unit | `test_fixture_set_complete` | every current-shape wire type has exactly one fixture file; extras and gaps both fail; the manifest's exclusion list is exactly `protocol_lease_v1`, so re-admitting it fails |
 | 3.2 | unit | `test_wire_roundtrip_all_fixtures` | for each fixture: parse → serialize → bytes identical; first differing byte reported |
 | 3.3 | unit | `test_wire_version_matches_fixture` | version constant in fixture == afd_wire constant == 2 |
 | 3.4 | unit (negative) | `test_wire_unknown_field_policy` | payload with an unknown field behaves exactly as the Zig parser is configured to behave |
@@ -215,7 +221,7 @@ Lane names               = make lint-all / test-unit-all / check-version
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Wire round-trip green (§3) | `cd rustd && cargo test -p afd_wire` | exit 0 | P0 | |
-| R2 | Fixture set complete (§3) | `cd rustd && cargo test test_fixture_set_complete` | exit 0 | P0 | |
+| R2 | Fixture set complete + version-one excluded (§3) | `cd rustd && cargo test test_fixture_set_complete` | exit 0 | P0 | |
 | R3 | Lanes catch seeded defects (§4) | seeded-violation runs recorded in PR Session Notes | each lane exit non-zero, then green | P0 | |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | R5 | Governance intact (§5) | `orly doctor` | exit 0 | P0 | |
@@ -264,7 +270,10 @@ N/A — no files deleted.
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
+- **Consults**
+  - **Lease wire version one — does the port owe it compatibility?** Indy, Aug 23, 2026: no. The port implements the current shape only; the Zig daemon keeps its version-one path and retires with it. Evidence chain verified in-tree before the decision was applied: (a) `git log -S 'LEASE_WIRE_VERSION_V1' -- src/lib/contract/` and the same for `_CURRENT` both return exactly `312e09ced` (`git log -1 312e09ced` → `2026-08-13 feat(m157): close repairs on production evidence`), so both constants were born in one commit and "version one" names the pre-M157 shape rather than a designed protocol; (b) `src/runner/daemon/control_plane_client.zig:96` posts `protocol.LEASE_REQUEST_CURRENT_JSON` unconditionally — no branch, no configuration knob; (c) 17 integration call sites use the same constant, and the only version-one producers in the tree are `leaseWireVersion()`'s parse defaults (`src/agentsfleetd/http/handlers/runner/lease.zig:29,31,36`), which read a request rather than emit one. No in-tree code path emits version one.
+  - **Stop condition — is a version-one runner binary deployed on an operator host?** No, and more strongly than the addendum assumed: `gh release list --limit 10` returns no rows at exit 0 and `git tag --list | wc -l` returns 0, so no runner artifact of any vintage has ever been released; `deploy/baremetal/deploy.sh:160` downloads the runner from a GitHub release tag and `deploy.sh:293` takes that tag as a positional argument, so `deploy/` pins no version; no fleet inventory file exists in the repository. The decision's factual premise holds.
+  - **Layout — Microsoft `M-CRATES-FLAT-FOLDER` versus the bun canon.** The Pragmatic Rust Guidelines (`~/Projects/oss/rust-guidelines/all.txt:1454-1498`) call crates under a `src/` folder "never acceptable", and `~/Projects/oss/exonum` — the other reference this spec cites — uses `components/` + `services/` instead. Resolved without escalation by `dispatch/write_rust.md:30` ("Local convention wins on conflict, but the divergence is named in the review output"): the Indy-directed bun canon stands, `rustd/`'s root is a virtual manifest so no crate is nested inside another crate's source tree, and the divergence is cited by mnemonic in REVIEW.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
