@@ -169,7 +169,7 @@ the first baseline run and recorded in the spec's Discovery, not invented here.
 2. The Zig binary stays built, shipped, and deployable until a post-cutover retirement milestone Indy opens — enforced by the release lane asserting both artifacts.
 3. Budgets are named constants compared mechanically — never prose judgments — `test_latency_budget`, `test_memory_ceiling_soak`.
 4. Every runbook step carries an executable probe in `playbooks/cutover/probes.sh`; a deviation surfaces as a failed probe run, not a judgment call — `test_runbook_probes` proves the script executable end-to-end.
-5. Cutover cannot proceed with any M175–M180 rubric row ungraded or red — enforced mechanically: `probes.sh`'s pre-swap section is **derived from the Acceptance Rubric tables of the five merged specs**, and the derivation must land every row in exactly one of two buckets: (a) an **executable probe** — the Verify cell normalized into runnable shell (multi-command cells split into one probe each, stated prerequisites expanded into setup steps), or (b) a **declared exclusion** — a row whose evidence is historical and not re-runnable (e.g. a one-time seeded-defect record), listed in an exclusion manifest the script prints on every run and Indy signs off in Discovery at PLAN. The completeness assert is `probes + declared exclusions == R+S row total`; a non-executable cell or an undeclared skip is a red run, not a silent gap.
+5. Cutover cannot proceed with any M175–M180 rubric row ungraded or red — enforced mechanically: `probes.sh`'s pre-swap section is **derived from the Acceptance Rubric tables of the five merged specs**, and every row lands in exactly one of two buckets: (a) **covered** — one or more executable probes, each tagged with its source row id, normalized into runnable shell (a multi-command cell expands to several probes under the same row tag, stated prerequisites become setup steps), or (b) a **declared exclusion** — a row whose evidence is historical and not re-runnable (e.g. a one-time seeded-defect record), listed in an exclusion manifest the script prints on every run and Indy signs off in Discovery at PLAN. The completeness assert is over **rows, not probes**: every R+S row id in those rubrics is either tagged by ≥1 probe or named in the manifest, and every probe carries a row tag. An uncovered row, an untagged probe, or an undeclared skip is a red run, not a silent gap.
 
 ## Metrics & Observability
 
@@ -195,7 +195,7 @@ No product-analytics changes.
 | 3.4 | e2e (chaos) | `test_soak_chaos_invariants` | replay/fencing/reconnect probes hold mid-load |
 | 3.5 | e2e (negative-sensitive) | `test_state_handoff_bidirectional` | Rust-written live state served correctly by Zig after swap, and reverse (`make test-handoff`) |
 | 4.1 | e2e | `test_rollback_rehearsal` | staged Rust→Zig swap verified by `probes.sh` exit 0 |
-| 4.2 | e2e | `test_runbook_probes` | `bash playbooks/cutover/probes.sh` passes post-swap on staging; probe count equals the R+S row count across the M175–M180 rubrics |
+| 4.2 | e2e | `test_runbook_probes` | `bash playbooks/cutover/probes.sh` passes post-swap on staging; every M175–M180 R+S row id is probe-tagged or manifest-declared, and every probe carries a row tag |
 | 4.3 | integration | `test_metric_continuity` | series names/labels identical across the swap boundary |
 
 ## Acceptance Rubric (single scoring surface)
