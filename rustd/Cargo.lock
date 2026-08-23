@@ -15,7 +15,6 @@ dependencies = [
 name = "afd_wire"
 version = "0.26.2"
 dependencies = [
- "afd_core",
  "serde",
  "serde_json",
 ]

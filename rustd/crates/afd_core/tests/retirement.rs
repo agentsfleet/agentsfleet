@@ -1,14 +1,12 @@
-//! The Zig lanes are gone and the declared commands still work.
+//! No Zig lane may come back, and the declared commands must keep working.
 //!
-//! Indy's override on Aug 23, 2026 retired the Zig daemon's lint, unit,
-//! coverage, leak and integration lanes and its automatic deploy, on the
-//! deciding fact that there are no production users. The daemon's SOURCE is
-//! untouched — its last built revision still serves `api-dev` — but nothing
-//! rebuilds, regrades or redeploys it.
+//! The Zig daemon carries no lint, unit, coverage, leak or integration lane and
+//! does not auto-deploy; its source is untouched and the revision serving
+//! `api-dev` still builds, but nothing rebuilds, regrades or redeploys it. These
+//! assertions stop a half-finished reference to a deleted lane reaching main,
+//! and stop the four commands `orly gate` runs from breaking on the way.
 //!
-//! These assertions live in the Rust suite because the Rust suite is now the
-//! repository's suite: the make target that used to run repository-shape checks
-//! was one of the things deleted, so a check placed there would not run.
+//! They live in the Rust suite because it is now the repository's suite.
 #![expect(
     clippy::unwrap_used,
     clippy::expect_used,

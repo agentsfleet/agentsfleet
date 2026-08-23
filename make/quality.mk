@@ -120,11 +120,9 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 
 # Every scripts/*_test.py, discovered rather than listed.
 #
-# These used to ride the Zig discipline lint, which retired with the Zig lanes
-# (Indy, Aug 23, 2026) — taking every script self-test down with it silently.
-# A checker whose own tests never run is enforcement in appearance only, which
-# is the exact defect this repository deletes dead checkers for, so they get
-# their own lane rather than being wedged into an unrelated one.
+# A checker whose own tests never run is enforcement in appearance only, so the
+# self-tests get their own lane rather than riding an unrelated one where a
+# future edit can silently unhook them.
 #
 # `*_test.py`, not `check_*_test.py`: the narrower pattern would let a self-test
 # be written, committed and never run.
