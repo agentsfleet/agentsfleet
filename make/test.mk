@@ -4,7 +4,6 @@
 
 include make/test-unit.mk
 include make/test-infra.mk
-include make/test-integration.mk
 include make/acceptance.mk
 include make/dry.mk
 include make/bench.mk
@@ -265,55 +264,7 @@ ZIG_EVIDENCE_RECORD = python3 scripts/verification_evidence.py record $(ZIG_EVID
 # Use baseline CPU so valgrind can execute SHA/AVX instructions it can't emulate.
 MEMLEAK_CPU ?= baseline
 
-.PHONY: test-unit-all test-coverage-grade
+.PHONY: test-unit-all
 
-test-unit-all: test-unit-agentsfleetd test-unit-agentsfleet-runner test-unit-agentsfleet-lib test-unit-rustd test-coverage-all  ## Run all unit lanes (Zig + multi-package coverage)
+test-unit-all: test-unit-rustd test-coverage-all  ## Run all unit lanes (Zig + multi-package coverage)
 	@echo "✓ All unit lanes passed"
-
-# The merged floor has one owner, and it is neither producer. Neither lane can
-# see the union on its own — the unit lane no longer runs the live components and
-# the integration lane never runs the unit ones — so grading from inside either
-# would be grading half a codebase and calling it the whole one.
-#
-# It validates before it grades. Every component report on disk is accepted only
-# when its producer's manifest still matches this build's sources, toolchain,
-# component inventory and platform, and only when every component in the
-# inventory was produced exactly once. Omission would shrink the denominator
-# silently; duplication would mean two lanes ran one binary, which is the
-# duplication this split removed.
-test-coverage-grade:  ## Validate both producers' evidence, then grade the merged Zig coverage union
-	@python3 scripts/verification_evidence.py validate \
-	  $(ZIG_EVIDENCE_ARGS) \
-	  --manifest "test-coverage-zig:$(ZIG_EVIDENCE_UNIT)" \
-	  --manifest "test-integration:$(ZIG_EVIDENCE_INTEGRATION)" \
-	  $(foreach name,$(ZIG_COVERAGE_ALL_NAMES),--expect-component $(name))
-	@set -eu; \
-	 component_flags=""; \
-	 for name in $(ZIG_COVERAGE_ALL_NAMES); do \
-	   component_flags="$$component_flags --component $$name"; done; \
-	 for name in $(ZIG_COVERAGE_REQUIRED_COMPONENTS); do \
-	   component_flags="$$component_flags --require-component $$name"; done; \
-	 for name in $(ZIG_COVERAGE_REQUIRED_ROOTS); do \
-	   component_flags="$$component_flags --require-root $$name"; done; \
-	 for pair in $(ZIG_COVERAGE_FOLDER_FLOORS); do \
-	   component_flags="$$component_flags --folder-floor $$pair"; done; \
-	 for pair in $(ZIG_COVERAGE_FOLDER_TARGETS); do \
-	   component_flags="$$component_flags --folder-target $$pair"; done; \
-	 python3 scripts/check_zig_coverage.py \
-	   --coverage-dir "$(ZIG_COVERAGE_DIR)" \
-	   $$component_flags \
-	   --min-pct "$(ZIG_COVERAGE_MIN_PCT)" \
-	   --target-pct "$(ZIG_COVERAGE_TARGET_PCT)" \
-	   --min-files "$(ZIG_COVERAGE_MIN_FILES)" \
-	   --min-lines "$(ZIG_COVERAGE_MIN_MEASURED_LINES)" \
-	   --merged-report "$(ZIG_COVERAGE_DIR)/merged" \
-	   --repo-root "$(CURDIR)" \
-	   --summary-file "$(ZIG_COVERAGE_SUMMARY_FILE)" \
-	 || { \
-	   echo "--- kcov stderr tails (why a capture came back empty) ---"; \
-	   for f in $(ZIG_COVERAGE_DIR)/kcov-*.log; do \
-	     [ -e "$$f" ] || continue; \
-	     echo "── $$f"; tail -n 12 "$$f"; \
-	   done; \
-	   exit 1; \
-	 }

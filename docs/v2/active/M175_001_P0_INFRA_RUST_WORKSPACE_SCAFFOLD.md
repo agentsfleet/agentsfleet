@@ -78,6 +78,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `.githooks/pre-push` | EDIT | pushed `*.rs` triggers the Rust fast lane |
 | `.github/workflows/test.yml` | EDIT | Rust job beside the Zig jobs (non-required context — see Invariant 5) |
 | `codecov.yml` | EDIT | `rust-afd` flag beside the `zig-*` flags, with an enforced floor |
+| `make/quality.mk`, `make/test-unit.mk`, `make/test.mk`, `make/test-integration.mk`, `make/check-test-reachability.mk` | EDIT/DELETE | §6: remove the Zig lint, unit, coverage, leak and integration lanes |
+| `.github/workflows/{test,lint,memleak,test-integration,cross-compile}.yml` | EDIT/DELETE | §6: remove the Zig jobs; `test.yml` keeps the Rust job |
+| `.github/workflows/{deploy-dev,release}.yml` and `deploy/**` | EDIT | §6: stop deploying `agentsfleetd` and `agentsfleet-runner` |
+| `docs/v2/pending/M176_001_*.md` | EDIT | §6 consequence: the substrate no longer inherits Zig lanes |
 | `README.md` | EDIT | `rust-afd` coverage badge + Rust toolchain badge — required by `scripts/check_readme_badges.py`, which fails any uploaded flag the README never shows |
 | `docs/v2/pending/M177_001_*.md` | EDIT | addendum A1 propagation: the Rust lease handler carries no version negotiation; the dual-run differ drives current-shape requests only |
 | `docs/v2/pending/M178_001_*.md`, `docs/v2/pending/M179_001_*.md` | EDIT | addendum A2 propagation: "pure port" bounds redesign, not the single-implementation parity rule |
@@ -143,6 +147,18 @@ The gating foundation. `make lint-all` gains `cargo fmt --check` + `cargo clippy
 - **Dimension 4.3 — DONE** — `make check-version` fails when the workspace version diverges from `VERSION` → Test `test_version_lane_rust`
 - **Dimension 4.4** — staged/pushed `*.rs` triggers the hook lanes → Test `test_hook_rs_dispatch`
 - **Dimension 4.5** — CI Rust job + `rust-afd` coverage flag report, as non-required contexts → Test `test_ci_rust_job_reports`
+
+### §6 — Zig lane retirement (Indy override, Aug 23, 2026)
+
+Scope added mid-milestone by Indy, overriding M181's "retirement is its own milestone" line. The deciding fact: **there are no production users.** The Zig daemon's last built revision keeps serving `api-dev`; nothing further is spent linting, testing, leak-checking, coverage-grading or deploying a codebase being replaced. Gating moves to the Rust workspace as it grows.
+
+Deleted, not disabled — a lane commented out is a lane someone re-enables by accident: `lint-zig` and everything only it reached, the three `test-unit-agentsfleet*` lanes, `test-coverage-zig` + `test-coverage-grade`, `memleak`, the `test-integration` family, and their Continuous Integration (CI) jobs. `agentsfleetd` and `agentsfleet-runner` stop being deployed. The README coverage badge moves from `zig-agentsfleetd` to `rust-afd`.
+
+**Consequence, recorded rather than hidden:** M177's dual-run row differ and M181's p95 baseline both named the LIVE Zig integration suite as their oracle. Deleting it deletes those oracles. The Rust daemon is proven on its own terms from here — those two specs are amended in the same change, so no later milestone consumes a lane that no longer exists.
+
+- **Dimension 6.1 — DONE** — no Zig lint, unit, coverage, leak or integration make target survives, and no workflow references one → Test `test_zig_lanes_absent`
+- **Dimension 6.2 — DONE** — `make lint-all`, `make test-unit-all` and `make harness-verify` still resolve and pass with the Zig lanes gone → Test `test_declared_commands_survive_retirement`
+- **Dimension 6.3 — DONE** — the deploy path no longer ships `agentsfleetd` or `agentsfleet-runner` → Test `test_daemon_deploy_retired`
 
 ### §5 — Governance record
 
@@ -228,6 +244,7 @@ Lane names               = make lint-all / test-unit-all / check-version
 | R3 | Lanes catch seeded defects (§4) | seeded-violation runs recorded in PR Session Notes | each lane exit non-zero, then green | P0 | |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | R5 | Governance intact (§5) | `orly doctor` | exit 0 | P0 | |
+| R6 | Zig lanes retired (§6) | `git grep -nE '\b(lint-zig\|test-unit-agentsfleetd\|test-unit-agentsfleet-runner\|test-unit-agentsfleet-lib\|test-coverage-zig\|test-coverage-grade\|memleak\|test-integration)\b' -- Makefile make/ .github/workflows/` | no output | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Lint green | `make lint-all` | exit 0 | P0 | |
@@ -248,14 +265,15 @@ N/A — no files deleted.
 - Any server/runtime code — pools, Redis, axum, crypto (M176_001).
 - `.oracle/orly.json` edits and branch-protection changes (recorded decision in §5).
 - OpenAPI tooling changes — the existing Redocly pipeline and route-coverage script stay authoritative.
-- The `agentsfleet-runner` port — the runner stays Zig behind the frozen wire seam for the whole family.
+- The `agentsfleet-runner` port — the runner stays Zig behind the frozen wire seam for the whole family. §6 stops DEPLOYING it; it is not ported here.
+- Deleting Zig SOURCE. §6 removes lanes, jobs and deploy steps only — `src/**`, `build.zig` and `build_runner.zig` are untouched, so the last built revision still compiles if anyone needs it.
 
 ---
 
 ## Product Clarity (authoring record)
 
 1. **Successful user moment** — a contributor commits a broken Rust change and watches `make test-unit-all` catch it, then sees the wire suite prove `afd_wire` speaks lease-wire v2 byte-for-byte: the port has a foundation whose green means something.
-2. **Preserved user behaviour** — every existing Zig/TypeScript lane behaves byte-identically; the Zig daemon and its build graph are untouched.
+2. **Preserved user behaviour** — the TypeScript lanes behave byte-identically and the Zig daemon's SOURCE and build graph are untouched, so the revision serving `api-dev` still builds. Its lanes are not preserved: §6 deletes them by Indy's override, on the deciding fact that there are no production users. Nothing a user reaches changes, because no user reaches it.
 3. **Optimal-way check** — direct: gates before code. The unconstrained-optimal adds nothing; deferring lanes until M176 is how unverified Rust lands.
 4. **Rebuild-vs-iterate** — greenfield addition; nothing existing is refactored.
 5. **What we build** — one workspace, two crates, one fixture emitter + committed fixtures, lane/hook/CI/coverage wiring.
@@ -276,6 +294,11 @@ N/A — no files deleted.
 - **Consults**
   - **Lease wire version one — does the port owe it compatibility?** Indy, Aug 23, 2026: no. The port implements the current shape only; the Zig daemon keeps its version-one path and retires with it. Evidence chain verified in-tree before the decision was applied: (a) `git log -S 'LEASE_WIRE_VERSION_V1' -- src/lib/contract/` and the same for `_CURRENT` both return exactly `312e09ced` (`git log -1 312e09ced` → `2026-08-13 feat(m157): close repairs on production evidence`), so both constants were born in one commit and "version one" names the pre-M157 shape rather than a designed protocol; (b) `src/runner/daemon/control_plane_client.zig:96` posts `protocol.LEASE_REQUEST_CURRENT_JSON` unconditionally — no branch, no configuration knob; (c) 17 integration call sites use the same constant, and the only version-one producers in the tree are `leaseWireVersion()`'s parse defaults (`src/agentsfleetd/http/handlers/runner/lease.zig:29,31,36`), which read a request rather than emit one. No in-tree code path emits version one.
   - **Stop condition — is a version-one runner binary deployed on an operator host?** No, and more strongly than the addendum assumed: `gh release list --limit 10` returns no rows at exit 0 and `git tag --list | wc -l` returns 0, so no runner artifact of any vintage has ever been released; `deploy/baremetal/deploy.sh:160` downloads the runner from a GitHub release tag and `deploy.sh:293` takes that tag as a positional argument, so `deploy/` pins no version; no fleet inventory file exists in the repository. The decision's factual premise holds.
+  - **Two orly-MANAGED files were edited and will be reverted by the next `orly update`.** `docs/REST_API_DESIGN_GUIDELINES.md` cited `make lint-zig`, `make test-unit-agentsfleetd` and `make test-integration`, and `scripts/check_route_registration_doc.py` fails on a cited target that does not resolve — so the citations had to move or the gate stays red. `docs/VERIFY_TIERS.md` still names `make _lint_zig_test_depth` as the Test Baseline counter, which no longer exists; left as-is because no gate reads it. Both are pack-sourced: the durable fix is an orly pack change in that repository, which is outside this worktree and needs Indy's per-session cross-repo approval. Flagged rather than done.
+  - **Zig lane retirement, pulled forward into this milestone.** Raised as a conflict: M181's Out of Scope reserved it ("Deleting or de-listing the Zig daemon, its lanes, or `make memleak` — retirement is its own milestone after a stable production window Indy defines"), M181 Invariant 2 kept the Zig binary deployable, and M177 §7 + M181 Dimension 3.2 named the live Zig integration suite as the parity oracle and latency baseline. Indy overrode all of it on a fact the objection had assumed away:
+    > Indy (2026-08-23 19:4x): "Well there are no production users, since waiting for a complete removal will take time, i wanna build the milestones faster" — context: §6, deleting the Zig lint/unit/coverage/leak/integration lanes and the daemon deploy inside M175 rather than after cutover.
+    > Indy (2026-08-23 19:4x): "the last deployed version will run in api-dev and we start moving towards linting, .. and so on to the rust one we are building" — context: the Zig daemon is frozen at its last built revision; gating moves to Rust.
+    Accepted and executed as §6. The consequence — M177's dual-run differ and M181's p95 baseline lose their oracle — is written into both specs in the same change rather than left to be discovered at cutover.
   - **Layout — Microsoft `M-CRATES-FLAT-FOLDER` versus the bun canon.** The two references this spec names disagree: bun nests members under `src/<name>/`, while the Pragmatic Rust Guidelines (`~/Projects/oss/rust-guidelines/all.txt:1454-1498`) call crates under a `src/` folder "never acceptable" and `~/Projects/oss/exonum` uses `components/` + `services/`. Surfaced to Indy at PLAN with the structural difference drawn out (the clash is the middle directory's NAME — `rustd/`'s root is virtual, so nothing is genuinely nested). **Indy, Aug 23, 2026: take the Microsoft way.** Members moved to `rustd/crates/<name>/` before the first commit carrying them, and the family specs M176–M181 were repointed in the same edit so no sibling milestone inherits the old path. Bun stays the reference for the workspace MECHANICS (virtual root, explicit members, the `[workspace.lints]` rationale), not for the directory name.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).

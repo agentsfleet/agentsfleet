@@ -5,7 +5,6 @@
 include make/dev.mk
 include make/quality.mk
 include make/check-safety-gates.mk
-include make/check-test-reachability.mk
 include make/harness.mk
 include make/test.mk
 include make/build.mk

@@ -89,15 +89,6 @@ coverage:
 # re-measured. `scripts/check_readme_badges_test.py` holds these flags, the
 # README badges, and the workflow uploads to each other.
 flags:
-  zig-agentsfleetd:
-    paths:
-      - src/agentsfleetd/
-  zig-runner:
-    paths:
-      - src/runner/
-  zig-lib:
-    paths:
-      - src/lib/
   rust-afd:
     paths:
       - rustd/crates/

@@ -7,7 +7,6 @@
 #   2. run matching test-unit-* lanes
 #
 # Surfaces:
-#   - test-unit-agentsfleetd        (*.zig, schema/*.sql)
 #   - test-unit-rustd          (*.rs, rustd/*)
 #   - test-unit-cli            (cli/*)
 #   - test-unit-website        (ui/packages/website/*)
@@ -55,7 +54,6 @@ fi
 
 pushed_files="$(git diff --name-only "$upstream_ref"..HEAD 2>/dev/null || true)"
 
-needs_test_zig=0
 needs_test_rustd=0
 needs_test_cli=0
 needs_test_website=0
@@ -65,8 +63,6 @@ needs_test_design_system=0
 while IFS= read -r f; do
   [ -z "$f" ] && continue
   case "$f" in
-    *.zig|schema/*.sql)
-      needs_test_zig=1 ;;
     *.rs|rustd/*)
       needs_test_rustd=1 ;;
     cli/*)
@@ -82,7 +78,7 @@ while IFS= read -r f; do
   esac
 done <<< "$pushed_files"
 
-any_needed=$(( needs_test_zig + needs_test_rustd + needs_test_cli + needs_test_website + needs_test_app + needs_test_design_system ))
+any_needed=$(( needs_test_rustd + needs_test_cli + needs_test_website + needs_test_app + needs_test_design_system ))
 
 if [ "$any_needed" -eq 0 ]; then
   echo "pre-push: no test-relevant files since $upstream_ref — nothing to run"
@@ -103,7 +99,6 @@ run_lane() {
   fi
 }
 
-[ "$needs_test_zig"           = 1 ] && run_lane test-unit-agentsfleetd        make test-unit-agentsfleetd
 [ "$needs_test_rustd"         = 1 ] && run_lane test-unit-rustd              make test-unit-rustd
 [ "$needs_test_cli"           = 1 ] && run_lane test-unit-cli                make test-unit-cli
 [ "$needs_test_website"       = 1 ] && run_lane test-unit-website            make test-unit-website
