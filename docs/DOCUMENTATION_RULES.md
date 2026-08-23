@@ -164,7 +164,7 @@ not 36 defects. They keep every other rule.
     the retry count and delay, what data is lost, and what survives.
 22. **DOC-22 — Audience boundary.** User pages state guarantees, not internals.
     Operator pages state exact dependencies and versions.
-23. **DOC-23 — Units and time.** Numbers carry units. Dates use ISO 8601. Times
+23. **DOC-23 — Units and time.** Numbers carry units. Dates on a published page use ISO 8601. Times
     use Coordinated Universal Time (UTC).
 24. **DOC-24 — Stable errors.** Every product error has a stable Identifier (ID)
     and an anchor that explains why it happened, how to fix it, and how to
@@ -195,10 +195,11 @@ not 36 defects. They keep every other rule.
 
 ## Enforcement
 
-33. **DOC-33 — Mechanical checks.** Pre-commit checks block banned words,
-    undefined abbreviations, long sentences, long paragraphs, missing front
-    matter, missing or unordered sections, command blocks without output,
-    options without defaults, heading violations, and procedures in tables.
+33. **DOC-33 — Mechanical checks.** `orly gate verify` checks banned words,
+    long sentences, long paragraphs, the em-dash budget, and heading order.
+    Front matter, section order, command blocks without output, options
+    without defaults, and procedures in tables are rules a reader enforces;
+    no check reads them yet. This list names what runs, not what is wished.
 34. **DOC-34 — Review checks.** Review checks one-idea sentences, pronoun
     clarity, resource lifecycle, failure behavior, implementation leaks, and
     meaning preserved by simplification.
