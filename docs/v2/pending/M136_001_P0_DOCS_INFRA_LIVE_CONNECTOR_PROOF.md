@@ -416,3 +416,5 @@ N/A — no files deleted.
 - **Deferrals** —
   > Indy (2026-07-20 22:23): "And move th 2,3,4 to the next milestone and read and move this milestone to done?" — context: live Slack authorization/signed mention and real GitHub review/replay proof move from M135_001 to this successor; runner activation remains M135_002 and is this workstream's prerequisite.
   > Indy (2026-07-26): "I think move this to DONE. I have eyeballed it, on fleets getting added, i will do an exhaustive check in M136_001" — context: M133 closes on direct visual acceptance; M136 inherits the unrun deployed `live-counter` and `pulse-wall` proof and must exercise them with the real `github-pr-reviewer` Fleet.
+
+> Indy (2026-08-23 16:42): "M136 spec can remain as is in active" then "or just move the m136_001 to pending" — context: parked to pending/ so the empty active/ stops red-flagging spec.dimensions on every M175–M181 port PR; work state preserved (Dimensions 0.13/0.14 DONE, branch `feat/m136-live-connector-proof-followup` recorded). Reactivation: CHORE(open) back to active/ when the Rust daemon is ready to replace the Zig daemon ("start testing 136 at that point").
