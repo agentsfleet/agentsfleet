@@ -3,13 +3,12 @@
 # A fleet of prebuilt AI teammates for recurring engineering work.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/agentsfleet/agentsfleet/test.yml?branch=main&label=CI&logo=github&logoColor=white)](https://github.com/agentsfleet/agentsfleet/actions/workflows/test.yml?query=branch%3Amain)
-[![zig-agentsfleetd coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=zig-agentsfleetd&label=zig-agentsfleetd&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=zig-agentsfleetd)
-[![zig-runner coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=zig-runner&label=zig-runner&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=zig-runner)
-[![zig-lib coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=zig-lib&label=zig-lib&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=zig-lib)
+[![rust-afd coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=rust-afd&label=rust-afd&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=rust-afd)
 [![app coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=app&label=app&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=app)
 [![website coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=website&label=website&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=website)
 [![cli coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=cli&label=cli&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=cli)
 [![Zig](https://img.shields.io/badge/Zig-0.16.0-F7A41D?logo=zig&logoColor=white)](https://ziglang.org/download/)
+[![Rust](https://img.shields.io/badge/Rust-1.98.0-CE422B?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Docs](https://img.shields.io/badge/Docs-agentsfleet.net-0A7CFF?logo=gitbook&logoColor=white)](https://docs.agentsfleet.net)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 

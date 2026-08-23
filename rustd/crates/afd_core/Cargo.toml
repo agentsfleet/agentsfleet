@@ -1,0 +1,21 @@
+[package]
+name = "afd_core"
+description = "Domain primitives shared by every agentsfleetd crate: identity, error codes, bounded values."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

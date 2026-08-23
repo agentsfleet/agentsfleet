@@ -52,7 +52,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/src/agentsfleetd/**` | EDIT | `routes --json` dump subcommand + `doctor`/`backfill` subcommand parity |
+| `rustd/crates/agentsfleetd/**` | EDIT | `routes --json` dump subcommand + `doctor`/`backfill` subcommand parity |
 | `scripts/check_openapi_route_coverage.py` | EDIT | accepts the Rust route dump as a served-route source |
 | `make/dry.mk` | EDIT | dry lane variant booting the Rust daemon |
 | `make/bench.mk` | EDIT | adds `bench-cutover`: Zig-baseline-vs-Rust comparison on the same harness, tolerances as named constants (distinct caller: the cutover checklist) |
@@ -111,7 +111,7 @@ The release pipeline builds the Rust binary (matching the Zig binary's target ma
 The whole-system proof on staging: full Zig integration suite + runner parity lane + dry lane against the Rust daemon, sustained mixed load via the new `make bench-cutover` lane (Zig baseline vs Rust, same harness and hardware — the existing bench harness has no comparison mode today, this milestone adds it), chaos probes for the invariant tables (webhook replay, lease fencing under kill, SSE reconnect), and two explicit budgets embedded in `bench-cutover` as named constants — p95 latency per route class within tolerance of the baseline, and a flat RSS ceiling over the soak window (the Rust memory-safety story replaces `make memleak`, which stays Zig-only — recorded decision). **Implementation default:** p95 tolerance = baseline + 10% per route class; RSS ceiling = the Zig daemon's soak peak + 20% — Indy may override either at PLAN; whichever constants Discovery records are the ones the lane embeds, and the lane refuses to run with unset constants, so the P0 gate is a real command with real numbers, never a vibe.
 
 - **Dimension 3.1** — full integration + runner + dry lanes green against the Rust daemon on staging → Test `test_soak_suites_green`
-- **Dimension 3.2** — p95 per route class within the budget vs the same-harness Zig baseline → Test `test_latency_budget`
+- **Dimension 3.2** — p95 per route class within the budget → Test `test_latency_budget`. The baseline is NO LONGER a same-harness Zig run: M175 §6 deleted the lanes that produced it. The budget is an absolute per-route-class number Indy sets at PLAN, and the lane refuses to run with it unset, so the gate stays a real command with real numbers.
 - **Dimension 3.3** — RSS flat within the named ceiling across the soak window under sustained load → Test `test_memory_ceiling_soak`
 - **Dimension 3.4** — chaos probes: replay/fencing/reconnect invariants hold mid-soak → Test `test_soak_chaos_invariants`
 - **Dimension 3.5** — cross-implementation state handoff, both directions: the Rust daemon serves and writes production-shaped state (in-flight leases, stream entries, billing rows, migration ledger); the Zig daemon then boots on the same stores and resumes serving correctly — and the reverse. Rollback safety is demonstrated, not inferred from "same schema" → Test `test_state_handoff_bidirectional` (the `make test-handoff` lane this milestone adds)
@@ -119,6 +119,10 @@ The whole-system proof on staging: full Zig integration suite + runner parity la
 ### §4 — Swap, rollback rehearsal, runbook
 
 Rollback is rehearsed BEFORE cutover: staging swaps Rust → Zig using the runbook and verifies clean service. Production cutover is all-at-once across the three machines with load-balancer drain (mixed-fleet operation is structurally tolerated — every cross-replica invariant is atomic in Postgres/Redis — but doubles the drift surface, so it is the contingency, not the plan; recorded decision). The runbook lands in `playbooks/cutover/rust_daemon.md` with drain order, per-step verification probes, abort criteria, and the one-move rollback. Post-swap, the OTLP dashboards must show continuous metric families across the boundary.
+
+The runbook also carries the **declared-divergence register** — every place the single-implementation parity rule left a superseded Zig path unported, so a parity differ reads it as declared rather than reporting it as a regression, and so the operator swapping binaries knows what genuinely differs. Its first entry, recorded at M175 (Indy, Aug 23, 2026):
+
+> **Lease wire version one.** Zig downgrades and refuses policy-bearing leases to version-one runners; Rust serves the current shape unconditionally and ignores `wire_version`. Unreachable in practice — no in-tree emitter, Indy signed off Aug 23, 2026 that no deployed runner is owed compatibility. Rollback runs the safe direction: Zig is strictly more permissive, so a Rust→Zig rollback cannot break a runner Rust was already serving.
 
 - **Dimension 4.1** — rollback rehearsal on staging: swap back, verify, documented in the runbook's own evidence section → Test `test_rollback_rehearsal`
 - **Dimension 4.2** — runbook probes are copy-paste commands that pass on staging post-swap → Test `test_runbook_probes`
@@ -166,8 +170,9 @@ the first baseline run and recorded in the spec's Discovery, not invented here.
 ## Invariants
 
 1. Rollback requires no schema or data migration — enforced by the family rule (no `schema/` changes in M175–M181) + `test_rollback_rehearsal`.
-2. The Zig binary stays built, shipped, and deployable until a post-cutover retirement milestone Indy opens — enforced by the release lane asserting both artifacts.
+2. Rollback is redeploying the Zig daemon's frozen revision by hand via `deploy-dev.yml`'s manual dispatch, not a binary swap — it carries no lanes and is not built by Continuous Integration (CI) any more (M175 §6). Acceptable because no production user reaches it; enforced by `test_daemon_deploy_retired` keeping that dispatch reachable.
 3. Budgets are named constants compared mechanically — never prose judgments — `test_latency_budget`, `test_memory_ceiling_soak`.
+3b. Every declared divergence is registered in §4's register before cutover, and the parity oracles (the M177 dual-run differ, the soak suites) read it, so a declared divergence never surfaces as a regression and an UNdeclared one always does.
 4. Every runbook step carries an executable probe in `playbooks/cutover/probes.sh`; a deviation surfaces as a failed probe run, not a judgment call — `test_runbook_probes` proves the script executable end-to-end.
 5. Cutover cannot proceed with any M175–M180 rubric row ungraded or red — enforced mechanically: `probes.sh`'s pre-swap section is **derived from the Acceptance Rubric tables of the five merged specs**, and every row lands in exactly one of two buckets: (a) **covered** — one or more executable probes, each tagged with its source row id, normalized into runnable shell (a multi-command cell expands to several probes under the same row tag, stated prerequisites become setup steps), or (b) a **declared exclusion** — a row whose evidence is historical and not re-runnable (e.g. a one-time seeded-defect record), listed in an exclusion manifest the script prints on every run and Indy signs off in Discovery at PLAN. The completeness assert is over **rows, not probes**: every R+S row id in those rubrics is either tagged by ≥1 probe or named in the manifest, and every probe carries a row tag. An uncovered row, an untagged probe, or an undeclared skip is a red run, not a silent gap.
 
@@ -190,7 +195,7 @@ No product-analytics changes.
 | 2.1 | integration | `test_release_artifact_set` | release contains both binaries at `VERSION` |
 | 2.2 | e2e | `test_deploy_binary_selection` | staging flip serves Rust; probes green; flip back serves Zig |
 | 3.1 | e2e | `test_soak_suites_green` | integration + runner + dry lanes exit 0 vs the Rust daemon |
-| 3.2 | e2e | `test_latency_budget` | per-class p95 within the named tolerance of the same-harness Zig baseline |
+| 3.2 | e2e | `test_latency_budget` | per-class p95 within the absolute budget Discovery records; the lane refuses to run with it unset |
 | 3.3 | e2e (negative-sensitive) | `test_memory_ceiling_soak` | RSS within ceiling over the window; growth trend flat |
 | 3.4 | e2e (chaos) | `test_soak_chaos_invariants` | replay/fencing/reconnect probes hold mid-load |
 | 3.5 | e2e (negative-sensitive) | `test_state_handoff_bidirectional` | Rust-written live state served correctly by Zig after swap, and reverse (`make test-handoff`) |
@@ -224,8 +229,10 @@ N/A — no files deleted (Zig daemon retirement is a separate post-cutover miles
 
 ## Out of Scope
 
-- Deleting or de-listing the Zig daemon, its lanes, or `make memleak` — retirement is its own milestone after a stable production window Indy defines.
-- Any behaviour improvement unlocked by Rust — the parity-first family rule holds through cutover.
+- Deleting Zig SOURCE (`src/**`, `build.zig`, `build_runner.zig`). Its LANES are already gone: Indy overrode the reserve-it-for-later position on Aug 23, 2026, on the fact that there are no production users, and M175 §6 deleted the Zig lint, unit, coverage, leak and integration lanes plus the daemon deploy in that milestone.
+- Any behaviour improvement on a live surface — see the parity rule below, which bounds what the port owes rather than freezing every superseded path into it.
+
+**Single-implementation parity.** The Rust daemon implements exactly ONE implementation of each behaviour — the current one. Where the Zig daemon carries a superseded or compatibility path alongside it, the Rust port implements only the current path; the Zig copy is left in place and retires with that daemon. Live observable behaviour stays at parity: anything a client actually reaches today behaves identically, and the parity oracles compare the current path. "Superseded" is a claim requiring evidence recorded in Discovery — no in-tree emitter, plus Indy's sign-off on the specific path — never the implementing agent's judgment alone, and every instance is written into the declared-divergence register §4 reads at cutover. Behaviour improvement on live surfaces remains out of scope through cutover.
 - M136 activation: per Indy (Aug 23, 2026), M136 testing begins once `agentsfleetd-rs` is ready to replace the Zig daemon — that readiness is this milestone's R-rows going green; M173/M174 are revisited at the same point.
 - Public docs (`~/Projects/docs`): no endpoint/command/flag/behaviour changes ship, so no docs-repo branch — recorded here as the why-not.
 

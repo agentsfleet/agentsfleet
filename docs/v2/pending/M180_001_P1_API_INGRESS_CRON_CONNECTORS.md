@@ -52,11 +52,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/src/afd_api/**` | EDIT | Route variants + handlers: `/v1/webhooks/{fleet_id}[/approval|/github]`, `/v1/webhooks/svix/{fleet_id}`, `/v1/ingress/{provider}`, `/v1/ingress/qstash/schedules`, `/v1/connectors/{provider}/callback` (GET relay / POST complete), `/v1/connectors/slack/events`, `/v1/auth/identity-events/clerk`, workspace+fleet `/schedules[/{schedule_id}[:sync]]` |
-| `rustd/src/afd_auth/**` | EDIT | the four ingress middlewares with constant-time verification |
-| `rustd/src/afd_cron/**` | CREATE | schedules store, QStash client, sync service, fire-queue handling |
-| `rustd/src/afd_connectors/**` | CREATE | connector callback flows, Slack event handling, outbound answer worker |
-| `rustd/src/agentsfleetd/**` | EDIT | outbound worker joins the supervisor |
+| `rustd/crates/afd_api/**` | EDIT | Route variants + handlers: `/v1/webhooks/{fleet_id}[/approval|/github]`, `/v1/webhooks/svix/{fleet_id}`, `/v1/ingress/{provider}`, `/v1/ingress/qstash/schedules`, `/v1/connectors/{provider}/callback` (GET relay / POST complete), `/v1/connectors/slack/events`, `/v1/auth/identity-events/clerk`, workspace+fleet `/schedules[/{schedule_id}[:sync]]` |
+| `rustd/crates/afd_auth/**` | EDIT | the four ingress middlewares with constant-time verification |
+| `rustd/crates/afd_cron/**` | CREATE | schedules store, QStash client, sync service, fire-queue handling |
+| `rustd/crates/afd_connectors/**` | CREATE | connector callback flows, Slack event handling, outbound answer worker |
+| `rustd/crates/agentsfleetd/**` | EDIT | outbound worker joins the supervisor |
 | `rustd/Cargo.toml` | EDIT | new members |
 | `make/test-integration.mk` | EDIT | ingress/cron/connector subset against the Rust binary |
 

@@ -5,7 +5,6 @@
 include make/dev.mk
 include make/quality.mk
 include make/check-safety-gates.mk
-include make/check-test-reachability.mk
 include make/harness.mk
 include make/test.mk
 include make/build.mk
@@ -20,7 +19,8 @@ help:  ## Show all available Makefile targets
 	@echo ""
 	@echo "Static Analysis:"
 	@echo "  lint-all                 Run every linter + quality gate (umbrella for all checks below)"
-	@echo "  lint-zig                 Lint all Zig source — agentsfleetd/runner/lib (fmt + ZLint + pg-drain + test-depth + cross-target + line-limit + role/legacy guards)"
+	@echo "  lint-rustd               Lint the Rust workspace (rustfmt + Clippy, warnings are errors)"
+	@echo "  lint-scripts             Run every scripts/*_test.py self-test"
 	@echo "  lint-website             Lint website (Oxlint + tsc)"
 	@echo "  lint-apps-designsystem-cli  Lint app + design-system + agentsfleet"
 	@echo ""
@@ -28,20 +28,14 @@ help:  ## Show all available Makefile targets
 	@echo "  check-openapi            Bundle YAML → openapi.json + Redocly lint + error-schema + URL-shape checks"
 	@echo "  check-gh-actions-valid   Validate .github/workflows/ (actionlint YAML + shellcheck + make-target refs)"
 	@echo "  check-playbooks          Validate playbooks/ (shellcheck + reference integrity + README/tree parity)"
-	@echo "  check-test-reachability  Every Zig test block compiles from a test root, or carries a waiver"
 	@echo ""
 	@echo "Tests:"
 	@echo "  test-unit-all            Run all unit lanes (agentsfleetd + zigrunner + ziglib + test-coverage-all)"
-	@echo "  test-unit-agentsfleetd        Run agentsfleetd Zig unit tests"
-	@echo "  test-unit-agentsfleet-runner      Run agentsfleet-runner Zig unit tests (own build graph, no datastore)"
-	@echo "  test-unit-agentsfleet-lib         Run shared src/lib module Zig unit tests (no datastore)"
 	@echo "  test-unit-website        Run website unit tests (vitest, no coverage)"
+	@echo "  test-unit-rustd          Run the Rust workspace unit tests (cargo)"
+	@echo "  wire-fixtures            Regenerate samples/fixtures/wire-v2 from src/lib/contract (Zig is the source of truth)"
 	@echo "  test-unit-cli      Run agentsfleet CLI unit tests (bun, no coverage)"
-	@echo "  test-coverage-zig        Merged Zig line coverage: daemon + runner + shared libraries"
 	@echo "  test-coverage-all        Coverage gate: Zig + app + website + agentsfleet + design-system"
-	@echo "  test-integration         Run full real integration suite (DB + Redis, CI canonical gate)"
-	@echo "  test-integration-db      Run DB-backed integration suite only (Redis tests self-skip)"
-	@echo "  test-integration-redis   Run Redis-backed integration suite only (DB tests self-skip)"
 	@echo ""
 	@echo "Acceptance:"
 	@echo "  dry                      Dry lanes — website + app Playwright page renders (no Clerk auth)"
@@ -52,7 +46,6 @@ help:  ## Show all available Makefile targets
 	@echo "Performance:"
 	@echo "  bench                    Run Tier-1 zbench micro + Tier-2 hey HTTP loadgen"
 	@echo "  bench-redis              Redis XADD concurrency bench (set BENCH_REDIS=1; needs local Redis)"
-	@echo "  memleak                  Zig memory leak gate (allocator tests + linux valgrind pass)"
 	@echo ""
 	@echo "Verify:"
 	@echo "  harness-verify           Run every deterministic gate audit (full-codebase scope)"

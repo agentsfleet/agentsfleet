@@ -1,0 +1,458 @@
+{
+  "wire_version": 2,
+  "types": [
+    {
+      "name": "protocol.LeaseRequest",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "ignore",
+      "file": "protocol.LeaseRequest.json"
+    },
+    {
+      "name": "protocol.RenewResponse",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.RenewResponse.json"
+    },
+    {
+      "name": "protocol.RenewRequest",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "ignore",
+      "file": "protocol.RenewRequest.json"
+    },
+    {
+      "name": "protocol.SandboxTier",
+      "module": "protocol",
+      "kind": "enum",
+      "unknown_fields": "reject",
+      "file": "protocol.SandboxTier.json"
+    },
+    {
+      "name": "protocol.NetworkPolicy",
+      "module": "protocol",
+      "kind": "enum",
+      "unknown_fields": "reject",
+      "file": "protocol.NetworkPolicy.json"
+    },
+    {
+      "name": "protocol.AssignedPolicy",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "ignore",
+      "file": "protocol.AssignedPolicy.json"
+    },
+    {
+      "name": "protocol.CapabilityReport",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "ignore",
+      "file": "protocol.CapabilityReport.json"
+    },
+    {
+      "name": "protocol.SelftestReport",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "ignore",
+      "file": "protocol.SelftestReport.json"
+    },
+    {
+      "name": "protocol.SelftestCheck",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "ignore",
+      "file": "protocol.SelftestCheck.json"
+    },
+    {
+      "name": "protocol.ExtraBind",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "ignore",
+      "file": "protocol.ExtraBind.json"
+    },
+    {
+      "name": "protocol.BindMode",
+      "module": "protocol",
+      "kind": "enum",
+      "unknown_fields": "reject",
+      "file": "protocol.BindMode.json"
+    },
+    {
+      "name": "protocol.SecretDelivery",
+      "module": "protocol",
+      "kind": "enum",
+      "unknown_fields": "reject",
+      "file": "protocol.SecretDelivery.json"
+    },
+    {
+      "name": "protocol.Outcome",
+      "module": "protocol",
+      "kind": "enum",
+      "unknown_fields": "reject",
+      "file": "protocol.Outcome.json"
+    },
+    {
+      "name": "protocol.HeartbeatStatus",
+      "module": "protocol",
+      "kind": "enum",
+      "unknown_fields": "reject",
+      "file": "protocol.HeartbeatStatus.json"
+    },
+    {
+      "name": "protocol.AdminState",
+      "module": "protocol",
+      "kind": "enum",
+      "unknown_fields": "reject",
+      "file": "protocol.AdminState.json"
+    },
+    {
+      "name": "protocol.RunnerAdminAction",
+      "module": "protocol",
+      "kind": "enum",
+      "unknown_fields": "reject",
+      "file": "protocol.RunnerAdminAction.json"
+    },
+    {
+      "name": "protocol.RunnerAdminPatchRequest",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.RunnerAdminPatchRequest.json"
+    },
+    {
+      "name": "protocol.RunnerAdminPatchResponse",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.RunnerAdminPatchResponse.json"
+    },
+    {
+      "name": "protocol.RunnerEventType",
+      "module": "protocol",
+      "kind": "enum",
+      "unknown_fields": "reject",
+      "file": "protocol.RunnerEventType.json"
+    },
+    {
+      "name": "protocol.RunnerEventItem",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.RunnerEventItem.json"
+    },
+    {
+      "name": "protocol.RunnerEventsResponse",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.RunnerEventsResponse.json"
+    },
+    {
+      "name": "protocol.RunnerLiveness",
+      "module": "protocol",
+      "kind": "enum",
+      "unknown_fields": "reject",
+      "file": "protocol.RunnerLiveness.json"
+    },
+    {
+      "name": "protocol.RegisterRequest",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.RegisterRequest.json"
+    },
+    {
+      "name": "protocol.RegisterResponse",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.RegisterResponse.json"
+    },
+    {
+      "name": "protocol.HeartbeatRequest",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "ignore",
+      "file": "protocol.HeartbeatRequest.json"
+    },
+    {
+      "name": "protocol.HeartbeatResponse",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.HeartbeatResponse.json"
+    },
+    {
+      "name": "protocol.SelfResponse",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.SelfResponse.json"
+    },
+    {
+      "name": "protocol.LeasePayload",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "ignore",
+      "file": "protocol.LeasePayload.json"
+    },
+    {
+      "name": "protocol.BundleManifest",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.BundleManifest.json"
+    },
+    {
+      "name": "protocol.LeaseResponse",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "ignore",
+      "file": "protocol.LeaseResponse.json"
+    },
+    {
+      "name": "protocol.ReportTelemetry",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.ReportTelemetry.json"
+    },
+    {
+      "name": "protocol.ReportCheckpoint",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.ReportCheckpoint.json"
+    },
+    {
+      "name": "protocol.ReportRequest",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.ReportRequest.json"
+    },
+    {
+      "name": "protocol.ReportResponse",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.ReportResponse.json"
+    },
+    {
+      "name": "protocol.MemoryDelta",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.MemoryDelta.json"
+    },
+    {
+      "name": "protocol.MemoryPushRequest",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "ignore",
+      "file": "protocol.MemoryPushRequest.json"
+    },
+    {
+      "name": "protocol.MemoryHydrateResponse",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.MemoryHydrateResponse.json"
+    },
+    {
+      "name": "protocol.MintCredentialRequest",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.MintCredentialRequest.json"
+    },
+    {
+      "name": "protocol.MintCredentialResponse",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.MintCredentialResponse.json"
+    },
+    {
+      "name": "protocol.RunnerChildInput",
+      "module": "protocol",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "protocol.RunnerChildInput.json"
+    },
+    {
+      "name": "event_envelope.EventType",
+      "module": "event_envelope",
+      "kind": "enum",
+      "unknown_fields": "reject",
+      "file": "event_envelope.EventType.json"
+    },
+    {
+      "name": "execution_policy.NetworkPolicy",
+      "module": "execution_policy",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "execution_policy.NetworkPolicy.json"
+    },
+    {
+      "name": "execution_policy.HttpMethod",
+      "module": "execution_policy",
+      "kind": "enum",
+      "unknown_fields": "reject",
+      "file": "execution_policy.HttpMethod.json"
+    },
+    {
+      "name": "execution_policy.HttpPathMatch",
+      "module": "execution_policy",
+      "kind": "enum",
+      "unknown_fields": "reject",
+      "file": "execution_policy.HttpPathMatch.json"
+    },
+    {
+      "name": "execution_policy.HttpJsonFieldRule",
+      "module": "execution_policy",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "execution_policy.HttpJsonFieldRule.json"
+    },
+    {
+      "name": "execution_policy.HttpRequestRule",
+      "module": "execution_policy",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "execution_policy.HttpRequestRule.json"
+    },
+    {
+      "name": "execution_policy.HttpOriginPolicy",
+      "module": "execution_policy",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "execution_policy.HttpOriginPolicy.json"
+    },
+    {
+      "name": "execution_policy.Mintable",
+      "module": "execution_policy",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "execution_policy.Mintable.json"
+    },
+    {
+      "name": "execution_policy.ContextBudget",
+      "module": "execution_policy",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "execution_policy.ContextBudget.json"
+    },
+    {
+      "name": "execution_policy.ExecutionPolicy",
+      "module": "execution_policy",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "execution_policy.ExecutionPolicy.json"
+    },
+    {
+      "name": "execution_policy.RepositoryAccess",
+      "module": "execution_policy",
+      "kind": "enum",
+      "unknown_fields": "reject",
+      "file": "execution_policy.RepositoryAccess.json"
+    },
+    {
+      "name": "execution_policy.RepositoryBinding",
+      "module": "execution_policy",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "execution_policy.RepositoryBinding.json"
+    },
+    {
+      "name": "activity.ActivityFrame",
+      "module": "activity",
+      "kind": "union",
+      "unknown_fields": "reject",
+      "file": "activity.ActivityFrame.json"
+    },
+    {
+      "name": "activity.ActivityFrame.ToolCallStarted",
+      "module": "activity",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "activity.ActivityFrame.ToolCallStarted.json"
+    },
+    {
+      "name": "activity.ActivityFrame.FleetResponseChunk",
+      "module": "activity",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "activity.ActivityFrame.FleetResponseChunk.json"
+    },
+    {
+      "name": "activity.ActivityFrame.ToolCallCompleted",
+      "module": "activity",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "activity.ActivityFrame.ToolCallCompleted.json"
+    },
+    {
+      "name": "activity.ActivityFrame.ToolCallProgress",
+      "module": "activity",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "activity.ActivityFrame.ToolCallProgress.json"
+    },
+    {
+      "name": "activity.ActivityRequest",
+      "module": "activity",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "activity.ActivityRequest.json"
+    },
+    {
+      "name": "execution_result.FailureClass",
+      "module": "execution_result",
+      "kind": "enum",
+      "unknown_fields": "reject",
+      "file": "execution_result.FailureClass.json"
+    },
+    {
+      "name": "execution_result.ExecutionResult",
+      "module": "execution_result",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "execution_result.ExecutionResult.json"
+    },
+    {
+      "name": "execution_result.ExecutionResult.Outcome",
+      "module": "execution_result",
+      "kind": "union",
+      "unknown_fields": "reject",
+      "file": "execution_result.ExecutionResult.Outcome.json"
+    },
+    {
+      "name": "execution_result.ExecutionResult.Completed",
+      "module": "execution_result",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "execution_result.ExecutionResult.Completed.json"
+    },
+    {
+      "name": "execution_result.ExecutionResult.Failure",
+      "module": "execution_result",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "execution_result.ExecutionResult.Failure.json"
+    }
+  ],
+  "excluded": [
+    {
+      "module": "protocol_lease_v1",
+      "why": "superseded",
+      "reason": "superseded lease shape; no in-tree emitter, the port implements the current shape only"
+    },
+    {
+      "module": "report_mapping",
+      "why": "no_wire_type",
+      "reason": "one conversion between execution_result and the report wire; both endpoints are covered"
+    }
+  ]
+}

@@ -8,7 +8,7 @@ Run directly, or via the make target:
 
 Both make-target regexes were underscore-blind, which made every internal
 `_`-prefixed target invisible: a phantom `make _no_such_target` cited in the
-guide was reported clean, and `_lint_zig_test_depth:` matched no definition at
+guide was reported clean, and an underscore target matched no definition at
 all. Worse, the definition regex kept its `_?` outside the capture group, so
 `_fmt:` registered under the name `fmt` — inverting the check, since `make fmt`
 (nonexistent) passed while `make _fmt` (real) was reported phantom.
@@ -31,8 +31,8 @@ MAKEFILE = os.path.join(REPO_ROOT, checker.MAKEFILE_PATH)
 REST_GUIDE = os.path.join(REPO_ROOT, checker.REST_GUIDE_PATH)
 
 # Real internal targets: one underscore-prefixed, one with inner underscores.
-FMT_CHECK_TARGET = "_fmt_check"
-TEST_DEPTH_TARGET = "_lint_zig_test_depth"
+FMT_CHECK_TARGET = "_bench-micro"
+TEST_DEPTH_TARGET = "_ensure-test-infra"
 
 
 class TestUnderscoreTargets(unittest.TestCase):

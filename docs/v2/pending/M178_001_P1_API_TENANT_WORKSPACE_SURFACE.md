@@ -52,12 +52,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/src/afd_api/**` | EDIT | Route variants + handler modules per group: auth-sessions, tenant, api-keys, cli-credentials, models, workspaces (fleets, secrets, fleet-libraries read, onboarding, preferences, approvals, events, streams, messages, memories, integration-grants) |
-| `rustd/src/afd_state/**` | EDIT | extends the M176-created repository crate: vault, billing/wallet reads, model library + tenant models, tenant provider, preferences, onboarding, signup bootstrap |
-| `rustd/src/afd_observability/**` | EDIT | PostHog product-event emission for the surfaces this milestone ports (§7) |
-| `rustd/src/afd_fleet/**` | EDIT | install flow (ensure-stream retries + rollback), approvals service + gate sweeper, steer message append |
-| `rustd/src/afd_auth/**` | EDIT | CLI-credential mint/revoke service glue; Clerk metadata fetch worker port |
-| `rustd/src/agentsfleetd/**` | EDIT | approval-gate sweeper + Clerk fetch worker join the supervisor |
+| `rustd/crates/afd_api/**` | EDIT | Route variants + handler modules per group: auth-sessions, tenant, api-keys, cli-credentials, models, workspaces (fleets, secrets, fleet-libraries read, onboarding, preferences, approvals, events, streams, messages, memories, integration-grants) |
+| `rustd/crates/afd_state/**` | EDIT | extends the M176-created repository crate: vault, billing/wallet reads, model library + tenant models, tenant provider, preferences, onboarding, signup bootstrap |
+| `rustd/crates/afd_observability/**` | EDIT | PostHog product-event emission for the surfaces this milestone ports (§7) |
+| `rustd/crates/afd_fleet/**` | EDIT | install flow (ensure-stream retries + rollback), approvals service + gate sweeper, steer message append |
+| `rustd/crates/afd_auth/**` | EDIT | CLI-credential mint/revoke service glue; Clerk metadata fetch worker port |
+| `rustd/crates/agentsfleetd/**` | EDIT | approval-gate sweeper + Clerk fetch worker join the supervisor |
 | `rustd/Cargo.toml` | EDIT | new member |
 | `make/test-integration.mk` | EDIT | tenant/workspace integration subset runs against the Rust binary |
 
@@ -273,7 +273,7 @@ N/A — no files deleted.
 1. **Successful user moment** — a teammate uses the dashboard and the CLI against a staging `agentsfleetd-rs` for a full session — login, fleet install, steer, watch the stream, approve a gate — and nothing feels or behaves differently.
 2. **Preserved user behaviour** — every documented route, code, cursor, and stream semantic; `public/openapi.json` unchanged.
 3. **Optimal-way check** — group-by-group parallel port under two oracles (route-inventory test + integration subset) is the direct path for a ~165-handler tail; anything cleverer adds drift risk.
-4. **Rebuild-vs-iterate** — pure port; redesigns (route consolidation, envelope changes) are explicitly post-cutover.
+4. **Rebuild-vs-iterate** — pure port; redesigns (route consolidation, envelope changes) are explicitly post-cutover. "Pure port" bounds the redesign, not the parity rule: a superseded or compatibility path that meets M181's single-implementation evidence bar (no in-tree emitter plus Indy's sign-off, recorded in Discovery) is left unported and registered as a declared divergence, not reproduced.
 5. **What we build** — one repositories crate, handler groups over existing services, SSE plumbing, two supervised workers.
 6. **What we do NOT build** — new endpoints, response-shape "improvements", OpenAPI edits, admin surface.
 7. **Fit with existing features** — compounds with M177 (fleet service reuse); must not destabilize the live Zig integration lanes.

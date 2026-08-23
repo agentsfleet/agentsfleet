@@ -52,14 +52,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/src/afd_crypto/**` | CREATE | envelope encryption (KEK/DEK, AES-256-GCM), HMAC canon, zeroizing secret types |
-| `rustd/src/afd_db/**` | CREATE | sqlx pools (three roles), migration runner with advisory lock + audit bookkeeping |
-| `rustd/src/afd_redis/**` | CREATE | streams ops, subscription hub, session store, `fleet:ready` hash |
-| `rustd/src/afd_auth/**` | CREATE | principal, scope catalogue + ladder, JWKS verify, bearer routing, requireScope |
-| `rustd/src/afd_api/**` | CREATE | axum shell: Route enum + route_meta, admission limiter, problem+json envelope |
-| `rustd/src/afd_observability/**` | CREATE | tracing → OpenTelemetry Protocol (OTLP) export, semconv attributes, counters |
-| `rustd/src/afd_state/**` | CREATE | repository crate, seeded with the auth-consumed lookups (api keys, CLI credentials); M178/M179 extend it |
-| `rustd/src/agentsfleetd/**` | CREATE | binary: subcommand parsing (serve/migrate), boot choreography, task supervisor |
+| `rustd/crates/afd_crypto/**` | CREATE | envelope encryption (KEK/DEK, AES-256-GCM), HMAC canon, zeroizing secret types |
+| `rustd/crates/afd_db/**` | CREATE | sqlx pools (three roles), migration runner with advisory lock + audit bookkeeping |
+| `rustd/crates/afd_redis/**` | CREATE | streams ops, subscription hub, session store, `fleet:ready` hash |
+| `rustd/crates/afd_auth/**` | CREATE | principal, scope catalogue + ladder, JWKS verify, bearer routing, requireScope |
+| `rustd/crates/afd_api/**` | CREATE | axum shell: Route enum + route_meta, admission limiter, problem+json envelope |
+| `rustd/crates/afd_observability/**` | CREATE | tracing → OpenTelemetry Protocol (OTLP) export, semconv attributes, counters |
+| `rustd/crates/afd_state/**` | CREATE | repository crate, seeded with the auth-consumed lookups (api keys, CLI credentials); M178/M179 extend it |
+| `rustd/crates/agentsfleetd/**` | CREATE | binary: subcommand parsing (serve/migrate), boot choreography, task supervisor |
 | `rustd/Cargo.toml` | EDIT | new workspace members + workspace dependencies |
 | `src/agentsfleetd/secrets/envelope_fixture_export.zig` | CREATE | Zig-side emitter + reader for cross-implementation crypto fixtures |
 | `samples/fixtures/vault-envelope/**` | CREATE | committed envelope fixtures (Zig-written for Rust to decrypt; test-time reverse pass) |

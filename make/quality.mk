@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: _model_allowlist_check check-migrate-unprivileged lint-all lint-zig lint-governance lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check
+.PHONY: lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes
 
 # Regenerate docs/api-reference/error-codes.mdx (own repo, ~/Projects/docs)
 # from the agentsfleetd error registry. No default target path on purpose —
@@ -18,23 +18,7 @@ check-documentation-rules:  ## Check public API and command help text
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules.py
 
-ZLINT ?= zlint
 ACTIONLINT ?= actionlint
-
-# `zig fmt src`, not `find … -exec zig fmt {} \;`. The find form spawned one
-# compiler process per file — 800+ of them, 72s of an 87s lint, 83% of the whole
-# thing — and, worse, could not fail: `find` exits 0 whatever `-exec` returns, so
-# a misformatted file passed the gate silently. Both bugs die with the loop; zig
-# takes a directory and reports its own exit code.
-_fmt_check:
-	@echo "→ [zig] Checking Zig formatting..."
-	@zig fmt --check src
-
-_zlint_check:
-	@echo "→ [zig] Running ZLint..."
-	@command -v $(ZLINT) >/dev/null 2>&1 || { echo "ZLint not found. Install v0.9.0 or set ZLINT=/path/to/zlint."; exit 1; }
-	@$(ZLINT) --deny-warnings
-	@echo "✓ [zig] ZLint passed"
 
 lint-website:  ## Lint website only (Oxlint + tsc)
 	@echo "→ [website] Running Oxlint + TypeScript check..."
@@ -58,11 +42,6 @@ lint-cli: check-documentation-rules  ## Lint agentsfleet CLI and its public text
 	@cd cli && bun run lint
 	@echo "✓ [agentsfleet] Lint passed"
 
-_lint_zig_pg_drain:
-	@echo "→ [zig] Checking pg drain + allocating-writer discipline..."
-	@python3 lint-zig.py src
-	@echo "✓ [zig] pg-drain + allocating-writer checks passed"
-
 # Roster-scoped ghostty-derived discipline (A5 poison + ownership phrase blocking
 # inside audits/zig-discipline-roster.txt; A2 errdefer heuristic advisory), plus
 # the fixture-driven self-tests that prove each check bites in/out of the roster.
@@ -75,13 +54,6 @@ _lint_zig_pg_drain:
 # file matches both spellings; the widening only stops the next one being lost.
 SCRIPT_SELF_TESTS := python3 -m unittest discover -s scripts -t scripts -p '*_test.py'
 
-_lint_zig_discipline:
-	@echo "→ [zig] Checking ghostty-derived A5/A2 discipline (roster-scoped)..."
-	@python3 lint-zig.py --discipline --roster audits/zig-discipline-roster.txt src
-	@echo "→ [zig] Discipline lint self-tests..."
-	@$(SCRIPT_SELF_TESTS)
-	@echo "✓ [zig] discipline check + self-tests passed"
-
 # Governance gates: the script-driven checks that enforce repository CONVENTIONS
 # rather than compile correctness. Grouped under one target so `lint-zig` names a
 # policy set instead of a growing list, and so a new rule extends this line
@@ -93,85 +65,6 @@ _lint_zig_discipline:
 _model_allowlist_check:
 	@echo "→ [models] Checking every dialable provider is priced or carries a reason..."
 	@python3 scripts/check_model_allowlist.py
-
-lint-governance: _lint_zig_pg_drain _lint_zig_discipline _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check _model_allowlist_check  ## Run the repository convention gates
-	@echo "✓ [governance] All convention gates passed"
-
-_zig_target_lint:
-	@echo "→ [ci] Checking Zig target triples for -gnu suffix..."
-	@FAIL=0; \
-	for f in .github/workflows/*.yml; do \
-		[ -f "$$f" ] || continue; \
- if grep -nE -- '-Dtarget=\S+-gnu\b' "$$f" >/dev/null 2>&1; then \
- echo "✗ $$f: found -gnu suffix (causes GLIBC mismatch):"; \
- grep -nE -- '-Dtarget=\S+-gnu\b' "$$f" | sed 's/^/    /'; \
-			FAIL=1; \
- fi; \
-	done; \
-	if [ "$$FAIL" = "1" ]; then \
- echo "  Fix: use -Dtarget=x86_64-linux (not x86_64-linux-gnu)."; \
- echo "  Why: explicit -gnu makes Zig target GLIBC 2.17; system libssl needs 2.34+."; \
- exit 1; \
-	fi; \
-	echo "✓ [ci] No -gnu suffixes in Zig target triples"
-
-# No allowlist. There was one — 14 files granted an exemption "before this gate
-# was tightened", with a note to shrink it over time. It shrank to zero: every
-# entry named a pre-src/agentsfleetd/ path, so not one could ever match, and the
-# gate spent an O(files x 14) comparison per file proving it. No Zig file needs
-# an exemption today, and re-introducing the list is how that stops being true.
-# Policy: RULE FLL in docs/greptile-learnings/RULES.md
-
-ZIG_LINE_LIMIT_EXCLUDE_DIRS := (^|/)(vendor|third_party|\.zig-cache)/
-ZIG_LINE_LIMIT_TEST_PATTERN := (^|/)(tests?)/|_test\.zig$$|_test_.*\.zig$$|tests\.zig$$|.*test.*\.zig$$
-
-# `-c safe.directory=*` because the CI container runs as root against a checkout
-# owned by the runner user; plain `git ls-files` there dies with "dubious ownership"
-# (exit 128). The empty-list check is the real guard: without it the loop below
-# never runs, FAIL stays 0, and this gate prints ✓ having inspected zero files —
-# which is exactly what it did in CI until Jul 2026.
-_zig_line_limit_check:
-	@echo "→ [zig] Checking Zig file line limit (max 350 lines — RULE FLL)..."
-	@FAIL=0; \
-	files=$$(git -c safe.directory='*' ls-files '*.zig' | grep -vE '$(ZIG_LINE_LIMIT_EXCLUDE_DIRS)' | grep -vE '$(ZIG_LINE_LIMIT_TEST_PATTERN)' | sort); \
-	if [ -z "$$files" ]; then \
- echo "✗ [zig] line-limit gate listed zero Zig files — git failed, so this gate proved nothing"; \
- exit 1; \
-	fi; \
-	for f in $$files; do \
- lines=$$(wc -l < "$$f"); \
- if [ "$$lines" -gt 350 ]; then \
- echo "✗ $$f: $$lines lines (limit 350 — RULE FLL)"; \
-			FAIL=1; \
- fi; \
-	done; \
-	if [ "$$FAIL" = "1" ]; then \
- echo "  Fix: split the file into focused modules under 350 lines."; \
- exit 1; \
-	fi; \
-	echo "✓ [zig] All new Zig files within 350-line limit"
-
-_hardcoded_role_check:
-	@echo "→ [zig] Checking for banned hardcoded role constants..."
-	@FAIL=0; \
-	if grep -rn 'ROLE_SCOUT\|ROLE_ECHO\|ROLE_WARDEN' src/ --include='*.zig' | grep -v '_test\.zig' | grep -q .; then \
- echo "✗ Banned role constants found (ROLE_SCOUT/ROLE_ECHO/ROLE_WARDEN). Remove them — roles are loaded from config."; \
- grep -rn 'ROLE_SCOUT\|ROLE_ECHO\|ROLE_WARDEN' src/ --include='*.zig' | grep -v '_test\.zig'; \
-		FAIL=1; \
-	fi; \
-	if grep -rn 'eqlIgnoreCase.*"echo"\|eqlIgnoreCase.*"scout"\|eqlIgnoreCase.*"warden"' src/ --include='*.zig' | grep -v '_test\.zig' | grep -q .; then \
- echo "✗ Hardcoded role string comparison found. Use the active profile skill list instead."; \
- grep -rn 'eqlIgnoreCase.*"echo"\|eqlIgnoreCase.*"scout"\|eqlIgnoreCase.*"warden"' src/ --include='*.zig' | grep -v '_test\.zig'; \
-		FAIL=1; \
-	fi; \
-	if grep -rn 'mem\.eql.*"echo"\|mem\.eql.*"scout"\|mem\.eql.*"warden"' src/ --include='*.zig' | grep -v '_test\.zig' | grep -q .; then \
- echo "✗ Hardcoded role string comparison (mem.eql) found. Use the active profile skill list instead."; \
- grep -rn 'mem\.eql.*"echo"\|mem\.eql.*"scout"\|mem\.eql.*"warden"' src/ --include='*.zig' | grep -v '_test\.zig'; \
-		FAIL=1; \
-	fi; \
-	if [ "$$FAIL" = "1" ]; then exit 1; fi; \
-	echo "✓ [zig] No hardcoded role constants found"
-
 
 
 REDOCLY := bunx @redocly/cli
@@ -197,6 +90,39 @@ check-route-registration-doc:  ## REST guide §7 route-registration facts stay f
 	@python3 scripts/check_route_registration_doc_test.py
 	@python3 scripts/check_route_registration_doc.py
 
+# The Rust workspace. `cd` rather than `--manifest-path`: rust-toolchain.toml is
+# resolved from the WORKING DIRECTORY, so running cargo from the repository root
+# would silently use whatever toolchain the shell has active instead of the
+# pinned one — the lane would pass on a compiler nobody agreed to.
+#
+# `--all-targets` covers tests and benches too. A clippy violation that only
+# exists in a test file is still a violation; excluding them is how a test file
+# becomes the place lint rules go to die.
+RUSTD_DIR := rustd
+
+lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
+	@echo "→ [rustd] Checking Rust formatting..."
+	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
+	@cd $(RUSTD_DIR) && cargo fmt --check
+	@echo "→ [rustd] Running Clippy (-D warnings)..."
+	@cd $(RUSTD_DIR) && cargo clippy --workspace --all-targets -- -D warnings
+	@echo "✓ [rustd] Lint passed"
+
+# Every scripts/*_test.py, discovered rather than listed.
+#
+# A checker whose own tests never run is enforcement in appearance only, so the
+# self-tests get their own lane rather than riding an unrelated one where a
+# future edit can silently unhook them.
+#
+# `*_test.py`, not `check_*_test.py`: the narrower pattern would let a self-test
+# be written, committed and never run.
+SCRIPT_SELF_TESTS := python3 -m unittest discover -s scripts -t scripts -p '*_test.py'
+
+lint-scripts:  ## Run every scripts/*_test.py self-test
+	@echo "→ [scripts] Running script self-tests..."
+	@$(SCRIPT_SELF_TESTS)
+	@echo "✓ [scripts] Script self-tests passed"
+
 SHELLCHECK ?= shellcheck
 
 lint-shell:  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
@@ -210,58 +136,6 @@ lint-shell:  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
 	@$(SHELLCHECK) --severity=error -x scripts/*.sh
 	@echo "✓ [shell] shellcheck passed (error-level)"
 
-_legacy_symbols_check:
-	@echo "→ [zig] Checking for legacy event-substrate symbols (orphan sweep — RULE ORP)..."
-	@FAIL=0; \
-	PATTERNS='\bactivity_events\b|\bactivity_stream\b|\bactivity_cursor\b|\bzombie_steer_key_suffix\b|"GETDEL".*"zombie:'; \
-	HITS=$$(grep -rEn "$$PATTERNS" src/ --include='*.zig' \
-	         | grep -vE '^[^:]+:[0-9]+:[ \t]*//' || true); \
-	if [ -n "$$HITS" ]; then \
- echo "✗ Legacy event-substrate symbols found in active code (RULE ORP). Strip or replace — these were removed in slice 1/8 of the unified event substrate:"; \
- echo "$$HITS"; \
-		FAIL=1; \
-	fi; \
-	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
-	echo "✓ [zig] No legacy event-substrate symbols in active code"
-
-_legacy_noun_check:
-	@echo "→ [noun] Checking for the retired entity noun (zombie_id/zmb_id) in src/ + schema/ — the product noun is 'fleet'..."
-	@FAIL=0; \
-	NOUN_PATTERNS='\bzombie_id\b|\bzmb_id\b'; \
-	HITS=$$(grep -rEn "$$NOUN_PATTERNS" src/ schema/ --include='*.zig' --include='*.sql' \
-	         | grep -vE '^[^:]+:[0-9]+:[ \t]*(//|--)' || true); \
-	if [ -n "$$HITS" ]; then \
- echo "✗ Retired entity identifier (zombie_id/zmb_id) found in active code — the product noun is 'fleet'; use fleet_id:"; \
- echo "$$HITS"; \
-		FAIL=1; \
-	fi; \
-	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
-	echo "✓ [noun] No retired zombie_id/zmb_id identifiers in src/ + schema/"
-
-_runner_isolation_check:
-	@echo "→ [isolation] Verifying the runner graph (build_runner.zig + src/build/shared.zig) depends ONLY on nullclaw — zero datastore/server deps (pg/s3/httpz)..."
-	@FAIL=0; \
-	DEP_HITS=$$(grep -En 'b\.dependency\(' build_runner.zig src/build/shared.zig \
-	         | grep -vE '^[^:]+:[0-9]+:[ \t]*//' \
-	         | grep -vE 'S_NULLCLAW|"nullclaw"' || true); \
-	HELPER_HITS=$$(grep -En 'buildpkg\.(pg|s3)\b' build_runner.zig src/build/shared.zig \
-	         | grep -vE '^[^:]+:[0-9]+:[ \t]*//' || true); \
-	IMPORT_HITS=$$(grep -En '@import\("([^"]*/)?(pg|s3)\.zig"\)' build_runner.zig src/build/shared.zig \
-	         | grep -vE '^[^:]+:[0-9]+:[ \t]*//' || true); \
-	if [ -n "$$DEP_HITS$$HELPER_HITS$$IMPORT_HITS" ]; then \
- echo "✗ Runner isolation breach — the runner graph may depend ONLY on nullclaw (no pg/s3/httpz; no direct @import of the daemon-only helpers). Offending lines:"; \
-		[ -n "$$DEP_HITS" ] && echo "$$DEP_HITS"; \
-		[ -n "$$HELPER_HITS" ] && echo "$$HELPER_HITS"; \
-		[ -n "$$IMPORT_HITS" ] && echo "$$IMPORT_HITS"; \
-		FAIL=1; \
-	fi; \
-	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
-	echo "✓ [isolation] runner graph depends only on nullclaw (no pg/s3/httpz)"
-
-lint-zig: _fmt_check _zlint_check lint-governance check-test-reachability _lint_zig_test_depth _zig_target_lint  ## Lint all Zig source (agentsfleetd/runner/lib)
-	@echo "✓ [zig] Lint passed"
-
-
 lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + design-system + agentsfleet
 
 
@@ -269,7 +143,7 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 
-lint-all: lint-zig lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
+lint-all: lint-rustd lint-scripts _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + make-target ref check

@@ -1,0 +1,1 @@
+{"landlock":true,"seccomp":true,"cgroup_controllers":["cgroup_controllers"],"bubblewrap":true,"egress_enforcement":true}

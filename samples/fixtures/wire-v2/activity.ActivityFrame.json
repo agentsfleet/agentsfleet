@@ -1,0 +1,1 @@
+[{"tool_call_started":{"name":"name","args_redacted":"args_redacted"}},{"fleet_response_chunk":{"text":"text"}},{"tool_call_completed":{"name":"name","ms":898}},{"tool_call_progress":{"name":"name","elapsed_ms":281}}]

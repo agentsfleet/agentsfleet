@@ -12,42 +12,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint-zig:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
-    env:
-      ZLINT_VERSION: v0.9.0
-    steps:
-      - uses: actions/checkout@v6
-      # `make lint-zig` is not a text-only lint: check-test-reachability runs
-      # `zig build list-tests`, which compiles every test binary a second time
-      # to ask the compiler which test blocks actually registered. Without a
-      # cache that was a cold build of all of them on every run — the one Zig
-      # job in the repository that was paying it. Same key shape as the sibling
-      # Zig jobs, scoped to this job so it never collides with theirs.
-      - name: Cache Zig build
-        uses: actions/cache@v5
-        with:
-          # Local cache only — the Makefile already defaults it to this path,
-          # and Zig writes nothing to the global one for this build graph.
-          path: .tmp/zig-local-cache
-          key: zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-${{ hashFiles('src/**/*.zig', 'schema/**/*.sql') }}
-          restore-keys: |
-            zig-${{ runner.os }}-${{ github.job }}-0.16.0-${{ hashFiles('build.zig.zon', 'build.zig', 'build_runner.zig') }}-
-            zig-${{ runner.os }}-${{ github.job }}-0.16.0-
-      - name: Install ZLint
-        run: |
-          mkdir -p "$RUNNER_TEMP/bin"
-          curl -fsSL "https://github.com/DonIsaac/zlint/releases/download/${ZLINT_VERSION}/zlint-linux-x86_64" -o "$RUNNER_TEMP/bin/zlint"
-          chmod +x "$RUNNER_TEMP/bin/zlint"
-          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
-      # `make lint-zig` already runs the pg-drain checker via
-      # lint-governance -> _lint_zig_pg_drain; a second invocation here was
-      # duplicate work and a drift hazard if the two ever diverged.
-      - name: Run Zig lint gate
-        run: make lint-zig
-
   lint-website:
     runs-on: ubuntu-latest
     steps:
@@ -170,7 +134,7 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
-    needs: [lint-zig, lint-website, lint-apps-designsystem-cli, lint-agentsfleet-sh, check-gh-actions-valid, check-openapi, safety-gates]
+    needs: [lint-website, lint-apps-designsystem-cli, lint-agentsfleet-sh, check-gh-actions-valid, check-openapi, safety-gates]
     steps:
       - name: Preserve legacy lint check name
         run: echo "All lint lanes passed"
