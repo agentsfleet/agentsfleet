@@ -169,7 +169,7 @@ the first baseline run and recorded in the spec's Discovery, not invented here.
 2. The Zig binary stays built, shipped, and deployable until a post-cutover retirement milestone Indy opens — enforced by the release lane asserting both artifacts.
 3. Budgets are named constants compared mechanically — never prose judgments — `test_latency_budget`, `test_memory_ceiling_soak`.
 4. Every runbook step carries an executable probe in `playbooks/cutover/probes.sh`; a deviation surfaces as a failed probe run, not a judgment call — `test_runbook_probes` proves the script executable end-to-end.
-5. Cutover cannot proceed with any M175–M180 rubric row ungraded or red — enforced mechanically: `probes.sh` opens with a pre-swap section that re-runs the milestone-specific R-row parity oracles (wire round-trip, migration + crypto parity, the dual-run differ via `make test-integration DAEMON=rust`, the three route-inventory tests, the ingress signature suite) AND the S-row fast gates, exiting non-zero on any failure.
+5. Cutover cannot proceed with any M175–M180 rubric row ungraded or red — enforced mechanically: `probes.sh`'s pre-swap section is **generated from the Acceptance Rubric tables of the five merged specs** (every R-row and S-row Verify command, no hand-curated subset), exits non-zero on any failure, and asserts its own completeness — probe count must equal the R+S row count across those rubrics, so an omitted oracle is a red probe run, not a silent gap.
 
 ## Metrics & Observability
 
@@ -195,7 +195,7 @@ No product-analytics changes.
 | 3.4 | e2e (chaos) | `test_soak_chaos_invariants` | replay/fencing/reconnect probes hold mid-load |
 | 3.5 | e2e (negative-sensitive) | `test_state_handoff_bidirectional` | Rust-written live state served correctly by Zig after swap, and reverse (`make test-handoff`) |
 | 4.1 | e2e | `test_rollback_rehearsal` | staged Rust→Zig swap verified by `probes.sh` exit 0 |
-| 4.2 | e2e | `test_runbook_probes` | `bash playbooks/cutover/probes.sh` passes post-swap on staging |
+| 4.2 | e2e | `test_runbook_probes` | `bash playbooks/cutover/probes.sh` passes post-swap on staging; probe count equals the R+S row count across the M175–M180 rubrics |
 | 4.3 | integration | `test_metric_continuity` | series names/labels identical across the swap boundary |
 
 ## Acceptance Rubric (single scoring surface)
