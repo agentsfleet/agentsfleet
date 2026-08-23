@@ -133,7 +133,7 @@ The connector outbound queue worker as a supervised task: delivers fleet answers
 
 | Batch | Scope | Runtime · model · reasoning tier | Why |
 |---|---|---|---|
-| B1 (first, alone) | §1 middlewares | Claude Code · Fable 5 · xhigh | the security wall; everything else consumes it |
+| B1 (first, alone) | §1 middlewares | Claude Code · Opus 5 · xhigh | the security wall; everything else consumes it |
 | B2 | §2 webhooks | Claude Code · Opus 5 · high | idempotency + fixture corpus, well-oracled |
 | B2 | §3 schedules/QStash | Claude Code · Opus 5 · high | reconciliation logic with a fake-upstream oracle |
 | B2 | §4 connectors/Slack | Codex · GPT 5.6 tera · high | vendor flows with crisp fixtures |

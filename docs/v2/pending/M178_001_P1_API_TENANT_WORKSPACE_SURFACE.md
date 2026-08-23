@@ -150,7 +150,7 @@ Workspace + fleet event lists (bounded, `since`-windowed), SSE streams (`/events
 
 | Batch | Scope | Runtime · model · reasoning tier | Why |
 |---|---|---|---|
-| B1 | §1 sessions + §4 vault | Claude Code · Fable 5 · xhigh | security boundaries (auth flow, secret storage) stay on the strongest tier |
+| B1 | §1 sessions + §4 vault | Claude Code · Opus 5 · xhigh | security boundaries (auth flow, secret storage) stay on the strongest tier |
 | B1 | §3 fleets/install | Claude Code · Opus 5 · high | rollback choreography with a precise doc oracle |
 | B1 | §2 tenant plane | Codex · GPT 5.6 sol · med | shape-parity porting with the route-inventory test + integration subset as oracle — cheap tier, tight oracle |
 | B2 | §5 events/SSE/messages | Claude Code · Opus 5 · high | streaming semantics need care but are well-documented |

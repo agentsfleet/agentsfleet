@@ -132,8 +132,8 @@ Rollback is rehearsed BEFORE cutover: staging swaps Rust → Zig using the runbo
 |---|---|---|---|
 | B1 | §1 parity gate | Claude Code · Opus 5 · high | mechanical serializer + script extension with exact oracle |
 | B1 | §2 build/ship | Claude Code · Opus 5 · high | pipeline work inside existing workflow shapes |
-| B2 (serial) | §3 soak | Claude Code · Fable 5 · xhigh | budget setting + failure triage across the whole system |
-| B3 (serial) | §4 swap/runbook | Claude Code · Fable 5 · max | the irreversible-adjacent step; strongest tier, human (Indy) executes the production swap |
+| B2 (serial) | §3 soak | Claude Code · Opus 5 · xhigh | budget setting + failure triage across the whole system |
+| B3 (serial) | §4 swap/runbook | Claude Code · Opus 5 · max | the irreversible-adjacent step; strongest tier, human (Indy) executes the production swap |
 
 The production swap itself is operator-executed from the runbook — the agent prepares and rehearses; Indy pulls the trigger.
 

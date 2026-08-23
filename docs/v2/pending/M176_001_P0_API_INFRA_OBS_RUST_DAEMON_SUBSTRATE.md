@@ -169,13 +169,13 @@ Credential-gate rule (AGENTS.orly.md §Bootstrap): this milestone's downstream c
 
 | Batch | Scope | Runtime · model · reasoning tier | Why |
 |---|---|---|---|
-| B1 | §1 crypto | Claude Code · Fable 5 · xhigh | cross-implementation crypto parity is unforgiving; wrong-but-plausible is the failure mode |
+| B1 | §1 crypto | Claude Code · Opus 5 · xhigh | cross-implementation crypto parity is unforgiving; wrong-but-plausible is the failure mode |
 | B1 | §2 db | Claude Code · Opus 5 · high | mechanical port with a precise bookkeeping oracle |
 | B1 | §3 redis | Claude Code · Opus 5 · high | crate-backed rewrite with clear behaviour tests |
-| B2 | §4 auth | Claude Code · Fable 5 · xhigh | security boundary; AUTH.md ordering subtleties |
+| B2 | §4 auth | Claude Code · Opus 5 · xhigh | security boundary; AUTH.md ordering subtleties |
 | B2 | §5 api shell | Claude Code · Opus 5 · high | enum + tower layers, well-scoped |
 | B2 | §6 observability | Codex · GPT 5.6 tera · high | well-trodden tracing/OTLP wiring, cheap to verify |
-| B3 | §7 boot/shutdown | Claude Code · Fable 5 · max | the choreography is the riskiest judgment work in the family |
+| B3 | §7 boot/shutdown | Claude Code · Opus 5 · max | the choreography is the riskiest judgment work in the family |
 | B3 | §8 harness | Claude Code · Opus 5 · high | lane wiring + preflight, mechanical |
 
 B1 sections are independent crates; B2 consumes B1; B3 composes everything. Indy decides how many agents actually spin per batch.

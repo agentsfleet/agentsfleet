@@ -155,11 +155,11 @@ This milestone builds its own oracle — `make test-integration` today builds an
 
 | Batch | Scope | Runtime · model · reasoning tier | Why |
 |---|---|---|---|
-| B1 (serial) | §1 + §2 + §3 | Claude Code · Fable 5 · max | fencing, money, and secret placement are the family's highest-judgment code; one mind holds the atomic-statement set |
+| B1 (serial) | §1 + §2 + §3 | Claude Code · Opus 5 · max | fencing, money, and secret placement are the family's highest-judgment code; one mind holds the atomic-statement set |
 | B2 | §4 | Codex · GPT 5.6 tera · high | four separable verbs with crisp oracles |
 | B2 | §5 | Claude Code · Opus 5 · high | parser parity against a committed corpus |
 | B2 | §6 | Claude Code · Opus 5 · high | sweepers are well-documented ports with contention tests |
-| B3 (serial) | §7 | Claude Code · Fable 5 · xhigh | harness wiring + failure triage across both daemons |
+| B3 (serial) | §7 | Claude Code · Opus 5 · xhigh | harness wiring + failure triage across both daemons |
 
 Indy decides how many agents actually spin per batch.
 

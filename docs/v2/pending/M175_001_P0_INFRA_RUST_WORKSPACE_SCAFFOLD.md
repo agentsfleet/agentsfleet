@@ -138,7 +138,7 @@ The gating foundation. `make lint-all` gains `cargo fmt --check` + `cargo clippy
 
 | Batch | Scope | Runtime · model · reasoning tier | Why |
 |---|---|---|---|
-| B1 (serial, one agent) | §1–§5 | Claude Code · Fable 5 · xhigh | gate and lane design is judgment-heavy, the diff is small, and every section depends on §1 — parallelism buys nothing here |
+| B1 (serial, one agent) | §1–§5 | Claude Code · Opus 5 · xhigh | gate and lane design is judgment-heavy, the diff is small, and every section depends on §1 — parallelism buys nothing here |
 
 ## Interfaces
 
