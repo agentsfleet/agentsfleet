@@ -88,6 +88,17 @@ fn test_kek_from_hex_accepts_either_case() {
         .seal(&lower, &aad, b"payload")
         .unwrap();
     assert_eq!(envelope.open(&upper, &aad).unwrap().expose(), b"payload");
+
+    // And the rejection an operator reads must not blame a case this decoder
+    // accepts — a message that says "lowercase" sends them editing a key that
+    // was only ever the wrong length.
+    let mut short = KEK_HEX.to_ascii_uppercase();
+    short.pop();
+    let error = Kek::from_hex(&short).expect_err("63 characters is not a key");
+    assert!(
+        !error.to_string().contains("lowercase"),
+        "the length error must not blame capitalisation: {error}"
+    );
 }
 
 /// A wrong-length unwrapped key is refused with the component named.

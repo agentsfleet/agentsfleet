@@ -125,6 +125,44 @@ fn test_envelope_rejects_malformed_components() {
     assert!(!short.is_open_failed());
 }
 
+/// A wrapped DEK of the wrong length is refused at construction, named.
+///
+/// The variable-width column is the payload ciphertext, not this one: the
+/// wrapped DEK is a detached ciphertext over a 32-byte key and is 32 bytes or
+/// the row is damaged. Truncating it must fail here, not deep inside the AEAD.
+#[test]
+fn test_envelope_rejects_a_wrong_length_wrapped_dek() {
+    let (good, _) = sealed();
+
+    let mut truncated = good.wrapped_dek().to_vec();
+    truncated.truncate(31);
+
+    for wrapped in [
+        Vec::new(),
+        truncated,
+        [good.wrapped_dek(), &[0_u8]].concat(),
+    ] {
+        let actual = wrapped.len();
+        let error = Envelope::from_parts(
+            wrapped,
+            good.dek_nonce(),
+            good.dek_tag(),
+            good.payload_nonce(),
+            good.payload_ciphertext().to_vec(),
+            good.payload_tag(),
+            2,
+        )
+        .expect_err("only a 32-byte wrapped DEK is a wrapped key");
+        assert!(error.is_malformed_envelope(), "{actual} bytes gave {error}");
+        assert!(!error.is_open_failed(), "{actual} bytes gave {error}");
+        assert_eq!(error.code().as_str(), "UZ-VAULT-001");
+        assert!(
+            error.to_string().contains("wrapped dek"),
+            "the failing component must be named: {error}"
+        );
+    }
+}
+
 /// An unsupported version is refused before any byte is authenticated.
 #[test]
 fn test_envelope_rejects_unsupported_version() {
