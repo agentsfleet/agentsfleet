@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M174
 **Workstream:** 001
 **Date:** Aug 20, 2026
-**Status:** PENDING
+**Status:** DEFERRED
 **Priority:** P2 — a suite that fails under load teaches everyone to rerun instead of read, which is how a real regression ships behind a shrug; three separate tests failed this way in one afternoon and each one cost a full diagnosis before it could be dismissed
 **Categories:** API, UI
 **Batch:** B1 — single workstream, no parallel sibling
@@ -288,3 +288,6 @@ reverts.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/write-unit-test`, `/review`, `kishore-babysit-prs` results (order per `AGENTS.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
+
+> Indy (2026-08-23 14:11): "m173 and m174 are zig related and must move to parked and docs/v2/done folder too - add this in your punch list" — context: this spec, parked as DEFERRED before any implementation began.
+> Indy (2026-08-23 14:11): "I would like to complete the specs keep merging when the agentfleetd-rust is ready to replace the agentslfeetd runner and start testing 136 at that point i will look at m173 and m174" — reactivation condition: M181_001's acceptance rows go green (the Rust daemon is ready to replace the Zig daemon); Indy then revisits this spec, re-scoped against the Rust daemon, since its subject is the Zig test surface.
