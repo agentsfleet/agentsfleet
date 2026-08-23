@@ -100,7 +100,14 @@ macro_rules! wire_roundtrip {
 }
 
 wire_roundtrip! {
-activity_activityframe / activity_activityframe_unknown_field => activity::ActivityFrame<'_> : "activity.ActivityFrame",
+activity_activityframe / activity_activityframe_unknown_field => Vec<activity::ActivityFrame<'_>> : "activity.ActivityFrame",
+activity_frame_fleetresponsechunk / activity_frame_fleetresponsechunk_unknown_field => activity::FleetResponseChunk<'_> : "activity.ActivityFrame.FleetResponseChunk",
+activity_frame_toolcallcompleted / activity_frame_toolcallcompleted_unknown_field => activity::ToolCallCompleted<'_> : "activity.ActivityFrame.ToolCallCompleted",
+activity_frame_toolcallprogress / activity_frame_toolcallprogress_unknown_field => activity::ToolCallProgress<'_> : "activity.ActivityFrame.ToolCallProgress",
+activity_frame_toolcallstarted / activity_frame_toolcallstarted_unknown_field => activity::ToolCallStarted<'_> : "activity.ActivityFrame.ToolCallStarted",
+execution_result_completed / execution_result_completed_unknown_field => report::Completed : "execution_result.ExecutionResult.Completed",
+execution_result_failure / execution_result_failure_unknown_field => report::Failure<'_> : "execution_result.ExecutionResult.Failure",
+execution_result_outcome / execution_result_outcome_unknown_field => Vec<report::ResultOutcome<'_>> : "execution_result.ExecutionResult.Outcome",
 activity_activityrequest / activity_activityrequest_unknown_field => activity::ActivityRequest<'_> : "activity.ActivityRequest",
 event_envelope_eventtype / event_envelope_eventtype_unknown_field => Vec<event::EventType> : "event_envelope.EventType",
 execution_policy_contextbudget / execution_policy_contextbudget_unknown_field => policy::ContextBudget<'_> : "execution_policy.ContextBudget",

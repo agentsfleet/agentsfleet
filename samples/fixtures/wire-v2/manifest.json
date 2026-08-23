@@ -368,9 +368,37 @@
     {
       "name": "activity.ActivityFrame",
       "module": "activity",
-      "kind": "object",
+      "kind": "union",
       "unknown_fields": "reject",
       "file": "activity.ActivityFrame.json"
+    },
+    {
+      "name": "activity.ActivityFrame.ToolCallStarted",
+      "module": "activity",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "activity.ActivityFrame.ToolCallStarted.json"
+    },
+    {
+      "name": "activity.ActivityFrame.FleetResponseChunk",
+      "module": "activity",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "activity.ActivityFrame.FleetResponseChunk.json"
+    },
+    {
+      "name": "activity.ActivityFrame.ToolCallCompleted",
+      "module": "activity",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "activity.ActivityFrame.ToolCallCompleted.json"
+    },
+    {
+      "name": "activity.ActivityFrame.ToolCallProgress",
+      "module": "activity",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "activity.ActivityFrame.ToolCallProgress.json"
     },
     {
       "name": "activity.ActivityRequest",
@@ -392,6 +420,27 @@
       "kind": "object",
       "unknown_fields": "reject",
       "file": "execution_result.ExecutionResult.json"
+    },
+    {
+      "name": "execution_result.ExecutionResult.Outcome",
+      "module": "execution_result",
+      "kind": "union",
+      "unknown_fields": "reject",
+      "file": "execution_result.ExecutionResult.Outcome.json"
+    },
+    {
+      "name": "execution_result.ExecutionResult.Completed",
+      "module": "execution_result",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "execution_result.ExecutionResult.Completed.json"
+    },
+    {
+      "name": "execution_result.ExecutionResult.Failure",
+      "module": "execution_result",
+      "kind": "object",
+      "unknown_fields": "reject",
+      "file": "execution_result.ExecutionResult.Failure.json"
     }
   ],
   "excluded": [

@@ -8,45 +8,74 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
+/// A tool call began.
+///
+/// `args_redacted` is opaque, pre-stringified JSON built runner-side AFTER
+/// substitution — never the resolved bytes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolCallStarted<'a> {
+    /// Which tool.
+    #[serde(borrow)]
+    pub name: Cow<'a, str>,
+    /// The redacted arguments.
+    #[serde(borrow)]
+    pub args_redacted: Cow<'a, str>,
+}
+
+/// The fleet produced output.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FleetResponseChunk<'a> {
+    /// The text produced.
+    #[serde(borrow)]
+    pub text: Cow<'a, str>,
+}
+
+/// A tool call finished.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolCallCompleted<'a> {
+    /// Which tool.
+    #[serde(borrow)]
+    pub name: Cow<'a, str>,
+    /// How long it took, in milliseconds.
+    pub ms: i64,
+}
+
+/// A long-running tool is still working, so a reader's spinner survives it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolCallProgress<'a> {
+    /// Which tool.
+    #[serde(borrow)]
+    pub name: Cow<'a, str>,
+    /// How long it has been running, in milliseconds.
+    pub elapsed_ms: i64,
+}
+
 /// One progress frame.
 ///
 /// The variant name IS the wire discriminator, so the enum is the single source
-/// for the vocabulary and there are no re-spelled kind strings.
+/// for the vocabulary and there are no re-spelled kind strings. Each payload is
+/// a named struct rather than an inline variant body, matching the Zig union
+/// field for field — the encoding is identical either way, and the named form
+/// is what lets each payload carry its own fixture.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ActivityFrame<'a> {
     /// A tool call began.
-    ToolCallStarted {
-        /// Which tool.
-        #[serde(borrow)]
-        name: Cow<'a, str>,
-        /// Opaque, pre-stringified JSON built runner-side AFTER substitution —
-        /// never the resolved bytes.
-        #[serde(borrow)]
-        args_redacted: Cow<'a, str>,
-    },
+    #[serde(borrow)]
+    ToolCallStarted(ToolCallStarted<'a>),
     /// The fleet produced output.
-    FleetResponseChunk {
-        /// The text produced.
-        #[serde(borrow)]
-        text: Cow<'a, str>,
-    },
+    #[serde(borrow)]
+    FleetResponseChunk(FleetResponseChunk<'a>),
     /// A tool call finished.
-    ToolCallCompleted {
-        /// Which tool.
-        #[serde(borrow)]
-        name: Cow<'a, str>,
-        /// How long it took, in milliseconds.
-        ms: i64,
-    },
-    /// A long-running tool is still working, so a reader's spinner survives it.
-    ToolCallProgress {
-        /// Which tool.
-        #[serde(borrow)]
-        name: Cow<'a, str>,
-        /// How long it has been running, in milliseconds.
-        elapsed_ms: i64,
-    },
+    #[serde(borrow)]
+    ToolCallCompleted(ToolCallCompleted<'a>),
+    /// A long-running tool is still working.
+    #[serde(borrow)]
+    ToolCallProgress(ToolCallProgress<'a>),
 }
 
 /// `POST /v1/runners/me/leases/{lease_id}/activity` request — a batch of frames.

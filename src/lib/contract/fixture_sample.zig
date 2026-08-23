@@ -58,8 +58,24 @@ fn sampleStruct(comptime T: type, arena: std.mem.Allocator) T {
     return value;
 }
 
-/// The first variant of a tagged union. `std.json` renders it `{"tag": value}`,
-/// which is the discriminator the wire carries.
+/// One value per variant of a tagged union, in declaration order.
+///
+/// A union's own fixture carries all of them, the way an enum's carries every
+/// tag: the payload encoding of a variant nothing sampled is exactly what drifts
+/// unnoticed between two implementations.
+pub fn allVariants(comptime T: type, arena: std.mem.Allocator) []const T {
+    const fields = @typeInfo(T).@"union".fields;
+    const out = arena.alloc(T, fields.len) catch @panic(OOM_PANIC);
+    inline for (fields, 0..) |field, index| {
+        out[index] = @unionInit(T, field.name, sample(field.type, arena, field.name));
+    }
+    return out;
+}
+
+/// The first variant of a tagged union, for a union used as a FIELD.
+///
+/// A struct instance can only carry one variant; the union's own fixture above
+/// is what covers the rest.
 fn sampleUnion(comptime T: type, arena: std.mem.Allocator, comptime field: []const u8) T {
     _ = field;
     const first = @typeInfo(T).@"union".fields[0];
