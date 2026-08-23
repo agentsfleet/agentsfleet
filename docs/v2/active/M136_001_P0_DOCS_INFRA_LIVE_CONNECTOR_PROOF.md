@@ -303,7 +303,9 @@ Evidence records redacted resource identifiers, delivery identifiers, and counts
 | R5 | Live counter tracks the real reviewer lifecycle | browser evidence for the proof workspace before activation, active, stopped, and resumed | exact sequence `{N} live` → `{N+1} live` → `{N} live` → `{N+1} live` | P0 | |
 | R6 | Multiple Fleet tiles use one workspace stream | browser network evidence filtered to `/events/stream` with reviewer and control Fleet visible | exactly one workspace stream; zero wall-owned per-Fleet streams | P0 | |
 | R7 | Real delivery routes once to the reviewer tile | side-by-side wall evidence before delivery, after delivery, after reconnect, and after replay | reviewer changes once; control Fleet unchanged; reconnect/replay add no duplicate | P0 | |
+| S0 | Deterministic gates pass | `make harness-verify` | exit 0 | P0 | |
 | S1 | Repository checks pass | `make lint-all` | exit 0 | P0 | |
+| S1a | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S2 | No secrets | `gitleaks detect --no-banner` | exit 0 | P0 | |
 | S3 | Diff stays inside Files Changed | `git diff --name-only origin/main` | 0 paths missing from the Files Changed table | P0 | |
 
@@ -382,7 +384,7 @@ N/A — no files deleted.
   > lines or so in it."
 
   **Pending, not applied:** the durable home for this is RULE FLL in
-  `~/Projects/dotfiles/dispatch/write_any.md` §File & Function Length Gate.
+  `dispatch/write_any.md` §File & Function Length Gate.
   That edit is **not** made here — dotfiles governance is in flight on Indy's
   side, and the agent must ask for approval before touching that checkout.
   Recorded in this spec so the decision is not lost while the rule text waits.
