@@ -22,10 +22,11 @@ name: deploy (dev)
 # Worker additionally needs Fly — see the note on the worker job for why its
 # own readiness gate cannot run while the API is still cycling.
 
+# MANUAL DISPATCH ONLY — do not add a push trigger. The Zig daemon is frozen at
+# the revision serving api-dev; redeploying it by hand is the rollback path M181
+# depends on, and `test_daemon_deploy_retired` fails if this fires on a merge.
+# Deploying the Rust daemon is M181's job.
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:

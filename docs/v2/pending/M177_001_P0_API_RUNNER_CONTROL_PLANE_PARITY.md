@@ -52,12 +52,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/src/afd_fleet/**` | CREATE | lease assignment, billing/budget gates, report fencing, sweepers, memory store |
-| `rustd/src/afd_fleet_runtime/**` | CREATE | fleet config parsing (YAML frontmatter + markdown), ExecutionPolicy build, metering |
-| `rustd/src/afd_credentials/**` | CREATE | on-demand credential broker: cached short-lived integration-token minting from vault handles |
-| `rustd/src/afd_api/**` | EDIT | Route variants + handlers for the `/v1/runners` verb set; `runnerBearer` layer wiring |
-| `rustd/src/afd_auth/**` | EDIT | `runnerBearer` validator (`agt_r` prefix, timing-safe hash lookup, no memoization) |
-| `rustd/src/agentsfleetd/**` | EDIT | sweeper tasks join the supervisor; runner metric families registered |
+| `rustd/crates/afd_fleet/**` | CREATE | lease assignment, billing/budget gates, report fencing, sweepers, memory store |
+| `rustd/crates/afd_fleet_runtime/**` | CREATE | fleet config parsing (YAML frontmatter + markdown), ExecutionPolicy build, metering |
+| `rustd/crates/afd_credentials/**` | CREATE | on-demand credential broker: cached short-lived integration-token minting from vault handles |
+| `rustd/crates/afd_api/**` | EDIT | Route variants + handlers for the `/v1/runners` verb set; `runnerBearer` layer wiring |
+| `rustd/crates/afd_auth/**` | EDIT | `runnerBearer` validator (`agt_r` prefix, timing-safe hash lookup, no memoization) |
+| `rustd/crates/agentsfleetd/**` | EDIT | sweeper tasks join the supervisor; runner metric families registered |
 | `rustd/Cargo.toml` | EDIT | new members |
 | `make/test-integration.mk` | EDIT | `DAEMON=rust\|zig` daemon-under-test selector (default `zig`) + dual-run differ lane |
 | `src/build/**` | EDIT | integration test-build wiring for the selector and the row-dump/differ steps |
@@ -101,6 +101,8 @@ The dedicated runner middleware: `Bearer agt_r` prefix required (no JWKS fall-th
 
 The lease verb performs hot-path writes 1–6 in the worker's order: atomic `runner_affinity` claim (UNIQUE per fleet) with monotonic `fencing_seq`, config resolved fresh per lease (no cache), the two debit points (flat receive + floor-token run estimate), coverage refusal on empty wallet, `ExecutionPolicy` built with inline `secrets_map`, the per-lease resolved provider key (never persisted into `secrets_map`; zeroed after serialization), and the provider-neutral lease network rules ported from `src/agentsfleetd/git/repository_http_policy.zig`, bundle manifest attachment, lease TTL/`MAX_RUNTIME_MS` arithmetic.
 
+**No version negotiation (Indy, Aug 23, 2026 — M175 addendum A1).** The Rust lease handler implements no `leaseWireVersion` equivalent, no `fromCurrent` downgrade, and no `requiresLeaseWireV2` refusal path. The version-two policy fields (`execution_policy.zig` `NetworkPolicy.read_only`, `http_origin_policies`, the richer `repository_binding`) apply unconditionally. **Implementation default:** Rust IGNORES the request's `wire_version` entirely and always serves the current shape — deliberately no explicit "unsupported version" rejection, because that needs a new error code, the ERROR REGISTRY gate fires on new codes, and the registry is single-sourced in Zig which this family does not touch. If the implementing agent judges loud rejection necessary, that is a judgment flag to Indy (📟🔦📈💥☠️), not a unilateral call. The divergence is registered in M181 §4.
+
 - **Dimension 2.1** — the six lease writes land in order with row shapes equal to the Zig daemon on identical input → Test `test_lease_writes_row_parity`
 - **Dimension 2.2** — two runners race one fleet → exactly one lease; loser gets the no-work reply → Test `test_lease_affinity_race`
 - **Dimension 2.3** — empty wallet → lease refused with the coverage code; no partial writes → Test `test_lease_money_gate_refusal`
@@ -143,11 +145,12 @@ The four runner-plane sweepers as supervised tasks: liveness (derived three-cate
 
 ### §7 — The parity harness
 
-This milestone builds its own oracle — `make test-integration` today builds and drives the Zig daemon only, so the harness gains a **daemon-under-test selector** (`make test-integration DAEMON=rust|zig`, defaulting to `zig` so existing lanes are untouched) and a **dual-run row differ**: the same seeded, deterministic inputs are driven through BOTH live daemons, the touched rows (leases, events, ledger, memory) are dumped, volatile columns (generated ids, timestamps, fencing tokens) are normalized by consistent mapping — never dropped — and the normalized sets are diffed to an artifact that must be empty. The `row_parity` tests compare against the live Zig daemon, not recorded fixtures. The existing runner-side suites (lease hardening, lease transport, credential-mint end-to-end) then run against `agentsfleetd-rs` through the selector — the demoable capability: a stock Zig runner completing work end-to-end against the Rust daemon.
+The Rust daemon is proven against the committed wire fixtures (M175 §3), the ported SQL read side by side in REVIEW, and its own integration suite against real Postgres and Redis. There is no cross-implementation row differ: M175 §6 deleted `make test-integration` with the rest of the Zig lanes, so no live Zig daemon exists to diff against. What that costs is row-level cross-implementation equivalence; what it buys is not maintaining two daemons in order to compare them, which is the trade Indy took on Aug 23, 2026 on the fact that no production user reaches either.
 
-- **Dimension 7.1** — the Zig runner integration subset passes with `DAEMON=rust` → Test `test_runner_suite_vs_rust_daemon`
-- **Dimension 7.2** — the same subset still passes with `DAEMON=zig` (harness proves both, so red means the daemon, not the rig) → Test `test_runner_suite_vs_zig_daemon`
-- **Dimension 7.3** — the dual-run differ yields an empty normalized diff on the seeded scenario set; a seeded behaviour delta yields a non-empty artifact naming the row → Test `test_dual_run_row_differ`
+The existing runner-side suites (lease hardening, lease transport, credential-mint end to end) run against `agentsfleetd-rs` directly — the demoable capability: a stock Zig runner completing work end to end against the Rust daemon.
+
+- **Dimension 7.1** — a stock Zig runner completes a lease end to end against the Rust daemon, against real Postgres and Redis → Test `test_runner_suite_vs_rust_daemon` (the demoable capability; unchanged by the override, since it needs the runner, not the Zig daemon)
+- **Dimension 7.2** — the seeded scenario set produces the expected row shapes in leases, events, ledger and memory, asserted against shapes recorded from the ported SQL rather than against a live second daemon → Test `test_seeded_row_shapes`
 
 ## Parallelization & execution map
 
@@ -199,8 +202,9 @@ Row shapes: fleet.runner_leases, fleet.runner_events, billing.usage_ledger,
 2. `fencing_seq` strictly increases and every report verifies it inside the same atomic statement — `test_report_stale_fence_rejected`, `test_reclaim_bumps_fence`.
 3. The provider `api_key` never enters `secrets_map` and is zeroed after lease serialization — `test_provider_key_placement` + zeroize newtypes.
 4. Runner auth reads the row every time — no memoized verdict exists to invalidate; enforced by afd_auth exposing no cache seam; `test_revocation_immediate`.
-5. Hot-path SQL is ported verbatim from the Zig domain `sql.zig` files (row-equivalence) — enforced mechanically by the dual-run row differ (§7): non-verbatim SQL that changes behaviour surfaces as a non-empty diff artifact; REVIEW's side-by-side read is the belt on top.
+5. Hot-path SQL is ported verbatim from the Zig domain `sql.zig` files (row-equivalence). The dual-run differ that would have enforced this mechanically is gone with the Zig lanes (Indy override, Aug 23, 2026), so enforcement is REVIEW's side-by-side read plus `test_seeded_row_shapes` — weaker, and named as weaker rather than left implied.
 6. The heartbeat reply is unconditionally ok — rejection is auth's job; `test_runner_bearer_state_matrix` covers the split.
+7. The lease handler carries exactly one lease shape — the current one — and never branches on `wire_version`; enforced by REVIEW reading the handler for a version branch and by §7's scenario set containing no version-one request.
 
 ## Metrics & Observability
 
@@ -274,7 +278,7 @@ N/A — no files deleted.
 
 - Tenant/workspace routes (M178), admin/operator surface incl. bundle *import* (M179 — this milestone only *serves* stored bundles), signed ingress + cron (M180).
 - Approval-gate Slack rendering and the tenant approvals surface (M178) — only the policy fields on `ExecutionPolicy` land here.
-- Any change to the runner binary or the wire version — the runner stays stock Zig; wire stays v2.
+- Any change to the runner binary or the wire version — the runner stays stock Zig; wire stays version two. Reproducing the Zig daemon's version-one downgrade path is explicitly NOT owed (M175 addendum A1; registered as a declared divergence in M181 §4).
 
 
 ---

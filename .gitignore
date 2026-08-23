@@ -51,3 +51,8 @@ scratch_pad.md
 agentsfleet/docs/spec/new-feature.md
 __pycache__/
 .gstack/
+
+# Rust build output. `rustd/Cargo.lock` IS committed: the workspace builds a
+# daemon binary, and an application pins its dependency graph so a rebuild months
+# from now resolves what was tested, not whatever has since been published.
+rustd/target/

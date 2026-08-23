@@ -52,10 +52,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/src/afd_api/**` | EDIT | Route variants + handler modules: admin fleet-libraries, platform-keys, admin models; operator bundles, runners, streams |
-| `rustd/src/afd_library/**` | CREATE | fleet-library catalogue, importer, GitHub source, bundle validation + R2 upload |
-| `rustd/src/afd_state/**` | EDIT | platform-key + model-library repositories (admin write paths) |
-| `rustd/src/afd_fleet/**` | EDIT | runner administration service (cordon/drain/revoke/rotate), streams overview reads |
+| `rustd/crates/afd_api/**` | EDIT | Route variants + handler modules: admin fleet-libraries, platform-keys, admin models; operator bundles, runners, streams |
+| `rustd/crates/afd_library/**` | CREATE | fleet-library catalogue, importer, GitHub source, bundle validation + R2 upload |
+| `rustd/crates/afd_state/**` | EDIT | platform-key + model-library repositories (admin write paths) |
+| `rustd/crates/afd_fleet/**` | EDIT | runner administration service (cordon/drain/revoke/rotate), streams overview reads |
 | `rustd/Cargo.toml` | EDIT | new member |
 | `make/test-integration.mk` | EDIT | admin/operator integration subset against the Rust binary |
 
@@ -231,7 +231,7 @@ N/A — no files deleted.
 1. **Successful user moment** — a platform operator curates a library entry, imports a bundle, cordons a runner, and rotates its token against staging `agentsfleetd-rs` — every gate, view, and event row identical to production behaviour.
 2. **Preserved user behaviour** — the operator dashboard and CLI flows change nothing; platform scopes gate exactly as documented.
 3. **Optimal-way check** — concurrent with M178 under the same two oracles; the only faster path would skip hostile-input tests on import, which is the one place not to economize.
-4. **Rebuild-vs-iterate** — pure port; importer redesign is post-cutover material.
+4. **Rebuild-vs-iterate** — pure port; importer redesign is post-cutover material. "Pure port" bounds the redesign, not the parity rule: a superseded or compatibility path that meets M181's single-implementation evidence bar (no in-tree emitter plus Indy's sign-off, recorded in Discovery) is left unported and registered as a declared divergence, not reproduced.
 5. **What we build** — one library crate, admin/operator handler groups, runner-administration service, import trust boundary.
 6. **What we do NOT build** — trust-class placement, new admin surfaces, R2 layout changes, push-based runner state delivery.
 7. **Fit with existing features** — compounds with M177 (serving path, auth read); must not destabilize the shared R2 bucket layout.
