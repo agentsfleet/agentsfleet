@@ -13,6 +13,7 @@ on:
       - 'build.zig'
       - 'build.zig.zon'
       - 'build_runner.zig'
+      - 'rustd/**'
       - 'make/**'
       - 'schema/**'
       - '.github/workflows/test.yml'
@@ -104,6 +105,50 @@ jobs:
             zig-${{ runner.os }}-${{ github.job }}-0.16.0-
       - name: Test shared src/lib (Zig units)
         run: make test-unit-agentsfleet-lib
+
+  # NON-REQUIRED CONTEXT, deliberately. This job is absent from the `test`
+  # aggregate's `needs:` list below, so a red Rust lane cannot block a merge
+  # while the port is being built. Joining that list would make it required by
+  # proxy — the failure mode PR #627 recorded, where a required context that
+  # never reports blocks the Pull Request outright. Promoting it is an M181
+  # cutover decision, not this milestone's.
+  test-unit-rustd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      # No toolchain input here: rustd/rust-toolchain.toml is the single pin, and
+      # rustup installs it on first use inside that directory. Naming a version
+      # in this file would be a second source of truth that silently disagrees.
+      - name: Show the pinned toolchain
+        run: rustup show && rustc --version && cargo --version
+        working-directory: rustd
+      - name: Cache cargo registry and build output
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rustd/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+      - name: Lint the Rust workspace
+        run: make lint-rustd
+      - name: Test the Rust workspace
+        run: make test-unit-rustd
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Measure coverage
+        run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+        working-directory: rustd
+      - name: Upload Rust coverage to Codecov
+        if: success()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: rustd/lcov.info
+          flags: rust-afd
+          disable_search: true
+          fail_ci_if_error: true
 
   test-unit-cli:
     runs-on: ubuntu-latest

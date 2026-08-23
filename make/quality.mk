@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: _model_allowlist_check check-migrate-unprivileged lint-all lint-zig lint-governance lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check
+.PHONY: _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-zig lint-governance lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_discipline _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _legacy_noun_check _runner_isolation_check
 
 # Regenerate docs/api-reference/error-codes.mdx (own repo, ~/Projects/docs)
 # from the agentsfleetd error registry. No default target path on purpose —
@@ -197,6 +197,24 @@ check-route-registration-doc:  ## REST guide §7 route-registration facts stay f
 	@python3 scripts/check_route_registration_doc_test.py
 	@python3 scripts/check_route_registration_doc.py
 
+# The Rust workspace. `cd` rather than `--manifest-path`: rust-toolchain.toml is
+# resolved from the WORKING DIRECTORY, so running cargo from the repository root
+# would silently use whatever toolchain the shell has active instead of the
+# pinned one — the lane would pass on a compiler nobody agreed to.
+#
+# `--all-targets` covers tests and benches too. A clippy violation that only
+# exists in a test file is still a violation; excluding them is how a test file
+# becomes the place lint rules go to die.
+RUSTD_DIR := rustd
+
+lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
+	@echo "→ [rustd] Checking Rust formatting..."
+	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
+	@cd $(RUSTD_DIR) && cargo fmt --check
+	@echo "→ [rustd] Running Clippy (-D warnings)..."
+	@cd $(RUSTD_DIR) && cargo clippy --workspace --all-targets -- -D warnings
+	@echo "✓ [rustd] Lint passed"
+
 SHELLCHECK ?= shellcheck
 
 lint-shell:  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
@@ -269,7 +287,7 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 
-lint-all: lint-zig lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
+lint-all: lint-zig lint-rustd lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + make-target ref check

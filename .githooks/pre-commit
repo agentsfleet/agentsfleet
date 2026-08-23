@@ -11,6 +11,8 @@
 #
 # Surfaces:
 #   - lint-zig                 (*.zig, schema/*.sql)
+#   - lint-rustd               (*.rs, rustd/* — manifests and the toolchain pin
+#                               change what the lane compiles, so they trigger it)
 #   - test-auth                (*.zig, schema/*.sql — src/agentsfleetd/auth/** portability gate)
 #   - lint-website             (ui/packages/website/*)
 #   - lint-app                 (ui/packages/app/*, design-system/* triggers both)
@@ -72,6 +74,7 @@ gitleaks protect --staged --redact --verbose --no-banner
 staged="$(git diff --cached --name-only --diff-filter=ACMR)"
 
 needs_lint_zig=0
+needs_lint_rustd=0
 needs_test_auth=0
 needs_lint_website=0
 needs_lint_app=0
@@ -91,6 +94,13 @@ while IFS= read -r f; do
       needs_lint_zig=1
       needs_test_auth=1
       needs_check_documentation=1 ;;
+    *.rs|rustd/*)
+      # Anything under rustd/ — sources, Cargo manifests, the toolchain pin,
+      # the lockfile — changes what `cargo clippy` compiles or which compiler
+      # compiles it, so all of it routes to the Rust lane. Listed ahead of the
+      # config catch-all below so rustd/Cargo.toml is linted rather than being
+      # waved through as a stray manifest.
+      needs_lint_rustd=1 ;;
     schema/*.sql)
       needs_lint_zig=1
       needs_test_auth=1 ;;
@@ -136,7 +146,7 @@ while IFS= read -r f; do
   esac
 done <<< "$staged"
 
-any_needed=$(( needs_lint_zig + needs_test_auth + needs_lint_website + needs_lint_app + needs_lint_design_system + needs_lint_cli + needs_lint_shell + needs_check_documentation + needs_check_openapi + needs_check_gh_actions + needs_check_playbooks + needs_harness_only ))
+any_needed=$(( needs_lint_zig + needs_lint_rustd + needs_test_auth + needs_lint_website + needs_lint_app + needs_lint_design_system + needs_lint_cli + needs_lint_shell + needs_check_documentation + needs_check_openapi + needs_check_gh_actions + needs_check_playbooks + needs_harness_only ))
 
 if [ "$any_needed" -eq 0 ]; then
   echo "pre-commit: no lint-relevant files staged, skipping harness-verify + targeted lint"
@@ -163,6 +173,7 @@ launch() {
 
 make_targets=()
 [ "$needs_lint_zig"            = 1 ] && make_targets+=(lint-zig)
+[ "$needs_lint_rustd"          = 1 ] && make_targets+=(lint-rustd)
 [ "$needs_lint_website"        = 1 ] && make_targets+=(lint-website)
 [ "$needs_lint_app"            = 1 ] && make_targets+=(lint-app)
 [ "$needs_lint_design_system"  = 1 ] && make_targets+=(lint-design-system)

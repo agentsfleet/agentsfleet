@@ -2,7 +2,7 @@
 # TEST-UNIT — agentsfleetd, agentsfleet, website, app + multi-package coverage gate
 # =============================================================================
 
-.PHONY: test-unit-agentsfleetd test-unit-agentsfleet-runner test-unit-agentsfleet-lib test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-zig test-coverage-all
+.PHONY: test-unit-rustd wire-fixtures test-unit-agentsfleetd test-unit-agentsfleet-runner test-unit-agentsfleet-lib test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-zig test-coverage-all
 
 test-unit-agentsfleetd:  ## Run agentsfleetd unit tests (Zig)
 	@echo "→ [agentsfleetd] Running Zig unit tests..."
@@ -43,6 +43,25 @@ test-unit-agentsfleet-lib:  ## Run shared src/lib module unit tests (Zig; named 
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 zig build bench-incident-test --summary all
 	@echo "✓ [lib] Shared src/lib unit tests passed (consumed by agentsfleetd + agentsfleet-runner)"
+
+test-unit-rustd:  ## Run the Rust workspace unit tests (cargo)
+	@echo "→ [rustd] Running cargo unit tests..."
+	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
+	@cd $(RUSTD_DIR) && cargo test --workspace
+	@echo "✓ [rustd] Unit tests passed"
+
+# Regenerates the committed wire fixtures from the Zig source of truth. Runs as
+# `zig run`, not through build.zig: every src/lib/contract import is a sibling
+# path, so the emitter compiles standalone and this milestone leaves the Zig
+# build graph untouched.
+#
+# Committed output on purpose — a Zig wire change then lands as a RED DIFF in
+# samples/fixtures/wire-v2/ plus a red Rust round-trip, rather than as a silent
+# skew nobody notices until a runner deserializes garbage.
+wire-fixtures:  ## Regenerate samples/fixtures/wire-v2/ from src/lib/contract (Zig is the source of truth)
+	@echo "→ [wire] Regenerating canonical fixtures from src/lib/contract..."
+	@zig run src/lib/contract/fixture_export.zig -- samples/fixtures/wire-v2
+	@echo "✓ [wire] Fixtures regenerated — review the diff before committing"
 
 test-unit-cli:  ## Run agentsfleet CLI unit tests (bun)
 	@echo "→ [agentsfleet] Building dist/ (tests spawn dist/bin/agentsfleet.js)..."
