@@ -35,7 +35,7 @@ If a test answers (1) but mocks the dep, demote it to a unit test.
 
 ## What belongs here
 
-A test belongs in the integration suite (`make test-integration` / `pytest -m integration` / `cargo test --test 'integration_*'`) if **any** of:
+A test belongs in the integration suite — whatever the repository calls that lane (`pytest -m integration`, `cargo test --test 'integration_*'`, a dedicated make target) — if **any** of:
 
 - **Real Postgres** — schema applied, real connection pool, real extensions if used
 - **Real Redis** — actual pub/sub, streams, KV, lease semantics
@@ -214,7 +214,7 @@ every request; this is the regression that proof exists to catch.
 ### T6 — Resource lifecycle
 
 Proofs the system doesn't bleed:
-- **Drain audit** — `make check-pg-drain` (or equivalent) green after suite. Every `conn.query()` paired with `.drain()` before `deinit()`.
+- **Drain audit** — the repository's connection-drain check green after the suite. Every `conn.query()` paired with `.drain()` before `deinit()`.
 - **Connection leak** — open count before == after across N requests
 - **Memory leak** — Zig: `std.testing.allocator` over full request lifecycle. Rust: `dhat`/`heaptrack` over N iters. Python: `objgraph`/`gc` over N iters.
 - **FD leak** — `lsof -p $$ | wc -l` before/after holds
@@ -232,7 +232,7 @@ Proofs the system doesn't bleed:
   deterministic proof every `errdefer` is correct; exhaustive over alloc sites ⇒ invariant.
 - **No cross-request growth:** drive N requests and assert outstanding-bytes / high-water
   does not grow monotonically (a slow leak shows as linear growth).
-- **Gate:** `make memleak` → **0 leaks** + `make check-pg-drain` clean, both pasted into PR
+- **Gate:** the memory-leak lane → **0 leaks**, and the drain audit clean; both pasted into the PR
   Session Notes; cross-compile both targets before declaring done.
 
 **Complexity / latency budget under load (counters over clocks).**
@@ -331,9 +331,9 @@ Both make every downstream test a lie — fix them before adding coverage. A gre
 | Stage | What runs | Why |
 |---|---|---|
 | **PR** | Smoke mode on changed surface + randomised order | Fast feedback, catches obvious wiring breaks |
-| **Pre-merge** | Standard mode on changed module + 1× full suite from clean (`make down && make up && make test-integration`) | Detects state pollution between tests |
+| **Pre-merge** | Standard mode on changed module + 1× full suite from a CLEAN datastore (tear the services down, bring them up, run the integration lane) | Detects state pollution between tests |
 | **Nightly** | Hardening mode + chaos pass (random failure injection across deps) | Catches rare-path bugs |
-| **Pre-release** | Full Hardening + `make memleak` + `make bench` + cross-platform | Final sign-off |
+| **Pre-release** | Full Hardening + the memory-leak lane + a benchmark run + cross-platform | Final sign-off |
 
 Suite passes shared but fails clean = state pollution, not a bug. Fix isolation before re-running.
 
@@ -367,8 +367,8 @@ Every claim → ≥1 test. Untestable claims → flag `needs infra`, never silen
 
 | Stack | Suite runner | Real PG | Real Redis | Drain/leak | Concurrency |
 |---|---|---|---|---|---|
-| Zig (agentsfleet) | `make test-integration` | `make up` container | `make up` container | `std.testing.allocator` + `make check-pg-drain` | `std.Thread.spawn` |
-| Zig runner (client daemon) | `make test-integration` (protocol loop vs a harness/real control plane) | via the control plane (runner holds none) | via the control plane | `std.testing.allocator` over parent + forked child | `fork` + `kill -9` / fake-clock past lease TTL for reclaim |
+| Zig | the integration lane | containerized datastore | containerized datastore | `std.testing.allocator` + the drain audit | `std.Thread.spawn` |
+| Zig client daemon | the integration lane (protocol loop against a harness or a real control plane) | via the control plane (the daemon holds none) | via the control plane | `std.testing.allocator` over parent + forked child | `fork` + `kill -9` / fake-clock past lease TTL for reclaim |
 | Python | `pytest -m integration` | `testcontainers-python` | `testcontainers-python` | `gc` + `objgraph` over N iters | `asyncio.gather` / `ThreadPoolExecutor` |
 | Rust | `cargo test --test 'integration_*'` | `testcontainers-rs` / `sqlx::test` | `testcontainers-rs` | `dhat-rs`; `Drop` checks | `tokio::spawn` + `loom` for races |
 | Node/Bun | `bun test --integration` | `testcontainers-node` | `testcontainers-node` | manual handle counting | `Promise.all` |
@@ -425,7 +425,7 @@ Mode:        Smoke | Standard | Hardening
 Scenario axis: positive ✅ · negative ✅ · invalid 🟡 · flaky-conn ✅ · kill/restart ✅ · concurrency ✅
 Harness:     ✅ port bind-and-hold · ✅ teardown catalog-derived (survives a new schema)
 DoD:         9/12  — return to EXECUTE before declaring done
-Drain audit: ✅ make check-pg-drain clean
+Drain audit: ✅ clean
 Leak audit:  🔴 std.testing.allocator reported 2 leaks across 100 requests
 Shuffle:     ✅ pass under --shuffle
 Clean run:   ✅ pass after make down && make up
@@ -444,17 +444,17 @@ Block the change if any are missing on touched surface:
 - [ ] Every changed handler/service/repo has ≥1 T1+T2+T3 happy-path test
 - [ ] Every `catch`/`orelse`/`except`/`Err` in the request path has a T4 injection test
 - [ ] Every concurrent-write or idempotency claim has a T5 test
-- [ ] Drain audit (`make check-pg-drain`) clean post-suite
+- [ ] Drain audit clean post-suite
 - [ ] Leak audit clean post-suite (Zig: `std.testing.allocator`; Rust: `dhat`; Python: `objgraph`)
 - [ ] Suite passes under randomised execution order
-- [ ] Suite passes from clean state (`make down && make up && make test-integration`)
+- [ ] Suite passes from a clean datastore — services down, up, then the integration lane
 - [ ] No mocking of DB, Redis, or internal modules
 - [ ] Test names read as documentation
 - [ ] OpenAPI / protobuf breaking-change check (`oasdiff` / `buf breaking`) clean
 - [ ] If streaming touched: T7 incremental-delivery test present
 - [ ] Failure-injection mechanism named for every T4/T7 test (no fiction)
 - [ ] **Partial completion:** every operation touching multiple systems or acquiring the same resource more than once carries a matrix with one row per ordered failure point; each row selects workflow and boundary-call ordinals, failure timing / remote outcome, scopes a concurrency-safe failpoint to one operation, and asserts durable, external, user-visible, and retry residual state; every external mutation proves acknowledgement-loss remote state plus exactly one effect on retry; the completed matrix is pasted into PR Session Notes
-- [ ] PR Session Notes paste final `make test-integration` + `make memleak` lines
+- [ ] PR Session Notes paste the final result line from the integration lane and the memory-leak lane
 - [ ] **≥100-connection** test proves exactly-once + parallelism (peak-concurrency/lock-wait counter, or wall-time < R×), passes K runs
 - [ ] **Zig error-path leak:** allocating handlers/repos proven by `std.testing.checkAllAllocationFailures`; no cross-request high-water growth over N requests
 - [ ] **Complexity under load:** N+1 round-trips ruled out (count at n vs 10n); work-counter ladder asserts the O-bound; p95 within budget vs pinned baseline
@@ -463,8 +463,8 @@ Block the change if any are missing on touched surface:
 - [ ] **Harness hygiene:** server binds-and-holds its port (no rebind race, no `listen()` panic); teardown/reset is catalog-derived (proven by adding a throwaway schema and re-running teardown — it must still reach zero)
 - [ ] **Client daemon (if present, T9):** sudden SIGKILL mid-lease → reclaim + re-fence + exactly-once + stale report fenced; restart → re-register + resume, no duplicate, no orphan lease; flaky control-plane link → backoff without crash + un-acked redelivery + idempotent report retry; forked child always reaped + scope always destroyed on every exit path
 
-100% required before declaring `make test-integration` done.
+100% required before declaring the integration suite done.
 
 ## Validation gate
 
-Run `make test-integration` (or stack equivalent) twice — once shared, once from clean (`make down && make up`). Run once more under randomised order. Report pass/fail/skip counts, drain audit, leak audit, the coverage table above, and the DoD checklist. Do not declare done until DoD is 100%.
+Run the integration lane twice — once against shared services, once from a clean datastore. Run once more under randomised order. Report pass/fail/skip counts, drain audit, leak audit, the coverage table above, and the DoD checklist. Do not declare done until DoD is 100%.

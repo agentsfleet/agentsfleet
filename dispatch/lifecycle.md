@@ -30,7 +30,9 @@ own Bun project needing install + build. `git worktree add` fires
 into the tree; on 🟠 run `provision-env-1password`, re-link. Post-merge:
 `git worktree remove ../agentsfleet-mNN-name`.
 
-**agentsfleet Test Baseline counter:** `make _lint_zig_test_depth`.
+**Test Baseline counter.** A repository whose declared `verify.unit` does not
+print a total names its own counter here. Without one, record the count the
+declared command reports.
 
 **agentsfleet CHORE(close) paths:** the `<Update>` lands in
 `~/Projects/docs/changelog.mdx` (template + version-bump matrix:
