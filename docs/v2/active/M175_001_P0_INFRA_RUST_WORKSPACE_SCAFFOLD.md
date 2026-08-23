@@ -78,6 +78,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `.githooks/pre-push` | EDIT | pushed `*.rs` triggers the Rust fast lane |
 | `.github/workflows/test.yml` | EDIT | Rust job beside the Zig jobs (non-required context — see Invariant 5) |
 | `codecov.yml` | EDIT | `rust-afd` flag beside the `zig-*` flags, with an enforced floor |
+| `README.md` | EDIT | `rust-afd` coverage badge + Rust toolchain badge — required by `scripts/check_readme_badges.py`, which fails any uploaded flag the README never shows |
 | `docs/v2/pending/M177_001_*.md` | EDIT | addendum A1 propagation: the Rust lease handler carries no version negotiation; the dual-run differ drives current-shape requests only |
 | `docs/v2/pending/M178_001_*.md`, `docs/v2/pending/M179_001_*.md` | EDIT | addendum A2 propagation: "pure port" bounds redesign, not the single-implementation parity rule |
 | `docs/v2/pending/M181_001_*.md` | EDIT | addendum A2: single-implementation parity replaces parity-first; declared-divergence register created with the lease-wire entry |
@@ -137,9 +138,9 @@ The serde port of the daemon↔runner wire types. The Zig emitter writes one can
 
 The gating foundation. `make lint-all` gains `cargo fmt --check` + `cargo clippy -- -D warnings`; `make test-unit-all` gains `cargo test --workspace`; `make check-version` compares the workspace version to `VERSION`; both hooks gain a `*.rs` case; `test.yml` gains a Rust job; codecov gains a `rust-afd` flag. **Implementation default:** coverage via cargo-llvm-cov, floor set from the first measured baseline (never 0) — because it is the maintained llvm-native tool and a floor of 0 is a gate that grades nothing.
 
-- **Dimension 4.1** — `make lint-all` fails on a formatting or clippy violation in `rustd/` → Test `test_lint_lane_rust`
-- **Dimension 4.2** — `make test-unit-all` runs the cargo suite and propagates failure → Test `test_unit_lane_rust`
-- **Dimension 4.3** — `make check-version` fails when the workspace version diverges from `VERSION` → Test `test_version_lane_rust`
+- **Dimension 4.1 — DONE** — `make lint-all` fails on a formatting or clippy violation in `rustd/` → Test `test_lint_lane_rust`
+- **Dimension 4.2 — DONE** — `make test-unit-all` runs the cargo suite and propagates failure → Test `test_unit_lane_rust`
+- **Dimension 4.3 — DONE** — `make check-version` fails when the workspace version diverges from `VERSION` → Test `test_version_lane_rust`
 - **Dimension 4.4** — staged/pushed `*.rs` triggers the hook lanes → Test `test_hook_rs_dispatch`
 - **Dimension 4.5** — CI Rust job + `rust-afd` coverage flag report, as non-required contexts → Test `test_ci_rust_job_reports`
 

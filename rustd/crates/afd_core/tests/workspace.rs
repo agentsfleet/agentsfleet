@@ -6,8 +6,11 @@
 //! depends on, so a failure surfaces before anything built on top of it runs.
 #![expect(
     clippy::unwrap_used,
+    clippy::expect_used,
     clippy::panic,
-    reason = "test target: an unmet precondition should fail the test loudly"
+    clippy::indexing_slicing,
+    reason = "test target: a malformed manifest or cargo-metadata document is an \
+              unmet precondition, and failing loudly on it is the correct outcome"
 )]
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};

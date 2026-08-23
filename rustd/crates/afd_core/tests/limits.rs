@@ -77,3 +77,23 @@ fn should_clamp_when_decoded_from_the_wire() {
         "8"
     );
 }
+
+/// The error's rendered form is what an operator reads, and its `source` is what
+/// a caller unwraps. Both are public contract; neither is exercised by the
+/// accessor tests above.
+#[test]
+fn should_render_the_error_with_its_code_and_expose_a_source() {
+    use std::error::Error as _;
+
+    let err = WorkerCount::new(0).unwrap_err();
+    let rendered = err.to_string();
+    assert!(rendered.starts_with("[UZ-REQ-001]"), "{rendered}");
+    assert!(rendered.contains("1..=64"), "{rendered}");
+    assert!(err.source().is_some(), "error must expose its cause");
+    // Not an identifier failure, so the other accessor must stay false — the
+    // accessors have to discriminate, not merely return true for everything.
+    assert!(!err.is_id_shape());
+    assert!(err.is_out_of_range());
+    // Debug is derived but is public surface; assert it names the type.
+    assert!(format!("{err:?}").contains("OutOfRange"), "{err:?}");
+}

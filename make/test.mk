@@ -267,7 +267,7 @@ MEMLEAK_CPU ?= baseline
 
 .PHONY: test-unit-all test-coverage-grade
 
-test-unit-all: test-unit-agentsfleetd test-unit-agentsfleet-runner test-unit-agentsfleet-lib test-coverage-all  ## Run all unit lanes (Zig + multi-package coverage)
+test-unit-all: test-unit-agentsfleetd test-unit-agentsfleet-runner test-unit-agentsfleet-lib test-unit-rustd test-coverage-all  ## Run all unit lanes (Zig + multi-package coverage)
 	@echo "✓ All unit lanes passed"
 
 # The merged floor has one owner, and it is neither producer. Neither lane can

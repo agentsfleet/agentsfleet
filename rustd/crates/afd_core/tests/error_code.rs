@@ -106,3 +106,45 @@ fn should_render_the_code_as_its_wire_string() {
     assert_eq!(code.to_string(), "UZ-REQ-001");
     assert_eq!(serde_json::to_string(&code).unwrap(), "\"UZ-REQ-001\"");
 }
+
+/// The const asserts only prove the two DECLARED codes are well formed; nothing
+/// there exercises the reject branches. Calling `declare` outside a const
+/// context runs the same grammar at runtime, so a validator that accepted
+/// anything would be caught here rather than shipping unnoticed.
+#[test]
+fn should_accept_well_formed_codes_at_declaration() {
+    for good in [
+        "UZ-REQ-001",
+        "UZ-UUIDV7-009",
+        "UZ-A-000",
+        "UZ-INTERNAL-999",
+        "UZ-0-123",
+    ] {
+        assert_eq!(ErrorCode::declare(good).as_str(), good);
+    }
+}
+
+macro_rules! rejects {
+    ($name:ident, $code:literal) => {
+        #[test]
+        #[should_panic(expected = "UZ-<FAMILY>-<NNN>")]
+        fn $name() {
+            let _ = ErrorCode::declare($code);
+        }
+    };
+}
+
+rejects!(should_reject_an_empty_code, "");
+rejects!(should_reject_a_missing_prefix, "XY-REQ-001");
+rejects!(should_reject_a_lowercase_prefix, "uz-REQ-001");
+rejects!(should_reject_an_empty_family, "UZ--001");
+rejects!(should_reject_a_lowercase_family, "UZ-req-001");
+rejects!(should_reject_two_digits, "UZ-REQ-01");
+rejects!(should_reject_four_digits, "UZ-REQ-0001");
+rejects!(should_reject_a_non_digit_number, "UZ-REQ-00A");
+rejects!(should_reject_a_missing_number, "UZ-REQ");
+rejects!(should_reject_a_trailing_segment, "UZ-REQ-001-X");
+rejects!(
+    should_reject_a_family_separator_in_the_family,
+    "UZ-RE_Q-001"
+);
