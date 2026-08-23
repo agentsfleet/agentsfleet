@@ -1,0 +1,38 @@
+[package]
+name = "afd_crypto"
+description = "Envelope encryption and message authentication, byte-compatible with the Zig daemon's vault."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL: one flag, named so it cannot be mistaken for a production knob.
+# It unlocks the deterministic entropy core, which is the only way to reach the
+# seal path with a pinned nonce. A release build carries no such constructor.
+test-util = []
+
+[dependencies]
+# The wire codes a crypto failure answers. No runtime, no transport — this is
+# the same value layer `test_core_dependency_freeze` polices.
+afd_core.workspace = true
+# RustCrypto throughout: pure Rust, audited, no C linkage, which matches the Zig
+# daemon's no-C posture. `aes-gcm` is the same AES-256-GCM construction
+# `std.crypto.aead.aes_gcm.Aes256Gcm` implements on the Zig side.
+aes-gcm.workspace = true
+getrandom.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+subtle.workspace = true
+thiserror.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

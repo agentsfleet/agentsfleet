@@ -86,9 +86,25 @@ pub const UUIDV7_INVALID_ID_SHAPE: ErrorCode = ErrorCode::declare("UZ-UUIDV7-009
 /// Request body was malformed or violated a documented bound.
 pub const INVALID_REQUEST: ErrorCode = ErrorCode::declare("UZ-REQ-001");
 
+/// A stored envelope was malformed — wrong component length, or an unsupported version.
+pub const VAULT_DATA_INVALID: ErrorCode = ErrorCode::declare("UZ-VAULT-001");
+
+/// An operation failed for a reason the caller cannot act on and must not be told.
+///
+/// The code every crypto failure answers. A decrypt that fails because the tag
+/// did not verify is indistinguishable, to a client, from one that failed
+/// because the key was wrong — and saying which would be an oracle. The Zig
+/// daemon reports `crypto_store` failures under this code for the same reason.
+pub const INTERNAL_OPERATION_FAILED: ErrorCode = ErrorCode::declare("UZ-INTERNAL-003");
+
 /// Every code this crate declares, in declaration order.
 ///
 /// The exhaustive list the registry tests walk. A code added above without a
 /// row here is invisible to the uniqueness and Zig-parity checks, which is why
 /// `test_error_registry_unique` also asserts the count.
-pub const REGISTRY: &[ErrorCode] = &[UUIDV7_INVALID_ID_SHAPE, INVALID_REQUEST];
+pub const REGISTRY: &[ErrorCode] = &[
+    UUIDV7_INVALID_ID_SHAPE,
+    INVALID_REQUEST,
+    VAULT_DATA_INVALID,
+    INTERNAL_OPERATION_FAILED,
+];

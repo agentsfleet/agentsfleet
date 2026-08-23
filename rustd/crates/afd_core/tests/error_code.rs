@@ -45,6 +45,8 @@ fn test_error_registry_unique() {
     for named in [
         error_code::UUIDV7_INVALID_ID_SHAPE,
         error_code::INVALID_REQUEST,
+        error_code::VAULT_DATA_INVALID,
+        error_code::INTERNAL_OPERATION_FAILED,
     ] {
         assert!(
             REGISTRY.contains(&named),
