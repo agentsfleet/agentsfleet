@@ -13,14 +13,16 @@
 #   - test-unit-app            (ui/packages/app/*, design-system/* triggers both)
 #   - test-unit-design-system  (ui/packages/design-system/*)
 #
-# Moved to Continuous Integration (CI)
-# (.github/workflows/{test-integration,memleak}.yml):
-#   - test-integration         — worker integration vs real Postgres + Redis
-#   - memleak                  — valgrind / allocator leak gate
-# Pre-push is the fast-smoke floor; CI is the comprehensive gate. The prior
-# behaviour held the Secure Shell (SSH) session idle for 15-20 min during the
-# heavier lanes, which github.com routinely dropped at pack-write time even
-# though every test passed locally.
+# Pre-push is the fast-smoke floor; Continuous Integration (CI) is the
+# comprehensive gate. The split exists because the prior behaviour held the
+# Secure Shell (SSH) session idle during the heavier lanes, which github.com
+# routinely dropped at pack-write time even though every test passed locally.
+# Any lane needing live datastores belongs on the CI side of that line.
+#
+# There is no Zig dispatch here. The Zig integration and memory-leak lanes
+# retired with the rest of the Zig gating, and the daemon itself is frozen —
+# `*.zig` reaches only `check-documentation-rules` in pre-commit, which reads
+# command help text out of that source.
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
@@ -29,10 +31,9 @@ cd "$repo_root"
 # --- orly gate work ----------------------------------------------------------
 # The cheap tier only: branch shape, tree state, declared commands. `orly gate
 # pr` belongs at CHORE(close), immediately before `gh pr create` — it runs the
-# whole declared verify set, `make memleak` and `make test-integration`
-# included, and those are the lanes this hook deliberately sent to Continuous
-# Integration (CI). Running them here would hold the push open for the 15-20
-# minutes that github.com kept dropping.
+# whole declared verify set, which is the comprehensive tier this hook
+# deliberately leaves to Continuous Integration (CI). Running it here would
+# hold the push open for the stretch github.com kept dropping.
 if command -v orly >/dev/null 2>&1; then
   # A scratch file in the tree is not part of what is being pushed — the
   # commits are. The tree criterion belongs to `orly gate pr`, where the
