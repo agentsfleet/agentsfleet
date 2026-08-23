@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M176
 **Workstream:** 001
 **Date:** Aug 23, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — every route milestone (M177–M180) builds on these crates
 **Categories:** API | INFRA | OBS
 **Batch:** B2 — serial after M175; M177+ depend on it
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
+**Branch:** `feat/m176-rust-daemon-substrate`
+**Test Baseline:** `unit=180 integration=0` — `unit` is the cargo workspace total reported by the declared `verify.unit` (`make test-unit-all`), per `docs/VERIFY_TIERS.md` §Test Baseline; `integration=0` because no `verify.integration` is declared at the branch point, which is exactly what §8 changes
 **Depends on:** M175_001 (workspace, lanes, afd_core, afd_wire)
 **Provenance:** LLM-drafted (Claude Fable 5, Aug 23, 2026)
 **Canonical architecture:** `docs/architecture/concurrency.md` (thread/lock/shutdown layer) + `docs/architecture/data_flow.md` §Connection topology
