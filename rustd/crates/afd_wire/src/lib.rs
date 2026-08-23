@@ -54,5 +54,6 @@ pub mod lease;
 pub mod memory;
 pub mod paths;
 pub mod policy;
+mod redact;
 pub mod report;
 pub mod runner;

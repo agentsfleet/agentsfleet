@@ -25,7 +25,7 @@ pub struct MintCredentialRequest<'a> {
 }
 
 /// `POST /v1/runners/me/credentials/mint` reply.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MintCredentialResponse<'a> {
     /// The short-lived, workspace-scoped credential. Secret — never logged,

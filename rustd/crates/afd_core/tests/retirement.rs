@@ -88,7 +88,10 @@ fn test_zig_lanes_absent() {
             for target in RETIRED_TARGETS {
                 let invoked = code.starts_with(&format!("{target}:"))
                     || code.contains(&format!("make {target}"))
-                    || code.contains(&format!("$(MAKE) {target}"));
+                    || code.contains(&format!("$(MAKE) {target}"))
+                    // `make help` advertising a target that no longer exists
+                    // sends a developer to "No rule to make target".
+                    || code.contains(&format!("@echo \"  {target} "));
                 if invoked {
                     survivors.push(format!("{name}:{}: {}", number + 1, line.trim()));
                 }

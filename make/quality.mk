@@ -18,7 +18,6 @@ check-documentation-rules:  ## Check public API and command help text
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules.py
 
-ZLINT ?= zlint
 ACTIONLINT ?= actionlint
 
 lint-website:  ## Lint website only (Oxlint + tsc)
@@ -67,15 +66,6 @@ _model_allowlist_check:
 	@echo "→ [models] Checking every dialable provider is priced or carries a reason..."
 	@python3 scripts/check_model_allowlist.py
 
-# No allowlist. There was one — 14 files granted an exemption "before this gate
-# was tightened", with a note to shrink it over time. It shrank to zero: every
-# entry named a pre-src/agentsfleetd/ path, so not one could ever match, and the
-# gate spent an O(files x 14) comparison per file proving it. No Zig file needs
-# an exemption today, and re-introducing the list is how that stops being true.
-# Policy: RULE FLL in docs/greptile-learnings/RULES.md
-
-ZIG_LINE_LIMIT_EXCLUDE_DIRS := (^|/)(vendor|third_party|\.zig-cache)/
-ZIG_LINE_LIMIT_TEST_PATTERN := (^|/)(tests?)/|_test\.zig$$|_test_.*\.zig$$|tests\.zig$$|.*test.*\.zig$$
 
 REDOCLY := bunx @redocly/cli
 

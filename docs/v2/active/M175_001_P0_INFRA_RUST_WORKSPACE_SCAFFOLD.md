@@ -140,7 +140,7 @@ The serde port of the daemon↔runner wire types. The Zig emitter writes one can
 
 ### §4 — Repository lanes
 
-The gating foundation. `make lint-all` gains `cargo fmt --check` + `cargo clippy -- -D warnings`; `make test-unit-all` gains `cargo test --workspace`; `make check-version` compares the workspace version to `VERSION`; both hooks gain a `*.rs` case; `test.yml` gains a Rust job; codecov gains a `rust-afd` flag. **Implementation default:** coverage via cargo-llvm-cov, floor set from the first measured baseline (never 0) — because it is the maintained llvm-native tool and a floor of 0 is a gate that grades nothing.
+The gating foundation. `make lint-all` gains `cargo fmt --check` + `cargo clippy -- -D warnings`; `make test-unit-all` gains `cargo test --workspace`; `make check-version` compares the workspace version to `VERSION`; both hooks gain a `*.rs` case; `test.yml` gains a Rust job; codecov gains a `rust-afd` flag. **Implementation default:** coverage via cargo-llvm-cov, floor set from the first measured baseline (never 0) — because it is the maintained llvm-native tool and a floor of 0 is a gate that grades nothing. **Landed at 100%**, not measured-minus-margin: these crates carry no input/output, no runtime and no external dependency, so every line is reachable from a test and the suite reports 100.00% lines and 100.00% functions; a floor below what the suite achieves is slack, and the TypeScript packages already hold exactly this bar.
 
 - **Dimension 4.1 — DONE** — `make lint-all` fails on a formatting or clippy violation in `rustd/` → Test `test_lint_lane_rust`
 - **Dimension 4.2 — DONE** — `make test-unit-all` runs the cargo suite and propagates failure → Test `test_unit_lane_rust`
@@ -164,7 +164,7 @@ Deleted, not disabled — a lane commented out is a lane someone re-enables by a
 
 `.oracle/orly.json` stays untouched: its `commands` block already routes through the make targets this milestone extends, which satisfies `dispatch/write_rust.md`'s "repository owns the commands" assertion without a config edit. `orly doctor` must stay green.
 
-- **Dimension 5.1** — `orly doctor` green with the Rust lanes present and `.oracle/orly.json` unchanged → Test `test_orly_doctor_green`
+- **Dimension 5.1 — DONE** — `orly doctor` green with the Rust lanes present and `.oracle/orly.json` unchanged → Test `test_orly_doctor_green`
 
 ## Parallelization & execution map
 
