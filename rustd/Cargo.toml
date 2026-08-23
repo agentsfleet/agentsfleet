@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_core", "crates/afd_wire"]
+members = ["crates/afd_core", "crates/afd_crypto", "crates/afd_wire"]
 
 [workspace.package]
 version = "0.26.2"
@@ -34,12 +34,28 @@ categories = ["network-programming"]
 # Intra-workspace members resolve through the workspace, never by direct sibling
 # path (M-CRATES-IN-WORKSPACE).
 afd_core = { path = "crates/afd_core", version = "0.26.2" }
+afd_crypto = { path = "crates/afd_crypto", version = "0.26.2" }
 
 # `default-features = false` throughout, features named explicitly, so a member
 # cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).
 serde = { version = "1.0.229", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0.151", default-features = false, features = ["std", "preserve_order"] }
 thiserror = { version = "2.0.20", default-features = false, features = ["std"] }
+
+# RustCrypto. Pure Rust with no C linkage, matching the Zig daemon's posture, and
+# the same AES-256-GCM construction `std.crypto.aead.aes_gcm.Aes256Gcm` implements.
+aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc"] }
+hmac = { version = "0.13.0", default-features = false }
+sha2 = { version = "0.11.0", default-features = false }
+# Constant-time comparison. RULE CTM: a byte-by-byte `==` over a secret leaks how
+# much of a guess was right through how long it took to reject.
+subtle = { version = "2.6.1", default-features = false }
+# No `derive`: `zeroize_derive` is the only crate in this graph still on syn 2,
+# and a duplicate syn fails `clippy::multiple_crate_versions`. Three hand-written
+# `Drop` impls are cheaper than a second proc-macro inside a crypto crate anyway.
+zeroize = { version = "1.9.0", default-features = false, features = ["alloc"] }
+# The only system call this workspace's crypto makes.
+getrandom = { version = "0.4.3", default-features = false }
 
 [workspace.lints.rust]
 # Every rustc warning is an error; individual lints below raise their own level

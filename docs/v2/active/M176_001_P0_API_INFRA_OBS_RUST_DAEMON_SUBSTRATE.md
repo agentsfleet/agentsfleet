@@ -71,8 +71,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_state/**` | CREATE | repository crate, seeded with the auth-consumed lookups (api keys, CLI credentials); M178/M179 extend it |
 | `rustd/crates/agentsfleetd/**` | CREATE | binary: subcommand parsing (serve/migrate), boot choreography, task supervisor |
 | `rustd/Cargo.toml` | EDIT | new workspace members + workspace dependencies |
-| `src/agentsfleetd/secrets/envelope_fixture_export.zig` | CREATE | Zig-side emitter + reader for cross-implementation crypto fixtures |
-| `samples/fixtures/vault-envelope/**` | CREATE | committed envelope fixtures (Zig-written for Rust to decrypt; test-time reverse pass) |
+| `rustd/crates/afd_core/**` | EDIT | two registry codes the crypto errors answer (`UZ-VAULT-001`, `UZ-INTERNAL-003`) |
+| `make/quality.mk`, `make/test-unit.mk` | EDIT | `--all-features` on the Rust lint and unit lanes, so `test-util` mocks are linted and run |
 | `make/test-integration-rustd.mk` | CREATE | the Rust-native integration lane; consumes the surviving `make/test-infra.mk` compose services |
 | `make/test.mk` | EDIT | includes the new fragment beside `test-infra.mk` |
 | `.github/workflows/test-integration-rustd.yml` | CREATE | runs that lane against compose Postgres + Redis (CI edit — explicit user approval per repo rule; this spec is the record) |
@@ -109,15 +109,50 @@ So the honest shape is a lane this milestone **creates**:
 | Declaration | `.oracle/orly.json` gains `verify.integration`, so `orly gate` and the rubric grade one boundary. Without it the lane would be a target nothing names — and `dispatch/lifecycle.md` already reads `verify.integration` "where declared". |
 | CI | A new workflow. `.github/workflows/test.yml` carries no `services:` block and its `test` aggregate is a required check; hanging a datastore-dependent job off it would make live Postgres required for every PR. |
 
+### The Zig emitter is cut (Indy, Aug 23, 2026)
+
+> Indy: *"I dont want us to write any zig emitter"* — context: the spec's
+> Files Changed row for `src/agentsfleetd/secrets/envelope_fixture_export.zig`
+> and the Zig-written fixtures Dimensions 1.1/1.2 depended on.
+
+The spec inherited M175's shape — Zig generates, Rust conforms — and applied it
+to crypto. It does not transfer. The wire emitter compiles under bare `zig run`
+because every `src/lib/contract` import is a sibling path; `crypto_primitives.zig`
+imports `common` and `log`, so an envelope emitter needs an entry in the Zig
+BUILD GRAPH. Adding a step to a frozen daemon to generate test vectors for a
+port is the tail wagging the dog, and it was cut.
+
+**The replacement oracle is stronger, not weaker.** Three layers, none of them
+synthetic:
+
+| Layer | What it proves | Where |
+|---|---|---|
+| NIST AES-256-GCM known-answer vectors | the primitive is the standard one, not a lookalike | Dimension 1.1, unit |
+| Byte-exact AAD assertion | the one place drift actually happens — the format, its separator, and the lowercase-workspace / verbatim-key asymmetry | Dimension 1.2, unit |
+| The Zig unit suite, re-run in Rust | every assertion `crypto_primitives.zig` makes, with identical inputs | `tests/zig_parity.rs`, 8 tests, no Zig compiled |
+| Rows the Zig daemon really wrote | end-to-end parity against production data shape | §2's integration lane, against real Postgres |
+
+The third layer is Indy's suggestion and it turned out to be the best of them:
+rather than generating data from Zig, **re-run the Zig suite's own assertions in
+Rust**. `crypto_primitives.zig` carries six tests; `tests/zig_parity.rs` mirrors
+each with the same inputs — the same `TEST_KEK_HEX`, the same
+`"super-secret-api-key-12345"`, the same `workspace-a` / `workspace-b` pair, the
+same `bad_tag[0] ^= 0x01`. A seventh test in the Zig file fails
+`zig_pure_crypto_suite_is_fully_mirrored`, so the mapping cannot go stale
+quietly. Nothing is compiled, generated, or executed outside this crate.
+
+The fourth layer is what the fixtures were really a proxy for, and it is
+strictly better: a committed fixture proves Rust agrees with a Zig program
+written to generate fixtures, while a real row proves Rust agrees with the
+daemon that serves `api-dev`. `ZIG GATE` no longer fires for this milestone, and
+the diff touches no `*.zig` file.
+
 ### §1 note — how the reverse pass actually runs
 
-Dimension 1.2 says the Zig reverse pass "runs in the Zig test build". There is no
-Zig test *lane* any more, though `build.zig` still carries its test steps and
-Zig 0.16.0 is installed. The reverse pass therefore runs the way `make
-wire-fixtures` already runs — a `zig run` invocation of
-`src/agentsfleetd/secrets/envelope_fixture_export.zig`, driven from the Rust
-integration lane, which is also why that file's Files Changed entry says
-"emitter **and reader**". No new Zig lane is created.
+Superseded by the decision above: there is no reverse pass, because there is no
+Zig emitter. Recorded rather than deleted so the reasoning chain stays readable
+— the original plan assumed a Zig test lane that M175 had already removed, and
+removing the emitter removes the question.
 
 ## Coverage decision
 
@@ -148,6 +183,31 @@ guidelines:
 mechanisms, the number moves in the **same commit** that adds the line, the line
 is named, and the reason is written into `codecov.yml` and this section. A
 number moved at CI to go green is the one outcome this section exists to prevent.
+
+**Measured, §1 (`cargo llvm-cov --all-features --summary-only`):** `afd_crypto`
+reaches **99.62% lines · 97.44% regions**, from 92.26% before the gap-closing
+pass. Error-path coverage is **100%** — all seven `ErrorKind` variants carry a
+negative test. Two structural fixes got there rather than added tests: the dead
+`Result` arm in `Mac256::compute` was removed (HMAC accepts any key length, so
+the branch was unreachable by construction — `M-LINT-OVERRIDE-EXPECT` covers the
+one-line override that replaced it), and the mock's poisoned-mutex arm was
+replaced with `PoisonError::into_inner`, since a plain queue has no invariant a
+panic could break.
+
+The residue is `entropy.rs:47` — the closure that maps a `getrandom` failure to
+a typed error. Reaching it needs the kernel's entropy pool to fail, which cannot
+be provoked in-process without mocking `getrandom` itself, i.e. mocking the
+mock. **The bar is NOT moved for it in this commit**: `afd_crypto` is one crate
+of eight, the number to move is a project-wide one, and moving it now would
+spend the whole allowance on the first section. It is named here so §7's pass
+either closes it or moves the bar once, with every unreachable line listed.
+
+One measurement caveat, stated rather than smoothed over:
+`test_error_display_appends_a_captured_backtrace` re-runs itself in a child with
+`RUST_BACKTRACE=1` (std decides capture once per process, so the branch is
+unreachable otherwise). Whether that child's profile merges varies between
+`--summary-only` and `--text` runs, so the reported figure moves between 99.62%
+and 100%. The lower number is the one recorded.
 `rust-afd` is not a required context today (`codecov.yml`: *"NOT a required
 context — the Rust job is absent from test.yml's `test` aggregate"*), which
 lowers the blast radius but changes none of the above. Graded at VERIFY from
@@ -188,7 +248,7 @@ the policy, and it is kept:
 | LOGGING | yes — runtime logging begins here | scoped events, error codes, severity, redaction via tracing fields; secrets never formatted |
 | MILESTONE-ID | yes | no milestone tokens in `rustd/` or fixtures |
 | UFS | yes | env knob names, Redis key patterns, pool sizes as named constants byte-identical to Zig |
-| ZIG GATE | yes — fixture emitter | init/deinit + errdefer; imports production crypto modules |
+| ZIG GATE | no | no `*.zig` file is touched — see §Amendment record, the Zig emitter was cut |
 | SCHEMA GUARD | no | `schema/*.sql` untouched — Rust embeds the same files |
 | SPEC TEMPLATE GATE | yes — this file | required sections filled, zero tpl residue |
 
@@ -204,10 +264,10 @@ the policy, and it is kept:
 
 KEK resolved once at boot from `ENCRYPTION_MASTER_KEY` (64 hex chars → 32 bytes), immutable after; per-row DEK wrapped under the KEK; AES-256-GCM (Advanced Encryption Standard, Galois/Counter Mode) with the documented 96-bit random-nonce policy; HMAC-SHA256 (hash-based message authentication code) canon with constant-time compare. Secrets ride zeroize-on-drop newtypes whose Debug/Display redact. **Implementation default:** RustCrypto crates (`aes-gcm`, `hmac`, `sha2`, `zeroize`) — pure-Rust, audited, no C linkage, matching the Zig daemon's no-C posture.
 
-- **Dimension 1.1** — Rust decrypts Zig-written envelope fixtures → Test `test_envelope_decrypts_zig_fixtures`
-- **Dimension 1.2** — Zig decrypts Rust-written envelopes (reverse pass runs in the Zig test build) → Test `test_envelope_zig_reads_rust`
-- **Dimension 1.3** — tampered tag, nonce, or ciphertext fails closed with a typed error, no panic → Test `test_envelope_rejects_tampered`
-- **Dimension 1.4** — secret newtypes zero on drop and redact in Debug/Display → Test `test_secret_types_redact`
+- **Dimension 1.1** — the primitive matches the standard: NIST AES-256-GCM known-answer vectors decrypt to their published plaintext → Test `test_aes_gcm_known_answer_vectors` — **DONE**
+- **Dimension 1.2** — the associated data is byte-identical to `crypto_store_write.zig::buildAad`, including the lowercase-workspace / verbatim-key asymmetry → Test `test_aad_matches_zig_format` — **DONE**
+- **Dimension 1.3** — tampered tag, nonce, or ciphertext fails closed with a typed error, no panic → Test `test_envelope_rejects_tampered` — **DONE**
+- **Dimension 1.4** — secret newtypes zero on drop and redact in Debug/Display → Test `test_secret_types_redact` — **DONE**
 
 ### §2 — afd_db: pools and migrations
 
@@ -335,8 +395,8 @@ Crate seams   afd_crypto::Envelope {seal, open} over Zeroizing buffers
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `test_envelope_decrypts_zig_fixtures` | every committed fixture opens to its known plaintext |
-| 1.2 | integration | `test_envelope_zig_reads_rust` | Zig test build opens Rust-sealed envelopes (reverse pass) |
+| 1.1 | unit | `test_aes_gcm_known_answer_vectors` | published NIST vectors decrypt to their published plaintext |
+| 1.2 | unit | `test_aad_matches_zig_format` | AAD bytes equal `lower(ws) 0x1f key 0x1f 2`, asymmetry included |
 | 1.3 | unit (negative) | `test_envelope_rejects_tampered` | flipped byte in tag/nonce/ciphertext → typed error, no panic |
 | 1.4 | unit | `test_secret_types_redact` | Debug/Display of secret newtypes contain no key material; drop zeroizes |
 | 2.1 | integration | `test_migrate_parity_fresh_db` | applied-version set + bookkeeping rows equal Zig migrator output on a fresh database |
@@ -372,7 +432,7 @@ Crate seams   afd_crypto::Envelope {seal, open} over Zeroizing buffers
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Boot to ready on compose (§7) | `curl -fsS localhost:3000/readyz` after `agentsfleetd-rs serve` (PORT default 3000, `src/agentsfleetd/http/server.zig:63`) | HTTP 200 | P0 | |
 | R2 | Migration parity (§2) | `cd rustd && cargo test test_migrate_parity_fresh_db` | exit 0 | P0 | |
-| R3 | Crypto parity both directions (§1) | `cd rustd && cargo test -p afd_crypto` + Zig reverse-pass suite | exit 0 both | P0 | |
+| R3 | Crypto parity (§1) | `cd rustd && cargo test -p afd_crypto --all-features` | exit 0 | P0 | |
 | R4 | Deterministic shutdown (§7) | `cd rustd && cargo test test_shutdown_joins_all_tasks` | exit 0 | P0 | |
 | R5 | Substrate integration suite (§8) | `make test-integration-rustd` | exit 0 | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
