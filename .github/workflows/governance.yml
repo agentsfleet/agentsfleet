@@ -1,0 +1,41 @@
+name: governance
+
+# The hooks in .githooks/ run `orly gate work` locally, but `core.hooksPath`
+# is local git config and a clone never carries it. A contributor who has not
+# armed the hooks pushes ungated, so the gate is re-run here where nobody can
+# skip it. `work` is the cheap tier: branch shape and declared commands, no
+# test execution — the suites have their own workflows.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      # Pinned to the version .oracle/orly.json records, so CI proves the
+      # ruleset this repository actually installed, not whatever is latest.
+      - name: Install orly at the pinned version
+        run: |
+          version="$(jq -r '.orly_version' .oracle/orly.json)"
+          echo "orly_version from .oracle/orly.json: $version"
+          npm install --global "@agentsfleet/orly@${version}"
+
+      - name: orly doctor
+        run: orly doctor
+
+      - name: orly gate work
+        run: orly gate work
