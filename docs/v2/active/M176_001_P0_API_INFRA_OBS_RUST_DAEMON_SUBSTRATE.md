@@ -38,7 +38,17 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** feat(rustd): daemon substrate — db, redis, crypto, auth, boot/shutdown
 - **Intent (one sentence):** the Rust daemon can be booted, migrated, probed, and cleanly stopped against the production schema and stores, so route milestones only add handlers, never plumbing.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch → STOP and reconcile before any edit.
+- **Handshake** (filled at PLAN, Aug 23, 2026):
+  - **Intent, restated:** build the part of the Rust daemon that is not a feature — the bit that opens connections, unseals secrets, decides who a caller is, and stops without dropping anything on the floor — and prove each of those against the real Postgres, the real Redis, and data the Zig daemon actually wrote, so that M177–M180 add handlers to a substrate that is already known-good rather than discovering plumbing bugs behind route logic.
+  - `ASSUMPTIONS I'M MAKING:`
+    1. **The Zig daemon stays the only production binary.** Nothing here is deployed; `deploy-dev.yml` keeps its manual-dispatch-only trigger and `test_daemon_deploy_retired` keeps passing. Parity is measured against Zig, never enforced onto it.
+    2. **Parity direction is one-way: Zig generates, Rust conforms.** Envelope fixtures are written by Zig and committed, exactly as M175 did for wire fixtures. A Rust-generated fixture would be a circular oracle. The reverse pass (Dimension 1.2) verifies Rust-sealed envelopes with a `zig run` reader, not a Zig test lane — see the §1 note below.
+    3. **`schema/` is untouched.** Both migrators embed the same files and write the same `audit.schema_migrations` bookkeeping, so either binary can migrate the same database interchangeably. Version IS the slot number.
+    4. **`afd_wire` stays primitive and stays off `afd_core`.** `test_core_dependency_freeze` walks the resolved graph of `afd_core` and `afd_wire` only; the new crates may depend on tokio/sqlx/axum freely, but nothing that pulls a runtime may reach `afd_wire`, because `WorkerCount` clamps on deserialize and would break byte parity.
+    5. **`make test-integration` is gone and is not coming back.** M175 §6 deleted `make/test-integration.mk` and `.github/workflows/test-integration.yml`. This milestone creates a new Rust-native lane instead of joining a dead one — recorded below and in Discovery.
+    6. **Visibility is private-by-default in every new crate.** `afd_wire`'s 164 public fields are a deliberate exception for transparent serde payloads, not the house style; see §Visibility policy.
+    7. **Credentials resolve at test time from compose, not from a developer's home directory.** Only `OIDC_*` and the OTLP knobs come from `~/.config/agentsfleet/` links; the datastore URLs are derived from the compose-discovered ports, which is what makes the lane work identically in CI.
+  - No mismatch found against the Overview. Six stale references were found against the *repository* and are amended below.
 
 ## Implementing agent — read these first
 
@@ -63,9 +73,105 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/Cargo.toml` | EDIT | new workspace members + workspace dependencies |
 | `src/agentsfleetd/secrets/envelope_fixture_export.zig` | CREATE | Zig-side emitter + reader for cross-implementation crypto fixtures |
 | `samples/fixtures/vault-envelope/**` | CREATE | committed envelope fixtures (Zig-written for Rust to decrypt; test-time reverse pass) |
-| `make/test-integration.mk` | EDIT | Rust substrate integration suite joins `test-integration` against the same compose services |
-| `.github/workflows/test-integration.yml` | EDIT | Rust integration steps beside the Zig ones (CI edit — explicit user approval per repo rule; this spec is the record) |
+| `make/test-integration-rustd.mk` | CREATE | the Rust-native integration lane; consumes the surviving `make/test-infra.mk` compose services |
+| `make/test.mk` | EDIT | includes the new fragment beside `test-infra.mk` |
+| `.github/workflows/test-integration-rustd.yml` | CREATE | runs that lane against compose Postgres + Redis (CI edit — explicit user approval per repo rule; this spec is the record) |
+| `.oracle/orly.json` | EDIT | declares `verify.integration`, so the new lane is a first-class gate rather than a target nothing names |
+| `codecov.yml` | EDIT | the coverage decision recorded below (§Coverage decision) |
 | `docs/architecture/concurrency.md` | EDIT | adds the Rust task-map section beside the Zig thread map |
+
+## Amendment record (EXECUTE-time reconciliation)
+
+`AGENTS.orly.md` §Specification Standards: *"Spec contradicts a rule → amend
+spec."* Here the spec contradicted the **repository**, which is the same call.
+Amended before any code was written, so nothing is built against a spec already
+known to be wrong.
+
+### The integration-lane amendment
+
+M175 §6 deleted `make/test-integration.mk` and
+`.github/workflows/test-integration.yml`. Verified: `ls make/test-integration.mk`
+→ `No such file or directory`; `make -qp | grep '^test-integration:'` → no
+output. Six places in this spec still named that lane (Files Changed ×2, §8
+prose, Dimension 8.2, Test Specification row 8.2, rubric R5).
+
+**This is not a find-and-replace.** M176 genuinely needs live Postgres and Redis;
+what it cannot do is *join* a lane that no longer exists. The Zig lane was
+deleted because the Zig daemon is frozen, not because integration testing ended.
+So the honest shape is a lane this milestone **creates**:
+
+| Piece | Decision |
+|---|---|
+| Target name | `test-integration-rustd` — matches the existing `test-unit-rustd` / `lint-rustd` family. Reusing the freed name `test-integration` would silently inherit the Zig suite's meaning. |
+| Services | The surviving `make/test-infra.mk`, which M175 kept — it is the disposable-environment half (`_ensure-test-infra`, `_reset-test-db`, compose port discovery, Redis TLS CA extraction) and is already consumed by `make/quality.mk:183`. Only the Zig *lanes* half was deleted. |
+| State discipline | Depends on `$(TEST_STATE_DEP)`, so a gate run resets schemas and flushes Redis while `KEEP_TEST_STATE=1` keeps the inner loop fast — the same contract the Zig lane had. |
+| Test placement | `rustd/crates/*/tests/integration_*.rs` per M-INTEGRATION-TESTS: tests touching only public API are integration tests and live under `tests/`. |
+| Declaration | `.oracle/orly.json` gains `verify.integration`, so `orly gate` and the rubric grade one boundary. Without it the lane would be a target nothing names — and `dispatch/lifecycle.md` already reads `verify.integration` "where declared". |
+| CI | A new workflow. `.github/workflows/test.yml` carries no `services:` block and its `test` aggregate is a required check; hanging a datastore-dependent job off it would make live Postgres required for every PR. |
+
+### §1 note — how the reverse pass actually runs
+
+Dimension 1.2 says the Zig reverse pass "runs in the Zig test build". There is no
+Zig test *lane* any more, though `build.zig` still carries its test steps and
+Zig 0.16.0 is installed. The reverse pass therefore runs the way `make
+wire-fixtures` already runs — a `zig run` invocation of
+`src/agentsfleetd/secrets/envelope_fixture_export.zig`, driven from the Rust
+integration lane, which is also why that file's Files Changed entry says
+"emitter **and reader**". No new Zig lane is created.
+
+## Coverage decision
+
+`codecov.yml` holds `project.default.target: 100%` and per-flag patch targets at
+100% with 0% thresholds. That was set when the Rust crates were pure value types,
+and its own comment says so: *"These crates are pure value and serialization with
+no input/output … If a later milestone adds a genuinely untestable line, move this
+number in the same change and say why — do not let it drift down silently."*
+`docs/VERIFY_TIERS.md` §Coverage repeats the claim. Seven crates carrying sqlx,
+redis, axum and OTLP falsify it.
+
+**Route taken: reach 100, do not move the bar.** Two mechanisms, both from the
+guidelines:
+
+1. **Mockable boundaries (M-MOCKABLE-SYSCALLS, M-TEST-UTIL).** Every crate doing
+   I/O exposes its syscall surface as a non-public core enum — `Native` plus a
+   `#[cfg(feature = "test-util")] Mocked(MockCtrl)` variant — constructed via
+   `new_mocked() -> (Self, MockCtrl)`. This is what makes the error paths a real
+   datastore will not produce on demand (mid-flight connection loss, JWKS
+   timeout, OTLP buffer overflow) reachable from a test at all. It is required
+   for correctness of the Failure Modes table regardless of coverage.
+2. **Coverage measured across both lanes.** `cargo llvm-cov` runs unit and
+   `tests/` targets in one invocation, so the integration lane's runs against
+   real Postgres and Redis count toward the same report. The measurement moves
+   to where the datastores are rather than the bar moving down.
+
+**Fallback, bounded:** if a specific line proves genuinely unreachable under both
+mechanisms, the number moves in the **same commit** that adds the line, the line
+is named, and the reason is written into `codecov.yml` and this section. A
+number moved at CI to go green is the one outcome this section exists to prevent.
+`rust-afd` is not a required context today (`codecov.yml`: *"NOT a required
+context — the Rust job is absent from test.yml's `test` aggregate"*), which
+lowers the blast radius but changes none of the above. Graded at VERIFY from
+measured `cargo llvm-cov` output, never asserted here.
+
+## Visibility policy
+
+M175 shipped 164 public fields. Every one is in `afd_wire`; `afd_core` has zero
+(`grep -rnE '^\s+pub [a-z_]+:' crates/afd_core/src/` → no output). That split is
+the policy, and it is kept:
+
+- **`afd_wire` keeps public fields.** Its types are transparent serde payloads
+  with no invariant to guard. M-STRONG-TYPES-GUARD governs "a strong type or
+  newtype that exists to encode an invariant" — a DTO whose structural validity
+  is enforced by `deny_unknown_fields` at the deserialize boundary is not one.
+  Accessors returning the field verbatim would be 164 pieces of ceremony, and
+  the byte-parity fixtures are the real oracle. Deliberate divergence, recorded.
+- **Every crate in this milestone is private-by-default.** These types carry
+  invariants that matter: a public field on a secret newtype lets a caller move
+  the buffer out and bypass `zeroize` on drop, which is Invariant 5 defeated by
+  syntax. Construction is fallible where an invariant exists
+  (M-STRONG-TYPES-GUARD); services are `Arc<Inner>` handles with method
+  forwards (M-SERVICES-CLONE); `unreachable_pub = "deny"` is already in the
+  workspace lints and demotes anything no sibling imports to `pub(crate)`.
 
 ## Applicable Rules
 
@@ -158,10 +264,10 @@ Boot order ported from `cmd/serve.zig` (pools → Redis → migrations check →
 
 ### §8 — Credential enumeration and integration harness
 
-Credential-gate rule (AGENTS.orly.md §Bootstrap): this milestone's downstream credentials, enumerated with fetch locations — `DATABASE_URL`, `DATABASE_URL_API`, `DATABASE_URL_MIGRATOR`, `REDIS_URL`, `ENCRYPTION_MASTER_KEY`, `OIDC_ISSUER`, `OIDC_AUDIENCE` (+ optional `OIDC_JWKS_URL`), OTLP endpoint + token — all resolved from `~/.config/agentsfleet/` env links (`.githooks/post-checkout`; provisioned by `provision-env-1password` in dotfiles). Boot preflight fails loud listing every missing one. The Rust substrate integration suite joins `make test-integration` against the same compose services.
+Credential-gate rule (AGENTS.orly.md §Bootstrap): this milestone's downstream credentials, enumerated with fetch locations — `DATABASE_URL`, `DATABASE_URL_API`, `DATABASE_URL_MIGRATOR`, `REDIS_URL`, `ENCRYPTION_MASTER_KEY`, `OIDC_ISSUER`, `OIDC_AUDIENCE` (+ optional `OIDC_JWKS_URL`), OTLP endpoint + token — all resolved from `~/.config/agentsfleet/` env links (`.githooks/post-checkout`; provisioned by `provision-env-1password` in dotfiles). Boot preflight fails loud listing every missing one. The Rust substrate integration suite runs in a lane this milestone CREATES, `make test-integration-rustd`, against the same compose services (§Integration-lane amendment).
 
 - **Dimension 8.1** — preflight lists all missing credentials in one output, not first-failure-only → Test `test_preflight_lists_missing`
-- **Dimension 8.2** — Rust integration suite runs inside `make test-integration` and propagates failure → Test `test_integration_lane_rust`
+- **Dimension 8.2** — the created lane `make test-integration-rustd` runs the Rust integration suite and propagates its failure → Test `test_integration_lane_rust`
 
 ## Parallelization & execution map
 
@@ -258,7 +364,7 @@ Crate seams   afd_crypto::Envelope {seal, open} over Zeroizing buffers
 | 7.4 (FM) | integration (negative) | `test_boot_refuses_redis_down` | Redis unreachable at boot → refusal naming the dependency, non-zero exit |
 | 7.5 | integration | `test_task_inventory_and_cancellation` | inventory rows cover the `concurrency.md` map; cancel token interrupts a blocked read per I/O owner |
 | 8.1 | integration (negative) | `test_preflight_lists_missing` | three unset knobs → all three named in one failure |
-| 8.2 | integration | `test_integration_lane_rust` | seeded failing Rust integration test → `make test-integration` exit non-zero |
+| 8.2 | integration | `test_integration_lane_rust` | seeded failing Rust integration test → `make test-integration-rustd` exit non-zero |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -268,7 +374,7 @@ Crate seams   afd_crypto::Envelope {seal, open} over Zeroizing buffers
 | R2 | Migration parity (§2) | `cd rustd && cargo test test_migrate_parity_fresh_db` | exit 0 | P0 | |
 | R3 | Crypto parity both directions (§1) | `cd rustd && cargo test -p afd_crypto` + Zig reverse-pass suite | exit 0 both | P0 | |
 | R4 | Deterministic shutdown (§7) | `cd rustd && cargo test test_shutdown_joins_all_tasks` | exit 0 | P0 | |
-| R5 | Substrate integration suite | `make test-integration` | exit 0 | P0 | |
+| R5 | Substrate integration suite (§8) | `make test-integration-rustd` | exit 0 | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -277,7 +383,7 @@ Crate seams   afd_crypto::Envelope {seal, open} over Zeroizing buffers
 | S5 | No secrets | `gitleaks detect` | exit 0 | P0 | |
 | S6 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
 
-**Command source rule:** S1–S4 are copied verbatim from `.oracle/orly.json` (`conform`, `verify.lint`, `verify.unit`, `verify.version`) — the set `orly gate` runs; S5–S6 are the template's repository hygiene gates (secret scan, oversize sweep), deliberately outside the declared set; R-rows name oracles this spec's own Files Changed create, so every command is copy-paste by merge time.
+**Command source rule:** S1–S4 are copied verbatim from `.oracle/orly.json` (`conform`, `verify.lint`, `verify.unit`, `verify.version`) — the set `orly gate` runs — and R5 quotes the `verify.integration` this milestone adds to the same file; S5–S6 are the template's repository hygiene gates (secret scan, oversize sweep), deliberately outside the declared set; R-rows name oracles this spec's own Files Changed create, so every command is copy-paste by merge time.
 
 **Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE.
 
@@ -313,7 +419,53 @@ N/A — no files deleted.
 
 ## Discovery (consult log)
 
-- **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
-- **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
-- **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
-- **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
+### Amendments made before EXECUTE
+
+Six references to `make test-integration` were reconciled against a repository
+where that lane does not exist. Full reasoning and the replacement design live in
+§Amendment record; the decision is a **new Rust-native lane**
+(`make test-integration-rustd`) built on the surviving `make/test-infra.mk`,
+declared as `verify.integration`, and run by its own workflow. A seventh
+imprecision — Dimension 1.2's "runs in the Zig test build" — is clarified rather
+than amended: it runs as `zig run`, the `make wire-fixtures` precedent.
+
+### Credential enumeration (§8 gate, run at PLAN)
+
+Checked by key presence only; no value was read, printed, or logged.
+
+| Knob | Present locally | Where it comes from |
+|---|---|---|
+| `DATABASE_URL` | no | derived at test time from the compose-discovered port (`make/test-infra.mk` `TEST_DATABASE_URL_LOCAL`); deployments resolve via 1Password |
+| `DATABASE_URL_API` | no | same; `docker-compose.yml` sets it for the compose `agentsfleetd` service only |
+| `DATABASE_URL_MIGRATOR` | yes | `.env.agentsfleetd.local` |
+| `REDIS_URL` | no | derived from the compose-discovered port (`TEST_REDIS_TLS_URL_LOCAL`, `rediss://` + extracted CA) |
+| `ENCRYPTION_MASTER_KEY` | fixture only | `docker-compose.yml` carries a local-dev value behind `gitleaks:allow`; real deployments resolve via 1Password |
+| `OIDC_ISSUER` | yes | `.env.agentsfleetd.local` |
+| `OIDC_AUDIENCE` | yes | `.env.agentsfleetd.local` |
+| `OIDC_JWKS_URL` | no | optional — derived from the issuer when unset |
+| OTLP endpoint + token | no | 1Password via `OP_SERVICE_ACCOUNT_TOKEN` in `~/.config/agentsfleet/.env` |
+
+The finding that shapes §8: **the datastore URLs are not developer-environment
+credentials at all** — they are derived from compose at lane start, which is what
+lets the lane behave identically on a laptop and in CI. Only the identity and
+telemetry knobs come from `~/.config/agentsfleet/` links, and
+`.githooks/post-checkout` reported `✔ linked` for both on this worktree. The
+boot preflight (Dimension 8.1) must therefore name a *fetch location* per knob,
+not just the knob — a missing `REDIS_URL` means "the lane did not export it",
+while a missing OTLP token means "run `provision-env-1password`".
+
+### Consults
+
+- **Architecture / Legacy-Design / gate-flag triage** — pending; recorded here as they occur.
+
+### Metrics review
+
+- Pending `/review`.
+
+### Skill-chain outcomes
+
+- Pending — `/orly-write-unit-test` during implementation, `/orly-write-integration-test` for the substrate suite, `/review` before CHORE(close), `orly-babysit-prs` after every push.
+
+### Deferrals
+
+- None yet. Every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
