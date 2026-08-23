@@ -52,12 +52,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/src/afd_api/**` | EDIT | Route variants + handler modules per group: auth-sessions, tenant, api-keys, cli-credentials, models, workspaces (fleets, secrets, fleet-libraries read, onboarding, preferences, approvals, events, streams, messages, memories, integration-grants) |
-| `rustd/src/afd_state/**` | EDIT | extends the M176-created repository crate: vault, billing/wallet reads, model library + tenant models, tenant provider, preferences, onboarding, signup bootstrap |
-| `rustd/src/afd_observability/**` | EDIT | PostHog product-event emission for the surfaces this milestone ports (§7) |
-| `rustd/src/afd_fleet/**` | EDIT | install flow (ensure-stream retries + rollback), approvals service + gate sweeper, steer message append |
-| `rustd/src/afd_auth/**` | EDIT | CLI-credential mint/revoke service glue; Clerk metadata fetch worker port |
-| `rustd/src/agentsfleetd/**` | EDIT | approval-gate sweeper + Clerk fetch worker join the supervisor |
+| `rustd/crates/afd_api/**` | EDIT | Route variants + handler modules per group: auth-sessions, tenant, api-keys, cli-credentials, models, workspaces (fleets, secrets, fleet-libraries read, onboarding, preferences, approvals, events, streams, messages, memories, integration-grants) |
+| `rustd/crates/afd_state/**` | EDIT | extends the M176-created repository crate: vault, billing/wallet reads, model library + tenant models, tenant provider, preferences, onboarding, signup bootstrap |
+| `rustd/crates/afd_observability/**` | EDIT | PostHog product-event emission for the surfaces this milestone ports (§7) |
+| `rustd/crates/afd_fleet/**` | EDIT | install flow (ensure-stream retries + rollback), approvals service + gate sweeper, steer message append |
+| `rustd/crates/afd_auth/**` | EDIT | CLI-credential mint/revoke service glue; Clerk metadata fetch worker port |
+| `rustd/crates/agentsfleetd/**` | EDIT | approval-gate sweeper + Clerk fetch worker join the supervisor |
 | `rustd/Cargo.toml` | EDIT | new member |
 | `make/test-integration.mk` | EDIT | tenant/workspace integration subset runs against the Rust binary |
 

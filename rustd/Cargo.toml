@@ -1,0 +1,129 @@
+# Workspace root for the Rust daemon port.
+#
+# Layout follows Microsoft's M-CRATES-FLAT-FOLDER: every crate is a sibling in
+# one direct subdirectory, `crates/`, with the directory name equal to the crate
+# name. This root is a VIRTUAL manifest — no `[package]`, so it builds no library
+# or binary of its own and no crate is nested inside another crate's source tree.
+# The workspace mechanics (virtual root, explicit member list, the lint
+# rationale below) come from ~/Projects/oss/bun; its `src/<name>/` crate
+# directory does not, by Indy's call on Aug 23, 2026.
+#
+# Every setting a member could restate lives here instead (M-CARGO-WORKSPACE):
+# members inherit package metadata via `.workspace = true`, dependency versions
+# from `[workspace.dependencies]`, and the whole lint policy from
+# `[workspace.lints]`.
+
+[workspace]
+resolver = "3"
+members = ["crates/afd_core", "crates/afd_wire"]
+
+[workspace.package]
+version = "0.26.2"
+edition = "2024"
+# Equal to the pinned toolchain rather than trailing it (M-MSRV allows a lag for
+# published libraries; these crates have no external consumers and are built
+# only by rust-toolchain.toml's pin, so a lower floor would be an untested claim).
+rust-version = "1.98"
+license = "Apache-2.0"
+repository = "https://github.com/agentsfleet/agentsfleet"
+readme = "../../README.md"
+keywords = ["agentsfleet", "daemon", "runner"]
+categories = ["network-programming"]
+
+[workspace.dependencies]
+# Intra-workspace members resolve through the workspace, never by direct sibling
+# path (M-CRATES-IN-WORKSPACE).
+afd_core = { path = "crates/afd_core", version = "0.26.2" }
+
+# `default-features = false` throughout, features named explicitly, so a member
+# cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).
+serde = { version = "1.0.229", default-features = false, features = ["derive", "std"] }
+serde_json = { version = "1.0.151", default-features = false, features = ["std", "preserve_order"] }
+thiserror = { version = "2.0.20", default-features = false, features = ["std"] }
+
+[workspace.lints.rust]
+# Every rustc warning is an error; individual lints below raise their own level
+# (priority 0 beats the group's -1) where a different level is intentional.
+warnings = { level = "deny", priority = -1 }
+# NOTE: `unused_crate_dependencies` is deliberately NOT here. Cargo lints apply
+# to every target, and each integration test is its own crate, so a workspace
+# setting fires on the lib's own dependencies from inside `tests/` and on
+# dev-dependencies from inside the lib. ~/Projects/oss/core_api-develop carries
+# it as a `#![deny(...)]` crate attribute in all 59 of its lib.rs files for the
+# same reason, and each afd_* lib.rs does likewise — which is where it has to
+# bite anyway, since Invariant 2 is a claim about the LIBRARY's dependency graph.
+# The M-STATIC-VERIFICATION compiler set.
+ambiguous_negative_literals = "deny"
+missing_debug_implementations = "deny"
+redundant_imports = "deny"
+redundant_lifetimes = "deny"
+trivial_numeric_casts = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+unused_lifetimes = "deny"
+# M-MODULE-DOCS and M-CANONICAL-DOCS, enforced rather than reviewed.
+missing_docs = "deny"
+# `pub` is a claim that another crate imports the item. If none does, write
+# `pub(crate)` and keep it under dead-code analysis instead of exempting it as
+# an external API root (bun's rationale, Cargo.toml:~350).
+unreachable_pub = "deny"
+
+[workspace.lints.clippy]
+# All major categories (M-STATIC-VERIFICATION).
+cargo = { level = "deny", priority = -1 }
+complexity = { level = "deny", priority = -1 }
+correctness = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+perf = { level = "deny", priority = -1 }
+style = { level = "deny", priority = -1 }
+suspicious = { level = "deny", priority = -1 }
+
+# The `restriction` picks that carry the port's own guarantees. `unwrap`,
+# `expect` and `panic` are denied because these crates are linked into a daemon
+# that must not abort on a malformed wire payload: a parse failure is a typed
+# error the caller decides about, never a process exit. Test targets opt back
+# out per-file with `#![expect(..., reason = ...)]`.
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+# The rest of the M-STATIC-VERIFICATION restriction set.
+allow_attributes_without_reason = "deny"
+as_pointer_underscore = "deny"
+assertions_on_result_states = "deny"
+clone_on_ref_ptr = "deny"
+deref_by_slicing = "deny"
+disallowed_script_idents = "deny"
+empty_drop = "deny"
+empty_enum_variants_with_brackets = "deny"
+empty_structs_with_brackets = "deny"
+fn_to_numeric_cast_any = "deny"
+if_then_some_else_none = "deny"
+map_err_ignore = "deny"
+redundant_type_annotations = "deny"
+renamed_function_params = "deny"
+semicolon_outside_block = "deny"
+undocumented_unsafe_blocks = "deny"
+unnecessary_safety_comment = "deny"
+unnecessary_safety_doc = "deny"
+unneeded_field_pattern = "deny"
+unused_result_ok = "deny"
+too_long_first_doc_paragraph = "deny"
+
+[profile.release]
+# opt-level 3, not 'z': this is a server binary whose cost is CPU per request,
+# not bytes on disk.
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+# Kept ON in release. Billing arithmetic crosses these crates from M177 on, and
+# a silent wraparound there is a money bug that no test would surface; the
+# branch cost is noise next to a Postgres round-trip.
+overflow-checks = true
+
+[profile.bench]
+# Debug symbols so a profiler can attribute samples (M-HOTPATH).
+debug = 1

@@ -52,10 +52,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/src/afd_api/**` | EDIT | Route variants + handler modules: admin fleet-libraries, platform-keys, admin models; operator bundles, runners, streams |
-| `rustd/src/afd_library/**` | CREATE | fleet-library catalogue, importer, GitHub source, bundle validation + R2 upload |
-| `rustd/src/afd_state/**` | EDIT | platform-key + model-library repositories (admin write paths) |
-| `rustd/src/afd_fleet/**` | EDIT | runner administration service (cordon/drain/revoke/rotate), streams overview reads |
+| `rustd/crates/afd_api/**` | EDIT | Route variants + handler modules: admin fleet-libraries, platform-keys, admin models; operator bundles, runners, streams |
+| `rustd/crates/afd_library/**` | CREATE | fleet-library catalogue, importer, GitHub source, bundle validation + R2 upload |
+| `rustd/crates/afd_state/**` | EDIT | platform-key + model-library repositories (admin write paths) |
+| `rustd/crates/afd_fleet/**` | EDIT | runner administration service (cordon/drain/revoke/rotate), streams overview reads |
 | `rustd/Cargo.toml` | EDIT | new member |
 | `make/test-integration.mk` | EDIT | admin/operator integration subset against the Rust binary |
 

@@ -65,8 +65,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/Cargo.toml` | CREATE | workspace root: members, `[workspace.dependencies]`, `[workspace.lints]`, release profile |
 | `rustd/rust-toolchain.toml` | CREATE | pinned toolchain with rustfmt + clippy components |
 | `rustd/rustfmt.toml` | CREATE | formatting choices, chosen once, CI-enforced |
-| `rustd/src/afd_core/**` | CREATE | domain primitives: error-code registry, UUID v7 identity, config types |
-| `rustd/src/afd_wire/**` | CREATE | serde port of the `/v1/runners` wire types + wire versioning |
+| `rustd/Cargo.lock` | CREATE | committed: the workspace builds a daemon binary, so its dependency graph is pinned |
+| `.gitignore` | EDIT | ignore `rustd/target/` — build output, never committed |
+| `rustd/crates/afd_core/**` | CREATE | domain primitives: error-code registry, UUID v7 identity, config types |
+| `rustd/crates/afd_wire/**` | CREATE | serde port of the `/v1/runners` wire types + wire versioning |
 | `src/lib/contract/fixture_export.zig` | CREATE | Zig-side canonical fixture emitter (test-build tool, imports the wire modules directly) |
 | `samples/fixtures/wire-v2/**` | CREATE | committed canonical wire fixtures the Rust tests byte-compare against |
 | `make/quality.mk` | EDIT | `lint-all` gains `cargo fmt --check` + `cargo clippy -- -D warnings` over `rustd/` |
@@ -101,24 +103,24 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **Reference:** `~/Projects/oss/exonum` — workspace layering: core crates carry no async runtime (its core `Cargo.toml` pulls `futures` but no tokio); mirrored here as Invariant 2. Its per-crate version duplication is superseded by `[workspace.dependencies]` — copy the intent, not the mechanism.
 - **Reference:** `~/Projects/oss/core_api-develop` — `#![deny(unused_crate_dependencies)]` in every crate (verified in all 59 of its lib.rs files) and a single CI-enforced dependency-version source; adopt both via workspace-level lints and `[workspace.dependencies]`.
-- **Reference:** `~/Projects/oss/bun` — the layout canon (Indy-directed, Aug 23, 2026): workspace root `Cargo.toml` with explicit members and crates flat under `src/<name>/` (e.g. `src/valkey` → crate `bun_valkey`); mirrored here as `rustd/Cargo.toml` + `rustd/src/afd_*/`, tightened to dir == crate name with the `afd_` prefix throughout.
+- **Reference:** `~/Projects/oss/bun` — the workspace mechanics: a VIRTUAL root `Cargo.toml` (no `[package]`) with an explicit member list, `[workspace.dependencies]`, and a `[workspace.lints]` block whose `warnings = deny` + `unreachable_pub = deny` rationale is adopted verbatim. Its crate DIRECTORY is not copied: bun nests members under `src/<name>/`, which Microsoft's `M-CRATES-FLAT-FOLDER` rejects, and Indy chose the guideline (Aug 23, 2026). Members live under `rustd/crates/<name>/`, dir == crate name, `afd_` prefix throughout — matching `~/Projects/oss/exonum`'s `components/` + `services/` shape.
 
 ## Sections (implementation slices)
 
 ### §1 — Workspace and hygiene
 
-The cargo workspace every later crate joins; hygiene decided once, here, because lint policy is nearly impossible to retrofit. Layout follows the bun canon: crates flat under `rustd/src/<crate>/`, explicit member list, dir == crate name, `afd_` prefix (binary crate: `agentsfleetd`). **Implementation default:** edition 2024; `[workspace.lints]` denying `clippy::unwrap_used`/`expect_used`/`panic` in library crates plus `unused_crate_dependencies`; release profile `opt-level = 3` with `overflow-checks = true` (billing math crosses these crates later) — because the reference repos show both the cost of retrofitting (≈2,000 unwraps in core_api) and the wrong default (`opt-level = 'z'` on a server binary).
+The cargo workspace every later crate joins; hygiene decided once, here, because lint policy is nearly impossible to retrofit. Layout follows Microsoft's `M-CRATES-FLAT-FOLDER`: a virtual root with an explicit member list and every crate a sibling in one direct subdirectory — `rustd/crates/<crate>/`, dir == crate name, `afd_` prefix (binary crate: `agentsfleetd`). **Implementation default:** edition 2024; `[workspace.lints]` denying `clippy::unwrap_used`/`expect_used`/`panic` in library crates plus `unused_crate_dependencies`; release profile `opt-level = 3` with `overflow-checks = true` (billing math crosses these crates later) — because the reference repos show both the cost of retrofitting (≈2,000 unwraps in core_api) and the wrong default (`opt-level = 'z'` on a server binary).
 
-- **Dimension 1.1** — workspace builds and tests under the pinned toolchain only → Test `test_workspace_builds_pinned`
-- **Dimension 1.2** — clippy runs with `-D warnings` and the lint set is asserted from `cargo metadata` → Test `test_workspace_lint_policy`
+- **Dimension 1.1 — DONE** — workspace builds and tests under the pinned toolchain only → Test `test_workspace_builds_pinned`
+- **Dimension 1.2 — DONE** — clippy runs with `-D warnings`, the workspace denies `unwrap_used`/`expect_used`/`panic`, and every member actually inherits that policy → Test `test_workspace_lint_policy`. (Amended at PLAN: `cargo metadata` does NOT surface lints — verified Aug 23, 2026, `cargo metadata --format-version 1` has no `lints` key on any package under cargo 1.98 — so the assertion reads the workspace manifest, which is the policy's single source. It also asserts each member carries `[lints]\nworkspace = true`, catching the real failure: a crate added without inheriting the policy, which metadata could not have caught either.)
 
 ### §2 — afd_core primitives
 
 Domain primitives with zero I/O: the `ERR_*`-style error-code registry (single-source rule ported from `src/agentsfleetd/errors/error_registry.zig`), UUID v7 identity (mirroring `src/agentsfleetd/types/id_format.zig` semantics), config value types.
 
-- **Dimension 2.1** — UUID v7 validation parity: uppercase rejected, never normalized → Test `test_uuid_v7_rejects_uppercase`
-- **Dimension 2.2** — error-code registry declares each code once; uniqueness and format asserted → Test `test_error_registry_unique`
-- **Dimension 2.3** — afd_core and afd_wire depend on no async runtime, database, or HTTP crate → Test `test_core_dependency_freeze`
+- **Dimension 2.1 — DONE** — UUID v7 validation parity: uppercase rejected, never normalized → Test `test_uuid_v7_rejects_uppercase`
+- **Dimension 2.2 — DONE** — error-code registry declares each code once; uniqueness and format asserted → Test `test_error_registry_unique`
+- **Dimension 2.3 — DONE** — afd_core and afd_wire depend on no async runtime, database, or HTTP crate → Test `test_core_dependency_freeze`
 
 ### §3 — afd_wire and golden fixtures
 
@@ -197,8 +199,8 @@ Lane names               = make lint-all / test-unit-all / check-version
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | integration | `test_workspace_builds_pinned` | `cargo build --workspace` + `cargo test --workspace` exit 0 under the pinned toolchain |
-| 1.2 | unit | `test_workspace_lint_policy` | `cargo metadata` shows workspace lints deny unwrap_used/expect_used/panic for library crates |
+| 1.1 | integration | `test_workspace_builds_pinned` | the compiler resolved inside `rustd/` matches `rust-toolchain.toml`'s channel, and that channel satisfies the workspace `rust-version` floor; a drifted pin fails naming both values |
+| 1.2 | unit | `test_workspace_lint_policy` | workspace manifest denies unwrap_used/expect_used/panic, AND every member manifest inherits via `[lints] workspace = true`; a member missing the inherit fails naming it |
 | 2.1 | unit | `test_uuid_v7_rejects_uppercase` | an otherwise-valid uppercase UUID v7 string → validation error, not normalization |
 | 2.2 | unit | `test_error_registry_unique` | duplicate or malformed code in the registry table → test failure naming the code |
 | 2.3 | unit | `test_core_dependency_freeze` | dependency graph of afd_core/afd_wire contains no tokio/sqlx/axum/reqwest/redis |
@@ -273,7 +275,7 @@ N/A — no files deleted.
 - **Consults**
   - **Lease wire version one — does the port owe it compatibility?** Indy, Aug 23, 2026: no. The port implements the current shape only; the Zig daemon keeps its version-one path and retires with it. Evidence chain verified in-tree before the decision was applied: (a) `git log -S 'LEASE_WIRE_VERSION_V1' -- src/lib/contract/` and the same for `_CURRENT` both return exactly `312e09ced` (`git log -1 312e09ced` → `2026-08-13 feat(m157): close repairs on production evidence`), so both constants were born in one commit and "version one" names the pre-M157 shape rather than a designed protocol; (b) `src/runner/daemon/control_plane_client.zig:96` posts `protocol.LEASE_REQUEST_CURRENT_JSON` unconditionally — no branch, no configuration knob; (c) 17 integration call sites use the same constant, and the only version-one producers in the tree are `leaseWireVersion()`'s parse defaults (`src/agentsfleetd/http/handlers/runner/lease.zig:29,31,36`), which read a request rather than emit one. No in-tree code path emits version one.
   - **Stop condition — is a version-one runner binary deployed on an operator host?** No, and more strongly than the addendum assumed: `gh release list --limit 10` returns no rows at exit 0 and `git tag --list | wc -l` returns 0, so no runner artifact of any vintage has ever been released; `deploy/baremetal/deploy.sh:160` downloads the runner from a GitHub release tag and `deploy.sh:293` takes that tag as a positional argument, so `deploy/` pins no version; no fleet inventory file exists in the repository. The decision's factual premise holds.
-  - **Layout — Microsoft `M-CRATES-FLAT-FOLDER` versus the bun canon.** The Pragmatic Rust Guidelines (`~/Projects/oss/rust-guidelines/all.txt:1454-1498`) call crates under a `src/` folder "never acceptable", and `~/Projects/oss/exonum` — the other reference this spec cites — uses `components/` + `services/` instead. Resolved without escalation by `dispatch/write_rust.md:30` ("Local convention wins on conflict, but the divergence is named in the review output"): the Indy-directed bun canon stands, `rustd/`'s root is a virtual manifest so no crate is nested inside another crate's source tree, and the divergence is cited by mnemonic in REVIEW.
+  - **Layout — Microsoft `M-CRATES-FLAT-FOLDER` versus the bun canon.** The two references this spec names disagree: bun nests members under `src/<name>/`, while the Pragmatic Rust Guidelines (`~/Projects/oss/rust-guidelines/all.txt:1454-1498`) call crates under a `src/` folder "never acceptable" and `~/Projects/oss/exonum` uses `components/` + `services/`. Surfaced to Indy at PLAN with the structural difference drawn out (the clash is the middle directory's NAME — `rustd/`'s root is virtual, so nothing is genuinely nested). **Indy, Aug 23, 2026: take the Microsoft way.** Members moved to `rustd/crates/<name>/` before the first commit carrying them, and the family specs M176–M181 were repointed in the same edit so no sibling milestone inherits the old path. Bun stays the reference for the workspace MECHANICS (virtual root, explicit members, the `[workspace.lints]` rationale), not for the directory name.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.

@@ -1,0 +1,8 @@
+# Formatting is decided once, here, and enforced by `cargo fmt --check` inside
+# `make lint-all`. Only STABLE options are set on purpose: a nightly-gated
+# option is silently ignored by the pinned stable toolchain, so the file would
+# describe formatting the lane does not actually enforce.
+edition = "2024"
+# Pinned rather than defaulted so a future rustfmt default change cannot rewrap
+# the whole tree in an unrelated diff.
+max_width = 100

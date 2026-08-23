@@ -1,0 +1,15 @@
+# Pins the toolchain the lanes, the hooks, and Continuous Integration (CI) all
+# compile with, so "works on my machine" cannot mean a different compiler.
+#
+# 1.98.0 matches the repository's mise-managed Rust (`rust = "1.98.0"` in the
+# mise tools config), so a developer shell and a CI container resolve the same
+# compiler with no second source of truth. Moving this pin means moving that one
+# in the same change, or a developer silently compiles against a different rustc.
+#
+# `rustfmt` and `clippy` are components rather than assumptions: `make lint-all`
+# runs both, and a toolchain missing either fails the lane loudly instead of
+# skipping the check. `llvm-tools` backs cargo-llvm-cov's coverage lane.
+[toolchain]
+channel = "1.98.0"
+components = ["rustfmt", "clippy", "llvm-tools"]
+profile = "minimal"

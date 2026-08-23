@@ -52,7 +52,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/src/agentsfleetd/**` | EDIT | `routes --json` dump subcommand + `doctor`/`backfill` subcommand parity |
+| `rustd/crates/agentsfleetd/**` | EDIT | `routes --json` dump subcommand + `doctor`/`backfill` subcommand parity |
 | `scripts/check_openapi_route_coverage.py` | EDIT | accepts the Rust route dump as a served-route source |
 | `make/dry.mk` | EDIT | dry lane variant booting the Rust daemon |
 | `make/bench.mk` | EDIT | adds `bench-cutover`: Zig-baseline-vs-Rust comparison on the same harness, tolerances as named constants (distinct caller: the cutover checklist) |
