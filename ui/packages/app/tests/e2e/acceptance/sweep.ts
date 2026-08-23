@@ -35,3 +35,5 @@ for (const [id] of orphans) {
   await new Promise((s) => setTimeout(s, 80));
 }
 console.log(`purged: ${ok} · failed: ${failed}`);
+// A partial purge is not a successful one: callers read the exit status.
+if (failed > 0) process.exitCode = 1;
