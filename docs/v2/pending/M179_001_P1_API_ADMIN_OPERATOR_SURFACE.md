@@ -124,7 +124,7 @@ The importer pipeline (platform gallery + per-tenant onboarding) with the GitHub
 
 | Batch | Scope | Runtime · model · reasoning tier | Why |
 |---|---|---|---|
-| B1 | §2 bundle import | Claude Code · Fable 5 · xhigh | untrusted-content trust boundary; hostile-input surface |
+| B1 | §2 bundle import | Claude Code · Opus 5 · xhigh | untrusted-content trust boundary; hostile-input surface |
 | B1 | §1 admin plane | Claude Code · Opus 5 · high | scope gates + vault reuse, crisp oracles |
 | B2 | §3 importer/GitHub | Codex · GPT 5.6 tera · high | isolated vendor integration with fixture oracle |
 | B2 | §4 operator plane | Claude Code · Opus 5 · high | state-machine writes over M177-owned reads |
