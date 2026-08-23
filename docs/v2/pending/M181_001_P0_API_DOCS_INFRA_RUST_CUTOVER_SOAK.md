@@ -170,7 +170,7 @@ the first baseline run and recorded in the spec's Discovery, not invented here.
 ## Invariants
 
 1. Rollback requires no schema or data migration — enforced by the family rule (no `schema/` changes in M175–M181) + `test_rollback_rehearsal`.
-2. ~~The Zig binary stays built, shipped, and deployable until a post-cutover retirement milestone Indy opens.~~ SUPERSEDED by Indy's Aug 23, 2026 override (M175 §6): the Zig daemon is frozen at its last built revision, is no longer deployed, and carries no lanes. Rollback is therefore not a binary swap — it is redeploying that frozen revision by hand, which is acceptable because no production user reaches it.
+2. Rollback is redeploying the Zig daemon's frozen revision by hand via `deploy-dev.yml`'s manual dispatch, not a binary swap — it carries no lanes and is not built by Continuous Integration (CI) any more (M175 §6). Acceptable because no production user reaches it; enforced by `test_daemon_deploy_retired` keeping that dispatch reachable.
 3. Budgets are named constants compared mechanically — never prose judgments — `test_latency_budget`, `test_memory_ceiling_soak`.
 3b. Every declared divergence is registered in §4's register before cutover, and the parity oracles (the M177 dual-run differ, the soak suites) read it, so a declared divergence never surfaces as a regression and an UNdeclared one always does.
 4. Every runbook step carries an executable probe in `playbooks/cutover/probes.sh`; a deviation surfaces as a failed probe run, not a judgment call — `test_runbook_probes` proves the script executable end-to-end.

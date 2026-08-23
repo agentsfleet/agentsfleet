@@ -17,6 +17,8 @@
 //! sibling path, so it compiles under `zig run` with no entry in the build
 //! graph — this tool exists to prove the Rust port, not to change the Zig one.
 //!
+//! Sample values come from `fixture_sample.zig`.
+//!
 //! The roster is comptime reflection over what the contract modules actually
 //! export, because a hand-written list is a list someone forgets to update and
 //! a forgotten wire type is the drift these fixtures exist to catch. Only two
@@ -30,6 +32,10 @@
 const std = @import("std");
 
 const contract = @import("contract.zig");
+const fixture_sample = @import("fixture_sample.zig");
+
+/// Builds the value written into each object fixture.
+const sample = fixture_sample.sample;
 
 /// Why a module contract.zig exports produces no fixture.
 const Skip = enum {
@@ -85,23 +91,6 @@ const LENIENT = [_][]const u8{
 /// somewhere else is a generator that can silently write fixtures nothing
 /// checks. `make wire-fixtures` runs this from the repository root.
 const OUTPUT_DIR = "samples/fixtures/wire-v2";
-
-/// Longest a synthesized sample slice gets. One element proves the shape; more
-/// only makes a diff harder to read.
-const SAMPLE_ELEMENTS = 1;
-
-/// FNV-1a constants. Any stable function would do — the requirement is that
-/// regeneration is byte-identical unless the wire genuinely changed.
-const FNV_OFFSET_BASIS: u32 = 2166136261;
-const FNV_PRIME: u32 = 16777619;
-
-/// Ceiling on a synthesized number, keeping fixtures readable.
-const SAMPLE_NUMBER_RANGE = 1000;
-
-/// Sampling runs inside a comptime-shaped recursion whose signature cannot
-/// carry an error, so an exhausted arena aborts the generator rather than
-/// writing a truncated fixture. A one-shot build tool is allowed to die.
-const OOM_PANIC = "fixture_export: out of memory building a sample value";
 
 pub fn main() !void {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
@@ -222,72 +211,6 @@ fn allTags(comptime T: type) []const []const u8 {
         var tags: []const []const u8 = &.{};
         for (@typeInfo(T).@"enum".fields) |field| tags = tags ++ .{field.name};
         break :blk tags;
-    };
-}
-
-/// Builds a deterministic sample value of `T`, naming it `field` for the
-/// string and number derivations.
-fn sample(comptime T: type, arena: std.mem.Allocator, comptime field: []const u8) T {
-    // Checked before the switch: `std.json.Value` is a union whose first
-    // variant is `null: void`, so dispatching on its type info would sample the
-    // absence of a value rather than a free-form document.
-    if (T == std.json.Value) return jsonValue(arena, field);
-    return switch (@typeInfo(T)) {
-        .void => {},
-        .bool => true,
-        .int => @intCast(@mod(hash(field), SAMPLE_NUMBER_RANGE) + 1),
-        .float => 0.75,
-        .@"enum" => @enumFromInt(0),
-        .optional => |info| sample(info.child, arena, field),
-        .@"struct" => sampleStruct(T, arena),
-        .@"union" => sampleUnion(T, arena, field),
-        .pointer => sampleSlice(T, arena, field),
-        else => @compileError("fixture_export cannot sample " ++ @typeName(T)),
-    };
-}
-
-fn sampleStruct(comptime T: type, arena: std.mem.Allocator) T {
-    var value: T = undefined;
-    inline for (@typeInfo(T).@"struct".fields) |f| {
-        @field(value, f.name) = sample(f.type, arena, f.name);
-    }
-    return value;
-}
-
-/// The first variant of a tagged union. `std.json` renders it `{"tag": value}`,
-/// which is the discriminator the wire carries.
-fn sampleUnion(comptime T: type, arena: std.mem.Allocator, comptime field: []const u8) T {
-    _ = field;
-    const first = @typeInfo(T).@"union".fields[0];
-    return @unionInit(T, first.name, sample(first.type, arena, first.name));
-}
-
-fn sampleSlice(comptime T: type, arena: std.mem.Allocator, comptime field: []const u8) T {
-    const info = @typeInfo(T).pointer;
-    if (info.child == u8) return field;
-    const elements = arena.alloc(info.child, SAMPLE_ELEMENTS) catch @panic(OOM_PANIC);
-    for (elements) |*element| element.* = sample(info.child, arena, field);
-    return elements;
-}
-
-/// A one-key object for a free-form `std.json.Value` field.
-fn jsonValue(arena: std.mem.Allocator, comptime field: []const u8) std.json.Value {
-    const map = std.json.ObjectMap.init(
-        arena,
-        &.{field},
-        &.{.{ .string = field }},
-    ) catch @panic(OOM_PANIC);
-    return .{ .object = map };
-}
-
-fn hash(comptime name: []const u8) u32 {
-    return comptime blk: {
-        var value: u32 = FNV_OFFSET_BASIS;
-        for (name) |byte| {
-            value ^= byte;
-            value *%= FNV_PRIME;
-        }
-        break :blk value;
     };
 }
 

@@ -133,10 +133,10 @@ The serde port of the daemon↔runner wire types. The Zig emitter writes one can
 
 **Current-shape only — the version-one lease is excluded (Indy, Aug 23, 2026).** `contract.zig:16` re-exports `protocol_lease_v1`, so an unqualified "every exported type gets a fixture" rule would emit a version-one fixture and `afd_wire` would grow a version-one serde type to round-trip it. The emitter therefore carries a **declared exclusion list**, `protocol_lease_v1` its only entry, and `manifest.json` describes the current shape alone. The evidence: commit `312e09ced` (Aug 13, 2026) introduced `LEASE_WIRE_VERSION_V1` and `LEASE_WIRE_VERSION_CURRENT` in one commit, so "version one" names the pre-M157 shape rather than a designed protocol; `src/runner/daemon/control_plane_client.zig:96` posts `LEASE_REQUEST_CURRENT_JSON` unconditionally and 17 integration call sites do the same, so no in-tree code path emits version one. The exclusion is asserted, not assumed — an accidental re-admission fails `test_fixture_set_complete` rather than silently passing. `samples/fixtures/wire-v2/` is a literal directory name for the current shape, not one half of a versioned pair; no `wire-v1/` sibling exists or is planned. Nothing is deleted: the Zig daemon keeps its version-one path, which retires with the daemon.
 
-- **Dimension 3.1** — fixture set covers every CURRENT-shape wire type the Zig module exports, and the declared exclusion list is asserted too (both enumerations checked against the emitted manifest, never hand-counted; an accidental re-admission of the version-one lease fails the test) → Test `test_fixture_set_complete`
-- **Dimension 3.2** — deserialize→serialize byte-compare for every fixture → Test `test_wire_roundtrip_all_fixtures`
-- **Dimension 3.3** — the Rust wire-version constant equals the fixture-carried Zig value (2) → Test `test_wire_version_matches_fixture`
-- **Dimension 3.4** — unknown-field and optional-field handling mirrors the Zig parser's configured behaviour (read the parse options in `src/lib/contract/`, mirror via serde attributes) → Test `test_wire_unknown_field_policy`
+- **Dimension 3.1 — DONE** — fixture set covers every CURRENT-shape wire type the Zig module exports, and the declared exclusion list is asserted too (both enumerations checked against the emitted manifest, never hand-counted; an accidental re-admission of the version-one lease fails the test) → Test `test_fixture_set_complete`
+- **Dimension 3.2 — DONE** — deserialize→serialize byte-compare for every fixture → Test `test_wire_roundtrip_all_fixtures`
+- **Dimension 3.3 — DONE** — the Rust wire-version constant equals the fixture-carried Zig value (2) → Test `test_wire_version_matches_fixture`
+- **Dimension 3.4 — DONE** — unknown-field and optional-field handling mirrors the Zig parser's configured behaviour (read the parse options in `src/lib/contract/`, mirror via serde attributes) → Test `test_wire_unknown_field_policy`
 
 ### §4 — Repository lanes
 
@@ -145,7 +145,7 @@ The gating foundation. `make lint-all` gains `cargo fmt --check` + `cargo clippy
 - **Dimension 4.1 — DONE** — `make lint-all` fails on a formatting or clippy violation in `rustd/` → Test `test_lint_lane_rust`
 - **Dimension 4.2 — DONE** — `make test-unit-all` runs the cargo suite and propagates failure → Test `test_unit_lane_rust`
 - **Dimension 4.3 — DONE** — `make check-version` fails when the workspace version diverges from `VERSION` → Test `test_version_lane_rust`
-- **Dimension 4.4** — staged/pushed `*.rs` triggers the hook lanes → Test `test_hook_rs_dispatch`
+- **Dimension 4.4 — DONE** — staged/pushed `*.rs` triggers the hook lanes → Test `test_hook_rs_dispatch`
 - **Dimension 4.5** — CI Rust job + `rust-afd` coverage flag report, as non-required contexts → Test `test_ci_rust_job_reports`
 
 ### §6 — Zig lane retirement (Indy override, Aug 23, 2026)

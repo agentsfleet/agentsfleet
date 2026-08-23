@@ -27,8 +27,7 @@ from urllib.parse import parse_qs, urlsplit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 README = REPO_ROOT / "README.md"
-# The one workflow that uploads to Codecov. test-integration.yml carried the
-# Zig flags and was deleted with the Zig lanes.
+# The one workflow that uploads to Codecov.
 WORKFLOWS = (REPO_ROOT / ".github" / "workflows" / "test.yml",)
 
 CODECOV_ACTION = "codecov/codecov-action@"

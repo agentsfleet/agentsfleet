@@ -11,8 +11,13 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-afd_core.workspace = true
+# Deliberately NOT afd_core. See the module documentation in src/lib.rs: wire
+# types carry primitives, and validating at parse would break byte parity.
 serde.workspace = true
+# Free-form wire fields (`secrets_map`, event `metadata`) are opaque documents
+# the daemon carries verbatim. `preserve_order` is load-bearing: without it an
+# object's keys re-serialize in hash order and the byte comparison fails.
+serde_json.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

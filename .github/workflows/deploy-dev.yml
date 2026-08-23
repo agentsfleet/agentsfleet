@@ -22,14 +22,10 @@ name: deploy (dev)
 # Worker additionally needs Fly — see the note on the worker job for why its
 # own readiness gate cannot run while the API is still cycling.
 
-# RETIRED AS AN AUTOMATIC LANE (Indy, Aug 23, 2026). The Zig daemon is frozen at
-# its last built revision, which keeps serving api-dev; nothing is gained by
-# rebuilding and redeploying a codebase being replaced, and every merge to main
-# previously did exactly that. The push trigger is gone.
-#
-# `workflow_dispatch` is KEPT rather than deleting the file: redeploying that
-# frozen revision by hand is now the rollback path M181 depends on, so the
-# machinery has to stay reachable. Deploying the Rust daemon is M181's job.
+# MANUAL DISPATCH ONLY — do not add a push trigger. The Zig daemon is frozen at
+# the revision serving api-dev; redeploying it by hand is the rollback path M181
+# depends on, and `test_daemon_deploy_retired` fails if this fires on a merge.
+# Deploying the Rust daemon is M181's job.
 on:
   workflow_dispatch:
 

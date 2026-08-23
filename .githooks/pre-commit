@@ -10,9 +10,8 @@
 #   5. run one parallel Make graph plus the direct auth test
 #
 # Surfaces:
-#   (The Zig lint and auth lanes retired with the Zig daemon — Indy, Aug 23,
-#    2026. A staged *.zig still routes to check-documentation-rules, which
-#    reads command help text out of the source and is not a Zig lane.)
+#   - check-documentation-rules (*.zig too — it reads command help text out of
+#                               the source; there is no Zig lane)
 #   - lint-rustd               (*.rs, rustd/* — manifests and the toolchain pin
 #                               change what the lane compiles, so they trigger it)
 #   - lint-website             (ui/packages/website/*)

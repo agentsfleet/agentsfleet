@@ -1,10 +1,6 @@
 # =============================================================================
 # BENCH — API benchmarks.
 #
-# The Zig memory-leak gates that lived here retired with the Zig daemon's other
-# lanes (Indy, Aug 23, 2026). Rust's memory-safety story replaces them; M181's
-# soak carries the residency ceiling.
-#
 # `make bench` runs two tiers:
 #   Tier-1  zbench micro-benchmarks   (tests/bench/micro.zig — ReleaseFast)
 #   Tier-2  hey HTTP loadgen          (requires `hey` in PATH — mise installs it)
