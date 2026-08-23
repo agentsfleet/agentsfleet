@@ -37,7 +37,15 @@ scratch_pad.md
 **/scratch_pad.md
 .claude/worktrees/
 .context/
-.claude/skills/
+# orly materialises four skills per host. .agents/ and .opencode/ commit
+# theirs; .claude/ ignored its own, so `orly doctor` failed in CI against a
+# checkout missing files .oracle/orly.json declares managed. Everything orly
+# writes is meant to be committed. Locally-added Claude skills stay ignored.
+.claude/skills/*
+!.claude/skills/orly-babysit-prs/
+!.claude/skills/orly-spec-new/
+!.claude/skills/orly-write-integration-test/
+!.claude/skills/orly-write-unit-test/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 agentsfleet/docs/spec/new-feature.md
