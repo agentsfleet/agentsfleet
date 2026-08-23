@@ -56,7 +56,7 @@ For every commit that touches `*.zig`, the agent runs the workflow below — no 
 > [DETERMINISTIC → DRAIN]
 
 - Run `make lint`, `make test`, and `gitleaks detect` before any commit that includes Zig changes.
-- Run `TEST_DATABASE_URL=postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb make test-integration-db` when touching DB-backed handlers, proposal flows, or temp-table-based Zig tests.
+- Run the repository's database-backed integration lane, with `TEST_DATABASE_URL` pointed at its test database, when touching DB-backed handlers, proposal flows, or temp-table-based Zig tests.
 - Read this file before creating any new `*.zig` file.
 - Use `conn.exec()` for INSERT / UPDATE / DDL whenever possible.
 - Drain early-exit `conn.query()` results before `deinit()`.
@@ -270,7 +270,7 @@ Canonical source: `src/http/test_harness.zig`. Every `*_http_integration_test.zi
 
 - **Do not** define a local `TestServer` / `RunningServer` struct, local `startTestServer()` / `startServer()`, local `sendReq()` / `sendRequest()`, or local `waitForServer()`. These are provided by `TestHarness` with a fluent Request/Response API.
 - **Do** wire middleware via `Config.configureRegistry: fn(*MiddlewareRegistry, *TestHarness) anyerror!void`. The harness is policy-agnostic; each suite supplies only the middleware it exercises.
-- **Integration tests run against the LIVE test DB** — never `CREATE TEMP TABLE` in an integration test. Fixtures go through the real schema so the code under test sees production-shaped rows. The `make test-integration` gate resets schemas via `_reset-test-db`; individual tests clean up their own rows explicitly in the test body (not via `defer`) because deferred cleanup leaks pool connections at `pool.deinit()`.
+- **Integration tests run against the LIVE test DB** — never `CREATE TEMP TABLE` in an integration test. Fixtures go through the real schema so the code under test sees production-shaped rows. The integration lane resets schemas before the suite; individual tests clean up their own rows explicitly in the test body (not via `defer`) because deferred cleanup leaks pool connections at `pool.deinit()`.
 - **Test fixtures live in a sibling `*_test_fixtures.zig`** beside the integration file, or in a shared fixture module — not inlined. See `src/http/webhook_test_fixtures.zig` for the pattern.
 - **Skip gracefully when DB is absent** — `TestHarness.start` returns `error.SkipZigTest` when `TEST_DATABASE_URL` is unset; tests just propagate it.
 - New file registration: add `_ = @import("..._test.zig")` to the `test {}` block at the bottom of `src/http/server.zig` (not `src/main.zig`). Integration tests discover from there.
@@ -281,9 +281,9 @@ Canonical source: `src/http/test_harness.zig`. Every `*_http_integration_test.zi
 
 - `make lint`
 - `make test`
-- `TEST_DATABASE_URL=postgres://agentsfleet:agentsfleet@localhost:5432/agentsfleetdb make test-integration-db`
+- The database-backed integration lane, with `TEST_DATABASE_URL` pointed at the test database
 - `gitleaks detect`
-- `make check-pg-drain` — static check: every `conn.query()` must have `.drain()` in the same function. Run this when touching any file that calls `conn.query()`. See `lint-zig.py`.
+- Connection-drain audit — a static check that every `conn.query()` has `.drain()` in the same function. Run the repository's lane for it when touching any file that calls `conn.query()`.
 
 ## Zig 0.15.2 API Gotchas (M3_001)
 
@@ -497,8 +497,8 @@ Rules:
 
 > [DETERMINISTIC → XCOMPILE]
 
-- Verification commands are defined in `make` targets and CI runs `make`. Use `make test` (tier 1) and `make test-integration` (tier 2) for verification — **not** `zig build test` standalone. `zig build test` runs only the Zig unit set and silently skips the website / app / agentsfleet unit tests + cross-language gates that the verification gate is defined against. Use `zig build` directly only for compilation, never for "did my change pass tests".
-- `make memleak` is required when the diff touches server lifecycle, allocator wiring, or cross-thread heap ownership. The macOS `leaks` tool prints a "not debuggable" line under System Integrity Protection — that is expected; the authoritative signal is the allocator-leak phase across `std.testing.allocator`-wrapped tests.
+- Verification runs the repository's DECLARED commands (`.oracle/orly.json`), never `zig build test` standalone. `zig build test` runs only the Zig unit set and silently skips every other language's tests and the cross-language gates the declared commands cover. Use `zig build` for compilation, never for "did my change pass tests".
+- A memory-leak lane, where the repository declares one, is required when the diff touches server lifecycle, allocator wiring, or cross-thread heap ownership. The macOS `leaks` tool prints a "not debuggable" line under System Integrity Protection — that is expected; the authoritative signal is the allocator-leak phase across `std.testing.allocator`-wrapped tests.
 
 ## Doc-Comments and Inline Comments
 

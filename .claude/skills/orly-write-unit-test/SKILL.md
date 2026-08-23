@@ -308,7 +308,7 @@ Reject the change if any are missing on touched code:
 - [ ] Golden-file drift, if any, has a written explanation
 - [ ] Branch coverage ≥80%, error-path 100% on touched code
 - [ ] **Performance:** counter-based complexity proof on the n-ladder (O-bound asserted) + median-of-K latency vs pinned baseline; N+1 round-trips ruled out
-- [ ] **Zig zero-leak:** `make memleak` 0 leaks; every alloc-with-error-path proven by `std.testing.checkAllAllocationFailures`; no cross-request high-water growth over N iters
+- [ ] **Zig zero-leak:** the memory-leak lane reports 0 leaks; every alloc-with-error-path proven by `std.testing.checkAllAllocationFailures`; no cross-request high-water growth over N iters
 - [ ] **Concurrency:** ≥100-connection barrier-started test proves exactly-once + parallelism (peak-concurrency/lock-wait counter, or wall-time < R×); passes K runs + race detector clean
 - [ ] **Refactor escalation:** any super-linear or serialization finding on touched code carries a refactor proposal (root cause + target design + patch alternative + recommendation) surfaced for decision — not silently band-aided
 - [ ] **Diff ledger** resolved 100% — every changed unit has a test or an explicit `won't-test`/`needs-infra`; ledger pasted into PR Session Notes
@@ -361,7 +361,7 @@ enumerate) over sampling.
   arena acquire → use → reset) for N iterations and assert outstanding-bytes /
   high-water does **not** grow monotonically. A slow leak the single-shot test misses
   shows up here as linear growth.
-- **Gate:** `make memleak` → **0 leaks**, output pasted into PR Session Notes; cross-compile
+- **Gate:** the memory-leak lane → **0 leaks**, output pasted into PR Session Notes; cross-compile
   both targets first (`x86_64-linux`, `aarch64-linux`) — stdlib alloc paths differ from macOS.
 
 ### Proof 2 — Concurrency proven at ≥100 connections (no hidden global lock)
