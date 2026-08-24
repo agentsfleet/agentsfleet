@@ -49,6 +49,24 @@ coverage:
         # socket. If a line ever genuinely resists, it is named here and in the
         # milestone spec, in the commit that adds it, with the reason — not
         # covered by lowering the number.
+        #
+        # Named, M176 §Coverage decision, in the commit that closed the rest
+        # (workspace 99.87%, 3192/3196). FOUR lines stand uncovered, and they are
+        # two different things:
+        #
+        #   afd_db/src/migrate.rs:196 — `connection.begin()` failing. GENUINELY
+        #   RESISTS, which is what this clause is for. The connection must be
+        #   dead at exactly that call; everything earlier in `apply_all` touches
+        #   the same connection and fails first, and the gap between the previous
+        #   migration's commit and this begin holds no await point a test can
+        #   hook. A TCP proxy that stops relaying mid-run was built and tried.
+        #
+        #   afd_redis/src/hub/pump.rs:76,104,126 — NOT untestable. Unreachable
+        #   because of a DEFECT: `HubInner` owns the only command sender and the
+        #   pump holds an `Arc<HubInner>` for life, so `recv()` can never return
+        #   None and the pump task can never terminate. §7 fixes it (Invariant C2
+        #   — stop → join → drop) by giving the pump a `Weak`. Listed here so the
+        #   red is attributed honestly, NOT claimed as a line that resists a test.
         target: 100%
         threshold: 0%
         informational: false

@@ -510,6 +510,71 @@ which is why none of them justified moving a number:
 kernel's entropy pool to fail. §7 closes it or names it as the single exception,
 once, with the reason written down.
 
+### The §1–§4 patch residue closed, and the four lines that did not (EXECUTE, Aug 24, 2026)
+
+`codecov/patch/rust-afd` had been red since `168998dbe` — not on §4's diff, which
+is 1060/1060, but because a patch status compares head to the PR BASE, so the
+"patch" is the whole §1–§4 branch diff. Forty lines in `afd_db` and `afd_redis`
+failed it. A previous handoff called that commit "CI green"; it was not, and the
+claim was repeated once more before anybody checked.
+
+**Thirty-six are now closed by real fault injection**, workspace coverage
+98.74% → **99.87%** (3192/3196), integration suite 23 → 30 tests. Two fixtures do
+the work, and both stand up a server rather than mocking a client:
+
+- `afd_redis/tests/support/fake_redis.rs` — a plain-TCP RESP server that answers
+  wrongly on purpose. It parses the sliver of RESP the client actually speaks,
+  answers per a rule table that a test can **change mid-flight**, and can cut
+  live connections or free its port independently. The mid-flight change is what
+  reaches a redial that succeeds and then cannot resubscribe; a fixture fixed at
+  spawn time can describe the before or the after, never the transition.
+- `afd_db/tests/support/fault_net.rs` — a TCP proxy in front of the lane's
+  Postgres that can stop relaying, holding accepted sockets OPEN rather than
+  closing them. Closing gives a clean refusal, which is the case these branches
+  are not about; the branch under test is the one where no answer ever comes.
+
+Closed: `migrate.rs` 9 of 10 · `ledger.rs` 4 · `lock.rs` 2 · `pool.rs` 3 ·
+`hub/pump.rs` 12 of 15 · `redis/error.rs` 4 · `client.rs` 1 · `streams.rs` 1.
+
+**Four remain, and they are two different things — only one of them is a
+coverage question.**
+
+| Line | Why it is uncovered |
+|---|---|
+| `afd_redis/src/hub/pump.rs` 76, 104, 126 | **Unreachable by construction — a defect, not untestable code.** See below. |
+| `afd_db/src/migrate.rs` 196 | Genuinely resists deterministic injection. See below. |
+
+**`pump.rs` 76/104/126 — the pub/sub pump can never terminate.** `HubInner` owns
+the only `UnboundedSender<Command>`, and `pump::run` holds an `Arc<HubInner>` for
+its entire life. Nothing drops that sender: there is no `Drop` for
+`SubscriptionHub` or `HubInner`, and `shutdown()` only clears the channel map. So
+`commands.recv()` can never return `None`, which makes `None => return false`
+(126) dead, `pump()` never returns false so `return` (76) is dead, and `run()`
+never returns so its closing brace (104) is dead. The task leaks, and a process
+holds a live Redis socket it has no way to stop.
+
+This is **§7's to fix**, alongside `JwksVerifier::prime()`: Invariant C2 says
+every background task owns a cancellation token and an awaited join handle —
+stop → join → drop — and this task has no stop path at all. The fix is for the
+pump to hold a `Weak<HubInner>` and upgrade only where it dispatches, so the last
+handle going away drops the sender and the three lines become live. It is NOT
+done here, because changing the hub's lifetime semantics belongs in the commit
+that builds the supervisor around it, not in a coverage pass.
+
+**Recording these three as "genuinely resist" would be wrong** and is the reason
+this paragraph is long: `codecov.yml`'s escape hatch is for a line that resists
+TESTING. These resist EXECUTION, because of a bug. Naming them under that clause
+would bake the defect into the record as if it were a property of the code.
+
+**`migrate.rs:196` — `connection.begin()` failing.** The connection has to be
+dead at exactly that call. Everything before it in `apply_all` — `ensure_tables`,
+two `Ledger::read`s, `reap_orphans` — touches the same connection and would fail
+first, and the window between the previous migration's `commit()` and this
+`begin()` contains no await point a test can hook. Killing the backend earlier
+produces a different error from a different line; killing it later is not this
+branch. Both fixtures above were tried against it. This one is named under
+`codecov.yml`'s own clause, with that reason.
+
 ## Time, and why no date library
 
 Every timestamp column in `schema/` is `BIGINT`; every timestamp field in
