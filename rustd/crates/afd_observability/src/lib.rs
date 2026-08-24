@@ -18,4 +18,15 @@
 #![forbid(unsafe_code)]
 #![deny(unused_crate_dependencies)]
 
+// `unused_crate_dependencies` is a crate attribute, so it also grades the lib's
+// own test target — and fires there for a dev-dependency only the suites in
+// `tests/` import, since those are separate crates it cannot see. Naming them
+// here is the lint's own documented remedy, and keeps the deny in force for
+// everything else.
+#[cfg(test)]
+use {opentelemetry as _, tokio as _};
+
+pub mod export;
 pub mod semconv;
+
+pub use self::export::{CountingExporter, SpanDrops};
