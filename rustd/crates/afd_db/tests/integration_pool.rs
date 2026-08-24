@@ -74,3 +74,52 @@ async fn test_pool_error_classes() {
 
     database.cleanup().await;
 }
+
+/// All three pools open from one environment, and each answers as its own role.
+///
+/// `Pools` is what boot actually calls; the single-role path every other test
+/// uses would let a wiring mistake here — two roles sharing one pool, or
+/// `role()` dispatching to the wrong field — reach production untested.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_pools_open_every_role_and_close() {
+    let database = TestDatabase::create().await;
+    let pools = afd_db::Pools::connect_all(&database.env(&[]))
+        .await
+        .expect("every role must open from one environment");
+
+    assert_eq!(pools.default_role().role(), DbRole::Default);
+    assert_eq!(pools.api().role(), DbRole::Api);
+    assert_eq!(pools.migrator().role(), DbRole::Migrator);
+
+    // The role-as-data lookup must agree with the named accessors, or a caller
+    // that carries its role in a variable talks to a different database than
+    // one that names it.
+    for role in DbRole::ALL {
+        assert_eq!(pools.role(*role).role(), *role, "{role:?} dispatched wrong");
+        pools
+            .role(*role)
+            .acquire()
+            .await
+            .expect("each role must serve a connection");
+    }
+    assert_eq!(
+        pools.api().acquire_timeout(),
+        std::time::Duration::from_millis(2_000)
+    );
+
+    pools.close().await;
+    // A closed pool refuses rather than hanging, which is what makes shutdown
+    // ordering observable instead of a race nobody can see.
+    let error = pools
+        .api()
+        .acquire()
+        .await
+        .expect_err("a closed pool must refuse");
+    assert!(
+        !error.is_pool_capacity(),
+        "a closed pool is not a busy one: {error}"
+    );
+
+    database.cleanup().await;
+}

@@ -1,12 +1,18 @@
 //! The CLI device-flow session blob, and the one transition that must be atomic.
 //!
-//! # The script is not ported, it is shared
+//! # The script lives here, and is proven identical to the Zig one
 //!
-//! `session_verify_consume.lua` is included from the Zig tree verbatim. It is
-//! the same bytes both binaries send, which makes the transition's semantics
-//! one artefact rather than two implementations that agree today. A port would
-//! be a second thing to keep in step, and the whole reason the transition lives
-//! in Lua is that it must not be two steps anywhere.
+//! `session/verify_consume.lua` is this crate's own copy, included from this
+//! crate's own tree — because M181 deletes `src/agentsfleetd/` at cutover, and
+//! a crate that reaches into a directory scheduled for deletion stops building
+//! the day it goes. Reaching across was the first shape and it was wrong for
+//! exactly that reason.
+//!
+//! What keeps the two honest while both exist is a test, not a path:
+//! `test_the_verify_script_matches_the_zig_daemons` compares the two files
+//! BYTE FOR BYTE and fails on any drift. Both binaries therefore send the same
+//! script, and when the Zig copy is deleted the test goes with it, leaving this
+//! one as the source of truth rather than a fork nobody noticed.
 //!
 //! Redis evaluates a script body to completion against a single-threaded
 //! server, so read-check-write inside `EVAL` has no window. The same sequence
@@ -29,6 +35,13 @@ use serde::{Deserialize, Serialize};
 use crate::client::Redis;
 use crate::error::{self, Error};
 
+/// The commands this store issues, named once each (RULE UFS).
+const CMD_SET: &str = "SET";
+const CMD_GET: &str = "GET";
+const CMD_EVAL: &str = "EVAL";
+/// The script tag a first redemption answers with.
+const TAG_SUCCESS: &str = "success";
+
 /// Where a session lives, keyed by its id.
 pub const SESSION_KEY_PREFIX: &str = "auth:session:";
 
@@ -39,9 +52,9 @@ pub const SESSION_KEY_PREFIX: &str = "auth:session:";
 /// short enough that an abandoned one is gone before anyone finds it.
 pub const SESSION_TTL: Duration = Duration::from_secs(300);
 
-/// The atomic transition, shared byte-for-byte with the Zig daemon.
-const VERIFY_AND_CONSUME_LUA: &str =
-    include_str!("../../../../src/agentsfleetd/session/session_verify_consume.lua");
+/// The atomic transition. Byte-identical to the Zig daemon's copy, which a
+/// test asserts for as long as that copy exists.
+const VERIFY_AND_CONSUME_LUA: &str = include_str!("session/verify_consume.lua");
 
 /// How long a consumed session still answers a repeat of the same request.
 const CONSUME_REPLAY_WINDOW: Duration = Duration::from_secs(60);
@@ -195,10 +208,11 @@ impl SessionStore {
     /// Returns a command error when the write fails.
     pub async fn put(&self, state: &SessionState) -> Result<(), Error> {
         let key = session_key(&state.session_id);
-        let blob = serde_json::to_string(state).map_err(|_json| error::unexpected_reply("SET"))?;
-        let mut cmd = redis::cmd("SET");
+        let blob =
+            serde_json::to_string(state).map_err(|_json| error::unexpected_reply(CMD_SET))?;
+        let mut cmd = redis::cmd(CMD_SET);
         cmd.arg(&key).arg(blob).arg("EX").arg(SESSION_TTL.as_secs());
-        let _: String = self.redis.command("SET", &key, &cmd).await?;
+        let _: String = self.redis.command(CMD_SET, &key, &cmd).await?;
         Ok(())
     }
 
@@ -209,9 +223,9 @@ impl SessionStore {
     /// error when the stored blob is not a session.
     pub async fn get(&self, session_id: &str) -> Result<Option<SessionState>, Error> {
         let key = session_key(session_id);
-        let mut cmd = redis::cmd("GET");
+        let mut cmd = redis::cmd(CMD_GET);
         cmd.arg(&key);
-        let blob: Option<String> = self.redis.command("GET", &key, &cmd).await?;
+        let blob: Option<String> = self.redis.command(CMD_GET, &key, &cmd).await?;
         blob.map(|text| {
             serde_json::from_str(&text).map_err(|_json| error::unexpected_reply("session blob"))
         })
@@ -236,7 +250,7 @@ impl SessionStore {
         request_fingerprint_hex: &str,
     ) -> Result<VerifyOutcome, Error> {
         let key = session_key(session_id);
-        let mut cmd = redis::cmd("EVAL");
+        let mut cmd = redis::cmd(CMD_EVAL);
         cmd.arg(VERIFY_AND_CONSUME_LUA)
             .arg(1)
             .arg(&key)
@@ -247,7 +261,7 @@ impl SessionStore {
             .arg(MAX_VERIFY_ATTEMPTS.to_string())
             .arg(SESSION_TTL.as_secs().to_string());
 
-        let reply: Vec<String> = self.redis.command("EVAL", &key, &cmd).await?;
+        let reply: Vec<String> = self.redis.command(CMD_EVAL, &key, &cmd).await?;
         parse_outcome(&reply)
     }
 }
@@ -274,13 +288,13 @@ fn parse_outcome(reply: &[String]) -> Result<VerifyOutcome, Error> {
     let field = |index: usize| reply.get(index).cloned().ok_or_else(unexpected);
 
     match tag {
-        "success" | "replay" => {
+        TAG_SUCCESS | "replay" => {
             let payload = VerifyPayload {
                 dashboard_public_key: field(1)?,
                 ciphertext: field(2)?,
                 nonce: field(3)?,
             };
-            Ok(if tag == "success" {
+            Ok(if tag == TAG_SUCCESS {
                 VerifyOutcome::Success(payload)
             } else {
                 VerifyOutcome::Replay(payload)

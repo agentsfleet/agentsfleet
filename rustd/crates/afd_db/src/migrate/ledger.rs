@@ -19,6 +19,12 @@ use sqlx::{Executor as _, Postgres, Row as _};
 
 use crate::error::{Error, query};
 
+/// The operations a failure names. One spelling each (RULE UFS): these strings
+/// are what an operator greps for, so two spellings of one step is two searches.
+const OP_LOAD_APPLIED: &str = "migrate.load_applied_versions";
+const OP_LOAD_FAILURES: &str = "migrate.load_failures";
+const OP_REAP: &str = "migrate.reap_orphans";
+
 const CREATE_AUDIT_SCHEMA: &str = "CREATE SCHEMA IF NOT EXISTS audit";
 
 const CREATE_SCHEMA_MIGRATIONS: &str = "CREATE TABLE IF NOT EXISTS audit.schema_migrations (
@@ -66,11 +72,11 @@ impl Ledger {
         let applied = sqlx::query("SELECT version FROM audit.schema_migrations")
             .fetch_all(&mut **connection)
             .await
-            .map_err(|source| query("migrate.load_applied_versions", source))?
+            .map_err(|source| query(OP_LOAD_APPLIED, source))?
             .iter()
             .map(|row| row.try_get::<i32, _>(0))
             .collect::<Result<BTreeSet<i32>, _>>()
-            .map_err(|source| query("migrate.load_applied_versions", source))?;
+            .map_err(|source| query(OP_LOAD_APPLIED, source))?;
 
         let mut failures = BTreeMap::new();
         let rows = sqlx::query(
@@ -78,17 +84,17 @@ impl Ledger {
         )
         .fetch_all(&mut **connection)
         .await
-        .map_err(|source| query("migrate.load_failures", source))?;
+        .map_err(|source| query(OP_LOAD_FAILURES, source))?;
         for row in &rows {
             let version: i32 = row
                 .try_get(0)
-                .map_err(|source| query("migrate.load_failures", source))?;
+                .map_err(|source| query(OP_LOAD_FAILURES, source))?;
             let failed_at: i64 = row
                 .try_get(1)
-                .map_err(|source| query("migrate.load_failures", source))?;
+                .map_err(|source| query(OP_LOAD_FAILURES, source))?;
             let error_text: String = row
                 .try_get(2)
-                .map_err(|source| query("migrate.load_failures", source))?;
+                .map_err(|source| query(OP_LOAD_FAILURES, source))?;
             failures.insert(
                 version,
                 FailureRow {
@@ -156,14 +162,14 @@ pub async fn reap_orphans(
         .bind(canonical)
         .execute(&mut **connection)
         .await
-        .map_err(|source| query("migrate.reap_orphans", source))?
+        .map_err(|source| query(OP_REAP, source))?
         .rows_affected();
 
     sqlx::query("DELETE FROM audit.schema_migration_failures WHERE version <> ALL($1)")
         .bind(canonical)
         .execute(&mut **connection)
         .await
-        .map_err(|source| query("migrate.reap_orphans", source))?;
+        .map_err(|source| query(OP_REAP, source))?;
 
     if reaped > 0 {
         tracing::info!(reaped, scope = "orphan_rows", "migration_reap");

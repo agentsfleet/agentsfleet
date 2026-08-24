@@ -56,3 +56,6 @@ __pycache__/
 # daemon binary, and an application pins its dependency graph so a rebuild months
 # from now resolves what was tested, not whatever has since been published.
 rustd/target/
+
+# Coverage report written by `make test-coverage-rustd`.
+rustd/lcov.info

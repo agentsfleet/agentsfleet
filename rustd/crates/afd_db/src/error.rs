@@ -248,3 +248,71 @@ pub fn invalid_bool_knob(knob: &'static str) -> Error {
 pub(crate) fn unreachable_datastore(role: &'static str, waited_ms: u128) -> Error {
     Error::new(ErrorKind::DatastoreUnreachable { role, waited_ms })
 }
+
+/// One error of every kind, for tests that walk the whole surface.
+///
+/// The M-TEST-UTIL seam, and the same argument as the mocked entropy in
+/// `afd_crypto`: `Display`, `code()` and `source()` are what a human reads
+/// while something is already going wrong, and most of these kinds cannot be
+/// provoked on demand from a test — a pool does not exhaust itself politely.
+/// These are the values the production paths build, constructed directly.
+#[cfg(feature = "test-util")]
+#[must_use]
+pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
+    vec![
+        (
+            "missing url",
+            Error::new(ErrorKind::MissingDatabaseUrl {
+                knob: "DATABASE_URL",
+            }),
+        ),
+        (
+            "invalid url scheme",
+            Error::new(ErrorKind::InvalidDatabaseUrlScheme {
+                knob: "DATABASE_URL",
+            }),
+        ),
+        ("invalid bool knob", invalid_bool_knob("MIGRATE_ON_START")),
+        (
+            "pool capacity",
+            Error::new(ErrorKind::PoolCapacity {
+                role: "api",
+                waited_ms: 2_000,
+            }),
+        ),
+        (
+            "datastore unreachable",
+            unreachable_datastore("default", 10_000),
+        ),
+        (
+            "datastore unavailable",
+            classify_acquire("default", 2_000, sqlx::Error::PoolClosed),
+        ),
+        (
+            "query",
+            query("migrate.ensure_tables", sqlx::Error::PoolClosed),
+        ),
+        (
+            "migration sql",
+            Error::new(ErrorKind::MigrationSql {
+                version: 100,
+                source: SplitError::UnterminatedString,
+            }),
+        ),
+        (
+            "migration failed",
+            Error::new(ErrorKind::MigrationFailed {
+                version: 100,
+                source: sqlx::Error::PoolClosed,
+            }),
+        ),
+        (
+            "lock unavailable",
+            Error::new(ErrorKind::MigrationLockUnavailable { waited_ms: 30_000 }),
+        ),
+        (
+            "schema ahead",
+            Error::new(ErrorKind::MigrationSchemaAhead { found: 999 }),
+        ),
+    ]
+}

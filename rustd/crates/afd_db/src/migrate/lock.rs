@@ -24,6 +24,10 @@ use afd_core::error_code;
 
 use crate::error::{Error, ErrorKind, query};
 
+/// The operations a failure names, one spelling each (RULE UFS).
+const OP_ACQUIRE: &str = "migrate.acquire_lock";
+const OP_PROBE: &str = "migrate.probe_lock";
+
 /// The one key the schema migration lock is taken under, cluster-wide.
 ///
 /// Same constant as `pool_migration_lock.zig:29`, because the Zig daemon and
@@ -112,9 +116,9 @@ impl MigrationLock {
                 .bind(ADVISORY_KEY)
                 .fetch_one(&mut *connection)
                 .await
-                .map_err(|source| query("migrate.acquire_lock", source))?
+                .map_err(|source| query(OP_ACQUIRE, source))?
                 .try_get(0)
-                .map_err(|source| query("migrate.acquire_lock", source))?;
+                .map_err(|source| query(OP_ACQUIRE, source))?;
 
             match classify(acquired, attempt, policy) {
                 Attempt::Acquired => {
@@ -187,7 +191,7 @@ pub async fn probe_available(connection: &mut PoolConnection<Postgres>) -> Resul
         .bind(ADVISORY_KEY)
         .fetch_one(&mut **connection)
         .await
-        .map_err(|source| query("migrate.probe_lock", source))?
+        .map_err(|source| query(OP_PROBE, source))?
         .try_get(0)
-        .map_err(|source| query("migrate.probe_lock", source))
+        .map_err(|source| query(OP_PROBE, source))
 }

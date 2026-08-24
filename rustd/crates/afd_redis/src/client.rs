@@ -29,6 +29,9 @@ use redis::{Cmd, FromRedisValue, Value};
 use crate::config::{RedisConfig, RedisRole};
 use crate::error::{self, Error, ErrorKind};
 
+/// The liveness probe, and the only command this module issues by name.
+const CMD_PING: &str = "PING";
+
 /// A connection to one role's Redis.
 ///
 /// Cheap to clone: cloning shares the same multiplexed connection rather than
@@ -121,11 +124,11 @@ impl Redis {
     /// # Errors
     /// Returns an unavailable error when Redis does not answer.
     pub async fn ping(&self) -> Result<(), Error> {
-        let reply: String = self.command("PING", "", &redis::cmd("PING")).await?;
+        let reply: String = self.command(CMD_PING, "", &redis::cmd(CMD_PING)).await?;
         if reply.eq_ignore_ascii_case("PONG") {
             Ok(())
         } else {
-            Err(error::unexpected_reply("PING"))
+            Err(error::unexpected_reply(CMD_PING))
         }
     }
 }

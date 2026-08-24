@@ -69,8 +69,24 @@ jobs:
       # compose up, waits for healthchecks, drops schemas and flushes Redis.
       # KEEP_TEST_STATE is never set here: a green run under it would prove
       # nothing about a clean checkout, which is the whole point of this tier.
-      - name: Run the Rust integration suite against live datastores
-        run: make test-integration-rustd
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      # One invocation, both tiers, instrumented. `test-integration-rustd` is
+      # what a developer runs (no cargo-llvm-cov needed); this is the same
+      # suite plus the unit tier under measurement, which is where the
+      # coverage number has to come from — the integration tests are
+      # `#[ignore]`d, so a unit-only run reports every datastore-touching line
+      # as uncovered.
+      - name: Run both Rust test tiers under coverage against live datastores
+        run: make test-coverage-rustd
+      - name: Upload Rust coverage to Codecov
+        if: success()
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: rustd/lcov.info
+          flags: rust-afd
+          disable_search: true
+          fail_ci_if_error: true
       - name: Show datastore logs when the suite fails
         if: failure()
         run: docker compose logs --tail 200 postgres redis

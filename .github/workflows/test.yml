@@ -56,19 +56,13 @@ jobs:
         run: make lint-rustd
       - name: Test the Rust workspace
         run: make test-unit-rustd
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - name: Measure coverage
-        run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
-        working-directory: rustd
-      - name: Upload Rust coverage to Codecov
-        if: success()
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: rustd/lcov.info
-          flags: rust-afd
-          disable_search: true
-          fail_ci_if_error: true
+      # No coverage measurement here. This job runs the unit tier only — the
+      # integration tests are `#[ignore]`d and need Postgres and Redis, which
+      # this workflow deliberately does not have. Measuring here reported every
+      # pool, stream and migrator line as uncovered while the lane that runs
+      # them said nothing, so the number described the instrument's position
+      # rather than the code. `test-integration-rustd.yml` measures both tiers
+      # in the one run that executes both.
 
   test-unit-cli:
     runs-on: ubuntu-latest
