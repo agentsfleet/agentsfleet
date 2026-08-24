@@ -33,12 +33,12 @@ categories = ["network-programming"]
 [workspace.dependencies]
 # Intra-workspace members resolve through the workspace, never by direct sibling
 # path (M-CRATES-IN-WORKSPACE).
-afd_auth = { path = "crates/afd_auth", version = "0.26.2" }
-afd_core = { path = "crates/afd_core", version = "0.26.2" }
-afd_crypto = { path = "crates/afd_crypto", version = "0.26.2" }
-afd_db = { path = "crates/afd_db", version = "0.26.2" }
-afd_identity = { path = "crates/afd_identity", version = "0.26.2" }
-afd_redis = { path = "crates/afd_redis", version = "0.26.2" }
+afd_auth = { path = "crates/afd_auth" }
+afd_core = { path = "crates/afd_core" }
+afd_crypto = { path = "crates/afd_crypto" }
+afd_db = { path = "crates/afd_db" }
+afd_identity = { path = "crates/afd_identity" }
+afd_redis = { path = "crates/afd_redis" }
 
 # `default-features = false` throughout, features named explicitly, so a member
 # cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).

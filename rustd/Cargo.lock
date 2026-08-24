@@ -38,6 +38,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_api"
+version = "0.26.2"
+dependencies = [
+ "afd_auth",
+ "http",
+]
+
+[[package]]
 name = "afd_auth"
 version = "0.26.2"
 dependencies = [
