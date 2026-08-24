@@ -100,6 +100,20 @@ futures-util = { version = "0.3.34", default-features = false, features = ["std"
 
 # The logging facade. §6 attaches the OTLP subscriber; until then these events
 # go nowhere by default, which is the correct behaviour for a library.
+#
+# NOTE, and it is a measurement note rather than a style one: `tracing`'s `log`
+# feature is NOT requested here, but sqlx-core and sqlx-postgres request it and
+# Cargo unifies features across the workspace, so it is on for every crate —
+# afd_redis included, which never asked for it. With `log` enabled the event
+# macros compile each field expression TWICE, once for the event and once for a
+# `log` record that never runs when a subscriber is installed, and llvm-cov maps
+# both copies to the same source line and reports the DEAD one. The consequence
+# is that `warn!(x = y.z(), ...)` reads as uncovered however many times it runs.
+# Field expressions containing a call are therefore hoisted to a `let` above the
+# macro across this workspace; bare identifiers need no such treatment because
+# they get no coverage region of their own. Isolated in a standalone crate: same
+# code and same versions report 5, adding `features = ["log"]` reports 0.
+# M176 §Coverage decision carries the full measurement.
 tracing = { version = "0.1.44", default-features = false, features = ["std", "attributes"] }
 # The subscriber, which §6 wires to OTLP. It is a dev-dependency until then for
 # a reason worth stating: `tracing::warn!` checks whether its callsite is

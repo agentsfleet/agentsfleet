@@ -120,10 +120,12 @@ impl Subscription {
         match self.receiver.recv().await {
             Ok(message) => Ok(Some(message)),
             Err(broadcast::error::RecvError::Lagged(missed)) => {
+                // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+                let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
                 tracing::warn!(
                     channel = self.channel,
                     missed,
-                    error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str(),
+                    error_code,
                     "hub_subscriber_lagged"
                 );
                 Ok(None)

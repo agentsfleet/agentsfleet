@@ -69,12 +69,11 @@ impl Redis {
         // preflight's claim is that Redis SERVES, and only a reply proves that.
         redis.ping().await?;
 
-        tracing::info!(
-            role = config.role().tag(),
-            request_timeout_ms = config.request_timeout().as_millis(),
-            tls = config.is_tls(),
-            "redis_connected"
-        );
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+        let role = config.role().tag();
+        let request_timeout_ms = config.request_timeout().as_millis();
+        let tls = config.is_tls();
+        tracing::info!(role, request_timeout_ms, tls, "redis_connected");
         Ok(redis)
     }
 

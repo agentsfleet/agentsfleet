@@ -128,10 +128,12 @@ impl MigrationLock {
                     return Ok(Self { connection });
                 }
                 Attempt::Retry => {
+                    // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+                    let retry_ms = policy.interval.as_millis();
                     tracing::warn!(
                         attempt,
                         max_attempts = policy.attempts,
-                        retry_ms = policy.interval.as_millis(),
+                        retry_ms,
                         "migrate_lock_contended"
                     );
                     tokio::time::sleep(policy.interval).await;
@@ -140,14 +142,16 @@ impl MigrationLock {
             }
         }
 
+        let waited_ms = policy.budget().as_millis();
+        let error_code = error_code::STARTUP_MIGRATION_CHECK.as_str();
         tracing::warn!(
             attempts = policy.attempts,
-            waited_ms = policy.budget().as_millis(),
-            error_code = error_code::STARTUP_MIGRATION_CHECK.as_str(),
+            waited_ms,
+            error_code,
             "migrate_lock_exhausted"
         );
         Err(Error::new(ErrorKind::MigrationLockUnavailable {
-            waited_ms: policy.budget().as_millis(),
+            waited_ms,
         }))
     }
 
@@ -168,9 +172,10 @@ impl MigrationLock {
             .execute(sqlx::query("SELECT pg_advisory_unlock($1)").bind(ADVISORY_KEY))
             .await;
         if let Err(error) = unlocked {
+            let error_code = error_code::INTERNAL_DB_QUERY.as_str();
             tracing::warn!(
                 error = %error,
-                error_code = error_code::INTERNAL_DB_QUERY.as_str(),
+                error_code,
                 "migrate_lock_release_ignored_error"
             );
         }

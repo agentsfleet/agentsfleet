@@ -216,3 +216,40 @@ fn test_version_derivation_refuses_a_name_without_a_slot_number() {
         );
     }
 }
+
+/// `Migration::for_test` carries exactly what it was handed.
+///
+/// It is a `const fn`, and every production caller is a `static` initialiser —
+/// which is why it needs a test that calls it at RUNTIME. A const evaluated at
+/// compile time proves the compiler agrees with itself; the failure-bookkeeping
+/// proof builds one of these from values it computes, and that is this path.
+#[test]
+#[cfg(feature = "test-util")]
+fn test_a_test_only_migration_carries_what_it_was_given() {
+    let version = 9_999_i32;
+    let migration = Migration::for_test(version, "9999_not_committed.sql", "SELECT 1;");
+
+    assert_eq!(migration.version(), version);
+    assert_eq!(migration.name(), "9999_not_committed.sql");
+    assert_eq!(migration.sql(), "SELECT 1;");
+    assert!(
+        !MIGRATIONS.iter().any(|m| m.version() == version),
+        "a test-only migration must not collide with a committed slot"
+    );
+}
+
+/// The default migrator is the canonical one.
+///
+/// `Default` exists so a caller can write `Migrator::default()`, and the risk
+/// of a hand-written `Default` is that it quietly diverges from `new()` — a
+/// migrator running a DIFFERENT list than the one this crate ships.
+#[test]
+fn test_the_default_migrator_runs_the_canonical_list() {
+    let canonical: Vec<i32> = MIGRATIONS.iter().map(Migration::version).collect();
+    assert_eq!(afd_db::Migrator::default().canonical_versions(), canonical);
+    assert_eq!(
+        afd_db::Migrator::default().canonical_versions(),
+        afd_db::Migrator::new().canonical_versions(),
+        "Default and new() must not describe two different migrators"
+    );
+}

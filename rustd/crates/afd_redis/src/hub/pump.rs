@@ -76,10 +76,9 @@ async fn run(
             return; // the hub itself went away
         }
 
-        tracing::warn!(
-            error_code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str(),
-            "hub_connection_dropped"
-        );
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+        let error_code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str();
+        tracing::warn!(error_code, "hub_connection_dropped");
 
         connection = loop {
             let delay = backoff.delay(attempt, jitter());
@@ -87,12 +86,15 @@ async fn run(
             attempt = attempt.saturating_add(1);
             match connect(&config).await {
                 Ok(fresh) => break fresh,
-                Err(failure) => tracing::warn!(
-                    attempt,
-                    error = %failure,
-                    error_code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str(),
-                    "hub_reconnect_failed"
-                ),
+                Err(failure) => {
+                    let error_code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str();
+                    tracing::warn!(
+                        attempt,
+                        error = %failure,
+                        error_code,
+                        "hub_reconnect_failed"
+                    );
+                }
             }
         };
         attempt = 0;
@@ -141,10 +143,11 @@ async fn pump(
 async fn resubscribe(sink: &mut PubSubSink, channels: &[String]) {
     for channel in channels {
         if let Err(failure) = sink.subscribe(channel).await {
+            let error_code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str();
             tracing::warn!(
                 channel,
                 error = %failure,
-                error_code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str(),
+                error_code,
                 "hub_resubscribe_failed"
             );
         }
@@ -153,12 +156,26 @@ async fn resubscribe(sink: &mut PubSubSink, channels: &[String]) {
 
 /// Spread for the reconnect delay.
 ///
-/// Derived from the process id and the clock rather than a random-number
-/// generator: the requirement is that two processes do not redial in lockstep,
-/// not that the value be unpredictable, and this pulls in no dependency.
+/// Derived from the process id and a MONOTONIC reading rather than a
+/// random-number generator: the requirement is that two processes do not redial
+/// in lockstep, not that the value be unpredictable, and this pulls in no
+/// dependency.
+///
+/// Monotonic, not the wall clock, and the distinction is the whole point of the
+/// spread. An operator correcting drift or an NTP step moves the wall clock
+/// BACKWARD, which replays the same sub-second nanoseconds and hands two
+/// redials the same jitter — reproducing the lockstep this exists to break, at
+/// exactly the moment a cluster is most likely to be reconnecting at once.
+/// [`std::time::Instant`] cannot be stepped, and cannot be confused with a
+/// timestamp, which is why `afd_core::clock` deliberately exposes no monotonic
+/// reading of its own.
 fn jitter() -> u64 {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| since.subsec_nanos());
+    /// Fixed at first use, so `elapsed` is a duration this process owns rather
+    /// than an instant anybody could read as a date.
+    static ORIGIN: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    let nanos = ORIGIN
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .subsec_nanos();
     u64::from(nanos) ^ u64::from(std::process::id())
 }

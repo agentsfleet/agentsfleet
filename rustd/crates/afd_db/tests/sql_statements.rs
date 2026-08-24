@@ -231,3 +231,62 @@ fn test_an_inline_trailing_comment_stays_with_its_statement() {
     assert_eq!(statements.len(), 2, "got {statements:?}");
     assert!(statements[0].contains("-- why"));
 }
+
+/// A file that opens on a literal must not read the byte before the file.
+///
+/// `E'…'` detection looks one byte back to tell a standalone `E` from the tail
+/// of an identifier such as `CASE`. At offset zero there is no byte to look at,
+/// and the guard that says so is the difference between a wrong answer and a
+/// panic on input the splitter does not control.
+#[test]
+fn test_a_literal_at_the_start_of_the_file_is_not_an_escape_string() {
+    assert_eq!(split(r"SELECT 1;"), vec!["SELECT 1"]);
+    assert_eq!(
+        split(r"'\'; SELECT 2;"),
+        vec![r"'\'", "SELECT 2"],
+        "with no byte before it, the opening quote is a plain literal, so the \
+         backslash is inert and the literal closes at the next quote"
+    );
+}
+
+/// `""` inside a quoted identifier is an escaped quote, not the end of one.
+///
+/// Reading it as the end leaves the scanner in SQL mode inside an identifier,
+/// where the next `;` becomes a boundary and the statement is applied in half.
+#[test]
+fn test_doubled_quotes_inside_a_quoted_identifier_do_not_close_it() {
+    let statements = split(r#"SELECT "we""ird;name" FROM t; SELECT 2;"#);
+    assert_eq!(statements.len(), 2, "got {statements:?}");
+    assert!(
+        statements[0].contains(r#""we""ird;name""#),
+        "got {statements:?}"
+    );
+}
+
+/// A comment INSIDE a statement is skipped by the same rules as one between
+/// statements — a different code path, and the one a real migration hits.
+#[test]
+fn test_comments_inside_a_statement_are_skipped() {
+    assert_eq!(
+        split("SELECT 1 /* ; not a boundary */ + 2; SELECT 3;"),
+        vec!["SELECT 1 /* ; not a boundary */ + 2", "SELECT 3"]
+    );
+    assert_eq!(
+        split("SELECT 1 -- ; not a boundary\n + 2; SELECT 3;"),
+        vec!["SELECT 1 -- ; not a boundary\n + 2", "SELECT 3"]
+    );
+}
+
+/// A `$tag` the file never closes is not a delimiter.
+///
+/// The delimiter scan runs off the end of the input looking for the closing
+/// `$`. Treating what it found as a tag would put the scanner into dollar-quote
+/// mode forever and swallow every remaining statement.
+#[test]
+fn test_an_unclosed_dollar_tag_at_end_of_input_is_not_a_delimiter() {
+    assert_eq!(
+        split("SELECT 1; SELECT $tag"),
+        vec!["SELECT 1", "SELECT $tag"],
+        "the trailing statement is returned, not swallowed as a quote body"
+    );
+}

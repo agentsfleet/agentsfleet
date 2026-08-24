@@ -210,9 +210,11 @@ impl FleetStreams {
     ) -> Result<Option<FleetEvent>, Error> {
         match self.read_once(fleet_id, consumer, read_id).await {
             Err(failure) if failure.is_group_missing() => {
+                // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+                let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
                 tracing::warn!(
                     fleet_id,
-                    error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str(),
+                    error_code,
                     "fleet_consumer_group_missing_repaired"
                 );
                 self.create_group(fleet_id, GROUP_START_END).await?;
@@ -275,6 +277,32 @@ impl FleetStreams {
         cmd.arg(channel).arg(payload);
         self.redis.command(CMD_PUBLISH, channel, &cmd).await
     }
+}
+
+/// Every reply shape [`stringify`] renders, each with the label it is rendered
+/// from.
+///
+/// Exposed under `test-util` because Redis will not produce these on demand: a
+/// stream field is a bulk string on the wire, so the arms that keep a
+/// surprising value readable have no other way to be reached. A producer that
+/// starts writing something else — or a redis-rs release that decodes an
+/// integer field differently — is exactly the surprise these arms exist for,
+/// and an unrendered one reaching a caller as an empty string is silent.
+#[cfg(feature = "test-util")]
+#[must_use]
+pub fn rendered_field_samples() -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "bulk string",
+            stringify(&redis::Value::BulkString(b"ready".to_vec())),
+        ),
+        (
+            "simple string",
+            stringify(&redis::Value::SimpleString("OK".to_owned())),
+        ),
+        ("integer", stringify(&redis::Value::Int(42))),
+        ("anything else", stringify(&redis::Value::Nil)),
+    ]
 }
 
 /// Renders a stream field value as text.

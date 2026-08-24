@@ -29,6 +29,7 @@
 // claim being made is about the SHIPPED library's dependency graph.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
+pub mod clock;
 pub mod env;
 pub mod error;
 pub mod error_code;
