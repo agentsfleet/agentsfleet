@@ -173,6 +173,8 @@ fn zig_status(status: u16) -> &'static str {
         400 => ".bad_request",
         401 => ".unauthorized",
         403 => ".forbidden",
+        404 => ".not_found",
+        429 => ".too_many_requests",
         500 => ".internal_server_error",
         503 => ".service_unavailable",
         other => panic!("no Zig spelling recorded for status {other}"),

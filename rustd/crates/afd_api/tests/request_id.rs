@@ -59,6 +59,28 @@ fn test_pinned_bytes_render_to_a_pinned_id() {
     assert_eq!(RequestId::mint_from(&entropy).as_str(), "req_ffffffffffff");
 }
 
+/// The default entropy source is the operating system's, not a mock.
+///
+/// Worth pinning rather than assumed. `Entropy` carries a mocked variant behind
+/// `test-util`, and a `Default` that reached for it would make every id in a
+/// build with that feature on predictable — which is the kind of mistake that
+/// looks like a convenience refactor in a diff.
+#[test]
+fn test_the_default_entropy_source_mints_a_real_id() {
+    let minted = RequestId::mint_from(&Entropy::default());
+
+    assert_ne!(
+        minted.as_str(),
+        UNKNOWN_REQUEST_ID,
+        "the default source must produce entropy, not fail"
+    );
+    assert_ne!(
+        minted,
+        RequestId::mint_from(&Entropy::default()),
+        "two draws from the default source must differ, or it is not entropy"
+    );
+}
+
 /// Two ids minted in a row are two different ids.
 ///
 /// Weak as a randomness claim and not meant as one: what it catches is a minter
