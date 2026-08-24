@@ -1,0 +1,34 @@
+[package]
+name = "afd_api"
+description = "The HTTP shell: the route table every other table folded into, admission, and the problem+json envelope."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the map-backed environment source through afd_core.
+test-util = ["afd_auth/test-util"]
+
+# Each dependency is added by the module that uses it: `unreachable_pub` and
+# `unused_crate_dependencies` are how Invariant 2 is a fact rustc checks rather
+# than a claim, and a manifest listing crates nothing imports would make the
+# graph a wish. axum/tower/tower-http/afd_core arrive with the admission layer
+# and the envelope writer.
+[dependencies]
+afd_auth.workspace = true
+http.workspace = true
+
+# Same rule as the runtime dependencies: added by the target that uses them.
+# The route table is pure, so it needs no runtime to test — the admission layer
+# and the envelope writer bring tokio and the subscriber with them.
+[dev-dependencies]
+# The rung test names scopes directly; the lib re-exports none of them.
+afd_auth.workspace = true
+
+[lints]
+workspace = true

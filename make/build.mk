@@ -85,7 +85,6 @@ sync-version: ## Propagate VERSION → build.zig.zon + cli/package.json (cli.js 
 	perl -i -pe 's/\.version = "[^"]+"/.version = "'"$$V"'"/;' build.zig.zon; \
 	perl -i -pe 's/"version": "[^"]+"/"version": "'"$$V"'"/;' cli/package.json; \
 	perl -i -pe 's/^version = "[^"]+"/version = "'"$$V"'"/;' rustd/Cargo.toml; \
-	perl -i -pe 's/(afd_core = \{ path = "crates\/afd_core", version = ")[^"]+/$${1}'"$$V"'/;' rustd/Cargo.toml; \
 	echo "✓ version $$V synced → build.zig.zon, cli/package.json, rustd/Cargo.toml (cli.js reads it at runtime)"
 
 check-version: ## Verify build.zig.zon, cli/package.json and rustd/Cargo.toml match VERSION
@@ -98,8 +97,6 @@ check-version: ## Verify build.zig.zon, cli/package.json and rustd/Cargo.toml ma
 		|| { printf 'DRIFT  cli/package.json: %s\n' "$$(grep '"version"' cli/package.json | head -1 | xargs)"; FAIL=1; }; \
 	grep -q "^version = \"$$V\"" rustd/Cargo.toml \
 		|| { printf 'DRIFT  rustd/Cargo.toml [workspace.package]: %s\n' "$$(grep -m1 '^version =' rustd/Cargo.toml | xargs)"; FAIL=1; }; \
-	grep -q "afd_core = { path = \"crates/afd_core\", version = \"$$V\" }" rustd/Cargo.toml \
-		|| { printf 'DRIFT  rustd/Cargo.toml [workspace.dependencies] afd_core: %s\n' "$$(grep -m1 'afd_core = {' rustd/Cargo.toml | xargs)"; FAIL=1; }; \
 	[ "$$FAIL" = "0" ] && echo "✓ all versions match $$V" || { echo "Run: make sync-version"; exit 1; }
 
 _docker_login:
