@@ -1,0 +1,53 @@
+[package]
+name = "afd_identity"
+description = "The identity provider's side of authentication: JWKS verification and live capability resolution."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL: a key-set source that answers from a fixture, so every branch of
+# the verifier — including "a key-id miss triggers exactly one refresh" — is
+# provable without a network.
+test-util = ["afd_auth/test-util", "afd_core/test-util"]
+
+[dependencies]
+afd_auth.workspace = true
+afd_core.workspace = true
+base64.workspace = true
+moka.workspace = true
+reqwest.workspace = true
+ring.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+tracing.workspace = true
+# Invariant 5: the provider's backend secret is held for the process's life.
+zeroize.workspace = true
+
+[dev-dependencies]
+# `net` and `io-util` for the one-shot loopback server the HTTP source is read
+# against; `rt-multi-thread` is NOT asked for, because nothing here is.
+tokio = { workspace = true, features = ["rt", "macros", "sync", "net", "io-util", "time"] }
+# Tests build the header variants the fixtures cannot carry — an unsupported
+# `alg`, a header with no `kid` — and an over-floor modulus, rather than pasting
+# precomputed base64 nobody can check by eye.
+base64.workspace = true
+# Tests SIGN tokens, so a claim shape the fixtures do not carry — an array
+# audience, a tenant nested under `metadata` — can be verified rather than
+# asserted about. `ring` signs as well as verifies, so this needs no crate the
+# library does not already link; the key is the Zig tree's throwaway fixture.
+ring = { workspace = true, features = ["std"] }
+# Tracing macros do not evaluate their fields without a subscriber installed,
+# so every diagnostic line here would read as unreachable without this. The
+# note beside `tracing` in the workspace manifest carries the measurement.
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

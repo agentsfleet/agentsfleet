@@ -65,7 +65,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_crypto/**` | CREATE | envelope encryption (KEK/DEK, AES-256-GCM), HMAC canon, zeroizing secret types |
 | `rustd/crates/afd_db/**` | CREATE | sqlx pools (three roles), migration runner with advisory lock + audit bookkeeping |
 | `rustd/crates/afd_redis/**` | CREATE | streams ops, subscription hub, session store, `fleet:ready` hash |
-| `rustd/crates/afd_auth/**` | CREATE | principal, scope catalogue + ladder, JWKS verify, bearer routing, requireScope |
+| `rustd/crates/afd_auth/**` | CREATE | the DECISION: principal, scope catalogue + ladder, credential classification, the plane boundary, the three seam traits, one authenticator, the refusal taxonomy, `require_scope`. No runtime, no socket, no datastore — the portability wall as a dependency-graph fact |
+| `rustd/crates/afd_identity/**` | CREATE | the identity provider's side: JWKS fetch/cache/RS256 verify, and the live capability resolver with its claim reader. The only sockets in the auth path |
 | `rustd/crates/afd_api/**` | CREATE | axum shell: Route enum + route_meta, admission limiter, problem+json envelope |
 | `rustd/crates/afd_observability/**` | CREATE | tracing → OpenTelemetry Protocol (OTLP) export, semconv attributes, counters |
 | `rustd/crates/afd_state/**` | CREATE | repository crate, seeded with the auth-consumed lookups (api keys, CLI credentials); M178/M179 extend it |
@@ -73,7 +74,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/Cargo.toml` | EDIT | new workspace members + workspace dependencies |
 | `rustd/Cargo.lock` | EDIT | the resolved graph for those dependencies; generated, committed |
 | `docs/v2/active/M176_001_*.md` | EDIT | this spec — moved from `pending/` at CHORE(open), amended at PLAN |
-| `rustd/crates/afd_core/**` | EDIT | two registry codes the crypto errors answer (`UZ-VAULT-001`, `UZ-INTERNAL-003`) |
+| `rustd/crates/afd_core/**` | EDIT | the registry codes crypto and auth answer with — `UZ-VAULT-001`, `UZ-INTERNAL-003`, and §4's eight (`UZ-AUTH-002/003/004/022/023`, `UZ-APIKEY-004`, `UZ-RUN-001/009`) |
 | `make/quality.mk`, `make/test-unit.mk` | EDIT | `--all-features` on the Rust lint and unit lanes, so `test-util` mocks are linted and run |
 | `make/test-integration-rustd.mk` | CREATE | the Rust-native integration lane; consumes the surviving `make/test-infra.mk` compose services |
 | `make/test.mk` | EDIT | includes the new fragment beside `test-infra.mk` |
@@ -248,6 +249,176 @@ plainly why it was needed: **the 100% floor was unreachable through tests
 alone**, and no amount of test writing would have closed those thirteen lines.
 The section above says "none of these is genuinely unreachable" — true of the
 code, and it was not true of the measurement.
+
+### §4 found a second way llvm-cov counts code that cannot run (EXECUTE, Aug 24, 2026)
+
+`afd_auth`'s `Registry` is generic over its three seams (`M-DI-HIERARCHY` puts
+generics above `dyn Trait`). `cargo llvm-cov --summary-only` then reports the
+crate at 99.42%, naming three lines in `authenticate.rs` — and every one of them
+is covered.
+
+**The cause.** llvm-cov emits coverage records for the LIBRARY rlib's
+un-monomorphized generic copies (`Registry<p, p, p>` in the mangled name, crate
+hash `Cs2FC3TmvYrml`) as well as for the test binary's monomorphized ones
+(`Cs19U4T73m517`). The template copies have no call sites by construction, so
+they count zero forever. The per-instantiation accounting also marks a line
+"missed" when it is covered under one type-parameter set and not another — with
+five distinct `Registry<…>` instantiations across the tests, that is routine.
+
+**Why nothing needs doing.** `make test-coverage-rustd` exports `--lcov`, and
+lcov merges per line rather than per instantiation: `afd_auth` is **510/510 =
+100.00%** there. The gate already measures it correctly.
+
+This is the same CLASS as the `tracing`-`log` finding above — llvm-cov counting
+a copy that never runs — with a different cause and the opposite resolution.
+That one needed nineteen call sites hoisted; this one needs a sentence, because
+the repository's own measurement never saw it. Recorded so the next reader who
+runs `--summary-only` on a generic crate does not go looking for a bug.
+
+### §4 replaces three procedures with one table (EXECUTE, Aug 24, 2026)
+
+`tenant_api_key.zig`, `cli_credential.zig` and `runner_bearer.zig` are the same
+procedure written three times — hash, look up, check liveness, resolve
+capability, build a principal. Everything that differs is a CONSTANT, and every
+constant sits inside a hand-written body where nothing can see that its
+neighbour disagrees.
+
+That is not hypothetical. `cli_credential.zig` shape-checks its value before
+hashing so a truncated paste costs no datastore round trip; the other two do
+not, and no comment anywhere says why. The asymmetry is invisible because the
+three bodies are never read side by side.
+
+Here the differences are `HashedClass` constants and there is one procedure.
+Three consequences, all shape rather than behaviour:
+
+- **A malformed `agt_t` or `agt_r` is now refused before the lookup.** Same
+  verdict and same code as before — a malformed value matches no row either
+  way — but one fewer datastore read. Pinned by
+  `test_a_malformed_body_costs_no_round_trip_in_any_class`.
+- **The prefix table is asserted PREFIX-FREE at compile time.** `agt_t` and
+  `agt_r` differ in one byte, and nothing in the Zig chain says two markers may
+  not shadow one another — it holds because of the order somebody wrote the
+  branches in. A future `agt_` class now fails the build instead of quietly
+  swallowing its neighbour.
+- **The runner/tenant boundary is data rather than wiring.** Zig keeps a runner
+  token off tenant routes by mounting a different middleware, which is a sound
+  rule enforced by review. `Plane::admits` is a total table, and
+  `test_planes_partition_the_catalogue` proves every credential class belongs to
+  exactly one plane — so neither a class two planes accept nor a class none
+  accepts can be written.
+
+The registry is a generic over three seam traits rather than a
+`Vec<Box<dyn Authenticator>>`. `~/Projects/oss/core_api-develop`'s `lib-auth`
+supplies the vocabulary — `FlowDelegate { opens_door, subject_is_present }` is
+`kind`/`authenticate`, and its `lib-auth`/`api-auth` split is the Rust spelling
+of the `make test-auth` portability wall — but not its `FlowBuilder`, which
+scans boxed delegates by equality (`flow.rs:58-64`) and resolves an unregistered
+door to `None`, i.e. a 401 at run time. Dispatch here is an exhaustive match on
+`CredentialKind`, so a new class fails the BUILD until it is wired.
+`M-DI-HIERARCHY` puts generics above `dyn Trait` for the same reason.
+
+### §4 tightens the RSA key-size floor (EXECUTE, Aug 24, 2026)
+
+**The one behaviour divergence in this section.** `jwks_crypto.zig` accepts
+moduli of 128, 256, 384 and 512 bytes — 1024 bits upward. This daemon verifies
+with `ring::signature::RSA_PKCS1_2048_8192_SHA256` and accepts 2048 upward.
+
+ring does export `RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY`, so exact
+parity was available and was declined: no production identity provider publishes
+1024-bit RSA, and ring names that constant `FOR_LEGACY_USE_ONLY` deliberately.
+Indy's call, Aug 24, 2026.
+
+**What made it safe to decline is that it cannot fail silently.** A key set this
+daemon will not verify against would otherwise 401 every session token while
+`agt_t` and `afc_` kept working — "signed in, but nothing loads", the signature
+`docs/AUTH.md` §How the key set is fetched already records for the gzip bug. So
+an unusable key is dropped at PARSE time with a count, a set with nothing usable
+is `KeySetUnavailable`, and `JwksVerifier::prime()` turns that into a boot
+refusal. §7 must CALL `prime()` during boot — the Zig equivalent
+(`checkJwksConnectivity`) is wired only to `cmd/doctor.zig:283`, never to serve,
+which is why the failure mode exists there at all.
+
+### §4 found "all hash compares timing-safe" overstates the mechanism (EXECUTE, Aug 24, 2026)
+
+This section's own summary says it, and `docs/AUTH.md`:455 writes
+`WHERE token_hash = sha256(token)   (timing-safe)`. There is no constant-time
+compare anywhere in that path: `api_key.sha256Hex` produces hex, hands it to
+`LookupFn`, and Postgres matches it with an indexed btree equality.
+
+The path IS safe, for a different reason — the digest's input is 256 bits of
+cryptographic entropy, so a timing oracle on the digest buys nothing short of a
+preimage. The sentence just names the wrong mechanism. The precise version, and
+the one the port implements:
+
+- A secret compared **in process** takes a constant-time compare (`subtle`,
+  RULE CTM). `afd_crypto::mac::Mac256::verify` already does.
+- A digest **delegated to an indexed column** is safe by input entropy, and
+  `afd_auth::directory::Digest` records that rather than implying a compare it
+  does not perform.
+
+### §4 found reqwest's `-no-provider` TLS features PANIC (EXECUTE, Aug 24, 2026)
+
+`reqwest`'s `rustls-tls-*-no-provider` features leave the rustls
+`CryptoProvider` unselected and defer to a process default. Nothing in this
+workspace installs one, and rustls does not report that as an error —
+`ClientBuilder::build` panics with `No provider set`, inside a workspace that
+denies `clippy::panic` and a daemon that must not abort on a configuration
+fault. Found by a test, not by review.
+
+`rustls-tls-webpki-roots` expands to the `-no-provider` variant PLUS
+`__rustls-ring`, so it keeps the in-binary trust anchors and names ring
+explicitly — the same provider `tls-rustls-ring-webpki` already chose for sqlx,
+and still no `aws-lc-rs`.
+
+Related, and the reason 0.13 is not an upgrade here: reqwest 0.13 collapsed the
+TLS features to one. Plain `rustls` forces `aws-lc-rs`, which would put a SECOND
+provider beside ring — the configuration whose feature-unification failure this
+milestone already records for `cargo test -p afd_redis` — and its
+`rustls-no-provider` reaches the platform trust store, losing the property §2
+chose for a slim container without `ca-certificates`.
+
+### §4 declines to port the principal's shape (EXECUTE, Aug 24, 2026)
+
+Parity in this milestone is behavioural — the two binaries must reach the same
+verdict from the same credential — and it has never meant copying a layout.
+`auth/principal.zig` is one flat record with a `mode` tag and five optional
+fields whose validity depends on that tag, and every rule about them is a
+comment rather than a type:
+
+- `runner_id` and `runner_degraded` are "set only when `mode == .runner`";
+- `workspace_scope_id` is set only on the session-token path, because only a
+  session token carries a `workspace_id` claim;
+- `tenant_id` must be null for a runner and non-null for everyone else;
+- `scopes` must be `RUNNER_SCOPES` for a runner, assigned by hand at the one
+  construction site that builds one.
+
+Each is a rule a construction site has to remember. A runner principal carrying
+a `tenant_id` compiles today, and it would satisfy a tenant route's ownership
+check. Zig has no way to say otherwise; Rust does, so the tag carries its own
+data and the illegal combinations cannot be spelled. A `Runner` has no tenant
+field to set, a workspace ceiling exists only inside the credential that can
+carry one, and a runner's capabilities are DERIVED from its variant rather than
+stored — so `runner:self` and nothing else is not an assignment anyone can
+forget or widen.
+
+**`user_id` was never a user id.** All three person credentials put the identity
+provider's SUBJECT in it. `bearer_or_api_key.zig:119` assigns
+`verified.subject`; `cli_credential.zig:163` assigns `row.oidc_subject` under a
+comment stating it is "the SUBJECT as `user_id`, not the `core.users` row";
+`tenant_api_key.zig:140` assigns `row.user_id`, which its own comment notes "is
+`created_by` — the provider's subject claim". Three assignments, one misleading
+name, and a comment at each explaining the name is wrong. `Subject` is a newtype
+here, so a provider subject and a `core.users` primary key are different types
+and handing one to something expecting the other stops compiling instead of
+resolving the wrong person's capabilities.
+
+The gate keeps the Zig daemon's client-visible text exactly — `Requires scope a
+or b`, naming the whole any-of requirement rather than one scope the caller
+happens to lack. Naming a single one would tell a caller to obtain that scope
+when any of the others would also have let them through.
+
+Nothing here is asserted onto the Zig tree, which stays the only production
+binary until M181 deletes it.
 
 ### §1 note — how the reverse pass actually runs
 
@@ -463,10 +634,21 @@ Stream ops parity (`XADD fleet:{id}:events` where the entry id IS the canonical 
 
 `AuthPrincipal`, the scope catalogue mirrored from `src/agentsfleetd/auth/scopes.zig` (read < write < admin ladder expanded at parse), JWKS fetch (issuer-derived URL, 6-hour cache, refresh on key-id miss) + RS256 verify (`iss`/`aud`/`exp`), `bearer_or_api_key` routing in the documented order (`agt_t` → hash lookup; `afc_` → credential lookup + live scope resolve; else OIDC (OpenID Connect); prefixed branches ahead of the verifier check), `requireScope` any-of hierarchy-expanded 403 naming the missing scope (UZ-AUTH-022). All hash compares timing-safe.
 
-- **Dimension 4.1** — prefix routing parity, including a no-verifier deployment still resolving `agt_t`/`afc_` → Test `test_bearer_prefix_routing`
-- **Dimension 4.2** — bad signature / expired / wrong aud / wrong iss each 401; key-id miss triggers exactly one refresh → Test `test_jwks_verify_negative_paths`
-- **Dimension 4.3** — `fleet:admin` passes a `fleet:read` gate; empty scope set fails closed → Test `test_scope_ladder_expansion`
-- **Dimension 4.4** — missing scope → 403 UZ-AUTH-022 naming the scope → Test `test_require_scope_names_missing`
+§4 ships TWO crates. `afd_auth` holds the decision — credential classes, the
+three seam traits, the authenticator, the scope catalogue, the gate — and lists
+no runtime, no socket and no datastore, so the portability wall Zig enforces
+with a grep in `make test-auth` is a fact rustc checks. `afd_identity` holds the
+identity provider's side: the JWKS verifier and the live capability resolver.
+The three Postgres `CredentialDirectory` implementations are §5's, exactly where
+the Zig daemon keeps them (`cmd/serve_runner_lookup.zig`,
+`cmd/cli_credential_lookup.zig`) — see §5's Dimension 5.5.
+
+- **Dimension 4.1** — prefix routing parity, including a no-verifier deployment still resolving `agt_t`/`afc_`, AND the runner plane refusing a tenant credential (and vice versa) before any lookup → Test `test_bearer_prefix_routing` — **DONE**
+- **Dimension 4.2** — bad signature / expired / wrong aud / wrong iss each 401; key-id miss triggers exactly one refresh → Test `test_jwks_verify_negative_paths` — **DONE**
+- **Dimension 4.3** — `fleet:admin` passes a `fleet:read` gate; empty scope set fails closed → Test `test_scope_ladder_expansion` — **DONE**
+- **Dimension 4.4** — missing scope → 403 UZ-AUTH-022 naming the scope → Test `test_require_scope_names_missing` — **DONE**
+- **Dimension 4.5** — every client-visible refusal sentence is byte-identical to the Zig constant it replaces, and each answers its own registry code → Test `test_auth_error_taxonomy` — **DONE**
+- **Dimension 4.6** — the capability cache serves fresh, serves stale only under outage, refuses past the ceiling, and coalesces concurrent misses for one subject into one provider call → Test `test_capability_windows` — **DONE**
 
 ### §5 — afd_api shell: routes, admission, envelope
 
@@ -476,6 +658,7 @@ The axum + tower shell: a `Route` enum as the single metadata source with an exh
 - **Dimension 5.2** — requests past the ceiling shed with 429 + headers before any handler runs → Test `test_admission_sheds_over_ceiling`
 - **Dimension 5.3** — headers >4 KiB and ≤16 KiB accepted; >16 KiB → 431 → Test `test_header_limit_16k`
 - **Dimension 5.4** — error responses match the problem+json shape the Zig daemon emits → Test `test_problem_json_envelope`
+- **Dimension 5.5** — `afd_state` implements `afd_auth::CredentialDirectory` for all three stored classes (`agt_t`, `afc_`, `agt_r`), returning `Ok(None)` for an unmatched digest and `Unavailable` for a datastore fault, never collapsing the two. The crate this spec already plans as "seeded with the auth-consumed lookups" is where they belong — §4 ships the trait and the `test-util` doubles precisely so the SQL can land here → Test `test_credential_directories`
 
 ### §6 — afd_observability: push-only telemetry
 
@@ -528,7 +711,12 @@ milestone)    GET /healthz → 200 · GET /readyz → 200|503 (dependency-probed
 Crate seams   afd_crypto::Envelope {seal, open} over Zeroizing buffers
               afd_db::Pools {default, api, migrator} + Migrator::run
               afd_redis::{Streams, Hub, SessionStore}
-              afd_auth::{AuthPrincipal, Verifier, layers}
+              afd_auth::{Principal, Registry, Plane, require_scope}
+                — Registry<D, C, V> over CredentialDirectory,
+                  CapabilitySource, TokenVerifier; dispatch is a
+                  total match, so a new credential class fails the build
+              afd_identity::{JwksVerifier, ProviderCapabilities}
+                — the two seam implementations that reach the network
               afd_api::{Route, route_meta} — exhaustive, single metadata source
 ```
 
