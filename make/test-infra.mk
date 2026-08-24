@@ -125,11 +125,11 @@ else
 	@# only proved the file was non-empty — which a STALE cert from a destroyed
 	@# container satisfies. Every TLS connection then failed signature
 	@# verification, which reads as dozens of unrelated Redis test failures.
-	@docker compose cp redis:/tls/server.crt "$(TEST_REDIS_TLS_CA_CERT)"
+	@docker compose cp redis:/tls/ca.crt "$(TEST_REDIS_TLS_CA_CERT)"
 	@test -s "$(TEST_REDIS_TLS_CA_CERT)" || { echo "✗ Failed to extract Redis TLS cert"; exit 1; }
 	@# Freshness, not size: the copied cert must be byte-identical to the one the
 	@# server is actually presenting.
-	@container_sha=$$(docker compose exec -T redis sha256sum /tls/server.crt | awk '{print $$1}'); \
+	@container_sha=$$(docker compose exec -T redis sha256sum /tls/ca.crt | awk '{print $$1}'); \
 	local_sha=$$(shasum -a 256 "$(TEST_REDIS_TLS_CA_CERT)" | awk '{print $$1}'); \
 	if [ "$$container_sha" != "$$local_sha" ]; then \
 	  echo "✗ [infra] Redis CA cert is stale (container $$container_sha != local $$local_sha)"; \
@@ -153,7 +153,7 @@ _reset-test-db: _ensure-test-infra
 	@docker compose exec -T postgres rm -f /tmp/teardown.sql >/dev/null
 	@echo "✓ [infra] Schemas dropped; migrations will rebuild on next step"
 	@echo "→ [infra] Flushing test Redis (prior-run streams/groups/PELs)..."
-	@docker compose exec -T redis redis-cli --tls --cacert /tls/server.crt -a agentsfleet --no-auth-warning FLUSHALL >/dev/null
+	@docker compose exec -T redis redis-cli --tls --cacert /tls/ca.crt -a agentsfleet --no-auth-warning FLUSHALL >/dev/null
 	@echo "✓ [infra] Redis flushed"
 
 # Every integration target starts by dropping schemas and flushing Redis,

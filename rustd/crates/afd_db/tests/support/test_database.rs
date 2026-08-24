@@ -8,9 +8,9 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use afd_core::env::MapEnv;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_db::env::MapEnv;
 use sqlx::AssertSqlSafe;
 
 const LANE_KNOB: &str = "AFD_TEST_DATABASE_URL";

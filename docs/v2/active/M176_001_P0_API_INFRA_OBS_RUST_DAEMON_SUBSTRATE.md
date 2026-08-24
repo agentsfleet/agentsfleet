@@ -81,6 +81,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `.oracle/orly.json` | EDIT | declares `verify.integration`, so the new lane is a first-class gate rather than a target nothing names |
 | `codecov.yml` | EDIT | the coverage decision recorded below (§Coverage decision) |
 | `docs/architecture/concurrency.md` | EDIT | adds the Rust task-map section beside the Zig thread map |
+| `docker-compose.yml` | EDIT | the Redis TLS fixture becomes a CA plus a leaf; one self-signed certificate cannot be both a trust anchor and an end-entity |
+| `make/test-infra.mk` | EDIT | extracts and checks `ca.crt` rather than the server's own leaf |
 | `AGENTS.md` (`CLAUDE.md` symlinks to it) | EDIT | its "no slow tier … nothing needs real Postgres or Redis" claim is retired by the lane this milestone creates |
 
 ## Amendment record (EXECUTE-time reconciliation)
@@ -154,6 +156,25 @@ down. Two changes, both now load-bearing:
   ceiling could not open a connection at all, which is the datastore; a pool
   *at* its ceiling with none free is capacity. `test_pool_error_classes` holds
   both halves.
+
+### §3 found the Redis TLS fixture was not a trust anchor (EXECUTE, Aug 24, 2026)
+
+The compose Redis generated ONE self-signed certificate and used it twice: as
+the server's own leaf, and as the file every client is handed as its trust
+anchor (`--tls-ca-cert-file`, `REDIS_TLS_CA_CERT_FILE`). OpenSSL-based clients
+tolerate that. rustls does not, and it is right in both directions:
+
+- a trust anchor must carry `basicConstraints=CA:TRUE` — without it, rustls
+  rejects the file with `CaUsedAsEndEntity`;
+- an end-entity certificate must NOT carry it — adding the constraint to the
+  single certificate moved the same error to the other side of the handshake.
+
+One certificate cannot satisfy both roles, so the fixture was unusable by a
+correct client while every other client worked — which reads as "the Rust
+client is broken". It is now a CA and a leaf signed by it, which is also what a
+hosted Redis presents, so the fixture rehearses production instead of a shape
+only this repository had. The volume regenerates on next boot; `make/
+test-infra.mk` extracts `ca.crt`.
 
 ### The Zig emitter is cut (Indy, Aug 23, 2026)
 
@@ -328,10 +349,10 @@ Three pool roles (default/api/migrator) with env parity (`DATABASE_URL[_API|_MIG
 
 Stream ops parity (`XADD fleet:{id}:events` where the entry id IS the canonical event id; non-blocking `XREADGROUP`; `XACK`; `PUBLISH`), pool with short-lived commands only; the SubscriptionHub as one dedicated subscribe connection per process with refcounted channels fanning out via broadcast; the Redis-backed session store (`auth:session:{id}`, 5-minute time-to-live, atomic Lua state transition); the global `fleet:ready` hash. **Implementation default:** the `redis` crate (tokio + TLS features) — retires the ~3.0k-line hand-rolled Zig client files (the full `queue/` tree is 3.7k; its connector outbound worker is M180's port, not this crate swap).
 
-- **Dimension 3.1** — stream append → consumer-group read → ack round-trip with entry-id-as-event-id → Test `test_stream_xadd_readgroup_ack`
-- **Dimension 3.2** — hub: N subscribers share one connection; channel closes at zero refcount → Test `test_hub_refcount_single_connection`
-- **Dimension 3.3** — hub reconnects and resubscribes after a dropped connection; late subscribers stream on → Test `test_hub_reconnect_resubscribes`
-- **Dimension 3.4** — session state transition is atomic under parallel approve/verify races → Test `test_session_transition_atomic`
+- **Dimension 3.1** — stream append → consumer-group read → ack round-trip with entry-id-as-event-id → Test `test_stream_xadd_readgroup_ack` — **DONE**
+- **Dimension 3.2** — hub: N subscribers share one connection; channel closes at zero refcount → Test `test_hub_refcount_single_connection` — **DONE**
+- **Dimension 3.3** — hub reconnects and resubscribes after a dropped connection; late subscribers stream on → Test `test_hub_reconnect_resubscribes` — **DONE**
+- **Dimension 3.4** — session state transition is atomic under parallel approve/verify races → Test `test_session_transition_atomic` — **DONE**
 
 ### §4 — afd_auth: principals, scopes, verification
 

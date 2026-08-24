@@ -50,6 +50,7 @@ fn test_error_registry_unique() {
         error_code::INTERNAL_DB_UNAVAILABLE,
         error_code::INTERNAL_DB_QUERY,
         error_code::STARTUP_MIGRATION_CHECK,
+        error_code::STARTUP_REDIS_CONNECT,
     ] {
         assert!(
             REGISTRY.contains(&named),

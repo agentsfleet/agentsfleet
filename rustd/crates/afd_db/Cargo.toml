@@ -15,7 +15,7 @@ categories.workspace = true
 # map-backed environment source, which is how the role/knob resolution gets
 # tested without mutating process state — `std::env::set_var` is `unsafe` in
 # edition 2024 precisely because a parallel test suite makes it a data race.
-test-util = []
+test-util = ["afd_core/test-util"]
 
 [dependencies]
 # The wire codes a datastore failure answers.

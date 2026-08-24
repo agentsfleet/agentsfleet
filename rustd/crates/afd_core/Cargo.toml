@@ -10,6 +10,11 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+# M-TEST-UTIL: the map-backed environment source. Behind a flag because a
+# production binary reads the process environment and nothing else.
+test-util = []
+
 [dependencies]
 serde.workspace = true
 thiserror.workspace = true

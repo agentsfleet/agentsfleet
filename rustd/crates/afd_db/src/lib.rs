@@ -41,12 +41,13 @@
 )]
 
 pub mod config;
-pub mod env;
 pub mod error;
 pub mod migrate;
 pub mod migration;
 pub mod pool;
 pub mod sql;
+
+pub use afd_core::env::EnvSource;
 
 pub use crate::config::{DbRole, PoolConfig};
 pub use crate::error::Error;
@@ -71,7 +72,7 @@ pub const MIGRATE_ON_START_KNOB: &str = "MIGRATE_ON_START";
 /// Returns a config error when the value is neither truthy nor falsy.
 /// `MIGRATE_ON_START=yes` is not "no"; it is an operator who believes
 /// migrations are on, and `cmd/common.zig:44-48` refuses it for that reason.
-pub fn migrate_on_start<E: env::EnvSource + ?Sized>(source: &E) -> Result<bool, Error> {
+pub fn migrate_on_start<E: EnvSource + ?Sized>(source: &E) -> Result<bool, Error> {
     let Some(raw) = source.get(MIGRATE_ON_START_KNOB) else {
         return Ok(false);
     };

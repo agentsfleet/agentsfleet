@@ -114,6 +114,14 @@ pub const INTERNAL_DB_QUERY: ErrorCode = ErrorCode::declare("UZ-INTERNAL-002");
 /// know, a migration that failed and left its failure row behind.
 pub const STARTUP_MIGRATION_CHECK: ErrorCode = ErrorCode::declare("UZ-STARTUP-005");
 
+/// Redis could not be reached, or did not answer in time.
+///
+/// `cmd/serve.zig` reports this when the dependency is absent at boot. A
+/// request-path timeout answers the same code because the caller's situation is
+/// identical — the datastore is not there — and the operator's distinction is
+/// kept in `afd_redis::Error`'s variants rather than on the wire.
+pub const STARTUP_REDIS_CONNECT: ErrorCode = ErrorCode::declare("UZ-STARTUP-004");
+
 /// Every code this crate declares, in declaration order.
 ///
 /// The exhaustive list the registry tests walk. A code added above without a
@@ -127,4 +135,5 @@ pub const REGISTRY: &[ErrorCode] = &[
     INTERNAL_DB_UNAVAILABLE,
     INTERNAL_DB_QUERY,
     STARTUP_MIGRATION_CHECK,
+    STARTUP_REDIS_CONNECT,
 ];
