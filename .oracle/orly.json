@@ -25,6 +25,12 @@
         "test-unit-all"
       ]
     ],
+    "verify.integration": [
+      [
+        "make",
+        "test-integration-rustd"
+      ]
+    ],
     "verify.version": [
       [
         "make",

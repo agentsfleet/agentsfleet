@@ -81,6 +81,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `.oracle/orly.json` | EDIT | declares `verify.integration`, so the new lane is a first-class gate rather than a target nothing names |
 | `codecov.yml` | EDIT | the coverage decision recorded below (§Coverage decision) |
 | `docs/architecture/concurrency.md` | EDIT | adds the Rust task-map section beside the Zig thread map |
+| `AGENTS.md` (`CLAUDE.md` symlinks to it) | EDIT | its "no slow tier … nothing needs real Postgres or Redis" claim is retired by the lane this milestone creates |
 
 ## Amendment record (EXECUTE-time reconciliation)
 
@@ -128,6 +129,31 @@ verbatim against this branch caught two more:
   and `package-lock.json` by name. This widens what the gate ignores, so it is
   recorded here rather than made quietly — the cap still applies to every
   hand-written file, which is what it was for.
+
+### §2 found that a pool cannot classify its own failure (EXECUTE, Aug 24, 2026)
+
+Dimension 2.4 asks for two distinct variants from an exhausted pool and a
+stopped Postgres. `PgPoolOptions::connect_with` cannot supply them: it retries
+internally until the acquire timeout expires and then reports `PoolTimedOut` —
+the same error a busy pool returns. Written the obvious way, `Db::connect`
+against a dead port returned *capacity exhausted*, and the test caught it:
+
+```
+an unreachable datastore is an outage: [UZ-INTERNAL-001] waited 2000ms for a
+default connection and the pool had none
+```
+
+That is the exact misdiagnosis the dimension exists to prevent — an operator
+paged with "pool exhausted" goes and raises a limit while the database stays
+down. Two changes, both now load-bearing:
+
+- **Boot probes before it pools.** `Db::connect` opens one `PgConnection`
+  directly, whose error is the real one (`Io`, `Database`, TLS), and only then
+  builds the pool — lazily, since reachability is already proven.
+- **Acquire reads the pool's census.** On `PoolTimedOut`, a pool *below* its
+  ceiling could not open a connection at all, which is the datastore; a pool
+  *at* its ceiling with none free is capacity. `test_pool_error_classes` holds
+  both halves.
 
 ### The Zig emitter is cut (Indy, Aug 23, 2026)
 
@@ -293,10 +319,10 @@ KEK resolved once at boot from `ENCRYPTION_MASTER_KEY` (64 hex chars → 32 byte
 
 Three pool roles (default/api/migrator) with env parity (`DATABASE_URL[_API|_MIGRATOR]`, size and timeout knobs, TLS-required default, `?sslmode=disable` honored for local dev); the two distinct acquire failures (capacity vs datastore-unreachable) preserved as separate variants. Migration runner embeds the same `schema/` SQL files, applies under the same Postgres advisory lock, writes the same `audit.schema_migrations` / `audit.schema_migration_failures` bookkeeping, reaps orphans, honors `MIGRATE_ON_START`. **Implementation default:** sqlx with plain runtime queries (no compile-time query macros this milestone) — parity beats macro ergonomics during the port.
 
-- **Dimension 2.1** — fresh-database migrate: applied-version set and bookkeeping rows identical to the Zig migrator → Test `test_migrate_parity_fresh_db`
-- **Dimension 2.2** — two concurrent migrators: one applies, one waits and no-ops; no double-apply → Test `test_migrate_advisory_lock_contention`
-- **Dimension 2.3** — a failing migration records a failure row and never marks success → Test `test_migrate_failure_bookkeeping`
-- **Dimension 2.4** — pool acquire distinguishes capacity timeout from datastore-unavailable → Test `test_pool_error_classes`
+- **Dimension 2.1** — fresh-database migrate: applied-version set and bookkeeping rows identical to the Zig migrator → Test `test_migrate_parity_fresh_db` — **DONE**
+- **Dimension 2.2** — two concurrent migrators: one applies, one waits and no-ops; no double-apply → Test `test_migrate_advisory_lock_contention` — **DONE**
+- **Dimension 2.3** — a failing migration records a failure row and never marks success → Test `test_migrate_failure_bookkeeping` — **DONE**
+- **Dimension 2.4** — pool acquire distinguishes capacity timeout from datastore-unavailable → Test `test_pool_error_classes` — **DONE**
 
 ### §3 — afd_redis: streams, hub, sessions
 

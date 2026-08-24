@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_core", "crates/afd_crypto", "crates/afd_wire"]
+members = ["crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_wire"]
 
 [workspace.package]
 version = "0.26.2"
@@ -35,6 +35,7 @@ categories = ["network-programming"]
 # path (M-CRATES-IN-WORKSPACE).
 afd_core = { path = "crates/afd_core", version = "0.26.2" }
 afd_crypto = { path = "crates/afd_crypto", version = "0.26.2" }
+afd_db = { path = "crates/afd_db", version = "0.26.2" }
 
 # `default-features = false` throughout, features named explicitly, so a member
 # cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).
@@ -56,6 +57,29 @@ subtle = { version = "2.6.1", default-features = false }
 zeroize = { version = "1.9.0", default-features = false, features = ["alloc"] }
 # The only system call this workspace's crypto makes.
 getrandom = { version = "0.4.3", default-features = false }
+
+# Postgres. sqlx is the DRIVER here and nothing more: `migrate` and `macros` are
+# both off, because this workspace runs the Zig daemon's own ledger
+# (`audit.schema_migrations`, versions equal to the schema slot numbers, one
+# advisory key) against databases the Zig daemon already migrated. sqlx's
+# built-in migrator keeps a different ledger under a different lock, so enabling
+# it would mean two migrators disagreeing about the same database.
+#
+# `tls-rustls-ring-webpki` rather than native roots: the trust anchors ship in
+# the binary, so a slim container without `ca-certificates` still verifies. Pure
+# Rust either way, which is the no-C posture afd_crypto already holds.
+sqlx = { version = "0.9.0", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls-ring-webpki",
+    "postgres",
+] }
+# The runtime sqlx drives. `rt-multi-thread` is a dev-dependency concern (the
+# contention tests need real parallelism); the library asks only for what it
+# uses at a call site.
+tokio = { version = "1.53.1", default-features = false, features = ["rt", "time", "macros"] }
+# The logging facade. §6 attaches the OTLP subscriber; until then these events
+# go nowhere by default, which is the correct behaviour for a library.
+tracing = { version = "0.1.44", default-features = false, features = ["std", "attributes"] }
 
 [workspace.lints.rust]
 # Every rustc warning is an error; individual lints below raise their own level
