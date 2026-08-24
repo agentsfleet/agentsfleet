@@ -24,7 +24,12 @@ edition = "2024"
 # published libraries; these crates have no external consumers and are built
 # only by rust-toolchain.toml's pin, so a lower floor would be an untested claim).
 rust-version = "1.98"
-license = "Apache-2.0"
+# MIT, matching the repository's own `LICENSE` and `cli/package.json`. The
+# manifest said Apache-2.0 from its first commit, which made this workspace the
+# only part of the product claiming a licence the project does not ship under —
+# a claim a downstream reader would have taken at face value.
+license = "MIT"
+authors = ["Kishore Kumar (indykish) <nkishore@megam.io>"]
 repository = "https://github.com/agentsfleet/agentsfleet"
 readme = "../../README.md"
 keywords = ["agentsfleet", "daemon", "runner"]
@@ -149,7 +154,14 @@ sqlx = { version = "0.9.0", default-features = false, features = [
 # The runtime sqlx drives. `rt-multi-thread` is a dev-dependency concern (the
 # contention tests need real parallelism); the library asks only for what it
 # uses at a call site.
-tokio = { version = "1.53.1", default-features = false, features = ["rt", "time", "macros"] }
+# `sync` carries `Semaphore`, which IS the admission ceiling: `try_acquire_owned`
+# refuses instantly when the instance is full and hands back a permit that
+# releases on drop, so a shed needs no counter arithmetic and a completed
+# request needs no release path to forget. It was already reaching these crates
+# through redis and sqlx's own feature sets — naming it here makes three
+# existing call sites (`hub.rs`, `jwks/cache.rs`) depend on a stated feature
+# rather than on unification holding.
+tokio = { version = "1.53.1", default-features = false, features = ["rt", "sync", "time", "macros"] }
 # Redis. The crate replaces roughly three thousand lines of hand-rolled RESP
 # parsing, connection pooling and pub/sub plumbing under `src/agentsfleetd/
 # queue/`. `connection-manager` is the piece that earns it: one multiplexed
@@ -199,6 +211,15 @@ tower-http = { version = "0.7.0", default-features = false, features = [
     "limit",
     "trace",
 ] }
+# The HTTP/1 connection underneath axum, taken DIRECTLY rather than through
+# `axum::serve`, for one reason: `axum::serve` exposes no way to bound the
+# header buffer, and §5's Dimension 5.3 is precisely a bound on the header
+# buffer. `server` + `http1` only — no client, and no h2 for a hop the
+# dashboard proxy already terminates.
+hyper = { version = "1.11.0", default-features = false, features = ["server", "http1"] }
+# The tokio adapter for hyper's own I/O traits, and nothing else: `TokioIo` is
+# what lets a `tokio::net::TcpStream` be served by a hyper connection.
+hyper-util = { version = "0.1.20", default-features = false, features = ["tokio"] }
 # The HTTP vocabulary types, shared with axum rather than re-exported through
 # it: `route_meta` names methods and statuses and has no business depending on
 # a web framework to do it.
