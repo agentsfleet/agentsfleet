@@ -182,12 +182,13 @@ redis = { version = "1.6.0", default-features = false, features = [
 # POST and DELETE only, and httpz keeps a separate `_head` table the daemon
 # registers nothing into — so the router turns that off explicitly rather than
 # inheriting a method the scope table has no rung for.
+# Features are added by the code that uses them, like the dependencies
+# themselves. `query` pulls serde_urlencoded and `matched-path` is §6's, so
+# neither is here yet; `json` is absent because the problem+json envelope
+# writes its own body and content type.
 axum = { version = "0.8.9", default-features = false, features = [
     "http1",
-    "json",
     "tokio",
-    "query",
-    "matched-path",
 ] }
 # Tower is the middleware algebra axum composes; `tower-http` carries the
 # ready-made layers. The admission ceiling is ours (it counts in-flight
@@ -267,6 +268,28 @@ pedantic = { level = "deny", priority = -1 }
 perf = { level = "deny", priority = -1 }
 style = { level = "deny", priority = -1 }
 suspicious = { level = "deny", priority = -1 }
+
+# The one `cargo` lint that is turned off, and why it cannot be satisfied.
+#
+# The workspace resolves TWO versions of `syn`, from two chains and neither is
+# ours to remove:
+#
+#   syn 2 ← url → idna → icu_normalizer → icu_collections → yoke-derive, and
+#           `url` arrives from redis AND reqwest AND sqlx-core independently
+#   syn 3 ← serde_derive, thiserror-impl
+#
+# Dropping either means dropping Redis, HTTP or Postgres. The lint reads the
+# whole workspace resolve and attaches its diagnostic to whichever crate is
+# being compiled, so which member goes red is an artefact of build order rather
+# than of anything that member did — `afd_api` fails it today with a graph that
+# contains no syn 2 at all.
+#
+# This is NOT a general amnesty on duplicate dependencies. Where a duplicate IS
+# ours to avoid we still avoid it: `zeroize` is taken without `derive` for
+# exactly this reason (see its note above), and the problem+json envelope
+# builds a `serde_json::Map` rather than deriving `Serialize`. What this allows
+# is the case where the only remedy would be to delete a datastore.
+multiple_crate_versions = "allow"
 
 # The `restriction` picks that carry the port's own guarantees. `unwrap`,
 # `expect` and `panic` are denied because these crates are linked into a daemon
