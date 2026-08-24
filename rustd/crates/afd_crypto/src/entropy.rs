@@ -51,6 +51,71 @@ impl Source {
     }
 }
 
+/// Random bytes, for callers outside this crate.
+///
+/// The sealing path reaches [`Source`] directly; this is the same source
+/// wearing a public face, so a second consumer does not become a second
+/// `getrandom` call site. That matters beyond tidiness: "this crate makes one
+/// system call" is a claim the dependency graph can be audited for, and it
+/// stops being auditable the moment another crate can draw its own bytes.
+///
+/// # What this is NOT for
+///
+/// Key and nonce material. Those are [`crate::envelope::Sealer`]'s, which draws
+/// them where it uses them so a caller never holds them. This is for the
+/// non-secret identifiers a daemon mints — a request id, a correlation token —
+/// where the requirement is uniqueness rather than secrecy but a predictable
+/// sequence would still be worse than none.
+#[derive(Debug, Clone)]
+pub struct Entropy {
+    source: Source,
+}
+
+impl Entropy {
+    /// Bytes from the operating system.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            source: Source::Native,
+        }
+    }
+
+    /// Bytes from a controller the caller drives.
+    ///
+    /// Returns the pair rather than accepting a controller, matching
+    /// [`crate::envelope::Sealer::new_mocked`] and for the same reason
+    /// (`M-MOCKABLE-SYSCALLS`): two sources sharing one controller would make
+    /// the sequence ambiguous.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn new_mocked() -> (Self, MockCtrl) {
+        let ctrl = MockCtrl::new();
+        (
+            Self {
+                source: Source::Mocked(ctrl.clone()),
+            },
+            ctrl,
+        )
+    }
+
+    /// Fills `buf` with random bytes.
+    ///
+    /// # Errors
+    /// Returns an entropy error when the operating system refuses. A host that
+    /// cannot produce entropy cannot seal either, so this is fatal rather than
+    /// retryable, and the reason is deliberately not surfaced — it is not
+    /// something a caller can act on.
+    pub fn fill(&self, buf: &mut [u8]) -> Result<(), Error> {
+        self.source.fill(buf)
+    }
+}
+
+impl Default for Entropy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(feature = "test-util")]
 pub use mock::MockCtrl;
 

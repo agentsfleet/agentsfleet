@@ -59,6 +59,7 @@ fn test_error_registry_unique() {
         error_code::APIKEY_REVOKED,
         error_code::RUN_INVALID_RUNNER_TOKEN,
         error_code::RUN_ADMIN_STATE_BLOCKED,
+        error_code::API_BACKPRESSURE,
     ] {
         assert!(
             REGISTRY.contains(&named),

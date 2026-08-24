@@ -239,6 +239,16 @@ const ENTRIES: &[Problem] = &[
         hint: "This runner is cordoned, draining, drained, or revoked and cannot call the runner plane. Re-enroll the host to mint a fresh runner token.",
         user_message: None,
     },
+    Problem {
+        code: error_code::API_BACKPRESSURE,
+        status: 429,
+        title: "Too many requests",
+        hint: "The API is at its request limit. Wait for the Retry-After delay, then retry.",
+        // No dashboard sentence, and the Zig entry says why in its own
+        // reachability note: a shed happens before routing, so nothing that
+        // renders a problem page is ever reached to render this one.
+        user_message: None,
+    },
 ];
 
 /// Every entry, for the exhaustive walks the tests do.
