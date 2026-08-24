@@ -31,7 +31,12 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 # The contention proofs need real parallelism, not a current-thread runtime
 # interleaving two futures politely.
-tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
+# `net` and `io-util` belong to the fault-injection harness, not the library:
+# `tests/support/fault_net.rs` stands a TCP proxy in front of Postgres so a test
+# can make the datastore stop answering mid-run, which is the only way to reach
+# the handshake-deadline and pool-exhaustion branches a healthy server never
+# produces.
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "net", "io-util", "macros", "time"] }
 
 [lints]
 workspace = true
