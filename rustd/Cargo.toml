@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_identity", "crates/afd_redis", "crates/afd_wire"]
+members = ["crates/afd_api", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_identity", "crates/afd_redis", "crates/afd_wire"]
 
 [workspace.package]
 version = "0.26.2"
@@ -33,6 +33,7 @@ categories = ["network-programming"]
 [workspace.dependencies]
 # Intra-workspace members resolve through the workspace, never by direct sibling
 # path (M-CRATES-IN-WORKSPACE).
+afd_api = { path = "crates/afd_api" }
 afd_auth = { path = "crates/afd_auth" }
 afd_core = { path = "crates/afd_core" }
 afd_crypto = { path = "crates/afd_crypto" }
@@ -165,6 +166,43 @@ redis = { version = "1.6.0", default-features = false, features = [
     "streams",
     "script",
 ] }
+# The HTTP shell. axum replaces `src/agentsfleetd/http/router.zig` and the ten
+# hand-rolled `route_matchers_*.zig` files with a router that matches paths and
+# extracts parameters for us — roughly a thousand lines of matching logic that
+# stops being ours to keep correct.
+#
+# `default-features = false` drops `form`, `multipart` and the macros: this API
+# speaks JSON, and a body format the daemon never accepts is a parser it should
+# not link. `http1` only — the dashboard proxy terminates TLS and speaks HTTP/1
+# upstream, and `http2` would pull a second frame layer for a hop that has no
+# use for one. `tokio` for the listener, `json` for the envelope.
+#
+# NOTE for §5's route table: axum's `get()` handler ALSO answers HEAD by
+# default. agentsfleetd has never served HEAD — its matchers switch on GET,
+# POST and DELETE only, and httpz keeps a separate `_head` table the daemon
+# registers nothing into — so the router turns that off explicitly rather than
+# inheriting a method the scope table has no rung for.
+axum = { version = "0.8.9", default-features = false, features = [
+    "http1",
+    "json",
+    "tokio",
+    "query",
+    "matched-path",
+] }
+# Tower is the middleware algebra axum composes; `tower-http` carries the
+# ready-made layers. The admission ceiling is ours (it counts in-flight
+# requests per route CLASS, which no off-the-shelf layer knows about), but the
+# request-id, timeout and body-limit layers are not worth rewriting.
+tower = { version = "0.5.3", default-features = false, features = ["util"] }
+tower-http = { version = "0.7.0", default-features = false, features = [
+    "limit",
+    "trace",
+] }
+# The HTTP vocabulary types, shared with axum rather than re-exported through
+# it: `route_meta` names methods and statuses and has no business depending on
+# a web framework to do it.
+http = { version = "1.5.0", default-features = false, features = ["std"] }
+
 # Stream combinators for the pub/sub pump. `std` only — no executor, no
 # thread pool; the runtime is tokio's.
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
