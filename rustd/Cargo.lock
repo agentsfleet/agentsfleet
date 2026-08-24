@@ -136,6 +136,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_state"
+version = "0.26.2"
+dependencies = [
+ "afd_auth",
+ "afd_core",
+ "afd_db",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "afd_wire"
 version = "0.26.2"
 dependencies = [

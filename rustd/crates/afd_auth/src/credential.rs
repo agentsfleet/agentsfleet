@@ -41,8 +41,21 @@ use std::fmt;
 /// marker, and an arm wherever a [`crate::authenticate::Registry`] dispatches —
 /// and the build fails until all three exist. That is the same guarantee
 /// [`crate::scope::Scope`] gets from its exhaustive `wire()`/`bit()` matches.
+///
+/// # Why this is not `#[non_exhaustive]`
+///
+/// It was, and the attribute made the paragraph above false. `#[non_exhaustive]`
+/// forces every crate OUTSIDE this one to write a `_` arm, and the crate that
+/// most needs to match exhaustively — whichever one implements
+/// [`crate::directory::CredentialDirectory`] — is outside by construction,
+/// because `afd_auth` cannot name `sqlx`. A new class would have fallen into
+/// somebody's catch-all and resolved to nothing, silently, which is the exact
+/// failure the doc promises cannot happen.
+///
+/// The attribute buys API stability for downstream semver, and these crates
+/// have no downstream: they are built only by this workspace's pinned
+/// toolchain. It cost a compile-time guarantee and bought nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[non_exhaustive]
 pub enum CredentialKind {
     /// `agt_t` — a tenant api-key, resolving to the person who minted it.
     TenantApiKey,
