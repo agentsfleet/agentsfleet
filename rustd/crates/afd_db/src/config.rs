@@ -17,8 +17,8 @@ use std::time::Duration;
 
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 
-use crate::env::EnvSource;
 use crate::error::{Error, ErrorKind};
+use afd_core::env::EnvSource;
 
 /// Pool size default: the API in-flight ceiling divided by the number of
 /// requests that share one connection. Many concurrent requests need far fewer

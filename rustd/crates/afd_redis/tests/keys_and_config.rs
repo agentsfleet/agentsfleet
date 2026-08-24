@@ -1,0 +1,249 @@
+//! The shapes both binaries have to agree on, checked without a server.
+//!
+//! Every key format, knob name and constant here is read or written by the Zig
+//! daemon too. A drift in any of them is not a failed test in production — it
+//! is two processes quietly using different keys against the same Redis, which
+//! looks like lost events rather than like a bug.
+#![cfg(feature = "test-util")]
+#![expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
+
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use afd_core::env::MapEnv;
+use afd_redis::Backoff;
+use afd_redis::config::{CA_CERT_FILE_KNOB, RedisConfig, RedisRole};
+use afd_redis::ready::READY_INDEX_KEY;
+use afd_redis::session::{SESSION_KEY_PREFIX, SESSION_TTL, session_key};
+use afd_redis::streams::{FLEET_CONSUMER_GROUP, fleet_stream_key};
+
+const URL: &str = "rediss://:secret@localhost:6379";
+
+fn env_with(pairs: &[(&str, &str)]) -> MapEnv {
+    MapEnv::from_pairs(pairs.iter().copied())
+}
+
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .unwrap()
+        .to_path_buf()
+}
+
+/// The key every fleet's events live on, and the group they are read under.
+///
+/// Compared against `queue/constants.zig` rather than against a literal
+/// repeated here, so the assertion cannot drift with the thing it checks.
+#[test]
+fn test_stream_key_and_group_match_the_zig_constants() {
+    assert_eq!(
+        fleet_stream_key("fleet_0123"),
+        "fleet:fleet_0123:events",
+        "the producer and every consumer agree byte-for-byte or events vanish"
+    );
+
+    let constants =
+        std::fs::read_to_string(repo_root().join("src/agentsfleetd/queue/constants.zig")).unwrap();
+    assert!(
+        constants.contains(r#"fleet_stream_prefix = "fleet:""#)
+            && constants.contains(r#"fleet_stream_suffix = ":events""#),
+        "the Zig side spells the stream key differently"
+    );
+    assert!(
+        constants.contains(&format!(r#""{FLEET_CONSUMER_GROUP}""#)),
+        "the Zig side reads under a different consumer group"
+    );
+    assert!(
+        constants.contains(&format!(r#"ready_index_key = "{READY_INDEX_KEY}""#)),
+        "the Zig side keeps its readiness index somewhere else"
+    );
+}
+
+/// The session key and time-to-live, likewise single-sourced against Zig.
+#[test]
+fn test_session_key_and_ttl_match_the_zig_store() {
+    assert_eq!(session_key("abc"), "auth:session:abc");
+    assert_eq!(SESSION_TTL, Duration::from_secs(300));
+
+    let store = std::fs::read_to_string(
+        repo_root().join("src/agentsfleetd/session/session_store_redis.zig"),
+    )
+    .unwrap();
+    assert!(
+        store.contains(&format!(
+            r#"SESSION_KEY_PREFIX: []const u8 = "{SESSION_KEY_PREFIX}""#
+        )),
+        "the Zig store uses a different key prefix"
+    );
+    assert!(
+        store.contains(&format!(
+            "SESSION_TTL_SECONDS: u32 = {}",
+            SESSION_TTL.as_secs()
+        )),
+        "the Zig store uses a different time-to-live"
+    );
+}
+
+/// The atomic transition is the SAME FILE, not a port of it.
+///
+/// This is the assertion that makes the sharing real: if someone copies the
+/// script into this crate, or the Zig side stops embedding it, the include
+/// path breaks the build or this test fails — either way nobody ends up with
+/// two scripts that agreed when they were written.
+#[test]
+fn test_the_verify_script_is_shared_with_the_zig_daemon() {
+    let script_path = repo_root().join("src/agentsfleetd/session/session_verify_consume.lua");
+    let script = std::fs::read_to_string(&script_path).expect("the shared script must exist");
+    assert!(
+        script.contains(r#"redis.call("GET", key)"#) && script.contains(r#"s.status = "consumed""#),
+        "the shared script is not the verify-and-consume transition"
+    );
+
+    let proto = std::fs::read_to_string(
+        repo_root().join("src/agentsfleetd/session/session_store_redis_proto.zig"),
+    )
+    .unwrap();
+    assert!(
+        proto.contains(r#"@embedFile("session_verify_consume.lua")"#),
+        "the Zig daemon stopped embedding the script this crate includes"
+    );
+}
+
+/// The two roles read the two knobs the daemon documents.
+#[test]
+fn test_role_url_knobs_match_the_zig_daemon() {
+    assert_eq!(RedisRole::Default.url_knob(), "REDIS_URL");
+    assert_eq!(RedisRole::Api.url_knob(), "REDIS_URL_API");
+    assert_eq!(RedisRole::ALL.len(), 2, "Redis has no migrator role");
+}
+
+/// A role resolves from its own knob and is never handed another's.
+#[test]
+fn test_each_role_resolves_only_its_own_knob() {
+    let env = env_with(&[("REDIS_URL", URL)]);
+    RedisConfig::resolve(&env, RedisRole::Default).expect("REDIS_URL resolves");
+
+    let error = RedisConfig::resolve(&env, RedisRole::Api).expect_err("no fallback between roles");
+    assert!(error.is_config(), "got {error}");
+    assert!(error.to_string().contains("REDIS_URL_API"));
+}
+
+/// Unset, blank, and not-a-Redis-URL are all refused at resolve.
+#[test]
+fn test_malformed_urls_are_refused() {
+    for bad in ["", "   ", "http://localhost:6379", "localhost:6379"] {
+        let env = env_with(&[("REDIS_URL", bad)]);
+        let error =
+            RedisConfig::resolve(&env, RedisRole::Default).expect_err("not a Redis URL: {bad:?}");
+        assert!(error.is_config(), "{bad:?} gave {error}");
+        assert_eq!(error.code().as_str(), "UZ-STARTUP-004");
+    }
+}
+
+/// Both schemes are accepted, and only `rediss://` means TLS.
+#[test]
+fn test_tls_is_the_scheme_not_a_guess() {
+    let plain = RedisConfig::resolve(
+        &env_with(&[("REDIS_URL", "redis://localhost:6379")]),
+        RedisRole::Default,
+    )
+    .unwrap();
+    assert!(!plain.is_tls());
+
+    let tls = RedisConfig::resolve(&env_with(&[("REDIS_URL", URL)]), RedisRole::Default).unwrap();
+    assert!(tls.is_tls(), "rediss:// is the TLS spelling");
+}
+
+/// The request deadline defaults to the documented five seconds, and a knob
+/// that cannot be read does not silently become zero.
+#[test]
+fn test_request_timeout_knob() {
+    let default =
+        RedisConfig::resolve(&env_with(&[("REDIS_URL", URL)]), RedisRole::Default).unwrap();
+    assert_eq!(default.request_timeout(), Duration::from_millis(5_000));
+
+    let tuned = RedisConfig::resolve(
+        &env_with(&[("REDIS_URL", URL), ("REDIS_REQUEST_TIMEOUT_MS", " 250\n")]),
+        RedisRole::Default,
+    )
+    .unwrap();
+    assert_eq!(tuned.request_timeout(), Duration::from_millis(250));
+
+    for bad in ["0", "banana", ""] {
+        let config = RedisConfig::resolve(
+            &env_with(&[("REDIS_URL", URL), ("REDIS_REQUEST_TIMEOUT_MS", bad)]),
+            RedisRole::Default,
+        )
+        .unwrap();
+        assert_eq!(
+            config.request_timeout(),
+            Duration::from_millis(5_000),
+            "{bad:?} must fall back, not disable the deadline"
+        );
+    }
+}
+
+/// The certificate authority path is read from the knob the Zig side reads.
+#[test]
+fn test_ca_cert_file_comes_from_the_documented_knob() {
+    assert_eq!(CA_CERT_FILE_KNOB, "REDIS_TLS_CA_CERT_FILE");
+
+    let with_ca = RedisConfig::resolve(
+        &env_with(&[("REDIS_URL", URL), (CA_CERT_FILE_KNOB, "/tmp/ca.crt")]),
+        RedisRole::Default,
+    )
+    .unwrap();
+    assert_eq!(with_ca.ca_cert_file(), Some(Path::new("/tmp/ca.crt")));
+
+    let without =
+        RedisConfig::resolve(&env_with(&[("REDIS_URL", URL)]), RedisRole::Default).unwrap();
+    assert!(
+        without.ca_cert_file().is_none(),
+        "no knob means the system trust store, not an empty path"
+    );
+}
+
+/// The reconnect schedule grows, stops growing, and never waits forever.
+///
+/// The property that matters is the ceiling: a backoff that keeps doubling
+/// turns a ten-minute Redis outage into an hour-long one, because the last
+/// sleep started before Redis came back.
+#[test]
+fn test_backoff_grows_then_caps() {
+    let backoff = Backoff::new(Duration::from_millis(100), Duration::from_millis(800));
+    let delays: Vec<Duration> = (0..8).map(|attempt| backoff.delay(attempt, 0)).collect();
+
+    assert_eq!(delays[0], Duration::from_millis(100));
+    assert_eq!(delays[1], Duration::from_millis(200));
+    assert_eq!(delays[2], Duration::from_millis(400));
+    for delay in &delays {
+        assert!(
+            *delay <= Duration::from_millis(1_000),
+            "{delay:?} past the cap"
+        );
+    }
+    assert_eq!(
+        delays[7],
+        Duration::from_millis(800),
+        "the schedule must settle at its ceiling, not keep climbing"
+    );
+}
+
+/// Jitter spreads the delay without letting it collapse or overshoot.
+#[test]
+fn test_backoff_jitter_stays_inside_its_quarter() {
+    let backoff = Backoff::new(Duration::from_millis(400), Duration::from_millis(400));
+    for jitter in [0, 1, 37, u64::MAX] {
+        let delay = backoff.delay(3, jitter);
+        assert!(
+            delay >= Duration::from_millis(400) && delay < Duration::from_millis(500),
+            "{jitter} produced {delay:?}"
+        );
+    }
+}

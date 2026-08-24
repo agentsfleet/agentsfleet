@@ -10,9 +10,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_core::env::MapEnv;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_db::env::MapEnv;
 
 #[path = "support/test_database.rs"]
 mod support;

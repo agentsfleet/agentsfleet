@@ -15,8 +15,8 @@
 
 use std::time::Duration;
 
+use afd_core::env::MapEnv;
 use afd_db::config::{DbRole, EnvBool, PoolConfig, parse_env_bool};
-use afd_db::env::MapEnv;
 
 const URL: &str = "postgres://agentsfleet:secret@localhost:5432/agentsfleetdb?sslmode=disable";
 

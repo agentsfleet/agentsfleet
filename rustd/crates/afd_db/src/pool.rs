@@ -30,8 +30,8 @@ use sqlx::postgres::{PgPool, PgPoolOptions};
 use sqlx::{Connection as _, Postgres};
 
 use crate::config::{DbRole, PoolConfig};
-use crate::env::EnvSource;
 use crate::error::{Error, classify_acquire, unreachable_datastore};
+use afd_core::env::EnvSource;
 
 /// One role's connection pool.
 #[derive(Debug, Clone)]
