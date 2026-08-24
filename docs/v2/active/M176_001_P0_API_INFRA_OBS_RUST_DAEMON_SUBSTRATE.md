@@ -510,7 +510,7 @@ which is why none of them justified moving a number:
 kernel's entropy pool to fail. §7 closes it or names it as the single exception,
 once, with the reason written down.
 
-### The §1–§4 patch residue closed, and the four lines that did not (EXECUTE, Aug 24, 2026)
+### The §1–§4 patch residue closed, and the defect it surfaced (EXECUTE, Aug 24, 2026)
 
 `codecov/patch/rust-afd` had been red since `168998dbe` — not on §4's diff, which
 is 1060/1060, but because a patch status compares head to the PR BASE, so the
@@ -518,62 +518,76 @@ is 1060/1060, but because a patch status compares head to the PR BASE, so the
 failed it. A previous handoff called that commit "CI green"; it was not, and the
 claim was repeated once more before anybody checked.
 
-**Thirty-six are now closed by real fault injection**, workspace coverage
-98.74% → **99.87%** (3192/3196), integration suite 23 → 30 tests. Two fixtures do
-the work, and both stand up a server rather than mocking a client:
+**All forty are closed. The workspace is at 100.00% (3193/3193)**, up from
+98.74%; the integration suite went 23 → 31 tests and the measured suite to 494.
+Nothing was named under `codecov.yml`'s escape clause, and the number did not
+move.
+
+**Two fixtures did the work**, and both stand up a server rather than mocking a
+client:
 
 - `afd_redis/tests/support/fake_redis.rs` — a plain-TCP RESP server that answers
   wrongly on purpose. It parses the sliver of RESP the client actually speaks,
-  answers per a rule table that a test can **change mid-flight**, and can cut
-  live connections or free its port independently. The mid-flight change is what
-  reaches a redial that succeeds and then cannot resubscribe; a fixture fixed at
-  spawn time can describe the before or the after, never the transition.
+  answers per a rule table a test can **change mid-flight**, and can cut live
+  connections, free its port, and report how many connections it is serving, as
+  separate controls. The mid-flight change is what reaches a redial that succeeds
+  and then cannot resubscribe; a fixture fixed at spawn time can describe the
+  before or the after, never the transition.
 - `afd_db/tests/support/fault_net.rs` — a TCP proxy in front of the lane's
-  Postgres that can stop relaying, holding accepted sockets OPEN rather than
-  closing them. Closing gives a clean refusal, which is the case these branches
-  are not about; the branch under test is the one where no answer ever comes.
+  Postgres. It can stop relaying while **holding accepted sockets open** (closing
+  them gives a clean refusal, which is the case those branches are not about),
+  and it can kill a connection **when it recognises a statement on the wire**.
 
-Closed: `migrate.rs` 9 of 10 · `ledger.rs` 4 · `lock.rs` 2 · `pool.rs` 3 ·
-`hub/pump.rs` 12 of 15 · `redis/error.rs` 4 · `client.rs` 1 · `streams.rs` 1.
+That last control is what made `migrate.rs:196` — `connection.begin()` failing —
+reachable at all, and it is worth stating as a technique. The connection has to
+be dead at exactly that call: everything earlier in `apply_all` touches the same
+connection and would fail first, and the gap between the previous migration's
+`commit()` and this `begin()` holds no await point a clock-driven test can aim
+at. Timing cannot express "this statement and no earlier one". The wire can,
+because the statement names itself — the lane runs `sslmode=disable`, so the
+proxy sees `BEGIN` in plaintext and drops the connection rather than forwarding
+it. Deterministic by construction, with no retry and no sleep.
 
-**Four remain, and they are two different things — only one of them is a
-coverage question.**
+#### The defect three of the forty were hiding
 
-| Line | Why it is uncovered |
-|---|---|
-| `afd_redis/src/hub/pump.rs` 76, 104, 126 | **Unreachable by construction — a defect, not untestable code.** See below. |
-| `afd_db/src/migrate.rs` 196 | Genuinely resists deterministic injection. See below. |
+`hub/pump.rs` 76, 104 and 126 were not untested. They were **unreachable by
+construction, because of a bug**: `HubInner` owned the only
+`UnboundedSender<Command>`, and `pump::run` holds an `Arc<HubInner>` for its
+entire life. Nothing ever dropped that sender — no `Drop` for `SubscriptionHub`
+or `HubInner`, and `shutdown()` only clears the channel map. So
+`commands.recv()` could never return `None`; `None => return false` was dead, so
+`pump()` never returned false and its `return` was dead, so `run()` never
+returned and its closing brace was dead. **The pub/sub pump task could never
+terminate**, and a process held a live Redis socket with no way to stop it —
+directly against Invariant C2 (stop → join → drop), and with no stop path for
+§7's supervisor to join.
 
-**`pump.rs` 76/104/126 — the pub/sub pump can never terminate.** `HubInner` owns
-the only `UnboundedSender<Command>`, and `pump::run` holds an `Arc<HubInner>` for
-its entire life. Nothing drops that sender: there is no `Drop` for
-`SubscriptionHub` or `HubInner`, and `shutdown()` only clears the channel map. So
-`commands.recv()` can never return `None`, which makes `None => return false`
-(126) dead, `pump()` never returns false so `return` (76) is dead, and `run()`
-never returns so its closing brace (104) is dead. The task leaks, and a process
-holds a live Redis socket it has no way to stop.
+Recording those three under the "genuinely resists" clause would have written a
+defect into the record as a property of the code. They were fixed instead.
 
-This is **§7's to fix**, alongside `JwksVerifier::prime()`: Invariant C2 says
-every background task owns a cancellation token and an awaited join handle —
-stop → join → drop — and this task has no stop path at all. The fix is for the
-pump to hold a `Weak<HubInner>` and upgrade only where it dispatches, so the last
-handle going away drops the sender and the three lines become live. It is NOT
-done here, because changing the hub's lifetime semantics belongs in the commit
-that builds the supervisor around it, not in a coverage pass.
+**The fix, and why it is shaped this way.** The sender moved OFF `HubInner` and
+onto the handles that represent a caller's interest — `SubscriptionHub` and
+`Subscription`. The pump's `Arc<HubInner>` no longer keeps its own wake-up
+signal alive, so the last handle dropping closes the channel and the pump
+returns. `HubInner::release` now takes the sender as an argument, which keeps the
+`Unsubscribe` send **inside the locked region** where it already was: an
+`Unsubscribe` that overtook the `Subscribe` of a reader arriving on the same
+channel would leave that reader holding a live subscription the server had been
+told to drop, and that ordering is what the lock is for.
 
-**Recording these three as "genuinely resist" would be wrong** and is the reason
-this paragraph is long: `codecov.yml`'s escape hatch is for a line that resists
-TESTING. These resist EXECUTION, because of a bug. Naming them under that clause
-would bake the defect into the record as if it were a property of the code.
+A `Weak<HubInner>` in the pump was the other candidate and was rejected: it
+requires an upgrade at each use, and the failed-upgrade arms are themselves
+branches reachable only in a narrow race — it would have closed three uncovered
+lines by adding three more.
 
-**`migrate.rs:196` — `connection.begin()` failing.** The connection has to be
-dead at exactly that call. Everything before it in `apply_all` — `ensure_tables`,
-two `Ledger::read`s, `reap_orphans` — touches the same connection and would fail
-first, and the window between the previous migration's `commit()` and this
-`begin()` contains no await point a test can hook. Killing the backend earlier
-produces a different error from a different line; killing it later is not this
-branch. Both fixtures above were tried against it. This one is named under
-`codecov.yml`'s own clause, with that reason.
+`test_dropping_every_handle_stops_the_pump_and_closes_the_socket` holds it, and
+counts connections **server-side**: a client-side assertion could only say the
+hub stopped being used, while only the server can say the socket actually
+closed. It also holds the half that is easy to break — a reader outliving the
+hub keeps its connection, because a `Subscription` is a handle too.
+
+§7 still owns the supervisor (cancellation token, awaited join handle). What
+changed here is that there is now something for it to join.
 
 ## Time, and why no date library
 

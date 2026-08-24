@@ -25,8 +25,9 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use afd_core::env::MapEnv;
-use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
+use afd_db::migration::Migration;
+use afd_db::{Db, Migrator};
 
 #[path = "support/fault_net.rs"]
 mod fault_net;
@@ -41,6 +42,14 @@ const ACQUIRE_BUDGET_MS: &str = "400";
 
 /// The same, for the handshake the probe makes.
 const CONNECT_BUDGET: Duration = Duration::from_millis(400);
+
+/// One migration that would apply cleanly, so the only thing that can go wrong
+/// is the transaction the migrator opens to apply it in.
+const TRIVIAL: &[Migration] = &[Migration::for_test(
+    9101,
+    "9101_trivial.sql",
+    "CREATE TABLE public.trivial_marker (id int)",
+)];
 
 /// The lane's Postgres, as an address a proxy can forward to.
 fn lane_target() -> SocketAddr {
@@ -153,6 +162,52 @@ async fn test_losing_the_datastore_after_connect_is_not_reported_as_capacity() {
     assert!(
         !error.is_pool_capacity(),
         "a pool that never opened a connection did not run out of them: {error}"
+    );
+
+    db.close().await;
+}
+
+/// A migrator whose connection dies at the transaction it is about to open
+/// reports the `BEGIN` that failed, not a migration that did.
+///
+/// The distinction is the whole point of the branch. Nothing has been applied
+/// and nothing has failed to apply — the connection went away between the
+/// ledger read and the transaction — so reporting a migration failure here
+/// would write a failure row for a migration that never ran, and the next boot
+/// would report a version as broken when it had simply never been attempted.
+///
+/// Deterministic by construction rather than by timing. Every statement before
+/// this one travels on the same connection and would fail first if the kill
+/// were scheduled by a clock; the proxy instead recognises the `BEGIN` on the
+/// wire and drops the connection rather than forwarding it, so the failure
+/// lands at exactly one call and never earlier.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_a_connection_that_dies_at_begin_reports_the_transaction() {
+    install_subscriber();
+    let proxy = FaultProxy::cutting_on(lane_target(), b"BEGIN").await;
+
+    let db = Db::connect(&config_through(proxy.addr(), DbRole::Migrator))
+        .await
+        .expect("the proxy relays until a BEGIN, so the connect must succeed");
+
+    let error = Migrator::new()
+        .with_migrations(TRIVIAL)
+        .run(&db)
+        .await
+        .expect_err("a transaction that cannot be opened must fail the migrate");
+
+    assert!(
+        error.is_query(),
+        "the BEGIN failed, so this is a query error: {error}"
+    );
+    assert!(
+        !error.is_migration_failed(),
+        "no migration ran, so none may be reported as failed: {error}"
+    );
+    assert!(
+        error.to_string().contains("migrate.begin_tx"),
+        "the failure must name the operation that produced it: {error}"
     );
 
     db.close().await;

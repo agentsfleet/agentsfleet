@@ -234,3 +234,54 @@ async fn test_an_unsubscribe_over_a_dying_socket_is_a_dropped_connection() {
         "the last reader left, so nothing may be resubscribed on the new socket"
     );
 }
+
+/// The last handle going away stops the pump and closes the Redis socket.
+///
+/// This is Invariant C2's precondition — §7 cannot join a task that has no way
+/// to finish — and it is a claim about ownership, not about politeness. The
+/// pump holds an `Arc<HubInner>` for as long as it runs, so if the command
+/// sender lived in `HubInner` the pump would be keeping its own wake-up signal
+/// alive: `recv()` could never return `None`, the task would pump a live socket
+/// forever, and a process could accumulate one such task per hub it ever built.
+/// The sender therefore lives on the handles instead, and this is what holds it
+/// there.
+///
+/// Counted server-side on purpose. A client-side assertion could only say the
+/// hub stopped being used; only the server can say the socket actually closed.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_dropping_every_handle_stops_the_pump_and_closes_the_socket() {
+    install_subscriber();
+    let server = FakeRedis::spawn(&pubsub_rules()).await;
+    let config = RedisConfig::from_url(RedisRole::Default, server.url());
+
+    let hub = tokio::time::timeout(
+        BUDGET,
+        SubscriptionHub::start_with_backoff(config, IMPATIENT),
+    )
+    .await
+    .expect("the fake serves, so the hub must start")
+    .expect("the fake serves, so the hub must start");
+    let subscription = hub.subscribe("channel");
+    until("the hub's connection to reach the server", || {
+        server.live_connections() == 1
+    })
+    .await;
+
+    // A reader outliving the hub keeps the pump running: it still holds a
+    // sender, and its subscription is still live. Dropping the hub alone must
+    // NOT take the socket down underneath it.
+    drop(hub);
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(
+        server.live_connections(),
+        1,
+        "a live reader must keep the connection it is reading from"
+    );
+
+    // The last handle. Now there is nothing left to serve.
+    drop(subscription);
+    until("the pump to close its socket once nothing holds it", || {
+        server.live_connections() == 0
+    })
+    .await;
+}

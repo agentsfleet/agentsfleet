@@ -100,6 +100,9 @@ pub struct Subscription {
     channel: String,
     receiver: broadcast::Receiver<Message>,
     hub: Arc<HubInner>,
+    /// This reader's handle on the pump. Held here rather than reached through
+    /// `hub` for a lifetime reason, not a convenience one — see [`HubInner`].
+    commands: mpsc::UnboundedSender<Command>,
 }
 
 impl Subscription {
@@ -137,7 +140,7 @@ impl Subscription {
 
 impl Drop for Subscription {
     fn drop(&mut self) {
-        self.hub.release(&self.channel);
+        self.hub.release(&self.channel, &self.commands);
     }
 }
 
@@ -145,12 +148,22 @@ impl Drop for Subscription {
 #[derive(Debug, Clone)]
 pub struct SubscriptionHub {
     inner: Arc<HubInner>,
+    commands: mpsc::UnboundedSender<Command>,
 }
 
+/// The shared state, and deliberately NOT the command sender.
+///
+/// The pump task holds an `Arc<HubInner>` for as long as it runs. If the sender
+/// lived here, that `Arc` would keep it alive, `commands.recv()` could never
+/// return `None`, and the pump could never learn that the last handle had gone
+/// — a task that pumps a live Redis socket forever with no way to stop it, and
+/// no stop path for §7's supervisor to join. The sender therefore lives with
+/// the handles that represent a caller's interest: [`SubscriptionHub`] and
+/// [`Subscription`]. When the last of those drops, the channel closes and the
+/// pump returns.
 #[derive(Debug)]
 pub(crate) struct HubInner {
     channels: Mutex<HashMap<String, ChannelEntry>>,
-    commands: mpsc::UnboundedSender<Command>,
     /// How many times a connection has been established, including the first.
     /// A process that opens two has broken Invariant 2, and this is how a test
     /// sees it without counting sockets on the server.
@@ -188,12 +201,11 @@ impl SubscriptionHub {
         let (commands, receiver) = mpsc::unbounded_channel();
         let inner = Arc::new(HubInner {
             channels: Mutex::new(HashMap::new()),
-            commands,
             connections_opened: AtomicU64::new(0),
         });
 
         pump::spawn(config, backoff, Arc::clone(&inner), receiver).await?;
-        Ok(Self { inner })
+        Ok(Self { inner, commands })
     }
 
     /// Subscribes to `channel`, sharing the connection with every other reader.
@@ -213,10 +225,7 @@ impl SubscriptionHub {
                 // Sent while holding the lock on purpose: the pump must not see
                 // an Unsubscribe for a channel whose Subscribe has not been
                 // queued yet, and the lock is what orders them.
-                let _ = self
-                    .inner
-                    .commands
-                    .send(Command::Subscribe(channel.to_owned()));
+                let _ = self.commands.send(Command::Subscribe(channel.to_owned()));
                 receiver
             }
         };
@@ -225,6 +234,7 @@ impl SubscriptionHub {
             channel: channel.to_owned(),
             receiver,
             hub: Arc::clone(&self.inner),
+            commands: self.commands.clone(),
         }
     }
 
@@ -288,7 +298,13 @@ impl HubInner {
     }
 
     /// Drops one reader's interest, unsubscribing when the last one goes.
-    fn release(&self, channel: &str) {
+    ///
+    /// The sender arrives as an argument rather than as a field, and the send
+    /// happens while the channel map is still locked. That ordering is the
+    /// point: an `Unsubscribe` that overtook the `Subscribe` of a reader
+    /// arriving on the same channel would leave that reader holding a live
+    /// subscription the server had been told to drop.
+    fn release(&self, channel: &str, commands: &mpsc::UnboundedSender<Command>) {
         let mut channels = self.lock_channels();
         let Some(entry) = channels.get_mut(channel) else {
             return;
@@ -296,7 +312,7 @@ impl HubInner {
         entry.readers = entry.readers.saturating_sub(1);
         if entry.readers == 0 {
             channels.remove(channel);
-            let _ = self.commands.send(Command::Unsubscribe(channel.to_owned()));
+            let _ = commands.send(Command::Unsubscribe(channel.to_owned()));
         }
     }
 }

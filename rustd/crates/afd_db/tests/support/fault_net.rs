@@ -26,6 +26,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::{TcpListener, TcpStream};
 
 /// A TCP proxy in front of a real server, which can be told to stop relaying.
@@ -39,10 +40,29 @@ pub(crate) struct FaultProxy {
     listening: tokio::sync::watch::Sender<bool>,
 }
 
+/// A byte sequence that, when the client sends it, kills the connection.
+///
+/// This is what makes "the connection died at exactly this statement" a
+/// deterministic event rather than a race against a timer. The local lane runs
+/// Postgres with `sslmode=disable`, so a query travels in plaintext and the
+/// proxy can recognise the one it is waiting for.
+type CutOn = Option<Arc<Vec<u8>>>;
+
 impl FaultProxy {
     /// Stands a proxy in front of `target`, relaying by default.
     pub(crate) async fn to(target: SocketAddr) -> Self {
-        Self::spawn(target, false).await
+        Self::spawn(target, false, None).await
+    }
+
+    /// Stands a relaying proxy that kills a connection the moment its client
+    /// sends `trigger`.
+    ///
+    /// For a branch that needs the datastore to die at ONE specific statement
+    /// and nowhere earlier. Timing cannot express that — every statement before
+    /// the interesting one runs on the same connection and would fail first —
+    /// but the wire can, because the statement names itself.
+    pub(crate) async fn cutting_on(target: SocketAddr, trigger: &[u8]) -> Self {
+        Self::spawn(target, false, Some(Arc::new(trigger.to_vec()))).await
     }
 
     /// Stands a proxy that swallows from its first connection onward.
@@ -50,10 +70,10 @@ impl FaultProxy {
     /// For the case where the datastore is unresponsive before anything has
     /// ever connected to it — a boot against a wedged server.
     pub(crate) async fn swallowing(target: SocketAddr) -> Self {
-        Self::spawn(target, true).await
+        Self::spawn(target, true, None).await
     }
 
-    async fn spawn(target: SocketAddr, swallow: bool) -> Self {
+    async fn spawn(target: SocketAddr, swallow: bool, cut_on: CutOn) -> Self {
         let listener = TcpListener::bind(("127.0.0.1", 0))
             .await
             .expect("the proxy must be able to bind a loopback port");
@@ -85,7 +105,7 @@ impl FaultProxy {
                     });
                     continue;
                 }
-                tokio::spawn(relay(client, target));
+                tokio::spawn(relay(client, target, cut_on.clone()));
             }
         });
 
@@ -124,11 +144,54 @@ impl Drop for FaultProxy {
 /// whose upstream refused, or whose client hung up mid-stream, has said
 /// everything it can say by closing, and the test asserts on what the code
 /// under test made of that.
-async fn relay(mut client: TcpStream, target: SocketAddr) {
-    let Ok(mut upstream) = TcpStream::connect(target).await else {
+async fn relay(client: TcpStream, target: SocketAddr, cut_on: CutOn) {
+    let Ok(upstream) = TcpStream::connect(target).await else {
         return;
     };
-    let _copied = tokio::io::copy_bidirectional(&mut client, &mut upstream).await;
+    let (mut from_client, mut to_client) = client.into_split();
+    let (mut from_server, mut to_server) = upstream.into_split();
+
+    // Replies need no inspection, so they stream on their own task. It ends
+    // when the request side drops `to_server` and the server closes behind it,
+    // which is what carries the cut back to the client as a dead socket.
+    tokio::spawn(async move {
+        let _copied = tokio::io::copy(&mut from_server, &mut to_client).await;
+    });
+
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let Ok(read) = from_client.read(&mut buffer).await else {
+            return;
+        };
+        let Some(chunk) = buffer.get(..read) else {
+            return;
+        };
+        if chunk.is_empty() {
+            return;
+        }
+        if cut_on
+            .as_ref()
+            .is_some_and(|trigger| contains(chunk, trigger))
+        {
+            // Dropping both halves here is the kill. The statement is never
+            // forwarded, so the server never sees it and the client meets a
+            // connection that died underneath the write.
+            return;
+        }
+        if to_server.write_all(chunk).await.is_err() {
+            return;
+        }
+    }
+}
+
+/// Whether `haystack` carries `needle` anywhere in it.
+fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return false;
+    }
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
 }
 
 /// Installs a subscriber so event macros actually run.
