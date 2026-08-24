@@ -84,6 +84,20 @@ macro_rules! migration {
     };
 }
 
+/// Derives a slot number the way the `MIGRATIONS` list does, at runtime.
+///
+/// `version_of` is a `const fn`, and every production call site is a `static`
+/// initialiser — so it runs during constant evaluation and its body never
+/// executes at runtime. That is what a caller wants and it leaves the
+/// derivation untestable AS CODE: nothing can hand it a name and check the
+/// number. This is that caller. A `const fn` is an ordinary function when the
+/// context is not const, so this exercises the same body the build does.
+#[cfg(feature = "test-util")]
+#[must_use]
+pub fn version_from_name(name: &str) -> i32 {
+    version_of(name)
+}
+
 /// Every migration this binary knows, in application order.
 ///
 /// Order is ascending version, which is also dependency order: `1xx` substrate

@@ -101,6 +101,13 @@ futures-util = { version = "0.3.34", default-features = false, features = ["std"
 # The logging facade. §6 attaches the OTLP subscriber; until then these events
 # go nowhere by default, which is the correct behaviour for a library.
 tracing = { version = "0.1.44", default-features = false, features = ["std", "attributes"] }
+# The subscriber, which §6 wires to OTLP. It is a dev-dependency until then for
+# a reason worth stating: `tracing::warn!` checks whether its callsite is
+# ENABLED before it evaluates its arguments, so with no subscriber installed a
+# test never executes the fields inside an event macro. Every diagnostic line in
+# this workspace would read as dead code that nothing can reach — and the fix is
+# to install a subscriber in tests, not to stop logging.
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
 
 [workspace.lints.rust]
 # Every rustc warning is an error; individual lints below raise their own level

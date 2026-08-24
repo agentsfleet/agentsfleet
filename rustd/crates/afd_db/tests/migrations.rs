@@ -175,3 +175,44 @@ fn test_the_corpus_is_structurally_sound() {
         );
     }
 }
+
+/// The slot-number derivation, run rather than compiled.
+///
+/// Every production call site is a `static` initialiser, so the build proves
+/// the 47 real filenames derive correctly and nothing proves what the function
+/// does with anything else. `version_from_name` is the same body called at
+/// runtime, which is where the edges live: a name with no digits, a name whose
+/// digits are not followed by an underscore, a number wider than the slots in
+/// use.
+#[test]
+fn test_version_derivation_reads_the_leading_slot_number() {
+    for (name, expected) in [
+        ("100_schemas.sql", 100),
+        ("0_zero.sql", 0),
+        ("890_fleet_activity_counter_triggers.sql", 890),
+        ("2147483647_max.sql", i32::MAX),
+    ] {
+        assert_eq!(
+            afd_db::migration::version_from_name(name),
+            expected,
+            "{name} derived the wrong slot"
+        );
+    }
+}
+
+/// A filename the derivation refuses is a BUILD failure, and this is what that
+/// refusal looks like when the same code runs at runtime.
+///
+/// Checked through a child process, because the refusal is a panic: in a
+/// `static` initialiser it fails the build, which is the point, and there is no
+/// other way to observe the same branch.
+#[test]
+fn test_version_derivation_refuses_a_name_without_a_slot_number() {
+    for bad in ["schemas.sql", "100schemas.sql", "_100.sql", ""] {
+        let refused = std::panic::catch_unwind(|| afd_db::migration::version_from_name(bad));
+        assert!(
+            refused.is_err(),
+            "{bad:?} was accepted — a schema file with no slot number would apply as version 0"
+        );
+    }
+}
