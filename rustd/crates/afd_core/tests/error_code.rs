@@ -47,6 +47,9 @@ fn test_error_registry_unique() {
         error_code::INVALID_REQUEST,
         error_code::VAULT_DATA_INVALID,
         error_code::INTERNAL_OPERATION_FAILED,
+        error_code::INTERNAL_DB_UNAVAILABLE,
+        error_code::INTERNAL_DB_QUERY,
+        error_code::STARTUP_MIGRATION_CHECK,
     ] {
         assert!(
             REGISTRY.contains(&named),

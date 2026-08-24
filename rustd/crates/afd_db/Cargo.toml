@@ -1,0 +1,34 @@
+[package]
+name = "afd_db"
+description = "Postgres pools by role and the versioned schema migrator, sharing the Zig daemon's ledger."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL, the same single flag afd_crypto carries. Here it unlocks the
+# map-backed environment source, which is how the role/knob resolution gets
+# tested without mutating process state — `std::env::set_var` is `unsafe` in
+# edition 2024 precisely because a parallel test suite makes it a data race.
+test-util = []
+
+[dependencies]
+# The wire codes a datastore failure answers.
+afd_core.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# The contention proofs need real parallelism, not a current-thread runtime
+# interleaving two futures politely.
+tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
+
+[lints]
+workspace = true

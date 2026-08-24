@@ -12,18 +12,24 @@ facts.
   `agentsfleet-runner`. API entities use `fleet`, `fleet_id`, and `/fleets`.
 - Drive work with `orly gate` (work → verify → pr). Hooks run `orly gate work`;
   `orly gate pr` runs by hand at CHORE(close), before `gh pr create`.
-  `.oracle/orly.json` declares `conform`, `verify.lint`, `verify.unit`, and
-  `verify.version`. `make harness-verify` satisfies CONFORM only; behavioral
-  verification uses the profile's `verify.*` commands (`make lint-all`,
-  `make test-unit-all`, `make check-version`). REVIEW remains a separate
-  lifecycle stage. There is no slow tier: the Zig integration and memory-leak
-  lanes were deleted with the rest of the Zig gating, so nothing a developer
-  runs needs real Postgres or Redis.
+  `.oracle/orly.json` declares `conform`, `verify.lint`, `verify.unit`,
+  `verify.integration`, and `verify.version`. `make harness-verify` satisfies
+  CONFORM only; behavioral verification uses the profile's `verify.*` commands
+  (`make lint-all`, `make test-unit-all`, `make test-integration-rustd`,
+  `make check-version`). REVIEW remains a separate lifecycle stage.
+- **One lane needs live datastores, and only one.** The Zig integration and
+  memory-leak lanes went with the rest of the Zig gating; `make/test-infra.mk`
+  survived them, and M176 built `make test-integration-rustd` on it — docker
+  compose Postgres and Redis, schemas reset per run. Nothing else a developer
+  runs needs either: `make test-unit-all` stays datastore-free, because every
+  Rust test that needs one is `#[ignore]`d and runs only in that lane.
+  `KEEP_TEST_STATE=1` skips the reset for the inner loop; CI never sets it.
 - **Make targets are the only repository claims — never hand-roll their
   equivalents.** CONFORM → `make harness-verify` · lint → `make lint-all`
   (Rust lint rides `lint-rustd`, script self-tests ride `lint-scripts`) ·
   unit → `make test-unit-all` (cargo workspace + every TypeScript coverage
-  gate) · version → `make check-version` · dry lanes → `make dry-app` /
+  gate) · integration → `make test-integration-rustd` (live Postgres + Redis) ·
+  version → `make check-version` · dry lanes → `make dry-app` /
   `make dry` · wire fixtures → `make wire-fixtures`. A package-scoped runner
   (`cd ui/packages/app && bun run test`, `cargo test -p afd_wire`, …) is
   inner-loop iteration; it proves a package, not the repository, and never

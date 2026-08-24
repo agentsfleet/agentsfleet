@@ -1,0 +1,76 @@
+name: test-integration-rustd
+
+# The Rust substrate against live Postgres and Redis.
+#
+# A separate workflow rather than a job in `test.yml`, on purpose. That file's
+# `test` aggregate is a required check and carries no `services:` block;
+# hanging a datastore-dependent job off it would make a live Postgres a
+# precondition for every pull request, including the ones that touch only the
+# website. Here the dependency is contained: if the datastores are unavailable,
+# this lane fails and the fast lanes still say what they know.
+#
+# The services come from `docker compose` via `make/test-infra.mk`, not from a
+# `services:` block, so CI boots exactly what a developer boots — the same
+# compose file, the same reset, the same Redis TLS certificate extraction. A
+# `services:` block would be a second definition of the environment that drifts
+# from the first one silently.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'rustd/**'
+      - 'schema/**'
+      - 'make/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/test-integration-rustd.yml'
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Never cancel on main: these runs populate the cache every branch restores
+  # from, so cancelling one to start the next leaves no warm cache at all.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  test-integration-rustd:
+    runs-on: ubuntu-latest
+    # The suite creates a database per test and applies all 47 migrations into
+    # each. Generous, because the alternative to a timeout that is too tight is
+    # a lane that goes red on a slow runner and teaches people to re-run it.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      # No toolchain input: rustd/rust-toolchain.toml is the single pin, and
+      # rustup installs it on first use inside that directory. Naming a version
+      # here would be a second source of truth that silently disagrees.
+      - name: Show the pinned toolchain
+        run: rustup show && cargo --version
+        working-directory: rustd
+      - name: Cache cargo registry and build output
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rustd/target
+          # Distinct from test.yml's key: this lane builds the same crates with
+          # the same features, but sharing one key between two workflows means
+          # whichever finishes last overwrites the other's entry every run.
+          key: cargo-integration-${{ runner.os }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+          restore-keys: |
+            cargo-integration-${{ runner.os }}-
+      # `make test-integration-rustd` depends on `_reset-test-db`, which brings
+      # compose up, waits for healthchecks, drops schemas and flushes Redis.
+      # KEEP_TEST_STATE is never set here: a green run under it would prove
+      # nothing about a clean checkout, which is the whole point of this tier.
+      - name: Run the Rust integration suite against live datastores
+        run: make test-integration-rustd
+      - name: Show datastore logs when the suite fails
+        if: failure()
+        run: docker compose logs --tail 200 postgres redis

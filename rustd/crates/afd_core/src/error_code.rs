@@ -97,6 +97,23 @@ pub const VAULT_DATA_INVALID: ErrorCode = ErrorCode::declare("UZ-VAULT-001");
 /// daemon reports `crypto_store` failures under this code for the same reason.
 pub const INTERNAL_OPERATION_FAILED: ErrorCode = ErrorCode::declare("UZ-INTERNAL-003");
 
+/// The datastore could not be reached, or the pool had nothing to give.
+///
+/// One code for both because a client cannot act on the difference — the
+/// distinction that matters is operational, and `afd_db::Error` keeps it as
+/// two variants for the operator while both answer here.
+pub const INTERNAL_DB_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-INTERNAL-001");
+
+/// A statement reached Postgres and Postgres refused it.
+pub const INTERNAL_DB_QUERY: ErrorCode = ErrorCode::declare("UZ-INTERNAL-002");
+
+/// The schema ledger is not in a state this binary may migrate from.
+///
+/// `cmd/migrate.zig:50` and `cmd/preflight.zig:160` report the same code for
+/// the same conditions: a lock nobody released, a version this binary does not
+/// know, a migration that failed and left its failure row behind.
+pub const STARTUP_MIGRATION_CHECK: ErrorCode = ErrorCode::declare("UZ-STARTUP-005");
+
 /// Every code this crate declares, in declaration order.
 ///
 /// The exhaustive list the registry tests walk. A code added above without a
@@ -107,4 +124,7 @@ pub const REGISTRY: &[ErrorCode] = &[
     INVALID_REQUEST,
     VAULT_DATA_INVALID,
     INTERNAL_OPERATION_FAILED,
+    INTERNAL_DB_UNAVAILABLE,
+    INTERNAL_DB_QUERY,
+    STARTUP_MIGRATION_CHECK,
 ];
