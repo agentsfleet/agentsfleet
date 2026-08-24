@@ -51,6 +51,14 @@ fn test_error_registry_unique() {
         error_code::INTERNAL_DB_QUERY,
         error_code::STARTUP_MIGRATION_CHECK,
         error_code::STARTUP_REDIS_CONNECT,
+        error_code::AUTH_INSUFFICIENT_SCOPE,
+        error_code::AUTH_UNAUTHORIZED,
+        error_code::AUTH_TOKEN_EXPIRED,
+        error_code::AUTH_UNAVAILABLE,
+        error_code::AUTH_CLI_CREDENTIAL_REVOKED,
+        error_code::APIKEY_REVOKED,
+        error_code::RUN_INVALID_RUNNER_TOKEN,
+        error_code::RUN_ADMIN_STATE_BLOCKED,
     ] {
         assert!(
             REGISTRY.contains(&named),

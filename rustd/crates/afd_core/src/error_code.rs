@@ -122,6 +122,70 @@ pub const STARTUP_MIGRATION_CHECK: ErrorCode = ErrorCode::declare("UZ-STARTUP-00
 /// kept in `afd_redis::Error`'s variants rather than on the wire.
 pub const STARTUP_REDIS_CONNECT: ErrorCode = ErrorCode::declare("UZ-STARTUP-004");
 
+/// The principal authenticated, and is short a capability the route requires.
+///
+/// `ERR_INSUFFICIENT_SCOPE` in the Zig registry. A 403, never a 401: the caller
+/// proved who they are and the answer is that who they are is not enough, so
+/// re-authenticating cannot help and telling them to would send them in a
+/// circle. The response names a scope from the route's own list, because a code
+/// a caller can act on beats one they have to open a ticket about.
+pub const AUTH_INSUFFICIENT_SCOPE: ErrorCode = ErrorCode::declare("UZ-AUTH-022");
+
+/// No credential was presented, or the one presented proved nothing.
+///
+/// `ERR_UNAUTHORIZED`. A 401, and deliberately the SAME code for a missing
+/// header, a malformed one, a well-formed credential no row matches, and a
+/// token whose signature does not verify. Splitting those would tell a caller
+/// which guess was closer, which is the one thing an unauthenticated caller
+/// must not learn.
+pub const AUTH_UNAUTHORIZED: ErrorCode = ErrorCode::declare("UZ-AUTH-002");
+
+/// The token verified, and its expiry has passed.
+///
+/// `ERR_TOKEN_EXPIRED`. Distinct from [`AUTH_UNAUTHORIZED`] because it IS
+/// actionable and leaks nothing: the holder already proved possession of a
+/// validly-signed token, and the remedy — refresh it — is different from the
+/// remedy for a token that never verified.
+pub const AUTH_TOKEN_EXPIRED: ErrorCode = ErrorCode::declare("UZ-AUTH-003");
+
+/// A credential could not be judged, because what judges it was unreachable.
+///
+/// `ERR_AUTH_UNAVAILABLE`. Never an authentication REJECTION, and the
+/// distinction is load-bearing rather than tidy: the runner client counts
+/// consecutive auth rejects toward a self-termination ceiling and resets that
+/// counter on transport-class failures, so answering a Postgres blip with a
+/// reject would walk a healthy fleet's runners to shutdown
+/// (`runner_bearer.zig`'s `test "maps a lookup failure to UZ-AUTH-004"`).
+pub const AUTH_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-AUTH-004");
+
+/// The command-line credential resolved to a row whose `revoked_at` is set.
+///
+/// `ERR_CLI_CREDENTIAL_REVOKED`. A revoked credential answers its own code
+/// rather than collapsing into [`AUTH_UNAUTHORIZED`]: the holder is told the
+/// credential is dead instead of retrying one that will never work again.
+pub const AUTH_CLI_CREDENTIAL_REVOKED: ErrorCode = ErrorCode::declare("UZ-AUTH-023");
+
+/// The tenant api-key resolved to a row that is no longer active.
+///
+/// `ERR_APIKEY_REVOKED`, and the tenant-key counterpart of
+/// [`AUTH_CLI_CREDENTIAL_REVOKED`] — same reasoning, different family because
+/// the two are revoked through different surfaces.
+pub const APIKEY_REVOKED: ErrorCode = ErrorCode::declare("UZ-APIKEY-004");
+
+/// No `fleet.runners` row matches the presented runner token.
+///
+/// `ERR_RUN_INVALID_RUNNER_TOKEN`. The runner plane's [`AUTH_UNAUTHORIZED`]:
+/// a separate code because the runner client classifies its own plane's
+/// rejections, and a tenant-plane 401 reaching it would be a category error.
+pub const RUN_INVALID_RUNNER_TOKEN: ErrorCode = ErrorCode::declare("UZ-RUN-001");
+
+/// The runner is known and its administrative state bars the runner plane.
+///
+/// `ERR_RUN_ADMIN_STATE_BLOCKED`. Cordon, drain, revoke and delete all land
+/// here, and this rejection is the ONLY channel by which a runner learns it is
+/// out of service — the heartbeat reply is unconditionally `ok`.
+pub const RUN_ADMIN_STATE_BLOCKED: ErrorCode = ErrorCode::declare("UZ-RUN-009");
+
 /// Every code this crate declares, in declaration order.
 ///
 /// The exhaustive list the registry tests walk. A code added above without a
@@ -136,4 +200,12 @@ pub const REGISTRY: &[ErrorCode] = &[
     INTERNAL_DB_QUERY,
     STARTUP_MIGRATION_CHECK,
     STARTUP_REDIS_CONNECT,
+    AUTH_INSUFFICIENT_SCOPE,
+    AUTH_UNAUTHORIZED,
+    AUTH_TOKEN_EXPIRED,
+    AUTH_UNAVAILABLE,
+    AUTH_CLI_CREDENTIAL_REVOKED,
+    APIKEY_REVOKED,
+    RUN_INVALID_RUNNER_TOKEN,
+    RUN_ADMIN_STATE_BLOCKED,
 ];
