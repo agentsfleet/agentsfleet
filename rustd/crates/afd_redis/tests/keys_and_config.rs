@@ -90,19 +90,32 @@ fn test_session_key_and_ttl_match_the_zig_store() {
     );
 }
 
-/// The atomic transition is the SAME FILE, not a port of it.
+/// This crate's script and the Zig daemon's are the same bytes.
 ///
-/// This is the assertion that makes the sharing real: if someone copies the
-/// script into this crate, or the Zig side stops embedding it, the include
-/// path breaks the build or this test fails — either way nobody ends up with
-/// two scripts that agreed when they were written.
+/// Not the same FILE: M181 deletes `src/agentsfleetd/`, and a crate that
+/// included a script from a directory scheduled for deletion would stop
+/// building on cutover day. So each side owns its copy and this test is what
+/// makes "two copies" safe — it compares them byte for byte, so a change to
+/// either without the other fails here rather than as two binaries disagreeing
+/// about whether a device-flow code was already redeemed.
+///
+/// When the Zig tree goes, this test goes with it, and the Rust copy is simply
+/// the script.
 #[test]
-fn test_the_verify_script_is_shared_with_the_zig_daemon() {
-    let script_path = repo_root().join("src/agentsfleetd/session/session_verify_consume.lua");
-    let script = std::fs::read_to_string(&script_path).expect("the shared script must exist");
-    assert!(
-        script.contains(r#"redis.call("GET", key)"#) && script.contains(r#"s.status = "consumed""#),
-        "the shared script is not the verify-and-consume transition"
+fn test_the_verify_script_matches_the_zig_daemons() {
+    let ours = include_str!("../src/session/verify_consume.lua");
+    let zig_path = repo_root().join("src/agentsfleetd/session/session_verify_consume.lua");
+
+    let Ok(theirs) = std::fs::read_to_string(&zig_path) else {
+        // The Zig tree is gone: cutover happened, and this crate's copy is now
+        // the only one. Nothing to compare, and nothing wrong.
+        return;
+    };
+
+    assert_eq!(
+        ours, theirs,
+        "the two copies of the verify-and-consume script have drifted — \
+         one binary would redeem a session the other considers already consumed"
     );
 
     let proto = std::fs::read_to_string(
@@ -111,7 +124,7 @@ fn test_the_verify_script_is_shared_with_the_zig_daemon() {
     .unwrap();
     assert!(
         proto.contains(r#"@embedFile("session_verify_consume.lua")"#),
-        "the Zig daemon stopped embedding the script this crate includes"
+        "the Zig daemon stopped embedding the script this test compares against"
     );
 }
 

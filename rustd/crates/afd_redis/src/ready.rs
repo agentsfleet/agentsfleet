@@ -38,6 +38,13 @@ end
 return 0
 ";
 
+/// The commands this index issues. Named once each (RULE UFS): a verb
+/// spelled twice is a verb that can be spelled two ways.
+const CMD_HSET: &str = "HSET";
+const CMD_HLEN: &str = "HLEN";
+const CMD_HRANDFIELD: &str = "HRANDFIELD";
+const CMD_EVAL: &str = "EVAL";
+
 /// Names one generation of a fleet's readiness mark.
 ///
 /// Minted rather than counted: nothing ever compares two tokens for order, only
@@ -90,9 +97,9 @@ impl ReadyIndex {
     /// re-derives what a lost mark would have said.
     pub async fn mark(&self, fleet_id: &str, token: &str) -> Result<ReadyToken, Error> {
         let value = token.to_owned();
-        let mut cmd = redis::cmd("HSET");
+        let mut cmd = redis::cmd(CMD_HSET);
         cmd.arg(READY_INDEX_KEY).arg(fleet_id).arg(&value);
-        let _: i64 = self.redis.command("HSET", READY_INDEX_KEY, &cmd).await?;
+        let _: i64 = self.redis.command(CMD_HSET, READY_INDEX_KEY, &cmd).await?;
         Ok(ReadyToken(value))
     }
 
@@ -101,9 +108,9 @@ impl ReadyIndex {
     /// # Errors
     /// Returns a command error when the read fails.
     pub async fn len(&self) -> Result<u64, Error> {
-        let mut cmd = redis::cmd("HLEN");
+        let mut cmd = redis::cmd(CMD_HLEN);
         cmd.arg(READY_INDEX_KEY);
-        self.redis.command("HLEN", READY_INDEX_KEY, &cmd).await
+        self.redis.command(CMD_HLEN, READY_INDEX_KEY, &cmd).await
     }
 
     /// Whether the index holds nothing.
@@ -122,11 +129,11 @@ impl ReadyIndex {
     /// # Errors
     /// Returns a command error when the read fails.
     pub async fn peek(&self, count: usize) -> Result<Vec<Ready>, Error> {
-        let mut cmd = redis::cmd("HRANDFIELD");
+        let mut cmd = redis::cmd(CMD_HRANDFIELD);
         cmd.arg(READY_INDEX_KEY).arg(count).arg("WITHVALUES");
         let flat: Vec<String> = self
             .redis
-            .command("HRANDFIELD", READY_INDEX_KEY, &cmd)
+            .command(CMD_HRANDFIELD, READY_INDEX_KEY, &cmd)
             .await?;
         // `HRANDFIELD … WITHVALUES` answers a flat field/value list, so the
         // pairing is positional. `as_chunks` proves the width to the compiler
@@ -154,13 +161,13 @@ impl ReadyIndex {
         fleet_id: &str,
         token: &ReadyToken,
     ) -> Result<bool, Error> {
-        let mut cmd = redis::cmd("EVAL");
+        let mut cmd = redis::cmd(CMD_EVAL);
         cmd.arg(CLEAR_IF_TOKEN_MATCHES)
             .arg(1)
             .arg(READY_INDEX_KEY)
             .arg(fleet_id)
             .arg(token.as_str());
-        let removed: i64 = self.redis.command("EVAL", READY_INDEX_KEY, &cmd).await?;
+        let removed: i64 = self.redis.command(CMD_EVAL, READY_INDEX_KEY, &cmd).await?;
         Ok(removed > 0)
     }
 }

@@ -239,3 +239,51 @@ async fn test_migrate_failure_bookkeeping() {
     db.close().await;
     database.cleanup().await;
 }
+
+/// A migrator that cannot get the lock gives up, loudly, inside its bound.
+///
+/// This is the stop path the whole bounded poll exists for: a crashed migrator
+/// that never released the lock must not hang the next deploy until the deploy
+/// machine's own timeout fires, minutes later, with nothing saying why.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_migrate_gives_up_when_the_lock_never_frees() {
+    let database = TestDatabase::create().await;
+    let holder = database.open(DbRole::Migrator, &[]).await;
+    let waiter = database.open(DbRole::Migrator, &[]).await;
+
+    // Take the advisory lock on a connection that simply keeps it.
+    let mut held = holder.acquire().await.unwrap();
+    let taken: bool = sqlx::query("SELECT pg_try_advisory_lock($1)")
+        .bind(0x7A6F_6D62_6965_0001_i64)
+        .fetch_one(&mut *held)
+        .await
+        .unwrap()
+        .try_get(0)
+        .unwrap();
+    assert!(taken, "the test must actually hold the lock");
+
+    let started = std::time::Instant::now();
+    let error = Migrator::new()
+        .with_retry_policy(RetryPolicy::new(3, Duration::from_millis(50)))
+        .run(&waiter)
+        .await
+        .expect_err("a lock nobody releases must end the run, not extend it");
+
+    assert!(error.is_migration_refused(), "got {error}");
+    assert_eq!(error.code().as_str(), "UZ-STARTUP-005");
+    assert!(
+        error.to_string().contains("150"),
+        "the failure must report how long it waited: {error}"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "the bound is the stop path; this waited {:?}",
+        started.elapsed()
+    );
+
+    drop(held);
+    holder.close().await;
+    waiter.close().await;
+    database.cleanup().await;
+}

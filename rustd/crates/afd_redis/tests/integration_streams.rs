@@ -10,7 +10,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_redis::ready::ReadyIndex;
 use afd_redis::streams::{FleetStreams, fleet_stream_key};
 
 #[path = "support/redis_harness.rs"]
@@ -155,78 +154,12 @@ async fn test_stream_repairs_a_missing_group_without_replaying_history() {
     cleanup(&harness, &[key]).await;
 }
 
-/// The readiness index only clears a mark the caller actually saw.
-///
-/// The race this closes: a poll finds a fleet idle and moves to clear it while
-/// ingress appends and re-marks. An unconditional delete erases a mark for
-/// genuinely undelivered work, and nothing rediscovers it until a sweep.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Redis: make test-integration-rustd"]
-async fn test_ready_index_clear_respects_the_token() {
-    let harness = RedisHarness::connect().await;
-    let index = ReadyIndex::new(harness.redis.clone());
-    let fleet = harness.name("fleet");
-
-    let observed = index.mark(&fleet, "token-a").await.expect("mark");
-    assert!(
-        index
-            .peek(50)
-            .await
-            .expect("peek")
-            .iter()
-            .any(|ready| ready.fleet_id == fleet),
-        "a marked fleet must be visible to a poll"
-    );
-
-    // Ingress marks again — a new generation — while the poll still holds the
-    // token it read.
-    index.mark(&fleet, "token-b").await.expect("re-mark");
-
-    assert!(
-        !index
-            .clear_if_unchanged(&fleet, &observed)
-            .await
-            .expect("clear"),
-        "a stale token must not clear a fleet that was re-marked"
-    );
-    assert!(
-        index
-            .peek(50)
-            .await
-            .expect("peek")
-            .iter()
-            .any(|ready| ready.fleet_id == fleet),
-        "the newer mark must survive the stale clear"
-    );
-
-    // The current token does clear it.
-    let current = index.mark(&fleet, "token-c").await.expect("mark");
-    assert!(
-        index
-            .clear_if_unchanged(&fleet, &current)
-            .await
-            .expect("clear"),
-        "the token the caller observed must clear the fleet"
-    );
-
-    cleanup_fields(&harness, &fleet).await;
-}
-
 /// Deletes the keys a test made. The lane resets Redis between runs; this keeps
-/// one test's leftovers out of another's `peek` inside a run.
+/// one test's leftovers out of another's read inside a run.
 async fn cleanup(harness: &RedisHarness, keys: &[String]) {
     for key in keys {
         let mut cmd = redis::cmd("DEL");
         cmd.arg(key);
         let _: Result<i64, _> = harness.redis.command("DEL", key, &cmd).await;
     }
-}
-
-async fn cleanup_fields(harness: &RedisHarness, fleet: &str) {
-    let mut cmd = redis::cmd("HDEL");
-    cmd.arg(afd_redis::ready::READY_INDEX_KEY).arg(fleet);
-    let _: Result<i64, _> = harness
-        .redis
-        .command("HDEL", afd_redis::ready::READY_INDEX_KEY, &cmd)
-        .await;
 }

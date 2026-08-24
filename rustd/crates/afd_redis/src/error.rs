@@ -220,3 +220,65 @@ pub(crate) fn timed_out(command: &'static str, waited_ms: u128) -> Error {
 pub(crate) fn unexpected_reply(what: &'static str) -> Error {
     Error::new(ErrorKind::UnexpectedReply { what })
 }
+
+/// One error of every kind, for tests that walk the whole surface.
+///
+/// Same seam and same argument as `afd_db::error::one_of_each_kind`: these are
+/// the renderings a human reads while something is already wrong, and a Redis
+/// that refuses a command on demand is not something a test can arrange for
+/// every kind.
+#[cfg(feature = "test-util")]
+#[must_use]
+pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
+    let redis_failure = || {
+        redis::RedisError::from((
+            redis::ErrorKind::Extension,
+            "refused",
+            "the server said no".to_owned(),
+        ))
+    };
+
+    vec![
+        (
+            "missing url",
+            Error::new(ErrorKind::MissingRedisUrl { knob: "REDIS_URL" }),
+        ),
+        (
+            "invalid url",
+            Error::new(ErrorKind::InvalidRedisUrl { knob: "REDIS_URL" }),
+        ),
+        (
+            "ca cert unreadable",
+            Error::new(ErrorKind::CaCertUnreadable {
+                path: "/tls/ca.crt".to_owned(),
+                source: std::io::Error::from(std::io::ErrorKind::NotFound),
+            }),
+        ),
+        (
+            "unreachable",
+            Error::new(ErrorKind::Unreachable {
+                role: "default",
+                source: Box::new(redis_failure()),
+            }),
+        ),
+        ("timeout", timed_out("XADD", 5_000)),
+        (
+            "command",
+            classify("XADD", "fleet:x:events", redis_failure()),
+        ),
+        (
+            "group missing",
+            Error::new(ErrorKind::GroupMissing {
+                stream: "fleet:x:events".to_owned(),
+            }),
+        ),
+        (
+            "group exists",
+            Error::new(ErrorKind::GroupExists {
+                stream: "fleet:x:events".to_owned(),
+            }),
+        ),
+        ("unexpected reply", unexpected_reply("PING")),
+        ("hub closed", Error::new(ErrorKind::HubClosed)),
+    ]
+}
