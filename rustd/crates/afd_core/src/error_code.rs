@@ -186,6 +186,15 @@ pub const RUN_INVALID_RUNNER_TOKEN: ErrorCode = ErrorCode::declare("UZ-RUN-001")
 /// out of service — the heartbeat reply is unconditionally `ok`.
 pub const RUN_ADMIN_STATE_BLOCKED: ErrorCode = ErrorCode::declare("UZ-RUN-009");
 
+/// The instance is already serving as many requests as it admits.
+///
+/// `ERR_API_BACKPRESSURE`. A 429, and the one refusal in this registry that is
+/// raised BEFORE anything about the caller is known — no credential has been
+/// read, no handler has run. It says nothing about the request because at the
+/// moment it is written nothing about the request has been looked at; what it
+/// carries instead is `Retry-After`, which is the only actionable fact there is.
+pub const API_BACKPRESSURE: ErrorCode = ErrorCode::declare("UZ-API-001");
+
 /// Every code this crate declares, in declaration order.
 ///
 /// The exhaustive list the registry tests walk. A code added above without a
@@ -208,4 +217,5 @@ pub const REGISTRY: &[ErrorCode] = &[
     APIKEY_REVOKED,
     RUN_INVALID_RUNNER_TOKEN,
     RUN_ADMIN_STATE_BLOCKED,
+    API_BACKPRESSURE,
 ];

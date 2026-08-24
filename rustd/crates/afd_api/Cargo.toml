@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+authors.workspace = true
 repository.workspace = true
 readme.workspace = true
 keywords.workspace = true
@@ -12,7 +13,7 @@ categories.workspace = true
 
 [features]
 # M-TEST-UTIL. Unlocks the map-backed environment source through afd_core.
-test-util = ["afd_auth/test-util", "afd_core/test-util"]
+test-util = ["afd_auth/test-util", "afd_core/test-util", "afd_crypto/test-util"]
 
 # Each dependency is added by the module that uses it: `unreachable_pub` and
 # `unused_crate_dependencies` are how Invariant 2 is a fact rustc checks rather
@@ -21,21 +22,43 @@ test-util = ["afd_auth/test-util", "afd_core/test-util"]
 # and the envelope writer.
 [dependencies]
 afd_auth.workspace = true
+# The workspace's one entropy surface, for the request id a refusal carries.
+# Drawing bytes directly here would make `getrandom` reachable from two crates
+# and end the "one system call" claim `afd_crypto` is built around.
+afd_crypto.workspace = true
 # The code registry the envelope is assembled from: a code's status, title,
 # documentation link and end-user sentence are properties OF THE CODE, so they
 # live beside it rather than in this crate.
 afd_core.workspace = true
-axum.workspace = true
+# `json` for the probe bodies: unlike the problem+json envelope, which writes
+# its own content type, these are ordinary JSON responses.
+axum = { workspace = true, features = ["json"] }
 http.workspace = true
+# The HTTP/1 connection policy: `axum::serve` cannot express a header bound, so
+# the builder is configured here and boot serves connections with it.
+hyper.workspace = true
 serde_json.workspace = true
+# `sync` only, for the `Semaphore` that IS the admission ceiling. No runtime is
+# started here — a permit is claimed and dropped on whatever runtime the caller
+# already has.
+tokio.workspace = true
+# One warn per shed. §6 attaches the subscriber; until then this goes nowhere,
+# which is the correct default for a library.
+tracing.workspace = true
 
 # Same rule as the runtime dependencies: added by the target that uses them.
 # The route table is pure, so it needs no runtime to test — the admission layer
 # and the envelope writer bring tokio and the subscriber with them.
 [dev-dependencies]
 # The envelope suite renders through axum's own IntoResponse and reads the body
-# back, so it needs a runtime and the JSON reader the assertions use.
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+# back, and the admission suite needs REAL parallelism to put more requests in
+# flight at once than the ceiling admits.
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-util", "net", "time"] }
+# The admission suite drives the layer as a service, without a listener.
+tower = { workspace = true, features = ["util"] }
+# The header-limit suite serves a real connection over a real socket, which is
+# the only tier that can prove a limit hyper enforces while PARSING.
+hyper-util.workspace = true
 
 [lints]
 workspace = true
