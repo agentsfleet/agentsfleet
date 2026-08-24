@@ -178,3 +178,46 @@ fn test_migrate_on_start_refuses_what_it_cannot_read() {
     assert!(error.is_config(), "got {error}");
     assert!(error.to_string().contains("MIGRATE_ON_START"));
 }
+
+/// A URL with the right scheme that sqlx still cannot parse is refused, and the
+/// failure says *that* rather than blaming the scheme.
+///
+/// The two are different operator instructions: a wrong scheme means the URL
+/// points at another product, while an unparseable one means this URL is
+/// malformed. Reporting the scheme message for a bad port sends whoever is
+/// holding the pager looking for a MySQL URL that was never there.
+#[test]
+fn test_a_postgres_url_sqlx_cannot_parse_is_refused_as_malformed() {
+    for bad in [
+        "postgres://user:pw@host:99999/db",
+        "postgres://user:pw@[::1/db",
+        "postgres://user:pw@host:notanumber/db",
+        "postgresql://user:pw@host/db?sslmode=banana",
+    ] {
+        let env = env_with(&[("DATABASE_URL", bad)]);
+        let error = PoolConfig::resolve(&env, DbRole::Default).expect_err("unparseable");
+        assert!(error.is_config(), "{bad:?} gave {error}");
+        let rendered = error.to_string();
+        assert!(
+            rendered.contains("is not a Postgres connection URL"),
+            "{bad:?} was refused as a scheme problem instead: {rendered}"
+        );
+        assert!(
+            rendered.contains("DATABASE_URL"),
+            "the failure must name the knob to fix: {rendered}"
+        );
+    }
+}
+
+/// The scheme check and the parse check stay distinct.
+#[test]
+fn test_a_wrong_scheme_is_not_reported_as_a_malformed_url() {
+    let env = env_with(&[("DATABASE_URL", "mysql://user:pw@host:3306/db")]);
+    let error = PoolConfig::resolve(&env, DbRole::Default).expect_err("wrong scheme");
+    assert!(
+        error
+            .to_string()
+            .contains("must be a postgres:// or postgresql:// URL"),
+        "got {error}"
+    );
+}

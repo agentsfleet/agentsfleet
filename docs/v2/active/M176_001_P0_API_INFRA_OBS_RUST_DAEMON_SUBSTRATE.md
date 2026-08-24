@@ -214,6 +214,41 @@ written to generate fixtures, while a real row proves Rust agrees with the
 daemon that serves `api-dev`. `ZIG GATE` no longer fires for this milestone, and
 the diff touches no `*.zig` file.
 
+### §Coverage found that thirteen lines were mis-measured, not untested (EXECUTE, Aug 24, 2026)
+
+The gap-closing pass stalled on lines that testing could not move. `lock.rs`'s
+contention `warn!` showed its opening line executing 5 times and its own
+`retry_ms` field 0 — a count that cannot happen if the callsite is enabled,
+which a probe confirmed it was (`set_global_default ok=true`,
+`warn_enabled=true`). Replacing the field with a side-effecting expression
+printed three times in one test while the report still said 0.
+
+**Cause.** `sqlx-core` and `sqlx-postgres` enable `tracing`'s `log` feature, and
+Cargo unifies features across the workspace, so it is on for `afd_redis` too —
+a crate that never asked for it. With `log` enabled, `tracing`'s macros compile
+every field expression TWICE: once for the event, once for a `log` record that
+never runs when a subscriber is installed. `llvm-cov` maps both copies to the
+same source line and reports the dead one. Only field lines containing a CALL
+are affected; a bare identifier gets no region of its own.
+
+**Isolated, not inferred.** A standalone crate with the same code, same
+`tracing` 0.1.44 and `tracing-core` 0.1.36, reported the field line as covered
+5 times. Adding `features = ["log"]` and changing nothing else dropped it to 0.
+`llvm-cov export --skip-expansions` does not restore it.
+
+**Route taken: hoist, do not exempt.** Every call-bearing field expression moves
+to a `let` on the line above and enters the macro as a bare name — 19 sites in 8
+files. The line then reports its real count. The cost is that the value is
+computed even when the level is off; every site is an error path, a retry, or a
+once-per-process initialisation, so the cost is nil, and it is recorded here
+rather than left as a silent trade.
+
+This does not move the bar and does not add an exemption. It is worth stating
+plainly why it was needed: **the 100% floor was unreachable through tests
+alone**, and no amount of test writing would have closed those thirteen lines.
+The section above says "none of these is genuinely unreachable" — true of the
+code, and it was not true of the measurement.
+
 ### §1 note — how the reverse pass actually runs
 
 Superseded by the decision above: there is no reverse pass, because there is no
@@ -303,6 +338,52 @@ which is why none of them justified moving a number:
 `entropy.rs:47` from §1 remains, unchanged and still named: it needs the
 kernel's entropy pool to fail. §7 closes it or names it as the single exception,
 once, with the reason written down.
+
+## Time, and why no date library
+
+Every timestamp column in `schema/` is `BIGINT`; every timestamp field in
+`afd_wire` is `i64`; a `UUIDv7` carries a 48-bit big-endian millisecond field in
+its own layout. Epoch-milliseconds is therefore already the type three separate
+contracts are written in, and `afd_core::clock` makes it one type rather than a
+convention: `UnixMillis`, plus a `Clock` trait with `SystemClock` and a
+`test-util` `FixedClock`, shaped exactly like the existing `EnvSource` /
+`ProcessEnv` / `MapEnv` trio.
+
+No `chrono`, no `time`, no `jiff`. `sqlx` maps `BIGINT` to `i64` with no feature
+flag, so no calendar crate enters the graph at all — which is what Invariant 2
+is a claim about. The reference points agree: `exonum` migrated OFF `chrono` to
+`time 0.3`, `habitat` still carries `chrono = "*"` (an unpinned wildcard) and
+calls `chrono::Local`, and `bun` — the only one of the four started in modern
+Rust — carries no date crate whatsoever.
+
+Two decisions inside that are worth naming:
+
+- **No monotonic reading is exposed.** `clock.zig` offers `nowMonotonicMillis`
+  beside `nowMillis`, both `i64`, so nothing stops a caller subtracting one from
+  the other. Elapsed time here is `std::time::Instant`, which has no epoch and
+  no serialization, and a deadline is `tokio::time::timeout` at the call site
+  (Invariant 4). The single Zig caller of the monotonic clock is a deadline loop
+  (`credentials/broker_flight.zig`), which is that shape already. Leaving the
+  reading out is what makes the mistake unwritable.
+- **Prefer the parameter to the trait.** All eight production `nowSeconds`
+  callers in the Zig daemon read the clock at the edge and hand the value to a
+  pure function — `isTimestampFreshAt`, `verifyAt`,
+  `processAt(request, now_s, now_ms)`. That shape needs no seam. `Clock` is for
+  the long-lived owners that read repeatedly: a JWKS cache deciding staleness, a
+  sweeper deciding expiry — §4 and §7.
+
+Two divergences were found and closed while landing it:
+
+1. `afd_db`'s private `now_millis` mapped a pre-epoch clock to `0`. `clock.zig`
+   returns the negative reading and states why — *"a silent epoch-0 return would
+   corrupt UUIDv7 timestamp ordering"*. Two binaries writing the same
+   `audit.schema_migrations` table answered a broken host differently.
+2. `afd_redis`'s reconnect `jitter()` read the WALL clock for spread. A
+   backward step — an operator correcting drift, an NTP correction — replays the
+   same sub-second nanoseconds and hands two redials the same jitter,
+   reproducing the lockstep the jitter exists to break, at exactly the moment a
+   cluster is most likely to be reconnecting at once. It now reads a
+   process-owned `Instant`.
 
 ## Visibility policy
 

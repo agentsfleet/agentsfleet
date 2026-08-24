@@ -260,3 +260,51 @@ fn test_backoff_jitter_stays_inside_its_quarter() {
         );
     }
 }
+
+/// Every role reports a distinct lower-case tag.
+///
+/// The tag is what a log line and an unreachable-datastore error name, so two
+/// roles sharing one — or a tag that drifts from the knob it belongs to —
+/// sends whoever is reading the incident at the wrong connection.
+#[test]
+fn test_every_role_tags_itself_distinctly() {
+    assert_eq!(RedisRole::Default.tag(), "default");
+    assert_eq!(RedisRole::Api.tag(), "api");
+
+    let tags: Vec<&str> = RedisRole::ALL.iter().map(|role| role.tag()).collect();
+    let unique: std::collections::BTreeSet<&str> = tags.iter().copied().collect();
+    assert_eq!(unique.len(), tags.len(), "two roles share a tag: {tags:?}");
+    for tag in &tags {
+        assert_eq!(*tag, tag.to_lowercase(), "tags are lower case");
+    }
+}
+
+/// Every reply shape a stream field can carry renders as readable text.
+///
+/// The producer writes bulk strings, so the other arms only run when something
+/// upstream changed. Rendering one as an empty string would hand a caller a
+/// field that looks absent rather than surprising.
+#[test]
+fn test_every_stream_field_reply_shape_renders() {
+    let samples = afd_redis::streams::rendered_field_samples();
+    assert_eq!(samples.len(), 4, "a reply shape was added without a sample");
+
+    for (label, rendered) in &samples {
+        assert!(!rendered.is_empty(), "{label} rendered as nothing");
+    }
+    let by_label = |wanted: &str| {
+        samples
+            .iter()
+            .find(|(label, _)| *label == wanted)
+            .map(|(_, rendered)| rendered.as_str())
+            .expect("sample present")
+    };
+    assert_eq!(by_label("bulk string"), "ready");
+    assert_eq!(by_label("simple string"), "OK");
+    assert_eq!(by_label("integer"), "42");
+    assert_eq!(
+        by_label("anything else"),
+        "nil",
+        "an unrecognised value keeps its shape visible through Debug"
+    );
+}

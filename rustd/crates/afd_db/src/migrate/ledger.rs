@@ -11,7 +11,6 @@
 //! so it stays.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use afd_core::error_code;
 use sqlx::pool::PoolConnection;
@@ -217,10 +216,12 @@ pub async fn record_failure(
     .await;
 
     if let Err(error) = written {
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+        let error_code = error_code::INTERNAL_DB_QUERY.as_str();
         tracing::warn!(
             version,
             error = %error,
-            error_code = error_code::INTERNAL_DB_QUERY.as_str(),
+            error_code,
             "migrate_failure_row_ignored_error"
         );
     }
@@ -236,22 +237,24 @@ pub async fn clear_failure(connection: &mut PoolConnection<Postgres>, version: i
         .await;
 
     if let Err(error) = cleared {
+        let error_code = error_code::INTERNAL_DB_QUERY.as_str();
         tracing::warn!(
             version,
             error = %error,
-            error_code = error_code::INTERNAL_DB_QUERY.as_str(),
+            error_code,
             "migrate_failure_clear_ignored_error"
         );
     }
 }
 
-/// Milliseconds since the epoch, saturating rather than failing.
+/// Milliseconds since the epoch, from the workspace clock.
 ///
-/// A clock before 1970 is a broken host, not a migration failure, and refusing
-/// to migrate over it would be a worse outcome than a zero timestamp in a
-/// bookkeeping column.
+/// A private copy of this used to map a pre-epoch clock to `0`. The Zig
+/// daemon's `clock.zig` returns the NEGATIVE reading for the same host and says
+/// why in its own words — a silent epoch-0 return corrupts `UUIDv7` ordering —
+/// so the two binaries answered a broken host differently while writing to the
+/// same `audit.schema_migrations` table. [`afd_core::clock::now`] is the single
+/// reading both the ledger and everything after it share.
 fn now_millis() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| i64::try_from(since.as_millis()).unwrap_or(0))
+    afd_core::clock::now().as_millis()
 }

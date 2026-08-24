@@ -5,6 +5,11 @@
 //! `Display` that panics, or an `is_*` that answers for two kinds at once, only
 //! shows up while something else is already going wrong.
 #![cfg(feature = "test-util")]
+#![expect(
+    clippy::expect_used,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
+use std::backtrace::BacktraceStatus;
 use std::error::Error as _;
 
 use afd_redis::error::one_of_each_kind;
@@ -82,4 +87,60 @@ fn test_backtrace_is_always_answerable() {
     for (_label, error) in one_of_each_kind() {
         let _status = error.backtrace().status();
     }
+}
+
+/// A captured backtrace is appended to the rendering; an absent one costs
+/// nothing.
+///
+/// `Backtrace::capture()` reads `RUST_BACKTRACE` once per PROCESS and caches
+/// the answer, so both branches cannot be reached from one test binary. This
+/// re-executes itself as a child with the variable set — the same shape
+/// `afd_core` and `afd_db` use, so the three error types are proven the same
+/// way rather than three ways.
+#[test]
+fn test_display_appends_a_captured_backtrace() {
+    let (_label, error) = one_of_each_kind()
+        .into_iter()
+        .next()
+        .expect("at least one kind");
+    let rendered = error.to_string();
+    assert!(
+        rendered.starts_with(&format!("[{}]", error.code().as_str())),
+        "the code leads the rendering: {rendered}"
+    );
+
+    if error.backtrace().status() == BacktraceStatus::Captured {
+        // Either the child below, or a developer shell that already exports
+        // RUST_BACKTRACE. Both reach the same branch, so neither needs a
+        // second process — and the child cannot recurse, because it lands here.
+        assert!(
+            rendered.lines().count() > 1,
+            "a captured backtrace must be rendered: {rendered}"
+        );
+        return;
+    }
+
+    assert_eq!(
+        rendered.lines().count(),
+        1,
+        "an uncaptured backtrace must cost nothing to render: {rendered}"
+    );
+
+    let output = std::process::Command::new(
+        std::env::current_exe().expect("the running test binary has a path"),
+    )
+    .args([
+        "--exact",
+        "test_display_appends_a_captured_backtrace",
+        "--nocapture",
+    ])
+    .env("RUST_BACKTRACE", "1")
+    .output()
+    .expect("re-executing the test binary must work");
+    assert!(
+        output.status.success(),
+        "child run failed:\n{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }

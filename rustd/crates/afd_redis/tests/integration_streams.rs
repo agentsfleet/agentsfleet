@@ -54,6 +54,19 @@ async fn test_stream_xadd_readgroup_ack() {
         event.id, appended,
         "the entry id IS the event id — there is no second identifier"
     );
+    // The id renders as itself. `Display` is what puts an event id into a log
+    // line and a `%`-sigil tracing field, and a `Display` that disagreed with
+    // `as_str` would make the id in the logs unmatchable against the id in the
+    // stream — the one thing an operator does with it.
+    assert_eq!(
+        appended.to_string(),
+        appended.as_str(),
+        "Display and as_str must be the same id"
+    );
+    assert!(
+        !appended.to_string().is_empty(),
+        "Redis mints a non-empty id"
+    );
     assert_eq!(event.field("type"), Some("message"));
     assert_eq!(event.field("actor"), Some("user_1"));
 
@@ -162,4 +175,42 @@ async fn cleanup(harness: &RedisHarness, keys: &[String]) {
         cmd.arg(key);
         let _: Result<i64, _> = harness.redis.command("DEL", key, &cmd).await;
     }
+}
+
+/// A group create that fails for a reason OTHER than "it already exists" is
+/// reported, not swallowed.
+///
+/// `ensure_group` treats `BUSYGROUP` as success, because a second caller
+/// racing the first is the normal case. Every other failure has to travel: a
+/// key already holding a non-stream value is a fleet id colliding with
+/// something else in the keyspace, and silently continuing means every later
+/// append to that fleet fails with no explanation of the first cause.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Redis: make test-integration-rustd"]
+async fn test_a_group_create_that_is_not_a_race_is_reported() {
+    let harness = RedisHarness::connect().await;
+    let streams = FleetStreams::new(harness.redis.clone());
+    let fleet = harness.name("wrongtype");
+    let key = fleet_stream_key(&fleet);
+
+    // Occupy the stream key with a string, so XGROUP answers WRONGTYPE.
+    let mut set = redis::cmd("SET");
+    set.arg(&key).arg("not-a-stream");
+    let _: String = harness
+        .redis
+        .command("SET", &key, &set)
+        .await
+        .expect("seeding the key must work");
+
+    let error = streams
+        .ensure_group(&fleet)
+        .await
+        .expect_err("a WRONGTYPE key must not read as an idempotent create");
+    let rendered = error.to_string();
+    assert!(
+        rendered.to_ascii_uppercase().contains("XGROUP"),
+        "the failure must name the command that failed: {rendered}"
+    );
+
+    cleanup(&harness, &[key]).await;
 }

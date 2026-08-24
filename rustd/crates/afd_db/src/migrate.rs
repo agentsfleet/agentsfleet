@@ -109,10 +109,9 @@ impl Migrator {
     /// apply, and a query error for a bookkeeping statement that failed.
     pub async fn run(&self, db: &Db) -> Result<Applied, Error> {
         let connection = db.acquire().await?;
-        tracing::info!(
-            expected_versions = self.migrations.len(),
-            "migrate_conn_acquired"
-        );
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+        let expected_versions = self.migrations.len();
+        tracing::info!(expected_versions, "migrate_conn_acquired");
 
         let mut guard = MigrationLock::acquire(connection, self.policy).await?;
         tracing::info!("migrate_lock_acquired");
@@ -178,10 +177,11 @@ async fn apply_one(
             // A malformed migration is refused before any of it applies —
             // splitting on a boundary inside an unterminated literal is how
             // half a statement reaches Postgres.
+            let error_code = error_code::STARTUP_MIGRATION_CHECK.as_str();
             tracing::error!(
                 version,
                 error = %source,
-                error_code = error_code::STARTUP_MIGRATION_CHECK.as_str(),
+                error_code,
                 "migrate_sql_invalid"
             );
             ledger::record_failure(connection, version, &source.to_string()).await;

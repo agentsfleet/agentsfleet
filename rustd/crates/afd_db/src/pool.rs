@@ -98,17 +98,21 @@ impl Db {
         // answer is one line up.
         let pool = builder.connect_lazy_with(config.connect_options());
 
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+        let role_tag = role.tag();
+        let max_connections = config.max_connections();
+        let acquire_timeout_ms = acquire_timeout.as_millis();
         tracing::info!(
-            role = role.tag(),
-            size = config.max_connections(),
-            acquire_timeout_ms = acquire_timeout.as_millis(),
+            role = role_tag,
+            size = max_connections,
+            acquire_timeout_ms,
             "pool_initialized"
         );
         Ok(Self {
             role,
             pool,
             acquire_timeout,
-            max_connections: config.max_connections(),
+            max_connections,
         })
     }
 
