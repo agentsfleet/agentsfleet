@@ -26,13 +26,16 @@ afd_auth.workspace = true
 # Drawing bytes directly here would make `getrandom` reachable from two crates
 # and end the "one system call" claim `afd_crypto` is built around.
 afd_crypto.workspace = true
+# The attribute vocabulary a span carries. The dependency points this way on
+# purpose: a route template is a fact here and a string there.
+afd_observability.workspace = true
 # The code registry the envelope is assembled from: a code's status, title,
 # documentation link and end-user sentence are properties OF THE CODE, so they
 # live beside it rather than in this crate.
 afd_core.workspace = true
 # `json` for the probe bodies: unlike the problem+json envelope, which writes
 # its own content type, these are ordinary JSON responses.
-axum = { workspace = true, features = ["json"] }
+axum = { workspace = true, features = ["json", "matched-path"] }
 http.workspace = true
 # The HTTP/1 connection policy: `axum::serve` cannot express a header bound, so
 # the builder is configured here and boot serves connections with it.
@@ -59,6 +62,9 @@ tower = { workspace = true, features = ["util"] }
 # The header-limit suite serves a real connection over a real socket, which is
 # the only tier that can prove a limit hyper enforces while PARSING.
 hyper-util.workspace = true
+# The span suite collects spans through a `Layer`, which is the only way to see
+# a field as a VALUE rather than as formatted output.
+tracing-subscriber = { workspace = true, features = ["registry"] }
 
 [lints]
 workspace = true

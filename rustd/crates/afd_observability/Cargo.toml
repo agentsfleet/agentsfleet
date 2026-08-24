@@ -1,0 +1,25 @@
+[package]
+name = "afd_observability"
+description = "The attribute vocabulary and export machinery for this daemon's push-only telemetry."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL. Nothing to unlock yet; declared so dependents can name it
+# uniformly rather than special-casing this crate.
+test-util = []
+
+# Dependencies are added by the module that uses them. The vocabulary is
+# `&'static str` constants and needs nothing; the exporter arrives with the
+# module that exports.
+[dependencies]
+
+[lints]
+workspace = true

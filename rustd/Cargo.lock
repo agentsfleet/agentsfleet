@@ -44,6 +44,7 @@ dependencies = [
  "afd_auth",
  "afd_core",
  "afd_crypto",
+ "afd_observability",
  "axum",
  "http",
  "hyper",
@@ -52,6 +53,7 @@ dependencies = [
  "tokio",
  "tower",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -119,6 +121,10 @@ dependencies = [
  "tracing-subscriber",
  "zeroize",
 ]
+
+[[package]]
+name = "afd_observability"
+version = "0.26.2"
 
 [[package]]
 name = "afd_redis"
