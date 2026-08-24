@@ -227,6 +227,14 @@ hyper-util = { version = "0.1.20", default-features = false, features = ["tokio"
 # a web framework to do it.
 http = { version = "1.5.0", default-features = false, features = ["std"] }
 
+# OpenTelemetry, for the push-only export the Zig daemon already does by hand
+# (`observability/otlp/`). The SDK alone: it re-exports the API types the
+# exporter names, and the OTLP TRANSPORT is added by boot, which is what knows
+# an endpoint — a transport built here for nobody would be a dependency with no
+# caller.
+opentelemetry = { version = "0.32.0", default-features = false, features = ["trace"] }
+opentelemetry_sdk = { version = "0.32.1", default-features = false, features = ["trace", "rt-tokio"] }
+
 # Stream combinators for the pub/sub pump. `std` only — no executor, no
 # thread pool; the runtime is tokio's.
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }

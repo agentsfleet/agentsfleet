@@ -17,9 +17,20 @@ categories.workspace = true
 test-util = []
 
 # Dependencies are added by the module that uses them. The vocabulary is
-# `&'static str` constants and needs nothing; the exporter arrives with the
-# module that exports.
+# `&'static str` constants and needs nothing.
 [dependencies]
+# The span pipeline. The SDK only — it re-exports the API types this crate
+# names, and `unused_crate_dependencies` caught the API crate riding along
+# unused. The OTLP transport is boot's, because an endpoint is configuration
+# and this crate has none.
+opentelemetry_sdk.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# The tracer API the suites emit spans through. A dev-dependency because the
+# library names only the SDK's own re-exports.
+opentelemetry.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
 [lints]
 workspace = true
