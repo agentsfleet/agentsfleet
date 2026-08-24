@@ -287,3 +287,55 @@ async fn test_migrate_gives_up_when_the_lock_never_frees() {
     waiter.close().await;
     database.cleanup().await;
 }
+
+/// The read-side lock probe answers both ways, and leaves no lock behind.
+///
+/// `/readyz` asks this on a POOLED connection, which is why it uses a
+/// transaction-scoped lock: a session-scoped acquire plus a separate unlock
+/// would leave the lock held on a connection that goes back to the pool, and
+/// the next migrator would wait out its whole bound against a probe.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_lock_probe_reports_availability_without_holding_it() {
+    let database = TestDatabase::create().await;
+    let db = database.open(DbRole::Migrator, &[]).await;
+    let holder = database.open(DbRole::Migrator, &[]).await;
+
+    let mut probe = db.acquire().await.unwrap();
+    assert!(
+        afd_db::migrate::lock::probe_available(&mut probe)
+            .await
+            .expect("probe"),
+        "an unheld lock must read as available"
+    );
+    // And the probe did not take it: asking again still says available.
+    assert!(
+        afd_db::migrate::lock::probe_available(&mut probe)
+            .await
+            .expect("probe"),
+        "the probe must not leave the lock held on a pooled connection"
+    );
+
+    let mut held = holder.acquire().await.unwrap();
+    let taken: bool = sqlx::query("SELECT pg_try_advisory_lock($1)")
+        .bind(0x7A6F_6D62_6965_0001_i64)
+        .fetch_one(&mut *held)
+        .await
+        .unwrap()
+        .try_get(0)
+        .unwrap();
+    assert!(taken);
+
+    assert!(
+        !afd_db::migrate::lock::probe_available(&mut probe)
+            .await
+            .expect("probe"),
+        "a held lock must read as unavailable, or boot migrates into a race"
+    );
+
+    drop(held);
+    drop(probe);
+    holder.close().await;
+    db.close().await;
+    database.cleanup().await;
+}

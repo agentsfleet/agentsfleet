@@ -61,12 +61,11 @@ async fn test_hub_refcount_single_connection() {
     );
 
     // The server agrees: one subscriber on the channel, however many readers
-    // this process has.
-    assert_eq!(
-        server_subscriber_count(&harness, &channel).await,
-        1,
-        "the server must see one subscription for the whole process"
-    );
+    // this process has. Waited for rather than asserted outright — `subscribe`
+    // queues the SUBSCRIBE and the pump issues it, so the registration is
+    // asynchronous by construction. An immediate assertion passes on a fast
+    // machine and fails on a loaded one, which is the definition of a flake.
+    wait_for(|| async { server_subscriber_count(&harness, &channel).await == 1 }).await;
 
     // Every reader receives the same message.
     publish_until_delivered(&publisher, &channel, "hello", &mut readers[0]).await;
@@ -87,6 +86,11 @@ async fn test_hub_refcount_single_connection() {
         server_subscriber_count(&harness, &channel).await,
         1,
         "a channel with readers left must stay subscribed"
+    );
+    assert_eq!(
+        hub.connections_opened(),
+        1,
+        "dropping readers must not have cost a reconnect"
     );
 
     readers.clear();
@@ -207,4 +211,75 @@ where
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
     panic!("the condition never held inside {DELIVERY_BUDGET:?}");
+}
+
+/// A reader that falls behind is TOLD, and a reader on a stopped hub is told
+/// that too — neither waits forever on something that will not arrive.
+///
+/// The buffer is bounded on purpose: an unbounded one turns a single stalled
+/// browser tab into the process's memory ceiling. Bounded means a slow reader
+/// eventually misses messages, and the only honest thing to do is say so.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Redis: make test-integration-rustd"]
+async fn test_a_lagging_reader_is_told_and_a_stopped_hub_closes() {
+    let _lane = HUB_LANE.lock().await;
+    let harness = RedisHarness::connect().await;
+    let publisher = FleetStreams::new(harness.redis.clone());
+    let channel = harness.name("channel");
+
+    let hub = SubscriptionHub::start(RedisHarness::config())
+        .await
+        .expect("hub starts");
+    let mut reader = hub.subscribe(&channel);
+    assert_eq!(reader.channel(), channel, "a reader knows what it reads");
+
+    // Make sure the subscription is live before flooding it.
+    publish_until_delivered(&publisher, &channel, "primed", &mut reader).await;
+
+    // Well past the buffer, with nothing reading.
+    for sequence in 0..600_u16 {
+        publisher
+            .publish(&channel, &format!("flood-{sequence}"))
+            .await
+            .expect("publish");
+    }
+
+    // Somewhere in there the reader is told it lagged rather than handed a
+    // message that silently skipped its predecessors.
+    let mut lagged = false;
+    for _ in 0..600_u16 {
+        match tokio::time::timeout(Duration::from_millis(200), reader.recv()).await {
+            Ok(Ok(None)) => {
+                lagged = true;
+                break;
+            }
+            Ok(Ok(Some(_))) => {}
+            Ok(Err(failure)) => panic!("the hub closed early: {failure}"),
+            Err(_elapsed) => break,
+        }
+    }
+    assert!(lagged, "a reader {} messages behind was never told", 600);
+
+    // Stopping the hub closes what readers are waiting on. What is already
+    // buffered is delivered first — a closed channel still hands over what it
+    // holds, which is the right order: shutdown must not drop messages the
+    // reader was entitled to.
+    hub.shutdown();
+    let mut closed = None;
+    for _ in 0..1_000_u16 {
+        match reader.recv().await {
+            Ok(_) => {}
+            Err(failure) => {
+                closed = Some(failure);
+                break;
+            }
+        }
+    }
+    let error = closed.expect("a reader on a stopped hub must be told, not parked");
+    assert!(error.is_hub_closed(), "got {error}");
+    assert_eq!(hub.readers(&channel), 0, "shutdown drops every channel");
+
+    // Dropping a subscription whose channel is already gone is a no-op, not a
+    // panic — shutdown and Drop race by construction.
+    drop(reader);
 }

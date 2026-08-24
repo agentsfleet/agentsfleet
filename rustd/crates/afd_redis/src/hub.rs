@@ -235,6 +235,17 @@ impl SubscriptionHub {
             .map_or(0, |entry| entry.readers)
     }
 
+    /// Drops every channel, closing what readers are waiting on.
+    ///
+    /// §7's supervisor calls this in stop order: a process that is going away
+    /// must tell its readers so, rather than leaving them parked on a socket
+    /// nobody is pumping. A reader waiting on a closed channel gets a
+    /// hub-closed error, which is a thing it can act on; a reader waiting on an
+    /// abandoned one waits forever.
+    pub fn shutdown(&self) {
+        self.inner.lock_channels().clear();
+    }
+
     /// How many connections this hub has opened over its life.
     ///
     /// One, unless it has had to reconnect. Never one per subscriber — that is

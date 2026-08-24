@@ -41,30 +41,15 @@ coverage:
       rust-afd:
         flags:
           - rust-afd
-        # 90%, not 100%, and moved in the commit that made it true rather than
-        # at a red CI run. M176 §1 reached 99.62% on pure-value crypto; §2 and
-        # §3 added Postgres and Redis, and three classes of line came with them
-        # that no test reaches:
-        #
-        #   - `afd_db/src/migration.rs` — `version_of` is evaluated at COMPILE
-        #     time (every call site is a `static` initialiser), so its lines
-        #     never execute at runtime and can never be covered. 40% lines, and
-        #     it is fully proven: `test_every_version_is_its_filename_prefix`
-        #     checks all 47 derivations.
-        #   - reconnect and mid-flight-drop branches in `afd_redis`'s client and
-        #     hub pump: reaching them needs a Redis that accepts a connection
-        #     and then dies inside a specific await, which the lane can do for
-        #     the pub/sub socket (it does — `test_hub_reconnect_resubscribes`)
-        #     but not for each individual command.
-        #   - `afd_db/src/migrate/lock.rs` retry logging on the contended path,
-        #     where the bound itself is proven by `classify` unit tests and by
-        #     `test_migrate_gives_up_when_the_lock_never_frees`.
-        #
-        # Measured across BOTH tiers (`make test-coverage-rustd`, 322 tests
-        # against live Postgres and Redis): 92.45% lines, 91.19% functions.
-        # The floor sits below that on purpose — it is a floor, not a target to
-        # tune against. §7 revisits it with the full crate set.
-        target: 90%
+        # 100%, and it stays there. The crates carry sqlx, redis, axum and OTLP
+        # now, which is exactly when a floor starts being load-bearing rather
+        # than free. Every line that looked unreachable has turned out to be
+        # reachable once the right seam existed — a `const fn` runs at runtime
+        # when a test calls it, a reconnect arm runs when something closes the
+        # socket. If a line ever genuinely resists, it is named here and in the
+        # milestone spec, in the commit that adds it, with the reason — not
+        # covered by lowering the number.
+        target: 100%
         threshold: 0%
         informational: false
 

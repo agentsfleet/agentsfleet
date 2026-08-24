@@ -26,6 +26,9 @@ tokio.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# Installed by the test harness so event macros evaluate their fields; see the
+# workspace manifest for why that is a correctness concern and not a coverage one.
+tracing-subscriber.workspace = true
 # The contention proofs need real parallelism, not a current-thread runtime
 # interleaving two futures politely.
 tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }

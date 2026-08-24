@@ -281,27 +281,28 @@ lowers the blast radius but changes none of the above. Graded at VERIFY from
 measured `cargo llvm-cov` output, never asserted here.
 
 **Measured, §2 and §3 (`make test-coverage-rustd`, 322 tests against live
-Postgres and Redis):** **92.45% lines · 91.19% functions**, up from 86.65% after
-a gap-closing pass that added the two error-surface suites, the `Pools` and
-readiness-index read paths, a lock-exhaustion proof and a real command timeout.
+Postgres and Redis):** 92.45% lines · 91.19% functions, up from 86.65% after a
+gap-closing pass — both error surfaces walked kind by kind, the `Pools`
+three-role path, the readiness index's reads, a lock-exhaustion proof and a
+real command timeout.
 
-**The bar moved once, here, in the commit that made it true: 100% → 90% for the
-`rust-afd` flag.** The route in this section — reach 100 — held for §1's pure
-value crates and does not survive contact with a datastore. Three classes of
-line resist every mechanism above:
+**The bar does NOT move.** It was lowered to 90% in an earlier revision of this
+section and Indy reversed it: 100% is the standard for the Rust port, and the
+Zig tree's 91% is the outcome that decision exists to avoid. The number in
+`codecov.yml` is 100% and stays there; the gap is work, not a setting.
 
-| Residue | Why no test reaches it |
+Remaining, with the route to each — none of these is genuinely unreachable,
+which is why none of them justified moving a number:
+
+| Residue | Route |
 |---|---|
-| `afd_db/src/migration.rs` (40% lines) | `version_of` runs during CONSTANT EVALUATION — every call site is a `static` initialiser — so its lines never execute at runtime. Proven instead by `test_every_version_is_its_filename_prefix` over all 47 files. |
-| `afd_redis` client + hub pump reconnect arms | Need a Redis that accepts a connection and then dies inside one specific await. The lane does this for the pub/sub socket (`test_hub_reconnect_resubscribes`); doing it per command would mean a proxy that fails on cue, which is a milestone of its own. |
-| `afd_db/src/migrate/lock.rs` contention logging (72.86%) | The bound is proven by `classify` unit tests and by `test_migrate_gives_up_when_the_lock_never_frees`; the per-attempt log line inside the wait is not separately reachable. |
+| `afd_db/src/migration.rs` — `version_of` | A `const fn` runs at RUNTIME when a caller is not a const context. The lines are uncovered only because every current call site is a `static` initialiser; a test that calls it directly covers them. |
+| `afd_redis` client + hub pump reconnect arms | The pub/sub socket is already killed server-side by `test_hub_reconnect_resubscribes`. The same `CLIENT KILL` reaches a command connection mid-flight. |
+| `afd_db/src/migrate/lock.rs` contention logging | Reached by a contended acquire that retries before it gives up — the exhaustion test's bound, with the lock held by another session. |
 
-Also measured and now closed: both error types' full surface (99.19% and 96.06%
-lines, every accessor walked against every kind, via the `one_of_each_kind`
-test-util seam), and the readiness index at 100%.
-
-`entropy.rs:47` from §1 remains, unchanged and still named. §7 revisits the
-floor once with the full crate set rather than each section moving it.
+`entropy.rs:47` from §1 remains, unchanged and still named: it needs the
+kernel's entropy pool to fail. §7 closes it or names it as the single exception,
+once, with the reason written down.
 
 ## Visibility policy
 

@@ -213,3 +213,44 @@ async fn cleanup_fields(harness: &RedisHarness, fleet: &str) {
         .command("HDEL", afd_redis::ready::READY_INDEX_KEY, &cmd)
         .await;
 }
+
+/// Every way opening a connection can fail, told apart.
+///
+/// Three different causes that a caller might otherwise see as one "could not
+/// connect": a URL this client accepts but the driver does not, a certificate
+/// file that exists and is not a certificate, and a port with nothing behind
+/// it. The first two are misconfiguration an operator fixes in seconds once
+/// the message says which; the third is an outage.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Redis: make test-integration-rustd"]
+async fn test_connection_failures_name_their_cause() {
+    use afd_redis::config::{RedisConfig, RedisRole};
+
+    // Our scheme check passes; the driver's own parser refuses the rest.
+    let malformed = RedisConfig::from_url(RedisRole::Default, "redis://%%%invalid%%%".to_owned());
+    let error = afd_redis::Redis::connect(&malformed)
+        .await
+        .expect_err("a URL the driver cannot parse must refuse");
+    assert!(!error.is_command(), "nothing was ever sent: {error}");
+
+    // A certificate authority file that is not a certificate.
+    let junk = std::env::temp_dir().join(format!("afd-not-a-cert-{}.pem", std::process::id()));
+    std::fs::write(&junk, b"this is not a certificate\n").expect("write the junk file");
+    let bad_pem = RedisHarness::config().with_ca_cert_file(Some(junk.clone()));
+    let error = afd_redis::Redis::connect(&bad_pem)
+        .await
+        .expect_err("a file that is not a certificate must refuse");
+    assert!(!error.is_command(), "got {error}");
+    let _ = std::fs::remove_file(&junk);
+
+    // Nothing listening.
+    let dead = RedisConfig::from_url(RedisRole::Default, "redis://127.0.0.1:1".to_owned())
+        .with_request_timeout(Duration::from_millis(500));
+    let error = afd_redis::Redis::connect(&dead)
+        .await
+        .expect_err("nothing is listening on port 1");
+    assert!(
+        error.is_unavailable(),
+        "an unreachable Redis is an outage: {error}"
+    );
+}
