@@ -23,7 +23,7 @@
 // here is the lint's own documented remedy, and keeps the deny in force for
 // everything else.
 #[cfg(test)]
-use {hyper_util as _, tower as _};
+use {hyper_util as _, tower as _, tracing_subscriber as _};
 
 pub mod admission;
 pub mod envelope;

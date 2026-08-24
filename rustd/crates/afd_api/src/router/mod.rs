@@ -32,6 +32,7 @@
 //! times. It is one fact about the daemon, so it is one layer.
 
 mod probes;
+mod trace;
 
 use std::sync::Arc;
 
@@ -45,6 +46,7 @@ use http::{Method, StatusCode};
 use crate::route::{OpsRoute, Route};
 
 pub use self::probes::{Dependencies, ReadyInputs, ready_decision};
+pub use self::trace::record as trace_requests;
 
 /// The router this daemon serves.
 ///
@@ -77,8 +79,13 @@ pub fn build<D: Dependencies>(dependencies: Arc<D>) -> Router {
     router
         // `route_layer`, not `layer`: a HEAD at a path this binary does not
         // serve is a 404, exactly as it is in Zig, rather than a 405 that
-        // implies the path exists.
+        // implies the path exists. It also means an unmatched request opens no
+        // span, which is what keeps a raw path out of the exporter.
         .route_layer(from_fn(refuse_head))
+        // Outside the refusal, so a refused HEAD is still recorded under the
+        // template it was refused for — Zig cannot see those at all, because
+        // it 404s before opening a trace.
+        .route_layer(from_fn(trace::record))
         .with_state(dependencies)
 }
 
