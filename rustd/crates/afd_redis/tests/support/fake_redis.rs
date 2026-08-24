@@ -61,6 +61,10 @@ struct Control {
     /// Signals live connections to drop. A broadcast because there may be
     /// several and every one of them has to hear it.
     cut: tokio::sync::broadcast::Sender<()>,
+    /// Connections currently being served. Counted server-side because it is
+    /// the only place that can tell a client which CLOSED its socket from one
+    /// that merely stopped using it.
+    live: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 /// A server that answers a fixed reply per command name.
@@ -100,6 +104,7 @@ impl FakeRedis {
             rules: Mutex::new(table),
             seen: Mutex::new(Vec::new()),
             cut,
+            live: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         });
         let (listening, mut stopped) = tokio::sync::watch::channel(true);
 
@@ -162,6 +167,11 @@ impl FakeRedis {
         let _delivered = self.listening.send(false);
     }
 
+    /// How many connections the server is currently serving.
+    pub(crate) fn live_connections(&self) -> usize {
+        self.control.live.load(std::sync::atomic::Ordering::Acquire)
+    }
+
     /// Every command the server has parsed so far, in arrival order.
     pub(crate) fn seen(&self) -> Vec<String> {
         self.control
@@ -184,6 +194,12 @@ impl Drop for FakeRedis {
 
 /// Answers one connection until it closes, is cut, or a rule says to hang up.
 async fn serve(mut socket: TcpStream, control: Arc<Control>) {
+    control
+        .live
+        .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+    // The decrement rides a guard so it happens on EVERY exit from this
+    // function, including the early returns a hangup rule takes.
+    let _open = OpenConnection(Arc::clone(&control.live));
     let mut cut = control.cut.subscribe();
     let mut buffer = Vec::new();
     let mut scratch = [0_u8; 4096];
@@ -226,6 +242,16 @@ async fn serve(mut socket: TcpStream, control: Arc<Control>) {
             Ok(0) | Err(_) => return,
             Ok(count) => buffer.extend_from_slice(scratch.get(..count).unwrap_or_default()),
         }
+    }
+}
+
+/// Decrements the live-connection count when a connection is done.
+#[derive(Debug)]
+struct OpenConnection(Arc<std::sync::atomic::AtomicUsize>);
+
+impl Drop for OpenConnection {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
     }
 }
 
