@@ -8,9 +8,12 @@
 //! process reachable over TCP answers a readiness probe — and the only way to
 //! check it is to bind one and connect to it.
 //!
-//! Port 0 is bound rather than 3000, and the resolved address is read back from
-//! the listener. A fixed port would make the suite fail when a developer has
-//! the daemon running, which is exactly when they are most likely to run it.
+//! [`EPHEMERAL`] is bound rather than 3000, and the resolved address is read
+//! back from the listener. A fixed port would make the suite fail when a
+//! developer has the daemon running, which is exactly when they are most likely
+//! to run it. `boot` takes the port as an argument, so no environment variable
+//! is involved — the CLI rejects 0 as an operator's answer, and a harness that
+//! wants the kernel to choose asks for it directly.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -27,13 +30,16 @@ use agentsfleetd::supervisor::Supervisor;
 use self::support::install_subscriber;
 
 /// Where the lane publishes the Postgres it brought up.
-const DATABASE_LANE_KNOB: &str = "AFD_TEST_DATABASE_URL";
+const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
 /// Where the lane publishes the TLS Redis it brought up.
-const REDIS_LANE_KNOB: &str = "AFD_TEST_REDIS_TLS_URL";
+const REDIS_LANE_KNOB: &str = "TEST_REDIS_URL";
 
 /// Where the lane extracted the Redis certificate authority to.
-const REDIS_CA_LANE_KNOB: &str = "AFD_TEST_REDIS_TLS_CA_CERT";
+const REDIS_CA_LANE_KNOB: &str = "TEST_REDIS_CA_CERT";
+
+/// The port that asks the kernel to choose one.
+const EPHEMERAL: u16 = 0;
 
 /// Sixty-four hex characters. Boot validates the key; nothing here decrypts.
 const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -52,8 +58,6 @@ fn lane_environment() -> MapEnv {
         ("REDIS_URL_API", lane(REDIS_LANE_KNOB).as_str()),
         ("REDIS_TLS_CA_CERT_FILE", lane(REDIS_CA_LANE_KNOB).as_str()),
         ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
-        // Port 0: the kernel picks, and the listener reports what it got.
-        ("PORT", "0"),
     ])
 }
 
@@ -94,7 +98,7 @@ async fn test_boot_to_ready_on_compose() {
     install_subscriber();
 
     let mut supervisor = Supervisor::new();
-    let booted = boot(&lane_environment(), &mut supervisor)
+    let booted = boot(&lane_environment(), EPHEMERAL, &mut supervisor)
         .await
         .expect("the lane's Postgres and Redis are up");
 
@@ -148,7 +152,7 @@ async fn test_a_second_boot_finds_nothing_left_behind() {
 
     for attempt in 0..2_u8 {
         let mut supervisor = Supervisor::new();
-        let booted = boot(&lane_environment(), &mut supervisor)
+        let booted = boot(&lane_environment(), EPHEMERAL, &mut supervisor)
             .await
             .unwrap_or_else(|failure| panic!("boot {attempt} failed: {failure}"));
 

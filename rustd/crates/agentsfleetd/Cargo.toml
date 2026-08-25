@@ -36,6 +36,10 @@ test-util = [
 [dependencies]
 afd_api.workspace = true
 afd_core.workspace = true
+# The command line. Subcommands, `--port`, `--help` and `--version` are all
+# derived from `cli::Cli`; nothing in this crate reads `std::env::args` itself.
+clap.workspace = true
+
 # Preflight resolves the master key here rather than in the crypto crate:
 # `afd_crypto` takes hex, deliberately, because it is the layer that must not
 # know where a key came from.

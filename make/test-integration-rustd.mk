@@ -24,7 +24,13 @@
 #   3. `$(TEST_STATE_DEP)` — a gate run drops schemas and flushes Redis first,
 #      while `KEEP_TEST_STATE=1` keeps the inner loop fast. Same contract the
 #      Zig lane had; CI never sets the escape hatch.
-#   4. The recipe `cd`s into rustd/ rather than passing `--manifest-path`.
+#   4. The three service knobs are NOT passed on the command line. `test-infra.mk`
+#      exports `TEST_DATABASE_URL`, `TEST_REDIS_URL` and `TEST_REDIS_CA_CERT`,
+#      and the suites read those names directly. This file used to resolve a URL
+#      through a shell macro and hand it to cargo under a fourth, `AFD_`-prefixed
+#      name; the rename bought nothing and cost a reader two files to answer
+#      "where does this URL come from".
+#   5. The recipe `cd`s into rustd/ rather than passing `--manifest-path`.
 #      rustup selects a toolchain from the WORKING DIRECTORY, not from the
 #      manifest, so `--manifest-path` builds the workspace with whatever
 #      toolchain the machine defaults to — on the CI runner that is the image's
@@ -42,41 +48,14 @@
 # this target, so a developer who runs one directly is told where it belongs.
 RUSTD_INTEGRATION_IGNORE_ARGS := --ignored
 
-# Resolves the lane's database URL, disabling TLS for a local compose server.
-#
-# One definition, used by both lanes. It was copied into each, and a guard that
-# exists twice is one guard and one thing that looks like a guard — the same
-# reason `scripts/rustd_lane_result.py` owns the pass/fail decision for both.
-#
-# `sslmode=disable` is appended only for localhost: the compose Postgres serves
-# no certificate, and a hosted database must never have TLS turned off by a
-# test lane reaching for a default.
-define RUSTD_RESOLVE_DB_URL
-db_url="$$TEST_DATABASE_URL"; \
-	if [ -z "$$db_url" ]; then db_url="$(TEST_DATABASE_URL_LOCAL)"; fi; \
-	case "$$db_url" in \
-	  *localhost*|*127.0.0.1*) \
-	    case "$$db_url" in \
-	      *sslmode=*) ;; \
-	      *\?*) db_url="$$db_url&sslmode=disable" ;; \
-	      *) db_url="$$db_url?sslmode=disable" ;; \
-	    esac ;; \
-	esac;
-endef
-
-
 test-integration-rustd: $(TEST_STATE_DEP)  ## Run the Rust substrate integration suite against compose Postgres + Redis
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
-	@$(RUSTD_RESOLVE_DB_URL) \
-	echo "→ [rustd] Running the Rust integration suite against $$db_url..."; \
+	@echo "→ [rustd] Running the Rust integration suite against $(TEST_DATABASE_URL)..."; \
 	mkdir -p "$(CURDIR)/.tmp"; \
 	tally="$(CURDIR)/.tmp/rustd-integration.log"; \
 	code="$(CURDIR)/.tmp/rustd-integration.status"; \
 	rm -f "$$tally" "$$code"; \
-	{ cd $(RUSTD_DIR) && AFD_TEST_DATABASE_URL="$$db_url" \
-	  AFD_TEST_REDIS_TLS_URL="$(TEST_REDIS_TLS_URL_LOCAL)" \
-	  AFD_TEST_REDIS_TLS_CA_CERT="$(TEST_REDIS_TLS_CA_CERT)" \
-	    cargo test --workspace --all-features \
+	{ cd $(RUSTD_DIR) && cargo test --workspace --all-features \
 	      -- $(RUSTD_INTEGRATION_IGNORE_ARGS) 2>&1; \
 	  echo $$? > "$$code"; } | tee "$$tally"; \
 	python3 "$(CURDIR)/scripts/rustd_lane_result.py" \
@@ -98,16 +77,12 @@ test-integration-rustd: $(TEST_STATE_DEP)  ## Run the Rust substrate integration
 # on two runners — the mistake the retired Zig graph made and then fixed.
 test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under coverage against live datastores
 	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "✗ cargo-llvm-cov not found. Install via: cargo install cargo-llvm-cov"; exit 1; }
-	@$(RUSTD_RESOLVE_DB_URL) \
-	echo "→ [rustd] Measuring both test tiers against $$db_url..."; \
+	@echo "→ [rustd] Measuring both test tiers against $(TEST_DATABASE_URL)..."; \
 	mkdir -p "$(CURDIR)/.tmp"; \
 	tally="$(CURDIR)/.tmp/rustd-coverage.log"; \
 	code="$(CURDIR)/.tmp/rustd-coverage.status"; \
 	rm -f "$$tally" "$$code"; \
-	{ cd $(RUSTD_DIR) && AFD_TEST_DATABASE_URL="$$db_url" \
-	  AFD_TEST_REDIS_TLS_URL="$(TEST_REDIS_TLS_URL_LOCAL)" \
-	  AFD_TEST_REDIS_TLS_CA_CERT="$(TEST_REDIS_TLS_CA_CERT)" \
-	    cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info \
+	{ cd $(RUSTD_DIR) && cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info \
 	      -- --include-ignored 2>&1; \
 	  echo $$? > "$$code"; } | tee "$$tally"; \
 	python3 "$(CURDIR)/scripts/rustd_lane_result.py" \

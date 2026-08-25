@@ -29,9 +29,9 @@
 
 mod rows;
 
+use crate::error::{Result, Unavailable};
 use afd_auth::credential::CredentialKind;
 use afd_auth::directory::{CredentialDirectory, CredentialRecord, Digest};
-use afd_auth::error::Unavailable;
 use afd_core::error_code;
 use afd_db::Db;
 use sqlx::FromRow;
@@ -68,7 +68,7 @@ impl Credentials {
         class: &'static str,
         statement: &'static str,
         digest: &Digest,
-    ) -> Result<Option<R>, Unavailable>
+    ) -> Result<Option<R>>
     where
         R: for<'r> FromRow<'r, PgRow> + Send + Unpin,
     {
@@ -98,10 +98,7 @@ impl Credentials {
     }
 
     /// `agt_t` — the key's row, and the person who minted it.
-    async fn tenant_api_key(
-        &self,
-        digest: &Digest,
-    ) -> Result<Option<CredentialRecord>, Unavailable> {
+    async fn tenant_api_key(&self, digest: &Digest) -> Result<Option<CredentialRecord>> {
         let Some(row) = self
             .fetch::<TenantApiKeyRow>("tenant_api_key", sql::SELECT_TENANT_API_KEY, digest)
             .await?
@@ -112,10 +109,7 @@ impl Credentials {
     }
 
     /// `afc_` — the credential's row, joined to the person who holds it.
-    async fn cli_credential(
-        &self,
-        digest: &Digest,
-    ) -> Result<Option<CredentialRecord>, Unavailable> {
+    async fn cli_credential(&self, digest: &Digest) -> Result<Option<CredentialRecord>> {
         let Some(row) = self
             .fetch::<CliCredentialRow>("cli_credential", sql::SELECT_CLI_CREDENTIAL, digest)
             .await?
@@ -126,7 +120,7 @@ impl Credentials {
     }
 
     /// `agt_r` — the runner's row, with its reconciled verdict.
-    async fn runner_token(&self, digest: &Digest) -> Result<Option<CredentialRecord>, Unavailable> {
+    async fn runner_token(&self, digest: &Digest) -> Result<Option<CredentialRecord>> {
         let Some(row) = self
             .fetch::<RunnerTokenRow>("runner_token", sql::SELECT_RUNNER_TOKEN, digest)
             .await?
@@ -142,7 +136,7 @@ impl CredentialDirectory for Credentials {
         &self,
         kind: CredentialKind,
         digest: &Digest,
-    ) -> Result<Option<CredentialRecord>, Unavailable> {
+    ) -> Result<Option<CredentialRecord>> {
         match kind {
             CredentialKind::TenantApiKey => self.tenant_api_key(digest).await,
             CredentialKind::CliCredential => self.cli_credential(digest).await,

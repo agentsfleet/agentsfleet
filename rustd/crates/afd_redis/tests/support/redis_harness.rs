@@ -11,8 +11,8 @@ use std::time::Duration;
 use afd_redis::Redis;
 use afd_redis::config::{RedisConfig, RedisRole};
 
-const URL_KNOB: &str = "AFD_TEST_REDIS_TLS_URL";
-const CA_KNOB: &str = "AFD_TEST_REDIS_TLS_CA_CERT";
+const URL_KNOB: &str = "TEST_REDIS_URL";
+const CA_KNOB: &str = "TEST_REDIS_CA_CERT";
 
 /// Distinguishes keys minted by one process.
 static SEQUENCE: AtomicU32 = AtomicU32::new(0);

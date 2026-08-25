@@ -27,8 +27,8 @@
 //! existed, which is the difference between telling a terminal to stop and
 //! letting it retry forever.
 
+use crate::error::{Result, Unavailable};
 use afd_auth::directory::{CredentialRecord, Liveness};
-use afd_auth::error::Unavailable;
 use afd_auth::principal::Subject;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
@@ -130,7 +130,7 @@ const fn liveness(usable: bool) -> Liveness {
 /// against a row that IS there — and for a runner it counts toward the
 /// self-termination ceiling, so one corrupt row could walk a fleet to
 /// shutdown. `Unavailable` is also simply true: the directory could not answer.
-fn identifier(column: &'static str, value: &str) -> Result<Uuid7, Unavailable> {
+fn identifier(column: &'static str, value: &str) -> Result<Uuid7> {
     Uuid7::parse(value).map_err(|_malformed| {
         let code = error_code::INTERNAL_DB_QUERY.as_str();
         tracing::error!(
@@ -145,7 +145,7 @@ fn identifier(column: &'static str, value: &str) -> Result<Uuid7, Unavailable> {
 }
 
 /// Reads a provider subject out of a row, or refuses to answer.
-fn subject(value: &str) -> Result<Subject, Unavailable> {
+fn subject(value: &str) -> Result<Subject> {
     Subject::new(value).map_err(|_blank| {
         let code = error_code::INTERNAL_DB_QUERY.as_str();
         tracing::error!(
@@ -163,7 +163,7 @@ pub(super) fn person(
     tenant: &str,
     subject_claim: &str,
     live: Liveness,
-) -> Result<CredentialRecord, Unavailable> {
+) -> Result<CredentialRecord> {
     Ok(CredentialRecord::Person {
         tenant: identifier(COLUMN_TENANT_ID, tenant)?,
         subject: subject(subject_claim)?,
@@ -172,11 +172,7 @@ pub(super) fn person(
 }
 
 /// The record for a runner's credential.
-pub(super) fn machine(
-    runner: &str,
-    degraded: bool,
-    live: Liveness,
-) -> Result<CredentialRecord, Unavailable> {
+pub(super) fn machine(runner: &str, degraded: bool, live: Liveness) -> Result<CredentialRecord> {
     Ok(CredentialRecord::Machine {
         runner: identifier(COLUMN_ID, runner)?,
         degraded,

@@ -11,7 +11,8 @@
 mod support;
 
 use afd_auth::principal::Subject;
-use afd_identity::capability::{ClaimSource, ClaimUnavailable};
+use afd_identity::capability::ClaimSource;
+use afd_identity::error::ClaimUnavailable;
 use afd_identity::provider::{ProviderClaims, UNPROVISIONED_CLAIM, USER_MAX_RESPONSE_BYTES};
 use afd_identity::{ProviderClaims as _Reexported, ProviderSecret};
 

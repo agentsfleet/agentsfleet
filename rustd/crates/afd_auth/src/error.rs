@@ -8,7 +8,7 @@
 //!
 //! Here the code and the detail are PROPERTIES OF THE REFUSAL. A caller
 //! constructs the reason; it cannot construct a reason paired with the wrong
-//! code, because there is no place to write the code down. [`AuthError::code`]
+//! code, because there is no place to write the code down. [`Error::code`]
 //! is the whole mapping, in one exhaustive match, which is also the only place
 //! a reviewer has to look to check it.
 //!
@@ -33,7 +33,7 @@ use afd_core::error_code::{self, ErrorCode};
 
 /// The result every fallible function in this crate returns.
 ///
-/// One alias per crate, defaulted to that crate's own [`AuthError`] — the shape
+/// One alias per crate, defaulted to that crate's own [`Error`] — the shape
 /// `core_api` has run in production on for years, and the one bun uses
 /// (`pub type Result<T, E = Error>`). The default parameter is what lets the
 /// few functions answering with a different error keep the same spelling:
@@ -42,7 +42,7 @@ use afd_core::error_code::{self, ErrorCode};
 /// The point is not brevity. It is that a reader never has to check WHICH
 /// error a signature returns to know it is this crate's, and a new call site
 /// cannot quietly introduce a second error type without saying so.
-pub type Result<T, E = AuthError> = core::result::Result<T, E>;
+pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 /// The Zig `S_INVALID_OR_MISSING_TOKEN`, shared by the three tenant-plane
 /// classes. One spelling, because three copies is three chances to drift and
@@ -70,7 +70,7 @@ const S_RUNNER_STATE_BLOCKED: &str = "Runner admin state blocks runner-plane acc
 /// that ends up in a log beside the value it was quoting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
-pub enum AuthError {
+pub enum Error {
     /// Nothing was presented, or what was presented proved nothing.
     #[error("{S_INVALID_OR_MISSING_TOKEN}")]
     InvalidOrMissingToken,
@@ -94,7 +94,7 @@ pub enum AuthError {
     #[error("{S_CLI_CREDENTIAL_REVOKED}")]
     CliCredentialRevoked,
 
-    /// The runner plane's [`AuthError::InvalidOrMissingToken`].
+    /// The runner plane's [`Error::InvalidOrMissingToken`].
     #[error("{S_INVALID_RUNNER_TOKEN}")]
     InvalidRunnerToken,
 
@@ -103,7 +103,7 @@ pub enum AuthError {
     RunnerStateBlocked,
 }
 
-impl AuthError {
+impl Error {
     /// The registry code this refusal answers with.
     ///
     /// Exhaustive, so a new variant fails to compile until it is given one —
@@ -176,12 +176,12 @@ impl AuthError {
 /// from the provider, a DNS failure — is an operator's concern, logged where it
 /// happens, and never a fact the authentication decision branches on. Every one
 /// of them means the same thing here, so they arrive as the same type and
-/// become [`AuthError::Unavailable`].
+/// become [`Error::Unavailable`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("{S_AUTH_UNAVAILABLE}")]
 pub struct Unavailable;
 
-impl From<Unavailable> for AuthError {
+impl From<Unavailable> for Error {
     fn from(_unavailable: Unavailable) -> Self {
         Self::Unavailable
     }

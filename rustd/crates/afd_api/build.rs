@@ -7,6 +7,17 @@
 //! must never do.
 //!
 //! `build_options.git_commit` is the Zig equivalent (`build.zig:36`).
+//!
+//! # One name, and it is `make`'s
+//!
+//! The override knob is `GIT_COMMIT` — the variable `make/build.mk` already
+//! computes and already tags images with. It briefly had an `AFD_` prefix of
+//! its own, which meant the repository held two names for one fact and, worse,
+//! that the prefixed one was never set: a container build tags the image
+//! `:VERSION-abc1234` from `make`'s variable while the binary inside reported
+//! `unknown`, because there is no `.git` in the build context and nothing
+//! bridged the two. `build.mk` exports `GIT_COMMIT`, so the tag and the
+//! `/healthz` field now come from the same place.
 
 use std::process::Command;
 
@@ -16,16 +27,27 @@ const GIT_HEAD: &str = "../../../.git/HEAD";
 /// The binary consulted for the commit, named once.
 const GIT: &str = "git";
 
+/// The knob an operator, `make` or CI sets to state the commit outright.
+const KNOB: &str = "GIT_COMMIT";
+
 fn main() {
     // Re-run when HEAD moves. Without this cargo caches the stamp and a
     // rebuild after a commit would report the previous one — a wrong answer,
     // which is worse than the `unknown` this replaces.
     println!("cargo:rerun-if-changed={GIT_HEAD}");
-    println!("cargo:rerun-if-env-changed=AFD_GIT_COMMIT");
+    println!("cargo:rerun-if-env-changed={KNOB}");
 
-    // An explicit value wins: a container build has no `.git`, and CI knows
-    // the SHA it checked out.
-    if std::env::var_os("AFD_GIT_COMMIT").is_some() {
+    // An explicit value wins: a container build has no `.git`, and `make` and
+    // CI both already know the SHA. FORWARDED rather than left to be inherited
+    // — `option_env!` would pick an exported variable up on its own, but only
+    // if `rustc` happened to be handed it, and a stamp that depends on how the
+    // compiler was invoked is the kind that is right until someone wraps the
+    // build.
+    if let Some(given) = std::env::var(KNOB)
+        .ok()
+        .filter(|given| !given.trim().is_empty())
+    {
+        println!("cargo:rustc-env={KNOB}={}", given.trim());
         return;
     }
 
@@ -57,5 +79,5 @@ fn main() {
         .is_some_and(|out| !out.stdout.is_empty());
 
     let suffix = if dirty { "-dirty" } else { "" };
-    println!("cargo:rustc-env=AFD_GIT_COMMIT={commit}{suffix}");
+    println!("cargo:rustc-env={KNOB}={commit}{suffix}");
 }

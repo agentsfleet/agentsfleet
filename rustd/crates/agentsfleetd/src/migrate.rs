@@ -18,25 +18,8 @@ use afd_core::env::EnvSource;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_db::{Applied, Db, Migrator};
 
-/// Why a migration could not run, or did not finish.
-///
-/// Composed by `From` per `docs/RUST_ERROR_STANDARD.md`, so `?` lifts and the
-/// underlying failure survives as a `source()` for the fatal renderer to walk.
-#[derive(Debug, thiserror::Error)]
-pub enum MigrateFailure {
-    /// The migrator role's URL is unset, blank, or not a Postgres URL.
-    #[error("agentsfleetd cannot migrate: {knob} is unset or unusable")]
-    Configuration {
-        /// The knob an operator has to fix.
-        knob: &'static str,
-        /// What the resolver said about it.
-        #[source]
-        source: afd_db::Error,
-    },
-    /// The database would not answer, or the migration itself failed.
-    #[error("agentsfleetd cannot migrate: the schema was not applied")]
-    Run(#[from] afd_db::Error),
-}
+#[doc(inline)]
+pub use crate::error::MigrateFailure;
 
 /// Applies every migration this binary knows and is not already recorded.
 ///

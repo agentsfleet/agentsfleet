@@ -32,7 +32,10 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// reports `unknown` rather than failing: the field is for an operator
 /// correlating a running process with a tree, and a cargo build from a
 /// developer's working copy has no honest answer to give.
-const COMMIT: &str = match option_env!("AFD_GIT_COMMIT") {
+///
+/// `GIT_COMMIT` is `make/build.mk`'s own variable, exported — the same one the
+/// image tag is built from, so the two cannot disagree.
+const COMMIT: &str = match option_env!("GIT_COMMIT") {
     Some(commit) => commit,
     None => "unknown",
 };

@@ -54,6 +54,22 @@ serde = { version = "1.0.229", default-features = false, features = ["derive", "
 serde_json = { version = "1.0.151", default-features = false, features = ["std", "preserve_order"] }
 thiserror = { version = "2.0.20", default-features = false, features = ["std"] }
 
+# The command line, derived rather than hand-rolled.
+#
+# `serve_args.zig` hand-parsed `--port` out of argv and ported across as the
+# same loop, which is how the Rust daemon ended up reading argv[1] and NOTHING
+# else: no `--help`, no `--version`, and a port that could only arrive through
+# the environment. Every one of those is a line item clap already owns, and a
+# hand-rolled parser is precisely the invented code a Rust port exists to
+# delete.
+#
+# Features named rather than defaulted, per the rule above. `env` is the
+# load-bearing one: it makes `PORT` a documented FALLBACK for `--port` in the
+# generated help, rather than a second undocumented input path. `color` and
+# `wrap_help` are left off — the daemon's usage output is read out of a
+# container log, where escape sequences and terminal-width reflow are noise.
+clap = { version = "4.5.51", default-features = false, features = ["std", "derive", "env", "help", "usage", "error-context"] }
+
 # RustCrypto. Pure Rust with no C linkage, matching the Zig daemon's posture, and
 # the same AES-256-GCM construction `std.crypto.aead.aes_gcm.Aes256Gcm` implements.
 aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc"] }

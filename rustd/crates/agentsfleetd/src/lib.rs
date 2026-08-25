@@ -16,19 +16,24 @@
 use tracing_subscriber as _;
 
 pub mod banner;
+pub mod cli;
 pub mod daemon;
+pub mod error;
 pub mod fatal;
 pub mod inventory;
 pub mod migrate;
 pub mod preflight;
 pub mod probes;
 pub mod serve;
+pub mod signal;
 pub mod supervisor;
 pub mod tty;
 
+pub use self::cli::{Cli, Command};
 pub use self::daemon::{Daemon, Outcome, StopCause};
+pub use self::error::{BootFailure, Fault, MigrateFailure, Refusal};
 pub use self::inventory::{BACKGROUND_TASKS, HUB_PUMP, OTLP_EXPORT};
-pub use self::migrate::{MigrateFailure, migrate};
-pub use self::preflight::{BootConfig, Fault, Refusal, preflight};
+pub use self::migrate::migrate;
+pub use self::preflight::{BootConfig, preflight};
 pub use self::probes::{LiveDependencies, PROBE_TIMEOUT};
 pub use self::supervisor::{JOIN_TIMEOUT, ShutdownReport, Supervisor};

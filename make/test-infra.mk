@@ -74,14 +74,32 @@ COMPOSE_QSTASH_PORT = $(or $(strip $(shell docker compose port qstash 8080 2>/de
 TEST_FILTER ?=
 ZIG_TEST_FILTER_ARG = $(if $(strip $(TEST_FILTER)),-Dtest-filter="$(TEST_FILTER)",)
 
+# WHERE THE TEST SUITES GET THEIR SERVICES — three names, and only three.
+#
+# Each is `?=` and EXPORTED, which is the whole mechanism: `?=` means the
+# environment or a CI job wins, `export` means a test process reads the same
+# name this file defines. No recipe re-derives them, and no suite reads a
+# differently-prefixed alias of them.
+#
+# They were four names and a shell macro until M176. `TEST_DATABASE_URL_LOCAL`
+# was a default, bare `TEST_DATABASE_URL` was an override hook nothing ever set,
+# `RUSTD_RESOLVE_DB_URL` picked between them and re-appended a `sslmode` the
+# default already carried, and the recipe passed the result on as
+# `AFD_TEST_DATABASE_URL` — one value, three names, and a resolver whose only
+# live branch was "use the default". `?=` is the make idiom that already means
+# what the resolver was hand-rolling.
+#
 # sslmode=disable: the local docker Postgres has no TLS and parseUrl defaults to
 # `.require` (hosted providers mandate it) — without it every local DB-lane test
-# fails at connect with SSLNotSupportedByServer before it can run.
-TEST_DATABASE_URL_LOCAL ?= postgres://agentsfleet:agentsfleet@localhost:$(COMPOSE_PG_PORT)/agentsfleetdb?sslmode=disable
-TEST_REDIS_TLS_URL_LOCAL ?= rediss://:agentsfleet@localhost:$(COMPOSE_REDIS_PORT)
+# fails at connect with SSLNotSupportedByServer before it can run. It is IN the
+# default rather than appended by a recipe, so a hosted URL supplied from the
+# environment keeps its TLS instead of having it stripped by a lane.
+TEST_DATABASE_URL ?= postgres://agentsfleet:agentsfleet@localhost:$(COMPOSE_PG_PORT)/agentsfleetdb?sslmode=disable
+TEST_REDIS_URL ?= rediss://:agentsfleet@localhost:$(COMPOSE_REDIS_PORT)
 # Cert path — populated by _ensure-test-infra after Redis is healthy. Do NOT shell-expand
 # at parse time; Redis may not be running yet when the Makefile is first evaluated.
-TEST_REDIS_TLS_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
+TEST_REDIS_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
+export TEST_DATABASE_URL TEST_REDIS_URL TEST_REDIS_CA_CERT
 # QStash local dev server (docker-compose `qstash` service). The emulator ships a
 # hardcoded local identity and rejects anything else (a different user 404s, a
 # different password 401s), so this is a fixture we reproduce, not a credential we
@@ -96,7 +114,7 @@ QSTASH_DEV_TOKEN_LOCAL ?= $(shell printf '{"UserID":"%s","Password":"%s"}' '$(QS
 # Bring postgres + redis up via docker compose and wait for healthchecks to pass.
 # Idempotent — if already healthy, docker compose up --wait is a no-op. Safe to call
 # multiple times. Extracts the Redis TLS CA cert after the container is healthy so
-# subsequent targets can rely on $(TEST_REDIS_TLS_CA_CERT) being present.
+# subsequent targets can rely on $(TEST_REDIS_CA_CERT) being present.
 #
 # TEST_INFRA=provided — the caller already booted postgres/redis and extracted the
 # CA cert by running THIS recipe in an environment that has docker (CI: the memleak
@@ -105,7 +123,7 @@ QSTASH_DEV_TOKEN_LOCAL ?= $(shell printf '{"UserID":"%s","Password":"%s"}' '$(QS
 # the cert check, so a caller that claims infra without providing it dies loudly.
 _ensure-test-infra:
 ifeq ($(TEST_INFRA),provided)
-	@test -s "$(TEST_REDIS_TLS_CA_CERT)" || { echo "✗ TEST_INFRA=provided but $(TEST_REDIS_TLS_CA_CERT) is missing — the caller did not actually provision infra"; exit 1; }
+	@test -s "$(TEST_REDIS_CA_CERT)" || { echo "✗ TEST_INFRA=provided but $(TEST_REDIS_CA_CERT) is missing — the caller did not actually provision infra"; exit 1; }
 	@echo "✓ [infra] postgres + redis provided by caller (TEST_INFRA=provided); compose skipped"
 else
 	@if ! docker info >/dev/null 2>&1; then \
@@ -125,17 +143,17 @@ else
 	@# only proved the file was non-empty — which a STALE cert from a destroyed
 	@# container satisfies. Every TLS connection then failed signature
 	@# verification, which reads as dozens of unrelated Redis test failures.
-	@docker compose cp redis:/tls/ca.crt "$(TEST_REDIS_TLS_CA_CERT)"
-	@test -s "$(TEST_REDIS_TLS_CA_CERT)" || { echo "✗ Failed to extract Redis TLS cert"; exit 1; }
+	@docker compose cp redis:/tls/ca.crt "$(TEST_REDIS_CA_CERT)"
+	@test -s "$(TEST_REDIS_CA_CERT)" || { echo "✗ Failed to extract Redis TLS cert"; exit 1; }
 	@# Freshness, not size: the copied cert must be byte-identical to the one the
 	@# server is actually presenting.
 	@container_sha=$$(docker compose exec -T redis sha256sum /tls/ca.crt | awk '{print $$1}'); \
-	local_sha=$$(shasum -a 256 "$(TEST_REDIS_TLS_CA_CERT)" | awk '{print $$1}'); \
+	local_sha=$$(shasum -a 256 "$(TEST_REDIS_CA_CERT)" | awk '{print $$1}'); \
 	if [ "$$container_sha" != "$$local_sha" ]; then \
 	  echo "✗ [infra] Redis CA cert is stale (container $$container_sha != local $$local_sha)"; \
 	  exit 1; \
 	fi
-	@echo "✓ [infra] postgres + redis ready; Redis CA cert at $(TEST_REDIS_TLS_CA_CERT)"
+	@echo "✓ [infra] postgres + redis ready; Redis CA cert at $(TEST_REDIS_CA_CERT)"
 endif
 
 # Drop and recreate all app schemas so every test-integration run starts from a clean
