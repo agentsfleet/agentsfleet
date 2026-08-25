@@ -23,5 +23,6 @@ Every triggered document requires one `📖 DOC READ: <path>` proof-line **per t
 | Auth-flow | `docs/AUTH.md`. |
 | Published `*.mdx`, reusable Markdown JSX (MDX) fragment, customer readme, or public OpenAPI prose | `dispatch/write_documentation.md` → `docs/DOCUMENTATION_RULES.md` — establish page, fragment, API, or changelog scope before narrower guides. |
 | Changelog `<Update>` / release note (`changelog.mdx`) | First `dispatch/write_documentation.md`, then `dispatch/write_changelog.md` → `docs/CHANGELOG_VOICE.md`; internal-only ⇒ no entry. |
+| Write or update a PR/MR body, including session notes (`gh pr create/edit --body`, `glab mr create/update --description`, forge API, helper, or skill) | `dispatch/write_pr_description.md` — append-only numbered session unit, measured diagram, review findings, and command output. |
 | `schema/*.sql` / migration | `dispatch/write_sql.md` + `docs/SCHEMA_CONVENTIONS.md` — naming/type conventions, schema/migration rules + Schema Table Removal Guard. Re-print Schema Guard output. |
 | Any spec under `docs/v*/{pending,active,done}/` or `docs/TEMPLATE.md` | `docs/TEMPLATE.md` "Prohibited" section — no time/effort estimates, no complexity ratings, no percentage-complete, no owners/dates. SPEC TEMPLATE GATE per edit. |
