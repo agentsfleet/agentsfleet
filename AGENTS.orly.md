@@ -382,6 +382,7 @@ Optimise for one thing: he never has to ask twice.
 | Responsibility | Commands |
 |---|---|
 | `conform` | `make harness-verify` |
+| `verify.integration` | `make test-integration-rustd` |
 | `verify.lint` | `make lint-all` |
 | `verify.unit` | `make test-unit-all` |
 | `verify.version` | `make check-version` |

@@ -20,7 +20,7 @@ use sqlx::{Acquire as _, Executor as _, Postgres};
 pub use self::ledger::{FailureRow, Ledger};
 pub use self::lock::{Attempt, MigrationLock, RetryPolicy};
 
-use crate::error::{Error, ErrorKind};
+use crate::error::{Error, ErrorKind, Result};
 use crate::migration::{MIGRATIONS, Migration};
 use crate::pool::Db;
 
@@ -107,7 +107,7 @@ impl Migrator {
     /// Returns a migration-refused error when the lock stays held or the ledger
     /// is ahead, a migration-failed error naming the version that would not
     /// apply, and a query error for a bookkeeping statement that failed.
-    pub async fn run(&self, db: &Db) -> Result<Applied, Error> {
+    pub async fn run(&self, db: &Db) -> Result<Applied> {
         let connection = db.acquire().await?;
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let expected_versions = self.migrations.len();
@@ -125,7 +125,7 @@ impl Migrator {
         outcome
     }
 
-    async fn apply_all(&self, connection: &mut PoolConnection<Postgres>) -> Result<Applied, Error> {
+    async fn apply_all(&self, connection: &mut PoolConnection<Postgres>) -> Result<Applied> {
         ledger::ensure_tables(connection).await?;
 
         let canonical: Vec<i32> = self.canonical_versions();
@@ -164,10 +164,7 @@ impl Migrator {
 /// The transaction is the unit that matters: the schema change and the row
 /// saying it happened commit together, so a crash between them is not a state
 /// the ledger can be in.
-async fn apply_one(
-    connection: &mut PoolConnection<Postgres>,
-    migration: &Migration,
-) -> Result<(), Error> {
+async fn apply_one(connection: &mut PoolConnection<Postgres>, migration: &Migration) -> Result<()> {
     let version = migration.version();
     tracing::info!(version, name = migration.name(), "migration_start");
 

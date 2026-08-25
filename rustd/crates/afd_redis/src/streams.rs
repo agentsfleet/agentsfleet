@@ -29,7 +29,7 @@ use redis::ToRedisArgs as _;
 use redis::streams::{StreamReadOptions, StreamReadReply};
 
 use crate::client::Redis;
-use crate::error::{self, Error};
+use crate::error::{self, Result};
 
 /// The commands this module issues, named once each (RULE UFS).
 const CMD_XADD: &str = "XADD";
@@ -123,11 +123,11 @@ impl FleetStreams {
     /// # Errors
     /// Returns a command error when the group could not be created for any
     /// reason other than already existing.
-    pub async fn ensure_group(&self, fleet_id: &str) -> Result<(), Error> {
+    pub async fn ensure_group(&self, fleet_id: &str) -> Result<()> {
         self.create_group(fleet_id, GROUP_START_BEGIN).await
     }
 
-    async fn create_group(&self, fleet_id: &str, start: &str) -> Result<(), Error> {
+    async fn create_group(&self, fleet_id: &str, start: &str) -> Result<()> {
         let key = fleet_stream_key(fleet_id);
         let mut cmd = redis::cmd(CMD_XGROUP);
         cmd.arg("CREATE")
@@ -152,7 +152,7 @@ impl FleetStreams {
     /// # Errors
     /// Returns a command error when the append fails, and an unexpected-reply
     /// error when Redis answers with something that is not an id.
-    pub async fn append(&self, fleet_id: &str, fields: &[(&str, &str)]) -> Result<EventId, Error> {
+    pub async fn append(&self, fleet_id: &str, fields: &[(&str, &str)]) -> Result<EventId> {
         let key = fleet_stream_key(fleet_id);
         let mut cmd = redis::cmd(CMD_XADD);
         cmd.arg(&key)
@@ -181,11 +181,7 @@ impl FleetStreams {
     /// # Errors
     /// Returns a command error, or an unavailable error when Redis is gone.
     /// A vanished group is repaired here rather than reported.
-    pub async fn read_new(
-        &self,
-        fleet_id: &str,
-        consumer: &str,
-    ) -> Result<Option<FleetEvent>, Error> {
+    pub async fn read_new(&self, fleet_id: &str, consumer: &str) -> Result<Option<FleetEvent>> {
         self.read(fleet_id, consumer, NEW_ENTRIES).await
     }
 
@@ -194,11 +190,7 @@ impl FleetStreams {
     ///
     /// # Errors
     /// As [`FleetStreams::read_new`].
-    pub async fn read_pending(
-        &self,
-        fleet_id: &str,
-        consumer: &str,
-    ) -> Result<Option<FleetEvent>, Error> {
+    pub async fn read_pending(&self, fleet_id: &str, consumer: &str) -> Result<Option<FleetEvent>> {
         self.read(fleet_id, consumer, OWN_PENDING).await
     }
 
@@ -207,7 +199,7 @@ impl FleetStreams {
         fleet_id: &str,
         consumer: &str,
         read_id: &str,
-    ) -> Result<Option<FleetEvent>, Error> {
+    ) -> Result<Option<FleetEvent>> {
         match self.read_once(fleet_id, consumer, read_id).await {
             Err(failure) if failure.is_group_missing() => {
                 // Hoisted: see the `tracing` note in the workspace Cargo.toml.
@@ -229,7 +221,7 @@ impl FleetStreams {
         fleet_id: &str,
         consumer: &str,
         read_id: &str,
-    ) -> Result<Option<FleetEvent>, Error> {
+    ) -> Result<Option<FleetEvent>> {
         let key = fleet_stream_key(fleet_id);
         let options = StreamReadOptions::default()
             .group(FLEET_CONSUMER_GROUP, consumer)
@@ -260,7 +252,7 @@ impl FleetStreams {
     ///
     /// # Errors
     /// Returns a command error when the acknowledgement fails.
-    pub async fn ack(&self, fleet_id: &str, id: &EventId) -> Result<bool, Error> {
+    pub async fn ack(&self, fleet_id: &str, id: &EventId) -> Result<bool> {
         let key = fleet_stream_key(fleet_id);
         let mut cmd = redis::cmd(CMD_XACK);
         cmd.arg(&key).arg(FLEET_CONSUMER_GROUP).arg(id.as_str());
@@ -272,7 +264,7 @@ impl FleetStreams {
     ///
     /// # Errors
     /// Returns a command error when the publish fails.
-    pub async fn publish(&self, channel: &str, payload: &str) -> Result<i64, Error> {
+    pub async fn publish(&self, channel: &str, payload: &str) -> Result<i64> {
         let mut cmd = redis::cmd(CMD_PUBLISH);
         cmd.arg(channel).arg(payload);
         self.redis.command(CMD_PUBLISH, channel, &cmd).await

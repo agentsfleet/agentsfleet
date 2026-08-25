@@ -42,9 +42,17 @@
 # this target, so a developer who runs one directly is told where it belongs.
 RUSTD_INTEGRATION_IGNORE_ARGS := --ignored
 
-test-integration-rustd: $(TEST_STATE_DEP)  ## Run the Rust substrate integration suite against compose Postgres + Redis
-	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
-	@db_url="$$TEST_DATABASE_URL"; \
+# Resolves the lane's database URL, disabling TLS for a local compose server.
+#
+# One definition, used by both lanes. It was copied into each, and a guard that
+# exists twice is one guard and one thing that looks like a guard — the same
+# reason `scripts/rustd_lane_result.py` owns the pass/fail decision for both.
+#
+# `sslmode=disable` is appended only for localhost: the compose Postgres serves
+# no certificate, and a hosted database must never have TLS turned off by a
+# test lane reaching for a default.
+define RUSTD_RESOLVE_DB_URL
+db_url="$$TEST_DATABASE_URL"; \
 	if [ -z "$$db_url" ]; then db_url="$(TEST_DATABASE_URL_LOCAL)"; fi; \
 	case "$$db_url" in \
 	  *localhost*|*127.0.0.1*) \
@@ -53,7 +61,13 @@ test-integration-rustd: $(TEST_STATE_DEP)  ## Run the Rust substrate integration
 	      *\?*) db_url="$$db_url&sslmode=disable" ;; \
 	      *) db_url="$$db_url?sslmode=disable" ;; \
 	    esac ;; \
-	esac; \
+	esac;
+endef
+
+
+test-integration-rustd: $(TEST_STATE_DEP)  ## Run the Rust substrate integration suite against compose Postgres + Redis
+	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
+	@$(RUSTD_RESOLVE_DB_URL) \
 	echo "→ [rustd] Running the Rust integration suite against $$db_url..."; \
 	mkdir -p "$(CURDIR)/.tmp"; \
 	tally="$(CURDIR)/.tmp/rustd-integration.log"; \
@@ -84,16 +98,7 @@ test-integration-rustd: $(TEST_STATE_DEP)  ## Run the Rust substrate integration
 # on two runners — the mistake the retired Zig graph made and then fixed.
 test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under coverage against live datastores
 	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "✗ cargo-llvm-cov not found. Install via: cargo install cargo-llvm-cov"; exit 1; }
-	@db_url="$$TEST_DATABASE_URL"; \
-	if [ -z "$$db_url" ]; then db_url="$(TEST_DATABASE_URL_LOCAL)"; fi; \
-	case "$$db_url" in \
-	  *localhost*|*127.0.0.1*) \
-	    case "$$db_url" in \
-	      *sslmode=*) ;; \
-	      *\?*) db_url="$$db_url&sslmode=disable" ;; \
-	      *) db_url="$$db_url?sslmode=disable" ;; \
-	    esac ;; \
-	esac; \
+	@$(RUSTD_RESOLVE_DB_URL) \
 	echo "→ [rustd] Measuring both test tiers against $$db_url..."; \
 	mkdir -p "$(CURDIR)/.tmp"; \
 	tally="$(CURDIR)/.tmp/rustd-coverage.log"; \

@@ -18,7 +18,7 @@ use redis::aio::{PubSubSink, PubSubStream};
 
 use super::{Backoff, Command, HubInner, Message};
 use crate::config::RedisConfig;
-use crate::error::{Error, ErrorKind};
+use crate::error::{Error, ErrorKind, Result};
 
 /// Opens the first connection and leaves a task owning it.
 ///
@@ -30,7 +30,7 @@ pub(super) async fn spawn(
     backoff: Backoff,
     inner: Arc<HubInner>,
     commands: tokio::sync::mpsc::UnboundedReceiver<Command>,
-) -> Result<(), Error> {
+) -> Result<()> {
     let connection = connect(&config).await?;
     inner.record_connection();
     tokio::spawn(run(config, backoff, inner, commands, connection));
@@ -43,7 +43,7 @@ struct Connection {
     stream: PubSubStream,
 }
 
-async fn connect(config: &RedisConfig) -> Result<Connection, Error> {
+async fn connect(config: &RedisConfig) -> Result<Connection> {
     let client = crate::client::build_client(config)?;
     let pubsub = client.get_async_pubsub().await.map_err(|source| {
         Error::new(ErrorKind::Unreachable {

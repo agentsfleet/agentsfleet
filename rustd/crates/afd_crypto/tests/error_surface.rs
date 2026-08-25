@@ -115,11 +115,27 @@ fn test_error_rendering_carries_no_key_material() {
     }
 }
 
-/// Every error links to a source, which is what `{:#}` chains walk.
+/// Every error in this crate is a ROOT, and says everything in its own message.
+///
+/// None of the kinds wrap a foreign error, and one of them declines to on
+/// purpose: `EnvelopeOpen` does not carry the AEAD library's reason, because
+/// distinguishing "bad tag" from "bad nonce" for a caller is the beginning of a
+/// padding oracle. So a chain walker must find nothing beneath these.
+///
+/// This asserted `is_some()` until the source of every error in the workspace
+/// was its own private `ErrorKind` — which made `{:#}` print each message
+/// twice and published a `pub(crate)` type through a public trait.
 #[test]
-fn test_error_exposes_a_source() {
+fn test_every_error_is_a_root_with_a_complete_message() {
     for (label, error) in one_of_each() {
-        assert!(error.source().is_some(), "{label} has no source");
+        assert!(
+            error.source().is_none(),
+            "{label} reports a cause; nothing in this crate wraps one"
+        );
+        assert!(
+            !error.to_string().is_empty(),
+            "{label} must carry its whole explanation itself"
+        );
     }
 }
 

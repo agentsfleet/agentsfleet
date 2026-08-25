@@ -177,8 +177,13 @@ dependencies = [
  "afd_crypto",
  "afd_db",
  "afd_redis",
+ "axum",
+ "hyper",
+ "hyper-util",
+ "thiserror",
  "tokio",
  "tokio-util",
+ "tower",
  "tracing",
  "tracing-subscriber",
 ]

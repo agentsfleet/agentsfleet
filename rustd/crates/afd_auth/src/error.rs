@@ -31,6 +31,19 @@
 
 use afd_core::error_code::{self, ErrorCode};
 
+/// The result every fallible function in this crate returns.
+///
+/// One alias per crate, defaulted to that crate's own [`AuthError`] — the shape
+/// `core_api` has run in production on for years, and the one bun uses
+/// (`pub type Result<T, E = Error>`). The default parameter is what lets the
+/// few functions answering with a different error keep the same spelling:
+/// `Result<T>` for the common case, `Result<T, OtherError>` where it differs.
+///
+/// The point is not brevity. It is that a reader never has to check WHICH
+/// error a signature returns to know it is this crate's, and a new call site
+/// cannot quietly introduce a second error type without saying so.
+pub type Result<T, E = AuthError> = core::result::Result<T, E>;
+
 /// The Zig `S_INVALID_OR_MISSING_TOKEN`, shared by the three tenant-plane
 /// classes. One spelling, because three copies is three chances to drift and
 /// the difference would be visible to a client (RULE UFS).

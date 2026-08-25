@@ -36,7 +36,7 @@ use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::config::RedisConfig;
-use crate::error::{Error, ErrorKind};
+use crate::error::{Error, ErrorKind, Result};
 
 /// How many messages a slow reader may fall behind before it is told it lagged.
 ///
@@ -119,7 +119,7 @@ impl Subscription {
     /// behind the buffer is told so by `Ok(None)` — see [`Lagged`].
     ///
     /// [`Lagged`]: tokio::sync::broadcast::error::RecvError::Lagged
-    pub async fn recv(&mut self) -> Result<Option<Message>, Error> {
+    pub async fn recv(&mut self) -> Result<Option<Message>> {
         match self.receiver.recv().await {
             Ok(message) => Ok(Some(message)),
             Err(broadcast::error::RecvError::Lagged(missed)) => {
@@ -189,7 +189,7 @@ impl SubscriptionHub {
     /// # Errors
     /// Returns an unavailable error when the first connection cannot be made.
     /// Later drops are the pump's problem, not the caller's.
-    pub async fn start(config: RedisConfig) -> Result<Self, Error> {
+    pub async fn start(config: RedisConfig) -> Result<Self> {
         Self::start_with_backoff(config, Backoff::PRODUCTION).await
     }
 
@@ -197,7 +197,7 @@ impl SubscriptionHub {
     ///
     /// # Errors
     /// As [`SubscriptionHub::start`].
-    pub async fn start_with_backoff(config: RedisConfig, backoff: Backoff) -> Result<Self, Error> {
+    pub async fn start_with_backoff(config: RedisConfig, backoff: Backoff) -> Result<Self> {
         let (commands, receiver) = mpsc::unbounded_channel();
         let inner = Arc::new(HubInner {
             channels: Mutex::new(HashMap::new()),

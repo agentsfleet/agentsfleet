@@ -17,7 +17,7 @@
 //! The mock lives behind the `test-util` feature (`M-TEST-UTIL`), so a release
 //! build has no constructor that can weaken nonce generation.
 
-use crate::error::{Error, ErrorKind};
+use crate::error::{Error, ErrorKind, Result};
 
 /// Where nonce bytes come from.
 ///
@@ -39,7 +39,7 @@ impl Source {
     /// # Errors
     /// Returns an entropy error when the operating system refuses, which is
     /// fatal rather than retryable — a host with no entropy cannot seal.
-    pub(crate) fn fill(&self, buf: &mut [u8]) -> Result<(), Error> {
+    pub(crate) fn fill(&self, buf: &mut [u8]) -> Result<()> {
         match self {
             // The operating system's reason is not actionable by a caller and
             // not something to surface — a host that cannot produce entropy
@@ -105,7 +105,7 @@ impl Entropy {
     /// cannot produce entropy cannot seal either, so this is fatal rather than
     /// retryable, and the reason is deliberately not surfaced — it is not
     /// something a caller can act on.
-    pub fn fill(&self, buf: &mut [u8]) -> Result<(), Error> {
+    pub fn fill(&self, buf: &mut [u8]) -> Result<()> {
         self.source.fill(buf)
     }
 }
@@ -128,7 +128,7 @@ pub(crate) mod mock {
 
     use std::sync::{Arc, Mutex, PoisonError};
 
-    use crate::error::{Error, ErrorKind};
+    use crate::error::{Error, ErrorKind, Result};
 
     /// Drives what the next nonce will be.
     #[derive(Debug, Clone)]
@@ -170,7 +170,7 @@ pub(crate) mod mock {
             self.inner.lock().unwrap_or_else(PoisonError::into_inner)
         }
 
-        pub(crate) fn fill(&self, buf: &mut [u8]) -> Result<(), Error> {
+        pub(crate) fn fill(&self, buf: &mut [u8]) -> Result<()> {
             let mut inner = self.locked();
             if inner.fail_next {
                 inner.fail_next = false;

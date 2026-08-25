@@ -22,7 +22,7 @@ use sqlx::{Executor as _, Postgres, Row as _};
 
 use afd_core::error_code;
 
-use crate::error::{Error, ErrorKind, query};
+use crate::error::{Error, ErrorKind, Result, query};
 
 /// The operations a failure names, one spelling each (RULE UFS).
 const OP_ACQUIRE: &str = "migrate.acquire_lock";
@@ -110,7 +110,7 @@ impl MigrationLock {
     pub async fn acquire(
         mut connection: PoolConnection<Postgres>,
         policy: RetryPolicy,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self> {
         for attempt in 1..=policy.attempts {
             let acquired: bool = sqlx::query("SELECT pg_try_advisory_lock($1)")
                 .bind(ADVISORY_KEY)
@@ -191,7 +191,7 @@ impl MigrationLock {
 ///
 /// # Errors
 /// Returns a query error when the probe statement fails.
-pub async fn probe_available(connection: &mut PoolConnection<Postgres>) -> Result<bool, Error> {
+pub async fn probe_available(connection: &mut PoolConnection<Postgres>) -> Result<bool> {
     sqlx::query("SELECT pg_try_advisory_xact_lock($1)")
         .bind(ADVISORY_KEY)
         .fetch_one(&mut **connection)

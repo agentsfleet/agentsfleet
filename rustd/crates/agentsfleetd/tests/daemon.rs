@@ -10,18 +10,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use agentsfleetd::daemon::{Daemon, StopCause};
-use agentsfleetd::inventory::{
-    Disposition, HUB_PUMP, OTLP_EXPORT, THREAD_MAP, deferred_rows, supervised_names,
-};
+use agentsfleetd::inventory::{BACKGROUND_TASKS, HUB_PUMP, OTLP_EXPORT};
 use agentsfleetd::supervisor::Supervisor;
 
 use self::support::install_subscriber;
-
-/// Rows in the `concurrency.md` `agentsfleetd` thread map.
-///
-/// Pinned, so a row deleted from the table fails here rather than quietly
-/// shrinking what "complete inventory" means.
-const THREAD_MAP_ROWS: usize = 11;
 
 /// Spawns a supervised task that records having observed its cancellation.
 ///
@@ -152,64 +144,22 @@ async fn test_an_unclean_teardown_is_reported_not_swallowed() {
     );
 }
 
-/// Dimension 7.5 — every thread-map row has a disposition, and none is silent.
-#[test]
-fn test_task_inventory_covers_every_thread_map_row() {
-    assert_eq!(
-        THREAD_MAP.len(),
-        THREAD_MAP_ROWS,
-        "the inventory must carry one row per concurrency.md thread-map row"
-    );
-
-    for row in THREAD_MAP {
-        assert!(!row.zig.is_empty(), "a row with no name names nothing");
-        match row.disposition {
-            Disposition::Supervised(name) => {
-                assert!(!name.is_empty(), "{} is supervised as nothing", row.zig);
-            }
-            Disposition::Retired(why) => {
-                assert!(
-                    why.len() > row.zig.len(),
-                    "{}: a retirement needs a reason longer than the row name",
-                    row.zig
-                );
-            }
-            Disposition::Deferred(milestone) => {
-                assert!(
-                    milestone.starts_with('M') && milestone.len() >= 4,
-                    "{} is deferred to {milestone:?}, which is not a milestone id",
-                    row.zig
-                );
-            }
-        }
-    }
-}
-
-/// What this build supervises, and what it still owes.
+/// The daemon supervises exactly the background tasks it claims to.
 ///
-/// Asserted by NAME rather than by count: a row quietly changing disposition
-/// from deferred to supervised — or the reverse — is exactly the drift a count
-/// would wave through.
+/// Asserted by NAME rather than by count: a task quietly added to or dropped
+/// from boot is exactly the drift a count would wave through.
+///
+/// What each Zig thread became is in `docs/architecture/concurrency.md`. It is
+/// not duplicated here, and was briefly: a porting ledger is prose about a
+/// migration, and prose in a table of tuples is harder to read, harder to
+/// change, and no more true than the document.
 #[test]
-fn test_the_inventory_names_what_is_supervised_and_what_is_owed() {
+fn test_the_daemon_supervises_what_it_claims() {
     assert_eq!(
-        supervised_names(),
-        vec![HUB_PUMP, OTLP_EXPORT],
+        BACKGROUND_TASKS,
+        &[HUB_PUMP, OTLP_EXPORT],
         "this build supervises the pub/sub pump and the span exporter, and nothing else"
     );
-
-    let deferred = deferred_rows();
-    assert_eq!(
-        deferred.len(),
-        THREAD_MAP_ROWS - supervised_names().len() - 2,
-        "eleven rows, two supervised, two retired by design — the rest are owed"
-    );
-    for (row, milestone) in deferred {
-        assert!(
-            !row.is_empty() && !milestone.is_empty(),
-            "a deferral names both the work and who owes it"
-        );
-    }
 }
 
 /// A daemon reports the tasks it holds before it runs them.
@@ -222,7 +172,7 @@ async fn test_a_daemon_reports_its_inventory_before_running() {
     let daemon = Daemon::new(supervisor);
     assert_eq!(
         daemon.inventory(),
-        supervised_names(),
+        BACKGROUND_TASKS,
         "what boot spawned must equal what the inventory says it would"
     );
 

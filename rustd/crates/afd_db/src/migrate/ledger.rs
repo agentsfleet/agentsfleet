@@ -16,7 +16,7 @@ use afd_core::error_code;
 use sqlx::pool::PoolConnection;
 use sqlx::{Executor as _, Postgres, Row as _};
 
-use crate::error::{Error, query};
+use crate::error::{Result, query};
 
 /// The operations a failure names. One spelling each (RULE UFS): these strings
 /// are what an operator greps for, so two spellings of one step is two searches.
@@ -67,7 +67,7 @@ impl Ledger {
     /// Returns a query error when either read fails — including the case where
     /// the tables do not exist yet, which is a caller ordering mistake rather
     /// than something to paper over with a default.
-    pub async fn read(connection: &mut PoolConnection<Postgres>) -> Result<Self, Error> {
+    pub async fn read(connection: &mut PoolConnection<Postgres>) -> Result<Self> {
         let applied = sqlx::query("SELECT version FROM audit.schema_migrations")
             .fetch_all(&mut **connection)
             .await
@@ -129,7 +129,7 @@ impl Ledger {
 ///
 /// # Errors
 /// Returns a query error when any of the three statements fails.
-pub async fn ensure_tables(connection: &mut PoolConnection<Postgres>) -> Result<(), Error> {
+pub async fn ensure_tables(connection: &mut PoolConnection<Postgres>) -> Result<()> {
     for statement in [
         CREATE_AUDIT_SCHEMA,
         CREATE_SCHEMA_MIGRATIONS,
@@ -156,7 +156,7 @@ pub async fn ensure_tables(connection: &mut PoolConnection<Postgres>) -> Result<
 pub async fn reap_orphans(
     connection: &mut PoolConnection<Postgres>,
     canonical: &[i32],
-) -> Result<u64, Error> {
+) -> Result<u64> {
     let reaped = sqlx::query("DELETE FROM audit.schema_migrations WHERE version <> ALL($1)")
         .bind(canonical)
         .execute(&mut **connection)
@@ -182,7 +182,7 @@ pub async fn reap_orphans(
 /// Returns a query error when the insert fails, which rolls the caller's
 /// transaction back — the row and the schema change commit together or not at
 /// all.
-pub async fn record_applied<'e, E>(executor: E, version: i32) -> Result<(), Error>
+pub async fn record_applied<'e, E>(executor: E, version: i32) -> Result<()>
 where
     E: sqlx::Executor<'e, Database = Postgres>,
 {

@@ -19,7 +19,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 use zeroize::Zeroize;
 
 use crate::KEY_LEN;
-use crate::error::{Error, ErrorKind};
+use crate::error::{Error, ErrorKind, Result};
 
 /// The process Key Encryption Key, resolved once at boot and immutable after.
 ///
@@ -47,7 +47,7 @@ impl Kek {
     /// # Errors
     /// Returns a key-hex error when the input is not exactly `KEY_LEN * 2`
     /// characters, or contains a character that is not a hex digit.
-    pub fn from_hex(hex: &str) -> Result<Self, Error> {
+    pub fn from_hex(hex: &str) -> Result<Self> {
         let mut key = [0_u8; KEY_LEN];
         decode_hex_into(hex, &mut key)?;
         Ok(Self(key))
@@ -75,7 +75,7 @@ impl Dek {
     ///
     /// # Errors
     /// Returns a malformed-envelope error when the slice is not `KEY_LEN` bytes.
-    pub fn from_slice(bytes: &[u8]) -> Result<Self, Error> {
+    pub fn from_slice(bytes: &[u8]) -> Result<Self> {
         let sized: [u8; KEY_LEN] = bytes.try_into().map_err(|_err| {
             Error::new(ErrorKind::ComponentLength {
                 component: "data encryption key",
@@ -121,7 +121,7 @@ impl SecretBytes {
 }
 
 /// Decodes lowercase-or-uppercase hex into a fixed buffer, rejecting anything else.
-fn decode_hex_into(hex: &str, out: &mut [u8]) -> Result<(), Error> {
+fn decode_hex_into(hex: &str, out: &mut [u8]) -> Result<()> {
     let expected = out.len() * 2;
     if hex.len() != expected {
         return Err(Error::new(ErrorKind::KeyHexLength {
@@ -139,7 +139,7 @@ fn decode_hex_into(hex: &str, out: &mut [u8]) -> Result<(), Error> {
     Ok(())
 }
 
-fn hex_digit(byte: u8) -> Result<u8, Error> {
+fn hex_digit(byte: u8) -> Result<u8> {
     match byte {
         b'0'..=b'9' => Ok(byte - b'0'),
         b'a'..=b'f' => Ok(byte - b'a' + 10),

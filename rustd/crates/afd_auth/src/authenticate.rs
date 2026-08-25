@@ -37,7 +37,7 @@
 use crate::capability::CapabilitySource;
 use crate::credential::{CredentialKind, Presented};
 use crate::directory::{CredentialDirectory, CredentialRecord, Digest, Liveness};
-use crate::error::AuthError;
+use crate::error::{AuthError, Result};
 use crate::plane::Plane;
 use crate::principal::{Person, PersonCredential, Principal, Runner};
 use crate::scope::parse_claim;
@@ -213,7 +213,7 @@ where
     /// carries a blank token — one branch, as `bearer.zig` intends, and the
     /// same one a wrong-class credential lands in, so a caller cannot tell the
     /// two apart.
-    pub async fn authenticate_header(&self, header: &str) -> Result<Principal, AuthError> {
+    pub async fn authenticate_header(&self, header: &str) -> Result<Principal> {
         let presented = Presented::from_authorization(header).map_err(|_blank| self.refusal())?;
         self.authenticate(&presented).await
     }
@@ -222,7 +222,7 @@ where
     ///
     /// # Errors
     /// [`AuthError`], carrying the registry code and the client-visible detail.
-    pub async fn authenticate(&self, presented: &Presented) -> Result<Principal, AuthError> {
+    pub async fn authenticate(&self, presented: &Presented) -> Result<Principal> {
         let kind = CredentialKind::of(presented);
         if !self.plane.admits(kind) {
             return Err(self.refusal());
@@ -246,7 +246,7 @@ where
         &self,
         class: HashedClass,
         presented: &Presented,
-    ) -> Result<Principal, AuthError> {
+    ) -> Result<Principal> {
         if !class.accepts_shape(presented) {
             return Err(class.unknown);
         }
@@ -296,7 +296,7 @@ where
     ///
     /// The one class that consults no [`CapabilitySource`], because its
     /// capability claim rides on the credential itself.
-    async fn authenticate_token(&self, presented: &Presented) -> Result<Principal, AuthError> {
+    async fn authenticate_token(&self, presented: &Presented) -> Result<Principal> {
         let claims = match self.verifier.verify(presented).await {
             Ok(claims) => claims,
             Err(err) => return Err(Self::redact(err, self.refusal())),

@@ -10,7 +10,7 @@ use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
-use crate::error::{Error, ErrorKind};
+use crate::error::{Error, ErrorKind, Result};
 use crate::secret::Kek;
 
 /// Bytes in an HMAC-SHA256 output.
@@ -63,7 +63,7 @@ impl Mac256 {
     ///
     /// # Errors
     /// Returns a malformed-envelope error when the slice is not `MAC_LEN` bytes.
-    pub fn from_slice(bytes: &[u8]) -> Result<Self, Error> {
+    pub fn from_slice(bytes: &[u8]) -> Result<Self> {
         let sized: [u8; MAC_LEN] = bytes.try_into().map_err(|_err| {
             Error::new(ErrorKind::ComponentLength {
                 component: "message authentication code",
@@ -78,7 +78,7 @@ impl Mac256 {
     ///
     /// # Errors
     /// Returns a MAC-mismatch error when the codes are not equal.
-    pub fn verify(&self, other: &Self) -> Result<(), Error> {
+    pub fn verify(&self, other: &Self) -> Result<()> {
         if self.0.ct_eq(&other.0).into() {
             Ok(())
         } else {

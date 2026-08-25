@@ -44,6 +44,14 @@ facts.
   `.env.runner.local` from `~/.config/agentsfleet/`; a ⚠ from the hook
   means run `provision-env-1password` (dotfiles) first. The app throws on
   an unset `NEXT_PUBLIC_API_URL` instead of guessing a backend.
+- **Rust errors follow [`docs/RUST_ERROR_STANDARD.md`](docs/RUST_ERROR_STANDARD.md)** —
+  read it before adding or changing a fallible signature under `rustd/`. One
+  error type per crate with a `pub type Result<T, E = Error>` beside it;
+  compose with `#[from]` so `?` lifts; `map_err` only to ADD context the call
+  site alone knows, never `.map_err(|e| Mine(e.to_string()))` — that destroys
+  the `source()` chain; and `source()` returns what caused you, never your own
+  kind. Not every error has a cause, so a test demanding one for every variant
+  is wrong. The shape is `core_api`'s, bun's and habitat's, not invented here.
 - Public endpoint, command, flag, or behavior changes require a matching branch
   in `~/Projects/docs`; never edit that repository through this worktree.
 
