@@ -56,11 +56,6 @@
 # checked and linted like the rest), lists them as ignored, and runs none —
 # which is what keeps live Postgres off the fast lane. Each ignore reason names
 # this target, so a developer who runs one directly is told where it belongs.
-#
-# The flag is written where it is passed, not hoisted into a variable. It was
-# `RUSTD_INTEGRATION_IGNORE_ARGS := --ignored`, defined once and expanded once,
-# nine lines apart — no reuse bought, and a reader made to jump to learn that a
-# name of three words stands for one.
 
 test-integration-rustd: $(TEST_STATE_DEP)  ## Run the Rust substrate integration suite against compose Postgres + Redis
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
