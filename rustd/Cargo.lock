@@ -172,6 +172,7 @@ dependencies = [
 name = "agentsfleetd"
 version = "0.26.2"
 dependencies = [
+ "afd_api",
  "afd_core",
  "afd_crypto",
  "afd_db",

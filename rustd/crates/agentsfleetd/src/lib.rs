@@ -20,10 +20,12 @@ pub mod daemon;
 pub mod fatal;
 pub mod inventory;
 pub mod preflight;
+pub mod probes;
 pub mod supervisor;
 pub mod tty;
 
 pub use self::daemon::{Daemon, Outcome, StopCause};
 pub use self::inventory::{Disposition, THREAD_MAP, ThreadRow};
 pub use self::preflight::{BootConfig, Fault, Refusal, preflight};
+pub use self::probes::{LiveDependencies, PROBE_TIMEOUT};
 pub use self::supervisor::{JOIN_TIMEOUT, ShutdownReport, Supervisor};

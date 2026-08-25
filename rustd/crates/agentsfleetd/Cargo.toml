@@ -26,6 +26,7 @@ path = "src/main.rs"
 [features]
 # M-TEST-UTIL. Unlocks the mockable cores the boot path reads through.
 test-util = [
+    "afd_api/test-util",
     "afd_core/test-util",
     "afd_crypto/test-util",
     "afd_db/test-util",
@@ -33,6 +34,7 @@ test-util = [
 ]
 
 [dependencies]
+afd_api.workspace = true
 afd_core.workspace = true
 # Preflight resolves the master key here rather than in the crypto crate:
 # `afd_crypto` takes hex, deliberately, because it is the layer that must not
