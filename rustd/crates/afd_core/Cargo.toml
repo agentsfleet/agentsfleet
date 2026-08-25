@@ -19,6 +19,10 @@ test-util = []
 [dependencies]
 serde.workspace = true
 thiserror.workspace = true
+# Version-7 construction only; the canonical-spelling PARSE stays here, because
+# `Uuid::parse_str` normalises case and this product rejects it. See the
+# workspace manifest for the full rationale.
+uuid.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

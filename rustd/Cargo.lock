@@ -74,6 +74,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "uuid",
 ]
 
 [[package]]
@@ -101,6 +102,26 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "afd_fleet"
+version = "0.26.2"
+dependencies = [
+ "afd_auth",
+ "afd_core",
+ "afd_crypto",
+ "afd_db",
+ "afd_state",
+ "afd_wire",
+ "hex",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "zeroize",
 ]
 
 [[package]]

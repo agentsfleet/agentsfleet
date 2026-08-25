@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_api", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_identity", "crates/afd_observability", "crates/afd_redis", "crates/afd_state", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_api", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_fleet", "crates/afd_identity", "crates/afd_observability", "crates/afd_redis", "crates/afd_state", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.26.2"
@@ -43,10 +43,12 @@ afd_auth = { path = "crates/afd_auth" }
 afd_core = { path = "crates/afd_core" }
 afd_crypto = { path = "crates/afd_crypto" }
 afd_db = { path = "crates/afd_db" }
+afd_fleet = { path = "crates/afd_fleet" }
 afd_identity = { path = "crates/afd_identity" }
 afd_observability = { path = "crates/afd_observability" }
 afd_redis = { path = "crates/afd_redis" }
 afd_state = { path = "crates/afd_state" }
+afd_wire = { path = "crates/afd_wire" }
 
 # `default-features = false` throughout, features named explicitly, so a member
 # cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).
@@ -75,6 +77,12 @@ clap = { version = "4.5.51", default-features = false, features = ["std", "deriv
 aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc"] }
 hmac = { version = "0.13.0", default-features = false }
 sha2 = { version = "0.11.0", default-features = false }
+# Lower-case hex, for the credential digests and minted token bodies every
+# stored class is built from. Already in the lock via sqlx; taken directly
+# because a hand-written `write!("{:02x}")` loop is a place for a leading zero
+# to go missing, and this workspace prefers a crate to a re-derivation.
+hex = { version = "0.4.3", default-features = false, features = ["std"] }
+
 # Constant-time comparison. RULE CTM: a byte-by-byte `==` over a secret leaks how
 # much of a guess was right through how long it took to reject.
 subtle = { version = "2.6.1", default-features = false }
@@ -84,6 +92,22 @@ subtle = { version = "2.6.1", default-features = false }
 zeroize = { version = "1.9.0", default-features = false, features = ["alloc"] }
 # The only system call this workspace's crypto makes.
 getrandom = { version = "0.4.3", default-features = false }
+
+# Version-7 identifier construction. ALREADY in the lock at this version via
+# moka, so this is a feature flag on a compiled crate rather than a new
+# dependency — and it is not on `afd_core`'s FORBIDDEN list, which polices
+# runtimes, datastores and transports.
+#
+# Only `Builder::from_unix_timestamp_millis` is used: it takes the 48-bit
+# millisecond field and ten caller-supplied entropy bytes and sets the version
+# and variant nibbles. The entropy is still drawn by `afd_crypto`, so the "one
+# system call" claim holds — nothing here asks uuid for randomness.
+#
+# The PARSE side stays hand-written in `afd_core::id`, and that is not
+# duplication: `Uuid::parse_str` is case-INSENSITIVE and normalises, while this
+# product rejects uppercase outright so one entity cannot have two spellings.
+# A crate that cannot express the invariant is not a shortcut to it.
+uuid = { version = "1.25.0", default-features = false, features = ["v7", "std"] }
 
 # Base64url, for JSON Web Key components and the three segments of a session
 # token. `default-features = false` is load-bearing here rather than habitual:

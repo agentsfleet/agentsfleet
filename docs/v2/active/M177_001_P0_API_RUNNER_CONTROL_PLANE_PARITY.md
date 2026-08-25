@@ -56,9 +56,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet_runtime/**` | CREATE | fleet config parsing (YAML frontmatter + markdown), ExecutionPolicy build, metering |
 | `rustd/crates/afd_credentials/**` | CREATE | on-demand credential broker: cached short-lived integration-token minting from vault handles |
 | `rustd/crates/afd_api/**` | EDIT | Route variants + handlers for the `/v1/runners` verb set; `runnerBearer` layer wiring |
-| `rustd/crates/afd_auth/**` | EDIT | `runnerBearer` validator (`agt_r` prefix, timing-safe hash lookup, no memoization) |
+| `rustd/crates/afd_auth/**` | EDIT | `runnerBearer` validator (`agt_r` prefix, timing-safe hash lookup, no memoization); `Digest::of_minted` so the minter and the verifier hash through ONE function |
 | `rustd/crates/agentsfleetd/**` | EDIT | sweeper tasks join the supervisor; runner metric families registered |
-| `rustd/Cargo.toml` | EDIT | new members |
+| `rustd/crates/afd_core/**` | EDIT | `Uuid7::encode` — version-7 minting beside the canonical-spelling parser that already lives there; the Zig `id_format.zig` has no Rust counterpart and an encoder anywhere else would re-derive the dash and nibble offsets |
+| `rustd/crates/afd_wire/**` | EDIT | registered in `workspace.dependencies`; no wire shape is touched (M175 owns those) |
+| `rustd/Cargo.toml` | EDIT | new members; `uuid` (v7 minting) and `hex` registered — both already resolved in the lock, so neither is a new crate |
 | `make/test-integration-rustd.mk` | EDIT | end-to-end lane driving a stock Zig runner against `agentsfleetd-rs` (§7.1); no daemon-under-test selector — only one daemon remains |
 | `src/build/**` | EDIT | test-build wiring so the stock Zig runner binary is available to the §7.1 lane |
 | `tests/**` | EDIT | seeded deterministic scenario set backing `test_seeded_row_shapes` |

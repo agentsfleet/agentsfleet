@@ -1,0 +1,63 @@
+[package]
+name = "afd_fleet"
+description = "The runner control plane: enrolment, liveness, lease assignment, report settlement, and the sweepers behind them."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the seams the suites drive through the crates that own
+# them, so a test needs no datastore to reach a decision.
+test-util = ["afd_auth/test-util", "afd_core/test-util", "afd_db/test-util"]
+
+# Each dependency is added by the module that uses it, for the reason
+# `afd_api`'s manifest states: `unused_crate_dependencies` is how the dependency
+# graph stays a fact rustc checks rather than a claim.
+[dependencies]
+# The principal a verb acts for, and the runner identity carried on it.
+afd_auth.workspace = true
+# Identifiers, the clock, the error-code registry, and the bounded primitives.
+afd_core.workspace = true
+# The pool every statement in `sql/` runs against.
+afd_db.workspace = true
+# The runner-plane state reads, and the `admin_state` spelling the credential
+# lookup already owns — imported rather than restated (RULE UFS).
+afd_state.workspace = true
+# The entropy a runner token is minted from. Drawn through the workspace's one
+# entropy surface, never through a second call to the operating system.
+afd_crypto.workspace = true
+# The wire shapes this plane answers with. Frozen by M175; consumed, never
+# authored here.
+afd_wire.workspace = true
+sqlx.workspace = true
+# The error derive every crate under `rustd/` shapes its `Error` with.
+thiserror.workspace = true
+# Lower-case hex for the minted token body.
+hex.workspace = true
+# The minted credential is overwritten when the response revealing it is done;
+# a freed `Box<str>` is not.
+zeroize.workspace = true
+# JSON columns: `labels`, `registry_allowlist`, `capability_report` and the
+# `metadata` a runner event carries are all `jsonb`, built and read as values.
+serde_json.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# The suites need REAL parallelism: every contention proof in this crate — the
+# affinity race, the reclaim fence, the mint single-flight — is worthless on a
+# single-threaded runtime, because the interleaving it exists to force cannot
+# happen (`dispatch/write_rust.md`: "Concurrency work needs a deterministic
+# contention test, not only a happy-path asynchronous test").
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+# Installs a subscriber so `tracing` event macros evaluate their fields at all;
+# without one a diagnostic line reads as unreachable to llvm-cov.
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true
