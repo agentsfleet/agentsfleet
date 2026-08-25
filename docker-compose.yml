@@ -63,16 +63,29 @@ services:
       - -c
       - |
         mkdir -p /tls &&
-        if [ ! -s /tls/server.crt ] || [ ! -s /tls/server.key ]; then
-          # `apk add` lives INSIDE the branch on purpose: the cert persists in
-          # the redis-tls volume, so it is generated once, but this ran on every
-          # container start — an Alpine CDN fetch in front of every `make
-          # test-integration`, and a hard dependency on the network for a file
-          # that already existed.
+        if [ ! -s /tls/ca.crt ] || [ ! -s /tls/server.crt ] || [ ! -s /tls/server.key ]; then
+          # `apk add` lives INSIDE the branch on purpose: the material persists
+          # in the redis-tls volume, so it is generated once, but this ran on
+          # every container start — an Alpine CDN fetch in front of every
+          # integration run, and a hard dependency on the network for files that
+          # already existed.
+          #
+          # A CA and a LEAF, not one self-signed certificate doing both jobs.
+          # The old fixture handed clients the server's own leaf as their trust
+          # anchor, which OpenSSL-based clients tolerate and rustls refuses —
+          # correctly, and in both directions: a trust anchor must carry
+          # `CA:TRUE`, an end-entity certificate must not. One certificate
+          # cannot satisfy both, so the Rust client could not connect at all
+          # while every other client could. A real chain is also what a hosted
+          # Redis actually presents, so the fixture now rehearses production
+          # rather than a shape only this file has.
           apk add --no-cache openssl &&
-          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tls/server.key -out /tls/server.crt -days 3650 -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,DNS:redis,IP:127.0.0.1" 2>/dev/null
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tls/ca.key -out /tls/ca.crt -days 3650 -subj "/CN=agentsfleet-local-ca" -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null &&
+          openssl req -newkey rsa:2048 -nodes -keyout /tls/server.key -out /tls/server.csr -subj "/CN=localhost" 2>/dev/null &&
+          printf 'subjectAltName=DNS:localhost,DNS:redis,IP:127.0.0.1\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\n' > /tls/server.ext &&
+          openssl x509 -req -in /tls/server.csr -CA /tls/ca.crt -CAkey /tls/ca.key -CAcreateserial -out /tls/server.crt -days 3650 -extfile /tls/server.ext 2>/dev/null
         fi &&
-        redis-server --tls-port 6379 --port 0 --tls-cert-file /tls/server.crt --tls-key-file /tls/server.key --tls-ca-cert-file /tls/server.crt --tls-auth-clients no --requirepass agentsfleet
+        redis-server --tls-port 6379 --port 0 --tls-cert-file /tls/server.crt --tls-key-file /tls/server.key --tls-ca-cert-file /tls/ca.crt --tls-auth-clients no --requirepass agentsfleet
     ports:
       # Per-worktree but fixed -- see the postgres service above.
       - "${AGENTSFLEET_REDIS_HOST_PORT:-6379}:6379"
@@ -143,7 +156,7 @@ services:
       # Override DB/Redis to use compose service names instead of localhost.
       DATABASE_URL_API: postgresql://agentsfleet:agentsfleet@postgres:5432/agentsfleetdb?application_name=api&sslmode=disable
       REDIS_URL_API: rediss://:agentsfleet@redis:6379/api
-      REDIS_TLS_CA_CERT_FILE: /tls/server.crt
+      REDIS_TLS_CA_CERT_FILE: /tls/ca.crt
       MIGRATE_ON_START: "1"
     depends_on:
       postgres:

@@ -6,6 +6,13 @@
 
 use afd_core::limits::{self, WorkerCount};
 
+/// A raw count far above the ceiling without being the saturating edge.
+///
+/// Named rather than inline because `u32::MAX` next to it tests a different
+/// thing — the saturating edge — and a bare `1_000` reads as if the two were
+/// the same class.
+const FAR_ABOVE_CEILING: u32 = 1_000;
+
 /// Catches the divergence that would matter: refusing an assignment the Zig
 /// daemon clamps and echoes back, which would leave a runner unenrolled where
 /// today it enrolls with a corrected count.
@@ -32,7 +39,7 @@ fn should_clamp_idempotently() {
 /// type exists to carry, checked over the boundary classes rather than restated.
 #[test]
 fn should_always_produce_a_value_inside_the_declared_range() {
-    for raw in [0, 1, 2, 63, 64, 65, 1_000, u32::MAX] {
+    for raw in [0, 1, 2, 63, 64, 65, FAR_ABOVE_CEILING, u32::MAX] {
         let workers = WorkerCount::clamping(raw).get();
         assert!(
             (limits::MIN_WORKERS..=limits::MAX_WORKERS).contains(&workers),
@@ -81,15 +88,24 @@ fn should_clamp_when_decoded_from_the_wire() {
 /// The error's rendered form is what an operator reads, and its `source` is what
 /// a caller unwraps. Both are public contract; neither is exercised by the
 /// accessor tests above.
+///
+/// A range violation is a ROOT error: nothing caused it, the value was simply
+/// out of range. So `source()` is `None`, and that is the assertion. It used to
+/// return the private `ErrorKind`, which was wrong twice over — it published a
+/// `pub(crate)` type's message through a public trait, and it made every chain
+/// walker print this error's own text a second time as its first "cause".
 #[test]
-fn should_render_the_error_with_its_code_and_expose_a_source() {
+fn should_render_the_error_with_its_code_and_have_no_cause() {
     use std::error::Error as _;
 
     let err = WorkerCount::new(0).unwrap_err();
     let rendered = err.to_string();
     assert!(rendered.starts_with("[UZ-REQ-001]"), "{rendered}");
     assert!(rendered.contains("1..=64"), "{rendered}");
-    assert!(err.source().is_some(), "error must expose its cause");
+    assert!(
+        err.source().is_none(),
+        "a root error has no cause; returning our own kind would repeat {rendered}"
+    );
     // Not an identifier failure, so the other accessor must stay false — the
     // accessors have to discriminate, not merely return true for everything.
     assert!(!err.is_id_shape());

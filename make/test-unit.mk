@@ -7,7 +7,10 @@
 test-unit-rustd:  ## Run the Rust workspace unit tests (cargo)
 	@echo "→ [rustd] Running cargo unit tests..."
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
-	@cd $(RUSTD_DIR) && cargo test --workspace
+	@# --all-features for the same reason lint-rustd carries it: the `test-util`
+	@# mocks are how the failure paths a real datastore will not produce on
+	@# demand get reached at all, and a default-feature run silently skips them.
+	@cd $(RUSTD_DIR) && cargo test --workspace --all-features
 	@echo "✓ [rustd] Unit tests passed"
 
 # Regenerates the committed wire fixtures from the Zig source of truth. Runs as

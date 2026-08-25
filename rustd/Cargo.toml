@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_core", "crates/afd_wire"]
+members = ["crates/afd_api", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_identity", "crates/afd_observability", "crates/afd_redis", "crates/afd_state", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.26.2"
@@ -24,7 +24,12 @@ edition = "2024"
 # published libraries; these crates have no external consumers and are built
 # only by rust-toolchain.toml's pin, so a lower floor would be an untested claim).
 rust-version = "1.98"
-license = "Apache-2.0"
+# MIT, matching the repository's own `LICENSE` and `cli/package.json`. The
+# manifest said Apache-2.0 from its first commit, which made this workspace the
+# only part of the product claiming a licence the project does not ship under —
+# a claim a downstream reader would have taken at face value.
+license = "MIT"
+authors = ["Kishore Kumar (indykish) <nkishore@megam.io>"]
 repository = "https://github.com/agentsfleet/agentsfleet"
 readme = "../../README.md"
 keywords = ["agentsfleet", "daemon", "runner"]
@@ -33,13 +38,253 @@ categories = ["network-programming"]
 [workspace.dependencies]
 # Intra-workspace members resolve through the workspace, never by direct sibling
 # path (M-CRATES-IN-WORKSPACE).
-afd_core = { path = "crates/afd_core", version = "0.26.2" }
+afd_api = { path = "crates/afd_api" }
+afd_auth = { path = "crates/afd_auth" }
+afd_core = { path = "crates/afd_core" }
+afd_crypto = { path = "crates/afd_crypto" }
+afd_db = { path = "crates/afd_db" }
+afd_identity = { path = "crates/afd_identity" }
+afd_observability = { path = "crates/afd_observability" }
+afd_redis = { path = "crates/afd_redis" }
+afd_state = { path = "crates/afd_state" }
 
 # `default-features = false` throughout, features named explicitly, so a member
 # cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).
 serde = { version = "1.0.229", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0.151", default-features = false, features = ["std", "preserve_order"] }
 thiserror = { version = "2.0.20", default-features = false, features = ["std"] }
+
+# The command line, derived rather than hand-rolled.
+#
+# `serve_args.zig` hand-parsed `--port` out of argv and ported across as the
+# same loop, which is how the Rust daemon ended up reading argv[1] and NOTHING
+# else: no `--help`, no `--version`, and a port that could only arrive through
+# the environment. Every one of those is a line item clap already owns, and a
+# hand-rolled parser is precisely the invented code a Rust port exists to
+# delete.
+#
+# Features named rather than defaulted, per the rule above. `env` is the
+# load-bearing one: it makes `PORT` a documented FALLBACK for `--port` in the
+# generated help, rather than a second undocumented input path. `color` and
+# `wrap_help` are left off — the daemon's usage output is read out of a
+# container log, where escape sequences and terminal-width reflow are noise.
+clap = { version = "4.5.51", default-features = false, features = ["std", "derive", "env", "help", "usage", "error-context"] }
+
+# RustCrypto. Pure Rust with no C linkage, matching the Zig daemon's posture, and
+# the same AES-256-GCM construction `std.crypto.aead.aes_gcm.Aes256Gcm` implements.
+aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc"] }
+hmac = { version = "0.13.0", default-features = false }
+sha2 = { version = "0.11.0", default-features = false }
+# Constant-time comparison. RULE CTM: a byte-by-byte `==` over a secret leaks how
+# much of a guess was right through how long it took to reject.
+subtle = { version = "2.6.1", default-features = false }
+# No `derive`: `zeroize_derive` is the only crate in this graph still on syn 2,
+# and a duplicate syn fails `clippy::multiple_crate_versions`. Three hand-written
+# `Drop` impls are cheaper than a second proc-macro inside a crypto crate anyway.
+zeroize = { version = "1.9.0", default-features = false, features = ["alloc"] }
+# The only system call this workspace's crypto makes.
+getrandom = { version = "0.4.3", default-features = false }
+
+# Base64url, for JSON Web Key components and the three segments of a session
+# token. `default-features = false` is load-bearing here rather than habitual:
+# 0.23's default set includes `simd-unsafe`, which reaches for SIMD through
+# unsafe code. This workspace denies `unsafe_op_in_unsafe_fn` and links no
+# hand-written unsafe of its own, and a JWKS document is three kilobytes read
+# twice a day — there is no throughput here to trade the posture for.
+base64 = { version = "0.23.1", default-features = false, features = ["std"] }
+
+# RS256 verification for session tokens.
+#
+# Already in this graph: rustls selects a `CryptoProvider`, and sqlx's
+# `tls-rustls-ring-webpki` plus redis's `tokio-rustls-comp` make that ring. So
+# this is a DIRECT dependency on a crate the binary already links, not a new
+# one — and it is the layer where the API matches the input. rustls does verify
+# RSA, but every entry point takes a DER `SubjectPublicKeyInfo`
+# (`rustls-webpki/src/signed_data.rs:222`), because in TLS a key always arrives
+# inside a certificate. A JWKS publishes raw big-endian `n` and `e`, which is
+# precisely what `ring::signature::RsaPublicKeyComponents` accepts; reaching
+# rustls's verifier instead would mean hand-encoding ASN.1 — INTEGER sign-bit
+# padding included — in the most security-sensitive file in the workspace, to
+# call the same code one layer up.
+#
+# `dev_urandom_fallback` is dropped: nothing here asks ring for entropy
+# (`afd_crypto` owns the one entropy surface, through `getrandom`).
+ring = { version = "0.17.14", default-features = false, features = ["alloc"] }
+
+# The subject to capability-claim cache. `future` rather than `sync`: the
+# request path is asynchronous, and `try_get_with` coalesces concurrent loads
+# for the same key — which closes the caveat `clerk_scope_resolver.zig:19-22`
+# writes down and leaves open, and retires the hand-rolled `seq` counter that
+# existed only to stop an out-of-order response resurrecting a pre-revocation
+# claim. With one flight per subject there is no second response to be out of
+# order with.
+moka = { version = "0.12.16", default-features = false, features = ["future"] }
+
+# The JWKS fetch and the provider capability call.
+#
+# PINNED TO THE 0.12 LINE DELIBERATELY, and 0.13 is not an upgrade here. 0.13
+# collapsed the TLS features to one: plain `rustls` forces `aws-lc-rs`, which
+# would put a SECOND rustls provider beside ring in this binary — the
+# configuration whose feature-unification failure the M176 handoff already
+# records for `cargo test -p afd_redis` — and `rustls-no-provider` reaches the
+# platform trust store, losing the property §2 chose `tls-rustls-ring-webpki`
+# for: the anchors ship in the binary, so a slim container without
+# `ca-certificates` still verifies. 0.12's
+# `rustls-tls-webpki-roots-no-provider` keeps both — in-binary anchors, and no
+# provider forced, so it uses the process default that sqlx and redis already
+# established. `webpki-roots` is already in the lock.
+#
+# `gzip` is deliberately absent. reqwest advertises `accept-encoding` only when
+# that feature is on, so leaving it off makes wire bytes equal decoded bytes and
+# `JWKS_MAX_RESPONSE_BYTES` a correct bound with no streaming decompressor to
+# size — the decompression-bomb reasoning in `jwks_fetch.zig:9-13` satisfied by
+# removing the decompressor rather than bounding it. A key set is three
+# kilobytes fetched twice a day; there is nothing to compress for.
+#
+# `rustls-tls-webpki-roots` rather than its `-no-provider` twin, and the
+# difference is not cosmetic: `-no-provider` leaves the `CryptoProvider`
+# unselected and defers to a process default. Nothing installs one, and rustls
+# does not report that as an error — reqwest's `ClientBuilder::build` PANICS
+# with "No provider set", inside a workspace that denies `clippy::panic` and a
+# daemon that must not abort on a configuration fault. This feature expands to
+# `-no-provider` plus `__rustls-ring`, so it keeps the in-binary anchors and
+# names ring explicitly — the same provider `tls-rustls-ring-webpki` already
+# chose for sqlx, and still no `aws-lc-rs`.
+reqwest = { version = "0.12.28", default-features = false, features = [
+    "rustls-tls-webpki-roots",
+] }
+
+# Postgres. sqlx is the DRIVER here and nothing more: `migrate` and `macros` are
+# both off, because this workspace runs the Zig daemon's own ledger
+# (`audit.schema_migrations`, versions equal to the schema slot numbers, one
+# advisory key) against databases the Zig daemon already migrated. sqlx's
+# built-in migrator keeps a different ledger under a different lock, so enabling
+# it would mean two migrators disagreeing about the same database.
+#
+# `tls-rustls-ring-webpki` rather than native roots: the trust anchors ship in
+# the binary, so a slim container without `ca-certificates` still verifies. Pure
+# Rust either way, which is the no-C posture afd_crypto already holds.
+sqlx = { version = "0.9.0", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls-ring-webpki",
+    "postgres",
+] }
+# The runtime sqlx drives. `rt-multi-thread` is a dev-dependency concern (the
+# contention tests need real parallelism); the library asks only for what it
+# uses at a call site.
+# `sync` carries `Semaphore`, which IS the admission ceiling: `try_acquire_owned`
+# refuses instantly when the instance is full and hands back a permit that
+# releases on drop, so a shed needs no counter arithmetic and a completed
+# request needs no release path to forget. It was already reaching these crates
+# through redis and sqlx's own feature sets — naming it here makes three
+# existing call sites (`hub.rs`, `jwks/cache.rs`) depend on a stated feature
+# rather than on unification holding.
+tokio = { version = "1.53.1", default-features = false, features = ["rt", "sync", "time", "macros"] }
+# Redis. The crate replaces roughly three thousand lines of hand-rolled RESP
+# parsing, connection pooling and pub/sub plumbing under `src/agentsfleetd/
+# queue/`. `connection-manager` is the piece that earns it: one multiplexed
+# connection that reconnects itself, where the Zig side maintained a pool of
+# request/reply sockets behind a mutex.
+#
+# `tokio-rustls-comp` for the same no-C posture as everything else here. The
+# local compose Redis serves a self-signed certificate, so the CA arrives by
+# path (`REDIS_TLS_CA_CERT_FILE`) rather than from a trust store.
+redis = { version = "1.6.0", default-features = false, features = [
+    "tokio-comp",
+    "tokio-rustls-comp",
+    "connection-manager",
+    "streams",
+    "script",
+] }
+# The HTTP shell. axum replaces `src/agentsfleetd/http/router.zig` and the ten
+# hand-rolled `route_matchers_*.zig` files with a router that matches paths and
+# extracts parameters for us — roughly a thousand lines of matching logic that
+# stops being ours to keep correct.
+#
+# `default-features = false` drops `form`, `multipart` and the macros: this API
+# speaks JSON, and a body format the daemon never accepts is a parser it should
+# not link. `http1` only — the dashboard proxy terminates TLS and speaks HTTP/1
+# upstream, and `http2` would pull a second frame layer for a hop that has no
+# use for one. `tokio` for the listener, `json` for the envelope.
+#
+# NOTE for §5's route table: axum's `get()` handler ALSO answers HEAD by
+# default. agentsfleetd has never served HEAD — its matchers switch on GET,
+# POST and DELETE only, and httpz keeps a separate `_head` table the daemon
+# registers nothing into — so the router turns that off explicitly rather than
+# inheriting a method the scope table has no rung for.
+# Features are added by the code that uses them, like the dependencies
+# themselves. `query` pulls serde_urlencoded and `matched-path` is §6's, so
+# neither is here yet; `json` is absent because the problem+json envelope
+# writes its own body and content type.
+axum = { version = "0.8.9", default-features = false, features = [
+    "http1",
+    "tokio",
+] }
+# Tower is the middleware algebra axum composes; `tower-http` carries the
+# ready-made layers. The admission ceiling is ours (it counts in-flight
+# requests per route CLASS, which no off-the-shelf layer knows about), but the
+# request-id, timeout and body-limit layers are not worth rewriting.
+tower = { version = "0.5.3", default-features = false, features = ["util"] }
+tower-http = { version = "0.7.0", default-features = false, features = [
+    "limit",
+    "trace",
+] }
+# The HTTP/1 connection underneath axum, taken DIRECTLY rather than through
+# `axum::serve`, for one reason: `axum::serve` exposes no way to bound the
+# header buffer, and §5's Dimension 5.3 is precisely a bound on the header
+# buffer. `server` + `http1` only — no client, and no h2 for a hop the
+# dashboard proxy already terminates.
+hyper = { version = "1.11.0", default-features = false, features = ["server", "http1"] }
+# The tokio adapter for hyper's own I/O traits, and nothing else: `TokioIo` is
+# what lets a `tokio::net::TcpStream` be served by a hyper connection.
+hyper-util = { version = "0.1.20", default-features = false, features = ["tokio"] }
+# The HTTP vocabulary types, shared with axum rather than re-exported through
+# it: `route_meta` names methods and statuses and has no business depending on
+# a web framework to do it.
+http = { version = "1.5.0", default-features = false, features = ["std"] }
+
+# OpenTelemetry, for the push-only export the Zig daemon already does by hand
+# (`observability/otlp/`). The SDK alone: it re-exports the API types the
+# exporter names, and the OTLP TRANSPORT is added by boot, which is what knows
+# an endpoint — a transport built here for nobody would be a dependency with no
+# caller.
+opentelemetry = { version = "0.32.0", default-features = false, features = ["trace"] }
+opentelemetry_sdk = { version = "0.32.1", default-features = false, features = ["trace", "rt-tokio"] }
+
+# `CancellationToken`, which is what a supervised task is cancelled BY. Chosen
+# over a shared `AtomicBool` for one reason that matters: a token is
+# edge-triggered — `cancelled().await` wakes the instant it fires — where the
+# Zig watcher polls a flag every 100ms and pays that latency on every shutdown.
+tokio-util = { version = "0.7.18", default-features = false }
+
+# Stream combinators for the pub/sub pump. `std` only — no executor, no
+# thread pool; the runtime is tokio's.
+futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
+
+# The logging facade. §6 attaches the OTLP subscriber; until then these events
+# go nowhere by default, which is the correct behaviour for a library.
+#
+# NOTE, and it is a measurement note rather than a style one: `tracing`'s `log`
+# feature is NOT requested here, but sqlx-core and sqlx-postgres request it and
+# Cargo unifies features across the workspace, so it is on for every crate —
+# afd_redis included, which never asked for it. With `log` enabled the event
+# macros compile each field expression TWICE, once for the event and once for a
+# `log` record that never runs when a subscriber is installed, and llvm-cov maps
+# both copies to the same source line and reports the DEAD one. The consequence
+# is that `warn!(x = y.z(), ...)` reads as uncovered however many times it runs.
+# Field expressions containing a call are therefore hoisted to a `let` above the
+# macro across this workspace; bare identifiers need no such treatment because
+# they get no coverage region of their own. Isolated in a standalone crate: same
+# code and same versions report 5, adding `features = ["log"]` reports 0.
+# M176 §Coverage decision carries the full measurement.
+tracing = { version = "0.1.44", default-features = false, features = ["std", "attributes"] }
+# The subscriber, which §6 wires to OTLP. It is a dev-dependency until then for
+# a reason worth stating: `tracing::warn!` checks whether its callsite is
+# ENABLED before it evaluates its arguments, so with no subscriber installed a
+# test never executes the fields inside an event macro. Every diagnostic line in
+# this workspace would read as dead code that nothing can reach — and the fix is
+# to install a subscriber in tests, not to stop logging.
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
 
 [workspace.lints.rust]
 # Every rustc warning is an error; individual lints below raise their own level
@@ -76,6 +321,28 @@ pedantic = { level = "deny", priority = -1 }
 perf = { level = "deny", priority = -1 }
 style = { level = "deny", priority = -1 }
 suspicious = { level = "deny", priority = -1 }
+
+# The one `cargo` lint that is turned off, and why it cannot be satisfied.
+#
+# The workspace resolves TWO versions of `syn`, from two chains and neither is
+# ours to remove:
+#
+#   syn 2 ← url → idna → icu_normalizer → icu_collections → yoke-derive, and
+#           `url` arrives from redis AND reqwest AND sqlx-core independently
+#   syn 3 ← serde_derive, thiserror-impl
+#
+# Dropping either means dropping Redis, HTTP or Postgres. The lint reads the
+# whole workspace resolve and attaches its diagnostic to whichever crate is
+# being compiled, so which member goes red is an artefact of build order rather
+# than of anything that member did — `afd_api` fails it today with a graph that
+# contains no syn 2 at all.
+#
+# This is NOT a general amnesty on duplicate dependencies. Where a duplicate IS
+# ours to avoid we still avoid it: `zeroize` is taken without `derive` for
+# exactly this reason (see its note above), and the problem+json envelope
+# builds a `serde_json::Map` rather than deriving `Serialize`. What this allows
+# is the case where the only remedy would be to delete a datastore.
+multiple_crate_versions = "allow"
 
 # The `restriction` picks that carry the port's own guarantees. `unwrap`,
 # `expect` and `panic` are denied because these crates are linked into a daemon

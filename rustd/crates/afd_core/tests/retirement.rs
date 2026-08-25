@@ -87,11 +87,11 @@ fn test_zig_lanes_absent() {
             }
             for target in RETIRED_TARGETS {
                 let invoked = code.starts_with(&format!("{target}:"))
-                    || code.contains(&format!("make {target}"))
-                    || code.contains(&format!("$(MAKE) {target}"))
+                    || mentions(code, &format!("make {target}"))
+                    || mentions(code, &format!("$(MAKE) {target}"))
                     // `make help` advertising a target that no longer exists
                     // sends a developer to "No rule to make target".
-                    || code.contains(&format!("@echo \"  {target} "));
+                    || mentions(code, &format!("@echo \"  {target} "));
                 if invoked {
                     survivors.push(format!("{name}:{}: {}", number + 1, line.trim()));
                 }
@@ -157,5 +157,51 @@ fn test_daemon_deploy_retired() {
     assert!(
         triggers.contains("workflow_dispatch:"),
         "manual dispatch must stay reachable — redeploying the frozen revision is the rollback path"
+    );
+}
+
+/// Whether `line` invokes exactly `needle`, rather than a target whose name
+/// merely starts with it.
+///
+/// `make test-integration-rustd` is not a reference to the retired
+/// `test-integration`: it is the lane M176 created on the infrastructure that
+/// retirement deliberately kept. A plain `contains` reads one as the other and
+/// fails a live lane for existing, which is worse than the drift this guard is
+/// here to catch — the guard would be telling the truth about a name and a lie
+/// about the repository.
+fn mentions(line: &str, needle: &str) -> bool {
+    let mut rest = line;
+    while let Some(at) = rest.find(needle) {
+        let tail = rest.get(at + needle.len()..).unwrap_or_default();
+        let continues = tail
+            .chars()
+            .next()
+            .is_some_and(|next| next.is_ascii_alphanumeric() || next == '-' || next == '_');
+        if !continues {
+            return true;
+        }
+        rest = tail;
+    }
+    false
+}
+
+/// The boundary rule itself, because the guard above is only as good as it.
+#[test]
+fn test_retired_names_match_whole_targets_only() {
+    assert!(mentions(
+        "\trun: make test-integration",
+        "make test-integration"
+    ));
+    assert!(mentions(
+        "make test-integration TEST_FILTER=x",
+        "make test-integration"
+    ));
+    assert!(
+        !mentions("run: make test-integration-rustd", "make test-integration"),
+        "a longer target name is a different target"
+    );
+    assert!(
+        !mentions("make test-integration_db", "make test-integration"),
+        "an underscore continues an identifier too"
     );
 }

@@ -1,0 +1,70 @@
+[package]
+name = "afd_api"
+description = "The HTTP shell: the route table every other table folded into, admission, and the problem+json envelope."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the map-backed environment source through afd_core.
+test-util = ["afd_auth/test-util", "afd_core/test-util", "afd_crypto/test-util"]
+
+# Each dependency is added by the module that uses it: `unreachable_pub` and
+# `unused_crate_dependencies` are how Invariant 2 is a fact rustc checks rather
+# than a claim, and a manifest listing crates nothing imports would make the
+# graph a wish. axum/tower/tower-http/afd_core arrive with the admission layer
+# and the envelope writer.
+[dependencies]
+afd_auth.workspace = true
+# The workspace's one entropy surface, for the request id a refusal carries.
+# Drawing bytes directly here would make `getrandom` reachable from two crates
+# and end the "one system call" claim `afd_crypto` is built around.
+afd_crypto.workspace = true
+# The attribute vocabulary a span carries. The dependency points this way on
+# purpose: a route template is a fact here and a string there.
+afd_observability.workspace = true
+# The code registry the envelope is assembled from: a code's status, title,
+# documentation link and end-user sentence are properties OF THE CODE, so they
+# live beside it rather than in this crate.
+afd_core.workspace = true
+# `json` for the probe bodies: unlike the problem+json envelope, which writes
+# its own content type, these are ordinary JSON responses.
+axum = { workspace = true, features = ["json", "matched-path"] }
+http.workspace = true
+# The HTTP/1 connection policy: `axum::serve` cannot express a header bound, so
+# the builder is configured here and boot serves connections with it.
+hyper.workspace = true
+serde_json.workspace = true
+# `sync` only, for the `Semaphore` that IS the admission ceiling. No runtime is
+# started here — a permit is claimed and dropped on whatever runtime the caller
+# already has.
+tokio.workspace = true
+# One warn per shed. §6 attaches the subscriber; until then this goes nowhere,
+# which is the correct default for a library.
+tracing.workspace = true
+
+# Same rule as the runtime dependencies: added by the target that uses them.
+# The route table is pure, so it needs no runtime to test — the admission layer
+# and the envelope writer bring tokio and the subscriber with them.
+[dev-dependencies]
+# The envelope suite renders through axum's own IntoResponse and reads the body
+# back, and the admission suite needs REAL parallelism to put more requests in
+# flight at once than the ceiling admits.
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-util", "net", "time"] }
+# The admission suite drives the layer as a service, without a listener.
+tower = { workspace = true, features = ["util"] }
+# The header-limit suite serves a real connection over a real socket, which is
+# the only tier that can prove a limit hyper enforces while PARSING.
+hyper-util.workspace = true
+# The span suite collects spans through a `Layer`, which is the only way to see
+# a field as a VALUE rather than as formatted output.
+tracing-subscriber = { workspace = true, features = ["registry"] }
+
+[lints]
+workspace = true

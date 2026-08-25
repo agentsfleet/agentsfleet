@@ -28,7 +28,16 @@ from urllib.parse import parse_qs, urlsplit
 REPO_ROOT = Path(__file__).resolve().parents[1]
 README = REPO_ROOT / "README.md"
 # The one workflow that uploads to Codecov.
-WORKFLOWS = (REPO_ROOT / ".github" / "workflows" / "test.yml",)
+# Every workflow that may upload coverage. `test.yml` was the only one until
+# M176: the Rust integration tests are `#[ignore]`d and need live Postgres and
+# Redis, so the run that executes them — and therefore the only run that can
+# measure them — is `test-integration-rustd.yml`. A badge whose flag is
+# uploaded from a workflow absent here reads as `unknown` and this guard says
+# the upload is missing, which is how the omission was found.
+WORKFLOWS = (
+    REPO_ROOT / ".github" / "workflows" / "test.yml",
+    REPO_ROOT / ".github" / "workflows" / "test-integration-rustd.yml",
+)
 
 CODECOV_ACTION = "codecov/codecov-action@"
 # The merged report is the only Zig artefact Codecov may see. Every Zig flag is

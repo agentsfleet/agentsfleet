@@ -1,0 +1,37 @@
+[package]
+name = "afd_auth"
+description = "Who a caller is and what they may do: principals, the scope catalogue, and token verification."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL: constructors that build a principal without a datastore or an
+# identity provider, so the gate's branches are provable without either.
+test-util = ["afd_core/test-util"]
+
+[dependencies]
+afd_core.workspace = true
+thiserror.workspace = true
+# The credential digest. Every stored credential column holds a plain unsalted
+# SHA-256 of the presented value, so this is a parity requirement rather than a
+# choice: `api_key.zig::sha256Hex` is what the columns were written with.
+sha2.workspace = true
+# Invariant 5. A presented credential IS a secret; a `Box<str>` is freed rather
+# than overwritten, so without this the bytes sit in released heap.
+zeroize.workspace = true
+
+[dev-dependencies]
+# The seams are `async fn`s, so proving their branches needs an executor. The
+# current-thread runtime only: nothing in this crate is concurrent, and asking
+# for worker threads would be claiming otherwise.
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+[lints]
+workspace = true

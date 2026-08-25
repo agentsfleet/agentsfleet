@@ -442,6 +442,63 @@ describe("DataTable", () => {
     expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
   });
 
+  // Bug this catches: jsdom defines Element.prototype.scrollTo, so every other
+  // scroll test here takes the `if` branch and the fallback beneath it was
+  // never executed. Real browsers have shipped scrollTo for years, but an
+  // embedded webview or an older Safari has not — and the fallback is what
+  // keeps a sort from leaving the reader stranded mid-list.
+  it("resets the viewport through scrollTop when scrollTo is unavailable", () => {
+    render(
+      <DataTable
+        columns={COLUMNS}
+        rows={[ROWS[1], ROWS[0]]}
+        rowKey={(row) => row.id}
+        pagination={false}
+      />,
+    );
+    const viewport = screen.getByRole("region", { name: "Scrollable table" });
+    Object.defineProperty(viewport, "scrollTo", { configurable: true, value: undefined });
+    // A spy on the assignment, not on the value: jsdom leaves scrollTop at 0 for
+    // an element it never lays out, so `expect(scrollTop).toBe(0)` would pass
+    // whether the fallback ran or not.
+    const assigned: number[] = [];
+    Object.defineProperty(viewport, "scrollTop", {
+      configurable: true,
+      get: () => 0,
+      set: (next: number) => { assigned.push(next); },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Name" }));
+
+    expect(assigned).toContain(0);
+  });
+
+  // Bug this catches: an empty server-paginated feed that can go nowhere would
+  // otherwise render a pager with both buttons dead under a table with no
+  // rows — an control that looks broken rather than absent. The footer is
+  // suppressed only when there is genuinely nowhere to navigate, which is why
+  // an explicit hasNext:false is what makes it disappear.
+  it("hides the pager for an empty server page with no navigation available", () => {
+    render(
+      <DataTable
+        columns={COLUMNS}
+        rows={[]}
+        rowKey={(row) => row.id}
+        isLoading
+        pagination={{
+          kind: "page",
+          page: 1,
+          pageSize: 10,
+          total: 0,
+          hasNext: false,
+          onPageChange: vi.fn(),
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull();
+  });
+
   it("should keep one-page table controls visible and disabled", () => {
     render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} />);
     expect(screen.getByRole("navigation", { name: "Pagination" })).toBeInTheDocument();
