@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M176
 **Workstream:** 001
 **Date:** Aug 23, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — every route milestone (M177–M180) builds on these crates
 **Categories:** API | INFRA | OBS
 **Batch:** B2 — serial after M175; M177+ depend on it
@@ -784,18 +784,18 @@ tracing subscriber exporting logs/traces/metrics over OTLP (push-only egress —
 
 Boot order ported from `cmd/serve.zig` (pools → Redis → migrations check → session store → hub → secrets → verifier → middleware → background tasks → listen); a task supervisor where every background task owns a cancellation token and an awaited join handle — stop → join → drop (invariant C2); the two-flag boot-window semantics preserved (SIGTERM during boot cannot kill the background stack while the server may still come up); `/readyz` probes dependencies, `/healthz` reports liveness. This section opens with a **complete task inventory** derived from the `concurrency.md` thread map: every long-lived thread AND every detached-worker class (Clerk metadata fetch, fleet install-step workers) maps to either a named supervised task here or an explicitly deferred inventory row naming its arriving milestone — detached workers become tracked tasks with bounded drains; no unsupervised spawn path exists. Deadlines are `tokio::time::timeout` at call sites, and shutdown cancellation is PROVEN to interrupt blocked I/O (one cancellation test per long-lived I/O owner) — together these are the explicit replacement for the Zig `call_deadline` scheduler and its socket-shutdown wake, stated as invariants, not assumed away.
 
-- **Dimension 7.1** — SIGTERM: every task joins before pools close; deterministic via event handshakes, no sleeps → Test `test_shutdown_joins_all_tasks`
-- **Dimension 7.2** — boot-window SIGTERM follows the two-flag semantics → Test `test_boot_window_sigterm`
-- **Dimension 7.3** — `/readyz` red when Postgres or Redis unreachable; `/healthz` still 200 → Test `test_readyz_dependency_probe`
-- **Dimension 7.4** — missing/malformed `ENCRYPTION_MASTER_KEY` refuses boot with a named error, non-zero exit → Test `test_boot_refuses_bad_kek`
-- **Dimension 7.5** — the task inventory covers every `concurrency.md` thread-map row (supervised or explicitly deferred), and cancellation interrupts a blocked read on every I/O owner → Test `test_task_inventory_and_cancellation`
+- **Dimension 7.1** — SIGTERM: every task joins before pools close; deterministic via event handshakes, no sleeps → Test `test_shutdown_joins_all_tasks` — **DONE**
+- **Dimension 7.2** — boot-window SIGTERM follows the two-flag semantics → Test `test_boot_window_sigterm` — **DONE**
+- **Dimension 7.3** — `/readyz` red when Postgres or Redis unreachable; `/healthz` still 200 → Test `test_readyz_dependency_probe` — **DONE**
+- **Dimension 7.4** — missing/malformed `ENCRYPTION_MASTER_KEY` refuses boot with a named error, non-zero exit → Test `test_boot_refuses_bad_kek` — **DONE**
+- **Dimension 7.5** — the task inventory covers every `concurrency.md` thread-map row (supervised or explicitly deferred), and cancellation interrupts a blocked read on every I/O owner → Test `test_task_inventory_and_cancellation` — **DONE**
 
 ### §8 — Credential enumeration and integration harness
 
 Credential-gate rule (AGENTS.orly.md §Bootstrap): this milestone's downstream credentials, enumerated with fetch locations — `DATABASE_URL`, `DATABASE_URL_API`, `DATABASE_URL_MIGRATOR`, `REDIS_URL`, `ENCRYPTION_MASTER_KEY`, `OIDC_ISSUER`, `OIDC_AUDIENCE` (+ optional `OIDC_JWKS_URL`), OTLP endpoint + token — all resolved from `~/.config/agentsfleet/` env links (`.githooks/post-checkout`; provisioned by `provision-env-1password` in dotfiles). Boot preflight fails loud listing every missing one. The Rust substrate integration suite runs in a lane this milestone CREATES, `make test-integration-rustd`, against the same compose services (§Integration-lane amendment).
 
-- **Dimension 8.1** — preflight lists all missing credentials in one output, not first-failure-only → Test `test_preflight_lists_missing`
-- **Dimension 8.2** — the created lane `make test-integration-rustd` runs the Rust integration suite and propagates its failure → Test `test_integration_lane_rust`
+- **Dimension 8.1** — preflight lists all missing credentials in one output, not first-failure-only → Test `test_preflight_lists_missing` — **DONE**
+- **Dimension 8.2** — the created lane `make test-integration-rustd` runs the Rust integration suite and propagates its failure → Test `test_integration_lane_rust` — **DONE**
 
 ## Parallelization & execution map
 

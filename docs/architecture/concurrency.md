@@ -234,20 +234,25 @@ prose: `rustd/crates/agentsfleetd/src/inventory.rs` carries the same table as
 `THREAD_MAP`, and `tests/daemon.rs` asserts the row count and that every row has
 a disposition. A row deleted here without being deleted there is a red test.
 
+The milestone each deferral is owed by is named in `THREAD_MAP` rather than
+here, and asserted there. This document cites only milestones that have landed
+(`check-architecture-doc` enforces that), so a table naming unstarted ones would
+either fail the gate or go stale the moment one was renumbered.
+
 Three dispositions. The distinction between the last two is the point — a
 deferral without a milestone is an omission wearing a label.
 
 | Zig thread | Disposition | Why |
 |---|---|---|
 | signal watcher | **Retired** | `tokio::signal` is awaited in the run loop. No thread, and no flags to race |
-| event bus | Deferred → M177 | fleet runtime |
-| approval-gate sweeper | Deferred → M177 | fleet runtime |
-| liveness sweeper | Deferred → M177 | fleet runtime |
-| reclaim sweeper | Deferred → M177 | fleet runtime |
-| outbound worker | Deferred → M177 | fleet runtime |
+| event bus | Deferred | fleet runtime |
+| approval-gate sweeper | Deferred | fleet runtime |
+| liveness sweeper | Deferred | fleet runtime |
+| reclaim sweeper | Deferred | fleet runtime |
+| outbound worker | Deferred | fleet runtime |
 | SSE hub reader | **Supervised** (`hub_pump`) | `afd_redis`'s pub/sub pump |
-| install worker | Deferred → M177 | detached in Zig behind a `WaitGroup`; becomes a supervised task with a bounded drain, because no unsupervised spawn path exists here |
-| Clerk metadata fetch worker | Deferred → M178 | signup arrives with the tenant surface |
+| install worker | Deferred | fleet runtime. Detached in Zig behind a `WaitGroup`; becomes a supervised task with a bounded drain, because no unsupervised spawn path exists here |
+| Clerk metadata fetch worker | Deferred | signup arrives with the tenant surface |
 | OTLP flush | **Supervised** (`otlp_export`) | the batch span processor |
 | deadline scheduler worker | **Retired** | deadlines are `tokio::time::timeout` at call sites; nothing schedules them centrally |
 
