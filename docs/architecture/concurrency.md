@@ -226,6 +226,88 @@ lifecycle tests exercise the real stop→join order with no sleeps or polling ra
 
 ---
 
+## The Rust task map (`rustd/`, M176 §7)
+
+The Zig thread map above stays authoritative for the shipping daemon. This is
+what each of its `agentsfleetd` rows became in the Rust port, and it is not
+prose: `rustd/crates/agentsfleetd/src/inventory.rs` carries the same table as
+`THREAD_MAP`, and `tests/daemon.rs` asserts the row count and that every row has
+a disposition. A row deleted here without being deleted there is a red test.
+
+Three dispositions. The distinction between the last two is the point — a
+deferral without a milestone is an omission wearing a label.
+
+| Zig thread | Disposition | Why |
+|---|---|---|
+| signal watcher | **Retired** | `tokio::signal` is awaited in the run loop. No thread, and no flags to race |
+| event bus | Deferred → M177 | fleet runtime |
+| approval-gate sweeper | Deferred → M177 | fleet runtime |
+| liveness sweeper | Deferred → M177 | fleet runtime |
+| reclaim sweeper | Deferred → M177 | fleet runtime |
+| outbound worker | Deferred → M177 | fleet runtime |
+| SSE hub reader | **Supervised** (`hub_pump`) | `afd_redis`'s pub/sub pump |
+| install worker | Deferred → M177 | detached in Zig behind a `WaitGroup`; becomes a supervised task with a bounded drain, because no unsupervised spawn path exists here |
+| Clerk metadata fetch worker | Deferred → M178 | signup arrives with the tenant surface |
+| OTLP flush | **Supervised** (`otlp_export`) | the batch span processor |
+| deadline scheduler worker | **Retired** | deadlines are `tokio::time::timeout` at call sites; nothing schedules them centrally |
+
+### The two retirements, and what they cost
+
+Both retired rows are threads that existed only to work around the absence of
+async, and both took real machinery with them.
+
+**The signal watcher and its two flags.** `serve_shutdown.zig` keeps
+`shutdown_requested` and `background_stop` apart so a SIGTERM arriving during
+boot cannot kill the background stack while the server may still come up and
+briefly serve — the half-dead-node window. It needs two flags because the
+watcher is a separate thread polling every 100ms, so "the signal arrived" and
+"the server stopped" are events that genuinely race.
+
+They cannot race in `Daemon::run`, because they are statements in order: await
+whichever of server-or-signal finishes first, then cancel the supervisor, then
+let the caller drop the pools. A signal during boot leaves an already-resolved
+future; the server comes up, sees it resolved, and stops. Same property, one
+less piece of shared mutable state. The `select!` is `biased` so the answer is a
+fact about the futures rather than about tokio's branch order — asserted by
+`test_boot_window_sigterm`, which fails if the arms are swapped.
+
+**The deadline scheduler (M139).** A treap-backed registration map and a worker
+thread existed so one thread could interrupt another's blocked socket.
+`tokio::time::timeout` at the call site is the same guarantee with no shared map
+to keep consistent and no generation check to get wrong. `CancellationToken` is
+edge-triggered, so a task selecting over its own I/O and `cancelled()` is
+interrupted mid-read rather than at the next 100ms poll — proven for a real
+blocked `accept()` by `test_task_inventory_and_cancellation`, which carries a
+control so the negative is not vacuous.
+
+### Rust shutdown choreography
+
+Replaces steps 1–7 above for the port. Fewer steps, and the reduction is the
+result rather than the goal: most of that list is orderings that a `defer` chain
+had to hold by hand.
+
+1. **Decide why.** `Daemon::run` awaits whichever of the server or the signal
+   finishes first, and names it — `Signalled` or `ServerStopped`. `serve.zig`
+   models only the first; a daemon that waits solely for a signal hangs when its
+   listener dies of something else.
+2. **Cancel and join, unconditionally.** The teardown is in the outer `run`, not
+   inside the loop — exonum's `ApiManager::run`/`run_inner` split, taken for its
+   one property: every early return still tears down. `Supervisor::shutdown`
+   cancels the token, then joins every handle with a `JOIN_TIMEOUT` deadline,
+   reporting any task that would not stop by name instead of hanging the process.
+3. **Drop last.** `shutdown` consumes the supervisor, so what the tasks borrowed
+   cannot be dropped until it returns. Invariant C2 becomes a borrow-checker
+   fact rather than a defer ordering — asserted as an observation by
+   `Arc::strong_count` after teardown in `test_shutdown_joins_all_tasks`.
+
+Handshakes, not sleeps, in every one of these tests — the `common.Event`
+discipline above, expressed as channels and `CancellationToken`. The abandoned-
+task assertions run under `#[tokio::test(start_paused)]`, so a ten-second join
+timeout costs no wall clock: with every task parked the runtime advances to the
+next deadline itself.
+
+---
+
 ## Expanding the discipline base (roster)
 
 The rules above are enforced in code across the folders listed in
