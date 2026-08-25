@@ -767,18 +767,18 @@ the Zig daemon keeps them (`cmd/serve_runner_lookup.zig`,
 
 The axum + tower shell: a `Route` enum as the single metadata source with an exhaustive `route_meta()` (collapsing the Zig daemon's four parallel total tables — middleware chain, scopes, admission class, span template — a new variant fails compilation until matched); the axum router generated from the enum; admission-based rate limiting (atomic in-flight ceiling, 429 + `Retry-After` + `X-RateLimit-*` before body read; ops routes exempt; stream class capped separately); the 16 KiB request-header limit with its proxy-chain rationale (`src/agentsfleetd/http/server.zig:29-42`); the `application/problem+json` error envelope wired to the afd_core code registry. Only `/healthz` + `/readyz` are served this milestone.
 
-- **Dimension 5.1** — `route_meta` is total: non-exhaustive match fails the build; a walk over all variants passes → Test `test_route_meta_total`
-- **Dimension 5.2** — requests past the ceiling shed with 429 + headers before any handler runs → Test `test_admission_sheds_over_ceiling`
-- **Dimension 5.3** — headers >4 KiB and ≤16 KiB accepted; >16 KiB → 431 → Test `test_header_limit_16k`
-- **Dimension 5.4** — error responses match the problem+json shape the Zig daemon emits → Test `test_problem_json_envelope`
-- **Dimension 5.5** — `afd_state` implements `afd_auth::CredentialDirectory` for all three stored classes (`agt_t`, `afc_`, `agt_r`), returning `Ok(None)` for an unmatched digest and `Unavailable` for a datastore fault, never collapsing the two. The crate this spec already plans as "seeded with the auth-consumed lookups" is where they belong — §4 ships the trait and the `test-util` doubles precisely so the SQL can land here → Test `test_credential_directories`
+- **Dimension 5.1** — `route_meta` is total: non-exhaustive match fails the build; a walk over all variants passes → Test `test_every_route_is_walked_exactly_once` (`afd_api/tests/route_meta_total.rs`) — **DONE**
+- **Dimension 5.2** — requests past the ceiling shed with 429 + headers before any handler runs → Test `test_admission_sheds_over_ceiling` — **DONE**
+- **Dimension 5.3** — headers >4 KiB and ≤16 KiB accepted; >16 KiB → 431 → Test `test_a_head_just_inside_the_allowance_is_served` and `test_a_head_past_the_allowance_is_refused` (`afd_api/tests/header_limit.rs`) — **DONE**
+- **Dimension 5.4** — error responses match the problem+json shape the Zig daemon emits → Test `test_the_base_envelope_is_the_five_fields_and_no_others` (`afd_api/tests/problem_json_envelope.rs`) — **DONE**
+- **Dimension 5.5** — `afd_state` implements `afd_auth::CredentialDirectory` for all three stored classes (`agt_t`, `afc_`, `agt_r`), returning `Ok(None)` for an unmatched digest and `Unavailable` for a datastore fault, never collapsing the two. The crate this spec already plans as "seeded with the auth-consumed lookups" is where they belong — §4 ships the trait and the `test-util` doubles precisely so the SQL can land here → Test `test_an_unmatched_digest_is_none_not_an_error` and `test_a_refused_statement_is_unavailable_not_unknown` (`afd_state/tests/credential_directories.rs`) — **DONE**
 
 ### §6 — afd_observability: push-only telemetry
 
 tracing subscriber exporting logs/traces/metrics over OTLP (push-only egress — no scrape endpoint, matching the Zig daemon), semconv attributes with low-cardinality `http.route` templates, counter families. Export failure never blocks the request path (bounded buffer, drop counter).
 
-- **Dimension 6.1** — spans carry the route template, never the raw path → Test `test_span_route_template`
-- **Dimension 6.2** — OTLP endpoint down: requests unaffected; drop counter increments → Test `test_otlp_outage_nonblocking`
+- **Dimension 6.1** — spans carry the route template, never the raw path → Test `test_span_route_template` — **DONE**
+- **Dimension 6.2** — OTLP endpoint down: requests unaffected; drop counter increments → Test `test_otlp_outage_nonblocking` — **DONE**
 
 ### §7 — Boot and shutdown choreography
 
@@ -884,10 +884,10 @@ Crate seams   afd_crypto::Envelope {seal, open} over Zeroizing buffers
 | 4.2 | unit (negative) | `test_jwks_verify_negative_paths` | bad sig / expired / wrong aud / wrong iss → 401 each; kid miss → one refresh |
 | 4.3 | unit | `test_scope_ladder_expansion` | admin satisfies read; empty set fails closed |
 | 4.4 | unit (negative) | `test_require_scope_names_missing` | missing scope → 403 UZ-AUTH-022 with the scope name in the body |
-| 5.1 | unit | `test_route_meta_total` | every Route variant yields metadata; compile guard noted |
+| 5.1 | unit | `test_every_route_is_walked_exactly_once` | every Route variant yields metadata; compile guard noted |
 | 5.2 | integration (negative) | `test_admission_sheds_over_ceiling` | ceiling+1 concurrent requests → one 429 with Retry-After before handler execution |
-| 5.3 | integration (negative) | `test_header_limit_16k` | 8 KiB header accepted; 17 KiB → 431 |
-| 5.4 | unit | `test_problem_json_envelope` | error body fields match the Zig envelope shape byte-for-field |
+| 5.3 | integration (negative) | `test_a_head_past_the_allowance_is_refused` | 8 KiB header accepted; 17 KiB → 431 |
+| 5.4 | unit | `test_the_base_envelope_is_the_five_fields_and_no_others` | error body fields match the Zig envelope shape byte-for-field |
 | 6.1 | unit | `test_span_route_template` | span attribute is the template, not the raw path with ids |
 | 6.2 | integration (negative) | `test_otlp_outage_nonblocking` | collector down → request latency unaffected; drop counter grows |
 | 7.1 | integration | `test_shutdown_joins_all_tasks` | SIGTERM → join order asserted via handshake events; no timeout-based sleeps |
