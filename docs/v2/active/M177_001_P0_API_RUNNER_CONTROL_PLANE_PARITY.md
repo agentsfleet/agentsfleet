@@ -149,19 +149,23 @@ Activity frames validated and published to `fleet:{id}:activity`; memory GET hyd
 
 ### §5 — Fleet config resolution (afd_fleet_runtime)
 
-Fleet config parsing — YAML frontmatter + markdown body — with validation parity against `fleet_runtime/config_parser.zig`, feeding `ExecutionPolicy` (approval-gate policy included; rendering stays with M178). **Implementation default:** a maintained serde-compatible YAML crate — `serde_norway` as of authoring (serde_yaml is archived); the agent re-verifies crate health at EXECUTE and records the pick in Discovery — because the fork-pinned `zig-yaml` rationale (build breakage upstream) dissolves only if the replacement is actually maintained.
+STORED fleet-config resolution — `config_json` → typed policy — with validation parity against `fleet_runtime/config_parser.zig`, feeding `ExecutionPolicy` (approval-gate policy included; rendering stays with M178). This is the half the runner plane calls: `fleet_session.zig:129` resolves it per lease and `credentials_mint_scope.zig:66` re-resolves it per mint, so §2's gates and §4.5's broker are both built on it.
 
-- **Dimension 5.1** — the committed fleet-config corpus (seeded from the `src/agentsfleetd/fleet_runtime/` frontmatter fixtures and `tests/fixtures/fleetbundle/`) parses to the same accept/reject verdicts and field values as the Zig parser → Test `test_fleet_config_corpus_parity`
-- **Dimension 5.2** — malformed frontmatter (unclosed, wrong types, unknown keys) → same error classes as Zig → Test `test_fleet_config_rejects_malformed`
+**The install-time half is M178's, and the seam is the call site (Indy, this stream).** `parseTriggerMarkdownWithJson` — YAML frontmatter + markdown body → `config_json`, i.e. `config_markdown.zig` (338) + `yaml_frontmatter.zig` (272) — has FOUR non-test callers and not one of them is a route this milestone owns: `fleets/create.zig:123`, `fleets/patch_txn.zig:114` and `connectors/slack/channel_fleet.zig` are M178's tenant surface, and `fleet_library/importer.zig:165` is M179's bundle import. Porting it here would add a YAML crate and ~610 lines with zero callers in this PR, which the Dead Code Sweep and the crate-wide `unused_crate_dependencies` deny both refuse. `fleet_runtime/` is a LIBRARY straddling a boundary this family draws on route ownership — the section was authored whole because the Zig module family is whole, and the dimension is split to match where the callers actually are. The `serde_norway` implementation default travels with that half; no YAML crate is chosen here.
+
+- **Dimension 5.1** — the committed STORED fleet-config corpus (seeded from `tests/fixtures/fleetbundle/` and the `config_json` shapes `fleet_session.zig` resolves) parses to the same accept/reject verdicts and field values as `parseStoredFleetConfig` → Test `test_fleet_config_corpus_parity`
+- **Dimension 5.2** — malformed stored config (wrong types, unknown runtime keys, a runtime key at the top level) → same error classes as Zig → Test `test_fleet_config_rejects_malformed`
 
 ### §6 — Sweepers and runner metrics
 
-The four runner-plane sweepers as supervised tasks: liveness (derived three-category state; fresh-mint `last_seen_at = 0` reads `registered`, never a fake `online`), reclaim (expired leases re-leased with a higher fencing token; keyset cursor on `(updated_at, id)`, batch limit 100), retention, repair-verification dispatcher (including the repair-branch naming and trusted-context logic from `src/agentsfleetd/git/` — that module's only consumers live in this milestone). Runner metric families in the fixed 4096-slot table with `_other` overflow routing and zero Postgres on the scrape-free OTLP path.
+The four runner-plane sweepers as supervised tasks: liveness (derived three-category state; fresh-mint `last_seen_at = 0` reads `registered`, never a fake `online`), reclaim (expired leases re-leased with a higher fencing token; keyset cursor on `(updated_at, id)`, batch limit 100), retention, repair-verification dispatcher (including the repair-branch naming and trusted-context logic from `src/agentsfleetd/git/` — that module's only consumers live in this milestone). Runner metric families in the fixed 4096-slot table with bounded overflow routing and zero Postgres on the scrape-free OTLP path.
+
+**The overflow SPELLING belongs to M181 §5, not here (Indy, this stream).** This section owns the runner families and the property that a capped table cannot grow without bound — `runner_id` is caller-supplied, so an unbounded label set is a memory fault a hostile or misconfigured fleet could reach. It does NOT own what the overflow series is called. M181 §5 configures the metrics pipeline on `opentelemetry_sdk` rather than porting the Zig aggregator, and the OpenTelemetry specification marks overflow with the attribute `otel.metric.overflow=true` where the Zig uses an `_other` label value. Pinning `_other` in a P0 dimension HERE would either force the SDK decision by the back door or leave this milestone's rubric contradicting the one that owns continuity. So Dimension 6.4 asserts the bound and the constant memory; M181's Dimension 5.5 asserts the spelling, against the dashboards that actually read it.
 
 - **Dimension 6.1** — expired lease reclaimed with a strictly higher fencing token; original writer then fenced out → Test `test_reclaim_bumps_fence`
 - **Dimension 6.2** — reclaim pages by keyset cursor honoring the batch limit → Test `test_reclaim_keyset_pagination`
 - **Dimension 6.3** — never-connected runner reports `registered` → Test `test_liveness_fresh_mint_sentinel`
-- **Dimension 6.4** — metric table overflow routes to `_other`; memory stays constant → Test `test_metric_families_overflow`
+- **Dimension 6.4** — past the family table's capacity, overflow routes to ONE series and metric memory stays constant; the overflow SPELLING is deliberately not asserted here (see the §6 note) → Test `test_metric_families_overflow`
 
 ### §7 — The parity harness
 
@@ -230,7 +234,8 @@ Row shapes: fleet.runner_leases, fleet.runner_events, billing.usage_ledger,
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| runner metric families (4 existing, fixed-slot) | ops | verb traffic / lease grants / releases | runner_id (capped table, `_other` overflow), verb, outcome | no tenant payloads | `test_metric_families_overflow` |
+| runner metric families (4 existing, fixed-slot) | ops | verb traffic / lease grants / releases | runner_id (capped table, bounded overflow — spelling is M181 §5's), verb, outcome | no tenant payloads | `test_metric_families_overflow` |
+| credit drained at the receive debit | ops | a first delivery passes the gates | posture, provider, model — never workspace or tenant payloads | amount only; no event body | §2 returns the drained amount as a value; M181 §5 attaches the instrument |
 | `fleet.runner_events` rows (existing append-only) | ops | state transitions | state, runner id | no secrets | `test_runner_bearer_state_matrix` |
 | product analytics | not applicable | — | no product-event changes; parity port | — | — |
 
@@ -255,12 +260,12 @@ Row shapes: fleet.runner_leases, fleet.runner_events, billing.usage_ledger,
 | 4.3 | integration (negative) | `test_memory_capture_fencing` | stale capture fence → rejected, store unchanged |
 | 4.4 | integration | `test_bundle_fetch_by_hash` | stored bytes round-trip; unknown hash → 404 |
 | 4.5 | integration (race) | `test_mint_broker_single_flight` | concurrent expired-cache mints → one upstream call, one token |
-| 5.1 | unit | `test_fleet_config_corpus_parity` | corpus verdicts + field values equal Zig parser output |
-| 5.2 | unit (negative) | `test_fleet_config_rejects_malformed` | malformed frontmatter classes → matching error classes |
+| 5.1 | unit | `test_fleet_config_corpus_parity` | STORED corpus verdicts + field values equal `parseStoredFleetConfig` output |
+| 5.2 | unit (negative) | `test_fleet_config_rejects_malformed` | malformed stored-config classes → matching error classes |
 | 6.1 | integration (race) | `test_reclaim_bumps_fence` | expired lease → re-lease with fence+1; old writer fenced |
 | 6.2 | integration | `test_reclaim_keyset_pagination` | >batch-limit expired leases → paged sweep, none skipped/duplicated |
 | 6.3 | unit | `test_liveness_fresh_mint_sentinel` | `last_seen_at = 0` → `registered` |
-| 6.4 | unit | `test_metric_families_overflow` | slot 4097 routes to `_other`; table size constant |
+| 6.4 | unit | `test_metric_families_overflow` | slot 4097 routes to a single overflow series; table size constant past the cap (spelling asserted by M181 5.5) |
 | 7.1 | e2e | `test_runner_suite_vs_rust_daemon` | existing runner integration subset green against `agentsfleetd-rs` |
 | 4.1 (FM) | integration (negative) | `test_activity_publish_redis_down` | Redis publish failure → verb outcome parity with Zig; drop accounted, never a telemetry-caused 500 |
 | 4.4 (FM) | integration (negative) | `test_bundle_fetch_r2_outage` | object store down → 5xx retryable class; lease stays redeliverable |
@@ -349,6 +354,66 @@ Same fetch location as the rest of the family. The daemon no longer boots with t
   single-daemon shape. No capability was dropped: §7.1's demoable
   stock-runner-against-`agentsfleetd-rs` end-to-end survives unchanged, because
   it needs the runner, not the second daemon.
+- **§5 split along its call sites at EXECUTE — Dimension 5.1 narrowed, the
+  frontmatter half handed to M178 §3 (Indy, this stream).** The section was
+  authored as one because `fleet_runtime/` is one Zig module family; the
+  milestone boundary in this family is drawn on ROUTE ownership, and that
+  library straddles it. Every non-test caller was traced rather than assumed:
+  the stored parser (`parseStoredFleetConfig`) is called by
+  `fleet/fleet_session.zig:129` (the lease verb) and
+  `http/handlers/runner/credentials_mint_scope.zig:66` (the mint verb) — both
+  M177's — plus `fleets/cron_sync.zig:66`, which is M180's; the markdown parser
+  (`parseTriggerMarkdownWithJson`) is called by `fleets/create.zig:123`,
+  `fleets/patch_txn.zig:114`, `connectors/slack/channel_fleet.zig` (×4) and
+  `fleet_library/importer.zig:165` — M178's and M179's, and NONE of them this
+  milestone's. So the claim-time half could not move out (§2's gates and §4.5's
+  broker are built on it, and §7.1's demoable capability is unreachable without
+  it) and the install-time half could not usefully move in (~610 lines and a
+  YAML crate with zero callers in this PR, against the Dead Code Sweep and the
+  crate-wide `unused_crate_dependencies` deny). Dimension 5.1's corpus is
+  therefore the STORED corpus, a new M178 Dimension 3.4 carries the frontmatter
+  corpus, and the `serde_norway` implementation default travels with it. What
+  this buys is R4 becoming gradeable in the milestone that owns the code it
+  grades; what it costs is that "§5 is done" now means one half, which is why
+  the section body says so in its own words rather than leaving a reader to
+  infer it from the dimension.
+- **The observability surface was inventoried at EXECUTE, and most of it is not
+  this milestone's (Indy, this stream).** The Zig carries ~6,000 production
+  lines under `observability/`; `afd_observability` carries 202. Rather than
+  discover the difference at cutover, every file was placed. M176 §6 shipped the
+  SPAN pipeline. This milestone owns the runner FAMILIES (§6). M178 §7 owns
+  PostHog (`telemetry.zig`, `telemetry_events.zig` — product analytics, not
+  OTel). M181 §5 owned "the transport". Two clusters needed no port at all and
+  were nearly filed as gaps: `otel_logs.zig` is already decided in M181 §5
+  (logfmt on stderr, ingested by a Collector's `filelog` receiver), and
+  `library_read_counters.zig` + siblings (~680 lines) are TEST-ONLY — they
+  increment under `builtin.is_test` and the module says in its own header that
+  it is deliberately not telemetry.
+  What was genuinely unowned is the metrics PIPELINE — instruments, family
+  registry, label dimensions, aggregation, cardinality, runtime families,
+  ~1,450 lines — which M181 §5 was written as if M176 had already shipped.
+  M176 shipped spans; there is no metric instrument anywhere in the Rust tree.
+  A transport with nothing to carry cannot make §4's `test_metric_continuity`
+  gradeable, so the pipeline is now named in M181 §5 alongside it, with
+  `opentelemetry_sdk`'s `metrics` feature (a flag on a crate already in the
+  lock) replacing the port. The consequence that lands HERE: the SDK marks
+  cardinality overflow with `otel.metric.overflow=true` where the Zig uses an
+  `_other` label, so Dimension 6.4 was re-scoped to assert the BOUND and the
+  constant memory — the property this milestone actually owns — and M181's new
+  Dimension 5.5 asserts the spelling against the dashboards that read it.
+  Pinning `_other` in a P0 row here would have forced M181's SDK decision by
+  the back door.
+- **The credit-drain metric is returned as a value, not emitted inline (§2).**
+  `service_billing.zig` fuses the decision and the emission: the receive debit's
+  success arm calls `otel_metrics.recordCreditConsumed` at the call site. The
+  Rust debit answers `Deducted(Nanos)` instead — which is the Zig's own
+  `DebitOutcome.deducted` shape — and §6/M181 attaches the instrument to that
+  value. What this buys is that §2 needs no metrics pipeline to be correct and
+  no test here asserts an exporter. What it COSTS is a seam: if the instrument
+  is never attached, the metric silently never fires and no test in either
+  milestone catches it, where the Zig gets the coupling for free by accident.
+  Recorded as an explicit obligation in the Metrics table above rather than
+  left implied.
 - **SQL organisation — prior art surveyed before deciding.** `~/Projects/oss/exonum`
   carries zero SQL (RocksDB via `components/merkledb`) and `~/Projects/oss/habitat`
   carries zero SQL and zero diesel (`builder-api` is split out upstream), so

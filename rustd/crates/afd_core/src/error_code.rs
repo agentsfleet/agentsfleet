@@ -186,6 +186,19 @@ pub const RUN_INVALID_RUNNER_TOKEN: ErrorCode = ErrorCode::declare("UZ-RUN-001")
 /// out of service — the heartbeat reply is unconditionally `ok`.
 pub const RUN_ADMIN_STATE_BLOCKED: ErrorCode = ErrorCode::declare("UZ-RUN-009");
 
+/// A fleet has reached a spend ceiling its own author declared.
+///
+/// `ERR_RUN_BUDGET_EXCEEDED`. Referenced from the Zig registry, never declared
+/// here as a new code (RULE ERR) — `error_registry.zig:216` owns the value.
+///
+/// One code for both ceilings and both gates. `daily_dollars` and
+/// `monthly_dollars` answer the same code because an operator acts identically
+/// on either, and the issue-time refusal shares it with the mid-run kill at
+/// `/renew` because they are the same fact observed at two moments. The verdict
+/// that distinguishes them rides the log line, where it can be read without
+/// making a client branch on it.
+pub const RUN_BUDGET_EXCEEDED: ErrorCode = ErrorCode::declare("UZ-RUN-015");
+
 /// The instance is already serving as many requests as it admits.
 ///
 /// `ERR_API_BACKPRESSURE`. A 429, and the one refusal in this registry that is
@@ -217,5 +230,6 @@ pub const REGISTRY: &[ErrorCode] = &[
     APIKEY_REVOKED,
     RUN_INVALID_RUNNER_TOKEN,
     RUN_ADMIN_STATE_BLOCKED,
+    RUN_BUDGET_EXCEEDED,
     API_BACKPRESSURE,
 ];

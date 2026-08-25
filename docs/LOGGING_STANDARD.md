@@ -250,7 +250,7 @@ The `comptime if ... return` makes the entire emit path disappear when the scope
 | Pattern | Why banned | Fix |
 |---|---|---|
 | `std.log.info("..."` outside `logging.scoped(.tag)` | Bypasses scope/event/field discipline. | Convert to `logging.scoped(.tag).info("event", .{...})`. |
-| `std.debug.print(` in non-test source | No level, no scope, no field structure. Dev-only debugging that escaped to main. | Convert or delete before commit. |
+| `std.debug.print(` in non-test source | No level, no scope, no field structure. Dev-only debugging that escaped to main. | Convert or delete. If stdout or stderr is the program interface, add `// logging: <reason>` on or immediately above the emit. |
 | `std.log.err` without `error_code=` field | Drops registry traceability. | Add the registry code, or add a registry entry if missing. |
 | `std.log.scoped(...)` outside `src/lib/logging/` | Free-form printf-style emit. | Switch the file's alias to `const log = logging.scoped(.tag);` and migrate every call site to the event+fields form. |
 | Positional `{s} {d}` placeholders | Not logfmt; not greppable. | Convert to struct-of-fields. |
@@ -295,7 +295,7 @@ class AgentError extends Error {
 
 Throw-style modules `throw new AgentError({...})`. Result-style modules return `{ ok: false, error: new AgentError({...}) }`. Render path picks human or JSON based on the runtime mode.
 
-## §8A · Per-language binding — Rust (`rustd`)
+## §8A · Per-language binding — Rust
 
 > [DETERMINISTIC → LOG]
 
@@ -333,9 +333,19 @@ match. Renaming is a separate, intentional observability migration.
 
 | Pattern | Why banned | Fix |
 |---|---|---|
-| `println!`, `eprintln!`, or `dbg!` in non-test source | No level, event, or structured fields. | Convert to a `tracing` emit or delete. |
+| `println!`, `eprintln!`, or `dbg!` in runtime source | No level, event, or structured fields. | Convert to a `tracing` emit or delete. If the stream is the program interface, add `// logging: <reason>` on or immediately above the emit. |
 | `tracing::<level>!` without `event = ...` | Drops the stable §3 event key. | Add the byte-stable snake_case event field. |
 | Positional formatting in a `tracing` message | Hides values inside text and defeats field queries. | Hoist values and emit named fields. |
+
+The annotation reason is mandatory and must be non-empty. A bare `// logging:`
+marker still fails. The annotation is for direct program output, such as a
+command result or a fatal renderer that must work before tracing starts. It does
+not excuse an incomplete `tracing` emit.
+
+```rust
+// logging: stdout is this command's answer, not a log record
+println!("{}", rendered_summary);
+```
 
 ## §9 · Pretty-printer (dev-only render variant)
 
@@ -379,7 +389,7 @@ Failure modes the audit script and reviewer must close. These are **not aspirati
 
 | # | Rationalization | Closure |
 |---|---|---|
-| L1 | "Temporary debug print, I'll remove later" | `logging.sh` greps `std.debug.print`, Rust `println!` / `eprintln!` / `dbg!`, and `console.log` / `console.debug` / `console.info` in non-test source unconditionally. Found in commit → gate fails. No "temporary" carve-out. |
+| L1 | "Temporary debug print, I'll remove later" | `logging.sh` rejects `std.debug.print`, Rust `println!` / `eprintln!` / `dbg!`, and `console.log` / `console.debug` / `console.info` in runtime source. Direct Zig or Rust stream output needs `// logging: <reason>` on or immediately above the emit. The reason must be non-empty and explain why the stream is the program interface. |
 | L2 | "`std.log.scoped` is fine, `obs.scoped` is just a wrapper" | `std.log.scoped` is **forbidden** in `src/**/*.zig` outside `src/lib/logging/`. Only `obs.scoped` is callable. Audit flags every `std.log.` call site. |
 | L3 | "I added `error_code=UZ-NEW-001` — registry entry coming next commit" | The registry entry **must land in the same commit** as the first reference. `error-codes.sh` runs against the staged diff; missing entry = blocking. |
 | L4 | "This per-iteration event matters for debugging — `info`-level" | Per-iteration and per-row paths are `debug`, including mandatory boundary pairs on hot polls. `debug` is the level with a volume switch. This closes the ONLY `info` prohibition — there is no allow-list of event names and none may be reintroduced (§4). The inverse rationalization is closed too: "this operation is obviously fine, no need to log it" does not survive §4 rule 1, which requires a `_started`/`_completed`\|`_failed` pair on every boundary-crossing operation. Reviewer checks the pair and the loop, never the spelling. |

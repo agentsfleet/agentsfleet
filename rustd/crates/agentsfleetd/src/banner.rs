@@ -49,5 +49,11 @@ pub fn render(rendering: Rendering, version: &str, roles: &[String], pid: u32) -
 
 /// Prints the startup banner to standard output.
 pub fn show(version: &str, roles: &[String], pid: u32) {
+    // The banner is terminal output for a human starting the daemon, not a log
+    // event — it is painted, aligned, and read once at boot. Routing it through
+    // `tracing` would make it a structured record with no consumer and would
+    // silence it entirely whenever no subscriber is installed yet, which is
+    // exactly the moment it exists to serve.
+    // logging: startup banner is human-facing stdout, not a log record
     println!("{}", render(Rendering::of_stdout(), version, roles, pid));
 }

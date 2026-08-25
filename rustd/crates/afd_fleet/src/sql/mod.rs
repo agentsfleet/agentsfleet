@@ -30,6 +30,7 @@
 //! is left alone; what changes is how it is BOUND — see [`runner::RegisterRow`]
 //! for the shape high-arity statements take.
 
+pub mod billing;
 pub mod event;
 pub mod lease;
 pub mod runner;

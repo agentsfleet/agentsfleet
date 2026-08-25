@@ -32,6 +32,15 @@ afd_redis.workspace = true
 # The runner-plane state reads, and the `admin_state` spelling the credential
 # lookup already owns — imported rather than restated (RULE UFS).
 afd_state.workspace = true
+# The stored fleet config a lease resolves: the budget ceiling the gate reads,
+# the credential names the secrets map is built from, and the network and
+# repository policy the `ExecutionPolicy` carries. Resolved fresh per lease —
+# a PATCH takes effect on the next one, never on a cached copy.
+afd_fleet_runtime.workspace = true
+# The UTC month a spend ceiling opens at. Confined to `money::window`; see the
+# workspace manifest for why a calendar is a dependency and the rolling day is
+# not.
+jiff.workspace = true
 # The entropy a runner token is minted from. Drawn through the workspace's one
 # entropy surface, never through a second call to the operating system.
 afd_crypto.workspace = true
