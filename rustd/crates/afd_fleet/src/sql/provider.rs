@@ -60,23 +60,6 @@ WHERE tenant_id = $1::uuid
 ORDER BY created_at ASC, id ASC
 LIMIT 1";
 
-/// One credential's envelope, as the six ciphertext columns plus its version.
-///
-/// Column order is load-bearing and copied rather than tidied: it is the order
-/// `crypto_store.zig::openEnvelopeAt` reads, which is the order
-/// [`afd_crypto::envelope::Envelope::from_parts`] takes its arguments in.
-///
-/// `workspace_id` is compared with no `::uuid` cast, which is odd beside the
-/// three statements above and is odd in `secrets/sql.zig` too. It is left alone
-/// — the column is `text` in that table, and adding a cast here would change
-/// which index Postgres picks for the read on every lease.
-///
-/// `$1` workspace, `$2` key name.
-pub const SELECT_SECRET: &str = "\
-SELECT encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, kek_version
-FROM vault.secrets
-WHERE workspace_id = $1 AND key_name = $2";
-
 /// The stored spellings of `core.tenant_model_selection.mode`.
 ///
 /// One declaration each (RULE UFS). These are the same two words

@@ -33,6 +33,8 @@ use std::sync::Arc;
 use afd_crypto::secret::Kek;
 use afd_db::Db;
 
+use crate::vault::Vault;
+
 /// Reads that resolve a tenant's provider, over the api-role pool.
 ///
 /// Cheap to clone: `Db` is a handle over an `Arc`-backed pool and the key is
@@ -44,14 +46,17 @@ use afd_db::Db;
 #[derive(Debug, Clone)]
 pub struct Providers {
     database: Db,
-    kek: Arc<Kek>,
+    vault: Vault,
 }
 
 impl Providers {
     /// A store reading through `database`, opening envelopes under `kek`.
     #[must_use]
-    pub const fn new(database: Db, kek: Arc<Kek>) -> Self {
-        Self { database, kek }
+    pub fn new(database: Db, kek: Arc<Kek>) -> Self {
+        Self {
+            vault: Vault::new(database.clone(), kek),
+            database,
+        }
     }
 
     /// The pool these reads run through, for the sibling modules that add
@@ -60,8 +65,8 @@ impl Providers {
         &self.database
     }
 
-    /// The process key every stored envelope is opened under.
-    pub(crate) fn kek(&self) -> &Kek {
-        &self.kek
+    /// The vault a resolved credential is opened out of.
+    pub(crate) const fn vault(&self) -> &Vault {
+        &self.vault
     }
 }

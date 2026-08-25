@@ -30,8 +30,8 @@ use crate::money::Posture;
 use crate::provider::endpoint;
 use crate::provider::resolved::{Resolved, SecretString};
 use crate::provider::selection::Selection;
-use crate::provider::vault::KeyRef;
 use crate::provider::{Resolution, Strategy};
+use crate::vault::KeyRef;
 use afd_core::id::Uuid7;
 
 /// The credential field a self-managed resolution cannot proceed without.

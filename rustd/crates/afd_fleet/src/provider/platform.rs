@@ -17,8 +17,8 @@ use crate::error::{Result, provider_malformed, provider_platform_key_missing};
 use crate::money::Posture;
 use crate::provider::resolved::{Resolved, SecretString};
 use crate::provider::selection::PlatformDefault;
-use crate::provider::vault::KeyRef;
 use crate::provider::{Resolution, Strategy};
+use crate::vault::KeyRef;
 
 /// The credential field a platform default cannot resolve without.
 const FIELD_API_KEY: &str = "api_key";
