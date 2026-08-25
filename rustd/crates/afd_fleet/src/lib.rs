@@ -36,6 +36,7 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
 pub mod error;
+pub mod gate;
 pub mod lease;
 pub mod money;
 pub mod provider;

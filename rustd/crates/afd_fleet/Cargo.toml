@@ -84,6 +84,10 @@ tracing-subscriber.workspace = true
 afd_db = { workspace = true, features = ["test-util"] }
 # The digest a suite proves is stored in place of the token.
 afd_auth = { workspace = true, features = ["test-util"] }
+# The direct `GatePolicy` constructor the gate evaluator's cases are built
+# from. A dev-dependency on a crate this one already depends on, for the
+# `test-util` seam only the tests reach.
+afd_fleet_runtime = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

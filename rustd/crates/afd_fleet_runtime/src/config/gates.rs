@@ -175,6 +175,32 @@ impl GatePolicy {
     pub const fn timeout_ms(&self) -> u64 {
         self.timeout_ms
     }
+
+    /// Builds a policy directly from its parts.
+    ///
+    /// Behind `test-util` (`M-TEST-UTIL`) because the production door is
+    /// [`TryFrom<raw::Gates>`](GatePolicy) and it is the one that VALIDATES —
+    /// thresholds proved non-zero, timeout clamped into range. A constructor
+    /// that skipped all of it would be a second way to build a policy, and a
+    /// second way to build one is a way to build an invalid one.
+    ///
+    /// The consumer is the runtime EVALUATOR in the sibling crate, whose
+    /// subject is which rule fires for which action. Driving those cases
+    /// through a stored config document would make every one of them carry a
+    /// JSON fixture whose parse is not what the test is about.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn from_parts(
+        rules: Vec<GateRule>,
+        anomaly_rules: Vec<AnomalyRule>,
+        timeout_ms: u64,
+    ) -> Self {
+        Self {
+            rules: rules.into_boxed_slice(),
+            anomaly_rules: anomaly_rules.into_boxed_slice(),
+            timeout_ms,
+        }
+    }
 }
 
 impl TryFrom<raw::Gates> for GatePolicy {

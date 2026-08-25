@@ -11,6 +11,12 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+# M-TEST-UTIL. Unlocks the direct `GatePolicy` constructor the sibling crate's
+# gate evaluator drives its rule-matching cases through; the production door
+# stays the validating `TryFrom`.
+test-util = []
+
 [dependencies]
 # Shape and collection work, so this crate writes only the SEMANTIC half.
 # Every field deserializes as `Option`, which is what keeps "you forgot a key"
