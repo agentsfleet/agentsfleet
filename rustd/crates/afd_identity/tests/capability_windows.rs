@@ -28,6 +28,13 @@ use afd_identity::capability::{
 
 const CLAIM: &str = "fleet:admin billing:read";
 
+/// The instant the fixed clock starts at, in epoch milliseconds.
+///
+/// Arbitrary, and identical across all nine window tests on purpose: the
+/// assertions are about elapsed time from a common origin, so one name is what
+/// keeps them comparable.
+const CLOCK_ORIGIN_MS: i64 = 1_000_000;
+
 fn subject() -> Subject {
     Subject::new("user_2aXyTest").expect("a non-blank subject")
 }
@@ -111,7 +118,7 @@ fn resolver(
 /// Inside the freshness window the provider is not asked again.
 #[test]
 fn test_a_fresh_answer_is_served_without_asking_the_provider() {
-    let (capabilities, clock) = resolver(Provider::answering(CLAIM), clock_at(1_000_000));
+    let (capabilities, clock) = resolver(Provider::answering(CLAIM), clock_at(CLOCK_ORIGIN_MS));
 
     let first = block_on(capabilities.capabilities(&subject())).expect("the provider answers");
     assert_eq!(first, parse_claim(CLAIM));
@@ -135,7 +142,7 @@ fn test_a_fresh_answer_is_served_without_asking_the_provider() {
 /// provider narrows every credential they hold, with no deploy and no backfill.
 #[test]
 fn test_narrowing_at_the_provider_reaches_the_next_request() {
-    let (capabilities, clock) = resolver(Provider::answering(CLAIM), clock_at(1_000_000));
+    let (capabilities, clock) = resolver(Provider::answering(CLAIM), clock_at(CLOCK_ORIGIN_MS));
     block_on(capabilities.capabilities(&subject())).expect("the provider answers");
 
     capabilities
@@ -160,7 +167,7 @@ fn test_narrowing_at_the_provider_reaches_the_next_request() {
 /// capabilities that are minutes old.
 #[test]
 fn test_a_stale_answer_survives_an_outage_within_the_ceiling() {
-    let (capabilities, clock) = resolver(Provider::answering(CLAIM), clock_at(1_000_000));
+    let (capabilities, clock) = resolver(Provider::answering(CLAIM), clock_at(CLOCK_ORIGIN_MS));
     block_on(capabilities.capabilities(&subject())).expect("warm the entry");
 
     capabilities
@@ -180,7 +187,7 @@ fn test_a_stale_answer_survives_an_outage_within_the_ceiling() {
 /// forgotten, which is a permanent condition rather than a transient one.
 #[test]
 fn test_past_the_ceiling_the_caller_is_refused_rather_than_emptied() {
-    let (capabilities, clock) = resolver(Provider::answering(CLAIM), clock_at(1_000_000));
+    let (capabilities, clock) = resolver(Provider::answering(CLAIM), clock_at(CLOCK_ORIGIN_MS));
     block_on(capabilities.capabilities(&subject())).expect("warm the entry");
 
     capabilities
@@ -197,7 +204,7 @@ fn test_past_the_ceiling_the_caller_is_refused_rather_than_emptied() {
 fn test_a_cold_subject_with_no_provider_is_an_outage() {
     let (capabilities, _clock) = resolver(
         Provider::failing(ClaimUnavailable::Unreachable),
-        clock_at(1_000_000),
+        clock_at(CLOCK_ORIGIN_MS),
     );
     block_on(capabilities.capabilities(&subject())).expect_err("nothing warm, and nothing to ask");
 }
@@ -213,7 +220,7 @@ fn test_a_cold_subject_with_no_provider_is_an_outage() {
 fn test_a_subject_the_provider_does_not_know_resolves_to_nothing() {
     let (capabilities, _clock) = resolver(
         Provider::failing(ClaimUnavailable::UnknownSubject),
-        clock_at(1_000_000),
+        clock_at(CLOCK_ORIGIN_MS),
     );
 
     let resolved =
@@ -230,7 +237,7 @@ fn test_a_subject_the_provider_does_not_know_resolves_to_nothing() {
 fn test_an_unknown_subject_is_not_cached() {
     let (capabilities, _clock) = resolver(
         Provider::failing(ClaimUnavailable::UnknownSubject),
-        clock_at(1_000_000),
+        clock_at(CLOCK_ORIGIN_MS),
     );
     block_on(capabilities.capabilities(&subject())).expect("empty, not an error");
 
@@ -261,7 +268,7 @@ fn test_an_unknown_subject_is_not_cached() {
 /// subject there is no second response to be out of order with.
 #[test]
 fn test_concurrent_misses_for_one_subject_cost_one_provider_call() {
-    let (capabilities, _clock) = resolver(Provider::answering(CLAIM), clock_at(1_000_000));
+    let (capabilities, _clock) = resolver(Provider::answering(CLAIM), clock_at(CLOCK_ORIGIN_MS));
 
     let who = subject();
     let resolved = block_on(async {
@@ -304,7 +311,7 @@ async fn futures_join<F: Future>(futures: Vec<F>) -> Vec<F::Output> {
 /// possible bug in this file, so it is stated rather than assumed.
 #[test]
 fn test_two_subjects_resolve_independently() {
-    let (capabilities, _clock) = resolver(Provider::answering(CLAIM), clock_at(1_000_000));
+    let (capabilities, _clock) = resolver(Provider::answering(CLAIM), clock_at(CLOCK_ORIGIN_MS));
     let first = Subject::new("user_first").expect("non-blank");
     let second = Subject::new("user_second").expect("non-blank");
 

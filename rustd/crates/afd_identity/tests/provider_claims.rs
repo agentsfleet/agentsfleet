@@ -17,6 +17,9 @@ use afd_identity::{ProviderClaims as _Reexported, ProviderSecret};
 
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// What the fake server's request buffer starts at before the read grows it.
+const REQUEST_BUFFER_BYTES: usize = 1024;
+
 fn secret() -> ProviderSecret {
     // Deliberately NOT provider-shaped. A realistic `sk_test_…` fixture trips
     // the repository's secret scanner, and the right answer to that is a
@@ -52,7 +55,7 @@ async fn serve_once(status: u16, body: Vec<u8>) -> (String, tokio::task::JoinHan
         };
         // Drain the request first: closing a socket with unread bytes makes the
         // kernel send RST, which discards the response tail.
-        let mut request = Vec::with_capacity(1024);
+        let mut request = Vec::with_capacity(REQUEST_BUFFER_BYTES);
         let mut byte = [0_u8; 1];
         while socket.read_exact(&mut byte).await.is_ok() {
             request.push(byte[0]);

@@ -11,6 +11,9 @@ mod wire;
 
 use afd_api::MAX_REQUEST_HEADER_BYTES;
 
+/// Bytes per kibibyte, so the sizes below read as the units they are argued in.
+const KIB: usize = 1024;
+
 use self::wire::{request_with_header_bytes, serve_one_request};
 
 /// The limit is the byte count `http/server.zig` names.
@@ -18,7 +21,7 @@ use self::wire::{request_with_header_bytes, serve_one_request};
 fn test_the_limit_is_the_zig_allowance() {
     assert_eq!(
         MAX_REQUEST_HEADER_BYTES,
-        16 * 1024,
+        16 * 1024, // pin test: literal is the contract
         "MAX_REQUEST_HEADER_BYTES in http/server.zig"
     );
 }
@@ -31,7 +34,7 @@ fn test_the_limit_is_the_zig_allowance() {
 /// small.
 #[tokio::test]
 async fn test_a_head_over_four_kibibytes_is_served() {
-    let served = serve_one_request(request_with_header_bytes(8 * 1024)).await;
+    let served = serve_one_request(request_with_header_bytes(8 * KIB)).await;
 
     assert_eq!(
         served.expect_status(),
@@ -46,7 +49,7 @@ async fn test_a_head_just_inside_the_allowance_is_served() {
     // Comfortably inside, with room for the status line and the bookkeeping
     // headers hyper adds — the assertion is about the boundary being in the
     // right place, not about landing on the exact byte.
-    let served = serve_one_request(request_with_header_bytes(15 * 1024)).await;
+    let served = serve_one_request(request_with_header_bytes(15 * KIB)).await;
 
     assert_eq!(served.expect_status(), 200);
 }
@@ -63,7 +66,7 @@ async fn test_a_head_just_inside_the_allowance_is_served() {
 /// "happen", just invisibly.
 #[tokio::test]
 async fn test_a_head_past_the_allowance_is_refused() {
-    let refused = serve_one_request(request_with_header_bytes(17 * 1024)).await;
+    let refused = serve_one_request(request_with_header_bytes(17 * KIB)).await;
 
     assert_eq!(
         refused.status(),
@@ -80,7 +83,7 @@ async fn test_a_head_past_the_allowance_is_refused() {
 /// reached — no admission slot claimed, no route matched, no handler entered.
 #[tokio::test]
 async fn test_a_refused_head_never_reaches_the_handler() {
-    let refused = serve_one_request(request_with_header_bytes(17 * 1024)).await;
+    let refused = serve_one_request(request_with_header_bytes(17 * KIB)).await;
 
     assert!(
         !refused.handler_ran(),

@@ -12,6 +12,15 @@ const YEAR_2020_MS: i64 = 1_577_836_800_000;
 /// 2100-01-01T00:00:00Z. Any reading above this is not milliseconds either.
 const YEAR_2100_MS: i64 = 4_102_444_800_000;
 
+/// The factor the second/millisecond boundary cases are expressed in.
+const MILLIS_PER_SECOND: i64 = 1_000;
+
+/// Two instants 3.5 seconds apart, for the signed-difference assertions.
+const EARLIER_MS: i64 = 1_000;
+
+/// The later of that pair.
+const LATER_MS: i64 = 4_500;
+
 /// The reading is milliseconds since the epoch, in this century.
 ///
 /// This is the test that catches a unit swap, and it is worth more than any
@@ -48,11 +57,11 @@ fn test_seconds_truncate_toward_zero_like_the_zig_daemon() {
     for (millis, expected) in [
         (0_i64, 0_i64),
         (999, 0),
-        (1_000, 1),
+        (MILLIS_PER_SECOND, 1),
         (1_999, 1),
         (-1, 0),
         (-999, 0),
-        (-1_000, -1),
+        (-MILLIS_PER_SECOND, -1),
         (-1_999, -1),
         (1_577_836_800_123, 1_577_836_800),
     ] {
@@ -89,8 +98,8 @@ fn test_arithmetic_saturates_at_the_bounds() {
 /// A difference is signed, so "how long ago" and "how far ahead" are one call.
 #[test]
 fn test_a_difference_carries_its_direction() {
-    let earlier = UnixMillis::from_millis(1_000);
-    let later = UnixMillis::from_millis(4_500);
+    let earlier = UnixMillis::from_millis(EARLIER_MS);
+    let later = UnixMillis::from_millis(LATER_MS);
 
     assert_eq!(later.saturating_millis_since(earlier), 3_500);
     assert_eq!(earlier.saturating_millis_since(later), -3_500);

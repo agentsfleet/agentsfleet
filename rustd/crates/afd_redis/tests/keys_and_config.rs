@@ -17,6 +17,9 @@ use std::time::Duration;
 
 use afd_core::env::MapEnv;
 use afd_redis::Backoff;
+
+/// The ceiling the exponential backoff must never exceed.
+const BACKOFF_CAP: Duration = Duration::from_millis(1_000);
 use afd_redis::config::{CA_CERT_FILE_KNOB, RedisConfig, RedisRole};
 use afd_redis::ready::READY_INDEX_KEY;
 use afd_redis::session::{SESSION_KEY_PREFIX, SESSION_TTL, session_key};
@@ -236,10 +239,7 @@ fn test_backoff_grows_then_caps() {
     assert_eq!(delays[1], Duration::from_millis(200));
     assert_eq!(delays[2], Duration::from_millis(400));
     for delay in &delays {
-        assert!(
-            *delay <= Duration::from_millis(1_000),
-            "{delay:?} past the cap"
-        );
+        assert!(*delay <= BACKOFF_CAP, "{delay:?} past the cap");
     }
     assert_eq!(
         delays[7],

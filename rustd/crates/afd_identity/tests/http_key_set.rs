@@ -25,6 +25,9 @@ use afd_identity::jwks::source::{KeySetSource, MAX_RESPONSE_BYTES};
 /// short enough that a hung test fails rather than hangs.
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// What the fake server's request buffer starts at before the read grows it.
+const REQUEST_BUFFER_BYTES: usize = 1024;
+
 /// What the one-shot server should do with the connection it accepts.
 enum Serve {
     /// Answer with this status and body.
@@ -63,7 +66,7 @@ async fn serve_once(what: Serve) -> (String, tokio::task::JoinHandle<()>) {
                 // the close, does not. That is a property of sockets, not of
                 // the code under test, and reading first is how a real server
                 // avoids it.
-                let mut request = Vec::with_capacity(1024);
+                let mut request = Vec::with_capacity(REQUEST_BUFFER_BYTES);
                 let mut byte = [0_u8; 1];
                 while socket.read_exact(&mut byte).await.is_ok() {
                     request.push(byte[0]);
