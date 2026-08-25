@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M177
 **Workstream:** 001
 **Date:** Aug 23, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — the demoable core of the port; cutover is impossible without it
 **Categories:** API
 **Batch:** B3 — serial after M176; M178/M179 fan out after it
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
+**Branch:** `feat/m177-runner-control-plane-parity`
+**Test Baseline:** `unit=1072 integration=57` — `make test-unit-all` (cargo 560 passed / 57 ignored, plus 512 TypeScript coverage-gate tests across 55 files) and `make test-integration-rustd` (57 passed), both exit 0 on `165d96201`
 **Depends on:** M176_001 (substrate crates, boot, auth primitives); M175_001 (afd_wire fixtures)
 **Provenance:** LLM-drafted (Claude Fable 5, Aug 23, 2026)
 **Canonical architecture:** `docs/architecture/runner_fleet.md` + `docs/architecture/data_flow.md` §C. EXECUTE
@@ -59,9 +59,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_auth/**` | EDIT | `runnerBearer` validator (`agt_r` prefix, timing-safe hash lookup, no memoization) |
 | `rustd/crates/agentsfleetd/**` | EDIT | sweeper tasks join the supervisor; runner metric families registered |
 | `rustd/Cargo.toml` | EDIT | new members |
-| `make/test-integration.mk` | EDIT | `DAEMON=rust\|zig` daemon-under-test selector (default `zig`) + dual-run differ lane |
-| `src/build/**` | EDIT | integration test-build wiring for the selector and the row-dump/differ steps |
-| `tests/**` | EDIT | seeded deterministic scenario set + normalization mapping for the dual-run differ |
+| `make/test-integration-rustd.mk` | EDIT | end-to-end lane driving a stock Zig runner against `agentsfleetd-rs` (§7.1); no daemon-under-test selector — only one daemon remains |
+| `src/build/**` | EDIT | test-build wiring so the stock Zig runner binary is available to the §7.1 lane |
+| `tests/**` | EDIT | seeded deterministic scenario set backing `test_seeded_row_shapes` |
 
 ## Applicable Rules
 
@@ -103,7 +103,7 @@ The lease verb performs hot-path writes 1–6 in the worker's order: atomic `run
 
 **No version negotiation (Indy, Aug 23, 2026 — M175 addendum A1).** The Rust lease handler implements no `leaseWireVersion` equivalent, no `fromCurrent` downgrade, and no `requiresLeaseWireV2` refusal path. The version-two policy fields (`execution_policy.zig` `NetworkPolicy.read_only`, `http_origin_policies`, the richer `repository_binding`) apply unconditionally. **Implementation default:** Rust IGNORES the request's `wire_version` entirely and always serves the current shape — deliberately no explicit "unsupported version" rejection, because that needs a new error code, the ERROR REGISTRY gate fires on new codes, and the registry is single-sourced in Zig which this family does not touch. If the implementing agent judges loud rejection necessary, that is a judgment flag to Indy (📟🔦📈💥☠️), not a unilateral call. The divergence is registered in M181 §4.
 
-- **Dimension 2.1** — the six lease writes land in order with row shapes equal to the Zig daemon on identical input → Test `test_lease_writes_row_parity`
+- **Dimension 2.1** — the six lease writes land in the worker's order, with row shapes equal to the shapes recorded from the ported SQL for identical input → Test `test_lease_writes_row_parity`
 - **Dimension 2.2** — two runners race one fleet → exactly one lease; loser gets the no-work reply → Test `test_lease_affinity_race`
 - **Dimension 2.3** — empty wallet → lease refused with the coverage code; no partial writes → Test `test_lease_money_gate_refusal`
 - **Dimension 2.4** — provider key rides `ExecutionPolicy` only and is zeroed post-serialization → Test `test_provider_key_placement`
@@ -222,11 +222,11 @@ Row shapes: fleet.runner_leases, fleet.runner_events, billing.usage_ledger,
 | 1.2 | integration (negative) | `test_runner_auth_pg_outage_503` | stopped Postgres → 503 UZ-AUTH-004, not 401 |
 | 1.3 | integration (negative) | `test_register_enroll_gate` | tenant JWT without runner:enroll and any agt_t key → 403 UZ-AUTH-022; with scope → 201, hash-only storage |
 | 1.4 | integration | `test_revocation_immediate` | revoke between two requests → second request 401 on every replica |
-| 2.1 | integration | `test_lease_writes_row_parity` | six writes: identical rows vs Zig daemon on the same fixture input |
+| 2.1 | integration | `test_lease_writes_row_parity` | six writes land in order; each row's shape equals the recorded fixture shape |
 | 2.2 | integration (race) | `test_lease_affinity_race` | concurrent leases, one fleet → one lease row, one no-work reply |
 | 2.3 | integration (negative) | `test_lease_money_gate_refusal` | zero-balance tenant → refusal code, zero writes |
 | 2.4 | unit | `test_provider_key_placement` | key present on policy, absent from secrets_map, buffer zeroed after serialize |
-| 3.1 | integration | `test_report_writes_row_parity` | writes 7–12 identical vs Zig daemon |
+| 3.1 | integration | `test_report_writes_row_parity` | writes 7–12 land; each row's shape equals the recorded fixture shape |
 | 3.2 | integration (negative) | `test_report_stale_fence_rejected` | fence n after reclaim to n+1 → UZ-RUN-005, no mutation |
 | 3.3 | integration (replay) | `test_report_dedup_idempotent` | same report twice → two ledger rows total, same reply |
 | 3.4 | integration (negative) | `test_renew_clamp_and_coverage` | renew near max-runtime → clamped; empty wallet → UZ-RUN-012 |
@@ -241,9 +241,7 @@ Row shapes: fleet.runner_leases, fleet.runner_events, billing.usage_ledger,
 | 6.2 | integration | `test_reclaim_keyset_pagination` | >batch-limit expired leases → paged sweep, none skipped/duplicated |
 | 6.3 | unit | `test_liveness_fresh_mint_sentinel` | `last_seen_at = 0` → `registered` |
 | 6.4 | unit | `test_metric_families_overflow` | slot 4097 routes to `_other`; table size constant |
-| 7.1 | e2e | `test_runner_suite_vs_rust_daemon` | existing runner integration subset green with `DAEMON=rust` |
-| 7.2 | e2e (regression) | `test_runner_suite_vs_zig_daemon` | same subset green with `DAEMON=zig` (harness sanity) |
-| 7.3 | e2e | `test_dual_run_row_differ` | seeded scenarios → empty normalized row diff; seeded delta → named non-empty artifact |
+| 7.1 | e2e | `test_runner_suite_vs_rust_daemon` | existing runner integration subset green against `agentsfleetd-rs` |
 | 4.1 (FM) | integration (negative) | `test_activity_publish_redis_down` | Redis publish failure → verb outcome parity with Zig; drop accounted, never a telemetry-caused 500 |
 | 4.4 (FM) | integration (negative) | `test_bundle_fetch_r2_outage` | object store down → 5xx retryable class; lease stays redeliverable |
 | 4.5 (FM) | integration (negative) | `test_mint_upstream_failure` | upstream mint failure → typed error; cache never stores a failure |
@@ -252,8 +250,8 @@ Row shapes: fleet.runner_leases, fleet.runner_events, billing.usage_ledger,
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Stock Zig runner completes a lease cycle on the Rust daemon (§7) | `make test-integration DAEMON=rust` | exit 0 | P0 | |
-| R2 | Dual-run row parity on lease + report writes (§2, §3, §7 — vs the live Zig daemon) | `cd rustd && cargo test row_parity` | exit 0 | P0 | |
+| R1 | Stock Zig runner completes a lease cycle on the Rust daemon (§7) | `make test-integration-rustd` | exit 0 | P0 | |
+| R2 | Row-shape parity on lease + report writes (§2, §3, §7 — against shapes recorded from the ported SQL; there is no live Zig daemon to diff against, per §7 and Invariant 5) | `cd rustd && cargo test row_parity` | exit 0 | P0 | |
 | R3 | Fencing and races hold (§2–§4, §6) | `cd rustd && cargo test fence` + `cargo test race` | exit 0 | P0 | |
 | R4 | Config corpus parity (§5) | `cd rustd && cargo test test_fleet_config_corpus_parity` | exit 0 | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
@@ -291,7 +289,7 @@ N/A — no files deleted.
 4. **Rebuild-vs-iterate** — port with verbatim SQL, not a redesign; the one deliberate rebuild (sweepers as supervised async tasks) preserves observable behaviour.
 5. **What we build** — three crates + verb handlers + sweepers + the dual-daemon parity harness.
 6. **What we do NOT build** — scheduler/trust-class placement changes, wire v3, runner-side changes, new metrics families.
-7. **Fit with existing features** — compounds with M176 substrate; must not destabilize the live Zig daemon's integration lanes (they keep running unchanged in CI).
+7. **Fit with existing features** — compounds with M176 substrate; the Zig daemon's own integration lanes went with M175 §6, so there is no second lane for this milestone to destabilize.
 8. **Surface order** — N/A — machine-facing surface only (runner protocol); no human UI/CLI change.
 9. **Dashboard restraint** — N/A — no UI change.
 10. **Confused-user next step** — a failing runner interaction surfaces the documented UZ-RUN-* code; `docs/architecture/runner_fleet.md` maps each code to cause — no new doc surface needed.
@@ -304,6 +302,39 @@ N/A — no files deleted.
 
 ## Discovery (consult log)
 
+- **Spec amendment at CHORE(open) — cross-daemon residue removed.** Rows R1/R2
+  and test rows 7.2/7.3 still described a `DAEMON=rust|zig` selector and a
+  dual-run row differ, contradicting this spec's own §7 and Invariant 5, both of
+  which record that M175 §6 deleted the Zig integration lanes so no live Zig
+  daemon exists to diff against. `AGENTS.orly.md` §Specification Standards —
+  "Spec contradicts a rule → amend spec" — so the residue was amended to match
+  §7 rather than a differ being built against a daemon that no longer runs:
+  R1's command became `make test-integration-rustd`; R2 became row-SHAPE parity
+  against shapes recorded from the ported SQL; test rows 7.2
+  (`test_runner_suite_vs_zig_daemon`) and 7.3 (`test_dual_run_row_differ`) were
+  deleted as unrunnable; Dimensions 2.1/3.1 and Files-Changed rows for
+  `make/test-integration.mk`, `src/build/**` and `tests/**` were reworded to the
+  single-daemon shape. No capability was dropped: §7.1's demoable
+  stock-runner-against-`agentsfleetd-rs` end-to-end survives unchanged, because
+  it needs the runner, not the second daemon.
+- **SQL organisation — prior art surveyed before deciding.** `~/Projects/oss/exonum`
+  carries zero SQL (RocksDB via `components/merkledb`) and `~/Projects/oss/habitat`
+  carries zero SQL and zero diesel (`builder-api` is split out upstream), so
+  neither offers a precedent. `~/Projects/oss/core_api-develop` keeps SQL inline in
+  `models/<entity>.rs` with no `sql.rs`/`queries.rs` anywhere — but its statements
+  are one-line stored-procedure calls (`SELECT * FROM insert_account_session_v2($1..$9)`)
+  whose logic lives in Postgres functions under `components/database/migrations/`.
+  That shape is unavailable here: SCHEMA GUARD is "no" and Invariant 5 mandates
+  the writable-CTEs port verbatim, so `claimAndSettle`'s ~90-line statement stays
+  a Rust constant. `afd_fleet` therefore takes a domain-split `sql/` module tree —
+  chosen because Invariant 5's only enforcement is REVIEW's side-by-side read
+  against `fleet/sql.zig`, which needs the statements collected — plus core_api's
+  two transferable habits: one file per domain, and row→struct decoding in its own
+  `rows.rs` (already this repository's shape in `afd_state/src/credentials/rows.rs`).
+  Typed parameter structs are written only for the three high-arity statements
+  (`INSERT_LEASE_WITH_EVENT` 23 binds, `CLAIM_SETTLE_SQL` 17, `INSERT_RUNNER_WITH_EVENT`
+  17); statements at four binds or fewer bind at the call site, per
+  `M-SIMPLE-ABSTRACTIONS`.
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
