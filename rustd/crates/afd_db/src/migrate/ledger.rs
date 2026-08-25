@@ -111,12 +111,40 @@ impl Ledger {
     /// Both tables are checked: a failure row from a version this binary does
     /// not know says the same thing an applied row does — the database was
     /// migrated by something newer.
+    ///
+    /// Note what this does NOT distinguish: a slot the canonical list RETIRED
+    /// sits below the highest version too, and reads as "absent" exactly like a
+    /// version from the future does. [`Self::version_beyond`] is the one that
+    /// tells them apart, and the one a reaping run must consult.
     #[must_use]
     pub fn version_ahead_of(&self, canonical: &BTreeSet<i32>) -> Option<i32> {
         self.applied
             .iter()
             .chain(self.failures.keys())
             .find(|version| !canonical.contains(version))
+            .copied()
+    }
+
+    /// The first recorded version above `ceiling`, if any.
+    ///
+    /// The discriminator between the two kinds of unknown version, and the
+    /// reason it is a separate question from [`Self::version_ahead_of`]:
+    ///
+    /// - **Below the ceiling and absent** — a slot the canonical list retired.
+    ///   The pre-v2.0 teardown left rows for slots that no longer exist, and a
+    ///   migrate run is where they go. Reaping is correct.
+    /// - **Above the ceiling** — a version this binary has never heard of, and
+    ///   higher than anything it knows, so something NEWER wrote it. Reaping it
+    ///   deletes another binary's migration history and then applies this
+    ///   binary's schema on top of one it does not understand.
+    ///
+    /// Both tables are checked, for the reason above.
+    #[must_use]
+    pub fn version_beyond(&self, ceiling: i32) -> Option<i32> {
+        self.applied
+            .iter()
+            .chain(self.failures.keys())
+            .find(|version| **version > ceiling)
             .copied()
     }
 }
@@ -143,7 +171,7 @@ pub async fn ensure_tables(connection: &mut PoolConnection<Postgres>) -> Result<
     Ok(())
 }
 
-/// Deletes bookkeeping rows whose version has left the canonical list.
+/// Deletes bookkeeping rows for slots the canonical list RETIRED.
 ///
 /// One bind holding the whole canonical set, rather than a rendered `NOT IN
 /// (…)` list: the Zig version formats the numbers into the statement text and
@@ -151,24 +179,45 @@ pub async fn ensure_tables(connection: &mut PoolConnection<Postgres>) -> Result<
 /// count, and a template allowance. `<> ALL($1)` needs none of that, and an
 /// empty canonical set stops being a syntax error nobody can reach.
 ///
+/// # Why the ceiling is in the statement and not only in the caller
+///
+/// `version <> ALL($1)` alone deletes every row this binary does not recognise
+/// — including rows a NEWER binary wrote, which is another deployment's
+/// migration history. [`crate::migrate::Migrator`] refuses such a run before
+/// calling this, and the `<= $2` here is the same invariant expressed where the
+/// deletion happens, so a future caller that forgets the check cannot destroy
+/// history with it. The ceiling is the highest canonical version; a caller with
+/// no canonical versions at all has no ceiling to apply, and every row is an
+/// orphan by definition.
+///
 /// # Errors
 /// Returns a query error when either delete fails.
 pub async fn reap_orphans(
     connection: &mut PoolConnection<Postgres>,
     canonical: &[i32],
 ) -> Result<u64> {
-    let reaped = sqlx::query("DELETE FROM audit.schema_migrations WHERE version <> ALL($1)")
-        .bind(canonical)
-        .execute(&mut **connection)
-        .await
-        .map_err(|source| query(OP_REAP, source))?
-        .rows_affected();
+    let ceiling = canonical.iter().copied().max();
 
-    sqlx::query("DELETE FROM audit.schema_migration_failures WHERE version <> ALL($1)")
-        .bind(canonical)
-        .execute(&mut **connection)
-        .await
-        .map_err(|source| query(OP_REAP, source))?;
+    let reaped = sqlx::query(
+        "DELETE FROM audit.schema_migrations \
+         WHERE version <> ALL($1) AND ($2::int IS NULL OR version <= $2)",
+    )
+    .bind(canonical)
+    .bind(ceiling)
+    .execute(&mut **connection)
+    .await
+    .map_err(|source| query(OP_REAP, source))?
+    .rows_affected();
+
+    sqlx::query(
+        "DELETE FROM audit.schema_migration_failures \
+         WHERE version <> ALL($1) AND ($2::int IS NULL OR version <= $2)",
+    )
+    .bind(canonical)
+    .bind(ceiling)
+    .execute(&mut **connection)
+    .await
+    .map_err(|source| query(OP_REAP, source))?;
 
     if reaped > 0 {
         tracing::info!(reaped, scope = "orphan_rows", "migration_reap");
