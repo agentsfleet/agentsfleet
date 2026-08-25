@@ -49,3 +49,15 @@ pub const DETAIL_QUEUE_UNAVAILABLE: &str = "Queue unavailable";
 /// identifier a client is waiting on, and every other mint in this crate is
 /// best-effort and never surfaces.
 pub const DETAIL_REGISTRATION_FAILED: &str = "runner registration failed";
+
+/// A lease whose tenant's provider could not be resolved.
+///
+/// Zig has no byte-identical original, for the same reason
+/// [`DETAIL_QUEUE_UNAVAILABLE`] does not: `service_billing.zig` answers a
+/// provider-resolution failure with a no-work reply and a `warn`, so no
+/// `hx.fail` in that family ever writes a sentence for it. It exists because a
+/// detail is not optional here, and it deliberately says nothing about WHICH
+/// part of the configuration is broken — the caller is a runner asking for
+/// work, and the tenant's vault layout is not its business. The operator gets
+/// the field name in the log.
+pub const DETAIL_PROVIDER_UNRESOLVED: &str = "provider unresolved";

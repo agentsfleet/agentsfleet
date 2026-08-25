@@ -25,8 +25,6 @@
 use std::backtrace::Backtrace;
 use std::fmt::{self, Display, Formatter};
 
-use afd_core::error_code::{self, ErrorCode};
-
 /// The result every fallible function in this crate returns.
 ///
 /// One alias per crate, defaulted to that crate's own [`Error`] — the shape
@@ -38,12 +36,13 @@ use afd_core::error_code::{self, ErrorCode};
 /// error a signature returns to know it is this crate's.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
+pub mod classify;
 pub mod detail;
 
 pub use self::detail::{
     DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED,
-    DETAIL_HOST_ID_BOUNDS, DETAIL_QUEUE_UNAVAILABLE, DETAIL_REGISTRATION_FAILED,
-    DETAIL_REGISTRY_ALLOWLIST, DETAIL_RUNNER_NOT_FOUND,
+    DETAIL_HOST_ID_BOUNDS, DETAIL_PROVIDER_UNRESOLVED, DETAIL_QUEUE_UNAVAILABLE,
+    DETAIL_REGISTRATION_FAILED, DETAIL_REGISTRY_ALLOWLIST, DETAIL_RUNNER_NOT_FOUND,
 };
 
 /// A runner control-plane operation failed.
@@ -114,6 +113,27 @@ pub(crate) enum ErrorKind {
         #[source]
         source: afd_crypto::error::Error,
     },
+
+    #[error("a stored provider credential holds no usable {field}")]
+    ProviderMalformed { field: &'static str },
+
+    #[error("the tenant's provider selection names a vault row that is not held")]
+    ProviderSecretMissing,
+
+    #[error("no active platform provider default is configured")]
+    ProviderPlatformKeyMissing,
+
+    #[error("the tenant has no workspace to resolve a credential in")]
+    ProviderNoWorkspace,
+
+    #[error("a stored provider endpoint was refused: {reason}")]
+    ProviderEndpoint { reason: &'static str },
+
+    #[error("a stored credential envelope would not open")]
+    Vault {
+        #[source]
+        source: afd_crypto::error::Error,
+    },
 }
 
 impl Error {
@@ -123,96 +143,6 @@ impl Error {
                 kind,
                 backtrace: Backtrace::capture(),
             }),
-        }
-    }
-
-    /// Whether the datastore could not be reached at all.
-    ///
-    /// The question the runner plane turns on: a caller answering this `true`
-    /// must report a transport failure, never an authentication or a validation
-    /// one, because the runner client counts rejections toward a
-    /// self-termination ceiling and resets that counter on transport failures
-    /// (RULE ECL, and `docs/AUTH.md` §Runner token).
-    #[must_use]
-    pub fn is_datastore_unavailable(&self) -> bool {
-        matches!(self.inner.kind, ErrorKind::Datastore { .. })
-    }
-
-    /// Whether the caller sent something this plane will not accept.
-    ///
-    /// The only kind whose message is written FOR the caller; every other kind
-    /// answers a fixed registry sentence and keeps its detail in the log.
-    #[must_use]
-    pub fn is_rejected(&self) -> bool {
-        matches!(self.inner.kind, ErrorKind::Rejected { .. })
-    }
-
-    /// Whether an authenticated runner's row has since disappeared.
-    ///
-    /// Answered separately from a rejection because the remedy differs: the
-    /// token is real and the enrolment is gone, so the host must be re-enrolled
-    /// rather than retried.
-    #[must_use]
-    pub fn is_runner_vanished(&self) -> bool {
-        matches!(self.inner.kind, ErrorKind::RunnerVanished)
-    }
-
-    /// The registry code this failure answers with.
-    ///
-    /// Exhaustive, so a new kind fails the build until it is given one — the
-    /// same device `afd_auth::Error::code` uses, applied to the pairing the Zig
-    /// handlers restate at every `hx.fail` call site.
-    #[must_use]
-    pub const fn code(&self) -> ErrorCode {
-        match self.inner.kind {
-            ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
-            ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => {
-                error_code::INTERNAL_DB_QUERY
-            }
-            ErrorKind::RunnerVanished => error_code::RUN_INVALID_RUNNER_TOKEN,
-            // A producer wrote an entry this daemon cannot execute. Not the
-            // asking runner's fault — it requested work and the work is
-            // malformed — so it answers as an internal failure rather than a
-            // 4xx that would tell a healthy runner to stop asking.
-            ErrorKind::Envelope { .. } => error_code::INTERNAL_OPERATION_FAILED,
-            ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
-            // A daemon whose clock cannot name an instant, and a host that
-            // cannot draw random bytes, are both THIS process failing — not the
-            // caller's request being wrong. An earlier draft answered `Mint`
-            // with `UUIDV7_INVALID_ID_SHAPE`, which is a 400: it told an
-            // operator their enrolment was malformed while the fault was here.
-            // The queue joins these rather than getting a code of its own: the
-            // Zig assign path logs `ERR_INTERNAL_OPERATION_FAILED` for every
-            // Redis failure it meets, and a new code would fire the ERROR
-            // REGISTRY gate over a registry this family does not own.
-            ErrorKind::Mint { .. } | ErrorKind::Entropy { .. } | ErrorKind::Queue { .. } => {
-                error_code::INTERNAL_OPERATION_FAILED
-            }
-        }
-    }
-
-    /// The sentence the caller is told.
-    ///
-    /// A rejection quotes its own detail, because the caller can act on it —
-    /// that is the whole reason the kind exists. Every other kind answers a
-    /// FIXED sentence, byte-identical to the one `problem_response.zig` writes:
-    /// an internal failure that quotes its cause is an internal failure leaking
-    /// its cause to whoever provoked it, and the cause is in the log where an
-    /// operator can read it beside the request id.
-    ///
-    /// Not an `Option`. Every refusal this plane writes carries a detail, and a
-    /// `None` would push the choice of what to say into each handler — which is
-    /// how two call sites end up describing one failure differently.
-    #[must_use]
-    pub const fn detail(&self) -> &'static str {
-        match self.inner.kind {
-            ErrorKind::Rejected { detail } => detail,
-            ErrorKind::RunnerVanished => DETAIL_RUNNER_NOT_FOUND,
-            ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
-            ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => DETAIL_DATABASE_ERROR,
-            ErrorKind::Queue { .. } => DETAIL_QUEUE_UNAVAILABLE,
-            ErrorKind::Envelope { .. } => DETAIL_EVENT_MALFORMED,
-            ErrorKind::Mint { .. } | ErrorKind::Entropy { .. } => DETAIL_REGISTRATION_FAILED,
         }
     }
 
@@ -237,6 +167,49 @@ pub(crate) fn envelope_field(field: &'static str) -> Error {
 /// Refuses a request the caller can correct, quoting the Zig detail verbatim.
 pub(crate) fn rejected(detail: &'static str) -> Error {
     Error::new(ErrorKind::Rejected { detail })
+}
+
+/// Reports a stored provider credential that cannot be read as one.
+///
+/// `field` names WHICH part is unusable, for the operator's log line. It never
+/// reaches the caller — see [`DETAIL_PROVIDER_UNRESOLVED`].
+pub(crate) fn provider_malformed(field: &'static str) -> Error {
+    Error::new(ErrorKind::ProviderMalformed { field })
+}
+
+/// Reports a provider selection naming a vault row that is not held.
+pub(crate) fn provider_secret_missing() -> Error {
+    Error::new(ErrorKind::ProviderSecretMissing)
+}
+
+/// Reports that no operator has set an active platform default.
+pub(crate) fn provider_platform_key_missing() -> Error {
+    Error::new(ErrorKind::ProviderPlatformKeyMissing)
+}
+
+/// Reports a tenant with no workspace to resolve a credential in.
+pub(crate) fn provider_no_workspace() -> Error {
+    Error::new(ErrorKind::ProviderNoWorkspace)
+}
+
+/// Reports a stored endpoint the SSRF guard refused.
+///
+/// `reason` is the guard's own word for what it refused, never the URL and
+/// never the host — the `api_key` sits beside both in the same credential, and a
+/// rejection line that quotes the credential is a rejection line that leaks it.
+pub(crate) fn provider_endpoint(reason: &'static str) -> Error {
+    Error::new(ErrorKind::ProviderEndpoint { reason })
+}
+
+/// Reports a stored envelope that is malformed or will not authenticate.
+///
+/// `map_err` rather than `?`, because the blanket [`From`] for this foreign
+/// type already means "the host could not draw entropy" — and an envelope that
+/// will not open is not that. This is the carve-out the standard names: a
+/// conversion that ADDS the context the call site alone knows, with the cause
+/// riding through as `#[source]` so the chain stays intact.
+pub(crate) fn vault_open(source: afd_crypto::error::Error) -> Error {
+    Error::new(ErrorKind::Vault { source })
 }
 
 /// Reports a statement that reached Postgres and was refused.
