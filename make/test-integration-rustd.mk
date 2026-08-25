@@ -65,15 +65,9 @@ test-integration-rustd: $(TEST_STATE_DEP)  ## Run the Rust substrate integration
 	    cargo test --workspace --all-features \
 	      -- $(RUSTD_INTEGRATION_IGNORE_ARGS) 2>&1; \
 	  echo $$? > "$$code"; } | tee "$$tally"; \
-	status=$$(cat "$$code"); \
-	if [ "$$status" -ne 0 ]; then echo "✗ [rustd] Integration suite failed"; exit "$$status"; fi; \
-	ran=$$(awk '/^test result:/ { for (i = 1; i < NF; i++) if ($$(i+1) == "passed;") total += $$i } END { print total + 0 }' "$$tally"); \
-	if [ "$$ran" -eq 0 ]; then \
-	  echo "✗ [rustd] The suite reported 0 passing tests — it did not run."; \
-	  echo "  A selection that matches nothing exits 0 and reads as a pass; this is that check."; \
-	  exit 1; \
-	fi; \
-	echo "✓ [rustd] Integration suite passed ($$ran tests against live services)"
+	python3 "$(CURDIR)/scripts/rustd_lane_result.py" \
+	  --tally "$$tally" --status "$$(cat "$$code")" \
+	  --label "[rustd] Integration suite"
 
 # The ONE invocation that executes both tiers, and therefore the one that
 # measures them.
@@ -111,11 +105,7 @@ test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under covera
 	    cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info \
 	      -- --include-ignored 2>&1; \
 	  echo $$? > "$$code"; } | tee "$$tally"; \
-	status=$$(cat "$$code"); \
-	if [ "$$status" -ne 0 ]; then echo "✗ [rustd] Coverage run failed"; exit "$$status"; fi; \
-	ran=$$(awk '/^test result:/ { for (i = 1; i < NF; i++) if ($$(i+1) == "passed;") total += $$i } END { print total + 0 }' "$$tally"); \
-	if [ "$$ran" -eq 0 ]; then \
-	  echo "✗ [rustd] The suite reported 0 passing tests — it did not run."; \
-	  exit 1; \
-	fi; \
-	echo "✓ [rustd] $$ran tests measured; report at $(RUSTD_DIR)/lcov.info"
+	python3 "$(CURDIR)/scripts/rustd_lane_result.py" \
+	  --tally "$$tally" --status "$$(cat "$$code")" \
+	  --label "[rustd] Coverage run"; \
+	echo "  report at $(RUSTD_DIR)/lcov.info"
