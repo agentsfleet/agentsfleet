@@ -40,11 +40,13 @@
 )]
 
 pub mod capability;
+pub mod error;
 pub mod jwks;
 mod jwt;
 pub mod provider;
 
 pub use crate::capability::ProviderCapabilities;
+pub use crate::error::{ClaimUnavailable, Error, Result};
 pub use crate::jwks::http::{HttpKeySet, jwks_url};
 pub use crate::jwks::key_set::{JwkKeySet, SigningKey};
 pub use crate::jwks::source::{KeySetSource, StaticKeySet};

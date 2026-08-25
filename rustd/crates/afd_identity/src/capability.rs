@@ -50,6 +50,7 @@
 //! test. `time_to_live` is set to the ceiling as well, purely so an entry that
 //! can never be served is eventually reclaimed; nothing reads it as a decision.
 
+use crate::error::ClaimUnavailable;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -95,21 +96,6 @@ pub trait ClaimSource: Send + Sync + std::fmt::Debug + 'static {
         &self,
         subject: &Subject,
     ) -> impl Future<Output = Result<String, ClaimUnavailable>> + Send;
-}
-
-/// Why a claim did not come back.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum ClaimUnavailable {
-    /// The provider could not be asked.
-    #[error("the identity provider could not be reached")]
-    Unreachable,
-    /// The provider answered that it does not know this subject.
-    ///
-    /// Not an outage. The person is gone — their credential outlived them —
-    /// so they resolve to no capabilities and every gate refuses them by name.
-    /// Telling a terminal to retry would be telling it to retry forever.
-    #[error("the identity provider does not know this subject")]
-    UnknownSubject,
 }
 
 /// One cached answer.

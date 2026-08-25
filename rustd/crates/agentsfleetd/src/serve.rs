@@ -36,14 +36,22 @@ use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
 use crate::daemon::{Daemon, Outcome};
-use crate::preflight::{BootConfig, Refusal, preflight};
+#[doc(inline)]
+pub use crate::error::BootFailure;
+use crate::preflight::{BootConfig, preflight};
 use crate::probes::LiveDependencies;
 use crate::supervisor::Supervisor;
 
-/// The port knob, and the default `http/server.zig` listens on.
+/// The environment fallback for `--port`, named here and read by [`crate::cli`].
+///
+/// It is a `clap` `env` fallback rather than something this module reads, so
+/// the generated `--help` documents it. Before that it was a second, silent
+/// input path — the only one, in fact, since `--port` did not exist.
 pub const PORT_KNOB: &str = "PORT";
 
-/// What the daemon binds when `PORT` is unset.
+/// What the daemon binds when neither `--port` nor `PORT` says otherwise.
+///
+/// `http/server.zig`'s default, kept.
 pub const DEFAULT_PORT: u16 = 3000;
 
 /// Everything boot opened, in the order it opened it.
@@ -60,50 +68,6 @@ pub struct Booted {
     pub queue: Redis,
 }
 
-/// Why boot could not finish.
-///
-/// A flat crate-level enum composed by `From`, which is the shape both
-/// reference implementations settled on — bun's `libarchive::Error`
-/// (`#[error(transparent)] #[from]` per foreign error, `?` does the lifting)
-/// and habitat's `sup::Error` (payload-carrying variants, one `Result` alias).
-///
-/// Every variant carries the ORIGINAL error as a `#[source]`, never a string.
-/// An earlier revision of this type stringified them, which compiled, read
-/// fine, and quietly defeated [`crate::fatal`] — the renderer walks
-/// `source()` to print the causal chain, and there was nothing left to walk.
-/// A `to_string()` on the way into an error type is a lossy conversion wearing
-/// a conversion's clothes.
-#[derive(Debug, thiserror::Error)]
-pub enum BootFailure {
-    /// The environment is unusable; every fault named at once.
-    #[error(transparent)]
-    Environment(#[from] Refusal),
-    /// Postgres would not answer.
-    #[error("agentsfleetd cannot boot: the API database would not answer")]
-    Database(#[from] afd_db::Error),
-    /// Redis would not answer.
-    #[error("agentsfleetd cannot boot: the API queue would not answer")]
-    Queue(#[from] afd_redis::Error),
-    /// The port could not be bound.
-    #[error("agentsfleetd cannot listen")]
-    Listen(#[from] std::io::Error),
-}
-
-/// Reads the port from `env`, falling back to the Zig daemon's default.
-///
-/// An unparseable value is the default rather than a refusal, matching
-/// `serve.zig`, whose `--port` parse failure is the only port error it raises.
-///
-/// Public because "what port would this boot bind?" is a question worth being
-/// able to ask without booting, and because a rule this quiet — a bad value is
-/// silently the default — should be assertable rather than discovered.
-#[must_use]
-pub fn port_from<E: EnvSource + ?Sized>(env: &E) -> u16 {
-    env.get(PORT_KNOB)
-        .and_then(|raw| raw.trim().parse().ok())
-        .unwrap_or(DEFAULT_PORT)
-}
-
 /// Opens everything the daemon serves through, in `cmd/serve.zig`'s order.
 ///
 /// # Errors
@@ -112,6 +76,7 @@ pub fn port_from<E: EnvSource + ?Sized>(env: &E) -> u16 {
 /// because there is nothing to gather once the process cannot proceed.
 pub async fn boot<E: EnvSource + ?Sized>(
     env: &E,
+    port: u16,
     supervisor: &mut Supervisor,
 ) -> Result<Booted, BootFailure> {
     // 1. Every knob, validated before a single socket opens. A key that cannot
@@ -131,7 +96,7 @@ pub async fn boot<E: EnvSource + ?Sized>(
 
     // 4. Listen last. Until this line the process is not reachable, which is
     //    what makes every refusal above a refusal rather than an outage.
-    let listener = TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, port_from(env))).await?;
+    let listener = TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, port)).await?;
     let address = listener.local_addr()?;
 
     supervisor.spawn(ACCEPT_LOOP, move |token| {
@@ -228,16 +193,24 @@ pub async fn serve_accepts<A: Acceptor>(
 /// `Daemon::run` has cancelled and JOINED every task, which is invariant C2
 /// expressed as the order of two statements the compiler will not let you swap.
 ///
+/// `port` is already resolved — [`crate::cli`] took it from `--port`, the
+/// `PORT` fallback, or [`DEFAULT_PORT`], and rejected anything unusable before
+/// this was called. Nothing here re-reads the environment for it.
+///
 /// # Errors
 /// Returns the boot stage that could not complete: an environment naming every
 /// fault at once, a datastore that would not answer, or a port that would not
 /// bind. Serving never starts in any of those cases.
-pub async fn run<E: EnvSource + ?Sized, F>(env: &E, signal: F) -> Result<Outcome, BootFailure>
+pub async fn run<E: EnvSource + ?Sized, F>(
+    env: &E,
+    port: u16,
+    signal: F,
+) -> Result<Outcome, BootFailure>
 where
     F: Future<Output = ()>,
 {
     let mut supervisor = Supervisor::new();
-    let booted = boot(env, &mut supervisor).await?;
+    let booted = boot(env, port, &mut supervisor).await?;
     crate::banner::show(
         env!("CARGO_PKG_VERSION"),
         &[

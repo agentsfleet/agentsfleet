@@ -22,7 +22,7 @@ use afd_auth::credential::{
     CLI_CREDENTIAL_PREFIX, CredentialKind, Presented, RUNNER_TOKEN_PREFIX, TENANT_API_KEY_PREFIX,
 };
 use afd_auth::directory::{CredentialRecord, DIGEST_HEX_LEN, Digest, Liveness};
-use afd_auth::error::AuthError;
+use afd_auth::error::Error;
 use afd_auth::mock::{MockCapabilities, MockDirectory, MockVerifier};
 use afd_auth::plane::Plane;
 use afd_auth::principal::{PersonCredential, Subject};
@@ -177,7 +177,7 @@ fn test_the_runner_plane_refuses_a_tenant_credential_without_a_lookup() {
         block_on(registry.authenticate(&present(&format!("{TENANT_API_KEY_PREFIX}{BODY}"))))
             .expect_err("a tenant key must not authenticate on the runner plane");
 
-    assert_eq!(refused, AuthError::InvalidRunnerToken);
+    assert_eq!(refused, Error::InvalidRunnerToken);
     assert_eq!(refused.code().as_str(), "UZ-RUN-001");
     assert_eq!(
         directory.lookups(),
@@ -201,7 +201,7 @@ fn test_the_tenant_plane_refuses_a_runner_token_without_a_lookup() {
         block_on(registry.authenticate(&present(&format!("{RUNNER_TOKEN_PREFIX}{BODY}"))))
             .expect_err("a runner token must not authenticate on the tenant plane");
 
-    assert_eq!(refused, AuthError::InvalidOrMissingToken);
+    assert_eq!(refused, Error::InvalidOrMissingToken);
     assert_eq!(refused.code().as_str(), "UZ-AUTH-002");
     assert_eq!(directory.lookups(), 0);
 }
@@ -257,7 +257,7 @@ fn test_a_deployment_with_no_identity_provider_refuses_a_session_token() {
     let refused = block_on(registry.authenticate(&present("eyJhbGciOiJSUzI1NiJ9.e30.sig")))
         .expect_err("no verifier is configured");
 
-    assert_eq!(refused, AuthError::InvalidOrMissingToken);
+    assert_eq!(refused, Error::InvalidOrMissingToken);
     assert!(refused.is_rejection(), "not an outage: nothing is down");
 }
 
@@ -271,17 +271,17 @@ fn test_a_malformed_body_costs_no_round_trip_in_any_class() {
         (
             Plane::Tenant,
             TENANT_API_KEY_PREFIX,
-            AuthError::InvalidOrMissingToken,
+            Error::InvalidOrMissingToken,
         ),
         (
             Plane::Tenant,
             CLI_CREDENTIAL_PREFIX,
-            AuthError::InvalidOrMissingToken,
+            Error::InvalidOrMissingToken,
         ),
         (
             Plane::Runner,
             RUNNER_TOKEN_PREFIX,
-            AuthError::InvalidRunnerToken,
+            Error::InvalidRunnerToken,
         ),
     ] {
         let directory = MockDirectory::new();
@@ -310,14 +310,14 @@ fn test_each_class_answers_its_own_revocation_code() {
             Plane::Tenant,
             CredentialKind::TenantApiKey,
             TENANT_API_KEY_PREFIX,
-            AuthError::TenantKeyRevoked,
+            Error::TenantKeyRevoked,
             "UZ-APIKEY-004",
         ),
         (
             Plane::Tenant,
             CredentialKind::CliCredential,
             CLI_CREDENTIAL_PREFIX,
-            AuthError::CliCredentialRevoked,
+            Error::CliCredentialRevoked,
             "UZ-AUTH-023",
         ),
     ] {
@@ -353,7 +353,7 @@ fn test_each_class_answers_its_own_revocation_code() {
         NoVerifier,
     );
     let refused = block_on(registry.authenticate(&token)).expect_err("a cordoned runner");
-    assert_eq!(refused, AuthError::RunnerStateBlocked);
+    assert_eq!(refused, Error::RunnerStateBlocked);
     assert_eq!(refused.code().as_str(), "UZ-RUN-009");
 }
 
@@ -405,7 +405,7 @@ fn test_a_datastore_outage_is_never_an_authentication_rejection() {
 
     let refused = block_on(registry.authenticate(&token)).expect_err("the datastore is down");
 
-    assert_eq!(refused, AuthError::Unavailable);
+    assert_eq!(refused, Error::Unavailable);
     assert_eq!(refused.code().as_str(), "UZ-AUTH-004");
     assert!(
         !refused.is_rejection(),
@@ -431,7 +431,7 @@ fn test_a_provider_outage_is_an_outage_and_not_an_empty_capability_set() {
 
     let refused = block_on(registry.authenticate(&key)).expect_err("the provider is down");
 
-    assert_eq!(refused, AuthError::Unavailable);
+    assert_eq!(refused, Error::Unavailable);
     assert!(!refused.is_rejection());
 }
 
@@ -479,7 +479,7 @@ fn test_every_unusable_header_lands_in_one_refusal() {
     ] {
         let refused = block_on(registry.authenticate_header(header))
             .expect_err("an unusable header authenticates nothing");
-        assert_eq!(refused, AuthError::InvalidOrMissingToken, "{header:?}");
+        assert_eq!(refused, Error::InvalidOrMissingToken, "{header:?}");
     }
 }
 
@@ -525,7 +525,7 @@ fn test_an_unconfigured_provider_is_an_outage_for_a_person_credential() {
     let refused =
         block_on(registry.authenticate(&credential)).expect_err("no provider is configured");
 
-    assert_eq!(refused, AuthError::Unavailable);
+    assert_eq!(refused, Error::Unavailable);
     assert!(!refused.is_rejection(), "the credential itself proved fine");
 }
 
@@ -588,29 +588,20 @@ fn test_a_session_token_reads_its_capabilities_off_the_token() {
 #[test]
 fn test_expiry_is_the_only_token_failure_a_caller_is_told_about() {
     for (reason, expected) in [
-        (VerifyError::Expired, AuthError::TokenExpired),
-        (
-            VerifyError::SignatureInvalid,
-            AuthError::InvalidOrMissingToken,
-        ),
-        (
-            VerifyError::IssuerMismatch,
-            AuthError::InvalidOrMissingToken,
-        ),
-        (
-            VerifyError::AudienceMismatch,
-            AuthError::InvalidOrMissingToken,
-        ),
-        (VerifyError::Malformed, AuthError::InvalidOrMissingToken),
+        (VerifyError::Expired, Error::TokenExpired),
+        (VerifyError::SignatureInvalid, Error::InvalidOrMissingToken),
+        (VerifyError::IssuerMismatch, Error::InvalidOrMissingToken),
+        (VerifyError::AudienceMismatch, Error::InvalidOrMissingToken),
+        (VerifyError::Malformed, Error::InvalidOrMissingToken),
         (
             VerifyError::UnsupportedAlgorithm,
-            AuthError::InvalidOrMissingToken,
+            Error::InvalidOrMissingToken,
         ),
-        (VerifyError::MissingKeyId, AuthError::InvalidOrMissingToken),
-        (VerifyError::KeyNotFound, AuthError::InvalidOrMissingToken),
-        (VerifyError::MissingClaim, AuthError::InvalidOrMissingToken),
+        (VerifyError::MissingKeyId, Error::InvalidOrMissingToken),
+        (VerifyError::KeyNotFound, Error::InvalidOrMissingToken),
+        (VerifyError::MissingClaim, Error::InvalidOrMissingToken),
         // The one that is not a verdict on the token at all.
-        (VerifyError::KeySetUnavailable, AuthError::Unavailable),
+        (VerifyError::KeySetUnavailable, Error::Unavailable),
     ] {
         let registry = Registry::new(
             Plane::Tenant,
@@ -643,7 +634,7 @@ fn test_a_token_without_a_tenant_claim_does_not_authenticate() {
     let refused = block_on(registry.authenticate(&present("eyJhbGciOiJSUzI1NiJ9.e30.sig")))
         .expect_err("a person with no tenant is not a principal this daemon can build");
 
-    assert_eq!(refused, AuthError::InvalidOrMissingToken);
+    assert_eq!(refused, Error::InvalidOrMissingToken);
 }
 
 /// A credential nothing matches is unknown, and unknown is the same sentence a
@@ -685,7 +676,7 @@ fn test_a_directory_answering_the_wrong_shape_fails_closed() {
     let refused = block_on(registry.authenticate(&token))
         .expect_err("a person row is not a runner, whatever the store said");
 
-    assert_eq!(refused, AuthError::InvalidRunnerToken);
+    assert_eq!(refused, Error::InvalidRunnerToken);
 }
 
 /// The mirror: a person store answering with a machine row.
@@ -702,7 +693,7 @@ fn test_a_person_class_refuses_a_machine_record() {
     let refused = block_on(registry.authenticate(&key))
         .expect_err("a machine row must not become a tenant principal");
 
-    assert_eq!(refused, AuthError::InvalidOrMissingToken);
+    assert_eq!(refused, Error::InvalidOrMissingToken);
 }
 
 // ── The credential itself ────────────────────────────────────────────────

@@ -74,7 +74,7 @@ pub use crate::authenticate::Registry;
 pub use crate::capability::{CapabilitySource, NoCapabilitySource};
 pub use crate::credential::{Blank, CredentialKind, Presented};
 pub use crate::directory::{CredentialDirectory, CredentialRecord, Digest, Liveness};
-pub use crate::error::{AuthError, Unavailable};
+pub use crate::error::{Error, Unavailable};
 pub use crate::gate::{Denied, require_scope};
 pub use crate::plane::Plane;
 pub use crate::principal::{Person, PersonCredential, Principal, Runner, Subject};

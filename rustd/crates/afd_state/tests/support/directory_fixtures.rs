@@ -31,7 +31,7 @@ use afd_db::{Db, Migrator};
 use sqlx::AssertSqlSafe;
 
 /// The lane's admin connection URL.
-const LANE_KNOB: &str = "AFD_TEST_DATABASE_URL";
+const LANE_KNOB: &str = "TEST_DATABASE_URL";
 
 /// Distinguishes databases created by one process, combined with the process
 /// id so two lanes on one host cannot collide either.

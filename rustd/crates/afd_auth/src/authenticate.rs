@@ -37,7 +37,7 @@
 use crate::capability::CapabilitySource;
 use crate::credential::{CredentialKind, Presented};
 use crate::directory::{CredentialDirectory, CredentialRecord, Digest, Liveness};
-use crate::error::{AuthError, Result};
+use crate::error::{Error, Result};
 use crate::plane::Plane;
 use crate::principal::{Person, PersonCredential, Principal, Runner};
 use crate::scope::parse_claim;
@@ -96,9 +96,9 @@ struct HashedClass {
     /// or `None` when the class names a machine.
     person_credential: Option<StoredPersonCredential>,
     /// The answer when nothing matches the digest, or the value is malformed.
-    unknown: AuthError,
+    unknown: Error,
     /// The answer when the row exists and is no longer live.
-    revoked: AuthError,
+    revoked: Error,
 }
 
 /// `agt_t` — resolves to the person named in the row's `created_by`.
@@ -107,8 +107,8 @@ const TENANT_API_KEY: HashedClass = HashedClass {
     prefix: crate::credential::TENANT_API_KEY_PREFIX,
     body_hex_len: BODY_HEX_LEN,
     person_credential: Some(StoredPersonCredential::TenantApiKey),
-    unknown: AuthError::InvalidOrMissingToken,
-    revoked: AuthError::TenantKeyRevoked,
+    unknown: Error::InvalidOrMissingToken,
+    revoked: Error::TenantKeyRevoked,
 };
 
 /// `afc_` — resolves to the person who ran `agentsfleet login`.
@@ -117,8 +117,8 @@ const CLI_CREDENTIAL: HashedClass = HashedClass {
     prefix: crate::credential::CLI_CREDENTIAL_PREFIX,
     body_hex_len: BODY_HEX_LEN,
     person_credential: Some(StoredPersonCredential::CliCredential),
-    unknown: AuthError::InvalidOrMissingToken,
-    revoked: AuthError::CliCredentialRevoked,
+    unknown: Error::InvalidOrMissingToken,
+    revoked: Error::CliCredentialRevoked,
 };
 
 /// `agt_r` — resolves to a machine, whose capabilities are derived, not asked.
@@ -127,8 +127,8 @@ const RUNNER_TOKEN: HashedClass = HashedClass {
     prefix: crate::credential::RUNNER_TOKEN_PREFIX,
     body_hex_len: BODY_HEX_LEN,
     person_credential: None,
-    unknown: AuthError::InvalidRunnerToken,
-    revoked: AuthError::RunnerStateBlocked,
+    unknown: Error::InvalidRunnerToken,
+    revoked: Error::RunnerStateBlocked,
 };
 
 impl HashedClass {
@@ -221,7 +221,7 @@ where
     /// Authenticates a credential already parsed out of its header.
     ///
     /// # Errors
-    /// [`AuthError`], carrying the registry code and the client-visible detail.
+    /// [`Error`], carrying the registry code and the client-visible detail.
     pub async fn authenticate(&self, presented: &Presented) -> Result<Principal> {
         let kind = CredentialKind::of(presented);
         if !self.plane.admits(kind) {
@@ -237,7 +237,7 @@ where
     }
 
     /// How this plane refuses something it will not consider.
-    const fn refusal(&self) -> AuthError {
+    const fn refusal(&self) -> Error {
         self.plane.refusal()
     }
 
@@ -321,16 +321,16 @@ where
 
     /// Turns a verifier's honest account into what a client is told.
     ///
-    /// The single boundary between [`VerifyError`] and [`AuthError`], which is
+    /// The single boundary between [`VerifyError`] and [`Error`], which is
     /// what keeps "which failure leaks what" out of every verifier
     /// implementation. Two mappings survive the redaction and both are Zig
     /// parity: expiry keeps its own code because it leaks nothing and its
     /// remedy differs, and a key-set failure is an outage rather than a
     /// rejection because it is not evidence about the caller's token.
-    const fn redact(err: VerifyError, fallback: AuthError) -> AuthError {
+    const fn redact(err: VerifyError, fallback: Error) -> Error {
         match err {
-            VerifyError::Expired => AuthError::TokenExpired,
-            _ if err.is_provider_fault() => AuthError::Unavailable,
+            VerifyError::Expired => Error::TokenExpired,
+            _ if err.is_provider_fault() => Error::Unavailable,
             _ => fallback,
         }
     }

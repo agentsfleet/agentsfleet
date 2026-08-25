@@ -27,6 +27,9 @@ use afd_crypto::secret::Kek;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_redis::config::{RedisConfig, RedisRole};
 
+#[doc(inline)]
+pub use crate::error::{Fault, Refusal};
+
 /// The knob carrying the hex master key every vault read is decrypted with.
 pub const ENCRYPTION_MASTER_KEY_KNOB: &str = "ENCRYPTION_MASTER_KEY";
 
@@ -38,90 +41,6 @@ const WHY_REDIS: &str = "the API role's Redis connection URL";
 
 /// Why the daemon needs the master key.
 const WHY_KEK: &str = "64 hex characters; every stored credential is sealed under it";
-
-/// One reason the daemon refuses to boot.
-#[derive(Debug, PartialEq, Eq)]
-pub enum Fault {
-    /// The knob is unset, or set to a blank value.
-    ///
-    /// Blank counts as unset deliberately: an operator who exported an empty
-    /// string meant to supply a value, and a daemon that read it as "present"
-    /// would fail later and further away.
-    Missing {
-        /// The environment variable that is not set.
-        knob: &'static str,
-        /// What it is for, so the message is actionable without the source.
-        why: &'static str,
-    },
-    /// The knob is set to something the daemon cannot use.
-    Invalid {
-        /// The environment variable whose value was rejected.
-        knob: &'static str,
-        /// The resolver's own account of what is wrong with it.
-        why: String,
-    },
-}
-
-impl Fault {
-    /// The environment variable this fault is about.
-    #[must_use]
-    pub const fn knob(&self) -> &'static str {
-        match *self {
-            Self::Missing { knob, .. } | Self::Invalid { knob, .. } => knob,
-        }
-    }
-}
-
-/// Every fault found, so one restart can fix all of them.
-#[derive(Debug)]
-pub struct Refusal {
-    faults: Vec<Fault>,
-}
-
-impl Refusal {
-    /// Every fault, in the order the knobs are read.
-    #[must_use]
-    pub fn faults(&self) -> &[Fault] {
-        &self.faults
-    }
-
-    /// The names of every knob at fault.
-    #[must_use]
-    pub fn knobs(&self) -> Vec<&'static str> {
-        self.faults.iter().map(Fault::knob).collect()
-    }
-}
-
-impl fmt::Display for Refusal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Singular and plural spelled out rather than "fault(s)": the message
-        // an operator reads at 3am should not look like a placeholder.
-        let noun = if self.faults.len() == 1 {
-            "fault"
-        } else {
-            "faults"
-        };
-        // One line, like every other `Display` in this workspace: a `write!`
-        // split across five lines gets a coverage region on its closing
-        // delimiter that no test can reach, because writing to a `String`
-        // cannot fail.
-        let count = self.faults.len();
-        write!(f, "agentsfleetd cannot boot: {count} environment {noun}")?;
-        for fault in &self.faults {
-            match *fault {
-                Fault::Missing { knob, why } => {
-                    write!(f, "\n  {knob} is not set — {why}")?;
-                }
-                Fault::Invalid { knob, ref why } => {
-                    write!(f, "\n  {knob} is set but unusable — {why}")?;
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
-impl std::error::Error for Refusal {}
 
 /// What boot needs resolved before it opens anything.
 #[derive(Debug)]
@@ -187,7 +106,7 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
             kek,
         })
     } else {
-        Err(Refusal { faults })
+        Err(Refusal::new(faults))
     }
 }
 

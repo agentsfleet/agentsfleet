@@ -235,6 +235,59 @@ async fn test_an_unsubscribe_over_a_dying_socket_is_a_dropped_connection() {
     );
 }
 
+/// A SUBSCRIBE over a dying socket is a dropped connection, not a lost subscribe.
+///
+/// The twin of the unsubscribe case above, and the reason it is written down
+/// separately: the pump has TWO command arms that can meet a dead socket, and
+/// until this existed only one of them was reached on purpose. The other was
+/// reached incidentally, by `integration_hub`'s reconnect test happening to
+/// issue a SUBSCRIBE inside the window where the socket was already gone — a
+/// race that suite wins most of the time and not all of it. A line whose
+/// coverage depends on winning a race is a line nobody has actually tested, and
+/// it flakes the 100% gate on the runs where the race is lost.
+///
+/// Deterministic for the same reason the unsubscribe case is: the SUBSCRIBE is
+/// queued while the socket has nothing to say, so the command arm is the ready
+/// one and its handler runs to completion rather than racing the stream.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_subscribe_over_a_dying_socket_is_a_dropped_connection() {
+    install_subscriber();
+    let server = FakeRedis::spawn(&pubsub_rules()).await;
+    let config = RedisConfig::from_url(RedisRole::Default, server.url());
+
+    let hub = tokio::time::timeout(
+        BUDGET,
+        SubscriptionHub::start_with_backoff(config, IMPATIENT),
+    )
+    .await
+    .expect("the fake serves, so the hub must start")
+    .expect("the fake serves, so the hub must start");
+
+    let first = hub.subscribe("channel");
+    until("the first SUBSCRIBE to reach the server", || {
+        server.seen().iter().any(|command| command == "SUBSCRIBE")
+    })
+    .await;
+    assert_eq!(hub.connections_opened(), 1, "the hub opens one connection");
+
+    // The socket stays up and quiet until the NEXT subscribe arrives, and dies
+    // on that command — so the pump meets the failure through the command it
+    // issued rather than through the stream ending under it.
+    server.set_reply("SUBSCRIBE", Reply::Hangup);
+    let second = hub.subscribe("another");
+
+    // The redial is the proof: reaching it means the pump treated the failed
+    // subscribe as a dropped connection instead of ignoring it and leaving the
+    // reader holding a subscription the server never heard of.
+    until("the pump to redial after the failed subscribe", || {
+        hub.connections_opened() >= 2
+    })
+    .await;
+
+    drop(second);
+    drop(first);
+}
+
 /// The last handle going away stops the pump and closes the Redis socket.
 ///
 /// This is Invariant C2's precondition — §7 cannot join a task that has no way

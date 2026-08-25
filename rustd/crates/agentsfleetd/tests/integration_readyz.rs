@@ -1,8 +1,8 @@
 //! Dimension 7.3 — `/readyz` goes red for a dependency, `/healthz` never does.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
-//! `make test-integration-rustd`, which supplies `AFD_TEST_DATABASE_URL` and
-//! `AFD_TEST_REDIS_TLS_URL`.
+//! `make test-integration-rustd`, which supplies `TEST_DATABASE_URL` and
+//! `TEST_REDIS_URL`.
 //!
 //! # "Stopped Postgres", without stopping Postgres
 //!
@@ -49,13 +49,13 @@ use agentsfleetd::probes::LiveDependencies;
 use self::support::install_subscriber;
 
 /// Where the lane publishes the Postgres it brought up.
-const DATABASE_LANE_KNOB: &str = "AFD_TEST_DATABASE_URL";
+const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
 /// Where the lane publishes the TLS Redis it brought up.
-const REDIS_LANE_KNOB: &str = "AFD_TEST_REDIS_TLS_URL";
+const REDIS_LANE_KNOB: &str = "TEST_REDIS_URL";
 
 /// Where the lane extracted the Redis certificate authority to.
-const REDIS_CA_LANE_KNOB: &str = "AFD_TEST_REDIS_TLS_CA_CERT";
+const REDIS_CA_LANE_KNOB: &str = "TEST_REDIS_CA_CERT";
 
 /// Reads a lane knob, failing with the command that sets it.
 fn lane(knob: &str) -> String {

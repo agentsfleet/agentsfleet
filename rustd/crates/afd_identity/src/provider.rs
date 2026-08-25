@@ -15,7 +15,8 @@
 
 use afd_auth::principal::Subject;
 
-use crate::capability::{ClaimSource, ClaimUnavailable};
+use crate::capability::ClaimSource;
+use crate::error::{ClaimUnavailable, Error, Result};
 
 /// The provider's backend API secret.
 ///
@@ -30,23 +31,18 @@ use crate::capability::{ClaimSource, ClaimUnavailable};
 #[derive(Clone, PartialEq, Eq)]
 pub struct ProviderSecret(Box<str>);
 
-/// A provider secret that carries nothing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-#[error("the identity provider's backend secret must not be blank")]
-pub struct BlankSecret;
-
 impl ProviderSecret {
     /// Wraps the boot-resolved secret.
     ///
     /// # Errors
-    /// Returns [`BlankSecret`] when the value is empty or only whitespace.
+    /// Returns [`Error::BlankSecret`] when the value is empty or only whitespace.
     /// `clerk_scope_fetch.zig` treats an absent or blank secret as
     /// `MissingSecret` for the same reason: capabilities cannot resolve at all
     /// without it, which is an outage rather than an empty grant, and saying so
     /// at boot beats discovering it on the first authenticated request.
-    pub fn new(raw: &str) -> Result<Self, BlankSecret> {
+    pub fn new(raw: &str) -> Result<Self> {
         if raw.trim().is_empty() {
-            return Err(BlankSecret);
+            return Err(Error::BlankSecret);
         }
         Ok(Self(raw.into()))
     }

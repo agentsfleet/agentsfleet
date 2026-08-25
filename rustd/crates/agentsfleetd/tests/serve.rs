@@ -11,9 +11,7 @@
 )]
 
 use afd_core::env::MapEnv;
-use agentsfleetd::serve::{
-    Acceptor, BootFailure, DEFAULT_PORT, PORT_KNOB, port_from, serve_accepts,
-};
+use agentsfleetd::serve::{Acceptor, BootFailure, DEFAULT_PORT, serve_accepts};
 use agentsfleetd::supervisor::Supervisor;
 
 /// The API role's Postgres knob.
@@ -43,34 +41,6 @@ fn parses_but_dead() -> MapEnv {
     ])
 }
 
-/// An unset port is the Zig daemon's default, and a bad one is too.
-///
-/// The second half is the one worth pinning. Refusing to boot over an
-/// unparseable `PORT` would be defensible, and it is NOT what `serve.zig` does
-/// — so the divergence would be silent, and would only show up as a daemon
-/// that used to start and now does not.
-#[test]
-fn test_the_port_falls_back_rather_than_refusing() {
-    assert_eq!(port_from(&MapEnv::default()), DEFAULT_PORT);
-    assert_eq!(
-        port_from(&MapEnv::from_pairs([(PORT_KNOB, "8080")])),
-        8080,
-        "a set port is honoured"
-    );
-    assert_eq!(
-        port_from(&MapEnv::from_pairs([(PORT_KNOB, "  8080  ")])),
-        8080,
-        "whitespace around a port is an export artefact, not a value"
-    );
-    for bad in ["", "http", "-1", "99999999"] {
-        assert_eq!(
-            port_from(&MapEnv::from_pairs([(PORT_KNOB, bad)])),
-            DEFAULT_PORT,
-            "an unparseable PORT ({bad:?}) is the default, matching serve.zig"
-        );
-    }
-}
-
 /// An unusable environment refuses before anything is opened.
 ///
 /// The ordering is the claim: `preflight` runs first, so a daemon with a
@@ -79,7 +49,7 @@ fn test_the_port_falls_back_rather_than_refusing() {
 #[tokio::test]
 async fn test_boot_refuses_an_unusable_environment_before_connecting() {
     let mut supervisor = Supervisor::new();
-    let failure = agentsfleetd::serve::boot(&MapEnv::default(), &mut supervisor)
+    let failure = agentsfleetd::serve::boot(&MapEnv::default(), DEFAULT_PORT, &mut supervisor)
         .await
         .expect_err("an empty environment cannot boot");
 
@@ -105,7 +75,7 @@ async fn test_boot_refuses_an_unusable_environment_before_connecting() {
 #[tokio::test]
 async fn test_boot_refuses_when_a_datastore_will_not_answer() {
     let mut supervisor = Supervisor::new();
-    let failure = agentsfleetd::serve::boot(&parses_but_dead(), &mut supervisor)
+    let failure = agentsfleetd::serve::boot(&parses_but_dead(), DEFAULT_PORT, &mut supervisor)
         .await
         .expect_err("a datastore that is not there cannot be booted against");
 

@@ -968,10 +968,10 @@ Checked by key presence only; no value was read, printed, or logged.
 
 | Knob | Present locally | Where it comes from |
 |---|---|---|
-| `DATABASE_URL` | no | derived at test time from the compose-discovered port (`make/test-infra.mk` `TEST_DATABASE_URL_LOCAL`); deployments resolve via 1Password |
+| `DATABASE_URL` | no | derived at test time from the compose-discovered port (`make/test-infra.mk` `TEST_DATABASE_URL`); deployments resolve via 1Password |
 | `DATABASE_URL_API` | no | same; `docker-compose.yml` sets it for the compose `agentsfleetd` service only |
 | `DATABASE_URL_MIGRATOR` | yes | `.env.agentsfleetd.local` |
-| `REDIS_URL` | no | derived from the compose-discovered port (`TEST_REDIS_TLS_URL_LOCAL`, `rediss://` + extracted CA) |
+| `REDIS_URL` | no | derived from the compose-discovered port (`TEST_REDIS_URL`, `rediss://` + extracted CA) |
 | `ENCRYPTION_MASTER_KEY` | fixture only | `docker-compose.yml` carries a local-dev value behind `gitleaks:allow`; real deployments resolve via 1Password |
 | `OIDC_ISSUER` | yes | `.env.agentsfleetd.local` |
 | `OIDC_AUDIENCE` | yes | `.env.agentsfleetd.local` |

@@ -34,7 +34,7 @@ mod fault_net;
 
 use self::fault_net::{FaultProxy, install_subscriber};
 
-const LANE_KNOB: &str = "AFD_TEST_DATABASE_URL";
+const LANE_KNOB: &str = "TEST_DATABASE_URL";
 
 /// Short enough that a test waits it out, long enough that a loaded machine
 /// does not trip it while the proxy is still relaying normally.

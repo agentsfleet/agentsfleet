@@ -5,13 +5,13 @@
 //! to ask, so [`VerifiedClaims`] carries the claim string and the OIDC path
 //! never consults a [`crate::capability::CapabilitySource`].
 //!
-//! # Why the errors are a different type from `AuthError`
+//! # Why the errors are a different type from `Error`
 //!
 //! A verifier reports what went wrong with a token; the authenticator decides
 //! what a caller is told. Those are different jobs, and collapsing them would
 //! put the "which failure leaks what" decision inside every verifier
 //! implementation instead of in one place. [`VerifyError`] is the honest
-//! account; [`crate::error::AuthError`] is the redacted one, and
+//! account; [`crate::error::Error`] is the redacted one, and
 //! `OidcFlow` is the single boundary between them.
 //!
 //! Two mappings there are worth naming, because both are Zig parity:

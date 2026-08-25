@@ -21,7 +21,8 @@ use afd_auth::credential::Presented;
 use afd_auth::principal::Subject;
 use afd_auth::verifier::{TokenVerifier, VerifyError};
 use afd_core::clock::{Clock, FixedClock, SystemClock, UnixMillis};
-use afd_identity::capability::{ClaimSource, ClaimUnavailable};
+use afd_identity::capability::ClaimSource;
+use afd_identity::error::ClaimUnavailable;
 use afd_identity::jwks::source::KeySetSource;
 use afd_identity::{JwksVerifier, ProviderCapabilities, VerifierConfig};
 

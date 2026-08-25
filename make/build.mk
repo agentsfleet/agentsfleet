@@ -5,7 +5,14 @@
 .PHONY: build build-dev push-dev push build-linux-alpine _docker_login _prepare_prebuilt_linux_binaries sync-version check-version
 
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.1.0")
+# The commit, computed once and EXPORTED. It tags the image below, and
+# `rustd/crates/afd_api/build.rs` reads it for the commit `/healthz` reports —
+# so the tag on an image and the field inside it come from one variable rather
+# than from two that can disagree. Before the export, a container build tagged
+# `:VERSION-abc1234` and served `"commit":"unknown"`: the build context carries
+# no `.git`, and nothing told the build script what `make` already knew.
 GIT_COMMIT := $(if $(GITHUB_SHA),$(shell echo $(GITHUB_SHA) | cut -c1-7),$(shell git rev-parse --short HEAD 2>/dev/null || echo "dev"))
+export GIT_COMMIT
 SERVICE_NAME := agentsfleetd
 DOCKER_REGISTRY ?= ghcr.io
 IMAGE_REPO ?= $(DOCKER_REGISTRY)/agentsfleet/$(SERVICE_NAME)

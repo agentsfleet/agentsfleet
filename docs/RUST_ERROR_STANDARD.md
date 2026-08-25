@@ -115,9 +115,45 @@ BEFORE                              AFTER
                                             (os error 61)
 ```
 
-## Open, not yet done
+## Conformance, crate by crate
 
-- `afd_auth` names its type `AuthError`, so `afd_auth::AuthError` stutters. It
-  should be `afd_auth::Error` like every sibling. Rename not taken in M176.
-- `afd_identity` and `afd_state` have no `error.rs`; their error types live
-  beside the code that raises them. They need the same alias treatment.
+Every crate under `rustd/` is accounted for. The three items this section used
+to list as open are closed.
+
+| Crate | `src/error.rs` | Owns an `Error` | Notes |
+|---|---|---|---|
+| `afd_core` | ✅ | ✅ | `struct Error` + private `ErrorKind`, per M-ERRORS-CANONICAL-STRUCTS |
+| `afd_crypto` | ✅ | ✅ | same shape |
+| `afd_db` | ✅ | ✅ | same shape |
+| `afd_redis` | ✅ | ✅ | same shape |
+| `afd_auth` | ✅ | ✅ | was `AuthError`; renamed to `Error`, so `afd_auth::Error` no longer stutters. `VerifyError` and `Unavailable` live beside it and stay distinct — see below |
+| `afd_identity` | ✅ | ✅ | `BlankSecret` folded into `Error`; `ClaimUnavailable` kept and composed by `#[from]` |
+| `afd_state` | ✅ | ❌ by design | implements `afd_auth`'s `CredentialDirectory` and `CapabilitySource`, whose signatures mandate `Unavailable`. A crate implementing a foreign trait does not choose the trait's error type. The alias defaults to it and the file says why |
+| `agentsfleetd` | ✅ | two, by necessity | `BootFailure` and `MigrateFailure` — see below |
+| `afd_api` | n/a | n/a | no fallible function |
+| `afd_observability` | n/a | n/a | no fallible function |
+| `afd_wire` | n/a | n/a | no fallible function. `FailureClass` is a serde field on the wire `Failure` payload, not a Rust error |
+
+### Where rule 1 is deliberately not met, and why
+
+**`agentsfleetd` has two error types.** They cannot be merged. Both compose
+`afd_db::Error` by `#[from]` — boot's when the API pool will not open,
+migrate's when the schema will not apply — and one enum cannot carry two
+variants deriving `From<afd_db::Error>`, because that is two `From` impls for
+one pair of types. Collapsing them into a single variant would be worse than
+the duplication: "the API database would not answer" and "the schema was not
+applied" are different incidents with different fixes, and `serve` and
+`migrate` are different processes that never run at once. The crate therefore
+carries no `Result` alias either: it would have to default to one of the two,
+and a reader seeing the short spelling would have to check which — the exact
+thing rule 1 exists to prevent.
+
+**A crate may keep a second, finer-grained type where a caller
+DISCRIMINATES on it.** `afd_auth::VerifyError` is finer than what a client is
+told, on purpose, and `afd_identity::ClaimUnavailable::UnknownSubject` is
+deliberately not an outage — the caller matches on it and answers with the
+empty capability set. Both compose into their crate's `Error` by `From`, so a
+caller that only propagates still writes `Result<T>`. A type that nothing
+discriminates on has not earned this: `afd_identity`'s `BlankSecret` was a unit
+struct exactly one function returned and nothing matched on, and it is a
+variant of `Error` now.

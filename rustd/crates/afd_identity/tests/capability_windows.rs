@@ -22,9 +22,8 @@ use afd_auth::principal::Subject;
 use afd_auth::scope::{Scope, ScopeSet, parse_claim};
 use afd_core::clock::{Clock, FixedClock, UnixMillis};
 use afd_identity::ProviderCapabilities;
-use afd_identity::capability::{
-    ClaimSource, ClaimUnavailable, DEFAULT_STALE_CEILING_MS, DEFAULT_TTL_MS,
-};
+use afd_identity::capability::{ClaimSource, DEFAULT_STALE_CEILING_MS, DEFAULT_TTL_MS};
+use afd_identity::error::ClaimUnavailable;
 
 const CLAIM: &str = "fleet:admin billing:read";
 

@@ -19,7 +19,7 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use afd_auth::error::{AuthError, Unavailable};
+use afd_auth::error::{Error, Unavailable};
 
 /// The Zig tree whose constants these strings are pinned against.
 ///
@@ -70,14 +70,14 @@ fn zig_auth_sources() -> String {
 #[test]
 fn test_every_refusal_has_exactly_one_code_and_one_sentence() {
     assert_eq!(
-        AuthError::ALL.len(),
+        Error::ALL.len(),
         7,
         "a new variant must be added to ALL or every walk here silently skips it"
     );
 
     let mut codes = BTreeSet::new();
     let mut details = BTreeSet::new();
-    for err in AuthError::ALL {
+    for err in Error::ALL {
         assert!(
             codes.insert(err.code().as_str()),
             "{err:?} shares a code with an earlier variant"
@@ -96,13 +96,13 @@ fn test_every_refusal_has_exactly_one_code_and_one_sentence() {
 #[test]
 fn test_each_refusal_answers_the_documented_registry_code() {
     for (err, code) in [
-        (AuthError::InvalidOrMissingToken, "UZ-AUTH-002"),
-        (AuthError::TokenExpired, "UZ-AUTH-003"),
-        (AuthError::Unavailable, "UZ-AUTH-004"),
-        (AuthError::TenantKeyRevoked, "UZ-APIKEY-004"),
-        (AuthError::CliCredentialRevoked, "UZ-AUTH-023"),
-        (AuthError::InvalidRunnerToken, "UZ-RUN-001"),
-        (AuthError::RunnerStateBlocked, "UZ-RUN-009"),
+        (Error::InvalidOrMissingToken, "UZ-AUTH-002"),
+        (Error::TokenExpired, "UZ-AUTH-003"),
+        (Error::Unavailable, "UZ-AUTH-004"),
+        (Error::TenantKeyRevoked, "UZ-APIKEY-004"),
+        (Error::CliCredentialRevoked, "UZ-AUTH-023"),
+        (Error::InvalidRunnerToken, "UZ-RUN-001"),
+        (Error::RunnerStateBlocked, "UZ-RUN-009"),
     ] {
         assert_eq!(err.code().as_str(), code, "{err:?}");
     }
@@ -118,7 +118,7 @@ fn test_each_refusal_answers_the_documented_registry_code() {
 #[test]
 fn test_every_client_visible_sentence_is_pinned_to_the_zig_daemons() {
     let zig = zig_auth_sources();
-    for err in AuthError::ALL {
+    for err in Error::ALL {
         let quoted = format!("\"{}\"", err.detail());
         assert!(
             zig.contains(&quoted),
@@ -136,16 +136,16 @@ fn test_every_client_visible_sentence_is_pinned_to_the_zig_daemons() {
 #[test]
 fn test_the_runner_plane_names_the_runner_token_in_its_refusal() {
     assert_eq!(
-        AuthError::InvalidOrMissingToken.detail(),
+        Error::InvalidOrMissingToken.detail(),
         "Invalid or missing token"
     );
     assert_eq!(
-        AuthError::InvalidRunnerToken.detail(),
+        Error::InvalidRunnerToken.detail(),
         "Invalid or missing runner token"
     );
     assert_ne!(
-        AuthError::InvalidOrMissingToken.detail(),
-        AuthError::InvalidRunnerToken.detail()
+        Error::InvalidOrMissingToken.detail(),
+        Error::InvalidRunnerToken.detail()
     );
 }
 
@@ -156,23 +156,23 @@ fn test_the_runner_plane_names_the_runner_token_in_its_refusal() {
 /// difference between a Postgres blip and a fleet walking itself to shutdown.
 #[test]
 fn test_only_an_outage_is_not_a_rejection() {
-    let not_rejections: Vec<_> = AuthError::ALL
+    let not_rejections: Vec<_> = Error::ALL
         .into_iter()
         .filter(|err| !err.is_rejection())
         .collect();
-    assert_eq!(not_rejections, vec![AuthError::Unavailable]);
+    assert_eq!(not_rejections, vec![Error::Unavailable]);
 }
 
 /// A dependency's own reason never reaches the decision — every unreachable
 /// datastore and every unreachable provider becomes the same refusal.
 #[test]
 fn test_an_unavailable_dependency_becomes_the_outage_refusal() {
-    assert_eq!(AuthError::from(Unavailable), AuthError::Unavailable);
+    assert_eq!(Error::from(Unavailable), Error::Unavailable);
     // It renders as what a client would be told, so a log line and a response
     // body cannot disagree about what happened.
     assert_eq!(
         Unavailable.to_string(),
-        AuthError::Unavailable.detail(),
+        Error::Unavailable.detail(),
         "the seam error and the refusal must say the same thing"
     );
 }
@@ -180,10 +180,10 @@ fn test_an_unavailable_dependency_becomes_the_outage_refusal() {
 /// A refusal is an `Error`, so it composes with `?` and renders in a chain.
 #[test]
 fn test_a_refusal_is_an_error() {
-    fn as_error(err: AuthError) -> Box<dyn std::error::Error> {
+    fn as_error(err: Error) -> Box<dyn std::error::Error> {
         Box::new(err)
     }
-    for err in AuthError::ALL {
+    for err in Error::ALL {
         assert_eq!(as_error(err).to_string(), err.detail());
     }
 }

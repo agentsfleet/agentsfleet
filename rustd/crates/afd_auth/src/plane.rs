@@ -26,7 +26,7 @@
 //! tenant-plane code arriving there is a category error it has no branch for.
 
 use crate::credential::CredentialKind;
-use crate::error::AuthError;
+use crate::error::Error;
 
 /// A group of routes and the credential classes it accepts.
 ///
@@ -82,10 +82,10 @@ impl Plane {
     /// Also the refusal for a blank or missing header, so a caller cannot tell
     /// "you sent nothing" apart from "you sent the wrong kind of thing".
     #[must_use]
-    pub const fn refusal(self) -> AuthError {
+    pub const fn refusal(self) -> Error {
         match self {
-            Self::Tenant => AuthError::InvalidOrMissingToken,
-            Self::Runner => AuthError::InvalidRunnerToken,
+            Self::Tenant => Error::InvalidOrMissingToken,
+            Self::Runner => Error::InvalidRunnerToken,
         }
     }
 }
