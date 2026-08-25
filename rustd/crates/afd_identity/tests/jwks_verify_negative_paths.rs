@@ -32,6 +32,9 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 /// Base64url modulus of the shared 2048-bit RSA test key.
 const TEST_RSA_N: &str = "7ZUw6J4OYDXLJPGWADVw2-IgBawVd55H1Xh4R_FFFFYVNdG2O7EcTvBlFZhRzxDW9uL-SvxCt6slRDXDlZo9fmSI9yki7z8RAJZokcekxdP8za5w7g4QAoFeSieDhWWChkzHJ-vDGkrr0SAn8n4lIwpya-vCbO1eXmmz4Ay0pjenWyyGB1j371Zk2JGkAEJB347oJcVDMqVDt3d-TR0fyyspVw0nNxdDkZgNuB0EXOuEV4WvWgj0dtzwURhTI82AfpgheV23Kz7np9EoPxAhkfuslAjpRfqlRCXOOfmik-T6nvCe-fFPmHRwIY_zc1VrtwjKF0TjeALm4CCj_0pjRQ";
 const TEST_KID: &str = "test-kid-static";
+
+/// JWT `exp` and `iat` are seconds; the clock takes milliseconds.
+const MILLIS_PER_SECOND: i64 = 1_000;
 const TEST_HEADER: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InRlc3Qta2lkLXN0YXRpYyJ9";
 const TEST_PAYLOAD_VALID: &str = "eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJpYXQiOjE3MDQwNjcyMDAsIm9yZ19pZCI6Im9yZ18xIiwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoidGVuYW50X2EifSwiZXhwIjo0MTAyNDQ0ODAwfQ";
 const TEST_PAYLOAD_EXPIRED: &str = "eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi5hZ2VudHNmbGVldC5uZXQiLCJhdWQiOiJodHRwczovL2FwaS5hZ2VudHNmbGVldC5uZXQiLCJpYXQiOjE3MDQwNjcyMDAsIm9yZ19pZCI6Im9yZ18xIiwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoidGVuYW50X2EifSwiZXhwIjoxNzA0MDY3MzAwfQ";
@@ -52,14 +55,14 @@ const EXPIRED_EXP_S: i64 = 1_704_067_300;
 /// one does not, and the only difference between them is `exp`.
 fn now_after_expiry() -> Arc<dyn Clock> {
     Arc::new(FixedClock::at(UnixMillis::from_millis(
-        (EXPIRED_EXP_S + 100) * 1_000,
+        (EXPIRED_EXP_S + 100) * MILLIS_PER_SECOND,
     )))
 }
 
 /// A moment BEFORE the expiring token's expiry.
 fn now_before_expiry() -> Arc<dyn Clock> {
     Arc::new(FixedClock::at(UnixMillis::from_millis(
-        (FIXTURE_IAT_S + 10) * 1_000,
+        (FIXTURE_IAT_S + 10) * MILLIS_PER_SECOND,
     )))
 }
 
@@ -144,7 +147,7 @@ fn test_expiry_is_decided_by_the_clock_and_not_by_the_signature() {
 #[test]
 fn test_a_token_expiring_exactly_now_is_expired() {
     let at_the_boundary = Arc::new(FixedClock::at(UnixMillis::from_millis(
-        EXPIRED_EXP_S * 1_000,
+        EXPIRED_EXP_S * MILLIS_PER_SECOND,
     )));
     let verifier = verifier(key_set(TEST_KID), at_the_boundary);
     let refused =

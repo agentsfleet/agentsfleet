@@ -35,6 +35,16 @@ use afd_core::id::Uuid7;
 use sqlx::postgres::PgRow;
 use sqlx::{FromRow, Row as _};
 
+/// The workspace column every credential row is scoped by.
+///
+/// Named because it is spelled at five call sites across three row types, and
+/// a schema rename that missed one would compile and fail at runtime on
+/// whichever credential class the reviewer did not open.
+const COLUMN_TENANT_ID: &str = "tenant_id";
+
+/// The primary-key column on the runner row.
+const COLUMN_ID: &str = "id";
+
 /// `core.api_keys`, joined to nothing.
 ///
 /// `created_by` is `TEXT NOT NULL` holding the identity provider's subject
@@ -50,7 +60,7 @@ pub(super) struct TenantApiKeyRow {
 impl FromRow<'_, PgRow> for TenantApiKeyRow {
     fn from_row(row: &PgRow) -> sqlx::Result<Self> {
         Ok(Self {
-            tenant: row.try_get("tenant_id")?,
+            tenant: row.try_get(COLUMN_TENANT_ID)?,
             subject: row.try_get("created_by")?,
             live: liveness(row.try_get::<bool, _>("active")?),
         })
@@ -74,7 +84,7 @@ impl FromRow<'_, PgRow> for CliCredentialRow {
         // is built on.
         let revoked_at: Option<i64> = row.try_get("revoked_at")?;
         Ok(Self {
-            tenant: row.try_get("tenant_id")?,
+            tenant: row.try_get(COLUMN_TENANT_ID)?,
             subject: row.try_get("oidc_subject")?,
             live: liveness(revoked_at.is_none()),
         })
@@ -93,7 +103,7 @@ impl FromRow<'_, PgRow> for RunnerTokenRow {
     fn from_row(row: &PgRow) -> sqlx::Result<Self> {
         let admin_state: String = row.try_get("admin_state")?;
         Ok(Self {
-            runner: row.try_get("id")?,
+            runner: row.try_get(COLUMN_ID)?,
             degraded: row.try_get("degraded")?,
             // Equal to active, rather than "not one of these five": a state
             // added to the schema is then refused until somebody decides
@@ -155,7 +165,7 @@ pub(super) fn person(
     live: Liveness,
 ) -> Result<CredentialRecord, Unavailable> {
     Ok(CredentialRecord::Person {
-        tenant: identifier("tenant_id", tenant)?,
+        tenant: identifier(COLUMN_TENANT_ID, tenant)?,
         subject: subject(subject_claim)?,
         live,
     })
@@ -168,7 +178,7 @@ pub(super) fn machine(
     live: Liveness,
 ) -> Result<CredentialRecord, Unavailable> {
     Ok(CredentialRecord::Machine {
-        runner: identifier("id", runner)?,
+        runner: identifier(COLUMN_ID, runner)?,
         degraded,
         live,
     })

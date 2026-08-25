@@ -91,6 +91,13 @@ pub const UNPROVISIONED_CLAIM: &str = "";
 
 /// The object an operator writes capabilities into.
 const PUBLIC_METADATA_KEY: &str = "public_metadata";
+
+/// What the body buffer starts at before the capped read grows it.
+///
+/// Smaller than the JWKS buffer because a claim response is smaller than a key
+/// set. `USER_MAX_RESPONSE_BYTES` is the bound; this is only the first
+/// allocation.
+const INITIAL_BODY_BYTES: usize = 4 * 1024;
 /// The key inside it.
 const SCOPES_KEY: &str = "scopes";
 
@@ -169,7 +176,7 @@ impl ProviderClaims {
 
     /// Reads the body, refusing past the cap.
     async fn read_capped(mut response: reqwest::Response) -> Result<Vec<u8>, ClaimUnavailable> {
-        let mut body = Vec::with_capacity(4 * 1024);
+        let mut body = Vec::with_capacity(INITIAL_BODY_BYTES);
         loop {
             let chunk = response
                 .chunk()

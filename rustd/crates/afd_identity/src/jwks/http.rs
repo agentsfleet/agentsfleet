@@ -20,6 +20,12 @@ use crate::jwks::source::{KeySetSource, MAX_REDIRECTS, MAX_RESPONSE_BYTES};
 /// `oidc.zig`'s `WELL_KNOWN_JWKS_SUFFIX`.
 const WELL_KNOWN_SUFFIX: &str = "/.well-known/jwks.json";
 
+/// What the body buffer starts at before the capped read grows it.
+///
+/// A key set is a few kilobytes, so this is one allocation for the common case
+/// rather than a bound — `MAX_RESPONSE_BYTES` is the bound.
+const INITIAL_BODY_BYTES: usize = 8 * 1024;
+
 /// Whitespace trimmed from a configured issuer or override.
 const TRIMMED: [char; 4] = [' ', '\t', '\r', '\n'];
 
@@ -93,7 +99,7 @@ impl HttpKeySet {
     /// workspace manifest), so these bytes are the decoded bytes and the cap
     /// means what `jwks_fetch.zig` says it means.
     async fn read_capped(mut response: reqwest::Response) -> Result<Vec<u8>, VerifyError> {
-        let mut body = Vec::with_capacity(8 * 1024);
+        let mut body = Vec::with_capacity(INITIAL_BODY_BYTES);
         loop {
             let chunk = response
                 .chunk()

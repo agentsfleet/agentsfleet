@@ -158,8 +158,11 @@ macro_rules! redacted {
         }
 
         impl Display for $ty {
+            // Delegates rather than repeating the placeholder: `concat!` needs
+            // a literal, so two spellings could drift and one could start
+            // leaking while the other stayed redacted.
             fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-                f.write_str(concat!($label, "(redacted)"))
+                Debug::fmt(self, f)
             }
         }
     };

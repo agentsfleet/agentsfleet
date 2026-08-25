@@ -15,6 +15,12 @@
 
 use afd_api::{CONTENT_TYPE_PROBLEM_JSON, ProblemResponse};
 use afd_core::error_code;
+
+/// A detail long enough that a truncating envelope would be caught.
+///
+/// The number is arbitrary; that it is the SAME number in the input and the
+/// assertion is not, which is the whole reason it is bound to a name.
+const LONG_DETAIL_BYTES: usize = 1000;
 use afd_core::problem::Problem;
 use axum::body::to_bytes;
 use axum::response::IntoResponse;
@@ -214,7 +220,7 @@ async fn test_user_message_is_verbatim_or_absent() {
 /// one line explaining a failure loses the part that explained it.
 #[tokio::test]
 async fn test_a_long_detail_is_not_truncated() {
-    let detail = "d".repeat(1000);
+    let detail = "d".repeat(LONG_DETAIL_BYTES);
     let (_status, _ct, json) = render(ProblemResponse::new(
         error_code::AUTH_UNAUTHORIZED,
         detail.clone(),
@@ -224,7 +230,7 @@ async fn test_a_long_detail_is_not_truncated() {
 
     assert_eq!(
         json["detail"].as_str().unwrap_or_default().len(),
-        1000,
+        LONG_DETAIL_BYTES,
         "the detail was truncated somewhere"
     );
     assert_eq!(json["detail"], detail);

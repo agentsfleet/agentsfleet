@@ -85,6 +85,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `docker-compose.yml` | EDIT | the Redis TLS fixture becomes a CA plus a leaf; one self-signed certificate cannot be both a trust anchor and an end-entity |
 | `make/test-infra.mk` | EDIT | extracts and checks `ca.crt` rather than the server's own leaf |
 | `AGENTS.md` (`CLAUDE.md` symlinks to it) | EDIT | its "no slow tier … nothing needs real Postgres or Redis" claim is retired by the lane this milestone creates |
+| `docs/v2/pending/M176_001_*.md` | DELETE | the same spec, at the path it left when CHORE(open) moved it to `active/`; a move is two paths in a diff |
+| `.github/workflows/test.yml` | EDIT | the Rust job measures coverage where the datastores are, so it moved to the lane that has them |
+| `.gitignore` | EDIT | the coverage artefacts the Rust lane writes (`rustd/lcov.info`, profraw) are build output, not source |
+| `make/build.mk` | EDIT | `sync-version` rewrote the FIRST `version = "…"` in `rustd/Cargo.toml`, which after the members list is a dependency's, not the workspace's |
+| `rustd/crates/afd_wire/Cargo.toml` | EDIT | inherits the corrected workspace licence with every other member |
+| `scripts/check_readme_badges_test.py` | EDIT | the badge set gained the Rust lane; its self-test is the gate that says so |
+| `ui/packages/design-system/src/design-system/{Nav,DataTable,time-utils}.test.*` | EDIT/CREATE | `codecov.yml` holds a 100% project target and this branch moves it; four unexercised guards in the design system had to be covered or the gate this milestone tightens would have been failed by code it never touched |
+| `AGENTS.orly.md`, `dispatch/write_any.md`, `dispatch/write_rust.md`, `dispatch/write_pr_description.md`, `docs/EXECUTE_DOC_READS.md`, `audits/ufs.sh` | EDIT/CREATE | orly 0.6.8, materialised (§The orly 0.6.8 amendment). Its UFS leaf reads `*.rs` for the first time, which is what makes the constant discipline in this milestone's thirty Rust files enforced rather than asserted |
 
 ## Amendment record (EXECUTE-time reconciliation)
 
@@ -92,6 +100,32 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 spec."* Here the spec contradicted the **repository**, which is the same call.
 Amended before any code was written, so nothing is built against a spec already
 known to be wrong.
+
+### The orly 0.6.8 amendment (EXECUTE, Aug 25, 2026)
+
+Materialised into THIS branch rather than a `chore/` branch of its own, by
+Indy's call: *"I never asked to create a new branch for this."* The 0.6.5 pull
+went out separately (PR #630) and the instinct to repeat that was mine, not the
+repository's.
+
+Folding it in is not free — six managed paths join the diff, and the Files
+Changed table above carries them — but the alternative was worse in a way worth
+recording. 0.6.8 is the release whose UFS leaf reads `*.rs`. On a separate
+branch it would have landed green, because `main`'s Rust is one file; against
+THIS branch it reported **31 violations**, every one of them in code this
+milestone wrote. Splitting the engine that finds them from the code that has
+them would have put a passing gate on `main` and thirty-one failures on
+whatever merged next.
+
+Resolved in the same commit range, by RULE UFS's own three routes:
+
+| Route | Where |
+|---|---|
+| Extract to a named const | `COLUMN_TENANT_ID`/`COLUMN_ID` in `credentials/rows.rs` (five call sites, and a schema rename that missed one would have compiled); `INITIAL_BODY_BYTES` in both capped readers; `KIB`, `LONG_DETAIL_BYTES`, `CLOCK_ORIGIN_MS`, `MILLIS_PER_SECOND`, `REQUEST_BUFFER_BYTES`, `BACKOFF_CAP`, `FAR_ABOVE_CEILING` |
+| Restructure so the literal is spelled once | `redacted!` now has `Display` delegate to `Debug`. `concat!` needs a literal, so the placeholder could not become a const — but it could stop being written twice, and two spellings of a redaction are two chances for one of them to start leaking |
+| `// pin test: literal is the contract` | `header_limit.rs`, where the assertion IS that our constant equals `http/server.zig`'s 16 KiB. Note the comment must sit ON the flagged line: `cargo fmt` moved it off, and the gate reported the file still dirty |
+
+Measured: `bash audits/ufs.sh` → `OK: audit-ufs: no violations across 2369 file(s)`.
 
 ### The integration-lane amendment
 
