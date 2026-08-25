@@ -15,9 +15,10 @@
 use afd_core::error_code::{self, ErrorCode};
 
 use super::{
-    DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED,
-    DETAIL_PROVIDER_UNRESOLVED, DETAIL_QUEUE_UNAVAILABLE, DETAIL_REGISTRATION_FAILED,
-    DETAIL_RUNNER_NOT_FOUND, Error, ErrorKind,
+    DETAIL_CREDENTIAL_MISSING, DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE,
+    DETAIL_EVENT_MALFORMED, DETAIL_PROVIDER_UNRESOLVED, DETAIL_QUEUE_UNAVAILABLE,
+    DETAIL_REGISTRATION_FAILED, DETAIL_RUNNER_NOT_FOUND, DETAIL_VAULT_DATA_INVALID, Error,
+    ErrorKind,
 };
 
 impl Error {
@@ -97,6 +98,17 @@ impl Error {
             | ErrorKind::ProviderNoWorkspace
             | ErrorKind::ProviderEndpoint { .. }
             | ErrorKind::Vault { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            // Two vault failures, two codes, matching the two the Zig logs:
+            // `crypto_store.decrypt_failed` answers the internal code above
+            // because which check failed is an oracle, while `vault.zig`'s
+            // parse failure answers this one because the body's SHAPE is a
+            // fact the operator who stored it can act on.
+            ErrorKind::VaultDataInvalid => error_code::VAULT_DATA_INVALID,
+            // The one provider-family failure with a code of its own, because
+            // it is the one an operator can ACT on: the fleet named a
+            // credential and nobody stored it. `secrets_resolve.zig` logs the
+            // same code, and the entry already exists in the Zig registry.
+            ErrorKind::CredentialMissing => error_code::AGENTSFLEET_CREDENTIAL_MISSING,
         }
     }
 
@@ -128,6 +140,8 @@ impl Error {
             | ErrorKind::ProviderNoWorkspace
             | ErrorKind::ProviderEndpoint { .. }
             | ErrorKind::Vault { .. } => DETAIL_PROVIDER_UNRESOLVED,
+            ErrorKind::VaultDataInvalid => DETAIL_VAULT_DATA_INVALID,
+            ErrorKind::CredentialMissing => DETAIL_CREDENTIAL_MISSING,
         }
     }
 
@@ -162,7 +176,14 @@ impl Error {
             ErrorKind::ProviderMalformed { .. }
             | ErrorKind::ProviderSecretMissing
             | ErrorKind::ProviderPlatformKeyMissing
-            | ErrorKind::ProviderNoWorkspace => true,
+            | ErrorKind::ProviderNoWorkspace
+            // A declared credential nobody stored, and a stored body that is
+            // not an addressable object, are both things a human has to go and
+            // fix. `resolveSecretsMap`'s `error.CredentialNotFound` reaches
+            // `blockEvent` through the fleet loop's own permanent arm, so this
+            // classification is the Zig's rather than a correction to it.
+            | ErrorKind::CredentialMissing
+            | ErrorKind::VaultDataInvalid => true,
             // See the divergence note above for `ProviderEndpoint`; everything
             // else here is infrastructure, and infrastructure recovers.
             ErrorKind::ProviderEndpoint { .. }

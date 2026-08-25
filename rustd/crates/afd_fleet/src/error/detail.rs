@@ -61,3 +61,22 @@ pub const DETAIL_REGISTRATION_FAILED: &str = "runner registration failed";
 /// work, and the tenant's vault layout is not its business. The operator gets
 /// the field name in the log.
 pub const DETAIL_PROVIDER_UNRESOLVED: &str = "provider unresolved";
+
+/// A fleet naming a credential the vault does not hold.
+///
+/// Pinned to the Zig registry entry for `UZ-AGT-003`, which is the sentence an
+/// operator reads on every other surface that raises this code. The lease path
+/// itself never writes it — it ends the event and answers no-work — but a
+/// detail is not optional, and answering a DIFFERENT sentence for the same code
+/// on one surface is how a runbook stops matching what the product says.
+pub const DETAIL_CREDENTIAL_MISSING: &str =
+    "A required credential is not in the vault. Add it with: `agentsfleet secret create <NAME>`";
+
+/// A stored credential body that is not an addressable JSON object.
+///
+/// The `UZ-VAULT-001` registry TITLE, byte-identical, rather than a sentence
+/// invented here: the tenant plane's create/replace routes answer this code for
+/// the same fact, and the lease path meeting it in stored data is that
+/// validation having been bypassed — `storeJsonPlaintext` skips the shape gate
+/// by design, so a malformed body can reach the vault. One fact, one sentence.
+pub const DETAIL_VAULT_DATA_INVALID: &str = "Secret data must be a non-empty JSON object";

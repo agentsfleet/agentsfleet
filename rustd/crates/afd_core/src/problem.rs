@@ -254,6 +254,19 @@ const ENTRIES: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::AGENTSFLEET_CREDENTIAL_MISSING,
+        // 424, matching the Zig entry's `.failed_dependency`. The fleet's own
+        // request is well-formed; what is missing is a credential it depends
+        // on, which is the distinction this status exists to make.
+        status: 424,
+        title: "Fleet credential missing",
+        hint: "A required credential is not in the vault. Add it with: `agentsfleet secret create <NAME>`",
+        // Not dashboard-facing, and the Zig entry carries the same reachability
+        // note: this is a CLI and API-key surface, and on the lease path it is
+        // logged rather than rendered at all.
+        user_message: None,
+    },
+    Problem {
         code: error_code::API_BACKPRESSURE,
         status: 429,
         title: "Too many requests",

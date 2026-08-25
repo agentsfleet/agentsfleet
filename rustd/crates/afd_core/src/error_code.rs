@@ -199,6 +199,15 @@ pub const RUN_ADMIN_STATE_BLOCKED: ErrorCode = ErrorCode::declare("UZ-RUN-009");
 /// making a client branch on it.
 pub const RUN_BUDGET_EXCEEDED: ErrorCode = ErrorCode::declare("UZ-RUN-015");
 
+/// A fleet declared a credential the vault does not hold.
+///
+/// `ERR_AGENTSFLEET_CREDENTIAL_MISSING`. Reached from the lease path, where it
+/// is LOGGED rather than answered: a fleet that names a credential nobody
+/// stored cannot run, so the event is ended with a terminal row and the asking
+/// runner is told there is no work. The code is what an operator correlates the
+/// blocked event with.
+pub const AGENTSFLEET_CREDENTIAL_MISSING: ErrorCode = ErrorCode::declare("UZ-AGT-003");
+
 /// The instance is already serving as many requests as it admits.
 ///
 /// `ERR_API_BACKPRESSURE`. A 429, and the one refusal in this registry that is
@@ -231,5 +240,6 @@ pub const REGISTRY: &[ErrorCode] = &[
     RUN_INVALID_RUNNER_TOKEN,
     RUN_ADMIN_STATE_BLOCKED,
     RUN_BUDGET_EXCEEDED,
+    AGENTSFLEET_CREDENTIAL_MISSING,
     API_BACKPRESSURE,
 ];

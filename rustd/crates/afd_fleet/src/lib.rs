@@ -40,7 +40,9 @@ pub mod lease;
 pub mod money;
 pub mod provider;
 pub mod runner;
+pub mod secrets;
 pub mod sql;
+pub mod vault;
 
 pub use crate::error::{Error, Result};
 pub use crate::runner::reconcile::{Verdict, reconcile};

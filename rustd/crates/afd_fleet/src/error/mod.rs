@@ -40,9 +40,10 @@ pub mod classify;
 pub mod detail;
 
 pub use self::detail::{
-    DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED,
-    DETAIL_HOST_ID_BOUNDS, DETAIL_PROVIDER_UNRESOLVED, DETAIL_QUEUE_UNAVAILABLE,
-    DETAIL_REGISTRATION_FAILED, DETAIL_REGISTRY_ALLOWLIST, DETAIL_RUNNER_NOT_FOUND,
+    DETAIL_CREDENTIAL_MISSING, DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE,
+    DETAIL_EVENT_MALFORMED, DETAIL_HOST_ID_BOUNDS, DETAIL_PROVIDER_UNRESOLVED,
+    DETAIL_QUEUE_UNAVAILABLE, DETAIL_REGISTRATION_FAILED, DETAIL_REGISTRY_ALLOWLIST,
+    DETAIL_RUNNER_NOT_FOUND, DETAIL_VAULT_DATA_INVALID,
 };
 
 /// A runner control-plane operation failed.
@@ -134,6 +135,12 @@ pub(crate) enum ErrorKind {
         #[source]
         source: afd_crypto::error::Error,
     },
+
+    #[error("a stored credential body is not the JSON object the tool bridge addresses")]
+    VaultDataInvalid,
+
+    #[error("the fleet declared a credential this workspace does not hold")]
+    CredentialMissing,
 }
 
 impl Error {
@@ -210,6 +217,19 @@ pub(crate) fn provider_endpoint(reason: &'static str) -> Error {
 /// riding through as `#[source]` so the chain stays intact.
 pub(crate) fn vault_open(source: afd_crypto::error::Error) -> Error {
     Error::new(ErrorKind::Vault { source })
+}
+
+/// Reports a stored credential body that is not an addressable object.
+pub(crate) fn vault_data_invalid() -> Error {
+    Error::new(ErrorKind::VaultDataInvalid)
+}
+
+/// Reports a declared credential with no vault row.
+///
+/// The log line — with the workspace and the name an operator needs — is
+/// written at the call site, which is the only place that holds them.
+pub(crate) fn credential_missing() -> Error {
+    Error::new(ErrorKind::CredentialMissing)
 }
 
 /// Reports a statement that reached Postgres and was refused.

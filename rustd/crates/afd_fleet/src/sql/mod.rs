@@ -35,6 +35,7 @@ pub mod event;
 pub mod lease;
 pub mod provider;
 pub mod runner;
+pub mod vault;
 
 /// `fleet.runner_events.metadata` keys.
 ///

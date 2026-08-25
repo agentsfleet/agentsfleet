@@ -54,7 +54,6 @@ mod resolved;
 mod selection;
 mod ssrf;
 mod store;
-mod vault;
 
 use std::fmt::Debug;
 
@@ -63,12 +62,12 @@ use serde::de::DeserializeOwned;
 
 use crate::error::{Result, provider_malformed, provider_no_workspace, provider_secret_missing};
 use crate::money::Posture;
+use crate::vault::KeyRef;
 
 pub use self::endpoint::{OPENAI_COMPATIBLE, Rejection};
 pub use self::resolved::{Resolved, SecretString};
 pub use self::selection::{PlatformDefault, Selection};
 pub use self::store::Providers;
-pub use self::vault::KeyRef;
 
 /// A prepared way of resolving one tenant's provider.
 ///
@@ -152,7 +151,7 @@ impl Providers {
         // Split across two statements, not folded into one expression: `key`
         // borrows from `strategy`, so the borrow has to outlive the `await`
         // that uses it and end before `interpret` is called on the same value.
-        let body = self.open_secret(strategy.key()).await?;
+        let body = self.vault().open(strategy.key()).await?;
         strategy.interpret(body.ok_or_else(provider_secret_missing)?.expose())
     }
 
