@@ -38,6 +38,7 @@
 pub mod error;
 pub mod lease;
 pub mod money;
+pub mod provider;
 pub mod runner;
 pub mod sql;
 

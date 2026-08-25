@@ -33,6 +33,7 @@
 pub mod billing;
 pub mod event;
 pub mod lease;
+pub mod provider;
 pub mod runner;
 
 /// `fleet.runner_events.metadata` keys.
