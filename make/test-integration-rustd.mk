@@ -17,6 +17,16 @@
 #      runs under /bin/sh, which is dash on the CI runner, and dash has no
 #      pipefail. Piping into `tee` without it reports tee's status, which turns
 #      every failing suite into a green lane.
+#   1a. `test-coverage-rustd` captures that verdict into `$verdict` and exits on
+#      it, because a LAST LINE decides a recipe. It used to end
+#      `…rustd_lane_result.py …; echo "report at …"`, so the recipe's status was
+#      the echo's — always 0. The script printed `✗ Coverage run failed`, make
+#      called it a success, and CI only went red further down when Codecov could
+#      not find the `lcov.info` a failed run never wrote. That is item 1 again,
+#      one line lower: the lane knew, and could not say so. It matters more here
+#      than anywhere else in this file, because `make test-coverage-rustd` is
+#      what `.oracle/orly.json` declares for `verify.integration` — a gate whose
+#      green was unfalsifiable.
 #   2. The lane fails when the suite reports ZERO passing tests. A selection
 #      that matches nothing exits 0, and "0 tests ran" is indistinguishable from
 #      "everything passed" by exit status alone — the Zig lane learned this the
@@ -46,7 +56,11 @@
 # checked and linted like the rest), lists them as ignored, and runs none —
 # which is what keeps live Postgres off the fast lane. Each ignore reason names
 # this target, so a developer who runs one directly is told where it belongs.
-RUSTD_INTEGRATION_IGNORE_ARGS := --ignored
+#
+# The flag is written where it is passed, not hoisted into a variable. It was
+# `RUSTD_INTEGRATION_IGNORE_ARGS := --ignored`, defined once and expanded once,
+# nine lines apart — no reuse bought, and a reader made to jump to learn that a
+# name of three words stands for one.
 
 test-integration-rustd: $(TEST_STATE_DEP)  ## Run the Rust substrate integration suite against compose Postgres + Redis
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
@@ -56,7 +70,7 @@ test-integration-rustd: $(TEST_STATE_DEP)  ## Run the Rust substrate integration
 	code="$(CURDIR)/.tmp/rustd-integration.status"; \
 	rm -f "$$tally" "$$code"; \
 	{ cd $(RUSTD_DIR) && cargo test --workspace --all-features \
-	      -- $(RUSTD_INTEGRATION_IGNORE_ARGS) 2>&1; \
+	      -- --ignored 2>&1; \
 	  echo $$? > "$$code"; } | tee "$$tally"; \
 	python3 "$(CURDIR)/scripts/rustd_lane_result.py" \
 	  --tally "$$tally" --status "$$(cat "$$code")" \
@@ -87,5 +101,6 @@ test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under covera
 	  echo $$? > "$$code"; } | tee "$$tally"; \
 	python3 "$(CURDIR)/scripts/rustd_lane_result.py" \
 	  --tally "$$tally" --status "$$(cat "$$code")" \
-	  --label "[rustd] Coverage run"; \
-	echo "  report at $(RUSTD_DIR)/lcov.info"
+	  --label "[rustd] Coverage run"; verdict=$$?; \
+	echo "  report at $(RUSTD_DIR)/lcov.info"; \
+	exit $$verdict

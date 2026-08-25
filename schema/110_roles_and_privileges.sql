@@ -32,9 +32,29 @@ BEGIN
         'ops_readonly_fleet'
     ]
     LOOP
-        IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = r) THEN
+        -- Caught, not checked. `IF NOT EXISTS (SELECT … pg_roles) THEN CREATE`
+        -- reads like a guard and is not one: a role is CLUSTER-global while the
+        -- advisory lock this migration runs under is per-DATABASE, so two
+        -- databases on one cluster migrating at the same time both see the role
+        -- missing, both issue CREATE, and the loser gets
+        -- `23505 duplicate key value violates unique constraint
+        -- "pg_authid_rolname_index"` — a migration failure with a message about
+        -- a system index, which is not a thing anyone debugs quickly.
+        --
+        -- Two databases on one cluster is the normal case, not a corner: every
+        -- test in the Rust suite creates its own database against the shared
+        -- lane Postgres, and a staging and a production database on one managed
+        -- instance are the same shape. Attempting the CREATE and forgiving the
+        -- collision has no window between the check and the act.
+        BEGIN
             EXECUTE format('CREATE ROLE %I NOLOGIN', r);
-        END IF;
+        EXCEPTION
+            WHEN duplicate_object THEN
+                -- Somebody else created it between our attempt and theirs. The
+                -- role exists with the attributes this statement asks for,
+                -- which is the whole postcondition.
+                NULL;
+        END;
     END LOOP;
 END
 $$;
