@@ -23,18 +23,23 @@
 // here is the lint's own documented remedy, and keeps the deny in force for
 // everything else.
 #[cfg(test)]
-use {hyper_util as _, tower as _, tracing_subscriber as _};
+use {afd_db as _, hyper_util as _, tower as _, tracing_subscriber as _};
 
 pub mod admission;
+pub mod auth;
 pub mod envelope;
+pub mod handler;
 pub mod request_id;
 pub mod route;
 pub mod router;
 pub mod server;
+pub mod services;
 
 pub use self::admission::{Admission, DEFAULT_MAX_IN_FLIGHT, admit, is_metered};
+pub use self::auth::{Authenticator, Planes, RunnerIdentity};
 pub use self::envelope::{CONTENT_TYPE_PROBLEM_JSON, ProblemResponse};
 pub use self::request_id::{RequestId, UNKNOWN_REQUEST_ID};
 pub use self::route::{Guard, Route, RouteClass, RouteMeta, Scopes};
-pub use self::router::{Dependencies, ReadyInputs, ready_decision};
+pub use self::router::{Dependencies, ReadyInputs, Serving, ready_decision};
 pub use self::server::{MAX_REQUEST_HEADER_BYTES, http1_builder};
+pub use self::services::Services;

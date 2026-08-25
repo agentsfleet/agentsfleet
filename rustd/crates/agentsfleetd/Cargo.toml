@@ -27,6 +27,7 @@ path = "src/main.rs"
 # M-TEST-UTIL. Unlocks the mockable cores the boot path reads through.
 test-util = [
     "afd_api/test-util",
+    "afd_auth/test-util",
     "afd_core/test-util",
     "afd_crypto/test-util",
     "afd_db/test-util",
@@ -36,6 +37,17 @@ test-util = [
 [dependencies]
 afd_api.workspace = true
 afd_core.workspace = true
+# The composition root: this crate is the one that names which directory,
+# capability provider and verifier the generic HTTP shell is served through.
+afd_auth.workspace = true
+# The Postgres credential directory the shell authenticates against.
+afd_state.workspace = true
+# The runner control plane behind the `/v1/runners` verbs.
+afd_fleet.workspace = true
+# The identity provider's side of authentication: the capability claim and the
+# key set. Optional at RUNTIME, not at build time — an unconfigured deployment
+# holds the refusing variants rather than a different binary.
+afd_identity.workspace = true
 # The command line. Subcommands, `--port`, `--help` and `--version` are all
 # derived from `cli::Cli`; nothing in this crate reads `std::env::args` itself.
 clap.workspace = true

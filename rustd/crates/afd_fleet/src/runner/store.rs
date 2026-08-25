@@ -8,6 +8,7 @@ use afd_wire::runner::{AssignedPolicy, RegisterRequest};
 
 use crate::error::{Result, query};
 use crate::runner::reconcile::{Verdict, reconcile};
+use crate::runner::spelling::{policy_wire, render_list, tier_wire};
 use crate::runner::token::Minted;
 use crate::runner::validate::{HostId, assignment};
 use crate::sql;
@@ -66,6 +67,15 @@ impl Runners {
         &self.database
     }
 
+    /// The entropy source, for the sibling modules that mint an identifier.
+    ///
+    /// `pub(crate)` for the same reason [`Runners::pool`] is: the source is an
+    /// implementation detail, and handing it out would let a caller draw a
+    /// credential through a path this crate cannot see.
+    pub(crate) const fn entropy(&self) -> &Entropy {
+        &self.entropy
+    }
+
     /// Draws the two identifiers and the credential an enrolment needs.
     ///
     /// Split out because it is the only part that touches entropy, and because
@@ -117,8 +127,8 @@ impl Runners {
         // Rendered before the connection is taken: serialisation cannot fail
         // for these shapes, but holding a pooled connection across work that
         // does not need it is how a pool's occupancy stops matching its load.
-        let labels_json = json_array(&request.labels);
-        let registry_json = json_array(&assigned.registry_allowlist);
+        let labels_json = render_list(&request.labels);
+        let registry_json = render_list(&assigned.registry_allowlist);
 
         let (runner_id, event_id, token) = self.mint(now)?;
         let mut connection = self.database.acquire().await?;
@@ -154,43 +164,5 @@ impl Runners {
             worker_count,
             verdict,
         })
-    }
-}
-
-/// Renders a borrowed string list as the JSON array a `jsonb` column takes.
-///
-/// The statement carries the `::jsonb` cast itself, so the bind is text — which
-/// is what the Zig does and what keeps sqlx's `json` feature off this
-/// workspace's list.
-///
-/// Infallible in practice: `serde_json` fails only on a serializer error or a
-/// non-string map key, and neither is reachable from a list of strings. An
-/// empty array is the honest degradation if it ever were, matching an absent
-/// list rather than inventing entries.
-fn json_array(values: &[std::borrow::Cow<'_, str>]) -> String {
-    serde_json::to_string(values).unwrap_or_else(|_unreachable| "[]".to_owned())
-}
-
-/// The wire spelling a `sandbox_tier` column stores.
-///
-/// Through serde rather than a hand-written match: `afd_wire` already declares
-/// the rename, so deriving the column value from it means the two cannot drift
-/// — a variant renamed on the wire changes the stored value in the same commit.
-fn tier_wire(tier: afd_wire::runner::SandboxTier) -> &'static str {
-    use afd_wire::runner::SandboxTier;
-    match tier {
-        SandboxTier::LandlockFull => "landlock_full",
-        SandboxTier::ContainerNested => "container_nested",
-        SandboxTier::DevNone => "dev_none",
-    }
-}
-
-/// The wire spelling a `network_policy` column stores.
-fn policy_wire(policy: afd_wire::runner::NetworkPolicy) -> &'static str {
-    use afd_wire::runner::NetworkPolicy;
-    match policy {
-        NetworkPolicy::AllowAll => "allow_all",
-        NetworkPolicy::DenyAllEgress => "deny_all_egress",
-        NetworkPolicy::AllowListEgress => "allow_list_egress",
     }
 }

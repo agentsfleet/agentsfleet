@@ -25,6 +25,7 @@ use std::fmt;
 use afd_core::env::EnvSource;
 use afd_crypto::secret::Kek;
 use afd_db::config::{DbRole, PoolConfig};
+use afd_identity::ProviderSecret;
 use afd_redis::config::{RedisConfig, RedisRole};
 
 #[doc(inline)]
@@ -32,6 +33,21 @@ pub use crate::error::{Fault, Refusal};
 
 /// The knob carrying the hex master key every vault read is decrypted with.
 pub const ENCRYPTION_MASTER_KEY_KNOB: &str = "ENCRYPTION_MASTER_KEY";
+
+/// The identity provider's issuer, and the base the key-set URL is derived from.
+pub const OIDC_ISSUER_KNOB: &str = "OIDC_ISSUER";
+
+/// The audience this daemon accepts, checked strictly.
+pub const OIDC_AUDIENCE_KNOB: &str = "OIDC_AUDIENCE";
+
+/// An explicit key-set endpoint, overriding the one derived from the issuer.
+pub const OIDC_JWKS_URL_KNOB: &str = "OIDC_JWKS_URL";
+
+/// The provider's API base, read for a subject's capability claim.
+pub const PROVIDER_API_BASE_KNOB: &str = "CLERK_API_BASE";
+
+/// The secret that authorises this daemon to read a subject's claim.
+pub const PROVIDER_SECRET_KNOB: &str = "CLERK_SECRET_KEY";
 
 /// Why the daemon needs the API database role.
 const WHY_DATABASE: &str = "the API role's Postgres connection URL";
@@ -42,12 +58,45 @@ const WHY_REDIS: &str = "the API role's Redis connection URL";
 /// Why the daemon needs the master key.
 const WHY_KEK: &str = "64 hex characters; every stored credential is sealed under it";
 
+/// Why an identity provider needs an issuer once any of its knobs is set.
+const WHY_ISSUER: &str =
+    "the identity provider's issuer URL; the key-set endpoint is derived from it";
+
+/// Why it needs an audience.
+const WHY_AUDIENCE: &str = "the audience this daemon accepts, checked strictly so a token minted for a sibling service is refused";
+
+/// Why it needs an API base.
+const WHY_API_BASE: &str = "the provider API base a subject's capability claim is read from";
+
+/// Why it needs a secret.
+const WHY_SECRET: &str = "the provider secret that authorises reading a subject's claim";
+
+/// The identity provider a deployment has, when it has one.
+///
+/// Owned and complete: a value of this type means every knob the provider needs
+/// was present and usable, so nothing downstream re-checks. The absence of one
+/// is the other half of the rule — see [`identity`].
+#[derive(Debug, Clone)]
+pub struct IdentityConfig {
+    /// The required `iss` claim, and the base the key-set URL derives from.
+    pub issuer: Box<str>,
+    /// The required `aud` claim.
+    pub audience: Box<str>,
+    /// An explicit key-set endpoint, when the derived one is not wanted.
+    pub jwks_url: Option<Box<str>>,
+    /// The provider API base a capability claim is read from.
+    pub api_base: Box<str>,
+    /// The secret that authorises that read.
+    pub secret: ProviderSecret,
+}
+
 /// What boot needs resolved before it opens anything.
 #[derive(Debug)]
 pub struct BootConfig {
     api_pool: PoolConfig,
     redis: RedisConfig,
     kek: Kek,
+    identity: IdentityConfig,
 }
 
 impl BootConfig {
@@ -67,6 +116,19 @@ impl BootConfig {
     #[must_use]
     pub const fn kek(&self) -> &Kek {
         &self.kek
+    }
+
+    /// The identity provider, which every boot has.
+    ///
+    /// Not optional: `runtime_validate.zig` refuses to boot without
+    /// `OIDC_ISSUER` and `OIDC_AUDIENCE`, and a daemon that answered a tenant
+    /// request differently from the one it replaces would be a cutover
+    /// divergence discovered in production. A deployment that wants only the
+    /// runner plane still configures a provider; what it does not do is serve
+    /// the tenant surface.
+    #[must_use]
+    pub const fn identity(&self) -> &IdentityConfig {
+        &self.identity
     }
 }
 
@@ -98,16 +160,84 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
     );
 
     let kek = read_kek(env, &mut faults);
+    let identity = identity(env, &mut faults);
 
-    if let (Some(api_pool), Some(redis), Some(kek)) = (api_pool, redis, kek) {
-        Ok(BootConfig {
+    match (api_pool, redis, kek, identity) {
+        (Some(api_pool), Some(redis), Some(kek), Some(identity)) => Ok(BootConfig {
             api_pool,
             redis,
             kek,
-        })
-    } else {
-        Err(Refusal::new(faults))
+            identity,
+        }),
+        // Anything else: a knob that is missing or unusable, the identity
+        // provider included. Every one of them has already pushed its own
+        // fault, so the refusal names them all rather than the first.
+        _refused => Err(Refusal::new(faults)),
     }
+}
+
+/// Resolves the identity provider, which every boot must have.
+///
+/// Returns `None` after pushing a fault for each knob that is unset or
+/// unusable. There is no "configured nothing" answer: `runtime_validate.zig`
+/// exits with `fatal: OIDC is required — set OIDC_ISSUER and OIDC_AUDIENCE`,
+/// and this daemon replaces that one. `cmd/doctor.zig` records the narrower
+/// half of the same rule — "reject at boot (e.g. `OIDC_JWKS_URL` set but
+/// `OIDC_ISSUER` missing)" — because a half-configured provider fails at the
+/// first tenant request rather than at boot, which is the furthest possible
+/// point from the mistake.
+fn identity<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Option<IdentityConfig> {
+    let issuer = required(env, faults, OIDC_ISSUER_KNOB, WHY_ISSUER);
+    let audience = required(env, faults, OIDC_AUDIENCE_KNOB, WHY_AUDIENCE);
+    let api_base = required(env, faults, PROVIDER_API_BASE_KNOB, WHY_API_BASE);
+    let raw_secret = required(env, faults, PROVIDER_SECRET_KNOB, WHY_SECRET);
+
+    let secret = raw_secret.and_then(|raw| {
+        classify(
+            faults,
+            true,
+            PROVIDER_SECRET_KNOB,
+            WHY_SECRET,
+            ProviderSecret::new(&raw),
+        )
+    });
+
+    let (Some(issuer), Some(audience), Some(api_base), Some(secret)) =
+        (issuer, audience, api_base, secret)
+    else {
+        return None;
+    };
+    Some(IdentityConfig {
+        issuer: issuer.into(),
+        audience: audience.into(),
+        // Optional by design: the key-set endpoint is DERIVED from the issuer
+        // unless an operator has a reason, which is what keeps the two from
+        // ever naming different providers.
+        jwks_url: env
+            .get(OIDC_JWKS_URL_KNOB)
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty())
+            .map(Into::into),
+        api_base: api_base.into(),
+        secret,
+    })
+}
+
+/// Reads a knob that must be present, recording a fault when it is not.
+fn required<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+    knob: &'static str,
+    why: &'static str,
+) -> Option<String> {
+    let value = env
+        .get(knob)
+        .map(|raw| raw.trim().to_owned())
+        .filter(|raw| !raw.is_empty());
+    if value.is_none() {
+        faults.push(Fault::Missing { knob, why });
+    }
+    value
 }
 
 /// Whether `knob` carries a value that is not blank.

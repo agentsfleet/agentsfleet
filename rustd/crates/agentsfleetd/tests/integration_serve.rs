@@ -53,12 +53,19 @@ fn lane(knob: &str) -> String {
 
 /// An environment pointed at the lane's services, on an ephemeral port.
 fn lane_environment() -> MapEnv {
-    MapEnv::from_pairs([
-        ("DATABASE_URL_API", lane(DATABASE_LANE_KNOB).as_str()),
-        ("REDIS_URL_API", lane(REDIS_LANE_KNOB).as_str()),
-        ("REDIS_TLS_CA_CERT_FILE", lane(REDIS_CA_LANE_KNOB).as_str()),
-        ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
-    ])
+    MapEnv::from_pairs(
+        [
+            ("DATABASE_URL_API", lane(DATABASE_LANE_KNOB).as_str()),
+            ("REDIS_URL_API", lane(REDIS_LANE_KNOB).as_str()),
+            ("REDIS_TLS_CA_CERT_FILE", lane(REDIS_CA_LANE_KNOB).as_str()),
+            ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
+        ]
+        .into_iter()
+        // The provider is required at boot. This lane boots for real, so it
+        // must supply one — resolved rather than dialled, so well-formed is
+        // enough and nothing here reaches the issuer.
+        .chain(support::IDENTITY),
+    )
 }
 
 /// Reads one HTTP response's status line from a fresh connection.

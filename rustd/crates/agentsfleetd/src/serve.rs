@@ -27,7 +27,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use afd_api::http1_builder;
+use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, http1_builder};
 use afd_core::env::EnvSource;
 use afd_db::Db;
 use afd_redis::Redis;
@@ -38,8 +38,9 @@ use tokio_util::sync::CancellationToken;
 use crate::daemon::{Daemon, Outcome};
 #[doc(inline)]
 pub use crate::error::BootFailure;
+use crate::identity::Capabilities;
+use crate::plane::{ServingPlane, Shared};
 use crate::preflight::{BootConfig, preflight};
-use crate::probes::LiveDependencies;
 use crate::supervisor::Supervisor;
 
 /// The environment fallback for `--port`, named here and read by [`crate::cli`].
@@ -90,9 +91,20 @@ pub async fn boot<E: EnvSource + ?Sized>(
     let database = Db::connect(config.api_pool()).await?;
     let queue = Redis::connect(config.redis()).await?;
 
-    // 3. The router, over the probe that reads through both.
-    let dependencies = Arc::new(LiveDependencies::new(database.clone(), queue.clone()));
-    let router = afd_api::router::build(dependencies);
+    // 3. Everything the router is generic over, chosen here and nowhere else,
+    //    then the router over it. The admission ceiling is passed alongside
+    //    rather than held by the plane: it is a property of the PROCESS, not a
+    //    service a verb acts through, and mixing the two would put a
+    //    concurrency limit behind a trait about datastores.
+    let (capabilities, sessions) = crate::identity::resolve(config.identity());
+    announce_identity(&capabilities);
+    let plane: Shared = Arc::new(ServingPlane::new(
+        database.clone(),
+        queue.clone(),
+        capabilities,
+        sessions,
+    ));
+    let router = afd_api::router::build(plane, &Admission::new(DEFAULT_MAX_IN_FLIGHT));
 
     // 4. Listen last. Until this line the process is not reachable, which is
     //    what makes every refusal above a refusal rather than an outage.
@@ -108,6 +120,32 @@ pub async fn boot<E: EnvSource + ?Sized>(
         database,
         queue,
     })
+}
+
+/// Says which surfaces this instance can actually serve.
+///
+/// Once, at boot, because the alternative is an operator discovering it from a
+/// 503 on their first enrolment. Reads the RESOLVED seam rather than the config
+/// it was built from: preflight has already refused a boot whose provider knobs
+/// were missing, so the only way to reach the warning below is a provider that
+/// was configured and could not be constructed — which is a reduced surface,
+/// not a fault, because the runner plane consults neither seam.
+fn announce_identity(capabilities: &Capabilities) {
+    match capabilities {
+        Capabilities::Provider(_built) => {
+            tracing::info!("identity provider configured — tenant and runner planes both serve");
+        }
+        Capabilities::Unconfigured(_absent) => {
+            // Hoisted: the `log` bridge duplicates field expressions and
+            // llvm-cov scores the dead copy.
+            let code = afd_core::error_code::AUTH_UNAVAILABLE.as_str();
+            tracing::warn!(
+                error_code = code,
+                "identity provider unusable — the runner plane serves normally \
+                 and every tenant-plane capability read answers unavailable"
+            );
+        }
+    }
 }
 
 /// The supervised name of the accept loop.

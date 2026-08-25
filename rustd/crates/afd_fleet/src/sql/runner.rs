@@ -188,3 +188,33 @@ SELECT $3::uuid, $1::uuid, $4::text,
        jsonb_build_object($5::text, last_seen_at), NULL, $2::bigint
 FROM bumped
 WHERE last_seen_at = $6::bigint OR ($2::bigint - last_seen_at) > $7::bigint";
+
+/// Store a reported self-test verdict and retire the request that asked for it,
+/// in one write.
+///
+/// `selftest_requested_at = NULL` is what makes the request one-shot: the beat
+/// that reports a verdict is the beat that clears the ask, so a runner cannot
+/// re-run the probe every interval until an operator intervenes.
+///
+/// The clear is unconditional rather than matched against the request that
+/// prompted it. A startup probe arrives with no request outstanding and writes
+/// NULL over NULL; and if an operator re-requests while a verdict is in flight,
+/// losing that request costs one click, whereas matching would need a request
+/// token on the wire to gain it.
+pub const UPDATE_RUNNER_SELFTEST: &str = "\
+UPDATE fleet.runners
+SET selftest_checks = $2::jsonb, selftest_all_ok = $3::bool,
+    selftest_sandbox_tier = $4::text, selftest_network_policy = $5::text,
+    selftest_completed_at = $6::bigint, selftest_requested_at = NULL,
+    updated_at = $6::bigint
+WHERE id = $1::uuid";
+
+/// Liveness-only bump, for the paths that must not emit history.
+///
+/// The fallback when [`HEARTBEAT_WITH_TRANSITION_EVENT`] could not run — an
+/// event identifier that would not mint, or a statement Postgres refused. A
+/// beat that writes liveness without its transition event is a quieter loss
+/// than a beat that writes nothing: the fleet read stays true, and only the
+/// audit trail has a gap.
+pub const TOUCH_RUNNER_LAST_SEEN: &str = "\
+UPDATE fleet.runners SET last_seen_at = $2, updated_at = $2 WHERE id = $1::uuid";

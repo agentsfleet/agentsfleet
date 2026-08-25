@@ -130,6 +130,27 @@ pub trait TokenVerifier: Send + Sync + std::fmt::Debug {
     ) -> impl Future<Output = Result<VerifiedClaims, VerifyError>> + Send;
 }
 
+/// A shared verifier is still a verifier.
+///
+/// The composition root holds ONE verifier and hands a handle to each plane's
+/// registry, because a verifier owns a key-set cache: cloning it would give the
+/// two planes two caches, each fetching the provider's key set on its own
+/// schedule and each answering from a different generation of it. `Arc` is what
+/// makes "cheap to clone" (`M-SERVICES-CLONE`) true for a type whose whole
+/// value is that there is one of it.
+///
+/// Declared here rather than at the composition root so the reason travels with
+/// the trait, and so any future seam with the same property has the shape to
+/// copy.
+impl<V: TokenVerifier> TokenVerifier for std::sync::Arc<V> {
+    fn verify(
+        &self,
+        presented: &Presented,
+    ) -> impl Future<Output = Result<VerifiedClaims, VerifyError>> + Send {
+        V::verify(self, presented)
+    }
+}
+
 /// The verifier a deployment with no identity provider holds.
 ///
 /// Not a stub and not a test double — it is what `OIDC_ISSUER` being unset

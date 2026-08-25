@@ -10,6 +10,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+mod support;
+
 use afd_core::env::MapEnv;
 use agentsfleetd::preflight::{ENCRYPTION_MASTER_KEY_KNOB, Fault, preflight};
 
@@ -28,20 +30,25 @@ const GOOD_REDIS: &str = "redis://127.0.0.1:6379";
 /// Sixty-four hex characters: exactly one 32-byte key.
 const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
+/// The datastore and key knobs, plus `extra`, plus a usable identity provider.
+fn env_with(extra: [(&str, &str); 3]) -> MapEnv {
+    MapEnv::from_pairs(extra.into_iter().chain(support::IDENTITY))
+}
+
 /// An environment with every knob this daemon refuses to boot without.
 fn complete() -> MapEnv {
-    MapEnv::from_pairs([
+    env_with([
         (DATABASE_KNOB, GOOD_DATABASE),
         (REDIS_KNOB, GOOD_REDIS),
         (ENCRYPTION_MASTER_KEY_KNOB, GOOD_KEK),
     ])
 }
 
-/// Dimension 8.1 — three unset knobs are named in ONE failure, not the first.
+/// Dimension 8.1 — every unset knob is named in ONE failure, not the first.
 ///
 /// This is the dimension's whole point. The Zig boot exits at the first check,
-/// so an operator missing three knobs restarts three times to find that out;
-/// the assertion below is that one run reports all three.
+/// so an operator missing seven knobs restarts seven times to find that out;
+/// the assertion below is that one run reports all of them.
 #[test]
 fn test_preflight_lists_missing() {
     let refusal = preflight(&MapEnv::default()).expect_err("an empty environment cannot boot");
@@ -49,6 +56,7 @@ fn test_preflight_lists_missing() {
     let mut knobs = refusal.knobs();
     knobs.sort_unstable();
     let mut expected = vec![DATABASE_KNOB, REDIS_KNOB, ENCRYPTION_MASTER_KEY_KNOB];
+    expected.extend(support::IDENTITY.map(|(knob, _value)| knob));
     expected.sort_unstable();
     assert_eq!(
         knobs, expected,
@@ -78,7 +86,7 @@ fn test_preflight_lists_missing() {
 /// A blank value is treated as unset, not as a value that fails later.
 #[test]
 fn test_preflight_treats_a_blank_value_as_unset() {
-    let env = MapEnv::from_pairs([
+    let env = env_with([
         (DATABASE_KNOB, GOOD_DATABASE),
         (REDIS_KNOB, GOOD_REDIS),
         (ENCRYPTION_MASTER_KEY_KNOB, "   "),
@@ -105,7 +113,7 @@ fn test_preflight_treats_a_blank_value_as_unset() {
 #[test]
 fn test_boot_refuses_bad_kek() {
     for bad in ["abcd", GOOD_KEK.replace('0', "zz").as_str()] {
-        let env = MapEnv::from_pairs([
+        let env = env_with([
             (DATABASE_KNOB, GOOD_DATABASE),
             (REDIS_KNOB, GOOD_REDIS),
             (ENCRYPTION_MASTER_KEY_KNOB, bad),
@@ -136,7 +144,7 @@ fn test_boot_refuses_bad_kek() {
 /// have only one of their branches exercised.
 #[test]
 fn test_preflight_separates_unusable_from_unset() {
-    let env = MapEnv::from_pairs([
+    let env = env_with([
         (DATABASE_KNOB, "mysql://not-postgres/afd"),
         (REDIS_KNOB, GOOD_REDIS),
         (ENCRYPTION_MASTER_KEY_KNOB, GOOD_KEK),

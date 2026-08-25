@@ -61,10 +61,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_identity/**` | EDIT | `ring` → `aws-lc-rs` (4 lines in `jwks/verifier.rs`, plus the signing test) so the binary carries ONE crypto provider once `object_store` forces `aws-lc-rs` |
 | `rustd/crates/afd_core/**` | EDIT | `Uuid7::encode` — version-7 minting beside the canonical-spelling parser that already lives there; the Zig `id_format.zig` has no Rust counterpart and an encoder anywhere else would re-derive the dash and nibble offsets |
 | `rustd/crates/afd_wire/**` | EDIT | registered in `workspace.dependencies`; no wire shape is touched (M175 owns those) |
-| `rustd/Cargo.toml` | EDIT | new members; `uuid` (v7 minting) and `hex` registered — both already resolved in the lock, so neither is a new crate |
+| `rustd/crates/afd_db/**` | EDIT | `Db::unreachable` behind `test-util` — a pool over a datastore that answers nothing, so §1's transport-class refusal (RULE ECL) is provable through the real router with no container to stop |
+| `rustd/Cargo.toml` + `rustd/Cargo.lock` | EDIT | new members; `uuid` (v7 minting) and `hex` registered — both already resolved in the lock, so neither is a new crate |
 | `make/test-integration-rustd.mk` | EDIT | end-to-end lane driving a stock Zig runner against `agentsfleetd-rs` (§7.1); no daemon-under-test selector — only one daemon remains |
 | `src/build/**` | EDIT | test-build wiring so the stock Zig runner binary is available to the §7.1 lane |
 | `tests/**` | EDIT | seeded deterministic scenario set backing `test_seeded_row_shapes` |
+| `PROMPT_M182_SUBSTRATE_SPEC.md` | CREATE | paste-ready authoring prompt for the substrate-abstraction spec (M182); carried in this PR so the spec-authoring agent reads it from the branch rather than a sibling worktree |
+| `docs/v2/pending/M181_001_P0_API_DOCS_INFRA_RUST_CUTOVER_SOAK.md` | EDIT | §5 added: the Rust daemon exports no telemetry — M176 §6 shipped the machinery and deferred the transport to boot, where it never landed. Found here, owned there, because it blocks M181's own Dimension 4.3 rather than anything this milestone ships (Indy, this stream) |
 
 ## Applicable Rules
 
@@ -102,9 +105,23 @@ The dedicated runner middleware: `Bearer agt_r` prefix required (no JWKS fall-th
 
 ### §2 — Lease issue: assignment, money gates, policy
 
-The lease verb performs hot-path writes 1–6 in the worker's order: atomic `runner_affinity` claim (UNIQUE per fleet) with monotonic `fencing_seq`, config resolved fresh per lease (no cache), the two debit points (flat receive + floor-token run estimate), coverage refusal on empty wallet, `ExecutionPolicy` built with inline `secrets_map`, the per-lease resolved provider key (never persisted into `secrets_map`; zeroed after serialization), and the provider-neutral lease network rules ported from `src/agentsfleetd/git/repository_http_policy.zig`, bundle manifest attachment, lease TTL/`MAX_RUNTIME_MS` arithmetic.
+The lease verb performs hot-path writes 1–6 in the worker's order: atomic `runner_affinity` claim (UNIQUE per fleet) with monotonic `fencing_seq`, config resolved fresh per lease (no cache), the three gates in order (tenant balance → fleet budget → approval, the first two failing OPEN on a datastore fault so a metering outage cannot halt the platform), the two debit points (flat receive, charged on FIRST DELIVERY only because the balance debit is not replay-guarded; plus the floor-token run estimate), coverage refusal on empty wallet, `ExecutionPolicy` built with inline `secrets_map`, the per-lease resolved provider key (never persisted into `secrets_map`; zeroed after serialization), and the provider-neutral lease network rules ported from `src/agentsfleetd/git/repository_http_policy.zig`, bundle manifest attachment, lease TTL/`MAX_RUNTIME_MS` arithmetic.
 
 **No version negotiation (Indy, Aug 23, 2026 — M175 addendum A1).** The Rust lease handler implements no `leaseWireVersion` equivalent, no `fromCurrent` downgrade, and no `requiresLeaseWireV2` refusal path. The version-two policy fields (`execution_policy.zig` `NetworkPolicy.read_only`, `http_origin_policies`, the richer `repository_binding`) apply unconditionally. **Implementation default:** Rust IGNORES the request's `wire_version` entirely and always serves the current shape — deliberately no explicit "unsupported version" rejection, because that needs a new error code, the ERROR REGISTRY gate fires on new codes, and the registry is single-sourced in Zig which this family does not touch. If the implementing agent judges loud rejection necessary, that is a judgment flag to Indy (📟🔦📈💥☠️), not a unilateral call. The divergence is registered in M181 §4.
+
+**The issue-time run debit diverges from the Zig daemon (Indy, this stream).** The
+Zig lease path debits ONCE — `fleet/service_billing.zig` closes its gate pass
+with `// No issue-time stage debit: run fee + tokens meter on /renew + settle at
+report`, and `fleet_runtime/metering.zig` exports `debitReceive` as its only
+debit. The spec's two-debit shape and `data_flow.md` §C agree with each other
+and not with that code. The decision is to implement the DOCUMENTED behaviour in
+Rust and leave the Zig daemon alone, so the two daemons charge differently at
+lease for the duration of the cutover. Consequences the implementing agent owns:
+the run estimate is an ESTIMATE debited up front and reconciled by §3's
+`billing.usage_ledger` settle — never a second charge for the same run — and
+Dimension 2.1's row-parity oracle therefore compares against the shapes recorded
+from the ported SQL, not against a live Zig daemon (which would disagree here by
+design). Registered for M181 §4's divergence register.
 
 - **Dimension 2.1** — the six lease writes land in the worker's order, with row shapes equal to the shapes recorded from the ported SQL for identical input → Test `test_lease_writes_row_parity`
 - **Dimension 2.2** — two runners race one fleet → exactly one lease; loser gets the no-work reply → Test `test_lease_affinity_race`
@@ -275,6 +292,18 @@ N/A — no files deleted.
 
 **Credential gate (in scope):** this milestone adds the Cloudflare R2 read keys and the GitHub App private key (mint) to the family enumeration — same fetch location (`~/.config/agentsfleet/` via `provision-env-1password`); the boot preflight extends to name them.
 
+**Identity-provider knobs — enumerated here because no milestone had them.** M176's credential gate named `OIDC_ISSUER`/`OIDC_AUDIENCE` as required and `OIDC_JWKS_URL` as optional-derived, but shipped without wiring any of them into the Rust preflight; M178 explicitly defers to "the M176/M177 enumerations"; and `CLERK_API_BASE`/`CLERK_SECRET_KEY` appeared in no milestone at all, only in the Zig `cmd/serve.zig` hint. This milestone closes that gap in the preflight rather than carrying it into M181's divergence register (Indy, this stream).
+
+| Knob | Boot | Why |
+|------|------|-----|
+| `OIDC_ISSUER` | required | the issuer the key-set endpoint is derived from; `runtime_validate.zig` exits without it |
+| `OIDC_AUDIENCE` | required | checked strictly, so a token minted for a sibling service is refused |
+| `OIDC_JWKS_URL` | optional | derived from the issuer unless overridden, so the two can never name different providers |
+| `CLERK_API_BASE` | required | the base a subject's capability claim is read from |
+| `CLERK_SECRET_KEY` | required | authorises that read; `clerk_scope_resolver.zig` treats an absent secret as a fetch failure, so an unset one is a permanent tenant-plane outage rather than a degraded write-back |
+
+Same fetch location as the rest of the family. The daemon no longer boots with the tenant plane unconfigured: `Identity::Absent` is gone, and a missing knob is named in the same one-shot refusal as a missing datastore URL.
+
 ## Out of Scope
 
 - Tenant/workspace routes (M178), admin/operator surface incl. bundle *import* (M179 — this milestone only *serves* stored bundles), signed ingress + cron (M180).
@@ -338,6 +367,34 @@ N/A — no files deleted.
   (`INSERT_LEASE_WITH_EVENT` 23 binds, `CLAIM_SETTLE_SQL` 17, `INSERT_RUNNER_WITH_EVENT`
   17); statements at four binds or fewer bind at the call site, per
   `M-SIMPLE-ABSTRACTIONS`.
+- **Files Changed amended at EXECUTE — `afd_db` gains one test-only constructor.**
+  §1's Dimension 1.2 asks for "Postgres down during validation → 503 transport
+  class, not 401". Proving that against the production router needs a `Db` whose
+  every acquire fails, and `Db::connect` cannot produce one: it PROBES before it
+  builds a pool, deliberately, because that probe is the promise that a boot
+  which returned has a reachable datastore. Constructing a lazy pool anywhere
+  else would be a second way to reach Postgres, which is the exact drift
+  `probes.rs` warns against, so the constructor belongs in `afd_db` beside the
+  eager one and is gated on `test-util`. `AGENTS.orly.md` §Specification
+  Standards — amend the spec rather than smuggle the path — so the Files Changed
+  table above carries the row. What it buys is the whole §1 refusal matrix
+  (1.1–1.4) running datastore-free in two seconds against the real router, real
+  layer order, and real handlers.
+- **Substrate coupling localised at EXECUTE — `reconcile` asks for guarantees.**
+  `heartbeat_reconcile.zig` asks a host whether it has Landlock, seccomp, the
+  `cpu`/`memory`/`pids` controllers and a `bubblewrap` binary — five Linux
+  mechanisms named by the CONTROL PLANE, which is what makes the daemon
+  bubblewrap-shaped and what would refuse a Firecracker, virtual-machine or
+  managed-platform runner delivering identical isolation. The verdict logic is
+  now expressed in `Guarantee` (filesystem isolation, syscall filtering,
+  resource limits, process containment, egress control) with
+  `Guarantee::proven_by` as the ONE substrate-aware function in the crate. Zero
+  wire change, zero behaviour change — same refusal order, same operator
+  sentences, pinned by `tests/verdict_matrix.rs`. The wire-level change
+  (`isolation_class` + a reported guarantee set) is NOT taken here: it would
+  break §7.1's unmodified-runner claim and Invariant 5's row parity, and it
+  wants its own spec after M181 retires the second daemon. Recorded as a
+  question to Indy rather than a decision.
 - **Crypto backend consolidated to `aws-lc-rs`; `ring` removed (Indy, in-session).**
   Indy directed that §4.4 adopt `object_store` in THIS milestone rather than a
   follow-up, and separately that the workspace track the latest crates. Those two
