@@ -30,7 +30,7 @@ use sqlx::postgres::{PgPool, PgPoolOptions};
 use sqlx::{Connection as _, Postgres};
 
 use crate::config::{DbRole, PoolConfig};
-use crate::error::{Error, classify_acquire, unreachable_datastore};
+use crate::error::{Result, classify_acquire, unreachable_datastore};
 use afd_core::env::EnvSource;
 
 /// One role's connection pool.
@@ -50,7 +50,7 @@ impl Db {
     /// # Errors
     /// Returns a datastore-unavailable error when Postgres refuses, is
     /// unreachable, or does not answer within the connect timeout.
-    pub async fn connect(config: &PoolConfig) -> Result<Self, Error> {
+    pub async fn connect(config: &PoolConfig) -> Result<Self> {
         let role = config.role();
         let acquire_timeout = config.acquire_timeout();
 
@@ -122,7 +122,7 @@ impl Db {
     /// Returns a capacity error when the pool had none free within the acquire
     /// timeout, and a datastore-unavailable error when Postgres itself is the
     /// problem. Those are two different incidents; see [`crate::error`].
-    pub async fn acquire(&self) -> Result<PoolConnection<Postgres>, Error> {
+    pub async fn acquire(&self) -> Result<PoolConnection<Postgres>> {
         self.pool.acquire().await.map_err(|source| {
             let waited_ms = self.acquire_timeout.as_millis();
             // sqlx says `PoolTimedOut` both when every connection is busy and
@@ -181,7 +181,7 @@ impl Pools {
     /// Returns the first role's config or connection error, naming the knob or
     /// the role — no role is silently skipped, because a daemon missing one is
     /// a daemon that fails later and further from the cause.
-    pub async fn connect_all<E: EnvSource + ?Sized>(env: &E) -> Result<Self, Error> {
+    pub async fn connect_all<E: EnvSource + ?Sized>(env: &E) -> Result<Self> {
         Ok(Self {
             default: Self::open(env, DbRole::Default).await?,
             api: Self::open(env, DbRole::Api).await?,
@@ -189,7 +189,7 @@ impl Pools {
         })
     }
 
-    async fn open<E: EnvSource + ?Sized>(env: &E, role: DbRole) -> Result<Db, Error> {
+    async fn open<E: EnvSource + ?Sized>(env: &E, role: DbRole) -> Result<Db> {
         Db::connect(&PoolConfig::resolve(env, role)?).await
     }
 

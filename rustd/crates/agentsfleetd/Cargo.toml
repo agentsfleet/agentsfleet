@@ -46,6 +46,15 @@ afd_redis.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "time"] }
 # The cancellation token every supervised task stops on.
 tokio-util.workspace = true
+# The accept loop drives hyper directly: `axum::serve` cannot bound the header
+# buffer, and Dimension 5.3 is a bound on the header buffer.
+axum.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+tower.workspace = true
+# The boot-failure enum composes foreign errors by `From`, so `?` lifts them
+# and the source chain survives for the fatal renderer to walk.
+thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
@@ -61,6 +70,9 @@ tokio = { workspace = true, features = [
     "net",
     "test-util",
 ] }
+# The accept-fault suite names `CancellationToken` and builds a bare Router.
+tokio-util.workspace = true
+axum.workspace = true
 # The suites assert on diagnostics the supervisor emits, and an event macro
 # does not evaluate its fields until a subscriber says the callsite is enabled.
 tracing-subscriber.workspace = true

@@ -30,7 +30,7 @@ use aes_gcm::{Aes256Gcm, KeyInit};
 
 use crate::aad::Aad;
 use crate::entropy::Source;
-use crate::error::{Error, ErrorKind};
+use crate::error::{Error, ErrorKind, Result};
 use crate::secret::{Dek, Kek, SecretBytes};
 use crate::{KEY_LEN, NONCE_LEN, TAG_LEN};
 
@@ -93,7 +93,7 @@ impl Sealer {
     /// # Errors
     /// Returns an entropy error when the nonce or key source fails, and an
     /// open-failed error if the AEAD refuses to encrypt.
-    pub fn seal(&self, kek: &Kek, aad: &Aad, plaintext: &[u8]) -> Result<Envelope, Error> {
+    pub fn seal(&self, kek: &Kek, aad: &Aad, plaintext: &[u8]) -> Result<Envelope> {
         let mut dek_bytes = [0_u8; KEY_LEN];
         self.entropy.fill(&mut dek_bytes)?;
         let dek = Dek::from_bytes(dek_bytes);
@@ -117,12 +117,7 @@ impl Sealer {
     /// Detached rather than appended: the Zig daemon stores the tag in its own
     /// column, so a combined ciphertext-plus-tag buffer would have to be split
     /// again on the way out and would invite an off-by-one at the seam.
-    fn encrypt(
-        &self,
-        key: &[u8; KEY_LEN],
-        aad: &Aad,
-        plaintext: &[u8],
-    ) -> Result<Encrypted, Error> {
+    fn encrypt(&self, key: &[u8; KEY_LEN], aad: &Aad, plaintext: &[u8]) -> Result<Encrypted> {
         let mut nonce_bytes = [0_u8; NONCE_LEN];
         self.entropy.fill(&mut nonce_bytes)?;
 
@@ -169,7 +164,7 @@ impl Envelope {
         payload_ciphertext: Vec<u8>,
         payload_tag: &[u8],
         kek_version: i32,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self> {
         if kek_version != crate::KEK_VERSION {
             return Err(Error::new(ErrorKind::UnsupportedVersion {
                 found: kek_version,
@@ -203,7 +198,7 @@ impl Envelope {
     /// # Errors
     /// Returns an open-failed error when either layer does not authenticate.
     /// The two are deliberately indistinguishable — see [`crate::error`].
-    pub fn open(&self, kek: &Kek, aad: &Aad) -> Result<SecretBytes, Error> {
+    pub fn open(&self, kek: &Kek, aad: &Aad) -> Result<SecretBytes> {
         let dek_plain = decrypt(
             kek.expose(),
             aad,
@@ -272,7 +267,7 @@ fn decrypt(
     nonce: &[u8; NONCE_LEN],
     ciphertext: &[u8],
     tag: &[u8; TAG_LEN],
-) -> Result<SecretBytes, Error> {
+) -> Result<SecretBytes> {
     let cipher = Aes256Gcm::new(key.into());
     let mut buffer = ciphertext.to_vec();
     let nonce = Nonce::<Aes256Gcm>::from(*nonce);
@@ -286,7 +281,7 @@ fn decrypt(
 }
 
 /// Narrows a stored slice to a fixed-width component, naming it on failure.
-fn fixed<const N: usize>(bytes: &[u8], component: &'static str) -> Result<[u8; N], Error> {
+fn fixed<const N: usize>(bytes: &[u8], component: &'static str) -> Result<[u8; N]> {
     bytes.try_into().map_err(|_err| {
         Error::new(ErrorKind::ComponentLength {
             component,

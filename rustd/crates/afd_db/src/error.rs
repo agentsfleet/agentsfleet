@@ -22,6 +22,19 @@ use afd_core::error_code::{self, ErrorCode};
 
 use crate::sql::SplitError;
 
+/// The result every fallible function in this crate returns.
+///
+/// One alias per crate, defaulted to that crate's own [`Error`] — the shape
+/// `core_api` has run in production on for years, and the one bun uses
+/// (`pub type Result<T, E = Error>`). The default parameter is what lets the
+/// few functions answering with a different error keep the same spelling:
+/// `Result<T>` for the common case, `Result<T, OtherError>` where it differs.
+///
+/// The point is not brevity. It is that a reader never has to check WHICH
+/// error a signature returns to know it is this crate's, and a new call site
+/// cannot quietly introduce a second error type without saying so.
+pub type Result<T, E = Error> = core::result::Result<T, E>;
+
 /// A datastore operation failed, or the configuration for one was malformed.
 ///
 /// One pointer wide. `afd_crypto::Error` holds its kind inline because its
@@ -50,7 +63,7 @@ pub(crate) enum ErrorKind {
     InvalidDatabaseUrl {
         knob: &'static str,
         // Boxed because `sqlx::Error` is large and this variant is the cold
-        // path; an unboxed one would widen every `Result<_, Error>` this crate
+        // path; an unboxed one would widen every `Result<_>` this crate
         // returns, including the ones on the request path.
         #[source]
         source: Box<sqlx::Error>,
@@ -206,8 +219,15 @@ impl Display for Error {
 }
 
 impl std::error::Error for Error {
+    /// The failure beneath this one, skipping our own kind.
+    ///
+    /// Returning `&self.kind` here — which every crate in this workspace did —
+    /// makes an error repeat itself: `Display` already renders the kind's
+    /// message, so a chain walker prints it twice before reaching anything new.
+    /// The kind is not a CAUSE of this error, it IS this error; what caused it
+    /// is whatever the kind wraps.
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(&self.inner.kind)
+        std::error::Error::source(&self.inner.kind)
     }
 }
 

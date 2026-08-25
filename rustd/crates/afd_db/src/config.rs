@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 
-use crate::error::{Error, ErrorKind};
+use crate::error::{Error, ErrorKind, Result};
 use afd_core::env::EnvSource;
 
 /// Pool size default: the API in-flight ceiling divided by the number of
@@ -107,7 +107,7 @@ impl PoolConfig {
     /// # Errors
     /// Returns a config error when the role's URL knob is unset, blank, or not
     /// a Postgres connection URL.
-    pub fn resolve<E: EnvSource + ?Sized>(env: &E, role: DbRole) -> Result<Self, Error> {
+    pub fn resolve<E: EnvSource + ?Sized>(env: &E, role: DbRole) -> Result<Self> {
         let knob = role.url_knob();
         let url = env
             .get(knob)
@@ -176,7 +176,7 @@ impl PoolConfig {
 /// The default is applied only when the URL is silent: `?sslmode=disable` is
 /// how the local compose Postgres — which serves no TLS at all — is reachable,
 /// and honouring it is why the local lane works without a certificate.
-fn connect_options(knob: &'static str, url: &str) -> Result<PgConnectOptions, Error> {
+fn connect_options(knob: &'static str, url: &str) -> Result<PgConnectOptions> {
     // The scheme is checked here rather than left to sqlx, which accepts
     // `mysql://host/db` and reads it as host `host`, database `db`. A
     // deployment that pasted the wrong URL then connects somewhere real and

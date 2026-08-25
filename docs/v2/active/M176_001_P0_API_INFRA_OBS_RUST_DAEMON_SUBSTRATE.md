@@ -1002,3 +1002,27 @@ while a missing OTLP token means "run `provision-env-1password`".
 ### Deferrals
 
 - None yet. Every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
+
+**The error-code generator, deleted here and owed by the Rust cutover.**
+
+> Indy (2026-08-25): "Is this valid? gen-error-codes since we will move to rust?"
+> ... "If this is zig world's fix then lets delete them."
+> — context: `make gen-error-codes` shelled to `zig build gen-error-codes` to
+> render `~/Projects/docs/api-reference/error-codes.mdx` from
+> `errors/error_entries.zig`. Deleted in this milestone.
+
+What that leaves open, stated rather than assumed: **the published error
+reference now has no generator.** The Zig registry carries 125 codes; the Rust
+`afd_core::error_code` carries 22 — only the ones §1–§5 answer with. So this is
+not a like-for-like removal, and the page will drift by hand until a Rust
+regenerator exists.
+
+The target was in no gate — not `lint-all`, not CI — so nothing goes red today.
+That is precisely why it is recorded here: an ungated tool that stops working
+fails silently, at whatever moment someone next regenerates docs.
+
+**Owner: M181** (`M181_001_P0_API_DOCS_INFRA_RUST_CUTOVER_SOAK`), whose spec
+does not yet mention error-code generation and must, before the Zig tree goes.
+It needs the full 125-code registry ported into `afd_core::error_code` first —
+M116_001's parity check (`comm -3` over the two code sets) is the oracle to
+re-point, not to re-invent.

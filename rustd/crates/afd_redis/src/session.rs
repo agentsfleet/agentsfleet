@@ -33,7 +33,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::client::Redis;
-use crate::error::{self, Error};
+use crate::error::{self, Result};
 
 /// The commands this store issues, named once each (RULE UFS).
 const CMD_SET: &str = "SET";
@@ -206,7 +206,7 @@ impl SessionStore {
     ///
     /// # Errors
     /// Returns a command error when the write fails.
-    pub async fn put(&self, state: &SessionState) -> Result<(), Error> {
+    pub async fn put(&self, state: &SessionState) -> Result<()> {
         let key = session_key(&state.session_id);
         let blob =
             serde_json::to_string(state).map_err(|_json| error::unexpected_reply(CMD_SET))?;
@@ -221,7 +221,7 @@ impl SessionStore {
     /// # Errors
     /// Returns a command error when the read fails, and an unexpected-reply
     /// error when the stored blob is not a session.
-    pub async fn get(&self, session_id: &str) -> Result<Option<SessionState>, Error> {
+    pub async fn get(&self, session_id: &str) -> Result<Option<SessionState>> {
         let key = session_key(session_id);
         let mut cmd = redis::cmd(CMD_GET);
         cmd.arg(&key);
@@ -248,7 +248,7 @@ impl SessionStore {
         submitted_hmac_hex: &str,
         now_ms: i64,
         request_fingerprint_hex: &str,
-    ) -> Result<VerifyOutcome, Error> {
+    ) -> Result<VerifyOutcome> {
         let key = session_key(session_id);
         let mut cmd = redis::cmd(CMD_EVAL);
         cmd.arg(VERIFY_AND_CONSUME_LUA)
@@ -277,12 +277,12 @@ impl SessionStore {
 /// Returns an unexpected-reply error when the tag is not one the script emits,
 /// or a tagged reply is missing the fields that tag carries.
 #[cfg(feature = "test-util")]
-pub fn outcome_from_reply(reply: &[String]) -> Result<VerifyOutcome, Error> {
+pub fn outcome_from_reply(reply: &[String]) -> Result<VerifyOutcome> {
     parse_outcome(reply)
 }
 
 /// Turns the script's tagged array into the outcome it describes.
-fn parse_outcome(reply: &[String]) -> Result<VerifyOutcome, Error> {
+fn parse_outcome(reply: &[String]) -> Result<VerifyOutcome> {
     let unexpected = || error::unexpected_reply("verify-and-consume");
     let tag = reply.first().ok_or_else(unexpected)?.as_str();
     let field = |index: usize| reply.get(index).cloned().ok_or_else(unexpected);

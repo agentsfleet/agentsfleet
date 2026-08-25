@@ -11,11 +11,6 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
-[features]
-# M-TEST-UTIL. Nothing to unlock yet; declared so dependents can name it
-# uniformly rather than special-casing this crate.
-test-util = []
-
 # Dependencies are added by the module that uses them. The vocabulary is
 # `&'static str` constants and needs nothing.
 [dependencies]

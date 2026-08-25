@@ -10,7 +10,6 @@
 //! `SdkTracerProvider` and a genuine batch processor, because those are the
 //! pieces doing the work of keeping one off the other. Hand-built `SpanData`
 //! would have tested the counter and nothing else.
-#![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"

@@ -22,7 +22,7 @@
 //! is no gap.
 
 use crate::client::Redis;
-use crate::error::Error;
+use crate::error::Result;
 
 /// The one index key for the whole deployment.
 pub const READY_INDEX_KEY: &str = "fleet:ready";
@@ -95,7 +95,7 @@ impl ReadyIndex {
     /// Returns a command error when the write fails. Callers on the ingress
     /// path log and continue: the append already succeeded, and the sweeper
     /// re-derives what a lost mark would have said.
-    pub async fn mark(&self, fleet_id: &str, token: &str) -> Result<ReadyToken, Error> {
+    pub async fn mark(&self, fleet_id: &str, token: &str) -> Result<ReadyToken> {
         let value = token.to_owned();
         let mut cmd = redis::cmd(CMD_HSET);
         cmd.arg(READY_INDEX_KEY).arg(fleet_id).arg(&value);
@@ -107,7 +107,7 @@ impl ReadyIndex {
     ///
     /// # Errors
     /// Returns a command error when the read fails.
-    pub async fn len(&self) -> Result<u64, Error> {
+    pub async fn len(&self) -> Result<u64> {
         let mut cmd = redis::cmd(CMD_HLEN);
         cmd.arg(READY_INDEX_KEY);
         self.redis.command(CMD_HLEN, READY_INDEX_KEY, &cmd).await
@@ -117,7 +117,7 @@ impl ReadyIndex {
     ///
     /// # Errors
     /// As [`ReadyIndex::len`].
-    pub async fn is_empty(&self) -> Result<bool, Error> {
+    pub async fn is_empty(&self) -> Result<bool> {
         Ok(self.len().await? == 0)
     }
 
@@ -128,7 +128,7 @@ impl ReadyIndex {
     ///
     /// # Errors
     /// Returns a command error when the read fails.
-    pub async fn peek(&self, count: usize) -> Result<Vec<Ready>, Error> {
+    pub async fn peek(&self, count: usize) -> Result<Vec<Ready>> {
         let mut cmd = redis::cmd(CMD_HRANDFIELD);
         cmd.arg(READY_INDEX_KEY).arg(count).arg("WITHVALUES");
         let flat: Vec<String> = self
@@ -156,11 +156,7 @@ impl ReadyIndex {
     ///
     /// # Errors
     /// Returns a command error when the evaluation fails.
-    pub async fn clear_if_unchanged(
-        &self,
-        fleet_id: &str,
-        token: &ReadyToken,
-    ) -> Result<bool, Error> {
+    pub async fn clear_if_unchanged(&self, fleet_id: &str, token: &ReadyToken) -> Result<bool> {
         let mut cmd = redis::cmd(CMD_EVAL);
         cmd.arg(CLEAR_IF_TOKEN_MATCHES)
             .arg(1)

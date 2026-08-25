@@ -30,10 +30,23 @@ fn test_every_kind_renders_with_its_code() {
             rendered.len() > error.code().as_str().len() + 3,
             "{label} renders its code and nothing else"
         );
-        assert!(
-            error.source().is_some(),
-            "{label} loses the chain a reader follows"
-        );
+        // A source, WHERE THERE IS ONE, must add something. Some kinds wrap a
+        // real failure (an unreachable datastore wraps the sqlx error); others
+        // are roots (a missing URL was caused by nothing, it is simply unset).
+        // What no error may do is report itself as its own cause, which is
+        // what returning the private `ErrorKind` here used to make every one
+        // of them do — printing each message twice to any `{:#}` walker.
+        if let Some(source) = error.source() {
+            assert_ne!(
+                source.to_string(),
+                rendered,
+                "{label} reports itself as its own cause"
+            );
+            assert!(
+                !rendered.ends_with(&source.to_string()),
+                "{label} repeats its source verbatim: {rendered}"
+            );
+        }
     }
 }
 

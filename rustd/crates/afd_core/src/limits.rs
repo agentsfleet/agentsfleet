@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Error, ErrorKind};
+use crate::error::{Error, ErrorKind, Result};
 
 /// Workers a runner starts when the control plane assigns nothing else.
 pub const DEFAULT_WORKERS: u32 = 1;
@@ -34,7 +34,7 @@ impl WorkerCount {
     ///
     /// # Errors
     /// Returns an out-of-range error naming the bound and the offending value.
-    pub fn new(workers: u32) -> Result<Self, Error> {
+    pub fn new(workers: u32) -> Result<Self> {
         if (MIN_WORKERS..=MAX_WORKERS).contains(&workers) {
             Ok(Self(workers))
         } else {

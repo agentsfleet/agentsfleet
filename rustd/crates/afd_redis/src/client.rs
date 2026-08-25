@@ -27,7 +27,7 @@ use redis::aio::ConnectionManager;
 use redis::{Cmd, FromRedisValue, Value};
 
 use crate::config::{RedisConfig, RedisRole};
-use crate::error::{self, Error, ErrorKind};
+use crate::error::{self, Error, ErrorKind, Result};
 
 /// The liveness probe, and the only command this module issues by name.
 const CMD_PING: &str = "PING";
@@ -50,7 +50,7 @@ impl Redis {
     /// # Errors
     /// Returns an unavailable error when Redis cannot be reached, and a config
     /// error when a certificate authority file was named but not readable.
-    pub async fn connect(config: &RedisConfig) -> Result<Self, Error> {
+    pub async fn connect(config: &RedisConfig) -> Result<Self> {
         let client = build_client(config)?;
         let manager = ConnectionManager::new(client).await.map_err(|source| {
             Error::new(ErrorKind::Unreachable {
@@ -104,7 +104,7 @@ impl Redis {
         name: &'static str,
         context: &str,
         cmd: &Cmd,
-    ) -> Result<T, Error> {
+    ) -> Result<T> {
         let mut manager = self.manager.clone();
         let value =
             tokio::time::timeout(self.request_timeout, cmd.query_async::<Value>(&mut manager))
@@ -122,7 +122,7 @@ impl Redis {
     ///
     /// # Errors
     /// Returns an unavailable error when Redis does not answer.
-    pub async fn ping(&self) -> Result<(), Error> {
+    pub async fn ping(&self) -> Result<()> {
         let reply: String = self.command(CMD_PING, "", &redis::cmd(CMD_PING)).await?;
         if reply.eq_ignore_ascii_case("PONG") {
             Ok(())
@@ -138,7 +138,7 @@ impl Redis {
 /// by path rather than from a trust store. `REDIS_TLS_CA_CERT_FILE` is the same
 /// knob `redis_config.zig` reads, and the same file the Zig lane extracts from
 /// the container.
-pub(crate) fn build_client(config: &RedisConfig) -> Result<redis::Client, Error> {
+pub(crate) fn build_client(config: &RedisConfig) -> Result<redis::Client> {
     let Some(path) = config.ca_cert_file() else {
         return redis::Client::open(config.url()).map_err(|source| {
             Error::new(ErrorKind::Unreachable {

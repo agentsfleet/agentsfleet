@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use afd_core::env::EnvSource;
 
-use crate::error::{Error, ErrorKind};
+use crate::error::{Error, ErrorKind, Result};
 
 /// The two spellings a Redis URL may carry. `rediss://` is the TLS one.
 const REDIS_SCHEMES: [&str; 2] = ["redis://", "rediss://"];
@@ -71,7 +71,7 @@ impl RedisConfig {
     /// # Errors
     /// Returns a config error when the role's URL knob is unset, blank, or not
     /// a Redis URL.
-    pub fn resolve<E: EnvSource + ?Sized>(env: &E, role: RedisRole) -> Result<Self, Error> {
+    pub fn resolve<E: EnvSource + ?Sized>(env: &E, role: RedisRole) -> Result<Self> {
         let knob = role.url_knob();
         let url = env
             .get(knob)
