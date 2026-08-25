@@ -6,6 +6,13 @@
 
 use afd_core::limits::{self, WorkerCount};
 
+/// A raw count far above the ceiling without being the saturating edge.
+///
+/// Named rather than inline because `u32::MAX` next to it tests a different
+/// thing — the saturating edge — and a bare `1_000` reads as if the two were
+/// the same class.
+const FAR_ABOVE_CEILING: u32 = 1_000;
+
 /// Catches the divergence that would matter: refusing an assignment the Zig
 /// daemon clamps and echoes back, which would leave a runner unenrolled where
 /// today it enrolls with a corrected count.
@@ -32,7 +39,7 @@ fn should_clamp_idempotently() {
 /// type exists to carry, checked over the boundary classes rather than restated.
 #[test]
 fn should_always_produce_a_value_inside_the_declared_range() {
-    for raw in [0, 1, 2, 63, 64, 65, 1_000, u32::MAX] {
+    for raw in [0, 1, 2, 63, 64, 65, FAR_ABOVE_CEILING, u32::MAX] {
         let workers = WorkerCount::clamping(raw).get();
         assert!(
             (limits::MIN_WORKERS..=limits::MAX_WORKERS).contains(&workers),
