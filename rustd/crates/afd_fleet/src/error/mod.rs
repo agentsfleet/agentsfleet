@@ -38,17 +38,13 @@ use afd_core::error_code::{self, ErrorCode};
 /// error a signature returns to know it is this crate's.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-/// `register.zig`'s refusal when `host_id` is absent or too long.
-///
-/// Client-visible, so it is pinned byte-for-byte: parity in this milestone is
-/// behavioural, and what a caller reads is behaviour (RULE UFS).
-pub const DETAIL_HOST_ID_BOUNDS: &str = "host_id must be 1-256 chars";
+pub mod detail;
 
-/// `register.zig`'s refusal for a malformed registry allowlist entry.
-pub const DETAIL_REGISTRY_ALLOWLIST: &str = "registry_allowlist entries must be host[:port] names";
-
-/// `self.zig`'s refusal when the token authenticated and the row is gone.
-pub const DETAIL_RUNNER_NOT_FOUND: &str = "runner not found";
+pub use self::detail::{
+    DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED,
+    DETAIL_HOST_ID_BOUNDS, DETAIL_QUEUE_UNAVAILABLE, DETAIL_REGISTRATION_FAILED,
+    DETAIL_REGISTRY_ALLOWLIST, DETAIL_RUNNER_NOT_FOUND,
+};
 
 /// A runner control-plane operation failed.
 ///
@@ -77,6 +73,12 @@ pub(crate) enum ErrorKind {
         source: afd_db::Error,
     },
 
+    #[error("the queue backing the runner plane would not answer")]
+    Queue {
+        #[source]
+        source: afd_redis::Error,
+    },
+
     #[error("statement failed during {context}")]
     Query {
         context: &'static str,
@@ -95,11 +97,14 @@ pub(crate) enum ErrorKind {
         source: afd_core::error::Error,
     },
 
+    #[error("the leased event envelope is missing {field}")]
+    Envelope { field: &'static str },
+
     #[error("{detail}")]
     Rejected { detail: &'static str },
 
     #[error("an identifier could not be minted from the current instant")]
-    Identity {
+    Mint {
         #[from]
         source: afd_core::error::Error,
     },
@@ -165,29 +170,49 @@ impl Error {
                 error_code::INTERNAL_DB_QUERY
             }
             ErrorKind::RunnerVanished => error_code::RUN_INVALID_RUNNER_TOKEN,
-            ErrorKind::Identity { .. } => error_code::UUIDV7_INVALID_ID_SHAPE,
+            // A producer wrote an entry this daemon cannot execute. Not the
+            // asking runner's fault — it requested work and the work is
+            // malformed — so it answers as an internal failure rather than a
+            // 4xx that would tell a healthy runner to stop asking.
+            ErrorKind::Envelope { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
-            ErrorKind::Entropy { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            // A daemon whose clock cannot name an instant, and a host that
+            // cannot draw random bytes, are both THIS process failing — not the
+            // caller's request being wrong. An earlier draft answered `Mint`
+            // with `UUIDV7_INVALID_ID_SHAPE`, which is a 400: it told an
+            // operator their enrolment was malformed while the fault was here.
+            // The queue joins these rather than getting a code of its own: the
+            // Zig assign path logs `ERR_INTERNAL_OPERATION_FAILED` for every
+            // Redis failure it meets, and a new code would fire the ERROR
+            // REGISTRY gate over a registry this family does not own.
+            ErrorKind::Mint { .. } | ErrorKind::Entropy { .. } | ErrorKind::Queue { .. } => {
+                error_code::INTERNAL_OPERATION_FAILED
+            }
         }
     }
 
     /// The sentence the caller is told.
     ///
     /// A rejection quotes its own detail, because the caller can act on it —
-    /// that is the whole reason the kind exists. Everything else answers the
-    /// registry's fixed sentence for its code: an internal failure that quotes
-    /// its cause is an internal failure leaking its cause to whoever provoked
-    /// it, and `afd_core::problem` already holds the safe wording.
+    /// that is the whole reason the kind exists. Every other kind answers a
+    /// FIXED sentence, byte-identical to the one `problem_response.zig` writes:
+    /// an internal failure that quotes its cause is an internal failure leaking
+    /// its cause to whoever provoked it, and the cause is in the log where an
+    /// operator can read it beside the request id.
+    ///
+    /// Not an `Option`. Every refusal this plane writes carries a detail, and a
+    /// `None` would push the choice of what to say into each handler — which is
+    /// how two call sites end up describing one failure differently.
     #[must_use]
-    pub const fn detail(&self) -> Option<&'static str> {
+    pub const fn detail(&self) -> &'static str {
         match self.inner.kind {
-            ErrorKind::Rejected { detail } => Some(detail),
-            ErrorKind::RunnerVanished => Some(DETAIL_RUNNER_NOT_FOUND),
-            ErrorKind::Datastore { .. }
-            | ErrorKind::Query { .. }
-            | ErrorKind::RowMalformed { .. }
-            | ErrorKind::Identity { .. }
-            | ErrorKind::Entropy { .. } => None,
+            ErrorKind::Rejected { detail } => detail,
+            ErrorKind::RunnerVanished => DETAIL_RUNNER_NOT_FOUND,
+            ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
+            ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => DETAIL_DATABASE_ERROR,
+            ErrorKind::Queue { .. } => DETAIL_QUEUE_UNAVAILABLE,
+            ErrorKind::Envelope { .. } => DETAIL_EVENT_MALFORMED,
+            ErrorKind::Mint { .. } | ErrorKind::Entropy { .. } => DETAIL_REGISTRATION_FAILED,
         }
     }
 
@@ -198,6 +223,15 @@ impl Error {
     pub fn backtrace(&self) -> &Backtrace {
         &self.inner.backtrace
     }
+}
+
+/// Reports a stream entry that does not satisfy the producer's contract.
+///
+/// `field` is `&'static str` rather than an owned name because every caller
+/// passes one of the envelope's own constants — a name that had to be
+/// allocated would mean it came from somewhere other than the contract.
+pub(crate) fn envelope_field(field: &'static str) -> Error {
+    Error::new(ErrorKind::Envelope { field })
 }
 
 /// Refuses a request the caller can correct, quoting the Zig detail verbatim.
@@ -239,6 +273,18 @@ impl From<afd_db::Error> for Error {
     }
 }
 
+/// The queue would not answer.
+///
+/// A separate variant from [`ErrorKind::Datastore`] because the two fail
+/// independently and a runner reads them the same way — back off and re-poll —
+/// only when the code says which one went down. Folding Redis into the Postgres
+/// variant would page whoever owns the wrong datastore.
+impl From<afd_redis::Error> for Error {
+    fn from(source: afd_redis::Error) -> Self {
+        Self::new(ErrorKind::Queue { source })
+    }
+}
+
 /// An identifier could not be minted — the instant is unrepresentable.
 ///
 /// `#[from]` on the KIND, lifted here, so `?` carries a `Uuid7::encode` failure
@@ -248,7 +294,7 @@ impl From<afd_db::Error> for Error {
 /// and because two `#[from]` for one type is two `From` impls for one pair.
 impl From<afd_core::error::Error> for Error {
     fn from(source: afd_core::error::Error) -> Self {
-        Self::new(ErrorKind::Identity { source })
+        Self::new(ErrorKind::Mint { source })
     }
 }
 

@@ -30,6 +30,8 @@
 //! is left alone; what changes is how it is BOUND — see [`runner::RegisterRow`]
 //! for the shape high-arity statements take.
 
+pub mod event;
+pub mod lease;
 pub mod runner;
 
 /// `fleet.runner_events.metadata` keys.
@@ -44,6 +46,18 @@ pub mod meta {
     pub const SANDBOX_TIER: &str = "sandbox_tier";
     /// The liveness instant a transition event records.
     pub const LAST_SEEN_AT: &str = "last_seen_at";
+    /// The lease a `lease_acquired` row is about.
+    pub const LEASE_ID: &str = "lease_id";
+    /// The fleet that lease claimed.
+    pub const FLEET_ID: &str = "fleet_id";
+    /// The event the lease is executing.
+    ///
+    /// Spelled `event_id` in the metadata even though the enclosing row is
+    /// itself a runner EVENT — the key names the agentsfleet event, not this
+    /// audit row, and `runner_events.zig` spells it the same way.
+    pub const AGENTSFLEET_EVENT_ID: &str = "event_id";
+    /// Whether the lease was a fresh pull or a reclaim.
+    pub const KIND: &str = "kind";
 }
 
 /// `fleet.runner_events.event_type` values this crate writes.
@@ -59,7 +73,25 @@ pub mod event_type {
     pub const RUNNER_REGISTERED: &str = "runner_registered";
     /// A runner was seen after being absent, or for the first time.
     pub const RUNNER_ONLINE: &str = "runner_online";
+    /// A runner took a lease.
+    pub const LEASE_ACQUIRED: &str = "lease_acquired";
 }
+
+/// The status a `fleet.runner_leases` row opens in.
+///
+/// `protocol.zig`'s `RUNNER_LEASE_STATUS_ACTIVE`. Declared here rather than at
+/// the write site because §3's report flips a row OUT of this value and its
+/// predicate has to name the same spelling the issue wrote (RULE UFS) — two
+/// spellings would mean a report that fences correctly and updates nothing.
+pub const LEASE_STATUS_ACTIVE: &str = "active";
+
+/// The status a reclaimed lease is flipped INTO.
+///
+/// `protocol.zig`'s `RUNNER_LEASE_STATUS_EXPIRED`. The reclaim statement is the
+/// sole `active` → `expired` writer, so this spelling and
+/// [`LEASE_STATUS_ACTIVE`] are the two halves of one predicate and belong
+/// beside each other.
+pub const LEASE_STATUS_EXPIRED: &str = "expired";
 
 /// `fleet.runners.last_seen_at` for a runner that has never connected.
 ///

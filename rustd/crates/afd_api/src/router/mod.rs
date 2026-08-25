@@ -2,23 +2,31 @@
 //!
 //! # What is mounted, and what is only tabled
 //!
-//! [`Route`] carries all eighty-one endpoints; this binary serves two of them.
+//! [`Route`] carries all eighty-one endpoints; this binary serves five of them.
 //! The gap is deliberate and it is STATED: [`handler_for`] is a total match
-//! over the ten families, so a family whose handlers have not been ported yet
-//! says so in an arm rather than by being absent from a list. When a family
-//! lands, its arm changes and the mounting loop needs no edit.
+//! over every family AND every route within a family, so an endpoint whose
+//! handler has not been ported yet says so in an arm rather than by being
+//! absent from a list. When a verb lands, its arm changes and the mounting loop
+//! needs no edit.
 //!
 //! An unmounted route answers 404, which is the truth — this binary does not
 //! serve it. A 501 would claim the endpoint exists here and is merely
 //! unfinished, and a caller cannot act on that distinction anyway.
 //!
-//! # Why no admission layer is wired here yet
+//! # Three facts, three layers, decided once per route
 //!
-//! [`crate::is_metered`] answers `false` for `RouteClass::Ops`, and `Ops` is
-//! the only class mounted today. Writing the metered branch now would put an
-//! arm in this file that no request can reach — the layer is finished and
-//! tested, and it gets wired by the milestone that mounts the first `Api`
-//! route, at which point the branch is live on the day it is written.
+//! `route_table.zig` re-decides a route's middleware chain on every request,
+//! inside `dispatch`, from a switch whose answer is a constant in the table.
+//! Here the table is read while the router is BUILT: a route that is not
+//! metered has no admission layer in its stack to consult, and a route with no
+//! guard has no authenticator in its stack to reach. The request path costs
+//! what the route actually needs and not one branch more.
+//!
+//! The order is the Zig daemon's, and it is load-bearing. Admission is
+//! outermost: a shed has to stay cheaper than the work it refuses, and proving
+//! a credential means a datastore round trip. Authentication and the capability
+//! gate come next, so a handler never runs for a caller who should not reach
+//! it. Nothing is left for a handler to remember.
 //!
 //! # HEAD
 //!
@@ -38,23 +46,44 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::Request;
-use axum::middleware::{Next, from_fn};
+use axum::middleware::{Next, from_fn, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{MethodRouter, get};
+use axum::routing::{MethodRouter, get, post};
 use http::{Method, StatusCode};
 
-use crate::route::{OpsRoute, Route};
+use crate::admission::{Admission, admit, is_metered};
+use crate::auth::{Gate, plane_of, prove};
+use crate::handler::runner;
+use crate::route::{OpsRoute, Route, RouteMeta, RunnerOpsRoute, RunnerRoute};
+use crate::services::Services;
 
 pub use self::probes::{Dependencies, ReadyInputs, ready_decision};
 pub use self::trace::record as trace_requests;
+
+/// Everything one mounted route is served through, as a single bound.
+///
+/// A trait alias in the only spelling Rust has for one: an empty trait with
+/// both supertraits, and a blanket implementation so nothing has to name it. It
+/// exists because the pair appears on the router, on both mounting helpers and
+/// on every handler, and `D: Dependencies + Services` written eight times is
+/// eight places for the two to fall out of step.
+///
+/// Deliberately NOT called `Plane`. `afd_auth::Plane` is the credential plane —
+/// tenant or runner — and these files import both; one name for two ideas is
+/// how a reader ends up believing the router is parameterised by which
+/// credential it accepts.
+pub trait Serving: Dependencies + Services {}
+
+impl<D: Dependencies + Services> Serving for D {}
 
 /// The router this daemon serves.
 ///
 /// Walks [`Route::all`] rather than listing paths, so the templates a request
 /// is matched against are the same strings the span attributes and the scope
 /// table are written from. A path cannot be mounted here under a spelling the
-/// table does not know.
-pub fn build<D: Dependencies>(dependencies: Arc<D>) -> Router {
+/// table does not know, and it cannot be mounted under a guard its own row does
+/// not declare.
+pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router {
     let mut router = Router::new();
     let mut mounted = 0usize;
     for route in Route::all() {
@@ -66,7 +95,7 @@ pub fn build<D: Dependencies>(dependencies: Arc<D>) -> Router {
             let template = meta.template;
             let class = meta.class;
             tracing::debug!(template, ?class, "route mounted");
-            router = router.route(template, handler);
+            router = router.route(template, layered(handler, meta, &dependencies, admission));
             mounted += 1;
         }
     }
@@ -89,15 +118,46 @@ pub fn build<D: Dependencies>(dependencies: Arc<D>) -> Router {
         .with_state(dependencies)
 }
 
+/// Wraps `handler` in exactly the layers its route's row calls for.
+///
+/// Outermost last, which is how `tower` composes: the guard is added first and
+/// admission second, so a request meets the ceiling before it meets the
+/// datastore. A route that is neither metered nor guarded comes back untouched
+/// rather than wrapped in a pair of layers that would each answer "carry on".
+fn layered<D: Serving>(
+    handler: MethodRouter<Arc<D>>,
+    meta: RouteMeta,
+    dependencies: &Arc<D>,
+    admission: &Admission,
+) -> MethodRouter<Arc<D>> {
+    let guarded = if plane_of(meta.guard).is_some() {
+        let gate = Gate::new(Arc::clone(dependencies), meta);
+        handler.layer(from_fn_with_state(gate, prove::<D>))
+    } else {
+        handler
+    };
+    if is_metered(meta.class) {
+        guarded.layer(from_fn_with_state(admission.clone(), admit))
+    } else {
+        guarded
+    }
+}
+
 /// The handler for `route`, or `None` when this binary does not serve it.
 ///
-/// Total over the families on purpose — see the module documentation.
-fn handler_for<D: Dependencies>(route: Route) -> Option<MethodRouter<Arc<D>>> {
+/// Total at BOTH levels — over the ten families, and over every route within
+/// each — so a new endpoint fails the build until somebody says whether this
+/// binary answers it. The Zig `route_table.zig` is total over the union too;
+/// what it cannot express is the difference between "tabled and unserved" and
+/// "forgotten", because every unserved route falls into the same `else`.
+fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>> {
     match route {
         Route::Ops(ops) => Some(match ops {
             OpsRoute::Healthz => get(probes::healthz),
             OpsRoute::Readyz => get(probes::readyz::<D>),
         }),
+        Route::Runner(verb) => runner_handler::<D>(verb),
+        Route::RunnerOps(verb) => runner_ops_handler::<D>(verb),
         // Tabled, not yet served. Each of these families arrives with the
         // milestone that ports its handlers; until then the route exists as a
         // template, a guard and a scope rung, and this binary answers 404.
@@ -107,9 +167,42 @@ fn handler_for<D: Dependencies>(route: Route) -> Option<MethodRouter<Arc<D>>> {
         | Route::Webhook(_)
         | Route::Workspace(_)
         | Route::Fleet(_)
-        | Route::Connector(_)
-        | Route::Runner(_)
-        | Route::RunnerOps(_) => None,
+        | Route::Connector(_) => None,
+    }
+}
+
+/// The runner plane's verbs — a runner speaking for itself.
+fn runner_handler<D: Serving>(verb: RunnerRoute) -> Option<MethodRouter<Arc<D>>> {
+    match verb {
+        RunnerRoute::SelfRecord => Some(get(runner::self_record::handle::<D>)),
+        RunnerRoute::Heartbeat => Some(post(runner::heartbeat::handle::<D>)),
+        // Tabled, not yet served: the lease and report verbs with the renew
+        // that clamps between them, then activity, memory, bundles and the
+        // mint broker. Each arrives with the slice that ports it; until then
+        // this binary answers 404 rather than claiming an unfinished endpoint.
+        RunnerRoute::Lease
+        | RunnerRoute::Report
+        | RunnerRoute::Renew
+        | RunnerRoute::Activity
+        | RunnerRoute::CredentialsMint
+        | RunnerRoute::MemoryHydrate
+        | RunnerRoute::MemoryCapture
+        | RunnerRoute::Bundle => None,
+    }
+}
+
+/// The operator's view over runners — a tenant acting ON the fleet's hosts.
+fn runner_ops_handler<D: Serving>(verb: RunnerOpsRoute) -> Option<MethodRouter<Arc<D>>> {
+    match verb {
+        RunnerOpsRoute::Register => Some(post(runner::enrolment::handle::<D>)),
+        // M179's operator surface. Enrolment lands here first because it is the
+        // only one of these the runner plane cannot exist without.
+        RunnerOpsRoute::List
+        | RunnerOpsRoute::Get
+        | RunnerOpsRoute::Patch
+        | RunnerOpsRoute::Events
+        | RunnerOpsRoute::Leases
+        | RunnerOpsRoute::Streams => None,
     }
 }
 

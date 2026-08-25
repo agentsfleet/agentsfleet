@@ -84,6 +84,9 @@ fn lane_knobs() -> Vec<(&'static str, String)> {
         ("ENCRYPTION_MASTER_KEY", GOOD_KEK.to_owned()),
         ("DATABASE_POOL_SIZE", LANE_POOL_SIZE.to_owned()),
     ]
+    .into_iter()
+    .chain(support::IDENTITY.map(|(knob, value)| (knob, value.to_owned())))
+    .collect()
 }
 
 /// The lane's knobs as an in-process environment.
@@ -124,7 +127,10 @@ fn spawn(args: &[&str], knobs: &[(&str, String)]) -> Child {
         "ENCRYPTION_MASTER_KEY",
         "PORT",
         "DATABASE_POOL_SIZE",
-    ] {
+    ]
+    .into_iter()
+    .chain(support::IDENTITY_KNOBS)
+    {
         command.env_remove(knob);
     }
     for (knob, value) in knobs {

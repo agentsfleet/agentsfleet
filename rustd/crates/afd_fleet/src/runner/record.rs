@@ -17,6 +17,7 @@ use afd_core::id::Uuid7;
 use sqlx::Row as _;
 
 use crate::error::{Error, ErrorKind, Result, query, row_malformed};
+use crate::runner::policy::{AssignmentColumns, StoredVerdict};
 use crate::runner::store::Runners;
 use crate::sql;
 
@@ -31,6 +32,11 @@ const TABLE_RUNNERS: &str = "fleet.runners";
 /// Owned, because the pooled connection is released before the caller reads it;
 /// the JSON columns stay TEXT so the caller can deserialise a borrowing wire
 /// type straight out of them.
+///
+/// The assignment and the verdict are grouped rather than flat, so the self
+/// read and the heartbeat hand their callers the SAME two types — and so the
+/// decoder that turns either into a wire policy has one shape to accept
+/// (`crate::runner::policy`).
 #[derive(Debug)]
 pub struct SelfRow {
     /// The runner's identifier, already proven canonical.
@@ -39,25 +45,15 @@ pub struct SelfRow {
     pub status: String,
     /// The host it runs on.
     pub host_id: String,
-    /// The tier it was assigned.
-    pub sandbox_tier: String,
     /// Epoch milliseconds of the last beat; [`sql::LAST_SEEN_NEVER`] when it has
     /// never connected.
     pub last_seen_at: i64,
-    /// The assigned egress posture.
-    pub network_policy: String,
-    /// The assigned registry baseline, as stored JSON.
-    pub registry_allowlist_json: Option<String>,
-    /// The assigned worker ceiling.
-    pub worker_count: i32,
+    /// What the operator assigned, as stored.
+    pub assignment: AssignmentColumns,
     /// What the host last reported it can enforce, as stored JSON.
     pub capability_report_json: Option<String>,
-    /// Whether the row reads degraded.
-    pub degraded: bool,
-    /// Why it reads degraded.
-    pub degraded_reason: Option<String>,
-    /// Operator-added binds, as stored JSON.
-    pub extra_binds_json: Option<String>,
+    /// The verdict the row currently holds.
+    pub verdict: StoredVerdict,
 }
 
 impl Runners {
@@ -83,20 +79,25 @@ impl Runners {
         // Fail closed rather than answer 200 for a phantom runner.
         let row = found.ok_or_else(|| Error::new(ErrorKind::RunnerVanished))?;
 
-        let id: String = row.try_get(0).map_err(query(CONTEXT_SELF_READ))?;
+        let column = query(CONTEXT_SELF_READ);
+        let id: String = row.try_get(0).map_err(&column)?;
         Ok(SelfRow {
             id: Uuid7::parse(&id).map_err(row_malformed(TABLE_RUNNERS, "id"))?,
-            status: row.try_get(1).map_err(query(CONTEXT_SELF_READ))?,
-            host_id: row.try_get(2).map_err(query(CONTEXT_SELF_READ))?,
-            sandbox_tier: row.try_get(3).map_err(query(CONTEXT_SELF_READ))?,
-            last_seen_at: row.try_get(4).map_err(query(CONTEXT_SELF_READ))?,
-            network_policy: row.try_get(5).map_err(query(CONTEXT_SELF_READ))?,
-            registry_allowlist_json: row.try_get(6).map_err(query(CONTEXT_SELF_READ))?,
-            worker_count: row.try_get(7).map_err(query(CONTEXT_SELF_READ))?,
-            capability_report_json: row.try_get(8).map_err(query(CONTEXT_SELF_READ))?,
-            degraded: row.try_get(9).map_err(query(CONTEXT_SELF_READ))?,
-            degraded_reason: row.try_get(10).map_err(query(CONTEXT_SELF_READ))?,
-            extra_binds_json: row.try_get(11).map_err(query(CONTEXT_SELF_READ))?,
+            status: row.try_get(1).map_err(&column)?,
+            host_id: row.try_get(2).map_err(&column)?,
+            last_seen_at: row.try_get(4).map_err(&column)?,
+            assignment: AssignmentColumns {
+                sandbox_tier: row.try_get(3).map_err(&column)?,
+                network_policy: row.try_get(5).map_err(&column)?,
+                registry_allowlist_json: row.try_get(6).map_err(&column)?,
+                worker_count: row.try_get(7).map_err(&column)?,
+                extra_binds_json: row.try_get(11).map_err(&column)?,
+            },
+            capability_report_json: row.try_get(8).map_err(&column)?,
+            verdict: StoredVerdict {
+                degraded: row.try_get(9).map_err(&column)?,
+                reason: row.try_get(10).map_err(&column)?,
+            },
         })
     }
 }

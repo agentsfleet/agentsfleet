@@ -106,13 +106,32 @@ struct Cached {
 }
 
 /// Live capabilities, cached against the provider.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ProviderCapabilities<S> {
     source: Arc<S>,
     clock: Arc<dyn Clock>,
     cache: moka::future::Cache<Box<str>, Cached>,
     ttl_ms: i64,
     ceiling_ms: i64,
+}
+
+// Hand-written rather than derived, and the difference is load-bearing.
+// `#[derive(Clone)]` would add an `S: Clone` bound that the fields do not need
+// — the source is behind an `Arc` — so a perfectly shareable resolver over a
+// non-cloneable claim source would fail to clone for a reason nothing in the
+// struct explains. Every field here is a handle, and a clone shares the CACHE
+// rather than duplicating it, which is the property that makes handing one to
+// each credential plane correct.
+impl<S> Clone for ProviderCapabilities<S> {
+    fn clone(&self) -> Self {
+        Self {
+            source: Arc::clone(&self.source),
+            clock: Arc::clone(&self.clock),
+            cache: self.cache.clone(),
+            ttl_ms: self.ttl_ms,
+            ceiling_ms: self.ceiling_ms,
+        }
+    }
 }
 
 impl<S: ClaimSource> ProviderCapabilities<S> {

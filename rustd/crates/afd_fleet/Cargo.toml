@@ -26,6 +26,9 @@ afd_auth.workspace = true
 afd_core.workspace = true
 # The pool every statement in `sql/` runs against.
 afd_db.workspace = true
+# The readiness index and the fleet event streams. A lease is the one verb
+# that cannot be served from either datastore alone.
+afd_redis.workspace = true
 # The runner-plane state reads, and the `admin_state` spelling the credential
 # lookup already owns — imported rather than restated (RULE UFS).
 afd_state.workspace = true
@@ -43,6 +46,10 @@ hex.workspace = true
 # The minted credential is overwritten when the response revealing it is done;
 # a freed `Box<str>` is not.
 zeroize.workspace = true
+# The `Deserialize` bound the stored-column decoders take, and the value
+# deserializer that turns a stored enum spelling back into its wire variant —
+# through `afd_wire`'s own serde renames, so a column and the wire cannot drift.
+serde.workspace = true
 # JSON columns: `labels`, `registry_allowlist`, `capability_report` and the
 # `metadata` a runner event carries are all `jsonb`, built and read as values.
 serde_json.workspace = true
@@ -55,9 +62,19 @@ tracing.workspace = true
 # happen (`dispatch/write_rust.md`: "Concurrency work needs a deterministic
 # contention test, not only a happy-path asynchronous test").
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+# Joins the contenders in the affinity race so the datastore, and not the order
+# of a test loop, decides which claim arrives first.
+futures-util = { workspace = true }
 # Installs a subscriber so `tracing` event macros evaluate their fields at all;
 # without one a diagnostic line reads as unreachable to llvm-cov.
 tracing-subscriber.workspace = true
+# The integration suite creates and drops its own database per test, which
+# needs the migrator and the role-resolving pool config the library never asks
+# for. A dev-dependency on the crate this one already depends on, for the
+# `test-util` seams only the suite reaches.
+afd_db = { workspace = true, features = ["test-util"] }
+# The digest a suite proves is stored in place of the token.
+afd_auth = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

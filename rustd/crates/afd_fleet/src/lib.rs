@@ -36,8 +36,12 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
 pub mod error;
+pub mod lease;
 pub mod runner;
 pub mod sql;
 
 pub use crate::error::{Error, Result};
 pub use crate::runner::reconcile::{Verdict, reconcile};
+pub use crate::runner::{
+    AssignmentColumns, Beat, Enrolled, NO_REPORT, Runners, SelfRow, StoredVerdict,
+};

@@ -10,6 +10,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+mod support;
+
 use afd_core::env::MapEnv;
 use agentsfleetd::serve::{Acceptor, BootFailure, DEFAULT_PORT, serve_accepts};
 use agentsfleetd::supervisor::Supervisor;
@@ -34,11 +36,18 @@ const DEAD_REDIS: &str = "redis://127.0.0.1:1";
 
 /// An environment whose knobs all parse but whose datastores are not there.
 fn parses_but_dead() -> MapEnv {
-    MapEnv::from_pairs([
-        (DATABASE_KNOB, DEAD_DATABASE),
-        (REDIS_KNOB, DEAD_REDIS),
-        (KEK_KNOB, GOOD_KEK),
-    ])
+    MapEnv::from_pairs(
+        [
+            (DATABASE_KNOB, DEAD_DATABASE),
+            (REDIS_KNOB, DEAD_REDIS),
+            (KEK_KNOB, GOOD_KEK),
+        ]
+        .into_iter()
+        // Required at boot, and resolved rather than dialled — so a well-formed
+        // provider keeps this fixture's failure the DATASTORE one it is
+        // asserting about.
+        .chain(support::IDENTITY),
+    )
 }
 
 /// An unusable environment refuses before anything is opened.
