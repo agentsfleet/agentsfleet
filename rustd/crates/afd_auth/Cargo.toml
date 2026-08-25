@@ -23,6 +23,8 @@ thiserror.workspace = true
 # SHA-256 of the presented value, so this is a parity requirement rather than a
 # choice: `api_key.zig::sha256Hex` is what the columns were written with.
 sha2.workspace = true
+# Lower-case hex for the stored digest, rather than a hand-written render.
+hex.workspace = true
 # Invariant 5. A presented credential IS a secret; a `Box<str>` is freed rather
 # than overwritten, so without this the bytes sit in released heap.
 zeroize.workspace = true

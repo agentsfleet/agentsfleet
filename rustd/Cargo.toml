@@ -117,23 +117,42 @@ uuid = { version = "1.25.0", default-features = false, features = ["v7", "std"] 
 # twice a day — there is no throughput here to trade the posture for.
 base64 = { version = "0.23.1", default-features = false, features = ["std"] }
 
-# RS256 verification for session tokens.
+# The ONE cryptographic backend this workspace links.
 #
-# Already in this graph: rustls selects a `CryptoProvider`, and sqlx's
-# `tls-rustls-ring-webpki` plus redis's `tokio-rustls-comp` make that ring. So
-# this is a DIRECT dependency on a crate the binary already links, not a new
-# one — and it is the layer where the API matches the input. rustls does verify
-# RSA, but every entry point takes a DER `SubjectPublicKeyInfo`
-# (`rustls-webpki/src/signed_data.rs:222`), because in TLS a key always arrives
-# inside a certificate. A JWKS publishes raw big-endian `n` and `e`, which is
-# precisely what `ring::signature::RsaPublicKeyComponents` accepts; reaching
-# rustls's verifier instead would mean hand-encoding ASN.1 — INTEGER sign-bit
-# padding included — in the most security-sensitive file in the workspace, to
-# call the same code one layer up.
+# Was `ring`, chosen because a JWKS publishes raw big-endian `n` and `e` and
+# `ring::signature::RsaPublicKeyComponents` accepts exactly that, where rustls's
+# own verifier wants a DER `SubjectPublicKeyInfo`. That reasoning is unchanged —
+# `aws_lc_rs::signature::RsaPublicKeyComponents` has the same shape, which is
+# deliberate: AWS-LC-RS is published as a ring-compatible library.
 #
-# `dev_urandom_fallback` is dropped: nothing here asks ring for entropy
-# (`afd_crypto` owns the one entropy surface, through `getrandom`).
-ring = { version = "0.17.14", default-features = false, features = ["alloc"] }
+# What changed is that the choice stopped being free. `object_store` enables
+# `aws-lc-rs` as a DEFAULT feature with no ring alternative, and reqwest 0.13
+# collapsed its TLS features so plain `rustls` forces it too. Keeping ring
+# alongside would put TWO `CryptoProvider`s in one binary — the failure the
+# previous pin existed to avoid — so the resolution is one provider, not a
+# pin that can no longer hold.
+#
+# `aws-lc-sys` compiles C (a BoringSSL fork), which ends this workspace's
+# no-C-linkage posture. Verified to build here without cmake, on Apple clang
+# alone; the musl cross-compile is unproven and is a cutover (M181) concern,
+# since CI ships no Rust binary today.
+#
+# NO ring-compatibility features here, and that was measured rather than
+# assumed. `ring-sig-verify` only preserves ring's `VerificationAlgorithm::verify`
+# signature (which takes `untrusted::Input`) — the verifier this workspace
+# actually calls, `RsaPublicKeyComponents::verify`, is ungated and already takes
+# `&[u8]`, so the feature bought nothing but a dependency. `ring-io` is needed by
+# ONE signing test and is declared on that crate's dev-dependency instead, where
+# it says who needs it.
+#
+# Both are aws-lc-rs DEFAULTS, so `default-features = false` is what makes the
+# question askable at all. Enabling them because a build failed — rather than
+# reading which call site failed and why — is how a compatibility shim becomes
+# permanent.
+aws-lc-rs = { version = "1.18.0", default-features = false, features = [
+    "aws-lc-sys",
+    "alloc",
+] }
 
 # The subject to capability-claim cache. `future` rather than `sync`: the
 # request path is asynchronous, and `try_get_with` coalesces concurrent loads
@@ -144,39 +163,26 @@ ring = { version = "0.17.14", default-features = false, features = ["alloc"] }
 # order with.
 moka = { version = "0.12.16", default-features = false, features = ["future"] }
 
-# The JWKS fetch and the provider capability call.
+# The JWKS fetch, the provider capability call, and the object-store transport.
 #
-# PINNED TO THE 0.12 LINE DELIBERATELY, and 0.13 is not an upgrade here. 0.13
-# collapsed the TLS features to one: plain `rustls` forces `aws-lc-rs`, which
-# would put a SECOND rustls provider beside ring in this binary — the
-# configuration whose feature-unification failure the M176 handoff already
-# records for `cargo test -p afd_redis` — and `rustls-no-provider` reaches the
-# platform trust store, losing the property §2 chose `tls-rustls-ring-webpki`
-# for: the anchors ship in the binary, so a slim container without
-# `ca-certificates` still verifies. 0.12's
-# `rustls-tls-webpki-roots-no-provider` keeps both — in-binary anchors, and no
-# provider forced, so it uses the process default that sqlx and redis already
-# established. `webpki-roots` is already in the lock.
+# WAS PINNED TO 0.12 DELIBERATELY, and that pin is now released rather than
+# forgotten. Its reason was exact: 0.13 collapsed the TLS features so plain
+# `rustls` forces `aws-lc-rs`, which would have put a SECOND rustls provider
+# beside ring. `object_store` forces `aws-lc-rs` regardless — it is a default
+# feature there with no ring alternative — so the pin could no longer deliver
+# what it was for, and the workspace resolves to one provider instead.
 #
-# `gzip` is deliberately absent. reqwest advertises `accept-encoding` only when
-# that feature is on, so leaving it off makes wire bytes equal decoded bytes and
-# `JWKS_MAX_RESPONSE_BYTES` a correct bound with no streaming decompressor to
-# size — the decompression-bomb reasoning in `jwks_fetch.zig:9-13` satisfied by
-# removing the decompressor rather than bounding it. A key set is three
-# kilobytes fetched twice a day; there is nothing to compress for.
+# Two properties the 0.12 features bought are GONE, and both are behaviour:
 #
-# `rustls-tls-webpki-roots` rather than its `-no-provider` twin, and the
-# difference is not cosmetic: `-no-provider` leaves the `CryptoProvider`
-# unselected and defers to a process default. Nothing installs one, and rustls
-# does not report that as an error — reqwest's `ClientBuilder::build` PANICS
-# with "No provider set", inside a workspace that denies `clippy::panic` and a
-# daemon that must not abort on a configuration fault. This feature expands to
-# `-no-provider` plus `__rustls-ring`, so it keeps the in-binary anchors and
-# names ring explicitly — the same provider `tls-rustls-ring-webpki` already
-# chose for sqlx, and still no `aws-lc-rs`.
-reqwest = { version = "0.12.28", default-features = false, features = [
-    "rustls-tls-webpki-roots",
-] }
+#   - In-binary trust anchors. 0.13 removed `webpki-roots` entirely and uses
+#     `rustls-platform-verifier`, so verification now depends on the system
+#     trust store. A slim container without `ca-certificates` would fail to
+#     verify where 0.12 succeeded; `Dockerfile` installs it, which is what
+#     makes this safe rather than merely survivable.
+#   - Nothing else: `gzip` stays absent for the reason it always was, so wire
+#     bytes equal decoded bytes and `JWKS_MAX_RESPONSE_BYTES` is a correct
+#     bound with no streaming decompressor to size.
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls"] }
 
 # Postgres. sqlx is the DRIVER here and nothing more: `migrate` and `macros` are
 # both off, because this workspace runs the Zig daemon's own ledger
@@ -190,7 +196,12 @@ reqwest = { version = "0.12.28", default-features = false, features = [
 # Rust either way, which is the no-C posture afd_crypto already holds.
 sqlx = { version = "0.9.0", default-features = false, features = [
     "runtime-tokio",
-    "tls-rustls-ring-webpki",
+    # aws-lc-rs, not ring: `object_store` and reqwest 0.13 both force that
+    # provider, and two providers in one binary is the state this feature was
+    # originally pinned to prevent. Trust anchors now come from the platform
+    # verifier rather than in-binary webpki roots — the container installs
+    # `ca-certificates`, which is what makes that safe.
+    "tls-rustls-aws-lc-rs",
     "postgres",
 ] }
 # The runtime sqlx drives. `rt-multi-thread` is a dev-dependency concern (the
@@ -266,6 +277,27 @@ hyper-util = { version = "0.1.20", default-features = false, features = ["tokio"
 # it: `route_meta` names methods and statuses and has no business depending on
 # a web framework to do it.
 http = { version = "1.5.0", default-features = false, features = ["std"] }
+
+# The Fleet Bundle store. R2 is S3-compatible, and this is the Apache Arrow
+# project's own object-store crate rather than a hand-rolled signer: one
+# authenticated GET by content hash is still SigV4, and a hand-written SigV4 is
+# the kind of security plumbing that earns a CVE for saving a dependency.
+#
+# It also ships an in-memory backend, which is what the bundle-fetch tests run
+# against — no network, the same reason `afd_auth`'s directory is a trait.
+#
+# `aws` is the only cloud feature enabled; the others would link signers for
+# stores this product does not use.
+object_store = { version = "0.14.1", default-features = false, features = ["aws"] }
+
+# JWT semantics for the GitHub App mint: header and claims JSON, base64url
+# segments, and expiry validation. NOT a crypto backend — it sits on one, and
+# `aws_lc_rs` points it at the same provider everything else here uses, so the
+# binary carries one implementation of RS256 rather than two.
+#
+# Writing this by hand on top of `aws-lc-rs` would be possible and is exactly
+# the plumbing not to hand-roll.
+jsonwebtoken = { version = "11.0.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
 
 # OpenTelemetry, for the push-only export the Zig daemon already does by hand
 # (`observability/otlp/`). The SDK alone: it re-exports the API types the

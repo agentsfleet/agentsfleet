@@ -23,7 +23,7 @@ afd_core.workspace = true
 base64.workspace = true
 moka.workspace = true
 reqwest.workspace = true
-ring.workspace = true
+aws-lc-rs.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -44,7 +44,13 @@ base64.workspace = true
 # audience, a tenant nested under `metadata` — can be verified rather than
 # asserted about. `ring` signs as well as verifies, so this needs no crate the
 # library does not already link; the key is the Zig tree's throwaway fixture.
-ring = { workspace = true, features = ["std"] }
+# Was `ring`; see the workspace manifest for why one provider replaced two.
+#
+# `ring-io` is asked for HERE and nowhere else: it carries the
+# `modulus`/`exponent` accessors this test reads off a generated key pair to
+# build the public-key components the verifier takes. The library needs no
+# compatibility feature at all.
+aws-lc-rs = { workspace = true, features = ["ring-io"] }
 # Tracing macros do not evaluate their fields without a subscriber installed,
 # so every diagnostic line here would read as unreachable without this. The
 # note beside `tracing` in the workspace manifest carries the measurement.

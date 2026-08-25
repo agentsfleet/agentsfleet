@@ -75,14 +75,12 @@ impl Digest {
     #[must_use]
     pub fn of_minted(raw: &str) -> Self {
         use sha2::Digest as _;
-        let hashed = sha2::Sha256::digest(raw.as_bytes());
-        let mut hex = String::with_capacity(DIGEST_HEX_LEN);
-        for byte in hashed {
-            use std::fmt::Write as _;
-            // A two-digit lower-case hex write into a `String` cannot fail.
-            let _ = write!(hex, "{byte:02x}");
-        }
-        Self(hex.into())
+        // `hex::encode` rather than a `write!("{:02x}")` loop. The loop was not
+        // wrong, but it re-derives a solved thing in the file that decides
+        // whether a credential authenticates, and a hand-written hex render is
+        // where a leading zero goes missing. Lower-case, which is what every
+        // credential column stores.
+        Self(hex::encode(sha2::Sha256::digest(raw.as_bytes())).into())
     }
 
     /// The digest as the lower-case hex a credential column stores.
