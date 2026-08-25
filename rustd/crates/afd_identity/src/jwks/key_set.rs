@@ -4,7 +4,7 @@
 //!
 //! `src/agentsfleetd/auth/jwks_crypto.zig` accepts moduli of 128, 256, 384 and
 //! 512 bytes — 1024 bits upward. This daemon accepts 2048 upward, because
-//! `ring::signature::RSA_PKCS1_2048_8192_SHA256` is what it verifies with, and
+//! `aws_lc_rs::signature::RSA_PKCS1_2048_8192_SHA256` is what it verifies with, and
 //! ring names its 1024-bit constant `FOR_LEGACY_USE_ONLY` on purpose.
 //!
 //! No production identity provider publishes 1024-bit RSA, so the divergence is
@@ -33,7 +33,7 @@ pub const MAX_MODULUS_BYTES: usize = 1024;
 ///
 /// `modulus` and `exponent` are big-endian bytes with no leading zeros, which
 /// is both what base64url-decoding a JWK's `n`/`e` yields and exactly what
-/// `ring::signature::RsaPublicKeyComponents` expects — the reason this daemon
+/// `aws_lc_rs::signature::RsaPublicKeyComponents` expects — the reason this daemon
 /// verifies with ring rather than through rustls. rustls does verify RSA, but
 /// only against a DER `SubjectPublicKeyInfo`, because in TLS a key always
 /// arrives inside a certificate; reaching it would mean hand-encoding ASN.1

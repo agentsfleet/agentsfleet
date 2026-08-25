@@ -58,6 +58,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_api/**` | EDIT | Route variants + handlers for the `/v1/runners` verb set; `runnerBearer` layer wiring |
 | `rustd/crates/afd_auth/**` | EDIT | `runnerBearer` validator (`agt_r` prefix, timing-safe hash lookup, no memoization); `Digest::of_minted` so the minter and the verifier hash through ONE function |
 | `rustd/crates/agentsfleetd/**` | EDIT | sweeper tasks join the supervisor; runner metric families registered |
+| `rustd/crates/afd_identity/**` | EDIT | `ring` → `aws-lc-rs` (4 lines in `jwks/verifier.rs`, plus the signing test) so the binary carries ONE crypto provider once `object_store` forces `aws-lc-rs` |
 | `rustd/crates/afd_core/**` | EDIT | `Uuid7::encode` — version-7 minting beside the canonical-spelling parser that already lives there; the Zig `id_format.zig` has no Rust counterpart and an encoder anywhere else would re-derive the dash and nibble offsets |
 | `rustd/crates/afd_wire/**` | EDIT | registered in `workspace.dependencies`; no wire shape is touched (M175 owns those) |
 | `rustd/Cargo.toml` | EDIT | new members; `uuid` (v7 minting) and `hex` registered — both already resolved in the lock, so neither is a new crate |
@@ -337,6 +338,43 @@ N/A — no files deleted.
   (`INSERT_LEASE_WITH_EVENT` 23 binds, `CLAIM_SETTLE_SQL` 17, `INSERT_RUNNER_WITH_EVENT`
   17); statements at four binds or fewer bind at the call site, per
   `M-SIMPLE-ABSTRACTIONS`.
+- **Crypto backend consolidated to `aws-lc-rs`; `ring` removed (Indy, in-session).**
+  Indy directed that §4.4 adopt `object_store` in THIS milestone rather than a
+  follow-up, and separately that the workspace track the latest crates. Those two
+  decide the backend: `object_store` 0.14 enables `aws-lc-rs` as a DEFAULT
+  feature with no ring alternative, and `reqwest` 0.13 collapsed its TLS features
+  so plain `rustls` forces the same. Keeping `ring` alongside would put two
+  `CryptoProvider`s in one binary — the state M176's `reqwest` 0.12 pin existed
+  to prevent — so the pin is released and the workspace resolves to one provider.
+  `cargo tree -i ring` now reports nothing; `cargo tree -i aws-lc-rs` shows
+  `afd_identity`, `reqwest`, `redis` and `sqlx-core` all on it.
+
+  Three objections were raised against doing this inside M177 and TWO WERE WRONG
+  on facts that had not been checked, which is recorded here rather than quietly
+  dropped: (1) "`aws-lc-sys` needs cmake" — it does not at 1.18/0.44; it built
+  here on Apple clang with no cmake installed; (2) "it breaks the linux
+  cross-compile" — CI ships no Rust binary today (`release.yml` builds only the
+  Zig daemon for musl), so that risk is a cutover (M181) concern and is better
+  discovered now than then. The third (R5 / Files Changed) is real and is
+  resolved by the `afd_identity` row above.
+
+  Two behaviour changes are ACCEPTED and named rather than absorbed: the
+  workspace's no-C-linkage posture ends (`aws-lc-sys` is a BoringSSL fork that
+  compiles C), and `reqwest` 0.13 removed `webpki-roots` so trust anchors now
+  come from the platform verifier rather than the binary — `Dockerfile` installs
+  `ca-certificates`, which is what makes that safe rather than merely survivable.
+  The musl cross-compile of `aws-lc-sys` remains UNPROVEN and is M181's to prove.
+
+  "ring-compatible" proved to mean "compatible when you ask": `RsaKeyPair::public()`
+  is `public_key()` on the `KeyPair` trait, and the components conversion plus
+  `modulus_len` live behind the `ring-io` / `ring-sig-verify` features, which are
+  aws-lc-rs defaults and must be named explicitly under `default-features = false`.
+- **§4.5 mint backend.** `jsonwebtoken` 11 is kept — it is JWT semantics (header
+  and claims JSON, base64url segments, expiry validation), not a crypto backend,
+  and hand-rolling that on top of a primitive library is the plumbing that earns
+  a CVE for saving a dependency. Its backend feature is `aws_lc_rs`, pointing it
+  at the same provider as everything else. The `rust_crypto` alternative was the
+  right answer only while the workspace was staying on `ring`, and it is not.
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).

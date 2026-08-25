@@ -26,6 +26,7 @@ use afd_auth::scope::{Scope, parse_claim};
 use afd_auth::verifier::{TokenVerifier, VerifiedClaims, VerifyError};
 use afd_core::clock::{Clock, FixedClock, UnixMillis};
 use afd_identity::{JwksVerifier, StaticKeySet, VerifierConfig};
+use aws_lc_rs::signature::KeyPair as _;
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 
@@ -43,17 +44,20 @@ const WORKSPACE: &str = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a7d";
 /// Far in the future, so nothing here is about expiry.
 const NOT_EXPIRED: i64 = 4_102_444_800;
 
-fn key_pair() -> ring::signature::RsaKeyPair {
+fn key_pair() -> aws_lc_rs::signature::RsaKeyPair {
+    // `public_key` lives on the `KeyPair` trait in aws-lc-rs, where ring had it
+    // as an inherent method — the one place "ring-compatible" is near-compatible.
     let der = STANDARD
         .decode(TEST_KEY_PKCS1_B64)
         .expect("the fixture key is base64");
-    ring::signature::RsaKeyPair::from_der(&der).expect("a PKCS#1 RSA private key")
+    aws_lc_rs::signature::RsaKeyPair::from_der(&der).expect("a PKCS#1 RSA private key")
 }
 
 /// A key set publishing the signing key's own public components.
 fn key_set() -> String {
     let pair = key_pair();
-    let components: ring::signature::RsaPublicKeyComponents<Vec<u8>> = pair.public().into();
+    let components: aws_lc_rs::signature::RsaPublicKeyComponents<Vec<u8>> =
+        pair.public_key().into();
     let n = URL_SAFE_NO_PAD.encode(&components.n);
     let e = URL_SAFE_NO_PAD.encode(&components.e);
     format!("{{\"keys\":[{{\"kty\":\"RSA\",\"kid\":\"{KID}\",\"n\":\"{n}\",\"e\":\"{e}\"}}]}}")
@@ -68,10 +72,10 @@ fn sign(payload: &str) -> Presented {
     let signing_input = format!("{header}.{body}");
 
     let pair = key_pair();
-    let mut signature = vec![0_u8; pair.public().modulus_len()];
+    let mut signature = vec![0_u8; pair.public_key().modulus_len()];
     pair.sign(
-        &ring::signature::RSA_PKCS1_SHA256,
-        &ring::rand::SystemRandom::new(),
+        &aws_lc_rs::signature::RSA_PKCS1_SHA256,
+        &aws_lc_rs::rand::SystemRandom::new(),
         signing_input.as_bytes(),
         &mut signature,
     )

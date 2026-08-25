@@ -9,10 +9,13 @@ Every triggered document requires one `📖 DOC READ: <path>` proof-line **per t
 | Always (universal) | `docs/greptile-learnings/RULES.md` — at EXECUTE start read the Rule-code gloss legend + the sections named by the spec's "Applicable Rules" list (canonical); the full file belongs to `/review`, not EXECUTE. On sub-task shape change, section-scan (`grep -n "^## "`) and read only newly-touched sections, cited in the proof-line — never the full file again. |
 | Lifecycle stage transition (CHORE(open)/PLAN/CHORE(close)/LAND, worktree setup, milestone bootstrap) | `dispatch/lifecycle.md` — the entered stage's runbook section only (section-scan; fires on the transition itself, not on an Edit/Write). |
 | Any source file (cross-cutting authoring) | `dispatch/write_any.md` — length, logging, milestone-id, error-registry, UFS, greptile read, legacy-workaround family. |
+| Porting a codebase, module, or subsystem from another language | `dispatch/write_any.md` §Porting a codebase between languages — a port is a rewrite with a conformance test: port the guarantee, delete the workaround, conform on observable behaviour, name the debt not carried over. |
 | Spec's "Applicable Rules" | Each rule (canonical). Missing → the cross-cutting codes of `dispatch/write_any.md` are the floor; surface omission. |
 | `*.zig` | `dispatch/write_zig.md`. ZIG GATE per edit. |
 | `*.ts`/`*.tsx`/`*.js`/`*.jsx` | `dispatch/write_ts_adhere_bun.md` — TS FILE SHAPE DECISION (§1) at PLAN, const/import/Bun-primitive discipline, anti-patterns. |
 | `*.rs` | `dispatch/write_rust.md` — ownership, error variants, feature combinations, and contention tests. |
+| Rust error type, `Result` alias, or any fallible signature | `dispatch/write_rust.md` §Error discipline — one error per crate, one `Result` alias, `#[from]` composition, `source()` never returns self. |
+| Designing a Rust function, type, or module; writing `match` on a `Result`/`Option`; any production `unwrap()` | `dispatch/write_rust.md` §Functional design — Result pipelines over control-flow trees, illegal states unrepresentable, bind once, `unwrap` needs a proved invariant. |
 | `*.py` | `dispatch/write_python.md` — parsing boundaries, resource ownership, and specific exceptions. |
 | `*.sh` | `dispatch/write_shell.md` — quoting, array arguments, cleanup, input safety, and shell compatibility. |
 | Log emit (any language; see LOGGING GATE triggers) | `docs/LOGGING_STANDARD.md` — wire format (logfmt), severity ladder, error-code embedding, scope/event discipline, PII redaction, §10A tightenings. LOGGING GATE per edit. |
