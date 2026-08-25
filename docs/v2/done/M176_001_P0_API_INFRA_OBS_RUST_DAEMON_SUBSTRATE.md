@@ -86,6 +86,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `make/test-infra.mk` | EDIT | extracts and checks `ca.crt` rather than the server's own leaf |
 | `AGENTS.md` (`CLAUDE.md` symlinks to it) | EDIT | its "no slow tier … nothing needs real Postgres or Redis" claim is retired by the lane this milestone creates |
 | `docs/v2/pending/M176_001_*.md` | DELETE | the same spec, at the path it left when CHORE(open) moved it to `active/`; a move is two paths in a diff |
+| `docs/v2/pending/M181_001_*.md` | EDIT | the cutover milestone inherits a constraint this one created: an older binary now REFUSES a newer ledger instead of reaping it, so M181's rollback path may carry no `migrate` step. Recorded where cutover will read it rather than left in a review thread |
 | `.github/workflows/test.yml` | EDIT | the Rust job measures coverage where the datastores are, so it moved to the lane that has them |
 | `.gitignore` | EDIT | the coverage artefacts the Rust lane writes (`rustd/lcov.info`, profraw) are build output, not source |
 | `make/build.mk` | EDIT | `sync-version` rewrote the FIRST `version = "…"` in `rustd/Cargo.toml`, which after the members list is a dependency's, not the workspace's |
