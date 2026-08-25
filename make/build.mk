@@ -5,7 +5,14 @@
 .PHONY: build build-dev push-dev push build-linux-alpine _docker_login _prepare_prebuilt_linux_binaries sync-version check-version
 
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.1.0")
+# The commit, computed once and EXPORTED. It tags the image below, and
+# `rustd/crates/afd_api/build.rs` reads it for the commit `/healthz` reports —
+# so the tag on an image and the field inside it come from one variable rather
+# than from two that can disagree. Before the export, a container build tagged
+# `:VERSION-abc1234` and served `"commit":"unknown"`: the build context carries
+# no `.git`, and nothing told the build script what `make` already knew.
 GIT_COMMIT := $(if $(GITHUB_SHA),$(shell echo $(GITHUB_SHA) | cut -c1-7),$(shell git rev-parse --short HEAD 2>/dev/null || echo "dev"))
+export GIT_COMMIT
 SERVICE_NAME := agentsfleetd
 DOCKER_REGISTRY ?= ghcr.io
 IMAGE_REPO ?= $(DOCKER_REGISTRY)/agentsfleet/$(SERVICE_NAME)
@@ -85,7 +92,6 @@ sync-version: ## Propagate VERSION → build.zig.zon + cli/package.json (cli.js 
 	perl -i -pe 's/\.version = "[^"]+"/.version = "'"$$V"'"/;' build.zig.zon; \
 	perl -i -pe 's/"version": "[^"]+"/"version": "'"$$V"'"/;' cli/package.json; \
 	perl -i -pe 's/^version = "[^"]+"/version = "'"$$V"'"/;' rustd/Cargo.toml; \
-	perl -i -pe 's/(afd_core = \{ path = "crates\/afd_core", version = ")[^"]+/$${1}'"$$V"'/;' rustd/Cargo.toml; \
 	echo "✓ version $$V synced → build.zig.zon, cli/package.json, rustd/Cargo.toml (cli.js reads it at runtime)"
 
 check-version: ## Verify build.zig.zon, cli/package.json and rustd/Cargo.toml match VERSION
@@ -98,8 +104,6 @@ check-version: ## Verify build.zig.zon, cli/package.json and rustd/Cargo.toml ma
 		|| { printf 'DRIFT  cli/package.json: %s\n' "$$(grep '"version"' cli/package.json | head -1 | xargs)"; FAIL=1; }; \
 	grep -q "^version = \"$$V\"" rustd/Cargo.toml \
 		|| { printf 'DRIFT  rustd/Cargo.toml [workspace.package]: %s\n' "$$(grep -m1 '^version =' rustd/Cargo.toml | xargs)"; FAIL=1; }; \
-	grep -q "afd_core = { path = \"crates/afd_core\", version = \"$$V\" }" rustd/Cargo.toml \
-		|| { printf 'DRIFT  rustd/Cargo.toml [workspace.dependencies] afd_core: %s\n' "$$(grep -m1 'afd_core = {' rustd/Cargo.toml | xargs)"; FAIL=1; }; \
 	[ "$$FAIL" = "0" ] && echo "✓ all versions match $$V" || { echo "Run: make sync-version"; exit 1; }
 
 _docker_login:

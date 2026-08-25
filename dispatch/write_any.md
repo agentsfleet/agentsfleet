@@ -339,7 +339,11 @@ ERROR REGISTRY GATE: <file>
 **Family:** Constant discipline. **Source:** `AGENTS.orly.md` conformance enforcement
 + the selected language façade's Uniform Free Strings (UFS) clauses.
 
-**Triggers** — every `Edit`/`Write` to source files under `src/`, `ui/packages/*/src/`, `ui/packages/*/app/`, `ui/packages/*/lib/`, `ui/packages/*/components/`, `ui/packages/*/pages/`, `ui/packages/*/tests/`, `agentsfleet/src/`, `agentsfleet/test/` matching `*.zig`, `*.ts`, `*.tsx`, `*.js`, `*.jsx`. Excluded: `vendor/`, `third_party/`, `.zig-cache/`, `node_modules/`, `*.tsbuildinfo`.
+**Triggers** — every `Edit`/`Write` to a source file under the repository's own source surfaces — the `surfaces.user` prefixes it declares in `.oracle/orly.json`, or its source roots where it declares none — matching `*.zig`, `*.ts`, `*.tsx`, `*.js`, `*.jsx`, `*.rs`, `*.go`. Excluded: `vendor/`, `third_party/`, `.zig-cache/`, `node_modules/`, `*.tsbuildinfo`. `*.py` and `*.sh` fire this façade but are held out of the UFS leaf — see Scope. Each repository binds its own prefixes; naming one repository's layout here is what sends every other repository a trigger list it cannot match.
+
+In this repository those surfaces are `src/` (Zig), `rustd/crates/*/src/` (Rust), `cli/src/` and `ui/packages/*/{src,app,lib,components,pages,tests}/` (TypeScript).
+
+`agentsfleet/src/` and `agentsfleet/test/` were listed here until they stopped existing. A trigger path that resolves to nothing is the same silent green this card's gate exists to prevent. The identical stale prefix sat in `ufs.sh`'s cross-runtime parity scan, where it made the JavaScript half read zero files; that scan now derives its runtimes instead of naming directories, so no path in it can go stale again.
 
 **Override:** `UFS GATE: SKIPPED per user override (reason: ...)` immediately preceding the edit. **User-only**; auto-mode does not cover.
 
@@ -360,7 +364,7 @@ Three discipline points, all part of RULE UFS:
 
 2. **Semantic numeric literals → named constant.** Numeric literals carrying meaning beyond their digits become named consts even at first use. Includes: conversion factors (powers-of-ten ≥ 1e3 used as multipliers/divisors), thresholds, sub-cent rates, time-unit factors, byte-unit factors, retry caps, sentinel offsets. Bare `1_000_000_000` in `nanos / 1_000_000_000` is a smell — `nanos / NANOS_PER_USD` is the rule.
 
-3. **Cross-runtime parity.** Any constant that exists in more than one runtime (Zig, TS, JS) **must share its identifier verbatim**, modulo case where a language idiom forces it (Zig snake_case → TS/JS SCREAMING_SNAKE is a single-runtime style choice; the *semantic* name is identical). When a literal in runtime A would benefit from a name and a sibling runtime already has that name, reuse it. When introducing a new constant, define it in every runtime that uses the same value, same commit. There is no per-constant carve-out: this applies to every cross-runtime constant, not a curated subset.
+3. **Cross-runtime parity.** Any constant that exists in more than one of the runtimes this repository ships **must share its identifier verbatim**, modulo case where a language idiom forces it (Zig snake_case → TS/JS SCREAMING_SNAKE is a single-runtime style choice; the *semantic* name is identical). When a literal in runtime A would benefit from a name and a sibling runtime already has that name, reuse it. When introducing a new constant, define it in every runtime that uses the same value, same commit. There is no per-constant carve-out: this applies to every cross-runtime constant, not a curated subset.
 
 The gate exists because RULE UFS is otherwise pure self-policing. Without an audit script, an inline literal in a 800-LOC editing session reliably slips past attention.
 
@@ -372,11 +376,13 @@ Before saving an edit that introduces or relocates a literal:
 
 1. **Same-file repeat?** Grep within the file for the literal value. If it appears ≥1 time already, define a const at the top of the file (or in the module's `constants.ts`/`constants.zig`) and replace all occurrences.
 
-2. **Same-module repeat?** Grep within the module/package (`ui/packages/app/`, `agentsfleet/src/`, `src/`). If repeated, define in the module's canonical types/constants file (`lib/types.ts`, `src/state/<topic>.zig`, `agentsfleet/src/constants/<topic>.js`).
+2. **Same-module repeat?** Grep within the module or package that owns the file. If repeated, define it in that module's canonical constants file and replace every occurrence.
 
-3. **Cross-runtime sibling?** When the literal is a wire-format string or unit-conversion numeric, grep all three runtimes for an existing matching name. If found, reuse the name. If not, define in every runtime that uses the same value, same commit.
+3. **Cross-runtime sibling?** When the literal is a wire-format string or unit-conversion numeric, grep **every runtime this repository ships** for an existing matching name. If found, reuse it verbatim. If not, define it in each runtime that carries the value, same commit. A single-runtime repository answers this in one grep — the check is about the runtimes that exist, not a fixed count.
 
 4. **Carve-out check?** If the literal IS the contract a pin test verifies, write the `// pin test: literal is the contract` comment on or above the line. Otherwise, name it.
+
+Concretely here: modules are `src/` (Zig), `rustd/crates/*/` (Rust), `cli/src/` and `ui/packages/*/` (TypeScript), and their canonical constants files are `src/state/<topic>.zig`, the crate's own `constants.rs`, and `lib/types.ts`. The runtimes to grep in step 3 are Zig, TypeScript and Rust.
 
 #### Required output (per Edit/Write — one line by default)
 
@@ -406,6 +412,21 @@ UFS GATE: <file>
 The previous `--diff` (`BASE...HEAD`) default was retired with M70. The forcing function was M68 commit `02c1f3cf`: pre-commit's `HEAD` is the prior commit, so `BASE...HEAD` was blind to nine cross-runtime mismatches the agent had staged but not yet committed. The full-codebase scope removes that blindspot.
 
 `--all` is accepted as a back-compat alias for the default. `--diff` is rejected with exit 2 + a pointer to this section.
+
+**Parity scope is derived, not named.** The ERR_* parity scan reads `*.zig` as the source of truth and every other in-scope runtime file as the client side, anywhere in the tree. It used to glob three fixed directories; when one of them stopped existing the glob matched zero files and "every client `ERR_*` has a Zig twin" passed by scanning nothing. Where a repository ships no Zig there is no source of truth, so the check prints that it skipped — a repository with one runtime is not a repository with an orphan in every file. Test and fixture trees are excluded directory-shaped (`test/`, `tests/`, `fixtures/`), because a code declared as the INPUT to a negative test is not a client mirror.
+
+**Languages the leaf reads.** Zig, TypeScript, JavaScript, Rust and Go. The rule is one rule, but each language hides its literals differently, so each gets a lane in `is_source` + the string-dup pass:
+
+| Language | Held out of the count, and why |
+|---|---|
+| Rust | `#[cfg(test)]` / `#[test]` blocks (unit tests live *inside* the file they cover), feature-gated test seams (`#[cfg(feature = "test-util")]` — a helper that must compile into the crate so a sibling integration test can call it), `#[…]` attribute literals (`#[serde(rename = "…")]` takes a literal token by language rule — no const is legal there), `static` bindings alongside `const` |
+| Go | `const ( … )` group members (the keyword is stated once, on the opening line), backtick struct tags (`json:"id"` is read by reflection; a const cannot appear inside one) |
+
+The test-seam match is deliberately narrow — `test` as a whole word or a `-`/`_` segment — so a production gate like `#[cfg(feature = "redis")]` still counts and `"latest"` is not mistaken for a seam. `ufs_feature_gate.rs` pins that: widening it turns the fixture green.
+
+`*.py` and `*.sh` are **out of scope on purpose**, and the engine pins the reason in its own dispatch-coverage audit: Python writes ~14% of its literals in single quotes the matcher does not read, so it would report partial coverage as full; and a repeated `"$var"` in shell is interpolation, not a magic string — 59% of hits on a real tree, with no `const` to bind to. Adding either means building its lane first, not widening the glob.
+
+**A façade that fires on a language its leaf cannot read is a silent green.** `write_any.sh` has declared `*.rs` and `*.go` since those packs existed while `ufs.sh` read neither, so the gate printed a green UFS row over a file it never opened — and a Rust crate shipped a bare, twice-spelled wire verb under it. The engine now fails its dispatch-coverage audit on that divergence: every extension the façade claims is read by the leaf, or carries a written reason it is not.
 
 #### Self-audit (end-of-turn / CONFORM)
 

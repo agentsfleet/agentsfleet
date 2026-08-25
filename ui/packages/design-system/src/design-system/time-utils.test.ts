@@ -164,6 +164,25 @@ describe("formatTimeAbsolute — invalid input", () => {
   });
 });
 
+describe("formatTimeClock — invalid input", () => {
+  // Bug this catches: Intl.DateTimeFormat.format on a NaN-epoch Date raises
+  // RangeError ("Invalid time value"). formatTimeAbsolute carries the same
+  // guard and IS tested for it; the clock variant's guard was never exercised,
+  // so it could have been deleted without a red test — and the first sign
+  // would have been a server component throwing on a malformed timestamp.
+  it("returns the invalid fallback for an unparseable string", () => {
+    expect(formatTimeClock("not-a-date")).toBe(TIME_INVALID_FALLBACK);
+  });
+
+  it("returns the invalid fallback for a NaN-epoch Date", () => {
+    expect(formatTimeClock(new Date(Number.NaN))).toBe(TIME_INVALID_FALLBACK);
+  });
+
+  it("returns the invalid fallback whatever the locale", () => {
+    expect(formatTimeClock("garbage", "en-GB")).toBe(TIME_INVALID_FALLBACK);
+  });
+});
+
 describe("formatTimeRelative — invalid input", () => {
   // Bug this catches: previously produced "NaN years ago" by cascading NaN
   // through Math.floor — silent gibberish visible to end users. Now returns

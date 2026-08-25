@@ -1,0 +1,43 @@
+[package]
+name = "afd_db"
+description = "Postgres pools by role and the versioned schema migrator, sharing the Zig daemon's ledger."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL, the same single flag afd_crypto carries. Here it unlocks the
+# map-backed environment source, which is how the role/knob resolution gets
+# tested without mutating process state — `std::env::set_var` is `unsafe` in
+# edition 2024 precisely because a parallel test suite makes it a data race.
+test-util = ["afd_core/test-util"]
+
+[dependencies]
+# The wire codes a datastore failure answers.
+afd_core.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# Installed by the test harness so event macros evaluate their fields; see the
+# workspace manifest for why that is a correctness concern and not a coverage one.
+tracing-subscriber.workspace = true
+# The contention proofs need real parallelism, not a current-thread runtime
+# interleaving two futures politely.
+# `net` and `io-util` belong to the fault-injection harness, not the library:
+# `tests/support/fault_net.rs` stands a TCP proxy in front of Postgres so a test
+# can make the datastore stop answering mid-run, which is the only way to reach
+# the handshake-deadline and pool-exhaustion branches a healthy server never
+# produces.
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "net", "io-util", "macros", "time"] }
+
+[lints]
+workspace = true

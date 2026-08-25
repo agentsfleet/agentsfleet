@@ -2,17 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc gen-error-codes
-
-# Regenerate docs/api-reference/error-codes.mdx (own repo, ~/Projects/docs)
-# from the agentsfleetd error registry. No default target path on purpose —
-# cross-repo writes to ~/Projects/docs/ need an explicit per-session path
-# (own-branch workflow), never a silent default.
-gen-error-codes:  ## Regenerate error-codes.mdx from the error registry — usage: make gen-error-codes ERROR_CODES_MDX=/path/to/error-codes.mdx
-	@test -n "$(ERROR_CODES_MDX)" || { echo "usage: make gen-error-codes ERROR_CODES_MDX=/path/to/error-codes.mdx"; exit 1; }
-	@echo "→ [errors] generating $(ERROR_CODES_MDX) from the registry..."
-	@zig build gen-error-codes > "$(ERROR_CODES_MDX).tmp" && mv "$(ERROR_CODES_MDX).tmp" "$(ERROR_CODES_MDX)"
-	@echo "✓ [errors] $(ERROR_CODES_MDX) regenerated"
+.PHONY: lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc
 
 check-documentation-rules:  ## Check public API and command help text
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
@@ -105,7 +95,11 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@cd $(RUSTD_DIR) && cargo fmt --check
 	@echo "→ [rustd] Running Clippy (-D warnings)..."
-	@cd $(RUSTD_DIR) && cargo clippy --workspace --all-targets -- -D warnings
+	@# --all-features, not the default set: a crate's `test-util` feature gates
+	@# its mockable input/output core (M-MOCKABLE-SYSCALLS), and without this
+	@# flag that code is never compiled here — so the one module whose whole job
+	@# is to be exercised by tests would be the one module lint never sees.
+	@cd $(RUSTD_DIR) && cargo clippy --workspace --all-targets --all-features -- -D warnings
 	@echo "✓ [rustd] Lint passed"
 
 # Every scripts/*_test.py, discovered rather than listed.

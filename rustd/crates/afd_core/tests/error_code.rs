@@ -45,6 +45,21 @@ fn test_error_registry_unique() {
     for named in [
         error_code::UUIDV7_INVALID_ID_SHAPE,
         error_code::INVALID_REQUEST,
+        error_code::VAULT_DATA_INVALID,
+        error_code::INTERNAL_OPERATION_FAILED,
+        error_code::INTERNAL_DB_UNAVAILABLE,
+        error_code::INTERNAL_DB_QUERY,
+        error_code::STARTUP_MIGRATION_CHECK,
+        error_code::STARTUP_REDIS_CONNECT,
+        error_code::AUTH_INSUFFICIENT_SCOPE,
+        error_code::AUTH_UNAUTHORIZED,
+        error_code::AUTH_TOKEN_EXPIRED,
+        error_code::AUTH_UNAVAILABLE,
+        error_code::AUTH_CLI_CREDENTIAL_REVOKED,
+        error_code::APIKEY_REVOKED,
+        error_code::RUN_INVALID_RUNNER_TOKEN,
+        error_code::RUN_ADMIN_STATE_BLOCKED,
+        error_code::API_BACKPRESSURE,
     ] {
         assert!(
             REGISTRY.contains(&named),

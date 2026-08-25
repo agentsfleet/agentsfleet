@@ -1,0 +1,1029 @@
+<!--
+SPEC AUTHORING RULES (load-bearing — the one comment that survives):
+- Body order = the executing agent's read order. Fill via the orly-spec-new
+  skill (authoring order lives there); after filling, DELETE every "tpl:"
+  guidance comment — the SPEC TEMPLATE GATE blocks tpl residue, unfilled
+  {slots}, and missing required sections (audits/spec-template.sh --staged).
+- No time/effort/hour/day estimates anywhere. No effort columns, complexity
+  ratings, percentage-complete, implementation dates, assigned owners.
+- Priority (P0/P1/P2/P3) is the only sizing signal; Dependencies are the only
+  sequencing signal. A section that contradicts these rules loses — delete it.
+-->
+
+# M176_001: Rust daemon substrate — boots, migrates, authenticates, shuts down clean
+
+**Prototype:** v2.0.0
+**Milestone:** M176
+**Workstream:** 001
+**Date:** Aug 23, 2026
+**Status:** DONE
+**Priority:** P0 — every route milestone (M177–M180) builds on these crates
+**Categories:** API | INFRA | OBS
+**Batch:** B2 — serial after M175; M177+ depend on it
+**Branch:** `feat/m176-rust-daemon-substrate`
+**Test Baseline:** `unit=180 integration=0` — `unit` is the cargo workspace total reported by the declared `verify.unit` (`make test-unit-all`), per `docs/VERIFY_TIERS.md` §Test Baseline; `integration=0` because no `verify.integration` is declared at the branch point, which is exactly what §8 changes
+**Depends on:** M175_001 (workspace, lanes, afd_core, afd_wire)
+**Provenance:** LLM-drafted (Claude Fable 5, Aug 23, 2026)
+**Canonical architecture:** `docs/architecture/concurrency.md` (thread/lock/shutdown layer) + `docs/architecture/data_flow.md` §Connection topology
+
+---
+
+## Overview
+
+**Goal (testable):** `agentsfleetd-rs serve` boots against real Postgres + Redis to a green `/healthz` + `/readyz`, `agentsfleetd-rs migrate` produces `audit.schema_migrations` row-parity with the Zig migrator on a fresh database, vault rows encrypted by the Zig daemon decrypt in Rust (and the reverse), and SIGTERM joins every background task before teardown in a deterministic test.
+**Problem:** the port family needs a daemon skeleton with the four substrate layers — database, Redis, envelope crypto, authentication — proven interoperable with live production data shapes before any route logic exists; getting shutdown or crypto subtly wrong here poisons every later milestone.
+**Solution summary:** seven new crates (`afd_crypto`, `afd_db`, `afd_redis`, `afd_auth`, `afd_api` shell, `afd_observability`, `afd_state` seeded with the auth-consumed lookups) plus the `agentsfleetd` binary crate with boot/shutdown choreography ported from `cmd/serve.zig`; parity proven by cross-implementation fixtures (crypto), fresh-database diffs (migrations), and deterministic lifecycle tests (shutdown).
+
+## PR Intent & comprehension handshake
+
+- **PR title (eventual):** feat(rustd): daemon substrate — db, redis, crypto, auth, boot/shutdown
+- **Intent (one sentence):** the Rust daemon can be booted, migrated, probed, and cleanly stopped against the production schema and stores, so route milestones only add handlers, never plumbing.
+- **Handshake** (filled at PLAN, Aug 23, 2026):
+  - **Intent, restated:** build the part of the Rust daemon that is not a feature — the bit that opens connections, unseals secrets, decides who a caller is, and stops without dropping anything on the floor — and prove each of those against the real Postgres, the real Redis, and data the Zig daemon actually wrote, so that M177–M180 add handlers to a substrate that is already known-good rather than discovering plumbing bugs behind route logic.
+  - `ASSUMPTIONS I'M MAKING:`
+    1. **The Zig daemon stays the only production binary.** Nothing here is deployed; `deploy-dev.yml` keeps its manual-dispatch-only trigger and `test_daemon_deploy_retired` keeps passing. Parity is measured against Zig, never enforced onto it.
+    2. **Parity direction is one-way: Zig generates, Rust conforms.** Envelope fixtures are written by Zig and committed, exactly as M175 did for wire fixtures. A Rust-generated fixture would be a circular oracle. The reverse pass (Dimension 1.2) verifies Rust-sealed envelopes with a `zig run` reader, not a Zig test lane — see the §1 note below.
+    3. **`schema/` is untouched.** Both migrators embed the same files and write the same `audit.schema_migrations` bookkeeping, so either binary can migrate the same database interchangeably. Version IS the slot number.
+    4. **`afd_wire` stays primitive and stays off `afd_core`.** `test_core_dependency_freeze` walks the resolved graph of `afd_core` and `afd_wire` only; the new crates may depend on tokio/sqlx/axum freely, but nothing that pulls a runtime may reach `afd_wire`, because `WorkerCount` clamps on deserialize and would break byte parity.
+    5. **`make test-integration` is gone and is not coming back.** M175 §6 deleted `make/test-integration.mk` and `.github/workflows/test-integration.yml`. This milestone creates a new Rust-native lane instead of joining a dead one — recorded below and in Discovery.
+    6. **Visibility is private-by-default in every new crate.** `afd_wire`'s 164 public fields are a deliberate exception for transparent serde payloads, not the house style; see §Visibility policy.
+    7. **Credentials resolve at test time from compose, not from a developer's home directory.** Only `OIDC_*` and the OTLP knobs come from `~/.config/agentsfleet/` links; the datastore URLs are derived from the compose-discovered ports, which is what makes the lane work identically in CI.
+  - No mismatch found against the Overview. Six stale references were found against the *repository* and are amended below.
+
+## Implementing agent — read these first
+
+1. `docs/architecture/concurrency.md` — the C1–C5 invariants, thread map, two-flag shutdown semantics, and 7-step teardown this milestone re-derives as a task-shutdown ordering; the Zig comments are the spec.
+2. `src/agentsfleetd/cmd/serve.zig` + `cmd/serve_background.zig` — boot order and the background fleet being ported.
+3. `src/agentsfleetd/db/pool.zig`, `src/agentsfleetd/db/pool_migrations.zig`, and `schema/embed.zig` (repo root) — pool roles, migration bookkeeping, and the "version IS the slot number" rule the Rust runner must preserve.
+4. `docs/AUTH.md` §Auth model in one screen + §Backend validation — the five principal surfaces, `bearer_or_api_key` routing order, and JWKS (JSON Web Key Set) cache semantics; auth-flow work reads this first (repo rule).
+5. `src/agentsfleetd/secrets/crypto_primitives.zig` + `state/vault.zig` — key-encryption-key/data-encryption-key (KEK/DEK) envelope layout and the metadata-projection-in-same-statement rule.
+
+## Files Changed (blast radius)
+
+| File | Action | Why |
+|------|--------|-----|
+| `rustd/crates/afd_crypto/**` | CREATE | envelope encryption (KEK/DEK, AES-256-GCM), HMAC canon, zeroizing secret types |
+| `rustd/crates/afd_db/**` | CREATE | sqlx pools (three roles), migration runner with advisory lock + audit bookkeeping |
+| `rustd/crates/afd_redis/**` | CREATE | streams ops, subscription hub, session store, `fleet:ready` hash |
+| `rustd/crates/afd_auth/**` | CREATE | the DECISION: principal, scope catalogue + ladder, credential classification, the plane boundary, the three seam traits, one authenticator, the refusal taxonomy, `require_scope`. No runtime, no socket, no datastore — the portability wall as a dependency-graph fact |
+| `rustd/crates/afd_identity/**` | CREATE | the identity provider's side: JWKS fetch/cache/RS256 verify, and the live capability resolver with its claim reader. The only sockets in the auth path |
+| `rustd/crates/afd_api/**` | CREATE | axum shell: Route enum + route_meta, admission limiter, problem+json envelope |
+| `rustd/crates/afd_observability/**` | CREATE | tracing → OpenTelemetry Protocol (OTLP) export, semconv attributes, counters |
+| `rustd/crates/afd_state/**` | CREATE | repository crate, seeded with the auth-consumed lookups (api keys, CLI credentials); M178/M179 extend it |
+| `rustd/crates/agentsfleetd/**` | CREATE | binary: subcommand parsing (serve/migrate), boot choreography, task supervisor |
+| `rustd/Cargo.toml` | EDIT | new workspace members + workspace dependencies |
+| `rustd/Cargo.lock` | EDIT | the resolved graph for those dependencies; generated, committed |
+| `docs/v2/active/M176_001_*.md` | EDIT | this spec — moved from `pending/` at CHORE(open), amended at PLAN |
+| `rustd/crates/afd_core/**` | EDIT | the registry codes crypto and auth answer with — `UZ-VAULT-001`, `UZ-INTERNAL-003`, and §4's eight (`UZ-AUTH-002/003/004/022/023`, `UZ-APIKEY-004`, `UZ-RUN-001/009`) |
+| `make/quality.mk`, `make/test-unit.mk` | EDIT | `--all-features` on the Rust lint and unit lanes, so `test-util` mocks are linted and run |
+| `make/test-integration-rustd.mk` | CREATE | the Rust-native integration lane; consumes the surviving `make/test-infra.mk` compose services |
+| `make/test.mk` | EDIT | includes the new fragment beside `test-infra.mk` |
+| `.github/workflows/test-integration-rustd.yml` | CREATE | runs that lane against compose Postgres + Redis (CI edit — explicit user approval per repo rule; this spec is the record) |
+| `.oracle/orly.json` | EDIT | declares `verify.integration`, so the new lane is a first-class gate rather than a target nothing names |
+| `codecov.yml` | EDIT | the coverage decision recorded below (§Coverage decision) |
+| `docs/architecture/concurrency.md` | EDIT | adds the Rust task-map section beside the Zig thread map |
+| `docker-compose.yml` | EDIT | the Redis TLS fixture becomes a CA plus a leaf; one self-signed certificate cannot be both a trust anchor and an end-entity |
+| `make/test-infra.mk` | EDIT | extracts and checks `ca.crt` rather than the server's own leaf |
+| `AGENTS.md` (`CLAUDE.md` symlinks to it) | EDIT | its "no slow tier … nothing needs real Postgres or Redis" claim is retired by the lane this milestone creates |
+| `docs/v2/pending/M176_001_*.md` | DELETE | the same spec, at the path it left when CHORE(open) moved it to `active/`; a move is two paths in a diff |
+| `docs/v2/pending/M181_001_*.md` | EDIT | the cutover milestone inherits a constraint this one created: an older binary now REFUSES a newer ledger instead of reaping it, so M181's rollback path may carry no `migrate` step. Recorded where cutover will read it rather than left in a review thread |
+| `.github/workflows/test.yml` | EDIT | the Rust job measures coverage where the datastores are, so it moved to the lane that has them |
+| `.gitignore` | EDIT | the coverage artefacts the Rust lane writes (`rustd/lcov.info`, profraw) are build output, not source |
+| `make/build.mk` | EDIT | `sync-version` rewrote the FIRST `version = "…"` in `rustd/Cargo.toml`, which after the members list is a dependency's, not the workspace's |
+| `rustd/crates/afd_wire/Cargo.toml` | EDIT | inherits the corrected workspace licence with every other member |
+| `scripts/check_readme_badges_test.py` | EDIT | the badge set gained the Rust lane; its self-test is the gate that says so |
+| `ui/packages/design-system/src/design-system/{Nav,DataTable,time-utils}.test.*` | EDIT/CREATE | `codecov.yml` holds a 100% project target and this branch moves it; four unexercised guards in the design system had to be covered or the gate this milestone tightens would have been failed by code it never touched |
+| `AGENTS.orly.md`, `dispatch/write_any.md`, `dispatch/write_rust.md`, `dispatch/write_pr_description.md`, `docs/EXECUTE_DOC_READS.md`, `audits/ufs.sh` | EDIT/CREATE | orly 0.6.8, materialised (§The orly 0.6.8 amendment). Its UFS leaf reads `*.rs` for the first time, which is what makes the constant discipline in this milestone's thirty Rust files enforced rather than asserted |
+
+## Amendment record (EXECUTE-time reconciliation)
+
+`AGENTS.orly.md` §Specification Standards: *"Spec contradicts a rule → amend
+spec."* Here the spec contradicted the **repository**, which is the same call.
+Amended before any code was written, so nothing is built against a spec already
+known to be wrong.
+
+### The orly 0.6.8 amendment (EXECUTE, Aug 25, 2026)
+
+Materialised into THIS branch rather than a `chore/` branch of its own, by
+Indy's call: *"I never asked to create a new branch for this."* The 0.6.5 pull
+went out separately (PR #630) and the instinct to repeat that was mine, not the
+repository's.
+
+Folding it in is not free — six managed paths join the diff, and the Files
+Changed table above carries them — but the alternative was worse in a way worth
+recording. 0.6.8 is the release whose UFS leaf reads `*.rs`. On a separate
+branch it would have landed green, because `main`'s Rust is one file; against
+THIS branch it reported **31 violations**, every one of them in code this
+milestone wrote. Splitting the engine that finds them from the code that has
+them would have put a passing gate on `main` and thirty-one failures on
+whatever merged next.
+
+Resolved in the same commit range, by RULE UFS's own three routes:
+
+| Route | Where |
+|---|---|
+| Extract to a named const | `COLUMN_TENANT_ID`/`COLUMN_ID` in `credentials/rows.rs` (five call sites, and a schema rename that missed one would have compiled); `INITIAL_BODY_BYTES` in both capped readers; `KIB`, `LONG_DETAIL_BYTES`, `CLOCK_ORIGIN_MS`, `MILLIS_PER_SECOND`, `REQUEST_BUFFER_BYTES`, `BACKOFF_CAP`, `FAR_ABOVE_CEILING` |
+| Restructure so the literal is spelled once | `redacted!` now has `Display` delegate to `Debug`. `concat!` needs a literal, so the placeholder could not become a const — but it could stop being written twice, and two spellings of a redaction are two chances for one of them to start leaking |
+| `// pin test: literal is the contract` | `header_limit.rs`, where the assertion IS that our constant equals `http/server.zig`'s 16 KiB. Note the comment must sit ON the flagged line: `cargo fmt` moved it off, and the gate reported the file still dirty |
+
+Measured: `bash audits/ufs.sh` → `OK: audit-ufs: no violations across 2369 file(s)`.
+
+### The integration-lane amendment
+
+M175 §6 deleted `make/test-integration.mk` and
+`.github/workflows/test-integration.yml`. Verified: `ls make/test-integration.mk`
+→ `No such file or directory`; `make -qp | grep '^test-integration:'` → no
+output. Six places in this spec still named that lane (Files Changed ×2, §8
+prose, Dimension 8.2, Test Specification row 8.2, rubric R5).
+
+**This is not a find-and-replace.** M176 genuinely needs live Postgres and Redis;
+what it cannot do is *join* a lane that no longer exists. The Zig lane was
+deleted because the Zig daemon is frozen, not because integration testing ended.
+So the honest shape is a lane this milestone **creates**:
+
+| Piece | Decision |
+|---|---|
+| Target name | `test-integration-rustd` — matches the existing `test-unit-rustd` / `lint-rustd` family. Reusing the freed name `test-integration` would silently inherit the Zig suite's meaning. |
+| Services | The surviving `make/test-infra.mk`, which M175 kept — it is the disposable-environment half (`_ensure-test-infra`, `_reset-test-db`, compose port discovery, Redis TLS CA extraction) and is already consumed by `make/quality.mk:183`. Only the Zig *lanes* half was deleted. |
+| State discipline | Depends on `$(TEST_STATE_DEP)`, so a gate run resets schemas and flushes Redis while `KEEP_TEST_STATE=1` keeps the inner loop fast — the same contract the Zig lane had. |
+| Test placement | `rustd/crates/*/tests/integration_*.rs` per M-INTEGRATION-TESTS: tests touching only public API are integration tests and live under `tests/`. |
+| Declaration | `.oracle/orly.json` gains `verify.integration`, so `orly gate` and the rubric grade one boundary. Without it the lane would be a target nothing names — and `dispatch/lifecycle.md` already reads `verify.integration` "where declared". |
+| CI | A new workflow. `.github/workflows/test.yml` carries no `services:` block and its `test` aggregate is a required check; hanging a datastore-dependent job off it would make live Postgres required for every PR. |
+
+### Two mechanical rubric fixes, found by running the rubric rather than trusting it
+
+M175's recorded trap was asserting "the diff stays inside Files Changed" and
+being wrong by 31 paths until it was checked mechanically. Running R6 and S6
+verbatim against this branch caught two more:
+
+- **R6** — `rustd/Cargo.lock` and this spec file were in the diff and absent
+  from Files Changed. Both now have rows. The lockfile is not incidental: it
+  is the resolved graph for six added crypto dependencies and belongs in the
+  blast radius.
+- **S6** — the command as written flags `rustd/Cargo.lock`, which grew from
+  159 to 403 lines when those dependencies landed. A generated lockfile has no
+  length cap; its size is a function of the dependency graph, and "split the
+  lockfile" is not a thing. The command now excludes `Cargo.lock`, `bun.lock`
+  and `package-lock.json` by name. This widens what the gate ignores, so it is
+  recorded here rather than made quietly — the cap still applies to every
+  hand-written file, which is what it was for.
+
+### §2 found that a pool cannot classify its own failure (EXECUTE, Aug 24, 2026)
+
+Dimension 2.4 asks for two distinct variants from an exhausted pool and a
+stopped Postgres. `PgPoolOptions::connect_with` cannot supply them: it retries
+internally until the acquire timeout expires and then reports `PoolTimedOut` —
+the same error a busy pool returns. Written the obvious way, `Db::connect`
+against a dead port returned *capacity exhausted*, and the test caught it:
+
+```
+an unreachable datastore is an outage: [UZ-INTERNAL-001] waited 2000ms for a
+default connection and the pool had none
+```
+
+That is the exact misdiagnosis the dimension exists to prevent — an operator
+paged with "pool exhausted" goes and raises a limit while the database stays
+down. Two changes, both now load-bearing:
+
+- **Boot probes before it pools.** `Db::connect` opens one `PgConnection`
+  directly, whose error is the real one (`Io`, `Database`, TLS), and only then
+  builds the pool — lazily, since reachability is already proven.
+- **Acquire reads the pool's census.** On `PoolTimedOut`, a pool *below* its
+  ceiling could not open a connection at all, which is the datastore; a pool
+  *at* its ceiling with none free is capacity. `test_pool_error_classes` holds
+  both halves.
+
+### §3 found the Redis TLS fixture was not a trust anchor (EXECUTE, Aug 24, 2026)
+
+The compose Redis generated ONE self-signed certificate and used it twice: as
+the server's own leaf, and as the file every client is handed as its trust
+anchor (`--tls-ca-cert-file`, `REDIS_TLS_CA_CERT_FILE`). OpenSSL-based clients
+tolerate that. rustls does not, and it is right in both directions:
+
+- a trust anchor must carry `basicConstraints=CA:TRUE` — without it, rustls
+  rejects the file with `CaUsedAsEndEntity`;
+- an end-entity certificate must NOT carry it — adding the constraint to the
+  single certificate moved the same error to the other side of the handshake.
+
+One certificate cannot satisfy both roles, so the fixture was unusable by a
+correct client while every other client worked — which reads as "the Rust
+client is broken". It is now a CA and a leaf signed by it, which is also what a
+hosted Redis presents, so the fixture rehearses production instead of a shape
+only this repository had. The volume regenerates on next boot; `make/
+test-infra.mk` extracts `ca.crt`.
+
+### The Zig emitter is cut (Indy, Aug 23, 2026)
+
+> Indy: *"I dont want us to write any zig emitter"* — context: the spec's
+> Files Changed row for `src/agentsfleetd/secrets/envelope_fixture_export.zig`
+> and the Zig-written fixtures Dimensions 1.1/1.2 depended on.
+
+The spec inherited M175's shape — Zig generates, Rust conforms — and applied it
+to crypto. It does not transfer. The wire emitter compiles under bare `zig run`
+because every `src/lib/contract` import is a sibling path; `crypto_primitives.zig`
+imports `common` and `log`, so an envelope emitter needs an entry in the Zig
+BUILD GRAPH. Adding a step to a frozen daemon to generate test vectors for a
+port is the tail wagging the dog, and it was cut.
+
+**The replacement oracle is stronger, not weaker.** Three layers, none of them
+synthetic:
+
+| Layer | What it proves | Where |
+|---|---|---|
+| NIST AES-256-GCM known-answer vectors | the primitive is the standard one, not a lookalike | Dimension 1.1, unit |
+| Byte-exact AAD assertion | the one place drift actually happens — the format, its separator, and the lowercase-workspace / verbatim-key asymmetry | Dimension 1.2, unit |
+| The Zig unit suite, re-run in Rust | every assertion `crypto_primitives.zig` makes, with identical inputs | `tests/zig_parity.rs`, 8 tests, no Zig compiled |
+| Rows the Zig daemon really wrote | end-to-end parity against production data shape | §2's integration lane, against real Postgres |
+
+The third layer is Indy's suggestion and it turned out to be the best of them:
+rather than generating data from Zig, **re-run the Zig suite's own assertions in
+Rust**. `crypto_primitives.zig` carries six tests; `tests/zig_parity.rs` mirrors
+each with the same inputs — the same `TEST_KEK_HEX`, the same
+`"super-secret-api-key-12345"`, the same `workspace-a` / `workspace-b` pair, the
+same `bad_tag[0] ^= 0x01`. A seventh test in the Zig file fails
+`zig_pure_crypto_suite_is_fully_mirrored`, so the mapping cannot go stale
+quietly. Nothing is compiled, generated, or executed outside this crate.
+
+The fourth layer is what the fixtures were really a proxy for, and it is
+strictly better: a committed fixture proves Rust agrees with a Zig program
+written to generate fixtures, while a real row proves Rust agrees with the
+daemon that serves `api-dev`. `ZIG GATE` no longer fires for this milestone, and
+the diff touches no `*.zig` file.
+
+### §Coverage found that thirteen lines were mis-measured, not untested (EXECUTE, Aug 24, 2026)
+
+The gap-closing pass stalled on lines that testing could not move. `lock.rs`'s
+contention `warn!` showed its opening line executing 5 times and its own
+`retry_ms` field 0 — a count that cannot happen if the callsite is enabled,
+which a probe confirmed it was (`set_global_default ok=true`,
+`warn_enabled=true`). Replacing the field with a side-effecting expression
+printed three times in one test while the report still said 0.
+
+**Cause.** `sqlx-core` and `sqlx-postgres` enable `tracing`'s `log` feature, and
+Cargo unifies features across the workspace, so it is on for `afd_redis` too —
+a crate that never asked for it. With `log` enabled, `tracing`'s macros compile
+every field expression TWICE: once for the event, once for a `log` record that
+never runs when a subscriber is installed. `llvm-cov` maps both copies to the
+same source line and reports the dead one. Only field lines containing a CALL
+are affected; a bare identifier gets no region of its own.
+
+**Isolated, not inferred.** A standalone crate with the same code, same
+`tracing` 0.1.44 and `tracing-core` 0.1.36, reported the field line as covered
+5 times. Adding `features = ["log"]` and changing nothing else dropped it to 0.
+`llvm-cov export --skip-expansions` does not restore it.
+
+**Route taken: hoist, do not exempt.** Every call-bearing field expression moves
+to a `let` on the line above and enters the macro as a bare name — 19 sites in 8
+files. The line then reports its real count. The cost is that the value is
+computed even when the level is off; every site is an error path, a retry, or a
+once-per-process initialisation, so the cost is nil, and it is recorded here
+rather than left as a silent trade.
+
+This does not move the bar and does not add an exemption. It is worth stating
+plainly why it was needed: **the 100% floor was unreachable through tests
+alone**, and no amount of test writing would have closed those thirteen lines.
+The section above says "none of these is genuinely unreachable" — true of the
+code, and it was not true of the measurement.
+
+### §4 found a second way llvm-cov counts code that cannot run (EXECUTE, Aug 24, 2026)
+
+`afd_auth`'s `Registry` is generic over its three seams (`M-DI-HIERARCHY` puts
+generics above `dyn Trait`). `cargo llvm-cov --summary-only` then reports the
+crate at 99.42%, naming three lines in `authenticate.rs` — and every one of them
+is covered.
+
+**The cause.** llvm-cov emits coverage records for the LIBRARY rlib's
+un-monomorphized generic copies (`Registry<p, p, p>` in the mangled name, crate
+hash `Cs2FC3TmvYrml`) as well as for the test binary's monomorphized ones
+(`Cs19U4T73m517`). The template copies have no call sites by construction, so
+they count zero forever. The per-instantiation accounting also marks a line
+"missed" when it is covered under one type-parameter set and not another — with
+five distinct `Registry<…>` instantiations across the tests, that is routine.
+
+**Why nothing needs doing.** `make test-coverage-rustd` exports `--lcov`, and
+lcov merges per line rather than per instantiation: `afd_auth` is **510/510 =
+100.00%** there. The gate already measures it correctly.
+
+This is the same CLASS as the `tracing`-`log` finding above — llvm-cov counting
+a copy that never runs — with a different cause and the opposite resolution.
+That one needed nineteen call sites hoisted; this one needs a sentence, because
+the repository's own measurement never saw it. Recorded so the next reader who
+runs `--summary-only` on a generic crate does not go looking for a bug.
+
+### §4 replaces three procedures with one table (EXECUTE, Aug 24, 2026)
+
+`tenant_api_key.zig`, `cli_credential.zig` and `runner_bearer.zig` are the same
+procedure written three times — hash, look up, check liveness, resolve
+capability, build a principal. Everything that differs is a CONSTANT, and every
+constant sits inside a hand-written body where nothing can see that its
+neighbour disagrees.
+
+That is not hypothetical. `cli_credential.zig` shape-checks its value before
+hashing so a truncated paste costs no datastore round trip; the other two do
+not, and no comment anywhere says why. The asymmetry is invisible because the
+three bodies are never read side by side.
+
+Here the differences are `HashedClass` constants and there is one procedure.
+Three consequences, all shape rather than behaviour:
+
+- **A malformed `agt_t` or `agt_r` is now refused before the lookup.** Same
+  verdict and same code as before — a malformed value matches no row either
+  way — but one fewer datastore read. Pinned by
+  `test_a_malformed_body_costs_no_round_trip_in_any_class`.
+- **The prefix table is asserted PREFIX-FREE at compile time.** `agt_t` and
+  `agt_r` differ in one byte, and nothing in the Zig chain says two markers may
+  not shadow one another — it holds because of the order somebody wrote the
+  branches in. A future `agt_` class now fails the build instead of quietly
+  swallowing its neighbour.
+- **The runner/tenant boundary is data rather than wiring.** Zig keeps a runner
+  token off tenant routes by mounting a different middleware, which is a sound
+  rule enforced by review. `Plane::admits` is a total table, and
+  `test_planes_partition_the_catalogue` proves every credential class belongs to
+  exactly one plane — so neither a class two planes accept nor a class none
+  accepts can be written.
+
+The registry is a generic over three seam traits rather than a
+`Vec<Box<dyn Authenticator>>`. `~/Projects/oss/core_api-develop`'s `lib-auth`
+supplies the vocabulary — `FlowDelegate { opens_door, subject_is_present }` is
+`kind`/`authenticate`, and its `lib-auth`/`api-auth` split is the Rust spelling
+of the `make test-auth` portability wall — but not its `FlowBuilder`, which
+scans boxed delegates by equality (`flow.rs:58-64`) and resolves an unregistered
+door to `None`, i.e. a 401 at run time. Dispatch here is an exhaustive match on
+`CredentialKind`, so a new class fails the BUILD until it is wired.
+`M-DI-HIERARCHY` puts generics above `dyn Trait` for the same reason.
+
+### §4 tightens the RSA key-size floor (EXECUTE, Aug 24, 2026)
+
+**The one behaviour divergence in this section.** `jwks_crypto.zig` accepts
+moduli of 128, 256, 384 and 512 bytes — 1024 bits upward. This daemon verifies
+with `ring::signature::RSA_PKCS1_2048_8192_SHA256` and accepts 2048 upward.
+
+ring does export `RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY`, so exact
+parity was available and was declined: no production identity provider publishes
+1024-bit RSA, and ring names that constant `FOR_LEGACY_USE_ONLY` deliberately.
+Indy's call, Aug 24, 2026.
+
+**What made it safe to decline is that it cannot fail silently.** A key set this
+daemon will not verify against would otherwise 401 every session token while
+`agt_t` and `afc_` kept working — "signed in, but nothing loads", the signature
+`docs/AUTH.md` §How the key set is fetched already records for the gzip bug. So
+an unusable key is dropped at PARSE time with a count, a set with nothing usable
+is `KeySetUnavailable`, and `JwksVerifier::prime()` turns that into a boot
+refusal. §7 must CALL `prime()` during boot — the Zig equivalent
+(`checkJwksConnectivity`) is wired only to `cmd/doctor.zig:283`, never to serve,
+which is why the failure mode exists there at all.
+
+### §4 found "all hash compares timing-safe" overstates the mechanism (EXECUTE, Aug 24, 2026)
+
+This section's own summary says it, and `docs/AUTH.md`:455 writes
+`WHERE token_hash = sha256(token)   (timing-safe)`. There is no constant-time
+compare anywhere in that path: `api_key.sha256Hex` produces hex, hands it to
+`LookupFn`, and Postgres matches it with an indexed btree equality.
+
+The path IS safe, for a different reason — the digest's input is 256 bits of
+cryptographic entropy, so a timing oracle on the digest buys nothing short of a
+preimage. The sentence just names the wrong mechanism. The precise version, and
+the one the port implements:
+
+- A secret compared **in process** takes a constant-time compare (`subtle`,
+  RULE CTM). `afd_crypto::mac::Mac256::verify` already does.
+- A digest **delegated to an indexed column** is safe by input entropy, and
+  `afd_auth::directory::Digest` records that rather than implying a compare it
+  does not perform.
+
+### §4 found reqwest's `-no-provider` TLS features PANIC (EXECUTE, Aug 24, 2026)
+
+`reqwest`'s `rustls-tls-*-no-provider` features leave the rustls
+`CryptoProvider` unselected and defer to a process default. Nothing in this
+workspace installs one, and rustls does not report that as an error —
+`ClientBuilder::build` panics with `No provider set`, inside a workspace that
+denies `clippy::panic` and a daemon that must not abort on a configuration
+fault. Found by a test, not by review.
+
+`rustls-tls-webpki-roots` expands to the `-no-provider` variant PLUS
+`__rustls-ring`, so it keeps the in-binary trust anchors and names ring
+explicitly — the same provider `tls-rustls-ring-webpki` already chose for sqlx,
+and still no `aws-lc-rs`.
+
+Related, and the reason 0.13 is not an upgrade here: reqwest 0.13 collapsed the
+TLS features to one. Plain `rustls` forces `aws-lc-rs`, which would put a SECOND
+provider beside ring — the configuration whose feature-unification failure this
+milestone already records for `cargo test -p afd_redis` — and its
+`rustls-no-provider` reaches the platform trust store, losing the property §2
+chose for a slim container without `ca-certificates`.
+
+### §4 declines to port the principal's shape (EXECUTE, Aug 24, 2026)
+
+Parity in this milestone is behavioural — the two binaries must reach the same
+verdict from the same credential — and it has never meant copying a layout.
+`auth/principal.zig` is one flat record with a `mode` tag and five optional
+fields whose validity depends on that tag, and every rule about them is a
+comment rather than a type:
+
+- `runner_id` and `runner_degraded` are "set only when `mode == .runner`";
+- `workspace_scope_id` is set only on the session-token path, because only a
+  session token carries a `workspace_id` claim;
+- `tenant_id` must be null for a runner and non-null for everyone else;
+- `scopes` must be `RUNNER_SCOPES` for a runner, assigned by hand at the one
+  construction site that builds one.
+
+Each is a rule a construction site has to remember. A runner principal carrying
+a `tenant_id` compiles today, and it would satisfy a tenant route's ownership
+check. Zig has no way to say otherwise; Rust does, so the tag carries its own
+data and the illegal combinations cannot be spelled. A `Runner` has no tenant
+field to set, a workspace ceiling exists only inside the credential that can
+carry one, and a runner's capabilities are DERIVED from its variant rather than
+stored — so `runner:self` and nothing else is not an assignment anyone can
+forget or widen.
+
+**`user_id` was never a user id.** All three person credentials put the identity
+provider's SUBJECT in it. `bearer_or_api_key.zig:119` assigns
+`verified.subject`; `cli_credential.zig:163` assigns `row.oidc_subject` under a
+comment stating it is "the SUBJECT as `user_id`, not the `core.users` row";
+`tenant_api_key.zig:140` assigns `row.user_id`, which its own comment notes "is
+`created_by` — the provider's subject claim". Three assignments, one misleading
+name, and a comment at each explaining the name is wrong. `Subject` is a newtype
+here, so a provider subject and a `core.users` primary key are different types
+and handing one to something expecting the other stops compiling instead of
+resolving the wrong person's capabilities.
+
+The gate keeps the Zig daemon's client-visible text exactly — `Requires scope a
+or b`, naming the whole any-of requirement rather than one scope the caller
+happens to lack. Naming a single one would tell a caller to obtain that scope
+when any of the others would also have let them through.
+
+Nothing here is asserted onto the Zig tree, which stays the only production
+binary until M181 deletes it.
+
+### §1 note — how the reverse pass actually runs
+
+Superseded by the decision above: there is no reverse pass, because there is no
+Zig emitter. Recorded rather than deleted so the reasoning chain stays readable
+— the original plan assumed a Zig test lane that M175 had already removed, and
+removing the emitter removes the question.
+
+## Coverage decision
+
+`codecov.yml` holds `project.default.target: 100%` and per-flag patch targets at
+100% with 0% thresholds. That was set when the Rust crates were pure value types,
+and its own comment says so: *"These crates are pure value and serialization with
+no input/output … If a later milestone adds a genuinely untestable line, move this
+number in the same change and say why — do not let it drift down silently."*
+`docs/VERIFY_TIERS.md` §Coverage repeats the claim. Seven crates carrying sqlx,
+redis, axum and OTLP falsify it.
+
+**Route taken: reach 100, do not move the bar.** Two mechanisms, both from the
+guidelines:
+
+1. **Mockable boundaries (M-MOCKABLE-SYSCALLS, M-TEST-UTIL).** Every crate doing
+   I/O exposes its syscall surface as a non-public core enum — `Native` plus a
+   `#[cfg(feature = "test-util")] Mocked(MockCtrl)` variant — constructed via
+   `new_mocked() -> (Self, MockCtrl)`. This is what makes the error paths a real
+   datastore will not produce on demand (mid-flight connection loss, JWKS
+   timeout, OTLP buffer overflow) reachable from a test at all. It is required
+   for correctness of the Failure Modes table regardless of coverage.
+2. **Coverage measured across both lanes.** `cargo llvm-cov` runs unit and
+   `tests/` targets in one invocation, so the integration lane's runs against
+   real Postgres and Redis count toward the same report. The measurement moves
+   to where the datastores are rather than the bar moving down.
+
+**Fallback, bounded:** if a specific line proves genuinely unreachable under both
+mechanisms, the number moves in the **same commit** that adds the line, the line
+is named, and the reason is written into `codecov.yml` and this section. A
+number moved at CI to go green is the one outcome this section exists to prevent.
+
+**Measured, §1 (`cargo llvm-cov --all-features --summary-only`):** `afd_crypto`
+reaches **99.62% lines · 97.44% regions**, from 92.26% before the gap-closing
+pass. Error-path coverage is **100%** — all seven `ErrorKind` variants carry a
+negative test. Two structural fixes got there rather than added tests: the dead
+`Result` arm in `Mac256::compute` was removed (HMAC accepts any key length, so
+the branch was unreachable by construction — `M-LINT-OVERRIDE-EXPECT` covers the
+one-line override that replaced it), and the mock's poisoned-mutex arm was
+replaced with `PoisonError::into_inner`, since a plain queue has no invariant a
+panic could break.
+
+The residue is `entropy.rs:47` — the closure that maps a `getrandom` failure to
+a typed error. Reaching it needs the kernel's entropy pool to fail, which cannot
+be provoked in-process without mocking `getrandom` itself, i.e. mocking the
+mock. **The bar is NOT moved for it in this commit**: `afd_crypto` is one crate
+of eight, the number to move is a project-wide one, and moving it now would
+spend the whole allowance on the first section. It is named here so §7's pass
+either closes it or moves the bar once, with every unreachable line listed.
+
+One measurement caveat, stated rather than smoothed over:
+`test_error_display_appends_a_captured_backtrace` re-runs itself in a child with
+`RUST_BACKTRACE=1` (std decides capture once per process, so the branch is
+unreachable otherwise). Whether that child's profile merges varies between
+`--summary-only` and `--text` runs, so the reported figure moves between 99.62%
+and 100%. The lower number is the one recorded.
+`rust-afd` is not a required context today (`codecov.yml`: *"NOT a required
+context — the Rust job is absent from test.yml's `test` aggregate"*), which
+lowers the blast radius but changes none of the above. Graded at VERIFY from
+measured `cargo llvm-cov` output, never asserted here.
+
+**Measured, §2 and §3 (`make test-coverage-rustd`, 322 tests against live
+Postgres and Redis):** 92.45% lines · 91.19% functions, up from 86.65% after a
+gap-closing pass — both error surfaces walked kind by kind, the `Pools`
+three-role path, the readiness index's reads, a lock-exhaustion proof and a
+real command timeout.
+
+**The bar does NOT move.** It was lowered to 90% in an earlier revision of this
+section and Indy reversed it: 100% is the standard for the Rust port, and the
+Zig tree's 91% is the outcome that decision exists to avoid. The number in
+`codecov.yml` is 100% and stays there; the gap is work, not a setting.
+
+Remaining, with the route to each — none of these is genuinely unreachable,
+which is why none of them justified moving a number:
+
+| Residue | Route |
+|---|---|
+| `afd_db/src/migration.rs` — `version_of` | A `const fn` runs at RUNTIME when a caller is not a const context. The lines are uncovered only because every current call site is a `static` initialiser; a test that calls it directly covers them. |
+| `afd_redis` client + hub pump reconnect arms | The pub/sub socket is already killed server-side by `test_hub_reconnect_resubscribes`. The same `CLIENT KILL` reaches a command connection mid-flight. |
+| `afd_db/src/migrate/lock.rs` contention logging | Reached by a contended acquire that retries before it gives up — the exhaustion test's bound, with the lock held by another session. |
+
+`entropy.rs:47` from §1 remains, unchanged and still named: it needs the
+kernel's entropy pool to fail. §7 closes it or names it as the single exception,
+once, with the reason written down.
+
+### The §1–§4 patch residue closed, and the defect it surfaced (EXECUTE, Aug 24, 2026)
+
+`codecov/patch/rust-afd` had been red since `168998dbe` — not on §4's diff, which
+is 1060/1060, but because a patch status compares head to the PR BASE, so the
+"patch" is the whole §1–§4 branch diff. Forty lines in `afd_db` and `afd_redis`
+failed it. A previous handoff called that commit "CI green"; it was not, and the
+claim was repeated once more before anybody checked.
+
+**All forty are closed. The workspace is at 100.00% (3193/3193)**, up from
+98.74%; the integration suite went 23 → 31 tests and the measured suite to 494.
+Nothing was named under `codecov.yml`'s escape clause, and the number did not
+move.
+
+**Two fixtures did the work**, and both stand up a server rather than mocking a
+client:
+
+- `afd_redis/tests/support/fake_redis.rs` — a plain-TCP RESP server that answers
+  wrongly on purpose. It parses the sliver of RESP the client actually speaks,
+  answers per a rule table a test can **change mid-flight**, and can cut live
+  connections, free its port, and report how many connections it is serving, as
+  separate controls. The mid-flight change is what reaches a redial that succeeds
+  and then cannot resubscribe; a fixture fixed at spawn time can describe the
+  before or the after, never the transition.
+- `afd_db/tests/support/fault_net.rs` — a TCP proxy in front of the lane's
+  Postgres. It can stop relaying while **holding accepted sockets open** (closing
+  them gives a clean refusal, which is the case those branches are not about),
+  and it can kill a connection **when it recognises a statement on the wire**.
+
+That last control is what made `migrate.rs:196` — `connection.begin()` failing —
+reachable at all, and it is worth stating as a technique. The connection has to
+be dead at exactly that call: everything earlier in `apply_all` touches the same
+connection and would fail first, and the gap between the previous migration's
+`commit()` and this `begin()` holds no await point a clock-driven test can aim
+at. Timing cannot express "this statement and no earlier one". The wire can,
+because the statement names itself — the lane runs `sslmode=disable`, so the
+proxy sees `BEGIN` in plaintext and drops the connection rather than forwarding
+it. Deterministic by construction, with no retry and no sleep.
+
+#### The defect three of the forty were hiding
+
+`hub/pump.rs` 76, 104 and 126 were not untested. They were **unreachable by
+construction, because of a bug**: `HubInner` owned the only
+`UnboundedSender<Command>`, and `pump::run` holds an `Arc<HubInner>` for its
+entire life. Nothing ever dropped that sender — no `Drop` for `SubscriptionHub`
+or `HubInner`, and `shutdown()` only clears the channel map. So
+`commands.recv()` could never return `None`; `None => return false` was dead, so
+`pump()` never returned false and its `return` was dead, so `run()` never
+returned and its closing brace was dead. **The pub/sub pump task could never
+terminate**, and a process held a live Redis socket with no way to stop it —
+directly against Invariant C2 (stop → join → drop), and with no stop path for
+§7's supervisor to join.
+
+Recording those three under the "genuinely resists" clause would have written a
+defect into the record as a property of the code. They were fixed instead.
+
+**The fix, and why it is shaped this way.** The sender moved OFF `HubInner` and
+onto the handles that represent a caller's interest — `SubscriptionHub` and
+`Subscription`. The pump's `Arc<HubInner>` no longer keeps its own wake-up
+signal alive, so the last handle dropping closes the channel and the pump
+returns. `HubInner::release` now takes the sender as an argument, which keeps the
+`Unsubscribe` send **inside the locked region** where it already was: an
+`Unsubscribe` that overtook the `Subscribe` of a reader arriving on the same
+channel would leave that reader holding a live subscription the server had been
+told to drop, and that ordering is what the lock is for.
+
+A `Weak<HubInner>` in the pump was the other candidate and was rejected: it
+requires an upgrade at each use, and the failed-upgrade arms are themselves
+branches reachable only in a narrow race — it would have closed three uncovered
+lines by adding three more.
+
+`test_dropping_every_handle_stops_the_pump_and_closes_the_socket` holds it, and
+counts connections **server-side**: a client-side assertion could only say the
+hub stopped being used, while only the server can say the socket actually
+closed. It also holds the half that is easy to break — a reader outliving the
+hub keeps its connection, because a `Subscription` is a handle too.
+
+§7 still owns the supervisor (cancellation token, awaited join handle). What
+changed here is that there is now something for it to join.
+
+## Time, and why no date library
+
+Every timestamp column in `schema/` is `BIGINT`; every timestamp field in
+`afd_wire` is `i64`; a `UUIDv7` carries a 48-bit big-endian millisecond field in
+its own layout. Epoch-milliseconds is therefore already the type three separate
+contracts are written in, and `afd_core::clock` makes it one type rather than a
+convention: `UnixMillis`, plus a `Clock` trait with `SystemClock` and a
+`test-util` `FixedClock`, shaped exactly like the existing `EnvSource` /
+`ProcessEnv` / `MapEnv` trio.
+
+No `chrono`, no `time`, no `jiff`. `sqlx` maps `BIGINT` to `i64` with no feature
+flag, so no calendar crate enters the graph at all — which is what Invariant 2
+is a claim about. The reference points agree: `exonum` migrated OFF `chrono` to
+`time 0.3`, `habitat` still carries `chrono = "*"` (an unpinned wildcard) and
+calls `chrono::Local`, and `bun` — the only one of the four started in modern
+Rust — carries no date crate whatsoever.
+
+Two decisions inside that are worth naming:
+
+- **No monotonic reading is exposed.** `clock.zig` offers `nowMonotonicMillis`
+  beside `nowMillis`, both `i64`, so nothing stops a caller subtracting one from
+  the other. Elapsed time here is `std::time::Instant`, which has no epoch and
+  no serialization, and a deadline is `tokio::time::timeout` at the call site
+  (Invariant 4). The single Zig caller of the monotonic clock is a deadline loop
+  (`credentials/broker_flight.zig`), which is that shape already. Leaving the
+  reading out is what makes the mistake unwritable.
+- **Prefer the parameter to the trait.** All eight production `nowSeconds`
+  callers in the Zig daemon read the clock at the edge and hand the value to a
+  pure function — `isTimestampFreshAt`, `verifyAt`,
+  `processAt(request, now_s, now_ms)`. That shape needs no seam. `Clock` is for
+  the long-lived owners that read repeatedly: a JWKS cache deciding staleness, a
+  sweeper deciding expiry — §4 and §7.
+
+Two divergences were found and closed while landing it:
+
+1. `afd_db`'s private `now_millis` mapped a pre-epoch clock to `0`. `clock.zig`
+   returns the negative reading and states why — *"a silent epoch-0 return would
+   corrupt UUIDv7 timestamp ordering"*. Two binaries writing the same
+   `audit.schema_migrations` table answered a broken host differently.
+2. `afd_redis`'s reconnect `jitter()` read the WALL clock for spread. A
+   backward step — an operator correcting drift, an NTP correction — replays the
+   same sub-second nanoseconds and hands two redials the same jitter,
+   reproducing the lockstep the jitter exists to break, at exactly the moment a
+   cluster is most likely to be reconnecting at once. It now reads a
+   process-owned `Instant`.
+
+## Visibility policy
+
+M175 shipped 164 public fields. Every one is in `afd_wire`; `afd_core` has zero
+(`grep -rnE '^\s+pub [a-z_]+:' crates/afd_core/src/` → no output). That split is
+the policy, and it is kept:
+
+- **`afd_wire` keeps public fields.** Its types are transparent serde payloads
+  with no invariant to guard. M-STRONG-TYPES-GUARD governs "a strong type or
+  newtype that exists to encode an invariant" — a DTO whose structural validity
+  is enforced by `deny_unknown_fields` at the deserialize boundary is not one.
+  Accessors returning the field verbatim would be 164 pieces of ceremony, and
+  the byte-parity fixtures are the real oracle. Deliberate divergence, recorded.
+- **Every crate in this milestone is private-by-default.** These types carry
+  invariants that matter: a public field on a secret newtype lets a caller move
+  the buffer out and bypass `zeroize` on drop, which is Invariant 5 defeated by
+  syntax. Construction is fallible where an invariant exists
+  (M-STRONG-TYPES-GUARD); services are `Arc<Inner>` handles with method
+  forwards (M-SERVICES-CLONE); `unreachable_pub = "deny"` is already in the
+  workspace lints and demotes anything no sibling imports to `pub(crate)`.
+
+## Applicable Rules
+
+- **`docs/greptile-learnings/RULES.md`** — CTM (constant-time comparison for secrets), ECL (error classes: timeout ≠ fatal ≠ retryable — the two pool-acquire failures stay distinct), NSQ (named constants, schema-qualified SQL), OWN (one owner per resource — hub owns the subscribe connection), FLS (drain all result layers), UFS, NDC, TST-NAM, MSID, FLL.
+- `dispatch/write_rust.md` — deterministic concurrency tests are mandatory here (shutdown, hub, advisory lock); preserved error variants; REVIEW cites Microsoft guideline mnemonics.
+- `dispatch/write_zig.md` — fires for the fixture emitter.
+- `docs/AUTH.md` — read before §4 work (auth-flow rule in AGENTS.orly.md).
+
+## Applicable Gates
+
+| Gate | Fires? | Satisfaction strategy |
+|------|--------|-----------------------|
+| File & Function Length (≤350/≤50/≤70) | yes | module-per-concern crates; split query modules by domain |
+| LOGGING | yes — runtime logging begins here | scoped events, error codes, severity, redaction via tracing fields; secrets never formatted |
+| MILESTONE-ID | yes | no milestone tokens in `rustd/` or fixtures |
+| UFS | yes | env knob names, Redis key patterns, pool sizes as named constants byte-identical to Zig |
+| ZIG GATE | no | no `*.zig` file is touched — see §Amendment record, the Zig emitter was cut |
+| SCHEMA GUARD | no | `schema/*.sql` untouched — Rust embeds the same files |
+| SPEC TEMPLATE GATE | yes — this file | required sections filled, zero tpl residue |
+
+## Prior-Art / Reference Implementations
+
+- **Reference:** `~/Projects/oss/exonum` — message-driven shutdown with explicit signal-ownership coordination and the builder-with-`development_node()` pattern; its separate-thread-per-HTTP-runtime hack is an actix workaround to NOT copy (axum futures are Send).
+- **Reference:** `~/Projects/oss/core_api-develop` — the anti-pattern record for this milestone: zero signal handling, three runtimes in one process, infinite pool-construction retry, `NoTls` Postgres. Each is inverted here as a Failure Mode or Invariant.
+- **Reference:** `src/agentsfleetd/` (Zig daemon) — behaviour source of truth; SQL and env knob names port verbatim.
+
+## Sections (implementation slices)
+
+### §1 — afd_crypto: envelope parity
+
+KEK resolved once at boot from `ENCRYPTION_MASTER_KEY` (64 hex chars → 32 bytes), immutable after; per-row DEK wrapped under the KEK; AES-256-GCM (Advanced Encryption Standard, Galois/Counter Mode) with the documented 96-bit random-nonce policy; HMAC-SHA256 (hash-based message authentication code) canon with constant-time compare. Secrets ride zeroize-on-drop newtypes whose Debug/Display redact. **Implementation default:** RustCrypto crates (`aes-gcm`, `hmac`, `sha2`, `zeroize`) — pure-Rust, audited, no C linkage, matching the Zig daemon's no-C posture.
+
+- **Dimension 1.1** — the primitive matches the standard: NIST AES-256-GCM known-answer vectors decrypt to their published plaintext → Test `test_aes_gcm_known_answer_vectors` — **DONE**
+- **Dimension 1.2** — the associated data is byte-identical to `crypto_store_write.zig::buildAad`, including the lowercase-workspace / verbatim-key asymmetry → Test `test_aad_matches_zig_format` — **DONE**
+- **Dimension 1.3** — tampered tag, nonce, or ciphertext fails closed with a typed error, no panic → Test `test_envelope_rejects_tampered` — **DONE**
+- **Dimension 1.4** — secret newtypes zero on drop and redact in Debug/Display → Test `test_secret_types_redact` — **DONE**
+
+### §2 — afd_db: pools and migrations
+
+Three pool roles (default/api/migrator) with env parity (`DATABASE_URL[_API|_MIGRATOR]`, size and timeout knobs, TLS-required default, `?sslmode=disable` honored for local dev); the two distinct acquire failures (capacity vs datastore-unreachable) preserved as separate variants. Migration runner embeds the same `schema/` SQL files, applies under the same Postgres advisory lock, writes the same `audit.schema_migrations` / `audit.schema_migration_failures` bookkeeping, reaps orphans, honors `MIGRATE_ON_START`. **Implementation default:** sqlx with plain runtime queries (no compile-time query macros this milestone) — parity beats macro ergonomics during the port.
+
+- **Dimension 2.1** — fresh-database migrate: applied-version set and bookkeeping rows identical to the Zig migrator → Test `test_migrate_parity_fresh_db` — **DONE**
+- **Dimension 2.2** — two concurrent migrators: one applies, one waits and no-ops; no double-apply → Test `test_migrate_advisory_lock_contention` — **DONE**
+- **Dimension 2.3** — a failing migration records a failure row and never marks success → Test `test_migrate_failure_bookkeeping` — **DONE**
+- **Dimension 2.4** — pool acquire distinguishes capacity timeout from datastore-unavailable → Test `test_pool_error_classes` — **DONE**
+
+### §3 — afd_redis: streams, hub, sessions
+
+Stream ops parity (`XADD fleet:{id}:events` where the entry id IS the canonical event id; non-blocking `XREADGROUP`; `XACK`; `PUBLISH`), pool with short-lived commands only; the SubscriptionHub as one dedicated subscribe connection per process with refcounted channels fanning out via broadcast; the Redis-backed session store (`auth:session:{id}`, 5-minute time-to-live, atomic Lua state transition); the global `fleet:ready` hash. **Implementation default:** the `redis` crate (tokio + TLS features) — retires the ~3.0k-line hand-rolled Zig client files (the full `queue/` tree is 3.7k; its connector outbound worker is M180's port, not this crate swap).
+
+- **Dimension 3.1** — stream append → consumer-group read → ack round-trip with entry-id-as-event-id → Test `test_stream_xadd_readgroup_ack` — **DONE**
+- **Dimension 3.2** — hub: N subscribers share one connection; channel closes at zero refcount → Test `test_hub_refcount_single_connection` — **DONE**
+- **Dimension 3.3** — hub reconnects and resubscribes after a dropped connection; late subscribers stream on → Test `test_hub_reconnect_resubscribes` — **DONE**
+- **Dimension 3.4** — session state transition is atomic under parallel approve/verify races → Test `test_session_transition_atomic` — **DONE**
+
+### §4 — afd_auth: principals, scopes, verification
+
+`AuthPrincipal`, the scope catalogue mirrored from `src/agentsfleetd/auth/scopes.zig` (read < write < admin ladder expanded at parse), JWKS fetch (issuer-derived URL, 6-hour cache, refresh on key-id miss) + RS256 verify (`iss`/`aud`/`exp`), `bearer_or_api_key` routing in the documented order (`agt_t` → hash lookup; `afc_` → credential lookup + live scope resolve; else OIDC (OpenID Connect); prefixed branches ahead of the verifier check), `requireScope` any-of hierarchy-expanded 403 naming the missing scope (UZ-AUTH-022). All hash compares timing-safe.
+
+§4 ships TWO crates. `afd_auth` holds the decision — credential classes, the
+three seam traits, the authenticator, the scope catalogue, the gate — and lists
+no runtime, no socket and no datastore, so the portability wall Zig enforces
+with a grep in `make test-auth` is a fact rustc checks. `afd_identity` holds the
+identity provider's side: the JWKS verifier and the live capability resolver.
+The three Postgres `CredentialDirectory` implementations are §5's, exactly where
+the Zig daemon keeps them (`cmd/serve_runner_lookup.zig`,
+`cmd/cli_credential_lookup.zig`) — see §5's Dimension 5.5.
+
+- **Dimension 4.1** — prefix routing parity, including a no-verifier deployment still resolving `agt_t`/`afc_`, AND the runner plane refusing a tenant credential (and vice versa) before any lookup → Test `test_bearer_prefix_routing` — **DONE**
+- **Dimension 4.2** — bad signature / expired / wrong aud / wrong iss each 401; key-id miss triggers exactly one refresh → Test `test_jwks_verify_negative_paths` — **DONE**
+- **Dimension 4.3** — `fleet:admin` passes a `fleet:read` gate; empty scope set fails closed → Test `test_scope_ladder_expansion` — **DONE**
+- **Dimension 4.4** — missing scope → 403 UZ-AUTH-022 naming the scope → Test `test_require_scope_names_missing` — **DONE**
+- **Dimension 4.5** — every client-visible refusal sentence is byte-identical to the Zig constant it replaces, and each answers its own registry code → Test `test_auth_error_taxonomy` — **DONE**
+- **Dimension 4.6** — the capability cache serves fresh, serves stale only under outage, refuses past the ceiling, and coalesces concurrent misses for one subject into one provider call → Test `test_capability_windows` — **DONE**
+
+### §5 — afd_api shell: routes, admission, envelope
+
+The axum + tower shell: a `Route` enum as the single metadata source with an exhaustive `route_meta()` (collapsing the Zig daemon's four parallel total tables — middleware chain, scopes, admission class, span template — a new variant fails compilation until matched); the axum router generated from the enum; admission-based rate limiting (atomic in-flight ceiling, 429 + `Retry-After` + `X-RateLimit-*` before body read; ops routes exempt; stream class capped separately); the 16 KiB request-header limit with its proxy-chain rationale (`src/agentsfleetd/http/server.zig:29-42`); the `application/problem+json` error envelope wired to the afd_core code registry. Only `/healthz` + `/readyz` are served this milestone.
+
+- **Dimension 5.1** — `route_meta` is total: non-exhaustive match fails the build; a walk over all variants passes → Test `test_every_route_is_walked_exactly_once` (`afd_api/tests/route_meta_total.rs`) — **DONE**
+- **Dimension 5.2** — requests past the ceiling shed with 429 + headers before any handler runs → Test `test_admission_sheds_over_ceiling` — **DONE**
+- **Dimension 5.3** — headers >4 KiB and ≤16 KiB accepted; >16 KiB → 431 → Test `test_a_head_just_inside_the_allowance_is_served` and `test_a_head_past_the_allowance_is_refused` (`afd_api/tests/header_limit.rs`) — **DONE**
+- **Dimension 5.4** — error responses match the problem+json shape the Zig daemon emits → Test `test_the_base_envelope_is_the_five_fields_and_no_others` (`afd_api/tests/problem_json_envelope.rs`) — **DONE**
+- **Dimension 5.5** — `afd_state` implements `afd_auth::CredentialDirectory` for all three stored classes (`agt_t`, `afc_`, `agt_r`), returning `Ok(None)` for an unmatched digest and `Unavailable` for a datastore fault, never collapsing the two. The crate this spec already plans as "seeded with the auth-consumed lookups" is where they belong — §4 ships the trait and the `test-util` doubles precisely so the SQL can land here → Test `test_an_unmatched_digest_is_none_not_an_error` and `test_a_refused_statement_is_unavailable_not_unknown` (`afd_state/tests/credential_directories.rs`) — **DONE**
+
+### §6 — afd_observability: push-only telemetry
+
+tracing subscriber exporting logs/traces/metrics over OTLP (push-only egress — no scrape endpoint, matching the Zig daemon), semconv attributes with low-cardinality `http.route` templates, counter families. Export failure never blocks the request path (bounded buffer, drop counter).
+
+- **Dimension 6.1** — spans carry the route template, never the raw path → Test `test_span_route_template` — **DONE**
+- **Dimension 6.2** — OTLP endpoint down: requests unaffected; drop counter increments → Test `test_otlp_outage_nonblocking` — **DONE**
+
+### §7 — Boot and shutdown choreography
+
+Boot order ported from `cmd/serve.zig` (pools → Redis → migrations check → session store → hub → secrets → verifier → middleware → background tasks → listen); a task supervisor where every background task owns a cancellation token and an awaited join handle — stop → join → drop (invariant C2); the two-flag boot-window semantics preserved (SIGTERM during boot cannot kill the background stack while the server may still come up); `/readyz` probes dependencies, `/healthz` reports liveness. This section opens with a **complete task inventory** derived from the `concurrency.md` thread map: every long-lived thread AND every detached-worker class (Clerk metadata fetch, fleet install-step workers) maps to either a named supervised task here or an explicitly deferred inventory row naming its arriving milestone — detached workers become tracked tasks with bounded drains; no unsupervised spawn path exists. Deadlines are `tokio::time::timeout` at call sites, and shutdown cancellation is PROVEN to interrupt blocked I/O (one cancellation test per long-lived I/O owner) — together these are the explicit replacement for the Zig `call_deadline` scheduler and its socket-shutdown wake, stated as invariants, not assumed away.
+
+- **Dimension 7.1** — SIGTERM: every task joins before pools close; deterministic via event handshakes, no sleeps → Test `test_shutdown_joins_all_tasks` — **DONE**
+- **Dimension 7.2** — boot-window SIGTERM follows the two-flag semantics → Test `test_boot_window_sigterm` — **DONE**
+- **Dimension 7.3** — `/readyz` red when Postgres or Redis unreachable; `/healthz` still 200 → Test `test_readyz_dependency_probe` — **DONE**
+- **Dimension 7.4** — missing/malformed `ENCRYPTION_MASTER_KEY` refuses boot with a named error, non-zero exit → Test `test_boot_refuses_bad_kek` — **DONE**
+- **Dimension 7.5** — the task inventory covers every `concurrency.md` thread-map row (supervised or explicitly deferred), and cancellation interrupts a blocked read on every I/O owner → Test `test_task_inventory_and_cancellation` — **DONE**
+
+### §8 — Credential enumeration and integration harness
+
+Credential-gate rule (AGENTS.orly.md §Bootstrap): this milestone's downstream credentials, enumerated with fetch locations — `DATABASE_URL`, `DATABASE_URL_API`, `DATABASE_URL_MIGRATOR`, `REDIS_URL`, `ENCRYPTION_MASTER_KEY`, `OIDC_ISSUER`, `OIDC_AUDIENCE` (+ optional `OIDC_JWKS_URL`), OTLP endpoint + token — all resolved from `~/.config/agentsfleet/` env links (`.githooks/post-checkout`; provisioned by `provision-env-1password` in dotfiles). Boot preflight fails loud listing every missing one. The Rust substrate integration suite runs in a lane this milestone CREATES, `make test-integration-rustd`, against the same compose services (§Integration-lane amendment).
+
+- **Dimension 8.1** — preflight lists all missing credentials in one output, not first-failure-only → Test `test_preflight_lists_missing` — **DONE**
+- **Dimension 8.2** — the created lane `make test-integration-rustd` runs the Rust integration suite and propagates its failure → Test `test_integration_lane_rust` — **DONE**
+
+## Parallelization & execution map
+
+(Internal batch labels here sequence THIS milestone's work only; the frontmatter **Batch:** line is the family-level ordering — two different axes, deliberately.)
+
+| Batch | Scope | Runtime · model · reasoning tier | Why |
+|---|---|---|---|
+| B1 | §1 crypto | Claude Code · Opus 5 · xhigh | cross-implementation crypto parity is unforgiving; wrong-but-plausible is the failure mode |
+| B1 | §2 db | Claude Code · Opus 5 · high | mechanical port with a precise bookkeeping oracle |
+| B1 | §3 redis | Claude Code · Opus 5 · high | crate-backed rewrite with clear behaviour tests |
+| B2 | §4 auth | Claude Code · Opus 5 · xhigh | security boundary; AUTH.md ordering subtleties |
+| B2 | §5 api shell | Claude Code · Opus 5 · high | enum + tower layers, well-scoped |
+| B2 | §6 observability | Codex · GPT 5.6 tera · high | well-trodden tracing/OTLP wiring, cheap to verify |
+| B3 | §7 boot/shutdown | Claude Code · Opus 5 · max | the choreography is the riskiest judgment work in the family |
+| B3 | §8 harness | Claude Code · Opus 5 · high | lane wiring + preflight, mechanical |
+
+B1 sections are independent crates; B2 consumes B1; B3 composes everything. Indy decides how many agents actually spin per batch.
+
+## Interfaces
+
+```
+Binary        agentsfleetd-rs {serve, migrate}   (doctor/backfill: M181)
+Env knobs     byte-identical names to cmd/serve.zig (UFS constants)
+HTTP (this
+milestone)    GET /healthz → 200 · GET /readyz → 200|503 (dependency-probed)
+Crate seams   afd_crypto::Envelope {seal, open} over Zeroizing buffers
+              afd_db::Pools {default, api, migrator} + Migrator::run
+              afd_redis::{Streams, Hub, SessionStore}
+              afd_auth::{Principal, Registry, Plane, require_scope}
+                — Registry<D, C, V> over CredentialDirectory,
+                  CapabilitySource, TokenVerifier; dispatch is a
+                  total match, so a new credential class fails the build
+              afd_identity::{JwksVerifier, ProviderCapabilities}
+                — the two seam implementations that reach the network
+              afd_api::{Route, route_meta} — exhaustive, single metadata source
+```
+
+## Failure Modes
+
+| Mode | Cause | Handling (system response + what the caller observes) |
+|------|-------|--------------------------------------------------------|
+| Pool capacity exhausted | burst past pool size | bounded wait then capacity-timeout variant → 500 with the capacity error code; distinct from datastore-down |
+| Postgres unreachable | outage / bad URL | datastore-unavailable variant; `/readyz` 503; boot preflight fails loud; no infinite retry loop |
+| Redis down at boot | outage | boot refuses with named dependency; during serve: hub reconnect loop with jittered backoff, viewers see a gap then resume |
+| Advisory-lock contention | two migrators race | second waits; on timeout exits non-zero without partial bookkeeping |
+| JWKS unreachable | identity provider outage | cached keys keep verifying ≤6h; fetch failure on cold cache → 401 path with retryable class, never a panic |
+| OTLP endpoint down | collector outage | bounded buffer drops with counter; request path unaffected |
+| SIGTERM in boot window | orchestrator restart | two-flag semantics: background stack survives until the server verdict; then clean stop |
+| KEK absent/malformed | misconfig | boot refused, named error, non-zero exit — fail closed before any traffic |
+
+## Invariants
+
+1. Stop → join → drop for every background task — enforced by the supervisor owning every join handle + `test_shutdown_joins_all_tasks`.
+2. Exactly one Redis subscribe connection per process — only the hub type can construct the pub/sub client (visibility) + `test_hub_refcount_single_connection`.
+3. KEK is resolved once before traffic and immutable after — a set-once cell with no setter on the public surface.
+4. All I/O deadlines are `tokio::time::timeout` at the call site — afd_db/afd_redis export only wrapper clients whose constructors take timeout config; raw clients stay private.
+5. Secrets live in zeroize-on-drop newtypes that redact in Debug/Display — `test_secret_types_redact` + clippy deny on the raw-type escape hatch.
+6. Scope strings, error codes, and env knob names are single-sourced (afd_core/afd_auth constants mirrored from the Zig canon) — duplication fails `test_error_registry_unique` and UFS review.
+7. Every task spawn goes through the supervisor — `tokio::spawn` is a clippy `disallowed-methods` entry outside the supervisor module, so an unsupervised task fails `make lint-all`.
+
+## Metrics & Observability
+
+| Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
+|----------------|-------|------------|--------------------|---------------|------------|
+| `daemon.otlp_dropped_total` | ops | telemetry export buffer drops a batch | count, signal type | no payload content | `test_otlp_outage_nonblocking` |
+| `daemon.boot_preflight_failed` | ops | boot refused on missing config/creds | missing-key names only | values never logged | `test_preflight_lists_missing` |
+| product analytics | not applicable | — | no product events change in this milestone | — | — |
+
+## Test Specification (tiered)
+
+| Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
+|-----------|------|------|---------------------------------------------|
+| 1.1 | unit | `test_aes_gcm_known_answer_vectors` | published NIST vectors decrypt to their published plaintext |
+| 1.2 | unit | `test_aad_matches_zig_format` | AAD bytes equal `lower(ws) 0x1f key 0x1f 2`, asymmetry included |
+| 1.3 | unit (negative) | `test_envelope_rejects_tampered` | flipped byte in tag/nonce/ciphertext → typed error, no panic |
+| 1.4 | unit | `test_secret_types_redact` | Debug/Display of secret newtypes contain no key material; drop zeroizes |
+| 2.1 | integration | `test_migrate_parity_fresh_db` | applied-version set + bookkeeping rows equal Zig migrator output on a fresh database |
+| 2.2 | integration (negative) | `test_migrate_advisory_lock_contention` | concurrent migrators → single apply, no duplicate rows |
+| 2.3 | integration (negative) | `test_migrate_failure_bookkeeping` | injected failing SQL → failure row present, success absent |
+| 2.4 | integration (negative) | `test_pool_error_classes` | exhausted pool vs stopped Postgres → two distinct variants |
+| 3.1 | integration | `test_stream_xadd_readgroup_ack` | append/read/ack round-trip; entry id used as event id |
+| 3.2 | integration | `test_hub_refcount_single_connection` | N subscribers, one connection observed; zero refcount closes channel |
+| 3.3 | integration (negative) | `test_hub_reconnect_resubscribes` | killed connection → resubscribe; post-gap messages delivered |
+| 3.4 | integration (negative) | `test_session_transition_atomic` | parallel approve/verify → exactly one wins; store state legal |
+| 4.1 | unit | `test_bearer_prefix_routing` | `agt_t`/`afc_`/JWT/garbage each route to the documented validator; no-verifier deployment still resolves prefixes |
+| 4.2 | unit (negative) | `test_jwks_verify_negative_paths` | bad sig / expired / wrong aud / wrong iss → 401 each; kid miss → one refresh |
+| 4.3 | unit | `test_scope_ladder_expansion` | admin satisfies read; empty set fails closed |
+| 4.4 | unit (negative) | `test_require_scope_names_missing` | missing scope → 403 UZ-AUTH-022 with the scope name in the body |
+| 5.1 | unit | `test_every_route_is_walked_exactly_once` | every Route variant yields metadata; compile guard noted |
+| 5.2 | integration (negative) | `test_admission_sheds_over_ceiling` | ceiling+1 concurrent requests → one 429 with Retry-After before handler execution |
+| 5.3 | integration (negative) | `test_a_head_past_the_allowance_is_refused` | 8 KiB header accepted; 17 KiB → 431 |
+| 5.4 | unit | `test_the_base_envelope_is_the_five_fields_and_no_others` | error body fields match the Zig envelope shape byte-for-field |
+| 6.1 | unit | `test_span_route_template` | span attribute is the template, not the raw path with ids |
+| 6.2 | integration (negative) | `test_otlp_outage_nonblocking` | collector down → request latency unaffected; drop counter grows |
+| 7.1 | integration | `test_shutdown_joins_all_tasks` | SIGTERM → join order asserted via handshake events; no timeout-based sleeps |
+| 7.2 | integration (negative) | `test_boot_window_sigterm` | signal mid-boot → behaviour matches the two-flag rule |
+| 7.3 | integration (negative) | `test_readyz_dependency_probe` | stopped Postgres → `/readyz` 503, `/healthz` 200 |
+| 7.4 | integration (negative) | `test_boot_refuses_bad_kek` | absent/short key → non-zero exit naming the knob |
+| 7.4 (FM) | integration (negative) | `test_boot_refuses_redis_down` | Redis unreachable at boot → refusal naming the dependency, non-zero exit |
+| 7.5 | integration | `test_task_inventory_and_cancellation` | inventory rows cover the `concurrency.md` map; cancel token interrupts a blocked read per I/O owner |
+| 8.1 | integration (negative) | `test_preflight_lists_missing` | three unset knobs → all three named in one failure |
+| 8.2 | integration | `test_integration_lane_rust` | seeded failing Rust integration test → `make test-integration-rustd` exit non-zero |
+
+## Acceptance Rubric (single scoring surface)
+
+| # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
+|---|--------------------------------|---------------------|----------|----------|-----------------|
+| R1 | Boot to ready on compose (§7) | `curl -fsS localhost:3000/readyz` after `agentsfleetd-rs serve` (PORT default 3000, `src/agentsfleetd/http/server.zig:63`) | HTTP 200 | P0 | |
+| R2 | Migration parity (§2) | `cd rustd && cargo test test_migrate_parity_fresh_db` | exit 0 | P0 | |
+| R3 | Crypto parity (§1) | `cd rustd && cargo test -p afd_crypto --all-features` | exit 0 | P0 | |
+| R4 | Deterministic shutdown (§7) | `cd rustd && cargo test test_shutdown_joins_all_tasks` | exit 0 | P0 | |
+| R5 | Substrate integration suite (§8) | `make test-integration-rustd` | exit 0 | P0 | |
+| R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
+| S3 | Lint green | `make lint-all` | exit 0 | P0 | |
+| S4 | Version sync | `make check-version` | exit 0 | P0 | |
+| S5 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| S6 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -vE '\.md$\|(^\|/)(Cargo\.lock\|bun\.lock\|package-lock\.json)$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+
+**Command source rule:** S1–S4 are copied verbatim from `.oracle/orly.json` (`conform`, `verify.lint`, `verify.unit`, `verify.version`) — the set `orly gate` runs — and R5 quotes the `verify.integration` this milestone adds to the same file; S5–S6 are the template's repository hygiene gates (secret scan, oversize sweep), deliberately outside the declared set; R-rows name oracles this spec's own Files Changed create, so every command is copy-paste by merge time.
+
+**Grading protocol (VERIFY):** run the Verify command verbatim; grade ONLY from its output. Graded = ✅/❌ + the one decisive output line. **Ship gate:** every row graded, every P0 ✅ → eligible for CHORE(close); any ❌ or empty cell → return to EXECUTE.
+
+## Dead Code Sweep
+
+N/A — no files deleted.
+
+## Out of Scope
+
+- Every business route: runner verbs (M177), tenant/workspace surface (M178), admin/operator (M179), signed ingress (M180); the credential broker, cron, fleet-config parsing (M177), connectors (M180).
+- `doctor`/`backfill` subcommands and deploy shape (M181); PostHog product-analytics port (lands with the surfaces that emit events, M178).
+
+---
+
+## Product Clarity (authoring record)
+
+1. **Successful user moment** — an operator on staging watches `agentsfleetd-rs migrate` no-op against an already-migrated production-shaped database, `serve` go ready, and Ctrl-C produce an orderly join log — the Rust daemon is real infrastructure, not a demo.
+2. **Preserved user behaviour** — the Zig daemon is untouched and remains the only production binary; the shared `schema/` files and their version slots are byte-identical.
+3. **Optimal-way check** — substrate-first is the direct route; porting a route first (demo appeal) would smuggle plumbing in untested.
+4. **Rebuild-vs-iterate** — deliberate rebuild on new substrate (tokio/sqlx/axum); determinism is preserved by parity fixtures and the shared schema, so the rebuild does not trade run-to-run determinism away.
+5. **What we build** — six crates + the binary with boot/shutdown, crypto/migration parity fixtures, integration-lane wiring.
+6. **What we do NOT build** — any tenant- or runner-visible behaviour change; a second migration system (same files, same bookkeeping); a bespoke deadline scheduler (tokio timeouts suffice).
+7. **Fit with existing features** — compounds with M175 lanes; must not destabilize the Zig daemon's migrations — both binaries must be able to run `migrate` against the same database interchangeably.
+8. **Surface order** — N/A — no user surface (operator-only substrate).
+9. **Dashboard restraint** — N/A — no UI.
+10. **Confused-user next step** — boot preflight names every missing knob and its fetch location in one output; `/readyz` body names the failing dependency.
+
+## Decomposition & alternatives (patch vs refactor)
+
+- **Chosen shape:** eight slices in three internal batches — the three independent stores first (crypto/db/redis), then the layers that consume them (auth/shell/observability), then composition (boot/shutdown/harness) — because dependency direction, not theme, dictates safe parallelism.
+- **Alternatives considered:** porting `call_deadline` + the sync primitives faithfully (rejected: tokio owns both concerns natively; porting them re-imports the hazard class concurrency.md exists to police); using diesel or a second migration tool (rejected: one embedded-SQL runner with the existing bookkeeping keeps both binaries interchangeable on one database).
+- **Patch-vs-refactor verdict:** this is a **refactor** (substrate rebuilt on a new runtime) because the Zig concurrency layer cannot be translated line-by-line into async Rust without importing its workarounds; parity fixtures + the shared schema keep the refactor honest.
+
+## Discovery (consult log)
+
+### Amendments made before EXECUTE
+
+Six references to `make test-integration` were reconciled against a repository
+where that lane does not exist. Full reasoning and the replacement design live in
+§Amendment record; the decision is a **new Rust-native lane**
+(`make test-integration-rustd`) built on the surviving `make/test-infra.mk`,
+declared as `verify.integration`, and run by its own workflow. A seventh
+imprecision — Dimension 1.2's "runs in the Zig test build" — is clarified rather
+than amended: it runs as `zig run`, the `make wire-fixtures` precedent.
+
+### Credential enumeration (§8 gate, run at PLAN)
+
+Checked by key presence only; no value was read, printed, or logged.
+
+| Knob | Present locally | Where it comes from |
+|---|---|---|
+| `DATABASE_URL` | no | derived at test time from the compose-discovered port (`make/test-infra.mk` `TEST_DATABASE_URL`); deployments resolve via 1Password |
+| `DATABASE_URL_API` | no | same; `docker-compose.yml` sets it for the compose `agentsfleetd` service only |
+| `DATABASE_URL_MIGRATOR` | yes | `.env.agentsfleetd.local` |
+| `REDIS_URL` | no | derived from the compose-discovered port (`TEST_REDIS_URL`, `rediss://` + extracted CA) |
+| `ENCRYPTION_MASTER_KEY` | fixture only | `docker-compose.yml` carries a local-dev value behind `gitleaks:allow`; real deployments resolve via 1Password |
+| `OIDC_ISSUER` | yes | `.env.agentsfleetd.local` |
+| `OIDC_AUDIENCE` | yes | `.env.agentsfleetd.local` |
+| `OIDC_JWKS_URL` | no | optional — derived from the issuer when unset |
+| OTLP endpoint + token | no | 1Password via `OP_SERVICE_ACCOUNT_TOKEN` in `~/.config/agentsfleet/.env` |
+
+The finding that shapes §8: **the datastore URLs are not developer-environment
+credentials at all** — they are derived from compose at lane start, which is what
+lets the lane behave identically on a laptop and in CI. Only the identity and
+telemetry knobs come from `~/.config/agentsfleet/` links, and
+`.githooks/post-checkout` reported `✔ linked` for both on this worktree. The
+boot preflight (Dimension 8.1) must therefore name a *fetch location* per knob,
+not just the knob — a missing `REDIS_URL` means "the lane did not export it",
+while a missing OTLP token means "run `provision-env-1password`".
+
+### Consults
+
+- **Architecture / Legacy-Design / gate-flag triage** — pending; recorded here as they occur.
+
+### Metrics review
+
+- Pending `/review`.
+
+### Skill-chain outcomes
+
+- Pending — `/orly-write-unit-test` during implementation, `/orly-write-integration-test` for the substrate suite, `/review` before CHORE(close), `orly-babysit-prs` after every push.
+
+### Deferrals
+
+- None yet. Every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
+
+**The error-code generator, deleted here and owed by the Rust cutover.**
+
+> Indy (2026-08-25): "Is this valid? gen-error-codes since we will move to rust?"
+> ... "If this is zig world's fix then lets delete them."
+> — context: `make gen-error-codes` shelled to `zig build gen-error-codes` to
+> render `~/Projects/docs/api-reference/error-codes.mdx` from
+> `errors/error_entries.zig`. Deleted in this milestone.
+
+What that leaves open, stated rather than assumed: **the published error
+reference now has no generator.** The Zig registry carries 125 codes; the Rust
+`afd_core::error_code` carries 22 — only the ones §1–§5 answer with. So this is
+not a like-for-like removal, and the page will drift by hand until a Rust
+regenerator exists.
+
+The target was in no gate — not `lint-all`, not CI — so nothing goes red today.
+That is precisely why it is recorded here: an ungated tool that stops working
+fails silently, at whatever moment someone next regenerates docs.
+
+**Owner: M181** (`M181_001_P0_API_DOCS_INFRA_RUST_CUTOVER_SOAK`), whose spec
+does not yet mention error-code generation and must, before the Zig tree goes.
+It needs the full 125-code registry ported into `afd_core::error_code` first —
+M116_001's parity check (`comm -3` over the two code sets) is the oracle to
+re-point, not to re-invent.

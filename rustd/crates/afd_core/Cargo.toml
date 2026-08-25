@@ -5,10 +5,16 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+authors.workspace = true
 repository.workspace = true
 readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
+
+[features]
+# M-TEST-UTIL: the map-backed environment source. Behind a flag because a
+# production binary reads the process environment and nothing else.
+test-util = []
 
 [dependencies]
 serde.workspace = true

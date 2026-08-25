@@ -1,0 +1,43 @@
+[package]
+name = "afd_redis"
+description = "Fleet event streams, the subscription hub, and the CLI session store, on one Redis connection per process."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the map-backed environment source through afd_core, and
+# the constructors that let a test drive a hub's reconnect without waiting out
+# a production backoff.
+test-util = ["afd_core/test-util"]
+
+[dependencies]
+afd_core.workspace = true
+futures-util.workspace = true
+redis.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "rt"] }
+tracing.workspace = true
+
+[dev-dependencies]
+# Installed by the test harness so event macros evaluate their fields; see the
+# workspace manifest for why that is a correctness concern and not a coverage one.
+tracing-subscriber.workspace = true
+# The refcount and race proofs need real parallelism, not a current-thread
+# runtime interleaving two futures politely.
+# `net` and `io-util` are the fault-injection harness's, not the library's:
+# `tests/support/fake_redis.rs` is a TCP server that answers wrongly on purpose,
+# which is the only way to reach the reply-shape and dropped-socket branches a
+# correctly-behaving Redis never produces.
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util"] }
+
+[lints]
+workspace = true

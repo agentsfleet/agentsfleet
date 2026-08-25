@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "orly_version": "0.6.5",
+  "orly_version": "0.6.8",
   "packs": [
     "language.rust",
     "persona.indy",
@@ -23,6 +23,12 @@
       [
         "make",
         "test-unit-all"
+      ]
+    ],
+    "verify.integration": [
+      [
+        "make",
+        "test-integration-rustd"
       ]
     ],
     "verify.version": [
@@ -80,6 +86,7 @@
     "dispatch/write_changelog.md",
     "dispatch/write_documentation.md",
     "dispatch/write_http.md",
+    "dispatch/write_pr_description.md",
     "dispatch/write_python.md",
     "dispatch/write_rust.md",
     "dispatch/write_shell.md",

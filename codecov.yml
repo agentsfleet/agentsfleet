@@ -41,6 +41,21 @@ coverage:
       rust-afd:
         flags:
           - rust-afd
+        # 100%, and it stays there. The crates carry sqlx, redis, axum and OTLP
+        # now, which is exactly when a floor starts being load-bearing rather
+        # than free. Every line that looked unreachable has turned out to be
+        # reachable once the right seam existed — a `const fn` runs at runtime
+        # when a test calls it, a reconnect arm runs when something closes the
+        # socket. If a line ever genuinely resists, it is named here and in the
+        # milestone spec, in the commit that adds it, with the reason — not
+        # covered by lowering the number.
+        #
+        # M176 §1-§5: the branch reached 100.00% (3193/3193) with NOTHING named
+        # here. Every line that looked unreachable turned out to be reachable
+        # once the right seam existed, exactly as the paragraph above predicts —
+        # including three that were unreachable because of a DEFECT rather than
+        # a missing test, and which were fixed instead of excused. The clause
+        # stays unused.
         target: 100%
         threshold: 0%
         informational: false

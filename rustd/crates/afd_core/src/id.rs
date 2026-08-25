@@ -25,7 +25,7 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Error, ErrorKind};
+use crate::error::{Error, ErrorKind, Result};
 
 /// Length of canonical dashed UUID text: 32 hex characters plus 4 dashes.
 pub const TEXT_LEN: usize = 36;
@@ -58,7 +58,7 @@ impl Uuid7 {
     /// the wrong length, carries a dash out of place, contains a character that
     /// is not lowercase hex, or is not a version-7 RFC 4122 UUID. Uppercase hex
     /// fails here rather than being folded to lowercase.
-    pub fn parse(text: &str) -> Result<Self, Error> {
+    pub fn parse(text: &str) -> Result<Self> {
         let reason = first_violation(text);
         match reason {
             Some(reason) => Err(Error::new(ErrorKind::IdShape { reason })),

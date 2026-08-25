@@ -1,0 +1,85 @@
+[package]
+name = "agentsfleetd"
+description = "The daemon: subcommand parsing, boot choreography, and the task supervisor."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+# A library beside the binary, so the choreography is reachable from a test.
+# `main.rs` is the thin part: everything a test would want to drive — boot
+# order, the supervisor, the shutdown sequence — lives in the library, because
+# a binary crate's internals cannot be linked by an integration suite.
+[lib]
+name = "agentsfleetd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "agentsfleetd"
+path = "src/main.rs"
+
+[features]
+# M-TEST-UTIL. Unlocks the mockable cores the boot path reads through.
+test-util = [
+    "afd_api/test-util",
+    "afd_core/test-util",
+    "afd_crypto/test-util",
+    "afd_db/test-util",
+    "afd_redis/test-util",
+]
+
+[dependencies]
+afd_api.workspace = true
+afd_core.workspace = true
+# The command line. Subcommands, `--port`, `--help` and `--version` are all
+# derived from `cli::Cli`; nothing in this crate reads `std::env::args` itself.
+clap.workspace = true
+
+# Preflight resolves the master key here rather than in the crypto crate:
+# `afd_crypto` takes hex, deliberately, because it is the layer that must not
+# know where a key came from.
+afd_crypto.workspace = true
+# The pool and client settings boot resolves BEFORE it opens either.
+afd_db.workspace = true
+afd_redis.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "time"] }
+# The cancellation token every supervised task stops on.
+tokio-util.workspace = true
+# The accept loop drives hyper directly: `axum::serve` cannot bound the header
+# buffer, and Dimension 5.3 is a bound on the header buffer.
+axum.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+tower.workspace = true
+# The boot-failure enum composes foreign errors by `From`, so `?` lifts them
+# and the source chain survives for the fatal renderer to walk.
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# `test-util` is what makes an assertion about JOIN_TIMEOUT affordable: with
+# time paused and every task parked, the runtime advances to the next deadline
+# itself, so the ten-second timeout costs no wall clock in the unit lane.
+tokio = { workspace = true, features = [
+    "rt-multi-thread",
+    "macros",
+    "time",
+    "sync",
+    "io-util",
+    "net",
+    "test-util",
+] }
+# The accept-fault suite names `CancellationToken` and builds a bare Router.
+tokio-util.workspace = true
+axum.workspace = true
+# The suites assert on diagnostics the supervisor emits, and an event macro
+# does not evaluate its fields until a subscriber says the callsite is enabled.
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true
