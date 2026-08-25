@@ -25,10 +25,28 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
+use crate::clock::UnixMillis;
 use crate::error::{Error, ErrorKind, Result};
 
 /// Length of canonical dashed UUID text: 32 hex characters plus 4 dashes.
 pub const TEXT_LEN: usize = 36;
+
+/// Random bytes a version-7 identifier carries after its timestamp.
+///
+/// The version nibble and the variant bits overwrite 6 of these 80 bits, so 74
+/// are random. Public because the caller draws them: `afd_core` links no
+/// entropy source, which is what keeps `afd_crypto`'s "one system call" claim
+/// true and keeps this module pure enough to test byte-for-byte.
+pub const ENTROPY_LEN: usize = 10;
+
+/// The largest instant the 48-bit millisecond field holds — the year 10889.
+///
+/// Kept even though `uuid` owns the bit layout, because `uuid` MASKS an
+/// oversized value into the field rather than refusing it. A silently truncated
+/// timestamp mints an identifier that sorts wrongly for the rest of the row's
+/// life, so the bound is checked here and reported (`id_format.zig` refuses for
+/// the same reason).
+const MAX_TIMESTAMP_MILLIS: u64 = 0xffff_ffff_ffff;
 
 /// Byte offsets carrying the dashes in canonical text.
 const DASH_OFFSETS: [usize; 4] = [8, 13, 18, 23];
@@ -70,6 +88,67 @@ impl Uuid7 {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// Mints one identifier from an explicit instant and caller-supplied entropy.
+    ///
+    /// Pure — it reads neither the clock nor an entropy source — so a test can
+    /// assert the exact byte layout rather than only the shape. A caller draws
+    /// `entropy` from `afd_crypto::entropy::Entropy` and passes the instant it
+    /// already has, which is also why this crate needs no dependency to mint.
+    ///
+    /// # One minter, not one per table
+    ///
+    /// `id_format.zig` exposes nine functions — `generateWorkspaceId`,
+    /// `generateFleetId`, `generateRunnerId`, and six more — whose bodies are
+    /// all `return allocUuidV7(alloc)`. They differ in their names and nothing
+    /// else: each returns `[]const u8`, so any one is accepted wherever another
+    /// is expected and the compiler checks none of it. That is a naming
+    /// convention wearing type safety's clothes, and it does not survive the
+    /// port. Where an identifier's ENTITY genuinely needs to be checked, the
+    /// check belongs on the struct that carries it — named fields whose types
+    /// a caller cannot transpose — not on nine aliases for one function.
+    ///
+    /// # Why the bit layout is `uuid`'s and the spelling is ours
+    ///
+    /// `uuid::Builder::from_unix_timestamp_millis` takes exactly what this
+    /// function takes — the 48-bit millisecond field and ten entropy bytes —
+    /// and sets the version and variant nibbles. Hand-writing that shifting is
+    /// re-deriving a solved, tested thing, so it is not written here.
+    ///
+    /// The canonical SPELLING is a different question, and it does stay here:
+    /// `Uuid::parse_str` is case-insensitive and normalises, while this product
+    /// REJECTS uppercase so that one entity cannot have two valid spellings.
+    /// So the minted value is rendered and handed to [`Uuid7::parse`], which
+    /// makes an encoded identifier canonical BY CONSTRUCTION — one definition
+    /// of canonical, and no way for this function to emit a value the parser
+    /// would refuse. `id_format.zig` instead writes the text with one set of
+    /// offsets and validates it with another, so its "canonical" is defined
+    /// twice and the two can drift.
+    ///
+    /// # Errors
+    /// Returns `UZ-UUIDV7-009` when `at` precedes the Unix epoch, or exceeds the
+    /// 48-bit millisecond field. Both are unrepresentable rather than merely
+    /// unusual — a negative instant would wrap into a far-future timestamp and a
+    /// post-year-10889 one would lose its high bits — so they fail loudly
+    /// instead of minting an identifier that sorts wrongly forever.
+    pub fn encode(at: UnixMillis, entropy: [u8; ENTROPY_LEN]) -> Result<Self> {
+        let Ok(millis) = u64::try_from(at.as_millis()) else {
+            return Err(Error::new(ErrorKind::IdShape {
+                reason: "instant precedes the Unix epoch",
+            }));
+        };
+        if millis > MAX_TIMESTAMP_MILLIS {
+            return Err(Error::new(ErrorKind::IdShape {
+                reason: "instant exceeds the 48-bit millisecond field",
+            }));
+        }
+        let minted = uuid::Builder::from_unix_timestamp_millis(millis, &entropy).into_uuid();
+        // Into a stack buffer rather than through `to_string`: an identifier is
+        // minted on the lease path, and `parse` copies the text it is handed
+        // anyway, so a heap `String` in between would be pure waste.
+        let mut text = [0u8; TEXT_LEN];
+        Self::parse(minted.hyphenated().encode_lower(&mut text))
     }
 }
 

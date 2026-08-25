@@ -57,8 +57,25 @@ impl Digest {
     /// that. Hashing the body alone would authenticate nothing.
     #[must_use]
     pub fn of(presented: &Presented) -> Self {
+        Self::of_minted(presented.expose())
+    }
+
+    /// Hashes a credential this daemon just MINTED.
+    ///
+    /// A minted value has no `Authorization` header to parse and cannot be
+    /// blank, so it never passes through [`Presented`] — but it MUST be hashed
+    /// by the same code that hashes what the holder later presents, or the row
+    /// stores a digest no lookup will ever match. Both paths therefore land
+    /// here, and [`Digest::of`] is the thin wrapper.
+    ///
+    /// Splitting this out rather than making the minter construct a
+    /// `Presented` it does not need also avoids an unreachable blank-check
+    /// branch at every mint site, which would be dead code this workspace
+    /// measures.
+    #[must_use]
+    pub fn of_minted(raw: &str) -> Self {
         use sha2::Digest as _;
-        let hashed = sha2::Sha256::digest(presented.expose().as_bytes());
+        let hashed = sha2::Sha256::digest(raw.as_bytes());
         let mut hex = String::with_capacity(DIGEST_HEX_LEN);
         for byte in hashed {
             use std::fmt::Write as _;
