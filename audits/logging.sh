@@ -9,7 +9,7 @@
 #   - agentsfleet scope-prefix format from LOGGING_STANDARD §7 (the
 #     `log.scoped(...)` API path under `src/logging/`)
 #   - `UZ-XXX-NNN` as the `error_code=` substring per LOGGING_STANDARD §5
-#   - `src/` + `agentsfleet/src/` as the scan roots
+#   - `src/` + `rustd/` + `agentsfleet/src/` as the scan roots
 # A parameterised version that reads prefix + scope-api path + scan
 # roots from a per-project config is the right long-term shape; not
 # done yet. Today, this script lives in dotfiles so the gate body and
@@ -18,6 +18,8 @@
 # Two severity tiers:
 #   BLOCK  — exits 1, must fix:
 #            - `std.debug.print(` in non-test source under src/.
+#            - `println!` / `eprintln!` / `dbg!`, missing `event`, or positional
+#              tracing formatting in non-test Rust source under rustd/.
 #            - `console.log/debug/info/warn/error` in agentsfleet/src outside tests.
 #   INFO   — surfaced for reviewer/agent attention, doesn't block:
 #            - `std.log.scoped(...)` outside `src/logging/` (LOGGING_STANDARD §7
@@ -29,7 +31,7 @@
 #
 # Modes:
 #   --staged   diff-scope: only files in `git diff --cached`
-#   --all      (default) full src/ + agentsfleet/src/ scan
+#   --all      (default) full src/ + rustd/ + agentsfleet/src/ scan
 #   --strict   promote every INFO finding to BLOCK (post-migration use)
 #
 # Exits 0 clean, 1 on BLOCK findings.
@@ -79,6 +81,13 @@ is_test_zig() {
   return 1
 }
 
+is_test_rust_path() {
+  case "$1" in
+    */tests/*|*/benches/*) return 0 ;;
+  esac
+  return 1
+}
+
 # ---------------------------------------------------------------------------
 # 1. Gather files in scope.
 # ---------------------------------------------------------------------------
@@ -86,11 +95,12 @@ gather_paths() {
   case "$MODE" in
     --staged)
       git diff --cached --name-only --diff-filter=ACMRT \
-        | grep -E '^(src/.*\.zig$|agentsfleet/src/.*\.(js|jsx|ts|tsx)$)' || true
+        | grep -E '^(src/.*\.zig$|rustd/.*\.rs$|agentsfleet/src/.*\.(js|jsx|ts|tsx)$)' || true
       ;;
     --all)
-      find src -type f -name '*.zig' 2>/dev/null
-      find agentsfleet/src -type f \( -name '*.js' -o -name '*.jsx' -o -name '*.ts' -o -name '*.tsx' \) 2>/dev/null
+      find src -type f -name '*.zig' 2>/dev/null || true
+      find rustd -type f -name '*.rs' 2>/dev/null || true
+      find agentsfleet/src -type f \( -name '*.js' -o -name '*.jsx' -o -name '*.ts' -o -name '*.tsx' \) 2>/dev/null || true
       ;;
   esac
 }
@@ -105,10 +115,14 @@ fi
 # previously ran 3–4 forks × N files; M70 perf pass batches them into
 # single awk/grep passes.
 zig_nontest=()
+rust_nontest=()
 js_nontest=()
 for f in "${FILES[@]}"; do
   if [[ "$f" == *.zig ]] && ! is_test_zig "$f"; then
     zig_nontest+=("$f")
+  fi
+  if [[ "$f" == *.rs ]] && ! is_test_rust_path "$f"; then
+    rust_nontest+=("$f")
   fi
   case "$f" in
     agentsfleet/src/*.test.*|agentsfleet/src/*.spec.*|agentsfleet/src/tests/*) ;;
@@ -140,7 +154,146 @@ if [[ ${#zig_nontest[@]} -gt 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 3. BLOCKING: console.log/debug/info/warn/error in agentsfleet/src non-test.
+# 3. BLOCKING: unstructured or event-less tracing in non-test Rust source.
+#    The awk tracker excludes complete items annotated with #[cfg(test)].
+# ---------------------------------------------------------------------------
+rust_direct_hits=0
+rust_missing_event_hits=0
+rust_positional_hits=0
+if [[ ${#rust_nontest[@]} -gt 0 ]]; then
+  while IFS='|' read -r kind f ln; do
+    [[ -z "$kind" ]] && continue
+    case "$kind" in
+      direct)
+        fail "$f:$ln — direct Rust diagnostic macro in non-test source (LOGGING_STANDARD §8A)"
+        rust_direct_hits=$((rust_direct_hits + 1))
+        ;;
+      event)
+        fail "$f:$ln — \`tracing\` emit without \`event = ...\` (LOGGING_STANDARD §8A)"
+        rust_missing_event_hits=$((rust_missing_event_hits + 1))
+        ;;
+      positional)
+        fail "$f:$ln — positional formatting in \`tracing\` emit (LOGGING_STANDARD §8A)"
+        rust_positional_hits=$((rust_positional_hits + 1))
+        ;;
+    esac
+  done < <(awk '
+    function count_char(text, char, copy, count) {
+      copy = text
+      count = gsub(char, "", copy)
+      return count
+    }
+    function code_only(text, output, cursor, char, escaped, quoted) {
+      output = ""
+      escaped = 0
+      quoted = 0
+      for (cursor = 1; cursor <= length(text); cursor++) {
+        char = substr(text, cursor, 1)
+        if (quoted) {
+          if (escaped) escaped = 0
+          else if (char == "\\") escaped = 1
+          else if (char == "\"") quoted = 0
+          continue
+        }
+        if (char == "\"") {
+          quoted = 1
+          continue
+        }
+        if (char == "/" && substr(text, cursor + 1, 1) == "/") break
+        output = output char
+      }
+      return output
+    }
+    function without_comment(text, output, cursor, char, escaped, quoted) {
+      output = ""
+      escaped = 0
+      quoted = 0
+      for (cursor = 1; cursor <= length(text); cursor++) {
+        char = substr(text, cursor, 1)
+        if (quoted) {
+          output = output char
+          if (escaped) escaped = 0
+          else if (char == "\\") escaped = 1
+          else if (char == "\"") quoted = 0
+          continue
+        }
+        if (char == "\"") {
+          quoted = 1
+          output = output char
+          continue
+        }
+        if (char == "/" && substr(text, cursor + 1, 1) == "/") break
+        output = output char
+      }
+      return output
+    }
+    function check_emit() {
+      if (emit_code !~ /event[[:space:]]*=/ && emit_code !~ /[(,][[:space:]]*event[[:space:]]*[,)]/)
+        printf "event|%s|%d\n", FILENAME, emit_line
+      if (emit_source ~ /"[^"\n]*\{[^"\n]*\}[^"\n]*"/)
+        printf "positional|%s|%d\n", FILENAME, emit_line
+      emit_code = ""
+      emit_source = ""
+      in_emit = 0
+    }
+    FNR == 1 {
+      depth = 0
+      test_depth = 0
+      cfg_test = 0
+      in_emit = 0
+      emit_parens = 0
+      emit_code = ""
+      emit_source = ""
+    }
+    {
+      code = code_only($0)
+      if (!in_emit && code ~ /^[[:space:]]*$/) next
+      opens = count_char(code, "\\{")
+      closes = count_char(code, "\\}")
+      if (test_depth > 0) {
+        depth += opens - closes
+        if (depth < test_depth) test_depth = 0
+        next
+      }
+      if (code ~ /^[[:space:]]*#\[cfg\(test\)\]/) {
+        if (opens > 0) {
+          test_depth = depth + 1
+          depth += opens - closes
+          if (depth < test_depth) test_depth = 0
+        } else cfg_test = 1
+        next
+      }
+      if (cfg_test) {
+        if (opens > 0) {
+          test_depth = depth + 1
+          depth += opens - closes
+          if (depth < test_depth) test_depth = 0
+          cfg_test = 0
+        } else if (code ~ /;/) cfg_test = 0
+        next
+      }
+      if (code ~ /(^|[^[:alnum:]_])(println|eprintln|dbg)!/)
+        printf "direct|%s|%d\n", FILENAME, FNR
+      if (!in_emit && match(code, /tracing::(error|warn|info|debug|trace)!/)) {
+        in_emit = 1
+        emit_line = FNR
+        emit_code = code
+        emit_source = without_comment($0)
+        macro = substr(code, RSTART)
+        emit_parens = count_char(macro, "\\(") - count_char(macro, "\\)")
+      } else if (in_emit) {
+        emit_code = emit_code " " code
+        emit_source = emit_source " " without_comment($0)
+        emit_parens += count_char(code, "\\(") - count_char(code, "\\)")
+      }
+      if (in_emit && emit_parens <= 0) check_emit()
+      depth += opens - closes
+    }
+  ' "${rust_nontest[@]}")
+fi
+
+# ---------------------------------------------------------------------------
+# 4. BLOCKING: console.log/debug/info/warn/error in agentsfleet/src non-test.
 # ---------------------------------------------------------------------------
 console_hits=0
 if [[ ${#js_nontest[@]} -gt 0 ]]; then
@@ -155,7 +308,7 @@ if [[ ${#js_nontest[@]} -gt 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 4. INFO: std.log.scoped outside src/logging/ (pre-migration to the named
+# 5. INFO: std.log.scoped outside src/logging/ (pre-migration to the named
 #    `log` module's scoped API). The audit no longer carves out src/auth/ —
 #    the named module is import-able from layer-isolated trees, so the
 #    portability exception is gone.
@@ -180,7 +333,7 @@ if [[ ${#scoped_eligible[@]} -gt 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 5. INFO: err/warn logs without `error_code=` substring on the same line.
+# 6. INFO: err/warn logs without `error_code=` substring on the same line.
 #    Heuristic — captures the common case where an err/warn line should
 #    embed UZ-XXX-NNN per LOGGING_STANDARD §5.
 # ---------------------------------------------------------------------------
@@ -198,16 +351,16 @@ if [[ ${#zig_nontest[@]} -gt 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 6. Promote INFO to BLOCK in --strict mode.
+# 7. Promote INFO to BLOCK in --strict mode.
 # ---------------------------------------------------------------------------
 if [[ $STRICT -eq 1 && $INFO_COUNT -gt 0 ]]; then
   fail "--strict: $INFO_COUNT informational findings promoted to blocking"
 fi
 
 # ---------------------------------------------------------------------------
-# 7. Verdict.
+# 8. Verdict.
 # ---------------------------------------------------------------------------
-ok "scanned ${#FILES[@]} files; std.debug.print=$debug_print_hits console.*=$console_hits std.log.scoped=$scoped_hits missing-error_code=$missing_code_hits"
+ok "scanned ${#FILES[@]} files; std.debug.print=$debug_print_hits rust-direct=$rust_direct_hits rust-missing-event=$rust_missing_event_hits rust-positional=$rust_positional_hits console.*=$console_hits std.log.scoped=$scoped_hits missing-error_code=$missing_code_hits"
 if [[ $FAIL -ne 0 ]]; then
   printf "\n🔴 LOGGING GATE: blocking violations. See dispatch/write_any.md (Logging Gate).\n" >&2
   exit 1

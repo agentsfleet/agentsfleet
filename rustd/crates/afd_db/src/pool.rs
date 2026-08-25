@@ -106,7 +106,7 @@ impl Db {
             role = role_tag,
             size = max_connections,
             acquire_timeout_ms,
-            "pool_initialized"
+            event = "pool_initialized"
         );
         Ok(Self {
             role,

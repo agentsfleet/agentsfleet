@@ -94,7 +94,7 @@ pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router 
             let meta = route.meta();
             let template = meta.template;
             let class = meta.class;
-            tracing::debug!(template, ?class, "route mounted");
+            tracing::debug!(template, ?class, event = "route_mounted", "route mounted");
             router = router.route(template, layered(handler, meta, &dependencies, admission));
             mounted += 1;
         }
@@ -104,7 +104,7 @@ pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router 
     // handlers — the gap between the table and the mount list is the single
     // most misreadable thing about this milestone.
     let tabled = Route::all().count();
-    tracing::info!(mounted, tabled, "router built");
+    tracing::info!(mounted, tabled, event = "router_built", "router built");
     router
         // `route_layer`, not `layer`: a HEAD at a path this binary does not
         // serve is a 404, exactly as it is in Zig, rather than a 405 that
@@ -220,7 +220,11 @@ async fn refuse_head(request: Request, next: Next) -> Response {
         // the instance. It is worth seeing when somebody is debugging why
         // their probe gets a 405, and worth nothing the rest of the time.
         let path = request.uri().path();
-        tracing::debug!(path, "HEAD refused — this daemon serves no HEAD route");
+        tracing::debug!(
+            path,
+            event = "head_refused",
+            "HEAD refused — this daemon serves no HEAD route"
+        );
         return StatusCode::METHOD_NOT_ALLOWED.into_response();
     }
     next.run(request).await

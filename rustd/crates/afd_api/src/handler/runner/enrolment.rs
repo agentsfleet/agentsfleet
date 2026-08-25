@@ -103,7 +103,7 @@ fn reject(detail: &'static str) -> Response {
         // identifier and an operator's labels, and a refusal that quotes what
         // it refused is a refusal that logs it.
         detail,
-        EVENT,
+        event = EVENT,
     );
     ProblemResponse::new(code, detail, request_id).into_response()
 }

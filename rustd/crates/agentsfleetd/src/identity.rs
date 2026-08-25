@@ -118,6 +118,7 @@ fn capabilities(identity: &IdentityConfig) -> Capabilities {
             let code = afd_core::error_code::AUTH_UNAVAILABLE.as_str();
             tracing::error!(
                 error_code = code,
+                event = "identity_client_unavailable",
                 "no HTTP client for the identity provider — every tenant-plane \
                  capability read will answer unavailable"
             );
@@ -143,6 +144,7 @@ fn sessions(identity: &IdentityConfig) -> Sessions {
             let code = afd_core::error_code::AUTH_UNAVAILABLE.as_str();
             tracing::error!(
                 error_code = code,
+                event = "key_set_client_unavailable",
                 "no HTTP client for the key-set endpoint — every session token \
                  will answer unavailable"
             );
