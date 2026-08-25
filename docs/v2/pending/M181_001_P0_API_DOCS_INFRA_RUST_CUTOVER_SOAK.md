@@ -124,7 +124,10 @@ The runbook also carries the **declared-divergence register** — every place th
 
 > **Lease wire version one.** Zig downgrades and refuses policy-bearing leases to version-one runners; Rust serves the current shape unconditionally and ignores `wire_version`. Unreachable in practice — no in-tree emitter, Indy signed off Aug 23, 2026 that no deployed runner is owed compatibility. Rollback runs the safe direction: Zig is strictly more permissive, so a Rust→Zig rollback cannot break a runner Rust was already serving.
 
+The runbook's rollback path carries **no `migrate` invocation**. Rollback serves the older binary against a ledger it already understands; a `migrate` there is at best a no-op and at worst the one command that can refuse mid-incident. `probes.sh` asserts the absence rather than trusting the prose.
+
 - **Dimension 4.1** — rollback rehearsal on staging: swap back, verify, documented in the runbook's own evidence section → Test `test_rollback_rehearsal`
+- **Dimension 4.4** — the rollback path invokes no `migrate`, and an older binary pointed at a newer ledger refuses rather than reaping → Test `test_rollback_carries_no_migrate`
 - **Dimension 4.2** — runbook probes are copy-paste commands that pass on staging post-swap → Test `test_runbook_probes`
 - **Dimension 4.3** — metric-family continuity across the swap (no renamed series, dashboards unbroken) → Test `test_metric_continuity`
 
@@ -163,13 +166,14 @@ the first baseline run and recorded in the spec's Discovery, not invented here.
 | Memory growth in soak | leak-equivalent (unbounded buffer, task leak) | cutover blocked; RSS trace attached; fix and re-soak |
 | Mid-swap abort | probe failure on machine 1 of 3 | abort criteria trigger rollback of the touched machine; mixed fleet tolerated structurally while recovering |
 | Post-cutover regression | defect only visible under production traffic | one-move rollback: redeploy the warm Zig binary; schema untouched by design |
+| Older binary meets a newer ledger | a rollback (or a stale image) starts a binary whose migration set predates the database's | `agentsfleetd migrate` REFUSES with `UZ-STARTUP-005`, naming the version it does not know, and changes nothing. It does not reap and proceed — M176 made that refusal unconditional. A rollback that trips this has crossed a migration boundary and is not one-move; see Invariant 1 |
 | State-handoff regression | Zig cannot read or resume Rust-written state (or reverse) | `make test-handoff` red → cutover blocked; serialization fixed before any swap |
 | Dashboard discontinuity | renamed/dropped metric series | blocked at §4; series names are parity surface, fixed before swap |
 | Release artifact drift | Rust binary missing from a release | release lane asserts both binaries present; red release, no deploy |
 
 ## Invariants
 
-1. Rollback requires no schema or data migration — enforced by the family rule (no `schema/` changes in M175–M181) + `test_rollback_rehearsal`.
+1. Rollback requires no schema or data migration — enforced by the family rule (no `schema/` changes in M175–M181) + `test_rollback_rehearsal`. **The daemon enforces this too, from M176 on:** a binary whose migration set predates the ledger refuses to migrate rather than reconciling. Before M176 it reaped the versions it did not recognise and carried on, which corrupted the history silently; it now exits `UZ-STARTUP-005` naming the version. Two consequences for this milestone: the rollback path must carry **no `migrate` step** (rollback SERVES, it does not migrate), and the invariant is only cheap while the family rule holds — the first release after cutover that adds a migration makes a rollback across that boundary a schema decision, not a binary swap.
 2. Rollback is redeploying the Zig daemon's frozen revision by hand via `deploy-dev.yml`'s manual dispatch, not a binary swap — it carries no lanes and is not built by Continuous Integration (CI) any more (M175 §6). Acceptable because no production user reaches it; enforced by `test_daemon_deploy_retired` keeping that dispatch reachable.
 3. Budgets are named constants compared mechanically — never prose judgments — `test_latency_budget`, `test_memory_ceiling_soak`.
 3b. Every declared divergence is registered in §4's register before cutover, and the parity oracles (the M177 dual-run differ, the soak suites) read it, so a declared divergence never surfaces as a regression and an UNdeclared one always does.
@@ -200,6 +204,7 @@ No product-analytics changes.
 | 3.4 | e2e (chaos) | `test_soak_chaos_invariants` | replay/fencing/reconnect probes hold mid-load |
 | 3.5 | e2e (negative-sensitive) | `test_state_handoff_bidirectional` | Rust-written live state served correctly by Zig after swap, and reverse (`make test-handoff`) |
 | 4.1 | e2e | `test_rollback_rehearsal` | staged Rust→Zig swap verified by `probes.sh` exit 0 |
+| 4.4 | e2e (negative) | `test_rollback_carries_no_migrate` | the runbook's rollback section invokes no `migrate`; and a binary seeded with a shortened migration set, pointed at the full ledger, exits `UZ-STARTUP-005` with the ledger unchanged |
 | 4.2 | e2e | `test_runbook_probes` | `bash playbooks/cutover/probes.sh` passes post-swap on staging; every M175–M180 R+S row id is probe-tagged or manifest-declared, and every probe carries a row tag |
 | 4.3 | integration | `test_metric_continuity` | series names/labels identical across the swap boundary |
 
