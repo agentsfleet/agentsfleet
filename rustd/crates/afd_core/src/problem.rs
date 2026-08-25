@@ -240,6 +240,20 @@ const ENTRIES: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::RUN_BUDGET_EXCEEDED,
+        // 402, and the status is load-bearing rather than decorative: the stock
+        // runner classifies a renew refusal by BOTH status and code, and
+        // `control_plane_client_test.zig` pins that a UZ-RUN-015 arriving on
+        // any other terminal status is NOT a budget breach. A 403 here would
+        // leave the runner treating an exhausted ceiling as an auth failure.
+        status: 402,
+        title: "Lease renewal blocked: fleet budget exhausted",
+        hint: "The fleet reached its daily_dollars or monthly_dollars limit from `TRIGGER.md`, so the run stops. The tenant balance is fine; this is the fleet's own budget.",
+        // Not dashboard-facing: this rides the runner-to-control-plane wire
+        // protocol, and the Zig entry carries the same reachability note.
+        user_message: None,
+    },
+    Problem {
         code: error_code::API_BACKPRESSURE,
         status: 429,
         title: "Too many requests",

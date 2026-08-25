@@ -125,5 +125,11 @@ fn ours_only(backtrace: &str) -> Vec<String> {
 
 /// Prints a fatal to standard error. The only thing in this crate that does.
 pub fn die(error: &dyn Error) {
+    // The last thing the process says before it exits, and it has to arrive
+    // whether or not a subscriber was ever installed — a boot that fails BEFORE
+    // telemetry is wired is precisely when this runs. A `tracing::error!` here
+    // would be dropped by the no-subscriber default, turning a diagnosed
+    // failure into a silent exit.
+    // logging: fatal renderer must reach stderr with no subscriber installed
     eprintln!("{}", render(error, Rendering::of_stderr()));
 }

@@ -126,7 +126,7 @@ shebang and is the authoritative check.
 **Triggers** — every `Edit`/`Write` that adds, removes, or changes a log emit:
 
 - `*.zig` outside `vendor/`/`third_party/`/`.zig-cache/`/`*_test.zig` — `std.log.*`, `std.debug.print`, raw stderr writes, calls into the `log` named module (source: `src/logging/mod.zig`).
-- `*.rs` under `rustd/` outside `tests/`, `benches/`, and `#[cfg(test)]` items — `tracing::*`, `println!`, `eprintln!`, and `dbg!`.
+- Every tracked or unignored `*.rs` outside `build.rs`, `examples/`, `tests/`, `benches/`, and `#[cfg(test)]` items — `tracing::*`, `println!`, `eprintln!`, and `dbg!`.
 - `*.ts`/`*.tsx`/`*.js`/`*.jsx` outside `vendor/`/`node_modules/`/`*.test.*`/`*.spec.*` — `console.*`, custom logger calls.
 - `*.sh` outside generated dirs — `echo`/`printf` to `&2`.
 
@@ -149,7 +149,8 @@ shebang and is the authoritative check.
 | New `err`/`warn` log mapping to a domain failure | registry-scheme `error_code=` field required (agentsfleet: `UZ-XXX-NNN`). Registry entry must land in same commit. |
 | Per-iteration / hot-loop log | Use `debug` (hidden by default), not `info`. |
 | `info` level | No allow-list — `info` is open (§4 rule 2). Two checks instead: a boundary-crossing operation needs its `_started`/`_completed`\|`_failed` pair on every exit path (rule 1), and a per-iteration path is `debug` (rule 3). Hot-poll boundary pairs remain complete but use `debug`. |
-| `console.log`/`std.debug.print`/Rust print macro in non-test source | Forbidden. Convert to the structured logger or delete before commit. |
+| `console.log` in non-test source | Forbidden. Convert to the structured logger or delete before commit. |
+| `std.debug.print` or a Rust print macro in runtime source | Convert to structured logging. When the stream output is the program interface, add `// logging: <reason>` on or immediately above the emit. The reason is mandatory. |
 | `std.log.scoped` outside `src/logging/` | Migration target. The `log` named module's `scoped` API is the only non-test entry point; flip the file's alias and migrate every call site in the same commit. |
 | `msg=` field | ≤ 300 chars. Stack traces emit as separate `event=stack_trace` debug record. |
 | Multi-line values | Newlines must be `\n` literal (two chars), not raw newline byte. |
@@ -189,13 +190,13 @@ LOGGING GATE: <file>
 
 > [DETERMINISTIC → LOG]
 
-`logging.sh` walks the **full `src/` + `rustd/` + `agentsfleet/src/` working tree**. The staged mode reads the index, so a fix staged in pre-commit satisfies the check on the same hook run. `--staged` is preserved as an opt-in narrowing mode for iterative dev.
+`logging.sh` walks `src/**/*.zig`, every tracked or unignored `*.rs`, and `agentsfleet/src/**/*.{js,jsx,ts,tsx}`. Rust repositories do not need to use a fixed source-root name. The staged mode reads the index, so a fix staged in pre-commit satisfies the check on the same hook run. `--staged` is preserved as an opt-in narrowing mode for iterative development.
 
 #### End-of-turn audit
 
 > [DETERMINISTIC → LOG]
 
-`audits/logging.sh` runs as part of `make lint`. It greps `std.log.*`, Rust `tracing` and direct-print macros, `console.*`, and raw stderr writes. It does NOT see calls through the Zig `log` named module's `scoped()`, so a clean run is not evidence that §4/§5 hold everywhere. Mechanical today: direct Zig/Rust/TypeScript diagnostics, Rust's required `event` field and positional-format ban, `std.log.scoped` outside `src/lib/logging/`, and legacy Zig error-code hints. Reviewer-side: severity choice, entry/exit pairing, registry applicability, inline Rust expression hoisting, and Personally Identifiable Information (PII) spot-checks.
+`audits/logging.sh` runs as part of `make lint`. It greps `std.log.*`, Rust `tracing` and direct-print macros, `console.*`, and raw stderr writes. It accepts a direct Zig or Rust stream write only when `// logging: <reason>` appears on or immediately above the emit with a non-empty reason. It does NOT see calls through the Zig `log` named module's `scoped()`, so a clean run is not evidence that §4/§5 hold everywhere. Mechanical today: direct Zig/Rust/TypeScript diagnostics, Rust's required `event` field and positional-format ban, `std.log.scoped` outside `src/lib/logging/`, and legacy Zig error-code hints. Reviewer-side: reason validity, severity choice, entry/exit pairing, registry applicability, inline Rust expression hoisting, and Personally Identifiable Information (PII) spot-checks.
 
 #### Family
 

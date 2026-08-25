@@ -37,6 +37,7 @@
 
 pub mod error;
 pub mod lease;
+pub mod money;
 pub mod runner;
 pub mod sql;
 
