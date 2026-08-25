@@ -37,17 +37,17 @@ pub struct Applied {
 
 /// What to do about a ledger version this binary does not know.
 ///
-/// Neither policy will delete a version ABOVE the canonical ceiling — that
-/// refusal is unconditional, and is not what this chooses between. See
-/// [`Migrator::run`].
+/// Neither policy will delete an unknown version AT OR ABOVE the canonical
+/// floor — that refusal is unconditional, and is not what this chooses
+/// between. See [`Migrator::run`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AheadPolicy {
-    /// Delete a RETIRED slot — a version below the ceiling that left the
-    /// canonical list. The pre-v2.0 teardown left rows for slots that no
-    /// longer exist, and a migrate run is where they go.
+    /// Delete a RETIRED slot — a version below the canonical floor, left by
+    /// the numbering that preceded this one. The pre-v2.0 teardown left rows
+    /// for slots that no longer exist, and a migrate run is where they go.
     ReapRetired,
     /// Refuse the run over any version this binary does not know, retired slots
-    /// included. Stricter than the unconditional ceiling check, and the setting
+    /// included. Stricter than the unconditional floor check, and the setting
     /// a test uses when it wants an unknown version to be an error rather than
     /// a tidy-up.
     Refuse,
@@ -70,8 +70,8 @@ impl Default for Migrator {
 impl Migrator {
     /// The canonical list, the production lock bound, reaping retired slots.
     ///
-    /// Retired slots only. A version above the canonical ceiling refuses the
-    /// run whatever this is set to — see [`Self::run`].
+    /// Retired slots only. An unknown version at or above the canonical floor
+    /// refuses the run whatever this is set to — see [`Self::run`].
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -99,9 +99,9 @@ impl Migrator {
 
     /// Refuses ANY version this binary does not know, retired slots included.
     ///
-    /// A ledger written by a newer binary is refused without this — the ceiling
+    /// A ledger written by a newer binary is refused without this — the floor
     /// check below is unconditional. What this adds is refusing a retired slot
-    /// too, instead of reaping it.
+    /// below the floor too, instead of reaping it.
     #[must_use]
     pub const fn refusing_newer(mut self) -> Self {
         self.ahead = AheadPolicy::Refuse;
@@ -111,10 +111,22 @@ impl Migrator {
     /// The highest version this migrator knows, or `None` if it knows none.
     ///
     /// The line between "a slot that was retired" and "a schema from the
-    /// future". A migrator handed an empty list has no ceiling to draw.
+    /// future" — kept because a test naming a GAP needs the top of the range to
+    /// search within, not because the refusal consults it. A migrator handed an
+    /// empty list has no ceiling to draw.
     #[must_use]
     pub fn ceiling(&self) -> Option<i32> {
         self.migrations.iter().map(Migration::version).max()
+    }
+
+    /// The lowest version this migrator knows, or `None` if it knows none.
+    ///
+    /// The line between "a slot from the previous numbering" and "a slot this
+    /// scheme owns". Reaping happens strictly below it; an unknown version at
+    /// or above it refuses the run.
+    #[must_use]
+    pub fn floor(&self) -> Option<i32> {
+        self.migrations.iter().map(Migration::version).min()
     }
 
     /// The versions this migrator knows.
@@ -155,29 +167,39 @@ impl Migrator {
 
         // UNCONDITIONAL, and it runs BEFORE the reap on purpose.
         //
-        // A version above the ceiling was written by a binary NEWER than this
-        // one. Reaping it would delete that deployment's migration history and
-        // then apply this binary's schema on top of one it does not understand
-        // — a schema torn between two versions, with a ledger that no longer
-        // records how it got there. That is not a tidy-up, so it is not
-        // something a policy gets to opt into: an older image rolled onto an
-        // upgraded database stops here, having changed nothing.
+        // An unknown version AT OR ABOVE THE FLOOR was written by a binary that
+        // has a migration in this scheme's range and this one does not — so
+        // something NEWER wrote it. Reaping it would delete that deployment's
+        // migration history and then apply this binary's schema on top of one
+        // it does not understand — a schema torn between two versions, with a
+        // ledger that no longer records how it got there. That is not a
+        // tidy-up, so it is not something a policy gets to opt into: an older
+        // image rolled onto an upgraded database stops here, having changed
+        // nothing.
         //
-        // The reap below still clears RETIRED slots, which is the case the
-        // pre-v2.0 teardown actually left behind and the one reaping is for.
-        if let Some(ceiling) = self.ceiling()
-            && let Some(found) = before.version_beyond(ceiling)
+        // The FLOOR, not the ceiling. A ceiling test only catches the unknown
+        // version that happens to be the highest, and the numbering leaves gaps
+        // ON PURPOSE — 550, 551, 560. A newer release filling one lands BELOW
+        // an older binary's ceiling, read as a retired slot, and had its record
+        // reaped while its schema change stayed applied.
+        //
+        // The reap below still clears slots beneath the floor, which is the
+        // case the pre-v2.0 teardown actually left behind (`001_*`…`005_*`,
+        // deleted when the scheme renumbered to 100+) and the one reaping is
+        // for.
+        let known: BTreeSet<i32> = canonical.iter().copied().collect();
+        if let Some(floor) = self.floor()
+            && let Some(found) = before.version_unknown_at_or_above(floor, &known)
         {
             let error_code = error_code::STARTUP_MIGRATION_CHECK.as_str();
-            tracing::error!(found, ceiling, error_code, "migrate_refused_schema_ahead");
+            tracing::error!(found, floor, error_code, "migrate_refused_schema_ahead");
             return Err(Error::new(ErrorKind::MigrationSchemaAhead { found }));
         }
 
-        if self.ahead == AheadPolicy::Refuse {
-            let known: BTreeSet<i32> = canonical.iter().copied().collect();
-            if let Some(found) = before.version_ahead_of(&known) {
-                return Err(Error::new(ErrorKind::MigrationSchemaAhead { found }));
-            }
+        if self.ahead == AheadPolicy::Refuse
+            && let Some(found) = before.version_ahead_of(&known)
+        {
+            return Err(Error::new(ErrorKind::MigrationSchemaAhead { found }));
         }
 
         let reaped = ledger::reap_orphans(connection, &canonical).await?;

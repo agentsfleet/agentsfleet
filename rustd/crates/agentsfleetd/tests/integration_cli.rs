@@ -58,6 +58,19 @@ fn lane(knob: &str) -> String {
     })
 }
 
+/// The Postgres pool size a spawned daemon is held to.
+///
+/// Two, not the production default. Each of these tests boots a REAL daemon,
+/// several run at once, and the whole Rust workspace's live-service suites
+/// share one compose Postgres with `max_connections = 100`. At the production
+/// pool size a handful of daemons plus the rest of the suite exhausts the
+/// server, and what that looks like is not "too many connections" — it is a
+/// daemon that never finishes booting and a test that times out waiting for
+/// `/readyz`, which reads like a bug in boot.
+///
+/// Two is enough for the probe to answer, which is all these tests ask of it.
+const LANE_POOL_SIZE: &str = "2";
+
 /// Every knob a booting daemon needs, pointed at the lane's services.
 ///
 /// `PORT` is NOT among them. Each test states the port it means, so what is
@@ -69,6 +82,7 @@ fn lane_knobs() -> Vec<(&'static str, String)> {
         ("REDIS_URL_API", lane(REDIS_LANE_KNOB)),
         ("REDIS_TLS_CA_CERT_FILE", lane(REDIS_CA_LANE_KNOB)),
         ("ENCRYPTION_MASTER_KEY", GOOD_KEK.to_owned()),
+        ("DATABASE_POOL_SIZE", LANE_POOL_SIZE.to_owned()),
     ]
 }
 
@@ -109,6 +123,7 @@ fn spawn(args: &[&str], knobs: &[(&str, String)]) -> Child {
         "REDIS_TLS_CA_CERT_FILE",
         "ENCRYPTION_MASTER_KEY",
         "PORT",
+        "DATABASE_POOL_SIZE",
     ] {
         command.env_remove(knob);
     }
