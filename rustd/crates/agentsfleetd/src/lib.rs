@@ -16,10 +16,14 @@
 use tracing_subscriber as _;
 
 pub mod banner;
+pub mod daemon;
 pub mod fatal;
+pub mod inventory;
 pub mod preflight;
 pub mod supervisor;
 pub mod tty;
 
+pub use self::daemon::{Daemon, Outcome, StopCause};
+pub use self::inventory::{Disposition, THREAD_MAP, ThreadRow};
 pub use self::preflight::{BootConfig, Fault, Refusal, preflight};
 pub use self::supervisor::{JOIN_TIMEOUT, ShutdownReport, Supervisor};
