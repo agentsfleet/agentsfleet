@@ -168,7 +168,7 @@ impl FleetStreams {
         if id.is_empty() {
             return Err(error::unexpected_reply(CMD_XADD));
         }
-        tracing::debug!(fleet_id, event_id = %id, "xadd_fleet_event");
+        tracing::debug!(fleet_id, event_id = %id, event = "xadd_fleet_event");
         Ok(EventId(id))
     }
 
@@ -207,7 +207,7 @@ impl FleetStreams {
                 tracing::warn!(
                     fleet_id,
                     error_code,
-                    "fleet_consumer_group_missing_repaired"
+                    event = "fleet_consumer_group_missing_repaired"
                 );
                 self.create_group(fleet_id, GROUP_START_END).await?;
                 self.read_once(fleet_id, consumer, read_id).await

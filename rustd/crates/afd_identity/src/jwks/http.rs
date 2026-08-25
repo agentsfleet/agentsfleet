@@ -108,7 +108,11 @@ impl HttpKeySet {
             let Some(chunk) = chunk else { break };
             if body.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES {
                 let cap = MAX_RESPONSE_BYTES;
-                tracing::warn!(cap, "jwks_response_too_large: refusing the key set");
+                tracing::warn!(
+                    cap,
+                    event = "jwks_response_too_large",
+                    "refusing the key set"
+                );
                 return Err(VerifyError::KeySetUnavailable);
             }
             body.extend_from_slice(&chunk);
@@ -124,14 +128,14 @@ impl KeySetSource for HttpKeySet {
             // and llvm-cov reports the dead copy.
             let cause = err.to_string();
             let url = self.url.clone();
-            tracing::warn!(url, cause, "jwks_fetch_failed");
+            tracing::warn!(url, cause, event = "jwks_fetch_failed");
             VerifyError::KeySetUnavailable
         })?;
         let status = response.status();
         if !status.is_success() {
             let code = status.as_u16();
             let url = self.url.clone();
-            tracing::warn!(url, code, "jwks_fetch_rejected");
+            tracing::warn!(url, code, event = "jwks_fetch_rejected");
             return Err(VerifyError::KeySetUnavailable);
         }
         Self::read_capped(response).await

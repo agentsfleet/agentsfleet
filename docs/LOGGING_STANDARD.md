@@ -1,6 +1,6 @@
 # LOGGING_STANDARD — wire format and discipline for structured logs
 
-The contract between code that emits log records and the systems (humans, collectors, dashboards) that consume them. Cross-language: applies to every Zig, TypeScript, JavaScript, and shell call site that emits to `stderr`/`stdout`.
+The contract between code that emits log records and the systems (humans, collectors, dashboards) that consume them. Cross-language: applies to every Zig, Rust, TypeScript, JavaScript, and shell call site that emits to `stderr`/`stdout`.
 
 Pre-design rules, decisive defaults, and the anti-patterns each rule exists to prevent. Every rule has a one-line "why" so you can judge edge cases.
 
@@ -9,12 +9,13 @@ Pre-design rules, decisive defaults, and the anti-patterns each rule exists to p
 Triggers on every `Edit`/`Write` that adds, removes, or changes a log emit:
 
 - `*.zig` outside `vendor/`/`third_party/`/`.zig-cache/` — `std.log.*`, `std.debug.print`, `std.io.getStdErr().writer().print`, any helper in `src/lib/logging/`.
+- `*.rs` under `rustd/` outside test and benchmark scopes — `tracing::{error,warn,info,debug,trace}!`, `println!`, `eprintln!`, and `dbg!`.
 - `*.ts`/`*.tsx`/`*.js`/`*.jsx` outside `vendor/`/`node_modules/` — `console.*`, custom logger calls.
 - `*.sh` outside generated directories — `echo`, `printf` to `&2`.
 
 Out of scope (explicitly):
 
-- Test-only diagnostic prints inside `*_test.zig`, `*.test.ts`, `*.spec.ts`. Tests render to humans, not collectors; gates ignore.
+- Test-only diagnostic prints inside `*_test.zig`, Rust `tests/` and `benches/` trees or `#[cfg(test)]` items, `*.test.ts`, and `*.spec.ts`. Tests render to humans, not collectors; gates ignore.
 - Build/release scripts — the harness's own `audits/*`, `audits/release-*`, and any governance-repo tooling — toolchain output, not application logs.
 - Generated framework noise (Next.js startup banners, Bun runtime warnings) — out of our control.
 
@@ -122,6 +123,12 @@ a line in a log. Those are not symmetric, so the default is to log it.
 a per-chunk callback: these flood collectors and drown the records that matter.
 `debug` is not a lesser level, it is the level with a volume switch. A sweep that
 reaps 4,000 workspaces logs each one at `debug` and its outcome at `info`.
+
+Boundary pairing and per-iteration severity both apply to hot polls. A lease poll
+that crosses Redis and Postgres on every iteration still emits its complete
+`_started` and `_completed`/`_failed` pair, but emits both records at `debug`.
+The pair satisfies rule 1; the level satisfies rule 3. A coarser poll-loop start,
+stop, or aggregate outcome may remain `info`.
 
 ### `err` and `warn` are unconditional
 
@@ -288,6 +295,48 @@ class AgentError extends Error {
 
 Throw-style modules `throw new AgentError({...})`. Result-style modules return `{ ok: false, error: new AgentError({...}) }`. Render path picks human or JSON based on the runtime mode.
 
+## §8A · Per-language binding — Rust (`rustd`)
+
+> [DETERMINISTIC → LOG]
+
+Rust uses the existing `tracing` crate and emits the same logical fields as §3.
+Every production emit supplies an `event` field, explicitly or through tracing's
+field shorthand, whose value is a snake_case `verb_noun`. Fields are structured
+arguments, never positional message formatting.
+
+> [JUDGMENT → RUST-STYLE]
+
+Every `warn` or `error` that maps to a registry code supplies
+`error_code = code` per §5. Hoist field expressions into locals before the macro
+call. The log bridge duplicates field expressions, and LLVM coverage
+instrumentation scores the dead copy; locals preserve evaluation and coverage
+behavior. A trailing string message is §3's optional `msg` and is always the
+last macro argument. Prefer fields alone when they already explain the event.
+
+```rust
+let code = error_code::INTERNAL_DB_QUERY.as_str();
+let id = runner.as_str();
+let reason = error.to_string();
+let event = "runner_lease_failed";
+tracing::warn!(error_code = code, runner_id = id, reason, event);
+```
+
+> [JUDGMENT → EVENT-COMPAT]
+
+Ports preserve existing event-name bytes by default. A Rust replacement for a
+Zig operation keeps the Zig event spelling so dashboards and alerts continue to
+match. Renaming is a separate, intentional observability migration.
+
+> [DETERMINISTIC → LOG]
+
+**Anti-patterns flagged by `logging.sh`:**
+
+| Pattern | Why banned | Fix |
+|---|---|---|
+| `println!`, `eprintln!`, or `dbg!` in non-test source | No level, event, or structured fields. | Convert to a `tracing` emit or delete. |
+| `tracing::<level>!` without `event = ...` | Drops the stable §3 event key. | Add the byte-stable snake_case event field. |
+| Positional formatting in a `tracing` message | Hides values inside text and defeats field queries. | Hoist values and emit named fields. |
+
 ## §9 · Pretty-printer (dev-only render variant)
 
 In production: every record on the wire is logfmt. No exceptions.
@@ -330,10 +379,10 @@ Failure modes the audit script and reviewer must close. These are **not aspirati
 
 | # | Rationalization | Closure |
 |---|---|---|
-| L1 | "Temporary debug print, I'll remove later" | `logging.sh` greps `std.debug.print` and `console.log` / `console.debug` / `console.info` in non-test source unconditionally. Found in commit → gate fails. No "temporary" carve-out. |
+| L1 | "Temporary debug print, I'll remove later" | `logging.sh` greps `std.debug.print`, Rust `println!` / `eprintln!` / `dbg!`, and `console.log` / `console.debug` / `console.info` in non-test source unconditionally. Found in commit → gate fails. No "temporary" carve-out. |
 | L2 | "`std.log.scoped` is fine, `obs.scoped` is just a wrapper" | `std.log.scoped` is **forbidden** in `src/**/*.zig` outside `src/lib/logging/`. Only `obs.scoped` is callable. Audit flags every `std.log.` call site. |
 | L3 | "I added `error_code=UZ-NEW-001` — registry entry coming next commit" | The registry entry **must land in the same commit** as the first reference. `error-codes.sh` runs against the staged diff; missing entry = blocking. |
-| L4 | "This per-iteration event matters for debugging — `info`-level" | Per-iteration and per-row paths are `debug`, no exception: a loop body is not a boundary, and `debug` is the level with a volume switch. This closes the ONLY `info` prohibition — there is no allow-list of event names and none may be reintroduced (§4). The inverse rationalization is closed too: "this operation is obviously fine, no need to log it" does not survive §4 rule 1, which requires a `_started`/`_completed`\|`_failed` pair on every boundary-crossing operation. Reviewer checks the pair and the loop, never the spelling. |
+| L4 | "This per-iteration event matters for debugging — `info`-level" | Per-iteration and per-row paths are `debug`, including mandatory boundary pairs on hot polls. `debug` is the level with a volume switch. This closes the ONLY `info` prohibition — there is no allow-list of event names and none may be reintroduced (§4). The inverse rationalization is closed too: "this operation is obviously fine, no need to log it" does not survive §4 rule 1, which requires a `_started`/`_completed`\|`_failed` pair on every boundary-crossing operation. Reviewer checks the pair and the loop, never the spelling. |
 | L5 | "Operator needs the full stack trace in `msg=`" | `msg=` capped at 300 chars; total fields per record capped at 15. Stack traces emit as a separate `event=stack_trace` record at `debug` level, correlated by `correlation_id`, not stuffed into `msg`. |
 | L6 | "Embedded newlines because I copy-pasted output" | Audit greps for raw newline byte inside quoted logfmt values. Must be `\n` literal (two chars). |
 | L7 | "Auto-mode is on, the gate block is ceremony" | **Auto-mode does NOT cover gate skips.** Skip without an explicit user-given override = automatic violation. No size threshold lets an edit bypass the gate. |
@@ -348,6 +397,9 @@ These are enforced by `logging.sh` (mechanical) and the dispatch façade (`dispa
 |---|---|
 | Free-form English log lines | Not greppable, not parseable, no event tag. |
 | `std.debug.print` outside tests | No level, no scope, no fields — dev debugging that escaped to main. |
+| Rust `println!`, `eprintln!`, or `dbg!` outside tests | No level, event, or structured fields — dev diagnostics that escaped to main. |
+| Rust `tracing` emit without `event` | Drops the stable event key required by §3. |
+| Positional formatting in a Rust `tracing` emit | Values become opaque message text instead of queryable fields. |
 | `console.log` in `agentsfleet` source | Bypasses logger, breaks `--json` mode, violates `dispatch/write_ts_adhere_bun.md` §10. |
 | Logging on hot per-iteration paths at `info` | Floods collectors. Use `debug` (gated off by default). |
 | `error_code=` missing on `err`/`warn` mapping to registry codes | Breaks traceability; future operator can't link log to docs. |
@@ -371,6 +423,7 @@ immediately preceding the edit. Generic "scope creep" is not a valid reason — 
 - `dispatch/write_ts_adhere_bun.md` §10 — banned `console.log` in TS/JS source. Cross-referenced by `logging.sh`.
 - `dispatch/write_ts_adhere_bun.md` §9 — module-level error style (throw vs Result) for `agentsfleet`.
 - `dispatch/write_zig.md` — Zig discipline umbrella; this doc's §7 is the logging-specific layer.
+- `dispatch/write_rust.md` — Rust discipline umbrella; this doc's §8A is the logging-specific layer.
 - `LIFECYCLE_PATTERNS.md` — orthogonal: ownership/cleanup of structs, including allocator wiring for the thread-local log buffer.
 - M42_002 redaction harness (`src/runner/engine/runner_progress.zig`) — secret-redaction precondition; this doc's §6 inherits.
 - Universal rules (RULE UFS, RULE TGU, RULE PRI, RULE FLL, RULE ORP, RULE TST-NAM) live in `docs/greptile-learnings/RULES.md`.
@@ -388,10 +441,12 @@ its line covers the clauses under it until the next heading.
 
 | Tag | Meaning | Where the verdict comes from |
 |---|---|---|
-| `[DETERMINISTIC → LOG]` | a script decides; no talking past it | `audits/logging.sh` — `std.debug.print` and `console.*` in non-test source block; missing `error_code=` on `std.log.{err,warn}` reports as INFO |
+| `[DETERMINISTIC → LOG]` | a script decides; no talking past it | `audits/logging.sh` — direct Zig/Rust/TypeScript diagnostics and malformed Rust tracing emits in non-test source block; missing `error_code=` on `std.log.{err,warn}` reports as INFO |
 | `[JUDGMENT → BOUNDARY]` | is this operation boundary-crossing, and is its `_started`/`_completed`\|`_failed` pair complete | the agent at write time; the reviewer at `/review` |
 | `[JUDGMENT → REDACT]` | is this value a secret, or the label of one | the agent at write time; the M42_002 harness covers only executor-child output |
 | `[JUDGMENT → MSG-REVIEW]` | does this `msg=` carry a credential | the reviewer; no length or content check runs today |
 | `[JUDGMENT → TS-STYLE]` | throw-style or Result-style for this module | `dispatch/write_ts_adhere_bun.md` §9, agent-decided |
+| `[JUDGMENT → RUST-STYLE]` | does a Rust failure map to a registry code, and are field expressions safely hoisted | the agent at write time; the reviewer at `/review` |
+| `[JUDGMENT → EVENT-COMPAT]` | does a language port preserve the event bytes consumed by existing dashboards | the agent compares old and new event constants; the reviewer confirms intentional renames |
 | `[JUDGMENT → SECTION-SCAN]` | which sections of this file the current sub-task needs | the agent; `audits/doc-read.sh` records façade reads, not delegated-doc reads |
 | `[UNENFORCED → reason]` | acknowledged prose; the reason states why no check exists | nothing — that is the point of the class |

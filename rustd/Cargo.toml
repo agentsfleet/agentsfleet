@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_api", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_fleet", "crates/afd_identity", "crates/afd_observability", "crates/afd_redis", "crates/afd_state", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_api", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_fleet", "crates/afd_fleet_runtime", "crates/afd_identity", "crates/afd_observability", "crates/afd_redis", "crates/afd_state", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.26.2"
@@ -44,6 +44,7 @@ afd_core = { path = "crates/afd_core" }
 afd_crypto = { path = "crates/afd_crypto" }
 afd_db = { path = "crates/afd_db" }
 afd_fleet = { path = "crates/afd_fleet" }
+afd_fleet_runtime = { path = "crates/afd_fleet_runtime" }
 afd_identity = { path = "crates/afd_identity" }
 afd_observability = { path = "crates/afd_observability" }
 afd_redis = { path = "crates/afd_redis" }
@@ -55,6 +56,12 @@ afd_wire = { path = "crates/afd_wire" }
 serde = { version = "1.0.229", default-features = false, features = ["derive", "std"] }
 serde_json = { version = "1.0.151", default-features = false, features = ["std", "preserve_order"] }
 thiserror = { version = "2.0.20", default-features = false, features = ["std"] }
+
+# Field bounds as annotations on the schema rather than as a hand-written
+# checker. `derive` only: `regex`, `email`, `phone-number` and `credit-card`
+# each pull their own dependency and none of them is a shape this product
+# authors. Its `garde_derive` rides the syn 2.0.119 already in the lock.
+garde = { version = "0.23.0", default-features = false, features = ["derive"] }
 
 # The command line, derived rather than hand-rolled.
 #

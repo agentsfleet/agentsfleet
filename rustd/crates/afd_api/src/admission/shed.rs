@@ -63,6 +63,7 @@ pub(super) fn response(admission: &Admission, request: &Request) -> Response {
         // attribute is exported to a backend — but an operator reading their
         // own logs during a storm needs to know which endpoint is storming.
         path,
+        event = "request_shed",
         "request shed at the in-flight ceiling"
     );
 

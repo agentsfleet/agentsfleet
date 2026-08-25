@@ -254,6 +254,7 @@ async fn persist_selftest(
             error_code = code,
             runner_id = id,
             reason,
+            event = "selftest_verdict_refused",
             "self-test verdict refused; the beat still counts as liveness"
         );
         return false;
@@ -317,10 +318,11 @@ fn announce(runner: &Uuid7, stored: &StoredVerdict, verdict: Verdict) {
                 error_code = code,
                 runner_id = id,
                 reason,
+                event = "runner_degraded",
                 "runner degraded — it will not be assigned work until this is fixed"
             );
         }
-        (true, None) => tracing::debug!(runner_id = id, "runner no longer degraded"),
+        (true, None) => tracing::debug!(runner_id = id, event = "runner_recovered"),
         _steady => {}
     }
 }

@@ -136,6 +136,7 @@ fn identifier(column: &'static str, value: &str) -> Result<Uuid7> {
         tracing::error!(
             error_code = code,
             column,
+            event = "credential_row_identity_invalid",
             "a credential row holds an identifier that is not a canonical \
              UUIDv7 — answering unavailable rather than reporting a credential \
              that exists as unknown"
@@ -150,6 +151,7 @@ fn subject(value: &str) -> Result<Subject> {
         let code = error_code::INTERNAL_DB_QUERY.as_str();
         tracing::error!(
             error_code = code,
+            event = "credential_row_identity_blank",
             "a credential row holds a blank identity-provider subject — every \
              capability gate would refuse it, so the lookup answers unavailable \
              rather than authenticating a principal with no identity"

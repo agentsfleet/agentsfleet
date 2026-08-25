@@ -115,7 +115,8 @@ impl Daemon {
         F: Future<Output = ()>,
     {
         let cause = Self::serve_until_stopped(server, signal).await;
-        tracing::info!(cause = ?cause, "serving ended; stopping background tasks");
+        tracing::info!(cause = ?cause, event = "serving_ended",
+        "serving ended; stopping background tasks");
 
         // Unconditional. Not in a branch, not after a `?`.
         let shutdown = self.supervisor.shutdown().await;
@@ -130,6 +131,7 @@ impl Daemon {
                 error_code = code,
                 abandoned,
                 panicked,
+                event = "background_fleet_unclean",
                 "background fleet did not stop cleanly"
             );
         }

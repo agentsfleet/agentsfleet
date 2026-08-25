@@ -78,7 +78,7 @@ async fn run(
 
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let error_code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str();
-        tracing::warn!(error_code, "hub_connection_dropped");
+        tracing::warn!(error_code, event = "hub_connection_dropped");
 
         connection = loop {
             let delay = backoff.delay(attempt, jitter());
@@ -92,14 +92,14 @@ async fn run(
                         attempt,
                         error = %failure,
                         error_code,
-                        "hub_reconnect_failed"
+                        event = "hub_reconnect_failed"
                     );
                 }
             }
         };
         attempt = 0;
         inner.record_connection();
-        tracing::info!("hub_reconnected");
+        tracing::info!(event = "hub_reconnected");
     }
 }
 
@@ -148,7 +148,7 @@ async fn resubscribe(sink: &mut PubSubSink, channels: &[String]) {
                 channel,
                 error = %failure,
                 error_code,
-                "hub_resubscribe_failed"
+                event = "hub_resubscribe_failed"
             );
         }
     }

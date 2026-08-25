@@ -116,7 +116,11 @@ impl Supervisor {
     where
         F: Future<Output = ()> + Send + 'static,
     {
-        tracing::debug!(task = name, "supervised task started");
+        tracing::debug!(
+            task = name,
+            event = "supervised_task_started",
+            "supervised task started"
+        );
         self.tasks.push(Supervised {
             name,
             handle: tokio::spawn(task(self.token.clone())),
@@ -140,7 +144,11 @@ impl Supervisor {
     /// to sequence it after.
     pub async fn shutdown(self) -> ShutdownReport {
         let count = self.tasks.len();
-        tracing::info!(tasks = count, "cancelling supervised tasks");
+        tracing::info!(
+            tasks = count,
+            event = "supervised_tasks_cancelling",
+            "cancelling supervised tasks"
+        );
         self.token.cancel();
 
         let mut report = ShutdownReport::default();
@@ -158,7 +166,12 @@ impl Supervisor {
                     // and llvm-cov scores the copy that never runs.
                     let name = task.name;
                     let code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-                    tracing::error!(error_code = code, task = name, "supervised task panicked");
+                    tracing::error!(
+                        error_code = code,
+                        task = name,
+                        event = "supervised_task_panicked",
+                        "supervised task panicked"
+                    );
                     report.panicked.push(task.name);
                 }
                 Err(_elapsed) => {
@@ -172,6 +185,7 @@ impl Supervisor {
                         error_code = code,
                         task = name,
                         timeout_ms,
+                        event = "supervised_task_abandoned",
                         "supervised task did not stop when cancelled — it is \
                          not selecting over its cancellation token"
                     );

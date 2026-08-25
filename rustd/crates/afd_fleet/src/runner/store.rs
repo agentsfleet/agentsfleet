@@ -157,7 +157,13 @@ impl Runners {
         let id = runner_id.as_str();
         let host = host_id.as_str();
         let degraded = verdict.is_degraded();
-        tracing::debug!(runner_id = id, host_id = host, degraded, "runner enrolled");
+        tracing::debug!(
+            runner_id = id,
+            host_id = host,
+            degraded,
+            event = "runner_enrolled",
+            "runner enrolled"
+        );
         Ok(Enrolled {
             runner_id,
             token,

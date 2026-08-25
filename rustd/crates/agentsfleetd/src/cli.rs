@@ -145,20 +145,32 @@ pub fn status_for(outcome: &Outcome) -> u8 {
     if outcome.is_clean() {
         SUCCESS
     } else {
-        // A task that would not stop, or a server that fell over.
-        eprintln!("agentsfleetd stopped unclean: {outcome:?}");
+        // A task that would not stop, or a server that fell over. This is a
+        // LOG, not command output: it describes how the daemon ended rather
+        // than answering the operator's request, and the exit status above is
+        // what the caller reads. Hoisted per §8A — the `log` bridge duplicates
+        // field expressions and llvm-cov scores the dead copy.
+        let detail = format!("{outcome:?}");
+        tracing::error!(outcome = detail, event = "serve_stopped_unclean");
         FAILURE
     }
 }
 
 /// Applies the schema and reports which versions moved.
+///
+/// The summary is a LOG rather than command output, and that is a correction
+/// rather than a preference: every step that produced it already emits one —
+/// `migrate_conn_acquired`, `migrate_lock_acquired`, `migrate_refused_schema_ahead`
+/// — so a summary on stdout was the one part of this path that could not be
+/// queried beside the events it summarises. The contract this command answers
+/// on is its EXIT STATUS, which is unchanged and is what the lane asserts.
 pub async fn migrate<E: EnvSource + ?Sized>(env: &E) -> u8 {
     match crate::migrate::migrate(env).await {
         Ok(applied) => {
-            println!(
-                "agentsfleetd migrate — {}",
-                crate::migrate::summarise(&applied)
-            );
+            // Hoisted per §8A — the `log` bridge duplicates field expressions
+            // and llvm-cov scores the dead copy.
+            let summary = crate::migrate::summarise(&applied);
+            tracing::info!(summary, event = "migrate_completed");
             SUCCESS
         }
         Err(failure) => {

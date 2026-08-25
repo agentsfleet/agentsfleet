@@ -52,6 +52,7 @@ pub fn http1_builder() -> http1::Builder {
     // client starts getting 431s it did not get from the Zig daemon.
     tracing::debug!(
         max_request_header_bytes = MAX_REQUEST_HEADER_BYTES,
+        event = "http1_policy_set",
         "http/1 connection policy set"
     );
     builder

@@ -133,7 +133,10 @@ pub async fn boot<E: EnvSource + ?Sized>(
 fn announce_identity(capabilities: &Capabilities) {
     match capabilities {
         Capabilities::Provider(_built) => {
-            tracing::info!("identity provider configured — tenant and runner planes both serve");
+            tracing::info!(
+                event = "identity_provider_configured",
+                "identity provider configured — tenant and runner planes both serve"
+            );
         }
         Capabilities::Unconfigured(_absent) => {
             // Hoisted: the `log` bridge duplicates field expressions and
@@ -141,6 +144,7 @@ fn announce_identity(capabilities: &Capabilities) {
             let code = afd_core::error_code::AUTH_UNAVAILABLE.as_str();
             tracing::warn!(
                 error_code = code,
+                event = "identity_provider_unusable",
                 "identity provider unusable — the runner plane serves normally \
                  and every tenant-plane capability read answers unavailable"
             );
@@ -189,7 +193,11 @@ async fn accept_loop<A: Acceptor>(listener: A, router: axum::Router, token: Canc
                 // Hoisted: the `log` bridge duplicates field expressions and
                 // llvm-cov scores the copy that never runs.
                 let reason = error.to_string();
-                tracing::warn!(reason, "accept failed; still serving");
+                tracing::warn!(
+                    reason,
+                    event = "accept_failed",
+                    "accept failed; still serving"
+                );
                 continue;
             }
         };

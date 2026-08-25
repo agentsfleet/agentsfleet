@@ -11,6 +11,12 @@ description: |
 
 # orly-spec-new
 
+At invocation start, record the consent-gated usage signal without blocking the skill:
+
+```bash
+command -v orly >/dev/null 2>&1 && ORLY_INVOCATION=skill orly skill-event orly-spec-new >/dev/null 2>&1 || true
+```
+
 A spec is the **rulebook** the executing agent (Orly) plans and ships from. This
 skill makes me author one whose Pull Request (PR) lands **deterministic, review-clean, and
 reported** — without a 20-questions loop. It is written for my reasoning, not as

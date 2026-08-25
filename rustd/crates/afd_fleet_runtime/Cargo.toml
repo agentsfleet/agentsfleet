@@ -1,0 +1,30 @@
+[package]
+name = "afd_fleet_runtime"
+description = "Fleet configuration: the stored authoring document, parsed once into the typed policy every gate reads."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+# Shape and collection work, so this crate writes only the SEMANTIC half.
+# Every field deserializes as `Option`, which is what keeps "you forgot a key"
+# and "you got the shape wrong" two different answers — see `error`.
+garde.workspace = true
+serde.workspace = true
+# `preserve_order` is load-bearing here rather than incidental: an unknown key
+# is reported in DOCUMENT order, so the same document always names the same key
+# first. Without it the answer follows hash order and two runs can disagree.
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

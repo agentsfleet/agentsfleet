@@ -13,6 +13,12 @@ description: |
 
 # orly-babysit-prs
 
+At invocation start, record the consent-gated usage signal without blocking the skill:
+
+```bash
+command -v orly >/dev/null 2>&1 && ORLY_INVOCATION=skill orly skill-event orly-babysit-prs >/dev/null 2>&1 || true
+```
+
 Review bots (greptile on GitHub; greptile or another review bot on GitLab)
 post auto-reviews **asynchronously**. They land as PR review comments / MR
 discussion threads, not check runs, so `gh pr checks --watch` (or the glab

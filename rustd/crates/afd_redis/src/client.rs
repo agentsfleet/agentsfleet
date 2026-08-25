@@ -73,7 +73,7 @@ impl Redis {
         let role = config.role().tag();
         let request_timeout_ms = config.request_timeout().as_millis();
         let tls = config.is_tls();
-        tracing::info!(role, request_timeout_ms, tls, "redis_connected");
+        tracing::info!(role, request_timeout_ms, tls, event = "redis_connected");
         Ok(redis)
     }
 

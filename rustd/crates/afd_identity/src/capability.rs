@@ -221,7 +221,8 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
                 let subject = subject.as_str().to_owned();
                 tracing::warn!(
                     subject,
-                    "scopes_subject_unknown_to_provider: resolving to no capabilities"
+                    event = "scopes_subject_unknown_to_provider",
+                    "resolving to no capabilities"
                 );
                 Ok(ScopeSet::EMPTY)
             }
@@ -239,7 +240,8 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
             let subject = subject.as_str().to_owned();
             tracing::error!(
                 subject,
-                "scopes_unavailable: no warm entry and the provider is unreachable"
+                event = "scopes_unavailable",
+                "no warm entry and the provider is unreachable"
             );
             return Err(Unavailable);
         };
@@ -248,7 +250,8 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
         tracing::warn!(
             subject,
             ceiling_ms,
-            "scopes_served_stale: the provider is unreachable and the entry is within the ceiling"
+            event = "scopes_served_stale",
+            "the provider is unreachable and the entry is within the ceiling"
         );
         Ok(entry.scopes)
     }

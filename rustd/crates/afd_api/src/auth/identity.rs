@@ -85,6 +85,7 @@ fn unproven() -> Response {
     tracing::error!(
         error_code = code,
         request_id = request_id_field,
+        event = "runner_identity_unproven",
         "a runner handler ran with no proven runner — its guard layer is not mounted"
     );
     ProblemResponse::new(
