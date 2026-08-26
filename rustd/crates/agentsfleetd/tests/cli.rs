@@ -50,6 +50,9 @@ fn parses_but_dead() -> MapEnv {
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
         ]
         .into_iter()
+        // Required at boot, and — like everything else in this fixture —
+        // resolved rather than used.
+        .chain(support::SESSION_PEPPER)
         // The provider is required at boot, and — like the datastores above —
         // resolved rather than dialled, so a well-formed value is enough here.
         .chain(support::IDENTITY),
