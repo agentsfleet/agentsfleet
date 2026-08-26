@@ -34,7 +34,7 @@ use crate::sql;
 const CONTEXT_CANDIDATES: &str = "lease candidate scan";
 
 /// The `core.fleets.status` value a leasable fleet carries.
-const FLEET_STATUS_ACTIVE: &str = "active";
+pub(crate) const FLEET_STATUS_ACTIVE: &str = "active";
 
 /// How many ready fleets one poll will consider.
 ///

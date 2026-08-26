@@ -42,10 +42,12 @@
 
 pub mod config;
 pub mod error;
+pub mod instructions;
 pub mod name;
 pub mod provider;
 
 pub use self::config::FleetConfig;
 pub use self::error::{Error, Result};
+pub use self::instructions::instructions;
 pub use self::name::{CredentialName, FleetName, Version};
 pub use self::provider::{ProviderRegistry, WebhookProvider};

@@ -32,6 +32,7 @@
 
 pub mod billing;
 pub mod event;
+pub mod fleet;
 pub mod gate;
 pub mod lease;
 pub mod provider;

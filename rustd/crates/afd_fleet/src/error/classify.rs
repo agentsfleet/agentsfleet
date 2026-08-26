@@ -15,10 +15,10 @@
 use afd_core::error_code::{self, ErrorCode};
 
 use super::{
-    DETAIL_CREDENTIAL_MISSING, DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE,
-    DETAIL_EVENT_MALFORMED, DETAIL_PROVIDER_UNRESOLVED, DETAIL_QUEUE_UNAVAILABLE,
-    DETAIL_REGISTRATION_FAILED, DETAIL_RUNNER_NOT_FOUND, DETAIL_VAULT_DATA_INVALID, Error,
-    ErrorKind,
+    DETAIL_CONFIG_UNREADABLE, DETAIL_CREDENTIAL_MISSING, DETAIL_DATABASE_ERROR,
+    DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED, DETAIL_PROVIDER_UNRESOLVED,
+    DETAIL_QUEUE_UNAVAILABLE, DETAIL_REGISTRATION_FAILED, DETAIL_RUNNER_NOT_FOUND,
+    DETAIL_VAULT_DATA_INVALID, Error, ErrorKind,
 };
 
 impl Error {
@@ -97,6 +97,13 @@ impl Error {
             | ErrorKind::ProviderPlatformKeyMissing
             | ErrorKind::ProviderNoWorkspace
             | ErrorKind::ProviderEndpoint { .. }
+            // A stored config this daemon cannot read joins the family for the
+            // registry reason the queue does: the finer code an operator would
+            // want does not exist in the Zig registry, and minting one here
+            // would fire the ERROR REGISTRY gate over a registry this family
+            // does not own. The parser's own error says which rule the
+            // document broke, and it survives in the source chain.
+            | ErrorKind::ConfigUnreadable { .. }
             | ErrorKind::Vault { .. } => error_code::INTERNAL_OPERATION_FAILED,
             // Two vault failures, two codes, matching the two the Zig logs:
             // `crypto_store.decrypt_failed` answers the internal code above
@@ -142,6 +149,7 @@ impl Error {
             | ErrorKind::Vault { .. } => DETAIL_PROVIDER_UNRESOLVED,
             ErrorKind::VaultDataInvalid => DETAIL_VAULT_DATA_INVALID,
             ErrorKind::CredentialMissing => DETAIL_CREDENTIAL_MISSING,
+            ErrorKind::ConfigUnreadable { .. } => DETAIL_CONFIG_UNREADABLE,
         }
     }
 
@@ -189,6 +197,12 @@ impl Error {
             // classification is the Zig's rather than a correction to it.
             | ErrorKind::CredentialMissing
             | ErrorKind::VaultDataInvalid
+            // A document that will not parse does not become parseable by
+            // being read again. Every poll would re-read the same bytes, fail
+            // the same rule, and leave the delivery leasable forever — so this
+            // earns the terminal row, which is the thing that puts the fleet
+            // in front of a human.
+            | ErrorKind::ConfigUnreadable { .. }
             // The corrected one — see the divergence note above.
             | ErrorKind::ProviderEndpoint { .. } => true,
             // Everything else is infrastructure, and infrastructure recovers.
