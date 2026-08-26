@@ -213,3 +213,60 @@ pub const DETAIL_BINDING_DRIFT: &str =
 /// `credentials_mint.zig`'s `S_WRITE_SPEND_EXHAUSTED`.
 pub const DETAIL_WRITE_SPEND_EXHAUSTED: &str =
     "Approved write-credential request allowance is exhausted";
+
+// ── The device-flow login surface ────────────────────────────────────────
+//
+// Every sentence below is `session_helpers.zig`'s `failFromStoreError` mapping
+// or the verify dispatcher's, pinned byte-for-byte. Where the Zig writes two
+// spellings for one code — the poll path's "Session already consumed" against
+// the store path's fuller sentence — the fuller one wins and the short one
+// goes: two sentences for one code is the drift RULE UFS names, and a caller
+// matching on the code cannot act on which handler it came from.
+
+/// `session_helpers.zig`'s refusal for a public key this daemon will not store.
+pub const DETAIL_SESSION_PUBLIC_KEY: &str = "The supplied public_key is malformed";
+
+/// Its refusal for a credential label that is not one.
+pub const DETAIL_SESSION_TOKEN_NAME: &str = "token_name must be 1-64 characters of printable ASCII";
+
+/// Its refusal for a relayed envelope that is absent or oversized.
+pub const DETAIL_SESSION_CIPHERTEXT: &str = "ciphertext is missing, empty, or malformed";
+
+/// Its refusal for a nonce that is absent or the wrong width.
+pub const DETAIL_SESSION_NONCE: &str = "nonce is missing, empty, or the wrong length";
+
+/// Its refusal for a code that is not six digits, raised before any compare.
+pub const DETAIL_SESSION_CODE_SHAPE: &str = "verification_code must be exactly 6 ASCII digits";
+
+/// Its refusal for a session id naming nothing this daemon holds.
+pub const DETAIL_SESSION_MISSING: &str =
+    "Session was not found. It may have expired or been invalidated";
+
+/// Its refusal for a session whose five-minute window closed.
+pub const DETAIL_SESSION_EXPIRED: &str = "Session expired";
+
+/// Its refusal for a session already redeemed.
+pub const DETAIL_SESSION_CONSUMED: &str = "This login session has already been consumed";
+
+/// Its refusal for a session cancelled, superseded, or rate-limited.
+pub const DETAIL_SESSION_ABORTED: &str = "This login session was aborted";
+
+/// The verify dispatcher's terminal refusal on the attempt that trips the
+/// ceiling.
+///
+/// Its own sentence rather than [`DETAIL_SESSION_ABORTED`], and the difference
+/// is what the command line acts on: this one says stop prompting and log in
+/// again, where the generic abort could as easily mean somebody clicked cancel.
+pub const DETAIL_SESSION_RATE_LIMITED: &str = "Too many incorrect attempts — session aborted";
+
+/// Its refusal for a code presented before any human approved the session.
+pub const DETAIL_SESSION_NOT_APPROVED: &str = "Session not approved yet";
+
+/// Its refusal for a second approval of one session.
+pub const DETAIL_SESSION_ALREADY_APPROVED: &str = "This login session has already been approved";
+
+/// Its refusal for an abort by an identity that does not hold the session.
+pub const DETAIL_SESSION_NOT_OWNER: &str = "You do not own this login session";
+
+/// The verify dispatcher's refusal for six digits that did not match.
+pub const DETAIL_SESSION_CODE_REJECTED: &str = "Verification code did not match";

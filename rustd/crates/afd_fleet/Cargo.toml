@@ -14,7 +14,13 @@ categories.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks the seams the suites drive through the crates that own
 # them, so a test needs no datastore to reach a decision.
-test-util = ["afd_auth/test-util", "afd_core/test-util", "afd_db/test-util"]
+test-util = [
+  "afd_auth/test-util",
+  "afd_core/test-util",
+  "afd_db/test-util",
+  # The queue refusal a stubbed device-flow surface answers with.
+  "afd_redis/test-util",
+]
 
 # Each dependency is added by the module that uses it, for the reason
 # `afd_api`'s manifest states: `unused_crate_dependencies` is how the dependency

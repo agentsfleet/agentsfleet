@@ -48,13 +48,13 @@ use axum::Router;
 use axum::extract::Request;
 use axum::middleware::{Next, from_fn, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{MethodRouter, get, post};
+use axum::routing::{MethodRouter, delete, get, patch, post};
 use http::{Method, StatusCode};
 
 use crate::admission::{Admission, admit, is_metered};
 use crate::auth::{Gate, plane_of, prove};
-use crate::handler::runner;
-use crate::route::{OpsRoute, Route, RouteMeta, RunnerOpsRoute, RunnerRoute};
+use crate::handler::{auth as auth_handler, runner};
+use crate::route::{AuthRoute, OpsRoute, Route, RouteMeta, RunnerOpsRoute, RunnerRoute};
 use crate::services::Services;
 
 pub use self::probes::{Dependencies, ReadyInputs, ready_decision};
@@ -181,18 +181,42 @@ fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>> {
             OpsRoute::Healthz => get(probes::healthz),
             OpsRoute::Readyz => get(probes::readyz::<D>),
         }),
+        Route::Auth(verb) => auth_handler_for::<D>(verb),
         Route::Runner(verb) => Some(runner_handler::<D>(verb)),
         Route::RunnerOps(verb) => runner_ops_handler::<D>(verb),
         // Tabled, not yet served. Each of these families arrives with the
         // milestone that ports its handlers; until then the route exists as a
         // template, a guard and a scope rung, and this binary answers 404.
-        Route::Auth(_)
-        | Route::Tenant(_)
+        Route::Tenant(_)
         | Route::Admin(_)
         | Route::Webhook(_)
         | Route::Workspace(_)
         | Route::Fleet(_)
         | Route::Connector(_) => None,
+    }
+}
+
+/// The device-flow login surface — the one bearer family with no scope.
+///
+/// `None` for the identity-provider delivery: it is authenticated by a Svix
+/// signature rather than a bearer, so it belongs to M180's ingress work and not
+/// to this family's handlers.
+fn auth_handler_for<D: Serving>(verb: AuthRoute) -> Option<MethodRouter<Arc<D>>> {
+    match verb {
+        AuthRoute::CreateSession => Some(post(auth_handler::open::<D>)),
+        AuthRoute::PollSession => {
+            Some(get(auth_handler::poll::<D>).delete(auth_handler::delete_one::<D>))
+        }
+        AuthRoute::ApproveSession => Some(patch(auth_handler::approve::<D>)),
+        AuthRoute::VerifySession => Some(post(auth_handler::verify::<D>)),
+        AuthRoute::DeleteAllSessions => Some(delete(auth_handler::delete_all::<D>)),
+        // Two routes with nothing to mount, for two different reasons that
+        // reach the same answer. The single delete shares
+        // `/v1/auth/sessions/{session_id}` with the poll above and axum takes
+        // one method router per path, so it is mounted THERE; the
+        // identity-provider delivery is proven by a Svix signature rather than
+        // a bearer, so it lands with M180's signed ingress.
+        AuthRoute::DeleteSession | AuthRoute::IdentityEventClerk => None,
     }
 }
 

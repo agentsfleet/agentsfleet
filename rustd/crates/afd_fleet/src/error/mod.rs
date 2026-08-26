@@ -54,11 +54,21 @@ pub use self::detail::{
 // The mint family's sentences, listed apart from the block above only because
 // they arrived together and are read together — `credentials_mint.zig` writes
 // all ten, and every one is pinned byte-for-byte to it.
+// The device-flow login family's sentences, listed apart for the reason the
+// mint family's are: they arrive together, they are read together, and every
+// one is pinned to `session_helpers.zig`.
 pub use self::detail::{
     DETAIL_BINDING_DRIFT, DETAIL_CONNECTOR_MINT_FAILED, DETAIL_CONNECTOR_RECONNECT,
     DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
     DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED, DETAIL_WRITE_SPEND_EXHAUSTED,
     DETAIL_WRITE_UNAPPROVED,
+};
+pub use self::detail::{
+    DETAIL_SESSION_ABORTED, DETAIL_SESSION_ALREADY_APPROVED, DETAIL_SESSION_CIPHERTEXT,
+    DETAIL_SESSION_CODE_REJECTED, DETAIL_SESSION_CODE_SHAPE, DETAIL_SESSION_CONSUMED,
+    DETAIL_SESSION_EXPIRED, DETAIL_SESSION_MISSING, DETAIL_SESSION_NONCE,
+    DETAIL_SESSION_NOT_APPROVED, DETAIL_SESSION_NOT_OWNER, DETAIL_SESSION_PUBLIC_KEY,
+    DETAIL_SESSION_RATE_LIMITED, DETAIL_SESSION_TOKEN_NAME,
 };
 pub(crate) use self::refuse::{
     binding_drift, budget_exhausted, connector_mint_failed, connector_reconnect_required,
@@ -234,6 +244,69 @@ pub(crate) enum ErrorKind {
 
     #[error("the approved write-credential allowance is spent")]
     WriteSpendExhausted,
+
+    #[error("a device-flow login field was refused: {field}")]
+    SessionFieldInvalid { field: SessionField },
+
+    #[error("no device-flow login session is held under that id")]
+    SessionMissing,
+
+    #[error("the device-flow login session's window closed before it was redeemed")]
+    SessionExpired,
+
+    #[error("the device-flow login session was already redeemed")]
+    SessionConsumed,
+
+    #[error("the device-flow login session was cancelled, superseded, or rate-limited")]
+    SessionAborted,
+
+    #[error("the device-flow login session was aborted by its own attempt ceiling")]
+    SessionRateLimited,
+
+    #[error("no human has approved this device-flow login session yet")]
+    SessionNotApproved,
+
+    #[error("this device-flow login session is already past pending")]
+    SessionAlreadyApproved,
+
+    #[error("the presented code did not match the session's stored digest")]
+    SessionCodeRejected,
+
+    #[error("this device-flow login session belongs to another identity")]
+    SessionNotOwner,
+}
+
+/// Which device-flow field a refusal names.
+///
+/// One kind with a field rather than five kinds, because the five differ in
+/// exactly one way — the code and sentence they answer with — and a table
+/// keyed on the field says that once. The Zig store spells five error tags and
+/// `failFromStoreError` re-pairs each with its code and its sentence at a
+/// switch arm, which is the same fact written three times.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionField {
+    /// The command line's public key, presented at creation.
+    PublicKey,
+    /// The label the minted credential will carry.
+    TokenName,
+    /// The relayed envelope the dashboard sealed.
+    Ciphertext,
+    /// The nonce that envelope was sealed under.
+    Nonce,
+    /// The six digits a person reads out of the browser.
+    VerificationCode,
+}
+
+impl Display for SessionField {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::PublicKey => "public_key",
+            Self::TokenName => "token_name",
+            Self::Ciphertext => "ciphertext",
+            Self::Nonce => "nonce",
+            Self::VerificationCode => "verification_code",
+        })
+    }
 }
 
 /// The refusals a suite outside this crate needs to CONSTRUCT.
@@ -250,6 +323,20 @@ impl Error {
     #[must_use]
     pub fn mint_unconfigured() -> Self {
         super::error::mint_unconfigured()
+    }
+
+    /// The refusal a verb answers when the queue behind it would not answer.
+    ///
+    /// Exposed for the same reason [`Error::mint_unconfigured`] is: a router
+    /// suite stubs the device-flow surface, and every one of that surface's
+    /// verbs lives inside a Lua script a real Redis evaluates. There is no
+    /// success a stub could invent that would not be inventing the state
+    /// machine, so it answers the one refusal that is true of it.
+    #[must_use]
+    pub fn queue_unavailable() -> Self {
+        Self::new(ErrorKind::Queue {
+            source: afd_redis::error::unavailable_for_test(),
+        })
     }
 }
 
@@ -431,4 +518,54 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         std::error::Error::source(&self.inner.kind)
     }
+}
+
+/// Refuses a device-flow field this daemon will not store.
+pub(crate) fn session_field(field: SessionField) -> Error {
+    Error::new(ErrorKind::SessionFieldInvalid { field })
+}
+
+/// Reports a session id naming nothing this daemon holds.
+pub(crate) fn session_missing() -> Error {
+    Error::new(ErrorKind::SessionMissing)
+}
+
+/// Reports a session whose five-minute window closed.
+pub(crate) fn session_expired() -> Error {
+    Error::new(ErrorKind::SessionExpired)
+}
+
+/// Reports a session already redeemed.
+pub(crate) fn session_consumed() -> Error {
+    Error::new(ErrorKind::SessionConsumed)
+}
+
+/// Reports a session cancelled, superseded, or rate-limited before this call.
+pub(crate) fn session_aborted() -> Error {
+    Error::new(ErrorKind::SessionAborted)
+}
+
+/// Reports the wrong attempt that just tripped the session's own ceiling.
+pub(crate) fn session_rate_limited() -> Error {
+    Error::new(ErrorKind::SessionRateLimited)
+}
+
+/// Reports a code presented before any human approved the session.
+pub(crate) fn session_not_approved() -> Error {
+    Error::new(ErrorKind::SessionNotApproved)
+}
+
+/// Reports a second approval of one session.
+pub(crate) fn session_already_approved() -> Error {
+    Error::new(ErrorKind::SessionAlreadyApproved)
+}
+
+/// Reports six digits that did not match the stored digest.
+pub(crate) fn session_code_rejected() -> Error {
+    Error::new(ErrorKind::SessionCodeRejected)
+}
+
+/// Reports an abort attempted by an identity that does not hold the session.
+pub(crate) fn session_not_owner() -> Error {
+    Error::new(ErrorKind::SessionNotOwner)
 }

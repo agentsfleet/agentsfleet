@@ -26,6 +26,13 @@ use super::{
     DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, DETAIL_WRITE_SPEND_EXHAUSTED,
     DETAIL_WRITE_UNAPPROVED, Error, ErrorKind,
 };
+use super::{
+    DETAIL_SESSION_ABORTED, DETAIL_SESSION_ALREADY_APPROVED, DETAIL_SESSION_CIPHERTEXT,
+    DETAIL_SESSION_CODE_REJECTED, DETAIL_SESSION_CODE_SHAPE, DETAIL_SESSION_CONSUMED,
+    DETAIL_SESSION_EXPIRED, DETAIL_SESSION_MISSING, DETAIL_SESSION_NONCE,
+    DETAIL_SESSION_NOT_APPROVED, DETAIL_SESSION_NOT_OWNER, DETAIL_SESSION_PUBLIC_KEY,
+    DETAIL_SESSION_RATE_LIMITED, DETAIL_SESSION_TOKEN_NAME, SessionField,
+};
 
 impl Error {
     /// Whether the datastore could not be reached at all.
@@ -174,6 +181,29 @@ impl Error {
             ErrorKind::WriteUnapproved => error_code::REPAIR_WRITE_UNAPPROVED,
             ErrorKind::BindingDrift => error_code::REPAIR_BINDING_DRIFT,
             ErrorKind::WriteSpendExhausted => error_code::REPAIR_SPEND_EXHAUSTED,
+            // The login family. Each field answers its own code because the
+            // command line renders a different prompt for each — a bad key is
+            // the client's own bug, a bad code is the person's typing.
+            ErrorKind::SessionFieldInvalid { field } => match field {
+                SessionField::PublicKey => error_code::INVALID_PUBLIC_KEY,
+                SessionField::TokenName => error_code::INVALID_TOKEN_NAME,
+                SessionField::Ciphertext => error_code::INVALID_CIPHERTEXT,
+                SessionField::Nonce => error_code::INVALID_NONCE,
+                SessionField::VerificationCode => error_code::INVALID_VERIFICATION_CODE,
+            },
+            ErrorKind::SessionMissing => error_code::SESSION_NOT_FOUND,
+            ErrorKind::SessionExpired => error_code::SESSION_EXPIRED,
+            ErrorKind::SessionConsumed => error_code::SESSION_CONSUMED,
+            // One code for both, and the sentences differ rather than the
+            // codes: a client acts identically on either — stop, log in again —
+            // and the ceiling is the only one of the two worth naming in prose.
+            ErrorKind::SessionAborted | ErrorKind::SessionRateLimited => {
+                error_code::SESSION_ABORTED
+            }
+            ErrorKind::SessionNotApproved => error_code::SESSION_NOT_APPROVED,
+            ErrorKind::SessionAlreadyApproved => error_code::SESSION_ALREADY_APPROVED,
+            ErrorKind::SessionCodeRejected => error_code::VERIFICATION_FAILED,
+            ErrorKind::SessionNotOwner => error_code::AUTH_FORBIDDEN,
         }
     }
 
@@ -239,6 +269,22 @@ impl Error {
             ErrorKind::WriteUnapproved => DETAIL_WRITE_UNAPPROVED,
             ErrorKind::BindingDrift => DETAIL_BINDING_DRIFT,
             ErrorKind::WriteSpendExhausted => DETAIL_WRITE_SPEND_EXHAUSTED,
+            ErrorKind::SessionFieldInvalid { field } => match field {
+                SessionField::PublicKey => DETAIL_SESSION_PUBLIC_KEY,
+                SessionField::TokenName => DETAIL_SESSION_TOKEN_NAME,
+                SessionField::Ciphertext => DETAIL_SESSION_CIPHERTEXT,
+                SessionField::Nonce => DETAIL_SESSION_NONCE,
+                SessionField::VerificationCode => DETAIL_SESSION_CODE_SHAPE,
+            },
+            ErrorKind::SessionMissing => DETAIL_SESSION_MISSING,
+            ErrorKind::SessionExpired => DETAIL_SESSION_EXPIRED,
+            ErrorKind::SessionConsumed => DETAIL_SESSION_CONSUMED,
+            ErrorKind::SessionAborted => DETAIL_SESSION_ABORTED,
+            ErrorKind::SessionRateLimited => DETAIL_SESSION_RATE_LIMITED,
+            ErrorKind::SessionNotApproved => DETAIL_SESSION_NOT_APPROVED,
+            ErrorKind::SessionAlreadyApproved => DETAIL_SESSION_ALREADY_APPROVED,
+            ErrorKind::SessionCodeRejected => DETAIL_SESSION_CODE_REJECTED,
+            ErrorKind::SessionNotOwner => DETAIL_SESSION_NOT_OWNER,
         }
     }
 
@@ -358,6 +404,21 @@ impl Error {
             | ErrorKind::WriteUnapproved
             | ErrorKind::BindingDrift
             | ErrorKind::WriteSpendExhausted
+            // The login family cannot reach the admission pass at all: it is
+            // raised on the device-flow surface, which no event is ever leased
+            // through. `false` is the honest answer for a question that never
+            // gets asked of it — a `true` would claim a fleet's stored
+            // configuration is broken because somebody mistyped six digits.
+            | ErrorKind::SessionFieldInvalid { .. }
+            | ErrorKind::SessionMissing
+            | ErrorKind::SessionExpired
+            | ErrorKind::SessionConsumed
+            | ErrorKind::SessionAborted
+            | ErrorKind::SessionRateLimited
+            | ErrorKind::SessionNotApproved
+            | ErrorKind::SessionAlreadyApproved
+            | ErrorKind::SessionCodeRejected
+            | ErrorKind::SessionNotOwner
             | ErrorKind::Entropy { .. } => false,
         }
     }

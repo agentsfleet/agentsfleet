@@ -21,7 +21,7 @@ use afd_api::router::{Dependencies, ReadyInputs};
 use afd_api::{Planes, Services};
 use afd_core::clock::UnixMillis;
 use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::Kek;
+use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
 use afd_fleet::Runners;
 use afd_fleet::bundle::Bundles;
@@ -31,6 +31,10 @@ use afd_fleet::memory::Memories;
 use afd_fleet::money::Accounts;
 use afd_fleet::provider::Providers;
 use afd_fleet::secrets::Registry;
+// Aliased: `crate::identity::Sessions` is the token VERIFIER, and this is the
+// device-flow login surface. Two things called `Sessions` in one file is how a
+// reader ends up believing the login surface verifies bearer tokens.
+use afd_fleet::session::Sessions as Logins;
 use afd_fleet::vault::Vault;
 use afd_redis::Redis;
 use afd_state::Credentials;
@@ -53,6 +57,7 @@ pub struct ServingPlane {
     runners: Runners,
     leases: Plane,
     bundles: Bundles,
+    logins: Logins,
 }
 
 impl ServingPlane {
@@ -82,17 +87,25 @@ impl ServingPlane {
     /// Invariant 3 as an ownership fact rather than as a rule about who reads
     /// which variable.
     #[must_use]
-    pub fn new(
-        database: Db,
-        queue: Redis,
-        kek: Arc<Kek>,
-        capabilities: Capabilities,
-        sessions: Sessions,
-        bundles: Bundles,
-        broker: Arc<afd_fleet::credential::Broker>,
-    ) -> Self {
+    pub fn new(parts: PlaneParts) -> Self {
+        let PlaneParts {
+            database,
+            queue,
+            kek,
+            capabilities,
+            sessions,
+            bundles,
+            broker,
+            login,
+        } = parts;
         Self {
             bundles,
+            logins: Logins::new(
+                afd_redis::SessionStore::new(queue.clone()),
+                login.code_pepper,
+                Entropy::new(),
+                &login.app_url,
+            ),
             probes: LiveDependencies::new(database.clone(), queue.clone()),
             authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
             runners: Runners::new(database.clone(), Entropy::new()),
@@ -110,6 +123,45 @@ impl ServingPlane {
     }
 }
 
+/// Everything [`ServingPlane::new`] is assembled from.
+///
+/// A parameter object rather than eight positional arguments, and not only to
+/// satisfy a lint. Each field is CONNECTED or BUILT before it gets here, which
+/// is the property the constructor's own note is about — boot has already
+/// proven the pools answer, resolved the snapshot store's absence into a value,
+/// and read this deployment's platform credentials out of the vault. Naming
+/// them at the call site is what makes that readable in one place.
+#[derive(Debug)]
+pub struct PlaneParts {
+    /// The API role's Postgres pool, open and proven.
+    pub database: Db,
+    /// The API role's Redis, open and proven.
+    pub queue: Redis,
+    /// The master key every stored credential is sealed under.
+    ///
+    /// Already shared: `preflight` resolved and validated it and refuses boot
+    /// without one, so every store below that opens a sealed row takes the SAME
+    /// key — Milestone Invariant 3 as an ownership fact rather than as a rule
+    /// about who reads which variable.
+    pub kek: Arc<Kek>,
+    /// Where a subject's capability claim is read from.
+    pub capabilities: Capabilities,
+    /// What verifies a browser session token.
+    pub sessions: Sessions,
+    /// The Fleet Bundle snapshot store, possibly holding its own absence.
+    ///
+    /// Not an `Option`: `Bundles` carries the unconfigured case as a value that
+    /// refuses with a registry code, so a deployment with no R2 knobs hands
+    /// over `Bundles::unconfigured` rather than a `None` this file would unwrap
+    /// into a refusal each handler re-invented.
+    pub bundles: Bundles,
+    /// The credential broker, built before the plane because it reads the
+    /// vault, which is asynchronous where this constructor is not.
+    pub broker: Arc<afd_fleet::credential::Broker>,
+    /// What the device-flow login surface needs from configuration.
+    pub login: LoginConfig,
+}
+
 impl Dependencies for ServingPlane {
     fn probe(&self) -> impl Future<Output = ReadyInputs> + Send {
         self.probes.probe()
@@ -119,6 +171,7 @@ impl Dependencies for ServingPlane {
 impl Services for ServingPlane {
     type Auth = Authenticator;
     type Leases = Plane;
+    type Sessions = Logins;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
@@ -136,6 +189,10 @@ impl Services for ServingPlane {
         &self.bundles
     }
 
+    fn sessions(&self) -> &Logins {
+        &self.logins
+    }
+
     /// The wall clock, read once per verb by whichever handler asked.
     ///
     /// Not a `Clock` behind an `Arc`: `afd_core::clock` reserves injection for
@@ -146,6 +203,20 @@ impl Services for ServingPlane {
     fn now(&self) -> UnixMillis {
         afd_core::clock::now()
     }
+}
+
+/// What the device-flow login surface needs from configuration.
+///
+/// A struct rather than two more positional parameters on a constructor that
+/// already takes seven: a `SecretBytes` and a `String` next to each other are
+/// two arguments a caller can transpose without the compiler noticing, and the
+/// consequence would be a pepper rendered into every login URL.
+#[derive(Debug, Clone)]
+pub struct LoginConfig {
+    /// The key a verification code's digest is taken under.
+    pub code_pepper: SecretBytes,
+    /// Where a person goes to approve a login.
+    pub app_url: String,
 }
 
 /// The plane, ready to hand to the router.

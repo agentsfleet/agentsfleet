@@ -15,6 +15,7 @@
 //! (`afd_fleet::Error::code` and `::detail`). There is no pair to get wrong
 //! because there is no pair to write.
 
+pub mod auth;
 pub mod runner;
 
 use axum::response::{IntoResponse as _, Response};

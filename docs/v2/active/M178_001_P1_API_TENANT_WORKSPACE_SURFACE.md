@@ -90,13 +90,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Device-flow session surface (relay-only)
+### §1 — Device-flow session surface (relay-only) — DONE
 
 `POST/GET/DELETE /v1/auth/sessions*`, approve/verify, delete-all — over the M176 session store. The daemon validates shape (public key, ciphertext, verification code) and relays; no curve math server-side. 5-minute expiry; atomic state transitions; approve requires the dashboard principal, verify requires the session secret path per `docs/AUTH_DEVICE_LOGIN.md`.
 
-- **Dimension 1.1** — full happy-path handshake against the store: create → approve → verify → credential minted → Test `test_device_flow_happy_path`
-- **Dimension 1.2** — malformed public key / ciphertext → the documented ERR codes; expired session → the documented expiry behaviour → Test `test_device_flow_rejects_malformed`
-- **Dimension 1.3** — approve/verify state machine is atomic under races (double-approve, verify-before-approve) → Test `test_device_flow_state_races`
+- **Dimension 1.1** — DONE — full happy-path handshake against the store: create → approve → verify → credential minted → Test `test_device_flow_happy_path`
+- **Dimension 1.2** — DONE — malformed public key / ciphertext → the documented ERR codes; expired session → the documented expiry behaviour → Test `test_device_flow_rejects_malformed`
+- **Dimension 1.3** — DONE — approve/verify state machine is atomic under races (double-approve, verify-before-approve) → Test `test_device_flow_state_races_on_approve` + `test_device_flow_state_races_on_verify`
 
 ### §2 — Tenant plane
 
@@ -300,3 +300,16 @@ N/A — no files deleted.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
+
+### Declared divergences
+
+- **§1 `token_name` is held to printable ASCII.** `UZ-AUTH-017`'s registry entry
+  documents "1 to 64 characters from space through tilde"; the Zig store bounds
+  the LENGTH only, so a label carrying a newline is accepted there and refused
+  here. The documented shape is the parity oracle this port grades against, so
+  the stricter half wins — `afd_fleet::session::input::token_name_of` carries
+  the reasoning and `a_token_name_outside_printable_ascii_is_refused` pins it.
+- **§1 abort reasons are a closed set.** The Zig store takes the reason as a
+  caller-supplied slice and the audit sink re-derives its own spelling, so the
+  stored reason and the audited one agree by convention. `afd_redis::AbortReason`
+  makes them one value, and a reason nobody declared cannot be written.
