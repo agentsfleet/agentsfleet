@@ -37,4 +37,5 @@ pub mod id;
 pub mod json;
 pub mod limits;
 pub mod problem;
+pub mod spelling;
 pub mod timing;

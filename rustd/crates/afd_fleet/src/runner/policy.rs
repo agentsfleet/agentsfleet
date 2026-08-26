@@ -35,8 +35,6 @@
 
 use afd_wire::runner::{AssignedPolicy, CapabilityReport, ExtraBind};
 
-use serde::de::IntoDeserializer as _;
-
 use afd_core::limits::WorkerCount;
 
 use crate::runner::reconcile::Verdict;
@@ -132,23 +130,14 @@ impl StoredVerdict {
 
 /// A fieldless wire enum, parsed from the spelling a column stores.
 ///
-/// Through serde rather than a hand-written match, and that is not a style
-/// preference: `afd_wire` declares the rename, so parsing through it means the
-/// stored vocabulary and the wire vocabulary CANNOT drift. A hand-written match
-/// would be a second copy of every variant's spelling, and the failure it
-/// causes — a row written by one release that the next cannot read — has no
-/// failing test to catch it, only a fleet that stops leasing.
-///
-/// An unknown spelling answers `None`, which is the fail-closed direction: a
-/// tier this daemon does not understand must not resolve to one it does.
-pub(crate) fn parse_wire<T: serde::de::DeserializeOwned>(raw: &str) -> Option<T> {
-    // The error type has to be named because `into_deserializer` is generic
-    // over it; nothing ever reads it, since an unparseable spelling is a
-    // `None` rather than a reported failure.
-    let spelling: serde::de::value::StrDeserializer<'_, serde::de::value::Error> =
-        raw.into_deserializer();
-    T::deserialize(spelling).ok()
-}
+/// [`afd_core::spelling::from_spelling`] does the work; this alias exists so
+/// the sibling `spelling` module's round-trip tests keep one name to reach for,
+/// and so the reasoning stays discoverable from the read direction it serves.
+/// That reasoning is the shared module's: `afd_wire` declares the rename, so
+/// parsing through it means the stored vocabulary and the wire vocabulary
+/// CANNOT drift, where a hand-written match would be a second copy of every
+/// variant's spelling with no failing test behind it.
+pub(crate) use afd_core::spelling::from_spelling as parse_wire;
 
 /// A stored JSON column, deserialised borrowing from it.
 ///

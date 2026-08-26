@@ -16,41 +16,22 @@
 //! later reader. [`NonZeroU32`] carries the proof instead, so the anomaly
 //! evaluator has no zero case to consider and no branch to forget.
 
-use std::num::NonZeroU32;
-
+use crate::config::anomaly::AnomalyRule;
 use crate::config::raw;
 use crate::error::{Error, Result};
 
-/// The key naming an anomaly rule's repeat count.
-const THRESHOLD_COUNT: &str = "threshold_count";
-/// The key naming its window.
-const THRESHOLD_WINDOW_S: &str = "threshold_window_s";
 /// The key naming a gate rule's tool.
 const TOOL: &str = "tool";
 /// The key naming its action.
 const ACTION: &str = "action";
-/// The key naming an anomaly rule's pattern.
-const PATTERN: &str = "pattern";
 
 /// How long an approval waits when the block names no timeout.
 const DEFAULT_TIMEOUT_MS: u64 = 3_600_000;
 /// Longest an approval may be made to wait.
 const MAX_TIMEOUT_MS: u64 = 86_400_000;
-/// Most repeats an anomaly rule may require.
-const MAX_ANOMALY_REPEATS: u32 = 10_000;
-/// Longest window those repeats may be counted over.
-const MAX_ANOMALY_WINDOW_S: u32 = 86_400;
-
-/// Why a threshold was refused.
-const REASON_ZERO: &str = "zero would trip on the first action and never stop";
-/// See [`REASON_ZERO`].
-const REASON_ABOVE_CAP: &str = "it is above the cap";
 
 /// What an approval rule does when it fires.
 pub type Behavior = raw::Behavior;
-
-/// A repetition shape an anomaly rule watches for.
-pub type Pattern = raw::Pattern;
 
 /// One action that needs a human before it runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,58 +73,6 @@ impl TryFrom<raw::GateRule> for GateRule {
             blast_radius: authored.blast_radius.into(),
         })
     }
-}
-
-/// A repetition that ends the run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AnomalyRule {
-    /// Which repetition shape trips it.
-    pub pattern: Pattern,
-    /// How many repeats trip it.
-    pub repeats: NonZeroU32,
-    /// The window those repeats are counted in, in seconds.
-    pub window_s: NonZeroU32,
-}
-
-impl TryFrom<raw::AnomalyRule> for AnomalyRule {
-    type Error = Error;
-
-    fn try_from(authored: raw::AnomalyRule) -> Result<Self> {
-        Ok(Self {
-            pattern: authored.pattern.ok_or_else(|| Error::missing(PATTERN))?,
-            repeats: threshold(
-                THRESHOLD_COUNT,
-                authored.threshold_count,
-                MAX_ANOMALY_REPEATS,
-            )?,
-            window_s: threshold(
-                THRESHOLD_WINDOW_S,
-                authored.threshold_window_s,
-                MAX_ANOMALY_WINDOW_S,
-            )?,
-        })
-    }
-}
-
-/// Checks one threshold and proves it non-zero.
-///
-/// # Errors
-/// [`Error::MissingRequiredField`] when absent, [`Error::InvalidThreshold`]
-/// when zero or above `cap`.
-fn threshold(field: &'static str, authored: Option<u32>, cap: u32) -> Result<NonZeroU32> {
-    let value = authored.ok_or_else(|| Error::missing(field))?;
-
-    if value > cap {
-        return Err(Error::InvalidThreshold {
-            field,
-            reason: REASON_ABOVE_CAP,
-        });
-    }
-
-    NonZeroU32::new(value).ok_or(Error::InvalidThreshold {
-        field,
-        reason: REASON_ZERO,
-    })
 }
 
 /// A fleet's approval and anomaly policy.

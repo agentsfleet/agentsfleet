@@ -12,7 +12,8 @@ use afd_redis::Redis;
 use sqlx::Row as _;
 
 use crate::error::{Result, query};
-use crate::gate::pending::{Answer, Evaluation, GateRef, Status, evaluate};
+use crate::gate::decision::{Answer, Status};
+use crate::gate::pending::{Evaluation, GateRef, evaluate};
 use crate::sql;
 
 /// Statement name, for the context a query failure carries.
@@ -115,7 +116,10 @@ impl Gates {
             .queue
             .get_string(&key::event_ref(fleet_id.as_str(), event_id))
             .await?;
-        Ok(stored.as_deref().and_then(GateRef::parse))
+        // `ok()` rather than `?`: a reference that will not deserialize means
+        // this poll has no recorded gate to honour, which is the same answer as
+        // one that was never written. See the doc note above.
+        Ok(stored.and_then(|raw| serde_json::from_str(&raw).ok()))
     }
 
     /// Record that `event_id` is waiting on `reference`.
@@ -129,10 +133,17 @@ impl Gates {
         reference: &GateRef,
     ) -> Result<()> {
         let lifetime = reference_lifetime(reference, afd_core::clock::now());
+        // Infallible for this shape — a two-field record of a string and an
+        // integer has no serializer error to reach — but the failure is not
+        // swallowed: an unwritable reference would leave a parked event unable
+        // to find its own gate, which is the one outcome worth an error.
+        let encoded = serde_json::to_string(reference).map_err(|_shape| {
+            crate::error::rejected(crate::error::DETAIL_GATE_REFERENCE_UNWRITABLE)
+        })?;
         self.queue
             .set_for(
                 &key::event_ref(fleet_id.as_str(), event_id),
-                &reference.encode(),
+                &encoded,
                 lifetime,
             )
             .await

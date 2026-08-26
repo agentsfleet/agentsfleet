@@ -1,18 +1,20 @@
-//! Which IP literals a tenant may not point an endpoint at.
+//! Which hosts a tenant may not point an endpoint at.
 //!
 //! # What this replaces
 //!
 //! `ip_literal.zig` is two hundred and forty-nine lines: an IPv4 parser, an
 //! IPv6 parser with its own `::` elision handling and embedded-IPv4 case, a
 //! colon-run helper, and fourteen named octet constants the range checks are
-//! spelled against. Every line of it is re-deriving something
-//! [`std::net::IpAddr`] already does — and re-deriving it in the one place
-//! where being subtly wrong is a Server-Side Request Forgery (SSRF), because a
-//! literal this classifier fails to PARSE is a literal it reports as safe.
+//! spelled against. Every line of it is re-deriving something the standard
+//! library already does — and re-deriving it in the one place where being
+//! subtly wrong is a Server-Side Request Forgery, because a literal a
+//! classifier fails to PARSE is a literal it reports as safe.
 //!
-//! Here the parse is `IpAddr::from_str` and the ranges are the standard
-//! library's own predicates. What is left is the handful of ranges std does not
-//! yet name, which is the whole of what this module had to write.
+//! Nothing here parses at all now. [`super::endpoint`] hands over a
+//! [`Host`] the URL parser already resolved, so an IP literal arrives as an
+//! [`Ipv4Addr`] or an [`Ipv6Addr`] and a name arrives as a name. Bracket
+//! stripping, zone-id handling and the "is this even an address" question are
+//! all upstream, in a parser that is maintained.
 //!
 //! # The four predicates std does not answer, and why they are hand-written
 //!
@@ -37,8 +39,9 @@
 //! data-plane enforcement on the same predicates is what stops the two
 //! disagreeing.
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::str::FromStr as _;
+use std::net::{Ipv4Addr, Ipv6Addr};
+
+use url::Host;
 
 /// First octet of `0.0.0.0/8` — "this host", blocked as a whole range.
 const V4_UNSPECIFIED_BLOCK: u8 = 0;
@@ -57,31 +60,17 @@ const V6_LINK_LOCAL_MASK: u16 = 0xffc0;
 /// See [`V6_LINK_LOCAL_MASK`].
 const V6_LINK_LOCAL: u16 = 0xfe80;
 
-/// Whether `host` is an IP literal in a range a tenant endpoint may not reach.
+/// Whether `host` is an address a tenant endpoint may not reach.
 ///
-/// A host that is not an IP literal answers `false`: it is a NAME, and names
-/// are the runner's to re-check after resolution. An EMPTY host answers `true`,
-/// which is the one place this function is deliberately not a pure range check
-/// — nothing legitimate is spelled that way, and the guard above it treats an
-/// empty authority as malformed before reaching here anyway.
-pub(super) fn is_blocked_literal(host: &str) -> bool {
-    let bare = host
-        .strip_prefix('[')
-        .and_then(|inner| inner.strip_suffix(']'))
-        .unwrap_or(host);
-    // A zone id (`fe80::1%lo0`) never makes a blocked address global, and
-    // `Ipv6Addr::from_str` rejects one outright — so it is stripped before the
-    // parse rather than after, or every scoped literal would read as a name.
-    let unscoped = bare.split('%').next().unwrap_or(bare);
-    if unscoped.is_empty() {
-        return true;
-    }
-
-    match IpAddr::from_str(unscoped) {
-        Ok(IpAddr::V4(address)) => is_blocked_v4(address),
-        Ok(IpAddr::V6(address)) => is_blocked_v6(address),
-        // Not a literal, so not this classifier's to judge.
-        Err(_not_a_literal) => false,
+/// A DOMAIN answers `false`: it is a name, and names are the runner's to
+/// re-check after resolution. That is not a gap this module should close —
+/// resolving here and trusting the answer is a DNS-rebinding hole, because the
+/// name can resolve differently when the runner dials it.
+pub(super) fn is_blocked(host: &Host<&str>) -> bool {
+    match host {
+        Host::Ipv4(address) => is_blocked_v4(*address),
+        Host::Ipv6(address) => is_blocked_v6(*address),
+        Host::Domain(_name) => false,
     }
 }
 
@@ -120,10 +109,35 @@ fn is_blocked_v6(address: Ipv6Addr) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_blocked_literal;
+    #![expect(
+        clippy::expect_used,
+        reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
+    )]
+    use super::is_blocked;
+    use url::Host;
+
+    /// The host of `raw`, as the guard's parser resolves it.
+    fn host_of(raw: &str) -> Host<String> {
+        url::Url::parse(raw)
+            .expect("a parseable URL")
+            .host()
+            .expect("a URL with an authority")
+            .to_owned()
+    }
+
+    /// Whether the host of `raw` is refused.
+    fn blocks(raw: &str) -> bool {
+        let owned = host_of(raw);
+        let borrowed = match &owned {
+            Host::Domain(name) => Host::Domain(name.as_str()),
+            Host::Ipv4(address) => Host::Ipv4(*address),
+            Host::Ipv6(address) => Host::Ipv6(*address),
+        };
+        is_blocked(&borrowed)
+    }
 
     /// Every range `ip_literal.zig` blocks, in the spellings its own suite uses
-    /// — this is that suite, re-run against the standard library's parser.
+    /// — that suite, re-run against a real URL parser.
     #[test]
     fn the_v4_blocklist_matches_the_zig_ranges() {
         for blocked in [
@@ -139,7 +153,10 @@ mod tests {
             "224.0.0.1",
             "255.255.255.255",
         ] {
-            assert!(is_blocked_literal(blocked), "{blocked} must be blocked");
+            assert!(
+                blocks(&format!("https://{blocked}/v1")),
+                "{blocked} must be blocked"
+            );
         }
     }
 
@@ -155,15 +172,18 @@ mod tests {
             "8.8.8.8",
             "1.1.1.1",
         ] {
-            assert!(!is_blocked_literal(allowed), "{allowed} must be allowed");
+            assert!(
+                !blocks(&format!("https://{allowed}/v1")),
+                "{allowed} must be allowed"
+            );
         }
     }
 
     #[test]
-    fn the_v6_blocklist_covers_bracketed_and_bare_spellings() {
+    fn the_v6_blocklist_covers_every_range_and_the_mapped_forms() {
         for blocked in [
             "[::1]",
-            "::",
+            "[::]",
             "[fc00::1]",
             "[fd12::3]",
             "[fe80::1]",
@@ -171,36 +191,32 @@ mod tests {
             "[::ffff:127.0.0.1]",
             "[::ffff:169.254.169.254]",
         ] {
-            assert!(is_blocked_literal(blocked), "{blocked} must be blocked");
+            assert!(
+                blocks(&format!("https://{blocked}/v1")),
+                "{blocked} must be blocked"
+            );
         }
         assert!(
-            !is_blocked_literal("[2606:4700:4700::1111]"),
+            !blocks("https://[2606:4700:4700::1111]/v1"),
             "a public v6 resolver must stay reachable"
         );
     }
 
     #[test]
-    fn a_zone_id_never_makes_a_blocked_address_global() {
-        // `Ipv6Addr::from_str` refuses a zone id, so an unstripped one would
-        // fall through to the name branch and read as SAFE. That is the
-        // failure this strip exists to prevent, and it is worth a test that
-        // names it.
-        assert!(is_blocked_literal("fe80::1%lo0"));
-        assert!(is_blocked_literal("[fe80::1%25eth0]"));
-    }
-
-    #[test]
     fn a_hostname_is_not_classified_here() {
         // Names are the runner's to re-check after resolution — see the module
-        // note. Blocking them here would refuse every legitimate endpoint.
-        assert!(!is_blocked_literal("example.com"));
-        assert!(!is_blocked_literal("self-hosted.vllm.internal-corp.net"));
-        assert!(!is_blocked_literal("256.1.1.1"), "not a literal at all");
-    }
-
-    #[test]
-    fn an_empty_host_is_refused_rather_than_passed() {
-        assert!(is_blocked_literal(""));
-        assert!(is_blocked_literal("[]"));
+        // note. Resolving here and trusting it is a DNS-rebinding hole.
+        for allowed in [
+            "example.com",
+            "self-hosted.vllm.internal-corp.net",
+            // Numeric-looking but not four numeric parts, so the parser
+            // reads it as a domain — and it resolves like any other name.
+            "10.0.0.0.example.com",
+        ] {
+            assert!(
+                !blocks(&format!("https://{allowed}/v1")),
+                "{allowed} is a name"
+            );
+        }
     }
 }

@@ -25,6 +25,7 @@
 //! live datastore.
 
 mod anomaly;
+mod decision;
 mod pending;
 mod route;
 mod store;
@@ -33,9 +34,8 @@ use afd_fleet_runtime::config::{Behavior, Condition, GatePolicy, GateRule};
 use serde_json::Value;
 
 pub use self::anomaly::Anomaly;
-pub use self::pending::{
-    Answer, DECISION_APPROVE, DECISION_DENY, Evaluation, GateRef, Status, evaluate,
-};
+pub use self::decision::{Answer, DECISION_APPROVE, DECISION_DENY, Status};
+pub use self::pending::{Evaluation, GateRef, evaluate};
 pub use self::route::{RefState, Route, route};
 pub use self::store::{Gates, key};
 

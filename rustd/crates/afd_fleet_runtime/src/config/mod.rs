@@ -17,6 +17,7 @@
 //! every mint request just to read one field off it — a full document parse
 //! per request, on a path that already holds the answer.
 
+mod anomaly;
 mod condition;
 mod gates;
 mod policy;
@@ -32,8 +33,9 @@ use crate::error::{Error, Result};
 use crate::name::{CredentialName, FleetName};
 use crate::provider::{ProviderRegistry, StaticRegistry};
 
+pub use self::anomaly::{AnomalyRule, Pattern};
 pub use self::condition::Condition;
-pub use self::gates::{AnomalyRule, Behavior, GatePolicy, GateRule, Pattern};
+pub use self::gates::{Behavior, GatePolicy, GateRule};
 pub use self::policy::{Budget, ContextBudget, Dollars, Network};
 pub use self::repository::{Access, Mode, RepositoryBinding};
 pub use self::trigger::{Cron, Trigger, Webhook, WebhookSignature};

@@ -20,19 +20,43 @@
 //! HOST — which is the one thing the pairing rule discards — and that caller
 //! lands in the sibling slice that builds the execution policy.
 //!
-//! # Why the host is extracted by hand, with `url` in the lock
+//! # The parse is `url`'s, not thirty hand-written lines
 //!
-//! `url` 2.5.8 is already a transitive dependency and would parse this in one
-//! line. It is not used, and the reason is a wire fact rather than a taste:
-//! `Url::host_str` NORMALISES — it lower-cases, it punycodes an
-//! internationalised name, and it returns an IPv6 literal UNBRACKETED. The host
-//! this produces travels to a stock Zig runner as its egress-allowlist entry,
-//! and `execution_policy.zig::hostFromUrl` produces the bracketed, unnormalised
-//! form. A normalising parser here would put a different string on the wire
-//! than the daemon this must stay interchangeable with, for endpoints nobody
-//! would think to test. So the extraction is thirty lines that copy
-//! `hostFromUrl`'s bytes, and the CLASSIFICATION — the part where being subtly
-//! wrong is a security hole — is the standard library's (see [`super::ssrf`]).
+//! `base_url_guard.zig` scans for `://`, finds the first `/?#`, takes the last
+//! `@`, and looks for a `:` unless the authority opens with `[` — a URL parser,
+//! written by hand, in the one place where disagreeing with the client that
+//! will actually dial the address is a security hole. This uses `url` 2.5.8,
+//! already in the lock, and gets a TYPED [`Host`] out of it: an IP literal
+//! arrives as an `Ipv4Addr` or `Ipv6Addr` and goes straight to the classifier
+//! with no string round trip, and bracket stripping, zone ids, percent-encoded
+//! authorities and userinfo are all handled by something maintained.
+//!
+//! The one thing kept by hand is how an IPv6 host is RENDERED back. `url` hands
+//! it over unbracketed and `execution_policy.zig::hostFromUrl` produces the
+//! bracketed form, and this value travels to a stock Zig runner as its
+//! egress-allowlist entry. Normalisation is otherwise safe here, which was
+//! checked rather than assumed: the runner compares allowlist entries with
+//! `std.ascii.eqlIgnoreCase` at all three of its matching sites, so a
+//! lower-cased host still matches.
+//!
+//! # Three verdicts differ from the hand-written guard, and all three are it
+//!
+//! Every one is a case where the Zig disagrees with what an HTTP client would
+//! actually dial, which is the only thing this guard is for — a verdict about a
+//! host nobody will connect to protects nothing.
+//!
+//! - `https:///just/a/path` — the Zig calls it malformed. A client following
+//!   WHATWG skips the extra slash and dials `just`, and so does this. The SSRF
+//!   check still runs on that host, so `https:///169.254.169.254` is refused
+//!   exactly as the two-slash spelling is.
+//! - `https://256.1.1.1/v1` — the Zig's `parseIpv4` fails, concludes "not a
+//!   literal", and passes it through as a NAME. WHATWG reads a four-part
+//!   all-numeric host as an IPv4 attempt and refuses the out-of-range octet, so
+//!   this refuses it too. The safe direction, and the one a client takes.
+//! - A schemeless host reports `InvalidScheme` rather than the parser's own
+//!   "relative URL" — the diagnosis an operator can act on, and the Zig's.
+
+use url::{Host, Url};
 
 use super::ssrf;
 
@@ -41,10 +65,10 @@ use super::ssrf;
 /// Plaintext `http` is refused outright rather than upgraded: the `api_key` sits
 /// beside the URL in the same credential, and a downgraded dial puts it on the
 /// wire in the clear.
+///
+/// Compared against `Url::scheme`, which the parser has already lower-cased —
+/// so `HTTPS://` matches without this doing its own case folding.
 const REQUIRED_SCHEME: &str = "https";
-
-/// The scheme separator, and the width the host extraction skips past it.
-const SCHEME_SEPARATOR: &str = "://";
 
 /// The provider id that opts a credential into a custom OpenAI-compatible
 /// endpoint.
@@ -113,83 +137,89 @@ pub(super) fn resolve<'a>(
 /// The bare host of a safe `https` endpoint.
 ///
 /// Order matters and is the Zig's: scheme first because it is the cheapest
-/// check and an `http` URL is refused whatever its host, then the authority,
-/// then the SSRF classification.
+/// check and an `http` URL is refused whatever its host, then the SSRF
+/// classification of whatever the parser resolved.
+///
+/// Owned rather than borrowed from the input, because the parser normalises and
+/// the result is no longer a slice of what came in. That is the honest
+/// signature: a borrow would have implied the bytes are the caller's.
 ///
 /// # Errors
-/// Refuses a non-`https` scheme, an absent or unparseable authority, and a host
-/// that is an SSRF-unsafe IP literal.
-pub(super) fn validate(url: &str) -> Result<&str, Rejection> {
-    let (scheme, authority) = url
-        .split_once(SCHEME_SEPARATOR)
-        .ok_or(Rejection::InvalidScheme)?;
-    if !scheme.eq_ignore_ascii_case(REQUIRED_SCHEME) {
+/// Refuses a URL that does not parse, a non-`https` scheme, an authority with
+/// no host, and a host that is an SSRF-unsafe address.
+pub(super) fn validate(url: &str) -> Result<Box<str>, Rejection> {
+    let parsed = Url::parse(url).map_err(|failure| match failure {
+        // A schemeless host is the operator who wrote `api.example.com` and
+        // forgot the `https://`. The parser calls that a relative URL; the
+        // rejection they need to read says the scheme is the problem.
+        url::ParseError::RelativeUrlWithoutBase => Rejection::InvalidScheme,
+        _malformed => Rejection::Malformed,
+    })?;
+    if parsed.scheme() != REQUIRED_SCHEME {
         return Err(Rejection::InvalidScheme);
     }
-
-    let host = host_of(authority).ok_or(Rejection::Malformed)?;
-    if ssrf::is_blocked_literal(host) {
+    // `Some` for every hierarchical scheme; `None` is a URL with no authority
+    // at all, which `https` cannot legally be but the parser still models.
+    let host = parsed.host().ok_or(Rejection::Malformed)?;
+    if ssrf::is_blocked(&host) {
         return Err(Rejection::BlockedHost);
     }
-    Ok(host)
+    Ok(render(&host))
 }
 
-/// The bare host inside an authority, with userinfo, port and path removed.
+/// The host as the egress allowlist spells it.
 ///
-/// Byte-for-byte what `hostFromUrl` produces, bracketed IPv6 included — see the
-/// module note on why that spelling is preserved rather than normalised.
-///
-/// `None` is an authority with nothing left after the strips: `https:///path`,
-/// `https://user@`, or an IPv6 literal whose bracket never closes.
-fn host_of(after_scheme: &str) -> Option<&str> {
-    let authority = after_scheme
-        .split(['/', '?', '#'])
-        .next()
-        .filter(|section| !section.is_empty())?;
-
-    // `rsplit_once`, not `split_once`: a smuggled `user@evil` must not let the
-    // LAST authority component masquerade as userinfo and hand `evil` back as
-    // the host.
-    let after_userinfo = authority
-        .rsplit_once('@')
-        .map_or(authority, |(_userinfo, host)| host);
-
-    if after_userinfo.starts_with('[') {
-        // The inner colons are address bytes rather than a port, so the close
-        // bracket is what ends the host — and its absence is malformed rather
-        // than a host that happens to contain a bracket. `get`, not a range
-        // index: a slice that panics is not a parser (`clippy::indexing_slicing`).
-        return after_userinfo.get(..=after_userinfo.find(']')?);
+/// An IPv6 literal is re-bracketed, because that is what
+/// `execution_policy.zig::hostFromUrl` produces and the value goes to a stock
+/// Zig runner. Everything else is the parser's own rendering.
+fn render(host: &Host<&str>) -> Box<str> {
+    match host {
+        Host::Ipv6(address) => format!("[{address}]").into_boxed_str(),
+        Host::Ipv4(address) => address.to_string().into_boxed_str(),
+        Host::Domain(name) => (*name).into(),
     }
-    after_userinfo
-        .split(':')
-        .next()
-        .filter(|host| !host.is_empty())
 }
 
 #[cfg(test)]
 mod tests {
     use super::{OPENAI_COMPATIBLE, Rejection, resolve, validate};
 
+    /// The host `raw` validates to, as an owned string.
+    fn host(raw: &str) -> Result<String, Rejection> {
+        validate(raw).map(str::into_string)
+    }
+
     #[test]
     fn a_public_https_endpoint_yields_its_bare_host() {
         assert_eq!(
-            validate("https://api.openrouter.ai/v1"),
+            host("https://api.openrouter.ai/v1").as_deref(),
             Ok("api.openrouter.ai")
         );
         // Port, path and userinfo are all stripped down to the host.
         assert_eq!(
-            validate("https://user:pw@gw.example.com:8443/v1"),
+            host("https://user:pw@gw.example.com:8443/v1").as_deref(),
             Ok("gw.example.com")
         );
-        // https is matched case-insensitively, as a scheme is.
-        assert_eq!(validate("HTTPS://api.example.com"), Ok("api.example.com"));
-        // A bracketed v6 literal keeps its brackets — the wire-parity property
-        // the module note is about.
+        // The scheme is matched case-insensitively, because the parser has
+        // already lower-cased it.
         assert_eq!(
-            validate("https://[2606:4700:4700::1111]/v1"),
+            host("HTTPS://api.example.com").as_deref(),
+            Ok("api.example.com")
+        );
+        // A v6 literal is re-bracketed — the wire-parity property the module
+        // note is about, and the one thing rendering keeps by hand.
+        assert_eq!(
+            host("https://[2606:4700:4700::1111]/v1").as_deref(),
             Ok("[2606:4700:4700::1111]")
         );
+    }
+
+    #[test]
+    fn a_host_is_normalised_the_way_the_runner_already_compares() {
+        // Checked rather than assumed: the runner matches allowlist entries
+        // with `eqlIgnoreCase` at all three of its sites, so lower-casing here
+        // cannot make a legitimate endpoint unreachable.
+        assert_eq!(host("https://Example.COM/v1").as_deref(), Ok("example.com"));
     }
 
     #[test]
@@ -222,7 +252,6 @@ mod tests {
     #[test]
     fn an_authority_that_is_not_there_is_malformed() {
         for refused in [
-            "https:///just/a/path",
             "https://",
             "https://[::1",
             "https://user@",
@@ -230,6 +259,24 @@ mod tests {
         ] {
             assert_eq!(validate(refused), Err(Rejection::Malformed), "{refused}");
         }
+    }
+
+    #[test]
+    fn a_url_is_judged_as_a_client_would_dial_it() {
+        // An extra slash is skipped by every WHATWG client, so the host is
+        // `just` and this guard says so — where the hand-written parser called
+        // it malformed and protected nothing, because a client would still
+        // have connected.
+        assert_eq!(host("https:///just/a/path").as_deref(), Ok("just"));
+        // And the SSRF check runs on THAT host, so the spelling buys no bypass.
+        assert_eq!(
+            validate("https:///169.254.169.254/latest"),
+            Err(Rejection::BlockedHost)
+        );
+        // A four-part all-numeric host is an IPv4 attempt, not a name. The
+        // hand-written parser failed to parse it and concluded it was a
+        // hostname, which is the unsafe direction.
+        assert_eq!(validate("https://256.1.1.1/v1"), Err(Rejection::Malformed));
     }
 
     #[test]
