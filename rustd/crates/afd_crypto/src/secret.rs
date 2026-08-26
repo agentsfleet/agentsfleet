@@ -121,6 +121,18 @@ impl SecretBytes {
 }
 
 /// Decodes lowercase-or-uppercase hex into a fixed buffer, rejecting anything else.
+///
+/// The length check stays here rather than being left to the decoder: `hex`
+/// reports a wrong length as one opaque variant, and [`ErrorKind::KeyHexLength`]
+/// carries what was expected and what arrived — which is the difference
+/// between an operator seeing "bad key" and seeing that they pasted 63
+/// characters.
+///
+/// The digits themselves are the crate's, not ours. `hex::decode_to_slice`
+/// writes straight into the caller's buffer with no intermediate allocation,
+/// which for key material is the property that matters: a decoder that
+/// returned a `Vec` would leave a copy of the key on the heap with no
+/// destructor.
 fn decode_hex_into(hex: &str, out: &mut [u8]) -> Result<()> {
     let expected = out.len() * 2;
     if hex.len() != expected {
@@ -129,23 +141,7 @@ fn decode_hex_into(hex: &str, out: &mut [u8]) -> Result<()> {
             actual: hex.len(),
         }));
     }
-    // `as_chunks` rather than `chunks_exact(2)`: the pair width is a constant,
-    // so the compiler can prove each chunk is two bytes and no `Option` unwrap
-    // is needed to read them. The remainder is empty by the length check above.
-    let (pairs, _remainder) = hex.as_bytes().as_chunks::<2>();
-    for (slot, [hi, lo]) in out.iter_mut().zip(pairs) {
-        *slot = (hex_digit(*hi)? << 4) | hex_digit(*lo)?;
-    }
-    Ok(())
-}
-
-fn hex_digit(byte: u8) -> Result<u8> {
-    match byte {
-        b'0'..=b'9' => Ok(byte - b'0'),
-        b'a'..=b'f' => Ok(byte - b'a' + 10),
-        b'A'..=b'F' => Ok(byte - b'A' + 10),
-        _ => Err(Error::new(ErrorKind::KeyHexDigit)),
-    }
+    hex::decode_to_slice(hex, out).map_err(|_digit| Error::new(ErrorKind::KeyHexDigit))
 }
 
 /// Renders a redacted placeholder, never the bytes.

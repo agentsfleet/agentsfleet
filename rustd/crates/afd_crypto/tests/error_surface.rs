@@ -159,6 +159,45 @@ fn test_error_exposes_its_backtrace() {
     );
 }
 
+/// A well-formed length carrying a character that is not a hex digit.
+///
+/// The gap this closes: every prior hex test was the WRONG LENGTH, so the
+/// digit check had no coverage at all and a decoder that accepted anything of
+/// the right size would have passed the suite.
+#[test]
+fn test_a_bad_digit_at_the_right_length_is_refused() {
+    for spoiled in ["zz", "g0", "0 ", "0-", "é\u{301}"] {
+        let mut text = KEK_HEX.to_owned();
+        text.replace_range(0..spoiled.len().min(2), &spoiled[..spoiled.len().min(2)]);
+        let error = Kek::from_hex(&text).expect_err("a non-hex digit must be refused");
+
+        assert!(
+            error.is_key_hex(),
+            "{spoiled:?} was not reported as key hex"
+        );
+    }
+}
+
+/// Uppercase hex names the same key as lowercase.
+///
+/// Deliberate, and worth pinning: an operator pasting a key from a tool that
+/// renders uppercase must not get a daemon that refuses to boot. The identifier
+/// spelling rules elsewhere in this workspace reject uppercase; key material
+/// does not, because it has no canonical stored form to keep unique.
+#[test]
+fn test_uppercase_hex_names_the_same_key() {
+    let aad = Aad::new("ws_1", "k");
+    let lower = Kek::from_hex(KEK_HEX).unwrap();
+    let upper = Kek::from_hex(&KEK_HEX.to_uppercase()).expect("uppercase hex is accepted");
+
+    let envelope = Sealer::new().seal(&lower, &aad, b"payload").unwrap();
+    assert_eq!(
+        envelope.open(&upper, &aad).unwrap().expose(),
+        b"payload",
+        "the two spellings must name one key"
+    );
+}
+
 /// The unused-in-production constructors still work, and agree with the others.
 #[test]
 fn test_key_constructors_agree() {
