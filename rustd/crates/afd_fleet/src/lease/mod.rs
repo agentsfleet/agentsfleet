@@ -26,7 +26,7 @@ pub mod store;
 
 pub use self::affinity::{Claimed, Fence};
 pub use self::envelope::{Acquired, Kind};
-pub use self::event::Delivery;
+pub use self::event::{Delivery, Ended};
 pub use self::installed::{FRESH_CONTEXT, Installed};
 pub use self::issue::{Billed, Issued};
 pub use self::reclaim::{Reclaimed, Reused};
