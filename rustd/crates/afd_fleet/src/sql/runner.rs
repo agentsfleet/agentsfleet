@@ -218,3 +218,35 @@ WHERE id = $1::uuid";
 /// audit trail has a gap.
 pub const TOUCH_RUNNER_LAST_SEEN: &str = "\
 UPDATE fleet.runners SET last_seen_at = $2, updated_at = $2 WHERE id = $1::uuid";
+
+/// Move one runner's administrative state and append its audit event.
+///
+/// The locked row, update, and event live in one statement. The final select
+/// returns the prior state even for an idempotent request, which lets the
+/// service distinguish a harmless repeat from a forbidden attempt to move a
+/// revoked runner without a read-then-write race.
+pub const TRANSITION_RUNNER_ADMIN_STATE: &str = "\
+WITH current_state AS (
+  SELECT id, admin_state AS from_admin_state
+  FROM fleet.runners
+  WHERE id = $1::uuid
+  FOR UPDATE
+), updated AS (
+  UPDATE fleet.runners r
+  SET admin_state = $2::text, updated_at = $3::bigint
+  FROM current_state c
+  WHERE r.id = c.id
+    AND ($4::bool OR c.from_admin_state <> 'revoked')
+    AND c.from_admin_state <> $2::text
+  RETURNING r.id
+), event AS (
+  INSERT INTO fleet.runner_events
+    (id, runner_id, event_type, metadata, dedup_key, created_at)
+  SELECT $5::uuid, id, $6::text,
+         jsonb_build_object($7::text, from_admin_state, $8::text, $2::text),
+         NULL, $3::bigint
+  FROM current_state
+  WHERE EXISTS (SELECT 1 FROM updated)
+)
+SELECT c.from_admin_state, EXISTS (SELECT 1 FROM updated) AS changed
+FROM current_state c";

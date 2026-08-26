@@ -68,10 +68,13 @@ impl Error {
     pub const fn code(&self) -> ErrorCode {
         match self.inner.kind {
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
-            ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => {
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::AdminStateMalformed => {
                 error_code::INTERNAL_DB_QUERY
             }
             ErrorKind::RunnerVanished => error_code::RUN_INVALID_RUNNER_TOKEN,
+            ErrorKind::RunnerNotFound => error_code::RUNNER_NOT_FOUND,
             ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
             // A daemon whose clock cannot name an instant, and a host that
             // cannot draw random bytes, are both THIS process failing — not the
@@ -194,6 +197,7 @@ impl Error {
         match self.inner.kind {
             ErrorKind::Rejected { detail } => detail,
             ErrorKind::RunnerVanished => DETAIL_RUNNER_NOT_FOUND,
+            ErrorKind::RunnerNotFound => DETAIL_RUNNER_NOT_FOUND,
             ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
             // A corrupt sequence joins the two row faults: all three are the
             // database holding something this daemon cannot use, and a caller
@@ -201,6 +205,7 @@ impl Error {
             // any of them.
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
+            | ErrorKind::AdminStateMalformed
             | ErrorKind::SequenceCorrupt => DETAIL_DATABASE_ERROR,
             ErrorKind::Queue { .. } => DETAIL_QUEUE_UNAVAILABLE,
             ErrorKind::Envelope { .. } => DETAIL_EVENT_MALFORMED,
@@ -308,6 +313,8 @@ impl Error {
             | ErrorKind::Queue { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RunnerVanished
+            | ErrorKind::RunnerNotFound
+            | ErrorKind::AdminStateMalformed
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::Envelope { .. }
             | ErrorKind::Rejected { .. }

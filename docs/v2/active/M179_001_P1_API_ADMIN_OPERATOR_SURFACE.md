@@ -61,8 +61,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_library/**` | CREATE | fleet-library catalogue, importer, GitHub source, bundle validation + R2 upload |
 | `rustd/crates/afd_state/**` | EDIT | platform-key + model-library repositories (admin write paths) |
 | `rustd/crates/afd_fleet/**` | EDIT | runner administration service (cordon/drain/revoke/rotate), streams overview reads |
+| `rustd/crates/afd_core/**` | EDIT | Import the existing Zig registry entries newly reachable from Rust |
+| `rustd/crates/afd_wire/**` | EDIT | Admin/operator request and response types consumed by both service and HTTP layers |
+| `rustd/crates/agentsfleetd/**` | EDIT | Compose the new stores and import credentials at daemon startup |
 | `rustd/Cargo.toml` | EDIT | new member |
-| `make/test-integration.mk` | EDIT | admin/operator integration subset against the Rust binary |
+| `make/test-integration-rustd.mk` | EDIT | admin/operator integration subset against the Rust binary |
 
 ## Applicable Rules
 
@@ -118,7 +121,7 @@ The importer pipeline (platform gallery + per-tenant onboarding) with the GitHub
 
 `/v1/fleets/runners[/{runner_id}[/events|/leases]]` (list, detail, `PATCH` admin-state transitions), `/v1/fleets/streams` overview. Cordon/drain/revoke/rotate write `fleet.runners` + append `fleet.runner_events`; delivery to the runner is the M177 auth read — this milestone only writes state. Three-category status (admin_state + derived liveness + events) rendered as the Zig daemon does.
 
-- **Dimension 4.1** — admin-state transitions write the row + append the event; illegal transitions refused → Test `test_runner_admin_transitions`
+- **Dimension 4.1** — admin-state transitions write the row + append the event; illegal transitions refused → Test `test_runner_admin_transitions` — DONE
 - **Dimension 4.2** — rotation swaps `token_hash`; old token 401s on next use (M177 read), new token works → Test `test_runner_rotation_takeover`
 - **Dimension 4.3** — runner list/detail/events with keyset pagination + derived-status parity → Test `test_runner_views_parity`
 - **Dimension 4.4** — streams overview shape parity on seeded fleets → Test `test_streams_overview_parity`
