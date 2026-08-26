@@ -64,6 +64,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/cutover/rust_daemon.md` | CREATE | the cutover + rollback runbook (drain order, verification probes, abort criteria) |
 | `playbooks/cutover/probes.sh` | CREATE | executable probe runner the runbook's per-step verification and the rehearsal rubric row both call |
 | `docs/architecture/runner_fleet.md` | EDIT | production-shape note: serving binary + rollback posture |
+| `rustd/crates/afd_observability/**` | EDIT | §5: the metrics pipeline (SDK instruments + views pinned to the Zig family registry) and the OTLP transport the crate was shaped to receive |
+| `rustd/Cargo.toml` | EDIT | §5: `opentelemetry_sdk` gains the `metrics` feature — a flag on a crate already in the lock, not a new dependency |
+| `rustd/crates/agentsfleetd/**` | EDIT | §5: boot constructs the exporter and supervises `otlp_export`; preflight gains the `OTEL_EXPORTER_OTLP_*` knobs |
 
 ## Applicable Rules
 
@@ -129,7 +132,101 @@ The runbook's rollback path carries **no `migrate` invocation**. Rollback serves
 - **Dimension 4.1** — rollback rehearsal on staging: swap back, verify, documented in the runbook's own evidence section → Test `test_rollback_rehearsal`
 - **Dimension 4.4** — the rollback path invokes no `migrate`, and an older binary pointed at a newer ledger refuses rather than reaping → Test `test_rollback_carries_no_migrate`
 - **Dimension 4.2** — runbook probes are copy-paste commands that pass on staging post-swap → Test `test_runbook_probes`
-- **Dimension 4.3** — metric-family continuity across the swap (no renamed series, dashboards unbroken) → Test `test_metric_continuity`
+- **Dimension 4.3** — metric-family continuity across the swap (no renamed series, dashboards unbroken) → Test `test_metric_continuity`. **Depends on §5**: there is nothing to compare until the Rust daemon exports at all.
+
+### §5 — OTLP export: the metrics pipeline and the transport boot never constructed
+
+**Discovered during M177 (this stream, Aug 2026) and deferred here by Indy.** The
+Rust daemon emits NO telemetry today, so Dimension 4.3 above cannot pass as
+written: metric-family continuity across the swap is unprovable when one side of
+the boundary exports nothing.
+
+What exists and what does not:
+
+- **M176 §6 shipped the machinery.** `rustd/crates/afd_observability/` carries
+  the semconv attribute vocabulary, the route-template span layer, and the
+  bounded-buffer export wrapper with its drop counter. Its two dimensions
+  (`test_span_route_template`, `test_otlp_outage_nonblocking`) are green — they
+  test those layers in isolation.
+- **The transport was deferred to boot and never landed there.** The crate says
+  so itself: *"What is not here yet: The OTLP transport. It is constructed from
+  configuration at boot."* Confirming evidence — `agentsfleetd` does not depend
+  on `afd_observability` at all (only `afd_api` does), no `opentelemetry` import
+  appears anywhere under `rustd/crates/agentsfleetd/src/`, and `OTLP_EXPORT` is
+  inventoried as a supervised task but is spawned ONLY in `tests/daemon.rs` as a
+  stub that waits for cancellation. Boot never spawns it.
+
+So this section builds the piece the crate was shaped to receive, and it is a
+prerequisite of §4 rather than a parallel concern.
+
+**Vendor-neutral by default (Indy, this stream).** The Zig daemon's knobs are
+spelled `GRAFANA_OTLP_ENDPOINT` / `GRAFANA_OTLP_INSTANCE_ID` /
+`GRAFANA_OTLP_API_KEY` — a vendor's name inside a vendor-neutral mechanism, and
+the only real coupling in the design. The Rust daemon reads the OpenTelemetry
+specification's own names (`OTEL_EXPORTER_OTLP_ENDPOINT`,
+`OTEL_EXPORTER_OTLP_HEADERS`) so an operator can point it at a local OTel
+Collector and let the Collector's exporters fan out to Grafana, Elastic, or
+anything else — chosen in Collector configuration, with no daemon redeploy. The
+Zig spellings are accepted as aliases through cutover so a rollback keeps
+exporting, and retire with that daemon. Logs need no transport work: they are
+logfmt on stderr per `LOGGING_STANDARD.md` §3, which a Collector ingests with
+its `filelog` receiver.
+
+- **Dimension 5.1** — boot constructs the OTLP transport from configuration and
+  supervises the flush loop under the inventoried `otlp_export` name; the
+  daemon's real inventory equals `BACKGROUND_TASKS` → Test
+  `test_boot_supervises_otlp_export`
+- **Dimension 5.2** — the standard `OTEL_EXPORTER_OTLP_*` knobs configure the
+  endpoint, and the `GRAFANA_OTLP_*` spellings still resolve as aliases → Test
+  `test_otlp_endpoint_knob_precedence`
+- **Dimension 5.3** — with no endpoint configured the daemon boots and serves,
+  exporting nothing; with an unreachable one, requests are unaffected and the
+  drop counter climbs → Test `test_export_absent_and_unreachable`
+
+**The metrics PIPELINE is here too, and it is the larger half (found in M177,
+Aug 2026).** The section was written as "the transport", on the reading that
+M176 §6 had shipped everything the transport plugs into. That reading was
+half right: M176 shipped the SPAN pipeline — `export.rs` wraps a span exporter
+and counts span drops — and `afd_observability` carries no metric instrument,
+no aggregation, and no family registry at all. A transport with nothing to
+carry exports an empty payload, so §4's Dimension 4.3 (`test_metric_continuity`)
+would still be ungradeable with 5.1–5.3 green. The pipeline is therefore named
+here rather than left between sections: what the Zig spells across
+`otel_instruments.zig` (228), `otel_metrics_families.zig` (328),
+`otel_metrics_dims.zig` (298), `otel_metrics_aggregate.zig` (185),
+`otel_metrics_runtime.zig` (209), `otel_metrics_cardinality.zig` (95),
+`otel_metric_meta.zig` (65) and `otel_metrics_attribution.zig` (36) — about
+1,450 lines — plus the in-memory registries under `metrics_*.zig` that feed
+them.
+
+**Implementation default: the OpenTelemetry SDK, not a ported aggregator.** The
+Zig hand-rolled instruments, delta windows, label-dimension products,
+cardinality caps and payload encoding because Zig has no OpenTelemetry SDK.
+Rust does, and `opentelemetry_sdk` is ALREADY a workspace dependency at
+`features = ["trace", "rt-tokio"]` — so the whole cluster above is a feature
+flag (`"metrics"`) plus configuration, not a port. This is the single largest
+crate-versus-scaffolding trade in the family, and taking it deletes roughly
+1,450 lines that would otherwise be ours to keep correct.
+
+**What that trade costs, stated rather than discovered at the swap.** The SDK
+implements the OpenTelemetry specification's cardinality limit, whose overflow
+marker is the attribute `otel.metric.overflow=true` — NOT the Zig's `_other`
+label value. Same protection, different wire shape, and a dashboard panel built
+against the Zig daemon reads the difference as a renamed series. Dimension 4.3
+is exactly the test that catches it. So the pipeline is configured with SDK
+VIEWS that pin family names, label keys and the overflow spelling to the Zig
+registry's, and continuity is asserted rather than assumed. Where a view cannot
+express a Zig spelling, the divergence is registered in §4 like any other — it
+is not silently accepted because the SDK preferred it.
+
+- **Dimension 5.4** — every metric family the Zig registry declares is emitted
+  by the Rust daemon under the same name, label keys and value type; a family
+  present on one side and not the other fails → Test
+  `test_metric_family_registry_parity`
+- **Dimension 5.5** — the cardinality cap holds under a label flood: memory
+  stays constant past the limit and the overflow series carries the pinned
+  spelling, so a dashboard's overflow panel keeps matching across the swap →
+  Test `test_metric_cardinality_overflow_spelling`
 
 ## Parallelization & execution map
 
@@ -140,6 +237,7 @@ The runbook's rollback path carries **no `migrate` invocation**. Rollback serves
 | B1 | §1 parity gate | Claude Code · Opus 5 · high | mechanical serializer + script extension with exact oracle |
 | B1 | §2 build/ship | Claude Code · Opus 5 · high | pipeline work inside existing workflow shapes |
 | B2 (serial) | §3 soak | Claude Code · Opus 5 · xhigh | budget setting + failure triage across the whole system |
+| B1 | §5 OTLP export | Claude Code · Opus 5 · xhigh | the metrics pipeline AND the transport — SDK configuration plus views pinned to the Zig family registry, where a wrong view is a renamed dashboard series rather than a failure; must precede §4's Dimension 4.3 |
 | B3 (serial) | §4 swap/runbook | Claude Code · Opus 5 · max | the irreversible-adjacent step; strongest tier, human (Indy) executes the production swap |
 
 The production swap itself is operator-executed from the runbook — the agent prepares and rehearses; Indy pulls the trigger.
@@ -207,6 +305,11 @@ No product-analytics changes.
 | 4.4 | e2e (negative) | `test_rollback_carries_no_migrate` | the runbook's rollback section invokes no `migrate`; and a binary seeded with a shortened migration set, pointed at the full ledger, exits `UZ-STARTUP-005` with the ledger unchanged |
 | 4.2 | e2e | `test_runbook_probes` | `bash playbooks/cutover/probes.sh` passes post-swap on staging; every M175–M180 R+S row id is probe-tagged or manifest-declared, and every probe carries a row tag |
 | 4.3 | integration | `test_metric_continuity` | series names/labels identical across the swap boundary |
+| 5.1 | integration | `test_boot_supervises_otlp_export` | a booted daemon's supervisor inventory equals `BACKGROUND_TASKS`, `otlp_export` included, and the task joins on SIGTERM |
+| 5.2 | unit | `test_otlp_endpoint_knob_precedence` | `OTEL_EXPORTER_OTLP_ENDPOINT` resolves; with only `GRAFANA_OTLP_ENDPOINT` set the alias resolves; with both, the standard name wins |
+| 5.4 | unit | `test_metric_family_registry_parity` | every Zig-declared family emits under the same name, label keys and value type; a family on one side only is named and fails |
+| 5.5 | unit | `test_metric_cardinality_overflow_spelling` | past the cap, memory is constant and the overflow series carries the pinned Zig spelling, not the SDK default |
+| 5.3 | integration (negative) | `test_export_absent_and_unreachable` | no endpoint → boots and serves, exports nothing; unreachable endpoint → request latency unchanged and the drop counter climbs |
 
 ## Acceptance Rubric (single scoring surface)
 

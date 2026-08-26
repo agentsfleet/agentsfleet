@@ -123,7 +123,7 @@ impl MigrationLock {
             match classify(acquired, attempt, policy) {
                 Attempt::Acquired => {
                     if attempt > 1 {
-                        tracing::info!(attempt, "migrate_lock_acquired_after_contention");
+                        tracing::info!(attempt, event = "migrate_lock_acquired_after_contention");
                     }
                     return Ok(Self { connection });
                 }
@@ -134,7 +134,7 @@ impl MigrationLock {
                         attempt,
                         max_attempts = policy.attempts,
                         retry_ms,
-                        "migrate_lock_contended"
+                        event = "migrate_lock_contended"
                     );
                     tokio::time::sleep(policy.interval).await;
                 }
@@ -148,7 +148,7 @@ impl MigrationLock {
             attempts = policy.attempts,
             waited_ms,
             error_code,
-            "migrate_lock_exhausted"
+            event = "migrate_lock_exhausted"
         );
         Err(Error::new(ErrorKind::MigrationLockUnavailable {
             waited_ms,
@@ -176,7 +176,7 @@ impl MigrationLock {
             tracing::warn!(
                 error = %error,
                 error_code,
-                "migrate_lock_release_ignored_error"
+                event = "migrate_lock_release_ignored_error"
             );
         }
     }

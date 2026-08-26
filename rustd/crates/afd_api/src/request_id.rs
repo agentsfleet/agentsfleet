@@ -73,6 +73,7 @@ impl RequestId {
             // about to go wrong — and it is the first symptom that surfaces.
             tracing::error!(
                 error_code = code,
+                event = "request_id_entropy_unavailable",
                 "entropy unavailable — this request is unidentified, and \
                  anything that needs a key is about to fail"
             );

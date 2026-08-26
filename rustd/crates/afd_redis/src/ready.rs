@@ -44,6 +44,7 @@ const CMD_HSET: &str = "HSET";
 const CMD_HLEN: &str = "HLEN";
 const CMD_HRANDFIELD: &str = "HRANDFIELD";
 const CMD_EVAL: &str = "EVAL";
+const CMD_HDEL: &str = "HDEL";
 
 /// Names one generation of a fleet's readiness mark.
 ///
@@ -146,6 +147,27 @@ impl ReadyIndex {
                 token: ReadyToken(token.clone()),
             })
             .collect())
+    }
+
+    /// Clears a fleet unconditionally, whatever its mark says.
+    ///
+    /// The token comparison exists to stop a stale poll from clearing a fleet
+    /// that has since taken on new work. This is the case where that question
+    /// does not arise: the fleet has been PAUSED, so the candidate query — which
+    /// filters `status = 'active'` — will never return it again, and a field
+    /// left behind names work no poll can reach. The poll-site clear is
+    /// unreachable for the same reason, which is why the pause path has to do
+    /// it here.
+    ///
+    /// # Errors
+    /// Returns a command error when the delete fails. Callers treat it as
+    /// best-effort: a stale field costs one wasted candidate check on a later
+    /// poll, and the fleet is already stopped where it counts.
+    pub async fn force_clear(&self, fleet_id: &str) -> Result<()> {
+        let mut cmd = redis::cmd(CMD_HDEL);
+        cmd.arg(READY_INDEX_KEY).arg(fleet_id);
+        let _: i64 = self.redis.command(CMD_HDEL, READY_INDEX_KEY, &cmd).await?;
+        Ok(())
     }
 
     /// Clears a fleet, but only if its mark is still the one observed.

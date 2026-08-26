@@ -55,3 +55,46 @@ LIMIT 1";
 /// written as "equal to active" rather than "not one of these five" so a state
 /// added to the schema is refused until somebody decides otherwise.
 pub const ADMIN_STATE_ACTIVE: &str = "active";
+
+/// The state an operator's drain request puts a runner into.
+///
+/// A bind, like [`ADMIN_STATE_ACTIVE`] beside it: the liveness sweep both
+/// SELECTS on it and writes out of it. Spelled here rather than derived from
+/// `AdminState` because a statement parameter is a string and this crate is
+/// where this schema's strings live — and the sibling test pins the two
+/// vocabularies together, so neither can be renamed without the other.
+pub const ADMIN_STATE_DRAINING: &str = "draining";
+
+/// The state a drain completes into, once the runner's last lease is gone.
+pub const ADMIN_STATE_DRAINED: &str = "drained";
+
+#[cfg(test)]
+mod tests {
+    use afd_wire::admin::AdminState;
+
+    /// Every admin-state bind here spells a variant `AdminState` declares.
+    ///
+    /// The drift this kills: these constants are what statements compare and
+    /// write, and the enum is what every other layer reasons in. A rename on
+    /// either side without the other would write rows nothing matches — and
+    /// would do it silently, because a `WHERE admin_state = 'draining'` that
+    /// matches nothing is not an error.
+    ///
+    /// Asserted through `from_spelling`, so the enum's own `rename_all` is the
+    /// only vocabulary in play; a hand-written comparison would be the second
+    /// copy this test exists to rule out.
+    #[test]
+    fn test_every_admin_state_bind_spells_a_declared_variant() {
+        for (bind, expected) in [
+            (super::ADMIN_STATE_ACTIVE, AdminState::Active),
+            (super::ADMIN_STATE_DRAINING, AdminState::Draining),
+            (super::ADMIN_STATE_DRAINED, AdminState::Drained),
+        ] {
+            assert_eq!(
+                afd_core::spelling::from_spelling::<AdminState>(bind),
+                Some(expected),
+                "{bind}"
+            );
+        }
+    }
+}

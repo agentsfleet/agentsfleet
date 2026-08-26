@@ -18,10 +18,16 @@ test-util = []
 
 [dependencies]
 serde.workspace = true
-thiserror.workspace = true
-
-[dev-dependencies]
+# The object-shape gate every trust boundary deserializes through
+# (`crate::json`). A library dependency rather than a dev one since that gate
+# shipped: the crates it guards — the runner enrolment body, the JWT header,
+# the JWKS document — call it from production paths.
 serde_json.workspace = true
+thiserror.workspace = true
+# Version-7 construction only; the canonical-spelling PARSE stays here, because
+# `Uuid::parse_str` normalises case and this product rejects it. See the
+# workspace manifest for the full rationale.
+uuid.workspace = true
 
 [lints]
 workspace = true

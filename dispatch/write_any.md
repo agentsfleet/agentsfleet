@@ -126,6 +126,7 @@ shebang and is the authoritative check.
 **Triggers** — every `Edit`/`Write` that adds, removes, or changes a log emit:
 
 - `*.zig` outside `vendor/`/`third_party/`/`.zig-cache/`/`*_test.zig` — `std.log.*`, `std.debug.print`, raw stderr writes, calls into the `log` named module (source: `src/logging/mod.zig`).
+- Every tracked or unignored `*.rs` outside `build.rs`, `examples/`, `tests/`, `benches/`, and `#[cfg(test)]` items — `tracing::*`, `println!`, `eprintln!`, and `dbg!`.
 - `*.ts`/`*.tsx`/`*.js`/`*.jsx` outside `vendor/`/`node_modules/`/`*.test.*`/`*.spec.*` — `console.*`, custom logger calls.
 - `*.sh` outside generated dirs — `echo`/`printf` to `&2`.
 
@@ -144,10 +145,12 @@ shebang and is the authoritative check.
 | Pattern | Rule |
 |---|---|
 | New `logging.scoped(.tag)` call | Scope is a Zig enum literal — adding a new tag is freeform. `event` must be snake_case `verb_noun`. |
+| New Rust `tracing::<level>!` call | `event = "verb_noun"` or the equivalent `event` field shorthand is mandatory; values are structured fields hoisted into locals. |
 | New `err`/`warn` log mapping to a domain failure | registry-scheme `error_code=` field required (agentsfleet: `UZ-XXX-NNN`). Registry entry must land in same commit. |
 | Per-iteration / hot-loop log | Use `debug` (hidden by default), not `info`. |
-| `info` level | No allow-list — `info` is open (§4 rule 2). Two checks instead: a boundary-crossing operation needs its `_started`/`_completed`\|`_failed` pair on every exit path (rule 1), and a per-iteration path is `debug` (rule 3). |
-| `console.log`/`std.debug.print` in non-test source | Forbidden. Convert to logger or delete before commit. |
+| `info` level | No allow-list — `info` is open (§4 rule 2). Two checks instead: a boundary-crossing operation needs its `_started`/`_completed`\|`_failed` pair on every exit path (rule 1), and a per-iteration path is `debug` (rule 3). Hot-poll boundary pairs remain complete but use `debug`. |
+| `console.log` in non-test source | Forbidden. Convert to the structured logger or delete before commit. |
+| `std.debug.print` or a Rust print macro in runtime source | Convert to structured logging. When the stream output is the program interface, add `// logging: <reason>` on or immediately above the emit. The reason is mandatory. |
 | `std.log.scoped` outside `src/logging/` | Migration target. The `log` named module's `scoped` API is the only non-test entry point; flip the file's alias and migrate every call site in the same commit. |
 | `msg=` field | ≤ 300 chars. Stack traces emit as separate `event=stack_trace` debug record. |
 | Multi-line values | Newlines must be `\n` literal (two chars), not raw newline byte. |
@@ -172,7 +175,7 @@ Full multi-line block fires when a sub-rule reports a violation:
 
 ```
 LOGGING GATE: <file>
-  docs/LOGGING_STANDARD.md sections consulted: §3 (wire format), §4 (severity), §5 (error codes), §6 (PII), §7 (zig binding) | §8 (TS binding), §10A (tightenings)
+  docs/LOGGING_STANDARD.md sections consulted: §3 (wire format), §4 (severity), §5 (error codes), §6 (PII), §7 (Zig binding) | §8 (TS binding) | §8A (Rust binding), §10A (tightenings)
   Wire format: <logfmt ✓ | violation: <where>>
   Required keys: <ts_ms,level,scope,event present ✓ | violation: <missing>>
   Severity choice: <within rules ✓ | violation: <e.g. info on per-iteration path>>
@@ -187,13 +190,13 @@ LOGGING GATE: <file>
 
 > [DETERMINISTIC → LOG]
 
-`logging.sh` walks the **full `src/` + `agentsfleet/src/` working tree** via `git ls-files`. The index includes staged-but-not-yet-committed content, so a fix staged in pre-commit satisfies the check on the same hook run. `--staged` is preserved as an opt-in narrowing mode for iterative dev.
+`logging.sh` walks `src/**/*.zig`, every tracked or unignored `*.rs`, and `agentsfleet/src/**/*.{js,jsx,ts,tsx}`. Rust repositories do not need to use a fixed source-root name. The staged mode reads the index, so a fix staged in pre-commit satisfies the check on the same hook run. `--staged` is preserved as an opt-in narrowing mode for iterative development.
 
 #### End-of-turn audit
 
 > [DETERMINISTIC → LOG]
 
-`audits/logging.sh` runs as part of `make lint`. It greps `std.log.*`, `console.*` and raw stderr writes — it does NOT see calls through the `log` named module's `scoped()`, which is where every structured emit in `agentsfleet` goes, so a clean run is not evidence that §4/§5 hold. Mechanical today: `std.debug.print`/`console.log` presence, `std.log.scoped` outside `src/lib/logging/`, msg-length. Reviewer-side: severity choice, entry/exit pairing, `error_code` on scoped-logger calls, and PII spot-checks.
+`audits/logging.sh` runs as part of `make lint`. It greps `std.log.*`, Rust `tracing` and direct-print macros, `console.*`, and raw stderr writes. It accepts a direct Zig or Rust stream write only when `// logging: <reason>` appears on or immediately above the emit with a non-empty reason. It does NOT see calls through the Zig `log` named module's `scoped()`, so a clean run is not evidence that §4/§5 hold everywhere. Mechanical today: direct Zig/Rust/TypeScript diagnostics, Rust's required `event` field and positional-format ban, `std.log.scoped` outside `src/lib/logging/`, and legacy Zig error-code hints. Reviewer-side: reason validity, severity choice, entry/exit pairing, registry applicability, inline Rust expression hoisting, and Personally Identifiable Information (PII) spot-checks.
 
 #### Family
 
@@ -727,6 +730,34 @@ Every triggered consult is logged in the active spec's **Discovery** section, or
 > [JUDGMENT → LDC]
 
 NLR is the cleanup-on-touch arm; NLG bans new legacy framing pre-v2.0.0; this guard covers the harder judgment calls ("should this whole subsystem exist") that need the user's input.
+
+## Porting a codebase between languages (RULE PORT)
+
+> [JUDGMENT → NEW:PORT]
+
+A port is a REWRITE with a conformance test, never a transliteration.
+
+Before porting a construct, ask what it was working AROUND, not what it was.
+A thread with a stop flag is usually the absence of async. A registration map
+with generation counters is usually the absence of structured cancellation. A
+defer chain is usually the absence of ownership. Port the GUARANTEE; delete the
+workaround, and write down which guarantee replaced it.
+
+Every construct carried over needs one sentence: "kept because <the target
+language has no better mechanism>". If that sentence cannot be written
+honestly, it is transliteration.
+
+Conformance is on OBSERVABLE behaviour — wire bytes, rows, status codes, money,
+exit codes. Never on internal shape. A test that pins internal shape freezes
+the source language's debt into the target.
+
+Read the reference implementations the spec names before designing. Take the
+SHAPE and reject the specifics.
+
+Name the tech debt you are NOT carrying over, and where it went.
+
+A milestone titled "parity" means behavioural parity. It never licenses a
+one-to-one file, type, or thread mapping.
 
 ## Comment Voice — New to the Codebase, Familiar with the Goal
 

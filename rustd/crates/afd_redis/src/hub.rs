@@ -129,7 +129,7 @@ impl Subscription {
                     channel = self.channel,
                     missed,
                     error_code,
-                    "hub_subscriber_lagged"
+                    event = "hub_subscriber_lagged"
                 );
                 Ok(None)
             }

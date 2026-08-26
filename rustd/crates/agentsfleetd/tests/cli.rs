@@ -21,6 +21,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+mod support;
+
 use afd_core::env::MapEnv;
 use agentsfleetd::cli::{Cli, Command, FAILURE, SUCCESS, on_runtime, run, status_for};
 use agentsfleetd::daemon::{Outcome, StopCause};
@@ -41,11 +43,17 @@ const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef01234567
 /// Enough for `preflight`, which validates knobs and opens nothing — which is
 /// exactly the boundary the no-subcommand check is supposed to stop at.
 fn parses_but_dead() -> MapEnv {
-    MapEnv::from_pairs([
-        ("DATABASE_URL_API", DEAD_DATABASE),
-        ("REDIS_URL_API", DEAD_REDIS),
-        ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
-    ])
+    MapEnv::from_pairs(
+        [
+            ("DATABASE_URL_API", DEAD_DATABASE),
+            ("REDIS_URL_API", DEAD_REDIS),
+            ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
+        ]
+        .into_iter()
+        // The provider is required at boot, and — like the datastores above —
+        // resolved rather than dialled, so a well-formed value is enough here.
+        .chain(support::IDENTITY),
+    )
 }
 
 /// Parses `argv`, which must be accepted.

@@ -19,6 +19,13 @@ use agentsfleetd::cli::{Cli, run};
 use clap::Parser as _;
 
 fn main() -> ExitCode {
+    // Before anything that might have something to say. `install` answers
+    // whether it took the process-wide slot; at boot there is nobody to have
+    // taken it first, and a daemon that could not install a subscriber is
+    // still a daemon that should serve — so the answer is dropped here rather
+    // than turned into a refusal to start.
+    let _installed = agentsfleetd::logs::install(&ProcessEnv);
+
     // `Cli::parse` exits the process itself on `--help`, `--version` and any
     // usage error — 2 for the last of those, which is what `serve_args.zig`'s
     // three error variants were reaching for and never managed: a usage error

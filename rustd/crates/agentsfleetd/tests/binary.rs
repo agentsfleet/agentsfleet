@@ -14,6 +14,8 @@
 
 use std::process::{Command, Output};
 
+mod support;
+
 /// The binary under test, built by Cargo for this suite.
 const DAEMON: &str = env!("CARGO_BIN_EXE_agentsfleetd");
 
@@ -42,7 +44,10 @@ const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef01234567
 /// green on their machine and nowhere else.
 fn run(knobs: &[(&str, &str)]) -> Output {
     let mut command = Command::new(DAEMON);
-    for knob in [DATABASE_KNOB, REDIS_KNOB, KEK_KNOB] {
+    for knob in [DATABASE_KNOB, REDIS_KNOB, KEK_KNOB]
+        .into_iter()
+        .chain(support::IDENTITY_KNOBS)
+    {
         command.env_remove(knob);
     }
     for &(knob, value) in knobs {
@@ -56,6 +61,7 @@ fn run(knobs: &[(&str, &str)]) -> Output {
 fn test_boot_refuses_bad_kek() {
     for bad in [None, Some(""), Some("abcd"), Some("zz")] {
         let mut knobs = vec![(DATABASE_KNOB, GOOD_DATABASE), (REDIS_KNOB, GOOD_REDIS)];
+        knobs.extend_from_slice(&support::IDENTITY);
         if let Some(value) = bad {
             knobs.push((KEK_KNOB, value));
         }
@@ -87,14 +93,17 @@ fn test_boot_refuses_bad_kek() {
     }
 }
 
-/// Dimension 8.1, at the process boundary — all three knobs in one run.
+/// Dimension 8.1, at the process boundary — every unset knob in one run.
 #[test]
 fn test_preflight_lists_missing() {
     let output = run(&[]);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert!(!output.status.success(), "an empty environment cannot boot");
-    for knob in [DATABASE_KNOB, REDIS_KNOB, KEK_KNOB] {
+    for knob in [DATABASE_KNOB, REDIS_KNOB, KEK_KNOB]
+        .into_iter()
+        .chain(support::IDENTITY.map(|(knob, _value)| knob))
+    {
         assert!(
             stderr.contains(knob),
             "one run must name every unset knob; {knob} is absent from: {stderr}"
@@ -109,11 +118,13 @@ fn test_preflight_lists_missing() {
 /// before anything opens a socket.
 #[test]
 fn test_boot_announces_itself_when_the_environment_is_complete() {
-    let output = run(&[
+    let mut knobs = vec![
         (DATABASE_KNOB, GOOD_DATABASE),
         (REDIS_KNOB, GOOD_REDIS),
         (KEK_KNOB, GOOD_KEK),
-    ]);
+    ];
+    knobs.extend_from_slice(&support::IDENTITY);
+    let output = run(&knobs);
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     assert!(

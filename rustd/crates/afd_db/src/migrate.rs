@@ -145,10 +145,10 @@ impl Migrator {
         let connection = db.acquire().await?;
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let expected_versions = self.migrations.len();
-        tracing::info!(expected_versions, "migrate_conn_acquired");
+        tracing::info!(expected_versions, event = "migrate_conn_acquired");
 
         let mut guard = MigrationLock::acquire(connection, self.policy).await?;
-        tracing::info!("migrate_lock_acquired");
+        tracing::info!(event = "migrate_lock_acquired");
 
         // The lock is released on every path out of the body, including the
         // error ones. `defer` in Zig; here the body is a separate future whose
@@ -192,7 +192,12 @@ impl Migrator {
             && let Some(found) = before.version_unknown_at_or_above(floor, &known)
         {
             let error_code = error_code::STARTUP_MIGRATION_CHECK.as_str();
-            tracing::error!(found, floor, error_code, "migrate_refused_schema_ahead");
+            tracing::error!(
+                found,
+                floor,
+                error_code,
+                event = "migrate_refused_schema_ahead"
+            );
             return Err(Error::new(ErrorKind::MigrationSchemaAhead { found }));
         }
 
@@ -232,7 +237,7 @@ impl Migrator {
 /// the ledger can be in.
 async fn apply_one(connection: &mut PoolConnection<Postgres>, migration: &Migration) -> Result<()> {
     let version = migration.version();
-    tracing::info!(version, name = migration.name(), "migration_start");
+    tracing::info!(version, name = migration.name(), event = "migration_start");
 
     let statements = match migration.statements() {
         Ok(statements) => statements,
@@ -245,7 +250,7 @@ async fn apply_one(connection: &mut PoolConnection<Postgres>, migration: &Migrat
                 version,
                 error = %source,
                 error_code,
-                "migrate_sql_invalid"
+                event = "migrate_sql_invalid"
             );
             ledger::record_failure(connection, version, &source.to_string()).await;
             return Err(Error::new(ErrorKind::MigrationSql { version, source }));
@@ -292,6 +297,6 @@ async fn apply_one(connection: &mut PoolConnection<Postgres>, migration: &Migrat
     }
 
     ledger::clear_failure(connection, version).await;
-    tracing::info!(version, statements = count, "migration_applied");
+    tracing::info!(version, statements = count, event = "migration_applied");
     Ok(())
 }

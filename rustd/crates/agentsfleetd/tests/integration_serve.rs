@@ -53,12 +53,19 @@ fn lane(knob: &str) -> String {
 
 /// An environment pointed at the lane's services, on an ephemeral port.
 fn lane_environment() -> MapEnv {
-    MapEnv::from_pairs([
-        ("DATABASE_URL_API", lane(DATABASE_LANE_KNOB).as_str()),
-        ("REDIS_URL_API", lane(REDIS_LANE_KNOB).as_str()),
-        ("REDIS_TLS_CA_CERT_FILE", lane(REDIS_CA_LANE_KNOB).as_str()),
-        ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
-    ])
+    MapEnv::from_pairs(
+        [
+            ("DATABASE_URL_API", lane(DATABASE_LANE_KNOB).as_str()),
+            ("REDIS_URL_API", lane(REDIS_LANE_KNOB).as_str()),
+            ("REDIS_TLS_CA_CERT_FILE", lane(REDIS_CA_LANE_KNOB).as_str()),
+            ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
+        ]
+        .into_iter()
+        // The provider is required at boot. This lane boots for real, so it
+        // must supply one — resolved rather than dialled, so well-formed is
+        // enough and nothing here reaches the issuer.
+        .chain(support::IDENTITY),
+    )
 }
 
 /// Reads one HTTP response's status line from a fresh connection.
@@ -102,10 +109,22 @@ async fn test_boot_to_ready_on_compose() {
         .await
         .expect("the lane's Postgres and Redis are up");
 
+    // Every task the daemon spawns, in spawn order: the four sweepers §6 put
+    // under the supervisor, then the accept loop. Asserted as the WHOLE
+    // inventory rather than as a `contains`, because the claim this test makes
+    // is C2 — nothing runs outside the supervisor — and a subset check would
+    // pass for a sweeper that had quietly gone back to a bare `tokio::spawn`
+    // and so would never be cancelled at shutdown.
     assert_eq!(
         supervisor.inventory(),
-        vec![agentsfleetd::serve::ACCEPT_LOOP],
-        "a booted daemon supervises its accept loop"
+        vec![
+            agentsfleetd::sweepers::LIVENESS,
+            agentsfleetd::sweepers::RECLAIM,
+            agentsfleetd::sweepers::RETENTION,
+            agentsfleetd::sweepers::REPAIR,
+            agentsfleetd::serve::ACCEPT_LOOP,
+        ],
+        "a booted daemon supervises its sweepers and its accept loop"
     );
     assert_ne!(
         booted.address.port(),

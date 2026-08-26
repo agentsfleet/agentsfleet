@@ -10,35 +10,21 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+mod harness;
 mod recorder;
 
-use std::sync::Arc;
-
-use afd_api::router::{ReadyInputs, build};
 use afd_observability::semconv;
 use axum::body::Body;
 use http::{Method, Request};
 use tower::ServiceExt as _;
 
+use self::harness::Fleet;
 use self::recorder::{Recorder, SpanRecord};
-
-/// Dependencies that always report healthy.
-#[derive(Debug, Clone, Copy)]
-struct Healthy;
-
-impl afd_api::Dependencies for Healthy {
-    fn probe(&self) -> impl Future<Output = ReadyInputs> + Send {
-        std::future::ready(ReadyInputs {
-            database: true,
-            queue: true,
-        })
-    }
-}
 
 /// Drives one request and returns every span it opened.
 async fn spans_for(method: Method, path: &str) -> Vec<SpanRecord> {
     let recorder = Recorder::install();
-    let router = build(Arc::new(Healthy));
+    let router = Fleet::new().router();
     let request = Request::builder()
         .method(method)
         .uri(path)

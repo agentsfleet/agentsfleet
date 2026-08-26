@@ -27,6 +27,7 @@ path = "src/main.rs"
 # M-TEST-UTIL. Unlocks the mockable cores the boot path reads through.
 test-util = [
     "afd_api/test-util",
+    "afd_auth/test-util",
     "afd_core/test-util",
     "afd_crypto/test-util",
     "afd_db/test-util",
@@ -34,8 +35,28 @@ test-util = [
 ]
 
 [dependencies]
+# The client every credential exchange is posted through. Built here rather than
+# inside the broker because a connection pool and a deadline are composition-root
+# decisions, and one client per process is what a pool IS.
+reqwest.workspace = true
 afd_api.workspace = true
 afd_core.workspace = true
+# The composition root: this crate is the one that names which directory,
+# capability provider and verifier the generic HTTP shell is served through.
+afd_auth.workspace = true
+# The Postgres credential directory the shell authenticates against.
+afd_state.workspace = true
+# The runner control plane behind the `/v1/runners` verbs.
+afd_fleet.workspace = true
+# The S3 client the Fleet Bundle snapshot store is built on. Named HERE and not
+# in `afd_fleet` because this is the file that decides the store is Cloudflare
+# R2 — `afd_fleet::bundle` takes an already-built `dyn ObjectStore` and knows
+# nothing about which one.
+object_store.workspace = true
+# The identity provider's side of authentication: the capability claim and the
+# key set. Optional at RUNTIME, not at build time — an unconfigured deployment
+# holds the refusing variants rather than a different binary.
+afd_identity.workspace = true
 # The command line. Subcommands, `--port`, `--help` and `--version` are all
 # derived from `cli::Cli`; nothing in this crate reads `std::env::args` itself.
 clap.workspace = true
@@ -60,6 +81,9 @@ tower.workspace = true
 # and the source chain survives for the fatal renderer to walk.
 thiserror.workspace = true
 tracing.workspace = true
+# The subscriber every `tracing` emit in this process needs: without one
+# installed the macros are no-ops that do not evaluate their fields.
+tracing-subscriber.workspace = true
 
 [dev-dependencies]
 # `test-util` is what makes an assertion about JOIN_TIMEOUT affordable: with
@@ -77,9 +101,17 @@ tokio = { workspace = true, features = [
 # The accept-fault suite names `CancellationToken` and builds a bare Router.
 tokio-util.workspace = true
 axum.workspace = true
-# The suites assert on diagnostics the supervisor emits, and an event macro
-# does not evaluate its fields until a subscriber says the callsite is enabled.
-tracing-subscriber.workspace = true
+# §7's end-to-end suite only. It seeds and reads rows through the pool the
+# BOOTED daemon opened, so it needs the driver directly rather than through a
+# store verb — no verb in this workspace creates a fleet or a wallet, and
+# inventing one to serve a test would put a write path nothing ships into a
+# shipping crate.
+sqlx.workspace = true
+# The same suite builds request bodies and reads answers as JSON: it speaks to
+# the daemon over a socket, so it holds bytes rather than the wire types, and
+# `afd_wire` rides in as the SHAPE those bodies are written against.
+serde_json.workspace = true
+afd_wire.workspace = true
 
 [lints]
 workspace = true

@@ -252,12 +252,12 @@ impl Claims {
 /// learning WHY a signature failed learns something about the key or the
 /// padding, and neither is theirs to know.
 fn verify_rs256(key: &SigningKey, message: &[u8], signature: &[u8]) -> Result<(), VerifyError> {
-    ring::signature::RsaPublicKeyComponents {
+    aws_lc_rs::signature::RsaPublicKeyComponents {
         n: key.modulus(),
         e: key.exponent(),
     }
     .verify(
-        &ring::signature::RSA_PKCS1_2048_8192_SHA256,
+        &aws_lc_rs::signature::RSA_PKCS1_2048_8192_SHA256,
         message,
         signature,
     )

@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_api", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_identity", "crates/afd_observability", "crates/afd_redis", "crates/afd_state", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_api", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_fleet", "crates/afd_fleet_runtime", "crates/afd_identity", "crates/afd_observability", "crates/afd_redis", "crates/afd_state", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.26.2"
@@ -43,16 +43,30 @@ afd_auth = { path = "crates/afd_auth" }
 afd_core = { path = "crates/afd_core" }
 afd_crypto = { path = "crates/afd_crypto" }
 afd_db = { path = "crates/afd_db" }
+afd_fleet = { path = "crates/afd_fleet" }
+afd_fleet_runtime = { path = "crates/afd_fleet_runtime" }
 afd_identity = { path = "crates/afd_identity" }
 afd_observability = { path = "crates/afd_observability" }
 afd_redis = { path = "crates/afd_redis" }
 afd_state = { path = "crates/afd_state" }
+afd_wire = { path = "crates/afd_wire" }
 
 # `default-features = false` throughout, features named explicitly, so a member
 # cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).
 serde = { version = "1.0.229", default-features = false, features = ["derive", "std"] }
-serde_json = { version = "1.0.151", default-features = false, features = ["std", "preserve_order"] }
+serde_json = { version = "1.0.151", default-features = false, features = ["std", "preserve_order", "raw_value"] }
+# `raw_value` carries `RawValue`, which is how the activity verb splices a
+# runner's already-JSON tool arguments into a published frame WITHOUT parsing
+# them into a tree and re-encoding it. The Zig builds and drops a whole
+# `std.json.Value` per tool call for want of this. A feature on a dependency
+# already resolved in the lock, not a new crate.
 thiserror = { version = "2.0.20", default-features = false, features = ["std"] }
+
+# Field bounds as annotations on the schema rather than as a hand-written
+# checker. `derive` only: `regex`, `email`, `phone-number` and `credit-card`
+# each pull their own dependency and none of them is a shape this product
+# authors. Its `garde_derive` rides the syn 2.0.119 already in the lock.
+garde = { version = "0.23.0", default-features = false, features = ["derive"] }
 
 # The command line, derived rather than hand-rolled.
 #
@@ -68,13 +82,19 @@ thiserror = { version = "2.0.20", default-features = false, features = ["std"] }
 # generated help, rather than a second undocumented input path. `color` and
 # `wrap_help` are left off — the daemon's usage output is read out of a
 # container log, where escape sequences and terminal-width reflow are noise.
-clap = { version = "4.5.51", default-features = false, features = ["std", "derive", "env", "help", "usage", "error-context"] }
+clap = { version = "4.6.6", default-features = false, features = ["std", "derive", "env", "help", "usage", "error-context"] }
 
 # RustCrypto. Pure Rust with no C linkage, matching the Zig daemon's posture, and
 # the same AES-256-GCM construction `std.crypto.aead.aes_gcm.Aes256Gcm` implements.
 aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc"] }
 hmac = { version = "0.13.0", default-features = false }
 sha2 = { version = "0.11.0", default-features = false }
+# Lower-case hex, for the credential digests and minted token bodies every
+# stored class is built from. Already in the lock via sqlx; taken directly
+# because a hand-written `write!("{:02x}")` loop is a place for a leading zero
+# to go missing, and this workspace prefers a crate to a re-derivation.
+hex = { version = "0.4.3", default-features = false, features = ["std"] }
+
 # Constant-time comparison. RULE CTM: a byte-by-byte `==` over a secret leaks how
 # much of a guess was right through how long it took to reject.
 subtle = { version = "2.6.1", default-features = false }
@@ -85,6 +105,68 @@ zeroize = { version = "1.9.0", default-features = false, features = ["alloc"] }
 # The only system call this workspace's crypto makes.
 getrandom = { version = "0.4.3", default-features = false }
 
+# Version-7 identifier construction. ALREADY in the lock at this version via
+# moka, so this is a feature flag on a compiled crate rather than a new
+# dependency — and it is not on `afd_core`'s FORBIDDEN list, which polices
+# runtimes, datastores and transports.
+#
+# Only `Builder::from_unix_timestamp_millis` is used: it takes the 48-bit
+# millisecond field and ten caller-supplied entropy bytes and sets the version
+# and variant nibbles. The entropy is still drawn by `afd_crypto`, so the "one
+# system call" claim holds — nothing here asks uuid for randomness.
+#
+# The PARSE side stays hand-written in `afd_core::id`, and that is not
+# duplication: `Uuid::parse_str` is case-INSENSITIVE and normalises, while this
+# product rejects uppercase outright so one entity cannot have two spellings.
+# A crate that cannot express the invariant is not a shortcut to it.
+# WHATWG URL parsing, for the tenant-supplied endpoint guard. ALREADY in the
+# lock at this version, so this is a feature flag on a compiled crate rather
+# than a new dependency.
+url = { version = "2.5.8", default-features = false }
+
+uuid = { version = "1.25.0", default-features = false, features = ["v7", "std"] }
+
+# Civil-calendar arithmetic, for the monthly budget window.
+#
+# The monthly ceiling opens at the first instant of the UTC month, and
+# `clock.startOfUtcMonthMillis` computes that by hand: epoch-day → year-day →
+# month-day, then subtracting the 0-based day index. It is correct, and it
+# carries its own leap-February test to prove it — which is the tell. Calendar
+# arithmetic is a solved problem with a long tail of wrong answers, and a spend
+# ceiling that opens on the wrong day is one nobody can reconcile against an
+# invoice.
+#
+# jiff rather than chrono or time, AGAINST the download numbers and recorded as
+# a trade rather than presented as a free win — the same shape as this
+# workspace's `garde` pick. Measured Aug 25 2026: time 161.8M recent downloads,
+# chrono 161.3M, jiff 56.6M. All three are actively maintained (last publishes
+# Aug 1, Jun 4, Jul 25) and NONE is already in the lock, so there is no
+# incumbent to prefer and no free option.
+#
+# What jiff has that the other two do not is the distinction this window turns
+# on: a CIVIL DATE is a separate type from an instant, so "the first of the
+# month" is `Date::first_of_month` — a value of the right kind — rather than an
+# instant with its time fields overwritten. chrono and time can both compute the
+# same answer; they express it as mutation of a timestamp, which is the shape
+# that lets a time-of-day component survive a refactor and move a tenant's
+# billing month by a few hours. Per the `uuid` note above: a crate that cannot
+# express the invariant is not a shortcut to it.
+#
+# The cost of the trade, stated: fewer eyes on it than chrono or time, and a
+# 0.2 series that may still break API. Confined to ONE function
+# (`money::window::month_floor`), so a breaking change is a one-site fix and a
+# swap to `time` stays cheap if the maintenance signal ever turns.
+#
+# No `tz-system`: every window here is UTC by definition, so reading the host's
+# zone database would be a way for two replicas to disagree about when a
+# tenant's month started. `std` only — the alloc-free and serde halves are for
+# consumers this workspace does not have.
+#
+# The rolling DAY window is NOT a calendar question and does not use this:
+# `authoring.mdx` documents it as "rolling 24-hour", not "since midnight", so it
+# stays plain millisecond subtraction in `money::window` where that is legible.
+jiff = { version = "0.2.35", default-features = false, features = ["std"] }
+
 # Base64url, for JSON Web Key components and the three segments of a session
 # token. `default-features = false` is load-bearing here rather than habitual:
 # 0.23's default set includes `simd-unsafe`, which reaches for SIMD through
@@ -93,23 +175,42 @@ getrandom = { version = "0.4.3", default-features = false }
 # twice a day — there is no throughput here to trade the posture for.
 base64 = { version = "0.23.1", default-features = false, features = ["std"] }
 
-# RS256 verification for session tokens.
+# The ONE cryptographic backend this workspace links.
 #
-# Already in this graph: rustls selects a `CryptoProvider`, and sqlx's
-# `tls-rustls-ring-webpki` plus redis's `tokio-rustls-comp` make that ring. So
-# this is a DIRECT dependency on a crate the binary already links, not a new
-# one — and it is the layer where the API matches the input. rustls does verify
-# RSA, but every entry point takes a DER `SubjectPublicKeyInfo`
-# (`rustls-webpki/src/signed_data.rs:222`), because in TLS a key always arrives
-# inside a certificate. A JWKS publishes raw big-endian `n` and `e`, which is
-# precisely what `ring::signature::RsaPublicKeyComponents` accepts; reaching
-# rustls's verifier instead would mean hand-encoding ASN.1 — INTEGER sign-bit
-# padding included — in the most security-sensitive file in the workspace, to
-# call the same code one layer up.
+# Was `ring`, chosen because a JWKS publishes raw big-endian `n` and `e` and
+# `ring::signature::RsaPublicKeyComponents` accepts exactly that, where rustls's
+# own verifier wants a DER `SubjectPublicKeyInfo`. That reasoning is unchanged —
+# `aws_lc_rs::signature::RsaPublicKeyComponents` has the same shape, which is
+# deliberate: AWS-LC-RS is published as a ring-compatible library.
 #
-# `dev_urandom_fallback` is dropped: nothing here asks ring for entropy
-# (`afd_crypto` owns the one entropy surface, through `getrandom`).
-ring = { version = "0.17.14", default-features = false, features = ["alloc"] }
+# What changed is that the choice stopped being free. `object_store` enables
+# `aws-lc-rs` as a DEFAULT feature with no ring alternative, and reqwest 0.13
+# collapsed its TLS features so plain `rustls` forces it too. Keeping ring
+# alongside would put TWO `CryptoProvider`s in one binary — the failure the
+# previous pin existed to avoid — so the resolution is one provider, not a
+# pin that can no longer hold.
+#
+# `aws-lc-sys` compiles C (a BoringSSL fork), which ends this workspace's
+# no-C-linkage posture. Verified to build here without cmake, on Apple clang
+# alone; the musl cross-compile is unproven and is a cutover (M181) concern,
+# since CI ships no Rust binary today.
+#
+# NO ring-compatibility features here, and that was measured rather than
+# assumed. `ring-sig-verify` only preserves ring's `VerificationAlgorithm::verify`
+# signature (which takes `untrusted::Input`) — the verifier this workspace
+# actually calls, `RsaPublicKeyComponents::verify`, is ungated and already takes
+# `&[u8]`, so the feature bought nothing but a dependency. `ring-io` is needed by
+# ONE signing test and is declared on that crate's dev-dependency instead, where
+# it says who needs it.
+#
+# Both are aws-lc-rs DEFAULTS, so `default-features = false` is what makes the
+# question askable at all. Enabling them because a build failed — rather than
+# reading which call site failed and why — is how a compatibility shim becomes
+# permanent.
+aws-lc-rs = { version = "1.18.0", default-features = false, features = [
+    "aws-lc-sys",
+    "alloc",
+] }
 
 # The subject to capability-claim cache. `future` rather than `sync`: the
 # request path is asynchronous, and `try_get_with` coalesces concurrent loads
@@ -120,39 +221,34 @@ ring = { version = "0.17.14", default-features = false, features = ["alloc"] }
 # order with.
 moka = { version = "0.12.16", default-features = false, features = ["future"] }
 
-# The JWKS fetch and the provider capability call.
+# The JWKS fetch, the provider capability call, and the object-store transport.
 #
-# PINNED TO THE 0.12 LINE DELIBERATELY, and 0.13 is not an upgrade here. 0.13
-# collapsed the TLS features to one: plain `rustls` forces `aws-lc-rs`, which
-# would put a SECOND rustls provider beside ring in this binary — the
-# configuration whose feature-unification failure the M176 handoff already
-# records for `cargo test -p afd_redis` — and `rustls-no-provider` reaches the
-# platform trust store, losing the property §2 chose `tls-rustls-ring-webpki`
-# for: the anchors ship in the binary, so a slim container without
-# `ca-certificates` still verifies. 0.12's
-# `rustls-tls-webpki-roots-no-provider` keeps both — in-binary anchors, and no
-# provider forced, so it uses the process default that sqlx and redis already
-# established. `webpki-roots` is already in the lock.
+# WAS PINNED TO 0.12 DELIBERATELY, and that pin is now released rather than
+# forgotten. Its reason was exact: 0.13 collapsed the TLS features so plain
+# `rustls` forces `aws-lc-rs`, which would have put a SECOND rustls provider
+# beside ring. `object_store` forces `aws-lc-rs` regardless — it is a default
+# feature there with no ring alternative — so the pin could no longer deliver
+# what it was for, and the workspace resolves to one provider instead.
 #
-# `gzip` is deliberately absent. reqwest advertises `accept-encoding` only when
-# that feature is on, so leaving it off makes wire bytes equal decoded bytes and
-# `JWKS_MAX_RESPONSE_BYTES` a correct bound with no streaming decompressor to
-# size — the decompression-bomb reasoning in `jwks_fetch.zig:9-13` satisfied by
-# removing the decompressor rather than bounding it. A key set is three
-# kilobytes fetched twice a day; there is nothing to compress for.
+# Two properties the 0.12 features bought are GONE, and both are behaviour:
 #
-# `rustls-tls-webpki-roots` rather than its `-no-provider` twin, and the
-# difference is not cosmetic: `-no-provider` leaves the `CryptoProvider`
-# unselected and defers to a process default. Nothing installs one, and rustls
-# does not report that as an error — reqwest's `ClientBuilder::build` PANICS
-# with "No provider set", inside a workspace that denies `clippy::panic` and a
-# daemon that must not abort on a configuration fault. This feature expands to
-# `-no-provider` plus `__rustls-ring`, so it keeps the in-binary anchors and
-# names ring explicitly — the same provider `tls-rustls-ring-webpki` already
-# chose for sqlx, and still no `aws-lc-rs`.
-reqwest = { version = "0.12.28", default-features = false, features = [
-    "rustls-tls-webpki-roots",
-] }
+#   - In-binary trust anchors. 0.13 removed `webpki-roots` entirely and uses
+#     `rustls-platform-verifier`, so verification now depends on the system
+#     trust store. A slim container without `ca-certificates` would fail to
+#     verify where 0.12 succeeded; `Dockerfile` installs it, which is what
+#     makes this safe rather than merely survivable.
+#   - Nothing else: `gzip` stays absent for the reason it always was, so wire
+#     bytes equal decoded bytes and `JWKS_MAX_RESPONSE_BYTES` is a correct
+#     bound with no streaming decompressor to size.
+#
+# `form` is the credential broker's, and it is the whole reason
+# `integration_oauth_refresh.zig`'s `percentEncode` + `buildForm` — a
+# hand-written RFC 3986 unreserved-set encoder and a `allocPrint` template — do
+# not exist here. `serde_urlencoded` encodes a refresh grant whose values are
+# provider-issued opaque bytes, where a `+` or an `&` that escapes its field
+# changes the SHAPE of the form at the token endpoint. That is not a place to
+# carry our own encoder.
+reqwest = { version = "0.13.4", default-features = false, features = ["form", "rustls"] }
 
 # Postgres. sqlx is the DRIVER here and nothing more: `migrate` and `macros` are
 # both off, because this workspace runs the Zig daemon's own ledger
@@ -166,7 +262,12 @@ reqwest = { version = "0.12.28", default-features = false, features = [
 # Rust either way, which is the no-C posture afd_crypto already holds.
 sqlx = { version = "0.9.0", default-features = false, features = [
     "runtime-tokio",
-    "tls-rustls-ring-webpki",
+    # aws-lc-rs, not ring: `object_store` and reqwest 0.13 both force that
+    # provider, and two providers in one binary is the state this feature was
+    # originally pinned to prevent. Trust anchors now come from the platform
+    # verifier rather than in-binary webpki roots — the container installs
+    # `ca-certificates`, which is what makes that safe.
+    "tls-rustls-aws-lc-rs",
     "postgres",
 ] }
 # The runtime sqlx drives. `rt-multi-thread` is a dev-dependency concern (the
@@ -243,6 +344,72 @@ hyper-util = { version = "0.1.20", default-features = false, features = ["tokio"
 # a web framework to do it.
 http = { version = "1.5.0", default-features = false, features = ["std"] }
 
+# The Fleet Bundle store. R2 is S3-compatible, and this is the Apache Arrow
+# project's own object-store crate rather than a hand-rolled signer: one
+# authenticated GET by content hash is still SigV4, and a hand-written SigV4 is
+# the kind of security plumbing that earns a CVE for saving a dependency.
+#
+# It also ships an in-memory backend, which is what the bundle-fetch tests run
+# against — no network, the same reason `afd_auth`'s directory is a trait.
+#
+# `aws` is the only cloud feature enabled; the others would link signers for
+# stores this product does not use.
+object_store = { version = "0.14.1", default-features = false, features = ["aws"] }
+
+# The byte buffer `object_store` answers a GET with, named here so the Fleet
+# Bundle store can hand one back without copying it into a `Vec` first.
+#
+# Not new surface: axum, hyper and `object_store` all already resolve it, so a
+# direct entry pins the version the lockfile carries rather than adding a
+# dependency. It is listed because `unused_crate_dependencies` makes a crate's
+# manifest a statement about what that crate actually names in its own types,
+# and `afd_fleet::bundle::Snapshot` names this one.
+bytes = { version = "1.12.1", default-features = false, features = ["std"] }
+
+# JWT semantics for the GitHub App mint: header and claims JSON, base64url
+# segments, and expiry validation. NOT a crypto backend — it sits on one, and
+# `aws_lc_rs` points it at the same provider everything else here uses, so the
+# binary carries one implementation of RS256 rather than two.
+#
+# Writing this by hand on top of `aws-lc-rs` would be possible and is exactly
+# the plumbing not to hand-roll.
+#
+# PINNED TO 10.x BY `octocrab`, AND IT MUST STAY THAT WAY (M177 §4). This is not
+# a preference for an older release: `octocrab` requires `jsonwebtoken ^10` and
+# its `Octocrab::builder().app()` takes an `EncodingKey` BY TYPE. A crate
+# building that key against 11.x would not merely duplicate RS256 — the two
+# `EncodingKey` types are unrelated and the call would not compile. An earlier
+# 11.0.0 pin here was unreachable for exactly that reason.
+#
+# `use_pem` reads the App's PEM private key; `aws_lc_rs` is the backend, which
+# is also what `octocrab`'s own `jwt-aws-lc-rs` feature selects — the two agree
+# deliberately, so the binary carries one implementation of RS256 rather than
+# two. Raising this to 11 means raising `octocrab` first.
+jsonwebtoken = { version = "10.4.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
+
+# The GitHub client behind the App-installation half of the mint broker.
+#
+# `default-features = false` is load-bearing twice over. Its defaults enable
+# `rustls-ring`, which would put a SECOND rustls provider beside the aws-lc-rs
+# this workspace resolves to, and `jwt-rust-crypto`, which would point
+# `jsonwebtoken` at a different backend than the line above pins. `jwt-aws-lc-rs`
+# swaps the second back; omitting `rustls-ring` settles the first.
+#
+# Taken for App JWT minting, the transport and the typed `InstallationToken`,
+# NOT for its `installation_and_token()`: that method posts a hardcoded `{}`
+# body and so always mints the installation's FULL scope. The repository and
+# permission narrowing this milestone's write gate rests on is sent through the
+# generic `post`, with a body of ours.
+octocrab = { version = "0.54.1", default-features = false, features = [
+    "rustls",
+    "rustls-aws-lc-rs",
+    "jwt-aws-lc-rs",
+    "default-client",
+    "timeout",
+    "retry",
+    "tracing",
+] }
+
 # OpenTelemetry, for the push-only export the Zig daemon already does by hand
 # (`observability/otlp/`). The SDK alone: it re-exports the API types the
 # exporter names, and the OTLP TRANSPORT is added by boot, which is what knows
@@ -255,7 +422,7 @@ opentelemetry_sdk = { version = "0.32.1", default-features = false, features = [
 # over a shared `AtomicBool` for one reason that matters: a token is
 # edge-triggered — `cancelled().await` wakes the instant it fires — where the
 # Zig watcher polls a flag every 100ms and pays that latency on every shutdown.
-tokio-util = { version = "0.7.18", default-features = false }
+tokio-util = { version = "0.7.19", default-features = false }
 
 # Stream combinators for the pub/sub pump. `std` only — no executor, no
 # thread pool; the runtime is tokio's.

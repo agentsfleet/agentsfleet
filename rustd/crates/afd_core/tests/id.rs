@@ -1,10 +1,19 @@
 //! Identity validation: the accept/reject set must match `id_format.zig` exactly.
 #![expect(
     clippy::unwrap_used,
+    clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::id::Uuid7;
+use afd_core::clock::UnixMillis;
+use afd_core::id::{ENTROPY_LEN, Uuid7};
+
+/// An arbitrary representable instant, and the millisecond after it.
+///
+/// Named so the ordering test reads as "one millisecond apart" rather than as
+/// two long numerals a reader has to diff by eye (RULE UFS).
+const AN_INSTANT_MS: i64 = 1_000_000_000_000;
+const ONE_MILLISECOND_LATER_MS: i64 = AN_INSTANT_MS + 1;
 
 /// A canonical version-7 identifier: lowercase hex, dashes at 8/13/18/23,
 /// version nibble `7` at offset 14, RFC 4122 variant `8` at offset 19.
@@ -140,4 +149,107 @@ fn should_reject_uppercase_through_serde_too() {
     let json = format!("\"{}\"", CANONICAL.to_uppercase());
     let err = serde_json::from_str::<Uuid7>(&json).unwrap_err();
     assert!(err.to_string().contains("lowercase hex"), "{err}");
+}
+
+// ── Minting ─────────────────────────────────────────────────────────────────
+//
+// `Uuid7::encode` delegates the bit layout to `uuid::Builder`, so these do not
+// re-test the crate's shifting. They pin the three behaviours that are OURS:
+// the two instants the builder would silently accept and we refuse, and the
+// canonical spelling the builder does not enforce.
+
+/// Every minted identifier survives this crate's own parser.
+///
+/// The property that makes minting safe by construction: `encode` renders and
+/// then re-parses, so it cannot emit a value `parse` would refuse. A regression
+/// in either half fails here rather than at the first `::uuid` bind.
+#[test]
+fn should_mint_an_identifier_its_own_parser_accepts() {
+    let minted = Uuid7::encode(
+        UnixMillis::from_millis(1_724_600_000_000),
+        [0xab; ENTROPY_LEN],
+    )
+    .expect("a representable instant mints");
+    assert_eq!(minted.as_str().len(), afd_core::id::TEXT_LEN);
+    assert_eq!(
+        Uuid7::parse(minted.as_str()).expect("a minted identifier re-parses"),
+        minted
+    );
+}
+
+/// The timestamp is big-endian and leading, so minting order IS sort order.
+///
+/// This is the whole reason the product uses version 7 rather than version 4,
+/// and it is a property of the rendered TEXT — which is what every index,
+/// cursor and cache key actually compares.
+#[test]
+fn should_sort_minted_identifiers_by_the_instant_they_carry() {
+    let earlier = Uuid7::encode(UnixMillis::from_millis(AN_INSTANT_MS), [0xff; ENTROPY_LEN])
+        .expect("representable");
+    let later = Uuid7::encode(
+        UnixMillis::from_millis(ONE_MILLISECOND_LATER_MS),
+        [0x00; ENTROPY_LEN],
+    )
+    .expect("representable");
+    // Entropy is deliberately inverted: if the timestamp were not leading and
+    // big-endian, the all-`0xff` entropy would sort the EARLIER one last.
+    assert!(
+        earlier.as_str() < later.as_str(),
+        "{} should sort before {}",
+        earlier.as_str(),
+        later.as_str()
+    );
+}
+
+/// An instant past the 48-bit field is refused, never truncated.
+///
+/// `uuid::Builder::from_unix_timestamp_millis` MASKS an oversized value into
+/// the field. Masking would mint an identifier that sorts wrongly for the rest
+/// of the row's life, and `id_format.zig` refuses instead — so this is the
+/// behaviour the delegation must not lose, and the reason the bound stayed
+/// hand-written when the bit layout did not.
+#[test]
+fn should_refuse_an_instant_the_48_bit_field_cannot_hold() {
+    // One millisecond past the largest value six bytes hold.
+    let past_the_field = 0xffff_ffff_ffff_i64 + 1;
+    let err = Uuid7::encode(UnixMillis::from_millis(past_the_field), [0; ENTROPY_LEN])
+        .expect_err("year 10889 and beyond is unrepresentable");
+    assert_eq!(err.code(), afd_core::error_code::UUIDV7_INVALID_ID_SHAPE);
+    assert!(err.is_id_shape());
+}
+
+/// A pre-epoch instant is refused rather than wrapped.
+///
+/// The builder takes a `u64`; a negative instant cast into one becomes a
+/// far-future timestamp, which is worse than a failure because nothing
+/// downstream can detect it.
+#[test]
+fn should_refuse_an_instant_before_the_unix_epoch() {
+    let err = Uuid7::encode(UnixMillis::from_millis(-1), [0; ENTROPY_LEN])
+        .expect_err("a pre-epoch instant is unrepresentable");
+    assert_eq!(err.code(), afd_core::error_code::UUIDV7_INVALID_ID_SHAPE);
+}
+
+/// The raw bytes round-trip back through the canonical spelling.
+///
+/// Both directions matter: a decode that silently answered zeroes would still
+/// produce a plausible-looking value everywhere it is used, and only a
+/// comparison against the text it came from catches that.
+#[test]
+fn test_raw_bytes_round_trip_through_the_canonical_spelling() {
+    for text in [
+        "0197a4ba-8d3a-7f13-8abc-123456789abc",
+        "01920000-0000-7000-8000-000000000000",
+        "ffffffff-ffff-7fff-bfff-ffffffffffff",
+    ] {
+        let id = Uuid7::parse(text).expect("the fixture is a v7 spelling");
+        let raw = id.to_bytes();
+
+        assert_ne!(
+            raw,
+            [0u8; afd_core::id::BYTE_LEN],
+            "{text} decoded to nothing"
+        );
+        assert_eq!(uuid::Uuid::from_bytes(raw).to_string(), text);
+    }
 }

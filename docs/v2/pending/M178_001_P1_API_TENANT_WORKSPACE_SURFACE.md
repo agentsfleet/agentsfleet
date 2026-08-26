@@ -111,6 +111,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 3.1** — install creates stream+group before 201; injected Redis failure at each retry stage → rollback, no orphan row → Test `test_install_stream_guarantee_rollback`
 - **Dimension 3.2** — config PATCH visible on next lease resolve, not before → Test `test_config_patch_next_lease`
 - **Dimension 3.3** — ownership: a principal with valid scopes but the wrong workspace → 403/404 parity with Zig behaviour → Test `test_workspace_ownership_gate`
+- **Dimension 3.4** — the committed FRONTMATTER corpus (TRIGGER.md → `config_json`, seeded from the `src/agentsfleetd/fleet_runtime/` frontmatter fixtures) parses to the same accept/reject verdicts and field values as `parseTriggerMarkdownWithJson`; malformed frontmatter (unclosed, wrong types, unknown keys) → the same error classes → Test `test_fleet_frontmatter_corpus_parity`
+
+**§3 inherits M177 §5's install half (Indy, M177 stream).** M177 ported STORED config resolution only, because that is the half the runner plane calls. The install-time half — `config_markdown.zig` (338) + `yaml_frontmatter.zig` (272) — has four non-test callers and three are this milestone's: `fleets/create.zig:123`, `fleets/patch_txn.zig:114`, and `connectors/slack/channel_fleet.zig` (the fourth, `fleet_library/importer.zig:165`, is M179's and consumes the same entry point). It lands in `afd_fleet_runtime` beside the stored parser M177 built. **Implementation default:** a maintained serde-compatible YAML crate — `serde_norway` as of authoring (serde_yaml is archived); the agent re-verifies crate health at EXECUTE and records the pick in Discovery, because the fork-pinned `zig-yaml` rationale (upstream build breakage) dissolves only if the replacement is actually maintained.
 
 ### §4 — Vault and secrets routes
 
@@ -221,6 +224,7 @@ No events added, renamed, or removed; no funnel change — analytics/funnel play
 | 3.1 | integration (negative) | `test_install_stream_guarantee_rollback` | injected failure per retry stage → rollback, zero orphans |
 | 3.2 | integration | `test_config_patch_next_lease` | PATCH → old lease unaffected; next lease sees new values |
 | 3.3 | integration (negative) | `test_workspace_ownership_gate` | foreign workspace + valid scopes → documented refusal |
+| 3.4 | unit | `test_fleet_frontmatter_corpus_parity` | frontmatter corpus verdicts + field values equal `parseTriggerMarkdownWithJson`; malformed classes match |
 | 4.1 | integration | `test_vault_list_no_decrypt` | list of N secrets → 0 decrypt invocations recorded |
 | 4.2 | integration | `test_vault_projection_parity` | Zig-written row lists identically via Rust |
 | 4.3 | unit (negative) | `test_vault_rejects_non_object` | `"x"`, `[]`, `{}` → documented 4xx each |

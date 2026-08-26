@@ -11,6 +11,12 @@ description: >
 
 # Write Unit Test
 
+At invocation start, record the consent-gated usage signal without blocking the skill:
+
+```bash
+command -v orly >/dev/null 2>&1 && ORLY_INVOCATION=skill orly skill-event orly-write-unit-test >/dev/null 2>&1 || true
+```
+
 Generate tests that catch bugs before they ship. Tests run *during* implementation, not after.
 
 > **What this guarantees / what it doesn't.** No test suite proves "zero bugs in

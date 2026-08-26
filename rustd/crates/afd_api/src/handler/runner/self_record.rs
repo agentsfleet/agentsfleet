@@ -1,0 +1,61 @@
+//! `GET /v1/runners/me` — the runner's own row, read-only.
+//!
+//! Reading this does NOT bump liveness. Liveness is written by the heartbeat
+//! and by nothing else, so inspecting a host with `agentsfleet-runner status`
+//! can never mask a dead runner (`docs/AUTH.md` §Runner token). That promise is
+//! kept by the STATEMENT this reaches — `SELECT_RUNNER_SELF` has no update in
+//! it — rather than by this handler remembering not to ask for one.
+
+use std::borrow::Cow;
+use std::sync::Arc;
+
+use afd_fleet::SelfRow;
+use afd_fleet::runner::policy::capability;
+use afd_wire::runner::SelfResponse;
+use axum::Json;
+use axum::extract::State;
+use axum::response::{IntoResponse as _, Response};
+
+use crate::auth::RunnerIdentity;
+use crate::handler::refuse;
+use crate::services::Services;
+
+/// The scoped event a failed self read is logged under.
+const EVENT: &str = "runner_self_read_failed";
+
+/// Answers the runner's own registration row.
+pub(crate) async fn handle<D: Services>(
+    State(services): State<Arc<D>>,
+    RunnerIdentity(runner): RunnerIdentity,
+) -> Response {
+    match services.runners().self_record(runner.id()).await {
+        // Assembled and serialised inside this arm, so every `Cow` borrowing
+        // the row is written to the wire before the row is dropped — the
+        // ownership split `SelfRow` documents, held by the borrow checker
+        // rather than by the `defer q.deinit()` ordering the Zig relies on.
+        Ok(row) => Json(payload(&row)).into_response(),
+        Err(error) => refuse(&error, EVENT),
+    }
+}
+
+/// The row as the wire shape, borrowing every string from it.
+///
+/// `assigned_policy` and `achievable` resolve through the shared decoder, so a
+/// missing or unparseable column reads as absent here exactly as it does on the
+/// heartbeat — and the host fails closed on either.
+fn payload(row: &SelfRow) -> SelfResponse<'_> {
+    SelfResponse {
+        id: Cow::Borrowed(row.id.as_str()),
+        // The column is `admin_state`; the runner-facing field has always been
+        // `status`. The rename stopped at the schema, and this is where that
+        // stops being visible to a host.
+        status: Cow::Borrowed(&row.status),
+        host_id: Cow::Borrowed(&row.host_id),
+        sandbox_tier: Cow::Borrowed(&row.assignment.sandbox_tier),
+        last_seen_at: row.last_seen_at,
+        assigned_policy: row.assignment.decode(),
+        achievable: capability(row.capability_report_json.as_deref()),
+        degraded: row.verdict.degraded,
+        degraded_reason: row.verdict.reason.as_deref().map(Cow::Borrowed),
+    }
+}

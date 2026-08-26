@@ -112,6 +112,7 @@ impl<E: SpanExporter> SpanExporter for CountingExporter<E> {
                 reason,
                 lost,
                 total,
+                event = "telemetry_export_failed",
                 "telemetry export failed — spans dropped, requests unaffected"
             );
         }

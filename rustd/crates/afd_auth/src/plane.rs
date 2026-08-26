@@ -32,8 +32,20 @@ use crate::error::Error;
 ///
 /// A new plane is a variant, and every table below stops compiling until it
 /// declares what the plane accepts and how it refuses.
+///
+/// # Why this is not `#[non_exhaustive]`
+///
+/// It was, and the attribute made the paragraph above false — the same way it
+/// did for [`crate::credential::CredentialKind`], and for the same reason. The
+/// crate that most needs to match a plane exhaustively is the HTTP shell, which
+/// holds one authenticator per plane and must not resolve a new one to
+/// whichever registry happened to be listed first. `#[non_exhaustive]` forces a
+/// `_` arm there, and a `_` arm is exactly that silent misrouting.
+///
+/// The attribute buys API stability for downstream semver, and these crates
+/// have no downstream: they are built only by this workspace's pinned
+/// toolchain.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
 pub enum Plane {
     /// Everything acting on behalf of a person or a tenant: the dashboard, the
     /// terminal, and service-to-service automation.

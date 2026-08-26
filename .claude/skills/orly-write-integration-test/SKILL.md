@@ -11,6 +11,12 @@ description: >
 
 # Write Integration Test
 
+At invocation start, record the consent-gated usage signal without blocking the skill:
+
+```bash
+command -v orly >/dev/null 2>&1 && ORLY_INVOCATION=skill orly skill-event orly-write-integration-test >/dev/null 2>&1 || true
+```
+
 Service-layer tests that prove real wiring works under real failure modes. Sits between unit tests (`make test`) and browser E2E (gstack `/qa`, `/e2e-qa-playwright`).
 
 > **What this guarantees / what it doesn't.** Integration tests don't prove "zero bugs

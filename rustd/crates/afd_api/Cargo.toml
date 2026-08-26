@@ -13,7 +13,12 @@ categories.workspace = true
 
 [features]
 # M-TEST-UTIL. Unlocks the map-backed environment source through afd_core.
-test-util = ["afd_auth/test-util", "afd_core/test-util", "afd_crypto/test-util"]
+test-util = [
+  "afd_auth/test-util",
+  "afd_core/test-util",
+  "afd_crypto/test-util",
+  "afd_fleet/test-util",
+]
 
 # Each dependency is added by the module that uses it: `unreachable_pub` and
 # `unused_crate_dependencies` are how Invariant 2 is a fact rustc checks rather
@@ -22,6 +27,16 @@ test-util = ["afd_auth/test-util", "afd_core/test-util", "afd_crypto/test-util"]
 # and the envelope writer.
 [dependencies]
 afd_auth.workspace = true
+# The runner control plane behind the `/v1/runners` verbs. The dependency
+# points this way and never back: `afd_fleet` names no status code and no
+# router, so a decision it makes can be proven without an HTTP request.
+afd_fleet.workspace = true
+# The payloads the runner verbs read and answer with. Frozen by M175; consumed,
+# never authored here.
+afd_wire.workspace = true
+# The wire payloads borrow, so a body is deserialised out of the request bytes
+# rather than through `axum::Json`, which owns what it parses.
+serde_json.workspace = true
 # The workspace's one entropy surface, for the request id a refusal carries.
 # Drawing bytes directly here would make `getrandom` reachable from two crates
 # and end the "one system call" claim `afd_crypto` is built around.
@@ -40,7 +55,6 @@ http.workspace = true
 # The HTTP/1 connection policy: `axum::serve` cannot express a header bound, so
 # the builder is configured here and boot serves connections with it.
 hyper.workspace = true
-serde_json.workspace = true
 # `sync` only, for the `Semaphore` that IS the admission ceiling. No runtime is
 # started here — a permit is claimed and dropped on whatever runtime the caller
 # already has.
@@ -65,6 +79,17 @@ hyper-util.workspace = true
 # The span suite collects spans through a `Layer`, which is the only way to see
 # a field as a VALUE rather than as formatted output.
 tracing-subscriber = { workspace = true, features = ["registry"] }
+# A dev-dependency, not a library one: nothing in this crate opens a pool. The
+# runner-plane suite needs `Db::unreachable` to drive a real handler into the
+# transport-class refusal without a datastore, and that constructor is the whole
+# reason `afd_db` is named anywhere in this manifest.
+afd_db = { workspace = true, features = ["test-util"] }
+# The in-memory backend the bundle-fetch suite drives the snapshot store
+# through, and the byte buffer it seeds one with. A dev-dependency: nothing in
+# this crate's library builds an object store — `Services::bundles` takes one
+# already built.
+object_store.workspace = true
+bytes.workspace = true
 
 [lints]
 workspace = true
