@@ -245,6 +245,8 @@ pub enum RunnerEventType {
     RunnerDrained,
     /// Credential revoked.
     RunnerRevoked,
+    /// Credential digest replaced without exposing the previous credential.
+    RunnerTokenRotated,
     /// An operator re-assigned its policy — a security-posture change worth
     /// auditing.
     RunnerPolicyAssigned,

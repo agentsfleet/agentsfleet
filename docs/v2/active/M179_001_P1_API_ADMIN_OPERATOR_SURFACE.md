@@ -122,7 +122,7 @@ The importer pipeline (platform gallery + per-tenant onboarding) with the GitHub
 `/v1/fleets/runners[/{runner_id}[/events|/leases]]` (list, detail, `PATCH` admin-state transitions), `/v1/fleets/streams` overview. Cordon/drain/revoke/rotate write `fleet.runners` + append `fleet.runner_events`; delivery to the runner is the M177 auth read — this milestone only writes state. Three-category status (admin_state + derived liveness + events) rendered as the Zig daemon does.
 
 - **Dimension 4.1** — admin-state transitions write the row + append the event; illegal transitions refused → Test `test_runner_admin_transitions` — DONE
-- **Dimension 4.2** — rotation swaps `token_hash`; old token 401s on next use (M177 read), new token works → Test `test_runner_rotation_takeover`
+- **Dimension 4.2** — rotation swaps `token_hash`; old token 401s on next use (M177 read), new token works → Test `test_runner_rotation_takeover` — DONE
 - **Dimension 4.3** — runner list/detail/events with keyset pagination + derived-status parity → Test `test_runner_views_parity`
 - **Dimension 4.4** — streams overview shape parity on seeded fleets → Test `test_streams_overview_parity`
 

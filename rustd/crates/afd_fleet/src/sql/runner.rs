@@ -137,6 +137,28 @@ SELECT id::text, admin_state, host_id, sandbox_tier, last_seen_at,
        capability_report::text, degraded, degraded_reason, extra_binds::text
 FROM fleet.runners WHERE id = $1::uuid";
 
+/// Replace one live runner credential and append its audit event atomically.
+///
+/// The old digest stops resolving at the instant the event becomes visible.
+/// A revoked row remains terminal and is returned without changing either
+/// table, so rotation cannot reopen it through a second authority channel.
+pub const ROTATE_RUNNER_TOKEN: &str = "\
+WITH current_runner AS (
+  SELECT id, admin_state FROM fleet.runners WHERE id = $1::uuid FOR UPDATE
+), updated AS (
+  UPDATE fleet.runners r
+  SET token_hash = $2::text, updated_at = $3::bigint
+  FROM current_runner c
+  WHERE r.id = c.id AND c.admin_state <> $4::text
+  RETURNING r.id
+), event AS (
+  INSERT INTO fleet.runner_events
+    (id, runner_id, event_type, metadata, dedup_key, created_at)
+  SELECT $5::uuid, id, $6::text, '{}'::jsonb, NULL, $3::bigint FROM updated
+  RETURNING id
+)
+SELECT admin_state, EXISTS (SELECT 1 FROM updated) AS changed FROM current_runner";
+
 /// The heartbeat's policy read.
 ///
 /// Assignment, stored capability, and the prior verdict, so every beat

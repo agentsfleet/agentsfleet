@@ -19,6 +19,7 @@ pub mod heartbeat;
 pub mod policy;
 pub mod reconcile;
 pub mod record;
+mod rotate;
 pub mod spelling;
 pub mod store;
 pub mod token;

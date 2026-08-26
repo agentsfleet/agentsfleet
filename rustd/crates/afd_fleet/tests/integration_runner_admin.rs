@@ -15,6 +15,9 @@ mod queue;
 mod requests;
 
 use afd_core::clock::UnixMillis;
+use afd_auth::credential::{CredentialKind, Presented};
+use afd_auth::directory::{CredentialDirectory as _, Digest};
+use afd_state::Credentials;
 use afd_wire::admin::RunnerAdminAction;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
@@ -85,6 +88,67 @@ async fn test_runner_admin_transitions() {
             "runner_revoked".to_owned(),
         ],
         "each real transition appends one event; repeats and refusals append none"
+    );
+
+    fixtures.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_runner_rotation_takeover() {
+    let fixtures = Fixtures::create().await;
+    let enrolled = fixtures
+        .runners()
+        .register(
+            &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
+            UnixMillis::from_millis(ENROLLED_AT),
+        )
+        .await
+        .expect("the runner enrols");
+    let old_digest = Digest::of_minted(enrolled.token.expose());
+    let directory = Credentials::new(fixtures.database.clone());
+    assert!(
+        directory
+            .resolve(CredentialKind::RunnerToken, &old_digest)
+            .await
+            .expect("the directory answers")
+            .is_some()
+    );
+
+    let rotated = fixtures
+        .runners()
+        .rotate_token(
+            &enrolled.runner_id,
+            UnixMillis::from_millis(ENROLLED_AT + 1),
+        )
+        .await
+        .expect("a live runner credential rotates");
+    let presented = Presented::from_authorization(&format!("Bearer {}", rotated.expose()))
+        .expect("the minted token is presentable");
+    let new_digest = Digest::of(&presented);
+
+    assert!(
+        directory
+            .resolve(CredentialKind::RunnerToken, &old_digest)
+            .await
+            .expect("the old lookup answers")
+            .is_none(),
+        "the old credential stops authenticating immediately"
+    );
+    assert!(
+        directory
+            .resolve(CredentialKind::RunnerToken, &new_digest)
+            .await
+            .expect("the new lookup answers")
+            .is_some(),
+        "the replacement credential authenticates"
+    );
+    assert_eq!(
+        fixtures.events(enrolled.runner_id.as_str()).await,
+        vec![
+            "runner_registered".to_owned(),
+            "runner_token_rotated".to_owned(),
+        ]
     );
 
     fixtures.cleanup().await;
