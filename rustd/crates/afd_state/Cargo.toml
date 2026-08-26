@@ -28,6 +28,10 @@ sqlx.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# The admin-state vocabulary the sibling test pins these binds against. A
+# dev-dependency and not a dependency: this crate WRITES the words and the enum
+# READS them, and the test is what keeps the two from drifting apart.
+afd_wire.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 # The suites drive a real pool, so they need the subscriber that makes event
 # macros evaluate their fields at all — see `install_subscriber`.

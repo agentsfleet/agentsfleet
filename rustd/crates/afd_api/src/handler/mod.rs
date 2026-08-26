@@ -29,6 +29,25 @@ use crate::request_id::RequestId;
 /// and a rejected field is a 400 wherever it is raised — which is what keeps
 /// the runner client's backoff working, since it classifies on the transport
 /// class rather than on the verb (RULE ECL).
+/// Refuses a request this daemon cannot read at all.
+///
+/// A path segment that is not an identifier, or a body that is not the shape
+/// the verb takes, can never reach a row — so it is refused BEFORE the plane is
+/// asked. That keeps the `::uuid` cast in the statements from ever being the
+/// thing that fails, and leaves every error from below a genuine datastore
+/// fault.
+///
+/// Shared by every verb that reads one, rather than restated per handler: two
+/// spellings would be two different envelopes for one class of refusal.
+pub(crate) fn malformed(detail: &'static str) -> Response {
+    crate::envelope::ProblemResponse::new(
+        afd_core::error_code::INVALID_REQUEST,
+        detail,
+        crate::request_id::RequestId::mint(),
+    )
+    .into_response()
+}
+
 pub(crate) fn refuse(error: &afd_fleet::Error, event: &'static str) -> Response {
     let request_id = RequestId::mint();
     let code = error.code();

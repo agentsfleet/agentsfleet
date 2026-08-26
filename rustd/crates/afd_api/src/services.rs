@@ -28,9 +28,14 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet::Runners;
+use afd_fleet::bundle::Bundles;
+use afd_fleet::credential::Minted;
 use afd_fleet::lease::Plane;
+use afd_fleet::memory::Captured;
 use afd_fleet::money::Nanos;
 use afd_wire::activity::ActivityFrame;
+use afd_wire::credentials::MintCredentialRequest;
+use afd_wire::memory::{MemoryDelta, MemoryPushRequest};
 use afd_wire::report::{RenewRequest, ReportRequest};
 
 use crate::auth::Authenticator;
@@ -66,6 +71,22 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
     /// this host", and this answers "what may it run next". A single accessor
     /// returning both would put the money path behind every heartbeat.
     fn leases(&self) -> &Self::Leases;
+
+    /// The Fleet Bundle snapshot store.
+    ///
+    /// A concrete type where [`Services::Leases`] is an associated one, and the
+    /// difference is what each of them is over. A lease plane holds a Redis
+    /// connection opened by CONNECTING, so a suite cannot build one; a bundle
+    /// store holds an `Arc<dyn ObjectStore>`, and `object_store` already ships
+    /// the in-memory backend a suite drives it with. The seam is inside the
+    /// type, so it does not also need to be a parameter on this trait.
+    ///
+    /// Not an `Option`. A deployment with no snapshot storage answers
+    /// `Bundles::unconfigured`, which refuses with a registry code and a
+    /// sentence like every other failure on this plane — see
+    /// [`afd_fleet::bundle::Bundles`] for why the absence is a value rather
+    /// than a `None` each handler would have to render for itself.
+    fn bundles(&self) -> &Bundles;
 
     /// The instant this request's writes are stamped with.
     ///
@@ -138,6 +159,51 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<UnixMillis>> + Send;
 
+    /// The memory window that seeds one run.
+    ///
+    /// # Errors
+    /// Refuses a runner holding no live lease on the fleet, and reports a
+    /// datastore that would not answer.
+    fn hydrate(
+        &self,
+        runner_id: &Uuid7,
+        fleet_id: &Uuid7,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<Vec<MemoryDelta<'static>>>> + Send;
+
+    /// Persist what one run learned.
+    ///
+    /// # Errors
+    /// Refuses a lease that is not this runner's or not this fleet's, and a
+    /// holder the fleet has superseded.
+    fn capture(
+        &self,
+        runner_id: &Uuid7,
+        fleet_id: &Uuid7,
+        request: &MemoryPushRequest<'_>,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<Captured>> + Send;
+
+    /// Mint one short-lived credential for a running child.
+    ///
+    /// Like [`Leasing::renew`] and unlike [`Leasing::lease`], every refusal is
+    /// an ERROR carrying its own registry code: a child is blocked on this
+    /// answer and each refusal has a different remedy — reconnect the
+    /// integration, wait for a human, re-raise a card, retry shortly — where a
+    /// polling runner's only move is to wait.
+    ///
+    /// # Errors
+    /// Refuses a lease that is not this runner's or is no longer live, a fleet
+    /// with no approved grant for the integration, a write mint with no usable
+    /// approval, an integration this workspace has not connected, and every way
+    /// an exchange can fail to produce a credential.
+    fn mint(
+        &self,
+        runner_id: &Uuid7,
+        request: &MintCredentialRequest<'_>,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<Minted>> + Send;
+
     /// Forward one batch of live-tail frames.
     ///
     /// No clock parameter, and it is the only verb here without one: nothing
@@ -192,6 +258,34 @@ impl Leasing for Plane {
         frames: &[ActivityFrame<'_>],
     ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
         Self::activity(self, runner_id, lease_id, frames)
+    }
+
+    fn hydrate(
+        &self,
+        runner_id: &Uuid7,
+        fleet_id: &Uuid7,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<Vec<MemoryDelta<'static>>>> + Send {
+        Self::hydrate(self, runner_id, fleet_id, now)
+    }
+
+    fn mint(
+        &self,
+        runner_id: &Uuid7,
+        request: &MintCredentialRequest<'_>,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<Minted>> + Send {
+        Self::mint(self, runner_id, request, now)
+    }
+
+    fn capture(
+        &self,
+        runner_id: &Uuid7,
+        fleet_id: &Uuid7,
+        request: &MemoryPushRequest<'_>,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<Captured>> + Send {
+        Self::capture(self, runner_id, fleet_id, request, now)
     }
 
     async fn renew(

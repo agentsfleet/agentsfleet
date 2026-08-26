@@ -44,6 +44,7 @@ mod pass;
 mod pause;
 mod pending;
 mod route;
+mod spend;
 mod store;
 
 use afd_fleet_runtime::config::{Behavior, Condition, GatePolicy, GateRule};
@@ -60,6 +61,7 @@ pub use self::pass::{Check, Refused, Verdict, Waiting};
 pub use self::pause::Trigger;
 pub use self::pending::{Evaluation, GateRef, evaluate};
 pub use self::route::{RefState, Route, route};
+pub use self::spend::WriteApproval;
 pub use self::store::{Gates, key};
 
 /// The rule field that matches any tool, or any action.

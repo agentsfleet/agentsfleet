@@ -240,7 +240,15 @@ moka = { version = "0.12.16", default-features = false, features = ["future"] }
 #   - Nothing else: `gzip` stays absent for the reason it always was, so wire
 #     bytes equal decoded bytes and `JWKS_MAX_RESPONSE_BYTES` is a correct
 #     bound with no streaming decompressor to size.
-reqwest = { version = "0.13.4", default-features = false, features = ["rustls"] }
+#
+# `form` is the credential broker's, and it is the whole reason
+# `integration_oauth_refresh.zig`'s `percentEncode` + `buildForm` — a
+# hand-written RFC 3986 unreserved-set encoder and a `allocPrint` template — do
+# not exist here. `serde_urlencoded` encodes a refresh grant whose values are
+# provider-issued opaque bytes, where a `+` or an `&` that escapes its field
+# changes the SHAPE of the form at the token endpoint. That is not a place to
+# carry our own encoder.
+reqwest = { version = "0.13.4", default-features = false, features = ["form", "rustls"] }
 
 # Postgres. sqlx is the DRIVER here and nothing more: `migrate` and `macros` are
 # both off, because this workspace runs the Zig daemon's own ledger
@@ -348,6 +356,16 @@ http = { version = "1.5.0", default-features = false, features = ["std"] }
 # stores this product does not use.
 object_store = { version = "0.14.1", default-features = false, features = ["aws"] }
 
+# The byte buffer `object_store` answers a GET with, named here so the Fleet
+# Bundle store can hand one back without copying it into a `Vec` first.
+#
+# Not new surface: axum, hyper and `object_store` all already resolve it, so a
+# direct entry pins the version the lockfile carries rather than adding a
+# dependency. It is listed because `unused_crate_dependencies` makes a crate's
+# manifest a statement about what that crate actually names in its own types,
+# and `afd_fleet::bundle::Snapshot` names this one.
+bytes = { version = "1.12.1", default-features = false, features = ["std"] }
+
 # JWT semantics for the GitHub App mint: header and claims JSON, base64url
 # segments, and expiry validation. NOT a crypto backend — it sits on one, and
 # `aws_lc_rs` points it at the same provider everything else here uses, so the
@@ -355,7 +373,42 @@ object_store = { version = "0.14.1", default-features = false, features = ["aws"
 #
 # Writing this by hand on top of `aws-lc-rs` would be possible and is exactly
 # the plumbing not to hand-roll.
-jsonwebtoken = { version = "11.0.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
+#
+# PINNED TO 10.x BY `octocrab`, AND IT MUST STAY THAT WAY (M177 §4). This is not
+# a preference for an older release: `octocrab` requires `jsonwebtoken ^10` and
+# its `Octocrab::builder().app()` takes an `EncodingKey` BY TYPE. A crate
+# building that key against 11.x would not merely duplicate RS256 — the two
+# `EncodingKey` types are unrelated and the call would not compile. An earlier
+# 11.0.0 pin here was unreachable for exactly that reason.
+#
+# `use_pem` reads the App's PEM private key; `aws_lc_rs` is the backend, which
+# is also what `octocrab`'s own `jwt-aws-lc-rs` feature selects — the two agree
+# deliberately, so the binary carries one implementation of RS256 rather than
+# two. Raising this to 11 means raising `octocrab` first.
+jsonwebtoken = { version = "10.4.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
+
+# The GitHub client behind the App-installation half of the mint broker.
+#
+# `default-features = false` is load-bearing twice over. Its defaults enable
+# `rustls-ring`, which would put a SECOND rustls provider beside the aws-lc-rs
+# this workspace resolves to, and `jwt-rust-crypto`, which would point
+# `jsonwebtoken` at a different backend than the line above pins. `jwt-aws-lc-rs`
+# swaps the second back; omitting `rustls-ring` settles the first.
+#
+# Taken for App JWT minting, the transport and the typed `InstallationToken`,
+# NOT for its `installation_and_token()`: that method posts a hardcoded `{}`
+# body and so always mints the installation's FULL scope. The repository and
+# permission narrowing this milestone's write gate rests on is sent through the
+# generic `post`, with a body of ours.
+octocrab = { version = "0.54.1", default-features = false, features = [
+    "rustls",
+    "rustls-aws-lc-rs",
+    "jwt-aws-lc-rs",
+    "default-client",
+    "timeout",
+    "retry",
+    "tracing",
+] }
 
 # OpenTelemetry, for the push-only export the Zig daemon already does by hand
 # (`observability/otlp/`). The SDK alone: it re-exports the API types the

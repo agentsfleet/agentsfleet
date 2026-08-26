@@ -150,4 +150,4 @@ pub(super) fn resolve<'a>(
 /// no host, and a host that is an SSRF-unsafe address.
 mod url;
 
-pub(in crate::provider) use self::url::validate;
+pub(crate) use self::url::validate;

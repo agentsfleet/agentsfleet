@@ -20,9 +20,12 @@
 //! thing it mints for in two different places.
 
 pub(crate) mod activity;
+pub(crate) mod bundle;
+pub(crate) mod credential;
 pub(crate) mod enrolment;
 pub(crate) mod heartbeat;
 pub(crate) mod lease;
+pub(crate) mod memory;
 pub(crate) mod renew;
 pub(crate) mod report;
 pub(crate) mod self_record;

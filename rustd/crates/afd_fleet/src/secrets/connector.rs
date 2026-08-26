@@ -39,22 +39,15 @@ use serde_json::Value;
 /// stored handle. Everything else in that object is the credential itself.
 pub const FIELD_INTEGRATION: &str = "integration";
 
-/// A handle that already carries its token.
-const STATIC_NAME: &str = "static";
-/// A GitHub App installation token, exchanged from an App JWT.
-const GITHUB_NAME: &str = "github";
-/// Zoho, through a refresh-token exchange.
-const ZOHO_NAME: &str = "zoho";
-/// Jira, through a refresh-token exchange.
-const JIRA_NAME: &str = "jira";
-/// Linear, through a refresh-token exchange.
-const LINEAR_NAME: &str = "linear";
-
 /// How a connector's credential reaches the runner.
 ///
 /// Two arms rather than a `bool`, because the two answers are not "yes" and
 /// "not yes" — they are two different delivery mechanisms, and a reader meeting
 /// `supply()` should not have to remember which way round the bool went.
+///
+/// DERIVED from [`Exchange`] rather than declared beside it — see
+/// [`Descriptor::supply`]. A descriptor that could state both independently
+/// could state them in contradiction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Supply {
     /// The stored handle already holds a usable token; it ships as it stands.
@@ -78,8 +71,24 @@ pub trait Connector: Debug + Send + Sync {
     /// whatever a variant rename produces.
     fn name(&self) -> &str;
 
+    /// How this connector turns a stored handle into a credential.
+    ///
+    /// The broker's dispatch reads this and nothing else, which is what keeps
+    /// "adding a connector" a row in [`DECLARED`] rather than an arm somewhere
+    /// in the broker.
+    fn exchange(&self) -> Exchange;
+
     /// How its credential reaches the runner.
-    fn supply(&self) -> Supply;
+    ///
+    /// PROVIDED, and deliberately not overridable in practice: it is derived
+    /// from [`Self::exchange`] here so no implementation can state the two in
+    /// contradiction — see [`Descriptor::supply`] for what that would cost.
+    fn supply(&self) -> Supply {
+        match self.exchange() {
+            Exchange::Stored => Supply::Inline,
+            Exchange::GithubApp | Exchange::OAuthRefresh { .. } => Supply::OnDemand,
+        }
+    }
 }
 
 /// Where a stored handle's `integration` value is resolved.
@@ -94,6 +103,43 @@ pub trait Connectors: Debug + Send + Sync {
     fn resolve(&self, name: &str) -> Option<&dyn Connector>;
 }
 
+/// How a connector turns a stored handle into a usable credential.
+///
+/// # Why the exchange is DATA on the descriptor, and not a `dyn Mint`
+///
+/// The alternative — a trait object per connector — puts one implementation
+/// behind every provider, so a fourth refresh-token provider is a fourth type
+/// that reimplements what three others already do. Here it is a fourth ROW.
+///
+/// Zoho, Jira and Linear differ by exactly one string: the endpoint their
+/// refresh grant posts to. That is a field, not a subclass. The broker matches
+/// on this enum ONCE, so adding a provider that mints the way an existing one
+/// does costs no dispatch code at all, and adding a genuinely new KIND of
+/// exchange adds a variant the compiler then forces every match to answer.
+///
+/// It is also the shape `integration.zig` arrived at independently — a `Spec`
+/// whose `mint` field is a union of `static`, a GitHub-App custom mint, and an
+/// `oauth2_refresh` carrying its own `token_endpoint`. Two implementations
+/// converging on declared-data dispatch is a good sign it is the right one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Exchange {
+    /// Nothing to exchange: the stored handle already holds a usable token.
+    Stored,
+    /// A GitHub App JWT exchanged for a repository-scoped installation token.
+    ///
+    /// Carries no endpoint because it has no per-provider one — the App
+    /// installation is addressed by an id out of the stored handle, and the
+    /// scoping is the part that varies, which is a property of the FLEET's
+    /// binding rather than of the connector.
+    GithubApp,
+    /// An RFC 6749 §6 `refresh_token` grant, posted to `token_url`.
+    OAuthRefresh {
+        /// Where the grant is posted. The only thing separating these
+        /// providers from one another.
+        token_url: &'static str,
+    },
+}
+
 /// One connector's contract, as declared data.
 ///
 /// The shape a crate-backed implementation converges on: whatever client
@@ -104,8 +150,20 @@ pub trait Connectors: Debug + Send + Sync {
 pub struct Descriptor {
     /// See [`Connector::name`].
     name: &'static str,
-    /// See [`Connector::supply`].
-    supply: Supply,
+    /// How this connector turns a handle into a credential.
+    exchange: Exchange,
+}
+
+impl Descriptor {
+    /// How this connector mints, for the broker to dispatch on.
+    ///
+    /// Inherent AND a trait method: a caller holding a concrete descriptor gets
+    /// a `const` answer, and one holding `&dyn Connector` — which is every
+    /// caller the registry serves — gets the same value through the trait.
+    #[must_use]
+    pub const fn exchange(&self) -> Exchange {
+        self.exchange
+    }
 }
 
 impl Connector for Descriptor {
@@ -113,49 +171,79 @@ impl Connector for Descriptor {
         self.name
     }
 
-    fn supply(&self) -> Supply {
-        self.supply
+    fn exchange(&self) -> Exchange {
+        self.exchange
+    }
+
+    // `supply` is the trait's provided method, derived from `exchange` and
+    // never declared alongside it. The two are the same fact asked twice —
+    // anything with an exchange to perform is fetched on demand, and the one
+    // thing without an exchange ships as it stands. Storing both would let a
+    // row say `Stored` and `OnDemand` at once, and the lease path and the
+    // broker would then disagree about the same connector.
+}
+
+impl Descriptor {
+    /// Declares one connector.
+    ///
+    /// `const` so [`DECLARED`] stays a compile-time table, and private because
+    /// the shipped set is this module's to state — a caller wanting a connector
+    /// of its own implements [`Connector`], which is the seam that exists for
+    /// it.
+    const fn new(name: &'static str, exchange: Exchange) -> Self {
+        Self { name, exchange }
     }
 }
 
-/// A stored personal access token or equivalent, usable as it stands.
-pub const STATIC: Descriptor = Descriptor {
-    name: STATIC_NAME,
-    supply: Supply::Inline,
-};
-
-/// GitHub: an App JWT exchanged for a short-lived installation token.
-pub const GITHUB: Descriptor = Descriptor {
-    name: GITHUB_NAME,
-    supply: Supply::OnDemand,
-};
-
-/// Zoho: a refresh token exchanged for a short-lived access token.
-pub const ZOHO: Descriptor = Descriptor {
-    name: ZOHO_NAME,
-    supply: Supply::OnDemand,
-};
-
-/// Jira: a refresh token exchanged for a short-lived access token.
-pub const JIRA: Descriptor = Descriptor {
-    name: JIRA_NAME,
-    supply: Supply::OnDemand,
-};
-
-/// Linear: a refresh token exchanged for a short-lived access token.
-pub const LINEAR: Descriptor = Descriptor {
-    name: LINEAR_NAME,
-    supply: Supply::OnDemand,
-};
+/// Zoho's refresh-grant endpoint.
+const ZOHO_TOKEN_URL: &str = "https://accounts.zoho.com/oauth/v2/token";
+/// Jira's, which is Atlassian's shared one.
+const JIRA_TOKEN_URL: &str = "https://auth.atlassian.com/oauth/token";
+/// Linear's.
+const LINEAR_TOKEN_URL: &str = "https://api.linear.app/oauth/token";
 
 /// Every connector this daemon declares, in resolution order.
 ///
-/// Adding one is ONE entry here. The api-key connectors — datadog, grafana, fly
-/// — are deliberately absent: their key is used directly and never reaches a
-/// broker, so a row for them would be a row nothing dispatches on. They resolve
-/// to nothing and take the same fail-safe path a typo does, which is what
-/// [`mintable`] is careful about.
-const DECLARED: [Descriptor; 5] = [STATIC, GITHUB, ZOHO, JIRA, LINEAR];
+/// **Adding one is ONE line here, and that is the whole point of the table.**
+/// An earlier shape spelled each entry three times — a name constant, a public
+/// descriptor constant, and a row in this list — plus a fourth edit to widen a
+/// fixed-length array. That is precisely the per-connector edit count the enum
+/// alternative was rejected for in this module's own header, arrived at from
+/// the other direction. A slice has no length to keep in step, and a row that
+/// carries its own name has no constant to define away from it.
+///
+/// The api-key connectors — datadog, grafana, fly — are deliberately absent:
+/// their key is used directly and never reaches a broker, so a row for them
+/// would be a row nothing dispatches on. They resolve to nothing and take the
+/// same fail-safe path a typo does, which is what [`mintable`] is careful
+/// about.
+const DECLARED: &[Descriptor] = &[
+    // A stored personal access token or equivalent, usable as it stands.
+    Descriptor::new("static", Exchange::Stored),
+    // GitHub: an App JWT exchanged for a repository-scoped installation token.
+    Descriptor::new("github", Exchange::GithubApp),
+    // Zoho, Jira and Linear: one exchange, three providers, differing by a
+    // single URL — which is the property that has to survive the next one
+    // being added, and the reason the exchange is a field rather than a type.
+    Descriptor::new(
+        "zoho",
+        Exchange::OAuthRefresh {
+            token_url: ZOHO_TOKEN_URL,
+        },
+    ),
+    Descriptor::new(
+        "jira",
+        Exchange::OAuthRefresh {
+            token_url: JIRA_TOKEN_URL,
+        },
+    ),
+    Descriptor::new(
+        "linear",
+        Exchange::OAuthRefresh {
+            token_url: LINEAR_TOKEN_URL,
+        },
+    ),
+];
 
 /// The connector set this daemon ships with.
 ///
@@ -165,6 +253,19 @@ const DECLARED: [Descriptor; 5] = [STATIC, GITHUB, ZOHO, JIRA, LINEAR];
 #[derive(Debug, Clone, Copy, Default)]
 #[non_exhaustive]
 pub struct Registry;
+
+impl Registry {
+    /// Every connector this daemon ships, in declaration order.
+    ///
+    /// The seam the boot-time platform load walks: a deployment's App and OAuth
+    /// clients are one vault row per connector, and iterating the table is what
+    /// keeps "adding a connector is ONE line" true through the composition root
+    /// as well. A loader that named zoho, jira and linear itself would be the
+    /// fourth edit this module exists to avoid.
+    pub fn declared(&self) -> impl Iterator<Item = &'static Descriptor> {
+        DECLARED.iter()
+    }
+}
 
 impl Connectors for Registry {
     fn resolve(&self, name: &str) -> Option<&dyn Connector> {
@@ -203,7 +304,7 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::{Connector, Connectors as _, DECLARED, Registry, Supply, mintable};
+    use super::{Connector, Connectors as _, DECLARED, Exchange, Registry, Supply, mintable};
     use serde_json::json;
 
     /// A registry declaring one connector under a name the production one does
@@ -259,10 +360,12 @@ mod tests {
         // The property an injected registry buys: a connector under test needs
         // no entry in the daemon's own list, so a test cannot pass by
         // accidentally depending on what production ships.
-        let fake = OneOff(super::Descriptor {
-            name: "acme",
-            supply: Supply::OnDemand,
-        });
+        let fake = OneOff(super::Descriptor::new(
+            "acme",
+            Exchange::OAuthRefresh {
+                token_url: "https://accounts.example.test/oauth/token",
+            },
+        ));
 
         assert!(mintable(&Registry, &json!({"integration": "acme"})).is_none());
         assert_eq!(
@@ -281,12 +384,12 @@ mod tests {
         // `idFromString`. Here the name IS the descriptor's field, so what is
         // worth proving is that the registry can find every entry it declares —
         // a descriptor absent from `DECLARED` is one nothing can ever resolve.
-        for declared in &DECLARED {
+        for declared in DECLARED {
             let resolved = Registry
                 .resolve(declared.name)
                 .expect("a declared connector resolves");
             assert_eq!(resolved.name(), declared.name);
-            assert_eq!(resolved.supply(), declared.supply);
+            assert_eq!(resolved.supply(), declared.supply());
         }
     }
 
@@ -310,13 +413,47 @@ mod tests {
         // The default direction, stated as a test: a connector added without
         // thought about delivery must not ship a stored refresh token to a
         // child process.
-        for declared in &DECLARED {
+        for declared in DECLARED {
             let expected = if declared.name == "static" {
                 Supply::Inline
             } else {
                 Supply::OnDemand
             };
-            assert_eq!(declared.supply, expected, "{}", declared.name);
+            assert_eq!(declared.supply(), expected, "{}", declared.name);
+        }
+    }
+
+    /// Every declared exchange is reachable, and each names a distinct endpoint.
+    ///
+    /// The property that has to survive the next connector: three providers
+    /// share ONE refresh implementation and differ only by URL, so a copied row
+    /// that forgot to change the endpoint would silently mint against the
+    /// wrong vendor. Nothing else in the table can catch that.
+    #[test]
+    fn no_two_connectors_share_a_token_endpoint() {
+        let endpoints: Vec<&str> = DECLARED
+            .iter()
+            .filter_map(|declared| match declared.exchange() {
+                Exchange::OAuthRefresh { token_url } => Some(token_url),
+                Exchange::Stored | Exchange::GithubApp => None,
+            })
+            .collect();
+        assert!(
+            !endpoints.is_empty(),
+            "the refresh exchange has no declared user, so nothing proves it"
+        );
+        for (index, endpoint) in endpoints.iter().enumerate() {
+            assert!(
+                !endpoints
+                    .iter()
+                    .skip(index + 1)
+                    .any(|other| other == endpoint),
+                "`{endpoint}` is declared twice: a copied row kept its neighbour's vendor"
+            );
+            assert!(
+                endpoint.starts_with("https://"),
+                "`{endpoint}` posts a refresh token in the clear"
+            );
         }
     }
 }

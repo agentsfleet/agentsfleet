@@ -239,6 +239,13 @@ impl Leases {
 /// One name per process rather than per request: the pending list belongs to
 /// the CONSUMER, so a name that changed per poll would strand every entry the
 /// previous name had claimed.
-fn runner_consumer() -> String {
+///
+/// `pub` because the reclaim sweeper claims stranded entries INTO this name and
+/// the lease path reads OUT of it, and the two must be the same string. A
+/// sweeper claiming into a name nothing reads would re-strand exactly the
+/// entries it exists to rescue — the failure would look like the sweeper
+/// working perfectly, since it would report claims every pass.
+#[must_use]
+pub fn runner_consumer() -> String {
     format!("agentsfleetd-{}", std::process::id())
 }

@@ -296,3 +296,30 @@ WHERE z.status = $1
       )
 ORDER BY (a.last_runner_id = $2::uuid) DESC NULLS LAST, z.created_at ASC
 LIMIT $4";
+
+/// What one lease authorises a mint to reach.
+///
+/// Text from `http/handlers/runner/sql.zig`'s `SELECT_LEASE_SCOPE_FOR_MINT`,
+/// with this crate's explicit casts. Every clause in the `WHERE` is an
+/// authorisation, and the reason they are all in the statement is that the wire
+/// carries no workspace at all: a prompt-injected child has nothing to forge,
+/// because a `lease_id` that is foreign, expired or cancelled resolves to no
+/// row rather than to another tenant's workspace.
+///
+/// - `l.runner_id = $2` — Invariant 2. The runner-id scope IS the ownership
+///   check; the presenting bearer decides which leases exist.
+/// - `l.status = $3 AND l.lease_expires_at > $4` — mint authority is bound to
+///   the LEASE's lifetime, not the runner's, so a compromised runner replaying
+///   a stale lease id cannot mint past the run it was issued for.
+///
+/// The fleet is joined rather than read second because the binding must come
+/// from the fleet the lease authorised. Two statements could return a binding
+/// belonging to a fleet the lease does not name.
+///
+/// `$1` lease, `$2` runner, `$3` active status, `$4` now.
+pub const SELECT_LEASE_SCOPE_FOR_MINT: &str = "\
+SELECT l.workspace_id::text, l.fleet_id::text, f.config_json::text, l.event_id
+FROM fleet.runner_leases l
+JOIN core.fleets f ON f.id = l.fleet_id
+WHERE l.id = $1::uuid AND l.runner_id = $2::uuid
+  AND l.status = $3 AND l.lease_expires_at > $4";

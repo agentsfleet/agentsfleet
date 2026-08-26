@@ -15,11 +15,16 @@
 use afd_core::error_code::{self, ErrorCode};
 
 use super::{
-    DETAIL_BUDGET_EXHAUSTED, DETAIL_CONFIG_UNREADABLE, DETAIL_CREDENTIAL_MISSING,
-    DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED, DETAIL_LEASE_LOST,
-    DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND, DETAIL_PROVIDER_UNRESOLVED,
-    DETAIL_QUEUE_UNAVAILABLE, DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS,
-    DETAIL_RUNNER_NOT_FOUND, DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, Error, ErrorKind,
+    DETAIL_BINDING_DRIFT, DETAIL_BUDGET_EXHAUSTED, DETAIL_BUNDLE_FETCH_FAILED,
+    DETAIL_BUNDLE_NOT_FOUND, DETAIL_BUNDLE_STORAGE_UNAVAILABLE, DETAIL_CONFIG_UNREADABLE,
+    DETAIL_CONNECTOR_MINT_FAILED, DETAIL_CONNECTOR_RECONNECT, DETAIL_CREDENTIAL_MISSING,
+    DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED,
+    DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
+    DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND, DETAIL_MINT_FAILED,
+    DETAIL_MINT_UNCONFIGURED, DETAIL_PROVIDER_UNRESOLVED, DETAIL_QUEUE_UNAVAILABLE,
+    DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUNNER_NOT_FOUND,
+    DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, DETAIL_WRITE_SPEND_EXHAUSTED,
+    DETAIL_WRITE_UNAPPROVED, Error, ErrorKind,
 };
 
 impl Error {
@@ -129,6 +134,46 @@ impl Error {
             ErrorKind::LeaseMaxRuntime => error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
             ErrorKind::RenewalNoCredits => error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
             ErrorKind::BudgetExhausted => error_code::RUN_BUDGET_EXCEEDED,
+            // A corrupt row, so the same code a column that will not parse
+            // answers — this IS that, found by range rather than by shape.
+            ErrorKind::SequenceCorrupt => error_code::INTERNAL_DB_QUERY,
+            // A 404, and it is the one 404 on this plane that is not a
+            // refusal: a skill-only bundle stores no snapshot, so this is what
+            // the ordinary case looks like from the wire.
+            ErrorKind::BundleMissing => error_code::FLEET_BUNDLE_NOT_FOUND,
+            // Three ways for a snapshot to be unservable, one code, because
+            // the RUNNER acts identically on all three — it re-polls. The Zig
+            // answers `ERR_FLEET_BUNDLE_STORAGE_UNAVAILABLE` for the first two
+            // and has no third; what separates them for an operator is
+            // `detail` below and the source chain in the log.
+            ErrorKind::BundleUnconfigured
+            | ErrorKind::BundleStorage { .. }
+            | ErrorKind::BundleOversized { .. } => error_code::FLEET_BUNDLE_STORAGE_UNAVAILABLE,
+            // The mint family. A workspace that connected nothing and a handle
+            // naming an unknown connector are one code, for the reason their
+            // shared sentence gives.
+            ErrorKind::IntegrationNotConnected => error_code::CRED_INTEGRATION_NOT_CONNECTED,
+            ErrorKind::MintUnconfigured => error_code::CRED_BROKER_NOT_CONFIGURED,
+            // GitHub keeps two codes where the refresh connectors share one,
+            // and the asymmetry is the Zig's: an App installation has its own
+            // reconnect semantics, and a runner that meets UZ-GH-001 knows a
+            // HUMAN must reinstall an App rather than that a token exchange
+            // failed.
+            ErrorKind::GithubReconnectRequired => error_code::GH_RECONNECT_REQUIRED,
+            ErrorKind::GithubMintFailed => error_code::GH_MINT_FAILED,
+            // One code, two sentences: a Zoho failure must never route a runner
+            // to GitHub's reconnect, and which of the two it was is what the
+            // detail says.
+            ErrorKind::ConnectorReconnectRequired | ErrorKind::ConnectorMintFailed => {
+                error_code::CONNECTOR_OAUTH_EXCHANGE_FAILED
+            }
+            ErrorKind::GrantRequired => error_code::GRANT_NOT_FOUND,
+            // Three refusals, three codes, because the remedies differ: wait
+            // for a human, re-raise the card against the reach the fleet now
+            // declares, or answer a new approval.
+            ErrorKind::WriteUnapproved => error_code::REPAIR_WRITE_UNAPPROVED,
+            ErrorKind::BindingDrift => error_code::REPAIR_BINDING_DRIFT,
+            ErrorKind::WriteSpendExhausted => error_code::REPAIR_SPEND_EXHAUSTED,
         }
     }
 
@@ -150,7 +195,13 @@ impl Error {
             ErrorKind::Rejected { detail } => detail,
             ErrorKind::RunnerVanished => DETAIL_RUNNER_NOT_FOUND,
             ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
-            ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => DETAIL_DATABASE_ERROR,
+            // A corrupt sequence joins the two row faults: all three are the
+            // database holding something this daemon cannot use, and a caller
+            // is told the same thing because there is nothing it can do about
+            // any of them.
+            ErrorKind::Query { .. }
+            | ErrorKind::RowMalformed { .. }
+            | ErrorKind::SequenceCorrupt => DETAIL_DATABASE_ERROR,
             ErrorKind::Queue { .. } => DETAIL_QUEUE_UNAVAILABLE,
             ErrorKind::Envelope { .. } => DETAIL_EVENT_MALFORMED,
             ErrorKind::Mint { .. } | ErrorKind::Entropy { .. } => DETAIL_REGISTRATION_FAILED,
@@ -169,6 +220,25 @@ impl Error {
             ErrorKind::LeaseMaxRuntime => DETAIL_LEASE_MAX_RUNTIME,
             ErrorKind::RenewalNoCredits => DETAIL_RENEWAL_NO_CREDITS,
             ErrorKind::BudgetExhausted => DETAIL_BUDGET_EXHAUSTED,
+            ErrorKind::BundleMissing => DETAIL_BUNDLE_NOT_FOUND,
+            ErrorKind::BundleUnconfigured => DETAIL_BUNDLE_STORAGE_UNAVAILABLE,
+            // An oversized object joins the store failure rather than getting a
+            // sentence of its own. The size is a fact about what an operator
+            // stored, and telling the asking runner would say more about this
+            // deployment's contents than a bundle fetch should.
+            ErrorKind::BundleStorage { .. } | ErrorKind::BundleOversized { .. } => {
+                DETAIL_BUNDLE_FETCH_FAILED
+            }
+            ErrorKind::IntegrationNotConnected => DETAIL_INTEGRATION_NOT_CONNECTED,
+            ErrorKind::MintUnconfigured => DETAIL_MINT_UNCONFIGURED,
+            ErrorKind::GithubReconnectRequired => DETAIL_GITHUB_RECONNECT,
+            ErrorKind::GithubMintFailed => DETAIL_MINT_FAILED,
+            ErrorKind::ConnectorReconnectRequired => DETAIL_CONNECTOR_RECONNECT,
+            ErrorKind::ConnectorMintFailed => DETAIL_CONNECTOR_MINT_FAILED,
+            ErrorKind::GrantRequired => DETAIL_GRANT_REQUIRED,
+            ErrorKind::WriteUnapproved => DETAIL_WRITE_UNAPPROVED,
+            ErrorKind::BindingDrift => DETAIL_BINDING_DRIFT,
+            ErrorKind::WriteSpendExhausted => DETAIL_WRITE_SPEND_EXHAUSTED,
         }
     }
 
@@ -254,6 +324,40 @@ impl Error {
             | ErrorKind::LeaseMaxRuntime
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
+            // Infrastructure, not configuration: nobody edits a fleet
+            // document to fix a corrupt sequence.
+            | ErrorKind::SequenceCorrupt
+            // None of the four bundle failures is a FLEET's configuration
+            // being wrong, which is the only thing this question asks. Three
+            // are the deployment's object storage — unset knobs, a store that
+            // will not serve, an object nobody should have put there — and the
+            // fourth is the ordinary skill-only answer. A `true` on any of
+            // them would write a terminal `gate_blocked` row against a fleet
+            // whose document is perfectly good, and take it out of service
+            // until a human cleared it.
+            | ErrorKind::BundleMissing
+            | ErrorKind::BundleUnconfigured
+            | ErrorKind::BundleStorage { .. }
+            | ErrorKind::BundleOversized { .. }
+            // Not one of the mint refusals is a FLEET's document being wrong,
+            // which is the only thing this question asks. They are a tenant's
+            // connection, this deployment's own configuration, a vendor, or a
+            // human's answer — and a `true` on any of them would write a
+            // terminal `gate_blocked` row against a fleet whose config is
+            // perfectly good, taking it out of service until somebody cleared
+            // it. Drift is the closest call and still `false`: what changed is
+            // the fleet's binding, and the remedy is a human re-answering the
+            // card, not an edit to fix a broken document.
+            | ErrorKind::IntegrationNotConnected
+            | ErrorKind::MintUnconfigured
+            | ErrorKind::GithubReconnectRequired
+            | ErrorKind::GithubMintFailed
+            | ErrorKind::ConnectorReconnectRequired
+            | ErrorKind::ConnectorMintFailed
+            | ErrorKind::GrantRequired
+            | ErrorKind::WriteUnapproved
+            | ErrorKind::BindingDrift
+            | ErrorKind::WriteSpendExhausted
             | ErrorKind::Entropy { .. } => false,
         }
     }

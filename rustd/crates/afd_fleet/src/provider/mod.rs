@@ -66,6 +66,12 @@ use crate::money::Posture;
 use crate::vault::KeyRef;
 
 pub use self::endpoint::{OPENAI_COMPATIBLE, Rejection};
+// Re-exported crate-wide for the credential broker, which asks the SAME
+// question of a vault handle's `accounts_base` that this module asks of a
+// tenant's `base_url`: is this URL one the daemon will dial. One guard with two
+// callers, rather than a second scheme-and-SSRF check that could come to
+// disagree with this one about the same host.
+pub(crate) use self::endpoint::validate as validate_endpoint;
 pub use self::resolved::{Dialled, Resolved, SecretString};
 pub use self::selection::{PlatformDefault, Selection};
 pub use self::store::Providers;

@@ -37,10 +37,12 @@ pub mod fleet;
 pub mod gate;
 pub mod grant;
 pub mod lease;
+pub mod memory;
 pub mod provider;
 pub mod renew;
 pub mod report;
 pub mod runner;
+pub mod sweep;
 pub mod vault;
 
 /// `fleet.runner_events.metadata` keys.
@@ -55,6 +57,10 @@ pub mod meta {
     pub const SANDBOX_TIER: &str = "sandbox_tier";
     /// The liveness instant a transition event records.
     pub const LAST_SEEN_AT: &str = "last_seen_at";
+    /// The admin state a transition event moved OUT of.
+    pub const FROM_ADMIN_STATE: &str = "from_admin_state";
+    /// The admin state it moved INTO.
+    pub const TO_ADMIN_STATE: &str = "to_admin_state";
     /// The lease a `lease_acquired` row is about.
     pub const LEASE_ID: &str = "lease_id";
     /// The fleet that lease claimed.
@@ -84,6 +90,14 @@ pub mod event_type {
     pub const RUNNER_ONLINE: &str = "runner_online";
     /// A runner took a lease.
     pub const LEASE_ACQUIRED: &str = "lease_acquired";
+    /// A runner stopped beating for longer than it may.
+    ///
+    /// Written by the liveness sweep, once per stale episode — the dedup key is
+    /// the last-seen instant, so an hour of silence is one row rather than one
+    /// row every heartbeat interval.
+    pub const RUNNER_OFFLINE: &str = "runner_offline";
+    /// A draining runner finished its last lease.
+    pub const RUNNER_DRAINED: &str = "runner_drained";
     /// A runner gave a lease back, having reported on it.
     ///
     /// The closing bracket of [`LEASE_ACQUIRED`]: the two are written by the
@@ -133,4 +147,4 @@ pub const LAST_SEEN_NEVER: i64 = 0;
 /// and RULE UFS is explicit that a literal with a prior `const` declaration is
 /// imported, never restated. Two spellings of "active" would mean a runner the
 /// authenticator admits and this crate's writes consider dead.
-pub use afd_state::sql::ADMIN_STATE_ACTIVE;
+pub use afd_state::sql::{ADMIN_STATE_ACTIVE, ADMIN_STATE_DRAINED, ADMIN_STATE_DRAINING};
