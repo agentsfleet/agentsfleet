@@ -13,8 +13,10 @@ mod error;
 mod frontmatter;
 mod model;
 mod prepare;
+mod preview;
 mod validate;
 
 pub use error::{Error, InvalidBundle, Result};
 pub use model::{ImportBody, PreparedBundle, Requirements, SourceKind, SupportFile, SupportManifest};
 pub use prepare::prepare;
+pub use preview::{Preview, Previewer};
