@@ -16,8 +16,11 @@ Porting `/v1/runners` to `agentsfleetd-rs`. Spec
 - ✅ **§2 approval-gate DECISION** — rule match, condition, route table
 - ✅ **§2 approval-gate READ side** — recorded reference, mirror-then-durable
   decision, anomaly counter
-- ⏳ **§2 remainder — NEXT.** The gate's WRITE side (park, card detail, pause),
-  the run-estimate debit, `ExecutionPolicy`. See Next Steps.
+- ✅ **§2 approval-gate WRITE side** — park, card detail (two halves as two
+  TYPES), pause + readiness clear, and the pass that composes read and write.
+  `Admission` gained its `Await` arm.
+- ⏳ **§2 remainder — NEXT.** The run-estimate debit, `ExecutionPolicy` + the
+  lease network rules, the router arm. See Next Steps.
 - ⏳ §3 report, §4 activity/memory/bundles/mint, §6 sweepers, §7 harness
 
 **No blockers.** Everything below is local and reversible.
@@ -89,7 +92,7 @@ Pre-existing, unrelated to this work, and green with `--all-features`.
 
 ## Next Steps
 
-1. **The approval gate's WRITE half.** The read side is done
+1. ~~**The approval gate's WRITE half.**~~ DONE. The read side was done
    (`approval_gate_async.zig`, `approval_gate_anomaly.zig`). Remaining:
    `approval_gate_park.zig` (122 — `parkEvent`, `logGateActivity`),
    `approval_gate_detail.zig` (306 — the card's two-source detail: the
@@ -136,10 +139,48 @@ Pre-existing, unrelated to this work, and green with `--all-features`.
 - **`UZ-RUN-015` must answer 402.** The stock runner classifies a renew refusal
   by BOTH status and code — `control_plane_client_test.zig:42` pins that the
   same code on any other terminal status is NOT a budget breach.
-- **Write 5 (`UPSERT core.fleet_sessions SET execution_id`) is documentation
-  drift.** `data_flow.md` §C lists it among the six lease writes; the Zig lease
-  path does NOT make it — `fleet_session.zig` only CLEARs a stale handle. Do not
-  invent the write to match the diagram. **Open Indy decision, due at step 3.**
+- **Write 5 (`UPSERT core.fleet_sessions SET execution_id`) — DECIDED, and the
+  earlier framing here was wrong.** This was recorded as "documentation drift",
+  which a repo-wide trace disproves. `core.fleet_sessions.execution_id` is dead
+  end to end in the Zig: **zero** production writers set it to a value, the one
+  production statement touching it is `CLEAR_STALE_EXECUTION` (sets it to
+  `NULL`), and **zero** production readers select it — `SELECT_FLEET_WITH_SESSION`,
+  the claim read, takes `s.context_json` and nothing else. The only writers of a
+  real value are two integration-test fixtures that hand-craft a busy row so
+  they can watch the clear fire. The `IS NOT NULL` guard therefore makes that
+  clear a permanent no-op, and `FleetSession.execution_id` /
+  `execution_started_at` are always `null`/`0` inside a `@sizeOf == 424`
+  assertion.
+
+  So `data_flow.md` is not over-describing: it describes a designed feature
+  that was never wired. The Zig has half an implementation — the clear without
+  the set. "Follow the Zig" was not a reason; it was a Zig gap mistaken for a
+  specification.
+
+  **Decision (Indy, this session): do not port Write 5, and do not port
+  `CLEAR_STALE_EXECUTION` either.** The reason is that `execution_id` would be a
+  weaker duplicate of a truth we already own: `fleet.runner_leases` answers "is
+  this fleet executing, since when, by whom, until when" WITH a fencing token, a
+  `leased_until` TTL, a `UNIQUE runner_affinity` and a reclaim sweeper.
+  `execution_id` answers the same question with no fence and no expiry — which
+  is precisely why it needs crash recovery. It can only go stale. The Rust is
+  currently clean of the whole mechanism (verified: no reference anywhere in
+  `rustd/`); keep it that way.
+
+  Two follow-ups, neither blocking M177: correct `data_flow.md` to name
+  `fleet.runner_leases` as the source for "executing right now" (NOT to say "the
+  daemon does not make this write", which would enshrine the gap); and raise the
+  column itself as its own work item — recommendation is to DROP it plus the
+  clear, the two struct fields and the two fixtures. If a cheap denormalised
+  busy-flag is ever wanted for a fleet-list view (a legitimate read-amplification
+  argument), it must be set INSIDE the lease-issue statement so it is atomic with
+  the lease row and repairable from it — never as a separate write at a separate
+  moment, which is the exact shape that drifts.
+
+  One open constraint: `runner_leases` is in the `fleet` schema and
+  `fleet_sessions` in `core`, so a grant boundary keeping the tenant status
+  surface out of `fleet` would change the plumbing of the doc fix (not the
+  conclusion). Worth checking when that surface is built.
 - **The credit metric is a SEAM.** `debit_receive` returns `Deducted(Nanos)`
   instead of calling a meter inline. If §6/M181 never attaches the instrument,
   the metric silently never fires and no test in either milestone catches it.
@@ -204,10 +245,7 @@ Pre-existing, unrelated to this work, and green with `--all-features`.
 
 ## Open questions for Indy
 
-1. **Write 5** — port the `fleet_sessions` busy-marking the diagram describes,
-   or follow the Zig and leave it out? Recommend following the Zig and
-   correcting `data_flow.md`, since row-equivalence is the graded claim.
-2. `MAX_READY_CANDIDATES_PER_POLL` (64) as an operator knob? Analysis says no —
+1. `MAX_READY_CANDIDATES_PER_POLL` (64) as an operator knob? Analysis says no —
    `HRANDFIELD` samples uniformly so it cannot starve.
-3. Can a tenant *require* an isolation class, or only be told which one it got?
+2. Can a tenant *require* an isolation class, or only be told which one it got?
    Recommendation: told, for M177.
