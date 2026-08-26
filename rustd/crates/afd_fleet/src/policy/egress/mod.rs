@@ -71,7 +71,7 @@ pub enum Misconfigured {
 pub fn build<'a>(
     binding: &RepositoryBinding,
     repair_branch: Option<&str>,
-) -> Result<Vec<HttpOriginPolicy<'a>>, Misconfigured> {
+) -> crate::Result<Vec<HttpOriginPolicy<'a>>, Misconfigured> {
     let mut requests: Vec<HttpRequestRule<'a>> = binding
         .repositories()
         .iter()
