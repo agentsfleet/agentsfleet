@@ -27,7 +27,7 @@
 //! name and the id, and the broker re-reads the vault itself when the runner
 //! asks. That is why [`Mintable`] has two fields and no third.
 
-pub mod integration;
+pub mod connector;
 
 use afd_core::error_code;
 use afd_core::id::Uuid7;
@@ -36,7 +36,7 @@ use serde_json::{Map, Value};
 use crate::error::{Result, credential_missing, vault_data_invalid};
 use crate::vault::{Held, Vault};
 
-pub use self::integration::Integration;
+pub use self::connector::{Connector, Connectors, Descriptor, Registry, Supply};
 
 /// A fleet declared a credential the vault does not hold.
 const EVENT_CREDENTIAL_NOT_FOUND: &str = "credential_not_found";
@@ -46,8 +46,14 @@ const EVENT_CREDENTIAL_NOT_FOUND: &str = "credential_not_found";
 pub struct Mintable {
     /// The name the fleet declared it under.
     pub name: Box<str>,
-    /// Which connector mints it.
-    pub integration: Integration,
+    /// Which connector mints it, by the name the broker resolves.
+    ///
+    /// The connector's NAME rather than a handle to the connector itself: this
+    /// value is what travels on the execution policy, and the broker resolves
+    /// it again through its own registry when the runner asks. A borrowed
+    /// `&dyn Connector` would tie the whole lease to the registry's lifetime
+    /// for a string it is about to serialize.
+    pub integration: Box<str>,
 }
 
 /// Every credential a fleet declared, routed.
@@ -118,7 +124,12 @@ impl Vault {
     /// end the event: a fleet must never run with a credential it declared and
     /// cannot read, because the tool that needs it will fail mid-run instead —
     /// after the work has been billed.
-    pub async fn declared(&self, workspace_id: &Uuid7, names: &[&str]) -> Result<Declared> {
+    pub async fn declared(
+        &self,
+        workspace_id: &Uuid7,
+        names: &[&str],
+        connectors: &dyn Connectors,
+    ) -> Result<Declared> {
         let held = self.open_many(workspace_id, names).await?;
         names
             .iter()
@@ -129,7 +140,7 @@ impl Vault {
                     .expose();
                 let stored: Value =
                     serde_json::from_slice(body).map_err(|_shape| vault_data_invalid())?;
-                declared.route((*name).to_owned(), stored)?;
+                declared.route((*name).to_owned(), stored, connectors)?;
                 Ok(declared)
             })
     }
@@ -143,13 +154,13 @@ impl Declared {
     /// stored handle is DROPPED here rather than carried forward — which is
     /// Invariant 1 as an ownership fact rather than as a rule about what to
     /// append where.
-    fn route(&mut self, name: String, stored: Value) -> Result<()> {
-        if let Some(integration) = integration::mintable(&stored) {
+    fn route(&mut self, name: String, stored: Value, connectors: &dyn Connectors) -> Result<()> {
+        if let Some(connector) = connector::mintable(connectors, &stored) {
             // `stored` is not moved into anything here: the handle is dropped
             // at the end of this branch, which is Invariant 1.
             self.mintable.push(Mintable {
                 name: name.into_boxed_str(),
-                integration,
+                integration: connector.name().into(),
             });
         } else {
             // A stored value the tool bridge addresses by field, so it has to
@@ -194,7 +205,7 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::{Declared, Integration};
+    use super::{Declared, Registry};
     use serde_json::json;
 
     /// Routes `stored` under `name`, which is the whole of what the batch read
@@ -203,7 +214,7 @@ mod tests {
         let mut declared = Declared::default();
         for (name, stored) in entries {
             declared
-                .route((*name).to_owned(), stored.clone())
+                .route((*name).to_owned(), stored.clone(), &Registry)
                 .expect("a well-formed credential routes");
         }
         declared
@@ -239,7 +250,7 @@ mod tests {
             declared.mintable(),
             [super::Mintable {
                 name: "gh".into(),
-                integration: Integration::Github,
+                integration: "github".into(),
             }]
         );
     }
@@ -281,7 +292,7 @@ mod tests {
         for body in [json!("just-a-token"), json!(["a", "b"]), json!(42)] {
             let mut declared = Declared::default();
             declared
-                .route("cred".to_owned(), body.clone())
+                .route("cred".to_owned(), body.clone(), &Registry)
                 .expect_err("a non-object stored credential cannot be addressed");
         }
     }
@@ -298,6 +309,6 @@ mod tests {
         // The names and the mintable half DO render — an operator debugging a
         // mint needs both, and neither is a secret.
         assert!(rendered.contains("fly"));
-        assert!(rendered.contains("Github"));
+        assert!(rendered.contains("github"));
     }
 }

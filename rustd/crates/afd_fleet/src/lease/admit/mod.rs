@@ -27,8 +27,8 @@
 //! here already resolved, on [`Request`], which is what lets every gate below
 //! be proven against a database with no vault in the picture.
 
+mod fault;
 mod gates;
-mod posture;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -40,7 +40,7 @@ use crate::money::rates::Posture;
 use crate::money::{Accounts, Charged, Nanos};
 use crate::sql;
 
-use self::posture::{PAYER, RECEIPT};
+use self::fault::{PAYER, RECEIPT};
 
 /// The event's workspace names no tenant.
 const EVENT_TENANT_UNRESOLVED: &str = "lease_tenant_lookup_failed";

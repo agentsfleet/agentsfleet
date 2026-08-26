@@ -1,5 +1,14 @@
 //! What a gate's own failure decides, as data rather than as control flow.
 //!
+//! # Named for the fault, not for the posture
+//!
+//! `Posture` is already taken, and by the money path: [`crate::money::Posture`]
+//! is who supplies the provider key, which is the spelling
+//! `billing.usage_ledger.posture` uses and therefore the one that keeps its
+//! name. A module called `posture` beside it meant [`super`] imported
+//! `posture::PAYER` and `Posture` on adjacent lines for two unrelated
+//! questions — who pays, and what a dead datastore means.
+//!
 //! `balanceCoversEstimate` contains three separate `catch return true` — on the
 //! acquire, on the wallet load, and on the rate lookup. Each is a fail-open
 //! decision a reviewer has to notice individually, and a fourth statement added
