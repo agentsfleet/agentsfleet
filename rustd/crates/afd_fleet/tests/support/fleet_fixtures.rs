@@ -176,6 +176,20 @@ impl Fixtures {
         Leases::new(self.database.clone(), self.queue().clone(), Entropy::new())
     }
 
+    /// The same store, over a queue that will not answer.
+    ///
+    /// Live Postgres, dead Redis — which is the shape a partial outage actually
+    /// takes and the only one that proves the publish path degrades rather than
+    /// failing the verb. A fixture that took BOTH away would refuse at the
+    /// first row read and never reach the publish at all.
+    pub(crate) fn leases_with_dead_queue(&self) -> Leases {
+        Leases::new(
+            self.database.clone(),
+            crate::queue::unreachable(),
+            Entropy::new(),
+        )
+    }
+
     /// The approval-gate store over this fixture's database.
     ///
     /// Built per call for the same reason [`Fixtures::leases`] is: a handle

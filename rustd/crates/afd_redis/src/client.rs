@@ -24,6 +24,8 @@
 use std::time::Duration;
 
 use redis::aio::ConnectionManager;
+#[cfg(feature = "test-util")]
+use redis::aio::ConnectionManagerConfig;
 use redis::{Cmd, FromRedisValue, Value};
 
 use crate::config::{RedisConfig, RedisRole};
@@ -75,6 +77,51 @@ impl Redis {
         let tls = config.is_tls();
         tracing::info!(role, request_timeout_ms, tls, event = "redis_connected");
         Ok(redis)
+    }
+
+    /// A handle over a Redis that has NOT been proven to answer.
+    ///
+    /// The mirror of [`afd_db::Db::unreachable`], and behind `test-util` for
+    /// the same reason: the ping in [`Redis::connect`] is the promise that a
+    /// boot which returned has a Redis that SERVES, and a constructor skipping
+    /// it would let a binary start against a queue that is not there.
+    ///
+    /// What it exists for is the other half of that promise — proving what the
+    /// request path does when the queue is gone. `ConnectionManager` is built
+    /// lazily against the configured address, so every command through it
+    /// fails at the socket rather than at a fake.
+    ///
+    /// # Why a test needs its OWN unreachable handle
+    ///
+    /// The integration lane's Redis is SHARED by every test binary running in
+    /// parallel, so the obvious injections — pausing the container, killing the
+    /// server, dropping the port — fail unrelated suites at the same instant.
+    /// A handle only one test holds is the only way to prove the drop path
+    /// without taking the queue away from everybody else.
+    ///
+    /// # Errors
+    /// Returns a config error when a certificate authority file was named but
+    /// not readable, and an unreachable error when the manager cannot even be
+    /// constructed — both happen before any socket.
+    #[cfg(feature = "test-util")]
+    pub fn unreachable(config: &RedisConfig) -> Result<Self> {
+        let client = build_client(config)?;
+        // `new_lazy_with_config` builds the manager WITHOUT opening a socket,
+        // which is the whole point: `connect` above opens one and pings it, and
+        // this seam exists to skip exactly that.
+        let manager =
+            ConnectionManager::new_lazy_with_config(client, ConnectionManagerConfig::new())
+                .map_err(|source| {
+                    Error::new(ErrorKind::Unreachable {
+                        role: config.role().tag(),
+                        source: Box::new(source),
+                    })
+                })?;
+        Ok(Self {
+            role: config.role(),
+            manager,
+            request_timeout: config.request_timeout(),
+        })
     }
 
     /// The role this connection serves.

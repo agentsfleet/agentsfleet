@@ -225,4 +225,17 @@ impl Fixtures {
             connectors: Registry::default(),
         }
     }
+
+    /// The same plane, over a queue that will not answer.
+    ///
+    /// Live Postgres, dead Redis. Every decision `Plane::activity` makes before
+    /// the publish is a DATABASE read, so this is the composition that reaches
+    /// the publish and fails only there — which is the whole claim the live
+    /// tail makes about itself.
+    pub(crate) fn plane_with_dead_queue(&self) -> Plane {
+        Plane {
+            leases: self.leases_with_dead_queue(),
+            ..self.plane()
+        }
+    }
 }

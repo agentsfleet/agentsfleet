@@ -136,6 +136,18 @@ fn daemon_environment(database: &str) -> MapEnv {
     )
 }
 
+/// The lane's Redis, as a configuration a second client can be built from.
+///
+/// The activity suite needs a SUBSCRIBER alongside the daemon's own connection,
+/// and `Booted` hands out a `Redis` rather than the config it was opened with —
+/// so the knobs are read again here rather than reached back through the
+/// daemon. Same three values `daemon_environment` passes it, which is what
+/// keeps the subscriber pointed at the server the publish lands on.
+pub(crate) fn redis_config() -> afd_redis::RedisConfig {
+    afd_redis::RedisConfig::from_url(afd_redis::RedisRole::Default, lane(REDIS_LANE_KNOB))
+        .with_ca_cert_file(std::env::var(REDIS_CA_LANE_KNOB).ok().map(Into::into))
+}
+
 /// A fleet, workspace and tenant no other scenario in this lane will name.
 ///
 /// Process id and a counter, in a version-7 spelling because every one of these
