@@ -39,6 +39,9 @@ pub const TEXT_LEN: usize = 36;
 /// true and keeps this module pure enough to test byte-for-byte.
 pub const ENTROPY_LEN: usize = 10;
 
+/// The identifier's raw width, before it is spelled with dashes.
+pub const BYTE_LEN: usize = 16;
+
 /// The largest instant the 48-bit millisecond field holds — the year 10889.
 ///
 /// Kept even though `uuid` owns the bit layout, because `uuid` MASKS an
@@ -88,6 +91,31 @@ impl Uuid7 {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// The sixteen raw bytes behind the canonical text.
+    ///
+    /// Wanted by anything that renders an identifier in a form other than the
+    /// canonical text — a compact reference in a branch name, a binary column
+    /// — without going through a second parser with its own opinion about
+    /// what canonical means.
+    ///
+    /// Decoded by the `uuid` crate, for the reason [`Uuid7::encode`] builds
+    /// through it: hex decoding is a solved, tested thing, and `id_format.zig`
+    /// hand-writes it only because Zig has no UUID library to call. That is a
+    /// constraint of the original, not a property of the design.
+    ///
+    /// The error arm is unreachable. [`first_violation`] admits only the
+    /// canonical lowercase spelling, which is a strict subset of what
+    /// `parse_str` accepts, so nothing that exists as a [`Uuid7`] can fail
+    /// here. It answers the nil identifier rather than panicking because this
+    /// runs on the request path, where an unreachable panic buys nothing and
+    /// costs availability.
+    #[must_use]
+    pub fn to_bytes(&self) -> [u8; BYTE_LEN] {
+        uuid::Uuid::parse_str(&self.0)
+            .unwrap_or_default()
+            .into_bytes()
     }
 
     /// Mints one identifier from an explicit instant and caller-supplied entropy.

@@ -14,6 +14,7 @@ pub mod build;
 pub mod context;
 pub mod egress;
 pub mod grants;
+pub mod repair;
 mod shape;
 
 #[cfg(test)]
