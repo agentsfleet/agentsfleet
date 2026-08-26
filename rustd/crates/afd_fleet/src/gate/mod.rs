@@ -24,12 +24,20 @@
 //! and a security property should be pinned by a unit test rather than by a
 //! live datastore.
 
+mod anomaly;
+mod pending;
 mod route;
+mod store;
 
 use afd_fleet_runtime::config::{Behavior, Condition, GatePolicy, GateRule};
 use serde_json::Value;
 
+pub use self::anomaly::Anomaly;
+pub use self::pending::{
+    Answer, DECISION_APPROVE, DECISION_DENY, Evaluation, GateRef, Status, evaluate,
+};
 pub use self::route::{RefState, Route, route};
+pub use self::store::{Gates, key};
 
 /// The rule field that matches any tool, or any action.
 const WILDCARD: &str = "*";
