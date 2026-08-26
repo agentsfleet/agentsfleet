@@ -59,7 +59,7 @@ use crate::e2e_seed::{
     seed_wallet,
 };
 
-use crate::support::{IDENTITY, install_subscriber};
+use crate::support::{IDENTITY, SESSION_PEPPER, install_subscriber};
 
 /// Where the lane publishes the Postgres it brought up.
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
@@ -132,6 +132,9 @@ fn daemon_environment(database: &str) -> MapEnv {
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
         ]
         .into_iter()
+        // Required at boot, and resolved rather than used: this lane boots the
+        // daemon for real, so it has to satisfy preflight in full.
+        .chain(SESSION_PEPPER)
         .chain(IDENTITY),
     )
 }

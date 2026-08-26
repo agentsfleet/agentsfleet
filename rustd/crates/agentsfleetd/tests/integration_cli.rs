@@ -85,6 +85,7 @@ fn lane_knobs() -> Vec<(&'static str, String)> {
         ("DATABASE_POOL_SIZE", LANE_POOL_SIZE.to_owned()),
     ]
     .into_iter()
+    .chain(support::SESSION_PEPPER.map(|(knob, value)| (knob, value.to_owned())))
     .chain(support::IDENTITY.map(|(knob, value)| (knob, value.to_owned())))
     .collect()
 }
@@ -129,6 +130,7 @@ fn spawn(args: &[&str], knobs: &[(&str, String)]) -> Child {
         "DATABASE_POOL_SIZE",
     ]
     .into_iter()
+    .chain(support::SESSION_PEPPER.map(|(knob, _value)| knob))
     .chain(support::IDENTITY_KNOBS)
     {
         command.env_remove(knob);

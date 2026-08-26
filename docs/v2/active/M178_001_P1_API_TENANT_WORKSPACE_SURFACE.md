@@ -61,7 +61,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_core/**` | EDIT | the `UZ-AUTH-*` session codes and their problem entries — the registry subset this milestone's refusals need |
 | `rustd/crates/afd_crypto/**` | EDIT | HMAC under a variable-length pepper key, which the device-flow code digest is computed with |
 | `rustd/crates/afd_redis/**` | EDIT | the approve and owner-checked abort transitions beside M176's verify-and-consume |
-| `rustd/Cargo.toml` | EDIT | new member |
+| `rustd/crates/afd_wire/**` | EDIT | the request and response shapes this milestone's routes exchange: the device-flow bodies (§1) and the tenant plane's envelopes (§2) |
+| `rustd/crates/afd_db/**` | EDIT | one `test-util` constructor, so a suite stubbing a pool-holding service answers with the refusal a real pool with no Postgres behind it gives, rather than inventing afd_db's failures from another crate |
+| `rustd/Cargo.toml` + `rustd/Cargo.lock` | EDIT | new member |
+| `docs/v2/active/M178_001_P1_API_TENANT_WORKSPACE_SURFACE.md` | EDIT | this spec: status, baseline, Discovery log, and the amendments to this table |
 | `make/test-integration.mk` | EDIT | tenant/workspace integration subset runs against the Rust binary |
 
 ## Applicable Rules
@@ -311,11 +314,25 @@ N/A — no files deleted.
   written at three sites and read at zero. (The grep is discriminating:
   `current_setting('fleet.allow_gate_purge', …)` IS read, by seven triggers.)
   Left unported per Product Clarity 4's superseded-path clause; the ownership
-  CHECK itself lands in full. **Awaiting Indy's sign-off** — asked Aug 27, 2026,
-  no answer within the window, so the port proceeded on the reading that adds no
-  behaviour. Re-adding it is a transaction-scoped one-liner, and it would need
-  the transaction: `sqlx` returns a connection to the pool between requests, so
-  a session-level setting would leak one tenant's identifier onto the next.
+  CHECK itself lands in full.
+
+  **Settled Aug 27, 2026 — not ported.** Two things decided it. First, the
+  readers were re-examined and every one is a Zig TEST: `common_authz_test.zig`
+  creates a policy inside the test body (lines 339–343) to prove the mechanism
+  and drops it again, so the setting has no production reader to serve — it is
+  scaffolding for a feature `schema/` never adopted. Second, Indy's standing
+  direction that this port reason in Rust rather than transcribe Zig: a session
+  GUC is a Zig-shaped answer to connection lifetime, and `sqlx` has a different
+  shape. Connections return to the pool between requests, so `set_config(…,
+  false)` would leak one tenant's identifier onto whichever request drew that
+  connection next — porting it faithfully would be a footgun guarding nothing.
+  The Rust answer to the same intent already landed: ownership is a route fact
+  the type system carries (commit `8ffa3dbd6`), enforced before a handler runs
+  rather than advertised to a policy engine that was never switched on.
+
+  If a real RLS policy is ever declared in `schema/`, the setting comes back
+  transaction-scoped — `set_config(…, true)` inside an explicit `sqlx`
+  transaction, never at session level — and that is a small, local change.
 
 - **§1 `token_name` is held to printable ASCII.** `UZ-AUTH-017`'s registry entry
   documents "1 to 64 characters from space through tilde"; the Zig store bounds
