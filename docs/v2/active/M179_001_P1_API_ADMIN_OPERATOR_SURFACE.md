@@ -108,7 +108,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **Dimension 2.1** — valid bundle → metadata + snapshot stored; content hash serves via the M177 route → Test `test_bundle_import_roundtrip`
 - **Dimension 2.2** — malicious/malformed bundles (oversize, bad manifest, path traversal in entries, credential values embedded) → rejected with documented codes; nothing stored → Test `test_bundle_import_rejects_hostile` — DONE
-- **Dimension 2.3** — preview performs zero vault reads (instrumented) → Test `test_bundle_preview_no_vault`
+- **Dimension 2.3** — preview performs zero vault reads (instrumented) → Test `test_bundle_preview_no_vault` — DONE
 
 ### §3 — Fleet-library importer and GitHub source
 
