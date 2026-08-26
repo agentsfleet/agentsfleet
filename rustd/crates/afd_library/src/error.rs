@@ -1,8 +1,7 @@
 //! The failure vocabulary for bundle ingestion and external sources.
 
 use afd_core::error_code::{
-    ErrorCode, FLEET_BUNDLE_FETCH_FAILED, FLEET_BUNDLE_INVALID,
-    FLEET_BUNDLE_STORAGE_UNAVAILABLE,
+    ErrorCode, FLEET_BUNDLE_FETCH_FAILED, FLEET_BUNDLE_INVALID, FLEET_BUNDLE_STORAGE_UNAVAILABLE,
 };
 
 use crate::source::SourceFailure;
@@ -103,6 +102,12 @@ pub enum Error {
     /// A downloaded source archive could not be decoded completely.
     #[error("Fleet Bundle archive is corrupt or truncated")]
     Archive(#[source] std::io::Error),
+    /// A GitHub redirect is not a valid URL.
+    #[error("Fleet Bundle source returned an invalid redirect")]
+    Redirect(#[source] url::ParseError),
+    /// A tar entry path is not UTF-8.
+    #[error("Fleet Bundle archive contains a non-UTF-8 path")]
+    ArchivePath(#[source] std::str::Utf8Error),
 }
 
 impl Error {
@@ -116,7 +121,11 @@ impl Error {
             Self::Storage(_) | Self::Catalogue(_) | Self::Snapshot(_) => {
                 FLEET_BUNDLE_STORAGE_UNAVAILABLE
             }
-            Self::Source(_) | Self::Github(_) | Self::Archive(_) => FLEET_BUNDLE_FETCH_FAILED,
+            Self::Source(_)
+            | Self::Github(_)
+            | Self::Archive(_)
+            | Self::Redirect(_)
+            | Self::ArchivePath(_) => FLEET_BUNDLE_FETCH_FAILED,
         }
     }
 

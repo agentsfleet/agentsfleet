@@ -115,7 +115,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 The importer pipeline (platform gallery + per-tenant onboarding) with the GitHub source behind a trait; rate-limit and failure classes preserved (ECL).
 
 - **Dimension 3.1** — import from a fixture GitHub source → catalogue rows parity vs the Zig importer → Test `test_library_import_parity` — DONE
-- **Dimension 3.2** — source failures (404, rate-limited, truncated download) → typed errors, no partial catalogue writes → Test `test_library_import_failure_classes`
+- **Dimension 3.2** — source failures (404, rate-limited, truncated download) → typed errors, no partial catalogue writes → Test `test_library_import_failure_classes` — DONE
 
 ### §4 — Operator plane: runners and streams
 

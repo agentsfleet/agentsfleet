@@ -38,7 +38,10 @@ impl Repository {
         if name.contains('/') || !valid_segment(owner) || !valid_segment(name) {
             return Err(SourceFailure::InvalidReference.into());
         }
-        Ok(Self { owner: owner.into(), name: name.into() })
+        Ok(Self {
+            owner: owner.into(),
+            name: name.into(),
+        })
     }
 }
 
@@ -73,7 +76,9 @@ impl GithubSource {
         );
         let first = self.send(&url).await?;
         if first.status().is_redirection() {
-            let location = first.headers().get(reqwest::header::LOCATION)
+            let location = first
+                .headers()
+                .get(reqwest::header::LOCATION)
                 .and_then(|value| value.to_str().ok())
                 .ok_or(SourceFailure::UnsafeArchive)?;
             validate_redirect(location)?;
@@ -87,8 +92,12 @@ impl GithubSource {
     }
 
     async fn send(&self, url: &str) -> Result<reqwest::Response> {
-        self.client.get(url).header(reqwest::header::USER_AGENT, USER_AGENT)
-            .send().await.map_err(Error::Github)
+        self.client
+            .get(url)
+            .header(reqwest::header::USER_AGENT, USER_AGENT)
+            .send()
+            .await
+            .map_err(Error::Github)
     }
 }
 
@@ -106,7 +115,10 @@ async fn response_bytes(response: reqwest::Response) -> Result<Vec<u8>> {
         403 | 429 => return Err(SourceFailure::RateLimited.into()),
         _ => {}
     }
-    let mut response = response.error_for_status().map_err(Error::Github)?.bytes_stream();
+    let mut response = response
+        .error_for_status()
+        .map_err(Error::Github)?
+        .bytes_stream();
     let mut bytes = Vec::new();
     while let Some(chunk) = response.next().await {
         let chunk = chunk.map_err(Error::Github)?;
@@ -119,7 +131,7 @@ async fn response_bytes(response: reqwest::Response) -> Result<Vec<u8>> {
 }
 
 fn validate_redirect(location: &str) -> Result<()> {
-    let url = reqwest::Url::parse(location).map_err(|_| SourceFailure::UnsafeArchive)?;
+    let url = reqwest::Url::parse(location).map_err(Error::Redirect)?;
     let allowed_host = matches!(url.host_str(), Some(API_HOST | CODELOAD_HOST));
     if url.scheme() == "https" && allowed_host {
         Ok(())
@@ -133,7 +145,9 @@ fn valid_segment(value: &str) -> bool {
         && value.len() <= MAX_SEGMENT_LEN
         && value != "."
         && value != PARENT_SEGMENT
-        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
 }
 
 fn extract(compressed: &[u8], reference: &str, revision: &str) -> Result<ImportBody> {
@@ -191,7 +205,7 @@ fn extract_tar(bytes: &[u8], reference: &str, revision: &str) -> Result<ImportBo
 }
 
 fn safe_relative(raw: &[u8]) -> Result<Option<String>> {
-    let path = core::str::from_utf8(raw).map_err(|_| SourceFailure::UnsafeArchive)?;
+    let path = core::str::from_utf8(raw).map_err(Error::ArchivePath)?;
     if path.starts_with('/') || path.contains('\\') || path.contains('\0') {
         return Err(SourceFailure::UnsafeArchive.into());
     }

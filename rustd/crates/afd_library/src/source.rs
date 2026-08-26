@@ -60,7 +60,10 @@ where
     /// # Errors
     /// Returns the typed source class or a validation/persistence failure.
     pub async fn import(&self, reference: &str) -> Result<PreparedBundle> {
-        tracing::info!(event = "library_source_import_started", source_ref = reference);
+        tracing::info!(
+            event = "library_source_import_started",
+            source_ref = reference
+        );
         let body = self.source.fetch(reference).await?;
         self.imports.import(&body).await
     }

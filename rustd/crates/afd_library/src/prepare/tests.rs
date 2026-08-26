@@ -33,7 +33,9 @@ fn invalid(body: &ImportBody) -> InvalidBundle {
         | crate::Error::FrontmatterYaml { .. }
         | crate::Error::Source(_)
         | crate::Error::Github(_)
-        | crate::Error::Archive(_) => {
+        | crate::Error::Archive(_)
+        | crate::Error::Redirect(_)
+        | crate::Error::ArchivePath(_) => {
             panic!("validation cannot reach an I/O boundary")
         }
     }
