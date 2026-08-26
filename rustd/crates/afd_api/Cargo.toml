@@ -50,7 +50,7 @@ afd_observability.workspace = true
 afd_core.workspace = true
 # `json` for the probe bodies: unlike the problem+json envelope, which writes
 # its own content type, these are ordinary JSON responses.
-axum = { workspace = true, features = ["json", "matched-path"] }
+axum = { workspace = true, features = ["json", "matched-path", "query"] }
 http.workspace = true
 # The HTTP/1 connection policy: `axum::serve` cannot express a header bound, so
 # the builder is configured here and boot serves connections with it.

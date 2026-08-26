@@ -53,7 +53,7 @@ use http::{Method, StatusCode};
 
 use crate::admission::{Admission, admit, is_metered};
 use crate::auth::{Gate, plane_of, prove};
-use crate::handler::runner;
+use crate::handler::{operator, runner};
 use crate::route::{OpsRoute, Route, RouteMeta, RunnerOpsRoute, RunnerRoute};
 use crate::services::Services;
 
@@ -223,14 +223,11 @@ fn runner_handler<D: Serving>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
 fn runner_ops_handler<D: Serving>(verb: RunnerOpsRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
         RunnerOpsRoute::Register => Some(post(runner::enrolment::handle::<D>)),
-        // M179's operator surface. Enrolment lands here first because it is the
-        // only one of these the runner plane cannot exist without.
-        RunnerOpsRoute::List
-        | RunnerOpsRoute::Get
-        | RunnerOpsRoute::Patch
-        | RunnerOpsRoute::Events
-        | RunnerOpsRoute::Leases
-        | RunnerOpsRoute::Streams => None,
+        RunnerOpsRoute::List => Some(get(operator::runners::list::<D>)),
+        RunnerOpsRoute::Get => Some(get(operator::runners::detail::<D>)),
+        RunnerOpsRoute::Events => Some(get(operator::events::list::<D>)),
+        RunnerOpsRoute::Streams => Some(get(operator::streams::list::<D>)),
+        RunnerOpsRoute::Patch | RunnerOpsRoute::Leases => None,
     }
 }
 

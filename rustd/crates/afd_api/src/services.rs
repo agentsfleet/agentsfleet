@@ -33,6 +33,7 @@ use afd_fleet::credential::Minted;
 use afd_fleet::lease::Plane;
 use afd_fleet::memory::Captured;
 use afd_fleet::money::Nanos;
+use afd_fleet::streams::LiveStreams;
 use afd_wire::activity::ActivityFrame;
 use afd_wire::credentials::MintCredentialRequest;
 use afd_wire::memory::{MemoryDelta, MemoryPushRequest};
@@ -87,6 +88,9 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
     /// [`afd_fleet::bundle::Bundles`] for why the absence is a value rather
     /// than a `None` each handler would have to render for itself.
     fn bundles(&self) -> &Bundles;
+
+    /// Instance-local live stream metadata for the operator overview.
+    fn streams(&self) -> &LiveStreams;
 
     /// The instant this request's writes are stamped with.
     ///

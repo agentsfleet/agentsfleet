@@ -12,6 +12,9 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_wire::admin::{FleetStreamItem, FleetStreamsResponse};
 
+/// Default live-stream ceiling, shared with the Zig runtime setting.
+pub const SSE_MAX_STREAMS_DEFAULT: u32 = 64;
+
 /// A cloneable handle to this daemon instance's live stream metadata.
 #[derive(Debug, Clone)]
 pub struct LiveStreams(Arc<Inner>);
