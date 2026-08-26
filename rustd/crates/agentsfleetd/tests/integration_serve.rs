@@ -61,9 +61,11 @@ fn lane_environment() -> MapEnv {
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
         ]
         .into_iter()
-        // The provider is required at boot. This lane boots for real, so it
-        // must supply one — resolved rather than dialled, so well-formed is
-        // enough and nothing here reaches the issuer.
+        // The provider and the login pepper are required at boot. This lane
+        // boots for real, so it must supply both — each is resolved rather
+        // than used, so well-formed is enough and nothing here reaches the
+        // issuer or takes a digest.
+        .chain(support::SESSION_PEPPER)
         .chain(support::IDENTITY),
     )
 }
