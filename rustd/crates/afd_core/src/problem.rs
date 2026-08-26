@@ -289,6 +289,15 @@ const ENTRIES: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::RUNNER_NOT_FOUND,
+        status: 404,
+        title: "Runner not found",
+        hint: "No runner matches this runner_id. Verify the platform admin minted the runner before mutating it.",
+        user_message: Some(
+            "We couldn't find that runner. It may have been removed — refresh the list.",
+        ),
+    },
+    Problem {
         code: error_code::RUN_BUDGET_EXCEEDED,
         // 402, and the status is load-bearing rather than decorative: the stock
         // runner classifies a renew refusal by BOTH status and code, and

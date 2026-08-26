@@ -245,6 +245,13 @@ pub const RUN_LEASE_LOST: ErrorCode = ErrorCode::declare("UZ-RUN-011");
 /// operator tops up for one and edits `TRIGGER.md` for the other.
 pub const RUN_LEASE_RENEWAL_NO_CREDITS: ErrorCode = ErrorCode::declare("UZ-RUN-012");
 
+/// No runner row matches an operator-supplied runner id.
+///
+/// `ERR_RUNNER_NOT_FOUND` in the Zig registry. Unlike
+/// [`RUN_INVALID_RUNNER_TOKEN`], the caller has already authenticated on the
+/// operator plane, so naming the missing resource is safe and actionable.
+pub const RUNNER_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-RUN-014");
+
 /// A fleet has reached a spend ceiling its own author declared.
 ///
 /// `ERR_RUN_BUDGET_EXCEEDED`. Referenced from the Zig registry, never declared
@@ -401,6 +408,7 @@ pub const REGISTRY: &[ErrorCode] = &[
     RUN_LEASE_EXCEEDED_MAX_RUNTIME,
     RUN_LEASE_LOST,
     RUN_LEASE_RENEWAL_NO_CREDITS,
+    RUNNER_NOT_FOUND,
     RUN_BUDGET_EXCEEDED,
     AGENTSFLEET_CREDENTIAL_MISSING,
     FLEET_BUNDLE_NOT_FOUND,

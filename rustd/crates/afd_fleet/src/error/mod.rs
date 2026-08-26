@@ -110,6 +110,12 @@ pub(crate) enum ErrorKind {
     #[error("the presented runner token proved a row that no longer exists")]
     RunnerVanished,
 
+    #[error("no runner matches the operator-supplied id")]
+    RunnerNotFound,
+
+    #[error("a runner row holds an unknown admin state")]
+    AdminStateMalformed,
+
     #[error("a {table} row holds a value this daemon cannot read: {column}")]
     RowMalformed {
         table: &'static str,
@@ -279,6 +285,16 @@ impl Error {
 /// allocated would mean it came from somewhere other than the contract.
 pub(crate) fn envelope_field(field: &'static str) -> Error {
     Error::new(ErrorKind::Envelope { field })
+}
+
+/// Reports an operator request addressed to no runner row.
+pub(crate) fn runner_not_found() -> Error {
+    Error::new(ErrorKind::RunnerNotFound)
+}
+
+/// Reports a runner row whose administrative state is outside the wire enum.
+pub(crate) fn admin_state_malformed() -> Error {
+    Error::new(ErrorKind::AdminStateMalformed)
 }
 
 /// Refuses a request the caller can correct, quoting the Zig detail verbatim.
