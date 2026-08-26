@@ -13,6 +13,7 @@ categories.workspace = true
 
 [dependencies]
 afd_core.workspace = true
+afd_db.workspace = true
 bytes.workspace = true
 flate2.workspace = true
 futures-util.workspace = true
@@ -21,8 +22,10 @@ object_store.workspace = true
 reqwest.workspace = true
 semver.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 serde_yaml_ng.workspace = true
 sha2.workspace = true
+sqlx.workspace = true
 tar.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
@@ -33,7 +36,6 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 afd_fleet.workspace = true
 async-trait.workspace = true
 futures-util.workspace = true
-serde_json.workspace = true
 
 [lints]
 workspace = true

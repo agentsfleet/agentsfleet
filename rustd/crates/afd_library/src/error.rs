@@ -90,6 +90,12 @@ pub enum Error {
     /// Validated metadata could not be committed to the catalogue.
     #[error("Fleet Bundle catalogue write failed")]
     Catalogue(#[source] Box<dyn std::error::Error + Send + Sync>),
+    /// A pool connection could not be acquired.
+    #[error(transparent)]
+    Pool(#[from] afd_db::Error),
+    /// Persisted catalogue JSON did not match its schema.
+    #[error("Fleet Bundle catalogue contains malformed JSON")]
+    CatalogueJson(#[from] serde_json::Error),
     /// Validated files could not be encoded as a canonical tar.
     #[error("Fleet Bundle snapshot encoding failed")]
     Snapshot(#[source] std::io::Error),
@@ -108,6 +114,15 @@ pub enum Error {
     /// A tar entry path is not UTF-8.
     #[error("Fleet Bundle archive contains a non-UTF-8 path")]
     ArchivePath(#[source] std::str::Utf8Error),
+    /// A catalogue query failed with its statement context retained.
+    #[error("Fleet Bundle catalogue query failed during {context}")]
+    Database {
+        /// Operation being attempted.
+        context: &'static str,
+        /// Database refusal.
+        #[source]
+        source: sqlx::Error,
+    },
 }
 
 impl Error {
@@ -118,7 +133,11 @@ impl Error {
             Self::Invalid(_) | Self::FrontmatterUtf8 { .. } | Self::FrontmatterYaml { .. } => {
                 FLEET_BUNDLE_INVALID
             }
-            Self::Storage(_) | Self::Catalogue(_) | Self::Snapshot(_) => {
+            Self::Storage(_)
+            | Self::Catalogue(_)
+            | Self::Pool(_)
+            | Self::CatalogueJson(_)
+            | Self::Snapshot(_) => {
                 FLEET_BUNDLE_STORAGE_UNAVAILABLE
             }
             Self::Source(_)
@@ -126,6 +145,7 @@ impl Error {
             | Self::Archive(_)
             | Self::Redirect(_)
             | Self::ArchivePath(_) => FLEET_BUNDLE_FETCH_FAILED,
+            Self::Database { .. } => FLEET_BUNDLE_STORAGE_UNAVAILABLE,
         }
     }
 
@@ -136,8 +156,10 @@ impl Error {
             self,
             Self::Storage(_)
                 | Self::Catalogue(_)
+                | Self::Pool(_)
                 | Self::Source(SourceFailure::RateLimited)
                 | Self::Github(_)
+                | Self::Database { .. }
         )
     }
 }
@@ -169,6 +191,10 @@ impl From<SourceFailure> for Error {
 impl Error {
     pub(crate) fn catalogue(source: impl std::error::Error + Send + Sync + 'static) -> Self {
         Self::Catalogue(Box::new(source))
+    }
+
+    pub(crate) fn database(context: &'static str) -> impl Fn(sqlx::Error) -> Self {
+        move |source| Self::Database { context, source }
     }
 }
 
