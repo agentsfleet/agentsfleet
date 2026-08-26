@@ -109,10 +109,22 @@ async fn test_boot_to_ready_on_compose() {
         .await
         .expect("the lane's Postgres and Redis are up");
 
+    // Every task the daemon spawns, in spawn order: the four sweepers §6 put
+    // under the supervisor, then the accept loop. Asserted as the WHOLE
+    // inventory rather than as a `contains`, because the claim this test makes
+    // is C2 — nothing runs outside the supervisor — and a subset check would
+    // pass for a sweeper that had quietly gone back to a bare `tokio::spawn`
+    // and so would never be cancelled at shutdown.
     assert_eq!(
         supervisor.inventory(),
-        vec![agentsfleetd::serve::ACCEPT_LOOP],
-        "a booted daemon supervises its accept loop"
+        vec![
+            agentsfleetd::sweepers::LIVENESS,
+            agentsfleetd::sweepers::RECLAIM,
+            agentsfleetd::sweepers::RETENTION,
+            agentsfleetd::sweepers::REPAIR,
+            agentsfleetd::serve::ACCEPT_LOOP,
+        ],
+        "a booted daemon supervises its sweepers and its accept loop"
     );
     assert_ne!(
         booted.address.port(),

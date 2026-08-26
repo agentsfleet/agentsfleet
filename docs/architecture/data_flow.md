@@ -858,8 +858,8 @@ its only debit. So during cutover the two daemons charge differently at lease �
 the Rust one debits a floor-token run estimate that the Zig one defers to
 `/renew`. This is a deliberate, declared divergence rather than a port defect
 (Indy, M177 §2): the Rust daemon is written to the documented behaviour, the
-Zig daemon is not being changed, and M181 §4 carries the divergence into the
-cutover register. Anything reconciling ledger rows across the two daemons has
+Zig daemon is not being changed, and the cutover-soak milestone named in
+[`roadmap.md`](./roadmap.md) carries the divergence into the cutover register. Anything reconciling ledger rows across the two daemons has
 to know which one wrote them.
 
 **Slack-resident answer round-trip (M106).** For the Slack producer in §"B. TRIGGER" two connector-specific hops bracket this generic trace without altering it. *At ingress:* `connectors/slack/thread.zig` does a best-effort re-read of the recent thread (Slack `conversations.replies`, bounded to the last-N messages) so the leased `request_json` carries same-thread context. It **never throws**: a failed or absent re-fetch degrades to an empty thread, and the answer still runs from the mention alone. *On the way out:* the answer is not posted from the report handler directly. Step 7's report path calls `enqueueOutboundAnswer` (`fleet/service_report.zig`) — if the reporting fleet has a `core.connector_channels` binding it enqueues a `provider`-tagged job onto the generic `connector:outbound` stream (`queue/connector_outbound.zig`); a non-connector fleet, empty answer, or any failure is a logged no-op that never fails the finalized report. The boot-started `outbound/worker.zig` consumer (the one blocking Redis consumer sized in [`scaling.md`](./scaling.md)) then reads the job, routes it by `provider`, and posts the answer back in-thread with bounded retry + pending-first redelivery. The core report path stays provider-agnostic (Invariant 9) — the worker is the only place a connector poster is imported.
