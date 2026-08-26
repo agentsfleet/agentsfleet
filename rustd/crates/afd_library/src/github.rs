@@ -1,0 +1,215 @@
+//! GitHub tarball transport and safe archive extraction.
+
+use std::io::Read as _;
+
+use flate2::read::GzDecoder;
+use futures_util::StreamExt as _;
+
+use crate::{BundleSource, Error, ImportBody, Result, SourceFailure, SourceKind, SupportFile};
+
+const API_HOST: &str = "api.github.com";
+const CODELOAD_HOST: &str = "codeload.github.com";
+const USER_AGENT: &str = "agentsfleetd";
+const SKILL_PATH: &str = "SKILL.md";
+const TRIGGER_PATH: &str = "TRIGGER.md";
+const PARENT_SEGMENT: &str = "..";
+const MAX_SEGMENT_LEN: usize = 100;
+const MAX_COMPRESSED_BYTES: usize = 8 * 1024 * 1024;
+const MAX_EXPANDED_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_TAR_ENTRIES: usize = 4096;
+const MAX_ENTRY_BYTES: u64 = 200 * 1024;
+
+/// A validated GitHub `owner/repository` pair.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Repository {
+    owner: String,
+    name: String,
+}
+
+impl Repository {
+    /// Parses exactly one slash and safe URL-segment characters.
+    ///
+    /// # Errors
+    /// Refuses empty, traversal, overlong, and injection-shaped segments.
+    pub fn parse(reference: &str) -> Result<Self> {
+        let Some((owner, name)) = reference.split_once('/') else {
+            return Err(SourceFailure::InvalidReference.into());
+        };
+        if name.contains('/') || !valid_segment(owner) || !valid_segment(name) {
+            return Err(SourceFailure::InvalidReference.into());
+        }
+        Ok(Self { owner: owner.into(), name: name.into() })
+    }
+}
+
+/// Production GitHub source with redirects disabled and inspected explicitly.
+#[derive(Debug, Clone)]
+pub struct GithubSource {
+    client: reqwest::Client,
+    revision: String,
+}
+
+impl GithubSource {
+    /// Builds a source for one branch, tag, or commit spelling.
+    ///
+    /// # Errors
+    /// Refuses an unsafe revision or a client-construction failure.
+    pub fn new(revision: impl Into<String>) -> Result<Self> {
+        let revision = revision.into();
+        if !valid_segment(&revision) {
+            return Err(SourceFailure::InvalidReference.into());
+        }
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(Error::Github)?;
+        Ok(Self { client, revision })
+    }
+
+    async fn download(&self, repository: &Repository) -> Result<Vec<u8>> {
+        let url = format!(
+            "https://{API_HOST}/repos/{}/{}/tarball/{}",
+            repository.owner, repository.name, self.revision
+        );
+        let first = self.send(&url).await?;
+        if first.status().is_redirection() {
+            let location = first.headers().get(reqwest::header::LOCATION)
+                .and_then(|value| value.to_str().ok())
+                .ok_or(SourceFailure::UnsafeArchive)?;
+            validate_redirect(location)?;
+            let second = self.send(location).await?;
+            if second.status().is_redirection() {
+                return Err(SourceFailure::UnsafeArchive.into());
+            }
+            return response_bytes(second).await;
+        }
+        response_bytes(first).await
+    }
+
+    async fn send(&self, url: &str) -> Result<reqwest::Response> {
+        self.client.get(url).header(reqwest::header::USER_AGENT, USER_AGENT)
+            .send().await.map_err(Error::Github)
+    }
+}
+
+impl BundleSource for GithubSource {
+    async fn fetch(&self, reference: &str) -> Result<ImportBody> {
+        let repository = Repository::parse(reference)?;
+        let compressed = self.download(&repository).await?;
+        extract(&compressed, reference, &self.revision)
+    }
+}
+
+async fn response_bytes(response: reqwest::Response) -> Result<Vec<u8>> {
+    match response.status().as_u16() {
+        404 => return Err(SourceFailure::NotFound.into()),
+        403 | 429 => return Err(SourceFailure::RateLimited.into()),
+        _ => {}
+    }
+    let mut response = response.error_for_status().map_err(Error::Github)?.bytes_stream();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.next().await {
+        let chunk = chunk.map_err(Error::Github)?;
+        if bytes.len().saturating_add(chunk.len()) > MAX_COMPRESSED_BYTES {
+            return Err(SourceFailure::UnsafeArchive.into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
+}
+
+fn validate_redirect(location: &str) -> Result<()> {
+    let url = reqwest::Url::parse(location).map_err(|_| SourceFailure::UnsafeArchive)?;
+    let allowed_host = matches!(url.host_str(), Some(API_HOST | CODELOAD_HOST));
+    if url.scheme() == "https" && allowed_host {
+        Ok(())
+    } else {
+        Err(SourceFailure::UnsafeArchive.into())
+    }
+}
+
+fn valid_segment(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_SEGMENT_LEN
+        && value != "."
+        && value != PARENT_SEGMENT
+        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+}
+
+fn extract(compressed: &[u8], reference: &str, revision: &str) -> Result<ImportBody> {
+    if compressed.is_empty() || compressed.len() > MAX_COMPRESSED_BYTES {
+        return Err(SourceFailure::Truncated.into());
+    }
+    let mut decoder = GzDecoder::new(compressed).take(MAX_EXPANDED_BYTES + 1);
+    let mut expanded = Vec::new();
+    decoder.read_to_end(&mut expanded).map_err(Error::Archive)?;
+    if u64::try_from(expanded.len()).is_err() || expanded.len() as u64 > MAX_EXPANDED_BYTES {
+        return Err(SourceFailure::UnsafeArchive.into());
+    }
+    extract_tar(&expanded, reference, revision)
+}
+
+fn extract_tar(bytes: &[u8], reference: &str, revision: &str) -> Result<ImportBody> {
+    let mut skill = None;
+    let mut trigger = None;
+    let mut support_files = Vec::new();
+    let mut archive = tar::Archive::new(bytes);
+    let entries = archive.entries().map_err(Error::Archive)?;
+    for (index, entry) in entries.enumerate() {
+        if index >= MAX_TAR_ENTRIES {
+            return Err(SourceFailure::UnsafeArchive.into());
+        }
+        let mut entry = entry.map_err(Error::Archive)?;
+        if entry.header().entry_type().is_symlink() || entry.header().entry_type().is_hard_link() {
+            return Err(SourceFailure::UnsafeArchive.into());
+        }
+        if !entry.header().entry_type().is_file() {
+            continue;
+        }
+        let path = safe_relative(&entry.path_bytes())?;
+        let Some(path) = path else { continue };
+        if entry.size() > MAX_ENTRY_BYTES {
+            return Err(SourceFailure::UnsafeArchive.into());
+        }
+        let mut content = Vec::new();
+        entry.read_to_end(&mut content).map_err(Error::Archive)?;
+        match path.as_str() {
+            SKILL_PATH if skill.is_none() => skill = Some(content),
+            TRIGGER_PATH if trigger.is_none() => trigger = Some(content),
+            SKILL_PATH | TRIGGER_PATH => return Err(SourceFailure::UnsafeArchive.into()),
+            _ => support_files.push(SupportFile { path, content }),
+        }
+    }
+    Ok(ImportBody {
+        source_kind: SourceKind::Github,
+        source_ref: reference.into(),
+        source_revision: Some(revision.into()),
+        skill_markdown: skill.ok_or(SourceFailure::Truncated)?,
+        trigger_markdown: trigger,
+        support_files,
+    })
+}
+
+fn safe_relative(raw: &[u8]) -> Result<Option<String>> {
+    let path = core::str::from_utf8(raw).map_err(|_| SourceFailure::UnsafeArchive)?;
+    if path.starts_with('/') || path.contains('\\') || path.contains('\0') {
+        return Err(SourceFailure::UnsafeArchive.into());
+    }
+    let mut segments = path.split('/');
+    let _wrapper = segments.next().ok_or(SourceFailure::UnsafeArchive)?;
+    let relative: Vec<_> = segments.collect();
+    if relative.is_empty()
+        || relative
+            .iter()
+            .any(|part| part.is_empty() || *part == PARENT_SEGMENT)
+    {
+        return Err(SourceFailure::UnsafeArchive.into());
+    }
+    if relative.iter().any(|part| part.starts_with('.')) {
+        return Ok(None);
+    }
+    Ok(Some(relative.join("/")))
+}
+
+#[cfg(test)]
+mod tests;

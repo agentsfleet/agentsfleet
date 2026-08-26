@@ -30,7 +30,10 @@ fn invalid(body: &ImportBody) -> InvalidBundle {
         | crate::Error::Catalogue(_)
         | crate::Error::Snapshot(_)
         | crate::Error::FrontmatterUtf8 { .. }
-        | crate::Error::FrontmatterYaml { .. } => {
+        | crate::Error::FrontmatterYaml { .. }
+        | crate::Error::Source(_)
+        | crate::Error::Github(_)
+        | crate::Error::Archive(_) => {
             panic!("validation cannot reach an I/O boundary")
         }
     }

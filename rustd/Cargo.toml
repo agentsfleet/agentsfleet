@@ -99,6 +99,7 @@ hex = { version = "0.4.3", default-features = false, features = ["std"] }
 semver = { version = "1.0.28", default-features = false, features = ["std"] }
 serde_yaml_ng = { version = "0.10.0", default-features = false }
 tar = { version = "0.4.46", default-features = false }
+flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
 
 # Constant-time comparison. RULE CTM: a byte-by-byte `==` over a secret leaks how
 # much of a guess was right through how long it took to reject.
@@ -253,7 +254,7 @@ moka = { version = "0.12.16", default-features = false, features = ["future"] }
 # provider-issued opaque bytes, where a `+` or an `&` that escapes its field
 # changes the SHAPE of the form at the token endpoint. That is not a place to
 # carry our own encoder.
-reqwest = { version = "0.13.4", default-features = false, features = ["form", "rustls"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["form", "rustls", "stream"] }
 
 # Postgres. sqlx is the DRIVER here and nothing more: `migrate` and `macros` are
 # both off, because this workspace runs the Zig daemon's own ledger
