@@ -6,6 +6,52 @@ use serde::{Deserialize, Serialize};
 
 use crate::runner::AssignedPolicy;
 
+/// `PUT /v1/admin/platform-keys` metadata; key bytes already live in the vault.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlatformKeyPut<'a> {
+    /// Provider and vault-row name.
+    #[serde(borrow)]
+    pub provider: Cow<'a, str>,
+    /// Workspace holding that vault row.
+    #[serde(borrow)]
+    pub source_workspace_id: Cow<'a, str>,
+    /// Priced model selected as platform default.
+    #[serde(borrow)]
+    pub model: Cow<'a, str>,
+    /// Custom endpoint for the compatible-provider mode.
+    #[serde(borrow)]
+    pub base_url: Option<Cow<'a, str>>,
+}
+
+/// Reveal-free platform-key list item.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlatformKeyItem<'a> {
+    /// Provider and vault-row name.
+    #[serde(borrow)]
+    pub provider: Cow<'a, str>,
+    /// Workspace holding the key.
+    #[serde(borrow)]
+    pub source_workspace_id: Cow<'a, str>,
+    /// Active priced model, absent after deactivation.
+    #[serde(borrow)]
+    pub model: Option<Cow<'a, str>>,
+    /// Whether this row is the platform default.
+    pub active: bool,
+    /// Last mutation instant in epoch milliseconds.
+    pub updated_at: i64,
+}
+
+/// `GET /v1/admin/platform-keys` response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlatformKeysResponse<'a> {
+    /// Every active and inactive provider row.
+    #[serde(borrow)]
+    pub keys: Vec<PlatformKeyItem<'a>>,
+}
+
 /// Operator intent for a runner. Only `Active` admits a runner-plane call;
 /// every other value rejects one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

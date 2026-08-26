@@ -36,6 +36,7 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
 pub mod bundle;
+pub mod admin;
 pub mod credential;
 pub mod error;
 pub mod gate;
