@@ -54,7 +54,7 @@ impl Runners {
         )
     }
 
-    fn admin_event_id(&self, now: UnixMillis) -> Result<Uuid7> {
+    pub(super) fn admin_event_id(&self, now: UnixMillis) -> Result<Uuid7> {
         let mut bytes = [0u8; ENTROPY_LEN];
         self.entropy().fill(&mut bytes)?;
         Uuid7::encode(now, bytes).map_err(Into::into)
