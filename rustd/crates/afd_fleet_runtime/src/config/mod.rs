@@ -35,7 +35,7 @@ use crate::provider::{ProviderRegistry, StaticRegistry};
 
 pub use self::anomaly::{AnomalyRule, Pattern};
 pub use self::condition::Condition;
-pub use self::gates::{Behavior, GatePolicy, GateRule};
+pub use self::gates::{Behavior, DEFAULT_TIMEOUT_MS, GatePolicy, GateRule};
 pub use self::policy::{Budget, ContextBudget, Dollars, Network};
 pub use self::repository::{Access, Mode, Recorded, RepositoryBinding};
 pub use self::trigger::{Cron, Trigger, Webhook, WebhookSignature};
