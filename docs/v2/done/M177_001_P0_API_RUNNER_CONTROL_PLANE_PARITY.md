@@ -136,14 +136,14 @@ design). Registered for M181 §4's divergence register.
 - **Dimension 3.1** — report writes 7–12 row-parity on identical input → Test `test_report_writes_row_parity` — **DONE**
 - **Dimension 3.2** — stale fencing token → UZ-RUN-005; no row mutated → Test `test_report_stale_fence_rejected` — **DONE**
 - **Dimension 3.3** — duplicate report for one event → ledger stays at two rows per event; idempotent reply → Test `test_report_dedup_idempotent` — **DONE**
-- **Dimension 3.4** — renew clamps to max runtime and refuses on empty wallet → Tests
+- **Dimension 3.4** — **DONE** — renew clamps to max runtime and refuses on empty wallet → Tests
   `test_renew_clamps_to_the_hard_ceiling`, `test_renew_after_reclaim_is_lost`,
   `test_renew_coverage_refuses_an_empty_wallet` (three tests rather than the one
   originally named: the clamp is store-level SQL and the coverage refusal needs the
   composed `Plane`, so fusing them would make a wallet fixture a precondition of
   every deadline assertion. The `Lost` verdict joined them because it is the arm
   the clamp must NOT be confused with — a cap says the result is still wanted, a
-  loss says it will be refused) — **DONE**
+  loss says it will be refused)
 
 ### §4 — Activity, memory, bundles, mint
 
