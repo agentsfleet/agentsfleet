@@ -18,6 +18,9 @@ categories.workspace = true
 test-util = []
 
 [dependencies]
+# Hex for the key-material decode. Written straight into the caller's
+# buffer, so no copy of a key is left on the heap without a destructor.
+hex.workspace = true
 # The wire codes a crypto failure answers. No runtime, no transport — this is
 # the same value layer `test_core_dependency_freeze` polices.
 afd_core.workspace = true
