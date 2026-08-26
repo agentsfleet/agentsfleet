@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M177
 **Workstream:** 001
 **Date:** Aug 23, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — the demoable core of the port; cutover is impossible without it
 **Categories:** API
 **Batch:** B3 — serial after M176; M178/M179 fan out after it
@@ -99,10 +99,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The dedicated runner middleware: `Bearer agt_r` prefix required (no JWKS fall-through), timing-safe SHA-256 hash lookup in `fleet.runners` on every call (no memoized verdict — the lookup IS the revocation channel), `admin_state` mapping (miss → 401 UZ-RUN-001; non-active → 401 UZ-RUN-009; Postgres outage → 503 UZ-AUTH-004 so the runner backs off instead of counting an auth reject). Register (`POST /v1/runners`) gated by `runner:enroll` on the tenant plane; `me`, heartbeat (unconditionally `.ok`, revocation rides the reply), and the verb routes wired into the Route enum.
 
-- **Dimension 1.1** — `agt_r` validation matrix: valid/unknown/revoked/cordoned → documented code each → Test `test_runner_bearer_state_matrix`
-- **Dimension 1.2** — Postgres down during validation → 503 transport class, not 401 → Test `test_runner_auth_pg_outage_503`
-- **Dimension 1.3** — register mints once, stores only the hash, rejects missing `runner:enroll` with 403 UZ-AUTH-022 → Test `test_register_enroll_gate`
-- **Dimension 1.4** — revocation takes effect on the next request on every replica (no memo) → Test `test_revocation_immediate`
+- **Dimension 1.1** — `agt_r` validation matrix: valid/unknown/revoked/cordoned → documented code each → Test `test_runner_bearer_state_matrix` — **DONE**
+- **Dimension 1.2** — Postgres down during validation → 503 transport class, not 401 → Test `test_runner_auth_pg_outage_503` — **DONE**
+- **Dimension 1.3** — register mints once, stores only the hash, rejects missing `runner:enroll` with 403 UZ-AUTH-022 → Test `test_register_enroll_gate` — **DONE**
+- **Dimension 1.4** — revocation takes effect on the next request on every replica (no memo) → Test `test_revocation_immediate` — **DONE**
 
 ### §2 — Lease issue: assignment, money gates, policy
 
@@ -124,18 +124,18 @@ Dimension 2.1's row-parity oracle therefore compares against the shapes recorded
 from the ported SQL, not against a live Zig daemon (which would disagree here by
 design). Registered for M181 §4's divergence register.
 
-- **Dimension 2.1** — the six lease writes land in the worker's order, with row shapes equal to the shapes recorded from the ported SQL for identical input → Test `test_lease_writes_row_parity`
-- **Dimension 2.2** — two runners race one fleet → exactly one lease; loser gets the no-work reply → Test `test_lease_affinity_race`
-- **Dimension 2.3** — empty wallet → lease refused with the coverage code; no partial writes → Test `test_lease_money_gate_refusal`
-- **Dimension 2.4** — provider key rides `ExecutionPolicy` only and is zeroed post-serialization → Test `test_provider_key_placement`
+- **Dimension 2.1** — the six lease writes land in the worker's order, with row shapes equal to the shapes recorded from the ported SQL for identical input → Test `test_lease_writes_row_parity` — **DONE** as `test_seeded_row_shapes`, which records the lease row's populated-column set from the ported `INSERT` and diffs it against `information_schema`; the write ORDER is held by the statement being one `WITH`, and `test_select_assigns_a_ready_fleets_event` proves it end to end
+- **Dimension 2.2** — two runners race one fleet → exactly one lease; loser gets the no-work reply → Test `test_lease_affinity_race` — **DONE**
+- **Dimension 2.3** — empty wallet → lease refused with the coverage code; no partial writes → Test `test_lease_money_gate_refusal` — **DONE**
+- **Dimension 2.4** — provider key rides `ExecutionPolicy` only and is zeroed post-serialization → Test `test_provider_key_placement` — **DONE** as `a_mintable_credentials_handle_never_reaches_the_map`, `the_two_channels_stay_disjoint_across_a_mixed_set` and `a_declaration_never_renders_its_stored_values` (`afd_fleet::secrets`)
 
 ### §3 — Report: fence, flip, dedup
 
 `claimReport()` semantics in one atomic statement: fencing-token verification, lease flip, telemetry dedup via the UNIQUE `(event_id, charge_type)` ledger rows — writes 7–12. Stale writers rejected with UZ-RUN-005. Renew extends to `min(now + LEASE_TTL_MS, created_at + MAX_RUNTIME_MS)` and re-checks coverage (UZ-RUN-012 reachable).
 
-- **Dimension 3.1** — report writes 7–12 row-parity on identical input → Test `test_report_writes_row_parity`
-- **Dimension 3.2** — stale fencing token → UZ-RUN-005; no row mutated → Test `test_report_stale_fence_rejected`
-- **Dimension 3.3** — duplicate report for one event → ledger stays at two rows per event; idempotent reply → Test `test_report_dedup_idempotent`
+- **Dimension 3.1** — report writes 7–12 row-parity on identical input → Test `test_report_writes_row_parity` — **DONE**
+- **Dimension 3.2** — stale fencing token → UZ-RUN-005; no row mutated → Test `test_report_stale_fence_rejected` — **DONE**
+- **Dimension 3.3** — duplicate report for one event → ledger stays at two rows per event; idempotent reply → Test `test_report_dedup_idempotent` — **DONE**
 - **Dimension 3.4** — renew clamps to max runtime and refuses on empty wallet → Tests
   `test_renew_clamps_to_the_hard_ceiling`, `test_renew_after_reclaim_is_lost`,
   `test_renew_coverage_refuses_an_empty_wallet` (three tests rather than the one
@@ -143,17 +143,17 @@ design). Registered for M181 §4's divergence register.
   composed `Plane`, so fusing them would make a wallet fixture a precondition of
   every deadline assertion. The `Lost` verdict joined them because it is the arm
   the clamp must NOT be confused with — a cap says the result is still wanted, a
-  loss says it will be refused)
+  loss says it will be refused) — **DONE**
 
 ### §4 — Activity, memory, bundles, mint
 
 Activity frames validated and published to `fleet:{id}:activity`; memory GET hydrates the category-pinned byte window deterministically (every `core` entry newest-first, then newest non-core) and POST enforces the single-live-holder capture fencing; bundle GET streams by content hash from Cloudflare R2 (S3-compatible store); `credentials/mint` ports the broker — cached, singleton-per-key, minting short-lived integration tokens from vault handles via the config-driven registry (GitHub App + OAuth refresh).
 
-- **Dimension 4.1** — activity frame → one `PUBLISH` on the fleet channel; malformed frame → typed 4xx → Test `test_activity_publish`
-- **Dimension 4.2** — memory hydration byte-window ordering matches the documented rule on a crafted corpus → Test `test_memory_hydration_window`
-- **Dimension 4.3** — memory write with a stale capture fence rejected → Test `test_memory_capture_fencing`
-- **Dimension 4.4** — bundle fetch streams the exact stored bytes; unknown hash → 404 → Test `test_bundle_fetch_by_hash`
-- **Dimension 4.5** — mint: cache hit returns the live token; expiry re-mints once under concurrent callers → Test `test_mint_broker_single_flight`
+- **Dimension 4.1** — activity frame → one `PUBLISH` on the fleet channel; malformed frame → typed 4xx → Test `test_activity_publish` — **DONE**, with both drop branches covered separately: `test_activity_drops_a_frame_it_cannot_render` (the bridge refuses the frame) and `test_activity_publish_redis_down` (the queue refuses the publish, over a `Redis::unreachable` handle so the lane's shared server is untouched)
+- **Dimension 4.2** — memory hydration byte-window ordering matches the documented rule on a crafted corpus → Test `test_memory_hydration_window` — **DONE** as `test_core_entries_outrank_newer_non_core_ones`, `test_one_oversized_entry_still_hydrates`, `test_a_rejected_entry_ends_its_tier_rather_than_being_skipped`, `test_an_empty_set_hydrates_nothing` and `test_the_two_halves_partition_the_input` (`afd_fleet::memory::window`)
+- **Dimension 4.3** — memory write with a stale capture fence rejected → Test `test_memory_capture_fencing` — **DONE**
+- **Dimension 4.4** — bundle fetch streams the exact stored bytes; unknown hash → 404 → Test `test_bundle_fetch_by_hash` — **DONE**
+- **Dimension 4.5** — mint: cache hit returns the live token; expiry re-mints once under concurrent callers → Test `test_mint_broker_single_flight` — **DONE** as `concurrent_cold_callers_cost_exactly_one_upstream_mint` and `a_second_ask_is_served_from_the_cache` (`afd_fleet::credential::broker`)
 
 ### §5 — Fleet config resolution (afd_fleet_runtime)
 
@@ -161,8 +161,9 @@ STORED fleet-config resolution — `config_json` → typed policy — with valid
 
 **The install-time half is M178's, and the seam is the call site (Indy, this stream).** `parseTriggerMarkdownWithJson` — YAML frontmatter + markdown body → `config_json`, i.e. `config_markdown.zig` (338) + `yaml_frontmatter.zig` (272) — has FOUR non-test callers and not one of them is a route this milestone owns: `fleets/create.zig:123`, `fleets/patch_txn.zig:114` and `connectors/slack/channel_fleet.zig` are M178's tenant surface, and `fleet_library/importer.zig:165` is M179's bundle import. Porting it here would add a YAML crate and ~610 lines with zero callers in this PR, which the Dead Code Sweep and the crate-wide `unused_crate_dependencies` deny both refuse. `fleet_runtime/` is a LIBRARY straddling a boundary this family draws on route ownership — the section was authored whole because the Zig module family is whole, and the dimension is split to match where the callers actually are. The `serde_norway` implementation default travels with that half; no YAML crate is chosen here.
 
-- **Dimension 5.1** — the committed STORED fleet-config corpus (seeded from `tests/fixtures/fleetbundle/` and the `config_json` shapes `fleet_session.zig` resolves) parses to the same accept/reject verdicts and field values as `parseStoredFleetConfig` → Test `test_fleet_config_corpus_parity`
-- **Dimension 5.2** — malformed stored config (wrong types, unknown runtime keys, a runtime key at the top level) → same error classes as Zig → Test `test_fleet_config_rejects_malformed`
+- **Dimension 5.1** — the committed STORED fleet-config corpus (seeded from `tests/fixtures/fleetbundle/` and the `config_json` shapes `fleet_session.zig` resolves) parses to the same accept/reject verdicts and field values as `parseStoredFleetConfig` → Test `test_fleet_config_corpus_parity` — **DONE for the half this milestone owns; the corpus half is DEFERRED to M178 (Indy, this stream).** The row has two inputs and they belong to different milestones, which the §5 note above already decided: `parseTriggerMarkdownWithJson` — `config_markdown.zig` (338) + `yaml_frontmatter.zig` (272) — has four non-test callers, none of them a route this PR owns, so porting it here would add a YAML crate and ~610 lines with zero callers, which `unused_crate_dependencies` and the Dead Code Sweep both refuse. `serde_norway` is fixed there as the implementation default travelling with that half. The `tests/fixtures/fleetbundle/` documents are YAML frontmatter and are read by `frontmatter_fixtures_test.zig`; reading them from Rust on this branch would mean asserting against a conversion invented for the test rather than the one production will run. **What is DONE here is the `config_json` half — the shapes `fleet_session.zig` actually resolves** — held by `afd_fleet_runtime::config`'s twenty-eight accept/reject-and-field-value cases and, end to end, by `test_runner_suite_vs_rust_daemon`, whose fleet carries a stored document the pull path parses per lease. The `parseStoredFleetConfig` DIFF is separately unfalsifiable: M175 §6 deleted the Zig lanes, the same trade §7 records for row parity. **M178 inherits `test_fleet_config_corpus_parity` over the frontmatter corpus, alongside the reader it ports.**
+
+- **Dimension 5.2** — malformed stored config (wrong types, unknown runtime keys, a runtime key at the top level) → same error classes as Zig → Test `test_fleet_config_rejects_malformed` — **DONE** as the `afd_fleet_runtime::config` refusal cases, which cover the three classes this row names: a runtime key at the top level (`RuntimeKeyOutsideBlock`), an unknown key inside the block (`UnknownRuntimeKey`), and wrong-typed or half-declared fields (`a_gate_rule_without_a_tool_is_a_missing_field_not_a_shape_failure`, `an_access_level_without_a_list_is_refused`, `a_list_without_an_access_level_is_refused`)
 
 ### §6 — Sweepers and runner metrics
 
@@ -170,10 +171,10 @@ The four runner-plane sweepers as supervised tasks: liveness (derived three-cate
 
 **The overflow SPELLING belongs to M181 §5, not here (Indy, this stream).** This section owns the runner families and the property that a capped table cannot grow without bound — `runner_id` is caller-supplied, so an unbounded label set is a memory fault a hostile or misconfigured fleet could reach. It does NOT own what the overflow series is called. M181 §5 configures the metrics pipeline on `opentelemetry_sdk` rather than porting the Zig aggregator, and the OpenTelemetry specification marks overflow with the attribute `otel.metric.overflow=true` where the Zig uses an `_other` label value. Pinning `_other` in a P0 dimension HERE would either force the SDK decision by the back door or leave this milestone's rubric contradicting the one that owns continuity. So Dimension 6.4 asserts the bound and the constant memory; M181's Dimension 5.5 asserts the spelling, against the dashboards that actually read it.
 
-- **Dimension 6.1** — expired lease reclaimed with a strictly higher fencing token; original writer then fenced out → Test `test_reclaim_bumps_fence`
-- **Dimension 6.2** — reclaim pages by keyset cursor honoring the batch limit → Test `test_reclaim_keyset_pagination`
-- **Dimension 6.3** — never-connected runner reports `registered` → Test `test_liveness_fresh_mint_sentinel`
-- **Dimension 6.4** — past the family table's capacity, overflow routes to ONE series and metric memory stays constant; the overflow SPELLING is deliberately not asserted here (see the §6 note) → Test `test_metric_families_overflow`
+- **Dimension 6.1** — expired lease reclaimed with a strictly higher fencing token; original writer then fenced out → Test `test_reclaim_bumps_fence` — **DONE**
+- **Dimension 6.2** — reclaim pages by keyset cursor honoring the batch limit → Test `test_reclaim_keyset_pagination` — **DONE** as `a_fresh_cursor_starts_below_every_real_row`, `a_cursor_resumes_after_the_row_it_recorded` and `a_rewound_cursor_is_a_fresh_one` (`afd_fleet::sweep::reclaim`), with the batch-limit pacing held by `a_full_batch_comes_straight_back`
+- **Dimension 6.3** — never-connected runner reports `registered` → Test `test_liveness_fresh_mint_sentinel` — **DONE** as `a_runner_that_has_never_connected_is_not_stale` (`afd_fleet::sweep::liveness`)
+- **Dimension 6.4** — past the family table's capacity, overflow routes to ONE series and metric memory stays constant; the overflow SPELLING is deliberately not asserted here (see the §6 note) → Test `test_metric_families_overflow` — **DONE** as `a_runner_gets_its_own_series_until_the_table_is_full`, `past_the_capacity_everything_lands_in_one_series` and `an_overflowed_runner_is_still_counted_and_still_carries_its_reason` (`afd_observability::runner`)
 
 ### §7 — The parity harness
 
@@ -181,8 +182,8 @@ The Rust daemon is proven against the committed wire fixtures (M175 §3), the po
 
 The existing runner-side suites (lease hardening, lease transport, credential-mint end to end) run against `agentsfleetd-rs` directly — the demoable capability: a stock Zig runner completing work end to end against the Rust daemon.
 
-- **Dimension 7.1** — a stock Zig runner completes a lease end to end against the Rust daemon, against real Postgres and Redis → Test `test_runner_suite_vs_rust_daemon` (the demoable capability; unchanged by the override, since it needs the runner, not the Zig daemon)
-- **Dimension 7.2** — the seeded scenario set produces the expected row shapes in leases, events, ledger and memory, asserted against shapes recorded from the ported SQL rather than against a live second daemon → Test `test_seeded_row_shapes`
+- **Dimension 7.1** — a stock Zig runner completes a lease end to end against the Rust daemon, against real Postgres and Redis → Test `test_runner_suite_vs_rust_daemon` (the demoable capability; unchanged by the override, since it needs the runner, not the Zig daemon) — **DONE**
+- **Dimension 7.2** — the seeded scenario set produces the expected row shapes in leases, events, ledger and memory, asserted against shapes recorded from the ported SQL rather than against a live second daemon → Test `test_seeded_row_shapes` — **DONE**
 
 ## Parallelization & execution map
 

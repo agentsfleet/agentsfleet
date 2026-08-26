@@ -39,7 +39,7 @@ Working title: `M182_001` — confirm the number against `docs/v2/pending/` and
    files that name Linux mechanisms.
 6. `src/runner/` (Zig) — the runner side. This is where a new substrate driver
    would live, and you must scope how much of it this milestone owns.
-7. `docs/v2/active/M177_001_P0_API_RUNNER_CONTROL_PLANE_PARITY.md` — its
+7. `docs/v2/done/M177_001_P0_API_RUNNER_CONTROL_PLANE_PARITY.md` — its
    Discovery section carries a "Substrate coupling localised at EXECUTE" entry
    written specifically to hand this milestone its starting point.
 
