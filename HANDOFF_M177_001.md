@@ -104,9 +104,54 @@ Pre-existing, unrelated to this work, and green with `--all-features`.
      no-gates return — and anomaly counters are skipped on that path.
    - **NOT this milestone's:** Slack rendering (349), sweeper (126), route
      handler (90), prose (130). §5's note puts rendering with M178.
-2. **The run-estimate debit** — the DOCUMENTED divergence (spec §2). Needs a
-   wallet-drain statement the Zig has no issue-time counterpart for.
-   `money/charge.rs` already marks where a real transaction belongs.
+2. **The run-estimate debit — 📟🔦📈💥☠️ JUDGMENT FLAG TO INDY. NOT BUILT.**
+   Spec §2 decides to implement the issue-time floor-token run estimate because
+   "the spec's two-debit shape and `data_flow.md` §C agree with each other and
+   not with that code". A second architecture document contradicts BOTH, and it
+   is the one that owns billing:
+
+   `docs/architecture/billing_and_provider_keys.md`
+   - §3 debit table, row 2: the run debit is "metered **incrementally** across
+     the run — a delta on every `/renew`, settled at report **(M80_010 replaced
+     the one-shot lease-issue estimate)**".
+   - "Lease issue runs the *entry gate* …, the receive deduct, and the approval
+     gate — **but no run debit**."
+   - Ledger rows (M80_010): "one `receive` row, and **one `stage` row that
+     M80_010 accumulates** … one event → **exactly 2 ledger rows**".
+   - Rejected alternatives: "**Refund-on-actual-tokens. Superseded by M80_010** …
+     the credit drained equals actual runtime × rate + actual tokens — **there is
+     nothing to reconcile or refund after the fact**."
+
+   `data_flow.md` §C line 250 describes the PRE-M80_010 shape ("one `stage` at
+   the run debit, then UPDATEd with token counts after the report"), so it is
+   stale on billing rather than authoritative. Its M177 divergence note (line
+   852) was added BY this milestone's decision, so it is the same decision
+   written twice, not independent corroboration.
+
+   **Why this is not a paperwork question.** Implementing it needs three pieces
+   of money machinery that do not exist:
+   1. An **issue-time wallet drain**. `balance_nanos` is READ-only in all of
+      `rustd/crates/afd_fleet/src/sql/` — the drain lives in the renewal CTE.
+   2. A **charge type**. `stage` is owned by the renewal accumulator, whose
+      `ON CONFLICT … DO UPDATE SET … = … + EXCLUDED.…` would ADD every slice on
+      top of the estimate → the tenant pays estimate **plus** actual. That is a
+      double charge. A third type instead breaks "exactly 2 ledger rows" and
+      the revenue-by-charge-type query.
+   3. A **settle-time reconcile** — precisely the machinery M80_010 deleted as
+      unnecessary.
+
+   It also weakens M177's own claim: the spec concedes Dimension 2.1's parity
+   oracle can no longer compare against a live Zig daemon here, and
+   row-equivalence at cutover is what this milestone exists to prove.
+
+   **Recommendation: do NOT implement it.** Keep the single accumulating `stage`
+   row, follow `billing_and_provider_keys.md`, and correct `data_flow.md` §C
+   plus the spec. The estimate machinery already in `money/rates.rs` is
+   correctly placed as a GATE input — that module's own note says it: "An
+   estimate is not a charge." Nothing further is needed for §2's coverage
+   refusal, which already works.
+
+   Everything else in §2 proceeded; this is the only item parked.
 3. **`ExecutionPolicy` + `fleet_sessions`** — `service_execution_policy.zig`
    (104), `lib/contract/execution_policy.zig` (320), plus the lease network
    rules from `git/repository_http_policy.zig` (129).
