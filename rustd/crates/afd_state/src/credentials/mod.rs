@@ -79,6 +79,7 @@ impl Credentials {
                 error_code = code,
                 class,
                 reason,
+                event = "credential_lookup_unavailable",
                 "no connection for a credential lookup — answering unavailable, \
                  never unknown, so a caller is not told its credential is bad"
             );
@@ -92,7 +93,13 @@ impl Credentials {
             .map_err(|source| {
                 let code = error_code::INTERNAL_DB_QUERY.as_str();
                 let reason = source.to_string();
-                tracing::warn!(error_code = code, class, reason, "credential lookup failed");
+                tracing::warn!(
+                    error_code = code,
+                    class,
+                    reason,
+                    event = "credential_lookup_failed",
+                    "credential lookup failed"
+                );
                 Unavailable
             })
     }

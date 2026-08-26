@@ -233,10 +233,173 @@ const ENTRIES: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::RUN_STALE_FENCING_TOKEN,
+        // 409, matching the Zig entry's `.conflict`. The word is exact: two
+        // runners each hold a lease they believe is live, and the fence is what
+        // settles which one is. Not a 403 — nothing about the credential is
+        // wrong — and not a 410, because the resource is very much still there,
+        // owned by somebody else.
+        status: 409,
+        title: "Stale fencing token",
+        hint: "The lease was reclaimed by a newer holder. This report is rejected; the current holder's result wins.",
+        // Not dashboard-facing: this rides the runner-to-control-plane wire
+        // contract, and the Zig entry carries the same reachability note.
+        user_message: None,
+    },
+    Problem {
+        code: error_code::RUN_LEASE_NOT_FOUND,
+        status: 404,
+        title: "Lease not found",
+        hint: "No active lease matches this lease_id for the presenting runner; it may have expired, been reclaimed, or never existed.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::RUN_ADMIN_STATE_BLOCKED,
         status: 401,
         title: "Runner admin state blocks access",
         hint: "This runner is cordoned, draining, drained, or revoked and cannot call the runner plane. Re-enroll the host to mint a fresh runner token.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
+        // 409 like the lost verdict beside it, and the pair is the reason both
+        // codes exist: the STATUS cannot tell a runner whether its result is
+        // still wanted, so the code has to.
+        status: 409,
+        title: "Lease exceeded max runtime",
+        hint: "The lease reached its maximum runtime and cannot renew. The runner stops the child and reports any result.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::RUN_LEASE_LOST,
+        status: 409,
+        title: "Lease lost",
+        hint: "The lease moved to another runner before renewal. The former runner must stop its child.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
+        // 402, and load-bearing for the reason the entry below it is: the stock
+        // runner classifies a renew refusal by status AND code. Both 402s stop
+        // the run; the code is what says which pool ran dry, and therefore
+        // whether an operator tops up a balance or edits a ceiling.
+        status: 402,
+        title: "Lease renewal blocked: no credits",
+        hint: "The tenant balance cannot cover another run slice. The lease does not renew, and the run stops cleanly.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::RUN_BUDGET_EXCEEDED,
+        // 402, and the status is load-bearing rather than decorative: the stock
+        // runner classifies a renew refusal by BOTH status and code, and
+        // `control_plane_client_test.zig` pins that a UZ-RUN-015 arriving on
+        // any other terminal status is NOT a budget breach. A 403 here would
+        // leave the runner treating an exhausted ceiling as an auth failure.
+        status: 402,
+        title: "Lease renewal blocked: fleet budget exhausted",
+        hint: "The fleet reached its daily_dollars or monthly_dollars limit from `TRIGGER.md`, so the run stops. The tenant balance is fine; this is the fleet's own budget.",
+        // Not dashboard-facing: this rides the runner-to-control-plane wire
+        // protocol, and the Zig entry carries the same reachability note.
+        user_message: None,
+    },
+    Problem {
+        code: error_code::AGENTSFLEET_CREDENTIAL_MISSING,
+        // 424, matching the Zig entry's `.failed_dependency`. The fleet's own
+        // request is well-formed; what is missing is a credential it depends
+        // on, which is the distinction this status exists to make.
+        status: 424,
+        title: "Fleet credential missing",
+        hint: "A required credential is not in the vault. Add it with: `agentsfleet secret create <NAME>`",
+        // Not dashboard-facing, and the Zig entry carries the same reachability
+        // note: this is a CLI and API-key surface, and on the lease path it is
+        // logged rather than rendered at all.
+        user_message: None,
+    },
+    Problem {
+        code: error_code::FLEET_BUNDLE_NOT_FOUND,
+        status: 404,
+        title: "Fleet Bundle not found",
+        hint: "No installable library entry or stored snapshot matches the request in this workspace.",
+        user_message: Some(
+            "We couldn't find that Fleet Bundle. It may not be installed in this workspace yet — check the Fleet library.",
+        ),
+    },
+    Problem {
+        code: error_code::FLEET_BUNDLE_STORAGE_UNAVAILABLE,
+        status: 503,
+        title: "Fleet Bundle storage unavailable",
+        hint: "Snapshot storage is not configured or is unavailable, so the validated bundle could not be stored. Retry later or contact the operator.",
+        user_message: Some("We couldn't store your Fleet Bundle right now. Try again shortly."),
+    },
+    Problem {
+        code: error_code::CRED_INTEGRATION_NOT_CONNECTED,
+        status: 404,
+        title: "Integration not connected",
+        hint: "No connected integration matches this id in the fleet's workspace. Connect it from the dashboard first.",
+        user_message: Some(
+            "That integration isn't connected. Connect it from the Integrations page, then try again.",
+        ),
+    },
+    Problem {
+        code: error_code::CRED_BROKER_NOT_CONFIGURED,
+        status: 503,
+        title: "Credential broker not configured",
+        hint: "The on-demand credential broker is not configured on this deployment. An operator must set it up before runners can mint credentials.",
+        // Runner-only mint endpoint; the Zig entry carries the same
+        // reachability note, and nothing in `ui/packages/app` fetches it.
+        user_message: None,
+    },
+    Problem {
+        code: error_code::GH_RECONNECT_REQUIRED,
+        status: 409,
+        title: "GitHub App reconnect required",
+        hint: "The GitHub App installation was uninstalled or revoked, so no token can be minted. Reconnect GitHub from the dashboard.",
+        // Surfaced to the agent as a tool failure, not to a dashboard fetch.
+        user_message: None,
+    },
+    Problem {
+        code: error_code::GH_MINT_FAILED,
+        status: 502,
+        title: "GitHub token mint failed",
+        hint: "GitHub did not return an installation token. Retry shortly; if it continues, check GitHub status and the App configuration.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::GRANT_NOT_FOUND,
+        status: 403,
+        title: "No integration grant for service",
+        hint: "This fleet has no approved grant for the target service. Check it with `GET /v1/workspaces/{ws}/fleets/{id}/integration-grants` and resolve its approval.",
+        // Runner-only mint and lease gate.
+        user_message: None,
+    },
+    Problem {
+        code: error_code::CONNECTOR_OAUTH_EXCHANGE_FAILED,
+        status: 502,
+        title: "Connector OAuth exchange failed",
+        hint: "The connector's OAuth exchange was rejected. Start the connect again; if it repeats, check the provider app credentials and redirect URL.",
+        user_message: Some(
+            "That connection didn't go through. Try connecting again from the dashboard.",
+        ),
+    },
+    Problem {
+        code: error_code::REPAIR_WRITE_UNAPPROVED,
+        status: 403,
+        title: "Write mint requires an approved gate",
+        hint: "No repository-write approval was answered for this event, so no write-scoped token issues. The run continues read-only.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::REPAIR_BINDING_DRIFT,
+        status: 403,
+        title: "Fleet binding changed since approval",
+        hint: "The fleet's repository binding no longer matches the approved card. Re-raise the approval so a human sees the current reach.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::REPAIR_SPEND_EXHAUSTED,
+        status: 403,
+        title: "Write request allowance exhausted",
+        hint: "This approval already funded 32 write-credential requests. Answer a new repository-write approval first.",
         user_message: None,
     },
     Problem {

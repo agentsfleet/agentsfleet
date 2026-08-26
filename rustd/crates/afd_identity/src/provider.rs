@@ -138,8 +138,8 @@ impl ProviderClaims {
     /// all — a provider answering 200 with something that is not a user is not
     /// evidence about the person.
     fn extract_claim(body: &[u8]) -> Result<String, ClaimUnavailable> {
-        let document: serde_json::Value =
-            serde_json::from_slice(body).map_err(|_invalid| ClaimUnavailable::Unreachable)?;
+        let document: serde_json::Value = afd_core::json::object_from_slice(body)
+            .map_err(|_invalid| ClaimUnavailable::Unreachable)?;
         if !document.is_object() {
             return Err(ClaimUnavailable::Unreachable);
         }
@@ -181,7 +181,11 @@ impl ProviderClaims {
             let Some(chunk) = chunk else { break };
             if body.len().saturating_add(chunk.len()) > USER_MAX_RESPONSE_BYTES {
                 let cap = USER_MAX_RESPONSE_BYTES;
-                tracing::warn!(cap, "scope_response_too_large: refusing the user document");
+                tracing::warn!(
+                    cap,
+                    event = "scope_response_too_large",
+                    "refusing the user document"
+                );
                 return Err(ClaimUnavailable::Unreachable);
             }
             body.extend_from_slice(&chunk);
@@ -209,13 +213,13 @@ impl ClaimSource for ProviderClaims {
                 // naming who was being resolved during an outage is a record of
                 // who was active.
                 let cause = err.to_string();
-                tracing::warn!(cause, "scope_fetch_failed");
+                tracing::warn!(cause, event = "scope_fetch_failed");
                 ClaimUnavailable::Unreachable
             })?;
 
         if let Some(refusal) = Self::classify(response.status().as_u16()) {
             let code = response.status().as_u16();
-            tracing::warn!(code, "scope_fetch_rejected");
+            tracing::warn!(code, event = "scope_fetch_rejected");
             return Err(refusal);
         }
         let body = Self::read_capped(response).await?;

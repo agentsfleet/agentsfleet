@@ -731,7 +731,15 @@ The deleted worker's single in-process `processEvent` loop is now split across t
           ON CONFLICT (fleet_id, event_id) DO NOTHING   (idempotent on replay)
      2. PUBLISH fleet:{id}:activity { kind:"event_received", event_id, actor }
      3. Gates + billing (mirror of metering.zig):
-          balance gate → receive debit → approval gate → run debit.
+          balance gate → budget gate → receive debit → approval gate → run debit.
+          The BUDGET gate is the fleet's own ceiling, resolved from the config
+          the session already carries; it sits after the tenant credit pool and
+          before any debit, so a refused event is never charged. Both it and the
+          balance gate fail OPEN on a datastore fault — a metering outage must
+          not halt every fleet on the platform.
+          The receive debit fires on FIRST DELIVERY only: the balance debit is
+          not replay-guarded (only the telemetry row is), so a PEL re-delivery
+          that already paid must not pay twice.
           Blocked → UPDATE core.fleet_events status='gate_blocked',
                                               failure_label=<gate>
                     → PUBLISH fleet:{id}:activity
@@ -840,6 +848,19 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    regardless of how many redelivery attempts occur. A late report from the
    dead runner is fenced out at claimReport (UZ-RUN-005).
 ```
+
+**The issue-time run debit is a daemon divergence during cutover (M177).** The
+sequence above is the INTENDED billing shape and is what `agentsfleetd-rs`
+implements. The Zig daemon does not: `fleet/service_billing.zig` ends its gate
+pass with `// No issue-time stage debit: run fee + tokens meter on /renew +
+settle at report`, and `fleet_runtime/metering.zig` exports `debitReceive` as
+its only debit. So during cutover the two daemons charge differently at lease —
+the Rust one debits a floor-token run estimate that the Zig one defers to
+`/renew`. This is a deliberate, declared divergence rather than a port defect
+(Indy, M177 §2): the Rust daemon is written to the documented behaviour, the
+Zig daemon is not being changed, and the cutover-soak milestone named in
+[`roadmap.md`](./roadmap.md) carries the divergence into the cutover register. Anything reconciling ledger rows across the two daemons has
+to know which one wrote them.
 
 **Slack-resident answer round-trip (M106).** For the Slack producer in §"B. TRIGGER" two connector-specific hops bracket this generic trace without altering it. *At ingress:* `connectors/slack/thread.zig` does a best-effort re-read of the recent thread (Slack `conversations.replies`, bounded to the last-N messages) so the leased `request_json` carries same-thread context. It **never throws**: a failed or absent re-fetch degrades to an empty thread, and the answer still runs from the mention alone. *On the way out:* the answer is not posted from the report handler directly. Step 7's report path calls `enqueueOutboundAnswer` (`fleet/service_report.zig`) — if the reporting fleet has a `core.connector_channels` binding it enqueues a `provider`-tagged job onto the generic `connector:outbound` stream (`queue/connector_outbound.zig`); a non-connector fleet, empty answer, or any failure is a logged no-op that never fails the finalized report. The boot-started `outbound/worker.zig` consumer (the one blocking Redis consumer sized in [`scaling.md`](./scaling.md)) then reads the job, routes it by `provider`, and posts the answer back in-thread with bounded retry + pending-first redelivery. The core report path stays provider-agnostic (Invariant 9) — the worker is the only place a connector poster is imported.
 

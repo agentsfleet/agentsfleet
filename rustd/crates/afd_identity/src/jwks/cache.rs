@@ -188,7 +188,8 @@ impl<S: KeySetSource> KeyCache<S> {
             tracing::warn!(
                 cause,
                 reason,
-                "jwks_refresh_failed: serving the previously held key set"
+                event = "jwks_refresh_failed",
+                "serving the previously held key set"
             );
         }
     }
@@ -213,7 +214,8 @@ impl<S: KeySetSource> KeyCache<S> {
             tracing::warn!(
                 rejected,
                 usable,
-                "jwks_keys_declined: the issuer published keys this daemon cannot verify against"
+                event = "jwks_keys_declined",
+                "the issuer published keys this daemon cannot verify against"
             );
         }
         let fetched_at = self.clock.now();

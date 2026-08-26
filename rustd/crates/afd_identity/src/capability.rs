@@ -106,13 +106,32 @@ struct Cached {
 }
 
 /// Live capabilities, cached against the provider.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ProviderCapabilities<S> {
     source: Arc<S>,
     clock: Arc<dyn Clock>,
     cache: moka::future::Cache<Box<str>, Cached>,
     ttl_ms: i64,
     ceiling_ms: i64,
+}
+
+// Hand-written rather than derived, and the difference is load-bearing.
+// `#[derive(Clone)]` would add an `S: Clone` bound that the fields do not need
+// — the source is behind an `Arc` — so a perfectly shareable resolver over a
+// non-cloneable claim source would fail to clone for a reason nothing in the
+// struct explains. Every field here is a handle, and a clone shares the CACHE
+// rather than duplicating it, which is the property that makes handing one to
+// each credential plane correct.
+impl<S> Clone for ProviderCapabilities<S> {
+    fn clone(&self) -> Self {
+        Self {
+            source: Arc::clone(&self.source),
+            clock: Arc::clone(&self.clock),
+            cache: self.cache.clone(),
+            ttl_ms: self.ttl_ms,
+            ceiling_ms: self.ceiling_ms,
+        }
+    }
 }
 
 impl<S: ClaimSource> ProviderCapabilities<S> {
@@ -202,7 +221,8 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
                 let subject = subject.as_str().to_owned();
                 tracing::warn!(
                     subject,
-                    "scopes_subject_unknown_to_provider: resolving to no capabilities"
+                    event = "scopes_subject_unknown_to_provider",
+                    "resolving to no capabilities"
                 );
                 Ok(ScopeSet::EMPTY)
             }
@@ -220,7 +240,8 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
             let subject = subject.as_str().to_owned();
             tracing::error!(
                 subject,
-                "scopes_unavailable: no warm entry and the provider is unreachable"
+                event = "scopes_unavailable",
+                "no warm entry and the provider is unreachable"
             );
             return Err(Unavailable);
         };
@@ -229,7 +250,8 @@ impl<S: ClaimSource> ProviderCapabilities<S> {
         tracing::warn!(
             subject,
             ceiling_ms,
-            "scopes_served_stale: the provider is unreachable and the entry is within the ceiling"
+            event = "scopes_served_stale",
+            "the provider is unreachable and the entry is within the ceiling"
         );
         Ok(entry.scopes)
     }

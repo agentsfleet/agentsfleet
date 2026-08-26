@@ -230,7 +230,7 @@ pub async fn reap_orphans(
         .map_err(|source| query(OP_REAP, source))?;
 
     if reaped > 0 {
-        tracing::info!(reaped, scope = "orphan_rows", "migration_reap");
+        tracing::info!(reaped, scope = "orphan_rows", event = "migration_reap");
     }
     Ok(reaped)
 }
@@ -281,7 +281,7 @@ pub async fn record_failure(
             version,
             error = %error,
             error_code,
-            "migrate_failure_row_ignored_error"
+            event = "migrate_failure_row_ignored_error"
         );
     }
 }
@@ -301,7 +301,7 @@ pub async fn clear_failure(connection: &mut PoolConnection<Postgres>, version: i
             version,
             error = %error,
             error_code,
-            "migrate_failure_clear_ignored_error"
+            event = "migrate_failure_clear_ignored_error"
         );
     }
 }

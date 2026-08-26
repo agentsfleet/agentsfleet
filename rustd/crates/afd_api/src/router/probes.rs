@@ -87,7 +87,7 @@ pub(super) async fn healthz() -> Response {
     // any level a person leaves on it would be the loudest event in the log
     // and would say nothing. It exists for the case where someone needs to
     // prove the probe is arriving at all.
-    tracing::trace!("liveness probed");
+    tracing::trace!(event = "liveness_probed", "liveness probed");
     Json(json!({
         "status": "ok",
         "service": SERVICE,
@@ -109,6 +109,7 @@ pub(super) async fn readyz<D: Dependencies>(State(dependencies): State<Arc<D>>) 
         tracing::trace!(
             database = inputs.database,
             queue = inputs.queue,
+            event = "readiness_probed",
             "readiness probed"
         );
         StatusCode::OK
@@ -124,6 +125,7 @@ pub(super) async fn readyz<D: Dependencies>(State(dependencies): State<Arc<D>>) 
             error_code = code,
             database = inputs.database,
             queue = inputs.queue,
+            event = "readiness_refused",
             "instance is not ready — refusing traffic until dependencies answer"
         );
         StatusCode::SERVICE_UNAVAILABLE

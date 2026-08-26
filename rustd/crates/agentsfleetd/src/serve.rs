@@ -27,7 +27,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use afd_api::http1_builder;
+use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, http1_builder};
 use afd_core::env::EnvSource;
 use afd_db::Db;
 use afd_redis::Redis;
@@ -38,8 +38,9 @@ use tokio_util::sync::CancellationToken;
 use crate::daemon::{Daemon, Outcome};
 #[doc(inline)]
 pub use crate::error::BootFailure;
+use crate::identity::Capabilities;
+use crate::plane::{ServingPlane, Shared};
 use crate::preflight::{BootConfig, preflight};
-use crate::probes::LiveDependencies;
 use crate::supervisor::Supervisor;
 
 /// The environment fallback for `--port`, named here and read by [`crate::cli`].
@@ -90,11 +91,43 @@ pub async fn boot<E: EnvSource + ?Sized>(
     let database = Db::connect(config.api_pool()).await?;
     let queue = Redis::connect(config.redis()).await?;
 
-    // 3. The router, over the probe that reads through both.
-    let dependencies = Arc::new(LiveDependencies::new(database.clone(), queue.clone()));
-    let router = afd_api::router::build(dependencies);
+    // 3. Everything the router is generic over, chosen here and nowhere else,
+    //    then the router over it. The admission ceiling is passed alongside
+    //    rather than held by the plane: it is a property of the PROCESS, not a
+    //    service a verb acts through, and mixing the two would put a
+    //    concurrency limit behind a trait about datastores.
+    let (capabilities, sessions) = crate::identity::resolve(config.identity());
+    announce_identity(&capabilities);
+    // The one clone of the key material, at boot, into the handle every store
+    // that opens a sealed row shares. `Kek` zeroes on drop, so the copy this
+    // makes is not a copy that outlives the process.
+    let kek = Arc::new(config.kek().clone());
+    // The broker is built BEFORE the plane because it reads this deployment's
+    // own platform credentials out of the vault, which is an asynchronous step
+    // the plane's constructor is not. A deployment holding none still boots and
+    // still serves every other verb.
+    let broker = crate::credentials::resolve(
+        &afd_fleet::vault::Vault::new(database.clone(), Arc::clone(&kek)),
+        config.platform_admin_workspace(),
+    )
+    .await;
+    let plane: Shared = Arc::new(ServingPlane::new(
+        database.clone(),
+        queue.clone(),
+        kek,
+        capabilities,
+        sessions,
+        crate::bundles::resolve(config.bundles()),
+        broker,
+    ));
+    let router = afd_api::router::build(plane, &Admission::new(DEFAULT_MAX_IN_FLIGHT));
 
-    // 4. Listen last. Until this line the process is not reachable, which is
+    // 4. The background sweepers, before the listener: they read through pools
+    //    that are open by now, and starting them after the socket would leave a
+    //    window where the plane serves while nothing is noticing dead runners.
+    crate::sweepers::spawn(&mut *supervisor, &database, &queue);
+
+    // 5. Listen last. Until this line the process is not reachable, which is
     //    what makes every refusal above a refusal rather than an outage.
     let listener = TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, port)).await?;
     let address = listener.local_addr()?;
@@ -108,6 +141,36 @@ pub async fn boot<E: EnvSource + ?Sized>(
         database,
         queue,
     })
+}
+
+/// Says which surfaces this instance can actually serve.
+///
+/// Once, at boot, because the alternative is an operator discovering it from a
+/// 503 on their first enrolment. Reads the RESOLVED seam rather than the config
+/// it was built from: preflight has already refused a boot whose provider knobs
+/// were missing, so the only way to reach the warning below is a provider that
+/// was configured and could not be constructed — which is a reduced surface,
+/// not a fault, because the runner plane consults neither seam.
+fn announce_identity(capabilities: &Capabilities) {
+    match capabilities {
+        Capabilities::Provider(_built) => {
+            tracing::info!(
+                event = "identity_provider_configured",
+                "identity provider configured — tenant and runner planes both serve"
+            );
+        }
+        Capabilities::Unconfigured(_absent) => {
+            // Hoisted: the `log` bridge duplicates field expressions and
+            // llvm-cov scores the dead copy.
+            let code = afd_core::error_code::AUTH_UNAVAILABLE.as_str();
+            tracing::warn!(
+                error_code = code,
+                event = "identity_provider_unusable",
+                "identity provider unusable — the runner plane serves normally \
+                 and every tenant-plane capability read answers unavailable"
+            );
+        }
+    }
 }
 
 /// The supervised name of the accept loop.
@@ -151,7 +214,11 @@ async fn accept_loop<A: Acceptor>(listener: A, router: axum::Router, token: Canc
                 // Hoisted: the `log` bridge duplicates field expressions and
                 // llvm-cov scores the copy that never runs.
                 let reason = error.to_string();
-                tracing::warn!(reason, "accept failed; still serving");
+                tracing::warn!(
+                    reason,
+                    event = "accept_failed",
+                    "accept failed; still serving"
+                );
                 continue;
             }
         };

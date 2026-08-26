@@ -175,6 +175,13 @@ every code a dispatch `.sh` emits resolves to exactly one row here.
 **Tags:** zig, testing, sql
 **Example:** tested 0 for a column with CHECK >= 512.
 
+## RULE TCF — A test that cannot fail is not a test
+
+**Rule:** Before trusting a test, make it red — delete the clause, guard, or branch it covers and confirm it fails. Assert what the check FOUND (the count, the symbol, the line), never only its exit code. A test that survives removal of its own subject is repaired or deleted, never kept for coverage.
+**Why:** A vacuous pass and a real pass look identical from the outside, so the suite reports green while the guarantee is already gone.
+**Tags:** testing, review, all
+**Example:** a tenant-scope property asserted absence only and passed with the scope clause deleted; a dispatch eval asserted an exit code while its glob pointed at a dead tree.
+
 ## RULE JCL — CLI JSON contract discipline
 
 **Rule:** Use only stable error codes; UNKNOWN_COMMAND must name the unrecognized token; dual jsonMode guards need a comment.

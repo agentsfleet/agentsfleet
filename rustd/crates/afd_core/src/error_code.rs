@@ -179,12 +179,120 @@ pub const APIKEY_REVOKED: ErrorCode = ErrorCode::declare("UZ-APIKEY-004");
 /// rejections, and a tenant-plane 401 reaching it would be a category error.
 pub const RUN_INVALID_RUNNER_TOKEN: ErrorCode = ErrorCode::declare("UZ-RUN-001");
 
+/// A report arrived from a holder the fleet has already superseded.
+///
+/// `ERR_RUN_STALE_FENCING_TOKEN`. Referenced from the Zig registry, never
+/// declared here as a new code (RULE ERR) — `error_registry.zig:206` owns the
+/// value.
+///
+/// A 409, and the conflict is literal: two runners each believe they hold one
+/// fleet, and the fence says which of them is right. The refused report writes
+/// NOTHING — the flip, the settle and the tally all ride one guarded statement,
+/// so a stale writer cannot land a partial finalize on the current holder's
+/// run.
+pub const RUN_STALE_FENCING_TOKEN: ErrorCode = ErrorCode::declare("UZ-RUN-005");
+
+/// No lease with that id belongs to the presenting runner.
+///
+/// `ERR_RUN_LEASE_NOT_FOUND`. Referenced from the Zig registry
+/// (`error_registry.zig:207`).
+///
+/// One code for two facts, deliberately: a lease that never existed and a lease
+/// belonging to ANOTHER runner both answer this. The load is scoped by
+/// `runner_id`, so a runner asking about a peer's lease gets the same 404 a
+/// missing row gets — the scope IS the ownership check, and distinguishing the
+/// two would turn this endpoint into an oracle for which lease ids are live.
+pub const RUN_LEASE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-RUN-006");
+
 /// The runner is known and its administrative state bars the runner plane.
 ///
 /// `ERR_RUN_ADMIN_STATE_BLOCKED`. Cordon, drain, revoke and delete all land
 /// here, and this rejection is the ONLY channel by which a runner learns it is
 /// out of service — the heartbeat reply is unconditionally `ok`.
 pub const RUN_ADMIN_STATE_BLOCKED: ErrorCode = ErrorCode::declare("UZ-RUN-009");
+
+/// The lease reached the hard ceiling on how long one run may take.
+///
+/// `ERR_RUN_LEASE_EXCEEDED_MAX_RUNTIME`. Referenced from the Zig registry
+/// (`error_registry.zig:210`).
+///
+/// Distinct from [`RUN_LEASE_LOST`] even though both are 409s and both end the
+/// run: this one says the runner did nothing wrong and its result is still
+/// wanted — it stops the child and reports. Lost says the lease is somebody
+/// else's now and the result will be refused. Collapsing them would throw away
+/// a completed run's output at the cap.
+pub const RUN_LEASE_EXCEEDED_MAX_RUNTIME: ErrorCode = ErrorCode::declare("UZ-RUN-010");
+
+/// The lease moved to another runner before this renewal.
+///
+/// `ERR_RUN_LEASE_LOST`. Referenced from the Zig registry
+/// (`error_registry.zig:211`).
+///
+/// Reached when the fence no longer holds or the row is no longer `active`, and
+/// also when the lease row advanced but the affinity slot did not — a
+/// half-applied renewal is reported LOST rather than renewed, because the slot
+/// can be reclaimed before the deadline the reply would name.
+pub const RUN_LEASE_LOST: ErrorCode = ErrorCode::declare("UZ-RUN-011");
+
+/// The tenant's credit pool cannot fund another slice of this run.
+///
+/// `ERR_RUN_LEASE_RENEWAL_NO_CREDITS`. Referenced from the Zig registry
+/// (`error_registry.zig:212`).
+///
+/// A 402, for the reason [`RUN_BUDGET_EXCEEDED`] is one: the runner classifies
+/// a renew refusal by status AND code. The two 402s are different pools — this
+/// is the TENANT's balance, that is the FLEET's own declared ceiling — and an
+/// operator tops up for one and edits `TRIGGER.md` for the other.
+pub const RUN_LEASE_RENEWAL_NO_CREDITS: ErrorCode = ErrorCode::declare("UZ-RUN-012");
+
+/// A fleet has reached a spend ceiling its own author declared.
+///
+/// `ERR_RUN_BUDGET_EXCEEDED`. Referenced from the Zig registry, never declared
+/// here as a new code (RULE ERR) — `error_registry.zig:216` owns the value.
+///
+/// One code for both ceilings and both gates. `daily_dollars` and
+/// `monthly_dollars` answer the same code because an operator acts identically
+/// on either, and the issue-time refusal shares it with the mid-run kill at
+/// `/renew` because they are the same fact observed at two moments. The verdict
+/// that distinguishes them rides the log line, where it can be read without
+/// making a client branch on it.
+pub const RUN_BUDGET_EXCEEDED: ErrorCode = ErrorCode::declare("UZ-RUN-015");
+
+/// A fleet declared a credential the vault does not hold.
+///
+/// `ERR_AGENTSFLEET_CREDENTIAL_MISSING`. Reached from the lease path, where it
+/// is LOGGED rather than answered: a fleet that names a credential nobody
+/// stored cannot run, so the event is ended with a terminal row and the asking
+/// runner is told there is no work. The code is what an operator correlates the
+/// blocked event with.
+pub const AGENTSFLEET_CREDENTIAL_MISSING: ErrorCode = ErrorCode::declare("UZ-AGT-003");
+
+/// No Fleet Bundle snapshot is stored under the requested content hash.
+///
+/// `ERR_FLEET_BUNDLE_NOT_FOUND`. Referenced from the Zig registry, never
+/// declared here as a new code (RULE ERR) — `error_registry.zig:109` owns the
+/// value.
+///
+/// Not an error the runner acts on by retrying. A bundle with no support files
+/// stores no snapshot at all, so this is the ORDINARY answer for a skill-only
+/// fleet: the runner proceeds with no support files rather than failing the
+/// run. The same code answers a hash that names nothing, and the two are
+/// deliberately indistinguishable — a runner holding a hash from its own lease
+/// cannot tell them apart and does not need to, and distinguishing them would
+/// make the endpoint an oracle for which snapshots exist.
+pub const FLEET_BUNDLE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-BUNDLE-002");
+
+/// The Fleet Bundle snapshot store is unconfigured, or would not answer.
+///
+/// `ERR_FLEET_BUNDLE_STORAGE_UNAVAILABLE`. Referenced from the Zig registry
+/// (`error_registry.zig:112`).
+///
+/// One code for both, because the runner acts identically on either: it is a
+/// 503, the work is not refused, and the poll comes back. Which of the two it
+/// was is an OPERATOR's question, and it is answered in the log beside the
+/// request id — an unconfigured store names a knob nobody set, and a fetch
+/// failure carries the store's own error as its source.
+pub const FLEET_BUNDLE_STORAGE_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-BUNDLE-005");
 
 /// The instance is already serving as many requests as it admits.
 ///
@@ -194,6 +302,77 @@ pub const RUN_ADMIN_STATE_BLOCKED: ErrorCode = ErrorCode::declare("UZ-RUN-009");
 /// moment it is written nothing about the request has been looked at; what it
 /// carries instead is `Retry-After`, which is the only actionable fact there is.
 pub const API_BACKPRESSURE: ErrorCode = ErrorCode::declare("UZ-API-001");
+
+/// The workspace has connected no integration under the requested name.
+///
+/// `ERR_CRED_INTEGRATION_NOT_CONNECTED` (`error_registry.zig:228`). A 404, and
+/// the answer for BOTH "the vault holds no handle" and "the handle names a
+/// connector this daemon does not carry" — a runner acts identically on either,
+/// and telling them apart would make the mint an oracle for which connectors a
+/// deployment ships.
+pub const CRED_INTEGRATION_NOT_CONNECTED: ErrorCode = ErrorCode::declare("UZ-CRED-001");
+
+/// This deployment has no credential broker wired.
+///
+/// `ERR_CRED_BROKER_NOT_CONFIGURED` (`error_registry.zig:229`). A 503, and an
+/// OPERATOR's fault rather than a tenant's: the broker is a boot-wired
+/// singleton, so its absence is a deployment that was never set up to mint.
+pub const CRED_BROKER_NOT_CONFIGURED: ErrorCode = ErrorCode::declare("UZ-CRED-002");
+
+/// The GitHub App installation is gone.
+///
+/// `ERR_GH_RECONNECT_REQUIRED` (`error_registry.zig:230`). Uninstalled or
+/// revoked, so no token can be minted from it. A HUMAN's remedy — no amount of
+/// retrying reconnects an App somebody removed — which is why it is its own
+/// code rather than a mint failure.
+pub const GH_RECONNECT_REQUIRED: ErrorCode = ErrorCode::declare("UZ-GH-001");
+
+/// GitHub did not return an installation token this daemon would hand over.
+///
+/// `ERR_GH_MINT_FAILED` (`error_registry.zig:231`). One code for both retry
+/// classes, deliberately: the runner reacts the same way to a vendor outage and
+/// to a malformed exchange, and the class is the broker's own concern. It also
+/// answers a token that came back reaching FURTHER than the fleet declared —
+/// the exchange worked, the credential was discarded, and a runner cannot be
+/// told the difference without being told what it nearly received.
+pub const GH_MINT_FAILED: ErrorCode = ErrorCode::declare("UZ-GH-002");
+
+/// The fleet holds no approved grant for the integration it asked to mint.
+///
+/// `ERR_GRANT_NOT_FOUND` (`error_registry.zig:195`). Absent, pending and
+/// revoked all answer this: only an approved standing decision admits anything,
+/// and a caller able to tell them apart would treat pending as a maybe.
+pub const GRANT_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-GRANT-001");
+
+/// A connector's OAuth exchange was rejected.
+///
+/// `ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED` (`error_registry.zig:239`). The
+/// refresh-grant connectors' answer to BOTH a dead refresh token and a failed
+/// exchange, where GitHub has two codes for the same pair. That asymmetry is
+/// the Zig's and is kept: a Zoho failure must never tell a runner to reconnect
+/// a GitHub App, and the shared connector code is what stops it.
+pub const CONNECTOR_OAUTH_EXCHANGE_FAILED: ErrorCode = ErrorCode::declare("UZ-CONN-006");
+
+/// No human approved a repository-write gate for this event.
+///
+/// `ERR_REPAIR_WRITE_UNAPPROVED` (`error_registry.zig:199`). The run is not
+/// refused — it continues read-only — so this is a refusal of the TOKEN and not
+/// of the work.
+pub const REPAIR_WRITE_UNAPPROVED: ErrorCode = ErrorCode::declare("UZ-REPAIR-010");
+
+/// The fleet's declared reach no longer matches the approved card.
+///
+/// `ERR_REPAIR_BINDING_DRIFT` (`error_registry.zig:200`). Its own code rather
+/// than an unapproved gate, because the remedy differs: an approval exists and
+/// a human must be shown the reach the fleet declares NOW.
+pub const REPAIR_BINDING_DRIFT: ErrorCode = ErrorCode::declare("UZ-REPAIR-011");
+
+/// The approved write allowance is spent.
+///
+/// `ERR_REPAIR_SPEND_EXHAUSTED` (`error_registry.zig:202`). The one refusal in
+/// this group that says the approval was real and was HONOURED — as far as it
+/// went.
+pub const REPAIR_SPEND_EXHAUSTED: ErrorCode = ErrorCode::declare("UZ-REPAIR-013");
 
 /// Every code this crate declares, in declaration order.
 ///
@@ -216,6 +395,24 @@ pub const REGISTRY: &[ErrorCode] = &[
     AUTH_CLI_CREDENTIAL_REVOKED,
     APIKEY_REVOKED,
     RUN_INVALID_RUNNER_TOKEN,
+    RUN_STALE_FENCING_TOKEN,
+    RUN_LEASE_NOT_FOUND,
     RUN_ADMIN_STATE_BLOCKED,
+    RUN_LEASE_EXCEEDED_MAX_RUNTIME,
+    RUN_LEASE_LOST,
+    RUN_LEASE_RENEWAL_NO_CREDITS,
+    RUN_BUDGET_EXCEEDED,
+    AGENTSFLEET_CREDENTIAL_MISSING,
+    FLEET_BUNDLE_NOT_FOUND,
+    FLEET_BUNDLE_STORAGE_UNAVAILABLE,
     API_BACKPRESSURE,
+    CRED_INTEGRATION_NOT_CONNECTED,
+    CRED_BROKER_NOT_CONFIGURED,
+    GH_RECONNECT_REQUIRED,
+    GH_MINT_FAILED,
+    GRANT_NOT_FOUND,
+    CONNECTOR_OAUTH_EXCHANGE_FAILED,
+    REPAIR_WRITE_UNAPPROVED,
+    REPAIR_BINDING_DRIFT,
+    REPAIR_SPEND_EXHAUSTED,
 ];

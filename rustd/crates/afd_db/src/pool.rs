@@ -106,7 +106,7 @@ impl Db {
             role = role_tag,
             size = max_connections,
             acquire_timeout_ms,
-            "pool_initialized"
+            event = "pool_initialized"
         );
         Ok(Self {
             role,
@@ -114,6 +114,33 @@ impl Db {
             acquire_timeout,
             max_connections,
         })
+    }
+
+    /// A pool over a datastore that has NOT been proven to answer.
+    ///
+    /// Behind `test-util` because production must never hold one: the probe in
+    /// [`Db::connect`] is the promise that a boot which returned has a
+    /// reachable Postgres, and a constructor that skips it would let a binary
+    /// start against a database that is not there.
+    ///
+    /// What it exists for is the other half of that promise — proving what the
+    /// REQUEST path does when the datastore is gone. Every acquire through it
+    /// fails, so a suite can drive a real router, through the real handler,
+    /// into the transport-class refusal, with no datastore anywhere near the
+    /// test. That refusal is the one an authentication failure must never be
+    /// confused with (RULE ECL), which makes it worth a seam of its own.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn unreachable(config: &PoolConfig) -> Self {
+        Self {
+            role: config.role(),
+            pool: PgPoolOptions::new()
+                .max_connections(config.max_connections())
+                .acquire_timeout(config.acquire_timeout())
+                .connect_lazy_with(config.connect_options()),
+            acquire_timeout: config.acquire_timeout(),
+            max_connections: config.max_connections(),
+        }
     }
 
     /// Takes a connection out of the pool.

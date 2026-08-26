@@ -12,38 +12,25 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::sync::Arc;
+mod harness;
 
-use afd_api::route::{OpsRoute, Route};
-use afd_api::router::{ReadyInputs, build, ready_decision};
-use axum::body::Body;
+use afd_api::route::{OpsRoute, Route, RunnerOpsRoute, RunnerRoute};
+use afd_api::router::{ReadyInputs, ready_decision};
 use axum::response::Response;
-use http::{Method, Request, StatusCode};
+use http::{Method, StatusCode};
 use serde_json::Value;
-use tower::ServiceExt as _;
 
-/// Dependencies that report whatever the test set them to.
-#[derive(Debug, Clone, Copy)]
-struct FakeDependencies(ReadyInputs);
-
-impl afd_api::Dependencies for FakeDependencies {
-    // Not `async fn`: there is nothing here to await, and the trait returns an
-    // `impl Future` precisely so an implementation that already has the answer
-    // can hand back a ready one.
-    fn probe(&self) -> impl Future<Output = ReadyInputs> + Send {
-        std::future::ready(self.0)
-    }
-}
+use self::harness::Fleet;
 
 /// Sends one request at a router whose dependencies report `inputs`.
+///
+/// No credential, deliberately. Every assertion in this suite is about ROUTING
+/// — which paths exist, which methods they answer, and what an unmounted one
+/// does — and a guarded route answers those questions from its refusal exactly
+/// as well as from its handler. The credential matrix is `runner_plane.rs`.
 async fn send(method: Method, path: &str, inputs: ReadyInputs) -> Response {
-    let router = build(Arc::new(FakeDependencies(inputs)));
-    let request = Request::builder()
-        .method(method)
-        .uri(path)
-        .body(Body::empty())
-        .expect("the test request is well formed");
-    router.oneshot(request).await.expect("axum is infallible")
+    let router = Fleet::new().reporting(inputs).router();
+    harness::send(&router, method, path, None, "").await
 }
 
 /// Every dependency reachable.
@@ -182,28 +169,66 @@ fn test_ready_decision_needs_every_dependency() {
     }
 }
 
-/// Exactly the two probes are mounted; every other tabled route answers 404.
+/// Exactly the ported routes are mounted; every other tabled one answers 404.
 ///
 /// The route table carries all eighty-one endpoints, and this binary serves
-/// two. That gap is the thing a reader is most likely to misread, so it is
-/// asserted rather than described.
+/// thirteen: the two probes, the runner's self read and heartbeat, the enrolment
+/// that mints the credential those two are held by, the lease verb they exist
+/// to reach, the report and renew that close a lease out, the activity forward
+/// that runs alongside them, the memory hydrate and capture that bracket the
+/// run, the bundle fetch that gives it its support files, and the credential
+/// mint that gets it a provider key. That gap is the
+/// thing a reader is most likely to misread, so it is asserted rather than
+/// described — and it fails the day a route is mounted without being listed
+/// here, which is the only way an unfinished surface goes live by accident.
+///
+/// Renew, activity, both memory verbs and the bundle fetch are in the matcher
+/// below but are never REQUESTED by this loop: their templates carry a path
+/// parameter, and the skip above passes over every parameterised path.
+///
+/// The two memory verbs also share ONE template, differing only by method, so
+/// the mount loop merges them into a single `MethodRouter` — axum takes one per
+/// path and panics on a second. That merge is exercised by this suite building
+/// the router at all: a regression there is a boot panic, not an assertion. Listing it anyway is deliberate — the matcher is the
+/// statement of what this binary serves, and leaving a served route out of it
+/// because the loop cannot reach it would make the two disagree the moment the
+/// skip is lifted.
 #[tokio::test]
-async fn test_only_the_probes_are_mounted() {
+async fn test_only_the_ported_routes_are_mounted() {
     for route in Route::all() {
         let template = route.meta().template;
         // Only templates with no path parameters can be requested verbatim;
-        // the parameterised ones are covered by the family check below.
+        // a parameterised one would have to be filled in to be requested at all.
         if template.contains('{') {
             continue;
         }
         let response = send(Method::GET, template, ALL_HEALTHY).await;
-        let mounted = matches!(route, Route::Ops(OpsRoute::Healthz | OpsRoute::Readyz));
+        let mounted = matches!(
+            route,
+            Route::Ops(OpsRoute::Healthz | OpsRoute::Readyz)
+                | Route::Runner(
+                    RunnerRoute::SelfRecord
+                        | RunnerRoute::Heartbeat
+                        | RunnerRoute::Lease
+                        | RunnerRoute::Report
+                        | RunnerRoute::Renew
+                        | RunnerRoute::Activity
+                        | RunnerRoute::MemoryHydrate
+                        | RunnerRoute::MemoryCapture
+                        | RunnerRoute::Bundle
+                        | RunnerRoute::CredentialsMint
+                )
+                | Route::RunnerOps(RunnerOpsRoute::Register)
+        );
 
         if mounted {
+            // Not a 200: a mounted route answers its guard's refusal, or a 405
+            // when it serves a method other than the GET sent here. What is
+            // being asserted is that the PATH resolves.
             assert_ne!(
                 response.status(),
                 StatusCode::NOT_FOUND,
-                "{template} is one of the two routes this binary serves"
+                "{template} is one of the routes this binary serves"
             );
         } else {
             assert_eq!(

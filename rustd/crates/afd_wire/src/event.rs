@@ -18,6 +18,53 @@ pub enum EventType {
     Continuation,
 }
 
+/// The stored spellings, declared once (RULE UFS).
+///
+/// `parse` and [`EventType::as_str`] are inverses, so each word appeared twice
+/// — and a pair that drifted would make a type this daemon writes one it cannot
+/// read back. Naming them here leaves one edit site per spelling and keeps the
+/// two matches beside each other, which is what makes a missing variant a build
+/// failure in the file where its reader lives.
+const CHAT: &str = "chat";
+const WEBHOOK: &str = "webhook";
+const CRON: &str = "cron";
+const CONTINUATION: &str = "continuation";
+
+impl EventType {
+    /// The type `stored` names, or nothing when it names none.
+    ///
+    /// The set is CLOSED, and an unrecognised spelling answers `None` rather
+    /// than a default. A producer from a newer build can write a type this
+    /// daemon has no execution path for; running it as `chat` would execute
+    /// the wrong thing, and the caller can end the delivery instead.
+    #[must_use]
+    pub fn parse(stored: &str) -> Option<Self> {
+        match stored {
+            CHAT => Some(Self::Chat),
+            WEBHOOK => Some(Self::Webhook),
+            CRON => Some(Self::Cron),
+            CONTINUATION => Some(Self::Continuation),
+            _unknown => None,
+        }
+    }
+
+    /// The word a stored row or a stream field spells this type as.
+    ///
+    /// The inverse of [`Self::parse`], and deliberately a `match` beside it
+    /// rather than a serde round trip: the two are read together, so a variant
+    /// added without a spelling fails the build in the same file where its
+    /// reader lives.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Chat => CHAT,
+            Self::Webhook => WEBHOOK,
+            Self::Cron => CRON,
+            Self::Continuation => CONTINUATION,
+        }
+    }
+}
+
 /// One event on the wire, flat by convention.
 ///
 /// `request_json` is opaque JSON bytes carried verbatim — the runner re-parses
