@@ -52,6 +52,108 @@ pub struct PlatformKeysResponse<'a> {
     pub keys: Vec<PlatformKeyItem<'a>>,
 }
 
+/// Mutable rate fields shared by admin model create and patch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelRates {
+    /// Maximum context tokens.
+    pub context_cap_tokens: i32,
+    /// Input-token nanos per million tokens.
+    pub input_nanos_per_mtok: i64,
+    /// Cached-input nanos per million tokens.
+    pub cached_input_nanos_per_mtok: i64,
+    /// Output-token nanos per million tokens.
+    pub output_nanos_per_mtok: i64,
+}
+
+/// `POST /v1/admin/models` input.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdminModelCreate<'a> {
+    /// Provider identity.
+    #[serde(borrow)]
+    pub provider: Cow<'a, str>,
+    /// Provider-native model identity.
+    #[serde(borrow)]
+    pub model_id: Cow<'a, str>,
+    /// Rates and context cap flattened on the existing wire.
+    #[serde(flatten)]
+    pub rates: ModelRates,
+}
+
+/// One priced model row in the admin list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdminModelItem<'a> {
+    /// Opaque UUIDv7 row identity.
+    #[serde(borrow)]
+    pub id: Cow<'a, str>,
+    /// Provider identity.
+    #[serde(borrow)]
+    pub provider: Cow<'a, str>,
+    /// Provider-native model identity.
+    #[serde(borrow)]
+    pub model_id: Cow<'a, str>,
+    /// Rates and context cap flattened on the existing wire.
+    #[serde(flatten)]
+    pub rates: ModelRates,
+}
+
+/// `GET /v1/admin/models` response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdminModelsResponse<'a> {
+    /// Every priced row.
+    #[serde(borrow)]
+    pub models: Vec<AdminModelItem<'a>>,
+}
+
+/// One metadata-only platform Fleet-library row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdminLibraryItem<'a> {
+    /// Slug identity.
+    #[serde(borrow)]
+    pub id: Cow<'a, str>,
+    /// Display name.
+    #[serde(borrow)]
+    pub name: Cow<'a, str>,
+    /// Curated description.
+    #[serde(borrow)]
+    pub description: Cow<'a, str>,
+    /// GitHub owner/repository.
+    #[serde(borrow)]
+    pub source_repo: Cow<'a, str>,
+    /// Fetched revision.
+    #[serde(borrow)]
+    pub source_ref: Cow<'a, str>,
+    /// Draft or public.
+    #[serde(borrow)]
+    pub visibility: Cow<'a, str>,
+    /// Content identity, never the support-file bytes.
+    #[serde(borrow)]
+    pub content_hash: Option<Cow<'a, str>>,
+    /// Credential names only.
+    pub required_credentials: serde_json::Value,
+    /// Required tool names.
+    pub required_tools: serde_json::Value,
+    /// Declared outbound hosts.
+    pub network_hosts: serde_json::Value,
+    /// Whether a trigger document exists.
+    pub trigger_present: bool,
+    /// Last mutation instant in epoch milliseconds.
+    pub updated_at: i64,
+}
+
+/// Admin Fleet-library list response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdminLibrariesResponse<'a> {
+    /// Every draft and public row.
+    #[serde(borrow)]
+    pub libraries: Vec<AdminLibraryItem<'a>>,
+}
+
 /// Operator intent for a runner. Only `Active` admits a runner-plane call;
 /// every other value rejects one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

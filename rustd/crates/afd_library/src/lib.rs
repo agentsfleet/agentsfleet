@@ -10,6 +10,7 @@
 use {bytes as _, object_store as _, serde_json as _, tokio as _};
 
 mod error;
+mod catalogue;
 mod frontmatter;
 mod github;
 mod model;
@@ -21,6 +22,7 @@ mod source;
 mod validate;
 
 pub use error::{Error, InvalidBundle, Result};
+pub use catalogue::{Libraries, LibraryItem, LibraryPatch};
 pub use github::{GithubSource, Repository};
 pub use model::{
     ImportBody, PreparedBundle, Requirements, SourceKind, SupportFile, SupportManifest,
