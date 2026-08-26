@@ -36,8 +36,8 @@ pub enum InvalidBundle {
 }
 
 impl core::fmt::Display for InvalidBundle {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        formatter.write_str(match self {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
             Self::SourceKind => "source kind is not supported",
             Self::SourceRefTooLong => "source reference exceeds 512 bytes",
             Self::MissingSkill => "SKILL.md is required",
@@ -62,9 +62,33 @@ pub enum Error {
     /// Untrusted bundle bytes were refused before any write.
     #[error("invalid Fleet Bundle: {0}")]
     Invalid(InvalidBundle),
+    /// A root document is not UTF-8; the decoder remains the source.
+    #[error("invalid Fleet Bundle: {document} is not UTF-8")]
+    FrontmatterUtf8 {
+        /// Root document being parsed.
+        document: &'static str,
+        /// Decoder refusal.
+        #[source]
+        source: std::str::Utf8Error,
+    },
+    /// YAML frontmatter is malformed; the parser remains the source.
+    #[error("invalid Fleet Bundle: {document} frontmatter is malformed")]
+    FrontmatterYaml {
+        /// Root document being parsed.
+        document: &'static str,
+        /// YAML parser refusal.
+        #[source]
+        source: serde_yaml_ng::Error,
+    },
     /// Immutable snapshot storage did not accept a write.
     #[error("Fleet Bundle snapshot storage failed")]
     Storage(#[source] object_store::Error),
+    /// Validated metadata could not be committed to the catalogue.
+    #[error("Fleet Bundle catalogue write failed")]
+    Catalogue(#[source] Box<dyn std::error::Error + Send + Sync>),
+    /// Validated files could not be encoded as a canonical tar.
+    #[error("Fleet Bundle snapshot encoding failed")]
+    Snapshot(#[source] std::io::Error),
 }
 
 impl Error {
@@ -72,21 +96,43 @@ impl Error {
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         match self {
-            Self::Invalid(_) => FLEET_BUNDLE_INVALID,
-            Self::Storage(_) => FLEET_BUNDLE_STORAGE_UNAVAILABLE,
+            Self::Invalid(_) | Self::FrontmatterUtf8 { .. } | Self::FrontmatterYaml { .. } => {
+                FLEET_BUNDLE_INVALID
+            }
+            Self::Storage(_) | Self::Catalogue(_) | Self::Snapshot(_) => {
+                FLEET_BUNDLE_STORAGE_UNAVAILABLE
+            }
         }
     }
 
     /// Whether retrying without changing the request is safe.
     #[must_use]
     pub const fn retryable(&self) -> bool {
-        matches!(self, Self::Storage(_))
+        matches!(self, Self::Storage(_) | Self::Catalogue(_))
     }
 }
 
 impl From<InvalidBundle> for Error {
     fn from(value: InvalidBundle) -> Self {
         Self::Invalid(value)
+    }
+}
+
+impl From<object_store::Error> for Error {
+    fn from(value: object_store::Error) -> Self {
+        Self::Storage(value)
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(value: std::io::Error) -> Self {
+        Self::Snapshot(value)
+    }
+}
+
+impl Error {
+    pub(crate) fn catalogue(source: impl std::error::Error + Send + Sync + 'static) -> Self {
+        Self::Catalogue(Box::new(source))
     }
 }
 

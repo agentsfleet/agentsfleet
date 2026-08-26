@@ -7,16 +7,22 @@
 #![deny(unused_crate_dependencies)]
 
 #[cfg(test)]
-use {bytes as _, object_store as _, tokio as _};
+use {bytes as _, object_store as _, serde_json as _, tokio as _};
 
 mod error;
 mod frontmatter;
 mod model;
+mod persist;
 mod prepare;
 mod preview;
+mod snapshot;
 mod validate;
 
 pub use error::{Error, InvalidBundle, Result};
-pub use model::{ImportBody, PreparedBundle, Requirements, SourceKind, SupportFile, SupportManifest};
+pub use model::{
+    ImportBody, PreparedBundle, Requirements, SourceKind, SupportFile, SupportManifest,
+};
+pub use persist::{BundleCatalog, ImportService};
 pub use prepare::prepare;
 pub use preview::{Preview, Previewer};
+pub use snapshot::canonical_snapshot;

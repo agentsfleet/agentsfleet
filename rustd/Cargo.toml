@@ -62,6 +62,7 @@ serde_json = { version = "1.0.151", default-features = false, features = ["std",
 # `std.json.Value` per tool call for want of this. A feature on a dependency
 # already resolved in the lock, not a new crate.
 thiserror = { version = "2.0.20", default-features = false, features = ["std"] }
+async-trait = { version = "0.1.92", default-features = false }
 
 # Field bounds as annotations on the schema rather than as a hand-written
 # checker. `derive` only: `regex`, `email`, `phone-number` and `credit-card`
@@ -97,6 +98,7 @@ sha2 = { version = "0.11.0", default-features = false }
 hex = { version = "0.4.3", default-features = false, features = ["std"] }
 semver = { version = "1.0.28", default-features = false, features = ["std"] }
 serde_yaml_ng = { version = "0.10.0", default-features = false }
+tar = { version = "0.4.46", default-features = false }
 
 # Constant-time comparison. RULE CTM: a byte-by-byte `==` over a secret leaks how
 # much of a guess was right through how long it took to reject.

@@ -21,6 +21,9 @@ impl Runners {
     /// revoked runner may only be revoked again; the terminal guard is inside
     /// the same locked statement as the write, so concurrent requests cannot
     /// reopen it.
+    /// # Errors
+    /// Returns a typed refusal for a missing runner, a malformed stored state,
+    /// an illegal transition, or an unavailable datastore.
     pub async fn transition(
         &self,
         runner: &Uuid7,
@@ -44,7 +47,11 @@ impl Runners {
             .await
             .map_err(query(CONTEXT_TRANSITION))?
             .ok_or_else(runner_not_found)?;
-        transition_result(row.try_get("from_admin_state"), row.try_get("changed"), target)
+        transition_result(
+            row.try_get("from_admin_state"),
+            row.try_get("changed"),
+            target,
+        )
     }
 
     fn admin_event_id(&self, now: UnixMillis) -> Result<Uuid7> {
@@ -106,7 +113,10 @@ mod tests {
 
     #[test]
     fn actions_name_only_real_state_transitions() {
-        assert_eq!(target(RunnerAdminAction::Cordon), Some(AdminState::Cordoned));
+        assert_eq!(
+            target(RunnerAdminAction::Cordon),
+            Some(AdminState::Cordoned)
+        );
         assert_eq!(target(RunnerAdminAction::Drain), Some(AdminState::Draining));
         assert_eq!(target(RunnerAdminAction::Revoke), Some(AdminState::Revoked));
         assert_eq!(target(RunnerAdminAction::SelfTest), None);
@@ -121,7 +131,10 @@ mod tests {
             AdminState::Drained,
             AdminState::Revoked,
         ] {
-            assert_eq!(afd_core::spelling::from_spelling(state_wire(state)), Some(state));
+            assert_eq!(
+                afd_core::spelling::from_spelling(state_wire(state)),
+                Some(state)
+            );
         }
     }
 }
