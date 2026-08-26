@@ -3,14 +3,14 @@
 //! Both answer `Option<Admission>`, where `None` continues the pass. That is
 //! the shape the whole sequence composes on: a gate either produces the answer
 //! or it does not, and nothing in here decides what a FAULT means — that is
-//! [`super::posture`]'s, applied through the [`Gate`](super::posture::Gate)
+//! [`super::fault`]'s, applied through the [`Gate`](super::fault::Gate)
 //! value each one names.
 
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 
-use crate::lease::admit::posture::{BALANCE, BUDGET};
+use crate::lease::admit::fault::{BALANCE, BUDGET};
 use crate::lease::admit::{Admission, Refusal, Request};
 use crate::money::Accounts;
 use crate::money::budget::{self, Verdict};
