@@ -2,7 +2,7 @@
 //! fleet's repository credentials reach.
 
 use garde::Validate;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::{MAX_REFERENCE_LEN, MAX_TOOL_LEN};
 
@@ -90,7 +90,11 @@ pub enum Pattern {
 ///
 /// Two values and no third: a fleet that declares no access level mints
 /// nothing, rather than inheriting the installation's full permission set.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+/// `Serialize` as well as `Deserialize`, and through the SAME rename: the park
+/// records the approved reach onto the gate row and the write mint compares
+/// against it, so the two directions must agree on the spelling by
+/// construction rather than by a second table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Access {
     /// Fetch history, and nothing more.

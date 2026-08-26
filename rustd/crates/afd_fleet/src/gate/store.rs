@@ -7,8 +7,9 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_redis::Redis;
+use afd_redis::{ReadyIndex, Redis};
 use sqlx::Row as _;
 
 use crate::error::{Result, query};
@@ -84,19 +85,49 @@ pub mod key {
 pub struct Gates {
     database: Db,
     queue: Redis,
+    entropy: Entropy,
 }
 
 impl Gates {
-    /// Gate reads through `database` and `queue`.
+    /// Gate reads and writes through `database` and `queue`.
+    ///
+    /// The entropy source is the third, and it arrives for one reason: raising
+    /// a gate mints two identifiers — the action a human answers about and the
+    /// row that records it — and they are drawn through the workspace's one
+    /// entropy surface rather than a second source with its own failure mode.
+    /// [`Leases`](crate::lease::Leases) takes it for the same reason.
     #[must_use]
-    pub const fn new(database: Db, queue: Redis) -> Self {
-        Self { database, queue }
+    pub const fn new(database: Db, queue: Redis, entropy: Entropy) -> Self {
+        Self {
+            database,
+            queue,
+            entropy,
+        }
     }
 
     /// The queue these gates are mirrored in, for the sibling module that
     /// counts anomalies through it.
     pub(super) const fn queue(&self) -> &Redis {
         &self.queue
+    }
+
+    /// The datastore the durable half of a gate lives in.
+    pub(super) const fn database(&self) -> &Db {
+        &self.database
+    }
+
+    /// The entropy source a raised gate draws its identifiers from.
+    pub(super) const fn entropy(&self) -> &Entropy {
+        &self.entropy
+    }
+
+    /// The readiness index a paused fleet is dropped from.
+    ///
+    /// Built per call rather than held: it is a thin binding over the same
+    /// connection this store already owns, and storing a second handle to one
+    /// connection would suggest there were two.
+    pub(super) fn ready(&self) -> ReadyIndex {
+        ReadyIndex::new(self.queue.clone())
     }
 
     /// The gate `event_id` is already waiting on, if any.

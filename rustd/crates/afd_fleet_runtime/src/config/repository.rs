@@ -16,6 +16,8 @@
 //! is exactly what declaring a binding exists to prevent. Absent entirely is
 //! fine and means the mint refuses.
 
+use serde::Serialize;
+
 use crate::config::raw;
 use crate::error::{Error, Result};
 
@@ -100,6 +102,58 @@ impl RepositoryBinding {
             _ => Err(Error::InvalidRepositoryBinding {
                 reason: REASON_HALF_DECLARED,
             }),
+        }
+    }
+}
+
+/// A binding as an approval gate RECORDS it.
+///
+/// # Why a recorded copy exists at all
+///
+/// The gate row keeps the reach a human actually approved, so the write mint
+/// can compare it against the fleet's CURRENT config without trusting anything
+/// a PATCH could reach. A config that grew a repository since the approval is
+/// drift the
+/// mint must refuse, and it can only see that drift against a stored copy.
+///
+/// # Why it is a serde type and not a writer
+///
+/// `repository_binding_json.zig` hand-writes this object a byte at a time —
+/// `writeAll("{\"")`, a hand-rolled `writeJsonEscaped` per entry, a manual
+/// comma between them — because Zig has no serializer to reach for. The
+/// escaping, the separator placement and the optional trailing member are all
+/// hazards this derive does not have. What survives from there is the SHAPE,
+/// which is a contract: the mint reads these three key names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Recorded<'a> {
+    /// The repositories, verbatim.
+    ///
+    /// Case is preserved rather than normalised: the MATCHER owns
+    /// case-insensitivity, because that is where GitHub's own comparison rules
+    /// apply, and a record that normalised would no longer say what was
+    /// approved.
+    repositories: &'a [Box<str>],
+    /// How far the approved reach goes.
+    access: Access,
+    /// The base a write binding opens against.
+    ///
+    /// Omitted rather than null when absent, which is the shape the Zig writes
+    /// and therefore the shape the mint's matcher already reads.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    base: Option<&'a str>,
+}
+
+impl RepositoryBinding {
+    /// This binding in the one shape a gate row stores it in.
+    ///
+    /// Borrowed, so recording costs no copy of the repository list — the row
+    /// write serialises straight out of the config it resolved.
+    #[must_use]
+    pub fn recorded(&self) -> Recorded<'_> {
+        Recorded {
+            repositories: &self.repositories,
+            access: self.access,
+            base: self.base_branch(),
         }
     }
 }
