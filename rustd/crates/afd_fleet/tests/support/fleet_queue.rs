@@ -37,6 +37,31 @@ pub(crate) fn config() -> RedisConfig {
         .with_ca_cert_file(std::env::var(CA_KNOB).ok().map(Into::into))
 }
 
+/// A Redis nobody is listening on.
+///
+/// Port 1 is reserved and unbound on every platform this builds for, so a
+/// command fails on connection refusal rather than waiting out a timeout — the
+/// difference between a suite that runs in milliseconds and one that runs in
+/// request budgets. Plain `redis://` rather than the lane's `rediss://`: no
+/// socket is ever opened, so a certificate authority would be configuration
+/// nothing reads.
+const NOWHERE: &str = "redis://127.0.0.1:1";
+
+/// A handle over a Redis that will not answer, for the drop paths.
+///
+/// `Redis::unreachable` skips the ping `connect` performs, which is the only
+/// way to hold this: the lane's Redis is SHARED by every test binary running in
+/// parallel, so pausing the container or killing the server would fail
+/// unrelated suites at the same instant. A handle one test owns fails only that
+/// test's commands.
+pub(crate) fn unreachable() -> Redis {
+    Redis::unreachable(&RedisConfig::from_url(
+        RedisRole::Default,
+        NOWHERE.to_owned(),
+    ))
+    .expect("a lazy handle opens no socket and cannot fail")
+}
+
 /// Connects to the lane's Redis.
 pub(crate) async fn connect() -> Redis {
     Redis::connect(&config())

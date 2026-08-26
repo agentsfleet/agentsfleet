@@ -135,6 +135,11 @@ afd_auth = { workspace = true, features = ["test-util"] }
 # from. A dev-dependency on a crate this one already depends on, for the
 # `test-util` seam only the tests reach.
 afd_fleet_runtime = { workspace = true, features = ["test-util"] }
+# `Redis::unreachable`, for the drop paths. The lane's Redis is shared by every
+# test binary running in parallel, so an injection that takes the SERVER away
+# fails unrelated suites; a lazy handle one test owns fails only its own
+# commands. Same shape as the `afd_db` line above, for the same reason.
+afd_redis = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

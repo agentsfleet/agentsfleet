@@ -60,13 +60,21 @@ pub(crate) async fn assert_shape(
 
     // One statement, one row: every column asked for at once, so the answer
     // cannot straddle two snapshots of a row a sweeper might be touching.
+    //
+    // `ORDER BY created_at, id` is NOT cosmetic. `fetch_optional` takes the
+    // first row the server happens to return and ignores the rest, and two of
+    // these predicates legitimately match more than one row — a runner writes a
+    // narrative row at enrolment and another at claim. Without an order the
+    // suite asserts against whichever row Postgres felt like returning, which
+    // is a test that passes until it does not. `id` breaks the tie because
+    // `created_at` is a millisecond and two rows can share one.
     let projection = columns
         .iter()
         .map(|column| format!("({column} IS NOT NULL)::text"))
         .collect::<Vec<_>>()
         .join(", ");
     let statement = AssertSqlSafe(format!(
-        "SELECT {projection} FROM {table} WHERE {predicate}"
+        "SELECT {projection} FROM {table} WHERE {predicate} ORDER BY created_at, id LIMIT 1"
     ));
     let row = sqlx::query(statement)
         .bind(bind)
