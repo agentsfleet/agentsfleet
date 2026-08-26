@@ -55,6 +55,20 @@ impl Fence {
         self.0
     }
 
+    /// The token as the wire spells it.
+    ///
+    /// `fencing_seq` is a monotonic counter the claim statement starts at one
+    /// and only ever increments, so no value this crate produces is negative.
+    /// One edited out of band could be, and it saturates to ZERO rather than
+    /// panicking or taking its magnitude: zero is below every token a claim
+    /// can mint, so a corrupted row fences itself out. `unsigned_abs` alone
+    /// would turn `-1` into `1`, which is a token another holder may legitimately
+    /// hold — a plausible wrong answer, which is the worse failure.
+    #[must_use]
+    pub const fn as_u64(self) -> u64 {
+        if self.0 < 0 { 0 } else { self.0.unsigned_abs() }
+    }
+
     /// A token as read back from a row.
     ///
     /// `pub(crate)` on purpose: outside this crate a `Fence` can only come from

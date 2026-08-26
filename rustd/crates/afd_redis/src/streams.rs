@@ -63,6 +63,23 @@ pub fn fleet_stream_key(fleet_id: &str) -> String {
     format!("fleet:{fleet_id}:events")
 }
 
+/// The channel a fleet's live-tail frames are published on.
+///
+/// `activity_publisher.zig` builds this into a 128-byte stack buffer and has a
+/// failure arm for the overflow, which is a fact about `bufPrint` rather than
+/// about the channel. Here the string owns its own length and the arm is gone —
+/// there is no truncated-channel case left to handle, so nothing has to decide
+/// what publishing to a truncated channel would mean.
+///
+/// Distinct from [`fleet_stream_key`] and deliberately adjacent to it: one is a
+/// durable STREAM that survives a restart and one is a pub/sub CHANNEL with no
+/// retention at all, and a caller reaching for the wrong one would either lose
+/// every frame or persist cosmetic ones forever.
+#[must_use]
+pub fn fleet_activity_channel(fleet_id: &str) -> String {
+    format!("fleet:{fleet_id}:activity")
+}
+
 /// A Redis stream entry id, which is also the canonical event id.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EventId(String);
@@ -72,6 +89,18 @@ impl EventId {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// An id read back out of a column rather than minted by an append.
+    ///
+    /// The report path needs this: the entry was acknowledged long after the
+    /// poll that read it, by a different request, and what survives in between
+    /// is the `fleet.runner_leases.event_id` text. Deliberately not a `From`
+    /// impl — an id is a thing Redis produced, and a blanket conversion from
+    /// `&str` would let any string in the program become one silently.
+    #[must_use]
+    pub fn of(stored: &str) -> Self {
+        Self(stored.to_owned())
     }
 }
 

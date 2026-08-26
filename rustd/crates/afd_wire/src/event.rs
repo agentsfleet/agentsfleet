@@ -18,6 +18,25 @@ pub enum EventType {
     Continuation,
 }
 
+impl EventType {
+    /// The type `stored` names, or nothing when it names none.
+    ///
+    /// The set is CLOSED, and an unrecognised spelling answers `None` rather
+    /// than a default. A producer from a newer build can write a type this
+    /// daemon has no execution path for; running it as `chat` would execute
+    /// the wrong thing, and the caller can end the delivery instead.
+    #[must_use]
+    pub fn parse(stored: &str) -> Option<Self> {
+        match stored {
+            "chat" => Some(Self::Chat),
+            "webhook" => Some(Self::Webhook),
+            "cron" => Some(Self::Cron),
+            "continuation" => Some(Self::Continuation),
+            _unknown => None,
+        }
+    }
+}
+
 /// One event on the wire, flat by convention.
 ///
 /// `request_json` is opaque JSON bytes carried verbatim — the runner re-parses

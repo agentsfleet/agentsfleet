@@ -85,10 +85,18 @@ pub const ESTIMATE_FLOOR_OUTPUT_TOKENS: i64 = 100;
 const NANOS_PER_USD_F64: f64 = 1e9;
 
 /// Tokens in the unit a catalogue rate is quoted per.
-const TOKENS_PER_MTOK: i64 = 1_000_000;
+///
+/// `pub(crate)` because the settle and renew statements divide by it too, as a
+/// bind parameter. One declaration, two readers (RULE UFS): the SQL and
+/// [`slice_charge`] have to agree on the unit or the statement charges
+/// something the pure reference does not, and that disagreement would be
+/// invisible — both would still return a plausible number.
+pub(crate) const TOKENS_PER_MTOK: i64 = 1_000_000;
 
 /// Milliseconds in the unit [`RUN_NANOS_PER_SEC`] is quoted per.
-const MS_PER_SEC: i64 = 1_000;
+///
+/// `pub(crate)` for the reason [`TOKENS_PER_MTOK`] is.
+pub(crate) const MS_PER_SEC: i64 = 1_000;
 
 impl Nanos {
     /// Nothing drained.

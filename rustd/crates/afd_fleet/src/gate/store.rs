@@ -83,7 +83,7 @@ pub mod key {
 /// reason the durable read exists — impossible to express.
 #[derive(Debug, Clone)]
 pub struct Gates {
-    database: Db,
+    pub(super) database: Db,
     queue: Redis,
     entropy: Entropy,
 }

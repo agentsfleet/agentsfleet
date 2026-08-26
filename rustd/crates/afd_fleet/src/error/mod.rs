@@ -38,13 +38,21 @@ pub type Result<T, E = Error> = core::result::Result<T, E>;
 
 pub mod classify;
 pub mod detail;
+pub mod lift;
+pub mod refuse;
 
 pub use self::detail::{
-    DETAIL_CONFIG_UNREADABLE, DETAIL_CREDENTIAL_MISSING, DETAIL_DATABASE_ERROR,
-    DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED, DETAIL_GATE_BINDING_UNWRITABLE,
-    DETAIL_GATE_REFERENCE_UNWRITABLE, DETAIL_HOST_ID_BOUNDS, DETAIL_PROVIDER_UNRESOLVED,
-    DETAIL_QUEUE_UNAVAILABLE, DETAIL_REGISTRATION_FAILED, DETAIL_REGISTRY_ALLOWLIST,
-    DETAIL_RUNNER_NOT_FOUND, DETAIL_VAULT_DATA_INVALID,
+    DETAIL_BUDGET_EXHAUSTED, DETAIL_CONFIG_UNREADABLE, DETAIL_CREDENTIAL_MISSING,
+    DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED,
+    DETAIL_GATE_BINDING_UNWRITABLE, DETAIL_GATE_REFERENCE_UNWRITABLE, DETAIL_HOST_ID_BOUNDS,
+    DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND,
+    DETAIL_PROVIDER_UNRESOLVED, DETAIL_QUEUE_UNAVAILABLE, DETAIL_REGISTRATION_FAILED,
+    DETAIL_REGISTRY_ALLOWLIST, DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUNNER_NOT_FOUND,
+    DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID,
+};
+pub(crate) use self::refuse::{
+    budget_exhausted, lease_lost, lease_max_runtime, lease_not_found, renewal_no_credits,
+    stale_fence,
 };
 
 /// A runner control-plane operation failed.
@@ -148,6 +156,24 @@ pub(crate) enum ErrorKind {
 
     #[error("the fleet declared a credential this workspace does not hold")]
     CredentialMissing,
+
+    #[error("the reporting holder's fence is behind the fleet's live sequence")]
+    StaleFence,
+
+    #[error("no lease with that id belongs to the presenting runner")]
+    LeaseNotFound,
+
+    #[error("the lease is no longer this runner's to renew")]
+    LeaseLost,
+
+    #[error("the lease reached the hard ceiling on one run's wall time")]
+    LeaseMaxRuntime,
+
+    #[error("the tenant's credit pool cannot fund another slice of this run")]
+    RenewalNoCredits,
+
+    #[error("the fleet reached a spend ceiling its own author declared")]
+    BudgetExhausted,
 }
 
 impl Error {
@@ -260,58 +286,6 @@ pub(crate) fn row_malformed(
             column,
             source,
         })
-    }
-}
-
-/// A pool with nothing to give, or a datastore that is gone.
-///
-/// `#[from]`, so `?` lifts an `afd_db::Error` with no conversion at the call
-/// site (`RUST_ERROR_STANDARD` rule 2).
-impl From<afd_db::Error> for Error {
-    fn from(source: afd_db::Error) -> Self {
-        Self::new(ErrorKind::Datastore { source })
-    }
-}
-
-/// The queue would not answer.
-///
-/// A separate variant from [`ErrorKind::Datastore`] because the two fail
-/// independently and a runner reads them the same way — back off and re-poll —
-/// only when the code says which one went down. Folding Redis into the Postgres
-/// variant would page whoever owns the wrong datastore.
-impl From<afd_redis::Error> for Error {
-    fn from(source: afd_redis::Error) -> Self {
-        Self::new(ErrorKind::Queue { source })
-    }
-}
-
-/// An identifier could not be minted — the instant is unrepresentable.
-///
-/// `#[from]` on the KIND, lifted here, so `?` carries a `Uuid7::encode` failure
-/// with no conversion at the call site. `RowMalformed` wraps the same foreign
-/// type but keeps `#[source]` and its own builder, because a column that will
-/// not parse needs the table and column names a bare conversion cannot supply —
-/// and because two `#[from]` for one type is two `From` impls for one pair.
-impl From<afd_core::error::Error> for Error {
-    fn from(source: afd_core::error::Error) -> Self {
-        Self::new(ErrorKind::Mint { source })
-    }
-}
-
-/// The host could not produce the random bytes a credential is built from.
-/// `#[from]` on the KIND, lifted here for the reason the two impls above are:
-/// a fleet whose stored config will not parse must not run under a config this
-/// daemon guessed at, and the parser's own error is what says which rule the
-/// document broke. Converting it to a string here would destroy that.
-impl From<afd_fleet_runtime::Error> for Error {
-    fn from(source: afd_fleet_runtime::Error) -> Self {
-        Self::new(ErrorKind::ConfigUnreadable { source })
-    }
-}
-
-impl From<afd_crypto::error::Error> for Error {
-    fn from(source: afd_crypto::error::Error) -> Self {
-        Self::new(ErrorKind::Entropy { source })
     }
 }
 

@@ -14,20 +14,35 @@
 //! gate, not a design. Here the split falls on what the code DOES — claim,
 //! gate, issue — so no module needs a re-export to stay findable.
 
+pub mod activity;
 pub mod admit;
 pub mod affinity;
+mod answer;
 pub mod assign;
+pub mod coverage;
+mod deliver;
 pub mod envelope;
 pub mod event;
+pub mod finalize;
 pub mod installed;
 pub mod issue;
+pub mod pull;
 pub mod reclaim;
+pub mod renew;
+pub mod report;
+pub mod settle;
 pub mod store;
+pub mod verdict;
 
+pub use self::activity::Target;
 pub use self::affinity::{Claimed, Fence};
 pub use self::envelope::{Acquired, Kind};
 pub use self::event::{Delivery, Ended};
 pub use self::installed::{FRESH_CONTEXT, Installed};
 pub use self::issue::{Billed, Issued};
+pub use self::pull::Plane;
 pub use self::reclaim::{Reclaimed, Reused};
+pub use self::renew::{Renewed, Renewing};
+pub use self::settle::{Reported, Settled};
 pub use self::store::Leases;
+pub use self::verdict::{Terminal, Verdict};

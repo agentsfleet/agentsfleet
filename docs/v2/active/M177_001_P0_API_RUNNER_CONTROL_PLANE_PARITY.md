@@ -61,6 +61,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_identity/**` | EDIT | `ring` → `aws-lc-rs` (4 lines in `jwks/verifier.rs`, plus the signing test) so the binary carries ONE crypto provider once `object_store` forces `aws-lc-rs` |
 | `rustd/crates/afd_core/**` | EDIT | `Uuid7::encode` — version-7 minting beside the canonical-spelling parser that already lives there; the Zig `id_format.zig` has no Rust counterpart and an encoder anywhere else would re-derive the dash and nibble offsets |
 | `rustd/crates/afd_wire/**` | EDIT | registered in `workspace.dependencies`; no wire shape is touched (M175 owns those) |
+| `rustd/crates/afd_redis/**` | EDIT | `EventId::of` — the report acknowledges a stream entry long after the poll that read it, from a different request, so the id has to be reconstructible from the `fleet.runner_leases.event_id` text that survives in between. Deliberately a named constructor rather than a `From<&str>`, which would let any string in the program become a stream id (§3) |
 | `rustd/crates/afd_db/**` | EDIT | `Db::unreachable` behind `test-util` — a pool over a datastore that answers nothing, so §1's transport-class refusal (RULE ECL) is provable through the real router with no container to stop |
 | `rustd/Cargo.toml` + `rustd/Cargo.lock` | EDIT | new members; `uuid` (v7 minting) and `hex` registered — both already resolved in the lock, so neither is a new crate |
 | `make/test-integration-rustd.mk` | EDIT | end-to-end lane driving a stock Zig runner against `agentsfleetd-rs` (§7.1); no daemon-under-test selector — only one daemon remains |
@@ -135,7 +136,14 @@ design). Registered for M181 §4's divergence register.
 - **Dimension 3.1** — report writes 7–12 row-parity on identical input → Test `test_report_writes_row_parity`
 - **Dimension 3.2** — stale fencing token → UZ-RUN-005; no row mutated → Test `test_report_stale_fence_rejected`
 - **Dimension 3.3** — duplicate report for one event → ledger stays at two rows per event; idempotent reply → Test `test_report_dedup_idempotent`
-- **Dimension 3.4** — renew clamps to max runtime and refuses on empty wallet → Test `test_renew_clamp_and_coverage`
+- **Dimension 3.4** — renew clamps to max runtime and refuses on empty wallet → Tests
+  `test_renew_clamps_to_the_hard_ceiling`, `test_renew_after_reclaim_is_lost`,
+  `test_renew_coverage_refuses_an_empty_wallet` (three tests rather than the one
+  originally named: the clamp is store-level SQL and the coverage refusal needs the
+  composed `Plane`, so fusing them would make a wallet fixture a precondition of
+  every deadline assertion. The `Lost` verdict joined them because it is the arm
+  the clamp must NOT be confused with — a cap says the result is still wanted, a
+  loss says it will be refused)
 
 ### §4 — Activity, memory, bundles, mint
 
@@ -251,10 +259,10 @@ Row shapes: fleet.runner_leases, fleet.runner_events, billing.usage_ledger,
 | 2.2 | integration (race) | `test_lease_affinity_race` | concurrent leases, one fleet → one lease row, one no-work reply |
 | 2.3 | integration (negative) | `test_lease_money_gate_refusal` | zero-balance tenant → refusal code, zero writes |
 | 2.4 | unit | `test_provider_key_placement` | key present on policy, absent from secrets_map, buffer zeroed after serialize |
-| 3.1 | integration | `test_report_writes_row_parity` | writes 7–12 land; each row's shape equals the recorded fixture shape |
+| 3.1 | integration | `test_report_writes_row_parity` | the six report writes land in one statement — lease flipped to `reported` with its cursor advanced, affinity cursor advanced, wallet drawn down by exactly the reported charge, `stage` ledger row carrying that amount and its span, lifetime tally on the succeeded column only |
 | 3.2 | integration (negative) | `test_report_stale_fence_rejected` | fence n after reclaim to n+1 → UZ-RUN-005, no mutation |
 | 3.3 | integration (replay) | `test_report_dedup_idempotent` | same report twice → two ledger rows total, same reply |
-| 3.4 | integration (negative) | `test_renew_clamp_and_coverage` | renew near max-runtime → clamped; empty wallet → UZ-RUN-012 |
+| 3.4 | integration (negative) | `test_renew_clamps_to_the_hard_ceiling` · `test_renew_after_reclaim_is_lost` · `test_renew_coverage_refuses_an_empty_wallet` | renew near max-runtime → clamped to `created_at + MAX_RUNTIME_MS`, past it → UZ-RUN-010, both rows advanced together; after a reclaim → UZ-RUN-011; empty wallet → UZ-RUN-012 with nothing advanced |
 | 4.1 | integration | `test_activity_publish` | frame → one publish on `fleet:{id}:activity`; malformed → 4xx, no publish |
 | 4.2 | unit | `test_memory_hydration_window` | crafted corpus → documented core-first newest-first ordering, byte cap honored |
 | 4.3 | integration (negative) | `test_memory_capture_fencing` | stale capture fence → rejected, store unchanged |

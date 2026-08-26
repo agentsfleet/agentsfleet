@@ -175,6 +175,7 @@ fn zig_status(status: u16) -> &'static str {
         402 => ".payment_required",
         403 => ".forbidden",
         404 => ".not_found",
+        409 => ".conflict",
         424 => ".failed_dependency",
         429 => ".too_many_requests",
         500 => ".internal_server_error",

@@ -33,6 +33,7 @@
 
 pub mod budget;
 pub mod charge;
+pub mod meter;
 pub mod nanos;
 pub mod rates;
 pub mod store;
@@ -41,6 +42,7 @@ pub mod window;
 
 pub use self::budget::{Spend, Verdict};
 pub use self::charge::Charged;
+pub use self::meter::{Cumulative, Meter};
 pub use self::nanos::{
     ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, NANOS_PER_USD, Nanos, RECEIVE_NANOS,
     RUN_NANOS_PER_SEC, SliceRates, slice_charge,

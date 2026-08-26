@@ -108,3 +108,42 @@ pub const DETAIL_GATE_REFERENCE_UNWRITABLE: &str = "approval gate reference unwr
 /// the write mint refuses those, so swallowing it would turn an impossible
 /// failure into an approval nobody can spend. Never rendered.
 pub const DETAIL_GATE_BINDING_UNWRITABLE: &str = "approval gate binding unwritable";
+
+/// `service_report.zig`'s refusal when the presenting holder has been
+/// superseded.
+///
+/// It names the outcome — the current holder's result wins — because that is
+/// the fact the runner acts on: it stops retrying and discards its own result,
+/// rather than backing off and re-reporting into a lease it no longer holds.
+pub const DETAIL_STALE_FENCE: &str = "Lease superseded by a newer holder; report rejected";
+
+/// `service_renew.zig`'s refusal when no lease with that id is the caller's.
+///
+/// Deliberately says nothing about WHICH of the two happened — no such lease,
+/// or somebody else's lease. The load is scoped by runner, so this sentence is
+/// all either case can honestly claim to know, and a sharper one would make the
+/// endpoint an oracle for live lease ids.
+pub const DETAIL_LEASE_NOT_FOUND: &str = "No lease matches this lease_id for the runner";
+
+/// `service_renew.zig`'s refusal when the lease moved on before this renewal.
+///
+/// One sentence for what the Zig spells two ways — "no longer active; reclaimed
+/// or already reported" at the status check, and "reassigned before this
+/// renewal" after the atomic extend. Both are the same fact observed a moment
+/// apart, and the runner's remedy is identical either way: terminate the child.
+/// Two sentences would suggest a distinction it could act on and cannot.
+pub const DETAIL_LEASE_LOST: &str = "Lease was reassigned before this renewal; terminate the child";
+
+/// `service_renew.zig`'s refusal at the hard runtime ceiling.
+pub const DETAIL_LEASE_MAX_RUNTIME: &str = "Lease reached the hard max runtime; not renewed";
+
+/// `service_renew.zig`'s refusal when the TENANT's credit pool is spent.
+///
+/// Distinct from [`DETAIL_BUDGET_EXHAUSTED`] beside it, and the two sentences
+/// are the only thing that tells an operator which pool to look at: this one is
+/// topped up, that one is edited in `TRIGGER.md`.
+pub const DETAIL_RENEWAL_NO_CREDITS: &str =
+    "Tenant balance can no longer fund this run; not renewed";
+
+/// `service_renew.zig`'s refusal when the FLEET's own ceiling is reached.
+pub const DETAIL_BUDGET_EXHAUSTED: &str = "Fleet budget exhausted for this window; not renewed";

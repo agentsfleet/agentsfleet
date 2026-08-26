@@ -58,7 +58,13 @@ fn test_error_registry_unique() {
         error_code::AUTH_CLI_CREDENTIAL_REVOKED,
         error_code::APIKEY_REVOKED,
         error_code::RUN_INVALID_RUNNER_TOKEN,
+        error_code::RUN_STALE_FENCING_TOKEN,
+        error_code::RUN_LEASE_NOT_FOUND,
         error_code::RUN_ADMIN_STATE_BLOCKED,
+        error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
+        error_code::RUN_LEASE_LOST,
+        error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
+        error_code::RUN_BUDGET_EXCEEDED,
         error_code::API_BACKPRESSURE,
     ] {
         assert!(

@@ -233,10 +233,59 @@ const ENTRIES: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::RUN_STALE_FENCING_TOKEN,
+        // 409, matching the Zig entry's `.conflict`. The word is exact: two
+        // runners each hold a lease they believe is live, and the fence is what
+        // settles which one is. Not a 403 — nothing about the credential is
+        // wrong — and not a 410, because the resource is very much still there,
+        // owned by somebody else.
+        status: 409,
+        title: "Stale fencing token",
+        hint: "The lease was reclaimed by a newer holder. This report is rejected; the current holder's result wins.",
+        // Not dashboard-facing: this rides the runner-to-control-plane wire
+        // contract, and the Zig entry carries the same reachability note.
+        user_message: None,
+    },
+    Problem {
+        code: error_code::RUN_LEASE_NOT_FOUND,
+        status: 404,
+        title: "Lease not found",
+        hint: "No active lease matches this lease_id for the presenting runner; it may have expired, been reclaimed, or never existed.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::RUN_ADMIN_STATE_BLOCKED,
         status: 401,
         title: "Runner admin state blocks access",
         hint: "This runner is cordoned, draining, drained, or revoked and cannot call the runner plane. Re-enroll the host to mint a fresh runner token.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
+        // 409 like the lost verdict beside it, and the pair is the reason both
+        // codes exist: the STATUS cannot tell a runner whether its result is
+        // still wanted, so the code has to.
+        status: 409,
+        title: "Lease exceeded max runtime",
+        hint: "The lease reached its maximum runtime and cannot renew. The runner stops the child and reports any result.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::RUN_LEASE_LOST,
+        status: 409,
+        title: "Lease lost",
+        hint: "The lease moved to another runner before renewal. The former runner must stop its child.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
+        // 402, and load-bearing for the reason the entry below it is: the stock
+        // runner classifies a renew refusal by status AND code. Both 402s stop
+        // the run; the code is what says which pool ran dry, and therefore
+        // whether an operator tops up a balance or edits a ceiling.
+        status: 402,
+        title: "Lease renewal blocked: no credits",
+        hint: "The tenant balance cannot cover another run slice. The lease does not renew, and the run stops cleanly.",
         user_message: None,
     },
     Problem {

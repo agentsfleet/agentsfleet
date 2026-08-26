@@ -2,7 +2,7 @@
 //!
 //! # What is mounted, and what is only tabled
 //!
-//! [`Route`] carries all eighty-one endpoints; this binary serves five of them.
+//! [`Route`] carries all eighty-one endpoints; this binary serves nine of them.
 //! The gap is deliberate and it is STATED: [`handler_for`] is a total match
 //! over every family AND every route within a family, so an endpoint whose
 //! handler has not been ported yet says so in an arm rather than by being
@@ -176,15 +176,14 @@ fn runner_handler<D: Serving>(verb: RunnerRoute) -> Option<MethodRouter<Arc<D>>>
     match verb {
         RunnerRoute::SelfRecord => Some(get(runner::self_record::handle::<D>)),
         RunnerRoute::Heartbeat => Some(post(runner::heartbeat::handle::<D>)),
-        // Tabled, not yet served: the lease and report verbs with the renew
-        // that clamps between them, then activity, memory, bundles and the
-        // mint broker. Each arrives with the slice that ports it; until then
-        // this binary answers 404 rather than claiming an unfinished endpoint.
-        RunnerRoute::Lease
-        | RunnerRoute::Report
-        | RunnerRoute::Renew
-        | RunnerRoute::Activity
-        | RunnerRoute::CredentialsMint
+        RunnerRoute::Lease => Some(post(runner::lease::handle::<D>)),
+        RunnerRoute::Report => Some(post(runner::report::handle::<D>)),
+        RunnerRoute::Renew => Some(post(runner::renew::handle::<D>)),
+        RunnerRoute::Activity => Some(post(runner::activity::handle::<D>)),
+        // Tabled, not yet served: memory, bundles and the mint broker. Each
+        // arrives with the slice that ports it; until then this binary answers
+        // 404 rather than claiming an unfinished endpoint.
+        RunnerRoute::CredentialsMint
         | RunnerRoute::MemoryHydrate
         | RunnerRoute::MemoryCapture
         | RunnerRoute::Bundle => None,
