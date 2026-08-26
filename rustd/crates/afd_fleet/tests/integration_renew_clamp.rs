@@ -286,6 +286,12 @@ async fn test_renew_coverage_refuses_an_empty_wallet() {
     // Funded at issue: the lease must be grantable, or this test would be
     // proving the ISSUE gate and not the renewal one.
     fixtures.seed_wallet(&tenant, DEEP_POOL, ENROLLED_AT).await;
+    // Priced, so the run has a floor to fail to cover. The catalogue ships
+    // EMPTY and `MODEL` is a fixture spelling no admin would curate, so without
+    // this the estimate is `Unpriceable`, its floor is zero, a zero balance
+    // covers zero, and the CREDITS gate admits — leaving the BUDGET gate to
+    // refuse and this test asserting the wrong code for the right outcome.
+    fixtures.seed_model_rate(PROVIDER, MODEL, ENROLLED_AT).await;
 
     let acquired = leases
         .select(&runner, now)

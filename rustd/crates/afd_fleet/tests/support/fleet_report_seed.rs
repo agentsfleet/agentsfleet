@@ -20,9 +20,12 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
+use afd_fleet::credential::platform::Platform;
+use afd_fleet::credential::{Broker, Vendors};
 use afd_fleet::lease::Plane;
 use afd_fleet::lease::{Billed, Delivery, Fence, Issued, Leases};
-use afd_fleet::money::{Accounts, Cumulative, Meter, SliceRates};
+use afd_fleet::memory::Memories;
+use afd_fleet::money::{Accounts, Charged, Cumulative, Meter, Posture, SliceRates};
 use afd_fleet::provider::Providers;
 use afd_fleet::secrets::Registry;
 use afd_fleet::vault::Vault;
@@ -128,6 +131,31 @@ pub(crate) async fn held() -> Held {
         "a newly leased event has no row yet"
     );
     let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
+    // The receive charge, which the PLANE writes and this fixture drives the
+    // STORE past. `Leases::record_received` opens the narrative log; the ledger
+    // row is `Accounts::debit_receive`, reached through `money_gates` on the
+    // pull path. A fixture that skipped it left ONE ledger row per event, so
+    // every suite asserting the two-rows-per-event invariant was measuring the
+    // fixture's shortcut rather than the `ON CONFLICT (event_id, charge_type)`
+    // arm that holds it there.
+    //
+    // Called once, on the `Delivery::First` asserted above — the same condition
+    // the plane matches on, and the reason that assertion is not decorative.
+    Accounts::new(fixtures.database.clone(), Entropy::new())
+        .debit_receive(
+            Charged {
+                tenant_id: &tenant_id,
+                workspace_id: &acquired.workspace_id,
+                fleet_id: &acquired.fleet_id,
+                event_id: &acquired.event_id,
+                posture: Posture::Platform,
+                model: MODEL,
+                event_created_at: acquired.event_created_at,
+            },
+            now,
+        )
+        .await
+        .expect("the receive charge must reach the ledger");
     let issued = leases
         .issue(
             &runner,
@@ -179,12 +207,21 @@ impl Fixtures {
             leases: self.leases(),
             gates: self.gates(),
             accounts: Accounts::new(self.database.clone(), Entropy::new()),
+            memories: Memories::new(self.database.clone(), Entropy::new()),
             providers: Providers::new(self.database.clone(), Arc::clone(&kek)),
             vault: Vault::new(self.database.clone(), kek),
             // `Registry::default()`, not a literal: the type is `#[non_exhaustive]`
             // so only the crate that owns it may name its fields — which is the
             // point of the attribute, and the reason the daemon builds one the
             // same way.
+            // A broker over the shipped registry and a deployment that holds
+            // no platform credential — which is what these fixtures are: every
+            // gate they prove refuses BEFORE a credential is exchanged, so a
+            // broker that could mint would be a broker nothing here reaches.
+            broker: Arc::new(Broker::new(
+                Arc::new(Registry::default()),
+                Arc::new(Vendors::new(Platform::empty(), reqwest::Client::new())),
+            )),
             connectors: Registry::default(),
         }
     }

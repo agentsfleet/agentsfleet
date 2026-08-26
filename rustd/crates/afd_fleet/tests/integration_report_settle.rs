@@ -187,12 +187,27 @@ async fn test_report_stale_fence_rejected() {
         None,
         "a fenced report writes no stage row at all, not a zero-valued one"
     );
+    // BOTH arms, and both `Some("0")` rather than `None`. The counter ROW
+    // already exists: `sql::lease::INSERT_LEASE_WITH_EVENT` writes it with
+    // `acquired = 1` when the lease is issued, so absence was never the shape
+    // this could take and asserting `None` tested the fixture, not the guard.
+    // What the guard actually controls is whether either OUTCOME arm ticks —
+    // `tally` selects `FROM claim`, and a fenced report claims no rows — so
+    // pinning both to zero is what a wrongly-gated tally would break, on
+    // whichever arm the `succeeded` flag steered it to.
     assert_eq!(
         held.fixtures
             .counter_column(held.runner.as_str(), "succeeded")
             .await,
-        None,
+        Some("0".to_owned()),
         "the tally is gated FROM claim, so a report that claimed nothing counts nothing"
+    );
+    assert_eq!(
+        held.fixtures
+            .counter_column(held.runner.as_str(), "failed")
+            .await,
+        Some("0".to_owned()),
+        "and it counts nothing on the failure arm either, not merely the one this report named"
     );
 
     queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
