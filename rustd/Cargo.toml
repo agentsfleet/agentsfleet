@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_api", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_fleet", "crates/afd_fleet_runtime", "crates/afd_identity", "crates/afd_observability", "crates/afd_redis", "crates/afd_state", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_api", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_fleet", "crates/afd_fleet_runtime", "crates/afd_identity", "crates/afd_library", "crates/afd_observability", "crates/afd_redis", "crates/afd_state", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.26.2"
@@ -46,6 +46,7 @@ afd_db = { path = "crates/afd_db" }
 afd_fleet = { path = "crates/afd_fleet" }
 afd_fleet_runtime = { path = "crates/afd_fleet_runtime" }
 afd_identity = { path = "crates/afd_identity" }
+afd_library = { path = "crates/afd_library" }
 afd_observability = { path = "crates/afd_observability" }
 afd_redis = { path = "crates/afd_redis" }
 afd_state = { path = "crates/afd_state" }
@@ -94,6 +95,8 @@ sha2 = { version = "0.11.0", default-features = false }
 # because a hand-written `write!("{:02x}")` loop is a place for a leading zero
 # to go missing, and this workspace prefers a crate to a re-derivation.
 hex = { version = "0.4.3", default-features = false, features = ["std"] }
+semver = { version = "1.0.28", default-features = false, features = ["std"] }
+serde_yaml_ng = { version = "0.10.0", default-features = false }
 
 # Constant-time comparison. RULE CTM: a byte-by-byte `==` over a secret leaks how
 # much of a guess was right through how long it took to reject.
