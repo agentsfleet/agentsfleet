@@ -137,15 +137,13 @@ impl Error {
             | Self::Catalogue(_)
             | Self::Pool(_)
             | Self::CatalogueJson(_)
-            | Self::Snapshot(_) => {
-                FLEET_BUNDLE_STORAGE_UNAVAILABLE
-            }
+            | Self::Snapshot(_)
+            | Self::Database { .. } => FLEET_BUNDLE_STORAGE_UNAVAILABLE,
             Self::Source(_)
             | Self::Github(_)
             | Self::Archive(_)
             | Self::Redirect(_)
             | Self::ArchivePath(_) => FLEET_BUNDLE_FETCH_FAILED,
-            Self::Database { .. } => FLEET_BUNDLE_STORAGE_UNAVAILABLE,
         }
     }
 

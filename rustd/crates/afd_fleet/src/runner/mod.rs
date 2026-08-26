@@ -24,6 +24,7 @@ pub mod spelling;
 pub mod store;
 pub mod token;
 pub mod validate;
+pub mod view;
 
 pub use self::heartbeat::{Beat, NO_REPORT};
 pub use self::policy::{AssignmentColumns, StoredVerdict};

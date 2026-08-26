@@ -42,6 +42,7 @@ pub mod provider;
 pub mod renew;
 pub mod report;
 pub mod runner;
+pub mod runner_view;
 pub mod sweep;
 pub mod vault;
 

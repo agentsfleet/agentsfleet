@@ -124,6 +124,14 @@ pub(crate) enum ErrorKind {
         source: afd_core::error::Error,
     },
 
+    #[error("a {table} row holds malformed JSON in {column}")]
+    StoredJson {
+        table: &'static str,
+        column: &'static str,
+        #[source]
+        source: serde_json::Error,
+    },
+
     #[error("the leased event envelope is missing {field}")]
     Envelope { field: &'static str },
 
@@ -420,6 +428,20 @@ pub(crate) fn row_malformed(
 ) -> impl Fn(afd_core::error::Error) -> Error {
     move |source| {
         Error::new(ErrorKind::RowMalformed {
+            table,
+            column,
+            source,
+        })
+    }
+}
+
+/// Reports JSONB text that did not survive decoding into its wire value.
+pub(crate) fn stored_json(
+    table: &'static str,
+    column: &'static str,
+) -> impl Fn(serde_json::Error) -> Error {
+    move |source| {
+        Error::new(ErrorKind::StoredJson {
             table,
             column,
             source,

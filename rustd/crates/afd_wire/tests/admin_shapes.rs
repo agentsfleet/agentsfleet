@@ -41,10 +41,18 @@ fn test_admin_crud_shape_parity() {
 
     assert_eq!(
         serde_json::to_value(models).expect("model response serializes"),
-        serde_json::json!({"models":[{"id":"0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01","provider":"anthropic","model_id":"claude-opus-5","context_cap_tokens":200000,"input_nanos_per_mtok":5,"cached_input_nanos_per_mtok":1,"output_nanos_per_mtok":25}]})
+        serde_json::json!({"models":[{"id":"0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01","provider":"anthropic","model_id":"claude-opus-5","context_cap_tokens":200_000,"input_nanos_per_mtok":5,"cached_input_nanos_per_mtok":1,"output_nanos_per_mtok":25}]})
     );
     let library_json = serde_json::to_value(libraries).expect("library response serializes");
-    assert_eq!(library_json["libraries"][0]["required_credentials"], serde_json::json!(["github"]));
-    assert!(library_json["libraries"][0].get("skill_markdown").is_none());
-    assert!(library_json["libraries"][0].get("support_files").is_none());
+    let library = library_json
+        .get("libraries")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|libraries| libraries.first())
+        .expect("response holds its one library");
+    assert_eq!(
+        library.get("required_credentials"),
+        Some(&serde_json::json!(["github"]))
+    );
+    assert!(library.get("skill_markdown").is_none());
+    assert!(library.get("support_files").is_none());
 }
