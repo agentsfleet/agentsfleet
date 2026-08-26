@@ -14,8 +14,10 @@ Porting `/v1/runners` to `agentsfleetd-rs`. Spec
 - ✅ **§2 provider resolution (this session)** — two strategies, one interface
 - ✅ **§2 `secrets_map` (this session)** — the two-channel split
 - ✅ **§2 approval-gate DECISION (this session)** — rule match, route table
-- ⏳ **§2 remainder — NEXT.** The approval gate's I/O half, the run-estimate
-  debit, `ExecutionPolicy`. See Next Steps.
+- ✅ **§2 approval-gate READ side (this session)** — the recorded reference, the
+  mirror-then-durable decision, the anomaly counter
+- ⏳ **§2 remainder — NEXT.** The approval gate's WRITE side (park, card
+  detail, pause), the run-estimate debit, `ExecutionPolicy`. See Next Steps.
 - ⏳ §3 report, §4 activity/memory/bundles/mint, §6 sweepers, §7 harness
 
 ## Working Tree
@@ -25,14 +27,16 @@ Worktree `/Users/kishore/Projects/agentsfleet-m177-runner-plane`.
 
 ```
 ## feat/m177-runner-control-plane-parity
+2c732397e a parked event resolves on a later poll, not on a waiting thread  ← this session
+e4ae4a734 an SSRF-refused endpoint ends the event, and only objects are …  ← this session
+36a656cb7 a connector is a descriptor, and a fault is not a posture        ← this session
 e0055ffa5 the approval gate decides, and the order it decides in is a type ← this session
 23d546c1d a fleet's credentials split by channel, not by convention        ← this session
 ffad7c998 the provider resolves through two strategies, one interface      ← this session
 840e8cc51 docs(m177): handoff — §2's money gates land
-f1b5be6ce refactor(rustd): split the admission pass at its seams
 ```
 
-**11 commits ahead of `origin/main`, none pushed. No PR. CI has never run this
+**15 commits ahead of `origin/main`, none pushed. No PR. CI has never run this
 branch.** Everything below is local.
 
 ## What this session built
@@ -105,19 +109,31 @@ afd_fleet/src/sql/{provider,vault}.rs   six statements, verbatim
    logs the internal code for the whole family; adding the finer ones here
    would be unreferenced codes that look like coverage.
 
-## Two findings from this session
+## Findings from this session, and what Indy decided
 
 1. **`serde_json` fills a struct from a JSON ARRAY, positionally.**
    `["anthropic","sk-live"]` parsed as a credential with a provider and a key
-   and passed every shape check after it. `loadJson` refuses a non-object at
-   the top; `provider::credential` now does too, structurally and in one pass.
-   Caught by a test, not by review.
-2. **`SecretEndpointInvalid` retries forever in the Zig.** It is absent from
-   `resolveTenant`'s permanent list and falls through its `else`, so a stored
-   endpoint failing the SSRF guard is re-polled indefinitely. **Ported as-is**
-   — the two daemons must write the same rows during the cutover — and pinned
-   by `an_ssrf_refusal_is_ported_as_transient`, so flipping it cannot be
-   silent. **Open question for Indy** (see below).
+   and passed every shape check after it. `deny_unknown_fields` does not close
+   it — an array has no field names to be unknown. **Indy: sweep.** Now one
+   helper, `afd_core::json::object_from_slice`, at six boundaries: the runner
+   enrolment body and capability report, the JWT header, the JWKS document, the
+   OIDC discovery document, and the vault credential that found it. None was a
+   privilege escalation, but all six accepted a shape their own contract
+   forbids and two are RFC-specified objects.
+2. **`SecretEndpointInvalid` retried forever in the Zig** — absent from
+   `resolveTenant`'s permanent list, so it fell through the `else` and a stored
+   endpoint failing the SSRF guard was re-polled indefinitely with no terminal
+   row. **Indy: flip to permanent.** Done, and registered as a divergence
+   beside the issue-time debit. The row-parity it costs is documentary: the
+   dual-run differ went with the Zig integration lanes, and this changes no SQL
+   statement.
+3. **The connector registry was a regression, not a port.**
+   `credentials/integration.zig` states RULE CFG outright — a connector is a
+   descriptor, not a branch — and injects its registry for testability. The
+   first cut collapsed both into an enum with two matches. Rebuilt as
+   `Connector` / `Connectors` / `Descriptor` / `Registry`, which is
+   `afd_fleet_runtime::provider`'s shape exactly. Adding a connector is now one
+   entry in `DECLARED`.
 
 ## Tests / Checks
 
@@ -127,7 +143,7 @@ afd_fleet/src/sql/{provider,vault}.rs   six statements, verbatim
 | **LOGGING (whole repo)** | `bash audits/logging.sh` | ✅ **CLEAN — `rust-direct=0`** |
 | lint | `cargo clippy --workspace --all-features --all-targets` | ✅ clean |
 | fmt | `cargo fmt --all -- --check` | ✅ |
-| unit (afd_fleet) | `cargo test -p afd_fleet --lib` | ✅ 96 passed |
+| unit (afd_fleet) | `cargo test -p afd_fleet --lib` | ✅ 110 passed |
 | unit (afd_fleet_runtime) | `cargo test -p afd_fleet_runtime --lib` | ✅ 42 passed |
 | unit (afd_core) | `cargo test -p afd_core` | ✅ incl. registry parity |
 | S6 file length | rubric command | ✅ clean (see gotcha 2) |
@@ -140,15 +156,16 @@ afd_fleet/src/sql/{provider,vault}.rs   six statements, verbatim
 
 ## Next Steps
 
-1. **The approval gate's I/O half** — everything the decision core is upstream
-   of. `approval_gate_async.zig` (193: `lookupEventGateRef`, `evaluateRef`,
-   `EventGateRef`), `approval_gate_park.zig` (122: `parkEvent`,
-   `logGateActivity`), `approval_gate_anomaly.zig` (81) + the counter INCR,
-   `approval_gate_detail.zig` (306: the card's two-source detail), and
-   `pauseFleet` + `fleet_ready.forceClear`. **`Admission` still has no `Await`
-   arm — add it when this lands.** Note the KIND-PARK rule: a fleet whose
-   repository binding declares WRITE access parks EVERY first-encounter event,
-   before the rules walk and before the no-gates return.
+1. **The approval gate's WRITE half** — the read side landed;
+   `approval_gate_async.zig` and `approval_gate_anomaly.zig` are done.
+   Remaining: `approval_gate_park.zig` (122: `parkEvent`, `logGateActivity`),
+   `approval_gate_detail.zig` (306: the card's two-source detail — the
+   workspace-authored half stated as fact, the model-authored half attributed
+   as a claim), and `pauseFleet` + `fleet_ready.forceClear`.
+   **`Admission` still has no `Await` arm — add it when this lands.** Note the
+   KIND-PARK rule: a fleet whose repository binding declares WRITE access parks
+   EVERY first-encounter event, before the rules walk and before the no-gates
+   return, and anomaly counters are skipped on that path.
    **NOT this milestone's:** the Slack rendering (349), the sweeper (126), the
    route handler (90), the prose (130) — §5's note puts rendering with M178.
 2. **The run-estimate debit** — the DOCUMENTED divergence (spec §2). Needs a
@@ -195,6 +212,10 @@ afd_fleet/src/sql/{provider,vault}.rs   six statements, verbatim
   `git diff --name-only origin/main...HEAD | grep -v '\.md$' | xargs wc -l |
   awk '$1>350'`. Currently clean except `audits/logging.sh` (orly-managed),
   `Cargo.lock` (generated) and `Cargo.toml` (manifest).
+- **The UFS gate counts numeric literals inside `#[cfg(test)]`.** The rule page
+  holds test blocks out of the STRING count; the numeric-suspect check does not.
+  Four fixture numbers in `gate/store.rs` failed CONFORM and are now named
+  constants. Name them as you write them.
 - **The MS-ID gate flags `§X.Y` in source.** Two doc comments citing a section
   number failed CONFORM; bare `M178` is fine, `§4.5` is not. Name the verb, not
   the section.
@@ -229,16 +250,10 @@ afd_fleet/src/sql/{provider,vault}.rs   six statements, verbatim
 
 ## Open questions for Indy
 
-1. **The SSRF retry loop** (finding 2 above). A stored `base_url` that fails
-   the guard is classified TRANSIENT and re-polled forever, because the Zig's
-   permanent list predates that error variant. Recommend flipping it to
-   permanent and accepting that the Rust daemon writes a `gate_blocked` row the
-   Zig does not — it is one line and one test. Left as the Zig has it pending
-   your call.
-2. **Write 5** — port the `fleet_sessions` busy-marking the diagram describes,
+1. **Write 5** — port the `fleet_sessions` busy-marking the diagram describes,
    or follow the Zig and leave it out? Recommend following the Zig and
    correcting `data_flow.md`, since row-equivalence is the graded claim.
-3. `MAX_READY_CANDIDATES_PER_POLL` (64) as an operator knob? Analysis says no —
+2. `MAX_READY_CANDIDATES_PER_POLL` (64) as an operator knob? Analysis says no —
    `HRANDFIELD` samples uniformly so it cannot starve.
-4. Can a tenant *require* an isolation class, or only be told which one it got?
+3. Can a tenant *require* an isolation class, or only be told which one it got?
    Recommendation: told, for M177.
