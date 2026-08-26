@@ -6,18 +6,27 @@ use std::sync::{Arc, Mutex};
 use object_store::ObjectStore;
 use object_store::memory::InMemory;
 
-use super::{BundleSource, SourceImporter};
-use crate::{BundleCatalog, ImportBody, ImportService, PreparedBundle, Result, SourceKind, SupportFile};
+use super::{BundleSource, SourceFailure, SourceImporter};
+use crate::{
+    BundleCatalog, Error, ImportBody, ImportService, PreparedBundle, Result, SourceKind,
+    SupportFile,
+};
 
 #[derive(Debug, Clone)]
 enum FixtureSource {
     Bundle(ImportBody),
+    Failure(SourceFailure),
 }
 
 impl BundleSource for FixtureSource {
-    fn fetch(&self, _reference: &str) -> impl std::future::Future<Output = Result<ImportBody>> + Send {
-        let Self::Bundle(body) = self;
-        std::future::ready(Ok(body.clone()))
+    fn fetch(
+        &self,
+        _reference: &str,
+    ) -> impl std::future::Future<Output = Result<ImportBody>> + Send {
+        std::future::ready(match self {
+            Self::Bundle(body) => Ok(body.clone()),
+            Self::Failure(failure) => Err(Error::Source(*failure)),
+        })
     }
 }
 
@@ -27,8 +36,14 @@ struct Catalog(Arc<Mutex<Vec<PreparedBundle>>>);
 impl BundleCatalog for Catalog {
     type Error = Infallible;
 
-    fn insert(&self, bundle: &PreparedBundle) -> impl std::future::Future<Output = core::result::Result<(), Self::Error>> + Send {
-        self.0.lock().expect("catalog mutex is healthy").push(bundle.clone());
+    fn insert(
+        &self,
+        bundle: &PreparedBundle,
+    ) -> impl std::future::Future<Output = core::result::Result<(), Self::Error>> + Send {
+        self.0
+            .lock()
+            .expect("catalog mutex is healthy")
+            .push(bundle.clone());
         std::future::ready(Ok(()))
     }
 }
@@ -53,7 +68,10 @@ fn importer(source: FixtureSource, catalog: Catalog) -> SourceImporter<FixtureSo
 async fn test_library_import_parity() {
     let catalog = Catalog::default();
     let source = FixtureSource::Bundle(fixture());
-    let imported = importer(source, catalog.clone()).import("agentsfleet/reviewer").await.expect("fixture import succeeds");
+    let imported = importer(source, catalog.clone())
+        .import("agentsfleet/reviewer")
+        .await
+        .expect("fixture import succeeds");
 
     assert_eq!(imported.name, "reviewer");
     assert_eq!(imported.description, "Reviews code");
@@ -61,5 +79,36 @@ async fn test_library_import_parity() {
     assert_eq!(imported.requirements.tools, ["http_request"]);
     assert_eq!(imported.requirements.network_hosts, ["api.github.com"]);
     assert_eq!(imported.requirements.support_files, ["docs/guide.md"]);
-    assert_eq!(catalog.0.lock().expect("catalog mutex is healthy").as_slice(), [imported]);
+    assert_eq!(
+        catalog
+            .0
+            .lock()
+            .expect("catalog mutex is healthy")
+            .as_slice(),
+        [imported]
+    );
+}
+
+#[tokio::test]
+async fn test_library_import_failure_classes() {
+    for failure in [
+        SourceFailure::NotFound,
+        SourceFailure::RateLimited,
+        SourceFailure::Truncated,
+    ] {
+        let catalog = Catalog::default();
+        let error = importer(FixtureSource::Failure(failure), catalog.clone())
+            .import("agentsfleet/missing")
+            .await
+            .expect_err("source failure is retained");
+
+        assert!(matches!(error, Error::Source(actual) if actual == failure));
+        assert!(
+            catalog
+                .0
+                .lock()
+                .expect("catalog mutex is healthy")
+                .is_empty()
+        );
+    }
 }
