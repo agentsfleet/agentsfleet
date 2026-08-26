@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M179
 **Workstream:** 001
 **Date:** Aug 23, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing parity; the Zig daemon keeps serving production while this lands
 **Categories:** API
 **Batch:** B4 — runs concurrently with M178 after M177 (disjoint route groups; the shared files — `afd_api`, `afd_fleet`, `afd_state`, `rustd/Cargo.toml`, `make/test-integration.mk` — are append-only seams coordinated at merge)
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
+**Branch:** feat/m179-admin-operator-surface
+**Test Baseline:** `unit=5631 integration=1019` — reconstructed at CHORE(open) from the green GitHub Actions jobs on base `414805429`: Rust 914 + CLI 1624 + website 175 + app 2406 + design-system 512 unit tests; the live coverage lane reported 1019 tests. Local execution follows the cadence recorded in Discovery.
 **Depends on:** M177_001 (runner rows, bundle serving, fleet services); M176_001 (auth, stores, shell, the `afd_state` crate this milestone extends)
 **Provenance:** LLM-drafted (Claude Fable 5, Aug 23, 2026)
 **Canonical architecture:** `docs/architecture/runner_fleet.md` §Runner state + §Registering a runner; `docs/architecture/fleet_bundles.md`
@@ -38,7 +38,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** feat(rustd): admin + operator planes with import parity
 - **Intent (one sentence):** platform operators can curate libraries, manage platform keys and models, import bundles, and administer runners against `agentsfleetd-rs` exactly as against the Zig daemon.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch → STOP and reconcile before any edit.
+- **Handshake restatement:** `agentsfleetd-rs` will expose the existing privileged admin and operator behaviours with the same authorization decisions and wire shapes, while the implementation uses Rust-native ownership, typed errors, standard-library or crate primitives, and narrow traits at vendor/storage seams.
+- **ASSUMPTIONS I'M MAKING:** parity grades observable behaviour rather than internal Zig structure; M179 owns a separate branch and Pull Request from M178; focused compile/test commands may run while completing a Dimension; repository-wide unit verification waits until all Sections are implemented; the live datastore lane runs at `orly gate pr`; OpenAPI and published docs stay unchanged unless source comparison proves existing documentation wrong.
+- **PLAN impact:** create `afd_library`; extend `afd_api`, `afd_state`, and `afd_fleet`; add the Rust admin/operator integration subset; keep changes inside the Files Changed table.
+- **PLAN verification:** unit tests accompany every Dimension; Rust format and Clippy run once per completed Section; `make test-unit-all` runs after all Sections; `make test-integration-rustd` runs through `orly gate pr`.
+- **Quality ceiling:** thin HTTP adapters over typed services, transactional repository methods, and traits only where implementations vary are leaner and safer under concurrency than transliterating Zig control flow or adding a general handler framework.
+- **Surface-area checklist:** OpenAPI paths yes, behaviour-preserving only; CLI no; user docs no unless parity inspection finds drift; release/version yes at CHORE(close); schema no; spec-vs-rules conflict no.
 
 ## Implementing agent — read these first
 
@@ -250,4 +255,6 @@ N/A — no files deleted.
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
-- **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
+- **Deferrals** — verification cadence approved by Indy:
+  > Indy (Aug 26, 2026 11:56 PM): "Run the test-unit* after you have completed all the sections in the milestone." — context: repository-wide unit verification runs after implementation, not per Dimension.
+  > Indy (Aug 26, 2026 11:56 PM): "Also the orly gate pr runs make test-integration-rustmd, i prefer we run it at that point." — context: the live datastore integration lane runs at the Pull Request gate; the intended repository target is `make test-integration-rustd`.
