@@ -50,3 +50,57 @@ pub(crate) fn renewal_no_credits() -> Error {
 pub(crate) fn budget_exhausted() -> Error {
     Error::new(ErrorKind::BudgetExhausted)
 }
+
+/// Refuses a mint for an integration this workspace has not connected.
+///
+/// The ten builders below are the mint's, and they share the shape the six
+/// above have: each names ONE outcome of one guarded step, the step has already
+/// decided it, and there is nothing left for a call site to add.
+pub(crate) fn integration_not_connected() -> Error {
+    Error::new(ErrorKind::IntegrationNotConnected)
+}
+
+/// Refuses a mint this deployment holds no platform credential for.
+pub(crate) fn mint_unconfigured() -> Error {
+    Error::new(ErrorKind::MintUnconfigured)
+}
+
+/// Refuses a mint against a GitHub App installation that is gone.
+pub(crate) fn github_reconnect_required() -> Error {
+    Error::new(ErrorKind::GithubReconnectRequired)
+}
+
+/// Refuses a GitHub exchange that produced no usable token.
+pub(crate) fn github_mint_failed() -> Error {
+    Error::new(ErrorKind::GithubMintFailed)
+}
+
+/// Refuses a mint whose stored connector authorization is no longer redeemable.
+pub(crate) fn connector_reconnect_required() -> Error {
+    Error::new(ErrorKind::ConnectorReconnectRequired)
+}
+
+/// Refuses a connector exchange that produced no credential.
+pub(crate) fn connector_mint_failed() -> Error {
+    Error::new(ErrorKind::ConnectorMintFailed)
+}
+
+/// Refuses a mint for an integration this fleet holds no approved grant for.
+pub(crate) fn grant_required() -> Error {
+    Error::new(ErrorKind::GrantRequired)
+}
+
+/// Refuses a write mint with no approved gate for the lease's event.
+pub(crate) fn write_unapproved() -> Error {
+    Error::new(ErrorKind::WriteUnapproved)
+}
+
+/// Refuses a write mint whose approval no longer matches the fleet's reach.
+pub(crate) fn binding_drift() -> Error {
+    Error::new(ErrorKind::BindingDrift)
+}
+
+/// Refuses a write mint against a spent allowance.
+pub(crate) fn write_spend_exhausted() -> Error {
+    Error::new(ErrorKind::WriteSpendExhausted)
+}

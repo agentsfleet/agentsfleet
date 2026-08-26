@@ -18,6 +18,18 @@ pub enum EventType {
     Continuation,
 }
 
+/// The stored spellings, declared once (RULE UFS).
+///
+/// `parse` and [`EventType::as_str`] are inverses, so each word appeared twice
+/// — and a pair that drifted would make a type this daemon writes one it cannot
+/// read back. Naming them here leaves one edit site per spelling and keeps the
+/// two matches beside each other, which is what makes a missing variant a build
+/// failure in the file where its reader lives.
+const CHAT: &str = "chat";
+const WEBHOOK: &str = "webhook";
+const CRON: &str = "cron";
+const CONTINUATION: &str = "continuation";
+
 impl EventType {
     /// The type `stored` names, or nothing when it names none.
     ///
@@ -28,11 +40,27 @@ impl EventType {
     #[must_use]
     pub fn parse(stored: &str) -> Option<Self> {
         match stored {
-            "chat" => Some(Self::Chat),
-            "webhook" => Some(Self::Webhook),
-            "cron" => Some(Self::Cron),
-            "continuation" => Some(Self::Continuation),
+            CHAT => Some(Self::Chat),
+            WEBHOOK => Some(Self::Webhook),
+            CRON => Some(Self::Cron),
+            CONTINUATION => Some(Self::Continuation),
             _unknown => None,
+        }
+    }
+
+    /// The word a stored row or a stream field spells this type as.
+    ///
+    /// The inverse of [`Self::parse`], and deliberately a `match` beside it
+    /// rather than a serde round trip: the two are read together, so a variant
+    /// added without a spelling fails the build in the same file where its
+    /// reader lives.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Chat => CHAT,
+            Self::Webhook => WEBHOOK,
+            Self::Cron => CRON,
+            Self::Continuation => CONTINUATION,
         }
     }
 }

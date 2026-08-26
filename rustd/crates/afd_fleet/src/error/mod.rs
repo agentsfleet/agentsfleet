@@ -42,7 +42,8 @@ pub mod lift;
 pub mod refuse;
 
 pub use self::detail::{
-    DETAIL_BUDGET_EXHAUSTED, DETAIL_CONFIG_UNREADABLE, DETAIL_CREDENTIAL_MISSING,
+    DETAIL_BUDGET_EXHAUSTED, DETAIL_BUNDLE_FETCH_FAILED, DETAIL_BUNDLE_NOT_FOUND,
+    DETAIL_BUNDLE_STORAGE_UNAVAILABLE, DETAIL_CONFIG_UNREADABLE, DETAIL_CREDENTIAL_MISSING,
     DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED,
     DETAIL_GATE_BINDING_UNWRITABLE, DETAIL_GATE_REFERENCE_UNWRITABLE, DETAIL_HOST_ID_BOUNDS,
     DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND,
@@ -50,9 +51,20 @@ pub use self::detail::{
     DETAIL_REGISTRY_ALLOWLIST, DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUNNER_NOT_FOUND,
     DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID,
 };
+// The mint family's sentences, listed apart from the block above only because
+// they arrived together and are read together — `credentials_mint.zig` writes
+// all ten, and every one is pinned byte-for-byte to it.
+pub use self::detail::{
+    DETAIL_BINDING_DRIFT, DETAIL_CONNECTOR_MINT_FAILED, DETAIL_CONNECTOR_RECONNECT,
+    DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
+    DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED, DETAIL_WRITE_SPEND_EXHAUSTED,
+    DETAIL_WRITE_UNAPPROVED,
+};
 pub(crate) use self::refuse::{
-    budget_exhausted, lease_lost, lease_max_runtime, lease_not_found, renewal_no_credits,
-    stale_fence,
+    binding_drift, budget_exhausted, connector_mint_failed, connector_reconnect_required,
+    github_mint_failed, github_reconnect_required, grant_required, integration_not_connected,
+    lease_lost, lease_max_runtime, lease_not_found, mint_unconfigured, renewal_no_credits,
+    stale_fence, write_spend_exhausted, write_unapproved,
 };
 
 /// A runner control-plane operation failed.
@@ -157,6 +169,9 @@ pub(crate) enum ErrorKind {
     #[error("the fleet declared a credential this workspace does not hold")]
     CredentialMissing,
 
+    #[error("a stored fencing sequence is not a sequence")]
+    SequenceCorrupt,
+
     #[error("the reporting holder's fence is behind the fleet's live sequence")]
     StaleFence,
 
@@ -174,6 +189,68 @@ pub(crate) enum ErrorKind {
 
     #[error("the fleet reached a spend ceiling its own author declared")]
     BudgetExhausted,
+
+    #[error("no Fleet Bundle snapshot is stored under that content hash")]
+    BundleMissing,
+
+    #[error("this deployment has no Fleet Bundle snapshot storage configured")]
+    BundleUnconfigured,
+
+    #[error("the Fleet Bundle snapshot store would not answer")]
+    BundleStorage {
+        #[source]
+        source: object_store::Error,
+    },
+
+    #[error("a stored Fleet Bundle snapshot is larger than this daemon buffers: {size} bytes")]
+    BundleOversized { size: u64 },
+
+    #[error("this workspace has connected no integration under that name")]
+    IntegrationNotConnected,
+
+    #[error("this deployment holds no platform credential for that connector")]
+    MintUnconfigured,
+
+    #[error("the GitHub App installation this handle names is gone")]
+    GithubReconnectRequired,
+
+    #[error("GitHub returned no installation token this daemon would hand over")]
+    GithubMintFailed,
+
+    #[error("the connector's stored authorization is no longer redeemable")]
+    ConnectorReconnectRequired,
+
+    #[error("the connector's token exchange produced no credential")]
+    ConnectorMintFailed,
+
+    #[error("the fleet holds no approved grant for that integration")]
+    GrantRequired,
+
+    #[error("no approved repository-write gate was answered for this lease's event")]
+    WriteUnapproved,
+
+    #[error("the fleet's repository binding changed since the approval was answered")]
+    BindingDrift,
+
+    #[error("the approved write-credential allowance is spent")]
+    WriteSpendExhausted,
+}
+
+/// The refusals a suite outside this crate needs to CONSTRUCT.
+///
+/// M-TEST-UTIL. The router suites stub the lease plane, and a stub for the mint
+/// verb has no honest success to answer with — it holds no vault row, no grant
+/// and no vendor — so it answers the refusal a deployment with no platform
+/// credentials gives. Every other constructor stays `pub(crate)`: this is a
+/// seam for a stub, not a way for another crate to invent this plane's
+/// refusals.
+#[cfg(feature = "test-util")]
+impl Error {
+    /// The refusal a deployment holding no platform credential answers.
+    #[must_use]
+    pub fn mint_unconfigured() -> Self {
+        super::error::mint_unconfigured()
+    }
 }
 
 impl Error {
@@ -263,6 +340,51 @@ pub(crate) fn vault_data_invalid() -> Error {
 /// written at the call site, which is the only place that holds them.
 pub(crate) fn credential_missing() -> Error {
     Error::new(ErrorKind::CredentialMissing)
+}
+
+/// Reports a stored fencing sequence that cannot be one.
+///
+/// Its own kind rather than a saturating read, and the direction is why.
+/// [`Fence::as_u64`](crate::lease::Fence::as_u64) saturates a negative token to
+/// ZERO because zero is below every token a claim can mint, so a corrupt row
+/// fences ITSELF out. The live sequence a memory push is checked against runs
+/// the other way: saturating it to zero would put it below every token in
+/// existence and admit every stale holder. There is no safe value, so there is
+/// no value.
+pub(crate) fn sequence_corrupt() -> Error {
+    Error::new(ErrorKind::SequenceCorrupt)
+}
+
+/// Reports a content hash with no snapshot stored under it.
+///
+/// The ordinary answer for a skill-only bundle, not a fault — see
+/// [`crate::bundle::Bundles::fetch`].
+pub(crate) fn bundle_missing() -> Error {
+    Error::new(ErrorKind::BundleMissing)
+}
+
+/// Reports a deployment that never configured snapshot storage.
+pub(crate) fn bundle_unconfigured() -> Error {
+    Error::new(ErrorKind::BundleUnconfigured)
+}
+
+/// Reports an object store that was reached and would not serve.
+///
+/// The store's own error rides through as `#[source]` rather than being
+/// stringified into a message: a refused signature, an unresolvable endpoint
+/// and a missing bucket are three different operator problems, and the chain is
+/// the only place that distinction survives (`RUST_ERROR_STANDARD` rule 3).
+pub(crate) fn bundle_storage(source: object_store::Error) -> Error {
+    Error::new(ErrorKind::BundleStorage { source })
+}
+
+/// Reports a stored object too large for this daemon to buffer.
+///
+/// Its own kind rather than a storage failure, because it is not one: the store
+/// answered correctly and what it holds is the problem. The size is carried so
+/// the operator's log line names it — nothing puts it on the wire.
+pub(crate) fn bundle_oversized(size: u64) -> Error {
+    Error::new(ErrorKind::BundleOversized { size })
 }
 
 /// Reports a statement that reached Postgres and was refused.

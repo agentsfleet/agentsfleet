@@ -102,16 +102,32 @@ pub async fn boot<E: EnvSource + ?Sized>(
     // that opens a sealed row shares. `Kek` zeroes on drop, so the copy this
     // makes is not a copy that outlives the process.
     let kek = Arc::new(config.kek().clone());
+    // The broker is built BEFORE the plane because it reads this deployment's
+    // own platform credentials out of the vault, which is an asynchronous step
+    // the plane's constructor is not. A deployment holding none still boots and
+    // still serves every other verb.
+    let broker = crate::credentials::resolve(
+        &afd_fleet::vault::Vault::new(database.clone(), Arc::clone(&kek)),
+        config.platform_admin_workspace(),
+    )
+    .await;
     let plane: Shared = Arc::new(ServingPlane::new(
         database.clone(),
         queue.clone(),
         kek,
         capabilities,
         sessions,
+        crate::bundles::resolve(config.bundles()),
+        broker,
     ));
     let router = afd_api::router::build(plane, &Admission::new(DEFAULT_MAX_IN_FLIGHT));
 
-    // 4. Listen last. Until this line the process is not reachable, which is
+    // 4. The background sweepers, before the listener: they read through pools
+    //    that are open by now, and starting them after the socket would leave a
+    //    window where the plane serves while nothing is noticing dead runners.
+    crate::sweepers::spawn(&mut *supervisor, &database, &queue);
+
+    // 5. Listen last. Until this line the process is not reachable, which is
     //    what makes every refusal above a refusal rather than an outage.
     let listener = TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, port)).await?;
     let address = listener.local_addr()?;

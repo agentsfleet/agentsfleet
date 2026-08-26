@@ -118,6 +118,36 @@ impl Redis {
         T::from_redis_value(value).map_err(|_parse| error::unexpected_reply(name))
     }
 
+    /// Runs a prepared script invocation, under the same deadline a command
+    /// gets.
+    ///
+    /// Its own method rather than a `Cmd`, because a script invocation is not
+    /// one: `redis` loads the body by digest and falls back to sending it when
+    /// the server has never seen it, and that retry is the crate's to perform.
+    /// What this adds is what [`Self::command`] adds — the timeout, the error
+    /// classification, and the rule that a reply shape we did not expect is
+    /// reported as such rather than as a Redis fault.
+    ///
+    /// # Errors
+    /// As [`Self::command`].
+    pub async fn script<T: FromRedisValue>(
+        &self,
+        name: &'static str,
+        context: &str,
+        invocation: &redis::ScriptInvocation<'_>,
+    ) -> Result<T> {
+        let mut manager = self.manager.clone();
+        let value = tokio::time::timeout(
+            self.request_timeout,
+            invocation.invoke_async::<Value>(&mut manager),
+        )
+        .await
+        .map_err(|_elapsed| error::timed_out(name, self.request_timeout.as_millis()))?
+        .map_err(|source| error::classify(name, context, source))?;
+
+        T::from_redis_value(value).map_err(|_parse| error::unexpected_reply(name))
+    }
+
     /// `PING`, which is how boot asks whether Redis is actually serving.
     ///
     /// # Errors

@@ -316,6 +316,93 @@ const ENTRIES: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::FLEET_BUNDLE_NOT_FOUND,
+        status: 404,
+        title: "Fleet Bundle not found",
+        hint: "No installable library entry or stored snapshot matches the request in this workspace.",
+        user_message: Some(
+            "We couldn't find that Fleet Bundle. It may not be installed in this workspace yet — check the Fleet library.",
+        ),
+    },
+    Problem {
+        code: error_code::FLEET_BUNDLE_STORAGE_UNAVAILABLE,
+        status: 503,
+        title: "Fleet Bundle storage unavailable",
+        hint: "Snapshot storage is not configured or is unavailable, so the validated bundle could not be stored. Retry later or contact the operator.",
+        user_message: Some("We couldn't store your Fleet Bundle right now. Try again shortly."),
+    },
+    Problem {
+        code: error_code::CRED_INTEGRATION_NOT_CONNECTED,
+        status: 404,
+        title: "Integration not connected",
+        hint: "No connected integration matches this id in the fleet's workspace. Connect it from the dashboard first.",
+        user_message: Some(
+            "That integration isn't connected. Connect it from the Integrations page, then try again.",
+        ),
+    },
+    Problem {
+        code: error_code::CRED_BROKER_NOT_CONFIGURED,
+        status: 503,
+        title: "Credential broker not configured",
+        hint: "The on-demand credential broker is not configured on this deployment. An operator must set it up before runners can mint credentials.",
+        // Runner-only mint endpoint; the Zig entry carries the same
+        // reachability note, and nothing in `ui/packages/app` fetches it.
+        user_message: None,
+    },
+    Problem {
+        code: error_code::GH_RECONNECT_REQUIRED,
+        status: 409,
+        title: "GitHub App reconnect required",
+        hint: "The GitHub App installation was uninstalled or revoked, so no token can be minted. Reconnect GitHub from the dashboard.",
+        // Surfaced to the agent as a tool failure, not to a dashboard fetch.
+        user_message: None,
+    },
+    Problem {
+        code: error_code::GH_MINT_FAILED,
+        status: 502,
+        title: "GitHub token mint failed",
+        hint: "GitHub did not return an installation token. Retry shortly; if it continues, check GitHub status and the App configuration.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::GRANT_NOT_FOUND,
+        status: 403,
+        title: "No integration grant for service",
+        hint: "This fleet has no approved grant for the target service. Check it with `GET /v1/workspaces/{ws}/fleets/{id}/integration-grants` and resolve its approval.",
+        // Runner-only mint and lease gate.
+        user_message: None,
+    },
+    Problem {
+        code: error_code::CONNECTOR_OAUTH_EXCHANGE_FAILED,
+        status: 502,
+        title: "Connector OAuth exchange failed",
+        hint: "The connector's OAuth exchange was rejected. Start the connect again; if it repeats, check the provider app credentials and redirect URL.",
+        user_message: Some(
+            "That connection didn't go through. Try connecting again from the dashboard.",
+        ),
+    },
+    Problem {
+        code: error_code::REPAIR_WRITE_UNAPPROVED,
+        status: 403,
+        title: "Write mint requires an approved gate",
+        hint: "No repository-write approval was answered for this event, so no write-scoped token issues. The run continues read-only.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::REPAIR_BINDING_DRIFT,
+        status: 403,
+        title: "Fleet binding changed since approval",
+        hint: "The fleet's repository binding no longer matches the approved card. Re-raise the approval so a human sees the current reach.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::REPAIR_SPEND_EXHAUSTED,
+        status: 403,
+        title: "Write request allowance exhausted",
+        hint: "This approval already funded 32 write-credential requests. Answer a new repository-write approval first.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::API_BACKPRESSURE,
         status: 429,
         title: "Too many requests",

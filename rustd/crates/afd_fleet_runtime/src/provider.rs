@@ -45,30 +45,6 @@
 
 use std::fmt::Debug;
 
-/// Slack's signature scheme.
-const SLACK_SOURCE: &str = "slack";
-/// See [`SLACK_SOURCE`].
-const SLACK_SIGNATURE_HEADER: &str = "x-slack-signature";
-/// See [`SLACK_SOURCE`].
-const SLACK_TIMESTAMP_HEADER: &str = "x-slack-request-timestamp";
-/// See [`SLACK_SOURCE`].
-const SLACK_PREFIX: &str = "v0=";
-
-/// GitHub's signature scheme.
-const GITHUB_SOURCE: &str = "github";
-/// See [`GITHUB_SOURCE`].
-const GITHUB_SIGNATURE_HEADER: &str = "x-hub-signature-256";
-/// See [`GITHUB_SOURCE`].
-const GITHUB_PREFIX: &str = "sha256=";
-
-/// Linear's signature scheme.
-const LINEAR_SOURCE: &str = "linear";
-/// See [`LINEAR_SOURCE`].
-const LINEAR_SIGNATURE_HEADER: &str = "linear-signature";
-
-/// A scheme that carries its digest with no prefix.
-const NO_PREFIX: &str = "";
-
 /// What a provider knows about its own webhook signature scheme.
 ///
 /// Object-safe on purpose: a registry holds these as `dyn`, so a
@@ -142,29 +118,72 @@ impl WebhookProvider for Scheme {
     }
 }
 
-/// Slack: a versioned digest over a timestamped basestring.
-pub const SLACK: Scheme = Scheme {
-    source: SLACK_SOURCE,
-    signature_header: SLACK_SIGNATURE_HEADER,
-    signature_prefix: SLACK_PREFIX,
-    timestamp_header: Some(SLACK_TIMESTAMP_HEADER),
-};
+impl Scheme {
+    /// A scheme whose header carries a prefixed digest over the raw body.
+    ///
+    /// `const`, private, and one of three: [`DECLARED`] stays a compile-time
+    /// table, the shipped set is this module's to state, and a caller wanting a
+    /// provider of its own implements [`WebhookProvider`] — which is the seam
+    /// that exists for it.
+    const fn prefixed(source: &'static str, header: &'static str, prefix: &'static str) -> Self {
+        Self {
+            source,
+            signature_header: header,
+            signature_prefix: prefix,
+            timestamp_header: None,
+        }
+    }
 
-/// GitHub: a prefixed SHA-256 digest over the raw body.
-pub const GITHUB: Scheme = Scheme {
-    source: GITHUB_SOURCE,
-    signature_header: GITHUB_SIGNATURE_HEADER,
-    signature_prefix: GITHUB_PREFIX,
-    timestamp_header: None,
-};
+    /// A scheme whose header carries the digest bare.
+    ///
+    /// Its own constructor rather than `prefixed(source, header, "")`, because
+    /// "no prefix" is a PROPERTY of the scheme and an empty string is a value
+    /// someone can copy into a row that needed one.
+    const fn bare(source: &'static str, header: &'static str) -> Self {
+        Self::prefixed(source, header, "")
+    }
 
-/// Linear: a bare digest over the raw body.
-pub const LINEAR: Scheme = Scheme {
-    source: LINEAR_SOURCE,
-    signature_header: LINEAR_SIGNATURE_HEADER,
-    signature_prefix: NO_PREFIX,
-    timestamp_header: None,
-};
+    /// A prefixed scheme that also binds a timestamp against replay.
+    const fn timestamped(
+        source: &'static str,
+        header: &'static str,
+        prefix: &'static str,
+        timestamp: &'static str,
+    ) -> Self {
+        Self {
+            timestamp_header: Some(timestamp),
+            ..Self::prefixed(source, header, prefix)
+        }
+    }
+}
+
+/// Every provider this daemon can complete a signature block from.
+///
+/// **Adding one is ONE line here, and that is the point of the table.** The
+/// shape this replaced spelled each provider FOUR times — three or four header
+/// constants, a public `Scheme` constant, a row in the list, and a fixed-length
+/// array whose length had to be widened in step. That is precisely the
+/// per-provider edit count `secrets::connector` records as its reason for
+/// existing, arrived at from the other direction. A slice has no length to keep
+/// current, and a row that carries its own strings has no constants to define
+/// away from it.
+///
+/// The header values are written HERE rather than behind names because the row
+/// is the only place they appear: a constant read once, three lines above its
+/// single use, is a second place for a header to be wrong.
+const DECLARED: &[Scheme] = &[
+    // Slack: a versioned digest over a timestamped basestring.
+    Scheme::timestamped(
+        "slack",
+        "x-slack-signature",
+        "v0=",
+        "x-slack-request-timestamp",
+    ),
+    // GitHub: a prefixed SHA-256 digest over the raw body.
+    Scheme::prefixed("github", "x-hub-signature-256", "sha256="),
+    // Linear: a bare digest over the raw body.
+    Scheme::bare("linear", "linear-signature"),
+];
 
 /// The providers this daemon can complete a signature block from.
 ///
@@ -175,12 +194,9 @@ pub const LINEAR: Scheme = Scheme {
 #[non_exhaustive]
 pub struct StaticRegistry;
 
-/// Every declared scheme, in resolution order.
-const SCHEMES: [Scheme; 3] = [SLACK, GITHUB, LINEAR];
-
 impl ProviderRegistry for StaticRegistry {
     fn resolve(&self, source: &str) -> Option<&dyn WebhookProvider> {
-        SCHEMES
+        DECLARED
             .iter()
             .find(|scheme| scheme.source == source)
             .map(|scheme| scheme as &dyn WebhookProvider)
@@ -193,7 +209,7 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::{ProviderRegistry as _, SCHEMES, StaticRegistry};
+    use super::{DECLARED, ProviderRegistry as _, StaticRegistry};
 
     #[test]
     fn a_declared_source_resolves_to_its_scheme() {
@@ -230,8 +246,8 @@ mod tests {
 
     #[test]
     fn every_source_is_declared_once() {
-        for (index, scheme) in SCHEMES.iter().enumerate() {
-            let duplicate = SCHEMES
+        for (index, scheme) in DECLARED.iter().enumerate() {
+            let duplicate = DECLARED
                 .iter()
                 .skip(index + 1)
                 .any(|other| other.source == scheme.source);
@@ -242,8 +258,8 @@ mod tests {
 
     #[test]
     fn every_signature_header_is_unique() {
-        for (index, scheme) in SCHEMES.iter().enumerate() {
-            let duplicate = SCHEMES
+        for (index, scheme) in DECLARED.iter().enumerate() {
+            let duplicate = DECLARED
                 .iter()
                 .skip(index + 1)
                 .any(|other| other.signature_header == scheme.signature_header);
@@ -258,7 +274,7 @@ mod tests {
 
     #[test]
     fn no_scheme_is_declared_with_an_empty_source_or_header() {
-        for scheme in &SCHEMES {
+        for scheme in DECLARED {
             assert!(!scheme.source.is_empty(), "a scheme needs a source");
             assert!(
                 !scheme.signature_header.is_empty(),

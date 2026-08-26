@@ -36,7 +36,7 @@ use serde_json::{Map, Value};
 use crate::error::{Result, credential_missing, vault_data_invalid};
 use crate::vault::{Held, Vault};
 
-pub use self::connector::{Connector, Connectors, Descriptor, Registry, Supply};
+pub use self::connector::{Connector, Connectors, Descriptor, Exchange, Registry, Supply};
 
 /// A fleet declared a credential the vault does not hold.
 const EVENT_CREDENTIAL_NOT_FOUND: &str = "credential_not_found";

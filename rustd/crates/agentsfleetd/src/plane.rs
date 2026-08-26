@@ -24,8 +24,10 @@ use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_fleet::Runners;
+use afd_fleet::bundle::Bundles;
 use afd_fleet::gate::Gates;
 use afd_fleet::lease::{Leases, Plane};
+use afd_fleet::memory::Memories;
 use afd_fleet::money::Accounts;
 use afd_fleet::provider::Providers;
 use afd_fleet::secrets::Registry;
@@ -50,6 +52,7 @@ pub struct ServingPlane {
     authenticator: Authenticator,
     runners: Runners,
     leases: Plane,
+    bundles: Bundles,
 }
 
 impl ServingPlane {
@@ -64,6 +67,15 @@ impl ServingPlane {
     /// authenticated call, the store on every runner verb — so a separate pool
     /// for either would let one starve while the other sat idle.
     ///
+    /// The snapshot store arrives BUILT, and possibly empty — `Bundles` holds
+    /// its own absence, so a deployment with no R2 knobs hands over
+    /// `Bundles::unconfigured` rather than an `Option` this file would have to
+    /// unwrap into a refusal each handler re-invented.
+    ///
+    /// The broker arrives BUILT, for the reason the snapshot store does: which
+    /// platform credentials this deployment holds is read from the vault at
+    /// boot, and that read is asynchronous where this constructor is not.
+    ///
     /// The KEK arrives already shared. `preflight` resolved and validated it
     /// before this point and refuses boot without one, so every store below
     /// that opens a sealed row takes the SAME key — which is Milestone
@@ -76,8 +88,11 @@ impl ServingPlane {
         kek: Arc<Kek>,
         capabilities: Capabilities,
         sessions: Sessions,
+        bundles: Bundles,
+        broker: Arc<afd_fleet::credential::Broker>,
     ) -> Self {
         Self {
+            bundles,
             probes: LiveDependencies::new(database.clone(), queue.clone()),
             authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
             runners: Runners::new(database.clone(), Entropy::new()),
@@ -85,8 +100,10 @@ impl ServingPlane {
                 leases: Leases::new(database.clone(), queue.clone(), Entropy::new()),
                 gates: Gates::new(database.clone(), queue, Entropy::new()),
                 accounts: Accounts::new(database.clone(), Entropy::new()),
+                memories: Memories::new(database.clone(), Entropy::new()),
                 providers: Providers::new(database.clone(), Arc::clone(&kek)),
                 vault: Vault::new(database, kek),
+                broker,
                 connectors: Registry::default(),
             },
         }
@@ -113,6 +130,10 @@ impl Services for ServingPlane {
 
     fn leases(&self) -> &Plane {
         &self.leases
+    }
+
+    fn bundles(&self) -> &Bundles {
+        &self.bundles
     }
 
     /// The wall clock, read once per verb by whichever handler asked.

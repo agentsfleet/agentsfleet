@@ -23,6 +23,7 @@
 use std::fmt;
 
 use afd_core::env::EnvSource;
+use afd_core::id::Uuid7;
 use afd_crypto::secret::Kek;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_identity::ProviderSecret;
@@ -30,6 +31,10 @@ use afd_redis::config::{RedisConfig, RedisRole};
 
 #[doc(inline)]
 pub use crate::error::{Fault, Refusal};
+
+/// R2 fixes the AWS Signature V4 region label to `auto`, and account endpoints address the
+/// bucket in the path rather than in the hostname.
+const R2_REGION: &str = "auto";
 
 /// The knob carrying the hex master key every vault read is decrypted with.
 pub const ENCRYPTION_MASTER_KEY_KNOB: &str = "ENCRYPTION_MASTER_KEY";
@@ -48,6 +53,39 @@ pub const PROVIDER_API_BASE_KNOB: &str = "CLERK_API_BASE";
 
 /// The secret that authorises this daemon to read a subject's claim.
 pub const PROVIDER_SECRET_KNOB: &str = "CLERK_SECRET_KEY";
+
+/// The workspace holding this deployment's own platform credentials.
+///
+/// The GitHub App and the OAuth clients the credential broker mints through
+/// live as ordinary vault rows in ONE workspace, so this knob names which.
+/// Optional: a deployment that has connected no third party mints nothing, and
+/// `serve_broker.zig` reads the same value with the same default of none.
+pub const PLATFORM_ADMIN_WORKSPACE_KNOB: &str = "PLATFORM_ADMIN_WORKSPACE_ID";
+
+/// The Cloudflare account the Fleet Bundle bucket lives under.
+pub const R2_ACCOUNT_ID_KNOB: &str = "R2_ACCOUNT_ID";
+
+/// The access key id the snapshot GET is signed with.
+pub const R2_ACCESS_KEY_ID_KNOB: &str = "R2_ACCESS_KEY_ID";
+
+/// The secret half of that key.
+pub const R2_SECRET_ACCESS_KEY_KNOB: &str = "R2_SECRET_ACCESS_KEY";
+
+/// The bucket Fleet Bundle snapshots are stored in.
+pub const R2_BUCKET_KNOB: &str = "R2_BUCKET";
+
+/// Every knob the snapshot store needs, in the order an operator sets them.
+///
+/// Named as a group because the rule is about the group: all four or none.
+const R2_KNOBS: [&str; 4] = [
+    R2_ACCOUNT_ID_KNOB,
+    R2_ACCESS_KEY_ID_KNOB,
+    R2_SECRET_ACCESS_KEY_KNOB,
+    R2_BUCKET_KNOB,
+];
+
+/// Why a set platform-admin workspace has to be an identifier.
+const WHY_PLATFORM_ADMIN: &str = "the workspace holding this deployment's platform credentials, as a UUIDv7; unset it to serve without on-demand credential minting";
 
 /// Why the daemon needs the API database role.
 const WHY_DATABASE: &str = "the API role's Postgres connection URL";
@@ -70,6 +108,12 @@ const WHY_API_BASE: &str = "the provider API base a subject's capability claim i
 
 /// Why it needs a secret.
 const WHY_SECRET: &str = "the provider secret that authorises reading a subject's claim";
+
+/// Why a half-configured snapshot store refuses boot.
+///
+/// One sentence for all four knobs, because the fault is never about one of
+/// them in isolation — it is that some are set and some are not.
+const WHY_R2: &str = "Fleet Bundle snapshot storage needs all four R2 knobs or none; set the rest, or unset them all to serve without snapshots";
 
 /// The identity provider a deployment has, when it has one.
 ///
@@ -97,6 +141,38 @@ pub struct BootConfig {
     redis: RedisConfig,
     kek: Kek,
     identity: IdentityConfig,
+    bundles: Option<BundleStoreConfig>,
+    platform_admin_workspace: Option<Uuid7>,
+}
+
+/// The Fleet Bundle snapshot store's credentials, complete.
+///
+/// Owned and whole, like [`IdentityConfig`]: a value of this type means all
+/// four knobs were present, so nothing downstream re-checks.
+#[derive(Debug, Clone)]
+pub struct BundleStoreConfig {
+    /// The Cloudflare account the endpoint is derived from.
+    pub account_id: Box<str>,
+    /// The access key id the GET is signed with.
+    pub access_key_id: Box<str>,
+    /// The secret half of that key.
+    pub secret_access_key: Box<str>,
+    /// The bucket snapshots are stored in.
+    pub bucket: Box<str>,
+}
+
+impl BundleStoreConfig {
+    /// The account-scoped endpoint `r2.zig` builds from the same account id.
+    #[must_use]
+    pub fn endpoint(&self) -> String {
+        format!("https://{}.r2.cloudflarestorage.com", self.account_id)
+    }
+
+    /// The region label R2 requires, which is fixed rather than configured.
+    #[must_use]
+    pub const fn region() -> &'static str {
+        R2_REGION
+    }
 }
 
 impl BootConfig {
@@ -130,6 +206,28 @@ impl BootConfig {
     pub const fn identity(&self) -> &IdentityConfig {
         &self.identity
     }
+
+    /// The workspace this deployment's own platform credentials live in.
+    ///
+    /// Optional for [`Self::bundles`]' reason: a deployment that mints no
+    /// third-party credentials still serves everything else, and refusing to
+    /// boot would take the product down for an endpoint nobody called.
+    #[must_use]
+    pub const fn platform_admin_workspace(&self) -> Option<&Uuid7> {
+        self.platform_admin_workspace.as_ref()
+    }
+
+    /// The Fleet Bundle snapshot store, when this deployment has one.
+    ///
+    /// Optional where [`Self::identity`] is not, and `serve_r2.zig` draws the
+    /// same line: it builds an R2 client only when all four knobs are present
+    /// and serves everything else regardless. Most deployments run fleets with
+    /// no support files and never reach the verb, so refusing to boot would
+    /// take the whole product down for an endpoint nobody called.
+    #[must_use]
+    pub const fn bundles(&self) -> Option<&BundleStoreConfig> {
+        self.bundles.as_ref()
+    }
 }
 
 /// Reads every boot knob, reporting ALL faults rather than the first.
@@ -161,19 +259,79 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
 
     let kek = read_kek(env, &mut faults);
     let identity = identity(env, &mut faults);
+    // Answers `None` for BOTH "configured nothing" and "configured badly", and
+    // only the second pushed a fault — which is why the match below reads the
+    // fault list rather than this value to decide whether boot proceeds.
+    let bundles = bundle_store(env, &mut faults);
+    // Unset is a deployment that mints nothing; SET and unparseable is a typo
+    // that would otherwise surface as "not connected" at the first mint, which
+    // is the furthest possible point from the mistake.
+    let platform_admin_workspace = env
+        .get(PLATFORM_ADMIN_WORKSPACE_KNOB)
+        .map(|raw| raw.trim().to_owned())
+        .filter(|raw| !raw.is_empty())
+        .and_then(|raw| {
+            classify(
+                &mut faults,
+                true,
+                PLATFORM_ADMIN_WORKSPACE_KNOB,
+                WHY_PLATFORM_ADMIN,
+                Uuid7::parse(&raw),
+            )
+        });
 
     match (api_pool, redis, kek, identity) {
-        (Some(api_pool), Some(redis), Some(kek), Some(identity)) => Ok(BootConfig {
-            api_pool,
-            redis,
-            kek,
-            identity,
-        }),
+        (Some(api_pool), Some(redis), Some(kek), Some(identity)) if faults.is_empty() => {
+            Ok(BootConfig {
+                api_pool,
+                redis,
+                kek,
+                identity,
+                bundles,
+                platform_admin_workspace,
+            })
+        }
         // Anything else: a knob that is missing or unusable, the identity
         // provider included. Every one of them has already pushed its own
         // fault, so the refusal names them all rather than the first.
         _refused => Err(Refusal::new(faults)),
     }
+}
+
+/// Resolves the snapshot store, which a boot may legitimately not have.
+///
+/// Three outcomes, not two. All four knobs set is a store; none set is a
+/// deployment that serves no snapshots, which is not a fault and pushes none.
+/// SOME set is a fault per missing knob, and that is the case this function
+/// exists for: a half-configured store boots fine and then fails at the first
+/// bundle fetch, which is the furthest possible point from the mistake — the
+/// same rule `cmd/doctor.zig` records for a half-configured identity provider.
+fn bundle_store<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+) -> Option<BundleStoreConfig> {
+    if R2_KNOBS.iter().all(|knob| !is_set(env, knob)) {
+        return None;
+    }
+    let values: Vec<Option<String>> = R2_KNOBS
+        .iter()
+        .map(|knob| required(env, faults, knob, WHY_R2))
+        .collect();
+    let [
+        Some(account_id),
+        Some(access_key_id),
+        Some(secret_access_key),
+        Some(bucket),
+    ] = values.as_slice()
+    else {
+        return None;
+    };
+    Some(BundleStoreConfig {
+        account_id: account_id.as_str().into(),
+        access_key_id: access_key_id.as_str().into(),
+        secret_access_key: secret_access_key.as_str().into(),
+        bucket: bucket.as_str().into(),
+    })
 }
 
 /// Resolves the identity provider, which every boot must have.

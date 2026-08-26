@@ -14,6 +14,10 @@ categories.workspace = true
 # Dependencies are added by the module that uses them. The vocabulary is
 # `&'static str` constants and needs nothing.
 [dependencies]
+# The runner-reported vocabulary the per-runner counters are keyed by. Consumed,
+# never authored here: an outcome this crate spelled for itself would be a
+# second vocabulary the wire does not know about.
+afd_wire.workspace = true
 # The span pipeline. The SDK only — it re-exports the API types this crate
 # names, and `unused_crate_dependencies` caught the API crate riding along
 # unused. The OTLP transport is boot's, because an endpoint is configuration

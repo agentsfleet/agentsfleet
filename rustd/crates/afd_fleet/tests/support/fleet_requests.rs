@@ -61,3 +61,22 @@ pub(crate) fn capable() -> CapabilityReport<'static> {
         egress_enforcement: true,
     }
 }
+
+/// The body a runner sends to mint a credential.
+///
+/// A builder rather than a literal at each call site, because the shape is
+/// three fields of which two are strings — exactly where a caller binds the
+/// lease id and the integration name the wrong way round and gets a refusal
+/// that looks like a real one.
+pub(crate) fn mint<'a>(
+    lease_id: &'a str,
+    integration: &'a str,
+) -> afd_wire::credentials::MintCredentialRequest<'a> {
+    afd_wire::credentials::MintCredentialRequest {
+        lease_id: lease_id.into(),
+        integration: integration.into(),
+        // No narrowing: the fleet's binding is what scopes a mint, and a scope
+        // on the wire would be a second opinion about reach.
+        scope: None,
+    }
+}

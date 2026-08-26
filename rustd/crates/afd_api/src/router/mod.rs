@@ -2,7 +2,7 @@
 //!
 //! # What is mounted, and what is only tabled
 //!
-//! [`Route`] carries all eighty-one endpoints; this binary serves nine of them.
+//! [`Route`] carries all eighty-one endpoints; this binary serves eleven of them.
 //! The gap is deliberate and it is STATED: [`handler_for`] is a total match
 //! over every family AND every route within a family, so an endpoint whose
 //! handler has not been ported yet says so in an arm rather than by being
@@ -86,18 +86,43 @@ impl<D: Dependencies + Services> Serving for D {}
 pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router {
     let mut router = Router::new();
     let mut mounted = 0usize;
+    // Two ROUTES can share one TEMPLATE — memory hydrate and capture differ by
+    // method, and the route table says so in its own comment. axum takes one
+    // `MethodRouter` per path and panics on a second, so same-template routes
+    // are merged into one before mounting rather than mounted twice.
+    //
+    // Accumulated in a Vec and found linearly: eighty-one routes make this
+    // cheaper than hashing, and it preserves the table's order, so the mount
+    // log reads the same way every boot.
+    let mut merged: Vec<(&'static str, RouteMeta, MethodRouter<Arc<D>>)> = Vec::new();
     for route in Route::all() {
-        if let Some(handler) = handler_for::<D>(route) {
-            // Hoisted for the same reason every other call-bearing log field
-            // in this crate is: the `log` bridge duplicates the expression and
-            // llvm-cov scores the dead copy.
-            let meta = route.meta();
-            let template = meta.template;
-            let class = meta.class;
-            tracing::debug!(template, ?class, event = "route_mounted", "route mounted");
-            router = router.route(template, layered(handler, meta, &dependencies, admission));
-            mounted += 1;
+        let Some(handler) = handler_for::<D>(route) else {
+            continue;
+        };
+        // Hoisted for the same reason every other call-bearing log field
+        // in this crate is: the `log` bridge duplicates the expression and
+        // llvm-cov scores the dead copy.
+        let meta = route.meta();
+        let template = meta.template;
+        let class = meta.class;
+        tracing::debug!(template, ?class, event = "route_mounted", "route mounted");
+        // Counts VERBS, not paths. Two methods on one template are two things
+        // this binary answers, and a count that said one would understate the
+        // surface exactly where the table is easiest to misread.
+        mounted += 1;
+        match merged.iter_mut().find(|(known, _, _)| *known == template) {
+            // `merge` and not `layer`: the layers go on once, below, after every
+            // method for this path is in place. Layering each half separately
+            // would put two authenticators on one route.
+            Some((_, _, existing)) => {
+                let combined = std::mem::replace(existing, axum::routing::any(unreachable_stub));
+                *existing = combined.merge(handler);
+            }
+            None => merged.push((template, meta, handler)),
         }
+    }
+    for (template, meta, handler) in merged {
+        router = router.route(template, layered(handler, meta, &dependencies, admission));
     }
     // Once, at boot. An operator reading a startup log should be able to see
     // how much of the surface this binary actually answers without counting
@@ -156,7 +181,7 @@ fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>> {
             OpsRoute::Healthz => get(probes::healthz),
             OpsRoute::Readyz => get(probes::readyz::<D>),
         }),
-        Route::Runner(verb) => runner_handler::<D>(verb),
+        Route::Runner(verb) => Some(runner_handler::<D>(verb)),
         Route::RunnerOps(verb) => runner_ops_handler::<D>(verb),
         // Tabled, not yet served. Each of these families arrives with the
         // milestone that ports its handlers; until then the route exists as a
@@ -172,21 +197,25 @@ fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>> {
 }
 
 /// The runner plane's verbs — a runner speaking for itself.
-fn runner_handler<D: Serving>(verb: RunnerRoute) -> Option<MethodRouter<Arc<D>>> {
+/// Not an `Option`, where its two sibling tables are.
+///
+/// Every verb on this plane is now SERVED — the mint was the last one tabled —
+/// so a `None` arm here would be a possibility the type admits and the code
+/// cannot produce. The compiler enforces the difference: a verb added to
+/// [`RunnerRoute`] without a handler fails this match, where an `Option` would
+/// have let it default to 404 and look deliberate.
+fn runner_handler<D: Serving>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
     match verb {
-        RunnerRoute::SelfRecord => Some(get(runner::self_record::handle::<D>)),
-        RunnerRoute::Heartbeat => Some(post(runner::heartbeat::handle::<D>)),
-        RunnerRoute::Lease => Some(post(runner::lease::handle::<D>)),
-        RunnerRoute::Report => Some(post(runner::report::handle::<D>)),
-        RunnerRoute::Renew => Some(post(runner::renew::handle::<D>)),
-        RunnerRoute::Activity => Some(post(runner::activity::handle::<D>)),
-        // Tabled, not yet served: memory, bundles and the mint broker. Each
-        // arrives with the slice that ports it; until then this binary answers
-        // 404 rather than claiming an unfinished endpoint.
-        RunnerRoute::CredentialsMint
-        | RunnerRoute::MemoryHydrate
-        | RunnerRoute::MemoryCapture
-        | RunnerRoute::Bundle => None,
+        RunnerRoute::SelfRecord => get(runner::self_record::handle::<D>),
+        RunnerRoute::Heartbeat => post(runner::heartbeat::handle::<D>),
+        RunnerRoute::Lease => post(runner::lease::handle::<D>),
+        RunnerRoute::Report => post(runner::report::handle::<D>),
+        RunnerRoute::Renew => post(runner::renew::handle::<D>),
+        RunnerRoute::Activity => post(runner::activity::handle::<D>),
+        RunnerRoute::MemoryHydrate => get(runner::memory::hydrate::<D>),
+        RunnerRoute::MemoryCapture => post(runner::memory::capture::<D>),
+        RunnerRoute::Bundle => get(runner::bundle::handle::<D>),
+        RunnerRoute::CredentialsMint => post(runner::credential::handle::<D>),
     }
 }
 
@@ -203,6 +232,16 @@ fn runner_ops_handler<D: Serving>(verb: RunnerOpsRoute) -> Option<MethodRouter<A
         | RunnerOpsRoute::Leases
         | RunnerOpsRoute::Streams => None,
     }
+}
+
+/// Never routed to — a placeholder swapped in for one expression.
+///
+/// `MethodRouter::merge` consumes both sides, and a `&mut` cannot be moved out
+/// of. This stands in its place for the instant between the take and the put
+/// back, and no request can reach it because the value is replaced on the very
+/// next line.
+async fn unreachable_stub() -> Response {
+    StatusCode::INTERNAL_SERVER_ERROR.into_response()
 }
 
 /// Refuses HEAD before it can be answered by a GET handler.

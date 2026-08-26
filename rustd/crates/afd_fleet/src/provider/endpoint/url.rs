@@ -24,7 +24,7 @@ use crate::provider::ssrf;
 /// so `HTTPS://` matches without this doing its own case folding.
 const REQUIRED_SCHEME: &str = "https";
 
-pub(in crate::provider) fn validate(url: &str) -> Result<Box<str>, Rejection> {
+pub(crate) fn validate(url: &str) -> Result<Box<str>, Rejection> {
     let parsed = Url::parse(url).map_err(|failure| match failure {
         // A schemeless host is the operator who wrote `api.example.com` and
         // forgot the `https://`. The parser calls that a relative URL; the

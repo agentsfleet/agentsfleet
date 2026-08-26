@@ -42,6 +42,8 @@ use sqlx::postgres::PgRow;
 use crate::error::{Result, query, vault_open};
 use crate::sql;
 
+mod rotate;
+
 /// Statement name, for the context a query failure carries.
 const CONTEXT_SECRET: &str = "vault credential";
 
@@ -116,6 +118,19 @@ impl Vault {
     #[must_use]
     pub const fn new(database: Db, kek: Arc<Kek>) -> Self {
         Self { database, kek }
+    }
+
+    /// The pool this vault reads and writes through.
+    ///
+    /// Private to the module tree: the sibling write path needs it, and nothing
+    /// outside `vault` may reach a connection that can UPDATE a credential.
+    const fn pool(&self) -> &Db {
+        &self.database
+    }
+
+    /// The key every envelope here is sealed and opened under.
+    fn kek(&self) -> &Kek {
+        &self.kek
     }
 
     /// The plaintext of the credential at `key`, or nothing if none is held.

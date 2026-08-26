@@ -89,10 +89,23 @@ pub struct Plane {
     pub gates: Gates,
     /// Wallets, ceilings and the receive debit.
     pub accounts: Accounts,
+    /// What a fleet remembers between runs.
+    ///
+    /// A store of its own rather than a verb on [`Leases`]: the tables are a
+    /// different schema written under a different role, and a lease store that
+    /// could write memory would be a lease store that needs that role.
+    pub memories: crate::memory::Memories,
     /// Which provider key this run bills against.
     pub providers: Providers,
     /// Where declared credentials are opened.
     pub vault: Vault,
+    /// The on-demand credential broker.
+    ///
+    /// Behind an `Arc` because it holds the process's ONE token cache: the
+    /// whole point of the cache is that every request shares it, and a `Plane`
+    /// clone that deep-copied it would give each cloned handle its own — which
+    /// is a cache that never hits and a single-flight that never single-flights.
+    pub broker: std::sync::Arc<crate::credential::Broker>,
     /// The connector set a mintable credential is classified against.
     ///
     /// A field rather than an argument: which connectors this daemon ships

@@ -80,6 +80,34 @@ impl RepositoryBinding {
         self.base_branch.as_deref()
     }
 
+    /// Builds a binding directly from its parts.
+    ///
+    /// Behind `test-util` (`M-TEST-UTIL`) for the reason
+    /// [`GatePolicy::from_parts`](crate::config::GatePolicy::from_parts) is:
+    /// the production door is [`Self::parse`] and it is the one that
+    /// VALIDATES — half-declared refused, a read binding refused a base, a
+    /// write binding required one. A second constructor that skipped that
+    /// would be a second way to build a binding, which is a way to build an
+    /// invalid one.
+    ///
+    /// The consumer is the credential mint in the sibling crate, whose subject
+    /// is what a GitHub token came back reaching. Driving those cases through a
+    /// stored config document would make every one of them carry a JSON fixture
+    /// whose parse is not what the test is about.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn from_parts(
+        repositories: Vec<Box<str>>,
+        access: Access,
+        base_branch: Option<Box<str>>,
+    ) -> Self {
+        Self {
+            repositories: repositories.into_boxed_slice(),
+            access,
+            base_branch,
+        }
+    }
+
     /// Reads the binding out of an already-deserialized runtime block.
     ///
     /// # Errors

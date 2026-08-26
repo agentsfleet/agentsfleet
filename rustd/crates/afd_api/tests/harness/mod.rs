@@ -45,10 +45,14 @@ use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_fleet::Runners;
+use afd_fleet::bundle::{Bundles, ContentHash};
 use axum::Router;
 use axum::body::Body;
 use axum::response::Response;
+use bytes::Bytes;
 use http::{Method, Request};
+use object_store::ObjectStoreExt as _;
+use object_store::memory::InMemory;
 use serde_json::Value;
 use tower::ServiceExt as _;
 
@@ -72,6 +76,7 @@ pub(crate) struct Fleet {
     authenticator: Planes<MockDirectory, MockCapabilities, NoVerifier>,
     runners: Runners,
     leases: NoWork,
+    bundles: Bundles,
     now: UnixMillis,
 }
 
@@ -130,6 +135,50 @@ impl Leasing for NoWork {
         std::future::ready(Ok(()))
     }
 
+    /// Mints nothing, and says so with the code a deployment holding no
+    /// platform credential answers.
+    ///
+    /// A REFUSAL where the three stubs above answer `Ok`, and the asymmetry is
+    /// the verb's: `mint` has no success this suite could assert without a
+    /// vault row, a grant and a vendor, so an `Ok` here would have to invent a
+    /// token. `UZ-CRED-002` is the honest answer for a plane with no platform
+    /// credentials in it — the same one production gives — and it still proves
+    /// what these suites are for: that an authenticated runner REACHES the
+    /// handler and an unauthenticated one does not.
+    fn mint(
+        &self,
+        _runner_id: &Uuid7,
+        _request: &afd_wire::credentials::MintCredentialRequest<'_>,
+        _now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::credential::Minted>> + Send {
+        std::future::ready(Err(afd_fleet::Error::mint_unconfigured()))
+    }
+
+    /// Hydrates nothing, which is what a fleet that has never run remembers.
+    ///
+    /// An empty window is a real answer, not a stand-in: a first run seeds from
+    /// exactly this.
+    fn hydrate(
+        &self,
+        _runner_id: &Uuid7,
+        _fleet_id: &Uuid7,
+        _now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<Vec<afd_wire::memory::MemoryDelta<'static>>>> + Send
+    {
+        std::future::ready(Ok(Vec::new()))
+    }
+
+    /// Stores nothing and says so, for the reason [`NoWork::report`] accepts.
+    fn capture(
+        &self,
+        _runner_id: &Uuid7,
+        _fleet_id: &Uuid7,
+        _request: &afd_wire::memory::MemoryPushRequest<'_>,
+        _now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::memory::Captured>> + Send {
+        std::future::ready(Ok(afd_fleet::memory::Captured::default()))
+    }
+
     /// Renews to the instant asked about, for the reason [`NoWork::report`]
     /// accepts.
     fn renew(
@@ -162,6 +211,10 @@ impl Fleet {
             capabilities,
             runners: Runners::new(Db::unreachable(&pool), Entropy::new()),
             leases: NoWork,
+            // Unconfigured by default, so a suite that says nothing about
+            // snapshots proves the refusal a deployment with no R2 knobs gives
+            // — which is most of them.
+            bundles: Bundles::unconfigured(),
             now: UnixMillis::from_millis(FROZEN),
         }
     }
@@ -191,6 +244,28 @@ impl Fleet {
             },
         );
         self.capabilities = self.capabilities.with(&who, scopes);
+        self
+    }
+
+    /// Backs this instance with an in-memory snapshot store holding `body`
+    /// under `content_hash`.
+    ///
+    /// `object_store::memory::InMemory` rather than a mock of our own: it is
+    /// the backend the workspace manifest names for exactly this, so what the
+    /// suite drives is the same client production drives with a different
+    /// backing store — not a second implementation that could agree with the
+    /// test and disagree with R2.
+    ///
+    /// Async because a `put` is, which is why it is not one of the `const`
+    /// builders above.
+    pub(crate) async fn with_snapshot(mut self, content_hash: &str, body: &[u8]) -> Self {
+        let store = InMemory::new();
+        let hash = ContentHash::parse(content_hash).expect("the fixture digest is well formed");
+        store
+            .put(&hash.snapshot_key(), Bytes::copy_from_slice(body).into())
+            .await
+            .expect("an in-memory put cannot fail");
+        self.bundles = Bundles::new(Arc::new(store));
         self
     }
 
@@ -231,6 +306,10 @@ impl Services for Fleet {
 
     fn leases(&self) -> &NoWork {
         &self.leases
+    }
+
+    fn bundles(&self) -> &Bundles {
+        &self.bundles
     }
 
     fn now(&self) -> UnixMillis {
