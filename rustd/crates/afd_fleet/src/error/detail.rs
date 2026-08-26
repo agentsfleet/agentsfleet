@@ -81,6 +81,16 @@ pub const DETAIL_CREDENTIAL_MISSING: &str =
 /// by design, so a malformed body can reach the vault. One fact, one sentence.
 pub const DETAIL_VAULT_DATA_INVALID: &str = "Secret data must be a non-empty JSON object";
 
+/// A fleet's stored configuration could not be read.
+///
+/// No `problem_response.zig` sentence to copy: the Zig meets this failure
+/// inside its claim, where it returns an error the fleet loop LOGS and the
+/// runner is simply told there is no work. Here the same failure can reach a
+/// caller, so it needs a sentence — and this one names the stored document
+/// rather than the request, because the runner did nothing wrong and the fix
+/// is in the fleet.
+pub const DETAIL_CONFIG_UNREADABLE: &str = "fleet configuration unreadable";
+
 /// A gate reference that could not be written.
 ///
 /// Unreachable for the shape the gate stores — a record of a string and an
