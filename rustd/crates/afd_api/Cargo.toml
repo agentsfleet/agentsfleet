@@ -48,6 +48,11 @@ afd_observability.workspace = true
 # documentation link and end-user sentence are properties OF THE CODE, so they
 # live beside it rather than in this crate.
 afd_core.workspace = true
+# The text-boundary cursor form: a sort key that is text is base64url-encoded
+# so a value containing the separator cannot corrupt the boundary. Both binaries
+# issue and read these strings, so the encoding is a data format rather than a
+# choice.
+base64.workspace = true
 # `json` for the probe bodies: unlike the problem+json envelope, which writes
 # its own content type, these are ordinary JSON responses.
 axum = { workspace = true, features = ["json", "matched-path"] }
