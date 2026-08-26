@@ -52,5 +52,8 @@ pub use crate::config::{RedisConfig, RedisRole};
 pub use crate::error::Error;
 pub use crate::hub::{Backoff, Message, Subscription, SubscriptionHub};
 pub use crate::ready::{Ready, ReadyIndex, ReadyToken};
-pub use crate::session::{SessionState, SessionStatus, SessionStore, VerifyOutcome};
+pub use crate::session::{
+    AbortOutcome, AbortReason, Approval, ApproveOutcome, SessionState, SessionStatus, SessionStore,
+    VerifyOutcome, VerifyPayload,
+};
 pub use crate::streams::{EventId, FleetEvent, FleetStreams, fleet_activity_channel};

@@ -11,12 +11,19 @@ use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
 use crate::error::{Error, ErrorKind, Result};
-use crate::secret::Kek;
+use crate::secret::{Kek, SecretBytes};
 
 /// Bytes in an HMAC-SHA256 output.
 pub const MAC_LEN: usize = 32;
 
 type HmacSha256 = Hmac<Sha256>;
+
+/// Why the two keying constructors below cannot fail.
+///
+/// Named once rather than spelled at each `expect`: RULE UFS reads a repeated
+/// literal as two facts that can drift, and this is one fact about HMAC stated
+/// in two places.
+const KEY_LENGTH_IS_UNCONSTRAINED: &str = "HMAC accepts a key of any length";
 
 /// A message authentication code, comparable only in constant time.
 ///
@@ -54,8 +61,40 @@ impl Mac256 {
                       so the error arm cannot be constructed; see the doc comment above"
         )]
         let mut mac = <HmacSha256 as KeyInit>::new_from_slice(key.expose().as_slice())
-            .expect("HMAC accepts a key of any length");
+            .expect(KEY_LENGTH_IS_UNCONSTRAINED);
         mac.update(message);
+        Self(mac.finalize().into_bytes().into())
+    }
+
+    /// Computes the code over `parts` under a key of any length.
+    ///
+    /// The device-flow pepper is an operator-supplied string rather than a
+    /// key-encryption key, so it has no fixed width. HMAC is defined for a key
+    /// of any length — the construction pads or hashes it down itself — which
+    /// is why [`Mac256::compute`] can take a fixed array and this can take a
+    /// slice with no second implementation between them.
+    ///
+    /// `parts` are fed in order with no separator, matching what the Zig
+    /// daemon signs. Both binaries write the same Redis blob and a Lua script
+    /// compares the two hex renderings as text, so this is a DATA FORMAT and
+    /// not a choice — a separator added here would invalidate every session the
+    /// other binary approved.
+    ///
+    /// # Panics
+    /// Cannot, for the reason [`Mac256::compute`] cannot: HMAC forbids no key
+    /// length, so `new_from_slice`'s error arm is unconstructible.
+    #[must_use]
+    pub fn compute_peppered(pepper: &SecretBytes, parts: &[&[u8]]) -> Self {
+        #[expect(
+            clippy::expect_used,
+            reason = "HMAC accepts a key of any length, so the error arm cannot be constructed; \
+                      see the doc comment above"
+        )]
+        let mut mac = <HmacSha256 as KeyInit>::new_from_slice(pepper.expose())
+            .expect(KEY_LENGTH_IS_UNCONSTRAINED);
+        for part in parts {
+            mac.update(part);
+        }
         Self(mac.finalize().into_bytes().into())
     }
 

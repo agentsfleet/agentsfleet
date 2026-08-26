@@ -148,6 +148,92 @@ pub const AUTH_UNAUTHORIZED: ErrorCode = ErrorCode::declare("UZ-AUTH-002");
 /// remedy for a token that never verified.
 pub const AUTH_TOKEN_EXPIRED: ErrorCode = ErrorCode::declare("UZ-AUTH-003");
 
+/// The caller proved who they are, and this object is not theirs.
+///
+/// `ERR_FORBIDDEN`. Distinct from [`AUTH_INSUFFICIENT_SCOPE`] on a seam a
+/// caller can act on: that one says the credential lacks a capability and
+/// names which, this one says the capability is held and the OBJECT belongs
+/// to somebody else. Obtaining a scope fixes the first and can never fix the
+/// second.
+pub const AUTH_FORBIDDEN: ErrorCode = ErrorCode::declare("UZ-AUTH-001");
+
+/// The device-flow session id names nothing this daemon holds.
+///
+/// `ERR_SESSION_NOT_FOUND`. One code for "never created", "evicted by the
+/// five-minute time-to-live", and "not a version 7 identifier at all" — the
+/// three are indistinguishable to a caller holding an id, and telling them
+/// apart would make the poll an oracle for which login sessions are live.
+pub const SESSION_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AUTH-005");
+
+/// The device-flow session's five-minute window closed before it was redeemed.
+///
+/// `ERR_SESSION_EXPIRED`. Terminal, and the remedy is a fresh `agentsfleet
+/// login` rather than a retry of this one.
+pub const SESSION_EXPIRED: ErrorCode = ErrorCode::declare("UZ-AUTH-006");
+
+/// The six digits presented did not match the ones the browser showed.
+///
+/// `ERR_VERIFICATION_FAILED`. Retryable — deliberately, and up to a bounded
+/// count — which is what separates it from [`SESSION_ABORTED`]: the attempt
+/// that trips the ceiling answers that one instead, so a terminal informs the
+/// command line to stop prompting rather than burning its own retries.
+pub const VERIFICATION_FAILED: ErrorCode = ErrorCode::declare("UZ-AUTH-011");
+
+/// The device-flow session was already redeemed.
+///
+/// `ERR_SESSION_CONSUMED`. A 410: the session existed and is gone, which is a
+/// different fact from [`SESSION_NOT_FOUND`]'s 404 and reaches a caller only
+/// after it has proven possession of the id.
+pub const SESSION_CONSUMED: ErrorCode = ErrorCode::declare("UZ-AUTH-012");
+
+/// The device-flow session was cancelled, superseded, or rate-limited.
+///
+/// `ERR_SESSION_ABORTED`. Terminal. The stored reason rides the log rather
+/// than the wire, because the three causes have one remedy.
+pub const SESSION_ABORTED: ErrorCode = ErrorCode::declare("UZ-AUTH-013");
+
+/// A code was presented for a session no human has approved yet.
+///
+/// `ERR_SESSION_NOT_APPROVED`. A 409 rather than a 410: the session is still
+/// approvable, so the caller waits rather than starting over.
+pub const SESSION_NOT_APPROVED: ErrorCode = ErrorCode::declare("UZ-AUTH-014");
+
+/// A second approval arrived for a session already past `pending`.
+///
+/// `ERR_SESSION_ALREADY_APPROVED`. The losing half of two dashboards racing
+/// one Approve click; the winner's ciphertext stands.
+pub const SESSION_ALREADY_APPROVED: ErrorCode = ErrorCode::declare("UZ-AUTH-015");
+
+/// A presented public key is not one this daemon will store.
+///
+/// `ERR_INVALID_PUBLIC_KEY`. A SHAPE refusal and nothing more: the daemon
+/// performs no elliptic-curve operation for device flow, so it can bound the
+/// value's length and say nothing about whether it is a point on a curve.
+pub const INVALID_PUBLIC_KEY: ErrorCode = ErrorCode::declare("UZ-AUTH-016");
+
+/// The label a minted credential would carry is not a label.
+///
+/// `ERR_INVALID_TOKEN_NAME`.
+pub const INVALID_TOKEN_NAME: ErrorCode = ErrorCode::declare("UZ-AUTH-017");
+
+/// The verification code is not six decimal digits.
+///
+/// `ERR_INVALID_VERIFICATION_CODE`. Refused before any comparison, so a
+/// malformed code costs no message authentication code computation and reveals
+/// nothing about the stored one.
+pub const INVALID_VERIFICATION_CODE: ErrorCode = ErrorCode::declare("UZ-AUTH-018");
+
+/// The approval carried no ciphertext, or more than this daemon will relay.
+///
+/// `ERR_INVALID_CIPHERTEXT`. A bound rather than a decryption: the daemon
+/// relays the envelope and never opens it.
+pub const INVALID_CIPHERTEXT: ErrorCode = ErrorCode::declare("UZ-AUTH-019");
+
+/// The approval carried no nonce, or one longer than the construction takes.
+///
+/// `ERR_INVALID_NONCE`.
+pub const INVALID_NONCE: ErrorCode = ErrorCode::declare("UZ-AUTH-020");
+
 /// A credential could not be judged, because what judges it was unreachable.
 ///
 /// `ERR_AUTH_UNAVAILABLE`. Never an authentication REJECTION, and the
@@ -391,6 +477,19 @@ pub const REGISTRY: &[ErrorCode] = &[
     AUTH_INSUFFICIENT_SCOPE,
     AUTH_UNAUTHORIZED,
     AUTH_TOKEN_EXPIRED,
+    AUTH_FORBIDDEN,
+    SESSION_NOT_FOUND,
+    SESSION_EXPIRED,
+    VERIFICATION_FAILED,
+    SESSION_CONSUMED,
+    SESSION_ABORTED,
+    SESSION_NOT_APPROVED,
+    SESSION_ALREADY_APPROVED,
+    INVALID_PUBLIC_KEY,
+    INVALID_TOKEN_NAME,
+    INVALID_VERIFICATION_CODE,
+    INVALID_CIPHERTEXT,
+    INVALID_NONCE,
     AUTH_UNAVAILABLE,
     AUTH_CLI_CREDENTIAL_REVOKED,
     APIKEY_REVOKED,
