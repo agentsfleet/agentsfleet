@@ -25,6 +25,7 @@
 
 use serde::Deserialize;
 
+use super::resolved::Dialled;
 use crate::error::{Result, provider_endpoint, provider_malformed};
 use crate::money::Posture;
 use crate::provider::endpoint;
@@ -125,24 +126,29 @@ impl Resolution for SelfManaged {
         // bytes, which is the ordering `probeSelfManagedSecret` chose and the
         // reason it gave — nothing owned is built around a URL that will be
         // refused.
-        let base_url: Option<Box<str>> =
+        // The host travels with the URL from here, because `resolve` already
+        // derived it to make its SSRF ruling — see [`Dialled`].
+        let dialled: Option<Dialled> =
             endpoint::resolve(&credential.provider, credential.base_url.as_deref())
                 .map_err(|rejection| provider_endpoint(rejection.as_str()))?
-                .map(Box::from);
+                .map(|endpoint| Dialled {
+                    base_url: endpoint.url.into(),
+                    inference_host: endpoint.host,
+                });
 
         // A resolved endpoint IS the compatible provider — `endpoint::resolve`
         // has already refused every other pairing — so the optional-key rule
         // reads off the outcome rather than re-comparing the provider string.
         // The Zig computes an `is_compatible` flag and consults it twice, which
         // is two places for the two rules to come apart.
-        let api_key = bearer(credential.api_key, base_url.is_some())?;
+        let api_key = bearer(credential.api_key, dialled.is_some())?;
 
         Ok(Resolved::new(
             Posture::SelfManaged,
             credential.provider,
             self.selection.model.clone(),
             self.selection.context_cap_tokens,
-            base_url,
+            dialled,
             api_key,
         ))
     }
@@ -225,7 +231,7 @@ mod tests {
         assert_eq!(&*resolved.model, "claude-opus-5", "from the selection");
         assert_eq!(resolved.context_cap_tokens, 200_000);
         assert_eq!(resolved.api_key().expose(), "sk-tenant");
-        assert_eq!(resolved.base_url, None);
+        assert_eq!(resolved.endpoint, None);
     }
 
     #[test]
@@ -251,7 +257,7 @@ mod tests {
             .expect("a keyless gateway is the optional-key design");
         assert!(keyless.api_key().expose().is_empty());
         assert_eq!(
-            keyless.base_url.as_deref(),
+            keyless.endpoint.as_ref().map(|e| e.base_url.as_ref()),
             Some("https://gw.example.com/v1")
         );
 
