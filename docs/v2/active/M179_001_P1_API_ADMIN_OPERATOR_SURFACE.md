@@ -124,7 +124,7 @@ The importer pipeline (platform gallery + per-tenant onboarding) with the GitHub
 - **Dimension 4.1** — admin-state transitions write the row + append the event; illegal transitions refused → Test `test_runner_admin_transitions` — DONE
 - **Dimension 4.2** — rotation swaps `token_hash`; old token 401s on next use (M177 read), new token works → Test `test_runner_rotation_takeover` — DONE
 - **Dimension 4.3** — runner list/detail/events with keyset pagination + derived-status parity → Test `test_runner_views_parity` — DONE
-- **Dimension 4.4** — streams overview shape parity on seeded fleets → Test `test_streams_overview_parity`
+- **Dimension 4.4** — streams overview shape parity on seeded fleets → Test `test_streams_overview_parity` — DONE
 
 ## Parallelization & execution map
 
