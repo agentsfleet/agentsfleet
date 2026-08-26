@@ -35,8 +35,8 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
-pub mod bundle;
 pub mod admin;
+pub mod bundle;
 pub mod credential;
 pub mod error;
 pub mod gate;
@@ -53,6 +53,9 @@ pub mod vault;
 
 pub use crate::error::{Error, Result};
 pub use crate::runner::reconcile::{Verdict, reconcile};
+pub use crate::runner::view::{
+    KeysetCursor, PageLimit, RunnerDetail, RunnerEventPage, RunnerItem, RunnerPage,
+};
 pub use crate::runner::{
     AssignmentColumns, Beat, Enrolled, NO_REPORT, Runners, SelfRow, StoredVerdict,
 };

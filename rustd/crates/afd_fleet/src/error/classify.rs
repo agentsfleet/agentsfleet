@@ -70,6 +70,7 @@ impl Error {
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
+            | ErrorKind::StoredJson { .. }
             | ErrorKind::AdminStateMalformed => {
                 error_code::INTERNAL_DB_QUERY
             }
@@ -204,6 +205,7 @@ impl Error {
             // any of them.
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
+            | ErrorKind::StoredJson { .. }
             | ErrorKind::AdminStateMalformed
             | ErrorKind::SequenceCorrupt => DETAIL_DATABASE_ERROR,
             ErrorKind::Queue { .. } => DETAIL_QUEUE_UNAVAILABLE,
@@ -315,6 +317,7 @@ impl Error {
             | ErrorKind::RunnerNotFound
             | ErrorKind::AdminStateMalformed
             | ErrorKind::RowMalformed { .. }
+            | ErrorKind::StoredJson { .. }
             | ErrorKind::Envelope { .. }
             | ErrorKind::Rejected { .. }
             | ErrorKind::Mint { .. }

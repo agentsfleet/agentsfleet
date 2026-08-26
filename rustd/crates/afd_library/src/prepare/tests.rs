@@ -30,6 +30,7 @@ fn invalid(body: &ImportBody) -> InvalidBundle {
         | crate::Error::Catalogue(_)
         | crate::Error::Pool(_)
         | crate::Error::CatalogueJson(_)
+        | crate::Error::Database { .. }
         | crate::Error::Snapshot(_)
         | crate::Error::FrontmatterUtf8 { .. }
         | crate::Error::FrontmatterYaml { .. }

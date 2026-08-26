@@ -85,7 +85,7 @@ pub struct AdminModelCreate<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdminModelItem<'a> {
-    /// Opaque UUIDv7 row identity.
+    /// Opaque `UUIDv7` row identity.
     #[serde(borrow)]
     pub id: Cow<'a, str>,
     /// Provider identity.
