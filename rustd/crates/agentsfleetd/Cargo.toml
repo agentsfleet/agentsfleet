@@ -72,6 +72,9 @@ tower.workspace = true
 # and the source chain survives for the fatal renderer to walk.
 thiserror.workspace = true
 tracing.workspace = true
+# The subscriber every `tracing` emit in this process needs: without one
+# installed the macros are no-ops that do not evaluate their fields.
+tracing-subscriber.workspace = true
 
 [dev-dependencies]
 # `test-util` is what makes an assertion about JOIN_TIMEOUT affordable: with
@@ -89,9 +92,6 @@ tokio = { workspace = true, features = [
 # The accept-fault suite names `CancellationToken` and builds a bare Router.
 tokio-util.workspace = true
 axum.workspace = true
-# The suites assert on diagnostics the supervisor emits, and an event macro
-# does not evaluate its fields until a subscriber says the callsite is enabled.
-tracing-subscriber.workspace = true
 
 [lints]
 workspace = true
