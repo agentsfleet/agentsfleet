@@ -104,7 +104,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **Dimension 2.1** — each tenant route: response-shape parity vs the Zig daemon on seeded data → Test `test_tenant_routes_shape_parity`
 - **Dimension 2.2** — api-key/cli-credential lifecycle: mint-once-reveal, list shows metadata only, revoke takes effect immediately → Test `test_key_lifecycle_reveal_once`
-- **Dimension 2.3** — keyset pagination on list endpoints matches ordering + cursor semantics → Test `test_list_keyset_pagination`
+- **Dimension 2.3** — keyset cursor + ordering vocabulary DONE (`afd_api::paging`, 10 unit tests); the seeded-row ordering proof lands with the api-key list handler → Test `test_list_keyset_pagination`
 - **Dimension 2.4** — DONE — every route + method in this spec's Interfaces inventory exists in the Route enum; extras and gaps both fail → Test `test_route_inventory_matches_interfaces`
 
 ### §3 — Workspace fleets and install
