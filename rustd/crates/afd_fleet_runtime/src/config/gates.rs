@@ -26,7 +26,12 @@ const TOOL: &str = "tool";
 const ACTION: &str = "action";
 
 /// How long an approval waits when the block names no timeout.
-const DEFAULT_TIMEOUT_MS: u64 = 3_600_000;
+///
+/// Public because it is also the timeout the unconditional write-fleet park
+/// raises its card under — that path matches no rule, so it has no policy value
+/// to read, and a second declaration beside it would be a second number to keep
+/// in step (RULE UFS).
+pub const DEFAULT_TIMEOUT_MS: u64 = 3_600_000;
 /// Longest an approval may be made to wait.
 const MAX_TIMEOUT_MS: u64 = 86_400_000;
 

@@ -29,12 +29,14 @@
 
 mod fault;
 mod gates;
+mod verdict;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::Budget;
 
 use crate::error::Result;
+use crate::gate::Waiting;
 use crate::lease::event::Delivery;
 use crate::money::rates::Posture;
 use crate::money::{Accounts, Charged, Nanos};
@@ -47,9 +49,18 @@ const EVENT_TENANT_UNRESOLVED: &str = "lease_tenant_lookup_failed";
 
 /// What the pass decided.
 ///
-/// Three arms because the runner plane genuinely has three answers, and the two
-/// that look alike from outside — both end in a no-work reply — differ in the
-/// only way that matters: whether the event can ever run again.
+/// Four arms because the runner plane genuinely has four answers, and three of
+/// them look alike from outside — all end in a no-work reply. They differ in
+/// the two ways that matter: whether the event can ever run again, and what an
+/// operator should do about it.
+///
+/// [`Admission::Await`] is durably identical to [`Admission::Retry`] — no row,
+/// delivery left leasable — and it is a separate arm anyway, because the two
+/// mean opposite things to whoever is watching. A retry says this daemon could
+/// not decide and will try again shortly. An await says it decided perfectly
+/// well: a human owes an answer, and no amount of retrying will produce one.
+/// Collapsing them would put a queue waiting on people into the same graph as a
+/// datastore falling over.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Admission {
     /// Issue the lease, billed as described.
@@ -60,8 +71,13 @@ pub enum Admission {
     Refuse(Refusal),
     /// Answer no-work and write nothing. The delivery stays leasable.
     Retry(Transient),
+    /// A human has been asked and has not answered.
+    ///
+    /// Answer no-work, write nothing, and leave the delivery leasable — the
+    /// next poll re-reads the recorded gate. No thread waits: the deadline is a
+    /// NUMBER carried in the reference, compared against the caller's clock.
+    Await(Waiting),
 }
-
 /// What the gates resolved, for the lease row and the policy.
 ///
 /// Owned rather than borrowed: it outlives the pass that produced it, and the
