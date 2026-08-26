@@ -116,6 +116,22 @@ impl Debug for SecretString {
 /// to disagree with it — which is what makes "the key we billed is the key we
 /// deliver" structural rather than a comment.
 ///
+/// A custom endpoint, and the host the egress allowlist admits for it.
+///
+/// The two are one value because they are one decision. A shape carrying only
+/// the URL leaves every consumer re-deriving the host, and a second derivation
+/// is a second chance to disagree with the one that made the SSRF ruling — so
+/// the run could dial a URL whose host the allowlist never actually cleared.
+/// [`super::endpoint::validate`] produces both at once; this keeps them
+/// together from there to the wire.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Dialled {
+    /// The URL the run dials.
+    pub base_url: Box<str>,
+    /// The bare host, as the egress allowlist spells it.
+    pub inference_host: Box<str>,
+}
+
 /// Not `PartialEq`, because [`SecretString`] is not — see that type for why.
 #[derive(Debug, Clone)]
 pub struct Resolved {
@@ -130,10 +146,10 @@ pub struct Resolved {
     /// A validated custom endpoint, or `None` for a named provider dialing a
     /// built-in host.
     ///
-    /// Non-`None` only after [`super::endpoint::resolve`] accepted it, so a
+    /// Non-`None` only after [`super::endpoint::validate`] accepted it, so a
     /// value here is already https and already SSRF-safe — interior code needs
     /// no defensive re-check, and there is none.
-    pub base_url: Option<Box<str>>,
+    pub endpoint: Option<Dialled>,
     /// The key itself.
     ///
     /// Private. See the module note: this is the field Invariant 3 is about,
@@ -153,7 +169,7 @@ impl Resolved {
         provider: Box<str>,
         model: Box<str>,
         context_cap_tokens: u32,
-        base_url: Option<Box<str>>,
+        endpoint: Option<Dialled>,
         api_key: SecretString,
     ) -> Self {
         Self {
@@ -161,7 +177,7 @@ impl Resolved {
             provider,
             model,
             context_cap_tokens,
-            base_url,
+            endpoint,
             api_key,
         }
     }

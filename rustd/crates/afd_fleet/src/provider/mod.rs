@@ -54,6 +54,7 @@ mod resolved;
 mod selection;
 mod ssrf;
 mod store;
+mod wire;
 
 use std::fmt::Debug;
 
@@ -65,9 +66,10 @@ use crate::money::Posture;
 use crate::vault::KeyRef;
 
 pub use self::endpoint::{OPENAI_COMPATIBLE, Rejection};
-pub use self::resolved::{Resolved, SecretString};
+pub use self::resolved::{Dialled, Resolved, SecretString};
 pub use self::selection::{PlatformDefault, Selection};
 pub use self::store::Providers;
+pub use self::wire::Wire;
 
 /// A prepared way of resolving one tenant's provider.
 ///

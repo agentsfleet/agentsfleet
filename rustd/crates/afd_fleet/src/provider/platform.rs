@@ -15,7 +15,8 @@ use serde::Deserialize;
 
 use crate::error::{Result, provider_malformed, provider_platform_key_missing};
 use crate::money::Posture;
-use crate::provider::resolved::{Resolved, SecretString};
+use crate::provider::endpoint;
+use crate::provider::resolved::{Dialled, Resolved, SecretString};
 use crate::provider::selection::PlatformDefault;
 use crate::provider::{Resolution, Strategy};
 use crate::vault::KeyRef;
@@ -83,10 +84,34 @@ impl Resolution for Platform {
             self.0.provider.clone(),
             self.0.model.clone(),
             self.0.context_cap_tokens,
-            self.0.base_url.clone(),
+            dialled(self.0.base_url.as_deref()),
             credential.api_key,
         ))
     }
+}
+
+/// The platform default's endpoint, when it has one this daemon will admit.
+///
+/// # The asymmetry here is deliberate, and it is worth naming
+///
+/// A TENANT's endpoint is refused outright when it fails
+/// [`endpoint::validate`] — `resolve` returns the rejection and the whole
+/// resolution fails. The platform default is an OPERATOR's row, so refusing it
+/// would take down every fleet on the platform default rather than one tenant's
+/// fleet. It degrades instead: an endpoint that will not validate yields
+/// `None`, the lease carries no `inference_host`, and the egress allowlist
+/// therefore admits nothing for it. Fail-closed at the run rather than
+/// fail-closed at boot.
+///
+/// The Zig applies no check on this path at all — `hostFromUrl` takes whatever
+/// the column held. Validating here is stricter, and free.
+fn dialled(base_url: Option<&str>) -> Option<Dialled> {
+    let url = base_url?;
+    let host = endpoint::validate(url).ok()?;
+    Some(Dialled {
+        base_url: url.into(),
+        inference_host: host,
+    })
 }
 
 #[cfg(test)]
@@ -147,7 +172,7 @@ mod tests {
         assert_eq!(&*resolved.provider, "anthropic");
         assert_eq!(&*resolved.model, "claude-opus-5");
         assert_eq!(resolved.context_cap_tokens, 200_000);
-        assert_eq!(resolved.base_url, None);
+        assert_eq!(resolved.endpoint, None);
         assert_eq!(resolved.api_key().expose(), "sk-platform");
     }
 
@@ -166,7 +191,7 @@ mod tests {
             .expect("a credential carrying a key resolves");
 
         assert_eq!(
-            resolved.base_url.as_deref(),
+            resolved.endpoint.as_ref().map(|e| e.base_url.as_ref()),
             Some("https://gw.example.com/v1")
         );
     }
