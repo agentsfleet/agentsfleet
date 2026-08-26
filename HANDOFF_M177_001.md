@@ -11,242 +11,196 @@ Porting `/v1/runners` to `agentsfleetd-rs`. Spec
 - ✅ **§2 assignment half** — claim, fence, reclaim, selection pass, lease row
 - ✅ **§5 claim-time half** — stored `config_json` → typed `FleetConfig`
 - ✅ **§2 money gates** — payer → balance → fleet budget → receive debit
-- ✅ **§2 provider resolution (this session)** — two strategies, one interface
-- ✅ **§2 `secrets_map` (this session)** — the two-channel split
-- ✅ **§2 approval-gate DECISION (this session)** — rule match, route table
-- ✅ **§2 approval-gate READ side (this session)** — the recorded reference, the
-  mirror-then-durable decision, the anomaly counter
-- ⏳ **§2 remainder — NEXT.** The approval gate's WRITE side (park, card
-  detail, pause), the run-estimate debit, `ExecutionPolicy`. See Next Steps.
+- ✅ **§2 provider resolution** — two strategies behind one trait object
+- ✅ **§2 `secrets_map`** — the two-channel split, disjoint by construction
+- ✅ **§2 approval-gate DECISION** — rule match, condition, route table
+- ✅ **§2 approval-gate READ side** — recorded reference, mirror-then-durable
+  decision, anomaly counter
+- ⏳ **§2 remainder — NEXT.** The gate's WRITE side (park, card detail, pause),
+  the run-estimate debit, `ExecutionPolicy`. See Next Steps.
 - ⏳ §3 report, §4 activity/memory/bundles/mint, §6 sweepers, §7 harness
+
+**No blockers.** Everything below is local and reversible.
 
 ## Working Tree
 
 Worktree `/Users/kishore/Projects/agentsfleet-m177-runner-plane`.
-**CLEAN.** Nothing staged, modified, or untracked.
+**CLEAN** — `git status -sb` shows nothing staged, modified, or untracked.
 
 ```
 ## feat/m177-runner-control-plane-parity
-2c732397e a parked event resolves on a later poll, not on a waiting thread  ← this session
-e4ae4a734 an SSRF-refused endpoint ends the event, and only objects are …  ← this session
-36a656cb7 a connector is a descriptor, and a fault is not a posture        ← this session
-e0055ffa5 the approval gate decides, and the order it decides in is a type ← this session
-23d546c1d a fleet's credentials split by channel, not by convention        ← this session
-ffad7c998 the provider resolves through two strategies, one interface      ← this session
-840e8cc51 docs(m177): handoff — §2's money gates land
+3288bfb92 refactor(core): ask serde for a map, instead of reading the first byte
+3fa990ec6 refactor(rustd): delete the hand-rolled parsers Zig had no library for
+2c732397e feat(rustd): a parked event resolves on a later poll, not on a waiting thread
+e4ae4a734 fix(rustd): an SSRF-refused endpoint ends the event, and only objects are objects
+36a656cb7 refactor(rustd): a connector is a descriptor, and a fault is not a posture
+e0055ffa5 feat(rustd): the approval gate decides, and the order it decides in is a type
+23d546c1d feat(rustd): a fleet's credentials split by channel, not by convention
+ffad7c998 feat(rustd): the provider resolves through two strategies, one interface
 ```
 
-**15 commits ahead of `origin/main`, none pushed. No PR. CI has never run this
-branch.** Everything below is local.
+**20 commits ahead of `origin/main`, NONE PUSHED.**
 
-## What this session built
+## Branch / PR
 
-3,626 lines across 28 files. **96 `afd_fleet` unit tests** (was 39) and
-**42 `afd_fleet_runtime`** (was 37) — all datastore-free.
+- Branch: `feat/m177-runner-control-plane-parity` (GitHub forge)
+- **PR: none. `gh pr list --head … --state all` → `[]`.**
+- **CI: has never run this branch.** Every gate result below is local.
 
-```
-afd_fleet/src/provider/       resolution — 1,268 lines
-  mod.rs        244   Resolution trait, Box<dyn> dispatch, the object gate
-  endpoint.rs   298   the provider⇔base_url pairing + host extraction
-  managed.rs    314   the tenant's own credential
-  resolved.rs   231   Resolved + SecretString (private key, redacting Debug)
-  selection.rs  227   the two row reads + the tenant→workspace bridge
-  ssrf.rs       206   the blocklist, over std::net
-  platform.rs   199   the active platform default
-  store.rs       67   Providers
-afd_fleet/src/vault.rs 214   one store, one key, one decrypt routine
-afd_fleet/src/secrets/        the two-channel split — 531 lines
-  mod.rs        303   Declared { secrets_map, mintable } + the routing branch
-  integration.rs 228  the ids, the spellings, mints_on_demand
-afd_fleet/src/gate/           the pure decision — 434 lines
-  mod.rs        269   Decision, match_rule, condition evaluation
-  route.rs      165   RefState × Decision → Route
-afd_fleet_runtime/src/config/condition.rs 157   the `field == 'value'` grammar
-afd_fleet/src/error/classify.rs 196  code / detail / permanence, split out
-afd_fleet/src/sql/{provider,vault}.rs   six statements, verbatim
+## Running Processes
+
+**None.** `tmux list-sessions` → no server running. No dev server, no watcher.
+
+**Datastores are DOWN** — `docker compose ps` lists no containers. Bring them up
+before any integration work:
+
+```bash
+cd /Users/kishore/Projects/agentsfleet-m177-runner-plane && make up
 ```
 
-### Design decisions worth not re-deriving
-
-1. **The provider resolver is a `Box<dyn Resolution>` with two impls.** A
-   strategy knows WHICH vault row carries its key and what that row's body
-   means; the shared half — open the row — runs between the trait's two methods
-   and is written once. Both methods are synchronous and pure, so the whole
-   fork is provable with no Postgres, no vault and no key. An `async fn` in the
-   trait would have needed boxed futures to stay object-safe AND would have
-   given that up.
-2. **`ip_literal.zig` does not come across.** 249 lines of hand-rolled IPv4/IPv6
-   parsers and octet constants become `IpAddr::from_str` plus std's own
-   predicates. Four ranges std does not name (`0/8`, `240/4`, `fc00::/7`,
-   `fe80::/10`) are four masked comparisons, each named. A literal a parser
-   fails to PARSE is one it reports as SAFE — the wrong place to re-derive
-   anything.
-3. **The base-URL HOST extraction stays hand-written, with `url` 2.5.8 in the
-   lock.** `Url::host_str` normalises — lower-cases, punycodes, unbrackets IPv6
-   — and that host travels to a stock Zig runner as its egress-allowlist entry,
-   where `hostFromUrl` produces the unnormalised form. Thirty lines of byte
-   copying buys wire parity; the CLASSIFICATION, where being subtly wrong is a
-   security hole, is std's.
-4. **`SecretString` is private on `Resolved`, with no `Deref` and no owned
-   getter.** That is Invariant 3 as a compiler fact. It replaces the Zig's
-   `committed` flag + `defer if (!committed) …deinit()` — a hand-rolled move,
-   where the flag is what a move already means.
-5. **The credentials split is a TYPE.** `Declared { secrets_map, mintable }` is
-   built by one branch and constructible nowhere else, so a mintable handle
-   cannot reach both channels. The Zig walks one list appending to two builders,
-   and Invariant 1 holds because that walk is written correctly.
-6. **`mints_on_demand` is one negation, not a list** — a new connector is
-   on-demand BY DEFAULT. The other spelling's failure mode is shipping a stored
-   refresh token to a child process.
-7. **No `REGISTRY` slice in the integration port.** It exists in Zig because
-   `Spec` carries a function pointer; with the mint strategies out of scope
-   every entry collapses to a bool the id already knows.
-8. **One rules traversal, not two.** `match_rule` walks; `Decision::of` is a
-   pure function of its result. The Zig has two walks and a comment insisting
-   they agree.
-9. **Provider failures answer `UZ-INTERNAL-003`, not `UZ-PROVIDER-*`.** Those
-   codes belong to the TENANT plane's handler (M178). `service_billing.zig`
-   logs the internal code for the whole family; adding the finer ones here
-   would be unreferenced codes that look like coverage.
-
-## Findings from this session, and what Indy decided
-
-1. **`serde_json` fills a struct from a JSON ARRAY, positionally.**
-   `["anthropic","sk-live"]` parsed as a credential with a provider and a key
-   and passed every shape check after it. `deny_unknown_fields` does not close
-   it — an array has no field names to be unknown. **Indy: sweep.** Now one
-   helper, `afd_core::json::object_from_slice`, at six boundaries: the runner
-   enrolment body and capability report, the JWT header, the JWKS document, the
-   OIDC discovery document, and the vault credential that found it. None was a
-   privilege escalation, but all six accepted a shape their own contract
-   forbids and two are RFC-specified objects.
-2. **`SecretEndpointInvalid` retried forever in the Zig** — absent from
-   `resolveTenant`'s permanent list, so it fell through the `else` and a stored
-   endpoint failing the SSRF guard was re-polled indefinitely with no terminal
-   row. **Indy: flip to permanent.** Done, and registered as a divergence
-   beside the issue-time debit. The row-parity it costs is documentary: the
-   dual-run differ went with the Zig integration lanes, and this changes no SQL
-   statement.
-3. **The connector registry was a regression, not a port.**
-   `credentials/integration.zig` states RULE CFG outright — a connector is a
-   descriptor, not a branch — and injects its registry for testability. The
-   first cut collapsed both into an enum with two matches. Rebuilt as
-   `Connector` / `Connectors` / `Descriptor` / `Registry`, which is
-   `afd_fleet_runtime::provider`'s shape exactly. Adding a connector is now one
-   entry in `DECLARED`.
+Ports are assigned per run. Re-read them from compose; do not reuse old numbers.
 
 ## Tests / Checks
 
 | Gate | Command | Result |
 |---|---|---|
 | CONFORM | `make harness-verify` | ✅ ALL GATES GREEN |
-| **LOGGING (whole repo)** | `bash audits/logging.sh` | ✅ **CLEAN — `rust-direct=0`** |
+| LOGGING (whole repo) | `bash audits/logging.sh` | ✅ CLEAN — `rust-direct=0` |
 | lint | `cargo clippy --workspace --all-features --all-targets` | ✅ clean |
 | fmt | `cargo fmt --all -- --check` | ✅ |
-| unit (afd_fleet) | `cargo test -p afd_fleet --lib` | ✅ 110 passed |
-| unit (afd_fleet_runtime) | `cargo test -p afd_fleet_runtime --lib` | ✅ 42 passed |
-| unit (afd_core) | `cargo test -p afd_core` | ✅ incl. registry parity |
-| S6 file length | rubric command | ✅ clean (see gotcha 2) |
-| unit (repo) | `make test-unit-all` | ⏳ **deferred by Indy** — once at the end |
-| integration | `make test-integration-rustd` | ⏳ **deferred by Indy** — same |
+| unit | `cargo test -p afd_fleet --lib` | ✅ **109 passed** |
+| unit | `cargo test -p afd_fleet_runtime --lib` | ✅ **42 passed** |
+| unit | `cargo test -p afd_core` | ✅ incl. registry + problem-table parity |
+| unit | `cargo test -p afd_api --all-features` | ✅ |
+| unit | `cargo test -p afd_identity --all-features` | ✅ |
+| S6 file length | rubric sweep | ✅ clean (known exceptions only) |
+| **unit (repo)** | `make test-unit-all` | ⏳ **deferred by Indy — run once at the end** |
+| **integration** | `make test-integration-rustd` | ⏳ **deferred by Indy — same** |
 
 > Indy's standing instruction: do NOT run `make test-unit-all` or
-> `make test-integration-rustd` per-change; run both **once**, after all 7
-> sections are complete. Commit after each section.
+> `make test-integration-rustd` per-change. Run both ONCE, after all 7 sections
+> are complete. Commit after each section.
+
+Every unit test in this milestone is datastore-free.
+
+**`cargo test -p afd_identity` without `--all-features` fails to compile** —
+its suites import `afd_core::clock::FixedClock`, which is behind `test-util`.
+Pre-existing, unrelated to this work, and green with `--all-features`.
 
 ## Next Steps
 
-1. **The approval gate's WRITE half** — the read side landed;
-   `approval_gate_async.zig` and `approval_gate_anomaly.zig` are done.
-   Remaining: `approval_gate_park.zig` (122: `parkEvent`, `logGateActivity`),
-   `approval_gate_detail.zig` (306: the card's two-source detail — the
-   workspace-authored half stated as fact, the model-authored half attributed
+1. **The approval gate's WRITE half.** The read side is done
+   (`approval_gate_async.zig`, `approval_gate_anomaly.zig`). Remaining:
+   `approval_gate_park.zig` (122 — `parkEvent`, `logGateActivity`),
+   `approval_gate_detail.zig` (306 — the card's two-source detail: the
+   workspace-authored half statable as fact, the model-authored half attributed
    as a claim), and `pauseFleet` + `fleet_ready.forceClear`.
-   **`Admission` still has no `Await` arm — add it when this lands.** Note the
-   KIND-PARK rule: a fleet whose repository binding declares WRITE access parks
-   EVERY first-encounter event, before the rules walk and before the no-gates
-   return, and anomaly counters are skipped on that path.
-   **NOT this milestone's:** the Slack rendering (349), the sweeper (126), the
-   route handler (90), the prose (130) — §5's note puts rendering with M178.
+   - **`Admission` gains an `Await` arm when this lands.** It has three today.
+   - **KIND-PARK rule:** a fleet whose repository binding declares WRITE access
+     parks EVERY first-encounter event — before the rules walk AND before the
+     no-gates return — and anomaly counters are skipped on that path.
+   - **NOT this milestone's:** Slack rendering (349), sweeper (126), route
+     handler (90), prose (130). §5's note puts rendering with M178.
 2. **The run-estimate debit** — the DOCUMENTED divergence (spec §2). Needs a
    wallet-drain statement the Zig has no issue-time counterpart for.
-   `money/charge.rs` already notes where a real transaction belongs.
+   `money/charge.rs` already marks where a real transaction belongs.
 3. **`ExecutionPolicy` + `fleet_sessions`** — `service_execution_policy.zig`
-   (104) and `lib/contract/execution_policy.zig` (320), plus the lease network
-   rules from `git/repository_http_policy.zig` (129). `endpoint::validate`
-   already answers the bare host the egress allowlist needs. See the gotcha
-   about write 5.
-4. Wire the lease verb's router arm — `afd_api::router::runner_handler`.
-5. §3 report — serial after §2, same agent (spec's B1 batch).
-6. **Boot wiring is still owed.** `Vault::new` takes an `Arc<Kek>` and nothing
-   constructs one yet: `ENCRYPTION_MASTER_KEY` → `Kek::from_hex` belongs in
-   `agentsfleetd::serve` and the handle in `plane.rs`, landing with the router
-   arm. The daemon must refuse to start without it — that is what makes the
-   key a field rather than a fallible global read.
-
-## Indy's direction for the code (carry forward)
-
-> "ensure we use the rust functional programming technique, errors, traits,
-> trait impl, trait objects. don't repeat yourself. Keep absurdly simple struct"
-
-- ✅ **Trait objects now exist and earn their place** — `Box<dyn Resolution>`,
-  two impls, the shared I/O written once. The gap the last handoff recorded is
-  closed.
-- ✅ Errors/`Result` composition, `Option` combinator chains (`fires` is one
-  expression covering five undecidable cases), pure functions split from I/O,
-  newtypes guarding security invariants (`SecretString`), data-driven
-  classification (`is_config_permanent`, `route`).
-- ✅ DRY where the Zig repeats itself: one rules walk, one decrypt routine
-  serving two statements through a column offset, one object-shape gate.
-- ⚠️ **`Request<'a>` is still 9 fields** and will want a tenth when the gate's
-  `Await` arm lands. That is the signal to split the pass rather than widen the
-  struct — it was flagged last session and the pressure has not gone away.
+   (104), `lib/contract/execution_policy.zig` (320), plus the lease network
+   rules from `git/repository_http_policy.zig` (129).
+   `endpoint::validate` already answers the bare host the egress allowlist
+   needs. See the Write 5 gotcha below.
+4. **Wire the lease verb's router arm** — `afd_api::router::runner_handler`.
+5. **§3 report** — serial after §2, same agent (spec's B1 batch).
+6. **Boot still owes the daemon a KEK.** `Vault::new` takes an `Arc<Kek>` and
+   nothing constructs one: `ENCRYPTION_MASTER_KEY` → `Kek::from_hex` belongs in
+   `agentsfleetd::serve`, the handle in `plane.rs`, landing with step 4. The
+   daemon must REFUSE TO START without it — that is what makes the key a field
+   rather than a fallible global read.
 
 ## Risks / Gotchas
 
-- **CI has never run this branch.** 11 commits, unpushed, no PR.
-- **`make harness-verify` does NOT check file length.** `error/mod.rs` reached
-  460 lines with every gate green this session — exactly the trap the last
-  handoff named. It was split at the seam `detail.rs` already describes
-  (`classify.rs` = what we decide). Rubric S6 is the real check:
+- **CI has never run this branch.** 20 commits, unpushed, no PR.
+- **`make harness-verify` does NOT check file length.** `error/mod.rs` hit 460
+  lines with every gate green. Rubric S6 is the real check:
   `git diff --name-only origin/main...HEAD | grep -v '\.md$' | xargs wc -l |
-  awk '$1>350'`. Currently clean except `audits/logging.sh` (orly-managed),
+  awk '$1>350'`. Clean now except `audits/logging.sh` (orly-managed),
   `Cargo.lock` (generated) and `Cargo.toml` (manifest).
 - **The UFS gate counts numeric literals inside `#[cfg(test)]`.** The rule page
   holds test blocks out of the STRING count; the numeric-suspect check does not.
-  Four fixture numbers in `gate/store.rs` failed CONFORM and are now named
-  constants. Name them as you write them.
-- **The MS-ID gate flags `§X.Y` in source.** Two doc comments citing a section
-  number failed CONFORM; bare `M178` is fine, `§4.5` is not. Name the verb, not
-  the section.
-- **A green harness-verify row can still mean "scanned nothing."** Read the
-  file COUNT. `ERROR REGISTRY` scans Zig only; the Rust registry is covered by
-  `cargo test -p afd_core`, which this session caught a real gap with — the
-  problem-table parity test rejected `UZ-AGT-003` until the `.failed_dependency`
-  status spelling was recorded.
+  Name fixture numbers as you write them.
+- **The MS-ID gate flags `§X.Y` in source.** Bare `M178` is fine; `§4.5` is not.
+  Name the verb, not the section.
+- **A green harness-verify row can mean "scanned nothing."** Read the file
+  COUNT. `ERROR REGISTRY` scans Zig only; the Rust registry is covered by
+  `cargo test -p afd_core`, which caught two real gaps this session.
 - **`UZ-RUN-015` must answer 402.** The stock runner classifies a renew refusal
   by BOTH status and code — `control_plane_client_test.zig:42` pins that the
   same code on any other terminal status is NOT a budget breach.
 - **Write 5 (`UPSERT core.fleet_sessions SET execution_id`) is documentation
   drift.** `data_flow.md` §C lists it among the six lease writes; the Zig lease
-  path does NOT make it — `fleet_session.zig` only CLEARs a stale handle. Do
-  not invent the write to match the diagram (Invariant 5 is row-equivalence
-  with the code). Still an open Indy decision, now due at step 3.
+  path does NOT make it — `fleet_session.zig` only CLEARs a stale handle. Do not
+  invent the write to match the diagram. **Open Indy decision, due at step 3.**
 - **The credit metric is a SEAM.** `debit_receive` returns `Deducted(Nanos)`
   instead of calling a meter inline. If §6/M181 never attaches the instrument,
   the metric silently never fires and no test in either milestone catches it.
 - **`secrets_map` holds live tenant credentials un-wiped.** They are bound for
   the wire and a `serde_json::Value` tree has nowhere to put a destructor — the
-  Zig's arena does not zero them either. What IS defended is the realistic
-  leak: `Declared` has a hand-written `Debug` that renders names and the
-  mintable half but never a stored value.
-- **Datastores are DOWN** — `docker compose ps` empty. `make up` before any
-  integration work. Ports are per-run; re-read them.
+  Zig's arena does not zero them either. What IS defended is the realistic leak:
+  `Declared` has a hand-written `Debug` rendering names and the mintable half
+  but never a stored value.
 - **`KEEP_TEST_STATE=1` breaks `test_migrate_applies_and_reports_success`.**
   Single-suite use only.
 - **Redis is NOT per-test.** Lease tests derive fleet ids from `process::id()`
   plus a counter; a constant id inherits the previous run's stream entries.
 - **`aws-lc-sys` proven on macOS/arm64 only.** musl cross-compile is M181's.
+
+## Decisions taken this session (do not re-open)
+
+1. **SSRF endpoint refusal is PERMANENT.** The Zig omits
+   `SecretEndpointInvalid` from `resolveTenant`'s permanent list, so it falls
+   through the `else` and re-polls forever with no terminal row. Flipped, per
+   Indy. Registered as a divergence beside the issue-time debit; costs no SQL
+   change, and the dual-run differ that would have graded it went with the Zig
+   integration lanes.
+2. **The object gate is swept across six boundaries**, via
+   `afd_core::json::object_from_slice`: runner enrolment body, capability
+   report, JWT header, JWKS document, OIDC discovery document, vault credential.
+
+## Corrections made this session (design notes worth keeping)
+
+- **The connector registry was a regression, not a port.**
+  `credentials/integration.zig` states RULE CFG outright — a connector is a
+  descriptor, not a branch — and injects its registry for testability. The first
+  cut collapsed both into an enum with two matches. It is now
+  `Connector` / `Connectors` / `Descriptor` / `Registry`, which is
+  `afd_fleet_runtime::provider`'s shape exactly. Adding a connector is ONE entry
+  in `DECLARED`; the mint exchange attaches later as a second trait.
+- **`GateRef` was carrying Zig's `"action_id|deadline_ms"`** — a hand-rolled
+  pipe format that exists upstream only because Zig has no serializer. One
+  writer, one reader, both on the lease path, no contract. It is a serde type
+  now, and `#[serde(try_from)]` runs the identifier validation on every read.
+- **Two stored vocabularies were hand-written matches.** `Answer` and `Status`
+  are `#[serde(rename)]` declarations read through
+  `afd_core::spelling::from_spelling` — which was `runner::policy`'s
+  crate-private `parse_wire` with one consumer and now has three.
+- **The URL guard uses `url::Url`, not thirty hand-written lines.** The wire
+  justification for hand-rolling was checked and found false: the runner
+  compares allowlist entries with `std.ascii.eqlIgnoreCase` at all three of its
+  matching sites, so normalisation is harmless. `Host` comes out TYPED, so
+  `ssrf` classifies an `Ipv4Addr` directly. **Three verdicts changed**, each the
+  parser agreeing with what a client would dial: `https:///just/a/path` dials
+  `just`; `https://256.1.1.1/v1` is refused (the Zig passed it through as a
+  NAME — the unsafe direction); a schemeless host reports `InvalidScheme`.
+- **The object gate is a serde adapter, not a byte scan.** An earlier cut
+  scanned for the first non-whitespace `{` and was defended with "serde parses
+  twice" — true of the `Value`/`Map` round-trip, false of serde. `ObjectOnly`
+  forwards `deserialize_struct` as `deserialize_map`: one pass, no intermediate,
+  and serde's own `invalid type: sequence, expected struct …` in place of a
+  message this repository would have had to word itself.
+- **`admit/posture.rs` is `admit/fault.rs`.** `Posture` is the money path's —
+  `billing.usage_ledger.posture`'s own spelling — and the module beside it meant
+  `admit/mod.rs` imported `posture::PAYER` and `Posture` on adjacent lines for
+  two unrelated questions.
 
 ## Open questions for Indy
 
