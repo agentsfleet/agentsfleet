@@ -98,7 +98,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 `/v1/admin/fleet-libraries[/{id}]`, `/v1/admin/platform-keys[/{provider}]`, `/v1/admin/models[/{id}]` — platform-scope-gated CRUD. Platform keys live in the vault (caller-owned key names, M176 crypto); reveal semantics match the Zig daemon (metadata on list, never plaintext).
 
 - **Dimension 1.1** — every admin route refuses tenant-scoped and `agt_t` principals with the documented code; platform scopes pass → Test `test_admin_scope_gates` — DONE
-- **Dimension 1.2** — platform-key store/rotate: vault-backed, list shows metadata only → Test `test_platform_key_vault_semantics`
+- **Dimension 1.2** — platform-key store/rotate: vault-backed, list shows metadata only → Test `test_platform_key_vault_semantics` — DONE
 - **Dimension 1.3** — admin model + library CRUD shape parity on seeded data → Test `test_admin_crud_shape_parity`
 - **Dimension 1.4** — every route + method in this spec's Interfaces inventory exists in the Route enum; extras and gaps both fail → Test `test_route_inventory_matches_interfaces` — DONE
 
