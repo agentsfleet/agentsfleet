@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M178
 **Workstream:** 001
 **Date:** Aug 23, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — customer-facing parity; the Zig daemon keeps serving production while this lands
 **Categories:** API
 **Batch:** B4 — runs concurrently with M179 after M177
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
+**Branch:** `feat/m178-tenant-workspace-surface`
+**Test Baseline:** `unit=914 integration=0` — `make test-unit-all` on `main` at 414805429 (Rust workspace, 116 binaries); the integration lane is the M176 rustd suite and is counted at VERIFY, not here
 **Depends on:** M177_001 (afd_fleet services, fleet-config parsing); M176_001 (auth, stores, shell)
 **Provenance:** LLM-drafted (Claude Fable 5, Aug 23, 2026)
 **Canonical architecture:** `docs/architecture/data_flow.md` (§A. INSTALL, §D. WATCH, §Two streams + one pub/sub channel) + `docs/architecture/web_app.md`
@@ -58,6 +58,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/**` | EDIT | install flow (ensure-stream retries + rollback), approvals service + gate sweeper, steer message append |
 | `rustd/crates/afd_auth/**` | EDIT | CLI-credential mint/revoke service glue; Clerk metadata fetch worker port |
 | `rustd/crates/agentsfleetd/**` | EDIT | approval-gate sweeper + Clerk fetch worker join the supervisor |
+| `rustd/crates/afd_core/**` | EDIT | the `UZ-AUTH-*` session codes and their problem entries — the registry subset this milestone's refusals need |
+| `rustd/crates/afd_crypto/**` | EDIT | HMAC under a variable-length pepper key, which the device-flow code digest is computed with |
+| `rustd/crates/afd_redis/**` | EDIT | the approve and owner-checked abort transitions beside M176's verify-and-consume |
 | `rustd/Cargo.toml` | EDIT | new member |
 | `make/test-integration.mk` | EDIT | tenant/workspace integration subset runs against the Rust binary |
 
