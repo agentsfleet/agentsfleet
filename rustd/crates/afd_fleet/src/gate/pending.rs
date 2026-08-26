@@ -20,120 +20,78 @@
 //! That fallback is instrumented rather than silent: it fires only in the
 //! window the mirror write missed, so it is the metric that says the write side
 //! has a gap.
+//!
+//! # Every spelling here is declared once
+//!
+//! `approval_gate_async.zig` packs the reference into `"action_id|deadline_ms"`
+//! and splits it back apart by hand, because Zig has no serializer and a
+//! pipe-delimited pair is the cheapest thing to write. Nothing else reads that
+//! key — one writer, one reader, both on the lease path — so the format was
+//! never a contract, only the shape a hand-rolled encoder happened to produce.
+//!
+//! Here the reference IS a serde type. The separator, the split, the "what if
+//! an id contains a pipe" question and the two functions that answered it are
+//! all gone; what is left is a `#[serde(try_from)]` that runs the SAME domain
+//! validation on every read. Likewise the two stored vocabularies below are
+//! `#[serde(rename)]` declarations read through
+//! [`afd_core::spelling::from_spelling`], not `match` arms — see that module
+//! for why a second copy of a variant's name is the failure with no test.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use serde::{Deserialize, Serialize};
 
-/// What separates the action from its deadline in the stored reference.
-const REF_SEPARATOR: char = '|';
-
-/// The Redis mirror's word for an approval.
-pub const DECISION_APPROVE: &str = "approve";
-
-/// The Redis mirror's word for a refusal.
-pub const DECISION_DENY: &str = "deny";
-
-/// A decision, once a human has given one.
-///
-/// Two arms and not four: a timeout and an auto-kill both RESOLVE to a
-/// refusal, and the distinction between them belongs to the durable row an
-/// operator reads, not to the question "may this event run".
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Answer {
-    /// A human said yes.
-    Approved,
-    /// A human said no, or the gate lapsed into one.
-    Denied,
-}
-
-impl Answer {
-    /// The mirror's spelling.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Approved => DECISION_APPROVE,
-            Self::Denied => DECISION_DENY,
-        }
-    }
-
-    /// Recover an answer from the mirror.
-    ///
-    /// `None` for anything else, which is the fail-safe direction: an
-    /// unrecognised mirror value leaves the gate PENDING rather than releasing
-    /// or killing the event on a byte nobody wrote.
-    #[must_use]
-    pub fn parse(stored: &str) -> Option<Self> {
-        match stored {
-            DECISION_APPROVE => Some(Self::Approved),
-            DECISION_DENY => Some(Self::Denied),
-            _unknown => None,
-        }
-    }
-}
-
-/// The durable row's `status`, which is finer than [`Answer`].
-///
-/// The three refusing arms are kept apart here because the row is what an
-/// operator reads and a runbook branches on — "the reviewer said no", "nobody
-/// answered in time", and "the daemon stopped it" are three different
-/// incidents. [`Status::answer`] is where they collapse.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Status {
-    /// Still waiting on a human.
-    Pending,
-    /// A reviewer approved it.
-    Approved,
-    /// A reviewer refused it.
-    Denied,
-    /// The deadline passed with no answer.
-    TimedOut,
-    /// The daemon stopped the fleet.
-    AutoKilled,
-}
-
-impl Status {
-    /// Recover a status from its stored spelling.
-    #[must_use]
-    pub fn parse(stored: &str) -> Option<Self> {
-        match stored {
-            "pending" => Some(Self::Pending),
-            "approved" => Some(Self::Approved),
-            "denied" => Some(Self::Denied),
-            "timed_out" => Some(Self::TimedOut),
-            "auto_killed" => Some(Self::AutoKilled),
-            _unknown => None,
-        }
-    }
-
-    /// The answer this status resolves to, if it resolves to one at all.
-    ///
-    /// `None` is [`Status::Pending`] and only that — which is why the durable
-    /// read can return an `Option` rather than needing a caller to remember
-    /// that pending is not terminal.
-    #[must_use]
-    pub const fn answer(self) -> Option<Answer> {
-        match self {
-            Self::Pending => None,
-            Self::Approved => Some(Answer::Approved),
-            Self::Denied | Self::TimedOut | Self::AutoKilled => Some(Answer::Denied),
-        }
-    }
-}
+use crate::gate::decision::Answer;
 
 /// The gate one event is waiting on.
 ///
-/// The action id is a [`Uuid7`] rather than a bounded byte buffer. The Zig
-/// carries `[36]u8` plus a length and validates only that length, which admits
-/// any thirty-six bytes — including a spelling `core.fleet_approval_gates`
-/// could never have written. Parsing to the identifier type instead means a
-/// `GateRef` that exists names something that could be a row, and the read that
-/// follows needs no second check.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Serialised through [`Stored`], which is what makes the identifier a real
+/// [`Uuid7`] rather than "whatever thirty-six bytes were in the key". The Zig
+/// carries `[36]u8` plus a length and validates only that length, so a
+/// reference could name a spelling `core.fleet_approval_gates` never wrote and
+/// nothing would notice until the row lookup missed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "Stored", into = "Stored")]
 pub struct GateRef {
     /// The action a human was asked about.
     action_id: Uuid7,
     /// When the question lapses.
     deadline: UnixMillis,
+}
+
+/// The reference as the key holds it.
+///
+/// A separate shape rather than serde attributes on [`GateRef`] itself,
+/// because the conversion is not a rename: `action_id` arrives as a string and
+/// has to PARSE, and `deadline` is a bare count of milliseconds. Routing
+/// through here is what makes that validation run on every read instead of on
+/// the ones a caller remembered to check.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Stored {
+    /// The action identifier, unvalidated until [`TryFrom`] runs.
+    action_id: Box<str>,
+    /// The deadline, in milliseconds since the epoch.
+    deadline_ms: i64,
+}
+
+impl TryFrom<Stored> for GateRef {
+    type Error = afd_core::error::Error;
+
+    fn try_from(stored: Stored) -> Result<Self, Self::Error> {
+        Ok(Self {
+            action_id: Uuid7::parse(&stored.action_id)?,
+            deadline: UnixMillis::from_millis(stored.deadline_ms),
+        })
+    }
+}
+
+impl From<GateRef> for Stored {
+    fn from(reference: GateRef) -> Self {
+        Self {
+            action_id: reference.action_id.as_str().into(),
+            deadline_ms: reference.deadline.as_millis(),
+        }
+    }
 }
 
 impl GateRef {
@@ -156,31 +114,6 @@ impl GateRef {
     #[must_use]
     pub const fn deadline(&self) -> UnixMillis {
         self.deadline
-    }
-
-    /// The stored form: the action, a separator, the deadline.
-    #[must_use]
-    pub fn encode(&self) -> String {
-        format!(
-            "{}{REF_SEPARATOR}{}",
-            self.action_id.as_str(),
-            self.deadline.as_millis()
-        )
-    }
-
-    /// Recover a reference from its stored form.
-    ///
-    /// `None` for anything that is not one. Every rejection here leaves the
-    /// event looking UNPARKED to the caller, which routes to raising a fresh
-    /// gate — so this is deliberately strict: a reference nobody can read is
-    /// better replaced than half-honoured.
-    #[must_use]
-    pub fn parse(raw: &str) -> Option<Self> {
-        let (action, deadline) = raw.split_once(REF_SEPARATOR)?;
-        Some(Self {
-            action_id: Uuid7::parse(action).ok()?,
-            deadline: UnixMillis::from_millis(deadline.parse().ok()?),
-        })
     }
 
     /// Whether `now` is past the deadline.
@@ -229,7 +162,8 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::{Answer, Evaluation, GateRef, Status, evaluate};
+    use super::{Evaluation, GateRef, evaluate};
+    use crate::gate::decision::Answer;
     use afd_core::clock::UnixMillis;
     use afd_core::id::Uuid7;
 
@@ -237,77 +171,54 @@ mod tests {
     const DEADLINE: i64 = 1_765_000_000_000;
 
     fn reference() -> GateRef {
-        GateRef::parse(&format!("{ACTION}|{DEADLINE}")).expect("a well-formed reference")
+        GateRef::new(
+            Uuid7::parse(ACTION).expect("a canonical identifier"),
+            UnixMillis::from_millis(DEADLINE),
+        )
+    }
+
+    fn stored(reference: &GateRef) -> String {
+        serde_json::to_string(reference).expect("a reference serialises")
     }
 
     #[test]
     fn a_reference_round_trips_through_its_stored_form() {
-        let parsed = reference();
+        let written = stored(&reference());
 
-        assert_eq!(parsed.action_id().as_str(), ACTION);
-        assert_eq!(parsed.deadline().as_millis(), DEADLINE);
-        assert_eq!(parsed.encode(), format!("{ACTION}|{DEADLINE}"));
-        assert_eq!(GateRef::parse(&parsed.encode()), Some(parsed));
+        assert_eq!(
+            serde_json::from_str::<GateRef>(&written).expect("what we wrote reads back"),
+            reference()
+        );
+        // The stored shape is named fields, so a reader — or a `redis-cli` —
+        // sees what each number is rather than a position in a delimited pair.
+        assert!(written.contains("action_id"), "{written}");
+        assert!(written.contains("deadline_ms"), "{written}");
     }
 
     #[test]
-    fn a_malformed_reference_is_refused_rather_than_half_read() {
+    fn a_reference_that_does_not_validate_is_refused_on_read() {
+        // The `try_from` runs on EVERY deserialize, so an identifier that is
+        // the right length and the wrong shape cannot become a `GateRef` — the
+        // hand-rolled version checked only that it was at most thirty-six
+        // bytes.
         for refused in [
+            r#"{"action_id":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","deadline_ms":1}"#,
+            r#"{"action_id":"0193E9A0-0000-7000-8000-00000000AAAA","deadline_ms":1}"#,
+            r#"{"action_id":"","deadline_ms":1}"#,
+            r#"{"action_id":"not-an-id","deadline_ms":1}"#,
+            // Serde carries the rest for free: a missing field, a wrong type,
+            // and a value that is not an object at all.
+            r#"{"deadline_ms":1}"#,
+            r#"{"action_id":"0193e9a0-0000-7000-8000-00000000aaaa"}"#,
+            r#"{"action_id":"0193e9a0-0000-7000-8000-00000000aaaa","deadline_ms":"soon"}"#,
+            "[]",
             "",
-            "no-separator",
-            "|123",
-            &format!("{ACTION}|not-a-number"),
-            "this-action-id-is-way-too-long-to-be-a-uuid-string|1",
-            // Thirty-six bytes, and not an identifier this daemon ever wrote.
-            "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa|1",
-            // Upper case: canonical for a UUID, not for THIS product's ids.
-            &format!("{}|1", ACTION.to_uppercase()),
         ] {
-            assert_eq!(GateRef::parse(refused), None, "{refused}");
+            assert!(
+                serde_json::from_str::<GateRef>(refused).is_err(),
+                "{refused}"
+            );
         }
-    }
-
-    #[test]
-    fn an_answer_round_trips_through_the_mirror_spelling() {
-        for answer in [Answer::Approved, Answer::Denied] {
-            assert_eq!(Answer::parse(answer.as_str()), Some(answer));
-        }
-        // An unrecognised mirror value leaves the gate pending rather than
-        // releasing or killing the event on a byte nobody wrote.
-        assert_eq!(Answer::parse("maybe"), None);
-        assert_eq!(Answer::parse(""), None);
-    }
-
-    #[test]
-    fn every_refusing_status_resolves_to_one_denial() {
-        assert_eq!(Status::Approved.answer(), Some(Answer::Approved));
-        for refusing in [Status::Denied, Status::TimedOut, Status::AutoKilled] {
-            assert_eq!(refusing.answer(), Some(Answer::Denied), "{refusing:?}");
-        }
-        // And pending is the only status with no answer, which is what lets the
-        // durable read hand back an `Option` instead of a terminality check.
-        assert_eq!(Status::Pending.answer(), None);
-    }
-
-    #[test]
-    fn a_status_round_trips_through_its_stored_spelling() {
-        for status in [
-            Status::Pending,
-            Status::Approved,
-            Status::Denied,
-            Status::TimedOut,
-            Status::AutoKilled,
-        ] {
-            let spelling = match status {
-                Status::Pending => "pending",
-                Status::Approved => "approved",
-                Status::Denied => "denied",
-                Status::TimedOut => "timed_out",
-                Status::AutoKilled => "auto_killed",
-            };
-            assert_eq!(Status::parse(spelling), Some(status));
-        }
-        assert_eq!(Status::parse("cancelled"), None);
     }
 
     #[test]
@@ -345,17 +256,5 @@ mod tests {
             evaluate(&reference, None, UnixMillis::from_millis(DEADLINE + 1)),
             Evaluation::Expired
         );
-    }
-
-    #[test]
-    fn a_reference_can_be_built_without_parsing_one() {
-        // The write side builds these; the read side parses them. Both have to
-        // produce the same value or a parked event cannot find its own gate.
-        let built = GateRef::new(
-            Uuid7::parse(ACTION).expect("a canonical identifier"),
-            UnixMillis::from_millis(DEADLINE),
-        );
-
-        assert_eq!(built, reference());
     }
 }

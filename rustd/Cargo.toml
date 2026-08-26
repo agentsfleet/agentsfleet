@@ -114,6 +114,11 @@ getrandom = { version = "0.4.3", default-features = false }
 # duplication: `Uuid::parse_str` is case-INSENSITIVE and normalises, while this
 # product rejects uppercase outright so one entity cannot have two spellings.
 # A crate that cannot express the invariant is not a shortcut to it.
+# WHATWG URL parsing, for the tenant-supplied endpoint guard. ALREADY in the
+# lock at this version, so this is a feature flag on a compiled crate rather
+# than a new dependency.
+url = { version = "2.5.8", default-features = false }
+
 uuid = { version = "1.25.0", default-features = false, features = ["v7", "std"] }
 
 # Civil-calendar arithmetic, for the monthly budget window.

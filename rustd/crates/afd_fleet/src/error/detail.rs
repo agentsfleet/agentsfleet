@@ -80,3 +80,11 @@ pub const DETAIL_CREDENTIAL_MISSING: &str =
 /// validation having been bypassed — `storeJsonPlaintext` skips the shape gate
 /// by design, so a malformed body can reach the vault. One fact, one sentence.
 pub const DETAIL_VAULT_DATA_INVALID: &str = "Secret data must be a non-empty JSON object";
+
+/// A gate reference that could not be written.
+///
+/// Unreachable for the shape the gate stores — a record of a string and an
+/// integer — and present because the alternative is swallowing a failure that
+/// would leave a parked event unable to find its own gate. Never rendered: the
+/// lease path answers no-work rather than surfacing this.
+pub const DETAIL_GATE_REFERENCE_UNWRITABLE: &str = "approval gate reference unwritable";

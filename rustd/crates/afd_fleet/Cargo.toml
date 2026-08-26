@@ -47,6 +47,9 @@ afd_crypto.workspace = true
 # The wire shapes this plane answers with. Frozen by M175; consumed, never
 # authored here.
 afd_wire.workspace = true
+# The tenant-supplied endpoint guard parses through a real URL parser rather
+# than scanning bytes for a colon — see `provider::endpoint`.
+url.workspace = true
 sqlx.workspace = true
 # The error derive every crate under `rustd/` shapes its `Error` with.
 thiserror.workspace = true
