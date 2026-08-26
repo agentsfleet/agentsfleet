@@ -9,7 +9,7 @@
 use afd_auth::Scope;
 
 use super::path::fleet_runner_path;
-use super::{Guard, RouteClass, RouteMeta, Scopes};
+use super::{Guard, RouteClass, RouteMeta, Scopes, Verb};
 
 const RUNNER_ENROLL: &[Scope] = &[Scope::RunnerEnroll];
 const RUNNER_READ: &[Scope] = &[Scope::RunnerRead];
@@ -46,6 +46,16 @@ impl RunnerOpsRoute {
         Self::Leases,
         Self::Streams,
     ];
+
+    /// The verbs this operator route serves.
+    #[must_use]
+    pub const fn verbs(self) -> &'static [Verb] {
+        match self {
+            Self::Register => &[Verb::Post],
+            Self::List | Self::Get | Self::Events | Self::Leases | Self::Streams => &[Verb::Get],
+            Self::Patch => &[Verb::Patch],
+        }
+    }
 
     /// Enrolment is held independently of read and write because it is
     /// uniquely dangerous: the host it creates then receives every tenant's
