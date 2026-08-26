@@ -30,12 +30,16 @@
 //! is left alone; what changes is how it is BOUND — see [`runner::RegisterRow`]
 //! for the shape high-arity statements take.
 
+pub mod activity;
 pub mod billing;
 pub mod event;
 pub mod fleet;
 pub mod gate;
+pub mod grant;
 pub mod lease;
 pub mod provider;
+pub mod renew;
+pub mod report;
 pub mod runner;
 pub mod vault;
 
@@ -80,6 +84,13 @@ pub mod event_type {
     pub const RUNNER_ONLINE: &str = "runner_online";
     /// A runner took a lease.
     pub const LEASE_ACQUIRED: &str = "lease_acquired";
+    /// A runner gave a lease back, having reported on it.
+    ///
+    /// The closing bracket of [`LEASE_ACQUIRED`]: the two are written by the
+    /// two ends of one lease's life, and an operator reading a runner's history
+    /// pairs them. Only the REPORT path writes this — a lease that lapsed is
+    /// expired by the reclaim sweep and never released.
+    pub const LEASE_RELEASED: &str = "lease_released";
 }
 
 /// The status a `fleet.runner_leases` row opens in.
@@ -89,6 +100,15 @@ pub mod event_type {
 /// predicate has to name the same spelling the issue wrote (RULE UFS) — two
 /// spellings would mean a report that fences correctly and updates nothing.
 pub const LEASE_STATUS_ACTIVE: &str = "active";
+
+/// The status a REPORTED lease is flipped into.
+///
+/// `protocol.zig`'s `RUNNER_LEASE_STATUS_REPORTED`. The claim-and-settle
+/// statement is the sole `active` → `reported` writer, and it flips this row in
+/// the same statement that charges the final slice — so a lease can never be
+/// `reported` with its last slice unbilled, nor billed twice by a retry that
+/// finds the row already flipped.
+pub const LEASE_STATUS_REPORTED: &str = "reported";
 
 /// The status a reclaimed lease is flipped INTO.
 ///

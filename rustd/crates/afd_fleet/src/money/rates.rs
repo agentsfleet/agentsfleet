@@ -183,7 +183,15 @@ impl Accounts {
     /// `Ok(None)` is the join's null half: the revision row answered and the
     /// catalogue carried no matching model. The `LEFT JOIN` is driven from the
     /// singleton precisely so those two facts arrive together.
-    async fn catalogue_rates(&self, provider: &str, model: &str) -> Result<Option<SliceRates>> {
+    /// `pub(super)` rather than private: [`super::meter`] resolves the same
+    /// rates for a metered slice, and a second copy of this statement's
+    /// handling — the presence witness, the null-tier default — is a second
+    /// place for the catalogue's shape to be read wrong.
+    pub(super) async fn catalogue_rates(
+        &self,
+        provider: &str,
+        model: &str,
+    ) -> Result<Option<SliceRates>> {
         let mut connection = self.pool().acquire().await?;
         let row = sqlx::query(sql::billing::LOAD_RATE_WITH_REVISION)
             .bind(provider)

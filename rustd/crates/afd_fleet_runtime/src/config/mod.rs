@@ -18,6 +18,7 @@
 //! per request, on a path that already holds the answer.
 
 mod anomaly;
+mod binding_match;
 mod condition;
 mod gates;
 mod policy;

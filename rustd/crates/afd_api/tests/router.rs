@@ -172,11 +172,20 @@ fn test_ready_decision_needs_every_dependency() {
 /// Exactly the ported routes are mounted; every other tabled one answers 404.
 ///
 /// The route table carries all eighty-one endpoints, and this binary serves
-/// five: the two probes, the runner's self read and heartbeat, and the
-/// enrolment that mints the credential those two are held by. That gap is the
+/// nine: the two probes, the runner's self read and heartbeat, the enrolment
+/// that mints the credential those two are held by, the lease verb they exist
+/// to reach, the report and renew that close a lease out, and the activity
+/// forward that runs alongside them. That gap is the
 /// thing a reader is most likely to misread, so it is asserted rather than
 /// described — and it fails the day a route is mounted without being listed
 /// here, which is the only way an unfinished surface goes live by accident.
+///
+/// Renew and activity are in the matcher below but are never REQUESTED by this
+/// loop: their templates carry a `{lease_id}`, and the skip above passes over
+/// every parameterised path. Listing it anyway is deliberate — the matcher is the
+/// statement of what this binary serves, and leaving a served route out of it
+/// because the loop cannot reach it would make the two disagree the moment the
+/// skip is lifted.
 #[tokio::test]
 async fn test_only_the_ported_routes_are_mounted() {
     for route in Route::all() {
@@ -190,7 +199,14 @@ async fn test_only_the_ported_routes_are_mounted() {
         let mounted = matches!(
             route,
             Route::Ops(OpsRoute::Healthz | OpsRoute::Readyz)
-                | Route::Runner(RunnerRoute::SelfRecord | RunnerRoute::Heartbeat)
+                | Route::Runner(
+                    RunnerRoute::SelfRecord
+                        | RunnerRoute::Heartbeat
+                        | RunnerRoute::Lease
+                        | RunnerRoute::Report
+                        | RunnerRoute::Renew
+                        | RunnerRoute::Activity
+                )
                 | Route::RunnerOps(RunnerOpsRoute::Register)
         );
 

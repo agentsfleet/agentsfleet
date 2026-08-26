@@ -123,3 +123,41 @@ impl<'a> PendingRow<'a> {
             .bind(self.stated.spend_ceiling)
     }
 }
+
+/// The approved repository-write gate a lease's repair branch is named from.
+///
+/// Copied from `fleet_runtime/sql.zig`. Every predicate past the first three
+/// exists to refuse a row that is approved but not USABLE, and each names a
+/// different way that happens:
+///
+/// - `updated_at IS NOT NULL AND updated_at <= timeout_at` — the answer
+///   arrived, and it arrived before the question lapsed. An approval recorded
+///   after the deadline is a human answering a gate that had already expired.
+/// - `stated_binding IS NOT NULL` — the reach was recorded. Without it there
+///   is nothing to compare the fleet's current config against, and the caller
+///   would have to decide what an unrecorded reach authorises. It authorises
+///   nothing, and this is where that is enforced.
+/// - `spend_count IS NOT NULL AND spend_ceiling = $5` — the row was raised
+///   with THIS build's ceiling. A gate approved under a different ceiling was
+///   approved for a different blast radius.
+///
+/// `ORDER BY created_at DESC, id DESC` — newest first, and `id` breaks a tie
+/// so the answer is deterministic when two gates share an instant. `LIMIT 1`
+/// after that ordering makes this the most recent usable approval, not an
+/// arbitrary one.
+///
+/// The binding comparison itself is NOT in the statement. It is
+/// `RepositoryBinding::matches_recorded`, in Rust, because set equality that
+/// is case-insensitive and order-insensitive in both directions is not
+/// something to express in SQL and then have to keep in agreement with the
+/// serializer.
+///
+/// `$1` fleet, `$2` event, `$3` gate kind, `$4` approved status, `$5` ceiling.
+pub const SELECT_APPROVED_WRITE_GATE: &str = "\
+SELECT id::text, stated_binding::text FROM core.fleet_approval_gates
+WHERE fleet_id = $1::uuid AND event_id = $2 AND gate_kind = $3
+  AND status = $4 AND updated_at IS NOT NULL AND updated_at <= timeout_at
+  AND stated_binding IS NOT NULL
+  AND spend_count IS NOT NULL AND spend_ceiling = $5
+ORDER BY created_at DESC, id DESC
+LIMIT 1";

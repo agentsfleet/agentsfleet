@@ -21,8 +21,15 @@ use afd_api::router::{Dependencies, ReadyInputs};
 use afd_api::{Planes, Services};
 use afd_core::clock::UnixMillis;
 use afd_crypto::entropy::Entropy;
+use afd_crypto::secret::Kek;
 use afd_db::Db;
 use afd_fleet::Runners;
+use afd_fleet::gate::Gates;
+use afd_fleet::lease::{Leases, Plane};
+use afd_fleet::money::Accounts;
+use afd_fleet::provider::Providers;
+use afd_fleet::secrets::Registry;
+use afd_fleet::vault::Vault;
 use afd_redis::Redis;
 use afd_state::Credentials;
 
@@ -42,6 +49,7 @@ pub struct ServingPlane {
     probes: LiveDependencies,
     authenticator: Authenticator,
     runners: Runners,
+    leases: Plane,
 }
 
 impl ServingPlane {
@@ -55,12 +63,32 @@ impl ServingPlane {
     /// deliberately. Both are on the request path — the directory on every
     /// authenticated call, the store on every runner verb — so a separate pool
     /// for either would let one starve while the other sat idle.
+    ///
+    /// The KEK arrives already shared. `preflight` resolved and validated it
+    /// before this point and refuses boot without one, so every store below
+    /// that opens a sealed row takes the SAME key — which is Milestone
+    /// Invariant 3 as an ownership fact rather than as a rule about who reads
+    /// which variable.
     #[must_use]
-    pub fn new(database: Db, queue: Redis, capabilities: Capabilities, sessions: Sessions) -> Self {
+    pub fn new(
+        database: Db,
+        queue: Redis,
+        kek: Arc<Kek>,
+        capabilities: Capabilities,
+        sessions: Sessions,
+    ) -> Self {
         Self {
-            probes: LiveDependencies::new(database.clone(), queue),
+            probes: LiveDependencies::new(database.clone(), queue.clone()),
             authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
-            runners: Runners::new(database, Entropy::new()),
+            runners: Runners::new(database.clone(), Entropy::new()),
+            leases: Plane {
+                leases: Leases::new(database.clone(), queue.clone(), Entropy::new()),
+                gates: Gates::new(database.clone(), queue, Entropy::new()),
+                accounts: Accounts::new(database.clone(), Entropy::new()),
+                providers: Providers::new(database.clone(), Arc::clone(&kek)),
+                vault: Vault::new(database, kek),
+                connectors: Registry::default(),
+            },
         }
     }
 }
@@ -73,6 +101,7 @@ impl Dependencies for ServingPlane {
 
 impl Services for ServingPlane {
     type Auth = Authenticator;
+    type Leases = Plane;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
@@ -80,6 +109,10 @@ impl Services for ServingPlane {
 
     fn runners(&self) -> &Runners {
         &self.runners
+    }
+
+    fn leases(&self) -> &Plane {
+        &self.leases
     }
 
     /// The wall clock, read once per verb by whichever handler asked.

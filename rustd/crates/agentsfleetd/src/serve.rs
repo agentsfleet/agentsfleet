@@ -98,9 +98,14 @@ pub async fn boot<E: EnvSource + ?Sized>(
     //    concurrency limit behind a trait about datastores.
     let (capabilities, sessions) = crate::identity::resolve(config.identity());
     announce_identity(&capabilities);
+    // The one clone of the key material, at boot, into the handle every store
+    // that opens a sealed row shares. `Kek` zeroes on drop, so the copy this
+    // makes is not a copy that outlives the process.
+    let kek = Arc::new(config.kek().clone());
     let plane: Shared = Arc::new(ServingPlane::new(
         database.clone(),
         queue.clone(),
+        kek,
         capabilities,
         sessions,
     ));

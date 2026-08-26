@@ -179,12 +179,71 @@ pub const APIKEY_REVOKED: ErrorCode = ErrorCode::declare("UZ-APIKEY-004");
 /// rejections, and a tenant-plane 401 reaching it would be a category error.
 pub const RUN_INVALID_RUNNER_TOKEN: ErrorCode = ErrorCode::declare("UZ-RUN-001");
 
+/// A report arrived from a holder the fleet has already superseded.
+///
+/// `ERR_RUN_STALE_FENCING_TOKEN`. Referenced from the Zig registry, never
+/// declared here as a new code (RULE ERR) — `error_registry.zig:206` owns the
+/// value.
+///
+/// A 409, and the conflict is literal: two runners each believe they hold one
+/// fleet, and the fence says which of them is right. The refused report writes
+/// NOTHING — the flip, the settle and the tally all ride one guarded statement,
+/// so a stale writer cannot land a partial finalize on the current holder's
+/// run.
+pub const RUN_STALE_FENCING_TOKEN: ErrorCode = ErrorCode::declare("UZ-RUN-005");
+
+/// No lease with that id belongs to the presenting runner.
+///
+/// `ERR_RUN_LEASE_NOT_FOUND`. Referenced from the Zig registry
+/// (`error_registry.zig:207`).
+///
+/// One code for two facts, deliberately: a lease that never existed and a lease
+/// belonging to ANOTHER runner both answer this. The load is scoped by
+/// `runner_id`, so a runner asking about a peer's lease gets the same 404 a
+/// missing row gets — the scope IS the ownership check, and distinguishing the
+/// two would turn this endpoint into an oracle for which lease ids are live.
+pub const RUN_LEASE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-RUN-006");
+
 /// The runner is known and its administrative state bars the runner plane.
 ///
 /// `ERR_RUN_ADMIN_STATE_BLOCKED`. Cordon, drain, revoke and delete all land
 /// here, and this rejection is the ONLY channel by which a runner learns it is
 /// out of service — the heartbeat reply is unconditionally `ok`.
 pub const RUN_ADMIN_STATE_BLOCKED: ErrorCode = ErrorCode::declare("UZ-RUN-009");
+
+/// The lease reached the hard ceiling on how long one run may take.
+///
+/// `ERR_RUN_LEASE_EXCEEDED_MAX_RUNTIME`. Referenced from the Zig registry
+/// (`error_registry.zig:210`).
+///
+/// Distinct from [`RUN_LEASE_LOST`] even though both are 409s and both end the
+/// run: this one says the runner did nothing wrong and its result is still
+/// wanted — it stops the child and reports. Lost says the lease is somebody
+/// else's now and the result will be refused. Collapsing them would throw away
+/// a completed run's output at the cap.
+pub const RUN_LEASE_EXCEEDED_MAX_RUNTIME: ErrorCode = ErrorCode::declare("UZ-RUN-010");
+
+/// The lease moved to another runner before this renewal.
+///
+/// `ERR_RUN_LEASE_LOST`. Referenced from the Zig registry
+/// (`error_registry.zig:211`).
+///
+/// Reached when the fence no longer holds or the row is no longer `active`, and
+/// also when the lease row advanced but the affinity slot did not — a
+/// half-applied renewal is reported LOST rather than renewed, because the slot
+/// can be reclaimed before the deadline the reply would name.
+pub const RUN_LEASE_LOST: ErrorCode = ErrorCode::declare("UZ-RUN-011");
+
+/// The tenant's credit pool cannot fund another slice of this run.
+///
+/// `ERR_RUN_LEASE_RENEWAL_NO_CREDITS`. Referenced from the Zig registry
+/// (`error_registry.zig:212`).
+///
+/// A 402, for the reason [`RUN_BUDGET_EXCEEDED`] is one: the runner classifies
+/// a renew refusal by status AND code. The two 402s are different pools — this
+/// is the TENANT's balance, that is the FLEET's own declared ceiling — and an
+/// operator tops up for one and edits `TRIGGER.md` for the other.
+pub const RUN_LEASE_RENEWAL_NO_CREDITS: ErrorCode = ErrorCode::declare("UZ-RUN-012");
 
 /// A fleet has reached a spend ceiling its own author declared.
 ///
@@ -238,7 +297,12 @@ pub const REGISTRY: &[ErrorCode] = &[
     AUTH_CLI_CREDENTIAL_REVOKED,
     APIKEY_REVOKED,
     RUN_INVALID_RUNNER_TOKEN,
+    RUN_STALE_FENCING_TOKEN,
+    RUN_LEASE_NOT_FOUND,
     RUN_ADMIN_STATE_BLOCKED,
+    RUN_LEASE_EXCEEDED_MAX_RUNTIME,
+    RUN_LEASE_LOST,
+    RUN_LEASE_RENEWAL_NO_CREDITS,
     RUN_BUDGET_EXCEEDED,
     AGENTSFLEET_CREDENTIAL_MISSING,
     API_BACKPRESSURE,

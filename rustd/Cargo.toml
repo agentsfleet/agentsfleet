@@ -54,7 +54,12 @@ afd_wire = { path = "crates/afd_wire" }
 # `default-features = false` throughout, features named explicitly, so a member
 # cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).
 serde = { version = "1.0.229", default-features = false, features = ["derive", "std"] }
-serde_json = { version = "1.0.151", default-features = false, features = ["std", "preserve_order"] }
+serde_json = { version = "1.0.151", default-features = false, features = ["std", "preserve_order", "raw_value"] }
+# `raw_value` carries `RawValue`, which is how the activity verb splices a
+# runner's already-JSON tool arguments into a published frame WITHOUT parsing
+# them into a tree and re-encoding it. The Zig builds and drops a whole
+# `std.json.Value` per tool call for want of this. A feature on a dependency
+# already resolved in the lock, not a new crate.
 thiserror = { version = "2.0.20", default-features = false, features = ["std"] }
 
 # Field bounds as annotations on the schema rather than as a hand-written

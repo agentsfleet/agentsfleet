@@ -15,10 +15,11 @@
 use afd_core::error_code::{self, ErrorCode};
 
 use super::{
-    DETAIL_CONFIG_UNREADABLE, DETAIL_CREDENTIAL_MISSING, DETAIL_DATABASE_ERROR,
-    DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED, DETAIL_PROVIDER_UNRESOLVED,
-    DETAIL_QUEUE_UNAVAILABLE, DETAIL_REGISTRATION_FAILED, DETAIL_RUNNER_NOT_FOUND,
-    DETAIL_VAULT_DATA_INVALID, Error, ErrorKind,
+    DETAIL_BUDGET_EXHAUSTED, DETAIL_CONFIG_UNREADABLE, DETAIL_CREDENTIAL_MISSING,
+    DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED, DETAIL_LEASE_LOST,
+    DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND, DETAIL_PROVIDER_UNRESOLVED,
+    DETAIL_QUEUE_UNAVAILABLE, DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS,
+    DETAIL_RUNNER_NOT_FOUND, DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, Error, ErrorKind,
 };
 
 impl Error {
@@ -116,6 +117,18 @@ impl Error {
             // credential and nobody stored it. `secrets_resolve.zig` logs the
             // same code, and the entry already exists in the Zig registry.
             ErrorKind::CredentialMissing => error_code::AGENTSFLEET_CREDENTIAL_MISSING,
+            // The six lease-lifecycle refusals, each with its own registry
+            // code. None of them is an internal failure and none is a bad
+            // request: they are all one fact — this runner may not do this to
+            // this lease — observed at six different moments, and the runner
+            // acts differently on every one. That is why they do not share a
+            // code the way the provider family above does.
+            ErrorKind::StaleFence => error_code::RUN_STALE_FENCING_TOKEN,
+            ErrorKind::LeaseNotFound => error_code::RUN_LEASE_NOT_FOUND,
+            ErrorKind::LeaseLost => error_code::RUN_LEASE_LOST,
+            ErrorKind::LeaseMaxRuntime => error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
+            ErrorKind::RenewalNoCredits => error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
+            ErrorKind::BudgetExhausted => error_code::RUN_BUDGET_EXCEEDED,
         }
     }
 
@@ -150,6 +163,12 @@ impl Error {
             ErrorKind::VaultDataInvalid => DETAIL_VAULT_DATA_INVALID,
             ErrorKind::CredentialMissing => DETAIL_CREDENTIAL_MISSING,
             ErrorKind::ConfigUnreadable { .. } => DETAIL_CONFIG_UNREADABLE,
+            ErrorKind::StaleFence => DETAIL_STALE_FENCE,
+            ErrorKind::LeaseNotFound => DETAIL_LEASE_NOT_FOUND,
+            ErrorKind::LeaseLost => DETAIL_LEASE_LOST,
+            ErrorKind::LeaseMaxRuntime => DETAIL_LEASE_MAX_RUNTIME,
+            ErrorKind::RenewalNoCredits => DETAIL_RENEWAL_NO_CREDITS,
+            ErrorKind::BudgetExhausted => DETAIL_BUDGET_EXHAUSTED,
         }
     }
 
@@ -223,6 +242,18 @@ impl Error {
             | ErrorKind::Envelope { .. }
             | ErrorKind::Rejected { .. }
             | ErrorKind::Mint { .. }
+            // The six lease-lifecycle refusals are not configuration faults at
+            // all — nothing is stored wrong and nobody has to go and fix a
+            // document. They answer a runner about ONE request against ONE
+            // lease, and the event behind them stays exactly as leasable as it
+            // was. A `true` here would write a terminal `gate_blocked` row for
+            // a fleet whose only problem was that one runner reported late.
+            | ErrorKind::StaleFence
+            | ErrorKind::LeaseNotFound
+            | ErrorKind::LeaseLost
+            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RenewalNoCredits
+            | ErrorKind::BudgetExhausted
             | ErrorKind::Entropy { .. } => false,
         }
     }

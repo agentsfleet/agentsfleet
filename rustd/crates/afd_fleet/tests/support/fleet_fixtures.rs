@@ -36,6 +36,7 @@ use afd_crypto::entropy::Entropy;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_db::{Db, Migrator};
 use afd_fleet::Runners;
+use afd_fleet::gate::Gates;
 use afd_fleet::lease::Leases;
 use afd_redis::Redis;
 use sqlx::{AssertSqlSafe, Row as _};
@@ -173,6 +174,14 @@ impl Fixtures {
     /// beside [`Fixtures::runners`].
     pub(crate) fn leases(&self) -> Leases {
         Leases::new(self.database.clone(), self.queue().clone(), Entropy::new())
+    }
+
+    /// The approval-gate store over this fixture's database.
+    ///
+    /// Built per call for the same reason [`Fixtures::leases`] is: a handle
+    /// over the same `Arc`-backed pool.
+    pub(crate) fn gates(&self) -> Gates {
+        Gates::new(self.database.clone(), self.queue().clone(), Entropy::new())
     }
 
     /// The queue handle, for the suites that seed a stream or a readiness mark.
