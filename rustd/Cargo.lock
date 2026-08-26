@@ -120,6 +120,7 @@ dependencies = [
  "afd_redis",
  "afd_state",
  "afd_wire",
+ "base64 0.23.1",
  "futures-util",
  "hex",
  "jiff",
@@ -131,6 +132,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "uuid",
  "zeroize",
 ]
 

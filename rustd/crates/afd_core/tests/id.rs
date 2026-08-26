@@ -229,3 +229,27 @@ fn should_refuse_an_instant_before_the_unix_epoch() {
         .expect_err("a pre-epoch instant is unrepresentable");
     assert_eq!(err.code(), afd_core::error_code::UUIDV7_INVALID_ID_SHAPE);
 }
+
+/// The raw bytes round-trip back through the canonical spelling.
+///
+/// Both directions matter: a decode that silently answered zeroes would still
+/// produce a plausible-looking value everywhere it is used, and only a
+/// comparison against the text it came from catches that.
+#[test]
+fn test_raw_bytes_round_trip_through_the_canonical_spelling() {
+    for text in [
+        "0197a4ba-8d3a-7f13-8abc-123456789abc",
+        "01920000-0000-7000-8000-000000000000",
+        "ffffffff-ffff-7fff-bfff-ffffffffffff",
+    ] {
+        let id = Uuid7::parse(text).expect("the fixture is a v7 spelling");
+        let raw = id.to_bytes();
+
+        assert_ne!(
+            raw,
+            [0u8; afd_core::id::BYTE_LEN],
+            "{text} decoded to nothing"
+        );
+        assert_eq!(uuid::Uuid::from_bytes(raw).to_string(), text);
+    }
+}

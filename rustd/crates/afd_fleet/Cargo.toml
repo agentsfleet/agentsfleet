@@ -20,6 +20,10 @@ test-util = ["afd_auth/test-util", "afd_core/test-util", "afd_db/test-util"]
 # `afd_api`'s manifest states: `unused_crate_dependencies` is how the dependency
 # graph stays a fact rustc checks rather than a claim.
 [dependencies]
+# The compact gate reference in a repair branch name: URL-safe, unpadded.
+base64.workspace = true
+# Decoding that reference back to the identifier the gate table stores.
+uuid.workspace = true
 # The principal a verb acts for, and the runner identity carried on it.
 afd_auth.workspace = true
 # Identifiers, the clock, the error-code registry, and the bounded primitives.
