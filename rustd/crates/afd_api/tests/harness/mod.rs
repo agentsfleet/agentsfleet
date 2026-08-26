@@ -46,6 +46,7 @@ use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_fleet::Runners;
 use afd_fleet::bundle::{Bundles, ContentHash};
+use afd_fleet::streams::{LiveStreams, SSE_MAX_STREAMS_DEFAULT};
 use axum::Router;
 use axum::body::Body;
 use axum::response::Response;
@@ -77,6 +78,7 @@ pub(crate) struct Fleet {
     runners: Runners,
     leases: NoWork,
     bundles: Bundles,
+    streams: LiveStreams,
     now: UnixMillis,
 }
 
@@ -215,6 +217,7 @@ impl Fleet {
             // snapshots proves the refusal a deployment with no R2 knobs gives
             // — which is most of them.
             bundles: Bundles::unconfigured(),
+            streams: LiveStreams::new(SSE_MAX_STREAMS_DEFAULT),
             now: UnixMillis::from_millis(FROZEN),
         }
     }
@@ -310,6 +313,10 @@ impl Services for Fleet {
 
     fn bundles(&self) -> &Bundles {
         &self.bundles
+    }
+
+    fn streams(&self) -> &LiveStreams {
+        &self.streams
     }
 
     fn now(&self) -> UnixMillis {
