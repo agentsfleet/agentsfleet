@@ -104,33 +104,19 @@ pub trait Resolution: Debug + Send + Sync {
 
 /// One credential body, typed — refusing anything that is not a JSON OBJECT.
 ///
-/// The gate is not decoration. `serde_json` deserializes a struct from a JSON
-/// ARRAY by taking its elements POSITIONALLY, so `["anthropic","sk-live"]`
-/// parses as a credential with a provider and a key, and every shape check
-/// after it passes. `loadJson` refuses that at the top — `parsed.value !=
-/// .object` — and dropping the check on the way to Rust would have made a
-/// positional array a valid provider credential in a daemon where it is not
-/// one anywhere else.
+/// The gate lives in [`afd_core::json`], which carries the reasoning: a derived
+/// struct fills from a JSON ARRAY positionally, so `["anthropic","sk-live"]`
+/// parses as a credential with a provider and a key and passes every shape
+/// check after it. `loadJson` refuses a non-object at the top and so does this.
 ///
-/// Structural rather than semantic: the first non-space byte of any JSON object
-/// is `{`, so this costs one scan of the leading whitespace and no second
-/// parse. Deserializing to a [`serde_json::Value`] to ask `is_object` would
-/// answer the same question by building the whole document a second time — and
-/// would hold the key in an intermediate that has no destructor, which is the
-/// copy [`SecretString`] exists to prevent.
+/// What is local is only the ERROR: every way a credential body can be
+/// unreadable answers `field`, because a caller is told none of them.
 ///
 /// # Errors
 /// Reports a body that is not an object, and one the strategy's own shape
-/// cannot read. Both answer `field`, because a caller is told neither.
+/// cannot read.
 fn credential<T: DeserializeOwned>(body: &[u8], field: &'static str) -> Result<T> {
-    let opens_an_object = body
-        .iter()
-        .find(|byte| !byte.is_ascii_whitespace())
-        .is_some_and(|byte| *byte == b'{');
-    if !opens_an_object {
-        return Err(provider_malformed(field));
-    }
-    serde_json::from_slice(body).map_err(|_shape| provider_malformed(field))
+    afd_core::json::object_from_slice(body).map_err(|_shape| provider_malformed(field))
 }
 
 impl Providers {

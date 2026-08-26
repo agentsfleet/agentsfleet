@@ -267,11 +267,11 @@ mod tests {
     }
 
     #[test]
-    fn an_ssrf_refusal_is_ported_as_transient() {
-        // A DELIBERATE divergence from what the failure actually is, copied
-        // from `resolveTenant`'s `else` arm — see `Error::is_config_permanent`.
-        // When someone flips it, this test is what fails, so the change cannot
-        // be silent.
+    fn an_ssrf_refusal_ends_the_event_rather_than_re_polling_forever() {
+        // A deliberate divergence: the Zig classifies this transient, so the
+        // delivery re-polls at the poll interval indefinitely and no terminal
+        // row is ever written. A stored URL pointing at the metadata service
+        // does not become safe by being retried.
         let refused = strategy()
             .interpret(
                 br#"{"provider":"openai-compatible","base_url":"https://169.254.169.254/v1"}"#,
@@ -279,9 +279,8 @@ mod tests {
             .expect_err("the metadata service is not a gateway");
 
         assert!(
-            !refused.is_config_permanent(),
-            "flipping this to permanent changes which rows the daemon writes — \
-             see the divergence note on Error::is_config_permanent"
+            refused.is_config_permanent(),
+            "an SSRF-refused endpoint is a stored configuration a human must fix"
         );
     }
 
@@ -292,8 +291,8 @@ mod tests {
             .expect_err("a named provider carries no endpoint");
 
         assert!(
-            !refused.is_config_permanent(),
-            "same classification as above"
+            refused.is_config_permanent(),
+            "a smuggled endpoint is the same stored-configuration fault"
         );
     }
 

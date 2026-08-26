@@ -158,18 +158,23 @@ impl Error {
     /// Exhaustive, so a new kind fails the build until it is classified — the
     /// same device [`Error::code`] uses.
     ///
-    /// # A known divergence, ported deliberately
+    /// # A deliberate divergence from the Zig
     ///
-    /// [`ErrorKind::ProviderEndpoint`] answers `false` — transient — because
-    /// `SecretEndpointInvalid` is absent from `resolveTenant`'s permanent list
-    /// and falls through its `else`. A stored endpoint that fails the SSRF
-    /// guard cannot fix itself, so retrying it forever is almost certainly a
-    /// latent defect in the Zig rather than a decision. It is copied rather
-    /// than corrected because the two daemons must write the same rows during
-    /// the cutover, and correcting it here would have the Rust daemon write a
-    /// terminal row the Zig does not — which is Invariant 5. Flipping it later
-    /// is one line, and `an_ssrf_refusal_is_ported_as_transient` is the test
-    /// that will fail when someone does, so the change cannot be silent.
+    /// [`ErrorKind::ProviderEndpoint`] answers `true`, and the Zig's
+    /// `resolveTenant` answers the equivalent `false`: `SecretEndpointInvalid`
+    /// is absent from its permanent list and falls through its `else`, so a
+    /// stored endpoint that fails the SSRF guard is re-polled forever. The
+    /// event never terminates, no terminal row is written, and the only trace
+    /// is a warn line repeating at the poll interval.
+    ///
+    /// That is a latent defect rather than a decision — a stored URL pointing
+    /// at the metadata service does not become safe by being retried — and the
+    /// reason it is corrected here rather than copied is that the row-parity it
+    /// would cost is documentary. The dual-run differ went with the Zig
+    /// integration lanes, so nothing compares the two daemons' rows at runtime;
+    /// what grades Invariant 5 is REVIEW reading the ported SQL side by side,
+    /// and this changes no statement. Registered as a divergence beside the
+    /// issue-time debit (Indy, this stream).
     #[must_use]
     pub const fn is_config_permanent(&self) -> bool {
         match self.inner.kind {
@@ -183,11 +188,19 @@ impl Error {
             // `blockEvent` through the fleet loop's own permanent arm, so this
             // classification is the Zig's rather than a correction to it.
             | ErrorKind::CredentialMissing
-            | ErrorKind::VaultDataInvalid => true,
-            // See the divergence note above for `ProviderEndpoint`; everything
-            // else here is infrastructure, and infrastructure recovers.
-            ErrorKind::ProviderEndpoint { .. }
-            | ErrorKind::Vault { .. }
+            | ErrorKind::VaultDataInvalid
+            // The corrected one — see the divergence note above.
+            | ErrorKind::ProviderEndpoint { .. } => true,
+            // Everything else is infrastructure, and infrastructure recovers.
+            //
+            // `Vault` stays here on purpose, next to the variant that just
+            // moved. An envelope that will not open is USUALLY permanent too —
+            // a damaged row, a rotated key — but it is also what a truncated
+            // read or a half-written row looks like, and those do recover. The
+            // asymmetry is not an oversight: a stored URL is data this daemon
+            // parsed and rejected, while an unopened envelope is data it never
+            // got to see.
+            ErrorKind::Vault { .. }
             | ErrorKind::Datastore { .. }
             | ErrorKind::Queue { .. }
             | ErrorKind::Query { .. }
