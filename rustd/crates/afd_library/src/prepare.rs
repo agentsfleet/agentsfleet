@@ -33,9 +33,19 @@ pub fn prepare(body: &ImportBody) -> Result<PreparedBundle> {
 }
 
 fn requirements(body: &ImportBody, skill_name: &str) -> Result<Requirements> {
-    let support_files = body.support_files.iter().map(|file| file.path.clone()).collect();
+    let support_files = body
+        .support_files
+        .iter()
+        .map(|file| file.path.clone())
+        .collect();
     let Some(markdown) = body.trigger_markdown.as_deref() else {
-        return Ok(Requirements { credentials: Vec::new(), tools: Vec::new(), network_hosts: Vec::new(), support_files, trigger_present: false });
+        return Ok(Requirements {
+            credentials: Vec::new(),
+            tools: Vec::new(),
+            network_hosts: Vec::new(),
+            support_files,
+            trigger_present: false,
+        });
     };
     let trigger = frontmatter::trigger(markdown)?;
     if trigger.name != skill_name {
@@ -44,13 +54,24 @@ fn requirements(body: &ImportBody, skill_name: &str) -> Result<Requirements> {
     let credentials = trigger.runtime.credentials;
     let tools = trigger.runtime.tools;
     let network_hosts = trigger.runtime.network.allow;
-    let too_many = credentials.len() > MAX_CREDENTIALS || tools.len() > MAX_TOOLS || network_hosts.len() > MAX_HOSTS;
-    let too_long = credentials.iter().chain(&tools).any(|value| value.len() > MAX_NAME_LEN)
+    let too_many = credentials.len() > MAX_CREDENTIALS
+        || tools.len() > MAX_TOOLS
+        || network_hosts.len() > MAX_HOSTS;
+    let too_long = credentials
+        .iter()
+        .chain(&tools)
+        .any(|value| value.len() > MAX_NAME_LEN)
         || network_hosts.iter().any(|value| value.len() > MAX_HOST_LEN);
     if too_many || too_long {
         return Err(InvalidBundle::RequirementsTooLarge.into());
     }
-    Ok(Requirements { credentials, tools, network_hosts, support_files, trigger_present: true })
+    Ok(Requirements {
+        credentials,
+        tools,
+        network_hosts,
+        support_files,
+        trigger_present: true,
+    })
 }
 
 fn hashes(body: &ImportBody) -> (String, Vec<SupportManifest>) {
@@ -61,13 +82,21 @@ fn hashes(body: &ImportBody) -> (String, Vec<SupportManifest>) {
         bundle.update(trigger);
     }
     bundle.update([0]);
-    let manifest = body.support_files.iter().map(|file| {
-        bundle.update(file.path.as_bytes());
-        bundle.update([0]);
-        bundle.update(&file.content);
-        bundle.update([0]);
-        SupportManifest { path: file.path.clone(), size_bytes: file.content.len(), sha256: hex::encode(Sha256::digest(&file.content)) }
-    }).collect();
+    let manifest = body
+        .support_files
+        .iter()
+        .map(|file| {
+            bundle.update(file.path.as_bytes());
+            bundle.update([0]);
+            bundle.update(&file.content);
+            bundle.update([0]);
+            SupportManifest {
+                path: file.path.clone(),
+                size_bytes: file.content.len(),
+                sha256: hex::encode(Sha256::digest(&file.content)),
+            }
+        })
+        .collect();
     (hex::encode(bundle.finalize()), manifest)
 }
 

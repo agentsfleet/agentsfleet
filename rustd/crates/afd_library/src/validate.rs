@@ -30,7 +30,11 @@ pub(crate) fn body(body: &ImportBody) -> Result<(), InvalidBundle> {
     if body.skill_markdown.len() > MAX_MARKDOWN_LEN {
         return Err(InvalidBundle::SkillTooLarge);
     }
-    if body.trigger_markdown.as_ref().is_some_and(|value| value.is_empty() || value.len() > MAX_MARKDOWN_LEN) {
+    if body
+        .trigger_markdown
+        .as_ref()
+        .is_some_and(|value| value.is_empty() || value.len() > MAX_MARKDOWN_LEN)
+    {
         return Err(InvalidBundle::TriggerTooLarge);
     }
     support_files(&body.support_files)
@@ -50,7 +54,10 @@ fn support_files(files: &[SupportFile]) -> Result<(), InvalidBundle> {
         if total > MAX_SUPPORT_TOTAL_LEN {
             return Err(InvalidBundle::SupportFilesTooLarge);
         }
-        if CREDENTIAL_MARKERS.iter().any(|marker| contains(&file.content, marker)) {
+        if CREDENTIAL_MARKERS
+            .iter()
+            .any(|marker| contains(&file.content, marker))
+        {
             return Err(InvalidBundle::EmbeddedCredential);
         }
     }
@@ -61,7 +68,7 @@ fn validate_path(raw: &str) -> Result<(), InvalidBundle> {
     let invalid_text = raw.is_empty()
         || raw.len() > MAX_SUPPORT_PATH_LEN
         || raw.contains('\\')
-        || raw.split('/').any(|part| part.is_empty())
+        || raw.split('/').any(str::is_empty)
         || matches!(raw, "SKILL.md" | "TRIGGER.md");
     let invalid_component = Path::new(raw)
         .components()
@@ -74,5 +81,7 @@ fn validate_path(raw: &str) -> Result<(), InvalidBundle> {
 }
 
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
-    haystack.windows(needle.len()).any(|window| window == needle)
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
 }

@@ -45,6 +45,8 @@ impl Previewer {
 
 #[cfg(test)]
 mod tests {
+    #![expect(clippy::expect_used, reason = "tests inspect successful fixtures")]
+
     use core::cell::Cell;
 
     use super::Previewer;
@@ -74,6 +76,10 @@ mod tests {
         let preview = Previewer.preview(&input).expect("the fixture is valid");
 
         assert_eq!(preview.requirements.credentials, ["postmark"]);
-        assert_eq!(vault.reads(), 0, "preview must not resolve credential names");
+        assert_eq!(
+            vault.reads(),
+            0,
+            "preview must not resolve credential names"
+        );
     }
 }

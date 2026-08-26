@@ -196,8 +196,7 @@ impl Error {
     pub const fn detail(&self) -> &'static str {
         match self.inner.kind {
             ErrorKind::Rejected { detail } => detail,
-            ErrorKind::RunnerVanished => DETAIL_RUNNER_NOT_FOUND,
-            ErrorKind::RunnerNotFound => DETAIL_RUNNER_NOT_FOUND,
+            ErrorKind::RunnerVanished | ErrorKind::RunnerNotFound => DETAIL_RUNNER_NOT_FOUND,
             ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
             // A corrupt sequence joins the two row faults: all three are the
             // database holding something this daemon cannot use, and a caller
