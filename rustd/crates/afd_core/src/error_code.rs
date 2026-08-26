@@ -295,6 +295,11 @@ pub const FLEET_BUNDLE_INVALID: ErrorCode = ErrorCode::declare("UZ-BUNDLE-001");
 /// make the endpoint an oracle for which snapshots exist.
 pub const FLEET_BUNDLE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-BUNDLE-002");
 
+/// An external Fleet Bundle source could not be fetched.
+///
+/// `ERR_FLEET_BUNDLE_FETCH_FAILED` in the Zig registry.
+pub const FLEET_BUNDLE_FETCH_FAILED: ErrorCode = ErrorCode::declare("UZ-BUNDLE-004");
+
 /// The Fleet Bundle snapshot store is unconfigured, or would not answer.
 ///
 /// `ERR_FLEET_BUNDLE_STORAGE_UNAVAILABLE`. Referenced from the Zig registry
@@ -419,6 +424,7 @@ pub const REGISTRY: &[ErrorCode] = &[
     AGENTSFLEET_CREDENTIAL_MISSING,
     FLEET_BUNDLE_INVALID,
     FLEET_BUNDLE_NOT_FOUND,
+    FLEET_BUNDLE_FETCH_FAILED,
     FLEET_BUNDLE_STORAGE_UNAVAILABLE,
     API_BACKPRESSURE,
     CRED_INTEGRATION_NOT_CONNECTED,

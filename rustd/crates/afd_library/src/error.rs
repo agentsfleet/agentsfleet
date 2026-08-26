@@ -1,6 +1,11 @@
 //! The failure vocabulary for bundle ingestion and external sources.
 
-use afd_core::error_code::{ErrorCode, FLEET_BUNDLE_INVALID, FLEET_BUNDLE_STORAGE_UNAVAILABLE};
+use afd_core::error_code::{
+    ErrorCode, FLEET_BUNDLE_FETCH_FAILED, FLEET_BUNDLE_INVALID,
+    FLEET_BUNDLE_STORAGE_UNAVAILABLE,
+};
+
+use crate::source::SourceFailure;
 
 /// The precise validation rule an untrusted bundle violated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,6 +94,15 @@ pub enum Error {
     /// Validated files could not be encoded as a canonical tar.
     #[error("Fleet Bundle snapshot encoding failed")]
     Snapshot(#[source] std::io::Error),
+    /// A source returned an ordinary, typed failure class.
+    #[error("Fleet Bundle source failed: {0}")]
+    Source(SourceFailure),
+    /// The GitHub transport failed before returning a classified response.
+    #[error("Fleet Bundle GitHub request failed")]
+    Github(#[source] reqwest::Error),
+    /// A downloaded source archive could not be decoded completely.
+    #[error("Fleet Bundle archive is corrupt or truncated")]
+    Archive(#[source] std::io::Error),
 }
 
 impl Error {
@@ -102,13 +116,20 @@ impl Error {
             Self::Storage(_) | Self::Catalogue(_) | Self::Snapshot(_) => {
                 FLEET_BUNDLE_STORAGE_UNAVAILABLE
             }
+            Self::Source(_) | Self::Github(_) | Self::Archive(_) => FLEET_BUNDLE_FETCH_FAILED,
         }
     }
 
     /// Whether retrying without changing the request is safe.
     #[must_use]
     pub const fn retryable(&self) -> bool {
-        matches!(self, Self::Storage(_) | Self::Catalogue(_))
+        matches!(
+            self,
+            Self::Storage(_)
+                | Self::Catalogue(_)
+                | Self::Source(SourceFailure::RateLimited)
+                | Self::Github(_)
+        )
     }
 }
 
@@ -127,6 +148,12 @@ impl From<object_store::Error> for Error {
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
         Self::Snapshot(value)
+    }
+}
+
+impl From<SourceFailure> for Error {
+    fn from(value: SourceFailure) -> Self {
+        Self::Source(value)
     }
 }
 

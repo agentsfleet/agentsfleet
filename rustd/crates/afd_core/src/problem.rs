@@ -343,6 +343,15 @@ const ENTRIES: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::FLEET_BUNDLE_FETCH_FAILED,
+        status: 502,
+        title: "Fleet Bundle fetch failed",
+        hint: "The Fleet Bundle source could not be fetched from GitHub. The repository may be missing or private, or GitHub may be unreachable. Verify the source reference and retry.",
+        user_message: Some(
+            "We couldn't fetch that Fleet Bundle from GitHub. Check the source and try again.",
+        ),
+    },
+    Problem {
         code: error_code::FLEET_BUNDLE_STORAGE_UNAVAILABLE,
         status: 503,
         title: "Fleet Bundle storage unavailable",
