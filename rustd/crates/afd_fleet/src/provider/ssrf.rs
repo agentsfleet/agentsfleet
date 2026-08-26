@@ -116,28 +116,25 @@ mod tests {
     use super::is_blocked;
     use url::Host;
 
-    /// The host of `raw`, as the guard's parser resolves it.
-    fn host_of(raw: &str) -> Host<String> {
-        url::Url::parse(raw)
-            .expect("a parseable URL")
-            .host()
-            .expect("a URL with an authority")
-            .to_owned()
-    }
-
-    /// Whether the host of `raw` is refused.
-    fn blocks(raw: &str) -> bool {
-        let owned = host_of(raw);
-        let borrowed = match &owned {
+    /// Whether the classifier refuses `host`.
+    ///
+    /// `Host::parse` and not a whole URL: this module's subject is the RANGES,
+    /// and wrapping each case in `https://…/v1` would have every assertion here
+    /// re-exercise the parser that [`super::super::endpoint`] already owns —
+    /// which is a duplicate test, not extra coverage. The two meet in
+    /// `endpoint`'s own `the_ssrf_ranges_are_refused_before_a_lease_exists`,
+    /// where a URL is the point.
+    fn blocks(host: &str) -> bool {
+        let owned = Host::parse(host).expect("a parseable host");
+        is_blocked(&match &owned {
             Host::Domain(name) => Host::Domain(name.as_str()),
             Host::Ipv4(address) => Host::Ipv4(*address),
             Host::Ipv6(address) => Host::Ipv6(*address),
-        };
-        is_blocked(&borrowed)
+        })
     }
 
     /// Every range `ip_literal.zig` blocks, in the spellings its own suite uses
-    /// — that suite, re-run against a real URL parser.
+    /// — that suite, re-run against a real parser.
     #[test]
     fn the_v4_blocklist_matches_the_zig_ranges() {
         for blocked in [
@@ -153,10 +150,7 @@ mod tests {
             "224.0.0.1",
             "255.255.255.255",
         ] {
-            assert!(
-                blocks(&format!("https://{blocked}/v1")),
-                "{blocked} must be blocked"
-            );
+            assert!(blocks(blocked), "{blocked} must be blocked");
         }
     }
 
@@ -172,10 +166,7 @@ mod tests {
             "8.8.8.8",
             "1.1.1.1",
         ] {
-            assert!(
-                !blocks(&format!("https://{allowed}/v1")),
-                "{allowed} must be allowed"
-            );
+            assert!(!blocks(allowed), "{allowed} must be allowed");
         }
     }
 
@@ -191,13 +182,10 @@ mod tests {
             "[::ffff:127.0.0.1]",
             "[::ffff:169.254.169.254]",
         ] {
-            assert!(
-                blocks(&format!("https://{blocked}/v1")),
-                "{blocked} must be blocked"
-            );
+            assert!(blocks(blocked), "{blocked} must be blocked");
         }
         assert!(
-            !blocks("https://[2606:4700:4700::1111]/v1"),
+            !blocks("[2606:4700:4700::1111]"),
             "a public v6 resolver must stay reachable"
         );
     }
@@ -209,14 +197,11 @@ mod tests {
         for allowed in [
             "example.com",
             "self-hosted.vllm.internal-corp.net",
-            // Numeric-looking but not four numeric parts, so the parser
-            // reads it as a domain — and it resolves like any other name.
+            // Numeric-looking but not four numeric parts, so the parser reads
+            // it as a domain — and it resolves like any other name.
             "10.0.0.0.example.com",
         ] {
-            assert!(
-                !blocks(&format!("https://{allowed}/v1")),
-                "{allowed} is a name"
-            );
+            assert!(!blocks(allowed), "{allowed} is a name");
         }
     }
 }
