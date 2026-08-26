@@ -54,10 +54,23 @@ pub(crate) const IDENTITY_KNOBS: [&str; 5] = [
 pub(crate) fn install_subscriber() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
-            .with_writer(std::io::sink)
-            .finish();
-        let _previous = tracing::subscriber::set_global_default(subscriber);
+        // A sink by default, stderr under `AFD_TEST_LOG`. The default is what
+        // keeps a passing lane readable; the switch is what makes a live-service
+        // failure diagnosable without editing this file, which is the shape the
+        // §7 suite needs — the daemon's own refusal reason is the only account
+        // of why a poll answered no-work.
+        if std::env::var_os("AFD_TEST_LOG").is_some() {
+            let subscriber = tracing_subscriber::fmt()
+                .with_max_level(tracing::Level::TRACE)
+                .with_writer(std::io::stderr)
+                .finish();
+            let _previous = tracing::subscriber::set_global_default(subscriber);
+        } else {
+            let subscriber = tracing_subscriber::fmt()
+                .with_max_level(tracing::Level::TRACE)
+                .with_writer(std::io::sink)
+                .finish();
+            let _previous = tracing::subscriber::set_global_default(subscriber);
+        }
     });
 }
