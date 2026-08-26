@@ -46,6 +46,7 @@ pub mod policy;
 pub mod provider;
 pub mod runner;
 pub mod secrets;
+pub mod session;
 pub mod sql;
 pub mod sweep;
 pub mod vault;

@@ -111,15 +111,19 @@ pub async fn boot<E: EnvSource + ?Sized>(
         config.platform_admin_workspace(),
     )
     .await;
-    let plane: Shared = Arc::new(ServingPlane::new(
-        database.clone(),
-        queue.clone(),
+    let plane: Shared = Arc::new(ServingPlane::new(crate::plane::PlaneParts {
+        database: database.clone(),
+        queue: queue.clone(),
         kek,
         capabilities,
         sessions,
-        crate::bundles::resolve(config.bundles()),
+        bundles: crate::bundles::resolve(config.bundles()),
         broker,
-    ));
+        login: crate::plane::LoginConfig {
+            code_pepper: config.session_code_pepper().clone(),
+            app_url: config.app_url().to_owned(),
+        },
+    }));
     let router = afd_api::router::build(plane, &Admission::new(DEFAULT_MAX_IN_FLIGHT));
 
     // 4. The background sweepers, before the listener: they read through pools

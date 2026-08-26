@@ -14,7 +14,7 @@
 
 mod harness;
 
-use afd_api::route::{OpsRoute, Route, RunnerOpsRoute, RunnerRoute};
+use afd_api::route::{AuthRoute, OpsRoute, Route, RunnerOpsRoute, RunnerRoute};
 use afd_api::router::{ReadyInputs, ready_decision};
 use axum::response::Response;
 use http::{Method, StatusCode};
@@ -219,6 +219,18 @@ async fn test_only_the_ported_routes_are_mounted() {
                         | RunnerRoute::CredentialsMint
                 )
                 | Route::RunnerOps(RunnerOpsRoute::Register)
+                // The device-flow login surface, which M178 §1 mounts. The
+                // identity-provider delivery stays unmounted: it is proven by a
+                // Svix signature rather than a bearer, so it lands with M180's
+                // signed-ingress work.
+                | Route::Auth(
+                    AuthRoute::CreateSession
+                        | AuthRoute::PollSession
+                        | AuthRoute::ApproveSession
+                        | AuthRoute::VerifySession
+                        | AuthRoute::DeleteSession
+                        | AuthRoute::DeleteAllSessions
+                )
         );
 
         if mounted {

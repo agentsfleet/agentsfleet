@@ -30,7 +30,7 @@
 use std::sync::Arc;
 
 use afd_api::router::{Dependencies, ReadyInputs, build};
-use afd_api::services::Leasing;
+use afd_api::services::{DeviceFlow, Leasing};
 use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Planes, Services};
 use afd_auth::credential::{CredentialKind, Presented};
 use afd_auth::directory::{CredentialRecord, Liveness};
@@ -46,6 +46,7 @@ use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_fleet::Runners;
 use afd_fleet::bundle::{Bundles, ContentHash};
+use afd_fleet::session::input as session_input;
 use axum::Router;
 use axum::body::Body;
 use axum::response::Response;
@@ -295,6 +296,7 @@ impl Dependencies for Fleet {
 impl Services for Fleet {
     type Auth = Planes<MockDirectory, MockCapabilities, NoVerifier>;
     type Leases = NoWork;
+    type Sessions = NoLogins;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
@@ -310,6 +312,10 @@ impl Services for Fleet {
 
     fn bundles(&self) -> &Bundles {
         &self.bundles
+    }
+
+    fn sessions(&self) -> &NoLogins {
+        &NoLogins
     }
 
     fn now(&self) -> UnixMillis {
@@ -381,4 +387,75 @@ pub(crate) async fn json_body(response: Response) -> Value {
         .await
         .expect("a test response body is small and in memory");
     serde_json::from_slice(&bytes).expect("the response must be valid JSON")
+}
+
+/// A login surface with no queue behind it.
+///
+/// Every verb answers the refusal a queue that would not answer produces, and
+/// that is the honest stub rather than a lazy one: a device-flow verb's whole
+/// behaviour lives in a Lua script evaluated by a real Redis, so there is no
+/// success this could invent that would not be inventing the state machine too.
+/// What a suite here proves is the guard, the credential-class narrowing and
+/// the refusal matrix in FRONT of the verb — for which reaching the handler at
+/// all is the assertion.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct NoLogins;
+
+impl NoLogins {
+    /// The refusal every verb below answers with.
+    fn unavailable<T>() -> afd_fleet::Result<T> {
+        Err(afd_fleet::Error::queue_unavailable())
+    }
+}
+
+impl DeviceFlow for NoLogins {
+    fn open(
+        &self,
+        _opening: &session_input::Opening<'_>,
+        _now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::session::Opened>> + Send {
+        std::future::ready(Self::unavailable())
+    }
+
+    fn poll(
+        &self,
+        _session_id: &str,
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::session::Waiting>> + Send {
+        std::future::ready(Self::unavailable())
+    }
+
+    fn approve(
+        &self,
+        _session_id: &str,
+        _approval: &session_input::Approval<'_>,
+        _approver: &str,
+        _now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
+        std::future::ready(Self::unavailable())
+    }
+
+    fn verify(
+        &self,
+        _session_id: &str,
+        _code: &session_input::Code<'_>,
+        _fingerprint: &afd_fleet::session::Fingerprint,
+        _now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::session::Redeemed>> + Send {
+        std::future::ready(Self::unavailable())
+    }
+
+    fn cancel(
+        &self,
+        _session_id: &str,
+        _owner: &str,
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::session::Cancelled>> + Send {
+        std::future::ready(Self::unavailable())
+    }
+
+    fn cancel_all(
+        &self,
+        _owner: &str,
+    ) -> impl Future<Output = afd_fleet::Result<Vec<String>>> + Send {
+        std::future::ready(Self::unavailable())
+    }
 }

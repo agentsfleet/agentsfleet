@@ -24,7 +24,7 @@ use std::fmt;
 
 use afd_core::env::EnvSource;
 use afd_core::id::Uuid7;
-use afd_crypto::secret::Kek;
+use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::config::{DbRole, PoolConfig};
 use afd_identity::ProviderSecret;
 use afd_redis::config::{RedisConfig, RedisRole};
@@ -62,6 +62,25 @@ pub const PROVIDER_SECRET_KNOB: &str = "CLERK_SECRET_KEY";
 /// `serve_broker.zig` reads the same value with the same default of none.
 pub const PLATFORM_ADMIN_WORKSPACE_KNOB: &str = "PLATFORM_ADMIN_WORKSPACE_ID";
 
+/// The key a device-flow verification code's digest is taken under.
+///
+/// Required, not optional, and it is the one login knob that is: without it the
+/// daemon would store an unpeppered digest, and a queue somebody can read would
+/// become a queue somebody can log in from. `runtime_validate.zig` refuses boot
+/// on the same knob for the same reason.
+pub const SESSION_CODE_PEPPER_KNOB: &str = "AUTH_SESSION_CODE_PEPPER";
+
+/// Where a person goes to approve a command-line login.
+///
+/// Optional, with the production dashboard as its default — exactly what
+/// `runtime_loader.zig` does, and for the same reason: every deployment but a
+/// developer's own points at the same place, and refusing to boot over a knob
+/// with one sensible value would be ceremony.
+pub const APP_URL_KNOB: &str = "APP_URL";
+
+/// The dashboard [`APP_URL_KNOB`] falls back to.
+const APP_URL_DEFAULT: &str = "https://app.agentsfleet.net";
+
 /// The Cloudflare account the Fleet Bundle bucket lives under.
 pub const R2_ACCOUNT_ID_KNOB: &str = "R2_ACCOUNT_ID";
 
@@ -95,6 +114,9 @@ const WHY_REDIS: &str = "the API role's Redis connection URL";
 
 /// Why the daemon needs the master key.
 const WHY_KEK: &str = "64 hex characters; every stored credential is sealed under it";
+
+/// Why the login pepper is required.
+const WHY_SESSION_PEPPER: &str = "the key a device-flow verification code's digest is taken under; without it a readable queue is a usable login";
 
 /// Why an identity provider needs an issuer once any of its knobs is set.
 const WHY_ISSUER: &str =
@@ -140,6 +162,8 @@ pub struct BootConfig {
     api_pool: PoolConfig,
     redis: RedisConfig,
     kek: Kek,
+    session_code_pepper: SecretBytes,
+    app_url: Box<str>,
     identity: IdentityConfig,
     bundles: Option<BundleStoreConfig>,
     platform_admin_workspace: Option<Uuid7>,
@@ -192,6 +216,25 @@ impl BootConfig {
     #[must_use]
     pub const fn kek(&self) -> &Kek {
         &self.kek
+    }
+
+    /// The key a device-flow verification code's digest is taken under.
+    ///
+    /// Held as the raw configured BYTES rather than as a decoded key, and that
+    /// is a wire-format fact rather than an oversight: the Zig daemon keys its
+    /// HMAC with the sixty-four hexadecimal characters as text, both binaries
+    /// write the same session blob, and a Lua script compares the two digests
+    /// as strings. Decoding here would silently invalidate every session the
+    /// other binary approved.
+    #[must_use]
+    pub const fn session_code_pepper(&self) -> &SecretBytes {
+        &self.session_code_pepper
+    }
+
+    /// Where a person goes to approve a command-line login.
+    #[must_use]
+    pub const fn app_url(&self) -> &str {
+        &self.app_url
     }
 
     /// The identity provider, which every boot has.
@@ -258,6 +301,19 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
     );
 
     let kek = read_kek(env, &mut faults);
+    let session_code_pepper = required(
+        env,
+        &mut faults,
+        SESSION_CODE_PEPPER_KNOB,
+        WHY_SESSION_PEPPER,
+    )
+    .map(|pepper| SecretBytes::new(pepper.into_bytes()));
+    let app_url = env
+        .get(APP_URL_KNOB)
+        .map(|raw| raw.trim().to_owned())
+        .filter(|raw| !raw.is_empty())
+        .unwrap_or_else(|| APP_URL_DEFAULT.to_owned())
+        .into_boxed_str();
     let identity = identity(env, &mut faults);
     // Answers `None` for BOTH "configured nothing" and "configured badly", and
     // only the second pushed a fault — which is why the match below reads the
@@ -280,12 +336,16 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
             )
         });
 
-    match (api_pool, redis, kek, identity) {
-        (Some(api_pool), Some(redis), Some(kek), Some(identity)) if faults.is_empty() => {
+    match (api_pool, redis, kek, identity, session_code_pepper) {
+        (Some(api_pool), Some(redis), Some(kek), Some(identity), Some(session_code_pepper))
+            if faults.is_empty() =>
+        {
             Ok(BootConfig {
                 api_pool,
                 redis,
                 kek,
+                session_code_pepper,
+                app_url,
                 identity,
                 bundles,
                 platform_admin_workspace,

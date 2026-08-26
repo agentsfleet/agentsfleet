@@ -241,6 +241,26 @@ pub(crate) fn unexpected_reply(what: &'static str) -> Error {
     Error::new(ErrorKind::UnexpectedReply { what })
 }
 
+/// The refusal a caller reads when this Redis cannot be reached at all.
+///
+/// Behind `test-util` for the reason [`one_of_each_kind`] is: a suite that
+/// stubs a service holding a queue has to answer SOMETHING, and the honest
+/// answer is the one the real service gives with no queue behind it. Every
+/// other constructor stays crate-private — this is a seam for a stub, not a way
+/// for another crate to invent this one's failures.
+#[cfg(feature = "test-util")]
+#[must_use]
+pub fn unavailable_for_test() -> Error {
+    Error::new(ErrorKind::Unreachable {
+        role: "default",
+        source: Box::new(redis::RedisError::from((
+            redis::ErrorKind::Extension,
+            "unreachable",
+            "no queue is reachable from this stub".to_owned(),
+        ))),
+    })
+}
+
 /// One error of every kind, for tests that walk the whole surface.
 ///
 /// Same seam and same argument as `afd_db::error::one_of_each_kind`: these are

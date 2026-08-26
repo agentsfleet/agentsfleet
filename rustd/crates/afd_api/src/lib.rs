@@ -30,6 +30,7 @@ use {
 
 pub mod admission;
 pub mod auth;
+pub mod client;
 pub mod envelope;
 pub mod handler;
 pub mod request_id;
