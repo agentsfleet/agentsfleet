@@ -14,7 +14,7 @@
 
 mod harness;
 
-use afd_api::route::{AuthRoute, OpsRoute, Route, RunnerOpsRoute, RunnerRoute};
+use afd_api::route::{AuthRoute, OpsRoute, Route, RunnerOpsRoute, RunnerRoute, TenantRoute};
 use afd_api::router::{ReadyInputs, ready_decision};
 use axum::response::Response;
 use http::{Method, StatusCode};
@@ -231,6 +231,10 @@ async fn test_only_the_ported_routes_are_mounted() {
                         | AuthRoute::DeleteSession
                         | AuthRoute::DeleteAllSessions
                 )
+                // §2's api-key lifecycle. The rest of the tenant plane — the
+                // billing reads, the model registry, the provider row — is
+                // tabled and unserved until its handlers land.
+                | Route::Tenant(TenantRoute::ApiKeys | TenantRoute::ApiKey)
         );
 
         if mounted {

@@ -58,6 +58,11 @@ pub use self::detail::{
 // mint family's are: they arrive together, they are read together, and every
 // one is pinned to `session_helpers.zig`.
 pub use self::detail::{
+    DETAIL_APIKEY_ALREADY_REVOKED, DETAIL_APIKEY_DESCRIPTION, DETAIL_APIKEY_MUST_REVOKE_FIRST,
+    DETAIL_APIKEY_NAME, DETAIL_APIKEY_NAME_TAKEN, DETAIL_APIKEY_NOT_FOUND,
+    DETAIL_APIKEY_READONLY_FIELD,
+};
+pub use self::detail::{
     DETAIL_BINDING_DRIFT, DETAIL_CONNECTOR_MINT_FAILED, DETAIL_CONNECTOR_RECONNECT,
     DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
     DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED, DETAIL_WRITE_SPEND_EXHAUSTED,
@@ -274,6 +279,42 @@ pub(crate) enum ErrorKind {
 
     #[error("this device-flow login session belongs to another identity")]
     SessionNotOwner,
+
+    #[error("an api-key field was refused: {field}")]
+    ApiKeyFieldInvalid { field: ApiKeyField },
+
+    #[error("no api-key with that id belongs to this tenant")]
+    ApiKeyNotFound,
+
+    #[error("this tenant already holds an api-key under that name")]
+    ApiKeyNameTaken,
+
+    #[error("this api-key was already revoked, so nothing changed")]
+    ApiKeyAlreadyRevoked,
+
+    #[error("an api-key cannot be brought back once revoked")]
+    ApiKeyReadonlyField,
+
+    #[error("an active api-key must be revoked before it can be deleted")]
+    ApiKeyMustRevokeFirst,
+}
+
+/// Which api-key field a refusal names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApiKeyField {
+    /// The name the key is listed and grepped under.
+    Name,
+    /// The free text beside it.
+    Description,
+}
+
+impl Display for ApiKeyField {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Name => "key_name",
+            Self::Description => "description",
+        })
+    }
 }
 
 /// Which device-flow field a refusal names.
@@ -323,6 +364,19 @@ impl Error {
     #[must_use]
     pub fn mint_unconfigured() -> Self {
         super::error::mint_unconfigured()
+    }
+
+    /// The refusal a verb answers when the datastore behind it would not answer.
+    ///
+    /// Exposed for the reason [`Error::queue_unavailable`] is: a router suite
+    /// stubs services whose whole behaviour lives in statements a real Postgres
+    /// evaluates, and the honest stub answers the one refusal that is true of
+    /// it rather than inventing a success.
+    #[must_use]
+    pub fn datastore_unavailable() -> Self {
+        Self::new(ErrorKind::Datastore {
+            source: afd_db::error::unavailable_for_test(),
+        })
     }
 
     /// The refusal a verb answers when the queue behind it would not answer.
@@ -568,4 +622,34 @@ pub(crate) fn session_code_rejected() -> Error {
 /// Reports an abort attempted by an identity that does not hold the session.
 pub(crate) fn session_not_owner() -> Error {
     Error::new(ErrorKind::SessionNotOwner)
+}
+
+/// Refuses an api-key field this daemon will not store.
+pub(crate) fn apikey_field(field: ApiKeyField) -> Error {
+    Error::new(ErrorKind::ApiKeyFieldInvalid { field })
+}
+
+/// Reports an id naming no key this tenant holds.
+pub(crate) fn apikey_not_found() -> Error {
+    Error::new(ErrorKind::ApiKeyNotFound)
+}
+
+/// Reports a name this tenant already uses.
+pub(crate) fn apikey_name_taken() -> Error {
+    Error::new(ErrorKind::ApiKeyNameTaken)
+}
+
+/// Reports a revoke of a key that was already revoked.
+pub(crate) fn apikey_already_revoked() -> Error {
+    Error::new(ErrorKind::ApiKeyAlreadyRevoked)
+}
+
+/// Reports an attempt to re-activate a revoked key.
+pub(crate) fn apikey_readonly_field() -> Error {
+    Error::new(ErrorKind::ApiKeyReadonlyField)
+}
+
+/// Reports a delete of a key that is still active.
+pub(crate) fn apikey_must_revoke_first() -> Error {
+    Error::new(ErrorKind::ApiKeyMustRevokeFirst)
 }

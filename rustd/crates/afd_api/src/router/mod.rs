@@ -61,8 +61,10 @@ use http::{Method, StatusCode};
 
 use crate::admission::{Admission, admit, is_metered};
 use crate::auth::{Gate, Owner, own, plane_of, prove};
-use crate::handler::{auth as auth_handler, runner};
-use crate::route::{AuthRoute, OpsRoute, Route, RouteMeta, RunnerOpsRoute, RunnerRoute};
+use crate::handler::{auth as auth_handler, runner, tenant as tenant_handler};
+use crate::route::{
+    AuthRoute, OpsRoute, Route, RouteMeta, RunnerOpsRoute, RunnerRoute, TenantRoute,
+};
 use crate::services::Services;
 
 pub use self::probes::{Dependencies, ReadyInputs, ready_decision};
@@ -201,13 +203,13 @@ fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>> {
             OpsRoute::Readyz => get(probes::readyz::<D>),
         }),
         Route::Auth(verb) => auth_handler_for::<D>(verb),
+        Route::Tenant(verb) => tenant_handler_for::<D>(verb),
         Route::Runner(verb) => Some(runner_handler::<D>(verb)),
         Route::RunnerOps(verb) => runner_ops_handler::<D>(verb),
         // Tabled, not yet served. Each of these families arrives with the
         // milestone that ports its handlers; until then the route exists as a
         // template, a guard and a scope rung, and this binary answers 404.
-        Route::Tenant(_)
-        | Route::Admin(_)
+        Route::Admin(_)
         | Route::Webhook(_)
         | Route::Workspace(_)
         | Route::Fleet(_)
@@ -236,6 +238,34 @@ fn auth_handler_for<D: Serving>(verb: AuthRoute) -> Option<MethodRouter<Arc<D>>>
         // identity-provider delivery is proven by a Svix signature rather than
         // a bearer, so it lands with M180's signed ingress.
         AuthRoute::DeleteSession | AuthRoute::IdentityEventClerk => None,
+    }
+}
+
+/// What a tenant manages for itself.
+///
+/// `None` for the reads this milestone has not reached yet — billing, the model
+/// registry, the provider row, the workspace list. Each is an arm rather than
+/// an absence from a list, so the endpoint that is not served says so where
+/// somebody looking for it will read it.
+fn tenant_handler_for<D: Serving>(verb: TenantRoute) -> Option<MethodRouter<Arc<D>>> {
+    match verb {
+        TenantRoute::ApiKeys => {
+            Some(get(tenant_handler::list::<D>).post(tenant_handler::mint::<D>))
+        }
+        TenantRoute::ApiKey => {
+            Some(patch(tenant_handler::revoke::<D>).delete(tenant_handler::delete::<D>))
+        }
+        TenantRoute::ModelLibrary
+        | TenantRoute::CreateWorkspace
+        | TenantRoute::Billing
+        | TenantRoute::BillingCharges
+        | TenantRoute::Workspaces
+        | TenantRoute::Provider
+        | TenantRoute::ModelEntries
+        | TenantRoute::ModelEntry
+        | TenantRoute::FleetBundles
+        | TenantRoute::CliCredentials
+        | TenantRoute::CliCredential => None,
     }
 }
 

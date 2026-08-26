@@ -22,6 +22,15 @@
 //! ORDER BY clause, so there is nothing to audit — a caller-supplied sort is
 //! not a value this module can produce.
 //!
+//! # Why this is in the value layer and not beside the handlers
+//!
+//! A cursor is a VALUE — it round-trips through a string and knows nothing
+//! about a request. Putting it here is what lets the resource crate own its own
+//! ordering vocabulary: `afd_fleet` implements [`SortOrder`] for the api-key
+//! list, because the orderings it offers are a property of the statement that
+//! serves them, and `afd_api` only parses a query string into one. Neither
+//! crate has to depend on the other for that to work.
+//!
 //! # The cursor's wire form is a DATA FORMAT
 //!
 //! Both binaries issue and accept these strings, and a dashboard holds one

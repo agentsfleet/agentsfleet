@@ -34,6 +34,7 @@ use afd_fleet::secrets::Registry;
 // Aliased: `crate::identity::Sessions` is the token VERIFIER, and this is the
 // device-flow login surface. Two things called `Sessions` in one file is how a
 // reader ends up believing the login surface verifies bearer tokens.
+use afd_fleet::apikey::ApiKeys;
 use afd_fleet::session::Sessions as Logins;
 use afd_fleet::vault::Vault;
 use afd_fleet::workspace::Workspaces;
@@ -60,6 +61,7 @@ pub struct ServingPlane {
     bundles: Bundles,
     logins: Logins,
     workspaces: Workspaces,
+    api_keys: ApiKeys,
 }
 
 impl ServingPlane {
@@ -103,6 +105,7 @@ impl ServingPlane {
         Self {
             bundles,
             workspaces: Workspaces::new(database.clone()),
+            api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             logins: Logins::new(
                 afd_redis::SessionStore::new(queue.clone()),
                 login.code_pepper,
@@ -176,6 +179,7 @@ impl Services for ServingPlane {
     type Leases = Plane;
     type Sessions = Logins;
     type Workspaces = Workspaces;
+    type ApiKeys = ApiKeys;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
@@ -199,6 +203,10 @@ impl Services for ServingPlane {
 
     fn workspaces(&self) -> &Workspaces {
         &self.workspaces
+    }
+
+    fn api_keys(&self) -> &ApiKeys {
+        &self.api_keys
     }
 
     /// The wall clock, read once per verb by whichever handler asked.

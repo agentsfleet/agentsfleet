@@ -17,6 +17,7 @@
 
 pub mod auth;
 pub mod runner;
+pub mod tenant;
 
 use axum::response::{IntoResponse as _, Response};
 

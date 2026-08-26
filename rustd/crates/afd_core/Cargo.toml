@@ -18,6 +18,12 @@ test-util = []
 
 [dependencies]
 serde.workspace = true
+# The text-boundary keyset cursor: a sort key that is text is base64url-encoded
+# so a value containing the separator cannot corrupt the boundary. Both binaries
+# issue and read these strings, so the encoding is a DATA FORMAT rather than a
+# choice — and an encoder is a value-layer concern, which is why the cursor
+# lives here rather than beside the handlers that parse one out of a query.
+base64.workspace = true
 # The object-shape gate every trust boundary deserializes through
 # (`crate::json`). A library dependency rather than a dev one since that gate
 # shipped: the crates it guards — the runner enrolment body, the JWT header,

@@ -270,3 +270,32 @@ pub const DETAIL_SESSION_NOT_OWNER: &str = "You do not own this login session";
 
 /// The verify dispatcher's refusal for six digits that did not match.
 pub const DETAIL_SESSION_CODE_REJECTED: &str = "Verification code did not match";
+
+// ── The tenant api-key lifecycle ─────────────────────────────────────────
+//
+// Pinned to `api_keys/tenant.zig`'s own sentences. The lifecycle refusals are
+// the ones a dashboard renders directly, so each says what to do next rather
+// than what went wrong.
+
+/// Its refusal for a name outside the character set or the bound.
+pub const DETAIL_APIKEY_NAME: &str =
+    "key_name must be 1-64 chars, alphanumeric + hyphen + underscore";
+
+/// Its refusal for a description past its bound.
+pub const DETAIL_APIKEY_DESCRIPTION: &str = "description must be <=256 chars";
+
+/// Its refusal for an id naming no key this tenant holds.
+pub const DETAIL_APIKEY_NOT_FOUND: &str = "API key not found";
+
+/// Its refusal for a name this tenant already uses.
+pub const DETAIL_APIKEY_NAME_TAKEN: &str = "Key name already exists in this tenant";
+
+/// Its refusal for a revoke of an already-revoked key.
+pub const DETAIL_APIKEY_ALREADY_REVOKED: &str = "API key is already revoked";
+
+/// Its refusal for an attempt to bring a revoked key back.
+pub const DETAIL_APIKEY_READONLY_FIELD: &str =
+    "active cannot be set to true; mint a new key instead";
+
+/// Its refusal for a delete of a key that is still live.
+pub const DETAIL_APIKEY_MUST_REVOKE_FIRST: &str = "Active key must be revoked before deletion";

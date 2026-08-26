@@ -31,6 +31,7 @@
 //! for the shape high-arity statements take.
 
 pub mod activity;
+pub mod apikey;
 pub mod billing;
 pub mod event;
 pub mod fleet;

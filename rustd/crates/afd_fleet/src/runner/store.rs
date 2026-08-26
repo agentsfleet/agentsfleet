@@ -9,7 +9,9 @@ use afd_wire::runner::{AssignedPolicy, RegisterRequest};
 use crate::error::{Result, query};
 use crate::runner::reconcile::{Verdict, reconcile};
 use crate::runner::spelling::{policy_wire, render_list, tier_wire};
-use crate::runner::token::Minted;
+use afd_auth::credential::CredentialKind;
+
+use crate::credential::minted::Minted;
 use crate::runner::validate::{HostId, assignment};
 use crate::sql;
 
@@ -87,7 +89,11 @@ impl Runners {
         let runner_id = Uuid7::encode(now, bytes)?;
         self.entropy.fill(&mut bytes)?;
         let event_id = Uuid7::encode(now, bytes)?;
-        Ok((runner_id, event_id, Minted::draw(&self.entropy)?))
+        Ok((
+            runner_id,
+            event_id,
+            Minted::draw(CredentialKind::RunnerToken, &self.entropy)?,
+        ))
     }
 
     /// Enrols a runner, storing only the digest of the token it returns.

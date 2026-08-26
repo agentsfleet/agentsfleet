@@ -20,7 +20,6 @@ pub mod reconcile;
 pub mod record;
 pub mod spelling;
 pub mod store;
-pub mod token;
 pub mod validate;
 
 pub use self::heartbeat::{Beat, NO_REPORT};

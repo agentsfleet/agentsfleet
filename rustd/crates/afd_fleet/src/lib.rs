@@ -35,6 +35,7 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
+pub mod apikey;
 pub mod bundle;
 pub mod credential;
 pub mod error;

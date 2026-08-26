@@ -30,7 +30,7 @@
 use std::sync::Arc;
 
 use afd_api::router::{Dependencies, ReadyInputs, build};
-use afd_api::services::{DeviceFlow, Leasing, WorkspaceOwnership};
+use afd_api::services::{DeviceFlow, Leasing, TenantKeys, WorkspaceOwnership};
 use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Planes, Services};
 use afd_auth::credential::{CredentialKind, Presented};
 use afd_auth::directory::{CredentialRecord, Liveness};
@@ -79,6 +79,7 @@ pub(crate) struct Fleet {
     leases: NoWork,
     bundles: Bundles,
     workspaces: OneWorkspace,
+    api_keys: NoKeys,
     now: UnixMillis,
 }
 
@@ -218,6 +219,7 @@ impl Fleet {
             // — which is most of them.
             bundles: Bundles::unconfigured(),
             workspaces: OneWorkspace,
+            api_keys: NoKeys,
             now: UnixMillis::from_millis(FROZEN),
         }
     }
@@ -300,6 +302,7 @@ impl Services for Fleet {
     type Leases = NoWork;
     type Sessions = NoLogins;
     type Workspaces = OneWorkspace;
+    type ApiKeys = NoKeys;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
@@ -323,6 +326,10 @@ impl Services for Fleet {
 
     fn workspaces(&self) -> &OneWorkspace {
         &self.workspaces
+    }
+
+    fn api_keys(&self) -> &NoKeys {
+        &self.api_keys
     }
 
     fn now(&self) -> UnixMillis {
@@ -504,5 +511,52 @@ impl WorkspaceOwnership for OneWorkspace {
         principal: &afd_auth::principal::Principal,
     ) -> impl Future<Output = afd_fleet::Result<Option<Uuid7>>> + Send {
         std::future::ready(Ok(principal.tenant().cloned()))
+    }
+}
+
+/// An api-key store with no Postgres behind it.
+///
+/// Every verb answers the refusal a datastore that would not answer produces,
+/// for the reason [`NoLogins`] does: the lifecycle's whole behaviour is in two
+/// CTEs a real Postgres evaluates, so there is no success this could invent
+/// that would not be inventing the state machine too. What a suite here proves
+/// is the guard, the tenant resolution and the refusal matrix in FRONT of the
+/// verb.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct NoKeys;
+
+impl TenantKeys for NoKeys {
+    fn mint(
+        &self,
+        _request: &afd_fleet::apikey::MintRequest<'_>,
+        _now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::apikey::Revealed>> + Send {
+        std::future::ready(Err(afd_fleet::Error::datastore_unavailable()))
+    }
+
+    fn list(
+        &self,
+        _tenant: &Uuid7,
+        _page: &afd_core::paging::Page<afd_fleet::apikey::ApiKeySort>,
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::apikey::Listing>> + Send {
+        std::future::ready(Err(afd_fleet::Error::datastore_unavailable()))
+    }
+
+    fn revoke(
+        &self,
+        _tenant: &Uuid7,
+        _key: &Uuid7,
+        _intent: afd_fleet::apikey::Deactivation,
+        _now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::apikey::Revoked>> + Send {
+        std::future::ready(Err(afd_fleet::Error::datastore_unavailable()))
+    }
+
+    fn delete(
+        &self,
+        _tenant: &Uuid7,
+        _key: &Uuid7,
+    ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
+        std::future::ready(Err(afd_fleet::Error::datastore_unavailable()))
     }
 }
