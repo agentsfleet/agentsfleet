@@ -39,6 +39,7 @@ pub mod error;
 pub mod gate;
 pub mod lease;
 pub mod money;
+pub mod policy;
 pub mod provider;
 pub mod runner;
 pub mod secrets;
