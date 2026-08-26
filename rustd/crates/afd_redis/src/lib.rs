@@ -40,6 +40,7 @@ pub mod client;
 pub mod config;
 pub mod error;
 pub mod hub;
+pub mod kv;
 pub mod ready;
 pub mod session;
 pub mod streams;
