@@ -245,6 +245,17 @@ pub(crate) async fn scenario(supervisor: &mut Supervisor) -> Scenario {
 }
 
 impl Scenario {
+    /// Takes the tenant's wallet to zero.
+    ///
+    /// A row holding ZERO, not a missing row: the credits gate draws that
+    /// distinction deliberately and a tenant with NO wallet is ADMITTED,
+    /// because an unprovisioned tenant is an operator gap and refusing every
+    /// one of them would turn that into an outage. A test proving the refusal
+    /// has to seed the exhausted case, not the absent one.
+    pub(crate) async fn drain_wallet(&self) {
+        seed_wallet(&self.booted, &self.tenant, 0, self.seeded_at).await;
+    }
+
     /// Drops this scenario's database and clears its readiness mark.
     ///
     /// Both halves, because the two datastores fail differently: a leaked

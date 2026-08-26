@@ -53,7 +53,7 @@ use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 
 use self::e2e::{Scenario, scenario};
-use self::reads::{balance, counter_column, lease_column, ledger_rows};
+use self::reads::{balance, counter_column, lease_column, lease_rows, ledger_rows};
 use self::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN, capable_beat, claim, field, get,
     json, post, report_body,
@@ -236,5 +236,63 @@ async fn assert_replay_is_fenced(
         lease_column(run, lease_id, "status").await.as_deref(),
         Some("reported"),
         "and mutates nothing — the lease reads exactly as the first report left it"
+    );
+}
+
+/// Dimension 2.3 — an exhausted tenant is refused at issue, and nothing is
+/// written.
+///
+/// The gate that makes every other money assertion matter: without it a fleet
+/// whose tenant went to zero would keep leasing work nobody is paying for. It
+/// belongs beside the loop above rather than in `afd_fleet`'s suites because
+/// the credits gate is only reached on the PULL path — the store verbs those
+/// suites drive skip it entirely — and reaching it needs all six preconditions
+/// `e2e_seed.rs` documents.
+///
+/// The event is not merely left unleased. It is ENDED: a refusal a runner can
+/// do nothing about must not sit on the stream being re-delivered forever, so
+/// the poll marks it terminal and answers no-work.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
+async fn test_lease_money_gate_refusal() {
+    let mut supervisor = Supervisor::new();
+    let run = scenario(&mut supervisor).await;
+    let http = reqwest::Client::new();
+
+    // Drained AFTER the seed, so the wallet row exists and holds zero — the
+    // case the gate refuses, as distinct from the absent row it admits.
+    run.drain_wallet().await;
+
+    let beat = post(&http, &run, "/v1/runners/me/heartbeats", &capable_beat()).await;
+    assert_eq!(
+        beat.status().as_u16(),
+        200,
+        "the runner proves its capabilities, so the poll below is refused for \
+         MONEY rather than for a degraded verdict"
+    );
+
+    let polled = post(&http, &run, "/v1/runners/me/leases", &json!({})).await;
+    assert_eq!(
+        polled.status().as_u16(),
+        200,
+        "a refused event is still an answered poll — work and no-work are the \
+         same status on this verb, and an exhausted tenant is no-work"
+    );
+    assert_eq!(
+        field(&json(polled).await, "lease"),
+        &json!(null),
+        "and it carries no lease"
+    );
+
+    assert_eq!(
+        lease_rows(&run).await,
+        0,
+        "no partial write: the gate refuses BEFORE the lease row, so an \
+         exhausted tenant leaves nothing for the reclaim sweep to find"
+    );
+    assert_eq!(
+        balance(&run).await,
+        Some(0),
+        "and nothing was charged against a wallet that had nothing to give"
     );
 }
