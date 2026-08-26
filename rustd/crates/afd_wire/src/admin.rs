@@ -293,3 +293,30 @@ pub struct RunnerEventsResponse<'a> {
     #[serde(borrow)]
     pub next_cursor: Option<Cow<'a, str>>,
 }
+
+/// One live Server-Sent Events connection visible to platform operators.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FleetStreamItem<'a> {
+    /// Workspace whose events the connection may observe.
+    #[serde(borrow)]
+    pub workspace_id: Cow<'a, str>,
+    /// Fleet whose events the connection may observe.
+    #[serde(borrow)]
+    pub fleet_id: Cow<'a, str>,
+    /// Connection start instant in epoch milliseconds.
+    pub started_ms: i64,
+}
+
+/// The instance-local live stream overview.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FleetStreamsResponse<'a> {
+    /// Every live stream on this daemon instance.
+    #[serde(borrow)]
+    pub items: Vec<FleetStreamItem<'a>>,
+    /// Current number of live streams.
+    pub total: usize,
+    /// Instance-wide admission ceiling.
+    pub max_streams: u32,
+}

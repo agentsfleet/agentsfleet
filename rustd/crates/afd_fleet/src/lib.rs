@@ -48,6 +48,7 @@ pub mod provider;
 pub mod runner;
 pub mod secrets;
 pub mod sql;
+pub mod streams;
 pub mod sweep;
 pub mod vault;
 
