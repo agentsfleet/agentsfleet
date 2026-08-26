@@ -26,7 +26,15 @@
 //! outermost: a shed has to stay cheaper than the work it refuses, and proving
 //! a credential means a datastore round trip. Authentication and the capability
 //! gate come next, so a handler never runs for a caller who should not reach
-//! it. Nothing is left for a handler to remember.
+//! it. Ownership is innermost, because it is the only one of the three that
+//! runs a statement — a caller who is over the ceiling or short a capability is
+//! refused before this daemon reaches Postgres on their behalf.
+//!
+//! Nothing is left for a handler to remember. That last layer is the one the
+//! Zig daemon never lifted: `authorizeWorkspace` is called by hand at the top
+//! of every workspace handler, and a handler that forgets is a cross-tenant
+//! read with nothing failing. Here it is mounted from the route's own template
+//! (`Ownership::of`), so forgetting is not a thing a handler can do.
 //!
 //! # HEAD
 //!
@@ -52,7 +60,7 @@ use axum::routing::{MethodRouter, delete, get, patch, post};
 use http::{Method, StatusCode};
 
 use crate::admission::{Admission, admit, is_metered};
-use crate::auth::{Gate, plane_of, prove};
+use crate::auth::{Gate, Owner, own, plane_of, prove};
 use crate::handler::{auth as auth_handler, runner};
 use crate::route::{AuthRoute, OpsRoute, Route, RouteMeta, RunnerOpsRoute, RunnerRoute};
 use crate::services::Services;
@@ -155,11 +163,22 @@ fn layered<D: Serving>(
     dependencies: &Arc<D>,
     admission: &Admission,
 ) -> MethodRouter<Arc<D>> {
-    let guarded = if plane_of(meta.guard).is_some() {
-        let gate = Gate::new(Arc::clone(dependencies), meta);
-        handler.layer(from_fn_with_state(gate, prove::<D>))
+    // Innermost, so it runs LAST of the three and closest to the handler. That
+    // ordering is the whole cost argument: ownership is the only one of the
+    // three that reaches a datastore, and a caller who is over the ceiling or
+    // short a capability must be refused before this daemon runs a statement
+    // for them.
+    let owned = if meta.ownership.is_checked() {
+        let owner = Owner::new(Arc::clone(dependencies), meta.template);
+        handler.layer(from_fn_with_state(owner, own::<D>))
     } else {
         handler
+    };
+    let guarded = if plane_of(meta.guard).is_some() {
+        let gate = Gate::new(Arc::clone(dependencies), meta);
+        owned.layer(from_fn_with_state(gate, prove::<D>))
+    } else {
+        owned
     };
     if is_metered(meta.class) {
         guarded.layer(from_fn_with_state(admission.clone(), admit))

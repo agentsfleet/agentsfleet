@@ -44,6 +44,7 @@ pub mod report;
 pub mod runner;
 pub mod sweep;
 pub mod vault;
+pub mod workspace;
 
 /// `fleet.runner_events.metadata` keys.
 ///

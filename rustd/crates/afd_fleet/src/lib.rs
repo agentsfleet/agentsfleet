@@ -50,6 +50,7 @@ pub mod session;
 pub mod sql;
 pub mod sweep;
 pub mod vault;
+pub mod workspace;
 
 pub use crate::error::{Error, Result};
 pub use crate::runner::reconcile::{Verdict, reconcile};
