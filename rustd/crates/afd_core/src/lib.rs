@@ -34,6 +34,7 @@ pub mod env;
 pub mod error;
 pub mod error_code;
 pub mod id;
+pub mod json;
 pub mod limits;
 pub mod problem;
 pub mod timing;

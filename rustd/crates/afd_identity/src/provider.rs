@@ -138,8 +138,8 @@ impl ProviderClaims {
     /// all — a provider answering 200 with something that is not a user is not
     /// evidence about the person.
     fn extract_claim(body: &[u8]) -> Result<String, ClaimUnavailable> {
-        let document: serde_json::Value =
-            serde_json::from_slice(body).map_err(|_invalid| ClaimUnavailable::Unreachable)?;
+        let document: serde_json::Value = afd_core::json::object_from_slice(body)
+            .map_err(|_invalid| ClaimUnavailable::Unreachable)?;
         if !document.is_object() {
             return Err(ClaimUnavailable::Unreachable);
         }
