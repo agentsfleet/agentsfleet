@@ -4,6 +4,11 @@
 //! what the lease path reads: the gate ROW is written by the park, and the
 //! resolve is the tenant plane's.
 
+use afd_core::clock::UnixMillis;
+use afd_core::id::Uuid7;
+
+use crate::gate::{Claim, Stated, Status};
+
 /// The durable status of one approval gate.
 ///
 /// `ORDER BY created_at DESC LIMIT 1` rather than a bare lookup, and it is not
@@ -17,3 +22,104 @@ pub const SELECT_GATE_STATUS: &str = "\
 SELECT status FROM core.fleet_approval_gates
 WHERE action_id = $1
 ORDER BY created_at DESC LIMIT 1";
+
+/// Raise one approval gate, in the `pending` state a human answers out of.
+///
+/// Text from `fleet_runtime/sql.zig`'s `INSERT_GATE`, with the `::uuid` and
+/// `::text` casts every other statement in this crate carries: the Zig driver
+/// sends an untyped parameter and lets Postgres infer, sqlx binds `&str` as
+/// `text`, and `id`/`fleet_id`/`workspace_id` are `UUID` columns. Column list,
+/// column order and the two literal `''` columns are unchanged.
+///
+/// `resolved_by` and `detail` are literal `''` rather than binds because a
+/// pending gate has no resolver and no resolution note — [`RESOLVE_GATE`]'s
+/// job, and it is the tenant plane's, not this crate's. They are `NOT NULL`
+/// columns, so the empty string is the row's own "not yet".
+///
+/// `$1` gate row, `$2` fleet, `$3` workspace, `$4` action, `$5` tool,
+/// `$6` action name, `$7` kind, `$8` proposed action, `$9` evidence,
+/// `$10` blast radius, `$11` deadline, `$12` status, `$13` now, `$14` event,
+/// `$15` stated binding, `$16` spend count, `$17` spend ceiling.
+pub const INSERT_GATE: &str = "\
+INSERT INTO core.fleet_approval_gates
+  (id, fleet_id, workspace_id, action_id, tool_name, action_name,
+   gate_kind, proposed_action, evidence, blast_radius, timeout_at,
+   resolved_by, status, detail, created_at, event_id, stated_binding,
+   spend_count, spend_ceiling)
+VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, \
+'', $12, '', $13, $14, $15::jsonb, $16, $17)";
+
+/// Stop a fleet, so nothing else of its work is admitted.
+///
+/// Written by the two auto-kill paths — a tripped anomaly rule and an
+/// `auto_kill` gate rule — and by nothing else in this crate. Inline in
+/// `fleet/approval_gate.zig`'s `pauseFleet`; collected here because RULE SQLMOD
+/// is what makes the verbatim-SQL parity review possible at all.
+///
+/// `$1` now, `$2` fleet.
+pub const PAUSE_FLEET: &str = "\
+UPDATE core.fleets SET status = 'paused', updated_at = $1 WHERE id = $2::uuid";
+
+/// One pending gate, bound to [`INSERT_GATE`] in `$n` order.
+///
+/// The shape a high-arity statement takes in this crate (see
+/// [`super::runner::RegisterRow`]): seventeen binds, most of them strings that
+/// compile clean in any order, so the field names are what a reader checks
+/// rather than a position they have to count to.
+///
+/// The two halves of the card arrive as the two TYPES that carry their
+/// provenance, not as loose strings — which is what makes it impossible to bind
+/// model prose into a column the workspace half owns.
+#[derive(Debug, Clone, Copy)]
+pub struct PendingRow<'a> {
+    /// The gate row's own identifier.
+    pub gate_id: &'a Uuid7,
+    /// The fleet whose work is held.
+    pub fleet_id: &'a Uuid7,
+    /// The workspace it belongs to.
+    pub workspace_id: &'a Uuid7,
+    /// The action a human is asked about, and the reference's own identifier.
+    pub action_id: &'a Uuid7,
+    /// What the daemon and the workspace assert.
+    pub stated: Stated<'a>,
+    /// What the fleet's model claims — bounded and card-safe by construction.
+    pub claim: &'a Claim,
+    /// When the question lapses.
+    pub deadline: UnixMillis,
+    /// The event this question is about.
+    pub event_id: &'a str,
+    /// The approved reach, as the mint will read it back.
+    pub stated_binding: Option<&'a str>,
+    /// The spend counter's opening value, for a bounded approval.
+    pub spend_count: Option<i64>,
+    /// The instant the row is created at.
+    pub now: UnixMillis,
+}
+
+impl<'a> PendingRow<'a> {
+    /// Binds this row to [`INSERT_GATE`], in `$n` order.
+    ///
+    /// The status (`$12`) is supplied here rather than by a caller: every row
+    /// this statement writes opens `pending`, and a caller able to pass another
+    /// value could write a gate already resolved.
+    pub fn bind(&'a self) -> super::runner::Bound<'a> {
+        sqlx::query(INSERT_GATE)
+            .bind(self.gate_id.as_str())
+            .bind(self.fleet_id.as_str())
+            .bind(self.workspace_id.as_str())
+            .bind(self.action_id.as_str())
+            .bind(self.stated.tool)
+            .bind(self.stated.action)
+            .bind(self.stated.kind)
+            .bind(self.claim.proposed_action())
+            .bind(self.claim.evidence())
+            .bind(self.stated.radius)
+            .bind(self.deadline.as_millis())
+            .bind(Status::Pending.as_str())
+            .bind(self.now.as_millis())
+            .bind(self.event_id)
+            .bind(self.stated_binding)
+            .bind(self.spend_count)
+            .bind(self.stated.spend_ceiling)
+    }
+}

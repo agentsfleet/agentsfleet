@@ -18,14 +18,27 @@
 //!
 //! It does not park an event, raise a card, count an anomaly, or read a
 //! recorded gate. Every one of those is Redis or Postgres, and every one of
-//! them is downstream of a decision made here. [`route`] is the ordering those
-//! I/O outcomes compose through, and it is pure for the same reason: the ORDER
-//! in which a recorded gate and the current policy bind is a security property,
-//! and a security property should be pinned by a unit test rather than by a
-//! live datastore.
+//! them is downstream of a decision made here — [`park`](Gates::park),
+//! [`pause`](Gates::pause) and [`anomaly`](Gates::anomaly) are the sibling
+//! modules that do them. [`route`] is the ordering those I/O outcomes compose
+//! through, and it is pure for the same reason: the ORDER in which a recorded
+//! gate and the current policy bind is a security property, and a security
+//! property should be pinned by a unit test rather than by a live datastore.
+//!
+//! # The card's two halves are two types
+//!
+//! [`Stated`] is what the daemon and the workspace assert, and a human may read
+//! it as fact. [`Claim`] is what a language model wrote, and they may not.
+//! `approval_gate_detail.zig` keeps that boundary with a comment; here it is
+//! the type signature of everything downstream, including the renderer that
+//! lands in a later milestone.
 
 mod anomaly;
+mod claim;
 mod decision;
+mod detail;
+mod park;
+mod pause;
 mod pending;
 mod route;
 mod store;
@@ -34,7 +47,13 @@ use afd_fleet_runtime::config::{Behavior, Condition, GatePolicy, GateRule};
 use serde_json::Value;
 
 pub use self::anomaly::Anomaly;
+pub use self::claim::{Claim, MAX_EVIDENCE_BYTES, MAX_PROPOSED_ACTION_BYTES, NO_EVIDENCE};
 pub use self::decision::{Answer, DECISION_APPROVE, DECISION_DENY, Status};
+pub use self::detail::{
+    KIND_REPOSITORY_WRITE, RADIUS_REPOSITORY_WRITE, REPOSITORY_WRITE_SPEND_CEILING, Stated,
+};
+pub use self::park::{Park, Parked};
+pub use self::pause::Trigger;
 pub use self::pending::{Evaluation, GateRef, evaluate};
 pub use self::route::{RefState, Route, route};
 pub use self::store::{Gates, key};

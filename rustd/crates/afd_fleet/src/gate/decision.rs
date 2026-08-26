@@ -90,6 +90,25 @@ pub enum Status {
 }
 
 impl Status {
+    /// The spelling the `status` column stores.
+    ///
+    /// Hand-written, and unlike [`Answer::as_str`] this daemon DOES write it:
+    /// the park opens every gate row at [`Status::Pending`]. That is why the
+    /// round-trip test below matters more here than there — a drift between
+    /// this and the `#[serde(rename_all)]` above would write rows the very
+    /// next poll's [`Status::parse`] could not read, and the gate would sit
+    /// pending forever with a human's answer landing nowhere.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Approved => "approved",
+            Self::Denied => "denied",
+            Self::TimedOut => "timed_out",
+            Self::AutoKilled => "auto_killed",
+        }
+    }
+
     /// Recover a status from its stored spelling.
     #[must_use]
     pub fn parse(stored: &str) -> Option<Self> {
@@ -140,6 +159,22 @@ mod tests {
         // And pending is the only status with no answer, which is what lets the
         // durable read hand back an `Option` instead of a terminality check.
         assert_eq!(Status::Pending.answer(), None);
+    }
+
+    #[test]
+    fn every_status_round_trips_through_the_column_spelling() {
+        // The park WRITES `pending` through `as_str` and the next poll reads it
+        // back through `parse`, so these two must agree on every arm — not only
+        // on the one the write path happens to use today.
+        for status in [
+            Status::Pending,
+            Status::Approved,
+            Status::Denied,
+            Status::TimedOut,
+            Status::AutoKilled,
+        ] {
+            assert_eq!(Status::parse(status.as_str()), Some(status), "{status:?}");
+        }
     }
 
     #[test]

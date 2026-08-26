@@ -88,3 +88,13 @@ pub const DETAIL_VAULT_DATA_INVALID: &str = "Secret data must be a non-empty JSO
 /// would leave a parked event unable to find its own gate. Never rendered: the
 /// lease path answers no-work rather than surfacing this.
 pub const DETAIL_GATE_REFERENCE_UNWRITABLE: &str = "approval gate reference unwritable";
+
+/// An approved reach that could not be recorded.
+///
+/// The sibling of [`DETAIL_GATE_REFERENCE_UNWRITABLE`], and unreachable for the
+/// same kind of reason: the recorded binding is a list of strings, an enum and
+/// an optional string, none of which has a serializer failure to reach. Present
+/// because the alternative is a gate row whose `stated_binding` is `NULL` — and
+/// the write mint refuses those, so swallowing it would turn an impossible
+/// failure into an approval nobody can spend. Never rendered.
+pub const DETAIL_GATE_BINDING_UNWRITABLE: &str = "approval gate binding unwritable";
