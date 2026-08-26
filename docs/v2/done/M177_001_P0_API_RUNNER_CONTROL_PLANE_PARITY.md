@@ -67,7 +67,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `make/test-integration-rustd.mk` | EDIT | end-to-end lane driving a stock Zig runner against `agentsfleetd-rs` (§7.1); no daemon-under-test selector — only one daemon remains |
 | `src/build/**` | EDIT | test-build wiring so the stock Zig runner binary is available to the §7.1 lane |
 | `tests/**` | EDIT | seeded deterministic scenario set backing `test_seeded_row_shapes` |
-| `PROMPT_M182_SUBSTRATE_SPEC.md` | CREATE | paste-ready authoring prompt for the substrate-abstraction spec (M182); carried in this PR so the spec-authoring agent reads it from the branch rather than a sibling worktree |
+| `PROMPT_M182_SUBSTRATE_SPEC.md` | CREATE, then DELETE at CHORE(close) | paste-ready authoring prompt for the substrate-abstraction spec; carried on the branch so the spec-authoring agent read it here rather than from a sibling worktree. It did its job — the spec it produced is `docs/v2/pending/M182_001_P1_API_DOCS_UI_EXECUTION_SUBSTRATE_ABSTRACTION.md` — so the prompt is removed rather than left behind as a second, staler account of the same milestone (Indy, this stream) |
 | `docs/v2/pending/M181_001_P0_API_DOCS_INFRA_RUST_CUTOVER_SOAK.md` | EDIT | §5 added: the Rust daemon exports no telemetry — M176 §6 shipped the machinery and deferred the transport to boot, where it never landed. Found here, owned there, because it blocks M181's own Dimension 4.3 rather than anything this milestone ships (Indy, this stream) |
 
 ## Applicable Rules
