@@ -258,6 +258,42 @@ pub const AUTH_CLI_CREDENTIAL_REVOKED: ErrorCode = ErrorCode::declare("UZ-AUTH-0
 /// the two are revoked through different surfaces.
 pub const APIKEY_REVOKED: ErrorCode = ErrorCode::declare("UZ-APIKEY-004");
 
+/// No api-key with that id belongs to this tenant.
+///
+/// `ERR_APIKEY_NOT_FOUND`. The load is tenant-scoped, so a caller asking about
+/// another tenant's key gets the same 404 a missing row gets — the scope IS the
+/// ownership check, and distinguishing the two would make the endpoint an
+/// oracle for which key identifiers exist.
+pub const APIKEY_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-APIKEY-003");
+
+/// A tenant already holds a key under that name.
+///
+/// `ERR_APIKEY_NAME_TAKEN`. Answered by the unique index rather than by a
+/// pre-flight read: checking first would leave a window in which two concurrent
+/// mints both pass and one loses at the insert anyway.
+pub const APIKEY_NAME_TAKEN: ErrorCode = ErrorCode::declare("UZ-APIKEY-005");
+
+/// The key was already revoked, so this call changed nothing.
+///
+/// `ERR_APIKEY_ALREADY_REVOKED`. Its own code rather than a silent success:
+/// revocation is idempotent at the ROW level, and a caller still needs to know
+/// whether their call was the one that did it.
+pub const APIKEY_ALREADY_REVOKED: ErrorCode = ErrorCode::declare("UZ-APIKEY-006");
+
+/// A revoked key cannot be brought back.
+///
+/// `ERR_APIKEY_READONLY_FIELD`. The only field this surface patches is
+/// `active`, and only downward: a key whose digest may already be in somebody's
+/// shell history must not become live again on one request.
+pub const APIKEY_READONLY_FIELD: ErrorCode = ErrorCode::declare("UZ-APIKEY-007");
+
+/// An active key must be revoked before it can be deleted.
+///
+/// `ERR_APIKEY_MUST_REVOKE_FIRST`. Two steps on purpose: revocation is the
+/// reversible half — the row survives to explain itself — and a live credential
+/// disappearing in one call leaves nothing to audit.
+pub const APIKEY_MUST_REVOKE_FIRST: ErrorCode = ErrorCode::declare("UZ-APIKEY-008");
+
 /// No `fleet.runners` row matches the presented runner token.
 ///
 /// `ERR_RUN_INVALID_RUNNER_TOKEN`. The runner plane's [`AUTH_UNAUTHORIZED`]:
@@ -493,6 +529,11 @@ pub const REGISTRY: &[ErrorCode] = &[
     AUTH_UNAVAILABLE,
     AUTH_CLI_CREDENTIAL_REVOKED,
     APIKEY_REVOKED,
+    APIKEY_NOT_FOUND,
+    APIKEY_NAME_TAKEN,
+    APIKEY_ALREADY_REVOKED,
+    APIKEY_READONLY_FIELD,
+    APIKEY_MUST_REVOKE_FIRST,
     RUN_INVALID_RUNNER_TOKEN,
     RUN_STALE_FENCING_TOKEN,
     RUN_LEASE_NOT_FOUND,

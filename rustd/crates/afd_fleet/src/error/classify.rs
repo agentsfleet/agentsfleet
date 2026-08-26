@@ -15,6 +15,11 @@
 use afd_core::error_code::{self, ErrorCode};
 
 use super::{
+    ApiKeyField, DETAIL_APIKEY_ALREADY_REVOKED, DETAIL_APIKEY_DESCRIPTION,
+    DETAIL_APIKEY_MUST_REVOKE_FIRST, DETAIL_APIKEY_NAME, DETAIL_APIKEY_NAME_TAKEN,
+    DETAIL_APIKEY_NOT_FOUND, DETAIL_APIKEY_READONLY_FIELD,
+};
+use super::{
     DETAIL_BINDING_DRIFT, DETAIL_BUDGET_EXHAUSTED, DETAIL_BUNDLE_FETCH_FAILED,
     DETAIL_BUNDLE_NOT_FOUND, DETAIL_BUNDLE_STORAGE_UNAVAILABLE, DETAIL_CONFIG_UNREADABLE,
     DETAIL_CONNECTOR_MINT_FAILED, DETAIL_CONNECTOR_RECONNECT, DETAIL_CREDENTIAL_MISSING,
@@ -79,7 +84,13 @@ impl Error {
                 error_code::INTERNAL_DB_QUERY
             }
             ErrorKind::RunnerVanished => error_code::RUN_INVALID_RUNNER_TOKEN,
-            ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
+            // The api-key field refusals join the generic rejection: both are
+            // "the caller sent something this plane will not take", and the
+            // `UZ-APIKEY-*` family is about a key that EXISTS rather than about
+            // a body that will not parse. That is the Zig handler's own pairing.
+            ErrorKind::Rejected { .. } | ErrorKind::ApiKeyFieldInvalid { .. } => {
+                error_code::INVALID_REQUEST
+            }
             // A daemon whose clock cannot name an instant, and a host that
             // cannot draw random bytes, are both THIS process failing — not the
             // caller's request being wrong. An earlier draft answered `Mint`
@@ -204,6 +215,11 @@ impl Error {
             ErrorKind::SessionAlreadyApproved => error_code::SESSION_ALREADY_APPROVED,
             ErrorKind::SessionCodeRejected => error_code::VERIFICATION_FAILED,
             ErrorKind::SessionNotOwner => error_code::AUTH_FORBIDDEN,
+            ErrorKind::ApiKeyNotFound => error_code::APIKEY_NOT_FOUND,
+            ErrorKind::ApiKeyNameTaken => error_code::APIKEY_NAME_TAKEN,
+            ErrorKind::ApiKeyAlreadyRevoked => error_code::APIKEY_ALREADY_REVOKED,
+            ErrorKind::ApiKeyReadonlyField => error_code::APIKEY_READONLY_FIELD,
+            ErrorKind::ApiKeyMustRevokeFirst => error_code::APIKEY_MUST_REVOKE_FIRST,
         }
     }
 
@@ -285,6 +301,15 @@ impl Error {
             ErrorKind::SessionAlreadyApproved => DETAIL_SESSION_ALREADY_APPROVED,
             ErrorKind::SessionCodeRejected => DETAIL_SESSION_CODE_REJECTED,
             ErrorKind::SessionNotOwner => DETAIL_SESSION_NOT_OWNER,
+            ErrorKind::ApiKeyFieldInvalid { field } => match field {
+                ApiKeyField::Name => DETAIL_APIKEY_NAME,
+                ApiKeyField::Description => DETAIL_APIKEY_DESCRIPTION,
+            },
+            ErrorKind::ApiKeyNotFound => DETAIL_APIKEY_NOT_FOUND,
+            ErrorKind::ApiKeyNameTaken => DETAIL_APIKEY_NAME_TAKEN,
+            ErrorKind::ApiKeyAlreadyRevoked => DETAIL_APIKEY_ALREADY_REVOKED,
+            ErrorKind::ApiKeyReadonlyField => DETAIL_APIKEY_READONLY_FIELD,
+            ErrorKind::ApiKeyMustRevokeFirst => DETAIL_APIKEY_MUST_REVOKE_FIRST,
         }
     }
 
@@ -419,6 +444,14 @@ impl Error {
             | ErrorKind::SessionAlreadyApproved
             | ErrorKind::SessionCodeRejected
             | ErrorKind::SessionNotOwner
+            // The api-key lifecycle family joins the login one: it is raised on
+            // the tenant plane, which no event is ever leased through.
+            | ErrorKind::ApiKeyFieldInvalid { .. }
+            | ErrorKind::ApiKeyNotFound
+            | ErrorKind::ApiKeyNameTaken
+            | ErrorKind::ApiKeyAlreadyRevoked
+            | ErrorKind::ApiKeyReadonlyField
+            | ErrorKind::ApiKeyMustRevokeFirst
             | ErrorKind::Entropy { .. } => false,
         }
     }

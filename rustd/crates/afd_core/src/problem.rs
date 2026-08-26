@@ -322,6 +322,47 @@ const ENTRIES: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::APIKEY_NOT_FOUND,
+        status: 404,
+        title: "API key not found",
+        hint: "No API key matches the supplied id for this tenant. Verify the id with: GET /v1/api-keys",
+        user_message: Some(
+            "We couldn't find that API key. It may have already been deleted — refresh the list.",
+        ),
+    },
+    Problem {
+        code: error_code::APIKEY_NAME_TAKEN,
+        status: 409,
+        title: "Key name already exists in this tenant",
+        hint: "key_name must be unique per tenant. Pick a different name or revoke the existing key first.",
+        user_message: Some(
+            "An API key with that name already exists. Pick a different name for this tenant.",
+        ),
+    },
+    Problem {
+        code: error_code::APIKEY_ALREADY_REVOKED,
+        status: 409,
+        title: "API key is already revoked",
+        hint: "This key is already revoked. No further action is required.",
+        user_message: Some(
+            "That API key is already revoked. Refresh the list to see its current state.",
+        ),
+    },
+    Problem {
+        code: error_code::APIKEY_READONLY_FIELD,
+        status: 409,
+        title: "active cannot be set to true; mint a new key instead",
+        hint: "Re-activation is not supported. Create a new key via POST /v1/api-keys and revoke the old one.",
+        user_message: Some("A revoked key can't be reactivated. Mint a new key instead."),
+    },
+    Problem {
+        code: error_code::APIKEY_MUST_REVOKE_FIRST,
+        status: 409,
+        title: "Active API key must be revoked before deletion",
+        hint: "Revoke the key first with `PATCH /v1/api-keys/{id}` body `{\"active\": false}`, then retry DELETE.",
+        user_message: Some("This key is still active. Revoke it first, then delete it."),
+    },
+    Problem {
         code: error_code::RUN_INVALID_RUNNER_TOKEN,
         status: 401,
         title: "Invalid runner token",

@@ -269,6 +269,19 @@ pub(crate) fn unreachable_datastore(role: &'static str, waited_ms: u128) -> Erro
     Error::new(ErrorKind::DatastoreUnreachable { role, waited_ms })
 }
 
+/// The refusal a caller reads when this pool has nothing to give.
+///
+/// Behind `test-util` for the reason [`one_of_each_kind`] is: a suite that
+/// stubs a service holding a pool has to answer SOMETHING, and the honest
+/// answer is the one the real service gives with no Postgres behind it. Every
+/// other constructor stays crate-private — this is a seam for a stub, not a way
+/// for another crate to invent this one's failures.
+#[cfg(feature = "test-util")]
+#[must_use]
+pub fn unavailable_for_test() -> Error {
+    classify_acquire("default", 2_000, sqlx::Error::PoolClosed)
+}
+
 /// One error of every kind, for tests that walk the whole surface.
 ///
 /// The M-TEST-UTIL seam, and the same argument as the mocked entropy in

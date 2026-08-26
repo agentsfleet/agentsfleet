@@ -33,7 +33,6 @@ pub mod auth;
 pub mod client;
 pub mod envelope;
 pub mod handler;
-pub mod paging;
 pub mod request_id;
 pub mod route;
 pub mod router;

@@ -41,6 +41,8 @@ use afd_wire::report::{RenewRequest, ReportRequest};
 use afd_fleet::session::{Cancelled, Fingerprint, Opened, Redeemed, Waiting, input};
 
 use afd_auth::principal::Principal;
+use afd_core::paging::Page;
+use afd_fleet::apikey::{ApiKeySort, Deactivation, Listing, MintRequest, Revealed, Revoked};
 
 use crate::auth::Authenticator;
 
@@ -114,6 +116,17 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// The workspace-ownership resolver the shared layer asks.
     fn workspaces(&self) -> &Self::Workspaces;
+
+    /// The tenant's own api-keys.
+    ///
+    /// A concrete type for the reason [`Services::Workspaces`] is one: it holds
+    /// a Postgres pool and an entropy source, and both can be built without a
+    /// server — `afd_db::Db::unreachable` and `Entropy::new_mocked` are the
+    /// seams a suite drives it through.
+    type ApiKeys: TenantKeys;
+
+    /// The tenant api-key store.
+    fn api_keys(&self) -> &Self::ApiKeys;
 
     /// The instant this request's writes are stamped with.
     ///
@@ -503,5 +516,93 @@ impl WorkspaceOwnership for afd_fleet::workspace::Workspaces {
         principal: &Principal,
     ) -> impl Future<Output = afd_fleet::Result<Option<Uuid7>>> + Send {
         Self::tenant_of(self, principal)
+    }
+}
+
+/// Minting, listing, revoking and deleting a tenant's own credentials.
+///
+/// Every method takes ALREADY-PARSED values — a [`KeyName`] cannot hold a
+/// space, a [`Deactivation`] cannot mean "make it live again" — so there is no
+/// validation arm in any implementation, and none a stub could get differently
+/// right from the real one.
+pub trait TenantKeys: Send + Sync + std::fmt::Debug + 'static {
+    /// Mints one key, answering the only view of its plaintext that exists.
+    ///
+    /// # Errors
+    /// Refuses a name this tenant already uses; reports a host that cannot draw
+    /// entropy and a datastore that would not answer.
+    fn mint(
+        &self,
+        request: &MintRequest<'_>,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<Revealed>> + Send;
+
+    /// One page of this tenant's keys, and its whole key count.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer.
+    fn list(
+        &self,
+        tenant: &Uuid7,
+        page: &Page<ApiKeySort>,
+    ) -> impl Future<Output = afd_fleet::Result<Listing>> + Send;
+
+    /// Revokes one key, reporting only when this call did it.
+    ///
+    /// # Errors
+    /// Refuses an id naming no key this tenant holds, and one already revoked.
+    fn revoke(
+        &self,
+        tenant: &Uuid7,
+        key: &Uuid7,
+        intent: Deactivation,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<Revoked>> + Send;
+
+    /// Deletes one already-revoked key.
+    ///
+    /// # Errors
+    /// Refuses an id naming no key this tenant holds, and one still active.
+    fn delete(
+        &self,
+        tenant: &Uuid7,
+        key: &Uuid7,
+    ) -> impl Future<Output = afd_fleet::Result<()>> + Send;
+}
+
+/// The production store answers it directly.
+impl TenantKeys for afd_fleet::apikey::ApiKeys {
+    fn mint(
+        &self,
+        request: &MintRequest<'_>,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<Revealed>> + Send {
+        Self::mint(self, request, now)
+    }
+
+    fn list(
+        &self,
+        tenant: &Uuid7,
+        page: &Page<ApiKeySort>,
+    ) -> impl Future<Output = afd_fleet::Result<Listing>> + Send {
+        Self::list(self, tenant, page)
+    }
+
+    fn revoke(
+        &self,
+        tenant: &Uuid7,
+        key: &Uuid7,
+        intent: Deactivation,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<Revoked>> + Send {
+        Self::revoke(self, tenant, key, intent, now)
+    }
+
+    fn delete(
+        &self,
+        tenant: &Uuid7,
+        key: &Uuid7,
+    ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
+        Self::delete(self, tenant, key)
     }
 }

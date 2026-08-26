@@ -58,3 +58,4 @@ pub mod policy;
 mod redact;
 pub mod report;
 pub mod runner;
+pub mod tenant;
