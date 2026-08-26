@@ -274,6 +274,12 @@ pub const RUN_BUDGET_EXCEEDED: ErrorCode = ErrorCode::declare("UZ-RUN-015");
 /// blocked event with.
 pub const AGENTSFLEET_CREDENTIAL_MISSING: ErrorCode = ErrorCode::declare("UZ-AGT-003");
 
+/// Untrusted Fleet Bundle bytes failed validation.
+///
+/// `ERR_FLEET_BUNDLE_INVALID` in the Zig registry. The detail kept by the
+/// importing service identifies the violated bound without exposing content.
+pub const FLEET_BUNDLE_INVALID: ErrorCode = ErrorCode::declare("UZ-BUNDLE-001");
+
 /// No Fleet Bundle snapshot is stored under the requested content hash.
 ///
 /// `ERR_FLEET_BUNDLE_NOT_FOUND`. Referenced from the Zig registry, never
@@ -411,6 +417,7 @@ pub const REGISTRY: &[ErrorCode] = &[
     RUNNER_NOT_FOUND,
     RUN_BUDGET_EXCEEDED,
     AGENTSFLEET_CREDENTIAL_MISSING,
+    FLEET_BUNDLE_INVALID,
     FLEET_BUNDLE_NOT_FOUND,
     FLEET_BUNDLE_STORAGE_UNAVAILABLE,
     API_BACKPRESSURE,
