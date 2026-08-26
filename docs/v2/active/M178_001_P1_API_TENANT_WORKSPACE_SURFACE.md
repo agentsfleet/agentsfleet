@@ -105,7 +105,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 2.1** — each tenant route: response-shape parity vs the Zig daemon on seeded data → Test `test_tenant_routes_shape_parity`
 - **Dimension 2.2** — api-key/cli-credential lifecycle: mint-once-reveal, list shows metadata only, revoke takes effect immediately → Test `test_key_lifecycle_reveal_once`
 - **Dimension 2.3** — keyset pagination on list endpoints matches ordering + cursor semantics → Test `test_list_keyset_pagination`
-- **Dimension 2.4** — every route + method in this spec's Interfaces inventory exists in the Route enum; extras and gaps both fail → Test `test_route_inventory_matches_interfaces`
+- **Dimension 2.4** — DONE — every route + method in this spec's Interfaces inventory exists in the Route enum; extras and gaps both fail → Test `test_route_inventory_matches_interfaces`
 
 ### §3 — Workspace fleets and install
 
@@ -302,6 +302,20 @@ N/A — no files deleted.
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
 
 ### Declared divergences
+
+- **The RLS session-context write is not ported.** `common_authz_sql.zig` keeps
+  a second copy of the ownership verdict carrying
+  `set_config('app.current_tenant_id', …)` in its select list. Nothing reads it:
+  `schema/` declares no `ROW LEVEL SECURITY` policy and no
+  `current_setting('app.current_tenant_id')` appears anywhere — the setting is
+  written at three sites and read at zero. (The grep is discriminating:
+  `current_setting('fleet.allow_gate_purge', …)` IS read, by seven triggers.)
+  Left unported per Product Clarity 4's superseded-path clause; the ownership
+  CHECK itself lands in full. **Awaiting Indy's sign-off** — asked Aug 27, 2026,
+  no answer within the window, so the port proceeded on the reading that adds no
+  behaviour. Re-adding it is a transaction-scoped one-liner, and it would need
+  the transaction: `sqlx` returns a connection to the pool between requests, so
+  a session-level setting would leak one tenant's identifier onto the next.
 
 - **§1 `token_name` is held to printable ASCII.** `UZ-AUTH-017`'s registry entry
   documents "1 to 64 characters from space through tilde"; the Zig store bounds

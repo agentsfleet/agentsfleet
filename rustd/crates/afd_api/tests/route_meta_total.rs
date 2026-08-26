@@ -269,3 +269,51 @@ fn test_each_method_resolves_to_its_own_rung() {
         assert_eq!(events.required(&method), &[Scope::FleetRead]);
     }
 }
+
+/// Every workspace-addressed route carries the ownership check, and no other does.
+///
+/// The one property that, if it broke, would break silently and in exactly the
+/// wrong direction: a route deriving `Ownership::None` by accident serves one
+/// tenant's rows to another with nothing failing. That is the failure
+/// `cross_workspace_idor_test.zig` exists because of, and it is why the derived
+/// answer is checked against the template here rather than trusted.
+///
+/// The check is deliberately written the OTHER way round from the derivation:
+/// this asks `str::contains` at runtime, where `Ownership::of` walks bytes in a
+/// `const fn`. Two implementations of one predicate that must agree is the
+/// point — a bug in the `const` scanner shows up here rather than in production.
+#[test]
+fn test_ownership_is_checked_exactly_where_the_path_names_a_workspace() {
+    for route in Route::all() {
+        let meta = route.meta();
+        let addressed = meta.template.contains(afd_api::route::WORKSPACE_PARAMETER);
+        assert_eq!(
+            meta.ownership.is_checked(),
+            addressed,
+            "{}: template names a workspace = {addressed}, ownership checked = {}",
+            meta.template,
+            meta.ownership.is_checked()
+        );
+    }
+}
+
+/// A route that checks ownership is a route that proved a credential first.
+///
+/// Ownership asks whose an object is, which is a question about an identity —
+/// so a route asking it with no bearer to identify would be asking about
+/// nobody. The layer would then refuse every request, which is safe and useless;
+/// this fails the build instead, at the table, where the mistake is.
+#[test]
+fn test_every_owned_route_is_also_guarded() {
+    for route in Route::all() {
+        let meta = route.meta();
+        if meta.ownership.is_checked() {
+            assert_eq!(
+                meta.guard,
+                Guard::Bearer,
+                "{} checks ownership, so it must prove a tenant credential",
+                meta.template
+            );
+        }
+    }
+}

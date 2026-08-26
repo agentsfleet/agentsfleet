@@ -40,6 +40,8 @@ use afd_wire::report::{RenewRequest, ReportRequest};
 
 use afd_fleet::session::{Cancelled, Fingerprint, Opened, Redeemed, Waiting, input};
 
+use afd_auth::principal::Principal;
+
 use crate::auth::Authenticator;
 
 /// The services one request is served through.
@@ -99,6 +101,19 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// The device-flow login surface.
     fn sessions(&self) -> &Self::Sessions;
+
+    /// What decides whose workspace a request is acting in.
+    ///
+    /// A concrete type where [`Services::Leases`] is an associated one, and the
+    /// difference is what each is over: a lease plane holds a Redis connection
+    /// opened by CONNECTING, while this holds a Postgres pool, which
+    /// `afd_db::Db::unreachable` already lets a suite build without a server.
+    /// The seam is inside the type, so it does not also need to be a parameter
+    /// on this trait.
+    type Workspaces: WorkspaceOwnership;
+
+    /// The workspace-ownership resolver the shared layer asks.
+    fn workspaces(&self) -> &Self::Workspaces;
 
     /// The instant this request's writes are stamped with.
     ///
@@ -435,5 +450,58 @@ impl DeviceFlow for afd_fleet::session::Sessions {
         owner: &str,
     ) -> impl Future<Output = afd_fleet::Result<Vec<String>>> + Send {
         Self::cancel_all(self, owner)
+    }
+}
+
+/// Deciding whose workspace a request is acting in.
+///
+/// One method, because ownership is one question. It is a TRAIT rather than a
+/// concrete call for the reason every other seam here is: the router suites
+/// prove the refusal matrix in front of the handlers, and a matrix that needed
+/// a live Postgres to prove would not be proven.
+pub trait WorkspaceOwnership: Send + Sync + std::fmt::Debug + 'static {
+    /// The tenant owning `workspace`, when this principal's tenant does.
+    ///
+    /// `Ok(None)` is a DENIAL and `Err` is an outage, and the two must never
+    /// collapse: answering "not yours" for a pool timeout would tell a tenant
+    /// their own workspace had vanished (RULE ECL).
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer.
+    fn authorize(
+        &self,
+        principal: &Principal,
+        workspace: &Uuid7,
+    ) -> impl Future<Output = afd_fleet::Result<Option<Uuid7>>> + Send;
+
+    /// The tenant a principal resolves to with no workspace to check against.
+    ///
+    /// The cold path the tenant plane's own routes take: `/v1/api-keys` acts on
+    /// whatever the credential resolved to, so there is no identifier to
+    /// authorize and this is what says which rows are in scope.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer.
+    fn tenant_of(
+        &self,
+        principal: &Principal,
+    ) -> impl Future<Output = afd_fleet::Result<Option<Uuid7>>> + Send;
+}
+
+/// The production resolver answers it directly.
+impl WorkspaceOwnership for afd_fleet::workspace::Workspaces {
+    fn authorize(
+        &self,
+        principal: &Principal,
+        workspace: &Uuid7,
+    ) -> impl Future<Output = afd_fleet::Result<Option<Uuid7>>> + Send {
+        Self::authorize(self, principal, workspace)
+    }
+
+    fn tenant_of(
+        &self,
+        principal: &Principal,
+    ) -> impl Future<Output = afd_fleet::Result<Option<Uuid7>>> + Send {
+        Self::tenant_of(self, principal)
     }
 }

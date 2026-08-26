@@ -36,6 +36,7 @@ use afd_fleet::secrets::Registry;
 // reader ends up believing the login surface verifies bearer tokens.
 use afd_fleet::session::Sessions as Logins;
 use afd_fleet::vault::Vault;
+use afd_fleet::workspace::Workspaces;
 use afd_redis::Redis;
 use afd_state::Credentials;
 
@@ -58,6 +59,7 @@ pub struct ServingPlane {
     leases: Plane,
     bundles: Bundles,
     logins: Logins,
+    workspaces: Workspaces,
 }
 
 impl ServingPlane {
@@ -100,6 +102,7 @@ impl ServingPlane {
         } = parts;
         Self {
             bundles,
+            workspaces: Workspaces::new(database.clone()),
             logins: Logins::new(
                 afd_redis::SessionStore::new(queue.clone()),
                 login.code_pepper,
@@ -172,6 +175,7 @@ impl Services for ServingPlane {
     type Auth = Authenticator;
     type Leases = Plane;
     type Sessions = Logins;
+    type Workspaces = Workspaces;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
@@ -191,6 +195,10 @@ impl Services for ServingPlane {
 
     fn sessions(&self) -> &Logins {
         &self.logins
+    }
+
+    fn workspaces(&self) -> &Workspaces {
+        &self.workspaces
     }
 
     /// The wall clock, read once per verb by whichever handler asked.

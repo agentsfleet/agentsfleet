@@ -30,7 +30,7 @@
 use std::sync::Arc;
 
 use afd_api::router::{Dependencies, ReadyInputs, build};
-use afd_api::services::{DeviceFlow, Leasing};
+use afd_api::services::{DeviceFlow, Leasing, WorkspaceOwnership};
 use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Planes, Services};
 use afd_auth::credential::{CredentialKind, Presented};
 use afd_auth::directory::{CredentialRecord, Liveness};
@@ -78,6 +78,7 @@ pub(crate) struct Fleet {
     runners: Runners,
     leases: NoWork,
     bundles: Bundles,
+    workspaces: OneWorkspace,
     now: UnixMillis,
 }
 
@@ -216,6 +217,7 @@ impl Fleet {
             // snapshots proves the refusal a deployment with no R2 knobs gives
             // — which is most of them.
             bundles: Bundles::unconfigured(),
+            workspaces: OneWorkspace,
             now: UnixMillis::from_millis(FROZEN),
         }
     }
@@ -297,6 +299,7 @@ impl Services for Fleet {
     type Auth = Planes<MockDirectory, MockCapabilities, NoVerifier>;
     type Leases = NoWork;
     type Sessions = NoLogins;
+    type Workspaces = OneWorkspace;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
@@ -316,6 +319,10 @@ impl Services for Fleet {
 
     fn sessions(&self) -> &NoLogins {
         &NoLogins
+    }
+
+    fn workspaces(&self) -> &OneWorkspace {
+        &self.workspaces
     }
 
     fn now(&self) -> UnixMillis {
@@ -457,5 +464,45 @@ impl DeviceFlow for NoLogins {
         _owner: &str,
     ) -> impl Future<Output = afd_fleet::Result<Vec<String>>> + Send {
         std::future::ready(Self::unavailable())
+    }
+}
+
+/// The identifier of the one workspace [`OneWorkspace`] answers for.
+///
+/// A constant rather than a fixture, so a suite asserting the DENIED half can
+/// name a workspace it knows is foreign without coordinating with the allow
+/// half. Any other well-formed identifier is somebody else's.
+pub(crate) const OWNED_WORKSPACE: &str = "01924f4e-0000-7000-8000-00000000beef";
+
+/// A workspace-ownership resolver that owns exactly one workspace.
+///
+/// Unlike [`NoWork`], this one answers HONESTLY rather than uniformly, and it
+/// has to: the layer it feeds is the thing under test in the router's refusal
+/// matrix, and a stub that allowed everything would make the deny path
+/// unreachable while a stub that denied everything would make every workspace
+/// handler unreachable. Owning one and refusing the rest gives the suite both
+/// halves with no Postgres in it.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct OneWorkspace;
+
+impl WorkspaceOwnership for OneWorkspace {
+    fn authorize(
+        &self,
+        principal: &afd_auth::principal::Principal,
+        workspace: &Uuid7,
+    ) -> impl Future<Output = afd_fleet::Result<Option<Uuid7>>> + Send {
+        // A runner has no tenant authority, exactly as in production: the
+        // statement binds nothing that could match, so the answer is a denial
+        // rather than an error.
+        let tenant = principal.tenant().cloned();
+        let owned = workspace.as_str() == OWNED_WORKSPACE;
+        std::future::ready(Ok(tenant.filter(|_| owned)))
+    }
+
+    fn tenant_of(
+        &self,
+        principal: &afd_auth::principal::Principal,
+    ) -> impl Future<Output = afd_fleet::Result<Option<Uuid7>>> + Send {
+        std::future::ready(Ok(principal.tenant().cloned()))
     }
 }
