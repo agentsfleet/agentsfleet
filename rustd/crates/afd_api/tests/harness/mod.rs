@@ -30,7 +30,7 @@
 use std::sync::Arc;
 
 use afd_api::router::{Dependencies, ReadyInputs, build};
-use afd_api::services::{DeviceFlow, Leasing, TenantKeys, WorkspaceOwnership};
+use afd_api::services::{DeviceFlow, Leasing, TenantKeys, TerminalCredentials, WorkspaceOwnership};
 use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Planes, Services};
 use afd_auth::credential::{CredentialKind, Presented};
 use afd_auth::directory::{CredentialRecord, Liveness};
@@ -252,6 +252,33 @@ impl Fleet {
         self
     }
 
+    /// Files a person row under the digest of an `afc_` command-line credential.
+    ///
+    /// Sibling of [`Self::with_person`], and the difference is the whole point:
+    /// the two resolve to the same person with the same capabilities and differ
+    /// only in credential CLASS, which is exactly the axis the command-line
+    /// credential routes refuse on. A suite cannot prove that rule with one of
+    /// them.
+    pub(crate) fn with_terminal(
+        mut self,
+        credential: &str,
+        subject: &str,
+        scopes: ScopeSet,
+    ) -> Self {
+        let who = Subject::new(subject).expect("the fixture subject is not blank");
+        self.directory = self.directory.with(
+            CredentialKind::CliCredential,
+            &presented(credential),
+            CredentialRecord::Person {
+                tenant: tenant(),
+                subject: who.clone(),
+                live: Liveness::Live,
+            },
+        );
+        self.capabilities = self.capabilities.with(&who, scopes);
+        self
+    }
+
     /// Backs this instance with an in-memory snapshot store holding `body`
     /// under `content_hash`.
     ///
@@ -303,6 +330,7 @@ impl Services for Fleet {
     type Sessions = NoLogins;
     type Workspaces = OneWorkspace;
     type ApiKeys = NoKeys;
+    type CliCredentials = NoTerminals;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
@@ -330,6 +358,19 @@ impl Services for Fleet {
 
     fn api_keys(&self) -> &NoKeys {
         &self.api_keys
+    }
+
+    fn cli_credentials(&self) -> &NoTerminals {
+        &NoTerminals
+    }
+
+    /// A fixed deployment, which is what a real one is too.
+    ///
+    /// Read from configuration in the binary rather than from the request, so a
+    /// constant here is the same KIND of value the daemon serves with — not a
+    /// simplification a suite would have to remember is one.
+    fn deployment(&self) -> &str {
+        DEPLOYMENT
     }
 
     fn now(&self) -> UnixMillis {
@@ -511,6 +552,48 @@ impl WorkspaceOwnership for OneWorkspace {
         principal: &afd_auth::principal::Principal,
     ) -> impl Future<Output = afd_fleet::Result<Option<Uuid7>>> + Send {
         std::future::ready(Ok(principal.tenant().cloned()))
+    }
+}
+
+/// The deployment every fixture credential records.
+pub(crate) const DEPLOYMENT: &str = "https://api.fixture.test";
+
+/// A command-line credential store with no Postgres behind it.
+///
+/// Every verb answers the refusal a datastore that would not answer produces,
+/// for [`NoKeys`]' reason: the mint's whole behaviour is a transaction a real
+/// Postgres evaluates — an advisory lock, a scoped revoke and an insert the
+/// partial unique index arbitrates — so there is no success this could invent
+/// without inventing that too. What a suite here proves is the principal-mode
+/// refusals in FRONT of the verb, which is exactly where this family's rules
+/// live.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct NoTerminals;
+
+impl TerminalCredentials for NoTerminals {
+    fn user_of(
+        &self,
+        _subject: &str,
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::cli_credential::UserIdentity>> + Send
+    {
+        std::future::ready(Err(afd_fleet::Error::datastore_unavailable()))
+    }
+
+    fn mint(
+        &self,
+        _request: &afd_fleet::cli_credential::MintRequest<'_>,
+        _now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::cli_credential::Revealed>> + Send {
+        std::future::ready(Err(afd_fleet::Error::datastore_unavailable()))
+    }
+
+    fn revoke(
+        &self,
+        _user: &Uuid7,
+        _credential: &Uuid7,
+        _now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::cli_credential::Revoked>> + Send {
+        std::future::ready(Err(afd_fleet::Error::datastore_unavailable()))
     }
 }
 

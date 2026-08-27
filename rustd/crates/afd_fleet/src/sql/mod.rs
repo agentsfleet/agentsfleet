@@ -33,6 +33,7 @@
 pub mod activity;
 pub mod apikey;
 pub mod billing;
+pub mod cli_credential;
 pub mod event;
 pub mod fleet;
 pub mod gate;

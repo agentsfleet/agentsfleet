@@ -122,6 +122,7 @@ pub async fn boot<E: EnvSource + ?Sized>(
         login: crate::plane::LoginConfig {
             code_pepper: config.session_code_pepper().clone(),
             app_url: config.app_url().to_owned(),
+            api_url: config.api_url().into(),
         },
     }));
     let router = afd_api::router::build(plane, &Admission::new(DEFAULT_MAX_IN_FLIGHT));

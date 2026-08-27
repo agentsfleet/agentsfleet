@@ -255,6 +255,8 @@ fn tenant_handler_for<D: Serving>(verb: TenantRoute) -> Option<MethodRouter<Arc<
         TenantRoute::ApiKey => {
             Some(patch(tenant_handler::revoke::<D>).delete(tenant_handler::delete::<D>))
         }
+        TenantRoute::CliCredentials => Some(post(tenant_handler::mint_cli::<D>)),
+        TenantRoute::CliCredential => Some(delete(tenant_handler::revoke_cli::<D>)),
         TenantRoute::ModelLibrary
         | TenantRoute::CreateWorkspace
         | TenantRoute::Billing
@@ -263,9 +265,7 @@ fn tenant_handler_for<D: Serving>(verb: TenantRoute) -> Option<MethodRouter<Arc<
         | TenantRoute::Provider
         | TenantRoute::ModelEntries
         | TenantRoute::ModelEntry
-        | TenantRoute::FleetBundles
-        | TenantRoute::CliCredentials
-        | TenantRoute::CliCredential => None,
+        | TenantRoute::FleetBundles => None,
     }
 }
 

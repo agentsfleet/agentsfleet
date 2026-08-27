@@ -29,6 +29,13 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet::Runners;
 use afd_fleet::bundle::Bundles;
+// Renamed at the import, not at the definition: `afd_fleet` already spells
+// `MintRequest`, `Revealed` and `Revoked` for the api-key family, and this
+// trait names both families in one file. The `Cli` prefix belongs to the
+// collision, so it lives here rather than in the crate that has no collision.
+use afd_fleet::cli_credential::{
+    MintRequest as CliMintRequest, Revealed as CliRevealed, Revoked as CliRevoked, UserIdentity,
+};
 use afd_fleet::credential::Minted;
 use afd_fleet::lease::Plane;
 use afd_fleet::memory::Captured;
@@ -127,6 +134,25 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// The tenant api-key store.
     fn api_keys(&self) -> &Self::ApiKeys;
+
+    /// A person's own command-line credentials.
+    ///
+    /// A concrete type for the reason [`Services::ApiKeys`] is one: it holds a
+    /// Postgres pool and an entropy source, and both can be built without a
+    /// server.
+    type CliCredentials: TerminalCredentials;
+
+    /// The command-line credential store.
+    fn cli_credentials(&self) -> &Self::CliCredentials;
+
+    /// This deployment's own base URL, as a minted credential records it.
+    ///
+    /// A method on the plane rather than a value a handler reads from the
+    /// request, and that is the whole point: a credential and the deployment
+    /// that minted it are ONE fact, so a client-asserted `Host` header would
+    /// let the two disagree. `serve_broker.zig` and `runtime_loader.zig` read
+    /// the same knob for the same reason.
+    fn deployment(&self) -> &str;
 
     /// The instant this request's writes are stamped with.
     ///
@@ -516,6 +542,74 @@ impl WorkspaceOwnership for afd_fleet::workspace::Workspaces {
         principal: &Principal,
     ) -> impl Future<Output = afd_fleet::Result<Option<Uuid7>>> + Send {
         Self::tenant_of(self, principal)
+    }
+}
+
+/// A person's command-line credentials — mint and revoke, and nothing else.
+///
+/// No list verb, deliberately: `cli_credentials.zig` serves `POST` and
+/// `DELETE` only. Its module comment describes a `GET` that would show which
+/// terminals hold a credential, and `route_table_invoke.zig` admits `POST`
+/// alone — so the list is documented and not served. It is not ported here
+/// because there is nothing to port; adding one would be a new endpoint in a
+/// milestone whose rule is parity.
+pub trait TerminalCredentials: Send + Sync + std::fmt::Debug + 'static {
+    /// Resolves a proven subject to the user row these verbs write against.
+    ///
+    /// # Errors
+    /// Refuses a subject with no user row. Reports a datastore that would not
+    /// answer.
+    fn user_of(
+        &self,
+        subject: &str,
+    ) -> impl Future<Output = afd_fleet::Result<UserIdentity>> + Send;
+
+    /// Mints this machine's credential, revoking whatever it left behind.
+    ///
+    /// # Errors
+    /// Reports a host that cannot draw entropy and a datastore that would not
+    /// answer.
+    fn mint(
+        &self,
+        request: &CliMintRequest<'_>,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<CliRevealed>> + Send;
+
+    /// Revokes one of this user's credentials.
+    ///
+    /// # Errors
+    /// Refuses an id naming no live credential this user holds.
+    fn revoke(
+        &self,
+        user: &Uuid7,
+        credential: &Uuid7,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<CliRevoked>> + Send;
+}
+
+impl TerminalCredentials for afd_fleet::cli_credential::CliCredentials {
+    fn user_of(
+        &self,
+        subject: &str,
+    ) -> impl Future<Output = afd_fleet::Result<UserIdentity>> + Send {
+        Self::user_of(self, subject)
+    }
+
+    fn mint(
+        &self,
+        request: &CliMintRequest<'_>,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<CliRevealed>> + Send {
+        Self::mint(self, request, now)
+    }
+
+    fn revoke(
+        &self,
+        user: &Uuid7,
+        credential: &Uuid7,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<CliRevoked>> + Send {
+        Self::revoke(self, user, credential, now)
     }
 }
 

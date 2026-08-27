@@ -17,7 +17,8 @@ use afd_core::error_code::{self, ErrorCode};
 use super::{
     ApiKeyField, DETAIL_APIKEY_ALREADY_REVOKED, DETAIL_APIKEY_DESCRIPTION,
     DETAIL_APIKEY_MUST_REVOKE_FIRST, DETAIL_APIKEY_NAME, DETAIL_APIKEY_NAME_TAKEN,
-    DETAIL_APIKEY_NOT_FOUND, DETAIL_APIKEY_READONLY_FIELD,
+    DETAIL_APIKEY_NOT_FOUND, DETAIL_APIKEY_READONLY_FIELD, DETAIL_CLI_CREDENTIAL_MACHINE_NAME,
+    DETAIL_CLI_CREDENTIAL_NOT_FOUND, DETAIL_CLI_CREDENTIAL_UNKNOWN_SUBJECT,
 };
 use super::{
     DETAIL_BINDING_DRIFT, DETAIL_BUDGET_EXHAUSTED, DETAIL_BUNDLE_FETCH_FAILED,
@@ -214,12 +215,20 @@ impl Error {
             ErrorKind::SessionNotApproved => error_code::SESSION_NOT_APPROVED,
             ErrorKind::SessionAlreadyApproved => error_code::SESSION_ALREADY_APPROVED,
             ErrorKind::SessionCodeRejected => error_code::VERIFICATION_FAILED,
-            ErrorKind::SessionNotOwner => error_code::AUTH_FORBIDDEN,
+            // One code for two refusals from different families, and the
+            // SENTENCES are what separate them: a caller who does not own a
+            // login session and a subject with no user row are both told they
+            // may not proceed, and neither can fix it by re-authenticating.
+            ErrorKind::SessionNotOwner | ErrorKind::CliCredentialUnknownSubject => {
+                error_code::AUTH_FORBIDDEN
+            }
             ErrorKind::ApiKeyNotFound => error_code::APIKEY_NOT_FOUND,
             ErrorKind::ApiKeyNameTaken => error_code::APIKEY_NAME_TAKEN,
             ErrorKind::ApiKeyAlreadyRevoked => error_code::APIKEY_ALREADY_REVOKED,
             ErrorKind::ApiKeyReadonlyField => error_code::APIKEY_READONLY_FIELD,
             ErrorKind::ApiKeyMustRevokeFirst => error_code::APIKEY_MUST_REVOKE_FIRST,
+            ErrorKind::CliCredentialMachineNameInvalid => error_code::INVALID_REQUEST,
+            ErrorKind::CliCredentialNotFound => error_code::AUTH_CLI_CREDENTIAL_NOT_FOUND,
         }
     }
 
@@ -310,6 +319,9 @@ impl Error {
             ErrorKind::ApiKeyAlreadyRevoked => DETAIL_APIKEY_ALREADY_REVOKED,
             ErrorKind::ApiKeyReadonlyField => DETAIL_APIKEY_READONLY_FIELD,
             ErrorKind::ApiKeyMustRevokeFirst => DETAIL_APIKEY_MUST_REVOKE_FIRST,
+            ErrorKind::CliCredentialMachineNameInvalid => DETAIL_CLI_CREDENTIAL_MACHINE_NAME,
+            ErrorKind::CliCredentialNotFound => DETAIL_CLI_CREDENTIAL_NOT_FOUND,
+            ErrorKind::CliCredentialUnknownSubject => DETAIL_CLI_CREDENTIAL_UNKNOWN_SUBJECT,
         }
     }
 
@@ -452,6 +464,12 @@ impl Error {
             | ErrorKind::ApiKeyAlreadyRevoked
             | ErrorKind::ApiKeyReadonlyField
             | ErrorKind::ApiKeyMustRevokeFirst
+            // The command-line credential family joins them, for the same
+            // reason: it is raised on the tenant plane, which no event is ever
+            // leased through.
+            | ErrorKind::CliCredentialMachineNameInvalid
+            | ErrorKind::CliCredentialNotFound
+            | ErrorKind::CliCredentialUnknownSubject
             | ErrorKind::Entropy { .. } => false,
         }
     }

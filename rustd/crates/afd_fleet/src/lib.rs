@@ -37,6 +37,7 @@
 
 pub mod apikey;
 pub mod bundle;
+pub mod cli_credential;
 pub mod credential;
 pub mod error;
 pub mod gate;

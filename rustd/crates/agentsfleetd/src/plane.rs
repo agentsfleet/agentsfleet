@@ -35,6 +35,7 @@ use afd_fleet::secrets::Registry;
 // device-flow login surface. Two things called `Sessions` in one file is how a
 // reader ends up believing the login surface verifies bearer tokens.
 use afd_fleet::apikey::ApiKeys;
+use afd_fleet::cli_credential::CliCredentials;
 use afd_fleet::session::Sessions as Logins;
 use afd_fleet::vault::Vault;
 use afd_fleet::workspace::Workspaces;
@@ -62,6 +63,8 @@ pub struct ServingPlane {
     logins: Logins,
     workspaces: Workspaces,
     api_keys: ApiKeys,
+    cli_credentials: CliCredentials,
+    api_url: Box<str>,
 }
 
 impl ServingPlane {
@@ -106,6 +109,8 @@ impl ServingPlane {
             bundles,
             workspaces: Workspaces::new(database.clone()),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
+            cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
+            api_url: login.api_url,
             logins: Logins::new(
                 afd_redis::SessionStore::new(queue.clone()),
                 login.code_pepper,
@@ -180,6 +185,7 @@ impl Services for ServingPlane {
     type Sessions = Logins;
     type Workspaces = Workspaces;
     type ApiKeys = ApiKeys;
+    type CliCredentials = CliCredentials;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
@@ -209,6 +215,14 @@ impl Services for ServingPlane {
         &self.api_keys
     }
 
+    fn cli_credentials(&self) -> &CliCredentials {
+        &self.cli_credentials
+    }
+
+    fn deployment(&self) -> &str {
+        &self.api_url
+    }
+
     /// The wall clock, read once per verb by whichever handler asked.
     ///
     /// Not a `Clock` behind an `Arc`: `afd_core::clock` reserves injection for
@@ -233,6 +247,14 @@ pub struct LoginConfig {
     pub code_pepper: SecretBytes,
     /// Where a person goes to approve a login.
     pub app_url: String,
+    /// This deployment's own base URL, as a minted credential records it.
+    ///
+    /// Beside `app_url` because the two are read from configuration together
+    /// and are the same kind of fact — where a person goes, and where this
+    /// daemon answers. Never a request's `Host`: a credential and the
+    /// deployment that minted it are one fact, and a client-asserted host
+    /// would let them disagree.
+    pub api_url: Box<str>,
 }
 
 /// The plane, ready to hand to the router.

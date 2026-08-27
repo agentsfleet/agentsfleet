@@ -40,7 +40,10 @@ use crate::route::Guard;
 pub use self::guard::{Gate, prove};
 pub use self::identity::RunnerIdentity;
 pub use self::ownership::{Owned, Owner, WorkspaceContext, own};
-pub use self::person::{DashboardIdentity, PersonIdentity};
+pub use self::person::{
+    DETAIL_PERSON_REQUIRED, DETAIL_SESSION_REQUIRED, DashboardIdentity, FreshSession,
+    HumanIdentity, PersonIdentity,
+};
 
 /// What proves a credential presented on a plane.
 ///
