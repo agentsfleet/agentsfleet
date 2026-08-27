@@ -45,7 +45,7 @@ dependencies = [
 
 [[package]]
 name = "afd_admin"
-version = "0.26.2"
+version = "0.27.0"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -57,7 +57,7 @@ dependencies = [
 
 [[package]]
 name = "afd_api"
-version = "0.26.2"
+version = "0.27.0"
 dependencies = [
  "afd_admin",
  "afd_auth",
@@ -86,7 +86,7 @@ dependencies = [
 
 [[package]]
 name = "afd_auth"
-version = "0.26.2"
+version = "0.27.0"
 dependencies = [
  "afd_core",
  "hex",
@@ -98,7 +98,7 @@ dependencies = [
 
 [[package]]
 name = "afd_core"
-version = "0.26.2"
+version = "0.27.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -108,7 +108,7 @@ dependencies = [
 
 [[package]]
 name = "afd_crypto"
-version = "0.26.2"
+version = "0.27.0"
 dependencies = [
  "aes-gcm",
  "afd_core",
@@ -124,7 +124,7 @@ dependencies = [
 
 [[package]]
 name = "afd_db"
-version = "0.26.2"
+version = "0.27.0"
 dependencies = [
  "afd_core",
  "sqlx",
@@ -136,7 +136,7 @@ dependencies = [
 
 [[package]]
 name = "afd_fleet"
-version = "0.26.2"
+version = "0.27.0"
 dependencies = [
  "afd_auth",
  "afd_core",
@@ -173,7 +173,7 @@ dependencies = [
 
 [[package]]
 name = "afd_fleet_ops"
-version = "0.26.2"
+version = "0.27.0"
 dependencies = [
  "afd_core",
  "afd_db",
@@ -185,7 +185,7 @@ dependencies = [
 
 [[package]]
 name = "afd_fleet_runtime"
-version = "0.26.2"
+version = "0.27.0"
 dependencies = [
  "garde",
  "serde",
@@ -195,7 +195,7 @@ dependencies = [
 
 [[package]]
 name = "afd_identity"
-version = "0.26.2"
+version = "0.27.0"
 dependencies = [
  "afd_auth",
  "afd_core",
@@ -214,7 +214,7 @@ dependencies = [
 
 [[package]]
 name = "afd_library"
-version = "0.26.2"
+version = "0.27.0"
 dependencies = [
  "afd_core",
  "afd_db",
@@ -243,7 +243,7 @@ dependencies = [
 
 [[package]]
 name = "afd_observability"
-version = "0.26.2"
+version = "0.27.0"
 dependencies = [
  "afd_wire",
  "opentelemetry",
@@ -254,7 +254,7 @@ dependencies = [
 
 [[package]]
 name = "afd_redis"
-version = "0.26.2"
+version = "0.27.0"
 dependencies = [
  "afd_core",
  "futures-util",
@@ -269,7 +269,7 @@ dependencies = [
 
 [[package]]
 name = "afd_state"
-version = "0.26.2"
+version = "0.27.0"
 dependencies = [
  "afd_auth",
  "afd_core",
@@ -283,7 +283,7 @@ dependencies = [
 
 [[package]]
 name = "afd_wire"
-version = "0.26.2"
+version = "0.27.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -291,7 +291,7 @@ dependencies = [
 
 [[package]]
 name = "agentsfleetd"
-version = "0.26.2"
+version = "0.27.0"
 dependencies = [
  "afd_admin",
  "afd_api",
