@@ -59,9 +59,29 @@ pub(crate) async fn send(
     credential: Option<&str>,
     body: &str,
 ) -> Response {
+    send_with_headers(router, method, path, credential, body, &[]).await
+}
+
+/// One request, carrying headers beyond the credential.
+///
+/// The conditional surfaces need this: an `If-Match` is the whole subject of
+/// several cases, and it cannot be spelled through [`send`]. Everything else
+/// goes through the shorter call, so there is one request builder rather than
+/// two that could drift.
+pub(crate) async fn send_with_headers(
+    router: &Router,
+    method: Method,
+    path: &str,
+    credential: Option<&str>,
+    body: &str,
+    headers: &[(http::HeaderName, &str)],
+) -> Response {
     let mut request = Request::builder().method(method).uri(path);
     if let Some(token) = credential {
         request = request.header(http::header::AUTHORIZATION, format!("Bearer {token}"));
+    }
+    for (name, value) in headers {
+        request = request.header(name, *value);
     }
     let request = request
         .body(Body::from(body.to_owned()))

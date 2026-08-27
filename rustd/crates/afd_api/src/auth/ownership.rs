@@ -31,7 +31,8 @@ use std::sync::Arc;
 use afd_auth::principal::Principal;
 use afd_core::error_code::{self, ErrorCode};
 use afd_core::id::Uuid7;
-use axum::extract::{Request, State};
+use axum::RequestExt as _;
+use axum::extract::{RawPathParams, Request, State};
 use axum::middleware::Next;
 use axum::response::{IntoResponse as _, Response};
 
@@ -102,7 +103,7 @@ pub async fn own<D: Services>(
     mut request: Request,
     next: Next,
 ) -> Response {
-    let Some(raw) = workspace_of(&request) else {
+    let Some(raw) = workspace_of(&mut request).await else {
         // The layer is mounted from a template that CONTAINS the parameter, so
         // a matched request always carries it. Reachable only through a router
         // assembled by hand — and the honest answer then is that this daemon
@@ -168,8 +169,16 @@ pub async fn own<D: Services>(
 /// router already matched the template and knows which segment is which, and a
 /// hand-rolled split is how a route with a differently-shaped prefix ends up
 /// authorizing the wrong segment.
-fn workspace_of(request: &Request) -> Option<String> {
-    let parameters = request.extensions().get::<axum::extract::RawPathParams>()?;
+///
+/// Through [`RequestExt::extract_parts`] and not `extensions().get()`. The
+/// difference is not stylistic: axum keeps matched segments in a PRIVATE
+/// extension and builds [`RawPathParams`] from it in `FromRequestParts`, so
+/// reaching into extensions for the public type finds nothing, every time. This
+/// layer answered a 500 on every request until the first route that uses it was
+/// mounted — nothing had exercised it before, because the whole workspace
+/// family was tabled and unserved.
+async fn workspace_of(request: &mut Request) -> Option<String> {
+    let parameters = request.extract_parts::<RawPathParams>().await.ok()?;
     let name = WORKSPACE_PARAMETER.trim_matches(['{', '}']);
     parameters
         .iter()

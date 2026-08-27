@@ -16,6 +16,7 @@
 //! because there is no pair to write.
 
 pub mod auth;
+pub mod fleet;
 pub mod runner;
 pub mod tenant;
 
@@ -52,6 +53,21 @@ pub(crate) fn malformed(detail: &'static str) -> Response {
     .into_response()
 }
 
+/// One query-string parameter, by name.
+///
+/// A hand-rolled scan rather than a query-string crate, because that is the
+/// whole of what these handlers need from a query string and a crate for it
+/// would be a dependency to justify. Percent-decoding is deliberately absent:
+/// every value these parameters take — a limit, a sort spelling, a cursor —
+/// is drawn from an alphabet that survives a URL unescaped, and a decoder here
+/// would be a second place for a `+` to become a space.
+pub(crate) fn parameter<'q>(query: &'q str, name: &str) -> Option<&'q str> {
+    query.split('&').find_map(|pair| {
+        let (key, value) = pair.split_once('=')?;
+        (key == name).then_some(value)
+    })
+}
+
 /// What a domain crate's error can tell the HTTP edge about itself.
 ///
 /// Three questions, and every plane answers all three: which registry code,
@@ -72,6 +88,21 @@ pub(crate) trait Refusable {
 }
 
 impl Refusable for afd_fleet::Error {
+    fn code(&self) -> ErrorCode {
+        Self::code(self)
+    }
+    fn detail(&self) -> &'static str {
+        Self::detail(self)
+    }
+    fn is_datastore_unavailable(&self) -> bool {
+        Self::is_datastore_unavailable(self)
+    }
+    fn reason(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl Refusable for afd_fleet_lifecycle::Error {
     fn code(&self) -> ErrorCode {
         Self::code(self)
     }
@@ -186,6 +217,23 @@ impl Refusal {
                 RequestId::mint(),
             )
             .into_response(),
+        ))
+    }
+
+    /// A 412 naming the version the resource holds NOW.
+    ///
+    /// The conditional-write sibling of [`Refusal::conflict_at`], and the
+    /// difference is what a client does with it: a 409's `current_state` says
+    /// stop retrying, where this hands back the tag an editor needs to
+    /// re-apply — so the remedy is one round trip instead of a re-read.
+    pub(crate) fn preconditioned(
+        code: afd_core::error_code::ErrorCode,
+        detail: &'static str,
+        etag: &str,
+    ) -> Self {
+        Self(Box::new(
+            ProblemResponse::precondition_failed(code, detail, RequestId::mint(), etag)
+                .into_response(),
         ))
     }
 

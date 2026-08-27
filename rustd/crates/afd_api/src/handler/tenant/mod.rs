@@ -44,7 +44,7 @@ use std::sync::Arc;
 
 use afd_core::id::Uuid7;
 
-use crate::handler::Refusal;
+use crate::handler::{Refusal, parameter};
 use crate::services::{Services, WorkspaceOwnership as _};
 
 /// Which tenant this principal acts for, or the refusal.
@@ -73,21 +73,6 @@ async fn tenant_of<D: Services>(
         Ok(None) => Err(Refusal::forbidden(detail)),
         Err(error) => Err(Refusal::at(event)(error)),
     }
-}
-
-/// One query-string parameter, by name.
-///
-/// A hand-rolled scan rather than a query-string crate, because that is the
-/// whole of what these handlers need from a query string and a crate for it
-/// would be a dependency to justify. Percent-decoding is deliberately absent:
-/// every value these parameters take — a limit, a sort spelling, a cursor —
-/// is drawn from an alphabet that survives a URL unescaped, and a decoder here
-/// would be a second place for a `+` to become a space.
-fn parameter<'q>(query: &'q str, name: &str) -> Option<&'q str> {
-    query.split('&').find_map(|pair| {
-        let (key, value) = pair.split_once('=')?;
-        (key == name).then_some(value)
-    })
 }
 
 /// A broken percent-escape, or bytes that decode to no UTF-8 — the caller
