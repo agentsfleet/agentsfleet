@@ -66,6 +66,21 @@
 //!    [`InvalidThreshold`](Error::InvalidThreshold), not `InvalidBudget`. The
 //!    Zig bounds a COUNT OF ACTIONS by `MAX_BUDGET_UNITS` — a constant named
 //!    for dollars — and reports it with the budget's error (RULE UFS).
+//!
+//! # The frontmatter half, and why it adds four variants
+//!
+//! `config_markdown.zig` funnels every way a `TRIGGER.md` can fail to open
+//! onto `MissingRequiredField` — no fence, an unclosed fence, a YAML syntax
+//! error and a duplicated key all answer "a required key is absent". Three of
+//! those four are not about a key at all, and the sentence sends an author
+//! hunting for something to add when the document is already too long or
+//! malformed somewhere with a line number.
+//!
+//! The wire answer is unchanged: every variant here still reaches a caller as
+//! `UZ-AGT-008`, because the mapping happens at the HTTP boundary and this
+//! crate declares no code. What changes is what the daemon can say in its own
+//! log, and what a test can assert without matching on a sentence that means
+//! four different things.
 
 /// Every fallible surface in this crate answers with this.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
@@ -208,6 +223,44 @@ pub enum Error {
         #[from]
         source: garde::Report,
     },
+
+    /// The document carries no well-formed frontmatter block.
+    ///
+    /// Either no opening `---`, or an opening fence that never closes. The Zig
+    /// answers `MissingRequiredField` for both, which reads as advice to add a
+    /// key when the actual fix is a fence.
+    #[error("the document has no frontmatter block between `---` fences")]
+    FrontmatterMissing,
+
+    /// The frontmatter is not YAML this daemon can tokenise.
+    ///
+    /// Carries the tokeniser's own error, which names the line and column. The
+    /// Zig collapses this onto `MissingRequiredField` and puts nothing in the
+    /// caller's reach.
+    #[error("the frontmatter is not readable YAML")]
+    FrontmatterUnreadable {
+        /// Where the tokeniser stopped, and why.
+        #[from]
+        source: saphyr_parser::ScanError,
+    },
+
+    /// One mapping declares the same key twice.
+    ///
+    /// The pinned `zig-yaml` fork refuses this too — `DuplicateMapKey` — so
+    /// the VERDICT is parity; only the sentence is new. Named because a
+    /// document long enough to repeat a key is long enough to need the name.
+    #[error("`{key}` is declared twice in the same block")]
+    DuplicateKey {
+        /// The key authored more than once.
+        key: Box<str>,
+    },
+
+    /// A mapping key is a sequence or a mapping rather than a scalar.
+    ///
+    /// Unrepresentable rather than merely refused: the Zig's frontmatter map
+    /// is keyed by `[]const u8` and has nowhere to put one either.
+    #[error("a frontmatter key must be a scalar")]
+    NonScalarKey,
 
     /// The repository egress binding is half-declared or names nothing.
     ///

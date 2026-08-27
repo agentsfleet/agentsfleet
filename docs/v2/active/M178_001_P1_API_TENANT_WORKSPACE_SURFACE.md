@@ -118,9 +118,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 3.1** — install creates stream+group before 201; injected Redis failure at each retry stage → rollback, no orphan row → Test `test_install_stream_guarantee_rollback`
 - **Dimension 3.2** — config PATCH visible on next lease resolve, not before → Test `test_config_patch_next_lease`
 - **Dimension 3.3** — ownership: a principal with valid scopes but the wrong workspace → 403/404 parity with Zig behaviour → Test `test_workspace_ownership_gate`
-- **Dimension 3.4** — the committed FRONTMATTER corpus (TRIGGER.md → `config_json`, seeded from the `src/agentsfleetd/fleet_runtime/` frontmatter fixtures) parses to the same accept/reject verdicts and field values as `parseTriggerMarkdownWithJson`; malformed frontmatter (unclosed, wrong types, unknown keys) → the same error classes → Test `test_fleet_frontmatter_corpus_parity`
+- **Dimension 3.4** — DONE — the committed FRONTMATTER corpus (TRIGGER.md → `config_json`, seeded from the `src/agentsfleetd/fleet_runtime/` frontmatter fixtures) parses to the same accept/reject verdicts and field values as `parseTriggerMarkdownWithJson`; malformed frontmatter (unclosed, wrong types, unknown keys) → the same error classes → Test `test_fleet_frontmatter_corpus_parity` (`afd_fleet_runtime/tests/frontmatter_corpus.rs`, verdicts) + `frontmatter_fields.rs` (field values), both reading the same `tests/fixtures/fleetbundle/` the Zig suite reads
 
-**§3 inherits M177 §5's install half (Indy, M177 stream).** M177 ported STORED config resolution only, because that is the half the runner plane calls. The install-time half — `config_markdown.zig` (338) + `yaml_frontmatter.zig` (272) — has four non-test callers and three are this milestone's: `fleets/create.zig:123`, `fleets/patch_txn.zig:114`, and `connectors/slack/channel_fleet.zig` (the fourth, `fleet_library/importer.zig:165`, is M179's and consumes the same entry point). It lands in `afd_fleet_runtime` beside the stored parser M177 built. **Implementation default:** a maintained serde-compatible YAML crate — `serde_norway` as of authoring (serde_yaml is archived); the agent re-verifies crate health at EXECUTE and records the pick in Discovery, because the fork-pinned `zig-yaml` rationale (upstream build breakage) dissolves only if the replacement is actually maintained.
+**§3 inherits M177 §5's install half (Indy, M177 stream).** M177 ported STORED config resolution only, because that is the half the runner plane calls. The install-time half — `config_markdown.zig` (338) + `yaml_frontmatter.zig` (272) — has four non-test callers and three are this milestone's: `fleets/create.zig:123`, `fleets/patch_txn.zig:114`, and `connectors/slack/channel_fleet.zig` (the fourth, `fleet_library/importer.zig:165`, is M179's and consumes the same entry point). It lands in `afd_fleet_runtime` beside the stored parser M177 built. **Implementation default:** a maintained serde-compatible YAML crate — `serde_norway` as of authoring (serde_yaml is archived); the agent re-verifies crate health at EXECUTE and records the pick in Discovery, because the fork-pinned `zig-yaml` rationale (upstream build breakage) dissolves only if the replacement is actually maintained. **Settled at EXECUTE: the default did not survive its own re-check** — `serde_norway` last published Dec 2024 — and the replacement is `saphyr-parser`, a tokeniser that resolves nothing, because the parity surface is `writeScalar`'s coercion table and not YAML's typing. Full reasoning and the measurements in Discovery.
 
 ### §4 — Vault and secrets routes
 
@@ -300,7 +300,62 @@ N/A — no files deleted.
 
 ## Discovery (consult log)
 
+- **§3.4 YAML crate — the spec's default was re-verified and REPLACED.** This
+  section instructed the agent to re-check `serde_norway`'s health at EXECUTE.
+  Measured Aug 27, 2026 on crates.io: `serde_norway` 0.9.42 last published
+  Dec 21, 2024; `serde_yaml_ng` 0.10.0 last published May 26, 2024;
+  `serde_yml` now publishes itself as DEPRECATED with a compatibility shim.
+  The fork is as unmaintained as the `serde_yaml` it forked, so the stated
+  rationale does not survive its own test.
+  **Pick: `saphyr-parser` 0.0.12** (published Aug 18, 2026), and maintenance is
+  the smaller half of why. `yaml_frontmatter.zig`'s `writeScalar` is a bespoke
+  coercion table stricter than YAML 1.2, so this port does not want a YAML
+  crate's typing at all — it wants the authored bytes. Proven by probe: the
+  `saphyr` high-level loader reads `01` as `Integer(1)` and `1e5` as
+  `FloatingPoint(100000.0)`, where the Zig writes the strings `"01"` and
+  `"1e5"`; no post-processing recovers bytes a resolver discarded.
+  `saphyr-parser` is the tokeniser underneath it and resolves nothing, which is
+  the same shape the pinned `zig-yaml` fork's `.scalar` has. One new crate in
+  the lock (`arraydeque`); `thiserror` was already there. Cost of the trade,
+  stated: a 0.0.x series that may break API, confined to
+  `afd_fleet_runtime::frontmatter::json`.
+- **§3.4 declared divergences (five).** Recorded in
+  `afd_fleet_runtime::frontmatter::json` and `::skill`, each pinned by a test.
+  (1) A quoted magic word still collapses — `name: "true"` renders as the JSON
+  boolean, matching the Zig, which loses quote style before `writeScalar` sees
+  it; `saphyr-parser` hands the style over and this port discards it
+  deliberately, because parity is the rule and the corpus grades verdicts.
+  (2) Block scalars fold correctly here and are mis-lexed by the fork.
+  (3) An apostrophe in a plain scalar no longer silently truncates the document
+  (the M157 data-loss incident). (4) A missing fence, unreadable YAML, a
+  duplicated key and a non-scalar key get four error variants where the Zig has
+  one `MissingRequiredField`; the wire code is `UZ-AGT-008` either way, and
+  `frontmatter_corpus.rs`'s `zig_class` folds the finer set back onto the Zig's
+  vocabulary so the corpus is still graded in the oracle's own terms.
+  (5) A wrong-typed OPTIONAL `SKILL.md` key is refused rather than silently
+  dropped, extending the divergence M177 already declared for `skill`.
+  Divergences 2 and 3 are cases where the Zig is wrong and silent; there is no
+  honest way to port a silent wrong answer.
+- **Corpus bug found, not fixed here: `tests/fixtures/fleetbundle/skill/missing_name.md`
+  does not test what it claims.** Its own comment says it exercises an absent
+  `name:`, but its `description` value carries a second `": "` — "…the required
+  name: field." — which is not a valid plain scalar, so both daemons refuse it
+  while tokenising, before any key is looked for. Verdict parity holds and the
+  corpus row is green; the fixture is simply not covering the case it names.
+  Left untouched because it is the Zig suite's input too and editing it changes
+  that suite's behaviour — outside this section's blast radius. The case it
+  meant to cover is held by
+  `frontmatter::skill::tests::a_missing_name_names_the_key`.
+- **Files Changed amendment: `make/test-integration.mk` does not exist.** M175
+  §6 deleted it; the lane is `make/test-integration-rustd.mk` and it already
+  sweeps `cargo test --workspace --all-features -- --ignored`, so §3's
+  integration tests need no make edit. The table row is stale rather than
+  pending.
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
+- **Gate-flag triage (mechanical, auto-applied):** UFS `numeric-suspect` fired
+  on `1000` and `1_000` inside `is_numeric`'s fixture list. Both are the
+  SPELLINGS under test rather than values a constant could stand for, so they
+  carry the gate's own `// pin test: literal is the contract` annotation.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
