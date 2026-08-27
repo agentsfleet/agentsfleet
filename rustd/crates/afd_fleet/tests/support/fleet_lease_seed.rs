@@ -21,7 +21,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
-use crate::requests::{ENROLLED_AT, enrolment};
+use crate::requests::{ENROLLED_AT, enrolment_tagged, placement_tag};
 use crate::support::Fixtures;
 
 /// Distinguishes fleets created by one process, so two runs never share one.
@@ -82,12 +82,20 @@ pub(crate) struct Seeded<const N: usize> {
 /// A fleet with one event on its stream, and `N` enrolled runners.
 pub(crate) async fn seeded<const N: usize>(fixtures: &Fixtures) -> Seeded<N> {
     let (fleet, workspace, tenant) = unique_ids();
+    // One tag per seeded fleet, carried by its own runners and nobody else's:
+    // see `Fixtures::seed_fleet` on why the assignment pass needs it.
+    let tag = placement_tag(&fleet);
     fixtures
-        .seed_fleet(&fleet, &workspace, &tenant, ENROLLED_AT)
+        .seed_fleet(&fleet, &workspace, &tenant, &tag, ENROLLED_AT)
         .await;
     let mut runners = Vec::with_capacity(N);
     for _ in 0..N {
-        let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowListEgress, 1);
+        let request = enrolment_tagged(
+            SandboxTier::LandlockFull,
+            NetworkPolicy::AllowListEgress,
+            1,
+            &tag,
+        );
         let enrolled = fixtures
             .runners()
             .register(&request, UnixMillis::from_millis(ENROLLED_AT))

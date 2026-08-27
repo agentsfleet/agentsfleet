@@ -47,6 +47,29 @@ pub(crate) fn enrolment(
     }
 }
 
+/// The placement tag a fixture fleet and its own runners share.
+///
+/// Derived from the fleet id, which is already minted per test, so it is unique
+/// without a second counter and names the fleet it belongs to in any failure.
+pub(crate) fn placement_tag(fleet: &str) -> String {
+    format!("fixture:{fleet}")
+}
+
+/// An enrolment that can be placed on a `tag`-bearing fleet.
+///
+/// Carries the plain `fixture` label as well, so a suite reading labels for
+/// their own sake still sees what it always did.
+pub(crate) fn enrolment_tagged(
+    tier: SandboxTier,
+    network: NetworkPolicy,
+    workers: u32,
+    tag: &str,
+) -> RegisterRequest<'static> {
+    let mut request = enrolment(tier, network, workers);
+    request.labels.push(Cow::Owned(tag.to_owned()));
+    request
+}
+
 /// A host that proves everything.
 pub(crate) fn capable() -> CapabilityReport<'static> {
     CapabilityReport {

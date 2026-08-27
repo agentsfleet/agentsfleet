@@ -1,24 +1,21 @@
-//! A schema-loaded database, and the runner store over it.
+//! The lane's database, and the runner store over it.
 //!
-//! # Why a database per test
+//! # One database, and what keeps the tests apart in it
 //!
 //! Every assertion here is about a ROW — what enrolment wrote, what a beat
-//! moved. Sharing one database would make each test's precondition depend on
-//! the previous test's cleanup, which is how a suite starts passing in one
-//! order and failing in another.
+//! moved — and every one of those rows is keyed by a runner or fleet identifier
+//! the test minted for itself. That is the isolation. A database per test was
+//! belt over braces and cost forty-seven migrations apiece to provide.
 //!
-//! # A note on where this belongs
+//! It is also the isolation the queue half has always used, and says so two
+//! doc comments below: Redis has no database-per-test equivalent, so keys are
+//! namespaced by the ids each test declares. Postgres now works the same way.
 //!
-//! `afd_state` and `afd_db` each carry a near-identical creator, and
-//! `afd_state`'s own copy already records that the right home for all of them
-//! is `afd_db::test_util`, behind the feature that exists for exactly this.
-//! This is a third copy and it is deliberate rather than unnoticed: moving all
-//! three is a refactor across two suites this milestone does not touch, and
-//! consolidating them from here would put a green integration lane at risk for
-//! no runner-plane benefit. It stays a follow-up, named in the same words.
+//! Built on [`afd_db::test_util::TestDatabase`], which is where the four
+//! near-identical copies of this were always headed — one of the deletions that
+//! module predicted.
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 // Two test binaries include this module by `#[path]`, so each compiles its own
@@ -29,36 +26,26 @@
     reason = "test support: shared by two test binaries, each using a subset"
 )]
 
-use std::sync::atomic::{AtomicU32, Ordering};
-
-use afd_core::env::MapEnv;
 use afd_crypto::entropy::Entropy;
-use afd_db::config::{DbRole, PoolConfig};
-use afd_db::{Db, Migrator};
+use afd_db::Db;
+use afd_db::config::DbRole;
+use afd_db::test_util::TestDatabase;
 use afd_fleet::Runners;
 use afd_fleet::gate::Gates;
 use afd_fleet::lease::Leases;
 use afd_redis::Redis;
 use sqlx::{AssertSqlSafe, Row as _};
 
-/// The lane's admin connection URL.
-const LANE_KNOB: &str = "TEST_DATABASE_URL";
-
-/// Distinguishes databases created by one process, combined with the process
-/// id so two lanes on one host cannot collide either.
-static SEQUENCE: AtomicU32 = AtomicU32::new(0);
-
-/// A schema-loaded database created for one test and dropped with it.
+/// A handle on the lane's database, and the runner store over it.
 pub(crate) struct Fixtures {
-    base_url: String,
-    name: String,
+    lane: TestDatabase,
     pub(crate) database: Db,
     queue: Option<Redis>,
     runners: Runners,
 }
 
 impl Fixtures {
-    /// Creates a database, migrates it, and opens the api-role pool.
+    /// Opens the api-role pool against the database the lane already migrated.
     ///
     /// No Redis. Most suites here assert on ROWS and never read the queue, and
     /// connecting one anyway is not free: each is a TLS handshake, and a suite
@@ -66,36 +53,13 @@ impl Fixtures {
     /// a healthy server. Use [`Fixtures::create_with_queue`] where the queue is
     /// actually read.
     pub(crate) async fn create() -> Self {
-        install_subscriber();
-        let base_url = std::env::var(LANE_KNOB).unwrap_or_else(|_error| {
-            panic!("{LANE_KNOB} is unset — run these through `make test-integration-rustd`")
-        });
-        let name = format!(
-            "afd_fleet_{}_{}",
-            std::process::id(),
-            SEQUENCE.fetch_add(1, Ordering::Relaxed)
-        );
-        // The name is a process id and a counter, never input — which is what
-        // makes interpolating it safe, since Postgres does not bind
-        // identifiers. `AssertSqlSafe` is sqlx 0.9 asking that at the type
-        // level; every other statement in this crate is a literal.
-        admin(&base_url, AssertSqlSafe(format!("CREATE DATABASE {name}"))).await;
-
-        let url = database_url(&base_url, &name);
-        let migrator = open(&url, DbRole::Migrator).await;
-        Migrator::new()
-            .run(&migrator)
-            .await
-            .expect("the schema must apply to a fresh database");
-        drop(migrator);
-
-        let database = open(&url, DbRole::Api).await;
+        let lane = TestDatabase::shared();
+        let database = lane.open(DbRole::Api, &[]).await;
         Self {
             runners: Runners::new(database.clone(), Entropy::new()),
             database,
             queue: None,
-            base_url,
-            name,
+            lane,
         }
     }
 
@@ -205,83 +169,30 @@ impl Fixtures {
             .expect("this fixture has no queue — build it with Fixtures::create_with_queue")
     }
 
-    /// Drops the database. Best-effort: a leaked test database is noise in a
-    /// disposable environment, not a failure worth masking the real one with.
+    /// Releases this test's handles. A no-op against the shared database, and
+    /// called anyway: it is how a test says it is finished.
     pub(crate) async fn cleanup(self) {
         let Self {
-            base_url,
-            name,
+            lane,
             database,
             queue,
             runners,
         } = self;
-        // Our own handles go first, so the drop is not racing connections this
-        // test still holds. `WITH (FORCE)` would evict them anyway; closing is
-        // the difference between a clean teardown and one that relies on it.
+        // Our own handles go first, so nothing is still borrowing a connection
+        // when the lane handle is released.
         drop(runners);
         // The queue handle goes with the destructuring: it is a clone over a
         // connection the other suites still hold, so there is nothing to close.
         drop((database, queue));
-
-        let statement = AssertSqlSafe(format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)"));
-        let Ok(pool) = sqlx::PgPool::connect(&base_url).await else {
-            return;
-        };
-        if let Ok(mut connection) = pool.acquire().await {
-            let _dropped = sqlx::query(statement).execute(&mut *connection).await;
-        }
-        pool.close().await;
+        lane.cleanup().await;
     }
-}
-
-/// The connection URL for one named database on the lane's server.
-fn database_url(base_url: &str, name: &str) -> String {
-    let (prefix, tail) = base_url
-        .rsplit_once('/')
-        .expect("a Postgres URL carries a database path");
-    let query = tail.split_once('?').map_or("", |(_, query)| query);
-    if query.is_empty() {
-        format!("{prefix}/{name}")
-    } else {
-        format!("{prefix}/{name}?{query}")
-    }
-}
-
-/// Opens a pool for one role against `url`.
-async fn open(url: &str, role: DbRole) -> Db {
-    let env = MapEnv::from_pairs(DbRole::ALL.iter().map(|each| (each.url_knob(), url)));
-    Db::connect(&PoolConfig::resolve(&env, role).expect("the test URL resolves"))
-        .await
-        .expect("the test database must accept a connection")
-}
-
-/// Runs one statement on the lane's admin database.
-async fn admin(base_url: &str, statement: AssertSqlSafe<String>) {
-    let pool = sqlx::PgPool::connect(base_url)
-        .await
-        .expect("the lane's database must be reachable");
-    let mut connection = pool.acquire().await.expect("an admin connection");
-    sqlx::query(statement)
-        .execute(&mut *connection)
-        .await
-        .expect("the admin statement must run");
-    drop(connection);
-    pool.close().await;
 }
 
 /// Installs a subscriber so event macros actually run.
 ///
-/// `tracing::warn!` asks whether its callsite is enabled BEFORE evaluating the
-/// fields inside it, so with no subscriber a diagnostic's fields never run —
-/// the failure path executes and the line reporting it does not. Output goes to
-/// a sink; the point is evaluation, not reading.
+/// Re-exported from [`afd_db::test_util`] rather than kept as a fourth copy:
+/// the suites here call it directly, and one implementation is the point of the
+/// consolidation.
 pub(crate) fn install_subscriber() {
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
-            .with_writer(std::io::sink)
-            .finish();
-        let _previous = tracing::subscriber::set_global_default(subscriber);
-    });
+    afd_db::test_util::install_subscriber();
 }

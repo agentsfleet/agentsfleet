@@ -18,6 +18,7 @@
 pub mod auth;
 pub mod fleet;
 pub mod runner;
+pub mod secret;
 pub mod tenant;
 
 use axum::response::{IntoResponse, Response};
@@ -103,6 +104,21 @@ impl Refusable for afd_fleet::Error {
 }
 
 impl Refusable for afd_fleet_lifecycle::Error {
+    fn code(&self) -> ErrorCode {
+        Self::code(self)
+    }
+    fn detail(&self) -> &'static str {
+        Self::detail(self)
+    }
+    fn is_datastore_unavailable(&self) -> bool {
+        Self::is_datastore_unavailable(self)
+    }
+    fn reason(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl Refusable for afd_vault::Error {
     fn code(&self) -> ErrorCode {
         Self::code(self)
     }
@@ -252,6 +268,32 @@ impl Refusal {
             log_refusal(&error, event, &request_id);
             Self(Box::new(
                 ProblemResponse::conflict(error.code(), error.detail(), request_id, current_state)
+                    .into_response(),
+            ))
+        }
+    }
+    /// A conflict whose sentence the CALL SITE composes.
+    ///
+    /// [`Refusal::conflict_at`] with the detail as a parameter, for the one
+    /// refusal whose useful wording carries a number: an operator told their
+    /// delete was refused wants to know how many registry entries to go and
+    /// remove. `Refusable::detail` is a `&'static str` by the trait's own
+    /// contract — one sentence per kind, decided beside its code — so a counted
+    /// sentence cannot come from there and is composed here instead. The same
+    /// split [`Refusal::preconditioned`] makes for a stale tag.
+    ///
+    /// Logs through the same path as every other refusal, so the operator's
+    /// line is unchanged and only the caller's sentence differs.
+    pub(crate) fn conflict_detailed<E: Refusable>(
+        event: &'static str,
+        detail: String,
+        current_state: &'static str,
+    ) -> impl FnOnce(E) -> Self {
+        move |error| {
+            let request_id = RequestId::mint();
+            log_refusal(&error, event, &request_id);
+            Self(Box::new(
+                ProblemResponse::conflict(error.code(), detail, request_id, current_state)
                     .into_response(),
             ))
         }

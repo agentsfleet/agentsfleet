@@ -59,7 +59,24 @@ impl Fixtures {
     /// Every id is a caller-supplied v7 spelling: the tables CHECK the version
     /// nibble, so a random UUID would be refused by the schema rather than by
     /// the code under test.
-    pub(crate) async fn seed_fleet(&self, fleet: &str, workspace: &str, tenant: &str, now: i64) {
+    /// Seeds a fleet placeable only by a runner carrying `tag`.
+    ///
+    /// The tag is what keeps the lease suites apart on one shared database.
+    /// `Leases::select` has no workspace or tenant in it — it peeks the GLOBAL
+    /// readiness set and filters candidates by `required_tags <@ labels` — so a
+    /// fleet seeded with no tag is placeable by every other test's runner, and
+    /// two suites polling at once trade fleets. Minting identifiers cannot fix
+    /// that: the collision is over the candidate SET, not over the names in it.
+    /// Isolating through the production filter costs one array element and
+    /// leaves the assignment pass under test rather than around it.
+    pub(crate) async fn seed_fleet(
+        &self,
+        fleet: &str,
+        workspace: &str,
+        tenant: &str,
+        tag: &str,
+        now: i64,
+    ) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query(
             "INSERT INTO core.tenants (id, name, created_at, updated_at)
@@ -89,8 +106,8 @@ impl Fixtures {
         sqlx::query(
             "INSERT INTO core.fleets
                (id, workspace_id, tenant_id, name, source_markdown, config_json,
-                status, created_at, updated_at)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::jsonb, $7, $8, $8)
+                status, created_at, updated_at, required_tags)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::jsonb, $7, $8, $8, $9)
              ON CONFLICT (id) DO NOTHING",
         )
         .bind(fleet)
@@ -101,6 +118,7 @@ impl Fixtures {
         .bind("{}")
         .bind("active")
         .bind(now)
+        .bind(vec![tag.to_owned()])
         .execute(&mut *connection)
         .await
         .expect("the fleet row must insert");

@@ -18,6 +18,18 @@ pub const INVALID_REQUEST: ErrorCode = ErrorCode::declare("UZ-REQ-001");
 /// A stored envelope was malformed — wrong component length, or an unsupported version.
 pub const VAULT_DATA_INVALID: ErrorCode = ErrorCode::declare("UZ-VAULT-001");
 
+/// A stringified secret body past the bound one row may hold.
+pub const VAULT_DATA_TOO_LARGE: ErrorCode = ErrorCode::declare("UZ-VAULT-002");
+
+/// This workspace holds no secret under the requested name.
+pub const SECRET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-VAULT-003");
+
+/// Model registry entries still name the secret a delete asked to remove.
+pub const SECRET_REFERENCED_BY_MODEL_ENTRIES: ErrorCode = ErrorCode::declare("UZ-VAULT-004");
+
+/// A secret with the requested name already exists in this workspace.
+pub const SECRET_NAME_TAKEN: ErrorCode = ErrorCode::declare("UZ-VAULT-005");
+
 /// A workspace in this tenant already uses the requested name.
 pub const WORKSPACE_NAME_EXISTS: ErrorCode = ErrorCode::declare("UZ-WORKSPACE-001");
 

@@ -257,33 +257,6 @@ impl Error {
     }
 }
 
-/// The refusals a suite stubs this crate's seam with.
-///
-/// Behind `test-util` deliberately: these are the answers a stub can give
-/// HONESTLY. A router suite stubs a store whose whole behaviour lives in a
-/// statement Postgres evaluates and a command Redis evaluates — there is no
-/// success it could invent without inventing the rows too.
-#[cfg(feature = "test-util")]
-impl Error {
-    /// The refusal a verb answers when Postgres would not answer.
-    #[must_use]
-    pub fn datastore_unavailable() -> Self {
-        ErrorKind::Datastore {
-            source: afd_db::error::unavailable_for_test(),
-        }
-        .into()
-    }
-
-    /// The refusal a verb answers when Redis would not answer.
-    #[must_use]
-    pub fn queue_unavailable() -> Self {
-        ErrorKind::Queue {
-            source: afd_redis::error::unavailable_for_test(),
-        }
-        .into()
-    }
-}
-
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "[{}] {}", self.code().as_str(), self.inner.kind)?;

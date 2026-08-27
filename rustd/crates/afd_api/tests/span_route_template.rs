@@ -82,7 +82,12 @@ fn test_span_fields_are_the_semconv_keys() {
 /// costing a series.
 #[tokio::test]
 async fn test_an_unmatched_request_opens_no_server_span() {
-    let spans = spans_for(Method::GET, "/v1/workspaces/secret-id/secrets").await;
+    // Workspace-SHAPED but not in the route table, which is the interesting
+    // case: a path that looks like a template must not be granted one. The
+    // fixture was `…/secrets` until §4 mounted that family; a fixture that is
+    // a real-but-unserved route would go the same way when its section lands,
+    // so this names a segment the table has never held.
+    let spans = spans_for(Method::GET, "/v1/workspaces/secret-id/not-a-route").await;
 
     assert!(
         !spans.iter().any(|span| span.name == "http.server.request"),

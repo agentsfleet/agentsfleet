@@ -27,6 +27,7 @@ use std::time::Duration;
 use afd_core::env::MapEnv;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_db::migration::Migration;
+use afd_db::test_util::TestDatabase;
 use afd_db::{Db, Migrator};
 
 #[path = "support/fault_net.rs"]
@@ -79,9 +80,33 @@ fn lane_target() -> SocketAddr {
         .expect("the lane's Postgres address must parse")
 }
 
+/// The lane's own database, for the faults that only need a socket to die on.
+fn lane_database() -> String {
+    let url = std::env::var(LANE_KNOB).unwrap_or_else(|_| {
+        panic!("{LANE_KNOB} is unset — run these through the integration lane")
+    });
+    let after_scheme = url.split_once("://").expect("a URL has a scheme").1;
+    let path = after_scheme
+        .split_once('/')
+        .expect("the lane URL names a database")
+        .1;
+    path.split_once('?')
+        .map_or(path, |(database, _query)| database)
+        .to_owned()
+}
+
 /// A configuration pointed at `addr` instead of the real datastore.
-fn config_through(addr: SocketAddr, role: DbRole) -> PoolConfig {
-    let url = format!("postgres://agentsfleet:agentsfleet@{addr}/agentsfleetdb?sslmode=disable");
+///
+/// `database` is a parameter and not the lane's own, because one test below
+/// runs a MIGRATOR through the proxy. `Migrator::run` reaps every ledger row
+/// below its migration list's floor, and [`TRIVIAL`] sits at 9101 — so pointed
+/// at the shared lane database it deletes all forty-seven rows the lane's
+/// `_migrate-test-db` just wrote. The schema objects survive that, the ledger
+/// does not, and the next `agentsfleetd migrate` replays 810 onto a trigger
+/// that already exists. The failure surfaces in `agentsfleetd`, three crates
+/// away from the test that caused it.
+fn config_through(addr: SocketAddr, role: DbRole, database: &str) -> PoolConfig {
+    let url = format!("postgres://agentsfleet:agentsfleet@{addr}/{database}?sslmode=disable");
     let env = MapEnv::from_pairs([
         (role.url_knob(), url.as_str()),
         ("DATABASE_ACQUIRE_TIMEOUT_MS", ACQUIRE_BUDGET_MS),
@@ -105,7 +130,7 @@ async fn test_a_handshake_that_never_completes_fails_on_its_own_deadline() {
     let proxy = FaultProxy::swallowing(lane_target()).await;
 
     let started = tokio::time::Instant::now();
-    let error = Db::connect(&config_through(proxy.addr(), DbRole::Api))
+    let error = Db::connect(&config_through(proxy.addr(), DbRole::Api, &lane_database()))
         .await
         .expect_err("a handshake that never completes must not succeed");
 
@@ -142,7 +167,7 @@ async fn test_losing_the_datastore_after_connect_is_not_reported_as_capacity() {
 
     // Connects for real: the probe goes through the proxy to live Postgres, so
     // this is a pool that genuinely reached its datastore once.
-    let db = Db::connect(&config_through(proxy.addr(), DbRole::Api))
+    let db = Db::connect(&config_through(proxy.addr(), DbRole::Api, &lane_database()))
         .await
         .expect("the proxy relays, so the connect must succeed");
 
@@ -187,7 +212,14 @@ async fn test_a_connection_that_dies_at_begin_reports_the_transaction() {
     install_subscriber();
     let proxy = FaultProxy::cutting_on(lane_target(), b"BEGIN").await;
 
-    let db = Db::connect(&config_through(proxy.addr(), DbRole::Migrator))
+    // A database of this test's own: the migrate below reaps, and reaping the
+    // shared lane database is what `config_through` documents.
+    let database = TestDatabase::create().await;
+    let name = database
+        .database_name()
+        .expect("a created database has a name")
+        .to_owned();
+    let db = Db::connect(&config_through(proxy.addr(), DbRole::Migrator, &name))
         .await
         .expect("the proxy relays until a BEGIN, so the connect must succeed");
 
@@ -211,4 +243,5 @@ async fn test_a_connection_that_dies_at_begin_reports_the_transaction() {
     );
 
     db.close().await;
+    database.cleanup().await;
 }

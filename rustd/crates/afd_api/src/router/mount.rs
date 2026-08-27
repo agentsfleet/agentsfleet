@@ -15,9 +15,9 @@
 
 use std::sync::Arc;
 
-use axum::routing::{MethodRouter, delete, get, patch, post};
+use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
-use crate::handler::{auth as auth_handler, fleet, runner, tenant as tenant_handler};
+use crate::handler::{auth as auth_handler, fleet, runner, secret, tenant as tenant_handler};
 use crate::route::{
     AuthRoute, FleetRoute, OpsRoute, Route, RunnerOpsRoute, RunnerRoute, TenantRoute,
     WorkspaceRoute,
@@ -106,17 +106,21 @@ fn tenant_handler_for<D: Serving>(verb: TenantRoute) -> Option<MethodRouter<Arc<
 
 /// What a workspace holds, addressed by the workspace alone.
 ///
-/// Only the fleets collection so far. The rest of this family is `None` rather
-/// than absent from a list, so an endpoint that is tabled and unserved says so
-/// where somebody looking for it will read it: secrets and the vault ride §4,
-/// events and the live stream §5, approvals §6, and onboarding, preferences and
-/// the fleet-library catalogue §7.
+/// The fleets collection and the secret vault so far. The rest of this family
+/// is `None` rather than absent from a list, so an endpoint that is tabled and
+/// unserved says so where somebody looking for it will read it: events and the
+/// live stream ride §5, approvals §6, and onboarding, preferences and the
+/// fleet-library catalogue §7.
+///
+/// The secret ITEM carries two methods on one template — replace and delete —
+/// which is why it is one `MethodRouter` rather than two arms. There is no GET
+/// beside them and never will be: a stored secret is not readable.
 fn workspace_handler_for<D: Serving>(verb: WorkspaceRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
         WorkspaceRoute::Fleets => Some(get(fleet::list::<D>).post(fleet::install::<D>)),
+        WorkspaceRoute::Secrets => Some(get(secret::list::<D>).post(secret::store::<D>)),
+        WorkspaceRoute::Secret => Some(put(secret::replace::<D>).delete(secret::remove::<D>)),
         WorkspaceRoute::FleetLibrary
-        | WorkspaceRoute::Secrets
-        | WorkspaceRoute::Secret
         | WorkspaceRoute::Events
         | WorkspaceRoute::EventsStream
         | WorkspaceRoute::Onboarding

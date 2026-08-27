@@ -44,6 +44,12 @@ use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
 use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
+// Aliased: `afd_fleet::vault::Vault` above is the RUNNER plane's reader — it
+// opens a credential a fleet declared and never lists — and this is the
+// workspace-admin surface that seals, lists without a key, and deletes under
+// the model-registry lock. Two things called `Vault` in one file is how a
+// reader ends up believing one of them can do the other's job.
+use afd_vault::Vault as SecretVault;
 
 use crate::identity::{Capabilities, Sessions};
 use crate::probes::LiveDependencies;
@@ -70,6 +76,7 @@ pub struct ServingPlane {
     cli_credentials: CliCredentials,
     billing: Billing,
     models: Models,
+    secrets: SecretVault,
     api_url: Box<str>,
 }
 
@@ -122,6 +129,11 @@ impl ServingPlane {
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
             billing: Billing::new(database.clone()),
             models: Models::new(database.clone()),
+            // Takes the same shared key every other sealing store does, so a
+            // row this daemon writes opens under the key the runner plane
+            // reads it back with. `Arc::clone` and not a `Kek` clone: one copy
+            // of the key material, zeroed once, however many stores hold it.
+            secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
             api_url: login.api_url,
             logins: Logins::new(
                 afd_redis::SessionStore::new(queue.clone()),
@@ -200,6 +212,7 @@ impl Services for ServingPlane {
     type ApiKeys = ApiKeys;
     type CliCredentials = CliCredentials;
     type Fleets = Fleets;
+    type Secrets = SecretVault;
     type Billing = Billing;
     type Catalogue = Models;
 
@@ -244,6 +257,10 @@ impl Services for ServingPlane {
 
     fn fleets(&self) -> &Fleets {
         &self.fleets
+    }
+
+    fn secrets(&self) -> &SecretVault {
+        &self.secrets
     }
 
     fn billing(&self) -> &Billing {

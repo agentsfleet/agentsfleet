@@ -6,18 +6,33 @@
 //! against the thing that ships — including the layer ORDER, which a test
 //! calling a handler directly cannot see at all.
 //!
-//! # Why the pool is real and unreachable rather than mocked
+//! # Every store is the REAL one, over datastores that answer nothing
 //!
-//! There is no seam between `afd_fleet` and Postgres, deliberately: the
-//! statements are the parity target, so a fake store would prove a handler
-//! against SQL nobody runs. Instead the store holds a pool over an address that
-//! answers nothing ([`afd_db::Db::unreachable`]), which is exactly what a
-//! datastore outage looks like from the request path — and lets a suite prove
-//! the transport-class refusal (RULE ECL) without stopping a container.
+//! There is no seam between a store and its statements, deliberately: the SQL
+//! is the parity target, so a fake store would prove a handler against SQL
+//! nobody runs. Each store here therefore holds a pool over an address that
+//! answers nothing ([`afd_db::Db::unreachable`]) and, where it needs one, a
+//! queue built the same way ([`afd_redis::Redis::unreachable`]). That is
+//! exactly what a datastore outage looks like from the request path, and it
+//! lets a suite prove the transport-class refusal (RULE ECL) without stopping a
+//! container.
+//!
+//! This replaced eight hand-written `No*` stubs, one per service seam, each
+//! spelling `Err(Error::datastore_unavailable())` in every method. They were
+//! not wrong, they were REDUNDANT — and worse than redundant in one specific
+//! way: a stub that INVENTS the refusal keeps agreeing with the suite after the
+//! real store stops producing it. Deleting them also deleted the
+//! `test-util` constructors that existed only to fabricate that error.
+//!
+//! Two stubs survive, and neither is a uniform refusal — which is the line:
+//! [`OneWorkspace`] answers ownership honestly so both halves of that matrix
+//! stay reachable, and [`NoWork`] answers a lease plane's verbs with success so
+//! the runner routes are reachable at all. Each carries test LOGIC no real
+//! store over a dead datastore could stand in for.
 //!
 //! A test that needs rows is an integration test, `#[ignore]`d and run by
 //! `make test-integration-rustd`. This harness is for everything BEFORE the
-//! first row is read, which is where §1's dimensions live.
+//! first row is read.
 #![allow(
     dead_code,
     unused_imports,
@@ -42,26 +57,34 @@ use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
+use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_fleet::Runners;
 use afd_fleet::bundle::{Bundles, ContentHash};
+use afd_fleet_lifecycle::Fleets;
+use afd_redis::Redis;
+use afd_redis::config::{RedisConfig, RedisRole};
+use afd_tenant::apikey::ApiKeys;
+use afd_tenant::billing::Billing;
+use afd_tenant::cli_credential::CliCredentials;
+use afd_tenant::models::Models;
+use afd_tenant::session::Sessions as Logins;
+use afd_tenant::workspace::Workspaces;
+// Aliased for the reason the composition root aliases it: `afd_fleet::vault`
+// is the runner plane's reader and this is the workspace-admin surface.
+use afd_vault::Vault as SecretVault;
 use axum::Router;
 use bytes::Bytes;
 use object_store::ObjectStoreExt as _;
 use object_store::memory::InMemory;
 
-mod stubs_fleet;
 mod stubs_runner;
 mod stubs_tenant;
 mod support;
 
-pub(crate) use self::stubs_fleet::NoFleets;
 pub(crate) use self::stubs_runner::NoWork;
-pub(crate) use self::stubs_tenant::{
-    DEPLOYMENT, NoBilling, NoDirectory, NoKeys, NoLogins, NoModels, NoTerminals, OWNED_WORKSPACE,
-    OneWorkspace,
-};
+pub(crate) use self::stubs_tenant::{DEPLOYMENT, OWNED_WORKSPACE, OneWorkspace};
 pub(crate) use self::support::{
     file_runner, json_body, presented, runner_id, send, send_with_headers, tenant,
 };
@@ -74,8 +97,31 @@ pub(crate) use self::support::{
 /// acquire budgets.
 const NOWHERE: &str = "postgres://runner:secret@127.0.0.1:1/agentsfleet";
 
+/// A Redis nobody is listening on, for the same reason and on the same port.
+const NOWHERE_QUEUE: &str = "redis://127.0.0.1:1";
+
+/// The pool knob naming how long an acquire may spend before it reports.
+const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
+
+/// What this harness sets it to — see [`unreachable_pool`].
+const ACQUIRE_TIMEOUT_MS: &str = "50";
+
 /// A fixed instant, so every row a verb writes is stamped predictably.
 const FROZEN: i64 = 1_760_000_000_000;
+
+/// The process key the secret store seals under.
+///
+/// Never used to seal anything here — every write refuses at the pool, before
+/// an envelope is built — but a `Vault` cannot be CONSTRUCTED without one, which
+/// is the invariant that type exists to carry. Supplying a fixture key is how a
+/// suite honours it rather than working around it.
+const FIXTURE_KEK: [u8; 32] = [0x11; 32];
+
+/// The pepper the device-flow code digest is computed under, for the same reason.
+const FIXTURE_PEPPER: &[u8] = b"fixture-session-code-pepper";
+
+/// The dashboard origin a login surface composes approval links against.
+const FIXTURE_APP_URL: &str = "https://app.fixture.test";
 
 /// The seams a suite arranges, and the state the router is built over.
 #[derive(Debug)]
@@ -88,19 +134,31 @@ pub(crate) struct Fleet {
     leases: NoWork,
     bundles: Bundles,
     workspaces: OneWorkspace,
-    api_keys: NoKeys,
+    workspace_directory: Workspaces,
+    api_keys: ApiKeys,
+    cli_credentials: CliCredentials,
+    logins: Logins,
+    fleets: Fleets,
+    secrets: SecretVault,
+    billing: Billing,
+    catalogue: Models,
     now: UnixMillis,
 }
 
 impl Fleet {
     /// An instance whose dependencies answer, whose directory is empty, and
-    /// whose Postgres is not there.
+    /// whose Postgres and Redis are not there.
+    ///
+    /// Every store below is the PRODUCTION one. None of them is reachable, so
+    /// every verb refuses at its first acquire — with the error its own crate
+    /// raises, not one this file made up.
     pub(crate) fn new() -> Self {
         let directory = MockDirectory::new();
         let capabilities = MockCapabilities::new();
-        let environment = MapEnv::from_pairs([(DbRole::Api.url_knob(), NOWHERE)]);
-        let pool = PoolConfig::resolve(&environment, DbRole::Api)
-            .expect("the fixture connection string is well formed");
+        let database = Db::unreachable(&unreachable_pool());
+        let queue = Redis::unreachable(&unreachable_queue())
+            .expect("a lazy manager opens no socket, so it cannot fail to open one");
+        let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
         Self {
             ready: ReadyInputs {
                 database: true,
@@ -109,14 +167,26 @@ impl Fleet {
             authenticator: Planes::new(directory.clone(), capabilities.clone(), NoVerifier),
             directory,
             capabilities,
-            runners: Runners::new(Db::unreachable(&pool), Entropy::new()),
+            runners: Runners::new(database.clone(), Entropy::new()),
             leases: NoWork,
             // Unconfigured by default, so a suite that says nothing about
             // snapshots proves the refusal a deployment with no R2 knobs gives
             // — which is most of them.
             bundles: Bundles::unconfigured(),
             workspaces: OneWorkspace,
-            api_keys: NoKeys,
+            workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
+            api_keys: ApiKeys::new(database.clone(), Entropy::new()),
+            cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
+            logins: Logins::new(
+                afd_redis::SessionStore::new(queue.clone()),
+                SecretBytes::new(FIXTURE_PEPPER.to_vec()),
+                Entropy::new(),
+                FIXTURE_APP_URL,
+            ),
+            fleets: Fleets::new(database.clone(), queue, Entropy::new()),
+            secrets: SecretVault::new(database.clone(), kek, Entropy::new()),
+            billing: Billing::new(database.clone()),
+            catalogue: Models::new(database),
             now: UnixMillis::from_millis(FROZEN),
         }
     }
@@ -224,14 +294,15 @@ impl Dependencies for Fleet {
 impl Services for Fleet {
     type Auth = Planes<MockDirectory, MockCapabilities, NoVerifier>;
     type Leases = NoWork;
-    type Sessions = NoLogins;
+    type Sessions = Logins;
     type Workspaces = OneWorkspace;
-    type WorkspaceDirectory = NoDirectory;
-    type ApiKeys = NoKeys;
-    type CliCredentials = NoTerminals;
-    type Fleets = NoFleets;
-    type Billing = NoBilling;
-    type Catalogue = NoModels;
+    type WorkspaceDirectory = Workspaces;
+    type ApiKeys = ApiKeys;
+    type CliCredentials = CliCredentials;
+    type Fleets = Fleets;
+    type Secrets = SecretVault;
+    type Billing = Billing;
+    type Catalogue = Models;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
@@ -249,36 +320,45 @@ impl Services for Fleet {
         &self.bundles
     }
 
-    fn sessions(&self) -> &NoLogins {
-        &NoLogins
+    fn sessions(&self) -> &Logins {
+        &self.logins
     }
 
     fn workspaces(&self) -> &OneWorkspace {
         &self.workspaces
     }
 
-    fn workspace_directory(&self) -> &NoDirectory {
-        &NoDirectory
+    /// A different value from [`Services::workspaces`], unlike production.
+    ///
+    /// The split is the suites': the ownership seam has to answer HONESTLY for
+    /// both halves of the refusal matrix to be reachable, so it stays
+    /// [`OneWorkspace`], while the directory refuses like every other store.
+    fn workspace_directory(&self) -> &Workspaces {
+        &self.workspace_directory
     }
 
-    fn api_keys(&self) -> &NoKeys {
+    fn api_keys(&self) -> &ApiKeys {
         &self.api_keys
     }
 
-    fn cli_credentials(&self) -> &NoTerminals {
-        &NoTerminals
+    fn cli_credentials(&self) -> &CliCredentials {
+        &self.cli_credentials
     }
 
-    fn fleets(&self) -> &NoFleets {
-        &NoFleets
+    fn secrets(&self) -> &SecretVault {
+        &self.secrets
     }
 
-    fn billing(&self) -> &NoBilling {
-        &NoBilling
+    fn fleets(&self) -> &Fleets {
+        &self.fleets
     }
 
-    fn catalogue(&self) -> &NoModels {
-        &NoModels
+    fn billing(&self) -> &Billing {
+        &self.billing
+    }
+
+    fn catalogue(&self) -> &Models {
+        &self.catalogue
     }
 
     /// A fixed deployment, which is what a real one is too.
@@ -293,4 +373,42 @@ impl Services for Fleet {
     fn now(&self) -> UnixMillis {
         self.now
     }
+}
+
+/// A Postgres configuration pointed at an address that answers nothing.
+///
+/// Port 1 is reserved and unbound on every platform this builds for, so an
+/// acquire fails on connection refusal rather than waiting out a timeout — the
+/// difference between a suite that runs in milliseconds and one that runs in
+/// acquire budgets.
+fn unreachable_pool() -> PoolConfig {
+    let environment = MapEnv::from_pairs([
+        (DbRole::Api.url_knob(), NOWHERE),
+        // The acquire budget, cut from the two-second production default.
+        //
+        // Every request in this harness ends at a refused connection, and the
+        // pool spends the whole budget retrying before it reports one. At the
+        // default that is two seconds per request and roughly ten per suite —
+        // paid on every inner-loop run, to learn something the first
+        // millisecond already knew.
+        //
+        // Set through the SAME knob a deployment sets, not through a test-only
+        // constructor, so what the suite configures is what an operator can. It
+        // must not go so low that the pool gives up before its first connect
+        // attempt returns: `sqlx` reports that as `PoolTimedOut`, which
+        // `afd_db` classifies as pool CAPACITY rather than an unreachable
+        // datastore, and the refusal would change class. A refused TCP connect
+        // on a reserved port answers in microseconds, so this has three orders
+        // of magnitude of headroom — and if it ever stops having them, the
+        // assertions on `DATABASE_UNAVAILABLE` fail loudly rather than drifting.
+        (ACQUIRE_TIMEOUT_KNOB, ACQUIRE_TIMEOUT_MS),
+    ]);
+    PoolConfig::resolve(&environment, DbRole::Api)
+        .expect("the fixture connection string is well formed")
+}
+
+/// The same, for the queue the login surface and the fleet install reach.
+fn unreachable_queue() -> RedisConfig {
+    RedisConfig::from_url(RedisRole::Default, NOWHERE_QUEUE.to_owned())
+        .with_request_timeout(std::time::Duration::from_millis(250))
 }

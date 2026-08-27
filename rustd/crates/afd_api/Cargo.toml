@@ -20,6 +20,7 @@ test-util = [
   "afd_fleet/test-util",
   "afd_fleet_lifecycle/test-util",
   "afd_tenant/test-util",
+  "afd_vault/test-util",
 ]
 
 # Each dependency is added by the module that uses it: `unreachable_pub` and
@@ -41,6 +42,9 @@ afd_fleet_runtime.workspace = true
 # The tenant plane: api-keys, command-line credentials, the device-flow login
 # surface, and the workspace-ownership resolver the shared layer asks.
 afd_tenant.workspace = true
+# The workspace secret surface's store. Two halves behind one seam: the sealing
+# one, and the key-less one the list and the delete are answered by.
+afd_vault.workspace = true
 # The payloads the runner verbs read and answer with. Frozen by M175; consumed,
 # never authored here.
 afd_wire.workspace = true
@@ -98,6 +102,10 @@ tracing-subscriber = { workspace = true, features = ["registry"] }
 # transport-class refusal without a datastore, and that constructor is the whole
 # reason `afd_db` is named anywhere in this manifest.
 afd_db = { workspace = true, features = ["test-util"] }
+# For the same reason, and it arrived with the same change: the login surface
+# and the fleet install reach a queue, so the harness needs `Redis::unreachable`
+# to build the real stores over one that answers nothing.
+afd_redis = { workspace = true, features = ["test-util"] }
 # The in-memory backend the bundle-fetch suite drives the snapshot store
 # through, and the byte buffer it seeds one with. A dev-dependency: nothing in
 # this crate's library builds an object store — `Services::bundles` takes one

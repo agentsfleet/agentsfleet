@@ -257,33 +257,6 @@ impl Error {
     pub fn mint_unconfigured() -> Self {
         super::error::mint_unconfigured()
     }
-
-    /// The refusal a verb answers when the datastore behind it would not answer.
-    ///
-    /// Exposed for the reason [`Error::queue_unavailable`] is: a router suite
-    /// stubs services whose whole behaviour lives in statements a real Postgres
-    /// evaluates, and the honest stub answers the one refusal that is true of
-    /// it rather than inventing a success.
-    #[must_use]
-    pub fn datastore_unavailable() -> Self {
-        Self::new(ErrorKind::Datastore {
-            source: afd_db::error::unavailable_for_test(),
-        })
-    }
-
-    /// The refusal a verb answers when the queue behind it would not answer.
-    ///
-    /// Exposed for the same reason [`Error::mint_unconfigured`] is: a router
-    /// suite stubs the device-flow surface, and every one of that surface's
-    /// verbs lives inside a Lua script a real Redis evaluates. There is no
-    /// success a stub could invent that would not be inventing the state
-    /// machine, so it answers the one refusal that is true of it.
-    #[must_use]
-    pub fn queue_unavailable() -> Self {
-        Self::new(ErrorKind::Queue {
-            source: afd_redis::error::unavailable_for_test(),
-        })
-    }
 }
 
 impl Error {
