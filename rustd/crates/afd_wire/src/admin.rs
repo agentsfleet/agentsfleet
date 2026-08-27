@@ -4,109 +4,12 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
+pub use crate::admin_catalogue::{
+    AdminModelCreate, AdminModelCreated, AdminModelItem, AdminModelUpdated, AdminModelsResponse,
+    ModelRates, PlatformKeyDeactivateResponse, PlatformKeyItem, PlatformKeyPut,
+    PlatformKeySetResponse, PlatformKeysResponse,
+};
 use crate::runner::AssignedPolicy;
-
-/// `PUT /v1/admin/platform-keys` metadata; key bytes already live in the vault.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PlatformKeyPut<'a> {
-    /// Provider and vault-row name.
-    #[serde(borrow)]
-    pub provider: Cow<'a, str>,
-    /// Workspace holding that vault row.
-    #[serde(borrow)]
-    pub source_workspace_id: Cow<'a, str>,
-    /// Priced model selected as platform default.
-    #[serde(borrow)]
-    pub model: Cow<'a, str>,
-    /// Custom endpoint for the compatible-provider mode.
-    #[serde(borrow)]
-    pub base_url: Option<Cow<'a, str>>,
-}
-
-/// Reveal-free platform-key list item.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PlatformKeyItem<'a> {
-    /// Provider and vault-row name.
-    #[serde(borrow)]
-    pub provider: Cow<'a, str>,
-    /// Workspace holding the key.
-    #[serde(borrow)]
-    pub source_workspace_id: Cow<'a, str>,
-    /// Active priced model, absent after deactivation.
-    #[serde(borrow)]
-    pub model: Option<Cow<'a, str>>,
-    /// Whether this row is the platform default.
-    pub active: bool,
-    /// Last mutation instant in epoch milliseconds.
-    pub updated_at: i64,
-}
-
-/// `GET /v1/admin/platform-keys` response.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PlatformKeysResponse<'a> {
-    /// Every active and inactive provider row.
-    #[serde(borrow)]
-    pub keys: Vec<PlatformKeyItem<'a>>,
-}
-
-/// Mutable rate fields shared by admin model create and patch.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ModelRates {
-    /// Maximum context tokens.
-    pub context_cap_tokens: i32,
-    /// Input-token nanos per million tokens.
-    pub input_nanos_per_mtok: i64,
-    /// Cached-input nanos per million tokens.
-    pub cached_input_nanos_per_mtok: i64,
-    /// Output-token nanos per million tokens.
-    pub output_nanos_per_mtok: i64,
-}
-
-/// `POST /v1/admin/models` input.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AdminModelCreate<'a> {
-    /// Provider identity.
-    #[serde(borrow)]
-    pub provider: Cow<'a, str>,
-    /// Provider-native model identity.
-    #[serde(borrow)]
-    pub model_id: Cow<'a, str>,
-    /// Rates and context cap flattened on the existing wire.
-    #[serde(flatten)]
-    pub rates: ModelRates,
-}
-
-/// One priced model row in the admin list.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AdminModelItem<'a> {
-    /// Opaque `UUIDv7` row identity.
-    #[serde(borrow)]
-    pub id: Cow<'a, str>,
-    /// Provider identity.
-    #[serde(borrow)]
-    pub provider: Cow<'a, str>,
-    /// Provider-native model identity.
-    #[serde(borrow)]
-    pub model_id: Cow<'a, str>,
-    /// Rates and context cap flattened on the existing wire.
-    #[serde(flatten)]
-    pub rates: ModelRates,
-}
-
-/// `GET /v1/admin/models` response.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AdminModelsResponse<'a> {
-    /// Every priced row.
-    #[serde(borrow)]
-    pub models: Vec<AdminModelItem<'a>>,
-}
 
 /// One metadata-only platform Fleet-library row.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

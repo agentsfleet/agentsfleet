@@ -3,7 +3,7 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::Db;
-use sqlx::Row as _;
+use sqlx::{Acquire as _, Row as _};
 
 use crate::error::{Result, query, row};
 
@@ -47,6 +47,17 @@ pub struct PlatformKey {
     model: Option<String>,
     active: bool,
     updated_at: UnixMillis,
+}
+
+/// Activation outcome kept distinct from datastore failures.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SetPlatformKey {
+    /// The platform default was activated.
+    Set(PlatformKey),
+    /// The source workspace does not exist.
+    WorkspaceNotFound,
+    /// The provider/model pair has no priced catalogue row.
+    ModelNotFound,
 }
 
 impl PlatformKey {
@@ -103,7 +114,7 @@ impl PlatformKeys {
             .await
             .map_err(query(CONTEXT_LIST))?
             .iter()
-            .map(decode)
+            .map(|row_value| decode(row_value, CONTEXT_LIST))
             .collect()
     }
 
@@ -113,26 +124,47 @@ impl PlatformKeys {
     /// same named vault row, while this metadata remains stable.
     ///
     /// # Errors
-    /// Reports a query failure. Returns `Ok(None)` when the workspace or priced
-    /// provider/model pair does not exist.
-    pub async fn set(
-        &self,
-        input: &PlatformKeyInput,
-        now: UnixMillis,
-    ) -> Result<Option<PlatformKey>> {
+    /// Reports a transaction failure. Invalid references are typed outcomes and
+    /// leave the previous platform default unchanged.
+    pub async fn set(&self, input: &PlatformKeyInput, now: UnixMillis) -> Result<SetPlatformKey> {
         let mut connection = self.0.acquire().await?;
-        sqlx::query(SET)
+        let mut transaction = connection.begin().await.map_err(query(CONTEXT_SET))?;
+        lock_revision(&mut transaction).await?;
+        let workspace_exists: bool = sqlx::query_scalar(WORKSPACE_EXISTS)
+            .bind(input.source_workspace_id.as_str())
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(query(CONTEXT_SET))?;
+        if !workspace_exists {
+            return Ok(SetPlatformKey::WorkspaceNotFound);
+        }
+        let model_exists: bool = sqlx::query_scalar(MODEL_EXISTS)
+            .bind(&input.provider)
+            .bind(&input.model)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(query(CONTEXT_SET))?;
+        if !model_exists {
+            return Ok(SetPlatformKey::ModelNotFound);
+        }
+        let row_value = sqlx::query(UPSERT)
             .bind(&input.provider)
             .bind(input.source_workspace_id.as_str())
             .bind(&input.model)
             .bind(&input.base_url)
             .bind(now.as_millis())
-            .fetch_optional(&mut *connection)
+            .fetch_one(&mut *transaction)
             .await
-            .map_err(query(CONTEXT_SET))?
-            .as_ref()
-            .map(decode)
-            .transpose()
+            .map_err(query(CONTEXT_SET))?;
+        sqlx::query(DEACTIVATE_OTHERS)
+            .bind(now.as_millis())
+            .bind(&input.provider)
+            .execute(&mut *transaction)
+            .await
+            .map_err(query(CONTEXT_SET))?;
+        let platform_key = decode(&row_value, CONTEXT_SET)?;
+        transaction.commit().await.map_err(query(CONTEXT_SET))?;
+        Ok(SetPlatformKey::Set(platform_key))
     }
 
     /// Deactivates one provider without reading its vault row.
@@ -151,37 +183,48 @@ impl PlatformKeys {
     }
 }
 
-fn decode(row_value: &sqlx::postgres::PgRow) -> Result<PlatformKey> {
+fn decode(row_value: &sqlx::postgres::PgRow, context: &'static str) -> Result<PlatformKey> {
     Ok(PlatformKey {
-        provider: row_value.try_get(0).map_err(query(CONTEXT_LIST))?,
+        provider: row_value.try_get(0).map_err(query(context))?,
         source_workspace_id: Uuid7::parse(
-            &row_value
-                .try_get::<String, _>(1)
-                .map_err(query(CONTEXT_LIST))?,
+            &row_value.try_get::<String, _>(1).map_err(query(context))?,
         )
         .map_err(row(DEFAULTS_TABLE, "source_workspace_id"))?,
-        model: row_value.try_get(2).map_err(query(CONTEXT_LIST))?,
-        active: row_value.try_get(3).map_err(query(CONTEXT_LIST))?,
-        updated_at: UnixMillis::from_millis(row_value.try_get(4).map_err(query(CONTEXT_LIST))?),
+        model: row_value.try_get(2).map_err(query(context))?,
+        active: row_value.try_get(3).map_err(query(context))?,
+        updated_at: UnixMillis::from_millis(row_value.try_get(4).map_err(query(context))?),
     })
 }
 
+async fn lock_revision(transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+    sqlx::query("SELECT revision FROM core.model_catalogue_revision WHERE id = 1 FOR UPDATE")
+        .execute(&mut **transaction)
+        .await
+        .map(|_| ())
+        .map_err(query(CONTEXT_SET))
+}
+
 const LIST: &str = "SELECT provider, source_workspace_id::text, model, active, updated_at FROM core.platform_provider_defaults ORDER BY provider";
-const SET: &str = "WITH chosen AS (SELECT m.context_cap_tokens FROM core.model_library m JOIN core.workspaces w ON w.id = $2::uuid WHERE m.provider = $1 AND m.model_id = $3), deactivated AS (UPDATE core.platform_provider_defaults SET active = false, model = NULL, updated_at = $5 WHERE active = true AND provider <> $1), upserted AS (INSERT INTO core.platform_provider_defaults (provider, source_workspace_id, model, base_url, context_cap_tokens, active, created_at, updated_at) SELECT $1, $2::uuid, $3, $4, context_cap_tokens, true, $5, $5 FROM chosen ON CONFLICT (provider) DO UPDATE SET source_workspace_id = EXCLUDED.source_workspace_id, model = EXCLUDED.model, base_url = EXCLUDED.base_url, context_cap_tokens = EXCLUDED.context_cap_tokens, active = true, updated_at = EXCLUDED.updated_at RETURNING provider, source_workspace_id::text, model, active, updated_at) SELECT provider, source_workspace_id, model, active, updated_at FROM upserted";
+const WORKSPACE_EXISTS: &str = "SELECT EXISTS(SELECT 1 FROM core.workspaces WHERE id = $1::uuid)";
+const MODEL_EXISTS: &str =
+    "SELECT EXISTS(SELECT 1 FROM core.model_library WHERE provider = $1 AND model_id = $2)";
+const UPSERT: &str = "INSERT INTO core.platform_provider_defaults (provider, source_workspace_id, model, base_url, context_cap_tokens, active, created_at, updated_at) SELECT $1, $2::uuid, $3, $4, context_cap_tokens, true, $5, $5 FROM core.model_library WHERE provider = $1 AND model_id = $3 ON CONFLICT (provider) DO UPDATE SET source_workspace_id = EXCLUDED.source_workspace_id, model = EXCLUDED.model, base_url = EXCLUDED.base_url, context_cap_tokens = EXCLUDED.context_cap_tokens, active = true, updated_at = EXCLUDED.updated_at RETURNING provider, source_workspace_id::text, model, active, updated_at";
+const DEACTIVATE_OTHERS: &str = "UPDATE core.platform_provider_defaults SET active = false, model = NULL, updated_at = $1 WHERE active = true AND provider <> $2";
 const DEACTIVATE: &str = "UPDATE core.platform_provider_defaults SET active = false, model = NULL, updated_at = $1 WHERE provider = $2";
 
 #[cfg(test)]
 mod tests {
-    use super::{LIST, SET};
+    use super::{DEACTIVATE_OTHERS, LIST, UPSERT};
 
     #[test]
     fn test_platform_key_vault_semantics() {
-        for statement in [LIST, SET] {
+        for statement in [LIST, UPSERT, DEACTIVATE_OTHERS] {
             assert!(!statement.contains("api_key"));
             assert!(!statement.contains("ciphertext"));
             assert!(!statement.contains("vault.secrets"));
         }
-        assert!(SET.contains("source_workspace_id"));
-        assert!(SET.contains("core.model_library"));
+        assert!(UPSERT.contains("source_workspace_id"));
+        assert!(UPSERT.contains("core.model_library"));
+        assert!(!UPSERT.contains("DEACTIVATE"));
     }
 }

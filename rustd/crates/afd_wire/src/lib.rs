@@ -48,6 +48,7 @@
 
 pub mod activity;
 pub mod admin;
+mod admin_catalogue;
 pub mod credentials;
 pub mod event;
 pub mod lease;

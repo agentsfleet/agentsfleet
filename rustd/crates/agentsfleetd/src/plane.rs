@@ -17,6 +17,7 @@
 
 use std::sync::Arc;
 
+use afd_admin::{Models, PlatformKeys};
 use afd_api::router::{Dependencies, ReadyInputs};
 use afd_api::{Planes, Services};
 use afd_core::clock::UnixMillis;
@@ -57,6 +58,8 @@ pub struct ServingPlane {
     bundles: Bundles,
     streams: LiveStreams,
     runner_lease_history: RunnerLeaseHistory,
+    models: Models,
+    platform_keys: PlatformKeys,
 }
 
 impl ServingPlane {
@@ -99,6 +102,8 @@ impl ServingPlane {
             bundles,
             streams: LiveStreams::new(SSE_MAX_STREAMS_DEFAULT),
             runner_lease_history: RunnerLeaseHistory::new(database.clone()),
+            models: Models::new(database.clone(), Entropy::new()),
+            platform_keys: PlatformKeys::new(database.clone()),
             probes: LiveDependencies::new(database.clone(), queue.clone()),
             authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
             runners: Runners::new(database.clone(), Entropy::new()),
@@ -148,6 +153,14 @@ impl Services for ServingPlane {
 
     fn runner_lease_history(&self) -> &RunnerLeaseHistory {
         &self.runner_lease_history
+    }
+
+    fn models(&self) -> &Models {
+        &self.models
+    }
+
+    fn platform_keys(&self) -> &PlatformKeys {
+        &self.platform_keys
     }
 
     /// The wall clock, read once per verb by whichever handler asked.

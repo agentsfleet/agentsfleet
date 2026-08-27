@@ -48,13 +48,13 @@ use axum::Router;
 use axum::extract::Request;
 use axum::middleware::{Next, from_fn, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{MethodRouter, get, patch, post};
+use axum::routing::{MethodRouter, delete, get, patch, post, put};
 use http::{Method, StatusCode};
 
 use crate::admission::{Admission, admit, is_metered};
 use crate::auth::{Gate, plane_of, prove};
-use crate::handler::{operator, runner};
-use crate::route::{OpsRoute, Route, RouteMeta, RunnerOpsRoute, RunnerRoute};
+use crate::handler::{admin, operator, runner};
+use crate::route::{AdminRoute, OpsRoute, Route, RouteMeta, RunnerOpsRoute, RunnerRoute};
 use crate::services::Services;
 
 pub use self::probes::{Dependencies, ReadyInputs, ready_decision};
@@ -183,16 +183,33 @@ fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>> {
         }),
         Route::Runner(verb) => Some(runner_handler::<D>(verb)),
         Route::RunnerOps(verb) => Some(runner_ops_handler::<D>(verb)),
+        Route::Admin(verb) => admin_handler::<D>(verb),
         // Tabled, not yet served. Each of these families arrives with the
         // milestone that ports its handlers; until then the route exists as a
         // template, a guard and a scope rung, and this binary answers 404.
         Route::Auth(_)
         | Route::Tenant(_)
-        | Route::Admin(_)
         | Route::Webhook(_)
         | Route::Workspace(_)
         | Route::Fleet(_)
         | Route::Connector(_) => None,
+    }
+}
+
+/// The mounted part of the platform administration table.
+fn admin_handler<D: Serving>(verb: AdminRoute) -> Option<MethodRouter<Arc<D>>> {
+    match verb {
+        AdminRoute::PlatformKeys => {
+            Some(get(admin::platform_keys::list::<D>).merge(put(admin::platform_keys::set::<D>)))
+        }
+        AdminRoute::PlatformKey => Some(delete(admin::platform_keys::deactivate::<D>)),
+        AdminRoute::Models => {
+            Some(get(admin::models::list::<D>).merge(post(admin::models::create::<D>)))
+        }
+        AdminRoute::Model => {
+            Some(patch(admin::models::update::<D>).merge(delete(admin::models::delete::<D>)))
+        }
+        AdminRoute::FleetLibrary | AdminRoute::FleetLibraryEntry => None,
     }
 }
 
