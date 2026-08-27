@@ -50,9 +50,10 @@ const DETAIL_NO_TENANT: &str =
 /// `POST /v1/api-keys` — mint one, revealing it exactly once.
 pub(crate) async fn mint<D: Services>(
     State(services): State<Arc<D>>,
-    PersonIdentity(person): PersonIdentity,
+    identity: PersonIdentity,
     body: Bytes,
 ) -> Result<Response, Refusal> {
+    let person = identity.person();
     let request = afd_core::json::object_from_slice::<MintApiKeyRequest<'_>>(&body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MINT_BODY))?;
     let (name, description) = KeyName::parse(&request.key_name)
@@ -62,7 +63,7 @@ pub(crate) async fn mint<D: Services>(
         })
         .map_err(Refusal::at(EVENT_MINT))?;
 
-    let tenant = tenant_of(&services, &person).await?;
+    let tenant = tenant_of(&services, person).await?;
     let mint = MintRequest {
         tenant: &tenant,
         name,
@@ -81,14 +82,15 @@ pub(crate) async fn mint<D: Services>(
 /// `GET /v1/api-keys` — the tenant's keys, as metadata.
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
-    PersonIdentity(person): PersonIdentity,
+    identity: PersonIdentity,
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
+    let person = identity.person();
     let query = query.unwrap_or_default();
     let page = Page::<ApiKeySort>::parse(|name| parameter(&query, name))
         .map_err(|refusal| Refusal::malformed(refusal.detail()))?;
 
-    let tenant = tenant_of(&services, &person).await?;
+    let tenant = tenant_of(&services, person).await?;
 
     let listing = services
         .api_keys()
@@ -101,10 +103,11 @@ pub(crate) async fn list<D: Services>(
 /// `PATCH /v1/api-keys/{id}` — revoke one.
 pub(crate) async fn revoke<D: Services>(
     State(services): State<Arc<D>>,
-    PersonIdentity(person): PersonIdentity,
+    identity: PersonIdentity,
     Path(key_id): Path<String>,
     body: Bytes,
 ) -> Result<Response, Refusal> {
+    let person = identity.person();
     let key = Uuid7::parse(&key_id).map_err(|_unparseable| Refusal::malformed(DETAIL_KEY_ID))?;
     let request = afd_core::json::object_from_slice::<PatchApiKeyRequest>(&body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_PATCH_BODY))?;
@@ -112,7 +115,7 @@ pub(crate) async fn revoke<D: Services>(
     // there is no path to it that skipped this refusal.
     let intent = Deactivation::parse(request.active).map_err(Refusal::at(EVENT_REVOKE))?;
 
-    let tenant = tenant_of(&services, &person).await?;
+    let tenant = tenant_of(&services, person).await?;
 
     let revoked = services
         .api_keys()
@@ -125,11 +128,12 @@ pub(crate) async fn revoke<D: Services>(
 /// `DELETE /v1/api-keys/{id}` — remove one that is already revoked.
 pub(crate) async fn delete<D: Services>(
     State(services): State<Arc<D>>,
-    PersonIdentity(person): PersonIdentity,
+    identity: PersonIdentity,
     Path(key_id): Path<String>,
 ) -> Result<Response, Refusal> {
+    let person = identity.person();
     let key = Uuid7::parse(&key_id).map_err(|_unparseable| Refusal::malformed(DETAIL_KEY_ID))?;
-    let tenant = tenant_of(&services, &person).await?;
+    let tenant = tenant_of(&services, person).await?;
 
     services
         .api_keys()

@@ -48,10 +48,11 @@ const DETAIL_CREDENTIAL_ID: &str = "id must be a valid UUIDv7";
 /// `POST /v1/cli-credentials` — mint this machine's credential, revealing it once.
 pub(crate) async fn mint<D: Services>(
     State(services): State<Arc<D>>,
-    FreshSession(person): FreshSession,
+    identity: FreshSession,
     origin: Origin,
     body: Bytes,
 ) -> Result<Response, Refusal> {
+    let person = identity.person();
     let request = afd_core::json::object_from_slice::<MintCliCredentialRequest<'_>>(&body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MINT_BODY))?;
     let machine = MachineName::parse(&request.machine_name).map_err(Refusal::at(EVENT_MINT))?;
@@ -87,9 +88,10 @@ pub(crate) async fn mint<D: Services>(
 /// belonging to somebody else revokes nothing and reads as not found.
 pub(crate) async fn revoke<D: Services>(
     State(services): State<Arc<D>>,
-    HumanIdentity(person): HumanIdentity,
+    identity: HumanIdentity,
     Path(credential_id): Path<String>,
 ) -> Result<Response, Refusal> {
+    let person = identity.person();
     let credential = Uuid7::parse(&credential_id)
         .map_err(|_unparseable| Refusal::malformed(DETAIL_CREDENTIAL_ID))?;
 
