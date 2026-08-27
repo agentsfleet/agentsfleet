@@ -107,6 +107,32 @@ pub trait SortOrder: Copy + Sized {
     fn boundary(self) -> BoundaryKind;
 }
 
+/// A row that can name the boundary a later page resumes from.
+///
+/// # Why this is a trait and not four copies of a `match`
+///
+/// A cursor names the boundary row's SORT VALUE plus its id, and the seek
+/// compares that value against the same column the `ORDER BY` names. So the
+/// FORM has to follow the sort: a name-ordered walk needs the name, a
+/// time-ordered one needs the instant. Get it wrong and the paging layer
+/// refuses the cursor on the next request — which means the walk silently ends
+/// at page one and reads like a client sending something malformed.
+///
+/// That bug shipped once, in the api-key list, because the rendering lived in a
+/// private helper that always emitted one form. Every list endpoint on the
+/// tenant plane needs the identical decision, so it is written here once rather
+/// than copied per handler — the only genuinely per-endpoint part is which
+/// FIELD of a row holds the sort value, and that is what the implementation
+/// supplies.
+pub trait Boundary<S: SortOrder> {
+    /// The cursor a client resumes from after this row, under `sort`.
+    ///
+    /// An implementation should switch on [`SortOrder::boundary`] rather than
+    /// on the sort variants, so the cursor cannot drift from the `ORDER BY` it
+    /// has to agree with — both then read from one method on one enum.
+    fn cursor(&self, sort: S) -> Cursor;
+}
+
 /// Which direction a keyset seek walks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Comparator {
