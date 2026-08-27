@@ -41,8 +41,9 @@ pub use self::guard::{Gate, prove};
 pub use self::identity::RunnerIdentity;
 pub use self::ownership::{Owned, Owner, WorkspaceContext, own};
 pub use self::person::{
-    DETAIL_PERSON_REQUIRED, DETAIL_SESSION_REQUIRED, DashboardIdentity, FreshSession,
-    HumanIdentity, PersonIdentity,
+    AnyClass, ClassPolicy, DETAIL_NOT_DASHBOARD, DETAIL_PERSON_REQUIRED, DETAIL_SESSION_REQUIRED,
+    DashboardClass, DashboardIdentity, FreshSession, FreshSessionClass, HumanClass, HumanIdentity,
+    PersonIdentity, Proven,
 };
 
 /// What proves a credential presented on a plane.
