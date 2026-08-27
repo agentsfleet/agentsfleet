@@ -1,6 +1,7 @@
 //! Operator-plane runner list, detail, and history reads.
 
 mod decode;
+mod events;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -13,6 +14,7 @@ use crate::runner::Runners;
 use crate::sql;
 
 use self::decode::{runner_detail, runner_event, runner_item};
+pub use self::events::RunnerEventFilter;
 
 const CONTEXT_RUNNER_COUNT: &str = "runner list count";
 const CONTEXT_RUNNER_LIST: &str = "runner list page";
@@ -235,6 +237,7 @@ impl Runners {
     pub async fn runner_events(
         &self,
         runner: &Uuid7,
+        filter: &RunnerEventFilter,
         cursor: Option<&KeysetCursor>,
         limit: PageLimit,
     ) -> Result<RunnerEventPage> {
@@ -247,43 +250,28 @@ impl Runners {
         if exists.is_none() {
             return Err(runner_not_found());
         }
+        let event_types = filter.event_type_names();
         let total = sqlx::query(sql::runner_view::COUNT_EVENTS)
             .bind(runner.as_str())
+            .bind(event_types.clone())
+            .bind(filter.since())
+            .bind(filter.until())
             .fetch_one(&mut *connection)
             .await
             .map_err(query(CONTEXT_EVENT_COUNT))?
             .try_get(0)
             .map_err(query(CONTEXT_EVENT_COUNT))?;
-        let rows = event_statement(runner, cursor, limit)
+        let rows = events::statement(runner, filter, event_types, cursor, limit)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_EVENT_LIST))?;
         let items = rows.iter().map(runner_event).collect::<Result<Vec<_>>>()?;
         Ok(RunnerEventPage {
-            next_cursor: event_cursor(&items, limit)?,
+            next_cursor: events::cursor(&items, limit)?,
             items,
             total,
         })
     }
-}
-
-fn event_statement<'a>(
-    runner: &'a Uuid7,
-    cursor: Option<&KeysetCursor>,
-    limit: PageLimit,
-) -> sqlx::query::Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments> {
-    cursor.map_or(
-        sqlx::query(sql::runner_view::LIST_EVENTS_FIRST)
-            .bind(runner.as_str())
-            .bind(limit.as_i64()),
-        |boundary| {
-            sqlx::query(sql::runner_view::LIST_EVENTS_AFTER)
-                .bind(runner.as_str())
-                .bind(boundary.created_at())
-                .bind(boundary.id().as_str())
-                .bind(limit.as_i64())
-        },
-    )
 }
 
 fn page_cursor(items: &[RunnerItem], limit: PageLimit) -> Option<KeysetCursor> {
@@ -291,23 +279,6 @@ fn page_cursor(items: &[RunnerItem], limit: PageLimit) -> Option<KeysetCursor> {
         .then(|| items.last())
         .flatten()
         .map(|item| KeysetCursor::new(item.created_at, item.id.clone()))
-}
-
-fn event_cursor(
-    items: &[RunnerEventItem<'static>],
-    limit: PageLimit,
-) -> Result<Option<KeysetCursor>> {
-    if items.len() != limit.get() as usize {
-        return Ok(None);
-    }
-    items
-        .last()
-        .map(|item| {
-            Uuid7::parse(&item.id)
-                .map(|id| KeysetCursor::new(item.occurred_at, id))
-                .map_err(crate::error::row_malformed("fleet.runner_events", "id"))
-        })
-        .transpose()
 }
 
 #[cfg(test)]

@@ -24,13 +24,13 @@ pub(crate) async fn list<D: Services>(
         Ok(runner) => runner,
         Err(detail) => return malformed(detail),
     };
-    let page = match query::page(&params) {
-        Ok(page) => page,
+    let query = match query::events(&params) {
+        Ok(query) => query,
         Err(detail) => return malformed(detail),
     };
     match services
         .runners()
-        .runner_events(&runner, page.cursor.as_ref(), page.limit)
+        .runner_events(&runner, &query.filter, query.cursor.as_ref(), query.limit)
         .await
     {
         Ok(rows) => Json(RunnerEventsResponse {
