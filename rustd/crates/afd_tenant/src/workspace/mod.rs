@@ -18,6 +18,8 @@
 //! `Result<Option<T>>` convention `core_api` runs on, and the reason it is the
 //! convention.
 
+pub mod name;
+
 use afd_auth::principal::{Person, PersonCredential, Principal};
 use afd_auth::scope::Scope;
 use afd_core::id::Uuid7;
