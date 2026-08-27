@@ -69,6 +69,41 @@ thiserror = { version = "2.0.20", default-features = false, features = ["std"] }
 # authors. Its `garde_derive` rides the syn 2.0.119 already in the lock.
 garde = { version = "0.23.0", default-features = false, features = ["derive"] }
 
+# The YAML frontmatter of an authored `TRIGGER.md`, tokenised but NOT resolved.
+#
+# The spec's implementation default was `serde_norway`, on the reasoning that
+# `serde_yaml` is archived and a maintained fork should replace it. Re-verified
+# Aug 27 2026, as the spec instructed, and the reasoning does not survive:
+# `serde_norway`'s last release is 0.9.42 on Dec 21 2024, `serde_yaml_ng`'s is
+# May 2024, and `serde_yml` now publishes itself as DEPRECATED. The fork is as
+# unmaintained as the crate it forked.
+#
+# But maintenance is the smaller half of why none of them fits. This port does
+# not want YAML's typing AT ALL. `yaml_frontmatter.zig`'s `writeScalar` is a
+# bespoke coercion table STRICTER than YAML 1.2 — no exponents, no leading `+`,
+# no leading zeros, digits required on both sides of a `.` — and everything it
+# refuses is emitted as a JSON string. A crate that resolves scalars for us
+# resolves them WRONG for this purpose, and unrecoverably: proven by probe, the
+# `saphyr` tree reads `01` as `Integer(1)` and `1e5` as `FloatingPoint(100000.0)`,
+# where the Zig writes the strings `"01"` and `"1e5"`. Both would be silent
+# behaviour changes in a milestone whose rule is parity, and no amount of
+# post-processing recovers the bytes the resolver already discarded.
+#
+# `saphyr-parser` is the tokeniser under that tree, and it hands back the raw
+# scalar text with its quote style and no resolution — the same shape the pinned
+# `zig-yaml` fork's `.scalar` has, so the coercion table ports across one
+# function at a time instead of being fought. It is the maintained half of the
+# family (0.0.12, Aug 18 2026, ~2.0M recent downloads), and it is SMALLER than
+# the tree above it: one new crate in the lock, `arraydeque`, because thiserror
+# is already here.
+#
+# The cost of the trade, stated the way `jiff`'s is: a 0.0.x series that may
+# break API. Confined to `afd_fleet_runtime::frontmatter::json`, which is the
+# only module that names the crate, so a break is a one-file fix. RULE PSR is
+# satisfied — the tokeniser is a standard parser; what this repository writes is
+# the coercion above it, which is product behaviour and was never YAML's to own.
+saphyr-parser = { version = "0.0.12", default-features = false }
+
 # The command line, derived rather than hand-rolled.
 #
 # `serve_args.zig` hand-parsed `--port` out of argv and ported across as the
