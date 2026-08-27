@@ -17,7 +17,8 @@ pub(super) struct Snapshot {
     /// The name the row holds now — what a replacement `SKILL.md` is checked
     /// against when the request does not also rename the trigger.
     pub(super) name: String,
-    /// Where the fleet stands, which decides what zero updated rows MEANT.
+    /// Where the fleet stands. Read by the caller when zero rows come back,
+    /// to tell a tombstone from a refused transition.
     pub(super) status: FleetStatus,
     /// The stored `SKILL.md`, for the `If-Match` compare and the post-update tag.
     pub(super) source_markdown: String,
@@ -44,8 +45,6 @@ pub(super) struct Rewrite {
     pub(super) name: Option<String>,
     /// The placement tags to store, re-derived from a replacement `SKILL.md`.
     pub(super) required_tags: Option<Vec<String>>,
-    /// Whether the locked row was already terminal, so zero rows means 404.
-    pub(super) was_killed: bool,
 }
 
 impl Rewrite {
@@ -108,7 +107,6 @@ impl Rewrite {
             required_tags: skill
                 .as_ref()
                 .map(|replacement| replacement.tags().iter().map(ToString::to_string).collect()),
-            was_killed: current.status == FleetStatus::Killed,
         })
     }
 
@@ -238,14 +236,5 @@ mod tests {
         // 412'd by somebody else stopping the fleet.
         assert_eq!(rewrite.source_after(&current), SKILL);
         assert_eq!(rewrite.trigger_after(&current), Some(TRIGGER));
-    }
-
-    #[test]
-    fn a_killed_row_is_remembered_so_zero_rows_reads_as_gone() {
-        let mut current = stored("probe");
-        current.status = FleetStatus::Killed;
-        let rewrite = read(&Patch::default(), &current).expect("nothing to reparse");
-
-        assert!(rewrite.was_killed);
     }
 }

@@ -17,6 +17,10 @@ workspace = true
 [dependencies]
 # Identifiers, the clock, the registry codes, and the keyset cursor the list
 # walk resumes from.
+# The retry LOOP around the install's stream setup — the counter and the
+# terminal rule, which is where the Zig shipped its bug. The delays stay
+# `afd_redis::Backoff`.
+backon.workspace = true
 afd_core.workspace = true
 # Entropy for the fleet identifiers the install mints.
 afd_crypto.workspace = true
@@ -31,10 +35,6 @@ afd_redis.workspace = true
 # document the lease path could not read back.
 afd_fleet_runtime.workspace = true
 sqlx.workspace = true
-# The install's bounded retry sleeps between attempts. `time` only — this crate
-# spawns nothing and owns no runtime; it is awaited on whichever one the caller
-# is already running.
-tokio = { workspace = true, features = ["time"] }
 thiserror.workspace = true
 tracing.workspace = true
 
@@ -47,5 +47,3 @@ test-util = [
   "afd_redis/test-util",
 ]
 
-[dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -161,14 +161,19 @@ pub(crate) const PURGE_CHILDREN: &[&str] = &[
     "DELETE FROM core.fleet_sessions WHERE fleet_id = $1::uuid",
 ];
 
-/// Locks one fleet for the read-modify-write a PATCH performs.
+/// The editable surface a PATCH reads before it writes.
 ///
-/// `$1` fleet · `$2` workspace. Exactly one row is ever locked, which makes a
-/// deadlock on this path structurally impossible rather than merely unlikely.
-pub(crate) const SELECT_FLEET_FOR_UPDATE: &str = "\
+/// `$1` fleet · `$2` workspace.
+///
+/// No `FOR UPDATE`, and that is the whole design. `patch_txn.zig` locks the row
+/// for the duration of a read-modify-write; here the compare-and-set lives in
+/// [`PATCH_FLEET`]'s own predicate, so this read needs no lock to be safe — a
+/// concurrent write simply makes the UPDATE match no row. What that removes is
+/// a transaction, three `SET LOCAL` timeouts, a `55P03` classification, and a
+/// row lock held across a YAML reparse on every conditional save.
+pub(crate) const SELECT_FLEET_EDITABLE: &str = "\
 SELECT name, status, source_markdown, trigger_markdown FROM core.fleets \
-WHERE id = $1::uuid AND workspace_id = $2::uuid \
-FOR UPDATE";
+WHERE id = $1::uuid AND workspace_id = $2::uuid";
 
 /// Applies a PATCH, with the status machine expressed as the row predicate.
 ///
@@ -176,7 +181,8 @@ FOR UPDATE";
 /// `$5` workspace · `$6` killed · `$7` stopped · `$8` active · `$9` the
 /// statuses `stopped` may be reached from · `$10` the statuses `active` may be
 /// reached from · `$11` trigger markdown · `$12` source markdown · `$13` name ·
-/// `$14` required tags.
+/// `$14` required tags · `$15` the source digest the caller read, or NULL ·
+/// `$16` the trigger digest they read, NULL where the column is.
 ///
 /// `COALESCE` per column makes every field independently optional: an absent
 /// field is untouched rather than nulled. The trailing disjunction is the
@@ -188,8 +194,27 @@ FOR UPDATE";
 /// The machine lives HERE, in the row predicate, rather than in a read followed
 /// by a decision followed by a write. That is not a style preference: the read
 /// and the write would be two statements, and between them another request can
-/// commit. Expressed as a predicate it is the same lock the update already
-/// takes, so the check cannot go stale between being made and being acted on.
+/// commit. As a predicate it is evaluated by the UPDATE itself, so the check
+/// cannot go stale between being made and being acted on.
+///
+/// # The conditional guard is over exactly what the `ETag` hashes
+///
+/// `$15`/`$16` carry the digests of the two markdown columns as the caller last
+/// read them, and a write proceeds only if both still match. That is the
+/// compare-and-set an `If-Match` asks for, done atomically by the UPDATE — no
+/// row lock, and no `updated_at` comparison, which would carry a real ABA hole:
+/// the column is epoch MILLISECONDS, so two commits inside one millisecond
+/// return it to a value a third reader is still holding. Postgres would not
+/// close that with `TIMESTAMPTZ` either, because `now()` is transaction-START
+/// time and two concurrent transactions read it identical.
+///
+/// Guarding on the SAME columns the tag hashes — rather than on the whole row —
+/// is what keeps a concurrent status change from refusing an editor whose source
+/// nobody touched. `xmin` would be exact and would get that wrong.
+///
+/// Digests rather than the values: the columns run to 200KB each, and 64 hex
+/// characters say the same thing. Postgres hashes its own copy, so nothing is
+/// resent.
 pub(crate) const PATCH_FLEET: &str = "\
 UPDATE core.fleets SET \
     config_json      = COALESCE($1::jsonb, config_json), \
@@ -208,6 +233,11 @@ WHERE id = $4::uuid \
      OR ($2 = $7 AND status = ANY($9::text[])) \
      OR ($2 = $8 AND status = ANY($10::text[])) \
   ) \
+  AND ($15::text IS NULL OR ( \
+        encode(sha256(convert_to(source_markdown, 'UTF8')), 'hex') = $15 \
+    AND encode(sha256(convert_to(trigger_markdown, 'UTF8')), 'hex') \
+        IS NOT DISTINCT FROM $16 \
+  )) \
 RETURNING updated_at";
 
 /// A platform library entry, resolved for install by its slug.

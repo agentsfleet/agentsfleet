@@ -346,9 +346,21 @@ redis = { version = "1.6.0", default-features = false, features = [
 #
 # `default-features = false` drops `form`, `multipart` and the macros: this API
 # speaks JSON, and a body format the daemon never accepts is a parser it should
-# not link. `http1` only — the dashboard proxy terminates TLS and speaks HTTP/1
-# upstream, and `http2` would pull a second frame layer for a hop that has no
-# use for one. `tokio` for the listener, `json` for the envelope.
+# not link. `tokio` for the listener, `json` for the envelope.
+#
+# `http2` is ON, reversing the earlier call here that `http1` was enough because
+# the tunnel speaks HTTP/1 upstream. That reasoning still describes today
+# accurately — `deploy/fly/cloudflared-*/config.yml` points at
+# `http://agentsfleetd-*.internal:3000`, and cloudflared speaks h1 to an origin
+# unless told otherwise — so this feature changes nothing on its own.
+#
+# It is on for §5's event streams. A browser caps concurrent HTTP/1.1
+# connections per origin at six, and every open SSE stream holds one, so a few
+# dashboard tabs starve everything else on that origin. HTTP/2 multiplexes them
+# and the cap stops mattering. The browser ALREADY gets that from the Cloudflare
+# edge, which is why this is not urgent; what it buys is the origin hop, so the
+# daemon is not the reason the tunnel cannot be switched to `http2Origin` later.
+# The other half of that change lives in `deploy/`, not here.
 #
 # NOTE for §5's route table: axum's `get()` handler ALSO answers HEAD by
 # default. agentsfleetd has never served HEAD — its matchers switch on GET,
@@ -361,8 +373,22 @@ redis = { version = "1.6.0", default-features = false, features = [
 # writes its own body and content type.
 axum = { version = "0.8.9", default-features = false, features = [
     "http1",
+    # HTTP/2 for the SSE surface. A browser caps concurrent HTTP/1.1 connections
+    # per origin at six, and every open event stream holds one — a dashboard
+    # with a few tabs starves everything else on the origin. HTTP/2 multiplexes
+    # them onto one connection and the cap stops mattering. The Cloudflare
+    # tunnel already gives the browser h2 today; this is the origin hop, which
+    # is what a baremetal deployment without a proxy in front actually serves.
+    "http2",
     "tokio",
 ] }
+# The retry LOOP, rather than the schedule. `afd_redis::Backoff` computes the
+# delays and is proven on the subscription hub's reconnect; what was hand-rolled
+# beside it was the counter and the terminal rule — and the loop guard is
+# precisely where the Zig install shipped its bug, leaving the last delay
+# unreachable. 26.9M recent downloads against tokio-retry's 10.1M, and on 1.x
+# where tokio-retry is still 0.3.
+backon = { version = "1.6.0", default-features = false, features = ["tokio-sleep"] }
 # Tower is the middleware algebra axum composes; `tower-http` carries the
 # ready-made layers. The admission ceiling is ours (it counts in-flight
 # requests per route CLASS, which no off-the-shelf layer knows about), but the

@@ -123,9 +123,6 @@ pub(crate) enum ErrorKind {
     #[error("a fleet must be killed before it can be purged")]
     MustKillFirst,
 
-    #[error("another writer holds this fleet's row and did not let go in time")]
-    LockContended,
-
     #[error("the caller's If-Match names a source version the row has moved past")]
     SourceStale {
         /// The tag the row holds now, so an editor re-applies in one round trip.
@@ -149,10 +146,7 @@ impl Error {
             // One code for both stores — a caller acts identically on either —
             // and two sentences, so an operator reading a 503 body does not
             // have to open the log to learn which datastore is down.
-            // A held row joins the two stores here: from the caller's side an
-            // outage and a lock they could not take are one fact — this
-            // instance could not do the work, and the move is to retry.
-            ErrorKind::Datastore { .. } | ErrorKind::LockContended => (
+            ErrorKind::Datastore { .. } => (
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 detail::DATABASE_UNAVAILABLE,
             ),
@@ -240,7 +234,7 @@ impl Error {
     pub const fn is_datastore_unavailable(&self) -> bool {
         matches!(
             self.inner.kind,
-            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } | ErrorKind::LockContended
+            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. }
         )
     }
 
