@@ -44,6 +44,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_admin"
+version = "0.26.2"
+dependencies = [
+ "afd_core",
+ "afd_crypto",
+ "afd_db",
+ "sqlx",
+ "thiserror",
+]
+
+[[package]]
 name = "afd_api"
 version = "0.26.2"
 dependencies = [

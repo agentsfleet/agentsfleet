@@ -1,0 +1,25 @@
+[package]
+name = "afd_admin"
+description = "Small repositories for agentsfleet platform administration."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+test-util = ["afd_core/test-util", "afd_crypto/test-util", "afd_db/test-util"]
+
+[dependencies]
+afd_core.workspace = true
+afd_crypto.workspace = true
+afd_db.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
