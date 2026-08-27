@@ -312,6 +312,15 @@ const ENTRIES: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::RUN_SELFTEST_REFUSED,
+        status: 409,
+        title: "Self-test refused: runner is revoked",
+        hint: "A revoked runner never heartbeats again, so it cannot pick the request up. Enroll a replacement runner and test that one instead.",
+        user_message: Some(
+            "This runner is revoked, so it can't run a self-test. Enroll a new runner to test one.",
+        ),
+    },
+    Problem {
         code: error_code::AGENTSFLEET_CREDENTIAL_MISSING,
         // 424, matching the Zig entry's `.failed_dependency`. The fleet's own
         // request is well-formed; what is missing is a credential it depends

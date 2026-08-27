@@ -272,3 +272,55 @@ WITH current_state AS (
 )
 SELECT c.from_admin_state, EXISTS (SELECT 1 FROM updated) AS changed
 FROM current_state c";
+
+/// The policy mutation's locked state and reported capability.
+pub const SELECT_RUNNER_PATCH_STATE: &str = "\
+SELECT admin_state, capability_report::text
+FROM fleet.runners WHERE id = $1::uuid FOR UPDATE";
+
+/// Re-assign policy, reconciled verdict, and audit event atomically.
+///
+/// The caller holds this row's lock in the surrounding transaction. The
+/// distinctness guard makes an identical request write neither row nor event.
+pub const PATCH_RUNNER_ASSIGNED_POLICY: &str = "\
+WITH updated AS (
+  UPDATE fleet.runners
+  SET sandbox_tier = $2::text, network_policy = $3::text,
+      registry_allowlist = $4::jsonb, worker_count = $5::int,
+      updated_at = $6::bigint, degraded = $13::bool,
+      degraded_reason = $14::text, extra_binds = $15::jsonb
+  WHERE id = $1::uuid
+    AND (sandbox_tier IS DISTINCT FROM $2::text
+      OR network_policy IS DISTINCT FROM $3::text
+      OR registry_allowlist IS DISTINCT FROM $4::jsonb
+      OR worker_count IS DISTINCT FROM $5::int
+      OR extra_binds IS DISTINCT FROM $15::jsonb)
+  RETURNING id
+), event AS (
+  INSERT INTO fleet.runner_events
+    (id, runner_id, event_type, metadata, dedup_key, created_at)
+  SELECT $7::uuid, id, $8::text,
+         jsonb_build_object($9::text, $2::text, $10::text, $3::text,
+                            $11::text, $4::jsonb, $12::text, $5::int),
+         NULL, $6::bigint
+  FROM updated
+)
+SELECT id::text FROM updated";
+
+/// Record one outstanding self-test ask while preserving revocation terminality.
+///
+/// Returning the locked row even when the guard refuses the update lets the
+/// caller distinguish a missing runner from a revoked one without a racy
+/// follow-up read.
+pub const PATCH_RUNNER_SELFTEST_REQUEST: &str = "\
+WITH current_state AS (
+  SELECT id, admin_state FROM fleet.runners WHERE id = $1::uuid FOR UPDATE
+), updated AS (
+  UPDATE fleet.runners r
+  SET selftest_requested_at = $2::bigint, updated_at = $2::bigint
+  FROM current_state c
+  WHERE r.id = c.id AND c.admin_state <> 'revoked'
+  RETURNING r.id
+)
+SELECT c.admin_state, EXISTS (SELECT 1 FROM updated) AS changed
+FROM current_state c";

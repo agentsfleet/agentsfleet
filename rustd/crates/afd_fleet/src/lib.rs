@@ -53,6 +53,7 @@ pub mod sweep;
 pub mod vault;
 
 pub use crate::error::{Error, Result};
+pub use crate::runner::admin::{PolicyAssigned, SelftestRequested};
 pub use crate::runner::reconcile::{Verdict, reconcile};
 pub use crate::runner::view::{
     KeysetCursor, PageLimit, RunnerDetail, RunnerEventPage, RunnerItem, RunnerPage,

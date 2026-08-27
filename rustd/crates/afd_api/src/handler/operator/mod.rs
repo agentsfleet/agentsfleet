@@ -2,5 +2,6 @@
 
 pub(crate) mod events;
 mod query;
+pub(crate) mod runner_patch;
 pub(crate) mod runners;
 pub(crate) mod streams;

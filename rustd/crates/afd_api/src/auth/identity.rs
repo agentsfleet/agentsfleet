@@ -29,7 +29,7 @@
 //!
 //! [`RouteMeta`]: crate::route::RouteMeta
 
-use afd_auth::principal::{Principal, Runner};
+use afd_auth::principal::{Person, Principal, Runner};
 use afd_core::error_code;
 use axum::extract::FromRequestParts;
 use axum::response::{IntoResponse as _, Response};
@@ -46,6 +46,29 @@ const DETAIL_UNPROVEN: &str = "runner identity required";
 /// A runner speaking for itself, proven by the layer in front of the handler.
 #[derive(Debug, Clone)]
 pub struct RunnerIdentity(pub Runner);
+
+/// A human operator proven on the tenant bearer plane.
+#[derive(Debug, Clone)]
+pub struct PersonIdentity(pub Person);
+
+impl<S: Send + Sync> FromRequestParts<S> for PersonIdentity {
+    type Rejection = Response;
+
+    fn from_request_parts(
+        parts: &mut Parts,
+        _state: &S,
+    ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
+        std::future::ready(
+            parts
+                .extensions
+                .get::<Principal>()
+                .and_then(Principal::person)
+                .cloned()
+                .map(Self)
+                .ok_or_else(person_unproven),
+        )
+    }
+}
 
 impl<S: Send + Sync> FromRequestParts<S> for RunnerIdentity {
     /// A written response rather than a typed rejection: there is one way to
@@ -91,6 +114,24 @@ fn unproven() -> Response {
     ProblemResponse::new(
         error_code::INTERNAL_OPERATION_FAILED,
         DETAIL_UNPROVEN,
+        request_id,
+    )
+    .into_response()
+}
+
+fn person_unproven() -> Response {
+    let request_id = RequestId::mint();
+    let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let request_id_field = request_id.as_str();
+    tracing::error!(
+        error_code = code,
+        request_id = request_id_field,
+        event = "person_identity_unproven",
+        "an operator handler ran with no proven person — its guard layer is not mounted"
+    );
+    ProblemResponse::new(
+        error_code::INTERNAL_OPERATION_FAILED,
+        "operator identity required",
         request_id,
     )
     .into_response()
