@@ -30,7 +30,9 @@
 use std::sync::Arc;
 
 use afd_api::router::{Dependencies, ReadyInputs, build};
-use afd_api::services::{DeviceFlow, Leasing, TenantKeys, TerminalCredentials, WorkspaceOwnership};
+use afd_api::services::{
+    DeviceFlow, Leasing, TenantBilling, TenantKeys, TerminalCredentials, WorkspaceOwnership,
+};
 use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Planes, Services};
 use afd_auth::credential::{CredentialKind, Presented};
 use afd_auth::directory::{CredentialRecord, Liveness};
@@ -331,6 +333,7 @@ impl Services for Fleet {
     type Workspaces = OneWorkspace;
     type ApiKeys = NoKeys;
     type CliCredentials = NoTerminals;
+    type Billing = NoBilling;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
@@ -362,6 +365,10 @@ impl Services for Fleet {
 
     fn cli_credentials(&self) -> &NoTerminals {
         &NoTerminals
+    }
+
+    fn billing(&self) -> &NoBilling {
+        &NoBilling
     }
 
     /// A fixed deployment, which is what a real one is too.
@@ -593,6 +600,36 @@ impl TerminalCredentials for NoTerminals {
         _credential: &Uuid7,
         _now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<afd_tenant::cli_credential::Revoked>> + Send {
+        std::future::ready(Err(afd_tenant::Error::datastore_unavailable()))
+    }
+}
+
+/// A billing read surface with no Postgres behind it.
+///
+/// Both verbs answer the refusal a datastore that would not answer produces,
+/// for [`NoKeys`]' reason: the reads' whole behaviour is two statements a real
+/// Postgres evaluates — including the missing-wallet invariant, which only a
+/// seeded database can distinguish from an empty answer — so there is no
+/// success this could invent that would not be inventing the rows too. What a
+/// suite here proves is the guard, the tenant resolution and the query-string
+/// refusals in FRONT of the verb.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct NoBilling;
+
+impl TenantBilling for NoBilling {
+    fn snapshot(
+        &self,
+        _tenant: &Uuid7,
+    ) -> impl Future<Output = afd_tenant::Result<afd_tenant::billing::Wallet>> + Send {
+        std::future::ready(Err(afd_tenant::Error::datastore_unavailable()))
+    }
+
+    fn charges(
+        &self,
+        _tenant: &Uuid7,
+        _limit: u32,
+        _boundary: Option<&afd_tenant::billing::cursor::Boundary>,
+    ) -> impl Future<Output = afd_tenant::Result<Vec<afd_tenant::billing::ChargeRow>>> + Send {
         std::future::ready(Err(afd_tenant::Error::datastore_unavailable()))
     }
 }

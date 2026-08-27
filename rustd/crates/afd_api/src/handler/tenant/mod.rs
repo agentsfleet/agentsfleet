@@ -7,10 +7,64 @@
 //! route table's, and the third is the tenant the credential resolved to.
 
 mod api_key;
+mod billing;
 mod cli_credential;
 
 pub(crate) use self::api_key::{delete, list, mint, revoke};
+pub(crate) use self::billing::{charges as billing_charges, snapshot as billing_snapshot};
+// The refusal sentences, for the router suite to assert by identity.
+pub use self::billing::{DETAIL_LIMIT_NOT_NUMERIC, DETAIL_LIMIT_RANGE, DETAIL_NO_TENANT};
 // Renamed at the re-export: both families mint and both revoke, and the router
 // names them side by side. The prefix belongs to the collision, so it lives
 // here rather than in either module.
 pub(crate) use self::cli_credential::{mint as mint_cli, revoke as revoke_cli};
+
+use std::sync::Arc;
+
+use afd_core::id::Uuid7;
+
+use crate::handler::Refusal;
+use crate::services::{Services, WorkspaceOwnership as _};
+
+/// Which tenant this principal acts for, or the refusal.
+///
+/// The tenant plane's routes carry no workspace, so there is no ownership layer
+/// in front of them and this is the boundary instead: every statement below a
+/// handler filters on what this returns, and a principal that resolves to no
+/// tenant cannot reach a row at all.
+///
+/// `detail` and `event` are the route family's own: the refusal a bootstrap
+/// credential earns names what it cannot do HERE, so the api-key verbs and the
+/// billing reads each hand in their sentence rather than sharing one that is
+/// wrong for somebody (the port of each Zig handler group spelling its own).
+async fn tenant_of<D: Services>(
+    services: &Arc<D>,
+    person: &afd_auth::principal::Person,
+    detail: &'static str,
+    event: &'static str,
+) -> Result<Uuid7, Refusal> {
+    let principal = afd_auth::principal::Principal::Person(person.clone());
+    match services.workspaces().tenant_of(&principal).await {
+        Ok(Some(tenant)) => Ok(tenant),
+        // Authenticated, and resolving to no tenant row. A 403 rather than a
+        // 401: re-authenticating cannot produce a tenant this credential does
+        // not have.
+        Ok(None) => Err(Refusal::forbidden(detail)),
+        Err(error) => Err(Refusal::at(event)(error)),
+    }
+}
+
+/// One query-string parameter, by name.
+///
+/// A hand-rolled scan rather than a query-string crate, because that is the
+/// whole of what these handlers need from a query string and a crate for it
+/// would be a dependency to justify. Percent-decoding is deliberately absent:
+/// every value these parameters take — a limit, a sort spelling, a cursor —
+/// is drawn from an alphabet that survives a URL unescaped, and a decoder here
+/// would be a second place for a `+` to become a space.
+fn parameter<'q>(query: &'q str, name: &str) -> Option<&'q str> {
+    query.split('&').find_map(|pair| {
+        let (key, value) = pair.split_once('=')?;
+        (key == name).then_some(value)
+    })
+}

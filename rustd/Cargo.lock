@@ -228,6 +228,7 @@ dependencies = [
  "afd_crypto",
  "afd_db",
  "afd_redis",
+ "base64 0.23.1",
  "futures-util",
  "hex",
  "petname",

@@ -145,6 +145,12 @@ pub(crate) enum ErrorKind {
 
     #[error("the authenticated subject has no user record")]
     CliCredentialUnknownSubject,
+
+    #[error("a tenant reached billing with no wallet row behind it")]
+    BillingWalletMissing,
+
+    #[error("a charges cursor this daemon never issued")]
+    ChargesCursorInvalid,
 }
 
 /// Which device-flow field a refusal names.
@@ -279,9 +285,17 @@ impl Error {
             ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => {
                 error_code::INTERNAL_DB_QUERY
             }
-            ErrorKind::Mint { .. } | ErrorKind::Entropy { .. } => {
-                error_code::INTERNAL_OPERATION_FAILED
-            }
+            // One internal code for four failures the caller shares an
+            // inability to correct. Two are this instance's own — a mint that
+            // failed, a host that cannot draw entropy. A missing wallet is
+            // operator surgery or a defect, because signup bootstrap writes it
+            // in the tenant-create transaction; a machine collision reaching
+            // the edge means the mint's retry already lost twice in a row. The
+            // SENTENCES separate them where separation helps.
+            ErrorKind::Mint { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::BillingWalletMissing
+            | ErrorKind::CliCredentialMachineCollision => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::SessionFieldInvalid { field } => match field {
                 SessionField::PublicKey => error_code::INVALID_PUBLIC_KEY,
                 SessionField::TokenName => error_code::INVALID_TOKEN_NAME,
@@ -308,19 +322,15 @@ impl Error {
             ErrorKind::SessionNotOwner | ErrorKind::CliCredentialUnknownSubject => {
                 error_code::AUTH_FORBIDDEN
             }
-            ErrorKind::ApiKeyFieldInvalid { .. } | ErrorKind::CliCredentialMachineNameInvalid => {
-                error_code::INVALID_REQUEST
-            }
+            ErrorKind::ApiKeyFieldInvalid { .. }
+            | ErrorKind::CliCredentialMachineNameInvalid
+            | ErrorKind::ChargesCursorInvalid => error_code::INVALID_REQUEST,
             ErrorKind::ApiKeyNotFound => error_code::APIKEY_NOT_FOUND,
             ErrorKind::ApiKeyNameTaken => error_code::APIKEY_NAME_TAKEN,
             ErrorKind::ApiKeyAlreadyRevoked => error_code::APIKEY_ALREADY_REVOKED,
             ErrorKind::ApiKeyReadonlyField => error_code::APIKEY_READONLY_FIELD,
             ErrorKind::ApiKeyMustRevokeFirst => error_code::APIKEY_MUST_REVOKE_FIRST,
             ErrorKind::CliCredentialNotFound => error_code::AUTH_CLI_CREDENTIAL_NOT_FOUND,
-            // Internal by the time a caller could see it: the mint retries once
-            // on this, so reaching the edge means two retries lost in a row and
-            // the caller has nothing to correct.
-            ErrorKind::CliCredentialMachineCollision => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 
@@ -374,6 +384,8 @@ impl Error {
             ErrorKind::CliCredentialMachineNameInvalid => DETAIL_CLI_CREDENTIAL_MACHINE_NAME,
             ErrorKind::CliCredentialNotFound => DETAIL_CLI_CREDENTIAL_NOT_FOUND,
             ErrorKind::CliCredentialUnknownSubject => DETAIL_CLI_CREDENTIAL_UNKNOWN_SUBJECT,
+            ErrorKind::BillingWalletMissing => DETAIL_BILLING_WALLET_MISSING,
+            ErrorKind::ChargesCursorInvalid => DETAIL_CHARGES_CURSOR_INVALID,
         }
     }
 }
@@ -531,6 +543,16 @@ pub(crate) fn cli_credential_machine_name() -> Error {
 /// Reports an id naming no live credential this user holds.
 pub(crate) fn cli_credential_not_found() -> Error {
     Error::new(ErrorKind::CliCredentialNotFound)
+}
+
+/// Reports a tenant whose wallet row is not there.
+pub(crate) fn billing_wallet_missing() -> Error {
+    Error::new(ErrorKind::BillingWalletMissing)
+}
+
+/// Refuses a charges cursor this daemon never issued.
+pub(crate) fn charges_cursor_invalid() -> Error {
+    Error::new(ErrorKind::ChargesCursorInvalid)
 }
 
 /// Reports an insert the machine's unique index refused.

@@ -111,3 +111,19 @@ pub const DETAIL_CLI_CREDENTIAL_NOT_FOUND: &str = "Command-line credential not f
 
 /// Its refusal for a proven subject with no `core.users` row behind it.
 pub const DETAIL_CLI_CREDENTIAL_UNKNOWN_SUBJECT: &str = "Authenticated subject has no user record";
+
+/// The billing surface's report of a wallet row that is not there.
+///
+/// The em-dash sentence is `tenant_billing.zig`'s, byte for byte: the row is
+/// written in the tenant-create transaction, so its absence is a bootstrap
+/// invariant broken by surgery or a defect, and the sentence says whose problem
+/// that is.
+pub const DETAIL_BILLING_WALLET_MISSING: &str =
+    "Tenant billing row missing — bootstrap invariant violated";
+
+/// Its refusal for a charges cursor it never issued.
+///
+/// Lower-case and terse where the keyset cursor's refusals are sentences,
+/// because this is `tenant_billing.zig`'s exact spelling and a cursor may be
+/// judged by either binary mid-cutover.
+pub const DETAIL_CHARGES_CURSOR_INVALID: &str = "invalid cursor";
