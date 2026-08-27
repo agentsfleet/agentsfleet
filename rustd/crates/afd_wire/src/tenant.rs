@@ -103,31 +103,111 @@ pub struct ApiKeySummary<'a> {
     /// When it was minted.
     pub created_at: i64,
     /// When it last authenticated, if it ever has.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub last_used_at: Option<i64>,
     /// When it stopped working, if it has.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    ///
+    /// Emitted as `null` rather than omitted — here and on every optional in
+    /// this module. The Zig daemon serialises through `res.json(value, .{})`,
+    /// and std.json's default emits null optionals, so a row is always the
+    /// same set of keys. Omission would be a shape change a dashboard's
+    /// `"revoked_at" in row` check can feel.
     pub revoked_at: Option<i64>,
+}
+
+/// `GET /v1/tenants/me/billing` — the wallet snapshot.
+///
+/// `is_exhausted` restates `exhausted_at` as a boolean, and both travel:
+/// `tenant_billing.zig` emits the pair so a dashboard can branch without a
+/// null-check, and parity keeps the redundancy. `updated_at` and
+/// `exhausted_at` are instants in milliseconds; the `_ms` suffix the domain
+/// types carry stops at the wire because the Zig field names are the format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct BillingResponse {
+    /// What remains, in nanos — one thousand-millionth of a dollar.
+    pub balance_nanos: i64,
+    /// When the balance last moved.
+    pub updated_at: i64,
+    /// Whether the balance has reached zero.
+    pub is_exhausted: bool,
+    /// When it did, or `null` while money remains — emitted either way, for
+    /// the module's null rule.
+    pub exhausted_at: Option<i64>,
+}
+
+/// One ledger row as the charges list shows it.
+///
+/// Field-for-field the Zig `TelemetryRow`, in its order — the struct is
+/// serialized straight to JSON there, so the row IS the wire shape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ChargeSummary<'a> {
+    /// The ledger row's identifier.
+    pub id: Cow<'a, str>,
+    /// Whose charge it is.
+    pub tenant_id: Cow<'a, str>,
+    /// The workspace it was incurred in — `null` once that workspace is
+    /// deleted, because a charge outlives what it was incurred on.
+    pub workspace_id: Option<Cow<'a, str>>,
+    /// The fleet it was incurred by, under the same deletion rule.
+    pub fleet_id: Option<Cow<'a, str>>,
+    /// The event that triggered the work.
+    pub event_id: Cow<'a, str>,
+    /// `receive` or `stage` — the two halves of one event's cost.
+    pub charge_type: Cow<'a, str>,
+    /// Whose model bill the tokens landed on.
+    pub posture: Cow<'a, str>,
+    /// The model the stage ran against.
+    pub model: Cow<'a, str>,
+    /// What this row drained, in nanos.
+    pub credit_deducted_nanos: i64,
+    /// Tokens in, on stage rows that have settled.
+    pub token_count_input: Option<i64>,
+    /// Tokens out, likewise.
+    pub token_count_output: Option<i64>,
+    /// How long the stage ran.
+    pub wall_ms: Option<i64>,
+    /// When the row was written — the walk's sort key, and what its cursor
+    /// half is rendered from.
+    pub recorded_at: i64,
+}
+
+/// `GET /v1/tenants/me/billing/charges` — one page of the ledger.
+///
+/// Two keys, not [`PageResponse`]'s three: the Zig handler answers
+/// `{items, next_cursor}` with no `total`, and parity pins the ABSENCE the
+/// same way it pins a presence. Folding this into the shared envelope would
+/// put a key on the wire the daemon being replaced never sent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ChargesResponse<'a> {
+    /// The rows on this page, newest first.
+    pub items: Vec<ChargeSummary<'a>>,
+    /// Where the next page resumes, or `null` on the last page — emitted
+    /// either way, for the module's null rule.
+    pub next_cursor: Option<Cow<'a, str>>,
 }
 
 /// A page of a keyset-paginated list, in the envelope every list shares.
 ///
 /// Generic over the item, because the envelope is the same for every paged
 /// resource on these planes and a per-resource copy is a per-resource chance
-/// for `has_more` to be computed differently.
+/// for the keys to drift apart.
+///
+/// Exactly three keys, always — `items`, `total`, `next_cursor` — pinned to
+/// what `api_keys/list.zig` answers and to the integration test that counts
+/// them. An earlier shape here said `data` with a `has_more` beside it, which
+/// read well and was nobody's wire format: parity is with the daemon being
+/// replaced, not with the envelope one would design today.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PageResponse<'a, T> {
     /// The rows on this page, in the requested order.
-    pub data: Vec<T>,
-    /// Whether another page exists.
-    ///
-    /// Derived from the page being FULL rather than from the total, because the
-    /// total is page-stable and a row deleted mid-walk would otherwise make it
-    /// disagree with what the cursor can actually reach.
-    pub has_more: bool,
-    /// Where the next page resumes, when there is one.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub next_cursor: Option<Cow<'a, str>>,
+    pub items: Vec<T>,
     /// How many rows the collection holds in total.
+    ///
+    /// Page-stable — the count carries no keyset predicate — so a client
+    /// walking pages sees one number rather than a shrinking one. Whether more
+    /// pages exist is answered by `next_cursor` being non-null, not by a flag.
     pub total: i64,
+    /// Where the next page resumes, or `null` on the last page.
+    ///
+    /// Always emitted, never omitted, for the module's null rule.
+    pub next_cursor: Option<Cow<'a, str>>,
 }

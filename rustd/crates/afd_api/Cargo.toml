@@ -18,6 +18,7 @@ test-util = [
   "afd_core/test-util",
   "afd_crypto/test-util",
   "afd_fleet/test-util",
+  "afd_tenant/test-util",
 ]
 
 # Each dependency is added by the module that uses it: `unreachable_pub` and

@@ -20,7 +20,9 @@ use http::{HeaderValue, StatusCode, header};
 
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
-use crate::services::{Services, TenantKeys as _, WorkspaceOwnership as _};
+use crate::services::{Services, TenantKeys as _};
+
+use super::{parameter, tenant_of};
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_MINT: &str = "apikey_mint_failed";
@@ -63,7 +65,7 @@ pub(crate) async fn mint<D: Services>(
         })
         .map_err(Refusal::at(EVENT_MINT))?;
 
-    let tenant = tenant_of(&services, person).await?;
+    let tenant = tenant_of(&services, person, DETAIL_NO_TENANT, EVENT_TENANT).await?;
     let mint = MintRequest {
         tenant: &tenant,
         name,
@@ -90,7 +92,7 @@ pub(crate) async fn list<D: Services>(
     let page = Page::<ApiKeySort>::parse(|name| parameter(&query, name))
         .map_err(|refusal| Refusal::malformed(refusal.detail()))?;
 
-    let tenant = tenant_of(&services, person).await?;
+    let tenant = tenant_of(&services, person, DETAIL_NO_TENANT, EVENT_TENANT).await?;
 
     let listing = services
         .api_keys()
@@ -115,7 +117,7 @@ pub(crate) async fn revoke<D: Services>(
     // there is no path to it that skipped this refusal.
     let intent = Deactivation::parse(request.active).map_err(Refusal::at(EVENT_REVOKE))?;
 
-    let tenant = tenant_of(&services, person).await?;
+    let tenant = tenant_of(&services, person, DETAIL_NO_TENANT, EVENT_TENANT).await?;
 
     let revoked = services
         .api_keys()
@@ -133,7 +135,7 @@ pub(crate) async fn delete<D: Services>(
 ) -> Result<Response, Refusal> {
     let person = identity.person();
     let key = Uuid7::parse(&key_id).map_err(|_unparseable| Refusal::malformed(DETAIL_KEY_ID))?;
-    let tenant = tenant_of(&services, person).await?;
+    let tenant = tenant_of(&services, person, DETAIL_NO_TENANT, EVENT_TENANT).await?;
 
     services
         .api_keys()
@@ -141,28 +143,6 @@ pub(crate) async fn delete<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_DELETE))?;
     Ok(StatusCode::NO_CONTENT.into_response())
-}
-
-/// Which tenant this principal acts for, or the refusal.
-///
-/// The tenant plane's routes carry no workspace, so there is no ownership layer
-/// in front of them and this is the boundary instead: every statement below
-/// filters on what this returns, and a principal that resolves to no tenant
-/// cannot reach a row at all.
-async fn tenant_of<D: Services>(
-    services: &Arc<D>,
-    person: &afd_auth::principal::Person,
-) -> Result<Uuid7, Refusal> {
-    let principal = afd_auth::principal::Principal::Person(person.clone());
-    match services.workspaces().tenant_of(&principal).await {
-        Ok(Some(tenant)) => Ok(tenant),
-        // Authenticated, and resolving to no tenant row. A 403 rather than a
-        // 401: re-authenticating cannot produce a tenant this credential does
-        // not have.
-        //
-        Ok(None) => Err(Refusal::forbidden(DETAIL_NO_TENANT)),
-        Err(error) => Err(Refusal::at(EVENT_TENANT)(error)),
-    }
 }
 
 /// The mint reply, with the header that keeps it out of a cache.
@@ -200,9 +180,10 @@ fn revoked_response(revoked: &Revoked) -> RevokedApiKeyResponse<'_> {
 
 /// One page, and the cursor that continues it.
 ///
-/// `has_more` is the page being FULL, not the total minus what has been seen: a
-/// row deleted mid-walk would make the second disagree with what the cursor can
-/// actually reach, and a client would ask for a page that comes back empty.
+/// A cursor is emitted only when the page is FULL — the total minus what has
+/// been seen would disagree with what the cursor can actually reach after a
+/// row is deleted mid-walk, and a client would ask for a page that comes back
+/// empty.
 fn page_response<'rows>(
     listing: &'rows Listing,
     page: &Page<ApiKeySort>,
@@ -216,10 +197,9 @@ fn page_response<'rows>(
         .flatten()
         .map(|last| Cow::Owned(last.cursor(page.sort).to_string()));
     PageResponse {
-        data: listing.keys.iter().map(summary).collect(),
-        has_more: next_cursor.is_some(),
-        next_cursor,
+        items: listing.keys.iter().map(summary).collect(),
         total: listing.total,
+        next_cursor,
     }
 }
 
@@ -233,19 +213,4 @@ fn summary(key: &KeyRow) -> ApiKeySummary<'_> {
         last_used_at: key.last_used_at_ms,
         revoked_at: key.revoked_at_ms,
     }
-}
-
-/// One query-string parameter, by name.
-///
-/// A hand-rolled scan rather than a query-string crate, because that is the
-/// whole of what these handlers need from a query string and a crate for it
-/// would be a dependency to justify. Percent-decoding is deliberately absent:
-/// every value these parameters take — a limit, a sort spelling, a cursor —
-/// is drawn from an alphabet that survives a URL unescaped, and a decoder here
-/// would be a second place for a `+` to become a space.
-fn parameter<'q>(query: &'q str, name: &str) -> Option<&'q str> {
-    query.split('&').find_map(|pair| {
-        let (key, value) = pair.split_once('=')?;
-        (key == name).then_some(value)
-    })
 }

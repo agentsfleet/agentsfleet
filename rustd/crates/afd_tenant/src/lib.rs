@@ -27,6 +27,7 @@
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 pub mod apikey;
+pub mod billing;
 pub mod cli_credential;
 pub mod error;
 pub mod session;

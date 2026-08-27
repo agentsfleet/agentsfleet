@@ -15,6 +15,9 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
+# The charges cursor is base64url on the wire — the whole token, unlike the
+# keyset cursor which encodes only its text half. Same engine as afd_core's.
+base64.workspace = true
 # The registry codes, identifiers, the clock, and the paging vocabulary every
 # list verb here parses its query string with.
 afd_core.workspace = true

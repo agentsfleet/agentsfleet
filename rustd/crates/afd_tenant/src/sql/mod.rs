@@ -9,5 +9,6 @@
 //! where a `$n` order looks odd, it is odd in the original too.
 
 pub mod apikey;
+pub mod billing;
 pub mod cli_credential;
 pub mod workspace;
