@@ -4,10 +4,17 @@
 #
 # Stage shape:
 #   1. reject files with staged and unstaged edits
-#   2. gitleaks --staged              (serial, always)
-#   3. classify staged files by surface
-#   4. make harness-verify            (serial, fast — must run before lints)
+#   2. orly gate work                 (serial — runs the declared `conform`
+#                                       command, i.e. make harness-verify)
+#   3. gitleaks --staged              (serial, always)
+#   4. classify staged files by surface
 #   5. run one parallel Make graph plus the direct auth test
+#
+# orly 0.8.0 recomposed its gates one-per-cadence: `work` now runs the
+# declared `conform` command itself (M06_001, agentsfleet/orly#25), so the
+# explicit `make harness-verify` this hook ran a second time — after `orly
+# gate work` had already run it once, below — is gone. harness-verify still
+# fires exactly once per commit; it fires inside the gate call, not twice.
 #
 # Surfaces:
 #   - check-documentation-rules (*.zig too — it reads command help text out of
@@ -142,13 +149,9 @@ done <<< "$staged"
 any_needed=$(( needs_lint_rustd + needs_lint_website + needs_lint_app + needs_lint_design_system + needs_lint_cli + needs_lint_shell + needs_check_documentation + needs_check_openapi + needs_check_gh_actions + needs_check_playbooks + needs_harness_only ))
 
 if [ "$any_needed" -eq 0 ]; then
-  echo "pre-commit: no lint-relevant files staged, skipping harness-verify + targeted lint"
+  echo "pre-commit: no lint-relevant files staged, skipping targeted lint"
   exit 0
 fi
-
-# --- harness-verify (serial, fast — full-state gates) ------------------------
-echo "pre-commit: make harness-verify"
-make harness-verify
 
 # --- Scoped checks -----------------------------------------------------------
 # One Make graph lets shared prerequisites run once. The auth portability test

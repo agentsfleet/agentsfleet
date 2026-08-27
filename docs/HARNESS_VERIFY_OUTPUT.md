@@ -27,6 +27,7 @@ Verdict cells use ✅ pass · 🟣 n/a · 🔴 fail · 🟡 violations addressed
 | LENGTH GATE          | ✅ pass | 🟡 files at cap: …    |
 | MILESTONE-ID GATE    | ✅ pass — combined audit, 0 hits |
 | ZIG GATE             | ✅ pass | 🟣 n/a               |
+| RUST ERR GATE        | ✅ pass | 🟣 n/a               |
 | UI GATE              | ✅ pass | 🟣 n/a               |
 | DESIGN TOKEN GATE    | ✅ pass | 🟡 N arbitraries addressed | 🔴 N unresolved |
 | UFS GATE             | ✅ pass | 🟡 N violations addressed | 🔴 N unresolved |

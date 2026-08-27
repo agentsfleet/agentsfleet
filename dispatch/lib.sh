@@ -80,6 +80,7 @@ declare -A DISPATCH_GLOSS=(
   [LOG]="LOGging discipline (scoped event, error_code, severity, redaction)"
   [MSID]="Milestone-ID ban in source (M{N}_{NNN} / §x.y / T{N} / dim)"
   [ERR]="ERror Registry (UZ-XXX-NNN declared + referenced)"
+  [ERR-RS]="Rust ERror discipline (one type per crate, Result alias, no stringified cause)"
   [GRP]="GREptile rule audit (diff vs greptile-learnings/RULES.md codes)"
   [LDC]="Legacy-Design Consult (A remove / B patch / C keep)"
 )
@@ -92,13 +93,35 @@ dispatch_init() {
   DISPATCH_EXTS=("$@")
 }
 
+# Paths this repository's engine wrote, one per line, from the install record.
+#
+# A managed file is orly's, not the repository's: the next `orly update`
+# overwrites it, so a finding against one is a chore nobody can complete. Left
+# unfiltered, staging a fresh install put orly's own leaf helpers in front of
+# orly's own length gate — audits/logging.sh is 444 lines against a 350 cap —
+# and the first commit of an adoption failed on the adoption itself.
+dispatch_managed_paths() {
+  local config="$TARGET_ROOT/.oracle/orly.json"
+  [ -f "$config" ] || return 0
+  sed -n '/"managed"[[:space:]]*:[[:space:]]*\[/,/\]/p' "$config" \
+    | grep -oE '"[^"]+"' \
+    | sed -e 's/^"//' -e 's/"$//' \
+    | grep -vx 'managed' || true
+}
+
 # Resolve targets: explicit file args, or --staged self-discovery via git.
+# Explicit arguments are never filtered — naming a file is asking about it.
 dispatch_resolve_files() {
   DISPATCH_FILES=()
   if [ "${1:-}" = "--staged" ]; then
-    local pathspecs=() e
+    local pathspecs=() e managed
     for e in "${DISPATCH_EXTS[@]}"; do pathspecs+=("$e"); done
-    while IFS= read -r f; do [ -n "$f" ] && DISPATCH_FILES+=("$f"); done \
+    managed="$(dispatch_managed_paths)"
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      [ -n "$managed" ] && grep -qxF "$f" <<<"$managed" && continue
+      DISPATCH_FILES+=("$f")
+    done \
       < <(git -C "$TARGET_ROOT" diff --cached --name-only --diff-filter=ACMRT -- "${pathspecs[@]}" \
           | grep -vE '(^|/)(vendor|third_party|node_modules|\.zig-cache|dist|build|\.next)/' || true)
   elif [ "$#" -ge 1 ]; then
@@ -124,9 +147,11 @@ dispatch_resolve_files() {
 # dispatch must never claim a file its gates cannot parse.
 dispatch_add_shebang_files() {
   [ "${1:-}" = "--staged" ] || return 0
-  local f base path firstline
+  local f base path firstline managed
+  managed="$(dispatch_managed_paths)"
   while IFS= read -r f; do
     [ -n "$f" ] || continue
+    [ -n "$managed" ] && grep -qxF "$f" <<<"$managed" && continue
     base="${f##*/}"
     case "$base" in *.*) continue ;; esac
     path="$TARGET_ROOT/$f"; [ -f "$path" ] || path="$f"; [ -f "$path" ] || continue
