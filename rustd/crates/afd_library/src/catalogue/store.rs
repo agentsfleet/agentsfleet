@@ -14,7 +14,7 @@ const CONTEXT_DELETE: &str = "delete platform library";
 
 /// Platform Fleet-library repository.
 #[derive(Debug, Clone)]
-pub struct Libraries(Db);
+pub struct Libraries(pub(super) Db);
 
 impl Libraries {
     /// Uses the already-connected API-role pool.

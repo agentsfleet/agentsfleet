@@ -13,6 +13,7 @@ use afd_core::env::MapEnv;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_db::{Db, Migrator};
 use afd_library::{DeleteLibrary, Libraries, LibraryPatch, PatchLibrary};
+use afd_library::{ImportBody, LibraryImports, SourceKind};
 use sqlx::AssertSqlSafe;
 
 const LANE_KNOB: &str = "TEST_DATABASE_URL";
@@ -128,6 +129,78 @@ async fn catalogue_edits_preserve_preconditions_and_publication_invariants() {
     );
 
     fixtures.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn platform_upload_stages_draft_and_guards_source_ownership() {
+    let fixtures = Fixtures::create().await;
+    let imports = LibraryImports::without_store(fixtures.database.clone());
+    let libraries = Libraries::new(fixtures.database.clone());
+
+    let first = upload("unit/first", "First body");
+    let imported = imports
+        .upload(&first, false, NOW)
+        .await
+        .expect("a skill-only upload needs no R2");
+    assert_eq!(imported.name, "upload-probe");
+    assert!(
+        libraries
+            .published()
+            .await
+            .expect("published list reads")
+            .is_empty()
+    );
+    let row = libraries
+        .list()
+        .await
+        .expect("admin catalogue reads")
+        .into_iter()
+        .next()
+        .expect("the upload inserted one row");
+    assert_eq!(row.visibility(), "draft");
+    assert_eq!(row.source_repo(), "unit/first");
+
+    let second = upload("unit/second", "Second body");
+    let collision = imports
+        .upload(&second, false, NOW)
+        .await
+        .expect_err("a foreign source cannot take the slug silently");
+    assert_eq!(collision.collision_incumbent(), Some("unit/first"));
+    imports
+        .upload(&second, true, NOW)
+        .await
+        .expect("explicit replacement changes the source");
+
+    assert!(matches!(
+        libraries
+            .patch("upload-probe", &published(), None, NOW)
+            .await
+            .expect("the imported bundle publishes"),
+        PatchLibrary::Updated(_)
+    ));
+    let public = libraries.published().await.expect("published list reads");
+    assert_eq!(public.len(), 1);
+    assert_eq!(
+        public.first().expect("one published row").id(),
+        "upload-probe"
+    );
+
+    fixtures.cleanup().await;
+}
+
+fn upload(source_ref: &str, body: &str) -> ImportBody {
+    ImportBody {
+        source_kind: SourceKind::Upload,
+        source_ref: source_ref.to_owned(),
+        source_revision: None,
+        skill_markdown: format!(
+            "---\nname: upload-probe\ndescription: {body}\nversion: 1.0.0\n---\nInstructions."
+        )
+        .into_bytes(),
+        trigger_markdown: None,
+        support_files: Vec::new(),
+    }
 }
 
 fn published() -> LibraryPatch {

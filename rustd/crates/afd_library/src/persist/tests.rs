@@ -1,6 +1,5 @@
 #![expect(clippy::expect_used, reason = "tests inspect successful fixtures")]
 
-use std::convert::Infallible;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -22,12 +21,11 @@ use crate::{ImportBody, PreparedBundle, SourceKind, SupportFile};
 struct MemoryCatalog(Mutex<Vec<PreparedBundle>>);
 
 impl BundleCatalog for MemoryCatalog {
-    type Error = Infallible;
-
     fn insert(
         &self,
+        _body: &ImportBody,
         bundle: &PreparedBundle,
-    ) -> impl std::future::Future<Output = core::result::Result<(), Self::Error>> + Send {
+    ) -> impl std::future::Future<Output = crate::Result<()>> + Send {
         self.0
             .lock()
             .expect("catalog mutex is healthy")
@@ -189,6 +187,27 @@ async fn test_bundle_import_r2_outage() {
         .import(&bundle())
         .await
         .expect("retry succeeds after the transient outage");
+    assert_eq!(
+        importer
+            .catalog
+            .0
+            .lock()
+            .expect("catalog mutex is healthy")
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn skill_only_import_needs_no_snapshot_store() {
+    let mut body = bundle();
+    body.support_files.clear();
+    let importer = ImportService::without_store(MemoryCatalog::default());
+
+    importer
+        .import(&body)
+        .await
+        .expect("skill-only metadata imports without R2");
     assert_eq!(
         importer
             .catalog

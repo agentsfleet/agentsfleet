@@ -4,9 +4,10 @@
 use std::borrow::Cow;
 
 use afd_wire::admin::{
-    AdminLibrariesResponse, AdminLibraryItem, AdminLibraryRequirements, AdminModelCreated,
-    AdminModelItem, AdminModelUpdated, AdminModelsResponse, ModelRates,
-    PlatformKeyDeactivateResponse, PlatformKeyItem, PlatformKeySetResponse, PlatformKeysResponse,
+    AdminLibrariesResponse, AdminLibraryCreated, AdminLibraryItem, AdminLibraryRequirements,
+    AdminModelCreated, AdminModelItem, AdminModelUpdated, AdminModelsResponse, FleetBundleItem,
+    FleetBundlesResponse, ModelRates, PlatformKeyDeactivateResponse, PlatformKeyItem,
+    PlatformKeySetResponse, PlatformKeysResponse,
 };
 
 #[test]
@@ -65,6 +66,39 @@ fn test_admin_crud_shape_parity() {
     assert_eq!(library.get("etag"), Some(&serde_json::json!("\"abc123\"")));
     assert!(library.get("skill_markdown").is_none());
     assert!(library.get("support_files").is_none());
+
+    let created = AdminLibraryCreated {
+        id: Cow::Borrowed("github-reviewer"),
+        name: Cow::Borrowed("github-reviewer"),
+        visibility: Cow::Borrowed("platform"),
+        content_hash: Cow::Borrowed("abc123"),
+        requirements: AdminLibraryRequirements {
+            credentials: vec![Cow::Borrowed("github")],
+            tools: vec![Cow::Borrowed("http_request")],
+            network_hosts: vec![Cow::Borrowed("api.github.com")],
+            trigger_present: true,
+        },
+    };
+    assert_eq!(
+        serde_json::to_value(created).expect("created library serializes"),
+        serde_json::json!({"id":"github-reviewer","name":"github-reviewer","visibility":"platform","content_hash":"abc123","requirements":{"credentials":["github"],"tools":["http_request"],"network_hosts":["api.github.com"],"trigger_present":true}})
+    );
+
+    let gallery = FleetBundlesResponse {
+        items: vec![FleetBundleItem {
+            id: Cow::Borrowed("github-reviewer"),
+            name: Cow::Borrowed("GitHub reviewer"),
+            description: Cow::Borrowed("Reviews pull requests"),
+            required_credentials: vec![Cow::Borrowed("github")],
+            required_credentials_reasons: serde_json::json!({"github":"Review pull requests"}),
+            required_tools: vec![Cow::Borrowed("http_request")],
+            network_hosts: vec![Cow::Borrowed("api.github.com")],
+        }],
+    };
+    assert_eq!(
+        serde_json::to_value(gallery).expect("gallery serializes"),
+        serde_json::json!({"items":[{"id":"github-reviewer","name":"GitHub reviewer","description":"Reviews pull requests","required_credentials":["github"],"required_credentials_reasons":{"github":"Review pull requests"},"required_tools":["http_request"],"network_hosts":["api.github.com"]}]})
+    );
 }
 
 #[test]

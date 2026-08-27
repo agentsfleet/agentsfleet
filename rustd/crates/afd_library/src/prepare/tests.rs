@@ -27,7 +27,8 @@ fn invalid(body: &ImportBody) -> InvalidBundle {
     match error {
         crate::Error::Invalid(reason) => reason,
         crate::Error::Storage(_)
-        | crate::Error::Catalogue(_)
+        | crate::Error::StorageUnavailable
+        | crate::Error::CatalogIdCollision { .. }
         | crate::Error::Pool(_)
         | crate::Error::CatalogueJson(_)
         | crate::Error::Database { .. }

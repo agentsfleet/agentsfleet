@@ -49,7 +49,7 @@ use afd_fleet::Runners;
 use afd_fleet::bundle::{Bundles, ContentHash};
 use afd_fleet::streams::{LiveStreams, SSE_MAX_STREAMS_DEFAULT};
 use afd_fleet_ops::RunnerLeaseHistory;
-use afd_library::Libraries;
+use afd_library::{Libraries, LibraryImports};
 use axum::Router;
 use axum::body::Body;
 use axum::response::Response;
@@ -86,6 +86,7 @@ pub(crate) struct Fleet {
     models: Models,
     platform_keys: PlatformKeys,
     libraries: Libraries,
+    library_imports: LibraryImports,
     now: UnixMillis,
 }
 
@@ -223,7 +224,8 @@ impl Fleet {
             runner_lease_history: RunnerLeaseHistory::new(database.clone()),
             models: Models::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
-            libraries: Libraries::new(database),
+            libraries: Libraries::new(database.clone()),
+            library_imports: LibraryImports::without_store(database),
             leases: NoWork,
             // Unconfigured by default, so a suite that says nothing about
             // snapshots proves the refusal a deployment with no R2 knobs gives
@@ -345,6 +347,10 @@ impl Services for Fleet {
 
     fn libraries(&self) -> &Libraries {
         &self.libraries
+    }
+
+    fn library_imports(&self) -> &LibraryImports {
+        &self.library_imports
     }
 
     fn now(&self) -> UnixMillis {

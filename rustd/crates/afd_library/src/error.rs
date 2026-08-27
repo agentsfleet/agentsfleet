@@ -1,8 +1,8 @@
 //! The failure vocabulary for bundle ingestion and external sources.
 
 use afd_core::error_code::{
-    ErrorCode, FLEET_BUNDLE_FETCH_FAILED, FLEET_BUNDLE_INVALID, FLEET_BUNDLE_STORAGE_UNAVAILABLE,
-    INTERNAL_DB_QUERY, INTERNAL_DB_UNAVAILABLE,
+    CATALOG_ID_COLLISION, ErrorCode, FLEET_BUNDLE_FETCH_FAILED, FLEET_BUNDLE_INVALID,
+    FLEET_BUNDLE_STORAGE_UNAVAILABLE, INTERNAL_DB_QUERY, INTERNAL_DB_UNAVAILABLE,
 };
 
 use crate::source::SourceFailure;
@@ -88,9 +88,15 @@ pub enum Error {
     /// Immutable snapshot storage did not accept a write.
     #[error("Fleet Bundle snapshot storage failed")]
     Storage(#[source] object_store::Error),
-    /// Validated metadata could not be committed to the catalogue.
-    #[error("Fleet Bundle catalogue write failed")]
-    Catalogue(#[source] Box<dyn std::error::Error + Send + Sync>),
+    /// Snapshot storage is not configured for a bundle carrying support files.
+    #[error("Fleet Bundle snapshot storage is unavailable")]
+    StorageUnavailable,
+    /// A different source already owns the bundle's frontmatter name.
+    #[error("Fleet Bundle catalogue id is already owned by {incumbent}")]
+    CatalogIdCollision {
+        /// Existing source repository or upload identity.
+        incumbent: String,
+    },
     /// A pool connection could not be acquired.
     #[error(transparent)]
     Pool(#[from] afd_db::Error),
@@ -134,9 +140,10 @@ impl Error {
             Self::Invalid(_) | Self::FrontmatterUtf8 { .. } | Self::FrontmatterYaml { .. } => {
                 FLEET_BUNDLE_INVALID
             }
-            Self::Storage(_) | Self::Catalogue(_) | Self::Snapshot(_) => {
+            Self::Storage(_) | Self::StorageUnavailable | Self::Snapshot(_) => {
                 FLEET_BUNDLE_STORAGE_UNAVAILABLE
             }
+            Self::CatalogIdCollision { .. } => CATALOG_ID_COLLISION,
             Self::Pool(_) => INTERNAL_DB_UNAVAILABLE,
             Self::CatalogueJson(_) | Self::Database { .. } => INTERNAL_DB_QUERY,
             Self::Source(_)
@@ -153,7 +160,7 @@ impl Error {
         matches!(
             self,
             Self::Storage(_)
-                | Self::Catalogue(_)
+                | Self::StorageUnavailable
                 | Self::Pool(_)
                 | Self::Source(SourceFailure::RateLimited)
                 | Self::Github(_)
@@ -175,9 +182,10 @@ impl Error {
             | Self::Archive(_)
             | Self::Redirect(_)
             | Self::ArchivePath(_) => "Fleet Bundle fetch failed",
-            Self::Storage(_) | Self::Catalogue(_) | Self::Snapshot(_) => {
+            Self::Storage(_) | Self::StorageUnavailable | Self::Snapshot(_) => {
                 "Fleet Bundle storage unavailable"
             }
+            Self::CatalogIdCollision { .. } => "Fleet Bundle catalogue id is already in use",
         }
     }
 
@@ -185,6 +193,15 @@ impl Error {
     #[must_use]
     pub const fn is_datastore_unavailable(&self) -> bool {
         matches!(self, Self::Pool(_))
+    }
+
+    /// Existing source when this error is an id collision.
+    #[must_use]
+    pub fn collision_incumbent(&self) -> Option<&str> {
+        match self {
+            Self::CatalogIdCollision { incumbent } => Some(incumbent),
+            _ => None,
+        }
     }
 }
 
@@ -213,8 +230,12 @@ impl From<SourceFailure> for Error {
 }
 
 impl Error {
-    pub(crate) fn catalogue(source: impl std::error::Error + Send + Sync + 'static) -> Self {
-        Self::Catalogue(Box::new(source))
+    pub(crate) const fn storage_unavailable() -> Self {
+        Self::StorageUnavailable
+    }
+
+    pub(crate) fn catalog_id_collision(incumbent: String) -> Self {
+        Self::CatalogIdCollision { incumbent }
     }
 
     pub(crate) fn database(context: &'static str) -> impl Fn(sqlx::Error) -> Self {

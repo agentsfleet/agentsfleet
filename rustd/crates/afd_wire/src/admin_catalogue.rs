@@ -4,6 +4,31 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
+/// Platform Fleet-library onboarding request.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default)]
+pub struct AdminLibraryImport<'a> {
+    /// `upload`, `github`, or first-party `template`.
+    #[serde(borrow)]
+    pub source_kind: Cow<'a, str>,
+    /// Repository, template id, or upload provenance.
+    #[serde(borrow)]
+    pub source_ref: Cow<'a, str>,
+    /// Optional GitHub branch, tag, or commit.
+    #[serde(borrow, rename = "ref")]
+    pub revision: Option<Cow<'a, str>>,
+    /// Explicitly permits replacing a slug owned by another source.
+    pub replace: bool,
+    /// Inline root document for uploads.
+    #[serde(borrow)]
+    pub skill_markdown: Option<Cow<'a, str>>,
+    /// Optional inline trigger document for uploads.
+    #[serde(borrow)]
+    pub trigger_markdown: Option<Cow<'a, str>>,
+    /// Attachments are fetched from repositories; inline uploads reject these.
+    pub support_files: Vec<serde_json::Value>,
+}
+
 /// Content-free requirements shown on one Fleet-library row.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -65,6 +90,62 @@ pub struct AdminLibrariesResponse<'a> {
     /// Every draft and public row.
     #[serde(borrow)]
     pub entries: Vec<AdminLibraryItem<'a>>,
+}
+
+/// Successful platform Fleet-library onboarding.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdminLibraryCreated<'a> {
+    /// Slug derived from `SKILL.md`.
+    #[serde(borrow)]
+    pub id: Cow<'a, str>,
+    /// Display name derived from `SKILL.md`.
+    #[serde(borrow)]
+    pub name: Cow<'a, str>,
+    /// Always `platform` for this endpoint.
+    #[serde(borrow)]
+    pub visibility: Cow<'a, str>,
+    /// Content identity of the validated bundle.
+    #[serde(borrow)]
+    pub content_hash: Cow<'a, str>,
+    /// Credential/tool/host names without support-file paths.
+    #[serde(borrow)]
+    pub requirements: AdminLibraryRequirements<'a>,
+}
+
+/// One public Fleet Bundle gallery row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FleetBundleItem<'a> {
+    /// Stable catalogue slug.
+    #[serde(borrow)]
+    pub id: Cow<'a, str>,
+    /// Display name.
+    #[serde(borrow)]
+    pub name: Cow<'a, str>,
+    /// Curated summary.
+    #[serde(borrow)]
+    pub description: Cow<'a, str>,
+    /// Credential names, never values.
+    #[serde(borrow)]
+    pub required_credentials: Vec<Cow<'a, str>>,
+    /// Install-gate explanation keyed by credential name.
+    pub required_credentials_reasons: serde_json::Value,
+    /// Required tool identifiers.
+    #[serde(borrow)]
+    pub required_tools: Vec<Cow<'a, str>>,
+    /// Declared outbound hosts.
+    #[serde(borrow)]
+    pub network_hosts: Vec<Cow<'a, str>>,
+}
+
+/// Public Fleet Bundle gallery response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FleetBundlesResponse<'a> {
+    /// Every published row carrying current bundle content.
+    #[serde(borrow)]
+    pub items: Vec<FleetBundleItem<'a>>,
 }
 
 /// Partial operator edit for one Fleet-library row.

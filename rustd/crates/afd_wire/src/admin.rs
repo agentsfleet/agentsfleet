@@ -5,8 +5,9 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 pub use crate::admin_catalogue::{
-    AdminLibrariesResponse, AdminLibraryItem, AdminLibraryPatch, AdminLibraryRequirements,
-    AdminModelCreate, AdminModelCreated, AdminModelItem, AdminModelUpdated, AdminModelsResponse,
+    AdminLibrariesResponse, AdminLibraryCreated, AdminLibraryImport, AdminLibraryItem,
+    AdminLibraryPatch, AdminLibraryRequirements, AdminModelCreate, AdminModelCreated,
+    AdminModelItem, AdminModelUpdated, AdminModelsResponse, FleetBundleItem, FleetBundlesResponse,
     ModelRates, PlatformKeyDeactivateResponse, PlatformKeyItem, PlatformKeyPut,
     PlatformKeySetResponse, PlatformKeysResponse,
 };

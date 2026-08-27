@@ -1,6 +1,5 @@
 #![expect(clippy::expect_used, reason = "tests inspect fixtures directly")]
 
-use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
 
 use object_store::ObjectStore;
@@ -34,12 +33,11 @@ impl BundleSource for FixtureSource {
 struct Catalog(Arc<Mutex<Vec<PreparedBundle>>>);
 
 impl BundleCatalog for Catalog {
-    type Error = Infallible;
-
     fn insert(
         &self,
+        _body: &ImportBody,
         bundle: &PreparedBundle,
-    ) -> impl std::future::Future<Output = core::result::Result<(), Self::Error>> + Send {
+    ) -> impl std::future::Future<Output = Result<()>> + Send {
         self.0
             .lock()
             .expect("catalog mutex is healthy")

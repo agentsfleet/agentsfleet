@@ -10,20 +10,18 @@ use crate::{Error, ImportBody, PreparedBundle, Result, canonical_snapshot, prepa
 
 /// Metadata write boundary implemented by the Postgres catalogue repository.
 pub trait BundleCatalog: Send + Sync {
-    /// Concrete repository error retained as the source of [`Error`].
-    type Error: std::error::Error + Send + Sync + 'static;
-
     /// Atomically inserts all metadata derived for one validated bundle.
     fn insert(
         &self,
+        body: &ImportBody,
         bundle: &PreparedBundle,
-    ) -> impl std::future::Future<Output = core::result::Result<(), Self::Error>> + Send;
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
 }
 
 /// Coordinates immutable object storage with catalogue persistence.
 #[derive(Debug)]
 pub struct ImportService<C> {
-    store: Arc<dyn ObjectStore>,
+    store: Option<Arc<dyn ObjectStore>>,
     catalog: C,
 }
 
@@ -33,7 +31,18 @@ where
 {
     /// Builds an importer from the crate-native store trait and a catalogue.
     pub fn new(store: Arc<dyn ObjectStore>, catalog: C) -> Self {
-        Self { store, catalog }
+        Self {
+            store: Some(store),
+            catalog,
+        }
+    }
+
+    /// Builds an importer for skill-only bundles in a deployment without R2.
+    pub fn without_store(catalog: C) -> Self {
+        Self {
+            store: None,
+            catalog,
+        }
     }
 
     /// Validates, stores the immutable snapshot, then commits metadata.
@@ -60,12 +69,20 @@ where
 
     async fn import_validated(&self, body: &ImportBody) -> Result<PreparedBundle> {
         let prepared = prepare(body)?;
-        let snapshot = canonical_snapshot(body)?;
-        let key = StorePath::from(prepared.snapshot_key.as_str());
-        self.store.put(&key, snapshot.into()).await?;
-        if let Err(source) = self.catalog.insert(&prepared).await {
-            let _cleanup = self.store.delete(&key).await;
-            return Err(Error::catalogue(source));
+        let stored = if body.support_files.is_empty() {
+            None
+        } else {
+            let store = self.store.as_ref().ok_or_else(Error::storage_unavailable)?;
+            let snapshot = canonical_snapshot(body)?;
+            let key = StorePath::from(prepared.snapshot_key.as_str());
+            store.put(&key, snapshot.into()).await?;
+            Some((store, key))
+        };
+        if let Err(error) = self.catalog.insert(body, &prepared).await {
+            if let Some((store, key)) = stored {
+                let _cleanup = store.delete(&key).await;
+            }
+            return Err(error);
         }
         Ok(prepared)
     }
@@ -76,6 +93,8 @@ where
     /// Preserves the object-store error as its source.
     pub async fn snapshot(&self, key: &str) -> Result<Bytes> {
         self.store
+            .as_ref()
+            .ok_or_else(Error::storage_unavailable)?
             .get(&StorePath::from(key))
             .await?
             .bytes()

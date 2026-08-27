@@ -95,6 +95,23 @@ async fn operator_reads_are_mounted_behind_their_exact_scopes() {
         json_body(overview).await,
         serde_json::json!({"items": [], "total": 0, "max_streams": 64})
     );
+
+    let fleet_reader = Fleet::new()
+        .with_person(
+            TENANT_KEY,
+            OPERATOR,
+            ScopeSet::from_scopes(&[Scope::FleetRead]),
+        )
+        .router();
+    let bundles = send(
+        &fleet_reader,
+        Method::GET,
+        "/v1/fleets/bundles",
+        Some(TENANT_KEY),
+        "",
+    )
+    .await;
+    assert_eq!(bundles.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
 #[tokio::test]
