@@ -8,6 +8,23 @@
 //! live row before inserting its replacement, and skipping that step does not
 //! produce two rows: it produces a failed insert.
 //!
+//! # Two simultaneous logins from one machine
+//!
+//! The partial unique index is the arbiter, and a loser is retried rather than
+//! reported. Both callers revoke nothing (there is no live row on a first
+//! login) and both insert; one wins and the other comes back `23505`. That is
+//! the index doing its job, so the answer is to run the loser's transaction
+//! again — its revoke now finds the winner's row and its insert succeeds. Last
+//! login wins, which is what "one live credential per machine" means.
+//!
+//! The Zig original took a transaction-scoped advisory lock instead
+//! (`pg_advisory_xact_lock(hashtextextended(user || ':' || machine, 0))`),
+//! which works and costs two things: a Postgres-specific mechanism in the
+//! domain layer, and a 64-bit hash of a concatenated pair, so two unrelated
+//! users can collide onto one lock key and serialise against each other for no
+//! reason. The retry needs neither, and the index it leans on is the one that
+//! was deciding the outcome anyway.
+//!
 //! # Why the revoke and the insert are one transaction
 //!
 //! A re-login that fails must leave the operator holding the credential they
@@ -55,6 +72,9 @@ const CONTEXT_REVOKE: &str = "revoke cli-credential";
 
 /// The context the subject lookup reports under.
 const CONTEXT_SUBJECT: &str = "resolve subject user";
+
+/// The Postgres error class for a violated unique index.
+const UNIQUE_VIOLATION: &str = "23505";
 
 /// Leading hex characters kept for display beside a credential.
 ///
@@ -110,6 +130,21 @@ impl CliCredentials {
     /// Reports a host that cannot draw entropy and a datastore that would not
     /// answer.
     pub async fn mint(&self, request: &MintRequest<'_>, now: UnixMillis) -> Result<Revealed> {
+        match self.try_mint(request, now).await {
+            // The index refused a second live row for this machine, which means
+            // somebody else's login committed between our revoke and our
+            // insert. Their row is live now, so a second attempt revokes it and
+            // takes its place. Once, not in a loop: a second collision would
+            // need a third simultaneous login on one machine in the width of
+            // one transaction, and retrying forever on a condition that cannot
+            // clear is how a mint path becomes a spin.
+            Err(error) if error.is_machine_collision() => self.try_mint(request, now).await,
+            outcome => outcome,
+        }
+    }
+
+    /// One attempt at the mint, collision and all.
+    async fn try_mint(&self, request: &MintRequest<'_>, now: UnixMillis) -> Result<Revealed> {
         // Both are drawn before the transaction opens. Neither touches the
         // datastore, and holding a transaction open across them would widen the
         // window on this write path for nothing.
@@ -125,16 +160,6 @@ impl CliCredentials {
             .await
             .map_err(error::query(CONTEXT_MINT))?;
 
-        // Serialises two simultaneous re-logins on one machine. The unique
-        // index is still the arbiter; this only keeps the loser from reporting
-        // a correct outcome as a datastore fault.
-        sqlx::query(sql::LOCK_CLI_CREDENTIAL_MINT)
-            .bind(request.user.as_str())
-            .bind(request.machine.as_str())
-            .execute(&mut *transaction)
-            .await
-            .map_err(error::query(CONTEXT_MINT))?;
-
         // Zero rows is a first login, not a failure: there is nothing to
         // revoke, and the insert below is the whole of the work.
         sqlx::query(sql::REVOKE_CLI_CREDENTIAL_FOR_MACHINE)
@@ -145,6 +170,8 @@ impl CliCredentials {
             .await
             .map_err(error::query(CONTEXT_MINT))?;
 
+        // The one statement whose failure can be a RACE rather than a fault, so
+        // it is the one classified rather than lifted.
         sqlx::query(sql::INSERT_CLI_CREDENTIAL)
             .bind(id.as_str())
             .bind(request.user.as_str())
@@ -157,7 +184,7 @@ impl CliCredentials {
             .bind(now.as_millis())
             .execute(&mut *transaction)
             .await
-            .map_err(error::query(CONTEXT_MINT))?;
+            .map_err(classify_insert)?;
 
         transaction
             .commit()
@@ -227,6 +254,23 @@ impl CliCredentials {
         let mut bytes = [0u8; ENTROPY_LEN];
         self.entropy.fill(&mut bytes)?;
         Ok(Uuid7::encode(now, bytes)?)
+    }
+}
+
+/// Tells a lost race apart from a broken statement.
+///
+/// `23505` on this insert has exactly one cause: the partial unique index on
+/// `(user_id, machine_name) WHERE revoked_at IS NULL` refused a second live row
+/// for this machine. Everything else is a genuine fault.
+fn classify_insert(source: sqlx::Error) -> crate::Error {
+    let collided = source
+        .as_database_error()
+        .and_then(sqlx::error::DatabaseError::code)
+        .is_some_and(|code| code == UNIQUE_VIOLATION);
+    if collided {
+        error::cli_credential_machine_collision()
+    } else {
+        error::query(CONTEXT_MINT)(source)
     }
 }
 

@@ -14,16 +14,6 @@
 //! and the audit trail would record when a credential was last asked about
 //! rather than when it actually died.
 
-/// Serialise concurrent logins on one `(user, machine)` before the read.
-///
-/// A transaction-scoped advisory lock, released at COMMIT or ROLLBACK by
-/// Postgres rather than by this code. The partial unique index is still the
-/// arbiter — this only keeps two simultaneous re-logins on one machine from
-/// having one of them lose at the insert, which would be a correct outcome
-/// reported as a datastore fault.
-pub const LOCK_CLI_CREDENTIAL_MINT: &str =
-    "SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text, 0))";
-
 /// Mint a credential.
 ///
 /// The partial unique index on `(user_id, machine_name) WHERE revoked_at IS

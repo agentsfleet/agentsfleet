@@ -31,7 +31,7 @@ use http::{HeaderValue, StatusCode, header};
 
 use crate::auth::{FreshSession, HumanIdentity};
 use crate::client::Origin;
-use crate::handler::{malformed, refuse};
+use crate::handler::Refusal;
 use crate::services::{Services, TerminalCredentials as _};
 
 /// The scoped events each verb's failures are logged under.
@@ -51,24 +51,16 @@ pub(crate) async fn mint<D: Services>(
     FreshSession(person): FreshSession,
     origin: Origin,
     body: Bytes,
-) -> Response {
-    let Ok(request) = afd_core::json::object_from_slice::<MintCliCredentialRequest<'_>>(&body)
-    else {
-        return malformed(DETAIL_MINT_BODY);
-    };
-    let machine = match MachineName::parse(&request.machine_name) {
-        Ok(machine) => machine,
-        Err(error) => return refuse(&error, EVENT_MINT),
-    };
+) -> Result<Response, Refusal> {
+    let request = afd_core::json::object_from_slice::<MintCliCredentialRequest<'_>>(&body)
+        .map_err(|_unreadable| Refusal::malformed(DETAIL_MINT_BODY))?;
+    let machine = MachineName::parse(&request.machine_name).map_err(Refusal::at(EVENT_MINT))?;
 
-    let user = match services
+    let user = services
         .cli_credentials()
         .user_of(person.subject().as_str())
         .await
-    {
-        Ok(user) => user,
-        Err(error) => return refuse(&error, EVENT_SUBJECT),
-    };
+        .map_err(Refusal::at(EVENT_SUBJECT))?;
 
     // The deployment is the one ANSWERING this request, never a value the
     // caller supplied: a credential and the deployment that minted it are one
@@ -81,10 +73,12 @@ pub(crate) async fn mint<D: Services>(
         from_address: origin.address.as_str(),
     };
 
-    match services.cli_credentials().mint(&mint, services.now()).await {
-        Ok(revealed) => revealed_response(&revealed),
-        Err(error) => refuse(&error, EVENT_MINT),
-    }
+    let revealed = services
+        .cli_credentials()
+        .mint(&mint, services.now())
+        .await
+        .map_err(Refusal::at(EVENT_MINT))?;
+    Ok(revealed_response(&revealed))
 }
 
 /// `DELETE /v1/cli-credentials/{id}` — revoke one of this user's credentials.
@@ -95,28 +89,22 @@ pub(crate) async fn revoke<D: Services>(
     State(services): State<Arc<D>>,
     HumanIdentity(person): HumanIdentity,
     Path(credential_id): Path<String>,
-) -> Response {
-    let Ok(credential) = Uuid7::parse(&credential_id) else {
-        return malformed(DETAIL_CREDENTIAL_ID);
-    };
+) -> Result<Response, Refusal> {
+    let credential = Uuid7::parse(&credential_id)
+        .map_err(|_unparseable| Refusal::malformed(DETAIL_CREDENTIAL_ID))?;
 
-    let user = match services
+    let user = services
         .cli_credentials()
         .user_of(person.subject().as_str())
         .await
-    {
-        Ok(user) => user,
-        Err(error) => return refuse(&error, EVENT_SUBJECT),
-    };
+        .map_err(Refusal::at(EVENT_SUBJECT))?;
 
-    match services
+    services
         .cli_credentials()
         .revoke(&user.id, &credential, services.now())
         .await
-    {
-        Ok(_revoked) => StatusCode::NO_CONTENT.into_response(),
-        Err(error) => refuse(&error, EVENT_REVOKE),
-    }
+        .map_err(Refusal::at(EVENT_REVOKE))?;
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 /// The mint reply, with the header that keeps it out of a cache.

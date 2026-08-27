@@ -19,7 +19,7 @@ pub mod auth;
 pub mod runner;
 pub mod tenant;
 
-use axum::response::{IntoResponse as _, Response};
+use axum::response::{IntoResponse, Response};
 
 use afd_core::error_code::ErrorCode;
 
@@ -98,6 +98,72 @@ impl Refusable for afd_tenant::Error {
     }
     fn reason(&self) -> String {
         self.to_string()
+    }
+}
+
+/// A refusal already rendered, so `?` can carry one out of a handler.
+///
+/// # Why this exists rather than a `match` at each step
+///
+/// A handler used to read
+///
+/// ```ignore
+/// let user = match services.users().resolve(subject).await {
+///     Ok(user) => user,
+///     Err(error) => return refuse(&error, EVENT),
+/// };
+/// ```
+///
+/// which is `?` written out by hand, three lines at a time, once per fallible
+/// step. The cost is not the typing: a step added later can simply forget its
+/// refusal arm and still compile, because nothing forces one. With a handler
+/// answering `Result<Response, Refusal>`, a fallible step that forgets to say
+/// what its failure means does not compile at all.
+///
+/// It holds a rendered `Response` rather than an error, because the two planes
+/// raise different error types and the thing they have in common is what they
+/// render to. The box is `clippy::result_large_err`: a `Response` is over a
+/// hundred bytes, and unboxed it would make every handler's `Result` that size
+/// for a value the success path never carries.
+pub(crate) struct Refusal(Box<Response>);
+
+impl Refusal {
+    /// Renders `error` as the refusal for `event`.
+    ///
+    /// Curried so it reads as `.map_err(Refusal::at(EVENT))?` — the event is
+    /// what the call site knows and the error is what the plane hands back.
+    pub(crate) fn at<E: Refusable>(event: &'static str) -> impl FnOnce(E) -> Self {
+        move |error| Self(Box::new(refuse(&error, event)))
+    }
+
+    /// A refusal this daemon wrote itself, with no plane behind it.
+    ///
+    /// The malformed-input path: a body that will not parse or a path segment
+    /// that is not an identifier never reached a plane, so there is no error to
+    /// render — only a sentence.
+    pub(crate) fn malformed(detail: &'static str) -> Self {
+        Self(Box::new(malformed(detail)))
+    }
+
+    /// A refusal for a caller who proved who they are and still may not.
+    ///
+    /// A 403 rather than a 401: the credential is good, and re-presenting it
+    /// cannot produce the thing it lacks.
+    pub(crate) fn forbidden(detail: &'static str) -> Self {
+        Self(Box::new(
+            ProblemResponse::new(
+                afd_core::error_code::AUTH_FORBIDDEN,
+                detail,
+                RequestId::mint(),
+            )
+            .into_response(),
+        ))
+    }
+}
+
+impl IntoResponse for Refusal {
+    fn into_response(self) -> Response {
+        *self.0
     }
 }
 
