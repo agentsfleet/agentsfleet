@@ -48,6 +48,8 @@ afd_auth.workspace = true
 afd_state.workspace = true
 # The runner control plane behind the `/v1/runners` verbs.
 afd_fleet.workspace = true
+# The workspace fleets surface's store, handed to the router as one service.
+afd_fleet_lifecycle.workspace = true
 # The tenant plane: api-keys, command-line credentials, the device-flow login
 # surface, and the workspace-ownership resolver the shared layer asks.
 afd_tenant.workspace = true

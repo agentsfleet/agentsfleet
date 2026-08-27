@@ -18,6 +18,7 @@ test-util = [
   "afd_core/test-util",
   "afd_crypto/test-util",
   "afd_fleet/test-util",
+  "afd_fleet_lifecycle/test-util",
   "afd_tenant/test-util",
 ]
 
@@ -32,6 +33,11 @@ afd_auth.workspace = true
 # points this way and never back: `afd_fleet` names no status code and no
 # router, so a decision it makes can be proven without an HTTP request.
 afd_fleet.workspace = true
+# The workspace fleets surface's store: install, read, edit, purge.
+afd_fleet_lifecycle.workspace = true
+# `FleetName` — a fleet's authored slug. Parsed at the edge, so the install path
+# below carries no validation arm of its own.
+afd_fleet_runtime.workspace = true
 # The tenant plane: api-keys, command-line credentials, the device-flow login
 # surface, and the workspace-ownership resolver the shared layer asks.
 afd_tenant.workspace = true
@@ -40,6 +46,10 @@ afd_tenant.workspace = true
 afd_wire.workspace = true
 # The wire payloads borrow, so a body is deserialised out of the request bytes
 # rather than through `axum::Json`, which owns what it parses.
+# The two-parameter path templates take their segments by NAME, which needs a
+# derived deserializer: `Path<String>` reads a single segment and fails the
+# extractor on a route carrying both a workspace and a fleet.
+serde.workspace = true
 serde_json.workspace = true
 # The workspace's one entropy surface, for the request id a refusal carries.
 # Drawing bytes directly here would make `getrandom` reachable from two crates

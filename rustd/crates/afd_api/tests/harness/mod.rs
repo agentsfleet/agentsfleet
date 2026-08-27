@@ -51,16 +51,20 @@ use bytes::Bytes;
 use object_store::ObjectStoreExt as _;
 use object_store::memory::InMemory;
 
+mod stubs_fleet;
 mod stubs_runner;
 mod stubs_tenant;
 mod support;
 
+pub(crate) use self::stubs_fleet::NoFleets;
 pub(crate) use self::stubs_runner::NoWork;
 pub(crate) use self::stubs_tenant::{
     DEPLOYMENT, NoBilling, NoDirectory, NoKeys, NoLogins, NoModels, NoTerminals, OWNED_WORKSPACE,
     OneWorkspace,
 };
-pub(crate) use self::support::{file_runner, json_body, presented, runner_id, send, tenant};
+pub(crate) use self::support::{
+    file_runner, json_body, presented, runner_id, send, send_with_headers, tenant,
+};
 
 /// A Postgres nobody is listening on.
 ///
@@ -225,6 +229,7 @@ impl Services for Fleet {
     type WorkspaceDirectory = NoDirectory;
     type ApiKeys = NoKeys;
     type CliCredentials = NoTerminals;
+    type Fleets = NoFleets;
     type Billing = NoBilling;
     type Catalogue = NoModels;
 
@@ -262,6 +267,10 @@ impl Services for Fleet {
 
     fn cli_credentials(&self) -> &NoTerminals {
         &NoTerminals
+    }
+
+    fn fleets(&self) -> &NoFleets {
+        &NoFleets
     }
 
     fn billing(&self) -> &NoBilling {

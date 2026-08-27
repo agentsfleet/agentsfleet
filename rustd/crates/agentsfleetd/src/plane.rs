@@ -31,6 +31,7 @@ use afd_fleet::memory::Memories;
 use afd_fleet::money::Accounts;
 use afd_fleet::provider::Providers;
 use afd_fleet::secrets::Registry;
+use afd_fleet_lifecycle::Fleets;
 // Aliased: `crate::identity::Sessions` is the token VERIFIER, and this is the
 // device-flow login surface. Two things called `Sessions` in one file is how a
 // reader ends up believing the login surface verifies bearer tokens.
@@ -64,6 +65,7 @@ pub struct ServingPlane {
     bundles: Bundles,
     logins: Logins,
     workspaces: Workspaces,
+    fleets: Fleets,
     api_keys: ApiKeys,
     cli_credentials: CliCredentials,
     billing: Billing,
@@ -112,6 +114,10 @@ impl ServingPlane {
         Self {
             bundles,
             workspaces: Workspaces::new(database.clone(), Entropy::new()),
+            // Takes the Redis CONNECTION, not a view of it: which views the
+            // fleet lifecycle needs is its own business, and assembling them
+            // here would mean editing this file whenever that answer changed.
+            fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
             billing: Billing::new(database.clone()),
@@ -193,6 +199,7 @@ impl Services for ServingPlane {
     type WorkspaceDirectory = Workspaces;
     type ApiKeys = ApiKeys;
     type CliCredentials = CliCredentials;
+    type Fleets = Fleets;
     type Billing = Billing;
     type Catalogue = Models;
 
@@ -233,6 +240,10 @@ impl Services for ServingPlane {
 
     fn cli_credentials(&self) -> &CliCredentials {
         &self.cli_credentials
+    }
+
+    fn fleets(&self) -> &Fleets {
+        &self.fleets
     }
 
     fn billing(&self) -> &Billing {

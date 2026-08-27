@@ -47,6 +47,7 @@
 //! Stopping it per route would mean remembering `.head(refuse)` eighty-one
 //! times. It is one fact about the daemon, so it is one layer.
 
+mod mount;
 mod probes;
 mod trace;
 
@@ -56,15 +57,12 @@ use axum::Router;
 use axum::extract::Request;
 use axum::middleware::{Next, from_fn, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{MethodRouter, delete, get, patch, post};
+use axum::routing::MethodRouter;
 use http::{Method, StatusCode};
 
 use crate::admission::{Admission, admit, is_metered};
 use crate::auth::{Gate, Owner, own, plane_of, prove};
-use crate::handler::{auth as auth_handler, runner, tenant as tenant_handler};
-use crate::route::{
-    AuthRoute, OpsRoute, Route, RouteMeta, RunnerOpsRoute, RunnerRoute, TenantRoute,
-};
+use crate::route::{Route, RouteMeta};
 use crate::services::Services;
 
 pub use self::probes::{Dependencies, ReadyInputs, ready_decision};
@@ -106,7 +104,7 @@ pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router 
     // log reads the same way every boot.
     let mut merged: Vec<(&'static str, RouteMeta, MethodRouter<Arc<D>>)> = Vec::new();
     for route in Route::all() {
-        let Some(handler) = handler_for::<D>(route) else {
+        let Some(handler) = self::mount::handler_for::<D>(route) else {
             continue;
         };
         // Hoisted for the same reason every other call-bearing log field
@@ -186,125 +184,6 @@ fn layered<D: Serving>(
         guarded.layer(from_fn_with_state(admission.clone(), admit))
     } else {
         guarded
-    }
-}
-
-/// The handler for `route`, or `None` when this binary does not serve it.
-///
-/// Total at BOTH levels — over the ten families, and over every route within
-/// each — so a new endpoint fails the build until somebody says whether this
-/// binary answers it. The Zig `route_table.zig` is total over the union too;
-/// what it cannot express is the difference between "tabled and unserved" and
-/// "forgotten", because every unserved route falls into the same `else`.
-fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>> {
-    match route {
-        Route::Ops(ops) => Some(match ops {
-            OpsRoute::Healthz => get(probes::healthz),
-            OpsRoute::Readyz => get(probes::readyz::<D>),
-        }),
-        Route::Auth(verb) => auth_handler_for::<D>(verb),
-        Route::Tenant(verb) => tenant_handler_for::<D>(verb),
-        Route::Runner(verb) => Some(runner_handler::<D>(verb)),
-        Route::RunnerOps(verb) => runner_ops_handler::<D>(verb),
-        // Tabled, not yet served. Each of these families arrives with the
-        // milestone that ports its handlers; until then the route exists as a
-        // template, a guard and a scope rung, and this binary answers 404.
-        Route::Admin(_)
-        | Route::Webhook(_)
-        | Route::Workspace(_)
-        | Route::Fleet(_)
-        | Route::Connector(_) => None,
-    }
-}
-
-/// The device-flow login surface — the one bearer family with no scope.
-///
-/// `None` for the identity-provider delivery: it is authenticated by a Svix
-/// signature rather than a bearer, so it belongs to M180's ingress work and not
-/// to this family's handlers.
-fn auth_handler_for<D: Serving>(verb: AuthRoute) -> Option<MethodRouter<Arc<D>>> {
-    match verb {
-        AuthRoute::CreateSession => Some(post(auth_handler::open::<D>)),
-        AuthRoute::PollSession => {
-            Some(get(auth_handler::poll::<D>).delete(auth_handler::delete_one::<D>))
-        }
-        AuthRoute::ApproveSession => Some(patch(auth_handler::approve::<D>)),
-        AuthRoute::VerifySession => Some(post(auth_handler::verify::<D>)),
-        AuthRoute::DeleteAllSessions => Some(delete(auth_handler::delete_all::<D>)),
-        // Two routes with nothing to mount, for two different reasons that
-        // reach the same answer. The single delete shares
-        // `/v1/auth/sessions/{session_id}` with the poll above and axum takes
-        // one method router per path, so it is mounted THERE; the
-        // identity-provider delivery is proven by a Svix signature rather than
-        // a bearer, so it lands with M180's signed ingress.
-        AuthRoute::DeleteSession | AuthRoute::IdentityEventClerk => None,
-    }
-}
-
-/// What a tenant manages for itself.
-///
-/// `None` for the surfaces that ride §4's vault foundation — the model
-/// registry and the provider row both take the secret reference-lock their
-/// writes are proven under. Each is an arm rather than an absence from a
-/// list, so the endpoint that is not served says so where somebody looking
-/// for it will read it.
-fn tenant_handler_for<D: Serving>(verb: TenantRoute) -> Option<MethodRouter<Arc<D>>> {
-    match verb {
-        TenantRoute::ApiKeys => {
-            Some(get(tenant_handler::list::<D>).post(tenant_handler::mint::<D>))
-        }
-        TenantRoute::ApiKey => {
-            Some(patch(tenant_handler::revoke::<D>).delete(tenant_handler::delete::<D>))
-        }
-        TenantRoute::CliCredentials => Some(post(tenant_handler::mint_cli::<D>)),
-        TenantRoute::CliCredential => Some(delete(tenant_handler::revoke_cli::<D>)),
-        TenantRoute::Billing => Some(get(tenant_handler::billing_snapshot::<D>)),
-        TenantRoute::BillingCharges => Some(get(tenant_handler::billing_charges::<D>)),
-        TenantRoute::Workspaces => Some(get(tenant_handler::list_workspaces::<D>)),
-        TenantRoute::CreateWorkspace => Some(post(tenant_handler::create_workspace::<D>)),
-        TenantRoute::ModelLibrary => Some(get(tenant_handler::catalogue::<D>)),
-        TenantRoute::Provider
-        | TenantRoute::ModelEntries
-        | TenantRoute::ModelEntry
-        | TenantRoute::FleetBundles => None,
-    }
-}
-
-/// The runner plane's verbs — a runner speaking for itself.
-/// Not an `Option`, where its two sibling tables are.
-///
-/// Every verb on this plane is now SERVED — the mint was the last one tabled —
-/// so a `None` arm here would be a possibility the type admits and the code
-/// cannot produce. The compiler enforces the difference: a verb added to
-/// [`RunnerRoute`] without a handler fails this match, where an `Option` would
-/// have let it default to 404 and look deliberate.
-fn runner_handler<D: Serving>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
-    match verb {
-        RunnerRoute::SelfRecord => get(runner::self_record::handle::<D>),
-        RunnerRoute::Heartbeat => post(runner::heartbeat::handle::<D>),
-        RunnerRoute::Lease => post(runner::lease::handle::<D>),
-        RunnerRoute::Report => post(runner::report::handle::<D>),
-        RunnerRoute::Renew => post(runner::renew::handle::<D>),
-        RunnerRoute::Activity => post(runner::activity::handle::<D>),
-        RunnerRoute::MemoryHydrate => get(runner::memory::hydrate::<D>),
-        RunnerRoute::MemoryCapture => post(runner::memory::capture::<D>),
-        RunnerRoute::Bundle => get(runner::bundle::handle::<D>),
-        RunnerRoute::CredentialsMint => post(runner::credential::handle::<D>),
-    }
-}
-
-/// The operator's view over runners — a tenant acting ON the fleet's hosts.
-fn runner_ops_handler<D: Serving>(verb: RunnerOpsRoute) -> Option<MethodRouter<Arc<D>>> {
-    match verb {
-        RunnerOpsRoute::Register => Some(post(runner::enrolment::handle::<D>)),
-        // M179's operator surface. Enrolment lands here first because it is the
-        // only one of these the runner plane cannot exist without.
-        RunnerOpsRoute::List
-        | RunnerOpsRoute::Get
-        | RunnerOpsRoute::Patch
-        | RunnerOpsRoute::Events
-        | RunnerOpsRoute::Leases
-        | RunnerOpsRoute::Streams => None,
     }
 }
 

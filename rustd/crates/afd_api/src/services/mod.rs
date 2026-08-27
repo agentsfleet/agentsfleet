@@ -9,9 +9,10 @@
 //!
 //! One file per plane, because the seams are one per plane too: the runner
 //! plane's verbs in [`leasing`], the device-flow login in [`device_flow`], the
-//! tenant's own credentials and ownership in [`tenant`], and the tenant's
-//! money in [`billing`]. Each trait is re-exported here, so a handler still
-//! names `crate::services::TenantKeys` and never a file.
+//! tenant's own credentials and ownership in [`tenant`], the tenant's money in
+//! [`billing`], and a workspace's fleets in [`fleets`]. Each trait is
+//! re-exported here, so a handler still names `crate::services::TenantKeys` and
+//! never a file.
 //!
 //! # Why the state is a trait and not a struct
 //!
@@ -34,12 +35,14 @@
 mod billing;
 mod catalogue;
 mod device_flow;
+mod fleets;
 mod leasing;
 mod tenant;
 
 pub use self::billing::TenantBilling;
 pub use self::catalogue::ModelCatalogue;
 pub use self::device_flow::DeviceFlow;
+pub use self::fleets::WorkspaceFleets;
 pub use self::leasing::Leasing;
 pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
 
@@ -151,6 +154,18 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// The command-line credential store.
     fn cli_credentials(&self) -> &Self::CliCredentials;
+
+    /// What the workspace fleets surface acts through.
+    ///
+    /// An associated type for the reason [`Services::Leases`] is one: the
+    /// concrete store holds a Redis connection opened by CONNECTING — the
+    /// install's whole guarantee is that a stream exists before the 201 — so a
+    /// suite proving the refusal matrix in front of these verbs cannot build
+    /// one and must not need to.
+    type Fleets: WorkspaceFleets;
+
+    /// The workspace's fleets: list, install, read, edit, purge.
+    fn fleets(&self) -> &Self::Fleets;
 
     /// The tenant's billing reads.
     ///

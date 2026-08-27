@@ -26,7 +26,7 @@ use serde_json::value::RawValue;
 
 /// The stored trigger projection, spliced without being parsed.
 ///
-/// `Option<&RawValue>` and not `Option<Value>`: `RawValue::from_string`
+/// `Box<RawValue>` and not `Value`: `RawValue::from_string`
 /// validates that the text IS JSON and then emits those bytes verbatim, so a
 /// caller gets the field the way the configuration was authored.
 ///
@@ -35,7 +35,7 @@ use serde_json::value::RawValue;
 /// equal as JSON and different as text, and it will not guess which a caller
 /// meant. A suite asserts on the serialized body, which is the thing that
 /// actually goes over the wire.
-pub type Triggers<'a> = Option<&'a RawValue>;
+pub type Triggers = Option<Box<RawValue>>;
 
 /// `POST /v1/workspaces/{workspace_id}/fleets` — install one.
 ///
@@ -102,8 +102,7 @@ pub struct FleetSummary<'a> {
     /// When it last changed.
     pub updated_at: i64,
     /// What may wake it, from the stored configuration.
-    #[serde(borrow)]
-    pub triggers: Triggers<'a>,
+    pub triggers: Triggers,
     /// Lifetime event count. Server truth, never client arithmetic.
     pub events_processed: i64,
     /// Lifetime spend, in nanos.
@@ -142,8 +141,7 @@ pub struct FleetDetailResponse<'a> {
     /// The bundle a runner materialises support files from.
     pub bundle_content_hash: Option<Cow<'a, str>>,
     /// What may wake it, from the stored configuration.
-    #[serde(borrow)]
-    pub triggers: Triggers<'a>,
+    pub triggers: Triggers,
     /// Lifetime event count.
     pub events_processed: i64,
     /// Lifetime spend, in nanos.
