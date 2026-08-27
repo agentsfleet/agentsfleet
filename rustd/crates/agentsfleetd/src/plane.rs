@@ -109,7 +109,7 @@ impl ServingPlane {
         } = parts;
         Self {
             bundles,
-            workspaces: Workspaces::new(database.clone()),
+            workspaces: Workspaces::new(database.clone(), Entropy::new()),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
             billing: Billing::new(database.clone()),
@@ -187,6 +187,7 @@ impl Services for ServingPlane {
     type Leases = Plane;
     type Sessions = Logins;
     type Workspaces = Workspaces;
+    type WorkspaceDirectory = Workspaces;
     type ApiKeys = ApiKeys;
     type CliCredentials = CliCredentials;
     type Billing = Billing;
@@ -212,6 +213,13 @@ impl Services for ServingPlane {
     }
 
     fn workspaces(&self) -> &Workspaces {
+        &self.workspaces
+    }
+
+    /// The same value as [`Services::workspaces`], deliberately: production
+    /// holds one directory that answers both seams, and the split exists for
+    /// the suites — see the trait's own note.
+    fn workspace_directory(&self) -> &Workspaces {
         &self.workspaces
     }
 

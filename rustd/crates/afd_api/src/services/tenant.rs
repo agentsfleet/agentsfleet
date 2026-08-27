@@ -1,10 +1,13 @@
-//! The tenant plane's seams: ownership, api-keys, and terminal credentials.
+//! The tenant plane's seams: ownership, the workspace directory, api-keys,
+//! and terminal credentials.
 
 use afd_auth::principal::Principal;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::paging::Page;
 use afd_tenant::apikey::{ApiKeySort, Deactivation, Listing, MintRequest, Revealed, Revoked};
+use afd_tenant::workspace::directory::{After, Created, WorkspacePage};
+use afd_tenant::workspace::name::Chosen;
 // Renamed at the import, not at the definition: `afd_tenant::apikey` already
 // spells `MintRequest`, `Revealed` and `Revoked` for the api-key family, and
 // this file names both families. The `Cli` prefix belongs to the collision, so
@@ -63,6 +66,65 @@ impl WorkspaceOwnership for afd_tenant::workspace::Workspaces {
         principal: &Principal,
     ) -> impl Future<Output = afd_tenant::Result<Option<Uuid7>>> + Send {
         Self::tenant_of(self, principal)
+    }
+}
+
+/// The tenant's workspace directory — the list, and the create beside it.
+///
+/// Separate from [`WorkspaceOwnership`] though production answers both with
+/// one value: the ownership seam is mounted as a LAYER and its suite stub
+/// owns exactly one workspace to prove both halves of the refusal matrix,
+/// while these verbs are ordinary handler calls whose stub refuses like every
+/// other store. One trait would force one stub to be both things.
+pub trait TenantWorkspaces: Send + Sync + std::fmt::Debug + 'static {
+    /// One page of the tenant's workspaces, oldest first.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer, and a row this daemon
+    /// cannot read.
+    fn page(
+        &self,
+        tenant: &Uuid7,
+        filter: Option<&str>,
+        after: Option<&After>,
+        limit: u32,
+    ) -> impl Future<Output = afd_tenant::Result<WorkspacePage>> + Send;
+
+    /// Creates one workspace, naming it when the caller did not.
+    ///
+    /// # Errors
+    /// Refuses a session whose tenant has no row behind it and a chosen name
+    /// this tenant already uses; reports a host that cannot draw entropy and
+    /// a datastore that would not answer.
+    fn create(
+        &self,
+        tenant: &Uuid7,
+        chosen: Option<Chosen>,
+        created_by: &str,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_tenant::Result<Created>> + Send;
+}
+
+/// The production directory answers it directly.
+impl TenantWorkspaces for afd_tenant::workspace::Workspaces {
+    fn page(
+        &self,
+        tenant: &Uuid7,
+        filter: Option<&str>,
+        after: Option<&After>,
+        limit: u32,
+    ) -> impl Future<Output = afd_tenant::Result<WorkspacePage>> + Send {
+        Self::page(self, tenant, filter, after, limit)
+    }
+
+    fn create(
+        &self,
+        tenant: &Uuid7,
+        chosen: Option<Chosen>,
+        created_by: &str,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_tenant::Result<Created>> + Send {
+        Self::create(self, tenant, chosen, created_by, now)
     }
 }
 

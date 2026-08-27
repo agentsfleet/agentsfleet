@@ -151,6 +151,18 @@ pub(crate) enum ErrorKind {
 
     #[error("a charges cursor this daemon never issued")]
     ChargesCursorInvalid,
+
+    #[error("a workspace name carries a character this daemon will not store")]
+    WorkspaceNameInvalid,
+
+    #[error("a workspace name is past the length cap")]
+    WorkspaceNameTooLong,
+
+    #[error("this tenant already holds a workspace under that name")]
+    WorkspaceNameExists,
+
+    #[error("the session's tenant claim names no tenant row")]
+    WorkspaceTenantVanished,
 }
 
 /// Which device-flow field a refusal names.
@@ -324,7 +336,13 @@ impl Error {
             }
             ErrorKind::ApiKeyFieldInvalid { .. }
             | ErrorKind::CliCredentialMachineNameInvalid
-            | ErrorKind::ChargesCursorInvalid => error_code::INVALID_REQUEST,
+            | ErrorKind::ChargesCursorInvalid
+            | ErrorKind::WorkspaceNameInvalid
+            | ErrorKind::WorkspaceNameTooLong => error_code::INVALID_REQUEST,
+            ErrorKind::WorkspaceNameExists => error_code::WORKSPACE_NAME_EXISTS,
+            // A 401 and not a 403: the session's tenant is GONE, so the
+            // credential itself is stale and re-authenticating is the remedy.
+            ErrorKind::WorkspaceTenantVanished => error_code::AUTH_UNAUTHORIZED,
             ErrorKind::ApiKeyNotFound => error_code::APIKEY_NOT_FOUND,
             ErrorKind::ApiKeyNameTaken => error_code::APIKEY_NAME_TAKEN,
             ErrorKind::ApiKeyAlreadyRevoked => error_code::APIKEY_ALREADY_REVOKED,
@@ -386,6 +404,10 @@ impl Error {
             ErrorKind::CliCredentialUnknownSubject => DETAIL_CLI_CREDENTIAL_UNKNOWN_SUBJECT,
             ErrorKind::BillingWalletMissing => DETAIL_BILLING_WALLET_MISSING,
             ErrorKind::ChargesCursorInvalid => DETAIL_CHARGES_CURSOR_INVALID,
+            ErrorKind::WorkspaceNameInvalid => DETAIL_WORKSPACE_NAME_INVALID,
+            ErrorKind::WorkspaceNameTooLong => DETAIL_WORKSPACE_NAME_TOO_LONG,
+            ErrorKind::WorkspaceNameExists => DETAIL_WORKSPACE_NAME_EXISTS,
+            ErrorKind::WorkspaceTenantVanished => DETAIL_WORKSPACE_TENANT_VANISHED,
         }
     }
 }
@@ -553,6 +575,26 @@ pub(crate) fn billing_wallet_missing() -> Error {
 /// Refuses a charges cursor this daemon never issued.
 pub(crate) fn charges_cursor_invalid() -> Error {
     Error::new(ErrorKind::ChargesCursorInvalid)
+}
+
+/// Refuses a workspace name carrying a character this daemon will not store.
+pub(crate) fn workspace_name_invalid() -> Error {
+    Error::new(ErrorKind::WorkspaceNameInvalid)
+}
+
+/// Refuses a workspace name past the length cap.
+pub(crate) fn workspace_name_too_long() -> Error {
+    Error::new(ErrorKind::WorkspaceNameTooLong)
+}
+
+/// Refuses a workspace name this tenant already uses.
+pub(crate) fn workspace_name_exists() -> Error {
+    Error::new(ErrorKind::WorkspaceNameExists)
+}
+
+/// Refuses a create whose session names a tenant with no row behind it.
+pub(crate) fn workspace_tenant_vanished() -> Error {
+    Error::new(ErrorKind::WorkspaceTenantVanished)
 }
 
 /// Reports an insert the machine's unique index refused.

@@ -159,6 +159,43 @@ impl Refusal {
             .into_response(),
         ))
     }
+
+    /// A refusal for a credential whose context has gone stale under it.
+    ///
+    /// A 401 where [`Refusal::forbidden`] is a 403, and the difference is the
+    /// remedy: here re-authenticating IS the fix — the session names a tenant
+    /// that no longer resolves — where a 403's caller would only get the same
+    /// answer again.
+    pub(crate) fn unauthorized(detail: &'static str) -> Self {
+        Self(Box::new(
+            ProblemResponse::new(
+                afd_core::error_code::AUTH_UNAUTHORIZED,
+                detail,
+                RequestId::mint(),
+            )
+            .into_response(),
+        ))
+    }
+
+    /// Renders `error` as `event`'s refusal, naming the state a 409 carries.
+    ///
+    /// Curried like [`Refusal::at`], and used INSTEAD of it by the one arm
+    /// that knows its refusal is a conflict — the envelope's `current_state`
+    /// is what tells a client "stop retrying, the state refuses you", and
+    /// only the call site knows which state that is.
+    pub(crate) fn conflict_at<E: Refusable>(
+        event: &'static str,
+        current_state: &'static str,
+    ) -> impl FnOnce(E) -> Self {
+        move |error| {
+            let request_id = RequestId::mint();
+            log_refusal(&error, event, &request_id);
+            Self(Box::new(
+                ProblemResponse::conflict(error.code(), error.detail(), request_id, current_state)
+                    .into_response(),
+            ))
+        }
+    }
 }
 
 impl IntoResponse for Refusal {
@@ -169,10 +206,15 @@ impl IntoResponse for Refusal {
 
 pub(crate) fn refuse<E: Refusable + ?Sized>(error: &E, event: &'static str) -> Response {
     let request_id = RequestId::mint();
-    let code = error.code();
+    log_refusal(error, event, &request_id);
+    ProblemResponse::new(error.code(), error.detail(), request_id).into_response()
+}
+
+/// The log line every rendered refusal leaves, whatever its envelope.
+fn log_refusal<E: Refusable + ?Sized>(error: &E, event: &'static str, request_id: &RequestId) {
     // Hoisted out of the macro: `tracing`'s `log` bridge compiles a second copy
     // of every field expression, and llvm-cov scores the copy that never runs.
-    let code_field = code.as_str();
+    let code_field = error.code().as_str();
     let request_id_field = request_id.as_str();
     // The whole chain, which is where the cause a client is NOT told lives.
     // `Display` on this error renders its code and its kind; the `source()`
@@ -198,5 +240,4 @@ pub(crate) fn refuse<E: Refusable + ?Sized>(error: &E, event: &'static str) -> R
             event,
         );
     }
-    ProblemResponse::new(code, error.detail(), request_id).into_response()
 }

@@ -35,10 +35,99 @@
 
 use afd_crypto::entropy::Entropy;
 
-use crate::Result;
+use crate::{Result, error};
 
 /// The separator between every part.
 const SEPARATOR: char = '-';
+
+/// The most Unicode code points a caller-supplied name may carry — counted
+/// the way a person counts "128 characters", not the way UTF-8 spends bytes.
+const MAX_NAME_CODEPOINTS: usize = 128;
+
+/// The ASCII whitespace a name's ends lose before any rule runs —
+/// `lifecycle.zig`'s trim set.
+const TRIMMED: &[char] = &[' ', '\t', '\x0b', '\x0c', '\r', '\n'];
+
+/// A workspace name the caller chose, already past every rule.
+///
+/// Constructed only by [`Chosen::parse`], so a handler holding one cannot be
+/// holding a control character or an over-long name — there is no validation
+/// arm anywhere downstream, and none a stub could get differently right.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Chosen(String);
+
+impl Chosen {
+    /// Reads a caller's name, deciding between the three outcomes.
+    ///
+    /// `Ok(Some)` is a name to store; `Ok(None)` says the caller chose
+    /// nothing — absent, empty once trimmed, or whitespace however spelled —
+    /// and the create generates one instead. That third outcome is this port's
+    /// declared divergence from `lifecycle.zig`, which answers a 400 for it;
+    /// the spec's Discovery log carries the approval.
+    ///
+    /// # Errors
+    /// Refuses a name carrying a control character, a bidirectional override,
+    /// or a line separator — each of which lets a name lie about itself in a
+    /// list — and one past the code-point cap. The checks run in
+    /// `lifecycle.zig`'s order, so a long name with a forbidden character is
+    /// refused for the character on both daemons.
+    pub fn parse(raw: &str) -> Result<Option<Self>> {
+        let trimmed = raw.trim_matches(TRIMMED);
+        if trimmed.is_empty() {
+            return Ok(None);
+        }
+        let mut codepoints = 0usize;
+        let mut has_content = false;
+        for codepoint in trimmed.chars() {
+            if is_forbidden(codepoint) {
+                return Err(error::workspace_name_invalid());
+            }
+            has_content = has_content || !is_unicode_whitespace(codepoint);
+            codepoints += 1;
+        }
+        if !has_content {
+            return Ok(None);
+        }
+        if codepoints > MAX_NAME_CODEPOINTS {
+            return Err(error::workspace_name_too_long());
+        }
+        Ok(Some(Self(trimmed.to_owned())))
+    }
+
+    /// The name as it is stored and echoed.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// A code point no stored name may carry.
+///
+/// `lifecycle.zig`'s table: the C0 and C1 controls, the Arabic letter mark,
+/// the directional marks, the Unicode line and paragraph separators, the
+/// bidirectional embeddings and overrides, and the bidirectional isolates.
+const fn is_forbidden(codepoint: char) -> bool {
+    matches!(codepoint,
+        '\u{0000}'..='\u{001f}'
+        | '\u{007f}'..='\u{009f}'
+        | '\u{061c}'
+        | '\u{200e}'..='\u{200f}'
+        | '\u{2028}'..='\u{2029}'
+        | '\u{202a}'..='\u{202e}'
+        | '\u{2066}'..='\u{2069}')
+}
+
+/// A code point that is whitespace without being ASCII whitespace.
+///
+/// `lifecycle.zig`'s set, minus `U+0085`: that one sits inside the C1 control
+/// range, so the forbidden check above decides it first on both daemons and a
+/// row here could never fire.
+const fn is_unicode_whitespace(codepoint: char) -> bool {
+    matches!(
+        codepoint,
+        '\u{2000}'..='\u{200a}' | '\u{00a0}' | '\u{1680}' | '\u{202f}' | '\u{205f}' | '\u{3000}'
+    )
+}
 
 /// Characters a generated suffix is drawn from.
 ///
@@ -132,7 +221,63 @@ mod tests {
     )]
     use afd_crypto::entropy::Entropy;
 
-    use super::{SEPARATOR, SUFFIX_ALPHABET, SUFFIX_LEN, generate};
+    use super::{Chosen, MAX_NAME_CODEPOINTS, SEPARATOR, SUFFIX_ALPHABET, SUFFIX_LEN, generate};
+
+    #[test]
+    fn a_chosen_name_is_trimmed_and_kept() {
+        let chosen = Chosen::parse("  deploy bots\t").expect("a plain name passes");
+        assert_eq!(
+            chosen.expect("a non-blank name is a choice").as_str(),
+            "deploy bots"
+        );
+    }
+
+    #[test]
+    fn choosing_nothing_in_any_spelling_means_generate() {
+        // Empty, ASCII whitespace, and whitespace only Unicode can spell —
+        // each is "no choice", never a refusal. The divergence from the Zig
+        // 400 is deliberate and Discovery-logged.
+        for blank in ["", "   ", "\t\r\n", "\u{00a0}\u{3000}"] {
+            let outcome = Chosen::parse(blank).expect("blankness is not an error");
+            assert!(outcome.is_none(), "{blank:?} is not a name anyone chose");
+        }
+    }
+
+    #[test]
+    fn the_cap_counts_code_points_at_the_boundary() {
+        let at_cap = "é".repeat(MAX_NAME_CODEPOINTS);
+        assert!(
+            Chosen::parse(&at_cap)
+                .expect("the cap itself passes")
+                .is_some(),
+            "128 code points is within the rule"
+        );
+        let past_cap = "é".repeat(MAX_NAME_CODEPOINTS + 1);
+        assert!(
+            Chosen::parse(&past_cap).is_err(),
+            "129 code points is past it, whatever the byte count"
+        );
+    }
+
+    #[test]
+    fn a_character_that_lets_a_name_lie_is_refused() {
+        // One representative per forbidden class: C0, C1, the Arabic letter
+        // mark, a directional mark, a line separator, an override, an isolate.
+        for lying in [
+            "tab\u{0007}",
+            "c1\u{0085}",
+            "alm\u{061c}",
+            "mark\u{200e}",
+            "sep\u{2028}",
+            "bidi\u{202e}",
+            "iso\u{2066}",
+        ] {
+            assert!(
+                Chosen::parse(lying).is_err(),
+                "{lying:?} carries a character no stored name may"
+            );
+        }
+    }
 
     #[test]
     fn a_generated_name_has_the_documented_shape() {

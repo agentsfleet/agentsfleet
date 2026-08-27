@@ -59,3 +59,4 @@ mod redact;
 pub mod report;
 pub mod runner;
 pub mod tenant;
+pub mod workspace;

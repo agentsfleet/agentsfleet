@@ -147,6 +147,15 @@ const ENTRIES: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::WORKSPACE_NAME_EXISTS,
+        status: 409,
+        title: "Workspace name already exists",
+        hint: "A workspace in this tenant already uses that name. Check the refreshed list or choose another name.",
+        user_message: Some(
+            "A workspace with that name already exists. Check the refreshed list or choose another name.",
+        ),
+    },
+    Problem {
         code: error_code::INTERNAL_OPERATION_FAILED,
         status: 500,
         title: TITLE_REQUEST_FAILED,

@@ -39,7 +39,7 @@ mod tenant;
 pub use self::billing::TenantBilling;
 pub use self::device_flow::DeviceFlow;
 pub use self::leasing::Leasing;
-pub use self::tenant::{TenantKeys, TerminalCredentials, WorkspaceOwnership};
+pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
 
 use afd_core::clock::UnixMillis;
 use afd_fleet::Runners;
@@ -117,6 +117,17 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// The workspace-ownership resolver the shared layer asks.
     fn workspaces(&self) -> &Self::Workspaces;
+
+    /// The tenant's workspace directory — its list, and the create.
+    ///
+    /// A second seam over what production holds as ONE value, and the split
+    /// is the suites': the ownership stub owns exactly one workspace so both
+    /// halves of the refusal matrix are reachable, while this one refuses
+    /// like every other store. See [`TenantWorkspaces`] for the longer form.
+    type WorkspaceDirectory: TenantWorkspaces;
+
+    /// The workspace directory the tenant-plane verbs act through.
+    fn workspace_directory(&self) -> &Self::WorkspaceDirectory;
 
     /// The tenant's own api-keys.
     ///

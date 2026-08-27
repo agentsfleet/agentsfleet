@@ -112,6 +112,29 @@ pub const DETAIL_CLI_CREDENTIAL_NOT_FOUND: &str = "Command-line credential not f
 /// Its refusal for a proven subject with no `core.users` row behind it.
 pub const DETAIL_CLI_CREDENTIAL_UNKNOWN_SUBJECT: &str = "Authenticated subject has no user record";
 
+/// The create verb's refusal for a name carrying a character it will not store.
+///
+/// Control characters, bidirectional overrides and the line separators — the
+/// set `workspaces/lifecycle.zig` refuses, because each of them lets a name
+/// lie about itself in a list or a log line.
+pub const DETAIL_WORKSPACE_NAME_INVALID: &str = "Workspace name contains unsupported characters";
+
+/// Its refusal for a name past the cap.
+///
+/// The sentence says "characters" where the rule counts Unicode code points,
+/// and stays that way: it is `lifecycle.zig`'s spelling, and a client may be
+/// matching on it mid-cutover.
+pub const DETAIL_WORKSPACE_NAME_TOO_LONG: &str = "Workspace name must be 128 characters or fewer";
+
+/// Its refusal for a name this tenant already uses.
+pub const DETAIL_WORKSPACE_NAME_EXISTS: &str = "A workspace with this name already exists";
+
+/// Its refusal for a tenant claim naming no tenant row.
+///
+/// A 401 rather than a 403, as `lifecycle.zig` answers: the session itself is
+/// stale — its tenant is gone — so re-authenticating is exactly the remedy.
+pub const DETAIL_WORKSPACE_TENANT_VANISHED: &str = "Tenant on session does not exist";
+
 /// The billing surface's report of a wallet row that is not there.
 ///
 /// The em-dash sentence is `tenant_billing.zig`'s, byte for byte: the row is
