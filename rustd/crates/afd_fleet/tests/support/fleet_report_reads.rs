@@ -27,12 +27,14 @@ const FIXTURE_GRANT: &str = "fixture:seed";
 
 /// The catalogue row a seeded rate is written under.
 ///
-/// Constant rather than minted per test, unlike `seed::unique_ids`. The reason
-/// they differ is where the state lives: a fleet id keys a Redis stream that
-/// OUTLIVES the test, so a constant one inherits the previous run's entries;
-/// `core.model_library` lives only in the per-test database that `cleanup`
-/// drops. Shaped so the schema's `ck_model_library_id_uuidv7` CHECK passes —
-/// the character after the second dash is `7`.
+/// Fixed and SHARED. These suites price exactly one `(provider, model)` pair,
+/// so the `ON CONFLICT (provider, model_id)` arm below always resolves to THIS
+/// row — Postgres tests the arbiter index before attempting the insert, so the
+/// primary key never enters into it and one shared database is safe.
+///
+/// A suite that starts pricing a SECOND pair needs a second constant. Reusing
+/// this one would put two models under one primary key, and the arbiter arm
+/// would not catch it because the pair it arbitrates on differs.
 const FIXTURE_MODEL_ROW: &str = "0195b4ba-8d3a-7f01-8abc-000000000001";
 
 /// Per-million-token rates a seeded catalogue row carries.

@@ -24,7 +24,7 @@
 // everything else.
 #[cfg(test)]
 use {
-    afd_db as _, bytes as _, hyper_util as _, object_store as _, tower as _,
+    afd_db as _, afd_redis as _, bytes as _, hyper_util as _, object_store as _, tower as _,
     tracing_subscriber as _,
 };
 

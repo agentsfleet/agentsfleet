@@ -38,6 +38,7 @@ mod device_flow;
 mod fleets;
 mod leasing;
 mod tenant;
+mod vault;
 
 pub use self::billing::TenantBilling;
 pub use self::catalogue::ModelCatalogue;
@@ -45,6 +46,7 @@ pub use self::device_flow::DeviceFlow;
 pub use self::fleets::WorkspaceFleets;
 pub use self::leasing::Leasing;
 pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
+pub use self::vault::WorkspaceSecrets;
 
 use afd_core::clock::UnixMillis;
 use afd_fleet::Runners;
@@ -166,6 +168,20 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// The workspace's fleets: list, install, read, edit, purge.
     fn fleets(&self) -> &Self::Fleets;
+
+    /// What the workspace secret surface acts through.
+    ///
+    /// A concrete type where [`Services::Fleets`] is an associated one, and the
+    /// difference is what each of them is over. The fleets store holds a Redis
+    /// connection opened by CONNECTING, so a suite cannot build one; the vault
+    /// holds a Postgres pool, an entropy source and a key, and every one of
+    /// those has a seam a suite drives it through — `afd_db::Db::unreachable`,
+    /// `Entropy::new_mocked` and `Kek::from_bytes`. The seam is inside the
+    /// type, so it does not also need to be a parameter on this trait.
+    type Secrets: WorkspaceSecrets;
+
+    /// The workspace's secrets: store, list, replace, delete.
+    fn secrets(&self) -> &Self::Secrets;
 
     /// The tenant's billing reads.
     ///

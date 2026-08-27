@@ -1,0 +1,223 @@
+//! The one error type this crate returns, and what each failure tells a caller.
+//!
+//! Same shape as [`afd_db::Error`] and `afd_fleet_lifecycle::Error`
+//! (`M-ERRORS-CANONICAL-STRUCTS`, with the workspace's declared divergence): a
+//! struct carrying a captured backtrace and a private kind, with `is_*`
+//! accessors rather than a public enum, so a new failure mode is not a breaking
+//! change for anybody matching on it.
+//!
+//! # One table, not two
+//!
+//! [`Error::answer`] returns the registry code AND the sentence together, and
+//! both public accessors read from it. `secrets.zig` spells `hx.fail(code,
+//! detail)` at eleven call sites with nothing relating the two, so two handlers
+//! can describe one failure differently and both compile. Here a kind cannot
+//! take its code and its sentence from different places.
+//!
+//! # Why a plaintext failure and a ciphertext failure answer alike
+//!
+//! [`ErrorKind::Crypto`] covers both directions — a seal that would not produce
+//! an envelope, and an envelope that would not open. Telling them apart would
+//! be an oracle: a caller learning that the tag failed rather than the key
+//! learns something about the stored bytes. `crypto_store.zig` reports both
+//! under `UZ-INTERNAL-003` for the same reason, and the operator gets the
+//! distinction in the log instead.
+
+use std::backtrace::Backtrace;
+use std::fmt::{self, Display, Formatter};
+
+use afd_core::error_code::{self, ErrorCode};
+
+pub mod detail;
+mod raise;
+
+pub(crate) use self::raise::{query, still_referenced};
+
+/// The result every fallible function in this crate returns.
+///
+/// One alias per crate, defaulted to this crate's own [`Error`], so a reader
+/// never has to check WHICH error a signature returns to know it is this one.
+pub type Result<T, E = Error> = core::result::Result<T, E>;
+
+/// A vault failure, with the backtrace of where it was raised.
+#[derive(Debug)]
+pub struct Error {
+    inner: Box<Inner>,
+}
+
+#[derive(Debug)]
+struct Inner {
+    kind: ErrorKind,
+    backtrace: Backtrace,
+}
+
+/// What actually went wrong. Crate-visible so a raise site can name the variant.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ErrorKind {
+    #[error("the datastore backing the vault would not answer")]
+    Datastore {
+        #[source]
+        source: afd_db::Error,
+    },
+
+    #[error("statement failed during {context}")]
+    Query {
+        context: &'static str,
+        #[source]
+        source: sqlx::Error,
+    },
+
+    #[error("an envelope could not be sealed or opened")]
+    Crypto {
+        #[source]
+        source: afd_crypto::error::Error,
+    },
+
+    #[error("an identifier could not be minted from the current instant")]
+    Mint {
+        #[source]
+        source: afd_core::error::Error,
+    },
+
+    #[error("a secret name must be 1 to 64 bytes")]
+    NameInvalid,
+
+    #[error("a stored secret must be a non-empty JSON object")]
+    DataInvalid,
+
+    #[error("the stringified secret is past the bound a row may hold")]
+    DataTooLarge,
+
+    #[error("this workspace holds no secret under that name")]
+    NotFound,
+
+    #[error("this workspace already holds a secret under that name")]
+    NameTaken,
+
+    #[error("{count} model registry entries still name this secret")]
+    StillReferenced {
+        /// How many entries held a lock on this credential when the delete ran.
+        count: u32,
+    },
+
+    #[error("the workspace holding this secret has no row")]
+    WorkspaceUnknown,
+}
+
+impl Error {
+    /// The code and the sentence, decided together — see the module note.
+    const fn answer(&self) -> (ErrorCode, &'static str) {
+        match self.inner.kind {
+            ErrorKind::Datastore { .. } => (
+                error_code::INTERNAL_DB_UNAVAILABLE,
+                detail::DATABASE_UNAVAILABLE,
+            ),
+            // Three internal failures, one fixed sentence: a failed statement,
+            // a clock that cannot name an instant, and a workspace whose owning
+            // tenant resolved to nothing are all this process's problem, and
+            // naming which would leak the cause to whoever provoked it.
+            //
+            // `WorkspaceUnknown` is here rather than under a 404 deliberately.
+            // `vault.secrets.workspace_id` is a NOT NULL foreign key onto
+            // `core.workspaces`, so a missing owner is a broken invariant and
+            // not a race — and `secret_reference_txn.zig` makes the same call,
+            // because the alternative reasoning ("no tenant, so no references")
+            // is exactly what once let a delete run blind over live entries.
+            ErrorKind::Query { .. } | ErrorKind::Mint { .. } | ErrorKind::WorkspaceUnknown => {
+                (error_code::INTERNAL_DB_QUERY, detail::DATABASE_ERROR)
+            }
+            ErrorKind::Crypto { .. } => (
+                error_code::INTERNAL_OPERATION_FAILED,
+                detail::OPERATION_FAILED,
+            ),
+            ErrorKind::NameInvalid => (error_code::INVALID_REQUEST, detail::NAME_REQUIRED),
+            ErrorKind::DataInvalid => (error_code::VAULT_DATA_INVALID, detail::DATA_REQUIRED),
+            ErrorKind::DataTooLarge => (error_code::VAULT_DATA_TOO_LARGE, detail::DATA_TOO_LARGE),
+            ErrorKind::NotFound => (error_code::SECRET_NOT_FOUND, detail::NOT_FOUND),
+            ErrorKind::NameTaken => (error_code::SECRET_NAME_TAKEN, detail::NAME_TAKEN),
+            ErrorKind::StillReferenced { .. } => (
+                error_code::SECRET_REFERENCED_BY_MODEL_ENTRIES,
+                detail::STILL_REFERENCED,
+            ),
+        }
+    }
+
+    /// The registry code this failure answers with.
+    #[must_use]
+    pub const fn code(&self) -> ErrorCode {
+        self.answer().0
+    }
+
+    /// The sentence the caller is told.
+    #[must_use]
+    pub const fn detail(&self) -> &'static str {
+        self.answer().1
+    }
+
+    /// Whether the datastore behind this crate could not be reached.
+    ///
+    /// The question the HTTP edge turns on: an outage is this instance's
+    /// problem to report as a 503, where every other failure here is the
+    /// caller's to correct (RULE ECL).
+    #[must_use]
+    pub const fn is_datastore_unavailable(&self) -> bool {
+        matches!(self.inner.kind, ErrorKind::Datastore { .. })
+    }
+
+    /// How many registry entries refused this delete, when that is why it failed.
+    ///
+    /// `Some` for exactly one kind. The 409's body names the count so an
+    /// operator learns how much work removing the credential is before they go
+    /// looking, and the count is trustworthy because it was read by the same
+    /// statement that locked the rows — see [`crate::delete`].
+    #[must_use]
+    pub const fn referenced_by(&self) -> Option<u32> {
+        // Matched through a REFERENCE. Binding the kind by value would move it
+        // into the arm, and a `const fn` may not run the destructor that move
+        // implies — the borrow has none to run.
+        match &self.inner.kind {
+            ErrorKind::StillReferenced { count } => Some(*count),
+            _not_referenced => None,
+        }
+    }
+
+    /// The backtrace captured at the raise site, empty unless `RUST_BACKTRACE`
+    /// asked for one — capturing is opt-in, so the common path stays cheap.
+    pub fn backtrace(&self) -> &Backtrace {
+        &self.inner.backtrace
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "[{}] {}", self.code().as_str(), self.inner.kind)?;
+        if self.inner.backtrace.status() == std::backtrace::BacktraceStatus::Captured {
+            write!(f, "\n{}", self.inner.backtrace)?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for Error {
+    /// The failure beneath this one, skipping our own kind.
+    ///
+    /// `Display` already renders the kind's message, so returning the kind
+    /// would make a chain walker print the same sentence twice before reaching
+    /// anything new. The kind is not a CAUSE of this error, it IS this error
+    /// (`RUST_ERROR_STANDARD` rule 4).
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        std::error::Error::source(&self.inner.kind)
+    }
+}
+
+/// The one place a kind becomes an error, so every raise captures a backtrace.
+impl From<ErrorKind> for Error {
+    fn from(kind: ErrorKind) -> Self {
+        Self {
+            inner: Box::new(Inner {
+                kind,
+                backtrace: Backtrace::capture(),
+            }),
+        }
+    }
+}

@@ -53,7 +53,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `rustd/crates/afd_api/**` | EDIT | Route variants + handler modules per group: auth-sessions, tenant, api-keys, cli-credentials, models, workspaces (fleets, secrets, fleet-libraries read, onboarding, preferences, approvals, events, streams, messages, memories, integration-grants) |
-| `rustd/crates/afd_state/**` | EDIT | extends the M176-created repository crate: vault, billing/wallet reads, model library + tenant models, tenant provider, preferences, onboarding, signup bootstrap |
+| `rustd/crates/afd_state/**` | EDIT | extends the M176-created repository crate: billing/wallet reads, model library + tenant models, tenant provider, preferences, onboarding, signup bootstrap. **Amended at EXECUTE — the vault did NOT land here.** This crate is the credential directory the authentication path cannot start without; putting AES-GCM behind it would rebuild every login when a projection column moved, and `afd_crypto` is an edge its three directories never call |
+| `rustd/crates/afd_fleet_lifecycle/**` | ADD | §3's store: install, read, edit, purge. A new member rather than a module in `afd_fleet` (25,500 lines — 3.5× its nearest sibling, the condition that forced `afd_tenant` out) or in `afd_tenant` (which would acquire a YAML parser and a Redis stream client its api-key and login modules never call) |
+| `rustd/crates/afd_vault/**` | ADD | §4's store: the sealed write, the never-decrypting list, and the reference lock a delete is taken under. A new member for the same reason §3 got one, plus one of its own: `afd_fleet::vault` already reads `vault.secrets` and stays put, because it is the RUNNER plane's reader — it opens a credential a fleet declared, refuses to degrade a row it cannot read, and never lists. Two failure policies over one table; folding them together means one of the two losing |
 | `rustd/crates/afd_observability/**` | EDIT | PostHog product-event emission for the surfaces this milestone ports (§7) |
 | `rustd/crates/afd_fleet/**` | EDIT | install flow (ensure-stream retries + rollback), approvals service + gate sweeper, steer message append |
 | `rustd/crates/afd_auth/**` | EDIT | CLI-credential mint/revoke service glue; Clerk metadata fetch worker port |
@@ -61,7 +63,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_core/**` | EDIT | the `UZ-AUTH-*` session codes and their problem entries — the registry subset this milestone's refusals need |
 | `rustd/crates/afd_crypto/**` | EDIT | HMAC under a variable-length pepper key, which the device-flow code digest is computed with |
 | `rustd/crates/afd_redis/**` | EDIT | the approve and owner-checked abort transitions beside M176's verify-and-consume |
-| `rustd/crates/afd_wire/**` | EDIT | the request and response shapes this milestone's routes exchange: the device-flow bodies (§1) and the tenant plane's envelopes (§2) |
+| `rustd/crates/afd_wire/**` | EDIT | the request and response shapes this milestone's routes exchange: the device-flow bodies (§1), the tenant plane's envelopes (§2), and the secret surface's create/list/replace payloads (§4) |
 | `rustd/crates/afd_db/**` | EDIT | one `test-util` constructor, so a suite stubbing a pool-holding service answers with the refusal a real pool with no Postgres behind it gives, rather than inventing afd_db's failures from another crate |
 | `rustd/Cargo.toml` + `rustd/Cargo.lock` | EDIT | new member |
 | `docs/v2/active/M178_001_P1_API_TENANT_WORKSPACE_SURFACE.md` | EDIT | this spec: status, baseline, Discovery log, and the amendments to this table |
@@ -122,13 +124,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **§3 inherits M177 §5's install half (Indy, M177 stream).** M177 ported STORED config resolution only, because that is the half the runner plane calls. The install-time half — `config_markdown.zig` (338) + `yaml_frontmatter.zig` (272) — has four non-test callers and three are this milestone's: `fleets/create.zig:123`, `fleets/patch_txn.zig:114`, and `connectors/slack/channel_fleet.zig` (the fourth, `fleet_library/importer.zig:165`, is M179's and consumes the same entry point). It lands in `afd_fleet_runtime` beside the stored parser M177 built. **Implementation default:** a maintained serde-compatible YAML crate — `serde_norway` as of authoring (serde_yaml is archived); the agent re-verifies crate health at EXECUTE and records the pick in Discovery, because the fork-pinned `zig-yaml` rationale (upstream build breakage) dissolves only if the replacement is actually maintained. **Settled at EXECUTE: the default did not survive its own re-check** — `serde_norway` last published Dec 2024 — and the replacement is `saphyr-parser`, a tokeniser that resolves nothing, because the parity surface is `writeScalar`'s coercion table and not YAML's typing. Full reasoning and the measurements in Discovery.
 
-### §4 — Vault and secrets routes
+### §4 — Vault and secrets routes — DONE
 
 `/v1/workspaces/{id}/secrets[/{name}]` over afd_crypto envelopes: non-empty-JSON-object plaintext rule, caller-owned `key_name`, and the non-secret metadata projection (`meta_kind`, `meta_provider`, `meta_base_url`, `meta_has_key`) derived from the exact encrypted bytes and written in the same statement — list reads never decrypt.
 
-- **Dimension 4.1** — store/read/list/delete round-trip; list returns projections without any decrypt call (assert via instrumented crypto layer) → Test `test_vault_list_no_decrypt`
-- **Dimension 4.2** — projection/ciphertext cannot drift: same-statement write asserted; a Zig-written row lists identically from Rust → Test `test_vault_projection_parity`
-- **Dimension 4.3** — non-object / empty plaintext rejected with the documented code → Test `test_vault_rejects_non_object`
+- **Dimension 4.1** — DONE — store/list/replace/delete round-trip; the list returns projections with zero decrypt calls → Test `afd_vault/tests/integration_list_no_decrypt.rs` (4 cases). **The instrumented-crypto-layer plan did not survive EXECUTE, and what replaced it is stronger.** A tally counter proves what happened on the run that was measured, and only if every decrypt site remembered the funnel. Here the guarantee is structural — `Directory` holds no `Kek`, and `Envelope::open` takes one, so the listing half cannot decrypt — and it is checked observably as well: a row whose ciphertext has been corrupted still lists with its full projection, where `secret_list.zig` degrades that same row to an opaque `custom_secret`. The two implementations give different answers on that row, and the difference is the assertion.
+- **Dimension 4.2** — DONE — projection/ciphertext cannot drift → Test `afd_vault/tests/integration_projection_parity.rs` (6 cases). Same-statement is asserted end to end: the suite opens the stored envelope with its own key and compares the four `meta_*` columns against a projection of that exact plaintext, after a create and again after a replace. The cross-daemon half seeds the exact column values `metadata.zig::project` writes and asserts this reader agrees with them — a Zig subprocess would add a build dependency to this lane without adding a fact, since what is under test is the READER's agreement with a column set.
+- **Dimension 4.3** — DONE — non-object and empty plaintext rejected with `UZ-VAULT-001`, over-long with `UZ-VAULT-002`, and nothing stored → Test `afd_vault/tests/integration_reference_lock.rs` (7 cases) + `afd_api/tests/workspace_secrets.rs` (12 cases) + `afd_vault`'s own unit suite (28). The shape gate is a CONSTRUCTOR rather than a call each verb makes: `secrets.zig` runs `validateSecretName` and `vault.validateObject` at the top of the create and repeats two of the three at the top of the replace, and a third verb that forgot either would compile. A `SecretBody` cannot be anything but a non-empty JSON object within its bound, so there is no re-check to remember and none to delete.
+
+**§4's reference lock is an RAII transaction, not a flag.** `secret_reference_txn.zig` carries a `Txn` with an `open` boolean and an idempotent `abort`, and its own module comment warns that `errdefer` is the wrong tool because every handler holding one returns `void` — two call sites had a rollback that was decoration. `sqlx::Transaction` rolls back when it is DROPPED, so every early return rolls back by the language's rules: no flag, no idempotent abort, and no path that can forget.
 
 ### §5 — Events, SSE streams, messages, memories, grants
 
@@ -406,6 +410,53 @@ N/A — no files deleted.
   here. The documented shape is the parity oracle this port grades against, so
   the stricter half wins — `afd_fleet::session::input::token_name_of` carries
   the reasoning and `a_token_name_outside_printable_ascii_is_refused` pins it.
+- **§4 does not project `model` on the secret list.** `SecretSummary` documents
+  it as an optional, nullable field and `secret_list.zig` answers it by
+  DECRYPTING every row and reading the body's `model`. `vault.secrets` has four
+  `meta_*` columns and none of them is `model`, so the only way to answer it on
+  a list is an envelope open per row — which spec Invariant 3 forbids and
+  `test_vault_list_no_decrypt` grades. The invariant wins and the field is
+  omitted.
+
+  Nothing observes the loss. The field is optional in the OpenAPI schema and
+  `model?: string` in the dashboard's `Secret` union, so a response without the
+  key validates and type-checks; the grep is discriminating — the dashboard
+  reads `kind`, `provider` and `base_url` off this list and reads `model` only
+  off `tenant_model_entries` (`model_id`) and the platform defaults, and the
+  command-line `secret list` reads `name` and `created_at` alone.
+
+  **The alternative was considered and not taken.** A `meta_model TEXT` column
+  would serve the field with zero decrypts and keep byte-parity, and `model` is
+  as non-secret as `provider` — but it is a schema change in a milestone whose
+  Applicable Gates row says `SCHEMA GUARD | no | no schema change`, and it would
+  only be honest once the Zig writers filled it too (Dimension 4.2 asks that a
+  Zig-written row list identically from Rust), which makes it a cross-runtime
+  edit plus a backfill for a field no client reads. If a client ever needs it,
+  that is the change to make and it is small.
+
+- **§4 lists a row this build cannot LABEL without its descriptors.** A row
+  written before the projection columns existed carries NULL metadata; a row a
+  newer daemon wrote may carry a `meta_kind` this build has no variant for. Both
+  list as `custom_secret` — and both shed `provider` and `base_url` with it,
+  where `rowToMetadata` keeps them. Reporting an opaque credential that still
+  carried a provider label would contradict the union the dashboard narrows on,
+  where that kind has no such field. Neither case is healed by decrypting:
+  a heal-on-read path would put an envelope open back on the list and make
+  "reads never decrypt" true only after warm-up. `agentsfleetd backfill` fills
+  the first; the second is a newer daemon's vocabulary and is logged with the
+  stored spelling.
+
+- **§4's still-referenced refusal takes the selection lock later than Zig does.**
+  `secret_reference_txn.zig` takes all three locks and lets its caller decide
+  afterwards, so a delete that is about to be refused still holds
+  `core.tenant_model_selection` for the tenant. Here the reference count is
+  decided after step 2 and before step 3. Skipping a LATER lock cannot introduce
+  a deadlock — a cycle needs two transactions each holding what the other wants,
+  and a transaction that never takes the selection row cannot be in one — while
+  taking it would hold a tenant-wide lock for the length of a transaction that
+  is about to roll back. The protocol ORDER, which is the deadlock-freedom
+  argument, is unchanged.
+
 - **§1 abort reasons are a closed set.** The Zig store takes the reason as a
   caller-supplied slice and the audit sink re-derives its own spelling, so the
   stored reason and the audited one agree by convention. `afd_redis::AbortReason`

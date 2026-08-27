@@ -1,0 +1,43 @@
+[package]
+name = "afd_vault"
+description = "A workspace's secrets: the envelope write, the never-decrypting list, and the reference lock a delete is taken under."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Identifiers, the clock the write stamps rows with, and the registry codes.
+afd_core.workspace = true
+# The envelope, the associated data, and the key material types. The whole
+# reason this is not a plain `afd_state` module: AES-GCM belongs behind the one
+# surface that seals, and the credential directories the auth path runs on must
+# not rebuild when it changes.
+afd_crypto.workspace = true
+# The Postgres pool every statement here runs on.
+afd_db.workspace = true
+# The stored plaintext is a JSON OBJECT by contract, and the projection is read
+# out of the same parse the ciphertext is produced from.
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a router
+# suite reaches this crate's seam with no datastore behind it.
+test-util = ["afd_core/test-util", "afd_db/test-util"]
+
+[dev-dependencies]
+# The integration lane drives a real Postgres, so it needs a runtime with
+# threads under it: the delete-versus-create race is worthless single-threaded,
+# because the interleaving the reference lock exists to serialize cannot happen.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

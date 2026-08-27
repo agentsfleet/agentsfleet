@@ -49,7 +49,9 @@ dependencies = [
  "afd_fleet_lifecycle",
  "afd_fleet_runtime",
  "afd_observability",
+ "afd_redis",
  "afd_tenant",
+ "afd_vault",
  "afd_wire",
  "axum",
  "bytes",
@@ -265,6 +267,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_vault"
+version = "0.26.2"
+dependencies = [
+ "afd_core",
+ "afd_crypto",
+ "afd_db",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "afd_wire"
 version = "0.26.2"
 dependencies = [
@@ -287,6 +303,7 @@ dependencies = [
  "afd_redis",
  "afd_state",
  "afd_tenant",
+ "afd_vault",
  "afd_wire",
  "axum",
  "clap",

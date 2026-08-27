@@ -12,6 +12,10 @@ use crate::error_code;
 /// and a shared constant they never reach would read as one they might.
 const TITLE_REQUEST_FAILED: &str = "Request failed";
 
+/// Reused title, shared with the provider family's own missing-secret refusal
+/// exactly as `error_entries.zig` shares `S_TITLE_SECRET_NOT_FOUND`.
+const TITLE_SECRET_NOT_FOUND: &str = "Secret not found";
+
 /// This family's entries, in `REGISTRY` order.
 pub(super) const REQUEST: &[Problem] = &[
     Problem {
@@ -37,6 +41,42 @@ pub(super) const REQUEST: &[Problem] = &[
         hint: "The body's 'data' field must be a JSON object with at least one key. Strings, arrays, scalars, and `{}` are rejected.",
         user_message: Some(
             "That secret needs at least one field. Enter it as a JSON object with one or more keys — not a bare string or list.",
+        ),
+    },
+    Problem {
+        code: error_code::VAULT_DATA_TOO_LARGE,
+        status: 400,
+        title: "Secret data too large",
+        hint: "Stringified secret data exceeds 4 KiB. Compose the secret from fewer or shorter fields.",
+        user_message: Some(
+            "That secret is too large. Keep it under 4 KiB. Trim or shorten the fields.",
+        ),
+    },
+    Problem {
+        code: error_code::SECRET_NOT_FOUND,
+        status: 404,
+        title: TITLE_SECRET_NOT_FOUND,
+        hint: "No secret matches this name in the workspace. List the workspace secrets to find a valid name, or create it first.",
+        user_message: Some(
+            "We couldn't find that secret. It may have already been deleted — refresh the list.",
+        ),
+    },
+    Problem {
+        code: error_code::SECRET_REFERENCED_BY_MODEL_ENTRIES,
+        status: 409,
+        title: "Secret still referenced by model entries",
+        hint: "Model registry entries still reference this secret. Remove them first, then delete it. The error detail names the count.",
+        user_message: Some(
+            "This key is used by one or more models in your registry. Remove those entries first, then delete the key.",
+        ),
+    },
+    Problem {
+        code: error_code::SECRET_NAME_TAKEN,
+        status: 409,
+        title: "Secret name already taken",
+        hint: "A secret with that name already exists in this workspace. Create never overwrites: update the existing secret, or delete it first.",
+        user_message: Some(
+            "A secret with that name already exists. Rename this one, or open the existing secret and replace its value.",
         ),
     },
     Problem {

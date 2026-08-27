@@ -535,10 +535,16 @@ async fn test_a_reach_the_fleet_no_longer_declares_is_refused_as_drift() {
         .acquire()
         .await
         .expect("a pooled connection");
+    // Keyed on the FLEET as well as the event: `EVENT_ID` is one constant every
+    // test here seeds under, so on one shared database a read on it alone hands
+    // `fetch_one` somebody else's gate — the concurrent-spend test's, sitting at
+    // the ceiling. The fleet is minted per test, so the pair names our own row.
     let spent = sqlx::query_scalar::<_, i64>(
-        "SELECT spend_count FROM core.fleet_approval_gates WHERE event_id = $1",
+        "SELECT spend_count FROM core.fleet_approval_gates \
+         WHERE event_id = $1 AND fleet_id = $2::uuid",
     )
     .bind(EVENT_ID)
+    .bind(&owner.fleet)
     .fetch_one(&mut *connection)
     .await
     .expect("the gate row is readable");

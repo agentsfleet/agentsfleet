@@ -222,32 +222,6 @@ impl Display for ApiKeyField {
     }
 }
 
-/// The refusals a suite stubs a service with.
-///
-/// Behind `test-util` deliberately: these are the two answers a stub can give
-/// HONESTLY. A router suite stubs services whose whole behaviour lives in a
-/// statement Postgres evaluates or a Lua script Redis evaluates, and there is
-/// no success it could invent that would not be inventing the state machine
-/// too — so it answers the one refusal that is true of it.
-#[cfg(feature = "test-util")]
-impl Error {
-    /// The refusal a verb answers when the datastore behind it would not answer.
-    #[must_use]
-    pub fn datastore_unavailable() -> Self {
-        Self::new(ErrorKind::Datastore {
-            source: afd_db::error::unavailable_for_test(),
-        })
-    }
-
-    /// The refusal a verb answers when the queue behind it would not answer.
-    #[must_use]
-    pub fn queue_unavailable() -> Self {
-        Self::new(ErrorKind::Queue {
-            source: afd_redis::error::unavailable_for_test(),
-        })
-    }
-}
-
 impl Error {
     /// Wraps `kind`, capturing a backtrace if one was asked for.
     pub(crate) fn new(kind: ErrorKind) -> Self {

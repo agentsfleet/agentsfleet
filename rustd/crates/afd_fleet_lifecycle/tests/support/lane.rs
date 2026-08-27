@@ -1,14 +1,16 @@
-//! A migrated database, the lane's Redis, and the rows an install needs to exist.
+//! The lane's database, its Redis, and the rows an install needs to exist.
 //!
-//! Built on [`afd_db::test_util::TestDatabase`] rather than on a fifth copy of
-//! it — see that module for why the four suites that predate it each carry
-//! their own.
+//! Built on [`afd_db::test_util::TestDatabase`], which hands back the database
+//! the lane already migrated.
 //!
-//! # Redis is shared, and that is the isolation
+//! # One isolation argument, now used on both sides
 //!
-//! Redis has no database-per-test equivalent, so every key this suite touches
-//! is namespaced by a fleet identifier the test minted for itself. Two tests
-//! running at once cannot collide because neither can name the other's fleet.
+//! Redis never had a database-per-test equivalent, so every key this suite
+//! touches is namespaced by a fleet identifier the test minted for itself: two
+//! tests running at once cannot collide because neither can name the other's
+//! fleet. That worked. Postgres is now isolated the same way and for the same
+//! reason — see [`afd_db::test_util`] on what the per-test database cost and
+//! what it was actually buying.
 #![expect(
     clippy::expect_used,
     clippy::panic,
@@ -47,7 +49,18 @@ const NOWHERE: &str = "redis://127.0.0.1:1";
 /// The instant every fixture row is stamped with.
 pub(crate) const NOW_MS: i64 = 1_760_000_000_000;
 
-/// The platform library entry the install fixtures draw from.
+/// The platform library entry every lane in this suite installs from.
+///
+/// Fixed and SHARED, because the row is scaffolding rather than test data:
+/// every `Lane::create` writes the same id, the same markdown and the same
+/// hash, so the second lane to run wants exactly the row the first one wrote.
+/// The seed says so with `ON CONFLICT (id) DO NOTHING`. Minting one per lane
+/// instead buys nothing and costs an identifier threaded through every install.
+///
+/// This holds only while the row stays immutable. A test needing the STORED
+/// entry to differ — other markdown under the same id — must seed its own id:
+/// `DO NOTHING` would keep the first writer's row and the test would assert
+/// against it.
 pub(crate) const LIBRARY_ID: &str = "daily-digest";
 
 /// The visibility a published library entry carries.
@@ -77,17 +90,15 @@ pub(crate) struct Lane {
 }
 
 impl Lane {
-    /// Creates a database, migrates it, connects the queue, and seeds a tenant
-    /// and one workspace inside it.
+    /// Connects the queue and seeds a tenant and one workspace inside the
+    /// lane's shared database.
+    ///
+    /// No `CREATE DATABASE` and no migration — the lane brought both. Isolation
+    /// is the minted `tenant` and `workspace`, which is the same isolation the
+    /// Redis side has always relied on: keys namespaced by identifiers only
+    /// this test can name.
     pub(crate) async fn create() -> Self {
-        let database = TestDatabase::create().await;
-        let migrator = database.open(DbRole::Migrator, &[]).await;
-        afd_db::Migrator::new()
-            .run(&migrator)
-            .await
-            .expect("the schema must apply to a fresh database");
-        drop(migrator);
-
+        let database = TestDatabase::shared();
         let pool = database.open(DbRole::Api, &[]).await;
         let queue = Redis::connect(&redis_config())
             .await
@@ -198,7 +209,12 @@ impl Lane {
             .expect("occupying the stream key");
     }
 
-    /// Seeds one platform library entry.
+    /// Seeds one platform library entry, idempotently.
+    ///
+    /// `ON CONFLICT (id) DO NOTHING`, because every lane seeds this row into one
+    /// shared database. Whichever lane runs FIRST therefore decides the stored
+    /// content — correct for [`LIBRARY_ID`], which is identical every time, and
+    /// wrong for a caller wanting different markdown under a reused id.
     pub(crate) async fn seed_library_entry(
         &self,
         id: &str,
@@ -213,7 +229,8 @@ impl Lane {
                 created_at, updated_at) \
              VALUES ($1, $1, 'fixture', 'repo', 'path', 'main', \
                      '[]'::jsonb, '{}'::jsonb, '[]'::jsonb, '[]'::jsonb, \
-                     $2, $3, $4, $5, $6, $6)",
+                     $2, $3, $4, $5, $6, $6) \
+             ON CONFLICT (id) DO NOTHING",
         )
         .bind(id)
         .bind(VISIBILITY_PUBLIC)

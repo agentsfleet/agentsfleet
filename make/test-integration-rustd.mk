@@ -48,7 +48,32 @@
 #      whenever the image is rebuilt. `make test-unit-rustd` has always done it
 #      this way; this lane learned it the expensive way, on a red CI run.
 
-.PHONY: test-integration-rustd test-coverage-rustd
+.PHONY: test-integration-rustd test-coverage-rustd _migrate-test-db
+
+# The schema, applied ONCE for the whole lane.
+#
+# `$(TEST_STATE_DEP)` drops the schemas and says "migrations will rebuild on
+# next step". This is that step, and it is the step the port had been skipping:
+# every test built a database of its own and applied all forty-seven
+# `schema/*.sql` files into it, which at a hundred and forty-three tests is
+# about six thousand seven hundred migration applications to produce one schema
+# a hundred and forty-three times. That was the whole of the lane's runtime.
+#
+# The Zig harness never did this. Its contract was one line — "Runs against the
+# LIVE test database. Never creates temp tables." — and a hundred and forty-five
+# integration files honoured it. `afd_db::test_util::TestDatabase::shared` is
+# that contract restored; see that module on what replaces the isolation.
+#
+# Through the daemon's own `migrate` subcommand rather than a bespoke recipe, so
+# the lane applies the schema the way a deployment does — including the ledger,
+# the advisory lock, and the refusal to run against a version this binary does
+# not know. A second path to the same schema is a second thing to drift.
+_migrate-test-db:
+	@echo "→ [infra] Applying migrations once, for the whole lane..."; \
+	cd $(RUSTD_DIR) && DATABASE_URL_MIGRATOR="$(TEST_DATABASE_URL)" \
+	  cargo run --quiet --bin agentsfleetd -- migrate \
+	  || { echo "✗ [infra] migrate failed"; exit 1; }
+	@echo "✓ [infra] Schema applied"
 
 # Integration tests are marked `#[ignore]` in the source and run ONLY here, via
 # `--ignored`. That is the cargo-native gate and it costs nothing at unit time:
@@ -57,7 +82,7 @@
 # which is what keeps live Postgres off the fast lane. Each ignore reason names
 # this target, so a developer who runs one directly is told where it belongs.
 
-test-integration-rustd: $(TEST_STATE_DEP)  ## Run the Rust substrate integration suite against compose Postgres + Redis
+test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust substrate integration suite against compose Postgres + Redis
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@echo "→ [rustd] Running the Rust integration suite against $(TEST_DATABASE_URL)..."; \
 	mkdir -p "$(CURDIR)/.tmp"; \

@@ -53,6 +53,8 @@ afd_fleet_lifecycle.workspace = true
 # The tenant plane: api-keys, command-line credentials, the device-flow login
 # surface, and the workspace-ownership resolver the shared layer asks.
 afd_tenant.workspace = true
+# The workspace secret surface's store, handed to the router as one service.
+afd_vault.workspace = true
 # The S3 client the Fleet Bundle snapshot store is built on. Named HERE and not
 # in `afd_fleet` because this is the file that decides the store is Cloudflare
 # R2 — `afd_fleet::bundle` takes an already-built `dyn ObjectStore` and knows

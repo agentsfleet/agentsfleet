@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_api", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_runtime", "crates/afd_identity", "crates/afd_observability", "crates/afd_redis", "crates/afd_state", "crates/afd_tenant", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_api", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_runtime", "crates/afd_identity", "crates/afd_observability", "crates/afd_redis", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.26.2"
@@ -56,6 +56,12 @@ afd_observability = { path = "crates/afd_observability" }
 afd_redis = { path = "crates/afd_redis" }
 afd_state = { path = "crates/afd_state" }
 afd_tenant = { path = "crates/afd_tenant" }
+# The workspace secret surface. Deliberately NOT folded into `afd_fleet`, whose
+# `vault` module is the RUNNER plane's reader — it opens a declared credential
+# for a lease, refuses to degrade a row, and never lists — nor into `afd_state`,
+# which is the credential directory the authentication path cannot start
+# without and would then rebuild every login when a projection column moved.
+afd_vault = { path = "crates/afd_vault" }
 afd_wire = { path = "crates/afd_wire" }
 
 # `default-features = false` throughout, features named explicitly, so a member
