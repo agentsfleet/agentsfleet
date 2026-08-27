@@ -1,12 +1,10 @@
 ---
 name: orly-write-unit-test
 description: >
-  Risk-weighted, failure-injecting test generation across 8 stacks (Python,
-  Python SDK, OpenAPI, JS/TS CLI, React/TS, Zig, Rust, Shell) enforcing behaviour +
-  failure + invariant + integration + regression coverage with a
-  Definition-of-Done gate; deterministic production-safety proofs (Zig
-  zero-leak, 100-or-more-connection concurrency, complexity/latency budgets) live
-  in the skill body. Use during implementation, not after.
+  Risk-weighted, failure-injecting unit tests across Python, TypeScript, React,
+  Zig, Rust, and shell: behaviour, failure, invariant, and regression coverage
+  behind a Definition-of-Done gate. Production-safety proofs live in the body.
+  Use during implementation, not after.
 ---
 
 # Write Unit Test

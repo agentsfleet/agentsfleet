@@ -10,6 +10,33 @@ that moment. 🤔 judgment-only — no `.sh` pair; CONFORM's deterministic gates
 Section-scan first (`grep -n "^## " dispatch/lifecycle.md`); read the stage you
 are entering, not the whole file.
 
+## What runs at each stage
+
+The mechanical half of the lifecycle, in one table. Everything in the "runs"
+column is a command, not a claim — `orly gate` reads the repository's declared
+`.oracle/orly.json` commands and never invents one.
+
+| Stage | Runs | Fired by |
+|---|---|---|
+| CHORE(open) | the declared `verify.unit` once, to record `Test Baseline:` | the agent |
+| PLAN | nothing — no file mutations | — |
+| EXECUTE | the dispatch façade for each edited file type; DOC READ recorded via `audits/doc-read.sh log` | the agent, and the runtime's read hook where it has one |
+| CONFORM | the declared `conform` command | `orly gate work` — the generated pre-commit hook |
+| VERIFY (Section) | `conform` plus the declared lane covering the surface touched | the agent |
+| VERIFY (milestone) | the fast `verify.*` set: lint, unit, version | `orly gate verify` — the generated pre-push hook |
+| REVIEW | gstack `/review` over the diff | the agent |
+| DOCUMENT | nothing mechanical | — |
+| COMMIT | `conform` again, on the staged tree | the pre-commit hook |
+| CHORE(close) | every spec criterion, branch shape, clean tree, pushed branch, docs surface, and the slow `verify.*` suites | `orly gate pr`, by hand, before `gh pr create` |
+| LAND | nothing gated | — |
+
+Three properties hold this together. A gate only asks what it can answer
+honestly at that moment: `work` judges no git state, because a commit hook's
+tree is dirty by construction and a new spec is committed on the default branch.
+Each tier runs once per cadence — `conform` at commit, the fast set at push, the
+slow set at the close. And `orly gate pr` can skip the fast set because
+`git.pushed` proves HEAD is the commit pre-push already graded.
+
 ## CHORE (open) — runbook
 
 1. Spec `docs/v*/pending/` → `active/`; `Status: IN_PROGRESS`; `Branch:` set.

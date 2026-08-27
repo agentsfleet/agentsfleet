@@ -51,6 +51,7 @@ every code a dispatch `.sh` emits resolves to exactly one row here.
 | LOG | LOGging discipline (scoped event, error_code, severity, redaction) |
 | MSID | Milestone-ID ban in source (M{N}_{NNN} / §x.y / T{N} / dim) |
 | ERR | ERror Registry (UZ-XXX-NNN declared + referenced) |
+| ERR-RS | Rust ERror discipline (one type per crate, Result alias, no stringified cause) |
 | GRP | GREptile rule audit (diff vs greptile-learnings/RULES.md codes) |
 | LDC | Legacy-Design Consult (A remove / B patch / C keep) |
 

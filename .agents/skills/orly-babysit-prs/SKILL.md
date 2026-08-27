@@ -1,14 +1,10 @@
 ---
 name: orly-babysit-prs
 description: |
-  Post-push follow-up for PRs/MRs: backoff-cadence polls over CI check runs
-  (fix every failure your diff caused), every greptile inline thread, and the
-  PR-level summary; classifies via gstack greptile-triage, suppresses via
-  greptile-history, stops after two consecutive empty polls with CI green.
-  Forge-aware (gh PR / glab MR). Use after `gh pr create` / `glab mr create`,
-  after every push to a branch with an open PR/MR, or on "babysit", "watch
-  greptile", "poll the PR/MR", "watch reviews", "follow up on review
-  feedback". Cross-agent: Claude, Codex, OpenCode, Amp.
+  Post-push follow-up for a Pull Request or Merge Request: poll Continuous
+  Integration (CI) checks, greptile threads, and the summary; fix what your diff
+  broke; stop after two empty polls with CI green. Forge-aware (gh, glab). Use
+  after creating or pushing to a PR/MR, or on "babysit", "watch reviews".
 ---
 
 # orly-babysit-prs

@@ -35,6 +35,15 @@ output. Refresh the copy when the user asks or a cited rule looks stale
 
 ## Error discipline (RULE ERR-RS)
 
+> [DETERMINISTIC → ERR-RS]
+
+Two of the clauses below are decided by `audits/rust-error.sh`, which
+`dispatch/write_rust.sh` runs over staged Rust: an error type with no `Result`
+alias in its crate, and a `map_err` that stringifies its own cause. The other
+two — whether a `source()` implementation returns its own kind, and whether a
+context addition is warranted — need the call site read beside the diff and stay
+the agent's call at write time.
+
 One error type per crate, and a `Result` alias beside it:
 
     pub type Result<T, E = Error> = core::result::Result<T, E>;
