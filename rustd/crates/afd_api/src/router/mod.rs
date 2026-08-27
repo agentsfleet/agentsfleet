@@ -182,7 +182,7 @@ fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>> {
             OpsRoute::Readyz => get(probes::readyz::<D>),
         }),
         Route::Runner(verb) => Some(runner_handler::<D>(verb)),
-        Route::RunnerOps(verb) => runner_ops_handler::<D>(verb),
+        Route::RunnerOps(verb) => Some(runner_ops_handler::<D>(verb)),
         // Tabled, not yet served. Each of these families arrives with the
         // milestone that ports its handlers; until then the route exists as a
         // template, a guard and a scope rung, and this binary answers 404.
@@ -220,15 +220,19 @@ fn runner_handler<D: Serving>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
 }
 
 /// The operator's view over runners — a tenant acting ON the fleet's hosts.
-fn runner_ops_handler<D: Serving>(verb: RunnerOpsRoute) -> Option<MethodRouter<Arc<D>>> {
+///
+/// Every tabled verb is served. Keeping this total makes a newly added verb a
+/// compile error until its handler is selected instead of silently mounting a
+/// 404 through an unnecessary `Option`.
+fn runner_ops_handler<D: Serving>(verb: RunnerOpsRoute) -> MethodRouter<Arc<D>> {
     match verb {
-        RunnerOpsRoute::Register => Some(post(runner::enrolment::handle::<D>)),
-        RunnerOpsRoute::List => Some(get(operator::runners::list::<D>)),
-        RunnerOpsRoute::Get => Some(get(operator::runners::detail::<D>)),
-        RunnerOpsRoute::Patch => Some(patch(operator::runner_patch::handle::<D>)),
-        RunnerOpsRoute::Events => Some(get(operator::events::list::<D>)),
-        RunnerOpsRoute::Streams => Some(get(operator::streams::list::<D>)),
-        RunnerOpsRoute::Leases => None,
+        RunnerOpsRoute::Register => post(runner::enrolment::handle::<D>),
+        RunnerOpsRoute::List => get(operator::runners::list::<D>),
+        RunnerOpsRoute::Get => get(operator::runners::detail::<D>),
+        RunnerOpsRoute::Patch => patch(operator::runner_patch::handle::<D>),
+        RunnerOpsRoute::Events => get(operator::events::list::<D>),
+        RunnerOpsRoute::Leases => get(operator::leases::list::<D>),
+        RunnerOpsRoute::Streams => get(operator::streams::list::<D>),
     }
 }
 

@@ -33,6 +33,7 @@ use afd_fleet::provider::Providers;
 use afd_fleet::secrets::Registry;
 use afd_fleet::streams::{LiveStreams, SSE_MAX_STREAMS_DEFAULT};
 use afd_fleet::vault::Vault;
+use afd_fleet_ops::RunnerLeaseHistory;
 use afd_redis::Redis;
 use afd_state::Credentials;
 
@@ -55,6 +56,7 @@ pub struct ServingPlane {
     leases: Plane,
     bundles: Bundles,
     streams: LiveStreams,
+    runner_lease_history: RunnerLeaseHistory,
 }
 
 impl ServingPlane {
@@ -96,6 +98,7 @@ impl ServingPlane {
         Self {
             bundles,
             streams: LiveStreams::new(SSE_MAX_STREAMS_DEFAULT),
+            runner_lease_history: RunnerLeaseHistory::new(database.clone()),
             probes: LiveDependencies::new(database.clone(), queue.clone()),
             authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
             runners: Runners::new(database.clone(), Entropy::new()),
@@ -141,6 +144,10 @@ impl Services for ServingPlane {
 
     fn streams(&self) -> &LiveStreams {
         &self.streams
+    }
+
+    fn runner_lease_history(&self) -> &RunnerLeaseHistory {
+        &self.runner_lease_history
     }
 
     /// The wall clock, read once per verb by whichever handler asked.

@@ -8,6 +8,9 @@ const QUERY_STARTING_AFTER: &str = "starting_after";
 const QUERY_PAGE: &str = "page";
 const QUERY_PAGE_SIZE: &str = "page_size";
 const QUERY_SORT: &str = "sort";
+const QUERY_WORKSPACE_ID: &str = "workspace_id";
+const QUERY_FLEET: &str = "fleet";
+const MAX_FLEET_FILTER_LEN: usize = 200;
 
 pub(super) const DETAIL_BAD_PAGE: &str = "limit must be an integer between 1 and 100; starting_after must be a cursor from a previous page";
 pub(super) const DETAIL_RETIRED_PAGE: &str =
@@ -18,6 +21,19 @@ pub(super) struct PageQuery {
     pub(super) cursor: Option<KeysetCursor>,
     pub(super) limit: PageLimit,
 }
+
+pub(super) struct LeaseQuery {
+    pub(super) starting_after: Option<Uuid7>,
+    pub(super) workspace: Option<Uuid7>,
+    pub(super) fleet: Option<String>,
+    pub(super) limit: u32,
+}
+
+pub(super) const DETAIL_BAD_LEASE_LIMIT: &str = "limit must be an integer between 1 and 100";
+pub(super) const DETAIL_BAD_LEASE_CURSOR: &str = "starting_after must be a lease id held by this runner, and must match workspace_id and fleet when those filters are set";
+pub(super) const DETAIL_BAD_WORKSPACE: &str = "workspace_id must be a workspace id";
+pub(super) const DETAIL_BAD_FLEET: &str =
+    "fleet must be a fleet id or name, at most 200 characters";
 
 pub(super) fn page(params: &HashMap<String, String>) -> Result<PageQuery, &'static str> {
     if [QUERY_PAGE, QUERY_PAGE_SIZE, QUERY_SORT]
@@ -43,6 +59,38 @@ pub(super) fn page(params: &HashMap<String, String>) -> Result<PageQuery, &'stat
 
 pub(super) fn runner_id(raw: &str) -> Result<Uuid7, &'static str> {
     Uuid7::parse(raw).map_err(|_invalid| DETAIL_BAD_RUNNER_ID)
+}
+
+pub(super) fn leases(params: &HashMap<String, String>) -> Result<LeaseQuery, &'static str> {
+    let limit = match params.get(QUERY_LIMIT).map(String::as_str) {
+        None | Some("") => 50,
+        Some(raw) => raw
+            .parse::<u32>()
+            .ok()
+            .filter(|limit| (1..=100).contains(limit))
+            .ok_or(DETAIL_BAD_LEASE_LIMIT)?,
+    };
+    let starting_after = params
+        .get(QUERY_STARTING_AFTER)
+        .map(|raw| Uuid7::parse(raw).map_err(|_invalid| DETAIL_BAD_LEASE_CURSOR))
+        .transpose()?;
+    let workspace = params
+        .get(QUERY_WORKSPACE_ID)
+        .map(|raw| Uuid7::parse(raw).map_err(|_invalid| DETAIL_BAD_WORKSPACE))
+        .transpose()?;
+    let fleet = params.get(QUERY_FLEET).cloned();
+    if fleet
+        .as_ref()
+        .is_some_and(|value| value.is_empty() || value.len() > MAX_FLEET_FILTER_LEN)
+    {
+        return Err(DETAIL_BAD_FLEET);
+    }
+    Ok(LeaseQuery {
+        starting_after,
+        workspace,
+        fleet,
+        limit,
+    })
 }
 
 pub(super) fn format(cursor: &KeysetCursor) -> String {
@@ -92,6 +140,41 @@ mod tests {
         ] {
             let params = HashMap::from([(key.to_owned(), value.to_owned())]);
             assert_eq!(page(&params).err(), Some(detail));
+        }
+    }
+
+    #[test]
+    fn lease_query_parses_independent_filters_and_refuses_each_bad_dimension() {
+        let cursor = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010";
+        let workspace = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a7d";
+        let params = HashMap::from([
+            (QUERY_LIMIT.to_owned(), "100".to_owned()),
+            (QUERY_STARTING_AFTER.to_owned(), cursor.to_owned()),
+            (QUERY_WORKSPACE_ID.to_owned(), workspace.to_owned()),
+            (QUERY_FLEET.to_owned(), "Production".to_owned()),
+        ]);
+        let parsed = leases(&params).expect("every dimension is valid");
+        assert_eq!(parsed.limit, 100);
+        assert_eq!(
+            parsed.starting_after.as_ref().map(Uuid7::as_str),
+            Some(cursor)
+        );
+        assert_eq!(
+            parsed.workspace.as_ref().map(Uuid7::as_str),
+            Some(workspace)
+        );
+        assert_eq!(parsed.fleet.as_deref(), Some("Production"));
+
+        for (key, value, detail) in [
+            (QUERY_LIMIT, "0", DETAIL_BAD_LEASE_LIMIT),
+            (QUERY_STARTING_AFTER, "foreign", DETAIL_BAD_LEASE_CURSOR),
+            (QUERY_WORKSPACE_ID, "workspace", DETAIL_BAD_WORKSPACE),
+            (QUERY_FLEET, "", DETAIL_BAD_FLEET),
+        ] {
+            assert_eq!(
+                leases(&HashMap::from([(key.to_owned(), value.to_owned())])).err(),
+                Some(detail)
+            );
         }
     }
 }

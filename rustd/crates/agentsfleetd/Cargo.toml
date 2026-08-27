@@ -48,6 +48,8 @@ afd_auth.workspace = true
 afd_state.workspace = true
 # The runner control plane behind the `/v1/runners` verbs.
 afd_fleet.workspace = true
+# Read-only operator projections are kept off the runner execution crate.
+afd_fleet_ops.workspace = true
 # The S3 client the Fleet Bundle snapshot store is built on. Named HERE and not
 # in `afd_fleet` because this is the file that decides the store is Cloudflare
 # R2 — `afd_fleet::bundle` takes an already-built `dyn ObjectStore` and knows

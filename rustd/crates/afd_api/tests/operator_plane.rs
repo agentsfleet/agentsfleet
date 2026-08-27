@@ -38,6 +38,23 @@ async fn operator_reads_are_mounted_behind_their_exact_scopes() {
         Some("UZ-INTERNAL-001")
     );
 
+    let leases = send(
+        &runner_reader,
+        Method::GET,
+        &format!("/v1/fleets/runners/{RUNNER}/leases"),
+        Some(TENANT_KEY),
+        "",
+    )
+    .await;
+    assert_eq!(leases.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        json_body(leases)
+            .await
+            .get("error_code")
+            .and_then(serde_json::Value::as_str),
+        Some("UZ-INTERNAL-001")
+    );
+
     let denied = send(
         &runner_reader,
         Method::GET,
@@ -68,6 +85,58 @@ async fn operator_reads_are_mounted_behind_their_exact_scopes() {
         json_body(overview).await,
         serde_json::json!({"items": [], "total": 0, "max_streams": 64})
     );
+}
+
+#[tokio::test]
+async fn runner_leases_require_runner_read_and_reject_query_shape_before_io() {
+    let stream_reader = Fleet::new()
+        .with_person(
+            TENANT_KEY,
+            OPERATOR,
+            ScopeSet::from_scopes(&[Scope::StreamRead]),
+        )
+        .router();
+    let denied = send(
+        &stream_reader,
+        Method::GET,
+        &format!("/v1/fleets/runners/{RUNNER}/leases"),
+        Some(TENANT_KEY),
+        "",
+    )
+    .await;
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+
+    let runner_reader = Fleet::new()
+        .with_person(
+            TENANT_KEY,
+            OPERATOR,
+            ScopeSet::from_scopes(&[Scope::RunnerRead]),
+        )
+        .router();
+    for query in [
+        "limit=0",
+        "limit=101",
+        "starting_after=foreign",
+        "workspace_id=workspace",
+        "fleet=",
+    ] {
+        let malformed = send(
+            &runner_reader,
+            Method::GET,
+            &format!("/v1/fleets/runners/{RUNNER}/leases?{query}"),
+            Some(TENANT_KEY),
+            "",
+        )
+        .await;
+        assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            json_body(malformed)
+                .await
+                .get("error_code")
+                .and_then(serde_json::Value::as_str),
+            Some("UZ-REQ-001")
+        );
+    }
 }
 
 #[tokio::test]

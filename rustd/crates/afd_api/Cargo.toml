@@ -31,6 +31,8 @@ afd_auth.workspace = true
 # points this way and never back: `afd_fleet` names no status code and no
 # router, so a decision it makes can be proven without an HTTP request.
 afd_fleet.workspace = true
+# Small, read-only cross-table projections for operator routes.
+afd_fleet_ops.workspace = true
 # The payloads the runner verbs read and answer with. Frozen by M175; consumed,
 # never authored here.
 afd_wire.workspace = true
