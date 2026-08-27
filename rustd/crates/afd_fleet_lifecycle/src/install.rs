@@ -29,6 +29,7 @@
 
 mod authored;
 mod row;
+mod schedule;
 
 use std::time::Duration;
 
@@ -37,6 +38,10 @@ use afd_core::error_code;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_fleet_runtime::FleetName;
 use afd_redis::Backoff;
+
+use backon::Retryable as _;
+
+use self::schedule::Schedule;
 
 use crate::error::{self, ErrorKind, Result};
 use crate::{FleetStatus, Fleets, sql};
@@ -183,54 +188,45 @@ impl Fleets {
 
     /// Creates the stream and its consumer group, or spends the whole schedule.
     ///
-    /// Only a TRANSPORT failure is retried. A Redis that answered and refused
-    /// the command will refuse the identical command three more times, and a
-    /// deployment whose Redis is misconfigured will still be misconfigured in
-    /// 1.75 seconds — spending the budget on either makes a person wait out a
-    /// foregone conclusion. That classification is the difference between a
-    /// retry that means something and a retry that is ceremony.
+    /// The LOOP is `backon`'s, not ours. The schedule below is still
+    /// `afd_redis::Backoff` — the delays are the workspace's own and are proven
+    /// on the subscription hub's reconnect — but the counter and the
+    /// stop-after-the-last-attempt rule are the library's. That is the half
+    /// worth handing over: the Zig's shipped bug was in its loop guard
+    /// (`attempt + 1 >= len` left the final delay unreachable while the comment
+    /// beside it promised four tries), not in its numbers.
     ///
-    /// The final attempt does not sleep, which is what makes four attempts
-    /// three sleeps: waiting after the last try spends 1.5 seconds answering
-    /// nothing.
+    /// `when` is what makes the retry mean something. Only a TRANSPORT failure
+    /// is retried; a Redis that answered and refused the command will refuse it
+    /// three more times, and a misconfigured deployment will still be
+    /// misconfigured in 1.75 seconds. Spending the budget on either makes a
+    /// person wait out a foregone conclusion.
     async fn ensure_stream(&self, fleet: &str) -> Result<()> {
-        let mut last = None;
-        for attempt in 0..STREAM_ATTEMPTS {
-            let failure = match self.streams.ensure_group(fleet).await {
-                Ok(()) => return Ok(()),
-                Err(failure) => failure,
-            };
-            if !failure.is_unavailable() {
-                // Answered and refused, or misconfigured. Neither improves by
-                // being asked again, and the caller is better served by hearing
-                // so now.
-                return Err(failure.into());
-            }
-            if attempt + 1 < STREAM_ATTEMPTS {
-                let delay = STREAM_BACKOFF.delay(attempt, self.jitter());
+        (|| async { self.streams.ensure_group(fleet).await })
+            .retry(Schedule::new(self.jitter()))
+            .when(afd_redis::Error::is_unavailable)
+            .notify(|failure: &afd_redis::Error, delay: Duration| {
                 let sleep_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX);
                 let reason = failure.to_string();
                 tracing::warn!(
                     error_code = error_code::INTERNAL_OPERATION_FAILED.as_str(),
                     fleet,
-                    attempt = attempt + 1,
-                    of = STREAM_ATTEMPTS,
                     sleep_ms,
                     reason,
                     event = "install_stream_retry",
                 );
-                tokio::time::sleep(delay).await;
-            }
-            last = Some(failure);
-        }
-        Err(last.map_or_else(|| ErrorKind::InstallRolledBack.into(), Into::into))
+            })
+            .await
+            .map_err(Into::into)
     }
 
     /// Spread for one backoff delay, so concurrent installs do not retry in step.
     ///
-    /// Zero when the host cannot draw entropy, which degrades to the Zig's
-    /// lockstep schedule rather than failing an install over a jitter value —
-    /// the delay is still correct, it is just no longer spread.
+    /// Drawn ONCE per install and advanced per attempt, rather than redrawn each
+    /// time: an entropy failure mid-retry would otherwise silently collapse the
+    /// spread back to lockstep, which is the failure this exists to prevent.
+    /// Zero when the host cannot draw entropy — the delays stay correct, they
+    /// just stop being spread.
     fn jitter(&self) -> u64 {
         let mut bytes = [0u8; 8];
         self.entropy
@@ -290,73 +286,5 @@ impl Fleets {
         let mut bytes = [0u8; ENTROPY_LEN];
         self.entropy.fill(&mut bytes)?;
         Ok(Uuid7::encode(now, bytes)?)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #![expect(
-        clippy::expect_used,
-        reason = "a test asserts by panicking; the restriction set is for the daemon"
-    )]
-    use super::{STREAM_ATTEMPTS, STREAM_BACKOFF};
-    use std::time::Duration;
-
-    /// The wall budget `create_stream.zig` documents, which this stays inside.
-    const ZIG_WALL_BUDGET: Duration = Duration::from_millis(2100);
-
-    /// The most the jitter may add, as `Backoff::delay` spreads it.
-    const JITTER_SHARE: u32 = 4;
-
-    #[test]
-    fn the_whole_schedule_fits_inside_the_documented_wall_budget() {
-        // A person is waiting on this. Three sleeps, jitter at its worst, still
-        // under the 2.1s the Zig spends — otherwise the "robust" retry is just
-        // a slower failure.
-        let worst: Duration = (0..STREAM_ATTEMPTS - 1)
-            .map(|attempt| STREAM_BACKOFF.delay(attempt, u64::MAX))
-            .sum();
-
-        assert!(
-            worst <= ZIG_WALL_BUDGET,
-            "worst case {worst:?} must stay inside {ZIG_WALL_BUDGET:?}"
-        );
-    }
-
-    #[test]
-    fn the_first_retry_lands_sooner_than_the_zig_schedule_did() {
-        // The point of doubling from 200ms: a Redis that blips is caught on the
-        // second attempt instead of after the Zig's first 100ms plus a 500ms
-        // second wait.
-        let first = STREAM_BACKOFF.delay(0, 0);
-
-        assert!(
-            first <= Duration::from_millis(250),
-            "first wait is {first:?}"
-        );
-    }
-
-    #[test]
-    fn concurrent_installs_do_not_retry_in_the_same_millisecond() {
-        // Lockstep retries against a struggling Redis are the reconnect storm
-        // that keeps it down. Two callers drawing different jitter must wait
-        // different amounts.
-        let one = STREAM_BACKOFF.delay(1, 0);
-        let other = STREAM_BACKOFF.delay(1, u64::MAX);
-
-        assert_ne!(one, other, "the schedule must spread");
-        // Bounded as well as non-zero: jitter that could double a delay would
-        // make the wall budget above unprovable.
-        let spread = STREAM_BACKOFF.delay(1, 0) / JITTER_SHARE;
-        let widened = other.checked_sub(one).expect("jitter only ever adds");
-        assert!(widened <= spread + Duration::from_millis(1));
-    }
-
-    #[test]
-    fn four_attempts_means_three_sleeps() {
-        // Waiting after the final try spends 1.5s answering nothing, and the
-        // loop is written so the count is the constant and the sleeps derive.
-        assert_eq!(STREAM_ATTEMPTS, 4);
-        assert_eq!((0..STREAM_ATTEMPTS - 1).count(), 3);
     }
 }

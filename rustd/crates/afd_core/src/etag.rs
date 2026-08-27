@@ -43,21 +43,47 @@ pub fn compute(fields: &[Option<&[u8]>]) -> String {
             }
         }
     }
-    let digest = hasher.finalize();
-    let mut tag = String::with_capacity(2 + digest.len() * 2);
+    let mut tag = String::with_capacity(2 + QUOTED_TAG_LEN);
     tag.push('"');
-    for byte in digest {
-        use std::fmt::Write as _;
-        // Writing hex into a String cannot fail; the discard says so.
-        let _infallible = write!(tag, "{byte:02x}");
-    }
+    push_hex(&mut tag, &hasher.finalize());
     tag.push('"');
     tag
 }
 
+/// The quoted tag's hex half — SHA-256 is thirty-two bytes, two characters each.
+const QUOTED_TAG_LEN: usize = 64;
+
+/// Renders `bytes` as lower-case hex onto `out`.
+///
+/// One spelling for both renderings here: [`compute`] wraps it in quotes and
+/// [`sha256_hex`] does not, and a second copy of the format string is a second
+/// place for the width or the case to drift — either of which silently stops a
+/// client's cached validator from ever matching again.
+fn push_hex(out: &mut String, bytes: &[u8]) {
+    use std::fmt::Write as _;
+    for byte in bytes {
+        // Writing hex into a String cannot fail; the discard says so.
+        let _infallible = write!(out, "{byte:02x}");
+    }
+}
+
+/// A plain SHA-256 over `bytes`, lower-case hex.
+///
+/// Deliberately NOT [`compute`]'s encoding: no markers, no length prefixes, no
+/// quotes. This one has to equal what Postgres computes for the same value —
+/// `encode(sha256(convert_to(col, 'UTF8')), 'hex')` — because a conditional
+/// write compares the two inside the `UPDATE`'s own predicate. A caller wanting
+/// a validator to hand a client wants [`compute`] instead.
+#[must_use]
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hex = String::with_capacity(QUOTED_TAG_LEN);
+    push_hex(&mut hex, &Sha256::digest(bytes));
+    hex
+}
+
 #[cfg(test)]
 mod tests {
-    use super::compute;
+    use super::{compute, sha256_hex};
 
     #[test]
     fn the_tag_is_the_zig_encoding_to_the_byte() {
@@ -72,6 +98,20 @@ mod tests {
             compute(&[Some(b"hello")]),
             "deterministic across calls"
         );
+    }
+
+    #[test]
+    fn the_column_digest_is_the_bare_hash_postgres_computes() {
+        // Pinned against `encode(sha256(convert_to('hello','UTF8')),'hex')`. A
+        // conditional write compares these two values inside the UPDATE, so a
+        // change on either side has to fail HERE rather than by silently
+        // matching no row and reading as a lost race.
+        assert_eq!(
+            sha256_hex(b"hello"),
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+        assert_eq!(sha256_hex(b"").len(), 64, "bare hex, no quotes or markers");
+        assert_ne!(sha256_hex(b"hello"), compute(&[Some(b"hello")]));
     }
 
     #[test]
