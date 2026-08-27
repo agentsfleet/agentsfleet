@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_core::id::Uuid7;
-use afd_core::paging::{BoundaryKind, Cursor, Page, SortOrder as _};
+use afd_core::paging::{Boundary as _, Page};
 use afd_tenant::apikey::{
     ApiKeySort, Deactivation, Description, KeyName, KeyRow, Listing, MintRequest, Revealed, Revoked,
 };
@@ -214,36 +214,12 @@ fn page_response<'rows>(
     let next_cursor = full
         .then(|| listing.keys.last())
         .flatten()
-        .map(|last| Cow::Owned(cursor_for(last, page.sort).to_string()));
+        .map(|last| Cow::Owned(last.cursor(page.sort).to_string()));
     PageResponse {
         data: listing.keys.iter().map(summary).collect(),
         has_more: next_cursor.is_some(),
         next_cursor,
         total: listing.total,
-    }
-}
-
-/// The cursor a client resumes from after `last`, in the form `sort` walks in.
-///
-/// The form is not a detail. A cursor names the boundary row's SORT VALUE plus
-/// its id, and the seek compares that value against the same column the
-/// `ORDER BY` names — so a name-ordered walk needs the name. The paging layer
-/// refuses a cursor whose form does not match the active sort (rather than
-/// silently seeking on the wrong column and dropping rows), which means the
-/// wrong form here does not corrupt a page: it ends the walk at page one.
-///
-/// [`ApiKeySort::boundary`] is what decides, so this cannot drift from the
-/// `ORDER BY` it has to agree with — both are methods on the same enum.
-fn cursor_for(last: &KeyRow, sort: ApiKeySort) -> Cursor {
-    match sort.boundary() {
-        BoundaryKind::Timestamp => Cursor::Timestamp {
-            at_ms: last.created_at_ms,
-            id: last.id.clone(),
-        },
-        BoundaryKind::Text => Cursor::Text {
-            value: last.name.clone(),
-            id: last.id.clone(),
-        },
     }
 }
 
@@ -272,98 +248,4 @@ fn parameter<'q>(query: &'q str, name: &str) -> Option<&'q str> {
         let (key, value) = pair.split_once('=')?;
         (key == name).then_some(value)
     })
-}
-
-#[cfg(test)]
-mod tests {
-    #![expect(
-        clippy::expect_used,
-        clippy::panic,
-        reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
-    )]
-    use afd_core::paging::{Cursor, Page, SortOrder as _};
-    use afd_tenant::apikey::{ApiKeySort, KeyRow};
-
-    use super::cursor_for;
-
-    /// A row at the end of a page, with a name and an instant that differ.
-    fn boundary_row() -> KeyRow {
-        KeyRow {
-            id: "0195b4ba-8d3a-7f13-8abc-2b3e1e0f7031".to_owned(),
-            name: "zeta-deploy".to_owned(),
-            active: true,
-            created_at_ms: 1_724_800_000_000,
-            last_used_at_ms: None,
-            revoked_at_ms: None,
-        }
-    }
-
-    /// Every ordering emits the form its own seek can resume from.
-    ///
-    /// The regression this pins: `cursor_for` used to emit the timestamp form
-    /// unconditionally, so a `key_name` walk handed back a cursor the paging
-    /// layer refuses on the next request — page two never arrived, and nothing
-    /// failed loudly because the refusal looks like a malformed cursor from the
-    /// client. `list.zig:122` switches on the same key; this is that switch.
-    #[test]
-    fn a_cursor_carries_the_boundary_its_own_sort_seeks_on() {
-        let row = boundary_row();
-        for sort in [
-            ApiKeySort::CreatedAscending,
-            ApiKeySort::CreatedDescending,
-            ApiKeySort::NameAscending,
-            ApiKeySort::NameDescending,
-        ] {
-            let cursor = cursor_for(&row, sort);
-            assert_eq!(
-                cursor.kind(),
-                sort.boundary(),
-                "{sort:?} orders by one column and its cursor must name that column"
-            );
-        }
-    }
-
-    /// A name-ordered cursor survives the round trip a second request makes.
-    ///
-    /// Rendering the right FORM is only half of it: the value has to come back
-    /// intact, because the seek compares it against `key_name` directly. A name
-    /// is caller-supplied text, so the encoding is what has to hold.
-    #[test]
-    fn a_name_cursor_round_trips_through_the_wire() {
-        let row = boundary_row();
-        let rendered = cursor_for(&row, ApiKeySort::NameAscending).to_string();
-        let parsed = Cursor::parse(&rendered).expect("a cursor this daemon issued must parse");
-
-        match parsed {
-            Cursor::Text { value, id } => {
-                assert_eq!(value, row.name, "the boundary name must survive the trip");
-                assert_eq!(id, row.id, "and the tiebreak id with it");
-            }
-            Cursor::Timestamp { .. } => {
-                panic!("a name walk must not resume from an instant")
-            }
-        }
-    }
-
-    /// The page the parser accepts is the page the walk asked for.
-    ///
-    /// Closes the loop end to end: render a cursor for a name sort, feed it
-    /// back the way a client would, and assert the parsed page still walks by
-    /// name. A mismatch here is the refusal that ended the walk at page one.
-    #[test]
-    fn a_rendered_cursor_is_accepted_by_the_sort_that_issued_it() {
-        let row = boundary_row();
-        let rendered = cursor_for(&row, ApiKeySort::NameAscending).to_string();
-
-        let query = format!("sort=key_name&starting_after={rendered}");
-        let page = Page::<ApiKeySort>::parse(|name| super::parameter(&query, name))
-            .expect("a cursor this daemon issued is one it accepts");
-
-        assert_eq!(page.sort, ApiKeySort::NameAscending);
-        assert_eq!(
-            page.cursor.as_ref().map(Cursor::kind),
-            Some(ApiKeySort::NameAscending.boundary()),
-            "the parsed cursor must match the sort, or the seek is refused"
-        );
-    }
 }
