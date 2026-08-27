@@ -1,0 +1,51 @@
+[package]
+name = "afd_fleet_lifecycle"
+description = "A workspace's fleets: install, read, edit, purge — the lifecycle around the runtime."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Identifiers, the clock, the registry codes, and the keyset cursor the list
+# walk resumes from.
+afd_core.workspace = true
+# Entropy for the fleet identifiers the install mints.
+afd_crypto.workspace = true
+# The Postgres pool every statement here runs on.
+afd_db.workspace = true
+# The per-fleet event stream and its consumer group. The install's whole
+# guarantee is that both exist before the 201, so this is not an optional edge:
+# it is the reason this crate is not a pure Postgres store.
+afd_redis.workspace = true
+# `SKILL.md` and `TRIGGER.md` are parsed at the write boundary — an install and
+# a config PATCH both store the JSON this produces, and neither may store a
+# document the lease path could not read back.
+afd_fleet_runtime.workspace = true
+sqlx.workspace = true
+# The install's bounded retry sleeps between attempts. `time` only — this crate
+# spawns nothing and owns no runtime; it is awaited on whichever one the caller
+# is already running.
+tokio = { workspace = true, features = ["time"] }
+thiserror.workspace = true
+tracing.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a router
+# suite reaches this crate's seam with no datastore behind it.
+test-util = [
+  "afd_core/test-util",
+  "afd_db/test-util",
+  "afd_redis/test-util",
+]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

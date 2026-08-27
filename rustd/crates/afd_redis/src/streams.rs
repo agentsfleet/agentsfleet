@@ -330,6 +330,29 @@ impl FleetStreams {
         Ok(())
     }
 
+    /// Drops a fleet's whole event stream, group and all.
+    ///
+    /// For the purge, and only for it: `DEL` on a stream key removes the
+    /// entries AND every consumer group over them, which is correct exactly
+    /// when the fleet itself is gone from Postgres and wrong at every other
+    /// moment. A live fleet losing its group here would go quiet with nothing
+    /// reporting why, because `ensure_group` only runs at install.
+    ///
+    /// Idempotent — a stream that is already gone removes nothing and succeeds,
+    /// so a retried purge is not an error.
+    ///
+    /// # Errors
+    /// Returns a command error, or an unavailable error when Redis is gone.
+    /// The purge logs and continues: Postgres has already committed, and the
+    /// keys left behind are unreachable rather than harmful.
+    pub async fn forget(&self, fleet_id: &str) -> Result<()> {
+        let key = fleet_stream_key(fleet_id);
+        let mut cmd = redis::cmd(CMD_DEL);
+        cmd.arg(&key);
+        let _removed: i64 = self.redis.command(CMD_DEL, &key, &cmd).await?;
+        Ok(())
+    }
+
     /// Reads the next undelivered event, without blocking.
     ///
     /// Never `BLOCK`: this connection is multiplexed, so parking on one stream

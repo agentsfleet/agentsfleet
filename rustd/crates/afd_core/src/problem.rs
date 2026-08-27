@@ -503,6 +503,79 @@ const ENTRIES: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::AGENTSFLEET_NAME_EXISTS,
+        status: 409,
+        title: "Fleet name already exists",
+        hint: "A Fleet with this name already exists. Use `agentsfleet kill <name>` first, then deploy again.",
+        // No dashboard sentence, and the Zig entry carries the same
+        // reachability note: an explicit name is a command-line and API-key
+        // surface, because the dashboard's one-step install names nothing and
+        // takes the re-drawn suffix instead of ever seeing this.
+        user_message: None,
+    },
+    Problem {
+        code: error_code::AGENTSFLEET_INVALID_CONFIG,
+        status: 400,
+        title: "Invalid fleet config",
+        hint: "Config JSON is malformed. Check the trigger, tools, credentials, and budget fields in TRIGGER.md frontmatter. See the [Authoring a fleet](/fleets/authoring) guide.",
+        user_message: Some(
+            "That fleet's config isn't valid. Check the trigger, tools, credentials, and budget fields, then try again.",
+        ),
+    },
+    Problem {
+        code: error_code::AGENTSFLEET_NOT_FOUND,
+        // 404, and pinned as such on both sides: `error_registry_test.zig`
+        // asserts it, because collapsing "no such fleet" and "another
+        // workspace's fleet" into one status is what keeps the endpoint from
+        // being an oracle for which identifiers are real.
+        status: 404,
+        title: "Fleet not found",
+        hint: "Fleet not found. Verify the fleet_id and that it has not been killed.",
+        user_message: Some(
+            "We couldn't find that Fleet. It may have been deleted, or the identifier doesn't match one in this workspace.",
+        ),
+    },
+    Problem {
+        code: error_code::AGENTSFLEET_ALREADY_TERMINAL,
+        status: 409,
+        title: "Fleet state transition not allowed",
+        hint: "That action is not valid from the fleet's current state. The error detail names the refused transition.",
+        user_message: Some(
+            "That action isn't available for this Fleet right now — check its current status and try again.",
+        ),
+    },
+    Problem {
+        code: error_code::AGENTSFLEET_NAME_MISMATCH,
+        status: 400,
+        title: "Fleet files disagree on `name:`",
+        hint: "Top-level `name:` in `SKILL.md` must match `name:` in `TRIGGER.md`. Use one identity per Fleet Bundle.",
+        user_message: Some(
+            "This Fleet Bundle's files disagree on its name. `SKILL.md` and `TRIGGER.md` must match. Fix the source and try again.",
+        ),
+    },
+    Problem {
+        code: error_code::AGENTSFLEET_INSTALL_ROLLED_BACK,
+        // 500 rather than 503, and the difference is what the caller is being
+        // promised. A 503 says "come back later"; this says "nothing was kept,
+        // so retrying is safe" — which is the fact the rollback earned and the
+        // only one the caller can act on.
+        status: 500,
+        title: "Fleet install rolled back",
+        hint: "Event-stream setup failed during create. Nothing was kept, so retry. If it continues, check queue connectivity.",
+        user_message: Some(
+            "We couldn't finish setting up your fleet. Nothing was created — try again.",
+        ),
+    },
+    Problem {
+        code: error_code::AGENTSFLEET_SOURCE_STALE,
+        status: 412,
+        title: "Fleet source is stale",
+        hint: "Someone else saved first: `If-Match` names an old version. Re-read the fleet, re-apply your edit, and retry with the new `etag`.",
+        user_message: Some(
+            "Someone else edited this Fleet's source since you opened it. Reload to see their change, then re-apply your edit.",
+        ),
+    },
+    Problem {
         code: error_code::FLEET_BUNDLE_NOT_FOUND,
         status: 404,
         title: "Fleet Bundle not found",
