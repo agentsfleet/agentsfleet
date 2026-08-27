@@ -40,7 +40,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Intent (one sentence):** platform operators can curate libraries, manage platform keys and models, import bundles, and administer runners against `agentsfleetd-rs` exactly as against the Zig daemon.
 - **Handshake restatement:** `agentsfleetd-rs` will expose the existing privileged admin and operator behaviours with the same authorization decisions and wire shapes, while the implementation uses Rust-native ownership, typed errors, standard-library or crate primitives, and narrow traits at vendor/storage seams.
 - **ASSUMPTIONS I'M MAKING:** parity grades observable behaviour rather than internal Zig structure; M179 owns a separate branch and Pull Request from M178; focused compile/test commands may run while completing a Dimension; repository-wide unit verification waits until all Sections are implemented; the live datastore lane runs at `orly gate pr`; OpenAPI and published docs stay unchanged unless source comparison proves existing documentation wrong.
-- **PLAN impact:** create `afd_library`; extend `afd_api`, `afd_state`, and `afd_fleet`; add the Rust admin/operator integration subset; keep changes inside the Files Changed table.
+- **PLAN impact:** create the small sibling crates `afd_library`, `afd_admin`, and `afd_fleet_ops`; extend `afd_api`, `afd_state`, and `afd_fleet`; add the Rust admin/operator integration subset; keep changes inside the Files Changed table.
 - **PLAN verification:** unit tests accompany every Dimension; Rust format and Clippy run once per completed Section; `make test-unit-all` runs after all Sections; `make test-integration-rustd` runs through `orly gate pr`.
 - **Quality ceiling:** thin HTTP adapters over typed services, transactional repository methods, and traits only where implementations vary are leaner and safer under concurrency than transliterating Zig control flow or adding a general handler framework.
 - **Surface-area checklist:** OpenAPI paths yes, behaviour-preserving only; CLI no; user docs no unless parity inspection finds drift; release/version yes at CHORE(close); schema no; spec-vs-rules conflict no.
@@ -58,7 +58,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `rustd/crates/afd_api/**` | EDIT | Route variants + handler modules: admin fleet-libraries, platform-keys, admin models; operator bundles, runners, streams |
+| `rustd/crates/afd_admin/**` | CREATE | Small platform-key and priced-model repositories, separate from the runner control plane |
 | `rustd/crates/afd_library/**` | CREATE | fleet-library catalogue, importer, GitHub source, bundle validation + R2 upload |
+| `rustd/crates/afd_fleet_ops/**` | CREATE | Small read-only cross-table projections for operator routes |
 | `rustd/crates/afd_state/**` | EDIT | platform-key + model-library repositories (admin write paths) |
 | `rustd/crates/afd_fleet/**` | EDIT | runner administration service (cordon/drain/revoke/rotate), streams overview reads |
 | `rustd/crates/afd_core/**` | EDIT | Import the existing Zig registry entries newly reachable from Rust |
