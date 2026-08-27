@@ -60,6 +60,26 @@ pub use self::tenant::TenantRoute;
 pub use self::webhook::WebhookRoute;
 pub use self::workspace::WorkspaceRoute;
 
+/// An HTTP verb a route identity serves.
+///
+/// Kept as a small copyable enum rather than storing [`http::Method`] values in
+/// static slices. The inventory is compile-time data, and converting at the
+/// router edge is cheaper and clearer than cloning an owned method throughout
+/// tests and route metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Verb {
+    /// Read a resource or collection.
+    Get,
+    /// Create beneath a collection.
+    Post,
+    /// Replace the addressed setting.
+    Put,
+    /// Partially update the addressed resource.
+    Patch,
+    /// Remove the addressed resource.
+    Delete,
+}
+
 /// Every route this daemon knows, grouped by the surface it belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Route {

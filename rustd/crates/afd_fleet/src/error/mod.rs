@@ -49,7 +49,7 @@ pub use self::detail::{
     DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND,
     DETAIL_PROVIDER_UNRESOLVED, DETAIL_QUEUE_UNAVAILABLE, DETAIL_REGISTRATION_FAILED,
     DETAIL_REGISTRY_ALLOWLIST, DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUNNER_NOT_FOUND,
-    DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID,
+    DETAIL_SELFTEST_REFUSED, DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID,
 };
 // The mint family's sentences, listed apart from the block above only because
 // they arrived together and are read together — `credentials_mint.zig` writes
@@ -64,7 +64,7 @@ pub(crate) use self::refuse::{
     binding_drift, budget_exhausted, connector_mint_failed, connector_reconnect_required,
     github_mint_failed, github_reconnect_required, grant_required, integration_not_connected,
     lease_lost, lease_max_runtime, lease_not_found, mint_unconfigured, renewal_no_credits,
-    stale_fence, write_spend_exhausted, write_unapproved,
+    selftest_refused, stale_fence, write_spend_exhausted, write_unapproved,
 };
 
 /// A runner control-plane operation failed.
@@ -110,12 +110,29 @@ pub(crate) enum ErrorKind {
     #[error("the presented runner token proved a row that no longer exists")]
     RunnerVanished,
 
+    #[error("no runner matches the operator-supplied id")]
+    RunnerNotFound,
+
+    #[error("a revoked runner cannot collect a self-test request")]
+    SelftestRefused,
+
+    #[error("a runner row holds an unknown admin state")]
+    AdminStateMalformed,
+
     #[error("a {table} row holds a value this daemon cannot read: {column}")]
     RowMalformed {
         table: &'static str,
         column: &'static str,
         #[source]
         source: afd_core::error::Error,
+    },
+
+    #[error("a {table} row holds malformed JSON in {column}")]
+    StoredJson {
+        table: &'static str,
+        column: &'static str,
+        #[source]
+        source: serde_json::Error,
     },
 
     #[error("the leased event envelope is missing {field}")]
@@ -281,6 +298,16 @@ pub(crate) fn envelope_field(field: &'static str) -> Error {
     Error::new(ErrorKind::Envelope { field })
 }
 
+/// Reports an operator request addressed to no runner row.
+pub(crate) fn runner_not_found() -> Error {
+    Error::new(ErrorKind::RunnerNotFound)
+}
+
+/// Reports a runner row whose administrative state is outside the wire enum.
+pub(crate) fn admin_state_malformed() -> Error {
+    Error::new(ErrorKind::AdminStateMalformed)
+}
+
 /// Refuses a request the caller can correct, quoting the Zig detail verbatim.
 pub(crate) fn rejected(detail: &'static str) -> Error {
     Error::new(ErrorKind::Rejected { detail })
@@ -404,6 +431,20 @@ pub(crate) fn row_malformed(
 ) -> impl Fn(afd_core::error::Error) -> Error {
     move |source| {
         Error::new(ErrorKind::RowMalformed {
+            table,
+            column,
+            source,
+        })
+    }
+}
+
+/// Reports JSONB text that did not survive decoding into its wire value.
+pub(crate) fn stored_json(
+    table: &'static str,
+    column: &'static str,
+) -> impl Fn(serde_json::Error) -> Error {
+    move |source| {
+        Error::new(ErrorKind::StoredJson {
             table,
             column,
             source,

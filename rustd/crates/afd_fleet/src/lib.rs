@@ -47,11 +47,17 @@ pub mod provider;
 pub mod runner;
 pub mod secrets;
 pub mod sql;
+pub mod streams;
 pub mod sweep;
 pub mod vault;
 
 pub use crate::error::{Error, Result};
+pub use crate::runner::admin::{PolicyAssigned, SelftestRequested};
 pub use crate::runner::reconcile::{Verdict, reconcile};
+pub use crate::runner::view::{
+    KeysetCursor, PageLimit, RunnerDetail, RunnerEventFilter, RunnerEventPage, RunnerItem,
+    RunnerPage,
+};
 pub use crate::runner::{
     AssignmentColumns, Beat, Enrolled, NO_REPORT, Runners, SelfRow, StoredVerdict,
 };

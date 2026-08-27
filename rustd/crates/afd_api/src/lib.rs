@@ -24,8 +24,8 @@
 // everything else.
 #[cfg(test)]
 use {
-    afd_db as _, bytes as _, hyper_util as _, object_store as _, tower as _,
-    tracing_subscriber as _,
+    afd_db as _, afd_state as _, bytes as _, hyper_util as _, object_store as _, sqlx as _,
+    tower as _, tracing_subscriber as _,
 };
 
 pub mod admission;

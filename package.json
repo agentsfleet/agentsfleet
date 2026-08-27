@@ -11,5 +11,6 @@
   },
   "overrides": {
     "playwright-core": "1.62.1"
-  }
+  },
+  "version": "0.27.0"
 }

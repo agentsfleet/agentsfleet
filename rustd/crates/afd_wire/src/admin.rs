@@ -4,6 +4,13 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
+pub use crate::admin_catalogue::{
+    AdminLibrariesResponse, AdminLibraryCreated, AdminLibraryImport, AdminLibraryItem,
+    AdminLibraryPatch, AdminLibraryRequirements, AdminModelCreate, AdminModelCreated,
+    AdminModelItem, AdminModelUpdated, AdminModelsResponse, FleetBundleItem, FleetBundlesResponse,
+    ModelRates, PlatformKeyDeactivateResponse, PlatformKeyItem, PlatformKeyPut,
+    PlatformKeySetResponse, PlatformKeysResponse,
+};
 use crate::runner::AssignedPolicy;
 
 /// Operator intent for a runner. Only `Active` admits a runner-plane call;
@@ -23,12 +30,11 @@ pub enum AdminState {
     Revoked,
 }
 
-/// Platform-admin mutation actions.
+/// Platform-operator mutation actions.
 ///
-/// `SelfTest` is the odd one out: the others transition state, while it records
-/// an operator's ASK and leaves the state alone. It rides the same endpoint
-/// because it shares everything that matters at the boundary — the operator
-/// scope, the exactly-one-of body guard, and the refusal on a revoked runner.
+/// Rotation and self-test are operations rather than state transitions. They
+/// ride the same endpoint because they share the operator scope and the
+/// exactly-one-of body guard with the transition actions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunnerAdminAction {
@@ -38,8 +44,25 @@ pub enum RunnerAdminAction {
     Drain,
     /// Revoke its credential.
     Revoke,
+    /// Replace its credential and reveal the replacement once.
+    Rotate,
     /// Ask it to self-test on its next beat.
     SelfTest,
+}
+
+/// Successful runner-token rotation.
+///
+/// The replacement token is returned once. The daemon stores only its digest,
+/// so no later read can recover this value.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RunnerTokenRotatedResponse<'a> {
+    /// The runner whose credential changed.
+    #[serde(borrow)]
+    pub id: Cow<'a, str>,
+    /// The replacement bearer token. Secret — reveal once, then discard.
+    #[serde(borrow)]
+    pub runner_token: Cow<'a, str>,
 }
 
 /// `PATCH /v1/fleets/runners/{id}` body.
@@ -48,7 +71,7 @@ pub enum RunnerAdminAction {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnerAdminPatchRequest<'a> {
-    /// A state transition or a self-test request.
+    /// A state transition, token rotation, or self-test request.
     pub action: Option<RunnerAdminAction>,
     /// A policy re-assignment, which reaches the host on its next heartbeat.
     #[serde(borrow)]
@@ -97,9 +120,31 @@ pub enum RunnerEventType {
     RunnerDrained,
     /// Credential revoked.
     RunnerRevoked,
+    /// Credential digest replaced without exposing the previous credential.
+    RunnerTokenRotated,
     /// An operator re-assigned its policy — a security-posture change worth
     /// auditing.
     RunnerPolicyAssigned,
+}
+
+impl RunnerEventType {
+    /// The stable spelling stored in Postgres and accepted by query filters.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::RunnerRegistered => "runner_registered",
+            Self::RunnerOnline => "runner_online",
+            Self::RunnerOffline => "runner_offline",
+            Self::LeaseAcquired => "lease_acquired",
+            Self::LeaseReleased => "lease_released",
+            Self::RunnerCordoned => "runner_cordoned",
+            Self::RunnerDraining => "runner_draining",
+            Self::RunnerDrained => "runner_drained",
+            Self::RunnerRevoked => "runner_revoked",
+            Self::RunnerTokenRotated => "runner_token_rotated",
+            Self::RunnerPolicyAssigned => "runner_policy_assigned",
+        }
+    }
 }
 
 /// The per-work tags: one acquired and one released per lease.
@@ -142,4 +187,31 @@ pub struct RunnerEventsResponse<'a> {
     /// Cursor for the next page, or null at the end.
     #[serde(borrow)]
     pub next_cursor: Option<Cow<'a, str>>,
+}
+
+/// One live Server-Sent Events connection visible to platform operators.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FleetStreamItem<'a> {
+    /// Workspace whose events the connection may observe.
+    #[serde(borrow)]
+    pub workspace_id: Cow<'a, str>,
+    /// Fleet whose events the connection may observe.
+    #[serde(borrow)]
+    pub fleet_id: Cow<'a, str>,
+    /// Connection start instant in epoch milliseconds.
+    pub started_ms: i64,
+}
+
+/// The instance-local live stream overview.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FleetStreamsResponse<'a> {
+    /// Every live stream on this daemon instance.
+    #[serde(borrow)]
+    pub items: Vec<FleetStreamItem<'a>>,
+    /// Current number of live streams.
+    pub total: usize,
+    /// Instance-wide admission ceiling.
+    pub max_streams: u32,
 }

@@ -14,10 +14,12 @@ categories.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks the map-backed environment source through afd_core.
 test-util = [
+  "afd_admin/test-util",
   "afd_auth/test-util",
   "afd_core/test-util",
   "afd_crypto/test-util",
   "afd_fleet/test-util",
+  "afd_library/test-util",
 ]
 
 # Each dependency is added by the module that uses it: `unreachable_pub` and
@@ -26,11 +28,16 @@ test-util = [
 # graph a wish. axum/tower/tower-http/afd_core arrive with the admission layer
 # and the envelope writer.
 [dependencies]
+afd_admin.workspace = true
 afd_auth.workspace = true
 # The runner control plane behind the `/v1/runners` verbs. The dependency
 # points this way and never back: `afd_fleet` names no status code and no
 # router, so a decision it makes can be proven without an HTTP request.
 afd_fleet.workspace = true
+# Small, read-only cross-table projections for operator routes.
+afd_fleet_ops.workspace = true
+# Fleet-library catalogue administration and import services.
+afd_library.workspace = true
 # The payloads the runner verbs read and answer with. Frozen by M175; consumed,
 # never authored here.
 afd_wire.workspace = true
@@ -50,7 +57,7 @@ afd_observability.workspace = true
 afd_core.workspace = true
 # `json` for the probe bodies: unlike the problem+json envelope, which writes
 # its own content type, these are ordinary JSON responses.
-axum = { workspace = true, features = ["json", "matched-path"] }
+axum = { workspace = true, features = ["json", "matched-path", "query"] }
 http.workspace = true
 # The HTTP/1 connection policy: `axum::serve` cannot express a header bound, so
 # the builder is configured here and boot serves connections with it.
@@ -84,6 +91,10 @@ tracing-subscriber = { workspace = true, features = ["registry"] }
 # transport-class refusal without a datastore, and that constructor is the whole
 # reason `afd_db` is named anywhere in this manifest.
 afd_db = { workspace = true, features = ["test-util"] }
+# Live-router integration tests resolve both operator and runner credentials
+# through the production Postgres directory.
+afd_state.workspace = true
+sqlx.workspace = true
 # The in-memory backend the bundle-fetch suite drives the snapshot store
 # through, and the byte buffer it seeds one with. A dev-dependency: nothing in
 # this crate's library builds an object store — `Services::bundles` takes one

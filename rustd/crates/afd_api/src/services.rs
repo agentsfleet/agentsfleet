@@ -25,6 +25,7 @@
 //! with. Reading the wall clock inside each handler instead would put a
 //! non-deterministic call in the one place a test most needs to pin.
 
+use afd_admin::{Models, PlatformKeys};
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet::Runners;
@@ -33,6 +34,9 @@ use afd_fleet::credential::Minted;
 use afd_fleet::lease::Plane;
 use afd_fleet::memory::Captured;
 use afd_fleet::money::Nanos;
+use afd_fleet::streams::LiveStreams;
+use afd_fleet_ops::RunnerLeaseHistory;
+use afd_library::{Libraries, LibraryImports};
 use afd_wire::activity::ActivityFrame;
 use afd_wire::credentials::MintCredentialRequest;
 use afd_wire::memory::{MemoryDelta, MemoryPushRequest};
@@ -87,6 +91,24 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
     /// [`afd_fleet::bundle::Bundles`] for why the absence is a value rather
     /// than a `None` each handler would have to render for itself.
     fn bundles(&self) -> &Bundles;
+
+    /// Instance-local live stream metadata for the operator overview.
+    fn streams(&self) -> &LiveStreams;
+
+    /// Read-only cross-table projections for fleet operators.
+    fn runner_lease_history(&self) -> &RunnerLeaseHistory;
+
+    /// Priced-model catalogue administration.
+    fn models(&self) -> &Models;
+
+    /// Reveal-free platform-default administration.
+    fn platform_keys(&self) -> &PlatformKeys;
+
+    /// Platform Fleet-library catalogue administration.
+    fn libraries(&self) -> &Libraries;
+
+    /// Validated Fleet-library source and snapshot onboarding.
+    fn library_imports(&self) -> &LibraryImports;
 
     /// The instant this request's writes are stamped with.
     ///

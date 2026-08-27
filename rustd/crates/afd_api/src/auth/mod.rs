@@ -36,7 +36,7 @@ use afd_auth::{Error, Plane};
 use crate::route::Guard;
 
 pub use self::guard::{Gate, prove};
-pub use self::identity::RunnerIdentity;
+pub use self::identity::{PersonIdentity, RunnerIdentity};
 
 /// What proves a credential presented on a plane.
 ///
