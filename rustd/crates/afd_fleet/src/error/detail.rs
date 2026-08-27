@@ -299,3 +299,17 @@ pub const DETAIL_APIKEY_READONLY_FIELD: &str =
 
 /// Its refusal for a delete of a key that is still live.
 pub const DETAIL_APIKEY_MUST_REVOKE_FIRST: &str = "Active key must be revoked before deletion";
+
+/// The command-line credential surface's refusal for a label outside its grammar.
+pub const DETAIL_CLI_CREDENTIAL_MACHINE_NAME: &str =
+    "machine_name must be 1-64 chars: letters, digits, hyphen, underscore, dot";
+
+/// Its refusal for an id naming no live credential this user holds.
+///
+/// One sentence for never-existed, already-revoked, and belongs-to-somebody-
+/// else: the revoke is owner-scoped in the statement, and distinguishing them
+/// would confirm another person's credential to whoever guessed its identifier.
+pub const DETAIL_CLI_CREDENTIAL_NOT_FOUND: &str = "Command-line credential not found";
+
+/// Its refusal for a proven subject with no `core.users` row behind it.
+pub const DETAIL_CLI_CREDENTIAL_UNKNOWN_SUBJECT: &str = "Authenticated subject has no user record";

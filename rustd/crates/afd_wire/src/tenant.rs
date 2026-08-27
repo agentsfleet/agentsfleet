@@ -38,6 +38,39 @@ pub struct MintedApiKeyResponse<'a> {
     pub created_at: i64,
 }
 
+/// `POST /v1/cli-credentials` — mint this machine's credential.
+///
+/// Unknown fields are IGNORED, where [`MintApiKeyRequest`] beside it denies
+/// them. Not an oversight and not a style drift: `cli_credentials.zig` parses
+/// with `.ignore_unknown_fields = true`, and a client that has been sending a
+/// field this daemon does not read would start receiving a 400 the moment an
+/// attribute were added here for tidiness. Serde ignores by default, so the
+/// parity is kept by the ABSENCE of an attribute — which is exactly why it is
+/// written down.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct MintCliCredentialRequest<'a> {
+    /// The terminal's own label, as an operator will read it back.
+    #[serde(borrow)]
+    pub machine_name: Cow<'a, str>,
+}
+
+/// The one response that reveals a command-line credential's plaintext.
+///
+/// Carries `credential` for the reason [`MintedApiKeyResponse`] carries `key`,
+/// and nothing else on this surface has a field that could — there is no list
+/// verb here at all, so the mint reply is the whole of the exposure.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MintedCliCredentialResponse<'a> {
+    /// The credential row's identifier, which the revoke addresses it by.
+    pub id: Cow<'a, str>,
+    /// The credential itself. Shown once and never stored in this shape.
+    pub credential: Cow<'a, str>,
+    /// The terminal's label, echoed back as it was stored.
+    pub machine_name: Cow<'a, str>,
+    /// The deployment that minted it — this daemon, never a caller's claim.
+    pub deployment: Cow<'a, str>,
+}
+
 /// `PATCH /v1/api-keys/{id}` — the only mutation, and only downward.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]

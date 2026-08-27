@@ -231,10 +231,16 @@ async fn test_only_the_ported_routes_are_mounted() {
                         | AuthRoute::DeleteSession
                         | AuthRoute::DeleteAllSessions
                 )
-                // §2's api-key lifecycle. The rest of the tenant plane — the
-                // billing reads, the model registry, the provider row — is
-                // tabled and unserved until its handlers land.
-                | Route::Tenant(TenantRoute::ApiKeys | TenantRoute::ApiKey)
+                // §2's api-key lifecycle and the command-line credentials
+                // beside it. The rest of the tenant plane — the billing reads,
+                // the model registry, the provider row — is tabled and unserved
+                // until its handlers land.
+                | Route::Tenant(
+                    TenantRoute::ApiKeys
+                        | TenantRoute::ApiKey
+                        | TenantRoute::CliCredentials
+                        | TenantRoute::CliCredential
+                )
         );
 
         if mounted {

@@ -81,6 +81,17 @@ pub const APP_URL_KNOB: &str = "APP_URL";
 /// The dashboard [`APP_URL_KNOB`] falls back to.
 const APP_URL_DEFAULT: &str = "https://app.agentsfleet.net";
 
+/// This deployment's own base URL, as a minted credential records it.
+///
+/// Optional with a default, exactly as [`APP_URL_KNOB`] is and for the same
+/// reason: every deployment but a developer's own points at the same place, and
+/// refusing to boot over a knob with one sensible value would be ceremony.
+/// `runtime_loader.zig` reads the same knob with the same default.
+pub const API_URL_KNOB: &str = "API_URL";
+
+/// The deployment [`API_URL_KNOB`] falls back to.
+const API_URL_DEFAULT: &str = "https://api.agentsfleet.net";
+
 /// The Cloudflare account the Fleet Bundle bucket lives under.
 pub const R2_ACCOUNT_ID_KNOB: &str = "R2_ACCOUNT_ID";
 
@@ -164,6 +175,7 @@ pub struct BootConfig {
     kek: Kek,
     session_code_pepper: SecretBytes,
     app_url: Box<str>,
+    api_url: Box<str>,
     identity: IdentityConfig,
     bundles: Option<BundleStoreConfig>,
     platform_admin_workspace: Option<Uuid7>,
@@ -237,6 +249,17 @@ impl BootConfig {
         &self.app_url
     }
 
+    /// This deployment's own base URL, as a minted credential records it.
+    ///
+    /// Read from configuration rather than from a request's `Host`, because a
+    /// credential and the deployment that minted it are ONE fact: a
+    /// client-asserted host would let the two disagree, and the row would then
+    /// name a deployment that never issued it.
+    #[must_use]
+    pub const fn api_url(&self) -> &str {
+        &self.api_url
+    }
+
     /// The identity provider, which every boot has.
     ///
     /// Not optional: `runtime_validate.zig` refuses to boot without
@@ -308,12 +331,17 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
         WHY_SESSION_PEPPER,
     )
     .map(|pepper| SecretBytes::new(pepper.into_bytes()));
-    let app_url = env
-        .get(APP_URL_KNOB)
-        .map(|raw| raw.trim().to_owned())
-        .filter(|raw| !raw.is_empty())
-        .unwrap_or_else(|| APP_URL_DEFAULT.to_owned())
-        .into_boxed_str();
+    // Both are optional-with-a-default and resolve identically, so the shape is
+    // named once rather than written twice.
+    let optional_url = |knob: &str, fallback: &str| {
+        env.get(knob)
+            .map(|raw| raw.trim().to_owned())
+            .filter(|raw| !raw.is_empty())
+            .unwrap_or_else(|| fallback.to_owned())
+            .into_boxed_str()
+    };
+    let dashboard = optional_url(APP_URL_KNOB, APP_URL_DEFAULT);
+    let deployment = optional_url(API_URL_KNOB, API_URL_DEFAULT);
     let identity = identity(env, &mut faults);
     // Answers `None` for BOTH "configured nothing" and "configured badly", and
     // only the second pushed a fault — which is why the match below reads the
@@ -345,7 +373,8 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
                 redis,
                 kek,
                 session_code_pepper,
-                app_url,
+                app_url: dashboard,
+                api_url: deployment,
                 identity,
                 bundles,
                 platform_admin_workspace,

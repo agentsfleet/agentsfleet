@@ -315,6 +315,13 @@ const ENTRIES: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::AUTH_CLI_CREDENTIAL_NOT_FOUND,
+        status: 404,
+        title: "Command-line credential not found",
+        hint: "You have no live credential with that identifier. It may be revoked, or it may not be yours.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::APIKEY_REVOKED,
         status: 401,
         title: "API key has been revoked",

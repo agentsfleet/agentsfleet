@@ -37,6 +37,27 @@ const DETAIL_UNPROVEN: &str = "person identity required";
 /// from an error message enumerating what else it might try.
 const DETAIL_NOT_DASHBOARD: &str = "Clerk user context missing";
 
+/// The refusal a credential that is not a person's earns on the command-line
+/// credential surface.
+///
+/// A tenant api-key is what this refuses. It resolves to a person and carries
+/// that person's capabilities, so no required SCOPE could express the rule — a
+/// tenant key already holds every scope this family might name. Principal MODE
+/// is the only thing that separates an organisation from a human.
+pub const DETAIL_PERSON_REQUIRED: &str =
+    "A command-line credential belongs to a person; a tenant API key cannot manage one";
+
+/// The refusal minting earns from anything but a browser sign-in.
+///
+/// `pub` for the tests, deliberately and for a reason worth keeping.
+/// Both refusals on this surface answer `UZ-AUTH-001`, so a test asserting the
+/// CODE cannot tell "not a browser sign-in" from "not a person" — it passes
+/// either way, including when the freshness rule is gone and an `afc_`
+/// credential is quietly minting its own successors. Asserting this exact
+/// sentence is what pins the rule uniquely; re-spelling the literal in the test
+/// would let the two drift and restore the same blind spot (RULE UFS).
+pub const DETAIL_SESSION_REQUIRED: &str = "Minting a command-line credential requires a browser sign-in; an existing credential cannot mint another";
+
 /// A person, whatever they proved it with.
 #[derive(Debug, Clone)]
 pub struct PersonIdentity(pub Person);
@@ -83,6 +104,79 @@ impl<S: Send + Sync> FromRequestParts<S> for DashboardIdentity {
                     error_code::AUTH_UNAUTHORIZED,
                     DETAIL_NOT_DASHBOARD,
                     "session_credential_required",
+                )),
+            },
+            None => Err(unproven()),
+        })
+    }
+}
+
+/// A person proving a browser sign-in, for the verb that mints a credential.
+///
+/// Admits exactly what [`DashboardIdentity`] admits and is NOT that type,
+/// because the two refuse differently: this answers 403 with its own sentence
+/// where the dashboard extractor answers 401 with another, and both spellings
+/// are pinned to the Zig handlers a client already branches on.
+///
+/// # Why minting costs a browser session every time
+///
+/// A credential that can mint another is self-renewing: each mints the next
+/// under a machine name of the caller's choosing, revoking any single row
+/// leaves its siblings live, and the person holding the account cannot tell how
+/// many exist. That turns one compromised login — a session token good for
+/// about a minute — into permanent access outliving every remedy short of
+/// deleting the user. A browser sign-in is the one step a stolen credential
+/// cannot replay, so this is the type that costs one.
+#[derive(Debug, Clone)]
+pub struct FreshSession(pub Person);
+
+impl<S: Send + Sync> FromRequestParts<S> for FreshSession {
+    type Rejection = Response;
+
+    fn from_request_parts(
+        parts: &mut Parts,
+        _state: &S,
+    ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
+        std::future::ready(match person(parts) {
+            Some(person) => match person.credential() {
+                PersonCredential::SessionToken { .. } => Ok(Self(person)),
+                PersonCredential::TenantApiKey | PersonCredential::CliCredential => Err(refuse(
+                    error_code::AUTH_FORBIDDEN,
+                    DETAIL_SESSION_REQUIRED,
+                    "cli_credential_session_required",
+                )),
+            },
+            None => Err(unproven()),
+        })
+    }
+}
+
+/// A human acting for themselves — a browser session, or their own terminal.
+///
+/// Broader than [`FreshSession`] by exactly one class, and narrower than
+/// [`PersonIdentity`] by exactly one. Revoking stays open to an `afc_`
+/// credential because a terminal must be able to end its own access without a
+/// browser; it stays closed to a tenant api-key because an organisation's
+/// credential must not manage a person's.
+#[derive(Debug, Clone)]
+pub struct HumanIdentity(pub Person);
+
+impl<S: Send + Sync> FromRequestParts<S> for HumanIdentity {
+    type Rejection = Response;
+
+    fn from_request_parts(
+        parts: &mut Parts,
+        _state: &S,
+    ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
+        std::future::ready(match person(parts) {
+            Some(person) => match person.credential() {
+                PersonCredential::SessionToken { .. } | PersonCredential::CliCredential => {
+                    Ok(Self(person))
+                }
+                PersonCredential::TenantApiKey => Err(refuse(
+                    error_code::AUTH_FORBIDDEN,
+                    DETAIL_PERSON_REQUIRED,
+                    "cli_credential_person_required",
                 )),
             },
             None => Err(unproven()),

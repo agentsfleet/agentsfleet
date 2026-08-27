@@ -251,6 +251,15 @@ pub const AUTH_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-AUTH-004");
 /// credential is dead instead of retrying one that will never work again.
 pub const AUTH_CLI_CREDENTIAL_REVOKED: ErrorCode = ErrorCode::declare("UZ-AUTH-023");
 
+/// No live command-line credential with that id belongs to this user.
+///
+/// `ERR_CLI_CREDENTIAL_NOT_FOUND`. One answer for three situations — never
+/// existed, already revoked, or belongs to somebody else — for the reason
+/// [`APIKEY_NOT_FOUND`] collapses its two: the revoke is owner-scoped in the
+/// statement itself, so telling them apart would confirm another person's
+/// credential to whoever guessed its identifier.
+pub const AUTH_CLI_CREDENTIAL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AUTH-024");
+
 /// The tenant api-key resolved to a row that is no longer active.
 ///
 /// `ERR_APIKEY_REVOKED`, and the tenant-key counterpart of
@@ -528,6 +537,7 @@ pub const REGISTRY: &[ErrorCode] = &[
     INVALID_NONCE,
     AUTH_UNAVAILABLE,
     AUTH_CLI_CREDENTIAL_REVOKED,
+    AUTH_CLI_CREDENTIAL_NOT_FOUND,
     APIKEY_REVOKED,
     APIKEY_NOT_FOUND,
     APIKEY_NAME_TAKEN,

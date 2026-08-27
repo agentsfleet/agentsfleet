@@ -68,6 +68,13 @@ pub use self::detail::{
     DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED, DETAIL_WRITE_SPEND_EXHAUSTED,
     DETAIL_WRITE_UNAPPROVED,
 };
+/// The command-line credential surface's refusals, re-exported as one group for
+/// the reason the api-key family's are: they arrive together and are read
+/// together, and each is pinned to `cli_credentials.zig`.
+pub use self::detail::{
+    DETAIL_CLI_CREDENTIAL_MACHINE_NAME, DETAIL_CLI_CREDENTIAL_NOT_FOUND,
+    DETAIL_CLI_CREDENTIAL_UNKNOWN_SUBJECT,
+};
 pub use self::detail::{
     DETAIL_SESSION_ABORTED, DETAIL_SESSION_ALREADY_APPROVED, DETAIL_SESSION_CIPHERTEXT,
     DETAIL_SESSION_CODE_REJECTED, DETAIL_SESSION_CODE_SHAPE, DETAIL_SESSION_CONSUMED,
@@ -297,6 +304,15 @@ pub(crate) enum ErrorKind {
 
     #[error("an active api-key must be revoked before it can be deleted")]
     ApiKeyMustRevokeFirst,
+
+    #[error("a machine name was refused")]
+    CliCredentialMachineNameInvalid,
+
+    #[error("no live command-line credential with that id belongs to this user")]
+    CliCredentialNotFound,
+
+    #[error("the authenticated subject has no user record")]
+    CliCredentialUnknownSubject,
 }
 
 /// Which api-key field a refusal names.
@@ -632,6 +648,21 @@ pub(crate) fn apikey_field(field: ApiKeyField) -> Error {
 /// Reports an id naming no key this tenant holds.
 pub(crate) fn apikey_not_found() -> Error {
     Error::new(ErrorKind::ApiKeyNotFound)
+}
+
+/// Refuses a machine name this daemon will not store.
+pub(crate) fn cli_credential_machine_name() -> Error {
+    Error::new(ErrorKind::CliCredentialMachineNameInvalid)
+}
+
+/// Reports an id naming no live credential this user holds.
+pub(crate) fn cli_credential_not_found() -> Error {
+    Error::new(ErrorKind::CliCredentialNotFound)
+}
+
+/// Reports a proven subject with no `core.users` row behind it.
+pub(crate) fn cli_credential_unknown_subject() -> Error {
+    Error::new(ErrorKind::CliCredentialUnknownSubject)
 }
 
 /// Reports a name this tenant already uses.
