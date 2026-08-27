@@ -11,4 +11,5 @@
 pub mod apikey;
 pub mod billing;
 pub mod cli_credential;
+pub mod models;
 pub mod workspace;

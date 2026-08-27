@@ -248,6 +248,7 @@ async fn test_only_the_ported_routes_are_mounted() {
                         | TenantRoute::BillingCharges
                         | TenantRoute::Workspaces
                         | TenantRoute::CreateWorkspace
+                        | TenantRoute::ModelLibrary
                 )
         );
 

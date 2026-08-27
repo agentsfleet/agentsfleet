@@ -30,6 +30,7 @@ pub mod apikey;
 pub mod billing;
 pub mod cli_credential;
 pub mod error;
+pub mod models;
 pub mod session;
 pub mod sql;
 pub mod workspace;

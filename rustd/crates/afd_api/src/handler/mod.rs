@@ -145,6 +145,18 @@ impl Refusal {
         Self(Box::new(malformed(detail)))
     }
 
+    /// A self-written refusal whose registry code the call site names.
+    ///
+    /// [`Refusal::malformed`] with the code as a parameter: the library
+    /// family's input refusals answer `UZ-LIBRARY-*` codes rather than
+    /// `UZ-REQ-001`, because a dashboard tells "bad cursor" from "bad limit"
+    /// by the code and has since those endpoints shipped.
+    pub(crate) fn coded(code: afd_core::error_code::ErrorCode, detail: &'static str) -> Self {
+        Self(Box::new(
+            ProblemResponse::new(code, detail, RequestId::mint()).into_response(),
+        ))
+    }
+
     /// A refusal for a caller who proved who they are and still may not.
     ///
     /// A 403 rather than a 401: the credential is good, and re-presenting it

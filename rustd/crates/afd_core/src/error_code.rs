@@ -92,6 +92,18 @@ pub const VAULT_DATA_INVALID: ErrorCode = ErrorCode::declare("UZ-VAULT-001");
 /// A workspace in this tenant already uses the requested name.
 pub const WORKSPACE_NAME_EXISTS: ErrorCode = ErrorCode::declare("UZ-WORKSPACE-001");
 
+/// `starting_after` is not a cursor the library endpoint issued.
+pub const LIBRARY_CURSOR_MALFORMED: ErrorCode = ErrorCode::declare("UZ-LIBRARY-001");
+
+/// A real library cursor, for a different query — its filters or limit differ.
+pub const LIBRARY_CURSOR_MISMATCH: ErrorCode = ErrorCode::declare("UZ-LIBRARY-002");
+
+/// A library page or filter input past its documented bound.
+pub const LIBRARY_INPUT_OUT_OF_BOUNDS: ErrorCode = ErrorCode::declare("UZ-LIBRARY-003");
+
+/// The library read's statement failed transiently.
+pub const LIBRARY_DB_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-LIBRARY-006");
+
 /// An operation failed for a reason the caller cannot act on and must not be told.
 ///
 /// The code every crypto failure answers. A decrypt that fails because the tag
@@ -518,6 +530,10 @@ pub const REGISTRY: &[ErrorCode] = &[
     INVALID_REQUEST,
     VAULT_DATA_INVALID,
     WORKSPACE_NAME_EXISTS,
+    LIBRARY_CURSOR_MALFORMED,
+    LIBRARY_CURSOR_MISMATCH,
+    LIBRARY_INPUT_OUT_OF_BOUNDS,
+    LIBRARY_DB_UNAVAILABLE,
     INTERNAL_OPERATION_FAILED,
     INTERNAL_DB_UNAVAILABLE,
     INTERNAL_DB_QUERY,

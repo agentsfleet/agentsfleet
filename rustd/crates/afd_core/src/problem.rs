@@ -156,6 +156,40 @@ const ENTRIES: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::LIBRARY_CURSOR_MALFORMED,
+        status: 400,
+        title: "Pagination cursor is malformed",
+        hint: "`starting_after` is not a cursor this endpoint issued. Send back the previous page's `next_cursor` verbatim; never compose one.",
+        user_message: Some(
+            "That page link is no longer valid. Go back to the first page and try again.",
+        ),
+    },
+    Problem {
+        code: error_code::LIBRARY_CURSOR_MISMATCH,
+        status: 400,
+        title: "Pagination cursor does not match this request",
+        hint: "The cursor belongs to a different query: its tenant, workspace, filters, or limit differ. After changing filters, start from the first page.",
+        user_message: Some(
+            "The filters changed since that page was loaded. Start again from the first page.",
+        ),
+    },
+    Problem {
+        code: error_code::LIBRARY_INPUT_OUT_OF_BOUNDS,
+        status: 400,
+        title: "Pagination or filter input out of bounds",
+        hint: "`limit` must be 1 to 100, and a filter value at most 128 bytes. Use a smaller page or a shorter value.",
+        user_message: Some(
+            "That request asked for too much at once. Try a smaller page size or a shorter filter.",
+        ),
+    },
+    Problem {
+        code: error_code::LIBRARY_DB_UNAVAILABLE,
+        status: 503,
+        title: "Data service temporarily unavailable",
+        hint: "The database query failed transiently. Retrying is safe.",
+        user_message: Some("We couldn't reach the database. Try again shortly."),
+    },
+    Problem {
         code: error_code::INTERNAL_OPERATION_FAILED,
         status: 500,
         title: TITLE_REQUEST_FAILED,

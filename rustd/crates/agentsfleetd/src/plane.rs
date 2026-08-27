@@ -40,6 +40,7 @@ use afd_state::Credentials;
 use afd_tenant::apikey::ApiKeys;
 use afd_tenant::billing::Billing;
 use afd_tenant::cli_credential::CliCredentials;
+use afd_tenant::models::Models;
 use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
 
@@ -66,6 +67,7 @@ pub struct ServingPlane {
     api_keys: ApiKeys,
     cli_credentials: CliCredentials,
     billing: Billing,
+    models: Models,
     api_url: Box<str>,
 }
 
@@ -113,6 +115,7 @@ impl ServingPlane {
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
             billing: Billing::new(database.clone()),
+            models: Models::new(database.clone()),
             api_url: login.api_url,
             logins: Logins::new(
                 afd_redis::SessionStore::new(queue.clone()),
@@ -191,6 +194,7 @@ impl Services for ServingPlane {
     type ApiKeys = ApiKeys;
     type CliCredentials = CliCredentials;
     type Billing = Billing;
+    type Catalogue = Models;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
@@ -233,6 +237,10 @@ impl Services for ServingPlane {
 
     fn billing(&self) -> &Billing {
         &self.billing
+    }
+
+    fn catalogue(&self) -> &Models {
+        &self.models
     }
 
     fn deployment(&self) -> &str {

@@ -32,11 +32,13 @@
 //! non-deterministic call in the one place a test most needs to pin.
 
 mod billing;
+mod catalogue;
 mod device_flow;
 mod leasing;
 mod tenant;
 
 pub use self::billing::TenantBilling;
+pub use self::catalogue::ModelCatalogue;
 pub use self::device_flow::DeviceFlow;
 pub use self::leasing::Leasing;
 pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
@@ -159,6 +161,15 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// The billing read surface.
     fn billing(&self) -> &Self::Billing;
+
+    /// The priced model catalogue's read surface.
+    ///
+    /// A concrete type for the reason [`Services::Billing`] is one: a
+    /// Postgres pool and nothing else.
+    type Catalogue: ModelCatalogue;
+
+    /// The catalogue the `/v1/models` read acts through.
+    fn catalogue(&self) -> &Self::Catalogue;
 
     /// This deployment's own base URL, as a minted credential records it.
     ///
