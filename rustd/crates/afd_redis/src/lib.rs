@@ -56,4 +56,6 @@ pub use crate::session::{
     AbortOutcome, AbortReason, Approval, ApproveOutcome, SessionState, SessionStatus, SessionStore,
     VerifyOutcome, VerifyPayload,
 };
-pub use crate::streams::{EventId, FleetEvent, FleetStreams, fleet_activity_channel};
+pub use crate::streams::{
+    EventId, FleetEvent, FleetStreams, fleet_activity_channel, fleet_stream_key,
+};

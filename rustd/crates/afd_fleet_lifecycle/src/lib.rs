@@ -29,6 +29,11 @@
 //! workspace, in SQL, because that one it can enforce rather than trust.
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![deny(unused_crate_dependencies)]
+// Named for the lint's benefit: both are the integration lane's, and
+// `unused_crate_dependencies` counts a dev-dependency against the LIB target
+// unless the crate root says it knows about them.
+#[cfg(test)]
+use {redis as _, tokio as _};
 
 pub mod error;
 

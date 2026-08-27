@@ -164,8 +164,10 @@ dependencies = [
  "afd_fleet_runtime",
  "afd_redis",
  "backon",
+ "redis",
  "sqlx",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 

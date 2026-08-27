@@ -47,3 +47,11 @@ test-util = [
   "afd_redis/test-util",
 ]
 
+[dev-dependencies]
+# The integration lane drives a real Postgres and a real Redis, so it needs a
+# runtime with threads under it — the concurrent-write race is worthless on a
+# single-threaded one, because the interleaving it exists to force cannot happen.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+# The fixture reaches Redis directly to seed and inspect keys the store owns.
+redis = { workspace = true }
+

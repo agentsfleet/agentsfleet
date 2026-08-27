@@ -47,6 +47,12 @@ pub mod migration;
 pub mod pool;
 pub mod sql;
 
+// The per-test database creator four integration suites each carry their own
+// copy of, in the home every one of their headers names. Behind `test-util` so
+// a production build links none of it.
+#[cfg(feature = "test-util")]
+pub mod test_util;
+
 pub use afd_core::env::EnvSource;
 
 pub use crate::config::{DbRole, PoolConfig};
