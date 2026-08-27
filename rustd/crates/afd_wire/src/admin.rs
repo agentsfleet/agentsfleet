@@ -30,12 +30,11 @@ pub enum AdminState {
     Revoked,
 }
 
-/// Platform-admin mutation actions.
+/// Platform-operator mutation actions.
 ///
-/// `SelfTest` is the odd one out: the others transition state, while it records
-/// an operator's ASK and leaves the state alone. It rides the same endpoint
-/// because it shares everything that matters at the boundary — the operator
-/// scope, the exactly-one-of body guard, and the refusal on a revoked runner.
+/// Rotation and self-test are operations rather than state transitions. They
+/// ride the same endpoint because they share the operator scope and the
+/// exactly-one-of body guard with the transition actions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunnerAdminAction {
@@ -45,8 +44,25 @@ pub enum RunnerAdminAction {
     Drain,
     /// Revoke its credential.
     Revoke,
+    /// Replace its credential and reveal the replacement once.
+    Rotate,
     /// Ask it to self-test on its next beat.
     SelfTest,
+}
+
+/// Successful runner-token rotation.
+///
+/// The replacement token is returned once. The daemon stores only its digest,
+/// so no later read can recover this value.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RunnerTokenRotatedResponse<'a> {
+    /// The runner whose credential changed.
+    #[serde(borrow)]
+    pub id: Cow<'a, str>,
+    /// The replacement bearer token. Secret — reveal once, then discard.
+    #[serde(borrow)]
+    pub runner_token: Cow<'a, str>,
 }
 
 /// `PATCH /v1/fleets/runners/{id}` body.
@@ -55,7 +71,7 @@ pub enum RunnerAdminAction {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunnerAdminPatchRequest<'a> {
-    /// A state transition or a self-test request.
+    /// A state transition, token rotation, or self-test request.
     pub action: Option<RunnerAdminAction>,
     /// A policy re-assignment, which reaches the host on its next heartbeat.
     #[serde(borrow)]

@@ -9,6 +9,7 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use afd_core::env::MapEnv;
+use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_db::{Db, Migrator};
@@ -135,7 +136,7 @@ async fn runner_lease_history_pages_filters_and_scopes_cursors() {
         )
         .await
         .expect_err("an unknown runner is distinct from an empty history");
-    assert_eq!(missing.code().as_str(), "UZ-RUN-001");
+    assert_eq!(missing.code(), error_code::RUNNER_NOT_FOUND);
 
     fixtures.cleanup().await;
 }

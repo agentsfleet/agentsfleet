@@ -91,6 +91,10 @@ tracing-subscriber = { workspace = true, features = ["registry"] }
 # transport-class refusal without a datastore, and that constructor is the whole
 # reason `afd_db` is named anywhere in this manifest.
 afd_db = { workspace = true, features = ["test-util"] }
+# Live-router integration tests resolve both operator and runner credentials
+# through the production Postgres directory.
+afd_state.workspace = true
+sqlx.workspace = true
 # The in-memory backend the bundle-fetch suite drives the snapshot store
 # through, and the byte buffer it seeds one with. A dev-dependency: nothing in
 # this crate's library builds an object store — `Services::bundles` takes one

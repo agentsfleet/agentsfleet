@@ -86,11 +86,11 @@ impl GithubSource {
                 .headers()
                 .get(reqwest::header::LOCATION)
                 .and_then(|value| value.to_str().ok())
-                .ok_or(SourceFailure::UnsafeArchive)?;
+                .ok_or(SourceFailure::DisallowedRedirect)?;
             validate_redirect(location)?;
             let second = self.send(location).await?;
             if second.status().is_redirection() {
-                return Err(SourceFailure::UnsafeArchive.into());
+                return Err(SourceFailure::DisallowedRedirect.into());
             }
             return response_bytes(second).await;
         }
@@ -111,29 +111,43 @@ impl BundleSource for GithubSource {
     async fn fetch(&self, reference: &str) -> Result<ImportBody> {
         let repository = Repository::parse(reference)?;
         let compressed = self.download(&repository).await?;
-        extract(&compressed, reference, &self.revision)
+        let reference = reference.to_owned();
+        let revision = self.revision.clone();
+        tokio::task::spawn_blocking(move || extract(&compressed, &reference, &revision))
+            .await
+            .map_err(Error::ArchiveTask)?
     }
 }
 
 async fn response_bytes(response: reqwest::Response) -> Result<Vec<u8>> {
-    match response.status().as_u16() {
-        404 => return Err(SourceFailure::NotFound.into()),
-        403 | 429 => return Err(SourceFailure::RateLimited.into()),
-        _ => {}
+    if let Some(failure) = classify_status(response.status().as_u16()) {
+        return Err(failure.into());
     }
+    let capacity = response
+        .content_length()
+        .and_then(|length| usize::try_from(length).ok())
+        .map_or(0, |length| length.min(MAX_COMPRESSED_BYTES));
     let mut response = response
         .error_for_status()
         .map_err(Error::Github)?
         .bytes_stream();
-    let mut bytes = Vec::new();
+    let mut bytes = Vec::with_capacity(capacity);
     while let Some(chunk) = response.next().await {
         let chunk = chunk.map_err(Error::Github)?;
         if bytes.len().saturating_add(chunk.len()) > MAX_COMPRESSED_BYTES {
-            return Err(SourceFailure::UnsafeArchive.into());
+            return Err(SourceFailure::ArchiveTooLarge.into());
         }
         bytes.extend_from_slice(&chunk);
     }
     Ok(bytes)
+}
+
+fn classify_status(status: u16) -> Option<SourceFailure> {
+    match status {
+        404 => Some(SourceFailure::NotFound),
+        403 | 429 => Some(SourceFailure::RateLimited),
+        _ => None,
+    }
 }
 
 fn validate_redirect(location: &str) -> Result<()> {
@@ -142,7 +156,7 @@ fn validate_redirect(location: &str) -> Result<()> {
     if url.scheme() == "https" && allowed_host {
         Ok(())
     } else {
-        Err(SourceFailure::UnsafeArchive.into())
+        Err(SourceFailure::DisallowedRedirect.into())
     }
 }
 
@@ -161,10 +175,10 @@ fn extract(compressed: &[u8], reference: &str, revision: &str) -> Result<ImportB
         return Err(SourceFailure::Truncated.into());
     }
     let mut decoder = GzDecoder::new(compressed).take(MAX_EXPANDED_BYTES + 1);
-    let mut expanded = Vec::new();
+    let mut expanded = Vec::with_capacity(compressed.len());
     decoder.read_to_end(&mut expanded).map_err(Error::Archive)?;
     if u64::try_from(expanded.len()).is_err() || expanded.len() as u64 > MAX_EXPANDED_BYTES {
-        return Err(SourceFailure::UnsafeArchive.into());
+        return Err(SourceFailure::ArchiveTooLarge.into());
     }
     extract_tar(&expanded, reference, revision)
 }
@@ -172,12 +186,12 @@ fn extract(compressed: &[u8], reference: &str, revision: &str) -> Result<ImportB
 fn extract_tar(bytes: &[u8], reference: &str, revision: &str) -> Result<ImportBody> {
     let mut skill = None;
     let mut trigger = None;
-    let mut support_files = Vec::new();
+    let mut support_files = Vec::with_capacity(crate::validate::MAX_SUPPORT_FILES);
     let mut archive = tar::Archive::new(bytes);
     let entries = archive.entries().map_err(Error::Archive)?;
     for (index, entry) in entries.enumerate() {
         if index >= MAX_TAR_ENTRIES {
-            return Err(SourceFailure::UnsafeArchive.into());
+            return Err(SourceFailure::TooManyFiles.into());
         }
         let mut entry = entry.map_err(Error::Archive)?;
         if entry.header().entry_type().is_symlink() || entry.header().entry_type().is_hard_link() {
@@ -189,9 +203,11 @@ fn extract_tar(bytes: &[u8], reference: &str, revision: &str) -> Result<ImportBo
         let path = safe_relative(&entry.path_bytes())?;
         let Some(path) = path else { continue };
         if entry.size() > MAX_ENTRY_BYTES {
-            return Err(SourceFailure::UnsafeArchive.into());
+            return Err(SourceFailure::ArchiveTooLarge.into());
         }
-        let mut content = Vec::new();
+        let capacity =
+            usize::try_from(entry.size()).map_err(|_overflow| SourceFailure::ArchiveTooLarge)?;
+        let mut content = Vec::with_capacity(capacity);
         entry.read_to_end(&mut content).map_err(Error::Archive)?;
         match path.as_str() {
             SKILL_PATH if skill.is_none() => skill = Some(content),

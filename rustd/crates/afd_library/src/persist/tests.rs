@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use afd_fleet::bundle::{Bundles, ContentHash};
 use async_trait::async_trait;
-use futures_util::stream::BoxStream;
+use futures_util::{StreamExt as _, stream::BoxStream};
 use object_store::memory::InMemory;
 use object_store::path::Path;
 use object_store::{
@@ -15,7 +15,7 @@ use object_store::{
 };
 
 use super::{BundleCatalog, ImportService};
-use crate::{ImportBody, PreparedBundle, SourceKind, SupportFile};
+use crate::{ImportBody, PreparedBundle, SourceKind, SupportFile, canonical_snapshot};
 
 #[derive(Debug, Default)]
 struct MemoryCatalog(Mutex<Vec<PreparedBundle>>);
@@ -31,6 +31,19 @@ impl BundleCatalog for MemoryCatalog {
             .expect("catalog mutex is healthy")
             .push(bundle.clone());
         std::future::ready(Ok(()))
+    }
+}
+
+#[derive(Debug)]
+struct FailingCatalog;
+
+impl BundleCatalog for FailingCatalog {
+    fn insert(
+        &self,
+        _body: &ImportBody,
+        _bundle: &PreparedBundle,
+    ) -> impl std::future::Future<Output = crate::Result<()>> + Send {
+        std::future::ready(Err(crate::Error::StorageUnavailable))
     }
 }
 
@@ -195,6 +208,62 @@ async fn test_bundle_import_r2_outage() {
             .expect("catalog mutex is healthy")
             .len(),
         1
+    );
+}
+
+#[tokio::test]
+async fn embedded_credentials_in_root_documents_perform_no_io() {
+    for in_trigger in [false, true] {
+        let store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
+        let catalog = MemoryCatalog::default();
+        let importer = ImportService::new(Arc::clone(&store), catalog);
+        let mut input = bundle();
+        let hostile = b"---\nname: reviewer\ndescription: Reviews code\nversion: 1.0.0\n---\nclient_secret: stolen\n".to_vec();
+        if in_trigger {
+            input.trigger_markdown = Some(hostile);
+        } else {
+            input.skill_markdown = hostile;
+        }
+
+        let error = importer
+            .import(&input)
+            .await
+            .expect_err("root-document credentials are refused before I/O");
+
+        assert_eq!(error.code().as_str(), "UZ-BUNDLE-001");
+        assert!(
+            importer
+                .catalog
+                .0
+                .lock()
+                .expect("catalog mutex is healthy")
+                .is_empty()
+        );
+        assert!(store.list(None).collect::<Vec<_>>().await.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn catalogue_failure_preserves_shared_snapshot() {
+    let store: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
+    let successful = ImportService::new(Arc::clone(&store), MemoryCatalog::default());
+    let prepared = successful
+        .import(&bundle())
+        .await
+        .expect("the first import succeeds");
+    let failing = ImportService::new(store, FailingCatalog);
+
+    failing
+        .import(&bundle())
+        .await
+        .expect_err("the catalogue failure is preserved");
+
+    assert_eq!(
+        successful
+            .snapshot(&prepared.snapshot_key)
+            .await
+            .expect("shared content remains available"),
+        canonical_snapshot(&bundle()).expect("the fixture snapshot is valid")
     );
 }
 

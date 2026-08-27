@@ -11,29 +11,6 @@ pub(crate) struct Skill {
     pub version: String,
 }
 
-#[derive(Debug, Default, Deserialize)]
-pub(crate) struct Runtime {
-    #[serde(default)]
-    pub credentials: Vec<String>,
-    #[serde(default)]
-    pub tools: Vec<String>,
-    #[serde(default)]
-    pub network: Network,
-}
-
-#[derive(Debug, Default, Deserialize)]
-pub(crate) struct Network {
-    #[serde(default)]
-    pub allow: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct Trigger {
-    pub name: String,
-    #[serde(rename = "x-agentsfleet")]
-    pub runtime: Runtime,
-}
-
 pub(crate) fn skill(markdown: &[u8]) -> Result<Skill> {
     let parsed: Skill = parse(markdown, "SKILL.md", InvalidBundle::InvalidSkill)?;
     let valid_name = !parsed.name.is_empty()
@@ -52,8 +29,9 @@ pub(crate) fn skill(markdown: &[u8]) -> Result<Skill> {
         .ok_or_else(|| InvalidBundle::InvalidSkill.into())
 }
 
-pub(crate) fn trigger(markdown: &[u8]) -> Result<Trigger> {
-    parse(markdown, "TRIGGER.md", InvalidBundle::InvalidTrigger)
+pub(crate) fn trigger(markdown: &[u8]) -> Result<afd_fleet_runtime::FleetConfig> {
+    let parsed: serde_json::Value = parse(markdown, "TRIGGER.md", InvalidBundle::InvalidTrigger)?;
+    afd_fleet_runtime::FleetConfig::authored(&parsed.to_string()).map_err(Error::TriggerConfig)
 }
 
 fn parse<T: for<'de> Deserialize<'de>>(
@@ -64,6 +42,10 @@ fn parse<T: for<'de> Deserialize<'de>>(
     let text = core::str::from_utf8(markdown)
         .map_err(|source| Error::FrontmatterUtf8 { document, source })?;
     let rest = text.strip_prefix("---\n").ok_or(missing)?;
-    let (yaml, _) = rest.split_once("\n---").ok_or(missing)?;
+    let yaml = rest
+        .strip_suffix("\n---")
+        .or_else(|| rest.split_once("\n---\n").map(|(yaml, _body)| yaml))
+        .or_else(|| rest.split_once("\n---\r\n").map(|(yaml, _body)| yaml))
+        .ok_or(missing)?;
     serde_yaml_ng::from_str(yaml).map_err(|source| Error::FrontmatterYaml { document, source })
 }

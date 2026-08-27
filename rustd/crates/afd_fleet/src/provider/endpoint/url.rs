@@ -35,6 +35,9 @@ pub(crate) fn validate(url: &str) -> Result<Box<str>, Rejection> {
     if parsed.scheme() != REQUIRED_SCHEME {
         return Err(Rejection::InvalidScheme);
     }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(Rejection::Malformed);
+    }
     // `Some` for every hierarchical scheme; `None` is a URL with no authority
     // at all, which `https` cannot legally be but the parser still models.
     let host = parsed.host().ok_or(Rejection::Malformed)?;
@@ -73,9 +76,9 @@ mod tests {
             host("https://api.openrouter.ai/v1").as_deref(),
             Ok("api.openrouter.ai")
         );
-        // Port, path and userinfo are all stripped down to the host.
+        // Port and path are stripped down to the host.
         assert_eq!(
-            host("https://user:pw@gw.example.com:8443/v1").as_deref(),
+            host("https://gw.example.com:8443/v1").as_deref(),
             Ok("gw.example.com")
         );
         // The scheme is matched case-insensitively, because the parser has
@@ -106,8 +109,18 @@ mod tests {
         // Taking the first `@` instead of the last would invert that and pass.
         assert_eq!(
             validate("https://evil.com@169.254.169.254/v1"),
-            Err(Rejection::BlockedHost)
+            Err(Rejection::Malformed)
         );
+    }
+
+    #[test]
+    fn userinfo_is_never_accepted_as_endpoint_metadata() {
+        for refused in [
+            "https://user@gw.example.com/v1",
+            "https://user:password@gw.example.com/v1",
+        ] {
+            assert_eq!(validate(refused), Err(Rejection::Malformed), "{refused}");
+        }
     }
 
     #[test]

@@ -10,7 +10,7 @@ use sqlx::Row as _;
 use super::VISIBILITY_DRAFT;
 use crate::{
     BundleCatalog, BundleSource, Error, GithubSource, ImportBody, ImportService, PreparedBundle,
-    Result, SourceKind,
+    Result, SourceImporter, SourceKind,
 };
 
 const CONTEXT_IMPORT: &str = "import platform Fleet Bundle";
@@ -69,8 +69,9 @@ impl LibraryImports {
         now: UnixMillis,
     ) -> Result<PreparedBundle> {
         let source = GithubSource::new(revision.unwrap_or(DEFAULT_REVISION))?;
-        let body = source.fetch(repository).await?;
-        self.persist(&body, replace, now).await
+        SourceImporter::new(source, self.service(replace, now))
+            .import(repository)
+            .await
     }
 
     /// Fetches one first-party template from its fixed GitHub repository.
@@ -98,18 +99,18 @@ impl LibraryImports {
         replace: bool,
         now: UnixMillis,
     ) -> Result<PreparedBundle> {
+        self.service(replace, now).import(body).await
+    }
+
+    fn service(&self, replace: bool, now: UnixMillis) -> ImportService<PlatformCatalog> {
         let catalog = PlatformCatalog {
             database: self.database.clone(),
             replace,
             now,
         };
         match &self.store {
-            Some(store) => {
-                ImportService::new(Arc::clone(store), catalog)
-                    .import(body)
-                    .await
-            }
-            None => ImportService::without_store(catalog).import(body).await,
+            Some(store) => ImportService::new(Arc::clone(store), catalog),
+            None => ImportService::without_store(catalog),
         }
     }
 }

@@ -48,12 +48,29 @@ fn requirements(body: &ImportBody, skill_name: &str) -> Result<Requirements> {
         });
     };
     let trigger = frontmatter::trigger(markdown)?;
-    if trigger.name != skill_name {
+    if trigger.name().as_str() != skill_name {
         return Err(InvalidBundle::NameMismatch.into());
     }
-    let credentials = trigger.runtime.credentials;
-    let tools = trigger.runtime.tools;
-    let network_hosts = trigger.runtime.network.allow;
+    let credentials = trigger
+        .credentials()
+        .iter()
+        .map(|value| value.as_str().to_owned())
+        .collect::<Vec<_>>();
+    let tools = trigger
+        .tools()
+        .iter()
+        .map(|value| value.as_ref().to_owned())
+        .collect::<Vec<_>>();
+    let network_hosts: Vec<String> = trigger
+        .network()
+        .map(|network| {
+            network
+                .allow()
+                .iter()
+                .map(|value| value.as_ref().to_owned())
+                .collect()
+        })
+        .unwrap_or_default();
     let too_many = credentials.len() > MAX_CREDENTIALS
         || tools.len() > MAX_TOOLS
         || network_hosts.len() > MAX_HOSTS;

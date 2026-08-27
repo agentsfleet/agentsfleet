@@ -62,6 +62,7 @@ fn base_item(
     let column = query(context);
     let id: String = row.try_get(0).map_err(&column)?;
     let raw_admin_state: String = row.try_get(3).map_err(&column)?;
+    let labels_json: String = row.try_get(4).map_err(&column)?;
     let last_seen_at = row.try_get(5).map_err(&column)?;
     let columns = assignment(row, policy_at, &column)?;
     let capability_json: Option<String> = row.try_get(policy_at + 3).map_err(&column)?;
@@ -76,7 +77,7 @@ fn base_item(
         admin_state: afd_core::spelling::from_spelling(&raw_admin_state)
             .ok_or_else(admin_state_malformed)?,
         liveness: derive_liveness(last_seen_at, has_live_lease, now),
-        labels: labels(&row.try_get::<String, _>(4).map_err(&column)?),
+        labels: labels(&labels_json)?,
         last_seen_at,
         created_at: row.try_get(6).map_err(&column)?,
         assigned_policy: columns.decode().map(own_policy),
@@ -136,8 +137,8 @@ fn own_capability(report: CapabilityReport<'_>) -> CapabilityReport<'static> {
     }
 }
 
-fn labels(raw: &str) -> Vec<String> {
-    serde_json::from_str(raw).unwrap_or_default()
+fn labels(raw: &str) -> Result<Vec<String>> {
+    serde_json::from_str(raw).map_err(stored_json(TABLE_RUNNERS, "labels"))
 }
 
 fn selftest(
@@ -210,5 +211,18 @@ pub(super) fn derive_liveness(
         RunnerLiveness::Online
     } else {
         RunnerLiveness::Offline
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::labels;
+
+    #[test]
+    fn malformed_stored_labels_are_not_silently_erased() {
+        let result = labels(r#"{"not":"a label list"}"#);
+        let code = result.as_ref().err().map(|error| error.code().as_str());
+
+        assert_eq!(code, Some("UZ-INTERNAL-002"));
     }
 }

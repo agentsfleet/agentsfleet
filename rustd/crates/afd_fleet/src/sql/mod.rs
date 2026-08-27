@@ -52,6 +52,8 @@ pub mod vault;
 /// owns the Zig side; a key spelled inline at a second write site is how a
 /// consumer's `metadata->>'host_id'` silently stops matching.
 pub mod meta {
+    /// The authenticated person who requested an operator mutation.
+    pub const ACTOR_ID: &str = "actor_id";
     /// The host a runner was enrolled for.
     pub const HOST_ID: &str = "host_id";
     /// The isolation tier assigned at enrolment.

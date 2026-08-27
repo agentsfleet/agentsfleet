@@ -33,15 +33,18 @@ pub(crate) async fn list<D: Services>(
         .runner_events(&runner, &query.filter, query.cursor.as_ref(), query.limit)
         .await
     {
-        Ok(rows) => Json(RunnerEventsResponse {
-            items: rows.items,
-            total: rows.total,
-            next_cursor: rows
-                .next_cursor
-                .as_ref()
-                .map(|cursor| Cow::Owned(query::format(cursor))),
-        })
-        .into_response(),
+        Ok(rows) => {
+            let total = rows.total();
+            let next_cursor = rows
+                .next_cursor()
+                .map(|cursor| Cow::Owned(query::format(cursor)));
+            Json(RunnerEventsResponse {
+                items: rows.into_items(),
+                total,
+                next_cursor,
+            })
+            .into_response()
+        }
         Err(error) => refuse(&error, EVENT),
     }
 }

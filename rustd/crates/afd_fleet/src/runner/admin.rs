@@ -82,6 +82,7 @@ impl Runners {
         &self,
         runner: &Uuid7,
         action: RunnerAdminAction,
+        actor_id: &str,
         now: UnixMillis,
     ) -> Result<AdminState> {
         let target = target(action).ok_or_else(|| rejected(DETAIL_ACTION_REQUIRED))?;
@@ -97,6 +98,8 @@ impl Runners {
             .bind(event_wire(target))
             .bind(sql::meta::FROM_ADMIN_STATE)
             .bind(sql::meta::TO_ADMIN_STATE)
+            .bind(sql::meta::ACTOR_ID)
+            .bind(actor_id)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_TRANSITION))?
@@ -218,8 +221,8 @@ impl Runners {
 }
 
 fn transition_result(
-    current: core::result::Result<String, sqlx::Error>,
-    changed: core::result::Result<bool, sqlx::Error>,
+    current: Result<String, sqlx::Error>,
+    changed: Result<bool, sqlx::Error>,
     target: AdminState,
 ) -> Result<AdminState> {
     let current = current.map_err(query(CONTEXT_TRANSITION))?;
@@ -232,10 +235,7 @@ fn transition_result(
     Ok(target)
 }
 
-fn stored_state(
-    raw: core::result::Result<String, sqlx::Error>,
-    context: &'static str,
-) -> Result<AdminState> {
+fn stored_state(raw: Result<String, sqlx::Error>, context: &'static str) -> Result<AdminState> {
     let raw = raw.map_err(query(context))?;
     afd_core::spelling::from_spelling(&raw).ok_or_else(admin_state_malformed)
 }
@@ -247,7 +247,7 @@ pub const fn target(action: RunnerAdminAction) -> Option<AdminState> {
         RunnerAdminAction::Cordon => Some(AdminState::Cordoned),
         RunnerAdminAction::Drain => Some(AdminState::Draining),
         RunnerAdminAction::Revoke => Some(AdminState::Revoked),
-        RunnerAdminAction::SelfTest => None,
+        RunnerAdminAction::Rotate | RunnerAdminAction::SelfTest => None,
     }
 }
 
@@ -283,6 +283,7 @@ mod tests {
         );
         assert_eq!(target(RunnerAdminAction::Drain), Some(AdminState::Draining));
         assert_eq!(target(RunnerAdminAction::Revoke), Some(AdminState::Revoked));
+        assert_eq!(target(RunnerAdminAction::Rotate), None);
         assert_eq!(target(RunnerAdminAction::SelfTest), None);
     }
 

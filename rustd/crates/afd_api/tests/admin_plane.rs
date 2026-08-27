@@ -9,6 +9,7 @@ use http::{Method, StatusCode};
 use self::harness::{Fleet, json_body, send};
 
 const PLATFORM_KEY: &str = "agt_t0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const KIBIBYTE: usize = 1024;
 const OPERATOR: &str = "user_platform_admin";
 const MODEL_ID: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01";
 const WORKSPACE_ID: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d02";
@@ -194,6 +195,23 @@ async fn library_catalogue_routes_require_write_scope_and_validate_before_io() {
         assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
     }
 
+    let oversized = serde_json::json!({
+        "source_kind": "upload",
+        "source_ref": "unit/oversized",
+        "skill_markdown": "x".repeat(200 * KIBIBYTE + 1),
+    })
+    .to_string();
+    let refused = send(
+        &admin,
+        Method::POST,
+        "/v1/admin/fleet-libraries",
+        Some(PLATFORM_KEY),
+        &oversized,
+    )
+    .await;
+    assert_eq!(refused.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(code(refused).await, Some("UZ-REQ-002"));
+
     let import = send(
         &admin,
         Method::POST,
@@ -261,6 +279,7 @@ async fn code(response: axum::response::Response) -> Option<&'static str> {
     {
         Some("UZ-INTERNAL-001") => Some("UZ-INTERNAL-001"),
         Some("UZ-REQ-001") => Some("UZ-REQ-001"),
+        Some("UZ-REQ-002") => Some("UZ-REQ-002"),
         Some("UZ-PROVIDER-005") => Some("UZ-PROVIDER-005"),
         _other => None,
     }

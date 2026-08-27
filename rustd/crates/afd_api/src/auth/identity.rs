@@ -49,7 +49,14 @@ pub struct RunnerIdentity(pub Runner);
 
 /// A human operator proven on the tenant bearer plane.
 #[derive(Debug, Clone)]
-pub struct PersonIdentity(pub Person);
+pub struct PersonIdentity(Person);
+
+impl PersonIdentity {
+    /// Stable actor identifier safe for audit events.
+    pub(crate) fn subject(&self) -> &str {
+        self.0.subject().as_str()
+    }
+}
 
 impl<S: Send + Sync> FromRequestParts<S> for PersonIdentity {
     type Rejection = Response;

@@ -17,9 +17,11 @@ test-util = ["afd_core/test-util", "afd_db/test-util"]
 [dependencies]
 afd_core.workspace = true
 afd_db.workspace = true
+afd_fleet_runtime.workspace = true
 bytes.workspace = true
 flate2.workspace = true
 futures-util.workspace = true
+headers.workspace = true
 hex.workspace = true
 object_store.workspace = true
 reqwest.workspace = true
@@ -31,6 +33,7 @@ sha2.workspace = true
 sqlx.workspace = true
 tar.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["rt"] }
 tracing.workspace = true
 url.workspace = true
 

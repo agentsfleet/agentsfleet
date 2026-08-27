@@ -3,8 +3,8 @@
 
 use afd_api::route::{AdminRoute, Verb};
 use afd_auth::principal::{Person, PersonCredential, Principal, Subject};
-use afd_auth::scope::parse_claim;
 use afd_auth::require_scope;
+use afd_auth::scope::parse_claim;
 use afd_core::id::Uuid7;
 use http::Method;
 
@@ -33,9 +33,7 @@ fn method(verb: Verb) -> &'static Method {
 fn test_admin_scope_gates() {
     let tenant_session = principal(
         PersonCredential::SessionToken {
-            workspace_scope: Some(
-                Uuid7::parse(TENANT_ID).expect("fixture workspace is canonical"),
-            ),
+            workspace_scope: Some(Uuid7::parse(TENANT_ID).expect("fixture workspace is canonical")),
         },
         "fleet:admin secret:write",
     );

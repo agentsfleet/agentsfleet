@@ -17,6 +17,7 @@
 
 use std::fmt::{self, Debug, Formatter};
 
+use crate::admin::RunnerTokenRotatedResponse;
 use crate::credentials::MintCredentialResponse;
 use crate::policy::ExecutionPolicy;
 use crate::runner::RegisterResponse;
@@ -24,6 +25,7 @@ use crate::runner::RegisterResponse;
 /// What a redacted field renders as. One spelling, so a log grep for leaked
 /// credentials has exactly one negative to look for.
 const REDACTED: &str = "<redacted>";
+const RUNNER_TOKEN_FIELD: &str = "runner_token";
 
 /// Renders a secret as its length only.
 ///
@@ -69,8 +71,17 @@ impl Debug for RegisterResponse<'_> {
             // Revealed once at enrollment and never re-readable; the daemon
             // stores only its hash, so a log line is the one place it could
             // survive in plaintext.
-            .field("runner_token", &redacted(&self.runner_token))
+            .field(RUNNER_TOKEN_FIELD, &redacted(&self.runner_token))
             .field("assigned_policy", &self.assigned_policy)
+            .finish()
+    }
+}
+
+impl Debug for RunnerTokenRotatedResponse<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RunnerTokenRotatedResponse")
+            .field("id", &self.id)
+            .field(RUNNER_TOKEN_FIELD, &redacted(&self.runner_token))
             .finish()
     }
 }

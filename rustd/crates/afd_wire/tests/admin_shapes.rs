@@ -11,7 +11,7 @@ use afd_wire::admin::{
 };
 
 #[test]
-fn test_admin_crud_shape_parity() {
+fn admin_catalogue_wire_shapes_are_metadata_only() {
     let models = AdminModelsResponse {
         models: vec![AdminModelItem {
             id: Cow::Borrowed("0195b4ba-8d3a-7f13-8abc-2b3e1e0e9d01"),

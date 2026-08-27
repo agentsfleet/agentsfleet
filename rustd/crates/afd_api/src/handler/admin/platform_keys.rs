@@ -64,8 +64,8 @@ pub(crate) async fn set<D: Services>(
     );
     match services.platform_keys().set(&input, services.now()).await {
         Ok(SetPlatformKey::Set(key)) => {
-            tracing::debug!(
-                actor_id = identity.0.subject().as_str(),
+            tracing::info!(
+                actor_id = identity.subject(),
                 provider = key.provider(),
                 model = key.model(),
                 event = "admin_platform_default_set",
@@ -105,8 +105,8 @@ pub(crate) async fn deactivate<D: Services>(
         .await
     {
         Ok(_existed) => {
-            tracing::debug!(
-                actor_id = identity.0.subject().as_str(),
+            tracing::info!(
+                actor_id = identity.subject(),
                 provider,
                 event = "admin_platform_key_deactivated",
             );
@@ -198,6 +198,14 @@ mod tests {
         );
         assert_eq!(
             request(unsafe_url.as_bytes()),
+            Err((error_code::PROVIDER_BASE_URL_INVALID, DETAIL_BASE_URL))
+        );
+
+        let credential_url = format!(
+            r#"{{"provider":"openai-compatible","source_workspace_id":"{WORKSPACE}","model":"custom","base_url":"https://user:password@models.example/v1"}}"#
+        );
+        assert_eq!(
+            request(credential_url.as_bytes()),
             Err((error_code::PROVIDER_BASE_URL_INVALID, DETAIL_BASE_URL))
         );
     }

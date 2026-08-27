@@ -19,7 +19,16 @@ const FILE_MODE: u32 = 0o644;
 /// # Errors
 /// Returns a snapshot error if the standard tar encoder refuses a path or I/O.
 pub fn canonical_snapshot(body: &ImportBody) -> Result<Bytes> {
-    let mut builder = tar::Builder::new(Vec::new());
+    let content_bytes = body.skill_markdown.len()
+        + body.trigger_markdown.as_ref().map_or(0, Vec::len)
+        + body
+            .support_files
+            .iter()
+            .map(|file| file.content.len())
+            .sum::<usize>();
+    let entry_count = 1 + usize::from(body.trigger_markdown.is_some()) + body.support_files.len();
+    let capacity = content_bytes.saturating_add(entry_count.saturating_mul(512));
+    let mut builder = tar::Builder::new(Vec::with_capacity(capacity));
     append(&mut builder, SKILL_PATH, &body.skill_markdown)?;
     if let Some(trigger) = &body.trigger_markdown {
         append(&mut builder, TRIGGER_PATH, trigger)?;

@@ -62,8 +62,8 @@ pub(crate) async fn create<D: Services>(
     );
     match services.models().create(&input, services.now()).await {
         Ok(CreateModel::Created(model)) => {
-            tracing::debug!(
-                actor_id = identity.0.subject().as_str(),
+            tracing::info!(
+                actor_id = identity.subject(),
                 model_id = model.id().as_str(),
                 event = "admin_model_created",
             );
@@ -98,8 +98,8 @@ pub(crate) async fn update<D: Services>(
     };
     match services.models().update(&id, rates, services.now()).await {
         Ok(true) => {
-            tracing::debug!(
-                actor_id = identity.0.subject().as_str(),
+            tracing::info!(
+                actor_id = identity.subject(),
                 model_id = id.as_str(),
                 event = "admin_model_updated",
             );
@@ -127,8 +127,8 @@ pub(crate) async fn delete<D: Services>(
     };
     match services.models().delete(&id, services.now()).await {
         Ok(DeleteModel::Deleted) => {
-            tracing::debug!(
-                actor_id = identity.0.subject().as_str(),
+            tracing::info!(
+                actor_id = identity.subject(),
                 model_id = id.as_str(),
                 event = "admin_model_deleted",
             );

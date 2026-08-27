@@ -66,8 +66,13 @@ impl RunnerOpsRoute {
         let (template, scopes) = match self {
             Self::Register => ("/v1/runners", Scopes::Always(RUNNER_ENROLL)),
             Self::List => ("/v1/fleets/runners", Scopes::Always(RUNNER_READ)),
-            Self::Get => (fleet_runner_path!(""), Scopes::Always(RUNNER_READ)),
-            Self::Patch => (fleet_runner_path!(""), Scopes::Always(RUNNER_WRITE)),
+            // These identities share one axum path. Both carry the same
+            // method-sensitive metadata so merging them cannot retain a
+            // cheaper GET-only gate for PATCH.
+            Self::Get | Self::Patch => (
+                fleet_runner_path!(""),
+                Scopes::rw(RUNNER_READ, RUNNER_WRITE),
+            ),
             Self::Events => (fleet_runner_path!("/events"), Scopes::Always(RUNNER_READ)),
             Self::Leases => (fleet_runner_path!("/leases"), Scopes::Always(RUNNER_READ)),
             Self::Streams => ("/v1/fleets/streams", Scopes::Always(STREAM_READ)),

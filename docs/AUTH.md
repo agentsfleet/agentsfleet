@@ -137,7 +137,7 @@ The complete capability vocabulary. The enum in `src/agentsfleetd/auth/scopes.zi
 | `connector:read` / `connector:write` | read connector status / start a connector connect — gates the generic `{provider}` connector routes (every registry provider: Slack OAuth, GitHub App install, …); see §OAuth connectors |
 | `model:read` / `model:admin` | read the priced model catalogue / create+update+delete catalogue rows |
 | `platform-key:read` / `platform-key:admin` | read the platform default key/model / set+delete it |
-| `runner:read` / `runner:write` | list runners + their events (operator plane) / cordon+patch a runner's state |
+| `runner:read` / `runner:write` | list runners + their events (operator plane) / cordon, patch, or rotate a runner credential |
 
 **Discrete verbs** (no ladder — a distinct action):
 
@@ -425,7 +425,7 @@ A runner has no credential until an **agentsfleet platform operator** mints one 
 
 Enrollment is the trust decision. A runner that joins the shared fleet receives every tenant's inline `secrets_map` through the leases placed on it. So the endpoint that mints an `agt_r` (`POST /v1/runners`) requires the `runner:enroll` scope — a discrete capability held only by platform operators, revocable independently of `runner:read` and `runner:write`. A tenant-scoped JWT without it, and any `agt_t` api_key, are rejected `403 UZ-AUTH-022`. An empty scope set fails closed. There is no open enrollment token.
 
-The operator plane has its own scopes. `runner:read` fronts the fleet list `GET /v1/fleets/runners` and event history `GET /v1/fleets/runners/{id}/events`; `runner:write` fronts the mutation `PATCH /v1/fleets/runners/{id}`.
+The operator plane has its own scopes. `runner:read` fronts the fleet list `GET /v1/fleets/runners` and event history `GET /v1/fleets/runners/{id}/events`; `runner:write` fronts `PATCH /v1/fleets/runners/{id}`. Sending `{"action":"rotate"}` atomically replaces the stored runner-token digest and returns the replacement `runner_token` once. The old token fails the next authentication read; the response and audit log never expose the old token, and the audit event records the operator subject.
 
 The host **never self-registers** (Option B, the GitLab-16 "create runner → authentication token" model): the operator pre-mints the `agt_r` and installs it on the host as `AGENTSFLEET_RUNNER_TOKEN`; the daemon validates the `agt_r` prefix at boot and goes straight to the heartbeat/lease loop. No host ever holds an enrollment-grade credential.
 
