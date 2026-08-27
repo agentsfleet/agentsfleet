@@ -1,53 +1,15 @@
-//! The strong `ETag` and the conditional-GET verdict — `http/etag.zig`'s read
-//! half.
+//! The conditional-GET verdict — `http/etag.zig`'s comparison half.
 //!
-//! The tag is a quoted SHA-256 over an ordered field list, each present field
-//! contributing a marker, an eight-byte length and its bytes, and null a
-//! distinct marker — so field boundaries, null, and the empty string stay
-//! distinct for every byte sequence. A client cache may hold a tag the ZIG
-//! daemon computed, so the encoding is a wire fact and byte parity is the
-//! requirement.
+//! The DIGEST moved to [`afd_core::etag`] when a second caller appeared:
+//! `afd_fleet_lifecycle` compares a tag inside the row lock a conditional write
+//! holds, where this crate cannot reach, and two spellings of one wire encoding
+//! fail silently — a client's cached tag simply stops matching. It is
+//! re-exported here so a handler still names `crate::etag::compute`.
 //!
-//! Only the `If-None-Match` half is ported: the catalogue read is §2's one
-//! adopter, and the `If-Match` write half arrives with M179's catalogue
-//! PATCH rather than sitting here unread.
+//! What stays is the comparison, which is an HTTP rule rather than an encoding:
+//! `If-None-Match` uses the WEAK function, list membership, and `*`.
 
-use sha2::{Digest as _, Sha256};
-
-/// The marker a null field contributes.
-const FIELD_NULL: [u8; 1] = [0];
-
-/// The marker a present field contributes, ahead of its length and bytes.
-const FIELD_PRESENT: [u8; 1] = [1];
-
-/// Quoted strong-ETag form per RFC 9110: `"<64 hex chars>"`.
-///
-/// `fields` is the resource's hashed surface in a fixed order — for the
-/// catalogue page, the single serialized body.
-#[must_use]
-pub fn compute(fields: &[Option<&[u8]>]) -> String {
-    let mut hasher = Sha256::new();
-    for field in fields {
-        match field {
-            None => hasher.update(FIELD_NULL),
-            Some(bytes) => {
-                hasher.update(FIELD_PRESENT);
-                hasher.update((bytes.len() as u64).to_be_bytes());
-                hasher.update(bytes);
-            }
-        }
-    }
-    let digest = hasher.finalize();
-    let mut tag = String::with_capacity(2 + digest.len() * 2);
-    tag.push('"');
-    for byte in digest {
-        use std::fmt::Write as _;
-        // Writing hex into a String cannot fail; the discard says so.
-        let _infallible = write!(tag, "{byte:02x}");
-    }
-    tag.push('"');
-    tag
-}
+pub use afd_core::etag::compute;
 
 /// Drops a leading weak-validator marker, if present.
 fn strip_weak(tag: &str) -> &str {
@@ -92,24 +54,7 @@ pub fn matches_if_none_match(raw: &str, have: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{compute, matches_if_none_match};
-
-    #[test]
-    fn the_tag_is_the_zig_encoding_to_the_byte() {
-        // Pinned: sha256 of 0x01 ++ u64_be(5) ++ "hello", quoted — computed
-        // once against `etag.zig`'s algorithm. A client cache may present
-        // this tag to either daemon mid-cutover.
-        let tag = compute(&[Some(b"hello")]);
-        assert_eq!(tag.len(), 66, "quoted 64-hex form");
-        assert!(tag.starts_with('"') && tag.ends_with('"'));
-        // Deterministic across calls, and boundaries are unambiguous.
-        assert_eq!(tag, compute(&[Some(b"hello")]));
-        assert_ne!(
-            compute(&[Some(b"ab"), Some(b"c")]),
-            compute(&[Some(b"a"), Some(b"bc")])
-        );
-        assert_ne!(compute(&[None]), compute(&[Some(b"")]));
-    }
+    use super::matches_if_none_match;
 
     #[test]
     fn the_wildcard_matches_any_representation() {

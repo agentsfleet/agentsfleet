@@ -413,6 +413,85 @@ pub const RUN_BUDGET_EXCEEDED: ErrorCode = ErrorCode::declare("UZ-RUN-015");
 /// blocked event with.
 pub const AGENTSFLEET_CREDENTIAL_MISSING: ErrorCode = ErrorCode::declare("UZ-AGT-003");
 
+/// This workspace already holds a fleet under the requested name.
+///
+/// `ERR_AGENTSFLEET_NAME_EXISTS`. Referenced from the Zig registry
+/// (`error_registry.zig:89`), never declared new here (RULE ERR).
+///
+/// Only ever answered for a name the CALLER chose. An install that named
+/// nothing takes the library entry's own name, and a collision there is
+/// re-drawn with a suffix rather than reported — "taken" would name a conflict
+/// the caller cannot see, on a value they never typed.
+pub const AGENTSFLEET_NAME_EXISTS: ErrorCode = ErrorCode::declare("UZ-AGT-006");
+
+/// A fleet's authored configuration is not one this daemon can store.
+///
+/// `ERR_AGENTSFLEET_INVALID_CONFIG` (`error_registry.zig:90`; `UZ-AGT-007` is
+/// retired, superseded by `UZ-VAULT-002`).
+///
+/// One code for every way `TRIGGER.md` can be unusable — a missing fence,
+/// unreadable YAML, a field of the wrong type, a gate condition that parses to
+/// nothing. `afd_fleet_runtime` tells those apart internally and this does not,
+/// deliberately: the caller's remedy is the same for all of them, which is to
+/// look at the document, and the distinction is in the log beside the request
+/// id where an operator can read it.
+pub const AGENTSFLEET_INVALID_CONFIG: ErrorCode = ErrorCode::declare("UZ-AGT-008");
+
+/// No fleet with that id lives in this workspace.
+///
+/// `ERR_AGENTSFLEET_NOT_FOUND` (`error_registry.zig:91`).
+///
+/// A 404 that deliberately collapses two cases: an id naming nothing, and an id
+/// naming a fleet another workspace owns. Every statement on this surface is
+/// workspace-scoped in its predicate, so the daemon does not learn which of the
+/// two it was and could not disclose it if asked. Distinct from the ownership
+/// layer's 403, which is about the WORKSPACE in the path — see
+/// [`AUTH_FORBIDDEN`]; the two axes are separate and both are checked.
+pub const AGENTSFLEET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-009");
+
+/// The fleet's current status does not permit the requested transition.
+///
+/// `ERR_AGENTSFLEET_ALREADY_TERMINAL` (`error_registry.zig:92`).
+///
+/// A 409, and it covers both halves of the same refusal: a transition the
+/// status machine does not allow from where the row stands, and a delete of a
+/// fleet that has not been killed first. Both are "the state refuses you", and
+/// a client acts identically on either — read the current status, then decide.
+pub const AGENTSFLEET_ALREADY_TERMINAL: ErrorCode = ErrorCode::declare("UZ-AGT-010");
+
+/// A Fleet Bundle's two documents disagree about the fleet's name.
+///
+/// `ERR_AGENTSFLEET_NAME_MISMATCH` (`error_registry.zig:93`).
+///
+/// Checked at the WRITE boundary rather than at read time, because a bundle
+/// whose `SKILL.md` and `TRIGGER.md` name different fleets has no single
+/// identity to store — and storing one of the two would make whichever lost a
+/// silent lie for as long as the row lives.
+pub const AGENTSFLEET_NAME_MISMATCH: ErrorCode = ErrorCode::declare("UZ-AGT-011");
+
+/// The install could not be finished, and nothing was kept.
+///
+/// `ERR_AGENTSFLEET_INSTALL_ROLLED_BACK` (`error_registry.zig:95`).
+///
+/// The promise this code carries is the one the caller can act on: retrying is
+/// safe, because the row was removed. It is answered only after the rollback
+/// has been attempted — an install that could not roll back logs
+/// `row_orphaned_manual_recovery` and still answers this, because from the
+/// caller's side the fleet is equally unusable either way and no client action
+/// distinguishes them.
+pub const AGENTSFLEET_INSTALL_ROLLED_BACK: ErrorCode = ErrorCode::declare("UZ-AGT-013");
+
+/// The fleet's source moved on since the editor read it.
+///
+/// `ERR_AGENTSFLEET_SOURCE_STALE` (`error_registry.zig:96`).
+///
+/// A 412 whose response carries the CURRENT `ETag`, so an editor holding a
+/// stale one can re-read, re-apply and retry without a second round trip to
+/// discover what it should have sent. Raised only when the caller supplied an
+/// `If-Match`: an unconditional write is last-writer-wins by the caller's own
+/// choice, and this code would be answering a question they did not ask.
+pub const AGENTSFLEET_SOURCE_STALE: ErrorCode = ErrorCode::declare("UZ-AGT-014");
+
 /// No Fleet Bundle snapshot is stored under the requested content hash.
 ///
 /// `ERR_FLEET_BUNDLE_NOT_FOUND`. Referenced from the Zig registry, never
@@ -573,6 +652,13 @@ pub const REGISTRY: &[ErrorCode] = &[
     RUN_LEASE_RENEWAL_NO_CREDITS,
     RUN_BUDGET_EXCEEDED,
     AGENTSFLEET_CREDENTIAL_MISSING,
+    AGENTSFLEET_NAME_EXISTS,
+    AGENTSFLEET_INVALID_CONFIG,
+    AGENTSFLEET_NOT_FOUND,
+    AGENTSFLEET_ALREADY_TERMINAL,
+    AGENTSFLEET_NAME_MISMATCH,
+    AGENTSFLEET_INSTALL_ROLLED_BACK,
+    AGENTSFLEET_SOURCE_STALE,
     FLEET_BUNDLE_NOT_FOUND,
     FLEET_BUNDLE_STORAGE_UNAVAILABLE,
     API_BACKPRESSURE,

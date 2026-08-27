@@ -18,6 +18,11 @@ test-util = []
 
 [dependencies]
 serde.workspace = true
+# The strong `ETag` digest (`crate::etag`). A wire encoding rather than a
+# transport concern: a client cache may hold a tag the Zig daemon computed, and
+# both the HTTP edge and the store that compares one inside a row lock have to
+# spell it the same way.
+sha2.workspace = true
 # The text-boundary keyset cursor: a sort key that is text is base64url-encoded
 # so a value containing the separator cannot corrupt the boundary. Both binaries
 # issue and read these strings, so the encoding is a DATA FORMAT rather than a

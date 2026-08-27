@@ -56,7 +56,6 @@ dependencies = [
  "hyper-util",
  "object_store",
  "serde_json",
- "sha2 0.11.0",
  "tokio",
  "tower",
  "tracing",
@@ -83,6 +82,7 @@ dependencies = [
  "base64 0.23.1",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror",
  "uuid",
 ]
@@ -149,6 +149,21 @@ dependencies = [
  "url",
  "uuid",
  "zeroize",
+]
+
+[[package]]
+name = "afd_fleet_lifecycle"
+version = "0.26.2"
+dependencies = [
+ "afd_core",
+ "afd_crypto",
+ "afd_db",
+ "afd_fleet_runtime",
+ "afd_redis",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
