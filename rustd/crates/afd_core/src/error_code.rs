@@ -265,6 +265,13 @@ pub const RUNNER_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-RUN-014");
 /// making a client branch on it.
 pub const RUN_BUDGET_EXCEEDED: ErrorCode = ErrorCode::declare("UZ-RUN-015");
 
+/// An operator asked a revoked runner to self-test.
+///
+/// `ERR_RUN_SELFTEST_REFUSED` in the Zig registry. Revocation is terminal and
+/// the runner will never heartbeat to collect the request, so this is a
+/// conflict rather than a malformed action.
+pub const RUN_SELFTEST_REFUSED: ErrorCode = ErrorCode::declare("UZ-RUN-018");
+
 /// A fleet declared a credential the vault does not hold.
 ///
 /// `ERR_AGENTSFLEET_CREDENTIAL_MISSING`. Reached from the lease path, where it
@@ -421,6 +428,7 @@ pub const REGISTRY: &[ErrorCode] = &[
     RUN_LEASE_RENEWAL_NO_CREDITS,
     RUNNER_NOT_FOUND,
     RUN_BUDGET_EXCEEDED,
+    RUN_SELFTEST_REFUSED,
     AGENTSFLEET_CREDENTIAL_MISSING,
     FLEET_BUNDLE_INVALID,
     FLEET_BUNDLE_NOT_FOUND,

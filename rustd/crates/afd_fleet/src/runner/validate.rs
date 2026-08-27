@@ -7,9 +7,12 @@
 //! byte-for-byte — a client reads them.
 
 use afd_core::limits::WorkerCount;
-use afd_wire::runner::AssignedPolicy;
+use afd_wire::runner::{AssignedPolicy, ExtraBind};
 
 use crate::error::{DETAIL_HOST_ID_BOUNDS, DETAIL_REGISTRY_ALLOWLIST, Result, rejected};
+
+/// `protocol_bind.zig`'s refusal for an unsafe operator-added mount.
+pub const DETAIL_EXTRA_BINDS: &str = "extra_binds entries must be absolute host paths outside the daemon-owned baseline and the sensitive set, with no traversal";
 
 /// `register.zig`'s `MAX_HOST_ID_LEN`.
 const MAX_HOST_ID_LEN: usize = 256;
@@ -23,6 +26,42 @@ const MAX_REGISTRY_HOST_LEN: usize = 259;
 
 /// Longest decimal port a registry entry may carry.
 const MAX_PORT_DIGITS: usize = 5;
+
+const MAX_EXTRA_BINDS: usize = 16;
+const MAX_BIND_PATH_LEN: usize = 4096;
+const MAX_BIND_NOTE_LEN: usize = 200;
+
+/// Every daemon-owned or sensitive subtree an operator bind must not overlap.
+///
+/// This is the union of `BASELINE_RO_PATHS` and `SENSITIVE_PATHS` in
+/// `protocol_bind_paths.zig`. Keeping the union removes harmless duplicates
+/// while preserving the same segment-aware boundary.
+const PROTECTED_BIND_PATHS: [&str; 14] = [
+    "/etc/ssl/certs",
+    "/run/systemd/resolve",
+    "/etc/hosts",
+    "/etc/nsswitch.conf",
+    "/usr",
+    "/lib",
+    "/lib64",
+    "/bin",
+    "/sbin",
+    "/proc",
+    "/dev",
+    "/tmp",
+    "/root",
+    "/home",
+];
+
+const SENSITIVE_BIND_PATHS: [&str; 7] = [
+    "/boot",
+    "/sys",
+    "/run",
+    "/var/run",
+    "/var/lib/agentsfleet",
+    "/opt/agentsfleet",
+    "/etc",
+];
 
 /// The host identifier an enrolment names, once it is known to be usable.
 ///
@@ -111,10 +150,105 @@ pub fn assignment(policy: &AssignedPolicy<'_>) -> Result<StoredAssignment> {
     {
         return Err(rejected(DETAIL_REGISTRY_ALLOWLIST));
     }
+    if !extra_binds_valid(&policy.extra_binds) {
+        return Err(rejected(DETAIL_EXTRA_BINDS));
+    }
     // Clamped, never refused: `register.zig` clamps into the shared bounds so
     // what is echoed is what runs, and `WorkerCount::clamping` is the same
     // rule already expressed as a type.
     Ok(StoredAssignment {
         worker_count: WorkerCount::clamping(policy.worker_count),
     })
+}
+
+fn extra_binds_valid(binds: &[ExtraBind<'_>]) -> bool {
+    binds.len() <= MAX_EXTRA_BINDS
+        && binds.iter().all(|bind| {
+            bind.note.len() <= MAX_BIND_NOTE_LEN
+                && bind_path_valid(&bind.path)
+                && PROTECTED_BIND_PATHS
+                    .iter()
+                    .chain(SENSITIVE_BIND_PATHS.iter())
+                    .all(|protected| !paths_overlap(&bind.path, protected))
+        })
+}
+
+fn bind_path_valid(path: &str) -> bool {
+    (2..=MAX_BIND_PATH_LEN).contains(&path.len())
+        && path.starts_with('/')
+        && !path.ends_with('/')
+        && !path.contains('\0')
+        && path[1..]
+            .split('/')
+            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
+}
+
+fn paths_overlap(left: &str, right: &str) -> bool {
+    left == right || contains_path(left, right) || contains_path(right, left)
+}
+
+fn contains_path(parent: &str, child: &str) -> bool {
+    child
+        .strip_prefix(parent)
+        .is_some_and(|suffix| suffix.starts_with('/'))
+}
+
+#[cfg(test)]
+mod extra_bind_tests {
+    use std::borrow::Cow;
+
+    use afd_wire::runner::BindMode;
+
+    use super::*;
+
+    fn bind(path: &str) -> ExtraBind<'_> {
+        ExtraBind {
+            path: Cow::Borrowed(path),
+            mode: BindMode::ReadOnly,
+            note: Cow::Borrowed("operator reason"),
+        }
+    }
+
+    #[test]
+    fn test_extra_bind_validation_accepts_only_canonical_unprotected_paths() {
+        assert!(extra_binds_valid(&[bind("/srv/models")]));
+        for refused in [
+            "relative/path",
+            "/srv/../root",
+            "/srv/data/",
+            "/",
+            "/etc/ssl",
+            "/run",
+            "/var",
+            "/etc/./ssl",
+            "//etc",
+        ] {
+            assert!(!extra_binds_valid(&[bind(refused)]), "accepted {refused}");
+        }
+        assert!(extra_binds_valid(&[bind("/etcetera")]));
+    }
+
+    #[test]
+    fn test_extra_bind_validation_enforces_list_path_and_note_bounds() {
+        let at_cap = (0..MAX_EXTRA_BINDS)
+            .map(|index| ExtraBind {
+                path: Cow::Owned(format!("/srv/models-{index}")),
+                mode: BindMode::ReadOnly,
+                note: Cow::Borrowed(""),
+            })
+            .collect::<Vec<_>>();
+        assert!(extra_binds_valid(&at_cap));
+
+        let mut over = at_cap;
+        over.push(bind("/srv/one-too-many"));
+        assert!(!extra_binds_valid(&over));
+        assert!(!extra_binds_valid(&[ExtraBind {
+            note: Cow::Owned("n".repeat(MAX_BIND_NOTE_LEN + 1)),
+            ..bind("/srv/models")
+        }]));
+        assert!(!extra_binds_valid(&[bind(&format!(
+            "/{}",
+            "a".repeat(MAX_BIND_PATH_LEN)
+        ))]));
+    }
 }

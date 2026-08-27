@@ -56,6 +56,12 @@ pub mod meta {
     pub const HOST_ID: &str = "host_id";
     /// The isolation tier assigned at enrolment.
     pub const SANDBOX_TIER: &str = "sandbox_tier";
+    /// The egress posture assigned by an operator.
+    pub const NETWORK_POLICY: &str = "network_policy";
+    /// The registry baseline assigned by an operator.
+    pub const REGISTRY_ALLOWLIST: &str = "registry_allowlist";
+    /// The worker ceiling assigned by an operator.
+    pub const WORKER_COUNT: &str = "worker_count";
     /// The liveness instant a transition event records.
     pub const LAST_SEEN_AT: &str = "last_seen_at";
     /// The admin state a transition event moved OUT of.

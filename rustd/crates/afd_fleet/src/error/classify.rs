@@ -23,8 +23,8 @@ use super::{
     DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND, DETAIL_MINT_FAILED,
     DETAIL_MINT_UNCONFIGURED, DETAIL_PROVIDER_UNRESOLVED, DETAIL_QUEUE_UNAVAILABLE,
     DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUNNER_NOT_FOUND,
-    DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, DETAIL_WRITE_SPEND_EXHAUSTED,
-    DETAIL_WRITE_UNAPPROVED, Error, ErrorKind,
+    DETAIL_SELFTEST_REFUSED, DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID,
+    DETAIL_WRITE_SPEND_EXHAUSTED, DETAIL_WRITE_UNAPPROVED, Error, ErrorKind,
 };
 
 impl Error {
@@ -76,6 +76,7 @@ impl Error {
             }
             ErrorKind::RunnerVanished => error_code::RUN_INVALID_RUNNER_TOKEN,
             ErrorKind::RunnerNotFound => error_code::RUNNER_NOT_FOUND,
+            ErrorKind::SelftestRefused => error_code::RUN_SELFTEST_REFUSED,
             ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
             // A daemon whose clock cannot name an instant, and a host that
             // cannot draw random bytes, are both THIS process failing — not the
@@ -198,6 +199,7 @@ impl Error {
         match self.inner.kind {
             ErrorKind::Rejected { detail } => detail,
             ErrorKind::RunnerVanished | ErrorKind::RunnerNotFound => DETAIL_RUNNER_NOT_FOUND,
+            ErrorKind::SelftestRefused => DETAIL_SELFTEST_REFUSED,
             ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
             // A corrupt sequence joins the two row faults: all three are the
             // database holding something this daemon cannot use, and a caller
@@ -315,6 +317,7 @@ impl Error {
             | ErrorKind::Query { .. }
             | ErrorKind::RunnerVanished
             | ErrorKind::RunnerNotFound
+            | ErrorKind::SelftestRefused
             | ErrorKind::AdminStateMalformed
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::StoredJson { .. }

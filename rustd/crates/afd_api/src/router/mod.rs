@@ -48,7 +48,7 @@ use axum::Router;
 use axum::extract::Request;
 use axum::middleware::{Next, from_fn, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{MethodRouter, get, post};
+use axum::routing::{MethodRouter, get, patch, post};
 use http::{Method, StatusCode};
 
 use crate::admission::{Admission, admit, is_metered};
@@ -225,9 +225,10 @@ fn runner_ops_handler<D: Serving>(verb: RunnerOpsRoute) -> Option<MethodRouter<A
         RunnerOpsRoute::Register => Some(post(runner::enrolment::handle::<D>)),
         RunnerOpsRoute::List => Some(get(operator::runners::list::<D>)),
         RunnerOpsRoute::Get => Some(get(operator::runners::detail::<D>)),
+        RunnerOpsRoute::Patch => Some(patch(operator::runner_patch::handle::<D>)),
         RunnerOpsRoute::Events => Some(get(operator::events::list::<D>)),
         RunnerOpsRoute::Streams => Some(get(operator::streams::list::<D>)),
-        RunnerOpsRoute::Patch | RunnerOpsRoute::Leases => None,
+        RunnerOpsRoute::Leases => None,
     }
 }
 
