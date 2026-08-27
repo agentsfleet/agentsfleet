@@ -32,6 +32,7 @@ pub mod admission;
 pub mod auth;
 pub mod client;
 pub mod envelope;
+pub mod etag;
 pub mod handler;
 pub mod request_id;
 pub mod route;

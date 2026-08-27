@@ -57,7 +57,7 @@ mod support;
 
 pub(crate) use self::stubs_runner::NoWork;
 pub(crate) use self::stubs_tenant::{
-    DEPLOYMENT, NoBilling, NoDirectory, NoKeys, NoLogins, NoTerminals, OWNED_WORKSPACE,
+    DEPLOYMENT, NoBilling, NoDirectory, NoKeys, NoLogins, NoModels, NoTerminals, OWNED_WORKSPACE,
     OneWorkspace,
 };
 pub(crate) use self::support::{file_runner, json_body, presented, runner_id, send, tenant};
@@ -226,6 +226,7 @@ impl Services for Fleet {
     type ApiKeys = NoKeys;
     type CliCredentials = NoTerminals;
     type Billing = NoBilling;
+    type Catalogue = NoModels;
 
     fn authenticator(&self) -> &Self::Auth {
         &self.authenticator
@@ -265,6 +266,10 @@ impl Services for Fleet {
 
     fn billing(&self) -> &NoBilling {
         &NoBilling
+    }
+
+    fn catalogue(&self) -> &NoModels {
+        &NoModels
     }
 
     /// A fixed deployment, which is what a real one is too.

@@ -26,7 +26,7 @@ use crate::handler::Refusal;
 use crate::request_id::RequestId;
 use crate::services::{Services, TenantWorkspaces as _, WorkspaceOwnership as _};
 
-use super::{DETAIL_TENANT_REQUIRED, parameter, tenant_of};
+use super::{DETAIL_TENANT_REQUIRED, tenant_of};
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_LIST: &str = "workspace_list_failed";
@@ -254,55 +254,9 @@ fn parse_name(raw: Option<Cow<'_, str>>) -> Result<Option<String>, Refusal> {
     Ok(Some(raw.into_owned()))
 }
 
-/// One query parameter, percent-decoded the way httpz's `unescape` does.
-///
-/// The sibling handlers scan RAW values because their alphabets survive a URL
-/// unescaped; a workspace NAME does not — it carries spaces and any script —
-/// so this route decodes, exactly as the Zig daemon's query parser did for
-/// it: `%XX` bytes, `+` as space, and a stray or short escape refusing the
-/// whole query string.
+/// One query parameter, percent-decoded — the shared scan, with this route's
+/// refusal sentence when a broken escape refuses the whole query string.
 fn decoded<'q>(query: &'q str, name: &str) -> Result<Option<Cow<'q, str>>, Refusal> {
-    let Some(raw) = parameter(query, name) else {
-        return Ok(None);
-    };
-    if !raw.bytes().any(|byte| byte == b'%' || byte == b'+') {
-        return Ok(Some(Cow::Borrowed(raw)));
-    }
-    let bytes = raw.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while let Some(&byte) = bytes.get(index) {
-        match byte {
-            b'+' => {
-                decoded.push(b' ');
-                index += 1;
-            }
-            b'%' => {
-                let high = bytes.get(index + 1).copied().and_then(hex_value);
-                let low = bytes.get(index + 2).copied().and_then(hex_value);
-                let (Some(high), Some(low)) = (high, low) else {
-                    return Err(Refusal::malformed(DETAIL_MALFORMED_QUERY));
-                };
-                decoded.push(high << 4 | low);
-                index += 3;
-            }
-            other => {
-                decoded.push(other);
-                index += 1;
-            }
-        }
-    }
-    let text = String::from_utf8(decoded)
-        .map_err(|_not_text| Refusal::malformed(DETAIL_MALFORMED_QUERY))?;
-    Ok(Some(Cow::Owned(text)))
-}
-
-/// One hex digit's value, either case.
-const fn hex_value(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
+    super::decoded_parameter(query, name)
+        .map_err(|_broken| Refusal::malformed(DETAIL_MALFORMED_QUERY))
 }

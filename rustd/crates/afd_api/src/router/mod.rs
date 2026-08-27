@@ -2,7 +2,7 @@
 //!
 //! # What is mounted, and what is only tabled
 //!
-//! [`Route`] carries all eighty-one endpoints; this binary serves twenty-six of them.
+//! [`Route`] carries all eighty-one endpoints; this binary serves twenty-seven of them.
 //! The gap is deliberate and it is STATED: [`handler_for`] is a total match
 //! over every family AND every route within a family, so an endpoint whose
 //! handler has not been ported yet says so in an arm rather than by being
@@ -243,8 +243,9 @@ fn auth_handler_for<D: Serving>(verb: AuthRoute) -> Option<MethodRouter<Arc<D>>>
 
 /// What a tenant manages for itself.
 ///
-/// `None` for the reads this milestone has not reached yet — the model
-/// registry, the provider row. Each is an arm rather than an absence from a
+/// `None` for the surfaces that ride §4's vault foundation — the model
+/// registry and the provider row both take the secret reference-lock their
+/// writes are proven under. Each is an arm rather than an absence from a
 /// list, so the endpoint that is not served says so where somebody looking
 /// for it will read it.
 fn tenant_handler_for<D: Serving>(verb: TenantRoute) -> Option<MethodRouter<Arc<D>>> {
@@ -261,8 +262,8 @@ fn tenant_handler_for<D: Serving>(verb: TenantRoute) -> Option<MethodRouter<Arc<
         TenantRoute::BillingCharges => Some(get(tenant_handler::billing_charges::<D>)),
         TenantRoute::Workspaces => Some(get(tenant_handler::list_workspaces::<D>)),
         TenantRoute::CreateWorkspace => Some(post(tenant_handler::create_workspace::<D>)),
-        TenantRoute::ModelLibrary
-        | TenantRoute::Provider
+        TenantRoute::ModelLibrary => Some(get(tenant_handler::catalogue::<D>)),
+        TenantRoute::Provider
         | TenantRoute::ModelEntries
         | TenantRoute::ModelEntry
         | TenantRoute::FleetBundles => None,

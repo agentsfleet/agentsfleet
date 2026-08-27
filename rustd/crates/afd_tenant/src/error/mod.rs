@@ -163,6 +163,12 @@ pub(crate) enum ErrorKind {
 
     #[error("the session's tenant claim names no tenant row")]
     WorkspaceTenantVanished,
+
+    #[error("the catalogue page statement would not answer")]
+    LibraryPageUnavailable {
+        #[source]
+        source: sqlx::Error,
+    },
 }
 
 /// Which device-flow field a refusal names.
@@ -279,7 +285,9 @@ impl Error {
     pub const fn is_datastore_unavailable(&self) -> bool {
         matches!(
             self.inner.kind,
-            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. }
+            ErrorKind::Datastore { .. }
+                | ErrorKind::Queue { .. }
+                | ErrorKind::LibraryPageUnavailable { .. }
         )
     }
 
@@ -343,6 +351,10 @@ impl Error {
             // A 401 and not a 403: the session's tenant is GONE, so the
             // credential itself is stale and re-authenticating is the remedy.
             ErrorKind::WorkspaceTenantVanished => error_code::AUTH_UNAUTHORIZED,
+            // The library family's own transient code, not INTERNAL-001: the
+            // catalogue read has carried `UZ-LIBRARY-006` since it shipped,
+            // and a dashboard's retry logic may already branch on it.
+            ErrorKind::LibraryPageUnavailable { .. } => error_code::LIBRARY_DB_UNAVAILABLE,
             ErrorKind::ApiKeyNotFound => error_code::APIKEY_NOT_FOUND,
             ErrorKind::ApiKeyNameTaken => error_code::APIKEY_NAME_TAKEN,
             ErrorKind::ApiKeyAlreadyRevoked => error_code::APIKEY_ALREADY_REVOKED,
@@ -408,6 +420,7 @@ impl Error {
             ErrorKind::WorkspaceNameTooLong => DETAIL_WORKSPACE_NAME_TOO_LONG,
             ErrorKind::WorkspaceNameExists => DETAIL_WORKSPACE_NAME_EXISTS,
             ErrorKind::WorkspaceTenantVanished => DETAIL_WORKSPACE_TENANT_VANISHED,
+            ErrorKind::LibraryPageUnavailable { .. } => DETAIL_LIBRARY_PAGE_UNAVAILABLE,
         }
     }
 }
@@ -595,6 +608,11 @@ pub(crate) fn workspace_name_exists() -> Error {
 /// Refuses a create whose session names a tenant with no row behind it.
 pub(crate) fn workspace_tenant_vanished() -> Error {
     Error::new(ErrorKind::WorkspaceTenantVanished)
+}
+
+/// Reports a catalogue page statement that would not answer.
+pub(crate) fn library_page_unavailable(source: sqlx::Error) -> Error {
+    Error::new(ErrorKind::LibraryPageUnavailable { source })
 }
 
 /// Reports an insert the machine's unique index refused.

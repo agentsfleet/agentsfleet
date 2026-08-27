@@ -135,6 +135,12 @@ pub const DETAIL_WORKSPACE_NAME_EXISTS: &str = "A workspace with this name alrea
 /// stale — its tenant is gone — so re-authenticating is exactly the remedy.
 pub const DETAIL_WORKSPACE_TENANT_VANISHED: &str = "Tenant on session does not exist";
 
+/// The catalogue read's report of a page statement that would not answer.
+///
+/// `model_library.zig`'s `S_PAGE_BUILD_FAILED`, under the library family's
+/// own transient code rather than the generic internal one.
+pub const DETAIL_LIBRARY_PAGE_UNAVAILABLE: &str = "Failed to build the catalogue page";
+
 /// The billing surface's report of a wallet row that is not there.
 ///
 /// The em-dash sentence is `tenant_billing.zig`'s, byte for byte: the row is

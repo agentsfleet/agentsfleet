@@ -53,6 +53,7 @@ pub mod credentials;
 pub mod event;
 pub mod lease;
 pub mod memory;
+pub mod models;
 pub mod paths;
 pub mod policy;
 mod redact;

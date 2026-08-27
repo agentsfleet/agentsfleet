@@ -41,6 +41,10 @@ afd_wire.workspace = true
 # The wire payloads borrow, so a body is deserialised out of the request bytes
 # rather than through `axum::Json`, which owns what it parses.
 serde_json.workspace = true
+# The catalogue ETag is a SHA-256 over the serialized page, in `etag.zig`'s
+# field encoding — a validator a client cache holds across the cutover, so the
+# digest is a wire fact rather than a hashing choice.
+sha2 = { workspace = true }
 # The workspace's one entropy surface, for the request id a refusal carries.
 # Drawing bytes directly here would make `getrandom` reachable from two crates
 # and end the "one system call" claim `afd_crypto` is built around.

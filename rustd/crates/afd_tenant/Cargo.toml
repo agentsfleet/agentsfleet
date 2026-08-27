@@ -18,6 +18,11 @@ workspace = true
 # The charges cursor is base64url on the wire — the whole token, unlike the
 # keyset cursor which encodes only its text half. Same engine as afd_core's.
 base64.workspace = true
+# The catalogue cursor is base64url of CANONICAL JSON — a struct with a fixed
+# key order, re-encoded on decode so anything non-canonical is refused. serde
+# derives the struct; serde_json is the one spelling of that JSON.
+serde.workspace = true
+serde_json.workspace = true
 # The registry codes, identifiers, the clock, and the paging vocabulary every
 # list verb here parses its query string with.
 afd_core.workspace = true

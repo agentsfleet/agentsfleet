@@ -7,7 +7,7 @@
 //! be confused with.
 
 use afd_api::services::{
-    DeviceFlow, TenantBilling, TenantKeys, TenantWorkspaces, TerminalCredentials,
+    DeviceFlow, ModelCatalogue, TenantBilling, TenantKeys, TenantWorkspaces, TerminalCredentials,
     WorkspaceOwnership,
 };
 use afd_core::clock::UnixMillis;
@@ -199,6 +199,25 @@ impl TenantWorkspaces for NoDirectory {
         _now: UnixMillis,
     ) -> impl Future<Output = afd_tenant::Result<afd_tenant::workspace::directory::Created>> + Send
     {
+        std::future::ready(Err(afd_tenant::Error::datastore_unavailable()))
+    }
+}
+
+/// A model catalogue with no Postgres behind it.
+///
+/// One verb, one honest refusal, for the reason every stub here refuses: the
+/// page is a statement a real Postgres evaluates. What a suite proves is the
+/// guard and the query-string refusals in FRONT of it.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct NoModels;
+
+impl ModelCatalogue for NoModels {
+    fn page(
+        &self,
+        _filter: Option<&str>,
+        _after: Option<&afd_tenant::models::Boundary>,
+        _limit: u32,
+    ) -> impl Future<Output = afd_tenant::Result<afd_tenant::models::LibraryPage>> + Send {
         std::future::ready(Err(afd_tenant::Error::datastore_unavailable()))
     }
 }
