@@ -21,7 +21,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_core::id::Uuid7;
-use afd_fleet::cli_credential::{MachineName, MintRequest, Revealed};
+use afd_tenant::cli_credential::{MachineName, MintRequest, Revealed};
 use afd_wire::tenant::{MintCliCredentialRequest, MintedCliCredentialResponse};
 use axum::Json;
 use axum::body::Bytes;

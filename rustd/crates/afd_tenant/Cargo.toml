@@ -1,0 +1,64 @@
+[package]
+name = "afd_tenant"
+description = "The tenant plane: api-keys, command-line credentials, device-flow login, and workspace ownership."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# The registry codes, identifiers, the clock, and the paging vocabulary every
+# list verb here parses its query string with.
+afd_core.workspace = true
+# `Minted` — a credential drawn once and zeroed — plus the classifier that
+# supplies its marker, and the principal a verb acts for.
+afd_auth.workspace = true
+# Entropy for the identifiers these stores mint.
+afd_crypto.workspace = true
+# The Postgres pool the api-key, workspace and credential rows are read through.
+afd_db.workspace = true
+# The device-flow login surface is Redis-backed; nothing here reaches Postgres
+# for it.
+afd_redis.workspace = true
+# Lower-case hex for the fingerprint digest, rather than a hand-written render.
+hex.workspace = true
+# The device-flow fingerprint: a session is bound to the caller that opened it
+# by a digest of address, agent and id.
+sha2.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the seams the suites drive through the crates that own
+# them, so a test needs no datastore to reach a decision.
+test-util = [
+  "afd_auth/test-util",
+  "afd_core/test-util",
+  "afd_db/test-util",
+  # The queue refusal a stubbed device-flow surface answers with.
+  "afd_redis/test-util",
+]
+
+[dev-dependencies]
+# The device-flow suite needs REAL parallelism: its state races — two approves,
+# a verify against an approve — are worthless on a single-threaded runtime,
+# because the interleaving they exist to force cannot happen.
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+# Joins the racers so the datastore, and not the order of a test loop, decides
+# which transition arrives first.
+futures-util = { workspace = true }
+# Installs a subscriber so `tracing` event macros evaluate their fields at all;
+# without one a diagnostic line reads as unreachable to llvm-cov.
+tracing-subscriber.workspace = true
+# Reads a stored session envelope back, so the suite asserts on what Redis holds
+# rather than on what this crate says it wrote.
+serde_json.workspace = true

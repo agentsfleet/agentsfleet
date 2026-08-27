@@ -6,7 +6,7 @@
 //! field that could. That is structural rather than careful — a list shape with
 //! no secret field cannot leak one however the statement behind it changes —
 //! and it is half of what "revealed exactly once" means. The other half is
-//! `afd_fleet::credential::minted::Minted`, which zeroes the plaintext when the
+//! `afd_auth::minted::Minted`, which zeroes the plaintext when the
 //! response holding it is done.
 
 use std::borrow::Cow;

@@ -31,9 +31,7 @@
 //! for the shape high-arity statements take.
 
 pub mod activity;
-pub mod apikey;
 pub mod billing;
-pub mod cli_credential;
 pub mod event;
 pub mod fleet;
 pub mod gate;
@@ -46,7 +44,6 @@ pub mod report;
 pub mod runner;
 pub mod sweep;
 pub mod vault;
-pub mod workspace;
 
 /// `fleet.runner_events.metadata` keys.
 ///

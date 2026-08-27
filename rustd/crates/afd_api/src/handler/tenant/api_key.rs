@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use afd_core::id::Uuid7;
 use afd_core::paging::{Cursor, Page};
-use afd_fleet::apikey::{
+use afd_tenant::apikey::{
     ApiKeySort, Deactivation, Description, KeyName, KeyRow, Listing, MintRequest, Revealed, Revoked,
 };
 use afd_wire::tenant::{

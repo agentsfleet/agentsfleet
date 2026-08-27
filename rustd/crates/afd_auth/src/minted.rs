@@ -1,5 +1,14 @@
 //! A credential: minted once, stored as a digest, never re-readable.
 //!
+//! # Why this lives beside the classifier and not beside the stores
+//!
+//! It is built from exactly two things this crate owns — [`CredentialKind`],
+//! which supplies the marker, and [`Digest`], which is what a row stores — and
+//! one thing `afd_crypto` owns. Keeping it in the domain crate that WRITES the
+//! rows meant every store touching a credential had to depend on that whole
+//! crate to draw one. Here, minting sits with classification: the two halves of
+//! one fact, which is that a credential's class is carried by its bytes.
+//!
 //! Three credential classes are drawn this way — the runner's `agt_r`, the
 //! tenant's `agt_t`, and the command line's `afc_` — and the Zig daemon draws
 //! each of them in its own file, with its own `TOKEN_RANDOM_BYTES`, its own
@@ -11,12 +20,11 @@
 //! Here it is one type taking the class's marker. What varies between the three
 //! is the marker and nothing else, which is what the parameter says.
 
-use afd_auth::credential::CredentialKind;
-use afd_auth::directory::Digest;
 use afd_crypto::entropy::Entropy;
 use std::fmt;
 
-use crate::error::Result;
+use crate::credential::CredentialKind;
+use crate::directory::Digest;
 
 /// Random bytes behind a runner token's body.
 ///
@@ -48,7 +56,7 @@ impl Minted {
     /// Returns an entropy failure when the host cannot produce random bytes. It
     /// is not degraded to a weaker source: a predictable credential is one an
     /// attacker mints for themselves.
-    pub fn draw(kind: CredentialKind, entropy: &Entropy) -> Result<Self> {
+    pub fn draw(kind: CredentialKind, entropy: &Entropy) -> afd_crypto::error::Result<Self> {
         let mut raw = [0u8; TOKEN_RANDOM_BYTES];
         entropy.fill(&mut raw)?;
         // Every class this crate mints carries a marker; the session bearer is

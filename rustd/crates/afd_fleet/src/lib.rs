@@ -35,9 +35,7 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
-pub mod apikey;
 pub mod bundle;
-pub mod cli_credential;
 pub mod credential;
 pub mod error;
 pub mod gate;
@@ -48,11 +46,9 @@ pub mod policy;
 pub mod provider;
 pub mod runner;
 pub mod secrets;
-pub mod session;
 pub mod sql;
 pub mod sweep;
 pub mod vault;
-pub mod workspace;
 
 pub use crate::error::{Error, Result};
 pub use crate::runner::reconcile::{Verdict, reconcile};

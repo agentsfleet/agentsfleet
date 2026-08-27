@@ -34,13 +34,13 @@ use afd_fleet::secrets::Registry;
 // Aliased: `crate::identity::Sessions` is the token VERIFIER, and this is the
 // device-flow login surface. Two things called `Sessions` in one file is how a
 // reader ends up believing the login surface verifies bearer tokens.
-use afd_fleet::apikey::ApiKeys;
-use afd_fleet::cli_credential::CliCredentials;
-use afd_fleet::session::Sessions as Logins;
 use afd_fleet::vault::Vault;
-use afd_fleet::workspace::Workspaces;
 use afd_redis::Redis;
 use afd_state::Credentials;
+use afd_tenant::apikey::ApiKeys;
+use afd_tenant::cli_credential::CliCredentials;
+use afd_tenant::session::Sessions as Logins;
+use afd_tenant::workspace::Workspaces;
 
 use crate::identity::{Capabilities, Sessions};
 use crate::probes::LiveDependencies;

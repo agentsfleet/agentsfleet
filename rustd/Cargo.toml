@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_api", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_fleet", "crates/afd_fleet_runtime", "crates/afd_identity", "crates/afd_observability", "crates/afd_redis", "crates/afd_state", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_api", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_fleet", "crates/afd_fleet_runtime", "crates/afd_identity", "crates/afd_observability", "crates/afd_redis", "crates/afd_state", "crates/afd_tenant", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.26.2"
@@ -49,6 +49,7 @@ afd_identity = { path = "crates/afd_identity" }
 afd_observability = { path = "crates/afd_observability" }
 afd_redis = { path = "crates/afd_redis" }
 afd_state = { path = "crates/afd_state" }
+afd_tenant = { path = "crates/afd_tenant" }
 afd_wire = { path = "crates/afd_wire" }
 
 # `default-features = false` throughout, features named explicitly, so a member

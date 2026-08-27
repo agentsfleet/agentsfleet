@@ -11,9 +11,9 @@ use crate::runner::reconcile::{Verdict, reconcile};
 use crate::runner::spelling::{policy_wire, render_list, tier_wire};
 use afd_auth::credential::CredentialKind;
 
-use crate::credential::minted::Minted;
 use crate::runner::validate::{HostId, assignment};
 use crate::sql;
+use afd_auth::minted::Minted;
 
 /// Statement names, for the context a query failure carries.
 ///
