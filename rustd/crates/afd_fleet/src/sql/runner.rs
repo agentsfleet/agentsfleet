@@ -154,7 +154,9 @@ WITH current_runner AS (
 ), event AS (
   INSERT INTO fleet.runner_events
     (id, runner_id, event_type, metadata, dedup_key, created_at)
-  SELECT $5::uuid, id, $6::text, '{}'::jsonb, NULL, $3::bigint FROM updated
+  SELECT $5::uuid, id, $6::text,
+         jsonb_build_object($7::text, $8::text),
+         NULL, $3::bigint FROM updated
   RETURNING id
 )
 SELECT admin_state, EXISTS (SELECT 1 FROM updated) AS changed FROM current_runner";
@@ -265,7 +267,11 @@ WITH current_state AS (
   INSERT INTO fleet.runner_events
     (id, runner_id, event_type, metadata, dedup_key, created_at)
   SELECT $5::uuid, id, $6::text,
-         jsonb_build_object($7::text, from_admin_state, $8::text, $2::text),
+         jsonb_build_object(
+           $7::text, from_admin_state,
+           $8::text, $2::text,
+           $9::text, $10::text
+         ),
          NULL, $3::bigint
   FROM current_state
   WHERE EXISTS (SELECT 1 FROM updated)

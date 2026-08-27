@@ -17,6 +17,7 @@ mod requests;
 use afd_auth::credential::{CredentialKind, Presented};
 use afd_auth::directory::{CredentialDirectory as _, Digest};
 use std::borrow::Cow;
+use std::sync::Arc;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -25,9 +26,12 @@ use afd_wire::admin::RunnerAdminAction;
 use afd_wire::runner::{
     AssignedPolicy, BindMode, CapabilityReport, ExtraBind, NetworkPolicy, SandboxTier,
 };
+use tokio::sync::Barrier;
 
 use self::requests::{ENROLLED_AT, enrolment};
 use self::support::Fixtures;
+
+const ACTOR: &str = "fixture:platform-operator";
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -48,6 +52,7 @@ async fn test_runner_admin_transitions() {
         .transition(
             &enrolled.runner_id,
             RunnerAdminAction::Cordon,
+            ACTOR,
             UnixMillis::from_millis(ENROLLED_AT + 1),
         )
         .await
@@ -57,6 +62,7 @@ async fn test_runner_admin_transitions() {
         .transition(
             &enrolled.runner_id,
             RunnerAdminAction::Cordon,
+            ACTOR,
             UnixMillis::from_millis(ENROLLED_AT + 2),
         )
         .await
@@ -66,6 +72,7 @@ async fn test_runner_admin_transitions() {
         .transition(
             &enrolled.runner_id,
             RunnerAdminAction::Revoke,
+            ACTOR,
             UnixMillis::from_millis(ENROLLED_AT + 3),
         )
         .await
@@ -76,6 +83,7 @@ async fn test_runner_admin_transitions() {
         .transition(
             &enrolled.runner_id,
             RunnerAdminAction::Drain,
+            ACTOR,
             UnixMillis::from_millis(ENROLLED_AT + 4),
         )
         .await
@@ -93,6 +101,58 @@ async fn test_runner_admin_transitions() {
             "runner_revoked".to_owned(),
         ],
         "each real transition appends one event; repeats and refusals append none"
+    );
+    assert_eq!(
+        fixtures.admin_event_actors(&runner).await,
+        vec![ACTOR.to_owned(), ACTOR.to_owned()]
+    );
+
+    fixtures.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn concurrent_identical_transitions_append_one_event() {
+    let fixtures = Fixtures::create().await;
+    let enrolled = fixtures
+        .runners()
+        .register(
+            &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
+            UnixMillis::from_millis(ENROLLED_AT),
+        )
+        .await
+        .expect("the runner enrols");
+    let gate = Arc::new(Barrier::new(3));
+    let mut tasks = Vec::new();
+    for actor in ["fixture:operator-a", "fixture:operator-b"] {
+        let runners = fixtures.runners().clone();
+        let runner = enrolled.runner_id.clone();
+        let ready = Arc::clone(&gate);
+        tasks.push(tokio::spawn(async move {
+            ready.wait().await;
+            runners
+                .transition(
+                    &runner,
+                    RunnerAdminAction::Cordon,
+                    actor,
+                    UnixMillis::from_millis(ENROLLED_AT + 1),
+                )
+                .await
+        }));
+    }
+    gate.wait().await;
+    for task in tasks {
+        assert_eq!(
+            task.await
+                .expect("the transition task completes")
+                .expect("identical transitions are idempotent"),
+            afd_wire::admin::AdminState::Cordoned
+        );
+    }
+    assert_eq!(
+        fixtures.events(enrolled.runner_id.as_str()).await,
+        vec!["runner_registered".to_owned(), "runner_cordoned".to_owned(),],
+        "the row lock lets only one contender append the state-change event"
     );
 
     fixtures.cleanup().await;
@@ -234,6 +294,7 @@ async fn test_runner_policy_assignment_refuses_revocation() {
         .transition(
             &enrolled.runner_id,
             RunnerAdminAction::Revoke,
+            ACTOR,
             UnixMillis::from_millis(ENROLLED_AT + 1),
         )
         .await
@@ -289,6 +350,7 @@ async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
         .transition(
             &enrolled.runner_id,
             RunnerAdminAction::Revoke,
+            ACTOR,
             UnixMillis::from_millis(ENROLLED_AT + 2),
         )
         .await
@@ -341,6 +403,7 @@ async fn test_runner_rotation_takeover() {
         .runners()
         .rotate_token(
             &enrolled.runner_id,
+            ACTOR,
             UnixMillis::from_millis(ENROLLED_AT + 1),
         )
         .await

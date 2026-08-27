@@ -138,6 +138,13 @@ const ENTRIES: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::PAYLOAD_TOO_LARGE,
+        status: 413,
+        title: "Payload too large",
+        hint: "Request body exceeds the maximum allowed size.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::VAULT_DATA_INVALID,
         status: 400,
         title: "Secret data must be a non-empty JSON object",
@@ -440,10 +447,10 @@ const ENTRIES: &[Problem] = &[
     Problem {
         code: error_code::CATALOG_ID_COLLISION,
         status: 409,
-        title: "Fleet library name belongs to another repository",
-        hint: "Rename the bundle, or retry with replace after confirming the existing source should be overwritten.",
+        title: "Catalog id already taken by another repository",
+        hint: "This catalog id already belongs to a different source repository. Rename the bundle, or retry with replace to overwrite deliberately.",
         user_message: Some(
-            "That fleet name is already owned by another repository. Rename it, or explicitly replace the existing entry.",
+            "A different repository already owns this fleet's name. Rename the bundle, or confirm you want to replace it.",
         ),
     },
     Problem {

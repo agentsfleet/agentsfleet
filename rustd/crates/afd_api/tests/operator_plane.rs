@@ -210,7 +210,7 @@ async fn runner_patch_is_mounted_behind_runner_write_and_rejects_shape_before_io
         .with_person(
             TENANT_KEY,
             OPERATOR,
-            ScopeSet::from_scopes(&[Scope::StreamRead]),
+            ScopeSet::from_scopes(&[Scope::RunnerRead]),
         )
         .router();
     let denied = send(
@@ -218,7 +218,7 @@ async fn runner_patch_is_mounted_behind_runner_write_and_rejects_shape_before_io
         Method::PATCH,
         &format!("/v1/fleets/runners/{RUNNER}"),
         Some(TENANT_KEY),
-        r#"{"action":"cordon"}"#,
+        r#"{"action":"rotate"}"#,
     )
     .await;
     assert_eq!(denied.status(), StatusCode::FORBIDDEN);

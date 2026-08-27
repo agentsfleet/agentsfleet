@@ -5,7 +5,7 @@ use std::io::Write as _;
 use flate2::Compression;
 use flate2::write::GzEncoder;
 
-use super::{Repository, extract};
+use super::{Repository, classify_status, extract};
 use crate::{Error, SourceFailure};
 
 const LENGTH_FITS: &str = "fixture length fits";
@@ -103,4 +103,13 @@ fn github_archive_classifies_truncation() {
         extract(&bytes, "agentsfleet/reviewer", "main"),
         Err(Error::Archive(_) | Error::Source(SourceFailure::Truncated))
     ));
+}
+
+#[test]
+fn github_status_classifier_distinguishes_not_found_and_rate_limit() {
+    assert_eq!(classify_status(404), Some(SourceFailure::NotFound));
+    assert_eq!(classify_status(403), Some(SourceFailure::RateLimited));
+    assert_eq!(classify_status(429), Some(SourceFailure::RateLimited));
+    assert_eq!(classify_status(200), None);
+    assert_eq!(classify_status(500), None);
 }

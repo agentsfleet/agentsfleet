@@ -91,76 +91,264 @@ impl KeysetCursor {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RunnerItem {
     /// Canonical runner identifier.
-    pub id: Uuid7,
+    id: Uuid7,
     /// Stable host identity supplied at enrolment.
-    pub host_id: String,
+    host_id: String,
     /// Assigned isolation tier spelling.
-    pub sandbox_tier: String,
+    sandbox_tier: String,
     /// Operator-controlled admission state.
-    pub admin_state: afd_wire::admin::AdminState,
+    admin_state: afd_wire::admin::AdminState,
     /// Runtime state derived from heartbeat and lease rows.
-    pub liveness: RunnerLiveness,
+    liveness: RunnerLiveness,
     /// Placement labels assigned at enrolment.
-    pub labels: Vec<String>,
+    labels: Vec<String>,
     /// Last heartbeat instant in epoch milliseconds.
-    pub last_seen_at: i64,
+    last_seen_at: i64,
     /// Enrolment instant in epoch milliseconds.
-    pub created_at: i64,
+    created_at: i64,
     /// Policy currently assigned to the host.
-    pub assigned_policy: Option<AssignedPolicy<'static>>,
+    assigned_policy: Option<AssignedPolicy<'static>>,
     /// Capability report most recently supplied by the host.
-    pub achievable: Option<CapabilityReport<'static>>,
+    achievable: Option<CapabilityReport<'static>>,
     /// Whether the assigned policy exceeds the reported capability.
-    pub degraded: bool,
+    degraded: bool,
     /// Stored explanation for a degraded verdict.
-    pub degraded_reason: Option<String>,
+    degraded_reason: Option<String>,
+}
+
+impl RunnerItem {
+    /// Canonical runner identifier.
+    #[must_use]
+    pub const fn id(&self) -> &Uuid7 {
+        &self.id
+    }
+
+    /// Stable host identity supplied at enrolment.
+    #[must_use]
+    pub fn host_id(&self) -> &str {
+        &self.host_id
+    }
+
+    /// Assigned isolation tier spelling.
+    #[must_use]
+    pub fn sandbox_tier(&self) -> &str {
+        &self.sandbox_tier
+    }
+
+    /// Operator-controlled admission state.
+    #[must_use]
+    pub const fn admin_state(&self) -> afd_wire::admin::AdminState {
+        self.admin_state
+    }
+
+    /// Runtime state derived from heartbeat and lease rows.
+    #[must_use]
+    pub const fn liveness(&self) -> RunnerLiveness {
+        self.liveness
+    }
+
+    /// Placement labels assigned at enrolment.
+    #[must_use]
+    pub fn labels(&self) -> &[String] {
+        &self.labels
+    }
+
+    /// Last heartbeat instant in epoch milliseconds.
+    #[must_use]
+    pub const fn last_seen_at(&self) -> i64 {
+        self.last_seen_at
+    }
+
+    /// Enrolment instant in epoch milliseconds.
+    #[must_use]
+    pub const fn created_at(&self) -> i64 {
+        self.created_at
+    }
+
+    /// Policy currently assigned to the host.
+    #[must_use]
+    pub const fn assigned_policy(&self) -> Option<&AssignedPolicy<'static>> {
+        self.assigned_policy.as_ref()
+    }
+
+    /// Capability report most recently supplied by the host.
+    #[must_use]
+    pub const fn achievable(&self) -> Option<&CapabilityReport<'static>> {
+        self.achievable.as_ref()
+    }
+
+    /// Whether the assigned policy exceeds the reported capability.
+    #[must_use]
+    pub const fn is_degraded(&self) -> bool {
+        self.degraded
+    }
+
+    /// Stored explanation for a degraded verdict.
+    #[must_use]
+    pub fn degraded_reason(&self) -> Option<&str> {
+        self.degraded_reason.as_deref()
+    }
 }
 
 /// A keyset page of runners.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RunnerPage {
     /// Rows in newest-first keyset order.
-    pub items: Vec<RunnerItem>,
+    items: Vec<RunnerItem>,
     /// Total runners independent of this page boundary.
-    pub total: i64,
+    total: i64,
     /// Boundary for the next page, absent when this page is short.
-    pub next_cursor: Option<KeysetCursor>,
+    next_cursor: Option<KeysetCursor>,
+}
+
+impl RunnerPage {
+    /// Rows in newest-first keyset order.
+    #[must_use]
+    pub fn items(&self) -> &[RunnerItem] {
+        &self.items
+    }
+
+    /// Consumes the page and returns its rows.
+    #[must_use]
+    pub fn into_items(self) -> Vec<RunnerItem> {
+        self.items
+    }
+
+    /// Total runners independent of this page boundary.
+    #[must_use]
+    pub const fn total(&self) -> i64 {
+        self.total
+    }
+
+    /// Boundary for the next page.
+    #[must_use]
+    pub const fn next_cursor(&self) -> Option<&KeysetCursor> {
+        self.next_cursor.as_ref()
+    }
 }
 
 /// The single-runner read with live and lifetime counters.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RunnerDetail {
     /// The same runner shape the list returns.
-    pub item: RunnerItem,
+    item: RunnerItem,
     /// Live leases currently held by this runner.
-    pub active_lease_count: i64,
+    active_lease_count: i64,
     /// Distinct fleets represented by those live leases.
-    pub active_fleet_count: i64,
+    active_fleet_count: i64,
     /// Leases acquired over the runner's lifetime.
-    pub leases_acquired: i64,
+    leases_acquired: i64,
     /// Leases settled successfully over the runner's lifetime.
-    pub leases_succeeded: i64,
+    leases_succeeded: i64,
     /// Leases settled unsuccessfully over the runner's lifetime.
-    pub leases_failed: i64,
+    leases_failed: i64,
     /// Leases expired over the runner's lifetime.
-    pub leases_expired: i64,
+    leases_expired: i64,
     /// Outstanding self-test request instant.
-    pub selftest_requested_at: Option<i64>,
+    selftest_requested_at: Option<i64>,
     /// Most recent self-test completion instant.
-    pub selftest_completed_at: Option<i64>,
+    selftest_completed_at: Option<i64>,
     /// Most recent complete self-test report.
-    pub selftest: Option<SelftestReport<'static>>,
+    selftest: Option<SelftestReport<'static>>,
+}
+
+impl RunnerDetail {
+    /// The same runner shape the list returns.
+    #[must_use]
+    pub const fn item(&self) -> &RunnerItem {
+        &self.item
+    }
+
+    /// Live leases currently held by this runner.
+    #[must_use]
+    pub const fn active_lease_count(&self) -> i64 {
+        self.active_lease_count
+    }
+
+    /// Distinct fleets represented by those live leases.
+    #[must_use]
+    pub const fn active_fleet_count(&self) -> i64 {
+        self.active_fleet_count
+    }
+
+    /// Leases acquired over the runner's lifetime.
+    #[must_use]
+    pub const fn leases_acquired(&self) -> i64 {
+        self.leases_acquired
+    }
+
+    /// Leases settled successfully over the runner's lifetime.
+    #[must_use]
+    pub const fn leases_succeeded(&self) -> i64 {
+        self.leases_succeeded
+    }
+
+    /// Leases settled unsuccessfully over the runner's lifetime.
+    #[must_use]
+    pub const fn leases_failed(&self) -> i64 {
+        self.leases_failed
+    }
+
+    /// Leases expired over the runner's lifetime.
+    #[must_use]
+    pub const fn leases_expired(&self) -> i64 {
+        self.leases_expired
+    }
+
+    /// Outstanding self-test request instant.
+    #[must_use]
+    pub const fn selftest_requested_at(&self) -> Option<i64> {
+        self.selftest_requested_at
+    }
+
+    /// Most recent self-test completion instant.
+    #[must_use]
+    pub const fn selftest_completed_at(&self) -> Option<i64> {
+        self.selftest_completed_at
+    }
+
+    /// Most recent complete self-test report.
+    #[must_use]
+    pub const fn selftest(&self) -> Option<&SelftestReport<'static>> {
+        self.selftest.as_ref()
+    }
 }
 
 /// A keyset page of append-only runner history.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RunnerEventPage {
     /// History rows in newest-first keyset order.
-    pub items: Vec<RunnerEventItem<'static>>,
+    items: Vec<RunnerEventItem<'static>>,
     /// Total history rows for this runner.
-    pub total: i64,
+    total: i64,
     /// Boundary for the next page, absent when this page is short.
-    pub next_cursor: Option<KeysetCursor>,
+    next_cursor: Option<KeysetCursor>,
+}
+
+impl RunnerEventPage {
+    /// History rows in newest-first keyset order.
+    #[must_use]
+    pub fn items(&self) -> &[RunnerEventItem<'static>] {
+        &self.items
+    }
+
+    /// Consumes the page and returns its history rows.
+    #[must_use]
+    pub fn into_items(self) -> Vec<RunnerEventItem<'static>> {
+        self.items
+    }
+
+    /// Total history rows for this runner.
+    #[must_use]
+    pub const fn total(&self) -> i64 {
+        self.total
+    }
+
+    /// Boundary for the next page.
+    #[must_use]
+    pub const fn next_cursor(&self) -> Option<&KeysetCursor> {
+        self.next_cursor.as_ref()
+    }
 }
 
 impl Runners {

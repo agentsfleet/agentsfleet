@@ -7,7 +7,7 @@ use crate::model::{ImportBody, SupportFile};
 
 const MAX_SOURCE_REF_LEN: usize = 512;
 const MAX_MARKDOWN_LEN: usize = 200 * 1024;
-const MAX_SUPPORT_FILES: usize = 32;
+pub(crate) const MAX_SUPPORT_FILES: usize = 32;
 const MAX_SUPPORT_PATH_LEN: usize = 160;
 const MAX_SUPPORT_FILE_LEN: usize = 64 * 1024;
 const MAX_SUPPORT_TOTAL_LEN: usize = 256 * 1024;
@@ -30,12 +30,23 @@ pub(crate) fn body(body: &ImportBody) -> Result<(), InvalidBundle> {
     if body.skill_markdown.len() > MAX_MARKDOWN_LEN {
         return Err(InvalidBundle::SkillTooLarge);
     }
+    if body.trigger_markdown.as_ref().is_some_and(Vec::is_empty) {
+        return Err(InvalidBundle::InvalidTrigger);
+    }
     if body
         .trigger_markdown
         .as_ref()
-        .is_some_and(|value| value.is_empty() || value.len() > MAX_MARKDOWN_LEN)
+        .is_some_and(|value| value.len() > MAX_MARKDOWN_LEN)
     {
         return Err(InvalidBundle::TriggerTooLarge);
+    }
+    if contains_credential(&body.skill_markdown)
+        || body
+            .trigger_markdown
+            .as_deref()
+            .is_some_and(contains_credential)
+    {
+        return Err(InvalidBundle::EmbeddedCredential);
     }
     support_files(&body.support_files)
 }
@@ -54,14 +65,19 @@ fn support_files(files: &[SupportFile]) -> Result<(), InvalidBundle> {
         if total > MAX_SUPPORT_TOTAL_LEN {
             return Err(InvalidBundle::SupportFilesTooLarge);
         }
-        if CREDENTIAL_MARKERS
-            .iter()
-            .any(|marker| contains(&file.content, marker))
-        {
+        if contains_credential(&file.content) {
             return Err(InvalidBundle::EmbeddedCredential);
         }
     }
     Ok(())
+}
+
+fn contains_credential(content: &[u8]) -> bool {
+    CREDENTIAL_MARKERS.iter().any(|marker| {
+        content
+            .windows(marker.len())
+            .any(|window| window == *marker)
+    })
 }
 
 fn validate_path(raw: &str) -> Result<(), InvalidBundle> {
@@ -78,10 +94,4 @@ fn validate_path(raw: &str) -> Result<(), InvalidBundle> {
     } else {
         Ok(())
     }
-}
-
-fn contains(haystack: &[u8], needle: &[u8]) -> bool {
-    haystack
-        .windows(needle.len())
-        .any(|window| window == needle)
 }

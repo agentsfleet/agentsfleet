@@ -85,8 +85,8 @@ pub(crate) async fn create<D: Services>(
     };
     match result {
         Ok(bundle) => {
-            tracing::debug!(
-                actor_id = identity.0.subject().as_str(),
+            tracing::info!(
+                actor_id = identity.subject(),
                 library_id = bundle.name,
                 event = "admin_library_imported",
             );

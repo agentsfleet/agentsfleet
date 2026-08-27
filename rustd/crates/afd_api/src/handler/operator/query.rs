@@ -158,13 +158,12 @@ fn event_types(raw: &str) -> Result<Vec<RunnerEventType>, &'static str> {
     if raw.is_empty() {
         return Err(DETAIL_BAD_EVENTS);
     }
-    let tokens = raw.split(',').collect::<Vec<_>>();
-    if tokens.len() > MAX_EVENT_TYPE_TOKENS || tokens.iter().any(|token| token.is_empty()) {
-        return Err(DETAIL_BAD_EVENTS);
-    }
-    tokens
-        .into_iter()
-        .map(|token| {
+    raw.split(',')
+        .enumerate()
+        .map(|(index, token)| {
+            if index >= MAX_EVENT_TYPE_TOKENS || token.is_empty() {
+                return Err(DETAIL_BAD_EVENTS);
+            }
             serde_json::from_value(serde_json::Value::String(token.to_owned()))
                 .map_err(|_invalid| DETAIL_BAD_EVENTS)
         })

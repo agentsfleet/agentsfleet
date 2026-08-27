@@ -52,7 +52,7 @@ fn fixture() -> ImportBody {
         source_ref: "agentsfleet/reviewer".into(),
         source_revision: Some("main".into()),
         skill_markdown: b"---\nname: reviewer\ndescription: Reviews code\nversion: 1.0.0\n---\nInstructions.\n".to_vec(),
-        trigger_markdown: Some(b"---\nname: reviewer\nx-agentsfleet:\n  credentials: [github]\n  tools: [http_request]\n  network:\n    allow: [api.github.com]\n---\n".to_vec()),
+        trigger_markdown: Some(b"---\nname: reviewer\nx-agentsfleet:\n  triggers:\n    - type: cron\n      schedule: '0 * * * *'\n  credentials: [github]\n  tools: [http_request]\n  network:\n    allow: [api.github.com]\n  budget:\n    daily_dollars: 1\n---\n".to_vec()),
         support_files: vec![SupportFile { path: "docs/guide.md".into(), content: b"guide".to_vec() }],
     }
 }
@@ -88,7 +88,7 @@ async fn test_library_import_parity() {
 }
 
 #[tokio::test]
-async fn test_library_import_failure_classes() {
+async fn source_failure_never_persists_partial_catalogue_state() {
     for failure in [
         SourceFailure::NotFound,
         SourceFailure::RateLimited,

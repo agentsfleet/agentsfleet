@@ -97,11 +97,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — Admin plane: libraries, platform keys, models
 
-`/v1/admin/fleet-libraries[/{id}]`, `/v1/admin/platform-keys[/{provider}]`, `/v1/admin/models[/{id}]` — platform-scope-gated CRUD. Platform keys live in the vault (caller-owned key names, M176 crypto); reveal semantics match the Zig daemon (metadata on list, never plaintext).
+`/v1/admin/fleet-libraries[/{id}]`, `/v1/admin/platform-keys[/{provider}]`, `/v1/admin/models[/{id}]` — platform-scope-gated CRUD. The platform-key route selects an existing vault-backed workspace as the provider source; it never accepts, stores, or returns raw key bytes.
 
 - **Dimension 1.1** — every admin route refuses tenant-scoped and `agt_t` principals with the documented code; platform scopes pass → Test `test_admin_scope_gates` — DONE
-- **Dimension 1.2** — platform-key store/rotate: vault-backed, list shows metadata only → Test `test_platform_key_vault_semantics` — DONE
-- **Dimension 1.3** — admin model + library CRUD shape parity on seeded data → Test `test_admin_crud_shape_parity` — DONE
+- **Dimension 1.2** — platform-key defaults reference vault metadata only → Test `platform_key_defaults_reference_vault_metadata_only` — DONE
+- **Dimension 1.3** — admin model + library wire shapes expose metadata only → Test `admin_catalogue_wire_shapes_are_metadata_only` — DONE
 - **Dimension 1.4** — every route + method in this spec's Interfaces inventory exists in the Route enum; extras and gaps both fail → Test `test_route_inventory_matches_interfaces` — DONE
 
 ### §2 — Bundle import and validation
@@ -117,14 +117,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 The importer pipeline (platform gallery + per-tenant onboarding) with the GitHub source behind a trait; rate-limit and failure classes preserved (ECL).
 
 - **Dimension 3.1** — import from a fixture GitHub source → catalogue rows parity vs the Zig importer → Test `test_library_import_parity` — DONE
-- **Dimension 3.2** — source failures (404, rate-limited, truncated download) → typed errors, no partial catalogue writes → Test `test_library_import_failure_classes` — DONE
+- **Dimension 3.2** — GitHub status classification plus source failures leave no partial catalogue writes → Tests `github_status_classifier_distinguishes_not_found_and_rate_limit` + `source_failure_never_persists_partial_catalogue_state` — DONE
 
 ### §4 — Operator plane: runners and streams
 
 `/v1/fleets/runners[/{runner_id}[/events|/leases]]` (list, detail, `PATCH` admin-state transitions), `/v1/fleets/streams` overview. Cordon/drain/revoke/rotate write `fleet.runners` + append `fleet.runner_events`; delivery to the runner is the M177 auth read — this milestone only writes state. Three-category status (admin_state + derived liveness + events) rendered as the Zig daemon does.
 
 - **Dimension 4.1** — admin-state transitions write the row + append the event; illegal transitions refused → Test `test_runner_admin_transitions` — DONE
-- **Dimension 4.2** — rotation swaps `token_hash`; old token 401s on next use (M177 read), new token works → Test `test_runner_rotation_takeover` — DONE
+- **Dimension 4.2** — rotation swaps `token_hash`; old token 401s on next use, new token works, and the event names the operator → Tests `test_runner_rotation_takeover` + `platform_operator_rotates_runner_token_once` — DONE
 - **Dimension 4.3** — runner list/detail/events with keyset pagination + derived-status parity → Test `test_runner_views_parity` — DONE
 - **Dimension 4.4** — streams overview shape parity on seeded fleets → Test `test_streams_overview_parity` — DONE
 
@@ -169,7 +169,7 @@ unchanged from the Zig daemon (content-hash keys shared with M177 serving).
 ## Invariants
 
 1. Bundle import never resolves or stores credential *values*; only names — enforced by `afd_library` taking no vault-read dependency + `test_bundle_preview_no_vault`.
-2. Platform-key plaintext never leaves the vault via admin routes — reveal-free response types; `test_platform_key_vault_semantics`.
+2. Platform-key plaintext never enters or leaves the admin-defaults routes — requests and responses carry only source-workspace/model metadata; `platform_key_defaults_reference_vault_metadata_only`.
 3. `fleet.runner_events` is append-only — no update/delete statements exist in the repository module; `test_runner_admin_transitions`.
 4. Admin-state delivery stays the M177 auth read — this milestone adds no push channel; enforced mechanically by rubric R5 (diff must stay inside Files Changed, which contains no delivery-channel surface).
 5. R2 keys are content hashes shared with the M177 serving path — single bucket-layout constant; `test_bundle_import_roundtrip`.
@@ -188,17 +188,17 @@ No product-analytics changes (operator surface; parity port).
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
 | 1.1 | integration (negative) | `test_admin_scope_gates` | tenant JWT / `agt_t` / missing scope → 403 UZ-AUTH-022; platform scope → 200 |
-| 1.2 | integration | `test_platform_key_vault_semantics` | store→rotate→list: vault rows correct, responses metadata-only |
-| 1.3 | e2e | `test_admin_crud_shape_parity` | seeded data → field-level parity vs Zig daemon |
+| 1.2 | unit + integration | `platform_key_defaults_reference_vault_metadata_only` + `model_and_platform_key_mutations_are_atomic` | statements carry only source-workspace/model metadata; live set/list/deactivate stays atomic |
+| 1.3 | unit | `admin_catalogue_wire_shapes_are_metadata_only` | serialized model/library responses omit source documents, support bytes, and key material |
 | 1.4 | unit | `test_route_inventory_matches_interfaces` | Interfaces inventory ⊆ Route enum with methods; extras/gaps named |
 | 2.1 | integration | `test_bundle_import_roundtrip` | import → metadata rows + R2 object; M177 route serves identical bytes |
 | 2.2 | integration (negative) | `test_bundle_import_rejects_hostile` | oversize / bad manifest / traversal / embedded secret → documented code each, zero writes |
 | 2.3 | integration | `test_bundle_preview_no_vault` | preview of a credential-requiring bundle → 0 vault reads recorded |
 | 3.1 | integration | `test_library_import_parity` | fixture source → catalogue rows equal Zig importer output |
-| 3.2 | integration (negative) | `test_library_import_failure_classes` | 404 / rate-limit / truncation → typed error each, no partial rows |
+| 3.2 | unit + integration (negative) | `github_status_classifier_distinguishes_not_found_and_rate_limit` + `source_failure_never_persists_partial_catalogue_state` | 404 / rate-limit classify distinctly; any source failure leaves no partial row |
 | 2.1 (FM) | integration (negative) | `test_bundle_import_r2_outage` | object store down mid-import → typed retryable 5xx; no partial snapshot; re-run succeeds |
 | 4.1 | integration (negative) | `test_runner_admin_transitions` | legal transitions write row+event; illegal → refused, no event |
-| 4.2 | integration | `test_runner_rotation_takeover` | rotate → old token 401 next call, new token 200 |
+| 4.2 | integration | `platform_operator_rotates_runner_token_once` | `runner:write` operator rotates → old token 401 next call, new token 200, event records actor |
 | 4.3 | integration | `test_runner_views_parity` | list/detail/events pagination + derived status parity |
 | 4.4 | integration | `test_streams_overview_parity` | seeded fleets → overview shape parity |
 
@@ -209,7 +209,7 @@ No product-analytics changes (operator surface; parity port).
 | R1 | Route inventory parity for the admin/operator groups (§1) | `cd rustd && cargo test test_route_inventory_matches_interfaces` | exit 0 | P0 | |
 | R2 | Integration subset green on the Rust daemon | `make test-integration` (admin/operator lane) | exit 0 | P0 | |
 | R3 | Trust boundary holds (§2) | `cd rustd && cargo test bundle` | exit 0 | P0 | |
-| R4 | Runner administration parity (§4) | `cd rustd && cargo test runner_admin` + `cargo test test_runner_rotation_takeover` | exit 0 | P0 | |
+| R4 | Runner administration parity (§4) | `make test-integration-rustd` | exit 0 incl. service and HTTP rotation tests | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |

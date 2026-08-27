@@ -78,12 +78,16 @@ pub(crate) async fn patch<D: Services>(
         .await
     {
         Ok(PatchLibrary::Updated(entry)) => {
-            tracing::debug!(
-                actor_id = identity.0.subject().as_str(),
+            tracing::info!(
+                actor_id = identity.subject(),
                 library_id = id,
                 event = "admin_library_updated",
             );
-            Json(item(&entry)).into_response()
+            (
+                [(header::ETAG, entry.etag().to_owned())],
+                Json(item(&entry)),
+            )
+                .into_response()
         }
         Ok(PatchLibrary::NotFound) => reject(error_code::CATALOG_NOT_FOUND, DETAIL_NOT_FOUND),
         Ok(PatchLibrary::PublishWithoutBundle) => ProblemResponse::conflict(
@@ -115,8 +119,8 @@ pub(crate) async fn delete<D: Services>(
     }
     match services.libraries().delete(&id).await {
         Ok(DeleteLibrary::Deleted) => {
-            tracing::debug!(
-                actor_id = identity.0.subject().as_str(),
+            tracing::info!(
+                actor_id = identity.subject(),
                 library_id = id,
                 event = "admin_library_deleted",
             );

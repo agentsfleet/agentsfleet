@@ -69,7 +69,7 @@ mod tests {
             source_ref: "unit".into(),
             source_revision: None,
             skill_markdown: b"---\nname: mailer\ndescription: Sends mail\nversion: 1.0.0\n---\n".to_vec(),
-            trigger_markdown: Some(b"---\nname: mailer\nx-agentsfleet:\n  credentials: [postmark]\n  tools: [http_request]\n---\n".to_vec()),
+            trigger_markdown: Some(b"---\nname: mailer\nx-agentsfleet:\n  triggers:\n    - type: cron\n      schedule: '0 * * * *'\n  credentials: [postmark]\n  tools: [http_request]\n  budget:\n    daily_dollars: 1\n---\n".to_vec()),
             support_files: Vec::new(),
         };
 

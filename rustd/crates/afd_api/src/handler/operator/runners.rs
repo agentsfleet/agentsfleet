@@ -31,11 +31,10 @@ pub(crate) async fn list<D: Services>(
         .await
     {
         Ok(rows) => Json(RunnersResponse {
-            items: rows.items.iter().map(item).collect(),
-            total: rows.total,
+            items: rows.items().iter().map(item).collect(),
+            total: rows.total(),
             next_cursor: rows
-                .next_cursor
-                .as_ref()
+                .next_cursor()
                 .map(|cursor| Cow::Owned(query::format(cursor))),
         })
         .into_response(),
@@ -63,32 +62,34 @@ pub(crate) async fn detail<D: Services>(
 
 fn item(row: &StoredItem) -> RunnerItem<'static> {
     RunnerItem {
-        id: Cow::Owned(row.id.to_string()),
-        host_id: Cow::Owned(row.host_id.clone()),
-        sandbox_tier: Cow::Owned(row.sandbox_tier.clone()),
-        admin_state: row.admin_state,
-        liveness: row.liveness,
-        labels: row.labels.iter().cloned().map(Cow::Owned).collect(),
-        last_seen_at: row.last_seen_at,
-        created_at: row.created_at,
-        assigned_policy: row.assigned_policy.clone(),
-        achievable: row.achievable.clone(),
-        degraded: row.degraded,
-        degraded_reason: row.degraded_reason.clone().map(Cow::Owned),
+        id: Cow::Owned(row.id().to_string()),
+        host_id: Cow::Owned(row.host_id().to_owned()),
+        sandbox_tier: Cow::Owned(row.sandbox_tier().to_owned()),
+        admin_state: row.admin_state(),
+        liveness: row.liveness(),
+        labels: row.labels().iter().cloned().map(Cow::Owned).collect(),
+        last_seen_at: row.last_seen_at(),
+        created_at: row.created_at(),
+        assigned_policy: row.assigned_policy().cloned(),
+        achievable: row.achievable().cloned(),
+        degraded: row.is_degraded(),
+        degraded_reason: row
+            .degraded_reason()
+            .map(|reason| Cow::Owned(reason.to_owned())),
     }
 }
 
 fn detail_payload(row: &StoredDetail) -> RunnerDetail<'static> {
     RunnerDetail {
-        item: item(&row.item),
-        active_lease_count: row.active_lease_count,
-        active_fleet_count: row.active_fleet_count,
-        leases_acquired: row.leases_acquired,
-        leases_succeeded: row.leases_succeeded,
-        leases_failed: row.leases_failed,
-        leases_expired: row.leases_expired,
-        selftest_requested_at: row.selftest_requested_at,
-        selftest_completed_at: row.selftest_completed_at,
-        selftest: row.selftest.clone(),
+        item: item(row.item()),
+        active_lease_count: row.active_lease_count(),
+        active_fleet_count: row.active_fleet_count(),
+        leases_acquired: row.leases_acquired(),
+        leases_succeeded: row.leases_succeeded(),
+        leases_failed: row.leases_failed(),
+        leases_expired: row.leases_expired(),
+        selftest_requested_at: row.selftest_requested_at(),
+        selftest_completed_at: row.selftest_completed_at(),
+        selftest: row.selftest().cloned(),
     }
 }

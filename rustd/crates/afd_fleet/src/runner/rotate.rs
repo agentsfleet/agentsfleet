@@ -24,7 +24,12 @@ impl Runners {
     /// # Errors
     /// Refuses a missing or revoked runner and reports entropy or datastore
     /// failures without exposing either credential.
-    pub async fn rotate_token(&self, runner: &Uuid7, now: UnixMillis) -> Result<Minted> {
+    pub async fn rotate_token(
+        &self,
+        runner: &Uuid7,
+        actor_id: &str,
+        now: UnixMillis,
+    ) -> Result<Minted> {
         let token = Minted::draw(self.entropy())?;
         let event_id = self.admin_event_id(now)?;
         let mut connection = self.pool().acquire().await?;
@@ -35,6 +40,8 @@ impl Runners {
             .bind(STATE_REVOKED)
             .bind(event_id.as_str())
             .bind(EVENT_TOKEN_ROTATED)
+            .bind(sql::meta::ACTOR_ID)
+            .bind(actor_id)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_ROTATE))?

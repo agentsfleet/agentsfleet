@@ -15,6 +15,12 @@ pub enum SourceFailure {
     InvalidReference,
     /// Archive entries violate traversal, link, count, or size limits.
     UnsafeArchive,
+    /// A redirect left GitHub's approved HTTPS hosts.
+    DisallowedRedirect,
+    /// Compressed, expanded, or single-entry bytes exceed their cap.
+    ArchiveTooLarge,
+    /// The archive contains more entries than the extractor will inspect.
+    TooManyFiles,
 }
 
 impl core::fmt::Display for SourceFailure {
@@ -25,6 +31,9 @@ impl core::fmt::Display for SourceFailure {
             Self::Truncated => "download was truncated",
             Self::InvalidReference => "repository reference is invalid",
             Self::UnsafeArchive => "source archive is unsafe",
+            Self::DisallowedRedirect => "source redirect is not allowed",
+            Self::ArchiveTooLarge => "source archive exceeds its size cap",
+            Self::TooManyFiles => "source archive exceeds its file-count cap",
         })
     }
 }
@@ -64,8 +73,26 @@ where
             event = "library_source_import_started",
             source_ref = reference
         );
-        let body = self.source.fetch(reference).await?;
-        self.imports.import(&body).await
+        let result = async {
+            let body = self.source.fetch(reference).await?;
+            self.imports.import(&body).await
+        }
+        .await;
+        match &result {
+            Ok(bundle) => tracing::info!(
+                event = "library_source_import_completed",
+                source_ref = reference,
+                bundle_name = %bundle.name,
+                content_hash = %bundle.content_hash
+            ),
+            Err(error) => tracing::warn!(
+                event = "library_source_import_failed",
+                source_ref = reference,
+                error_code = %error.code(),
+                error = %error
+            ),
+        }
+        result
     }
 }
 

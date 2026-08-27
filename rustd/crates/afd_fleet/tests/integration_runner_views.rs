@@ -28,6 +28,8 @@ use afd_wire::runner::{
 use self::requests::{ENROLLED_AT, capable, enrolment};
 use self::support::Fixtures;
 
+const ACTOR: &str = "fixture:platform-operator";
+
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_runner_views_parity() {
@@ -194,13 +196,14 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) {
         .transition(
             live_runner,
             RunnerAdminAction::Cordon,
+            ACTOR,
             UnixMillis::from_millis(ENROLLED_AT + 2),
         )
         .await
         .expect("the runner is cordoned");
     let _rotated = fixtures
         .runners()
-        .rotate_token(live_runner, UnixMillis::from_millis(ENROLLED_AT + 3))
+        .rotate_token(live_runner, ACTOR, UnixMillis::from_millis(ENROLLED_AT + 3))
         .await
         .expect("the token rotates");
 }
@@ -231,31 +234,31 @@ async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
         .expect("the first page loads");
     let second = fixtures
         .runners()
-        .list_runners(first.next_cursor.as_ref(), limit, now)
+        .list_runners(first.next_cursor(), limit, now)
         .await
         .expect("the second page loads");
-    assert_eq!((first.total, second.total), (3, 3));
-    assert!(second.next_cursor.is_none());
+    assert_eq!((first.total(), second.total()), (3, 3));
+    assert!(second.next_cursor().is_none());
     let items = first
-        .items
+        .into_items()
         .into_iter()
-        .chain(second.items)
+        .chain(second.into_items())
         .collect::<Vec<_>>();
     let ids = items
         .iter()
-        .map(|item| item.id.as_str().to_owned())
+        .map(|item| item.id().as_str().to_owned())
         .collect::<Vec<_>>();
     assert_eq!(
         ids, seeded.ordered_ids,
         "the composite cursor skips no ties"
     );
     for item in items {
-        let expected = if item.id == seeded.live_runner {
+        let expected = if item.id() == &seeded.live_runner {
             RunnerLiveness::Online
         } else {
             RunnerLiveness::Registered
         };
-        assert_eq!(item.liveness, expected);
+        assert_eq!(item.liveness(), expected);
     }
 }
 
@@ -266,19 +269,19 @@ async fn assert_runner_detail(fixtures: &Fixtures, runner: &Uuid7) {
         .await
         .expect("the detail loads");
     assert_eq!(
-        detail.item.admin_state,
+        detail.item().admin_state(),
         afd_wire::admin::AdminState::Cordoned
     );
-    assert_eq!(detail.item.liveness, RunnerLiveness::Online);
-    assert_eq!(detail.active_lease_count, 0);
-    assert_eq!(detail.active_fleet_count, 0);
-    assert_eq!(detail.leases_acquired, 0);
-    assert_eq!(detail.leases_succeeded, 0);
-    assert_eq!(detail.leases_failed, 0);
-    assert_eq!(detail.leases_expired, 0);
-    assert!(detail.item.assigned_policy.is_some());
-    assert!(detail.item.achievable.is_some());
-    let selftest = detail.selftest.expect("the stored self-test decodes");
+    assert_eq!(detail.item().liveness(), RunnerLiveness::Online);
+    assert_eq!(detail.active_lease_count(), 0);
+    assert_eq!(detail.active_fleet_count(), 0);
+    assert_eq!(detail.leases_acquired(), 0);
+    assert_eq!(detail.leases_succeeded(), 0);
+    assert_eq!(detail.leases_failed(), 0);
+    assert_eq!(detail.leases_expired(), 0);
+    assert!(detail.item().assigned_policy().is_some());
+    assert!(detail.item().achievable().is_some());
+    let selftest = detail.selftest().expect("the stored self-test decodes");
     assert!(selftest.all_ok);
     assert_eq!(selftest.checks.len(), 1);
     assert_eq!(selftest.sandbox_tier, "dev_none");
@@ -294,21 +297,21 @@ async fn assert_event_pages(fixtures: &Fixtures, runner: &Uuid7) {
         .expect("the first event page loads");
     let second = fixtures
         .runners()
-        .runner_events(runner, &unfiltered, first.next_cursor.as_ref(), limit)
+        .runner_events(runner, &unfiltered, first.next_cursor(), limit)
         .await
         .expect("the second event page loads");
     let third = fixtures
         .runners()
-        .runner_events(runner, &unfiltered, second.next_cursor.as_ref(), limit)
+        .runner_events(runner, &unfiltered, second.next_cursor(), limit)
         .await
         .expect("the terminal event page loads");
-    assert_eq!((first.total, second.total, third.total), (4, 4, 4));
-    assert!(third.items.is_empty());
-    assert!(third.next_cursor.is_none());
+    assert_eq!((first.total(), second.total(), third.total()), (4, 4, 4));
+    assert!(third.items().is_empty());
+    assert!(third.next_cursor().is_none());
     let event_types = first
-        .items
+        .into_items()
         .into_iter()
-        .chain(second.items)
+        .chain(second.into_items())
         .map(|event| event.event_type)
         .collect::<Vec<_>>();
     assert_eq!(
@@ -335,9 +338,9 @@ async fn assert_event_pages(fixtures: &Fixtures, runner: &Uuid7) {
         .runner_events(runner, &filtered, None, PageLimit::default())
         .await
         .expect("the filtered page loads");
-    assert_eq!(page.total, 2);
+    assert_eq!(page.total(), 2);
     assert_eq!(
-        page.items
+        page.items()
             .iter()
             .map(|event| event.event_type)
             .collect::<Vec<_>>(),

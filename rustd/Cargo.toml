@@ -93,6 +93,9 @@ clap = { version = "4.6.6", default-features = false, features = ["std", "derive
 aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc"] }
 hmac = { version = "0.13.0", default-features = false }
 sha2 = { version = "0.11.0", default-features = false }
+# RFC entity-tag and conditional-request parsing. The grammar includes quoted
+# commas and strong/weak comparison rules that should not be reimplemented.
+headers = { version = "0.4.1", default-features = false }
 # Lower-case hex, for the credential digests and minted token bodies every
 # stored class is built from. Already in the lock via sqlx; taken directly
 # because a hand-written `write!("{:02x}")` loop is a place for a leading zero
@@ -132,7 +135,7 @@ getrandom = { version = "0.4.3", default-features = false }
 # than a new dependency.
 url = { version = "2.5.8", default-features = false }
 
-uuid = { version = "1.25.0", default-features = false, features = ["v7", "std"] }
+uuid = { version = "1.26.0", default-features = false, features = ["v7", "std"] }
 
 # Civil-calendar arithmetic, for the monthly budget window.
 #

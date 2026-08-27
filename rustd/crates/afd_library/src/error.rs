@@ -3,6 +3,7 @@
 use afd_core::error_code::{
     CATALOG_ID_COLLISION, ErrorCode, FLEET_BUNDLE_FETCH_FAILED, FLEET_BUNDLE_INVALID,
     FLEET_BUNDLE_STORAGE_UNAVAILABLE, INTERNAL_DB_QUERY, INTERNAL_DB_UNAVAILABLE,
+    PAYLOAD_TOO_LARGE,
 };
 
 use crate::source::SourceFailure;
@@ -55,7 +56,7 @@ impl core::fmt::Display for InvalidBundle {
             Self::UnsafeSupportPath => "support-file path is unsafe",
             Self::SupportFileTooLarge => "a support file exceeds 64 KiB",
             Self::SupportFilesTooLarge => "support files exceed 256 KiB in total",
-            Self::EmbeddedCredential => "support file contains credential material",
+            Self::EmbeddedCredential => "bundle document contains credential material",
             Self::RequirementsTooLarge => "declared requirements exceed their bounds",
         })
     }
@@ -85,6 +86,9 @@ pub enum Error {
         #[source]
         source: serde_yaml_ng::Error,
     },
+    /// Trigger frontmatter has valid YAML but violates the runtime schema.
+    #[error("invalid Fleet Bundle: TRIGGER.md runtime configuration is invalid")]
+    TriggerConfig(#[source] afd_fleet_runtime::Error),
     /// Immutable snapshot storage did not accept a write.
     #[error("Fleet Bundle snapshot storage failed")]
     Storage(#[source] object_store::Error),
@@ -115,6 +119,9 @@ pub enum Error {
     /// A downloaded source archive could not be decoded completely.
     #[error("Fleet Bundle archive is corrupt or truncated")]
     Archive(#[source] std::io::Error),
+    /// The runtime could not complete archive extraction on its blocking pool.
+    #[error("Fleet Bundle archive extraction task failed")]
+    ArchiveTask(#[source] tokio::task::JoinError),
     /// A GitHub redirect is not a valid URL.
     #[error("Fleet Bundle source returned an invalid redirect")]
     Redirect(#[source] url::ParseError),
@@ -137,18 +144,34 @@ impl Error {
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         match self {
-            Self::Invalid(_) | Self::FrontmatterUtf8 { .. } | Self::FrontmatterYaml { .. } => {
-                FLEET_BUNDLE_INVALID
+            Self::Invalid(
+                InvalidBundle::SkillTooLarge
+                | InvalidBundle::TriggerTooLarge
+                | InvalidBundle::TooManySupportFiles
+                | InvalidBundle::SupportFileTooLarge
+                | InvalidBundle::SupportFilesTooLarge
+                | InvalidBundle::RequirementsTooLarge,
+            )
+            | Self::Source(SourceFailure::ArchiveTooLarge | SourceFailure::TooManyFiles) => {
+                PAYLOAD_TOO_LARGE
             }
+            Self::Invalid(_)
+            | Self::FrontmatterUtf8 { .. }
+            | Self::FrontmatterYaml { .. }
+            | Self::TriggerConfig(_) => FLEET_BUNDLE_INVALID,
             Self::Storage(_) | Self::StorageUnavailable | Self::Snapshot(_) => {
                 FLEET_BUNDLE_STORAGE_UNAVAILABLE
             }
             Self::CatalogIdCollision { .. } => CATALOG_ID_COLLISION,
             Self::Pool(_) => INTERNAL_DB_UNAVAILABLE,
             Self::CatalogueJson(_) | Self::Database { .. } => INTERNAL_DB_QUERY,
+            Self::Source(SourceFailure::InvalidReference | SourceFailure::UnsafeArchive) => {
+                FLEET_BUNDLE_INVALID
+            }
             Self::Source(_)
             | Self::Github(_)
             | Self::Archive(_)
+            | Self::ArchiveTask(_)
             | Self::Redirect(_)
             | Self::ArchivePath(_) => FLEET_BUNDLE_FETCH_FAILED,
         }
@@ -174,12 +197,28 @@ impl Error {
         match self {
             Self::Pool(_) => "Database unavailable",
             Self::CatalogueJson(_) | Self::Database { .. } => "Database error",
-            Self::Invalid(_) | Self::FrontmatterUtf8 { .. } | Self::FrontmatterYaml { .. } => {
+            Self::Invalid(
+                InvalidBundle::SkillTooLarge
+                | InvalidBundle::TriggerTooLarge
+                | InvalidBundle::TooManySupportFiles
+                | InvalidBundle::SupportFileTooLarge
+                | InvalidBundle::SupportFilesTooLarge
+                | InvalidBundle::RequirementsTooLarge,
+            )
+            | Self::Source(SourceFailure::ArchiveTooLarge | SourceFailure::TooManyFiles) => {
+                "Fleet Bundle exceeds a configured size cap"
+            }
+            Self::Invalid(_)
+            | Self::FrontmatterUtf8 { .. }
+            | Self::FrontmatterYaml { .. }
+            | Self::TriggerConfig(_)
+            | Self::Source(SourceFailure::InvalidReference | SourceFailure::UnsafeArchive) => {
                 "Fleet Bundle is invalid"
             }
             Self::Source(_)
             | Self::Github(_)
             | Self::Archive(_)
+            | Self::ArchiveTask(_)
             | Self::Redirect(_)
             | Self::ArchivePath(_) => "Fleet Bundle fetch failed",
             Self::Storage(_) | Self::StorageUnavailable | Self::Snapshot(_) => {

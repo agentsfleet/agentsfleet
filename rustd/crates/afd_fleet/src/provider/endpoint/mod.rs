@@ -146,8 +146,8 @@ pub(super) fn resolve<'a>(
 /// signature: a borrow would have implied the bytes are the caller's.
 ///
 /// # Errors
-/// Refuses a URL that does not parse, a non-`https` scheme, an authority with
-/// no host, and a host that is an SSRF-unsafe address.
+/// Refuses a URL that does not parse, a non-`https` scheme, userinfo, an
+/// authority with no host, and a host that is an SSRF-unsafe address.
 mod url;
 
 pub(crate) use self::url::validate;

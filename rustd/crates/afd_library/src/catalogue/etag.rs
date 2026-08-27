@@ -1,5 +1,6 @@
 //! Strong entity tags over one ordered editable surface.
 
+use headers::{ETag, Header as _, IfMatch};
 use sha2::{Digest as _, Sha256};
 
 const FIELD_NULL: u8 = 0;
@@ -21,12 +22,15 @@ pub(super) fn compute(fields: &[Option<&str>]) -> String {
 }
 
 pub(super) fn matches_if_match(raw: &str, current: &str) -> bool {
-    let value = raw.trim_matches([' ', '\t']);
-    value == "*"
-        || value.split(',').any(|candidate| {
-            let candidate = candidate.trim_matches([' ', '\t']);
-            !candidate.starts_with("W/") && candidate == current
-        })
+    let Ok(value) = raw.parse() else {
+        return false;
+    };
+    let Ok(condition) = IfMatch::decode(&mut core::iter::once(&value)) else {
+        return false;
+    };
+    current
+        .parse::<ETag>()
+        .is_ok_and(|etag| condition.precondition_passes(&etag))
 }
 
 #[cfg(test)]

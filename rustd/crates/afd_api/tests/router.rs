@@ -14,7 +14,7 @@
 
 mod harness;
 
-use afd_api::route::{OpsRoute, Route, RunnerOpsRoute, RunnerRoute};
+use afd_api::route::{OpsRoute, Route, RunnerRoute, TenantRoute};
 use afd_api::router::{ReadyInputs, ready_decision};
 use axum::response::Response;
 use http::{Method, StatusCode};
@@ -171,16 +171,13 @@ fn test_ready_decision_needs_every_dependency() {
 
 /// Exactly the ported routes are mounted; every other tabled one answers 404.
 ///
-/// The route table carries all eighty-one endpoints, and this binary serves
-/// thirteen: the two probes, the runner's self read and heartbeat, the enrolment
-/// that mints the credential those two are held by, the lease verb they exist
-/// to reach, the report and renew that close a lease out, the activity forward
-/// that runs alongside them, the memory hydrate and capture that bracket the
-/// run, the bundle fetch that gives it its support files, and the credential
-/// mint that gets it a provider key. That gap is the
-/// thing a reader is most likely to misread, so it is asserted rather than
-/// described — and it fails the day a route is mounted without being listed
-/// here, which is the only way an unfinished surface goes live by accident.
+/// The route table carries all eighty-one endpoint identities, and this binary
+/// serves twenty-six: two probes, ten runner-self routes, all seven operator
+/// runner routes, all six platform-administration routes, and the public Fleet
+/// Bundle gallery. That gap is the thing a reader is most likely to misread, so
+/// it is asserted rather than described — and it fails the day a route is
+/// mounted without being listed here, which is the only way an unfinished
+/// surface goes live by accident.
 ///
 /// Renew, activity, both memory verbs and the bundle fetch are in the matcher
 /// below but are never REQUESTED by this loop: their templates carry a path
@@ -218,7 +215,9 @@ async fn test_only_the_ported_routes_are_mounted() {
                         | RunnerRoute::Bundle
                         | RunnerRoute::CredentialsMint
                 )
-                | Route::RunnerOps(RunnerOpsRoute::Register)
+                | Route::RunnerOps(_)
+                | Route::Admin(_)
+                | Route::Tenant(TenantRoute::FleetBundles)
         );
 
         if mounted {

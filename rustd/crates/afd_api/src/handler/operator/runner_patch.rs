@@ -3,12 +3,16 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_wire::admin::{RunnerAdminAction, RunnerAdminPatchRequest, RunnerAdminPatchResponse};
+use afd_wire::admin::{
+    RunnerAdminAction, RunnerAdminPatchRequest, RunnerAdminPatchResponse,
+    RunnerTokenRotatedResponse,
+};
 use afd_wire::runner::AssignedPolicy;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
+use http::header;
 
 use super::query;
 use crate::auth::PersonIdentity;
@@ -16,10 +20,11 @@ use crate::handler::{malformed, refuse};
 use crate::services::Services;
 
 const EVENT: &str = "runner_patch_failed";
-const DETAIL_PATCH_BODY: &str = "PATCH body must be exactly one of {\"action\":\"cordon|drain|revoke|self_test\"} or {\"assigned_policy\":{sandbox_tier, network_policy, registry_allowlist[], worker_count, extra_binds[]}}";
+const DETAIL_PATCH_BODY: &str = "PATCH body must be exactly one of {\"action\":\"cordon|drain|revoke|rotate|self_test\"} or {\"assigned_policy\":{sandbox_tier, network_policy, registry_allowlist[], worker_count, extra_binds[]}}";
 
 enum Mutation<'a> {
     Transition(RunnerAdminAction),
+    Rotate,
     Selftest,
     Policy(&'a AssignedPolicy<'a>),
 }
@@ -44,9 +49,33 @@ pub(crate) async fn handle<D: Services>(
     };
 
     let result = match mutation {
+        Mutation::Rotate => {
+            return match services
+                .runners()
+                .rotate_token(&runner, identity.subject(), services.now())
+                .await
+            {
+                Ok(rotated) => {
+                    tracing::info!(
+                        actor_id = identity.subject(),
+                        runner_id = runner.as_str(),
+                        event = "runner_token_rotated",
+                    );
+                    (
+                        [(header::CACHE_CONTROL, "no-store")],
+                        Json(RunnerTokenRotatedResponse {
+                            id: Cow::Borrowed(runner.as_str()),
+                            runner_token: Cow::Borrowed(rotated.expose()),
+                        }),
+                    )
+                        .into_response()
+                }
+                Err(error) => refuse_rotation(&error, &identity, &runner),
+            };
+        }
         Mutation::Transition(action) => services
             .runners()
-            .transition(&runner, action, services.now())
+            .transition(&runner, action, identity.subject(), services.now())
             .await
             .map(|admin_state| RunnerAdminPatchResponse {
                 id: Cow::Borrowed(runner.as_str()),
@@ -82,8 +111,8 @@ pub(crate) async fn handle<D: Services>(
 
     match result {
         Ok(payload) => {
-            tracing::debug!(
-                actor_id = identity.0.subject().as_str(),
+            tracing::info!(
+                actor_id = identity.subject(),
                 runner_id = runner.as_str(),
                 event = "runner_patched",
             );
@@ -91,7 +120,7 @@ pub(crate) async fn handle<D: Services>(
         }
         Err(error) => {
             tracing::debug!(
-                actor_id = identity.0.subject().as_str(),
+                actor_id = identity.subject(),
                 runner_id = runner.as_str(),
                 error_code = error.code().as_str(),
                 event = EVENT,
@@ -104,10 +133,25 @@ pub(crate) async fn handle<D: Services>(
 fn mutation<'a>(request: &'a RunnerAdminPatchRequest<'a>) -> Option<Mutation<'a>> {
     match (request.action, request.assigned_policy.as_ref()) {
         (Some(RunnerAdminAction::SelfTest), None) => Some(Mutation::Selftest),
+        (Some(RunnerAdminAction::Rotate), None) => Some(Mutation::Rotate),
         (Some(action), None) => Some(Mutation::Transition(action)),
         (None, Some(policy)) => Some(Mutation::Policy(policy)),
         (None, None) | (Some(_), Some(_)) => None,
     }
+}
+
+fn refuse_rotation(
+    error: &afd_fleet::Error,
+    identity: &PersonIdentity,
+    runner: &afd_core::id::Uuid7,
+) -> Response {
+    tracing::debug!(
+        actor_id = identity.subject(),
+        runner_id = runner.as_str(),
+        error_code = error.code().as_str(),
+        event = EVENT,
+    );
+    refuse(error, EVENT)
 }
 
 #[cfg(test)]

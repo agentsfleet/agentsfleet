@@ -217,7 +217,7 @@ mod tests {
     use super::{DEACTIVATE_OTHERS, LIST, UPSERT};
 
     #[test]
-    fn test_platform_key_vault_semantics() {
+    fn platform_key_defaults_reference_vault_metadata_only() {
         for statement in [LIST, UPSERT, DEACTIVATE_OTHERS] {
             assert!(!statement.contains("api_key"));
             assert!(!statement.contains("ciphertext"));
