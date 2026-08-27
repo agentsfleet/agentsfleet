@@ -112,574 +112,62 @@ impl Problem {
     }
 }
 
-/// Reused title, so two entries cannot drift apart in their spelling.
-const TITLE_REQUEST_FAILED: &str = "Request failed";
+mod auth;
+mod fleet;
+mod integration;
+mod request;
+
+/// The families, in `REGISTRY` order — which is the order [`ENTRIES`] takes.
+///
+/// Split the same way [`crate::error_code`] is, so a code and the entry
+/// describing it live in comparable files. `test_entries_match_the_zig_registry`
+/// walks both against the Zig table, and a family that had drifted out of order
+/// would fail there rather than in a reader's memory.
+const FAMILIES: [&[Problem]; 4] = [
+    self::request::REQUEST,
+    self::auth::AUTH,
+    self::fleet::FLEET,
+    self::integration::INTEGRATION,
+];
+
+/// How many entries the families hold between them.
+const TOTAL: usize = FAMILIES[0].len() + FAMILIES[1].len() + FAMILIES[2].len() + FAMILIES[3].len();
 
 /// One entry per code this workspace declares, in `REGISTRY` order.
 ///
-/// Every string is byte-identical to the Zig entry it mirrors, and
+/// Flattened from [`FAMILIES`] at compile time rather than written out once
+/// more: a table assembled from its parts cannot disagree with them, and
+/// `Problem` is `Copy`, so the assembly costs nothing at run time. Every string
+/// is byte-identical to the Zig entry it mirrors, and
 /// `test_entries_match_the_zig_registry` reads that file and fails if either
-/// side moves — the same device the code list itself is held to.
-const ENTRIES: &[Problem] = &[
-    Problem {
-        code: error_code::UUIDV7_INVALID_ID_SHAPE,
-        status: 400,
-        title: "Invalid identifier shape",
-        hint: "The identifier is not a valid version 7 universally unique identifier (UUID).",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::INVALID_REQUEST,
-        status: 400,
-        title: "Invalid request",
-        hint: "The request body or parameters are invalid. Check the API documentation.",
-        user_message: Some(
-            "That request wasn't valid. Double-check the values you entered and try again.",
-        ),
-    },
-    Problem {
-        code: error_code::VAULT_DATA_INVALID,
-        status: 400,
-        title: "Secret data must be a non-empty JSON object",
-        hint: "The body's 'data' field must be a JSON object with at least one key. Strings, arrays, scalars, and `{}` are rejected.",
-        user_message: Some(
-            "That secret needs at least one field. Enter it as a JSON object with one or more keys — not a bare string or list.",
-        ),
-    },
-    Problem {
-        code: error_code::WORKSPACE_NAME_EXISTS,
-        status: 409,
-        title: "Workspace name already exists",
-        hint: "A workspace in this tenant already uses that name. Check the refreshed list or choose another name.",
-        user_message: Some(
-            "A workspace with that name already exists. Check the refreshed list or choose another name.",
-        ),
-    },
-    Problem {
-        code: error_code::LIBRARY_CURSOR_MALFORMED,
-        status: 400,
-        title: "Pagination cursor is malformed",
-        hint: "`starting_after` is not a cursor this endpoint issued. Send back the previous page's `next_cursor` verbatim; never compose one.",
-        user_message: Some(
-            "That page link is no longer valid. Go back to the first page and try again.",
-        ),
-    },
-    Problem {
-        code: error_code::LIBRARY_CURSOR_MISMATCH,
-        status: 400,
-        title: "Pagination cursor does not match this request",
-        hint: "The cursor belongs to a different query: its tenant, workspace, filters, or limit differ. After changing filters, start from the first page.",
-        user_message: Some(
-            "The filters changed since that page was loaded. Start again from the first page.",
-        ),
-    },
-    Problem {
-        code: error_code::LIBRARY_INPUT_OUT_OF_BOUNDS,
-        status: 400,
-        title: "Pagination or filter input out of bounds",
-        hint: "`limit` must be 1 to 100, and a filter value at most 128 bytes. Use a smaller page or a shorter value.",
-        user_message: Some(
-            "That request asked for too much at once. Try a smaller page size or a shorter filter.",
-        ),
-    },
-    Problem {
-        code: error_code::LIBRARY_DB_UNAVAILABLE,
-        status: 503,
-        title: "Data service temporarily unavailable",
-        hint: "The database query failed transiently. Retrying is safe.",
-        user_message: Some("We couldn't reach the database. Try again shortly."),
-    },
-    Problem {
-        code: error_code::INTERNAL_OPERATION_FAILED,
-        status: 500,
-        title: TITLE_REQUEST_FAILED,
-        hint: "An internal operation failed. Check the err= field. If it continues, run 'agentsfleetd doctor'.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::INTERNAL_DB_UNAVAILABLE,
-        status: 503,
-        title: "Service unavailable",
-        hint: "Check that DATABASE_URL is set and the database server is reachable. Run 'agentsfleetd doctor' to verify.",
-        user_message: Some("A required service is unavailable. Try again shortly."),
-    },
-    Problem {
-        code: error_code::INTERNAL_DB_QUERY,
-        status: 500,
-        title: TITLE_REQUEST_FAILED,
-        hint: "A database query failed. Check the err= field and database logs.",
-        user_message: Some("We couldn't finish that request. Try again shortly."),
-    },
-    Problem {
-        code: error_code::STARTUP_MIGRATION_CHECK,
-        status: 500,
-        title: "Stored data is not ready",
-        hint: "Database migration state could not be verified. Check database connectivity.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::STARTUP_REDIS_CONNECT,
-        status: 500,
-        title: "Event service unavailable",
-        hint: "Redis is unreachable. Check that REDIS_URL_API is set and the Redis server accepts connections. Run 'agentsfleetd doctor' to verify.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::AUTH_INSUFFICIENT_SCOPE,
-        status: 403,
-        title: "Insufficient scope",
-        hint: "Your token lacks a required scope. The error detail names it; see the [Scopes](/api-reference/scopes) reference.",
-        user_message: Some(
-            "You need an additional scope for that. Ask an agentsfleet admin to grant the scope this action requires.",
-        ),
-    },
-    Problem {
-        code: error_code::AUTH_UNAUTHORIZED,
-        status: 401,
-        title: "Unauthorized",
-        hint: "Authentication required. Provide a valid Bearer token.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::AUTH_TOKEN_EXPIRED,
-        status: 401,
-        title: "Token expired",
-        hint: "Your authentication token has expired. Re-authenticate.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::AUTH_FORBIDDEN,
-        status: 403,
-        title: "Forbidden",
-        hint: "Access denied. Check that your API key has the required role.",
-        user_message: Some(
-            "You need operator access for that. Ask a tenant operator or admin to manage API keys.",
-        ),
-    },
-    Problem {
-        code: error_code::SESSION_NOT_FOUND,
-        status: 404,
-        title: "Session not found",
-        hint: "Session was not found. It may have expired or been invalidated.",
-        // The whole device-flow family renders in a terminal rather than in
-        // the dashboard, so none of these carries a sentence written for a
-        // person — the Zig entries say the same in their reachability notes.
-        user_message: None,
-    },
-    Problem {
-        code: error_code::SESSION_EXPIRED,
-        status: 401,
-        title: "Session expired",
-        hint: "Your session has expired. Please sign in again.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::VERIFICATION_FAILED,
-        status: 400,
-        title: "Verification code did not match",
-        hint: "The 6-digit code does not match the one shown in your browser. Re-enter it and try again.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::SESSION_CONSUMED,
-        status: 410,
-        title: "Login session already consumed",
-        hint: "This login session has already been consumed. Start over with `agentsfleet login`.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::SESSION_ABORTED,
-        status: 410,
-        title: "Login session aborted",
-        hint: "This login session was aborted: too many wrong codes, a cancel, or a newer session. Start over with `agentsfleet login`.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::SESSION_NOT_APPROVED,
-        status: 409,
-        title: "Login session not approved",
-        hint: "This login session is not approved yet. Approve it in your browser, then submit the code.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::SESSION_ALREADY_APPROVED,
-        status: 409,
-        title: "Login session already approved",
-        hint: "This login session has already been approved. Do not call /approve a second time.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::INVALID_PUBLIC_KEY,
-        status: 400,
-        title: "Invalid command-line public key",
-        hint: "The supplied public_key is malformed. Expect base64url-encoded P-256 SubjectPublicKeyInfo.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::INVALID_TOKEN_NAME,
-        status: 400,
-        title: "Invalid token name",
-        hint: "token_name must contain 1 to 64 characters from space through tilde.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::INVALID_VERIFICATION_CODE,
-        status: 400,
-        title: "Invalid verification code shape",
-        hint: "verification_code must contain exactly 6 decimal digits.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::INVALID_CIPHERTEXT,
-        status: 400,
-        title: "Invalid ciphertext",
-        hint: "ciphertext is missing or empty. Expect a base64url-encoded AES-256-GCM output.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::INVALID_NONCE,
-        status: 400,
-        title: "Invalid nonce",
-        hint: "nonce is missing, empty, or the wrong length. Expect a base64url-encoded 12-byte value.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::AUTH_UNAVAILABLE,
-        status: 503,
-        title: "Authentication service unavailable",
-        hint: "Authentication service is temporarily unavailable. Retry shortly.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::AUTH_CLI_CREDENTIAL_REVOKED,
-        status: 401,
-        title: "Command-line credential revoked",
-        hint: "This credential was revoked by a logout or by a newer login from this machine. Run `agentsfleet login` to get a new one.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::AUTH_CLI_CREDENTIAL_NOT_FOUND,
-        status: 404,
-        title: "Command-line credential not found",
-        hint: "You have no live credential with that identifier. It may be revoked, or it may not be yours.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::APIKEY_REVOKED,
-        status: 401,
-        title: "API key has been revoked",
-        hint: "This key was revoked and can no longer authenticate. Mint a replacement with: POST /v1/api-keys",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::APIKEY_NOT_FOUND,
-        status: 404,
-        title: "API key not found",
-        hint: "No API key matches the supplied id for this tenant. Verify the id with: GET /v1/api-keys",
-        user_message: Some(
-            "We couldn't find that API key. It may have already been deleted — refresh the list.",
-        ),
-    },
-    Problem {
-        code: error_code::APIKEY_NAME_TAKEN,
-        status: 409,
-        title: "Key name already exists in this tenant",
-        hint: "key_name must be unique per tenant. Pick a different name or revoke the existing key first.",
-        user_message: Some(
-            "An API key with that name already exists. Pick a different name for this tenant.",
-        ),
-    },
-    Problem {
-        code: error_code::APIKEY_ALREADY_REVOKED,
-        status: 409,
-        title: "API key is already revoked",
-        hint: "This key is already revoked. No further action is required.",
-        user_message: Some(
-            "That API key is already revoked. Refresh the list to see its current state.",
-        ),
-    },
-    Problem {
-        code: error_code::APIKEY_READONLY_FIELD,
-        status: 409,
-        title: "active cannot be set to true; mint a new key instead",
-        hint: "Re-activation is not supported. Create a new key via POST /v1/api-keys and revoke the old one.",
-        user_message: Some("A revoked key can't be reactivated. Mint a new key instead."),
-    },
-    Problem {
-        code: error_code::APIKEY_MUST_REVOKE_FIRST,
-        status: 409,
-        title: "Active API key must be revoked before deletion",
-        hint: "Revoke the key first with `PATCH /v1/api-keys/{id}` body `{\"active\": false}`, then retry DELETE.",
-        user_message: Some("This key is still active. Revoke it first, then delete it."),
-    },
-    Problem {
-        code: error_code::RUN_INVALID_RUNNER_TOKEN,
-        status: 401,
-        title: "Invalid runner token",
-        hint: "The Bearer runner_token is missing, malformed, or not recognized. Re-register the runner.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::RUN_STALE_FENCING_TOKEN,
-        // 409, matching the Zig entry's `.conflict`. The word is exact: two
-        // runners each hold a lease they believe is live, and the fence is what
-        // settles which one is. Not a 403 — nothing about the credential is
-        // wrong — and not a 410, because the resource is very much still there,
-        // owned by somebody else.
-        status: 409,
-        title: "Stale fencing token",
-        hint: "The lease was reclaimed by a newer holder. This report is rejected; the current holder's result wins.",
-        // Not dashboard-facing: this rides the runner-to-control-plane wire
-        // contract, and the Zig entry carries the same reachability note.
-        user_message: None,
-    },
-    Problem {
-        code: error_code::RUN_LEASE_NOT_FOUND,
-        status: 404,
-        title: "Lease not found",
-        hint: "No active lease matches this lease_id for the presenting runner; it may have expired, been reclaimed, or never existed.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::RUN_ADMIN_STATE_BLOCKED,
-        status: 401,
-        title: "Runner admin state blocks access",
-        hint: "This runner is cordoned, draining, drained, or revoked and cannot call the runner plane. Re-enroll the host to mint a fresh runner token.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
-        // 409 like the lost verdict beside it, and the pair is the reason both
-        // codes exist: the STATUS cannot tell a runner whether its result is
-        // still wanted, so the code has to.
-        status: 409,
-        title: "Lease exceeded max runtime",
-        hint: "The lease reached its maximum runtime and cannot renew. The runner stops the child and reports any result.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::RUN_LEASE_LOST,
-        status: 409,
-        title: "Lease lost",
-        hint: "The lease moved to another runner before renewal. The former runner must stop its child.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
-        // 402, and load-bearing for the reason the entry below it is: the stock
-        // runner classifies a renew refusal by status AND code. Both 402s stop
-        // the run; the code is what says which pool ran dry, and therefore
-        // whether an operator tops up a balance or edits a ceiling.
-        status: 402,
-        title: "Lease renewal blocked: no credits",
-        hint: "The tenant balance cannot cover another run slice. The lease does not renew, and the run stops cleanly.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::RUN_BUDGET_EXCEEDED,
-        // 402, and the status is load-bearing rather than decorative: the stock
-        // runner classifies a renew refusal by BOTH status and code, and
-        // `control_plane_client_test.zig` pins that a UZ-RUN-015 arriving on
-        // any other terminal status is NOT a budget breach. A 403 here would
-        // leave the runner treating an exhausted ceiling as an auth failure.
-        status: 402,
-        title: "Lease renewal blocked: fleet budget exhausted",
-        hint: "The fleet reached its daily_dollars or monthly_dollars limit from `TRIGGER.md`, so the run stops. The tenant balance is fine; this is the fleet's own budget.",
-        // Not dashboard-facing: this rides the runner-to-control-plane wire
-        // protocol, and the Zig entry carries the same reachability note.
-        user_message: None,
-    },
-    Problem {
-        code: error_code::AGENTSFLEET_CREDENTIAL_MISSING,
-        // 424, matching the Zig entry's `.failed_dependency`. The fleet's own
-        // request is well-formed; what is missing is a credential it depends
-        // on, which is the distinction this status exists to make.
-        status: 424,
-        title: "Fleet credential missing",
-        hint: "A required credential is not in the vault. Add it with: `agentsfleet secret create <NAME>`",
-        // Not dashboard-facing, and the Zig entry carries the same reachability
-        // note: this is a CLI and API-key surface, and on the lease path it is
-        // logged rather than rendered at all.
-        user_message: None,
-    },
-    Problem {
-        code: error_code::AGENTSFLEET_NAME_EXISTS,
-        status: 409,
-        title: "Fleet name already exists",
-        hint: "A Fleet with this name already exists. Use `agentsfleet kill <name>` first, then deploy again.",
-        // No dashboard sentence, and the Zig entry carries the same
-        // reachability note: an explicit name is a command-line and API-key
-        // surface, because the dashboard's one-step install names nothing and
-        // takes the re-drawn suffix instead of ever seeing this.
-        user_message: None,
-    },
-    Problem {
-        code: error_code::AGENTSFLEET_INVALID_CONFIG,
-        status: 400,
-        title: "Invalid fleet config",
-        hint: "Config JSON is malformed. Check the trigger, tools, credentials, and budget fields in TRIGGER.md frontmatter. See the [Authoring a fleet](/fleets/authoring) guide.",
-        user_message: Some(
-            "That fleet's config isn't valid. Check the trigger, tools, credentials, and budget fields, then try again.",
-        ),
-    },
-    Problem {
-        code: error_code::AGENTSFLEET_NOT_FOUND,
-        // 404, and pinned as such on both sides: `error_registry_test.zig`
-        // asserts it, because collapsing "no such fleet" and "another
-        // workspace's fleet" into one status is what keeps the endpoint from
-        // being an oracle for which identifiers are real.
-        status: 404,
-        title: "Fleet not found",
-        hint: "Fleet not found. Verify the fleet_id and that it has not been killed.",
-        user_message: Some(
-            "We couldn't find that Fleet. It may have been deleted, or the identifier doesn't match one in this workspace.",
-        ),
-    },
-    Problem {
-        code: error_code::AGENTSFLEET_ALREADY_TERMINAL,
-        status: 409,
-        title: "Fleet state transition not allowed",
-        hint: "That action is not valid from the fleet's current state. The error detail names the refused transition.",
-        user_message: Some(
-            "That action isn't available for this Fleet right now — check its current status and try again.",
-        ),
-    },
-    Problem {
-        code: error_code::AGENTSFLEET_NAME_MISMATCH,
-        status: 400,
-        title: "Fleet files disagree on `name:`",
-        hint: "Top-level `name:` in `SKILL.md` must match `name:` in `TRIGGER.md`. Use one identity per Fleet Bundle.",
-        user_message: Some(
-            "This Fleet Bundle's files disagree on its name. `SKILL.md` and `TRIGGER.md` must match. Fix the source and try again.",
-        ),
-    },
-    Problem {
-        code: error_code::AGENTSFLEET_INSTALL_ROLLED_BACK,
-        // 500 rather than 503, and the difference is what the caller is being
-        // promised. A 503 says "come back later"; this says "nothing was kept,
-        // so retrying is safe" — which is the fact the rollback earned and the
-        // only one the caller can act on.
-        status: 500,
-        title: "Fleet install rolled back",
-        hint: "Event-stream setup failed during create. Nothing was kept, so retry. If it continues, check queue connectivity.",
-        user_message: Some(
-            "We couldn't finish setting up your fleet. Nothing was created — try again.",
-        ),
-    },
-    Problem {
-        code: error_code::AGENTSFLEET_SOURCE_STALE,
-        status: 412,
-        title: "Fleet source is stale",
-        hint: "Someone else saved first: `If-Match` names an old version. Re-read the fleet, re-apply your edit, and retry with the new `etag`.",
-        user_message: Some(
-            "Someone else edited this Fleet's source since you opened it. Reload to see their change, then re-apply your edit.",
-        ),
-    },
-    Problem {
-        code: error_code::FLEET_BUNDLE_NOT_FOUND,
-        status: 404,
-        title: "Fleet Bundle not found",
-        hint: "No installable library entry or stored snapshot matches the request in this workspace.",
-        user_message: Some(
-            "We couldn't find that Fleet Bundle. It may not be installed in this workspace yet — check the Fleet library.",
-        ),
-    },
-    Problem {
-        code: error_code::FLEET_BUNDLE_STORAGE_UNAVAILABLE,
-        status: 503,
-        title: "Fleet Bundle storage unavailable",
-        hint: "Snapshot storage is not configured or is unavailable, so the validated bundle could not be stored. Retry later or contact the operator.",
-        user_message: Some("We couldn't store your Fleet Bundle right now. Try again shortly."),
-    },
-    Problem {
-        code: error_code::CRED_INTEGRATION_NOT_CONNECTED,
-        status: 404,
-        title: "Integration not connected",
-        hint: "No connected integration matches this id in the fleet's workspace. Connect it from the dashboard first.",
-        user_message: Some(
-            "That integration isn't connected. Connect it from the Integrations page, then try again.",
-        ),
-    },
-    Problem {
-        code: error_code::CRED_BROKER_NOT_CONFIGURED,
-        status: 503,
-        title: "Credential broker not configured",
-        hint: "The on-demand credential broker is not configured on this deployment. An operator must set it up before runners can mint credentials.",
-        // Runner-only mint endpoint; the Zig entry carries the same
-        // reachability note, and nothing in `ui/packages/app` fetches it.
-        user_message: None,
-    },
-    Problem {
-        code: error_code::GH_RECONNECT_REQUIRED,
-        status: 409,
-        title: "GitHub App reconnect required",
-        hint: "The GitHub App installation was uninstalled or revoked, so no token can be minted. Reconnect GitHub from the dashboard.",
-        // Surfaced to the agent as a tool failure, not to a dashboard fetch.
-        user_message: None,
-    },
-    Problem {
-        code: error_code::GH_MINT_FAILED,
-        status: 502,
-        title: "GitHub token mint failed",
-        hint: "GitHub did not return an installation token. Retry shortly; if it continues, check GitHub status and the App configuration.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::GRANT_NOT_FOUND,
-        status: 403,
-        title: "No integration grant for service",
-        hint: "This fleet has no approved grant for the target service. Check it with `GET /v1/workspaces/{ws}/fleets/{id}/integration-grants` and resolve its approval.",
-        // Runner-only mint and lease gate.
-        user_message: None,
-    },
-    Problem {
-        code: error_code::CONNECTOR_OAUTH_EXCHANGE_FAILED,
-        status: 502,
-        title: "Connector OAuth exchange failed",
-        hint: "The connector's OAuth exchange was rejected. Start the connect again; if it repeats, check the provider app credentials and redirect URL.",
-        user_message: Some(
-            "That connection didn't go through. Try connecting again from the dashboard.",
-        ),
-    },
-    Problem {
-        code: error_code::REPAIR_WRITE_UNAPPROVED,
-        status: 403,
-        title: "Write mint requires an approved gate",
-        hint: "No repository-write approval was answered for this event, so no write-scoped token issues. The run continues read-only.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::REPAIR_BINDING_DRIFT,
-        status: 403,
-        title: "Fleet binding changed since approval",
-        hint: "The fleet's repository binding no longer matches the approved card. Re-raise the approval so a human sees the current reach.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::REPAIR_SPEND_EXHAUSTED,
-        status: 403,
-        title: "Write request allowance exhausted",
-        hint: "This approval already funded 32 write-credential requests. Answer a new repository-write approval first.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::API_BACKPRESSURE,
-        status: 429,
-        title: "Too many requests",
-        hint: "The API is at its request limit. Wait for the Retry-After delay, then retry.",
-        // No dashboard sentence, and the Zig entry says why in its own
-        // reachability note: a shed happens before routing, so nothing that
-        // renders a problem page is ever reached to render this one.
-        user_message: None,
-    },
-];
+/// side moves.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "every index is bounded by the loop condition above it, and the whole block is const-evaluated — an out-of-bounds here is a build failure, not a panic"
+)]
+const ENTRIES: [Problem; TOTAL] = {
+    let mut flat = [Problem::UNKNOWN; TOTAL];
+    let mut at = 0;
+    let mut family = 0;
+    while family < FAMILIES.len() {
+        let entries = FAMILIES[family];
+        let mut index = 0;
+        while index < entries.len() {
+            flat[at] = entries[index];
+            at += 1;
+            index += 1;
+        }
+        family += 1;
+    }
+    flat
+};
 
 /// Every entry, for the exhaustive walks the tests do.
 ///
-/// `ENTRIES` is private because it is a lookup table rather than a list anyone
-/// should iterate for its own sake; this is the read-only view the tests use to
-/// prove it total against [`crate::error_code::REGISTRY`].
+/// [`ENTRIES`] is private because it is a lookup table rather than a list
+/// anyone should iterate for its own sake; this is the read-only view the tests
+/// use to prove it total against [`crate::error_code::REGISTRY`].
 #[must_use]
 pub const fn entries() -> &'static [Problem] {
-    ENTRIES
+    &ENTRIES
 }
