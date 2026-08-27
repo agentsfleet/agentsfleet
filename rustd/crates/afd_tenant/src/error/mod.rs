@@ -140,6 +140,9 @@ pub(crate) enum ErrorKind {
     #[error("no live command-line credential with that id belongs to this user")]
     CliCredentialNotFound,
 
+    #[error("another login for this machine committed first")]
+    CliCredentialMachineCollision,
+
     #[error("the authenticated subject has no user record")]
     CliCredentialUnknownSubject,
 }
@@ -240,6 +243,15 @@ impl Error {
         &self.inner.backtrace
     }
 
+    /// Whether this is a lost race for one machine's live credential.
+    ///
+    /// The mint asks, and retries once when it is true. Crate-private: a lost
+    /// race is that module's business to resolve, not something a caller should
+    /// be branching on.
+    pub(crate) const fn is_machine_collision(&self) -> bool {
+        matches!(self.inner.kind, ErrorKind::CliCredentialMachineCollision)
+    }
+
     /// Whether the datastore behind this plane could not be reached.
     ///
     /// The question the HTTP edge turns on: an outage is this instance's
@@ -305,6 +317,10 @@ impl Error {
             ErrorKind::ApiKeyReadonlyField => error_code::APIKEY_READONLY_FIELD,
             ErrorKind::ApiKeyMustRevokeFirst => error_code::APIKEY_MUST_REVOKE_FIRST,
             ErrorKind::CliCredentialNotFound => error_code::AUTH_CLI_CREDENTIAL_NOT_FOUND,
+            // Internal by the time a caller could see it: the mint retries once
+            // on this, so reaching the edge means two retries lost in a row and
+            // the caller has nothing to correct.
+            ErrorKind::CliCredentialMachineCollision => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 
@@ -319,10 +335,17 @@ impl Error {
         match self.inner.kind {
             ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
             ErrorKind::Queue { .. } => DETAIL_QUEUE_UNAVAILABLE,
+            // Every internal failure answers ONE fixed sentence, deliberately:
+            // a statement that failed, a row this daemon cannot read, a clock
+            // that cannot name an instant and a host that cannot draw random
+            // bytes are all this process's problem, and telling the caller
+            // which would be leaking the cause to whoever provoked it. The
+            // cause is in the log beside the request id.
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::Mint { .. }
-            | ErrorKind::Entropy { .. } => DETAIL_DATABASE_ERROR,
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::CliCredentialMachineCollision => DETAIL_DATABASE_ERROR,
             ErrorKind::SessionFieldInvalid { field } => match field {
                 SessionField::PublicKey => DETAIL_SESSION_PUBLIC_KEY,
                 SessionField::TokenName => DETAIL_SESSION_TOKEN_NAME,
@@ -508,6 +531,16 @@ pub(crate) fn cli_credential_machine_name() -> Error {
 /// Reports an id naming no live credential this user holds.
 pub(crate) fn cli_credential_not_found() -> Error {
     Error::new(ErrorKind::CliCredentialNotFound)
+}
+
+/// Reports an insert the machine's unique index refused.
+///
+/// Not a refusal a caller ever sees on the first attempt: [`crate::
+/// cli_credential::CliCredentials::mint`] retries on it, because it means
+/// another login for this machine committed first and a second pass will
+/// revoke that row and take its place.
+pub(crate) fn cli_credential_machine_collision() -> Error {
+    Error::new(ErrorKind::CliCredentialMachineCollision)
 }
 
 /// Reports a proven subject with no `core.users` row behind it.

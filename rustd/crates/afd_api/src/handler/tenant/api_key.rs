@@ -19,7 +19,7 @@ use axum::response::{IntoResponse as _, Response};
 use http::{HeaderValue, StatusCode, header};
 
 use crate::auth::PersonIdentity;
-use crate::handler::{malformed, refuse};
+use crate::handler::Refusal;
 use crate::services::{Services, TenantKeys as _, WorkspaceOwnership as _};
 
 /// The scoped events each verb's failures are logged under.
@@ -52,22 +52,17 @@ pub(crate) async fn mint<D: Services>(
     State(services): State<Arc<D>>,
     PersonIdentity(person): PersonIdentity,
     body: Bytes,
-) -> Response {
-    let Ok(request) = afd_core::json::object_from_slice::<MintApiKeyRequest<'_>>(&body) else {
-        return malformed(DETAIL_MINT_BODY);
-    };
-    let parsed = KeyName::parse(&request.key_name).and_then(|name| {
-        Description::parse(request.description.as_deref()).map(|description| (name, description))
-    });
-    let (name, description) = match parsed {
-        Ok(fields) => fields,
-        Err(error) => return refuse(&error, EVENT_MINT),
-    };
+) -> Result<Response, Refusal> {
+    let request = afd_core::json::object_from_slice::<MintApiKeyRequest<'_>>(&body)
+        .map_err(|_unreadable| Refusal::malformed(DETAIL_MINT_BODY))?;
+    let (name, description) = KeyName::parse(&request.key_name)
+        .and_then(|name| {
+            Description::parse(request.description.as_deref())
+                .map(|description| (name, description))
+        })
+        .map_err(Refusal::at(EVENT_MINT))?;
 
-    let tenant = match tenant_of(&services, &person).await {
-        Ok(tenant) => tenant,
-        Err(response) => return *response,
-    };
+    let tenant = tenant_of(&services, &person).await?;
     let mint = MintRequest {
         tenant: &tenant,
         name,
@@ -75,10 +70,12 @@ pub(crate) async fn mint<D: Services>(
         created_by: person.subject().as_str(),
     };
 
-    match services.api_keys().mint(&mint, services.now()).await {
-        Ok(revealed) => revealed_response(&revealed),
-        Err(error) => refuse(&error, EVENT_MINT),
-    }
+    let revealed = services
+        .api_keys()
+        .mint(&mint, services.now())
+        .await
+        .map_err(Refusal::at(EVENT_MINT))?;
+    Ok(revealed_response(&revealed))
 }
 
 /// `GET /v1/api-keys` — the tenant's keys, as metadata.
@@ -86,22 +83,19 @@ pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
     PersonIdentity(person): PersonIdentity,
     RawQuery(query): RawQuery,
-) -> Response {
+) -> Result<Response, Refusal> {
     let query = query.unwrap_or_default();
-    let page = match Page::<ApiKeySort>::parse(|name| parameter(&query, name)) {
-        Ok(page) => page,
-        Err(refusal) => return malformed(refusal.detail()),
-    };
+    let page = Page::<ApiKeySort>::parse(|name| parameter(&query, name))
+        .map_err(|refusal| Refusal::malformed(refusal.detail()))?;
 
-    let tenant = match tenant_of(&services, &person).await {
-        Ok(tenant) => tenant,
-        Err(response) => return *response,
-    };
+    let tenant = tenant_of(&services, &person).await?;
 
-    match services.api_keys().list(&tenant, &page).await {
-        Ok(listing) => Json(page_response(&listing, page.limit)).into_response(),
-        Err(error) => refuse(&error, EVENT_LIST),
-    }
+    let listing = services
+        .api_keys()
+        .list(&tenant, &page)
+        .await
+        .map_err(Refusal::at(EVENT_LIST))?;
+    Ok(Json(page_response(&listing, page.limit)).into_response())
 }
 
 /// `PATCH /v1/api-keys/{id}` — revoke one.
@@ -110,33 +104,22 @@ pub(crate) async fn revoke<D: Services>(
     PersonIdentity(person): PersonIdentity,
     Path(key_id): Path<String>,
     body: Bytes,
-) -> Response {
-    let Ok(key) = Uuid7::parse(&key_id) else {
-        return malformed(DETAIL_KEY_ID);
-    };
-    let Ok(request) = afd_core::json::object_from_slice::<PatchApiKeyRequest>(&body) else {
-        return malformed(DETAIL_PATCH_BODY);
-    };
+) -> Result<Response, Refusal> {
+    let key = Uuid7::parse(&key_id).map_err(|_unparseable| Refusal::malformed(DETAIL_KEY_ID))?;
+    let request = afd_core::json::object_from_slice::<PatchApiKeyRequest>(&body)
+        .map_err(|_unreadable| Refusal::malformed(DETAIL_PATCH_BODY))?;
     // The intent is PARSED, not checked: `revoke` takes a `Deactivation`, so
     // there is no path to it that skipped this refusal.
-    let intent = match Deactivation::parse(request.active) {
-        Ok(intent) => intent,
-        Err(error) => return refuse(&error, EVENT_REVOKE),
-    };
+    let intent = Deactivation::parse(request.active).map_err(Refusal::at(EVENT_REVOKE))?;
 
-    let tenant = match tenant_of(&services, &person).await {
-        Ok(tenant) => tenant,
-        Err(response) => return *response,
-    };
+    let tenant = tenant_of(&services, &person).await?;
 
-    match services
+    let revoked = services
         .api_keys()
         .revoke(&tenant, &key, intent, services.now())
         .await
-    {
-        Ok(revoked) => Json(revoked_response(&revoked)).into_response(),
-        Err(error) => refuse(&error, EVENT_REVOKE),
-    }
+        .map_err(Refusal::at(EVENT_REVOKE))?;
+    Ok(Json(revoked_response(&revoked)).into_response())
 }
 
 /// `DELETE /v1/api-keys/{id}` — remove one that is already revoked.
@@ -144,19 +127,16 @@ pub(crate) async fn delete<D: Services>(
     State(services): State<Arc<D>>,
     PersonIdentity(person): PersonIdentity,
     Path(key_id): Path<String>,
-) -> Response {
-    let Ok(key) = Uuid7::parse(&key_id) else {
-        return malformed(DETAIL_KEY_ID);
-    };
-    let tenant = match tenant_of(&services, &person).await {
-        Ok(tenant) => tenant,
-        Err(response) => return *response,
-    };
+) -> Result<Response, Refusal> {
+    let key = Uuid7::parse(&key_id).map_err(|_unparseable| Refusal::malformed(DETAIL_KEY_ID))?;
+    let tenant = tenant_of(&services, &person).await?;
 
-    match services.api_keys().delete(&tenant, &key).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(error) => refuse(&error, EVENT_DELETE),
-    }
+    services
+        .api_keys()
+        .delete(&tenant, &key)
+        .await
+        .map_err(Refusal::at(EVENT_DELETE))?;
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 /// Which tenant this principal acts for, or the refusal.
@@ -168,7 +148,7 @@ pub(crate) async fn delete<D: Services>(
 async fn tenant_of<D: Services>(
     services: &Arc<D>,
     person: &afd_auth::principal::Person,
-) -> Result<Uuid7, Box<Response>> {
+) -> Result<Uuid7, Refusal> {
     let principal = afd_auth::principal::Principal::Person(person.clone());
     match services.workspaces().tenant_of(&principal).await {
         Ok(Some(tenant)) => Ok(tenant),
@@ -176,19 +156,8 @@ async fn tenant_of<D: Services>(
         // 401: re-authenticating cannot produce a tenant this credential does
         // not have.
         //
-        // Boxed, like the error arm below it: an `axum::Response` is over a
-        // hundred bytes, and an unboxed one in the `Err` position makes every
-        // caller's `Result` that size for a value that is discarded on the
-        // path that matters (`clippy::result_large_err`).
-        Ok(None) => Err(Box::new(
-            crate::envelope::ProblemResponse::new(
-                afd_core::error_code::AUTH_FORBIDDEN,
-                DETAIL_NO_TENANT,
-                crate::request_id::RequestId::mint(),
-            )
-            .into_response(),
-        )),
-        Err(error) => Err(Box::new(refuse(&error, EVENT_TENANT))),
+        Ok(None) => Err(Refusal::forbidden(DETAIL_NO_TENANT)),
+        Err(error) => Err(Refusal::at(EVENT_TENANT)(error)),
     }
 }
 

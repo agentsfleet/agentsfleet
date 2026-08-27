@@ -92,9 +92,15 @@ pub const DETAIL_APIKEY_READONLY_FIELD: &str =
 /// Its refusal for a delete of a key that is still live.
 pub const DETAIL_APIKEY_MUST_REVOKE_FIRST: &str = "Active key must be revoked before deletion";
 
-/// The command-line credential surface's refusal for a label outside its grammar.
+/// The command-line credential surface's refusal for a label it cannot store.
+///
+/// Deliberately NOT a grammar. The surface accepts any name a machine actually
+/// has — spaces, apostrophes, any script — and refuses only a label that names
+/// nothing once trimmed or does not fit the column. See
+/// [`crate::cli_credential::MachineName`] for why the ASCII grammar this
+/// replaced was the wrong rule in the wrong layer.
 pub const DETAIL_CLI_CREDENTIAL_MACHINE_NAME: &str =
-    "machine_name must be 1-64 chars: letters, digits, hyphen, underscore, dot";
+    "machine_name must be 1-64 characters and not blank";
 
 /// Its refusal for an id naming no live credential this user holds.
 ///
