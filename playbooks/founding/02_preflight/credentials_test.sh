@@ -103,19 +103,39 @@ test_post_deploy_values_are_not_early_inputs() {
     'op://ZMB_CD_DEV/agentsfleet-dev-runner-ant/tailscale-hostname'
     'op://ZMB_CD_DEV/agentsfleet-dev-runner-ant/runner-token'
   )
-  local ref output status
+  local ref early_stage
 
+  # 8 independent run_gate invocations (4 refs × 2 stages), each a fresh fork
+  # of 02_credentials.sh — the dominant cost of this file. They share no
+  # state (each writes only to its own result file), so nothing about what
+  # is being proven changes by running them concurrently; only the serial
+  # short-circuit-on-first-failure ordering is lost, which this test never
+  # relied on for correctness (every combination must pass regardless of
+  # check order).
+  local combo_dir; combo_dir="$(mktemp -d)"
+  local pids=""
   for ref in "${refs[@]}"; do
-    local early_stage
     for early_stage in bootstrap deployment; do
-      status=0
-      output="$(run_gate "$early_stage" "$ref")" || status=$?
-      if [ "$status" -ne 0 ] || [[ "$output" == *"$ref"* ]]; then
-        bad "$name" "$ref was read during $early_stage"
-        return
-      fi
+      (
+        status=0
+        output="$(run_gate "$early_stage" "$ref")" || status=$?
+        if [ "$status" -ne 0 ] || [[ "$output" == *"$ref"* ]]; then
+          printf '%s was read during %s\n' "$ref" "$early_stage" \
+            > "$combo_dir/$(echo "${ref}_${early_stage}" | tr -c 'A-Za-z0-9' '_')"
+        fi
+      ) &
+      pids="$pids $!"
     done
   done
+  for pid in $pids; do wait "$pid"; done
+
+  local violation; violation="$(find "$combo_dir" -type f -print -quit)"
+  if [ -n "$violation" ]; then
+    bad "$name" "$(cat "$violation")"
+    rm -rf -- "$combo_dir"
+    return
+  fi
+  rm -rf -- "$combo_dir"
   ok "$name"
 }
 

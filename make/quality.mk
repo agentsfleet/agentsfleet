@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc
+.PHONY: lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-playbooks-refs check-route-registration-doc
 
 check-documentation-rules:  ## Check public API and command help text
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
@@ -191,15 +191,20 @@ check-migrate-unprivileged: _ensure-test-infra  ## Migrate from empty as a NON-s
 PLAYBOOK_TEST_SCRUB = -u ENV -u STAGE -u ACTION -u PUSH -u REVISION \
   -u VAULT -u VAULT_DEV -u VAULT_PROD -u WORKER_ITEM -u AGENTSFLEET_API_URL
 
-check-playbooks: check-vault-gate-parity  ## Validate playbooks/ — vault-gate parity + shellcheck + reference integrity + README/tree parity
+# Split by what a change can actually break. The reference-integrity and
+# README-parity halves are cheap greps over the tree and are the ONLY things a
+# Makefile or workflow edit can invalidate (a make target citing a playbook
+# path). The shellcheck + regression-test halves cost minutes and can only be
+# invalidated by editing playbooks/ itself. .githooks/pre-commit routes
+# accordingly, so a one-line make/*.mk change stops paying for 21 test suites.
+check-playbooks: check-playbooks-refs check-vault-gate-parity  ## Validate playbooks/ — vault-gate parity + shellcheck + regression tests + reference integrity + README/tree parity
 	@echo "→ [playbooks] shellcheck on playbooks/**/*.sh..."
 	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
 	@find playbooks -name '*.sh' -print0 | xargs -0 $(SHELLCHECK) --severity=error -x
-	@echo "→ [playbooks] focused shell regression tests..."
-	@set -e; TESTS=$$(find playbooks -type f -name '*_test.sh' | sort); \
-	if [ -z "$$TESTS" ]; then echo "✗ [playbooks] no shell regression tests found"; exit 1; fi; \
-	for test_script in $$TESTS; do echo "  $$test_script"; \
-	  env $(PLAYBOOK_TEST_SCRUB) bash "$$test_script"; done
+	@echo "→ [playbooks] focused shell regression tests (bounded parallel)..."
+	@PLAYBOOK_TEST_SCRUB="$(PLAYBOOK_TEST_SCRUB)" bash scripts/run-playbook-tests.sh
+
+check-playbooks-refs:  ## playbooks/ reference integrity + README parity only (cheap; what a Makefile edit can break)
 	@echo "→ [playbooks] reference integrity — every playbooks/ path resolves..."
 	@# Scans the live operational surface (CI, scripts, active docs, the playbooks
 	@# themselves). Excludes docs/v2/: specs are historical records that

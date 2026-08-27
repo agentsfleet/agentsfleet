@@ -87,9 +87,20 @@ if [ "$any_needed" -eq 0 ]; then
 fi
 
 # --- Test lanes --------------------------------------------------------------
-# Browser and pseudo-terminal tests are individually stable but fight for local
-# runtime resources when all lanes launch at once. Keep coverage intact and run
-# lanes serially so the hook is deterministic on developer laptops.
+# Split by RESOURCE CLASS, not by "parallel vs serial".
+#
+# The JavaScript lanes are browser (jsdom/vitest) and pseudo-terminal (the CLI
+# help-e2e tests spawn the built binary and wait on its output). Those fight
+# each other for local runtime: launching all of them at once is what made the
+# CLI lane flake badly enough to earn its `--timeout 30000` (see
+# make/test-unit.mk). They stay serial among themselves, exactly as before.
+#
+# `test-unit-rustd` is cargo — no jsdom, no PTY, no bun. It contends with the
+# JavaScript lanes for CPU alone, which is what a machine's scheduler is for.
+# So it starts FIRST, in the background, and is waited on at the end: when a
+# push touches both Rust and JavaScript surfaces, the whole Rust lane overlaps
+# the JavaScript ones for free. When a push touches only one class — the common
+# case — behaviour is bit-for-bit what it was.
 failed_names=()
 
 run_lane() {
@@ -100,11 +111,29 @@ run_lane() {
   fi
 }
 
-[ "$needs_test_rustd"         = 1 ] && run_lane test-unit-rustd              make test-unit-rustd
+rustd_pid=""
+rustd_log=""
+if [ "$needs_test_rustd" = 1 ]; then
+  rustd_log="$(mktemp)"
+  echo "pre-push: make test-unit-rustd (background — overlaps the JavaScript lanes)"
+  make test-unit-rustd >"$rustd_log" 2>&1 &
+  rustd_pid="$!"
+fi
+
+# Serial among themselves: same order, same isolation as before.
 [ "$needs_test_cli"           = 1 ] && run_lane test-unit-cli                make test-unit-cli
 [ "$needs_test_website"       = 1 ] && run_lane test-unit-website            make test-unit-website
 [ "$needs_test_app"           = 1 ] && run_lane test-unit-app                make test-unit-app
 [ "$needs_test_design_system" = 1 ] && run_lane test-unit-design-system      make test-unit-design-system
+
+if [ -n "$rustd_pid" ]; then
+  echo "pre-push: waiting on test-unit-rustd..."
+  if ! wait "$rustd_pid"; then
+    failed_names+=(test-unit-rustd)
+  fi
+  cat "$rustd_log"
+  rm -f "$rustd_log"
+fi
 
 if [ "${#failed_names[@]}" -gt 0 ]; then
   echo "✗ pre-push: failed lanes — ${failed_names[*]}"
