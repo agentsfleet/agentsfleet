@@ -1,0 +1,28 @@
+[package]
+name = "afd_fleet_ops"
+description = "Small, read-only operator projections over agentsfleet fleet state."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+test-util = ["afd_core/test-util", "afd_db/test-util"]
+
+[dependencies]
+afd_core.workspace = true
+afd_db.workspace = true
+afd_wire.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[lints]
+workspace = true

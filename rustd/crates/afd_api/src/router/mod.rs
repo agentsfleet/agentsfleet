@@ -2,7 +2,8 @@
 //!
 //! # What is mounted, and what is only tabled
 //!
-//! [`Route`] carries all eighty-one endpoints; this binary serves eleven of them.
+//! [`Route`] carries all eighty-one endpoint identities; this binary serves
+//! twenty-six of them.
 //! The gap is deliberate and it is STATED: [`handler_for`] is a total match
 //! over every family AND every route within a family, so an endpoint whose
 //! handler has not been ported yet says so in an arm rather than by being
@@ -48,13 +49,15 @@ use axum::Router;
 use axum::extract::Request;
 use axum::middleware::{Next, from_fn, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{MethodRouter, get, post};
+use axum::routing::{MethodRouter, delete, get, patch, post, put};
 use http::{Method, StatusCode};
 
 use crate::admission::{Admission, admit, is_metered};
 use crate::auth::{Gate, plane_of, prove};
-use crate::handler::runner;
-use crate::route::{OpsRoute, Route, RouteMeta, RunnerOpsRoute, RunnerRoute};
+use crate::handler::{admin, fleet_bundles, operator, runner};
+use crate::route::{
+    AdminRoute, OpsRoute, Route, RouteMeta, RunnerOpsRoute, RunnerRoute, TenantRoute,
+};
 use crate::services::Services;
 
 pub use self::probes::{Dependencies, ReadyInputs, ready_decision};
@@ -94,7 +97,8 @@ pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router 
     // Accumulated in a Vec and found linearly: eighty-one routes make this
     // cheaper than hashing, and it preserves the table's order, so the mount
     // log reads the same way every boot.
-    let mut merged: Vec<(&'static str, RouteMeta, MethodRouter<Arc<D>>)> = Vec::new();
+    let mut merged: Vec<(&'static str, RouteMeta, MethodRouter<Arc<D>>)> =
+        Vec::with_capacity(Route::all().count());
     for route in Route::all() {
         let Some(handler) = handler_for::<D>(route) else {
             continue;
@@ -106,9 +110,8 @@ pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router 
         let template = meta.template;
         let class = meta.class;
         tracing::debug!(template, ?class, event = "route_mounted", "route mounted");
-        // Counts VERBS, not paths. Two methods on one template are two things
-        // this binary answers, and a count that said one would understate the
-        // surface exactly where the table is easiest to misread.
+        // Counts route identities, not unique paths. Two identities sharing one
+        // template remain two separately tabled pieces of the surface.
         mounted += 1;
         match merged.iter_mut().find(|(known, _, _)| *known == template) {
             // `merge` and not `layer`: the layers go on once, below, after every
@@ -182,17 +185,51 @@ fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>> {
             OpsRoute::Readyz => get(probes::readyz::<D>),
         }),
         Route::Runner(verb) => Some(runner_handler::<D>(verb)),
-        Route::RunnerOps(verb) => runner_ops_handler::<D>(verb),
+        Route::RunnerOps(verb) => Some(runner_ops_handler::<D>(verb)),
+        Route::Admin(verb) => Some(admin_handler::<D>(verb)),
+        Route::Tenant(TenantRoute::FleetBundles) => Some(get(fleet_bundles::list::<D>)),
         // Tabled, not yet served. Each of these families arrives with the
         // milestone that ports its handlers; until then the route exists as a
         // template, a guard and a scope rung, and this binary answers 404.
         Route::Auth(_)
-        | Route::Tenant(_)
-        | Route::Admin(_)
+        | Route::Tenant(
+            TenantRoute::ModelLibrary
+            | TenantRoute::CreateWorkspace
+            | TenantRoute::Billing
+            | TenantRoute::BillingCharges
+            | TenantRoute::Workspaces
+            | TenantRoute::Provider
+            | TenantRoute::ModelEntries
+            | TenantRoute::ModelEntry
+            | TenantRoute::ApiKeys
+            | TenantRoute::ApiKey
+            | TenantRoute::CliCredentials
+            | TenantRoute::CliCredential,
+        )
         | Route::Webhook(_)
         | Route::Workspace(_)
         | Route::Fleet(_)
         | Route::Connector(_) => None,
+    }
+}
+
+/// The mounted part of the platform administration table.
+fn admin_handler<D: Serving>(verb: AdminRoute) -> MethodRouter<Arc<D>> {
+    match verb {
+        AdminRoute::FleetLibrary => {
+            get(admin::libraries::list::<D>).merge(post(admin::library_import::create::<D>))
+        }
+        AdminRoute::FleetLibraryEntry => {
+            patch(admin::libraries::patch::<D>).merge(delete(admin::libraries::delete::<D>))
+        }
+        AdminRoute::PlatformKeys => {
+            get(admin::platform_keys::list::<D>).merge(put(admin::platform_keys::set::<D>))
+        }
+        AdminRoute::PlatformKey => delete(admin::platform_keys::deactivate::<D>),
+        AdminRoute::Models => get(admin::models::list::<D>).merge(post(admin::models::create::<D>)),
+        AdminRoute::Model => {
+            patch(admin::models::update::<D>).merge(delete(admin::models::delete::<D>))
+        }
     }
 }
 
@@ -220,17 +257,19 @@ fn runner_handler<D: Serving>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
 }
 
 /// The operator's view over runners — a tenant acting ON the fleet's hosts.
-fn runner_ops_handler<D: Serving>(verb: RunnerOpsRoute) -> Option<MethodRouter<Arc<D>>> {
+///
+/// Every tabled verb is served. Keeping this total makes a newly added verb a
+/// compile error until its handler is selected instead of silently mounting a
+/// 404 through an unnecessary `Option`.
+fn runner_ops_handler<D: Serving>(verb: RunnerOpsRoute) -> MethodRouter<Arc<D>> {
     match verb {
-        RunnerOpsRoute::Register => Some(post(runner::enrolment::handle::<D>)),
-        // M179's operator surface. Enrolment lands here first because it is the
-        // only one of these the runner plane cannot exist without.
-        RunnerOpsRoute::List
-        | RunnerOpsRoute::Get
-        | RunnerOpsRoute::Patch
-        | RunnerOpsRoute::Events
-        | RunnerOpsRoute::Leases
-        | RunnerOpsRoute::Streams => None,
+        RunnerOpsRoute::Register => post(runner::enrolment::handle::<D>),
+        RunnerOpsRoute::List => get(operator::runners::list::<D>),
+        RunnerOpsRoute::Get => get(operator::runners::detail::<D>),
+        RunnerOpsRoute::Patch => patch(operator::runner_patch::handle::<D>),
+        RunnerOpsRoute::Events => get(operator::events::list::<D>),
+        RunnerOpsRoute::Leases => get(operator::leases::list::<D>),
+        RunnerOpsRoute::Streams => get(operator::streams::list::<D>),
     }
 }
 

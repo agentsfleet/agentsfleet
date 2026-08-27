@@ -249,7 +249,7 @@ A runner needs a `agt_r` token before it can pull work. The **platform admin pre
    │      eligibility: assigned tier + scope + secret_delivery   🔒 GATE 3 — blast radius
 ```
 
-`agentsfleetd` owns the Postgres pool, the Redis pool, and the Vault API; `agentsfleet-runner` owns none of them and holds only the `agt_r` token. Rotating a token swaps `token_hash`; revoking sets `admin_state='revoked'` (M84_002) so the next call gets a 401. The runner's COMPLETE env is `AGENTSFLEET_API_URL` + `AGENTSFLEET_RUNNER_TOKEN` (+ the optional host-local `RUNNER_STORAGE_HOME`) — there is no bootstrap credential on the host, no datastore secret, and **no policy in the environment** (M148; §Assigned policy and reconciliation).
+`agentsfleetd` owns the Postgres pool, the Redis pool, and the Vault API; `agentsfleet-runner` owns none of them and holds only the `agt_r` token. A platform operator holding `runner:write` rotates it with `PATCH /v1/fleets/runners/{id} {"action":"rotate"}`. The write swaps `token_hash` and appends an actor-attributed event atomically, returns the replacement token once, and makes the old token fail the next auth read. Revoking instead sets `admin_state='revoked'` (M84_002) so every later call gets a 401. The runner's COMPLETE env is `AGENTSFLEET_API_URL` + `AGENTSFLEET_RUNNER_TOKEN` (+ the optional host-local `RUNNER_STORAGE_HOME`) — there is no bootstrap credential on the host, no datastore secret, and **no policy in the environment** (M148; §Assigned policy and reconciliation).
 
 ## Assigned policy and reconciliation (M148)
 

@@ -19,6 +19,9 @@ pub const DETAIL_REGISTRY_ALLOWLIST: &str = "registry_allowlist entries must be 
 /// `self.zig`'s refusal when the token authenticated and the row is gone.
 pub const DETAIL_RUNNER_NOT_FOUND: &str = "runner not found";
 
+/// `runner_patch.zig`'s refusal when a terminal runner cannot collect an ask.
+pub const DETAIL_SELFTEST_REFUSED: &str = "revoked runners cannot be asked to self-test";
+
 /// `problem_response.zig`'s `internalDbUnavailable` detail.
 pub const DETAIL_DATABASE_UNAVAILABLE: &str = "Database unavailable";
 

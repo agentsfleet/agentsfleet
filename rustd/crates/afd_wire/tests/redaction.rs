@@ -12,6 +12,7 @@
 
 use std::borrow::Cow;
 
+use afd_wire::admin::RunnerTokenRotatedResponse;
 use afd_wire::credentials::MintCredentialResponse;
 use afd_wire::policy::{ContextBudget, ExecutionPolicy, NetworkPolicy};
 use afd_wire::runner::{
@@ -90,6 +91,24 @@ fn should_not_leak_the_runner_token_through_debug() {
             worker_count: 1,
             extra_binds: vec![],
         },
+    };
+    let rendered = format!("{response:?}");
+    assert!(
+        !rendered.contains(SECRET),
+        "runner token leaked: {rendered}"
+    );
+    assert!(
+        rendered.contains("runner"),
+        "the identifier must stay readable"
+    );
+    assert!(serde_json::to_string(&response).unwrap().contains(SECRET));
+}
+
+#[test]
+fn should_not_leak_the_rotated_runner_token_through_debug() {
+    let response = RunnerTokenRotatedResponse {
+        id: Cow::Borrowed("runner"),
+        runner_token: Cow::Borrowed(SECRET),
     };
     let rendered = format!("{response:?}");
     assert!(

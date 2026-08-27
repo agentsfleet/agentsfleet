@@ -150,6 +150,22 @@ impl Fixtures {
         .collect()
     }
 
+    /// Operator subjects recorded on administrative events, oldest first.
+    pub(crate) async fn admin_event_actors(&self, runner: &str) -> Vec<String> {
+        let mut connection = self.database.acquire().await.expect("a pooled connection");
+        sqlx::query(
+            "SELECT metadata ->> 'actor_id' FROM fleet.runner_events \
+             WHERE runner_id = $1::uuid AND metadata ? 'actor_id' ORDER BY created_at, id",
+        )
+        .bind(runner)
+        .fetch_all(&mut *connection)
+        .await
+        .expect("the actor metadata read must run")
+        .iter()
+        .map(|row| row.try_get(0).expect("actor_id is text"))
+        .collect()
+    }
+
     /// How many rows carry `digest` as their token hash.
     ///
     /// The negative half of "only the hash is stored": a suite proves the token

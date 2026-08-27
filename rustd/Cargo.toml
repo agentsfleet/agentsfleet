@@ -15,10 +15,10 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_api", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_fleet", "crates/afd_fleet_runtime", "crates/afd_identity", "crates/afd_observability", "crates/afd_redis", "crates/afd_state", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_api", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_fleet", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_identity", "crates/afd_library", "crates/afd_observability", "crates/afd_redis", "crates/afd_state", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
-version = "0.26.2"
+version = "0.27.0"
 edition = "2024"
 # Equal to the pinned toolchain rather than trailing it (M-MSRV allows a lag for
 # published libraries; these crates have no external consumers and are built
@@ -38,14 +38,17 @@ categories = ["network-programming"]
 [workspace.dependencies]
 # Intra-workspace members resolve through the workspace, never by direct sibling
 # path (M-CRATES-IN-WORKSPACE).
+afd_admin = { path = "crates/afd_admin" }
 afd_api = { path = "crates/afd_api" }
 afd_auth = { path = "crates/afd_auth" }
 afd_core = { path = "crates/afd_core" }
 afd_crypto = { path = "crates/afd_crypto" }
 afd_db = { path = "crates/afd_db" }
 afd_fleet = { path = "crates/afd_fleet" }
+afd_fleet_ops = { path = "crates/afd_fleet_ops" }
 afd_fleet_runtime = { path = "crates/afd_fleet_runtime" }
 afd_identity = { path = "crates/afd_identity" }
+afd_library = { path = "crates/afd_library" }
 afd_observability = { path = "crates/afd_observability" }
 afd_redis = { path = "crates/afd_redis" }
 afd_state = { path = "crates/afd_state" }
@@ -61,6 +64,7 @@ serde_json = { version = "1.0.151", default-features = false, features = ["std",
 # `std.json.Value` per tool call for want of this. A feature on a dependency
 # already resolved in the lock, not a new crate.
 thiserror = { version = "2.0.20", default-features = false, features = ["std"] }
+async-trait = { version = "0.1.92", default-features = false }
 
 # Field bounds as annotations on the schema rather than as a hand-written
 # checker. `derive` only: `regex`, `email`, `phone-number` and `credit-card`
@@ -89,11 +93,18 @@ clap = { version = "4.6.6", default-features = false, features = ["std", "derive
 aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc"] }
 hmac = { version = "0.13.0", default-features = false }
 sha2 = { version = "0.11.0", default-features = false }
+# RFC entity-tag and conditional-request parsing. The grammar includes quoted
+# commas and strong/weak comparison rules that should not be reimplemented.
+headers = { version = "0.4.1", default-features = false }
 # Lower-case hex, for the credential digests and minted token bodies every
 # stored class is built from. Already in the lock via sqlx; taken directly
 # because a hand-written `write!("{:02x}")` loop is a place for a leading zero
 # to go missing, and this workspace prefers a crate to a re-derivation.
 hex = { version = "0.4.3", default-features = false, features = ["std"] }
+semver = { version = "1.0.28", default-features = false, features = ["std"] }
+serde_yaml_ng = { version = "0.10.0", default-features = false }
+tar = { version = "0.4.46", default-features = false }
+flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
 
 # Constant-time comparison. RULE CTM: a byte-by-byte `==` over a secret leaks how
 # much of a guess was right through how long it took to reject.
@@ -124,7 +135,7 @@ getrandom = { version = "0.4.3", default-features = false }
 # than a new dependency.
 url = { version = "2.5.8", default-features = false }
 
-uuid = { version = "1.25.0", default-features = false, features = ["v7", "std"] }
+uuid = { version = "1.26.0", default-features = false, features = ["v7", "std"] }
 
 # Civil-calendar arithmetic, for the monthly budget window.
 #
@@ -248,7 +259,7 @@ moka = { version = "0.12.16", default-features = false, features = ["future"] }
 # provider-issued opaque bytes, where a `+` or an `&` that escapes its field
 # changes the SHAPE of the form at the token endpoint. That is not a place to
 # carry our own encoder.
-reqwest = { version = "0.13.4", default-features = false, features = ["form", "rustls"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["form", "rustls", "stream"] }
 
 # Postgres. sqlx is the DRIVER here and nothing more: `migrate` and `macros` are
 # both off, because this workspace runs the Zig daemon's own ledger

@@ -15,6 +15,9 @@
 //! (`afd_fleet::Error::code` and `::detail`). There is no pair to get wrong
 //! because there is no pair to write.
 
+pub mod admin;
+pub(crate) mod fleet_bundles;
+pub mod operator;
 pub mod runner;
 
 use axum::response::{IntoResponse as _, Response};
@@ -40,15 +43,77 @@ use crate::request_id::RequestId;
 /// Shared by every verb that reads one, rather than restated per handler: two
 /// spellings would be two different envelopes for one class of refusal.
 pub(crate) fn malformed(detail: &'static str) -> Response {
-    crate::envelope::ProblemResponse::new(
-        afd_core::error_code::INVALID_REQUEST,
-        detail,
-        crate::request_id::RequestId::mint(),
-    )
-    .into_response()
+    reject(afd_core::error_code::INVALID_REQUEST, detail)
 }
 
-pub(crate) fn refuse(error: &afd_fleet::Error, event: &'static str) -> Response {
+/// Writes a registry refusal whose detail only this handler knows.
+pub(crate) fn reject(code: afd_core::error_code::ErrorCode, detail: &'static str) -> Response {
+    crate::envelope::ProblemResponse::new(code, detail, RequestId::mint()).into_response()
+}
+
+pub(crate) trait Refusal: std::fmt::Display {
+    fn code(&self) -> afd_core::error_code::ErrorCode;
+    fn detail(&self) -> &'static str;
+    fn is_datastore_unavailable(&self) -> bool;
+}
+
+impl Refusal for afd_fleet::Error {
+    fn code(&self) -> afd_core::error_code::ErrorCode {
+        self.code()
+    }
+
+    fn detail(&self) -> &'static str {
+        self.detail()
+    }
+
+    fn is_datastore_unavailable(&self) -> bool {
+        self.is_datastore_unavailable()
+    }
+}
+
+impl Refusal for afd_fleet_ops::Error {
+    fn code(&self) -> afd_core::error_code::ErrorCode {
+        self.code()
+    }
+
+    fn detail(&self) -> &'static str {
+        self.detail()
+    }
+
+    fn is_datastore_unavailable(&self) -> bool {
+        self.is_datastore_unavailable()
+    }
+}
+
+impl Refusal for afd_admin::Error {
+    fn code(&self) -> afd_core::error_code::ErrorCode {
+        self.code()
+    }
+
+    fn detail(&self) -> &'static str {
+        self.detail()
+    }
+
+    fn is_datastore_unavailable(&self) -> bool {
+        self.is_datastore_unavailable()
+    }
+}
+
+impl Refusal for afd_library::Error {
+    fn code(&self) -> afd_core::error_code::ErrorCode {
+        self.code()
+    }
+
+    fn detail(&self) -> &'static str {
+        self.detail()
+    }
+
+    fn is_datastore_unavailable(&self) -> bool {
+        self.is_datastore_unavailable()
+    }
+}
+
+pub(crate) fn refuse<E: Refusal>(error: &E, event: &'static str) -> Response {
     let request_id = RequestId::mint();
     let code = error.code();
     // Hoisted out of the macro: `tracing`'s `log` bridge compiles a second copy

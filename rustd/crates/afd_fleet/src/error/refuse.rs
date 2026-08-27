@@ -51,6 +51,11 @@ pub(crate) fn budget_exhausted() -> Error {
     Error::new(ErrorKind::BudgetExhausted)
 }
 
+/// Refuses a self-test ask that a revoked runner can never collect.
+pub(crate) fn selftest_refused() -> Error {
+    Error::new(ErrorKind::SelftestRefused)
+}
+
 /// Refuses a mint for an integration this workspace has not connected.
 ///
 /// The ten builders below are the mint's, and they share the shape the six

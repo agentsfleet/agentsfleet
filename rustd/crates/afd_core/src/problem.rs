@@ -138,6 +138,13 @@ const ENTRIES: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::PAYLOAD_TOO_LARGE,
+        status: 413,
+        title: "Payload too large",
+        hint: "Request body exceeds the maximum allowed size.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::VAULT_DATA_INVALID,
         status: 400,
         title: "Secret data must be a non-empty JSON object",
@@ -289,6 +296,15 @@ const ENTRIES: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::RUNNER_NOT_FOUND,
+        status: 404,
+        title: "Runner not found",
+        hint: "No runner matches this runner_id. Verify the platform admin minted the runner before mutating it.",
+        user_message: Some(
+            "We couldn't find that runner. It may have been removed — refresh the list.",
+        ),
+    },
+    Problem {
         code: error_code::RUN_BUDGET_EXCEEDED,
         // 402, and the status is load-bearing rather than decorative: the stock
         // runner classifies a renew refusal by BOTH status and code, and
@@ -301,6 +317,15 @@ const ENTRIES: &[Problem] = &[
         // Not dashboard-facing: this rides the runner-to-control-plane wire
         // protocol, and the Zig entry carries the same reachability note.
         user_message: None,
+    },
+    Problem {
+        code: error_code::RUN_SELFTEST_REFUSED,
+        status: 409,
+        title: "Self-test refused: runner is revoked",
+        hint: "A revoked runner never heartbeats again, so it cannot pick the request up. Enroll a replacement runner and test that one instead.",
+        user_message: Some(
+            "This runner is revoked, so it can't run a self-test. Enroll a new runner to test one.",
+        ),
     },
     Problem {
         code: error_code::AGENTSFLEET_CREDENTIAL_MISSING,
@@ -316,6 +341,15 @@ const ENTRIES: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::FLEET_BUNDLE_INVALID,
+        status: 400,
+        title: "Invalid Fleet Bundle",
+        hint: "The supplied Fleet Bundle is missing `SKILL.md` or contains unsafe, oversized, or malformed files.",
+        user_message: Some(
+            "That Fleet Bundle isn't valid. It's missing `SKILL.md`, or has an unsafe or oversized file. Check the source and try again.",
+        ),
+    },
+    Problem {
         code: error_code::FLEET_BUNDLE_NOT_FOUND,
         status: 404,
         title: "Fleet Bundle not found",
@@ -325,11 +359,108 @@ const ENTRIES: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::FLEET_BUNDLE_FETCH_FAILED,
+        status: 502,
+        title: "Fleet Bundle fetch failed",
+        hint: "The Fleet Bundle source could not be fetched from GitHub. The repository may be missing or private, or GitHub may be unreachable. Verify the source reference and retry.",
+        user_message: Some(
+            "We couldn't fetch that Fleet Bundle from GitHub. Check the source and try again.",
+        ),
+    },
+    Problem {
         code: error_code::FLEET_BUNDLE_STORAGE_UNAVAILABLE,
         status: 503,
         title: "Fleet Bundle storage unavailable",
         hint: "Snapshot storage is not configured or is unavailable, so the validated bundle could not be stored. Retry later or contact the operator.",
         user_message: Some("We couldn't store your Fleet Bundle right now. Try again shortly."),
+    },
+    Problem {
+        code: error_code::PROVIDER_MODEL_NOT_IN_CATALOGUE,
+        status: 400,
+        title: "Model not in library",
+        hint: "That model is not in the model library. Pick one from GET /v1/models, or ask for it to be added.",
+        user_message: Some(
+            "That model isn't in our library yet. Pick a listed model, or ask us to add support for it.",
+        ),
+    },
+    Problem {
+        code: error_code::PROVIDER_BASE_URL_INVALID,
+        status: 400,
+        title: "Custom endpoint base_url invalid or unsafe",
+        hint: "`base_url` must be https and must not target a loopback, private, link-local, or cloud-metadata host. Only an `openai-compatible` credential may carry one.",
+        user_message: Some(
+            "That endpoint URL isn't allowed. Use a public https URL for your custom endpoint.",
+        ),
+    },
+    Problem {
+        code: error_code::PROVIDER_MODEL_NOT_FOUND,
+        status: 404,
+        title: "Library model not found",
+        hint: "No library model matches this id. List the library to find one, or add the model first.",
+        user_message: Some(
+            "We couldn't find that model in the library. Refresh the list and try again.",
+        ),
+    },
+    Problem {
+        code: error_code::PROVIDER_MODEL_IN_USE,
+        status: 409,
+        title: "Library model is the active platform default",
+        hint: "This model is the active platform default. Point the default at another library model before deleting it.",
+        user_message: Some(
+            "This model is the active platform default — point the default at another model before deleting it.",
+        ),
+    },
+    Problem {
+        code: error_code::PROVIDER_MODEL_EXISTS,
+        status: 409,
+        title: "Library model already exists",
+        hint: "A library row for this provider and model already exists. Edit the existing row instead of adding a duplicate.",
+        user_message: Some(
+            "That model is already in the library. Edit the existing entry instead of adding a duplicate.",
+        ),
+    },
+    Problem {
+        code: error_code::CATALOG_NOT_FOUND,
+        status: 404,
+        title: "Fleet library entry not found",
+        hint: "No catalog entry matches this id. It may already be deleted — refresh the catalog.",
+        user_message: Some(
+            "We couldn't find that fleet. It may have already been removed — refresh the page.",
+        ),
+    },
+    Problem {
+        code: error_code::CATALOG_PUBLISH_WITHOUT_BUNDLE,
+        status: 409,
+        title: "Cannot publish a fleet with no bundle",
+        hint: "No bundle has been fetched for this entry, so there is nothing to publish. Fetch it from its repository first.",
+        user_message: Some(
+            "There's no bundle for this fleet yet. Fetch it from its repository first, then publish.",
+        ),
+    },
+    Problem {
+        code: error_code::CATALOG_DELETE_PUBLISHED,
+        status: 409,
+        title: "Cannot delete a published fleet",
+        hint: "This fleet is published and installable. Unpublish it first, then delete it.",
+        user_message: Some("This fleet is published. Unpublish it first, then delete it."),
+    },
+    Problem {
+        code: error_code::CATALOG_ID_COLLISION,
+        status: 409,
+        title: "Catalog id already taken by another repository",
+        hint: "This catalog id already belongs to a different source repository. Rename the bundle, or retry with replace to overwrite deliberately.",
+        user_message: Some(
+            "A different repository already owns this fleet's name. Rename the bundle, or confirm you want to replace it.",
+        ),
+    },
+    Problem {
+        code: error_code::CATALOG_ROW_STALE,
+        status: 412,
+        title: "Catalog entry changed since you loaded it",
+        hint: "Another operator saved first: `If-Match` names an old version. Refetch the row, re-apply your edit, and retry with the new `etag`.",
+        user_message: Some(
+            "Someone else edited this catalog entry since you opened it. Refresh to see their change, then re-apply your edit.",
+        ),
     },
     Problem {
         code: error_code::CRED_INTEGRATION_NOT_CONNECTED,

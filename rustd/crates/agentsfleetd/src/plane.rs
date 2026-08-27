@@ -17,6 +17,7 @@
 
 use std::sync::Arc;
 
+use afd_admin::{Models, PlatformKeys};
 use afd_api::router::{Dependencies, ReadyInputs};
 use afd_api::{Planes, Services};
 use afd_core::clock::UnixMillis;
@@ -31,9 +32,14 @@ use afd_fleet::memory::Memories;
 use afd_fleet::money::Accounts;
 use afd_fleet::provider::Providers;
 use afd_fleet::secrets::Registry;
+use afd_fleet::streams::{LiveStreams, SSE_MAX_STREAMS_DEFAULT};
 use afd_fleet::vault::Vault;
+use afd_fleet_ops::RunnerLeaseHistory;
+use afd_library::{Libraries, LibraryImports};
 use afd_redis::Redis;
 use afd_state::Credentials;
+
+use crate::bundles::Stores;
 
 use crate::identity::{Capabilities, Sessions};
 use crate::probes::LiveDependencies;
@@ -53,6 +59,12 @@ pub struct ServingPlane {
     runners: Runners,
     leases: Plane,
     bundles: Bundles,
+    streams: LiveStreams,
+    runner_lease_history: RunnerLeaseHistory,
+    models: Models,
+    platform_keys: PlatformKeys,
+    libraries: Libraries,
+    library_imports: LibraryImports,
 }
 
 impl ServingPlane {
@@ -82,17 +94,28 @@ impl ServingPlane {
     /// Invariant 3 as an ownership fact rather than as a rule about who reads
     /// which variable.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         database: Db,
         queue: Redis,
         kek: Arc<Kek>,
         capabilities: Capabilities,
         sessions: Sessions,
-        bundles: Bundles,
+        stores: Stores,
         broker: Arc<afd_fleet::credential::Broker>,
     ) -> Self {
+        let (bundles, uploads) = stores.split();
+        let library_imports = match uploads {
+            Some(store) => LibraryImports::new(database.clone(), store),
+            None => LibraryImports::without_store(database.clone()),
+        };
         Self {
             bundles,
+            streams: LiveStreams::new(SSE_MAX_STREAMS_DEFAULT),
+            runner_lease_history: RunnerLeaseHistory::new(database.clone()),
+            models: Models::new(database.clone(), Entropy::new()),
+            platform_keys: PlatformKeys::new(database.clone()),
+            libraries: Libraries::new(database.clone()),
+            library_imports,
             probes: LiveDependencies::new(database.clone(), queue.clone()),
             authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
             runners: Runners::new(database.clone(), Entropy::new()),
@@ -134,6 +157,30 @@ impl Services for ServingPlane {
 
     fn bundles(&self) -> &Bundles {
         &self.bundles
+    }
+
+    fn streams(&self) -> &LiveStreams {
+        &self.streams
+    }
+
+    fn runner_lease_history(&self) -> &RunnerLeaseHistory {
+        &self.runner_lease_history
+    }
+
+    fn models(&self) -> &Models {
+        &self.models
+    }
+
+    fn platform_keys(&self) -> &PlatformKeys {
+        &self.platform_keys
+    }
+
+    fn libraries(&self) -> &Libraries {
+        &self.libraries
+    }
+
+    fn library_imports(&self) -> &LibraryImports {
+        &self.library_imports
     }
 
     /// The wall clock, read once per verb by whichever handler asked.

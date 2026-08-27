@@ -13,15 +13,18 @@
 //! matrix, both bound sets and every decode branch in a unit test with no
 //! datastore anywhere near it.
 
+pub mod admin;
 pub mod bounds;
 pub mod heartbeat;
 pub mod policy;
 pub mod reconcile;
 pub mod record;
+mod rotate;
 pub mod spelling;
 pub mod store;
 pub mod token;
 pub mod validate;
+pub mod view;
 
 pub use self::heartbeat::{Beat, NO_REPORT};
 pub use self::policy::{AssignmentColumns, StoredVerdict};

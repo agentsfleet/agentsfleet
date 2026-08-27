@@ -9,7 +9,7 @@
 use afd_auth::Scope;
 
 use super::path::fleet_runner_path;
-use super::{Guard, RouteClass, RouteMeta, Scopes};
+use super::{Guard, RouteClass, RouteMeta, Scopes, Verb};
 
 const RUNNER_ENROLL: &[Scope] = &[Scope::RunnerEnroll];
 const RUNNER_READ: &[Scope] = &[Scope::RunnerRead];
@@ -47,6 +47,16 @@ impl RunnerOpsRoute {
         Self::Streams,
     ];
 
+    /// The verbs this operator route serves.
+    #[must_use]
+    pub const fn verbs(self) -> &'static [Verb] {
+        match self {
+            Self::Register => &[Verb::Post],
+            Self::List | Self::Get | Self::Events | Self::Leases | Self::Streams => &[Verb::Get],
+            Self::Patch => &[Verb::Patch],
+        }
+    }
+
     /// Enrolment is held independently of read and write because it is
     /// uniquely dangerous: the host it creates then receives every tenant's
     /// inline secrets, so it is separately grantable and separately revocable
@@ -56,8 +66,13 @@ impl RunnerOpsRoute {
         let (template, scopes) = match self {
             Self::Register => ("/v1/runners", Scopes::Always(RUNNER_ENROLL)),
             Self::List => ("/v1/fleets/runners", Scopes::Always(RUNNER_READ)),
-            Self::Get => (fleet_runner_path!(""), Scopes::Always(RUNNER_READ)),
-            Self::Patch => (fleet_runner_path!(""), Scopes::Always(RUNNER_WRITE)),
+            // These identities share one axum path. Both carry the same
+            // method-sensitive metadata so merging them cannot retain a
+            // cheaper GET-only gate for PATCH.
+            Self::Get | Self::Patch => (
+                fleet_runner_path!(""),
+                Scopes::rw(RUNNER_READ, RUNNER_WRITE),
+            ),
             Self::Events => (fleet_runner_path!("/events"), Scopes::Always(RUNNER_READ)),
             Self::Leases => (fleet_runner_path!("/leases"), Scopes::Always(RUNNER_READ)),
             Self::Streams => ("/v1/fleets/streams", Scopes::Always(STREAM_READ)),

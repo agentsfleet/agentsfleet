@@ -29,11 +29,13 @@
 
 use std::sync::Arc;
 
+use afd_admin::{Models, PlatformKeys};
 use afd_api::router::{Dependencies, ReadyInputs, build};
 use afd_api::services::Leasing;
 use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Planes, Services};
 use afd_auth::credential::{CredentialKind, Presented};
-use afd_auth::directory::{CredentialRecord, Liveness};
+use afd_auth::directory::{CredentialDirectory, CredentialRecord, Digest, Liveness};
+use afd_auth::error::Unavailable;
 use afd_auth::mock::{MockCapabilities, MockDirectory};
 use afd_auth::principal::Subject;
 use afd_auth::scope::ScopeSet;
@@ -46,6 +48,10 @@ use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_fleet::Runners;
 use afd_fleet::bundle::{Bundles, ContentHash};
+use afd_fleet::streams::{LiveStreams, SSE_MAX_STREAMS_DEFAULT};
+use afd_fleet_ops::RunnerLeaseHistory;
+use afd_library::{Libraries, LibraryImports};
+use afd_state::Credentials;
 use axum::Router;
 use axum::body::Body;
 use axum::response::Response;
@@ -71,13 +77,40 @@ const FROZEN: i64 = 1_760_000_000_000;
 #[derive(Debug)]
 pub(crate) struct Fleet {
     ready: ReadyInputs,
-    directory: MockDirectory,
+    mock_directory: MockDirectory,
+    directory: Directory,
     capabilities: MockCapabilities,
-    authenticator: Planes<MockDirectory, MockCapabilities, NoVerifier>,
+    authenticator: Planes<Directory, MockCapabilities, NoVerifier>,
     runners: Runners,
     leases: NoWork,
     bundles: Bundles,
+    streams: LiveStreams,
+    runner_lease_history: RunnerLeaseHistory,
+    models: Models,
+    platform_keys: PlatformKeys,
+    libraries: Libraries,
+    library_imports: LibraryImports,
     now: UnixMillis,
+}
+
+/// The same auth seam backed either by the fast map or production Postgres.
+#[derive(Debug, Clone)]
+pub(crate) enum Directory {
+    Mock(MockDirectory),
+    Live(Credentials),
+}
+
+impl CredentialDirectory for Directory {
+    async fn resolve(
+        &self,
+        kind: CredentialKind,
+        digest: &Digest,
+    ) -> Result<Option<CredentialRecord>, Unavailable> {
+        match self {
+            Self::Mock(directory) => directory.resolve(kind, digest).await,
+            Self::Live(directory) => directory.resolve(kind, digest).await,
+        }
+    }
 }
 
 /// A lease plane that always answers no-work.
@@ -196,25 +229,61 @@ impl Fleet {
     /// An instance whose dependencies answer, whose directory is empty, and
     /// whose Postgres is not there.
     pub(crate) fn new() -> Self {
-        let directory = MockDirectory::new();
+        let mock = MockDirectory::new();
+        let directory = Directory::Mock(mock.clone());
         let capabilities = MockCapabilities::new();
         let environment = MapEnv::from_pairs([(DbRole::Api.url_knob(), NOWHERE)]);
         let pool = PoolConfig::resolve(&environment, DbRole::Api)
             .expect("the fixture connection string is well formed");
+        let database = Db::unreachable(&pool);
         Self {
             ready: ReadyInputs {
                 database: true,
                 queue: true,
             },
+            mock_directory: mock,
             authenticator: Planes::new(directory.clone(), capabilities.clone(), NoVerifier),
             directory,
             capabilities,
-            runners: Runners::new(Db::unreachable(&pool), Entropy::new()),
+            runners: Runners::new(database.clone(), Entropy::new()),
+            runner_lease_history: RunnerLeaseHistory::new(database.clone()),
+            models: Models::new(database.clone(), Entropy::new()),
+            platform_keys: PlatformKeys::new(database.clone()),
+            libraries: Libraries::new(database.clone()),
+            library_imports: LibraryImports::without_store(database),
             leases: NoWork,
             // Unconfigured by default, so a suite that says nothing about
             // snapshots proves the refusal a deployment with no R2 knobs gives
             // — which is most of them.
             bundles: Bundles::unconfigured(),
+            streams: LiveStreams::new(SSE_MAX_STREAMS_DEFAULT),
+            now: UnixMillis::from_millis(FROZEN),
+        }
+    }
+
+    /// An instance whose credential directory and stores share live Postgres.
+    pub(crate) fn live(database: Db, subject: &str, scopes: ScopeSet) -> Self {
+        let who = Subject::new(subject).expect("the fixture subject is not blank");
+        let capabilities = MockCapabilities::new().with(&who, scopes);
+        let directory = Directory::Live(Credentials::new(database.clone()));
+        Self {
+            ready: ReadyInputs {
+                database: true,
+                queue: true,
+            },
+            mock_directory: MockDirectory::new(),
+            authenticator: Planes::new(directory.clone(), capabilities.clone(), NoVerifier),
+            directory,
+            capabilities,
+            runners: Runners::new(database.clone(), Entropy::new()),
+            runner_lease_history: RunnerLeaseHistory::new(database.clone()),
+            models: Models::new(database.clone(), Entropy::new()),
+            platform_keys: PlatformKeys::new(database.clone()),
+            libraries: Libraries::new(database.clone()),
+            library_imports: LibraryImports::without_store(database),
+            leases: NoWork,
+            bundles: Bundles::unconfigured(),
+            streams: LiveStreams::new(SSE_MAX_STREAMS_DEFAULT),
             now: UnixMillis::from_millis(FROZEN),
         }
     }
@@ -227,14 +296,14 @@ impl Fleet {
 
     /// Files a runner row under the digest of `token`.
     pub(crate) fn with_runner(self, token: &str, runner: &Uuid7, live: Liveness) -> Self {
-        file_runner(&self.directory, token, runner, live);
+        file_runner(&self.mock_directory, token, runner, live);
         self
     }
 
     /// Files a person row under the digest of `key`, holding `scopes`.
     pub(crate) fn with_person(mut self, key: &str, subject: &str, scopes: ScopeSet) -> Self {
         let who = Subject::new(subject).expect("the fixture subject is not blank");
-        self.directory = self.directory.with(
+        let _filed = self.mock_directory.clone().with(
             CredentialKind::TenantApiKey,
             &presented(key),
             CredentialRecord::Person {
@@ -271,7 +340,7 @@ impl Fleet {
 
     /// The directory, for a suite that revokes between two requests.
     pub(crate) const fn directory(&self) -> &MockDirectory {
-        &self.directory
+        &self.mock_directory
     }
 
     /// The capability source, for a suite that narrows a subject.
@@ -293,7 +362,7 @@ impl Dependencies for Fleet {
 }
 
 impl Services for Fleet {
-    type Auth = Planes<MockDirectory, MockCapabilities, NoVerifier>;
+    type Auth = Planes<Directory, MockCapabilities, NoVerifier>;
     type Leases = NoWork;
 
     fn authenticator(&self) -> &Self::Auth {
@@ -310,6 +379,30 @@ impl Services for Fleet {
 
     fn bundles(&self) -> &Bundles {
         &self.bundles
+    }
+
+    fn streams(&self) -> &LiveStreams {
+        &self.streams
+    }
+
+    fn runner_lease_history(&self) -> &RunnerLeaseHistory {
+        &self.runner_lease_history
+    }
+
+    fn models(&self) -> &Models {
+        &self.models
+    }
+
+    fn platform_keys(&self) -> &PlatformKeys {
+        &self.platform_keys
+    }
+
+    fn libraries(&self) -> &Libraries {
+        &self.libraries
+    }
+
+    fn library_imports(&self) -> &LibraryImports {
+        &self.library_imports
     }
 
     fn now(&self) -> UnixMillis {
