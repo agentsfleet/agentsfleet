@@ -77,6 +77,19 @@ pub use self::selection::{PlatformDefault, Selection};
 pub use self::store::Providers;
 pub use self::wire::Wire;
 
+/// Validates the provider/base-url pairing without exposing endpoint internals.
+///
+/// Platform administration and runner resolution must make the same SSRF and
+/// provider-pairing decision. This façade shares that decision across crates
+/// while keeping the parsed endpoint and host private to the runner plane.
+///
+/// # Errors
+/// Refuses a missing or unsafe compatible endpoint and a named provider that
+/// carries any endpoint.
+pub fn validate_endpoint_pair(provider: &str, base_url: Option<&str>) -> Result<(), Rejection> {
+    endpoint::resolve(provider, base_url).map(|_endpoint| ())
+}
+
 /// A prepared way of resolving one tenant's provider.
 ///
 /// Boxed rather than an enum, and that is the one place this design spends

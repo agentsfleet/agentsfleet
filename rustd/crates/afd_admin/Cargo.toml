@@ -21,5 +21,8 @@ afd_db.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
 [lints]
 workspace = true

@@ -10,4 +10,4 @@ mod platform_key;
 
 pub use error::{Error, Result};
 pub use model::{CreateModel, DeleteModel, Model, ModelInput, ModelRates, Models};
-pub use platform_key::{PlatformKey, PlatformKeyInput, PlatformKeys};
+pub use platform_key::{PlatformKey, PlatformKeyInput, PlatformKeys, SetPlatformKey};

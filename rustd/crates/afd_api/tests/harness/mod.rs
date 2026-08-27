@@ -29,6 +29,7 @@
 
 use std::sync::Arc;
 
+use afd_admin::{Models, PlatformKeys};
 use afd_api::router::{Dependencies, ReadyInputs, build};
 use afd_api::services::Leasing;
 use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Planes, Services};
@@ -81,6 +82,8 @@ pub(crate) struct Fleet {
     bundles: Bundles,
     streams: LiveStreams,
     runner_lease_history: RunnerLeaseHistory,
+    models: Models,
+    platform_keys: PlatformKeys,
     now: UnixMillis,
 }
 
@@ -215,7 +218,9 @@ impl Fleet {
             directory,
             capabilities,
             runners: Runners::new(database.clone(), Entropy::new()),
-            runner_lease_history: RunnerLeaseHistory::new(database),
+            runner_lease_history: RunnerLeaseHistory::new(database.clone()),
+            models: Models::new(database.clone(), Entropy::new()),
+            platform_keys: PlatformKeys::new(database),
             leases: NoWork,
             // Unconfigured by default, so a suite that says nothing about
             // snapshots proves the refusal a deployment with no R2 knobs gives
@@ -325,6 +330,14 @@ impl Services for Fleet {
 
     fn runner_lease_history(&self) -> &RunnerLeaseHistory {
         &self.runner_lease_history
+    }
+
+    fn models(&self) -> &Models {
+        &self.models
+    }
+
+    fn platform_keys(&self) -> &PlatformKeys {
+        &self.platform_keys
     }
 
     fn now(&self) -> UnixMillis {

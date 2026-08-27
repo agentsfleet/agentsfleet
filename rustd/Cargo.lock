@@ -52,12 +52,14 @@ dependencies = [
  "afd_db",
  "sqlx",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]
 name = "afd_api"
 version = "0.26.2"
 dependencies = [
+ "afd_admin",
  "afd_auth",
  "afd_core",
  "afd_crypto",
@@ -286,6 +288,7 @@ dependencies = [
 name = "agentsfleetd"
 version = "0.26.2"
 dependencies = [
+ "afd_admin",
  "afd_api",
  "afd_auth",
  "afd_core",

@@ -319,6 +319,21 @@ pub const FLEET_BUNDLE_FETCH_FAILED: ErrorCode = ErrorCode::declare("UZ-BUNDLE-0
 /// failure carries the store's own error as its source.
 pub const FLEET_BUNDLE_STORAGE_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-BUNDLE-005");
 
+/// The selected provider/model pair has no priced catalogue row.
+pub const PROVIDER_MODEL_NOT_IN_CATALOGUE: ErrorCode = ErrorCode::declare("UZ-PROVIDER-004");
+
+/// A custom endpoint is missing, forbidden, or unsafe for its provider.
+pub const PROVIDER_BASE_URL_INVALID: ErrorCode = ErrorCode::declare("UZ-PROVIDER-005");
+
+/// No priced catalogue row matches the operator-supplied identifier.
+pub const PROVIDER_MODEL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-PROVIDER-006");
+
+/// The active platform default still references the catalogue row.
+pub const PROVIDER_MODEL_IN_USE: ErrorCode = ErrorCode::declare("UZ-PROVIDER-007");
+
+/// A priced row already has the requested provider/model identity.
+pub const PROVIDER_MODEL_EXISTS: ErrorCode = ErrorCode::declare("UZ-PROVIDER-008");
+
 /// The instance is already serving as many requests as it admits.
 ///
 /// `ERR_API_BACKPRESSURE`. A 429, and the one refusal in this registry that is
@@ -434,6 +449,11 @@ pub const REGISTRY: &[ErrorCode] = &[
     FLEET_BUNDLE_NOT_FOUND,
     FLEET_BUNDLE_FETCH_FAILED,
     FLEET_BUNDLE_STORAGE_UNAVAILABLE,
+    PROVIDER_MODEL_NOT_IN_CATALOGUE,
+    PROVIDER_BASE_URL_INVALID,
+    PROVIDER_MODEL_NOT_FOUND,
+    PROVIDER_MODEL_IN_USE,
+    PROVIDER_MODEL_EXISTS,
     API_BACKPRESSURE,
     CRED_INTEGRATION_NOT_CONNECTED,
     CRED_BROKER_NOT_CONFIGURED,
