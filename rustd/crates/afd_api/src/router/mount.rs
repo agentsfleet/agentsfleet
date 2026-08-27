@@ -17,7 +17,9 @@ use std::sync::Arc;
 
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
-use crate::handler::{auth as auth_handler, fleet, runner, secret, tenant as tenant_handler};
+use crate::handler::{
+    auth as auth_handler, fleet, preference, runner, secret, tenant as tenant_handler,
+};
 use crate::route::{
     AuthRoute, FleetRoute, OpsRoute, Route, RunnerOpsRoute, RunnerRoute, TenantRoute,
     WorkspaceRoute,
@@ -120,12 +122,16 @@ fn workspace_handler_for<D: Serving>(verb: WorkspaceRoute) -> Option<MethodRoute
         WorkspaceRoute::Fleets => Some(get(fleet::list::<D>).post(fleet::install::<D>)),
         WorkspaceRoute::Secrets => Some(get(secret::list::<D>).post(secret::store::<D>)),
         WorkspaceRoute::Secret => Some(put(secret::replace::<D>).delete(secret::remove::<D>)),
+        WorkspaceRoute::Onboarding => Some(get(preference::onboarding::<D>)),
+        WorkspaceRoute::Preferences => Some(get(preference::read::<D>)),
+        // PUT alone: a preference is written by naming it, and the bag has no
+        // DELETE — unsetting a toggle is writing `false`, which is a state the
+        // dashboard reads, where an absent row and a false one would be two
+        // spellings of one thing.
+        WorkspaceRoute::Preference => Some(put(preference::write::<D>)),
         WorkspaceRoute::FleetLibrary
         | WorkspaceRoute::Events
         | WorkspaceRoute::EventsStream
-        | WorkspaceRoute::Onboarding
-        | WorkspaceRoute::Preferences
-        | WorkspaceRoute::Preference
         | WorkspaceRoute::Approvals
         | WorkspaceRoute::Approval
         | WorkspaceRoute::ApprovalResolve => None,

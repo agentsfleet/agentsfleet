@@ -57,6 +57,7 @@ pub mod memory;
 pub mod models;
 pub mod paths;
 pub mod policy;
+pub mod preference;
 mod redact;
 pub mod report;
 pub mod runner;

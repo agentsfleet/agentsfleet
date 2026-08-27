@@ -17,6 +17,7 @@
 
 pub mod auth;
 pub mod fleet;
+pub mod preference;
 pub mod runner;
 pub mod secret;
 pub mod tenant;

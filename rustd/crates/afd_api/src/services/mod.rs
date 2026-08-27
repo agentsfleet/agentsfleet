@@ -37,6 +37,7 @@ mod catalogue;
 mod device_flow;
 mod fleets;
 mod leasing;
+mod preference;
 mod tenant;
 mod vault;
 
@@ -45,6 +46,7 @@ pub use self::catalogue::ModelCatalogue;
 pub use self::device_flow::DeviceFlow;
 pub use self::fleets::WorkspaceFleets;
 pub use self::leasing::Leasing;
+pub use self::preference::WorkspacePreferences;
 pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
 pub use self::vault::WorkspaceSecrets;
 
@@ -182,6 +184,16 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// The workspace's secrets: store, list, replace, delete.
     fn secrets(&self) -> &Self::Secrets;
+
+    /// What the preference and onboarding surfaces act through.
+    ///
+    /// A concrete type for the reason [`Services::Secrets`] is one: it holds a
+    /// Postgres pool and an entropy source, and both carry the seam a suite
+    /// drives them through.
+    type Preferences: WorkspacePreferences;
+
+    /// One person's dashboard preferences, and the checklist over them.
+    fn preferences(&self) -> &Self::Preferences;
 
     /// The tenant's billing reads.
     ///

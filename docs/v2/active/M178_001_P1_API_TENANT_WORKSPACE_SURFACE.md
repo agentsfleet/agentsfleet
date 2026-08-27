@@ -155,7 +155,7 @@ Workspace + fleet event lists (bounded, `since`-windowed), SSE streams (`/events
 
 `/onboarding`, `/preferences[/{pref_key}]`, workspace fleet-library reads; PostHog product-analytics port for the events these surfaces already emit (add none, rename none). **Implementation default:** PostHog over plain HTTP client calls in `afd_observability` — the Zig `posthog-zig` dependency retires with the port — because the event payload surface is small and a full SDK adds an unaudited dependency for no new capability.
 
-- **Dimension 7.1** — preference/onboarding round-trips with shape parity → Test `test_prefs_onboarding_parity`
+- **Dimension 7.1** — DONE — preference/onboarding round-trips with shape parity → Test `afd_api/tests/workspace_preferences.rs` (10 cases, everything in front of the store) + `afd_tenant/tests/integration_preferences.rs` (7 cases, against live Postgres). The bag is `BTreeMap<&str, &RawValue>` rather than a parsed `Value`, so a stored preference returns byte for byte — a re-serialized `Value` would normalise spacing and key order on a payload the server has no business normalising, and the round-trip test pins exactly that. The key registry is a closed enum whose variant spelling IS the wire key, so `UZ-PREFS-001` is decided before a connection is drawn; the 1 KiB bound answers `UZ-PREFS-002` from the same verb, and both codes are asserted rather than the status alone.
 - **Dimension 7.2** — analytics: the existing event set fires with identical names/properties; nothing new emitted → Test `test_analytics_event_parity`
 
 ## Parallelization & execution map
