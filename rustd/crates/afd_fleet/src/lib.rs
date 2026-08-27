@@ -56,7 +56,8 @@ pub use crate::error::{Error, Result};
 pub use crate::runner::admin::{PolicyAssigned, SelftestRequested};
 pub use crate::runner::reconcile::{Verdict, reconcile};
 pub use crate::runner::view::{
-    KeysetCursor, PageLimit, RunnerDetail, RunnerEventPage, RunnerItem, RunnerPage,
+    KeysetCursor, PageLimit, RunnerDetail, RunnerEventFilter, RunnerEventPage, RunnerItem,
+    RunnerPage,
 };
 pub use crate::runner::{
     AssignmentColumns, Beat, Enrolled, NO_REPORT, Runners, SelfRow, StoredVerdict,

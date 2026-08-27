@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use afd_core::id::Uuid7;
-use afd_fleet::{KeysetCursor, PageLimit};
+use afd_fleet::{KeysetCursor, PageLimit, RunnerEventFilter};
+use afd_wire::admin::RunnerEventType;
 
 const QUERY_LIMIT: &str = "limit";
 const QUERY_STARTING_AFTER: &str = "starting_after";
@@ -10,7 +11,11 @@ const QUERY_PAGE_SIZE: &str = "page_size";
 const QUERY_SORT: &str = "sort";
 const QUERY_WORKSPACE_ID: &str = "workspace_id";
 const QUERY_FLEET: &str = "fleet";
+const QUERY_EVENT_TYPE: &str = "event_type";
+const QUERY_SINCE: &str = "since";
+const QUERY_UNTIL: &str = "until";
 const MAX_FLEET_FILTER_LEN: usize = 200;
+const MAX_EVENT_TYPE_TOKENS: usize = 11;
 
 pub(super) const DETAIL_BAD_PAGE: &str = "limit must be an integer between 1 and 100; starting_after must be a cursor from a previous page";
 pub(super) const DETAIL_RETIRED_PAGE: &str =
@@ -29,11 +34,20 @@ pub(super) struct LeaseQuery {
     pub(super) limit: u32,
 }
 
+pub(super) struct EventQuery {
+    pub(super) cursor: Option<KeysetCursor>,
+    pub(super) limit: PageLimit,
+    pub(super) filter: RunnerEventFilter,
+}
+
 pub(super) const DETAIL_BAD_LEASE_LIMIT: &str = "limit must be an integer between 1 and 100";
 pub(super) const DETAIL_BAD_LEASE_CURSOR: &str = "starting_after must be a lease id held by this runner, and must match workspace_id and fleet when those filters are set";
 pub(super) const DETAIL_BAD_WORKSPACE: &str = "workspace_id must be a workspace id";
 pub(super) const DETAIL_BAD_FLEET: &str =
     "fleet must be a fleet id or name, at most 200 characters";
+pub(super) const DETAIL_BAD_EVENTS: &str = "limit must be between 1 and 100; starting_after must be a cursor from a previous page; event_type must be a comma-separated set of runner event types; since/until must be millis";
+pub(super) const DETAIL_RETIRED_EVENT_PAGE: &str =
+    "page and page_size are retired on this list; page with starting_after and limit";
 
 pub(super) fn page(params: &HashMap<String, String>) -> Result<PageQuery, &'static str> {
     if [QUERY_PAGE, QUERY_PAGE_SIZE, QUERY_SORT]
@@ -93,6 +107,40 @@ pub(super) fn leases(params: &HashMap<String, String>) -> Result<LeaseQuery, &'s
     })
 }
 
+pub(super) fn events(params: &HashMap<String, String>) -> Result<EventQuery, &'static str> {
+    if [QUERY_PAGE, QUERY_PAGE_SIZE]
+        .iter()
+        .any(|key| params.contains_key(*key))
+    {
+        return Err(DETAIL_RETIRED_EVENT_PAGE);
+    }
+    let limit = match params.get(QUERY_LIMIT) {
+        Some(raw) => raw
+            .parse::<u32>()
+            .ok()
+            .and_then(PageLimit::new)
+            .ok_or(DETAIL_BAD_EVENTS)?,
+        None => PageLimit::default(),
+    };
+    let cursor = params
+        .get(QUERY_STARTING_AFTER)
+        .map(|raw| cursor(raw).map_err(|_detail| DETAIL_BAD_EVENTS))
+        .transpose()?;
+    let event_types = params
+        .get(QUERY_EVENT_TYPE)
+        .map(|raw| event_types(raw))
+        .transpose()?
+        .unwrap_or_default();
+    let since = optional_i64(params.get(QUERY_SINCE))?;
+    let until = optional_i64(params.get(QUERY_UNTIL))?;
+    let filter = RunnerEventFilter::new(event_types, since, until).ok_or(DETAIL_BAD_EVENTS)?;
+    Ok(EventQuery {
+        cursor,
+        limit,
+        filter,
+    })
+}
+
 pub(super) fn format(cursor: &KeysetCursor) -> String {
     format!("{}:{}", cursor.created_at(), cursor.id())
 }
@@ -104,6 +152,28 @@ fn cursor(raw: &str) -> Result<KeysetCursor, &'static str> {
         .map_err(|_invalid| DETAIL_BAD_PAGE)?;
     let id = Uuid7::parse(id).map_err(|_invalid| DETAIL_BAD_PAGE)?;
     Ok(KeysetCursor::new(created_at, id))
+}
+
+fn event_types(raw: &str) -> Result<Vec<RunnerEventType>, &'static str> {
+    if raw.is_empty() {
+        return Err(DETAIL_BAD_EVENTS);
+    }
+    let tokens = raw.split(',').collect::<Vec<_>>();
+    if tokens.len() > MAX_EVENT_TYPE_TOKENS || tokens.iter().any(|token| token.is_empty()) {
+        return Err(DETAIL_BAD_EVENTS);
+    }
+    tokens
+        .into_iter()
+        .map(|token| {
+            serde_json::from_value(serde_json::Value::String(token.to_owned()))
+                .map_err(|_invalid| DETAIL_BAD_EVENTS)
+        })
+        .collect()
+}
+
+fn optional_i64(raw: Option<&String>) -> Result<Option<i64>, &'static str> {
+    raw.map(|value| value.parse::<i64>().map_err(|_invalid| DETAIL_BAD_EVENTS))
+        .transpose()
 }
 
 #[cfg(test)]
@@ -176,5 +246,47 @@ mod tests {
                 Some(detail)
             );
         }
+    }
+
+    #[test]
+    fn event_query_parses_sets_and_windows_and_refuses_partial_shapes() {
+        let cursor = "1725000000000:0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010";
+        let params = HashMap::from([
+            (QUERY_LIMIT.to_owned(), "2".to_owned()),
+            (QUERY_STARTING_AFTER.to_owned(), cursor.to_owned()),
+            (
+                QUERY_EVENT_TYPE.to_owned(),
+                "runner_online,runner_offline".to_owned(),
+            ),
+            (QUERY_SINCE.to_owned(), "10".to_owned()),
+            (QUERY_UNTIL.to_owned(), "20".to_owned()),
+        ]);
+        let parsed = events(&params).expect("the event query is valid");
+        assert_eq!(parsed.limit.get(), 2);
+        assert_eq!(parsed.cursor.as_ref().map(format).as_deref(), Some(cursor));
+
+        for (key, value, detail) in [
+            (QUERY_PAGE, "2", DETAIL_RETIRED_EVENT_PAGE),
+            (QUERY_PAGE_SIZE, "10", DETAIL_RETIRED_EVENT_PAGE),
+            (QUERY_LIMIT, "0", DETAIL_BAD_EVENTS),
+            (QUERY_STARTING_AFTER, "not-a-cursor", DETAIL_BAD_EVENTS),
+            (QUERY_EVENT_TYPE, "", DETAIL_BAD_EVENTS),
+            (QUERY_EVENT_TYPE, "runner_online,", DETAIL_BAD_EVENTS),
+            (QUERY_EVENT_TYPE, "not_an_event", DETAIL_BAD_EVENTS),
+            (QUERY_SINCE, "yesterday", DETAIL_BAD_EVENTS),
+        ] {
+            assert_eq!(
+                events(&HashMap::from([(key.to_owned(), value.to_owned())])).err(),
+                Some(detail)
+            );
+        }
+        assert_eq!(
+            events(&HashMap::from([
+                (QUERY_SINCE.to_owned(), "21".to_owned()),
+                (QUERY_UNTIL.to_owned(), "20".to_owned()),
+            ]))
+            .err(),
+            Some(DETAIL_BAD_EVENTS)
+        );
     }
 }

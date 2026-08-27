@@ -19,7 +19,7 @@ mod requests;
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_fleet::PageLimit;
+use afd_fleet::{PageLimit, RunnerEventFilter};
 use afd_wire::admin::{RunnerAdminAction, RunnerEventType};
 use afd_wire::runner::{
     HeartbeatRequest, NetworkPolicy, RunnerLiveness, SandboxTier, SelftestCheck, SelftestReport,
@@ -33,11 +33,9 @@ use self::support::Fixtures;
 async fn test_runner_views_parity() {
     let fixtures = Fixtures::create().await;
     let seeded = seed_runner_views(&fixtures).await;
-
     assert_runner_pages(&fixtures, &seeded).await;
     assert_runner_detail(&fixtures, &seeded.live_runner).await;
     assert_event_pages(&fixtures, &seeded.live_runner).await;
-
     fixtures.cleanup().await;
 }
 
@@ -54,7 +52,12 @@ async fn runner_views_report_missing_and_malformed_rows_without_partial_success(
         .expect_err("a missing runner has no detail");
     let event_error = fixtures
         .runners()
-        .runner_events(&missing, None, PageLimit::default())
+        .runner_events(
+            &missing,
+            &RunnerEventFilter::default(),
+            None,
+            PageLimit::default(),
+        )
         .await
         .expect_err("a missing runner has no history");
     for error in [detail_error, event_error] {
@@ -81,7 +84,12 @@ async fn runner_views_report_missing_and_malformed_rows_without_partial_success(
     insert_unknown_event(&fixtures, &enrolled.runner_id).await;
     let malformed_event = fixtures
         .runners()
-        .runner_events(&enrolled.runner_id, None, PageLimit::default())
+        .runner_events(
+            &enrolled.runner_id,
+            &RunnerEventFilter::default(),
+            None,
+            PageLimit::default(),
+        )
         .await
         .expect_err("an unknown stored event type fails the whole page");
     assert_eq!(malformed_event.code(), error_code::INTERNAL_DB_QUERY);
@@ -278,19 +286,20 @@ async fn assert_runner_detail(fixtures: &Fixtures, runner: &Uuid7) {
 
 async fn assert_event_pages(fixtures: &Fixtures, runner: &Uuid7) {
     let limit = PageLimit::new(2).expect("two is a valid page limit");
+    let unfiltered = RunnerEventFilter::default();
     let first = fixtures
         .runners()
-        .runner_events(runner, None, limit)
+        .runner_events(runner, &unfiltered, None, limit)
         .await
         .expect("the first event page loads");
     let second = fixtures
         .runners()
-        .runner_events(runner, first.next_cursor.as_ref(), limit)
+        .runner_events(runner, &unfiltered, first.next_cursor.as_ref(), limit)
         .await
         .expect("the second event page loads");
     let third = fixtures
         .runners()
-        .runner_events(runner, second.next_cursor.as_ref(), limit)
+        .runner_events(runner, &unfiltered, second.next_cursor.as_ref(), limit)
         .await
         .expect("the terminal event page loads");
     assert_eq!((first.total, second.total, third.total), (4, 4, 4));
@@ -309,6 +318,32 @@ async fn assert_event_pages(fixtures: &Fixtures, runner: &Uuid7) {
             RunnerEventType::RunnerCordoned,
             RunnerEventType::RunnerOnline,
             RunnerEventType::RunnerRegistered,
+        ]
+    );
+
+    let filtered = RunnerEventFilter::new(
+        vec![
+            RunnerEventType::RunnerOnline,
+            RunnerEventType::RunnerCordoned,
+        ],
+        Some(ENROLLED_AT + 1),
+        Some(ENROLLED_AT + 2),
+    )
+    .expect("the inclusive window is ordered");
+    let page = fixtures
+        .runners()
+        .runner_events(runner, &filtered, None, PageLimit::default())
+        .await
+        .expect("the filtered page loads");
+    assert_eq!(page.total, 2);
+    assert_eq!(
+        page.items
+            .iter()
+            .map(|event| event.event_type)
+            .collect::<Vec<_>>(),
+        [
+            RunnerEventType::RunnerCordoned,
+            RunnerEventType::RunnerOnline,
         ]
     );
 }

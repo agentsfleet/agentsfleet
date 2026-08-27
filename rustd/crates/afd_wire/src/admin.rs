@@ -252,6 +252,26 @@ pub enum RunnerEventType {
     RunnerPolicyAssigned,
 }
 
+impl RunnerEventType {
+    /// The stable spelling stored in Postgres and accepted by query filters.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::RunnerRegistered => "runner_registered",
+            Self::RunnerOnline => "runner_online",
+            Self::RunnerOffline => "runner_offline",
+            Self::LeaseAcquired => "lease_acquired",
+            Self::LeaseReleased => "lease_released",
+            Self::RunnerCordoned => "runner_cordoned",
+            Self::RunnerDraining => "runner_draining",
+            Self::RunnerDrained => "runner_drained",
+            Self::RunnerRevoked => "runner_revoked",
+            Self::RunnerTokenRotated => "runner_token_rotated",
+            Self::RunnerPolicyAssigned => "runner_policy_assigned",
+        }
+    }
+}
+
 /// The per-work tags: one acquired and one released per lease.
 ///
 /// They dominate the table by construction and restate what the lease row
