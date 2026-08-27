@@ -16,17 +16,19 @@ mod queue;
 #[path = "support/fleet_requests.rs"]
 mod requests;
 
+#[path = "support/view_heartbeat.rs"]
+mod view_heartbeat;
+
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_fleet::{PageLimit, RunnerEventFilter};
 use afd_wire::admin::{RunnerAdminAction, RunnerEventType};
-use afd_wire::runner::{
-    HeartbeatRequest, NetworkPolicy, RunnerLiveness, SandboxTier, SelftestCheck, SelftestReport,
-};
+use afd_wire::runner::{NetworkPolicy, RunnerLiveness, SandboxTier};
 
-use self::requests::{ENROLLED_AT, capable, enrolment};
+use self::requests::{ENROLLED_AT, enrolment};
 use self::support::Fixtures;
+use self::view_heartbeat::view_heartbeat;
 
 const ACTOR: &str = "fixture:platform-operator";
 
@@ -206,22 +208,6 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) {
         .rotate_token(live_runner, ACTOR, UnixMillis::from_millis(ENROLLED_AT + 3))
         .await
         .expect("the token rotates");
-}
-
-fn view_heartbeat() -> HeartbeatRequest<'static> {
-    HeartbeatRequest {
-        capability_report: Some(capable()),
-        selftest: Some(SelftestReport {
-            checks: vec![SelftestCheck {
-                name: Cow::Borrowed("network policy is applied"),
-                ok: true,
-                detail: Cow::Borrowed("the egress boundary answered"),
-            }],
-            all_ok: true,
-            sandbox_tier: Cow::Borrowed("dev_none"),
-            network_policy: Cow::Borrowed("allow_all"),
-        }),
-    }
 }
 
 async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
