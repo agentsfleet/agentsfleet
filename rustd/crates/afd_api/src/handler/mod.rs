@@ -49,7 +49,41 @@ pub(crate) fn malformed(detail: &'static str) -> Response {
     .into_response()
 }
 
-pub(crate) fn refuse(error: &afd_fleet::Error, event: &'static str) -> Response {
+pub(crate) trait Refusal: std::fmt::Display {
+    fn code(&self) -> afd_core::error_code::ErrorCode;
+    fn detail(&self) -> &'static str;
+    fn is_datastore_unavailable(&self) -> bool;
+}
+
+impl Refusal for afd_fleet::Error {
+    fn code(&self) -> afd_core::error_code::ErrorCode {
+        self.code()
+    }
+
+    fn detail(&self) -> &'static str {
+        self.detail()
+    }
+
+    fn is_datastore_unavailable(&self) -> bool {
+        self.is_datastore_unavailable()
+    }
+}
+
+impl Refusal for afd_fleet_ops::Error {
+    fn code(&self) -> afd_core::error_code::ErrorCode {
+        self.code()
+    }
+
+    fn detail(&self) -> &'static str {
+        self.detail()
+    }
+
+    fn is_datastore_unavailable(&self) -> bool {
+        self.is_datastore_unavailable()
+    }
+}
+
+pub(crate) fn refuse<E: Refusal>(error: &E, event: &'static str) -> Response {
     let request_id = RequestId::mint();
     let code = error.code();
     // Hoisted out of the macro: `tracing`'s `log` bridge compiles a second copy

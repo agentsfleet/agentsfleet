@@ -47,6 +47,7 @@ use afd_db::config::{DbRole, PoolConfig};
 use afd_fleet::Runners;
 use afd_fleet::bundle::{Bundles, ContentHash};
 use afd_fleet::streams::{LiveStreams, SSE_MAX_STREAMS_DEFAULT};
+use afd_fleet_ops::RunnerLeaseHistory;
 use axum::Router;
 use axum::body::Body;
 use axum::response::Response;
@@ -79,6 +80,7 @@ pub(crate) struct Fleet {
     leases: NoWork,
     bundles: Bundles,
     streams: LiveStreams,
+    runner_lease_history: RunnerLeaseHistory,
     now: UnixMillis,
 }
 
@@ -203,6 +205,7 @@ impl Fleet {
         let environment = MapEnv::from_pairs([(DbRole::Api.url_knob(), NOWHERE)]);
         let pool = PoolConfig::resolve(&environment, DbRole::Api)
             .expect("the fixture connection string is well formed");
+        let database = Db::unreachable(&pool);
         Self {
             ready: ReadyInputs {
                 database: true,
@@ -211,7 +214,8 @@ impl Fleet {
             authenticator: Planes::new(directory.clone(), capabilities.clone(), NoVerifier),
             directory,
             capabilities,
-            runners: Runners::new(Db::unreachable(&pool), Entropy::new()),
+            runners: Runners::new(database.clone(), Entropy::new()),
+            runner_lease_history: RunnerLeaseHistory::new(database),
             leases: NoWork,
             // Unconfigured by default, so a suite that says nothing about
             // snapshots proves the refusal a deployment with no R2 knobs gives
@@ -317,6 +321,10 @@ impl Services for Fleet {
 
     fn streams(&self) -> &LiveStreams {
         &self.streams
+    }
+
+    fn runner_lease_history(&self) -> &RunnerLeaseHistory {
+        &self.runner_lease_history
     }
 
     fn now(&self) -> UnixMillis {
