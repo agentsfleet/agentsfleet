@@ -123,8 +123,23 @@ run_script() {
     "$@" 2>&1
 }
 
+# Every test below runs in its own backgrounded subshell (see the runner at
+# the bottom of this file), and run_script's `: >"$calls"` / `rm -f
+# "$captures"/*` operate on paths, not shell state — two tests sharing the
+# file-scope $calls/$captures would genuinely race: one test's assertion
+# reading a curl-argument log truncated mid-read by another test's run_script
+# call. Each test declares its OWN local calls/captures below. bash resolves
+# a free variable inside a called function by walking UP the call stack, and
+# a command-substitution subshell inherits that whole call stack at fork time
+# — so run_script, invoked from inside a test function that just did `local
+# calls=...`, sees THAT test's path, never the file-scope default declared at
+# the top of this file. The file-scope $calls/$captures become dead once
+# every test shadows them; kept only so run_script has something to name if a
+# future caller forgets to.
 test_should_validate_assets() {
   local name="test_should_validate_assets"
+  local calls="$(mktemp -p "$work_dir")"
+  local captures="$(mktemp -d -p "$work_dir")"
   local output status=0
   output="$(run_script bash "$PROVIDER_DIR/assets_check.sh")" || status=$?
   if [ "$status" -ne 0 ]; then
@@ -136,6 +151,8 @@ test_should_validate_assets() {
 
 test_should_verify_prometheus_without_exposing_token() {
   local name="test_should_verify_prometheus_without_exposing_token"
+  local calls="$(mktemp -p "$work_dir")"
+  local captures="$(mktemp -d -p "$work_dir")"
   local output status=0
   output="$(run_script bash "$GATE" check dev grafana)" || status=$?
   if [ "$status" -ne 0 ]; then
@@ -149,6 +166,8 @@ test_should_verify_prometheus_without_exposing_token() {
 
 test_should_reject_wrong_datasource_type() {
   local name="test_should_reject_wrong_datasource_type"
+  local calls="$(mktemp -p "$work_dir")"
+  local captures="$(mktemp -d -p "$work_dir")"
   local output status=0
   output="$(
     run_script MOCK_PROM_TYPE=loki bash "$GATE" check dev grafana
@@ -162,6 +181,8 @@ test_should_reject_wrong_datasource_type() {
 
 test_should_create_dashboard_and_folder() {
   local name="test_should_create_dashboard_and_folder"
+  local calls="$(mktemp -p "$work_dir")"
+  local captures="$(mktemp -d -p "$work_dir")"
   local output status=0
   output="$(run_script MOCK_MODE=create bash "$PROVIDER_DIR/resources.sh")" ||
     status=$?
@@ -178,6 +199,8 @@ test_should_create_dashboard_and_folder() {
 
 test_should_create_alerts_with_source_threshold() {
   local name="test_should_create_alerts_with_source_threshold"
+  local calls="$(mktemp -p "$work_dir")"
+  local captures="$(mktemp -d -p "$work_dir")"
   local output status=0
   output="$(run_script MOCK_MODE=create bash "$PROVIDER_DIR/alerts.sh")" ||
     status=$?
@@ -197,6 +220,8 @@ test_should_create_alerts_with_source_threshold() {
 
 test_should_update_existing_resources_with_versions() {
   local name="test_should_update_existing_resources_with_versions"
+  local calls="$(mktemp -p "$work_dir")"
+  local captures="$(mktemp -d -p "$work_dir")"
   local output status=0
   output="$(run_script MOCK_MODE=update bash "$PROVIDER_DIR/resources.sh")" ||
     status=$?
@@ -213,6 +238,8 @@ test_should_update_existing_resources_with_versions() {
 
 test_should_update_existing_alerts_with_versions() {
   local name="test_should_update_existing_alerts_with_versions"
+  local calls="$(mktemp -p "$work_dir")"
+  local captures="$(mktemp -d -p "$work_dir")"
   local output status=0
   output="$(run_script MOCK_MODE=update bash "$PROVIDER_DIR/alerts.sh")" ||
     status=$?
@@ -230,6 +257,8 @@ test_should_update_existing_alerts_with_versions() {
 
 test_should_fail_when_grafana_rejects_a_write() {
   local name="test_should_fail_when_grafana_rejects_a_write"
+  local calls="$(mktemp -p "$work_dir")"
+  local captures="$(mktemp -d -p "$work_dir")"
   local output status=0
   output="$(
     run_script MOCK_MODE=create MOCK_WRITE_STATUS=500 \
@@ -244,6 +273,8 @@ test_should_fail_when_grafana_rejects_a_write() {
 
 test_should_require_write_approval() {
   local name="test_should_require_write_approval"
+  local calls="$(mktemp -p "$work_dir")"
+  local captures="$(mktemp -d -p "$work_dir")"
   local output status=0
   output="$(
     run_script ALLOW_OBSERVABILITY_WRITES=0 bash "$GATE" apply dev grafana
@@ -257,6 +288,8 @@ test_should_require_write_approval() {
 
 test_should_reject_unknown_provider() {
   local name="test_should_reject_unknown_provider"
+  local calls="$(mktemp -p "$work_dir")"
+  local captures="$(mktemp -d -p "$work_dir")"
   local output status=0
   output="$(run_script bash "$GATE" check dev elastic)" || status=$?
   if [ "$status" -ne 2 ]; then
@@ -270,6 +303,8 @@ test_should_reject_unknown_provider() {
 
 test_should_reject_invalid_gate_inputs() {
   local name="test_should_reject_invalid_gate_inputs"
+  local calls="$(mktemp -p "$work_dir")"
+  local captures="$(mktemp -d -p "$work_dir")"
   local output status arguments
   local cases=(
     ''
@@ -293,17 +328,45 @@ test_should_reject_invalid_gate_inputs() {
   ok "$name"
 }
 
-test_should_validate_assets
-test_should_verify_prometheus_without_exposing_token
-test_should_reject_wrong_datasource_type
-test_should_create_dashboard_and_folder
-test_should_create_alerts_with_source_threshold
-test_should_update_existing_resources_with_versions
-test_should_update_existing_alerts_with_versions
-test_should_fail_when_grafana_rejects_a_write
-test_should_require_write_approval
-test_should_reject_unknown_provider
-test_should_reject_invalid_gate_inputs
+# Each test now runs in its own backgrounded subshell — safe since every
+# test above shadows $calls/$captures with a fresh mktemp path, per the note
+# by run_script. ok()/bad() still increment $passed/$failed, but those
+# increments happen inside the subshell and vanish when it exits; pass/fail
+# is instead read back from each test's own captured log (a bad() call always
+# prints a line starting "FAIL ", which is the only reliable outcome signal
+# a bash function running to completion under `set -uo pipefail` — never an
+# explicit `exit`/`return` code — actually provides).
+TEST_NAMES=(
+  test_should_validate_assets
+  test_should_verify_prometheus_without_exposing_token
+  test_should_reject_wrong_datasource_type
+  test_should_create_dashboard_and_folder
+  test_should_create_alerts_with_source_threshold
+  test_should_update_existing_resources_with_versions
+  test_should_update_existing_alerts_with_versions
+  test_should_fail_when_grafana_rejects_a_write
+  test_should_require_write_approval
+  test_should_reject_unknown_provider
+  test_should_reject_invalid_gate_inputs
+)
+
+result_dir="$(mktemp -d)"
+pids=()
+for name in "${TEST_NAMES[@]}"; do
+  ( "$name" ) >"$result_dir/$name.log" 2>&1 &
+  pids+=("$!")
+done
+for pid in "${pids[@]}"; do wait "$pid"; done
+
+for name in "${TEST_NAMES[@]}"; do
+  cat "$result_dir/$name.log"
+  if grep -q '^FAIL ' "$result_dir/$name.log"; then
+    failed=$((failed + 1))
+  else
+    passed=$((passed + 1))
+  fi
+done
+rm -rf -- "$result_dir"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]
