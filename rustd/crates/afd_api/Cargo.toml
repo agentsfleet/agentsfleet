@@ -19,6 +19,7 @@ test-util = [
   "afd_core/test-util",
   "afd_crypto/test-util",
   "afd_fleet/test-util",
+  "afd_library/test-util",
 ]
 
 # Each dependency is added by the module that uses it: `unreachable_pub` and
@@ -35,6 +36,8 @@ afd_auth.workspace = true
 afd_fleet.workspace = true
 # Small, read-only cross-table projections for operator routes.
 afd_fleet_ops.workspace = true
+# Fleet-library catalogue administration and import services.
+afd_library.workspace = true
 # The payloads the runner verbs read and answer with. Frozen by M175; consumed,
 # never authored here.
 afd_wire.workspace = true

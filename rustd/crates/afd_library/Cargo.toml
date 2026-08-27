@@ -11,6 +11,9 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+test-util = ["afd_core/test-util", "afd_db/test-util"]
+
 [dependencies]
 afd_core.workspace = true
 afd_db.workspace = true

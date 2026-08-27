@@ -183,7 +183,7 @@ fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>> {
         }),
         Route::Runner(verb) => Some(runner_handler::<D>(verb)),
         Route::RunnerOps(verb) => Some(runner_ops_handler::<D>(verb)),
-        Route::Admin(verb) => admin_handler::<D>(verb),
+        Route::Admin(verb) => Some(admin_handler::<D>(verb)),
         // Tabled, not yet served. Each of these families arrives with the
         // milestone that ports its handlers; until then the route exists as a
         // template, a guard and a scope rung, and this binary answers 404.
@@ -197,19 +197,20 @@ fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>> {
 }
 
 /// The mounted part of the platform administration table.
-fn admin_handler<D: Serving>(verb: AdminRoute) -> Option<MethodRouter<Arc<D>>> {
+fn admin_handler<D: Serving>(verb: AdminRoute) -> MethodRouter<Arc<D>> {
     match verb {
+        AdminRoute::FleetLibrary => get(admin::libraries::list::<D>),
+        AdminRoute::FleetLibraryEntry => {
+            patch(admin::libraries::patch::<D>).merge(delete(admin::libraries::delete::<D>))
+        }
         AdminRoute::PlatformKeys => {
-            Some(get(admin::platform_keys::list::<D>).merge(put(admin::platform_keys::set::<D>)))
+            get(admin::platform_keys::list::<D>).merge(put(admin::platform_keys::set::<D>))
         }
-        AdminRoute::PlatformKey => Some(delete(admin::platform_keys::deactivate::<D>)),
-        AdminRoute::Models => {
-            Some(get(admin::models::list::<D>).merge(post(admin::models::create::<D>)))
-        }
+        AdminRoute::PlatformKey => delete(admin::platform_keys::deactivate::<D>),
+        AdminRoute::Models => get(admin::models::list::<D>).merge(post(admin::models::create::<D>)),
         AdminRoute::Model => {
-            Some(patch(admin::models::update::<D>).merge(delete(admin::models::delete::<D>)))
+            patch(admin::models::update::<D>).merge(delete(admin::models::delete::<D>))
         }
-        AdminRoute::FleetLibrary | AdminRoute::FleetLibraryEntry => None,
     }
 }
 

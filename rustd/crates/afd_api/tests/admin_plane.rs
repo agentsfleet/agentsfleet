@@ -163,6 +163,68 @@ async fn platform_key_mutations_validate_pairing_before_io() {
     assert_eq!(bad_provider.status(), StatusCode::BAD_REQUEST);
 }
 
+#[tokio::test]
+async fn library_catalogue_routes_require_write_scope_and_validate_before_io() {
+    let admin = fleet(Scope::PlatformLibraryWrite);
+    let list = send(
+        &admin,
+        Method::GET,
+        "/v1/admin/fleet-libraries",
+        Some(PLATFORM_KEY),
+        "",
+    )
+    .await;
+    assert_eq!(list.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+    for body in [
+        "",
+        "[]",
+        r#"{"source_repo":"owner/repo/extra"}"#,
+        r#"{"required_credentials_reasons":[]}"#,
+    ] {
+        let refused = send(
+            &admin,
+            Method::PATCH,
+            "/v1/admin/fleet-libraries/example",
+            Some(PLATFORM_KEY),
+            body,
+        )
+        .await;
+        assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+    }
+
+    let patch = send(
+        &admin,
+        Method::PATCH,
+        "/v1/admin/fleet-libraries/example",
+        Some(PLATFORM_KEY),
+        r#"{"description":"curated"}"#,
+    )
+    .await;
+    assert_eq!(patch.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+    let delete = send(
+        &admin,
+        Method::DELETE,
+        "/v1/admin/fleet-libraries/example",
+        Some(PLATFORM_KEY),
+        "",
+    )
+    .await;
+    assert_eq!(delete.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+    let wrong_scope = fleet(Scope::ModelAdmin);
+    let denied = send(
+        &wrong_scope,
+        Method::GET,
+        "/v1/admin/fleet-libraries",
+        Some(PLATFORM_KEY),
+        "",
+    )
+    .await;
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+}
+
 async fn code(response: axum::response::Response) -> Option<&'static str> {
     match json_body(response)
         .await

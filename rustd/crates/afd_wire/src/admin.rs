@@ -5,57 +5,12 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 pub use crate::admin_catalogue::{
+    AdminLibrariesResponse, AdminLibraryItem, AdminLibraryPatch, AdminLibraryRequirements,
     AdminModelCreate, AdminModelCreated, AdminModelItem, AdminModelUpdated, AdminModelsResponse,
     ModelRates, PlatformKeyDeactivateResponse, PlatformKeyItem, PlatformKeyPut,
     PlatformKeySetResponse, PlatformKeysResponse,
 };
 use crate::runner::AssignedPolicy;
-
-/// One metadata-only platform Fleet-library row.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AdminLibraryItem<'a> {
-    /// Slug identity.
-    #[serde(borrow)]
-    pub id: Cow<'a, str>,
-    /// Display name.
-    #[serde(borrow)]
-    pub name: Cow<'a, str>,
-    /// Curated description.
-    #[serde(borrow)]
-    pub description: Cow<'a, str>,
-    /// GitHub owner/repository.
-    #[serde(borrow)]
-    pub source_repo: Cow<'a, str>,
-    /// Fetched revision.
-    #[serde(borrow)]
-    pub source_ref: Cow<'a, str>,
-    /// Draft or public.
-    #[serde(borrow)]
-    pub visibility: Cow<'a, str>,
-    /// Content identity, never the support-file bytes.
-    #[serde(borrow)]
-    pub content_hash: Option<Cow<'a, str>>,
-    /// Credential names only.
-    pub required_credentials: serde_json::Value,
-    /// Required tool names.
-    pub required_tools: serde_json::Value,
-    /// Declared outbound hosts.
-    pub network_hosts: serde_json::Value,
-    /// Whether a trigger document exists.
-    pub trigger_present: bool,
-    /// Last mutation instant in epoch milliseconds.
-    pub updated_at: i64,
-}
-
-/// Admin Fleet-library list response.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AdminLibrariesResponse<'a> {
-    /// Every draft and public row.
-    #[serde(borrow)]
-    pub libraries: Vec<AdminLibraryItem<'a>>,
-}
 
 /// Operator intent for a runner. Only `Active` admits a runner-plane call;
 /// every other value rejects one.

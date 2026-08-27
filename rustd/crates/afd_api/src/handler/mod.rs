@@ -98,6 +98,20 @@ impl Refusal for afd_admin::Error {
     }
 }
 
+impl Refusal for afd_library::Error {
+    fn code(&self) -> afd_core::error_code::ErrorCode {
+        self.code()
+    }
+
+    fn detail(&self) -> &'static str {
+        self.detail()
+    }
+
+    fn is_datastore_unavailable(&self) -> bool {
+        self.is_datastore_unavailable()
+    }
+}
+
 pub(crate) fn refuse<E: Refusal>(error: &E, event: &'static str) -> Response {
     let request_id = RequestId::mint();
     let code = error.code();

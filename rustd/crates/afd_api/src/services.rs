@@ -36,6 +36,7 @@ use afd_fleet::memory::Captured;
 use afd_fleet::money::Nanos;
 use afd_fleet::streams::LiveStreams;
 use afd_fleet_ops::RunnerLeaseHistory;
+use afd_library::Libraries;
 use afd_wire::activity::ActivityFrame;
 use afd_wire::credentials::MintCredentialRequest;
 use afd_wire::memory::{MemoryDelta, MemoryPushRequest};
@@ -102,6 +103,9 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// Reveal-free platform-default administration.
     fn platform_keys(&self) -> &PlatformKeys;
+
+    /// Platform Fleet-library catalogue administration.
+    fn libraries(&self) -> &Libraries;
 
     /// The instant this request's writes are stamped with.
     ///

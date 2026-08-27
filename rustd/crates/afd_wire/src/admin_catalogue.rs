@@ -4,6 +4,91 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
+/// Content-free requirements shown on one Fleet-library row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdminLibraryRequirements<'a> {
+    /// Credential names only.
+    #[serde(borrow)]
+    pub credentials: Vec<Cow<'a, str>>,
+    /// Required tool names.
+    #[serde(borrow)]
+    pub tools: Vec<Cow<'a, str>>,
+    /// Declared outbound hosts.
+    #[serde(borrow)]
+    pub network_hosts: Vec<Cow<'a, str>>,
+    /// Whether a trigger document exists.
+    pub trigger_present: bool,
+}
+
+/// One metadata-only platform Fleet-library row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdminLibraryItem<'a> {
+    /// Slug identity.
+    #[serde(borrow)]
+    pub id: Cow<'a, str>,
+    /// Display name.
+    #[serde(borrow)]
+    pub name: Cow<'a, str>,
+    /// Curated description.
+    #[serde(borrow)]
+    pub description: Cow<'a, str>,
+    /// GitHub owner/repository.
+    #[serde(borrow)]
+    pub source_repo: Cow<'a, str>,
+    /// Fetched revision.
+    #[serde(borrow)]
+    pub source_ref: Cow<'a, str>,
+    /// Draft or public.
+    #[serde(borrow)]
+    pub visibility: Cow<'a, str>,
+    /// Content identity, never support-file bytes.
+    #[serde(borrow)]
+    pub content_hash: Option<Cow<'a, str>>,
+    /// Derived requirement names and trigger presence.
+    #[serde(borrow)]
+    pub requirements: AdminLibraryRequirements<'a>,
+    /// Operator-authored per-credential reason copy.
+    pub required_credentials_reasons: serde_json::Value,
+    /// Last mutation instant in epoch milliseconds.
+    pub updated_at: i64,
+    /// Strong version over the editable row surface.
+    #[serde(borrow)]
+    pub etag: Cow<'a, str>,
+}
+
+/// Admin Fleet-library list response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdminLibrariesResponse<'a> {
+    /// Every draft and public row.
+    #[serde(borrow)]
+    pub entries: Vec<AdminLibraryItem<'a>>,
+}
+
+/// Partial operator edit for one Fleet-library row.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AdminLibraryPatch<'a> {
+    /// Replacement display name.
+    #[serde(borrow)]
+    pub name: Option<Cow<'a, str>>,
+    /// Replacement description.
+    #[serde(borrow)]
+    pub description: Option<Cow<'a, str>>,
+    /// Replacement GitHub owner/repository.
+    #[serde(borrow)]
+    pub source_repo: Option<Cow<'a, str>>,
+    /// Replacement branch or tag.
+    #[serde(borrow)]
+    pub source_ref: Option<Cow<'a, str>>,
+    /// Operator-authored reason copy.
+    pub required_credentials_reasons: Option<serde_json::Value>,
+    /// Publish or withdraw.
+    pub published: Option<bool>,
+}
+
 /// `PUT /v1/admin/platform-keys` metadata; key bytes already live in the vault.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
