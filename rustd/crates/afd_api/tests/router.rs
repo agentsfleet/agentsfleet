@@ -66,7 +66,11 @@ async fn test_head_is_refused_on_a_route_that_serves_get() {
 /// not true.
 #[tokio::test]
 async fn test_head_at_an_unserved_path_is_not_found() {
-    let missing = send(Method::HEAD, "/v1/workspaces", ALL_HEALTHY).await;
+    // The provider row is still tabled-and-unserved; `/v1/workspaces` held
+    // this role until the create was mounted, and each milestone that lands a
+    // handler group will keep pushing this example down the table until
+    // nothing qualifies and the test retires.
+    let missing = send(Method::HEAD, "/v1/tenants/me/provider", ALL_HEALTHY).await;
 
     assert_eq!(missing.status(), StatusCode::NOT_FOUND);
 }
@@ -232,9 +236,9 @@ async fn test_only_the_ported_routes_are_mounted() {
                         | AuthRoute::DeleteAllSessions
                 )
                 // §2's api-key lifecycle, the command-line credentials beside
-                // it, and the billing reads. The rest of the tenant plane —
-                // the model registry, the provider row — is tabled and
-                // unserved until its handlers land.
+                // it, the billing reads, and the workspace directory. The
+                // rest of the tenant plane — the model registry, the provider
+                // row — is tabled and unserved until its handlers land.
                 | Route::Tenant(
                     TenantRoute::ApiKeys
                         | TenantRoute::ApiKey
@@ -242,6 +246,8 @@ async fn test_only_the_ported_routes_are_mounted() {
                         | TenantRoute::CliCredential
                         | TenantRoute::Billing
                         | TenantRoute::BillingCharges
+                        | TenantRoute::Workspaces
+                        | TenantRoute::CreateWorkspace
                 )
         );
 

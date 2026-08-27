@@ -89,6 +89,9 @@ pub const INVALID_REQUEST: ErrorCode = ErrorCode::declare("UZ-REQ-001");
 /// A stored envelope was malformed — wrong component length, or an unsupported version.
 pub const VAULT_DATA_INVALID: ErrorCode = ErrorCode::declare("UZ-VAULT-001");
 
+/// A workspace in this tenant already uses the requested name.
+pub const WORKSPACE_NAME_EXISTS: ErrorCode = ErrorCode::declare("UZ-WORKSPACE-001");
+
 /// An operation failed for a reason the caller cannot act on and must not be told.
 ///
 /// The code every crypto failure answers. A decrypt that fails because the tag
@@ -514,6 +517,7 @@ pub const REGISTRY: &[ErrorCode] = &[
     UUIDV7_INVALID_ID_SHAPE,
     INVALID_REQUEST,
     VAULT_DATA_INVALID,
+    WORKSPACE_NAME_EXISTS,
     INTERNAL_OPERATION_FAILED,
     INTERNAL_DB_UNAVAILABLE,
     INTERNAL_DB_QUERY,

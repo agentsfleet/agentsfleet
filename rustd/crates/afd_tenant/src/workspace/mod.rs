@@ -18,31 +18,36 @@
 //! `Result<Option<T>>` convention `core_api` runs on, and the reason it is the
 //! convention.
 
+pub mod directory;
 pub mod name;
 
 use afd_auth::principal::{Person, PersonCredential, Principal};
 use afd_auth::scope::Scope;
 use afd_core::id::Uuid7;
+use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 
 use crate::sql::workspace as sql;
 use crate::{Result, error};
 
-/// Resolves who owns a workspace.
+/// Resolves who owns a workspace, and keeps the tenant's directory of them.
 ///
-/// Holds the api-role pool: this read is on the request path of every workspace
-/// route, and a request-path read sharing a pool with background work waits
-/// behind it.
+/// Holds the api-role pool: the ownership read is on the request path of every
+/// workspace route, and a request-path read sharing a pool with background
+/// work waits behind it. The entropy source is the directory half's — it draws
+/// identifiers and generated names at create — and lives here because one
+/// value serves both halves of one type.
 #[derive(Debug, Clone)]
 pub struct Workspaces {
     database: Db,
+    entropy: Entropy,
 }
 
 impl Workspaces {
-    /// A resolver reading through `database`.
+    /// A resolver and directory over `database`, drawing from `entropy`.
     #[must_use]
-    pub const fn new(database: Db) -> Self {
-        Self { database }
+    pub const fn new(database: Db, entropy: Entropy) -> Self {
+        Self { database, entropy }
     }
 
     /// The tenant owning `workspace`, when this principal's does.

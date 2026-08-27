@@ -2,7 +2,7 @@
 //!
 //! # What is mounted, and what is only tabled
 //!
-//! [`Route`] carries all eighty-one endpoints; this binary serves twenty-four of them.
+//! [`Route`] carries all eighty-one endpoints; this binary serves twenty-six of them.
 //! The gap is deliberate and it is STATED: [`handler_for`] is a total match
 //! over every family AND every route within a family, so an endpoint whose
 //! handler has not been ported yet says so in an arm rather than by being
@@ -244,9 +244,9 @@ fn auth_handler_for<D: Serving>(verb: AuthRoute) -> Option<MethodRouter<Arc<D>>>
 /// What a tenant manages for itself.
 ///
 /// `None` for the reads this milestone has not reached yet — the model
-/// registry, the provider row, the workspace list. Each is an arm rather than
-/// an absence from a list, so the endpoint that is not served says so where
-/// somebody looking for it will read it.
+/// registry, the provider row. Each is an arm rather than an absence from a
+/// list, so the endpoint that is not served says so where somebody looking
+/// for it will read it.
 fn tenant_handler_for<D: Serving>(verb: TenantRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
         TenantRoute::ApiKeys => {
@@ -259,9 +259,9 @@ fn tenant_handler_for<D: Serving>(verb: TenantRoute) -> Option<MethodRouter<Arc<
         TenantRoute::CliCredential => Some(delete(tenant_handler::revoke_cli::<D>)),
         TenantRoute::Billing => Some(get(tenant_handler::billing_snapshot::<D>)),
         TenantRoute::BillingCharges => Some(get(tenant_handler::billing_charges::<D>)),
+        TenantRoute::Workspaces => Some(get(tenant_handler::list_workspaces::<D>)),
+        TenantRoute::CreateWorkspace => Some(post(tenant_handler::create_workspace::<D>)),
         TenantRoute::ModelLibrary
-        | TenantRoute::CreateWorkspace
-        | TenantRoute::Workspaces
         | TenantRoute::Provider
         | TenantRoute::ModelEntries
         | TenantRoute::ModelEntry

@@ -9,15 +9,29 @@
 mod api_key;
 mod billing;
 mod cli_credential;
+mod workspace;
 
 pub(crate) use self::api_key::{delete, list, mint, revoke};
 pub(crate) use self::billing::{charges as billing_charges, snapshot as billing_snapshot};
 // The refusal sentences, for the router suite to assert by identity.
-pub use self::billing::{DETAIL_LIMIT_NOT_NUMERIC, DETAIL_LIMIT_RANGE, DETAIL_NO_TENANT};
+pub use self::billing::{DETAIL_LIMIT_NOT_NUMERIC, DETAIL_LIMIT_RANGE};
+pub use self::workspace::{
+    DETAIL_CREATE_BODY, DETAIL_CREATE_NO_TENANT, DETAIL_INVALID_CURSOR, DETAIL_INVALID_LIMIT,
+    DETAIL_INVALID_NAME, DETAIL_MALFORMED_QUERY,
+};
 // Renamed at the re-export: both families mint and both revoke, and the router
 // names them side by side. The prefix belongs to the collision, so it lives
 // here rather than in either module.
 pub(crate) use self::cli_credential::{mint as mint_cli, revoke as revoke_cli};
+pub(crate) use self::workspace::{create as create_workspace, list as list_workspaces};
+
+/// The refusal a principal with no tenant to act for earns on the reads.
+///
+/// The byte-for-byte port of the sentence `tenant_billing.zig` and
+/// `tenant_workspaces.zig` both spell; the api-key family names what its
+/// credential cannot manage instead, and the create's 401 names the stale
+/// session — each family keeps its own words.
+pub const DETAIL_TENANT_REQUIRED: &str = "Tenant context required";
 
 use std::sync::Arc;
 

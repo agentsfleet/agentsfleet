@@ -27,19 +27,10 @@ const EVENT_SNAPSHOT: &str = "billing_snapshot_failed";
 const EVENT_CHARGES: &str = "billing_charges_failed";
 const EVENT_TENANT: &str = "billing_tenant_unresolved";
 
-/// The refusal a principal with no tenant to act for earns.
-///
-/// Bare where the api-key family's names what its credential cannot manage:
-/// this is the byte-for-byte port of `tenant_billing.zig`'s
-/// `S_TENANT_CONTEXT_REQUIRED`, and a shorter sentence on a read is right —
-/// there is nothing the caller could have revoked or re-minted to change it.
-///
-/// `pub`, like its two siblings below: the router suite asserts these
-/// sentences by identity rather than by a respelling that could drift
-/// (RULE UFS).
-pub const DETAIL_NO_TENANT: &str = "Tenant context required";
-
 /// The refusal a `limit` that is not a number earns.
+///
+/// `pub`, like its sibling below: the router suite asserts these sentences by
+/// identity rather than by a respelling that could drift (RULE UFS).
 pub const DETAIL_LIMIT_NOT_NUMERIC: &str = "limit must be a positive integer";
 
 /// The refusal a `limit` outside `1..=200` earns.
@@ -51,7 +42,13 @@ pub(crate) async fn snapshot<D: Services>(
     identity: PersonIdentity,
 ) -> Result<Response, Refusal> {
     let person = identity.person();
-    let tenant = tenant_of(&services, person, DETAIL_NO_TENANT, EVENT_TENANT).await?;
+    let tenant = tenant_of(
+        &services,
+        person,
+        super::DETAIL_TENANT_REQUIRED,
+        EVENT_TENANT,
+    )
+    .await?;
 
     let wallet = services
         .billing()
@@ -77,7 +74,13 @@ pub(crate) async fn charges<D: Services>(
         Some(token) => Some(cursor::parse(token).map_err(Refusal::at(EVENT_CHARGES))?),
     };
 
-    let tenant = tenant_of(&services, person, DETAIL_NO_TENANT, EVENT_TENANT).await?;
+    let tenant = tenant_of(
+        &services,
+        person,
+        super::DETAIL_TENANT_REQUIRED,
+        EVENT_TENANT,
+    )
+    .await?;
 
     let rows = services
         .billing()

@@ -62,3 +62,67 @@ SELECT tenant_id::text \
 FROM core.users \
 WHERE oidc_subject = $1 \
 LIMIT 1";
+
+/// Does the tenant a session claims actually exist?
+///
+/// `sql.zig`'s `TENANT_EXISTS`, and asked for `lifecycle.zig`'s reason: a
+/// stale session can name a deleted tenant, and refusing it here with the
+/// session sentence beats letting the insert's foreign key answer as a 500.
+pub const SELECT_TENANT_EXISTS: &str = "\
+SELECT 1 FROM core.tenants WHERE id = $1::uuid LIMIT 1";
+
+/// One workspace row.
+///
+/// `sql.zig`'s `INSERT_WORKSPACE`, casts and all: both identity columns are
+/// UUID and the driver sends text. No `ON CONFLICT` clause on purpose — the
+/// near-twin in the signup path swallows the collision, while this one needs
+/// `uq_workspaces_tenant_id_name` to surface so the caller hears "taken".
+pub const INSERT_WORKSPACE: &str = "\
+INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
+VALUES ($1::uuid, $2::uuid, $3, $4, $5)";
+
+// The four page selects below split what `tenant_workspaces.zig` merges into
+// one CTE statement. The merge existed to fold the tenant resolve into the
+// page read; here the resolve is `tenant_of`, the ONE statement every tenant
+// route shares — a second spelling of the authority order to save its round
+// trip would be two places for that order to drift apart. The walk itself is
+// the Zig one: oldest first, `(created_at, id)` keyset, exact-name filter.
+
+/// The first page of a tenant's workspaces.
+pub const SELECT_TENANT_WORKSPACES_PAGE_FIRST: &str = "\
+SELECT id::text, name, created_at \
+FROM core.workspaces \
+WHERE tenant_id = $1::uuid \
+ORDER BY created_at ASC, id ASC \
+LIMIT $2";
+
+/// The page after a boundary row.
+pub const SELECT_TENANT_WORKSPACES_PAGE_AFTER: &str = "\
+SELECT id::text, name, created_at \
+FROM core.workspaces \
+WHERE tenant_id = $1::uuid \
+  AND (created_at, id) > ($2, $3::uuid) \
+ORDER BY created_at ASC, id ASC \
+LIMIT $4";
+
+/// The first page, held to an exact name.
+///
+/// The filter a client reconciling its own create uses, so it can find the
+/// row it just made without walking the whole list.
+pub const SELECT_TENANT_WORKSPACES_PAGE_FIRST_BY_NAME: &str = "\
+SELECT id::text, name, created_at \
+FROM core.workspaces \
+WHERE tenant_id = $1::uuid \
+  AND name = $2 \
+ORDER BY created_at ASC, id ASC \
+LIMIT $3";
+
+/// The page after a boundary row, held to an exact name.
+pub const SELECT_TENANT_WORKSPACES_PAGE_AFTER_BY_NAME: &str = "\
+SELECT id::text, name, created_at \
+FROM core.workspaces \
+WHERE tenant_id = $1::uuid \
+  AND name = $2 \
+  AND (created_at, id) > ($3, $4::uuid) \
+ORDER BY created_at ASC, id ASC \
+LIMIT $5";
