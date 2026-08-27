@@ -30,6 +30,12 @@ pub const SECRET_REFERENCED_BY_MODEL_ENTRIES: ErrorCode = ErrorCode::declare("UZ
 /// A secret with the requested name already exists in this workspace.
 pub const SECRET_NAME_TAKEN: ErrorCode = ErrorCode::declare("UZ-VAULT-005");
 
+/// The path named a preference key outside the writable registry.
+pub const PREF_KEY_UNKNOWN: ErrorCode = ErrorCode::declare("UZ-PREFS-001");
+
+/// A preference value past the one-kibibyte bound a single toggle may hold.
+pub const PREF_VALUE_TOO_LARGE: ErrorCode = ErrorCode::declare("UZ-PREFS-002");
+
 /// A workspace in this tenant already uses the requested name.
 pub const WORKSPACE_NAME_EXISTS: ErrorCode = ErrorCode::declare("UZ-WORKSPACE-001");
 

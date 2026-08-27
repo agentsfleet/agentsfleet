@@ -32,6 +32,7 @@ use afd_fleet::money::Accounts;
 use afd_fleet::provider::Providers;
 use afd_fleet::secrets::Registry;
 use afd_fleet_lifecycle::Fleets;
+use afd_tenant::preference::Preferences;
 // Aliased: `crate::identity::Sessions` is the token VERIFIER, and this is the
 // device-flow login surface. Two things called `Sessions` in one file is how a
 // reader ends up believing the login surface verifies bearer tokens.
@@ -77,6 +78,7 @@ pub struct ServingPlane {
     billing: Billing,
     models: Models,
     secrets: SecretVault,
+    preferences: Preferences,
     api_url: Box<str>,
 }
 
@@ -134,6 +136,7 @@ impl ServingPlane {
             // reads it back with. `Arc::clone` and not a `Kek` clone: one copy
             // of the key material, zeroed once, however many stores hold it.
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+            preferences: Preferences::new(database.clone(), Entropy::new()),
             api_url: login.api_url,
             logins: Logins::new(
                 afd_redis::SessionStore::new(queue.clone()),
@@ -213,6 +216,7 @@ impl Services for ServingPlane {
     type CliCredentials = CliCredentials;
     type Fleets = Fleets;
     type Secrets = SecretVault;
+    type Preferences = Preferences;
     type Billing = Billing;
     type Catalogue = Models;
 
@@ -257,6 +261,10 @@ impl Services for ServingPlane {
 
     fn fleets(&self) -> &Fleets {
         &self.fleets
+    }
+
+    fn preferences(&self) -> &Preferences {
+        &self.preferences
     }
 
     fn secrets(&self) -> &SecretVault {
