@@ -39,6 +39,7 @@ mod decision;
 mod detail;
 mod first;
 mod grants;
+mod inbox;
 mod park;
 mod pass;
 mod pause;
@@ -56,6 +57,7 @@ pub use self::decision::{Answer, DECISION_APPROVE, DECISION_DENY, Status};
 pub use self::detail::{
     KIND_REPOSITORY_WRITE, RADIUS_REPOSITORY_WRITE, REPOSITORY_WRITE_SPEND_CEILING, Stated,
 };
+pub use self::inbox::{Cursor, Filter, GateRow, Inbox, Resolution, Resolved};
 pub use self::park::{Park, Parked};
 pub use self::pass::{Check, Refused, Verdict, Waiting};
 pub use self::pause::Trigger;
