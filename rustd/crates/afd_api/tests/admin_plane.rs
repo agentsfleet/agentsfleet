@@ -179,6 +179,34 @@ async fn library_catalogue_routes_require_write_scope_and_validate_before_io() {
     for body in [
         "",
         "[]",
+        r#"{"source_kind":"unknown"}"#,
+        r#"{"source_kind":"github","source_ref":"owner/repo/extra"}"#,
+        r#"{"source_kind":"upload","skill_markdown":"---","support_files":[{}]}"#,
+    ] {
+        let refused = send(
+            &admin,
+            Method::POST,
+            "/v1/admin/fleet-libraries",
+            Some(PLATFORM_KEY),
+            body,
+        )
+        .await;
+        assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+    }
+
+    let import = send(
+        &admin,
+        Method::POST,
+        "/v1/admin/fleet-libraries",
+        Some(PLATFORM_KEY),
+        r#"{"source_kind":"upload","source_ref":"unit/example","skill_markdown":"---\nname: example\ndescription: Example fleet\nversion: 1.0.0\n---\nInstructions."}"#,
+    )
+    .await;
+    assert_eq!(import.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+    for body in [
+        "",
+        "[]",
         r#"{"source_repo":"owner/repo/extra"}"#,
         r#"{"required_credentials_reasons":[]}"#,
     ] {

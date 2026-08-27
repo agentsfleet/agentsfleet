@@ -16,6 +16,7 @@
 //! because there is no pair to write.
 
 pub mod admin;
+pub(crate) mod fleet_bundles;
 pub mod operator;
 pub mod runner;
 

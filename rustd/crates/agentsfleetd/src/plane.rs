@@ -35,9 +35,11 @@ use afd_fleet::secrets::Registry;
 use afd_fleet::streams::{LiveStreams, SSE_MAX_STREAMS_DEFAULT};
 use afd_fleet::vault::Vault;
 use afd_fleet_ops::RunnerLeaseHistory;
-use afd_library::Libraries;
+use afd_library::{Libraries, LibraryImports};
 use afd_redis::Redis;
 use afd_state::Credentials;
+
+use crate::bundles::Stores;
 
 use crate::identity::{Capabilities, Sessions};
 use crate::probes::LiveDependencies;
@@ -62,6 +64,7 @@ pub struct ServingPlane {
     models: Models,
     platform_keys: PlatformKeys,
     libraries: Libraries,
+    library_imports: LibraryImports,
 }
 
 impl ServingPlane {
@@ -91,15 +94,20 @@ impl ServingPlane {
     /// Invariant 3 as an ownership fact rather than as a rule about who reads
     /// which variable.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         database: Db,
         queue: Redis,
         kek: Arc<Kek>,
         capabilities: Capabilities,
         sessions: Sessions,
-        bundles: Bundles,
+        stores: Stores,
         broker: Arc<afd_fleet::credential::Broker>,
     ) -> Self {
+        let (bundles, uploads) = stores.split();
+        let library_imports = match uploads {
+            Some(store) => LibraryImports::new(database.clone(), store),
+            None => LibraryImports::without_store(database.clone()),
+        };
         Self {
             bundles,
             streams: LiveStreams::new(SSE_MAX_STREAMS_DEFAULT),
@@ -107,6 +115,7 @@ impl ServingPlane {
             models: Models::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
             libraries: Libraries::new(database.clone()),
+            library_imports,
             probes: LiveDependencies::new(database.clone(), queue.clone()),
             authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
             runners: Runners::new(database.clone(), Entropy::new()),
@@ -168,6 +177,10 @@ impl Services for ServingPlane {
 
     fn libraries(&self) -> &Libraries {
         &self.libraries
+    }
+
+    fn library_imports(&self) -> &LibraryImports {
+        &self.library_imports
     }
 
     /// The wall clock, read once per verb by whichever handler asked.

@@ -53,8 +53,10 @@ use http::{Method, StatusCode};
 
 use crate::admission::{Admission, admit, is_metered};
 use crate::auth::{Gate, plane_of, prove};
-use crate::handler::{admin, operator, runner};
-use crate::route::{AdminRoute, OpsRoute, Route, RouteMeta, RunnerOpsRoute, RunnerRoute};
+use crate::handler::{admin, fleet_bundles, operator, runner};
+use crate::route::{
+    AdminRoute, OpsRoute, Route, RouteMeta, RunnerOpsRoute, RunnerRoute, TenantRoute,
+};
 use crate::services::Services;
 
 pub use self::probes::{Dependencies, ReadyInputs, ready_decision};
@@ -184,11 +186,25 @@ fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>> {
         Route::Runner(verb) => Some(runner_handler::<D>(verb)),
         Route::RunnerOps(verb) => Some(runner_ops_handler::<D>(verb)),
         Route::Admin(verb) => Some(admin_handler::<D>(verb)),
+        Route::Tenant(TenantRoute::FleetBundles) => Some(get(fleet_bundles::list::<D>)),
         // Tabled, not yet served. Each of these families arrives with the
         // milestone that ports its handlers; until then the route exists as a
         // template, a guard and a scope rung, and this binary answers 404.
         Route::Auth(_)
-        | Route::Tenant(_)
+        | Route::Tenant(
+            TenantRoute::ModelLibrary
+            | TenantRoute::CreateWorkspace
+            | TenantRoute::Billing
+            | TenantRoute::BillingCharges
+            | TenantRoute::Workspaces
+            | TenantRoute::Provider
+            | TenantRoute::ModelEntries
+            | TenantRoute::ModelEntry
+            | TenantRoute::ApiKeys
+            | TenantRoute::ApiKey
+            | TenantRoute::CliCredentials
+            | TenantRoute::CliCredential,
+        )
         | Route::Webhook(_)
         | Route::Workspace(_)
         | Route::Fleet(_)
@@ -199,7 +215,9 @@ fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>> {
 /// The mounted part of the platform administration table.
 fn admin_handler<D: Serving>(verb: AdminRoute) -> MethodRouter<Arc<D>> {
     match verb {
-        AdminRoute::FleetLibrary => get(admin::libraries::list::<D>),
+        AdminRoute::FleetLibrary => {
+            get(admin::libraries::list::<D>).merge(post(admin::library_import::create::<D>))
+        }
         AdminRoute::FleetLibraryEntry => {
             patch(admin::libraries::patch::<D>).merge(delete(admin::libraries::delete::<D>))
         }

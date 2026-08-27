@@ -343,6 +343,9 @@ pub const CATALOG_PUBLISH_WITHOUT_BUNDLE: ErrorCode = ErrorCode::declare("UZ-CAT
 /// A published row must be withdrawn before deletion.
 pub const CATALOG_DELETE_PUBLISHED: ErrorCode = ErrorCode::declare("UZ-CATALOG-003");
 
+/// A different source repository already owns the bundle's declared slug.
+pub const CATALOG_ID_COLLISION: ErrorCode = ErrorCode::declare("UZ-CATALOG-004");
+
 /// The optional `If-Match` value no longer names the editable row.
 pub const CATALOG_ROW_STALE: ErrorCode = ErrorCode::declare("UZ-CATALOG-005");
 
@@ -469,6 +472,7 @@ pub const REGISTRY: &[ErrorCode] = &[
     CATALOG_NOT_FOUND,
     CATALOG_PUBLISH_WITHOUT_BUNDLE,
     CATALOG_DELETE_PUBLISHED,
+    CATALOG_ID_COLLISION,
     CATALOG_ROW_STALE,
     API_BACKPRESSURE,
     CRED_INTEGRATION_NOT_CONNECTED,

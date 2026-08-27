@@ -438,6 +438,15 @@ const ENTRIES: &[Problem] = &[
         user_message: Some("This fleet is published. Unpublish it first, then delete it."),
     },
     Problem {
+        code: error_code::CATALOG_ID_COLLISION,
+        status: 409,
+        title: "Fleet library name belongs to another repository",
+        hint: "Rename the bundle, or retry with replace after confirming the existing source should be overwritten.",
+        user_message: Some(
+            "That fleet name is already owned by another repository. Rename it, or explicitly replace the existing entry.",
+        ),
+    },
+    Problem {
         code: error_code::CATALOG_ROW_STALE,
         status: 412,
         title: "Catalog entry changed since you loaded it",
