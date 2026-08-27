@@ -15,12 +15,6 @@
 use afd_core::error_code::{self, ErrorCode};
 
 use super::{
-    ApiKeyField, DETAIL_APIKEY_ALREADY_REVOKED, DETAIL_APIKEY_DESCRIPTION,
-    DETAIL_APIKEY_MUST_REVOKE_FIRST, DETAIL_APIKEY_NAME, DETAIL_APIKEY_NAME_TAKEN,
-    DETAIL_APIKEY_NOT_FOUND, DETAIL_APIKEY_READONLY_FIELD, DETAIL_CLI_CREDENTIAL_MACHINE_NAME,
-    DETAIL_CLI_CREDENTIAL_NOT_FOUND, DETAIL_CLI_CREDENTIAL_UNKNOWN_SUBJECT,
-};
-use super::{
     DETAIL_BINDING_DRIFT, DETAIL_BUDGET_EXHAUSTED, DETAIL_BUNDLE_FETCH_FAILED,
     DETAIL_BUNDLE_NOT_FOUND, DETAIL_BUNDLE_STORAGE_UNAVAILABLE, DETAIL_CONFIG_UNREADABLE,
     DETAIL_CONNECTOR_MINT_FAILED, DETAIL_CONNECTOR_RECONNECT, DETAIL_CREDENTIAL_MISSING,
@@ -31,13 +25,6 @@ use super::{
     DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUNNER_NOT_FOUND,
     DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, DETAIL_WRITE_SPEND_EXHAUSTED,
     DETAIL_WRITE_UNAPPROVED, Error, ErrorKind,
-};
-use super::{
-    DETAIL_SESSION_ABORTED, DETAIL_SESSION_ALREADY_APPROVED, DETAIL_SESSION_CIPHERTEXT,
-    DETAIL_SESSION_CODE_REJECTED, DETAIL_SESSION_CODE_SHAPE, DETAIL_SESSION_CONSUMED,
-    DETAIL_SESSION_EXPIRED, DETAIL_SESSION_MISSING, DETAIL_SESSION_NONCE,
-    DETAIL_SESSION_NOT_APPROVED, DETAIL_SESSION_NOT_OWNER, DETAIL_SESSION_PUBLIC_KEY,
-    DETAIL_SESSION_RATE_LIMITED, DETAIL_SESSION_TOKEN_NAME, SessionField,
 };
 
 impl Error {
@@ -85,13 +72,7 @@ impl Error {
                 error_code::INTERNAL_DB_QUERY
             }
             ErrorKind::RunnerVanished => error_code::RUN_INVALID_RUNNER_TOKEN,
-            // The api-key field refusals join the generic rejection: both are
-            // "the caller sent something this plane will not take", and the
-            // `UZ-APIKEY-*` family is about a key that EXISTS rather than about
-            // a body that will not parse. That is the Zig handler's own pairing.
-            ErrorKind::Rejected { .. } | ErrorKind::ApiKeyFieldInvalid { .. } => {
-                error_code::INVALID_REQUEST
-            }
+            ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
             // A daemon whose clock cannot name an instant, and a host that
             // cannot draw random bytes, are both THIS process failing — not the
             // caller's request being wrong. An earlier draft answered `Mint`
@@ -196,39 +177,6 @@ impl Error {
             // The login family. Each field answers its own code because the
             // command line renders a different prompt for each — a bad key is
             // the client's own bug, a bad code is the person's typing.
-            ErrorKind::SessionFieldInvalid { field } => match field {
-                SessionField::PublicKey => error_code::INVALID_PUBLIC_KEY,
-                SessionField::TokenName => error_code::INVALID_TOKEN_NAME,
-                SessionField::Ciphertext => error_code::INVALID_CIPHERTEXT,
-                SessionField::Nonce => error_code::INVALID_NONCE,
-                SessionField::VerificationCode => error_code::INVALID_VERIFICATION_CODE,
-            },
-            ErrorKind::SessionMissing => error_code::SESSION_NOT_FOUND,
-            ErrorKind::SessionExpired => error_code::SESSION_EXPIRED,
-            ErrorKind::SessionConsumed => error_code::SESSION_CONSUMED,
-            // One code for both, and the sentences differ rather than the
-            // codes: a client acts identically on either — stop, log in again —
-            // and the ceiling is the only one of the two worth naming in prose.
-            ErrorKind::SessionAborted | ErrorKind::SessionRateLimited => {
-                error_code::SESSION_ABORTED
-            }
-            ErrorKind::SessionNotApproved => error_code::SESSION_NOT_APPROVED,
-            ErrorKind::SessionAlreadyApproved => error_code::SESSION_ALREADY_APPROVED,
-            ErrorKind::SessionCodeRejected => error_code::VERIFICATION_FAILED,
-            // One code for two refusals from different families, and the
-            // SENTENCES are what separate them: a caller who does not own a
-            // login session and a subject with no user row are both told they
-            // may not proceed, and neither can fix it by re-authenticating.
-            ErrorKind::SessionNotOwner | ErrorKind::CliCredentialUnknownSubject => {
-                error_code::AUTH_FORBIDDEN
-            }
-            ErrorKind::ApiKeyNotFound => error_code::APIKEY_NOT_FOUND,
-            ErrorKind::ApiKeyNameTaken => error_code::APIKEY_NAME_TAKEN,
-            ErrorKind::ApiKeyAlreadyRevoked => error_code::APIKEY_ALREADY_REVOKED,
-            ErrorKind::ApiKeyReadonlyField => error_code::APIKEY_READONLY_FIELD,
-            ErrorKind::ApiKeyMustRevokeFirst => error_code::APIKEY_MUST_REVOKE_FIRST,
-            ErrorKind::CliCredentialMachineNameInvalid => error_code::INVALID_REQUEST,
-            ErrorKind::CliCredentialNotFound => error_code::AUTH_CLI_CREDENTIAL_NOT_FOUND,
         }
     }
 
@@ -294,34 +242,6 @@ impl Error {
             ErrorKind::WriteUnapproved => DETAIL_WRITE_UNAPPROVED,
             ErrorKind::BindingDrift => DETAIL_BINDING_DRIFT,
             ErrorKind::WriteSpendExhausted => DETAIL_WRITE_SPEND_EXHAUSTED,
-            ErrorKind::SessionFieldInvalid { field } => match field {
-                SessionField::PublicKey => DETAIL_SESSION_PUBLIC_KEY,
-                SessionField::TokenName => DETAIL_SESSION_TOKEN_NAME,
-                SessionField::Ciphertext => DETAIL_SESSION_CIPHERTEXT,
-                SessionField::Nonce => DETAIL_SESSION_NONCE,
-                SessionField::VerificationCode => DETAIL_SESSION_CODE_SHAPE,
-            },
-            ErrorKind::SessionMissing => DETAIL_SESSION_MISSING,
-            ErrorKind::SessionExpired => DETAIL_SESSION_EXPIRED,
-            ErrorKind::SessionConsumed => DETAIL_SESSION_CONSUMED,
-            ErrorKind::SessionAborted => DETAIL_SESSION_ABORTED,
-            ErrorKind::SessionRateLimited => DETAIL_SESSION_RATE_LIMITED,
-            ErrorKind::SessionNotApproved => DETAIL_SESSION_NOT_APPROVED,
-            ErrorKind::SessionAlreadyApproved => DETAIL_SESSION_ALREADY_APPROVED,
-            ErrorKind::SessionCodeRejected => DETAIL_SESSION_CODE_REJECTED,
-            ErrorKind::SessionNotOwner => DETAIL_SESSION_NOT_OWNER,
-            ErrorKind::ApiKeyFieldInvalid { field } => match field {
-                ApiKeyField::Name => DETAIL_APIKEY_NAME,
-                ApiKeyField::Description => DETAIL_APIKEY_DESCRIPTION,
-            },
-            ErrorKind::ApiKeyNotFound => DETAIL_APIKEY_NOT_FOUND,
-            ErrorKind::ApiKeyNameTaken => DETAIL_APIKEY_NAME_TAKEN,
-            ErrorKind::ApiKeyAlreadyRevoked => DETAIL_APIKEY_ALREADY_REVOKED,
-            ErrorKind::ApiKeyReadonlyField => DETAIL_APIKEY_READONLY_FIELD,
-            ErrorKind::ApiKeyMustRevokeFirst => DETAIL_APIKEY_MUST_REVOKE_FIRST,
-            ErrorKind::CliCredentialMachineNameInvalid => DETAIL_CLI_CREDENTIAL_MACHINE_NAME,
-            ErrorKind::CliCredentialNotFound => DETAIL_CLI_CREDENTIAL_NOT_FOUND,
-            ErrorKind::CliCredentialUnknownSubject => DETAIL_CLI_CREDENTIAL_UNKNOWN_SUBJECT,
         }
     }
 
@@ -446,30 +366,11 @@ impl Error {
             // through. `false` is the honest answer for a question that never
             // gets asked of it — a `true` would claim a fleet's stored
             // configuration is broken because somebody mistyped six digits.
-            | ErrorKind::SessionFieldInvalid { .. }
-            | ErrorKind::SessionMissing
-            | ErrorKind::SessionExpired
-            | ErrorKind::SessionConsumed
-            | ErrorKind::SessionAborted
-            | ErrorKind::SessionRateLimited
-            | ErrorKind::SessionNotApproved
-            | ErrorKind::SessionAlreadyApproved
-            | ErrorKind::SessionCodeRejected
-            | ErrorKind::SessionNotOwner
             // The api-key lifecycle family joins the login one: it is raised on
             // the tenant plane, which no event is ever leased through.
-            | ErrorKind::ApiKeyFieldInvalid { .. }
-            | ErrorKind::ApiKeyNotFound
-            | ErrorKind::ApiKeyNameTaken
-            | ErrorKind::ApiKeyAlreadyRevoked
-            | ErrorKind::ApiKeyReadonlyField
-            | ErrorKind::ApiKeyMustRevokeFirst
             // The command-line credential family joins them, for the same
             // reason: it is raised on the tenant plane, which no event is ever
             // leased through.
-            | ErrorKind::CliCredentialMachineNameInvalid
-            | ErrorKind::CliCredentialNotFound
-            | ErrorKind::CliCredentialUnknownSubject
             | ErrorKind::Entropy { .. } => false,
         }
     }

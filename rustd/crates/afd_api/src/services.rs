@@ -33,23 +33,23 @@ use afd_fleet::bundle::Bundles;
 // `MintRequest`, `Revealed` and `Revoked` for the api-key family, and this
 // trait names both families in one file. The `Cli` prefix belongs to the
 // collision, so it lives here rather than in the crate that has no collision.
-use afd_fleet::cli_credential::{
-    MintRequest as CliMintRequest, Revealed as CliRevealed, Revoked as CliRevoked, UserIdentity,
-};
 use afd_fleet::credential::Minted;
 use afd_fleet::lease::Plane;
 use afd_fleet::memory::Captured;
 use afd_fleet::money::Nanos;
+use afd_tenant::cli_credential::{
+    MintRequest as CliMintRequest, Revealed as CliRevealed, Revoked as CliRevoked, UserIdentity,
+};
 use afd_wire::activity::ActivityFrame;
 use afd_wire::credentials::MintCredentialRequest;
 use afd_wire::memory::{MemoryDelta, MemoryPushRequest};
 use afd_wire::report::{RenewRequest, ReportRequest};
 
-use afd_fleet::session::{Cancelled, Fingerprint, Opened, Redeemed, Waiting, input};
+use afd_tenant::session::{Cancelled, Fingerprint, Opened, Redeemed, Waiting, input};
 
 use afd_auth::principal::Principal;
 use afd_core::paging::Page;
-use afd_fleet::apikey::{ApiKeySort, Deactivation, Listing, MintRequest, Revealed, Revoked};
+use afd_tenant::apikey::{ApiKeySort, Deactivation, Listing, MintRequest, Revealed, Revoked};
 
 use crate::auth::Authenticator;
 
@@ -383,14 +383,14 @@ pub trait DeviceFlow: Send + Sync + std::fmt::Debug + 'static {
         &self,
         opening: &input::Opening<'_>,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<Opened>> + Send;
+    ) -> impl Future<Output = afd_tenant::Result<Opened>> + Send;
 
     /// Reads where a login has got to.
     ///
     /// # Errors
     /// Refuses an id naming nothing held and each terminal state with its own
     /// registry code; reports a queue that would not answer.
-    fn poll(&self, session_id: &str) -> impl Future<Output = afd_fleet::Result<Waiting>> + Send;
+    fn poll(&self, session_id: &str) -> impl Future<Output = afd_tenant::Result<Waiting>> + Send;
 
     /// Records one dashboard approval.
     ///
@@ -403,7 +403,7 @@ pub trait DeviceFlow: Send + Sync + std::fmt::Debug + 'static {
         approval: &input::Approval<'_>,
         approver: &str,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<()>> + Send;
+    ) -> impl Future<Output = afd_tenant::Result<()>> + Send;
 
     /// Presents a code, redeeming the session if it matches.
     ///
@@ -416,7 +416,7 @@ pub trait DeviceFlow: Send + Sync + std::fmt::Debug + 'static {
         code: &input::Code<'_>,
         fingerprint: &Fingerprint,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<Redeemed>> + Send;
+    ) -> impl Future<Output = afd_tenant::Result<Redeemed>> + Send;
 
     /// Cancels one login held by `owner`.
     ///
@@ -427,7 +427,7 @@ pub trait DeviceFlow: Send + Sync + std::fmt::Debug + 'static {
         &self,
         session_id: &str,
         owner: &str,
-    ) -> impl Future<Output = afd_fleet::Result<Cancelled>> + Send;
+    ) -> impl Future<Output = afd_tenant::Result<Cancelled>> + Send;
 
     /// Cancels every in-flight login `owner` holds, answering their ids.
     ///
@@ -436,23 +436,23 @@ pub trait DeviceFlow: Send + Sync + std::fmt::Debug + 'static {
     fn cancel_all(
         &self,
         owner: &str,
-    ) -> impl Future<Output = afd_fleet::Result<Vec<String>>> + Send;
+    ) -> impl Future<Output = afd_tenant::Result<Vec<String>>> + Send;
 }
 
 /// The production surface answers it directly.
 ///
 /// Forwarding rather than `async fn` throughout: every method already has the
 /// future the service returns, so there is no state machine to build here.
-impl DeviceFlow for afd_fleet::session::Sessions {
+impl DeviceFlow for afd_tenant::session::Sessions {
     fn open(
         &self,
         opening: &input::Opening<'_>,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<Opened>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<Opened>> + Send {
         Self::open(self, opening, now)
     }
 
-    fn poll(&self, session_id: &str) -> impl Future<Output = afd_fleet::Result<Waiting>> + Send {
+    fn poll(&self, session_id: &str) -> impl Future<Output = afd_tenant::Result<Waiting>> + Send {
         Self::poll(self, session_id)
     }
 
@@ -462,7 +462,7 @@ impl DeviceFlow for afd_fleet::session::Sessions {
         approval: &input::Approval<'_>,
         approver: &str,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<()>> + Send {
         Self::approve(self, session_id, approval, approver, now)
     }
 
@@ -472,7 +472,7 @@ impl DeviceFlow for afd_fleet::session::Sessions {
         code: &input::Code<'_>,
         fingerprint: &Fingerprint,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<Redeemed>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<Redeemed>> + Send {
         Self::verify(self, session_id, code, fingerprint, now)
     }
 
@@ -480,14 +480,14 @@ impl DeviceFlow for afd_fleet::session::Sessions {
         &self,
         session_id: &str,
         owner: &str,
-    ) -> impl Future<Output = afd_fleet::Result<Cancelled>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<Cancelled>> + Send {
         Self::cancel(self, session_id, owner)
     }
 
     fn cancel_all(
         &self,
         owner: &str,
-    ) -> impl Future<Output = afd_fleet::Result<Vec<String>>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<Vec<String>>> + Send {
         Self::cancel_all(self, owner)
     }
 }
@@ -511,7 +511,7 @@ pub trait WorkspaceOwnership: Send + Sync + std::fmt::Debug + 'static {
         &self,
         principal: &Principal,
         workspace: &Uuid7,
-    ) -> impl Future<Output = afd_fleet::Result<Option<Uuid7>>> + Send;
+    ) -> impl Future<Output = afd_tenant::Result<Option<Uuid7>>> + Send;
 
     /// The tenant a principal resolves to with no workspace to check against.
     ///
@@ -524,23 +524,23 @@ pub trait WorkspaceOwnership: Send + Sync + std::fmt::Debug + 'static {
     fn tenant_of(
         &self,
         principal: &Principal,
-    ) -> impl Future<Output = afd_fleet::Result<Option<Uuid7>>> + Send;
+    ) -> impl Future<Output = afd_tenant::Result<Option<Uuid7>>> + Send;
 }
 
 /// The production resolver answers it directly.
-impl WorkspaceOwnership for afd_fleet::workspace::Workspaces {
+impl WorkspaceOwnership for afd_tenant::workspace::Workspaces {
     fn authorize(
         &self,
         principal: &Principal,
         workspace: &Uuid7,
-    ) -> impl Future<Output = afd_fleet::Result<Option<Uuid7>>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<Option<Uuid7>>> + Send {
         Self::authorize(self, principal, workspace)
     }
 
     fn tenant_of(
         &self,
         principal: &Principal,
-    ) -> impl Future<Output = afd_fleet::Result<Option<Uuid7>>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<Option<Uuid7>>> + Send {
         Self::tenant_of(self, principal)
     }
 }
@@ -562,7 +562,7 @@ pub trait TerminalCredentials: Send + Sync + std::fmt::Debug + 'static {
     fn user_of(
         &self,
         subject: &str,
-    ) -> impl Future<Output = afd_fleet::Result<UserIdentity>> + Send;
+    ) -> impl Future<Output = afd_tenant::Result<UserIdentity>> + Send;
 
     /// Mints this machine's credential, revoking whatever it left behind.
     ///
@@ -573,7 +573,7 @@ pub trait TerminalCredentials: Send + Sync + std::fmt::Debug + 'static {
         &self,
         request: &CliMintRequest<'_>,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<CliRevealed>> + Send;
+    ) -> impl Future<Output = afd_tenant::Result<CliRevealed>> + Send;
 
     /// Revokes one of this user's credentials.
     ///
@@ -584,14 +584,14 @@ pub trait TerminalCredentials: Send + Sync + std::fmt::Debug + 'static {
         user: &Uuid7,
         credential: &Uuid7,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<CliRevoked>> + Send;
+    ) -> impl Future<Output = afd_tenant::Result<CliRevoked>> + Send;
 }
 
-impl TerminalCredentials for afd_fleet::cli_credential::CliCredentials {
+impl TerminalCredentials for afd_tenant::cli_credential::CliCredentials {
     fn user_of(
         &self,
         subject: &str,
-    ) -> impl Future<Output = afd_fleet::Result<UserIdentity>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<UserIdentity>> + Send {
         Self::user_of(self, subject)
     }
 
@@ -599,7 +599,7 @@ impl TerminalCredentials for afd_fleet::cli_credential::CliCredentials {
         &self,
         request: &CliMintRequest<'_>,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<CliRevealed>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<CliRevealed>> + Send {
         Self::mint(self, request, now)
     }
 
@@ -608,7 +608,7 @@ impl TerminalCredentials for afd_fleet::cli_credential::CliCredentials {
         user: &Uuid7,
         credential: &Uuid7,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<CliRevoked>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<CliRevoked>> + Send {
         Self::revoke(self, user, credential, now)
     }
 }
@@ -629,7 +629,7 @@ pub trait TenantKeys: Send + Sync + std::fmt::Debug + 'static {
         &self,
         request: &MintRequest<'_>,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<Revealed>> + Send;
+    ) -> impl Future<Output = afd_tenant::Result<Revealed>> + Send;
 
     /// One page of this tenant's keys, and its whole key count.
     ///
@@ -639,7 +639,7 @@ pub trait TenantKeys: Send + Sync + std::fmt::Debug + 'static {
         &self,
         tenant: &Uuid7,
         page: &Page<ApiKeySort>,
-    ) -> impl Future<Output = afd_fleet::Result<Listing>> + Send;
+    ) -> impl Future<Output = afd_tenant::Result<Listing>> + Send;
 
     /// Revokes one key, reporting only when this call did it.
     ///
@@ -651,7 +651,7 @@ pub trait TenantKeys: Send + Sync + std::fmt::Debug + 'static {
         key: &Uuid7,
         intent: Deactivation,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<Revoked>> + Send;
+    ) -> impl Future<Output = afd_tenant::Result<Revoked>> + Send;
 
     /// Deletes one already-revoked key.
     ///
@@ -661,16 +661,16 @@ pub trait TenantKeys: Send + Sync + std::fmt::Debug + 'static {
         &self,
         tenant: &Uuid7,
         key: &Uuid7,
-    ) -> impl Future<Output = afd_fleet::Result<()>> + Send;
+    ) -> impl Future<Output = afd_tenant::Result<()>> + Send;
 }
 
 /// The production store answers it directly.
-impl TenantKeys for afd_fleet::apikey::ApiKeys {
+impl TenantKeys for afd_tenant::apikey::ApiKeys {
     fn mint(
         &self,
         request: &MintRequest<'_>,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<Revealed>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<Revealed>> + Send {
         Self::mint(self, request, now)
     }
 
@@ -678,7 +678,7 @@ impl TenantKeys for afd_fleet::apikey::ApiKeys {
         &self,
         tenant: &Uuid7,
         page: &Page<ApiKeySort>,
-    ) -> impl Future<Output = afd_fleet::Result<Listing>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<Listing>> + Send {
         Self::list(self, tenant, page)
     }
 
@@ -688,7 +688,7 @@ impl TenantKeys for afd_fleet::apikey::ApiKeys {
         key: &Uuid7,
         intent: Deactivation,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<Revoked>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<Revoked>> + Send {
         Self::revoke(self, tenant, key, intent, now)
     }
 
@@ -696,7 +696,7 @@ impl TenantKeys for afd_fleet::apikey::ApiKeys {
         &self,
         tenant: &Uuid7,
         key: &Uuid7,
-    ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<()>> + Send {
         Self::delete(self, tenant, key)
     }
 }

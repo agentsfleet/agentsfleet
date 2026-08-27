@@ -58,11 +58,6 @@ pub use self::detail::{
 // mint family's are: they arrive together, they are read together, and every
 // one is pinned to `session_helpers.zig`.
 pub use self::detail::{
-    DETAIL_APIKEY_ALREADY_REVOKED, DETAIL_APIKEY_DESCRIPTION, DETAIL_APIKEY_MUST_REVOKE_FIRST,
-    DETAIL_APIKEY_NAME, DETAIL_APIKEY_NAME_TAKEN, DETAIL_APIKEY_NOT_FOUND,
-    DETAIL_APIKEY_READONLY_FIELD,
-};
-pub use self::detail::{
     DETAIL_BINDING_DRIFT, DETAIL_CONNECTOR_MINT_FAILED, DETAIL_CONNECTOR_RECONNECT,
     DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
     DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED, DETAIL_WRITE_SPEND_EXHAUSTED,
@@ -71,17 +66,6 @@ pub use self::detail::{
 /// The command-line credential surface's refusals, re-exported as one group for
 /// the reason the api-key family's are: they arrive together and are read
 /// together, and each is pinned to `cli_credentials.zig`.
-pub use self::detail::{
-    DETAIL_CLI_CREDENTIAL_MACHINE_NAME, DETAIL_CLI_CREDENTIAL_NOT_FOUND,
-    DETAIL_CLI_CREDENTIAL_UNKNOWN_SUBJECT,
-};
-pub use self::detail::{
-    DETAIL_SESSION_ABORTED, DETAIL_SESSION_ALREADY_APPROVED, DETAIL_SESSION_CIPHERTEXT,
-    DETAIL_SESSION_CODE_REJECTED, DETAIL_SESSION_CODE_SHAPE, DETAIL_SESSION_CONSUMED,
-    DETAIL_SESSION_EXPIRED, DETAIL_SESSION_MISSING, DETAIL_SESSION_NONCE,
-    DETAIL_SESSION_NOT_APPROVED, DETAIL_SESSION_NOT_OWNER, DETAIL_SESSION_PUBLIC_KEY,
-    DETAIL_SESSION_RATE_LIMITED, DETAIL_SESSION_TOKEN_NAME,
-};
 pub(crate) use self::refuse::{
     binding_drift, budget_exhausted, connector_mint_failed, connector_reconnect_required,
     github_mint_failed, github_reconnect_required, grant_required, integration_not_connected,
@@ -256,114 +240,6 @@ pub(crate) enum ErrorKind {
 
     #[error("the approved write-credential allowance is spent")]
     WriteSpendExhausted,
-
-    #[error("a device-flow login field was refused: {field}")]
-    SessionFieldInvalid { field: SessionField },
-
-    #[error("no device-flow login session is held under that id")]
-    SessionMissing,
-
-    #[error("the device-flow login session's window closed before it was redeemed")]
-    SessionExpired,
-
-    #[error("the device-flow login session was already redeemed")]
-    SessionConsumed,
-
-    #[error("the device-flow login session was cancelled, superseded, or rate-limited")]
-    SessionAborted,
-
-    #[error("the device-flow login session was aborted by its own attempt ceiling")]
-    SessionRateLimited,
-
-    #[error("no human has approved this device-flow login session yet")]
-    SessionNotApproved,
-
-    #[error("this device-flow login session is already past pending")]
-    SessionAlreadyApproved,
-
-    #[error("the presented code did not match the session's stored digest")]
-    SessionCodeRejected,
-
-    #[error("this device-flow login session belongs to another identity")]
-    SessionNotOwner,
-
-    #[error("an api-key field was refused: {field}")]
-    ApiKeyFieldInvalid { field: ApiKeyField },
-
-    #[error("no api-key with that id belongs to this tenant")]
-    ApiKeyNotFound,
-
-    #[error("this tenant already holds an api-key under that name")]
-    ApiKeyNameTaken,
-
-    #[error("this api-key was already revoked, so nothing changed")]
-    ApiKeyAlreadyRevoked,
-
-    #[error("an api-key cannot be brought back once revoked")]
-    ApiKeyReadonlyField,
-
-    #[error("an active api-key must be revoked before it can be deleted")]
-    ApiKeyMustRevokeFirst,
-
-    #[error("a machine name was refused")]
-    CliCredentialMachineNameInvalid,
-
-    #[error("no live command-line credential with that id belongs to this user")]
-    CliCredentialNotFound,
-
-    #[error("the authenticated subject has no user record")]
-    CliCredentialUnknownSubject,
-}
-
-/// Which api-key field a refusal names.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ApiKeyField {
-    /// The name the key is listed and grepped under.
-    Name,
-    /// The free text beside it.
-    Description,
-}
-
-impl Display for ApiKeyField {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Name => "key_name",
-            Self::Description => "description",
-        })
-    }
-}
-
-/// Which device-flow field a refusal names.
-///
-/// One kind with a field rather than five kinds, because the five differ in
-/// exactly one way — the code and sentence they answer with — and a table
-/// keyed on the field says that once. The Zig store spells five error tags and
-/// `failFromStoreError` re-pairs each with its code and its sentence at a
-/// switch arm, which is the same fact written three times.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SessionField {
-    /// The command line's public key, presented at creation.
-    PublicKey,
-    /// The label the minted credential will carry.
-    TokenName,
-    /// The relayed envelope the dashboard sealed.
-    Ciphertext,
-    /// The nonce that envelope was sealed under.
-    Nonce,
-    /// The six digits a person reads out of the browser.
-    VerificationCode,
-}
-
-impl Display for SessionField {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::PublicKey => "public_key",
-            Self::TokenName => "token_name",
-            Self::Ciphertext => "ciphertext",
-            Self::Nonce => "nonce",
-            Self::VerificationCode => "verification_code",
-        })
-    }
 }
 
 /// The refusals a suite outside this crate needs to CONSTRUCT.
@@ -588,99 +464,4 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         std::error::Error::source(&self.inner.kind)
     }
-}
-
-/// Refuses a device-flow field this daemon will not store.
-pub(crate) fn session_field(field: SessionField) -> Error {
-    Error::new(ErrorKind::SessionFieldInvalid { field })
-}
-
-/// Reports a session id naming nothing this daemon holds.
-pub(crate) fn session_missing() -> Error {
-    Error::new(ErrorKind::SessionMissing)
-}
-
-/// Reports a session whose five-minute window closed.
-pub(crate) fn session_expired() -> Error {
-    Error::new(ErrorKind::SessionExpired)
-}
-
-/// Reports a session already redeemed.
-pub(crate) fn session_consumed() -> Error {
-    Error::new(ErrorKind::SessionConsumed)
-}
-
-/// Reports a session cancelled, superseded, or rate-limited before this call.
-pub(crate) fn session_aborted() -> Error {
-    Error::new(ErrorKind::SessionAborted)
-}
-
-/// Reports the wrong attempt that just tripped the session's own ceiling.
-pub(crate) fn session_rate_limited() -> Error {
-    Error::new(ErrorKind::SessionRateLimited)
-}
-
-/// Reports a code presented before any human approved the session.
-pub(crate) fn session_not_approved() -> Error {
-    Error::new(ErrorKind::SessionNotApproved)
-}
-
-/// Reports a second approval of one session.
-pub(crate) fn session_already_approved() -> Error {
-    Error::new(ErrorKind::SessionAlreadyApproved)
-}
-
-/// Reports six digits that did not match the stored digest.
-pub(crate) fn session_code_rejected() -> Error {
-    Error::new(ErrorKind::SessionCodeRejected)
-}
-
-/// Reports an abort attempted by an identity that does not hold the session.
-pub(crate) fn session_not_owner() -> Error {
-    Error::new(ErrorKind::SessionNotOwner)
-}
-
-/// Refuses an api-key field this daemon will not store.
-pub(crate) fn apikey_field(field: ApiKeyField) -> Error {
-    Error::new(ErrorKind::ApiKeyFieldInvalid { field })
-}
-
-/// Reports an id naming no key this tenant holds.
-pub(crate) fn apikey_not_found() -> Error {
-    Error::new(ErrorKind::ApiKeyNotFound)
-}
-
-/// Refuses a machine name this daemon will not store.
-pub(crate) fn cli_credential_machine_name() -> Error {
-    Error::new(ErrorKind::CliCredentialMachineNameInvalid)
-}
-
-/// Reports an id naming no live credential this user holds.
-pub(crate) fn cli_credential_not_found() -> Error {
-    Error::new(ErrorKind::CliCredentialNotFound)
-}
-
-/// Reports a proven subject with no `core.users` row behind it.
-pub(crate) fn cli_credential_unknown_subject() -> Error {
-    Error::new(ErrorKind::CliCredentialUnknownSubject)
-}
-
-/// Reports a name this tenant already uses.
-pub(crate) fn apikey_name_taken() -> Error {
-    Error::new(ErrorKind::ApiKeyNameTaken)
-}
-
-/// Reports a revoke of a key that was already revoked.
-pub(crate) fn apikey_already_revoked() -> Error {
-    Error::new(ErrorKind::ApiKeyAlreadyRevoked)
-}
-
-/// Reports an attempt to re-activate a revoked key.
-pub(crate) fn apikey_readonly_field() -> Error {
-    Error::new(ErrorKind::ApiKeyReadonlyField)
-}
-
-/// Reports a delete of a key that is still active.
-pub(crate) fn apikey_must_revoke_first() -> Error {
-    Error::new(ErrorKind::ApiKeyMustRevokeFirst)
 }

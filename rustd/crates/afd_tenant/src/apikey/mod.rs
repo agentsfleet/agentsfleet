@@ -28,9 +28,9 @@ use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use sqlx::Row as _;
 
-use crate::credential::minted::Minted;
 use crate::sql::apikey as sql;
 use crate::{Result, error};
+use afd_auth::minted::Minted;
 
 pub use self::name::{Deactivation, Description, KeyName};
 pub use self::sort::ApiKeySort;

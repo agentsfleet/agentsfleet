@@ -41,9 +41,9 @@ use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use sqlx::Acquire as _;
 
-use crate::credential::minted::Minted;
 use crate::sql::cli_credential as sql;
 use crate::{Result, error};
+use afd_auth::minted::Minted;
 
 pub use self::machine::MachineName;
 

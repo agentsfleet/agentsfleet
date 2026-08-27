@@ -46,7 +46,7 @@ use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_fleet::Runners;
 use afd_fleet::bundle::{Bundles, ContentHash};
-use afd_fleet::session::input as session_input;
+use afd_tenant::session::input as session_input;
 use axum::Router;
 use axum::body::Body;
 use axum::response::Response;
@@ -458,8 +458,8 @@ pub(crate) struct NoLogins;
 
 impl NoLogins {
     /// The refusal every verb below answers with.
-    fn unavailable<T>() -> afd_fleet::Result<T> {
-        Err(afd_fleet::Error::queue_unavailable())
+    fn unavailable<T>() -> afd_tenant::Result<T> {
+        Err(afd_tenant::Error::queue_unavailable())
     }
 }
 
@@ -468,14 +468,14 @@ impl DeviceFlow for NoLogins {
         &self,
         _opening: &session_input::Opening<'_>,
         _now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::session::Opened>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<afd_tenant::session::Opened>> + Send {
         std::future::ready(Self::unavailable())
     }
 
     fn poll(
         &self,
         _session_id: &str,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::session::Waiting>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<afd_tenant::session::Waiting>> + Send {
         std::future::ready(Self::unavailable())
     }
 
@@ -485,7 +485,7 @@ impl DeviceFlow for NoLogins {
         _approval: &session_input::Approval<'_>,
         _approver: &str,
         _now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<()>> + Send {
         std::future::ready(Self::unavailable())
     }
 
@@ -493,9 +493,9 @@ impl DeviceFlow for NoLogins {
         &self,
         _session_id: &str,
         _code: &session_input::Code<'_>,
-        _fingerprint: &afd_fleet::session::Fingerprint,
+        _fingerprint: &afd_tenant::session::Fingerprint,
         _now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::session::Redeemed>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<afd_tenant::session::Redeemed>> + Send {
         std::future::ready(Self::unavailable())
     }
 
@@ -503,14 +503,14 @@ impl DeviceFlow for NoLogins {
         &self,
         _session_id: &str,
         _owner: &str,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::session::Cancelled>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<afd_tenant::session::Cancelled>> + Send {
         std::future::ready(Self::unavailable())
     }
 
     fn cancel_all(
         &self,
         _owner: &str,
-    ) -> impl Future<Output = afd_fleet::Result<Vec<String>>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<Vec<String>>> + Send {
         std::future::ready(Self::unavailable())
     }
 }
@@ -538,7 +538,7 @@ impl WorkspaceOwnership for OneWorkspace {
         &self,
         principal: &afd_auth::principal::Principal,
         workspace: &Uuid7,
-    ) -> impl Future<Output = afd_fleet::Result<Option<Uuid7>>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<Option<Uuid7>>> + Send {
         // A runner has no tenant authority, exactly as in production: the
         // statement binds nothing that could match, so the answer is a denial
         // rather than an error.
@@ -550,7 +550,7 @@ impl WorkspaceOwnership for OneWorkspace {
     fn tenant_of(
         &self,
         principal: &afd_auth::principal::Principal,
-    ) -> impl Future<Output = afd_fleet::Result<Option<Uuid7>>> + Send {
+    ) -> impl Future<Output = afd_tenant::Result<Option<Uuid7>>> + Send {
         std::future::ready(Ok(principal.tenant().cloned()))
     }
 }
@@ -574,17 +574,17 @@ impl TerminalCredentials for NoTerminals {
     fn user_of(
         &self,
         _subject: &str,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::cli_credential::UserIdentity>> + Send
+    ) -> impl Future<Output = afd_tenant::Result<afd_tenant::cli_credential::UserIdentity>> + Send
     {
-        std::future::ready(Err(afd_fleet::Error::datastore_unavailable()))
+        std::future::ready(Err(afd_tenant::Error::datastore_unavailable()))
     }
 
     fn mint(
         &self,
-        _request: &afd_fleet::cli_credential::MintRequest<'_>,
+        _request: &afd_tenant::cli_credential::MintRequest<'_>,
         _now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::cli_credential::Revealed>> + Send {
-        std::future::ready(Err(afd_fleet::Error::datastore_unavailable()))
+    ) -> impl Future<Output = afd_tenant::Result<afd_tenant::cli_credential::Revealed>> + Send {
+        std::future::ready(Err(afd_tenant::Error::datastore_unavailable()))
     }
 
     fn revoke(
@@ -592,8 +592,8 @@ impl TerminalCredentials for NoTerminals {
         _user: &Uuid7,
         _credential: &Uuid7,
         _now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::cli_credential::Revoked>> + Send {
-        std::future::ready(Err(afd_fleet::Error::datastore_unavailable()))
+    ) -> impl Future<Output = afd_tenant::Result<afd_tenant::cli_credential::Revoked>> + Send {
+        std::future::ready(Err(afd_tenant::Error::datastore_unavailable()))
     }
 }
 
@@ -611,35 +611,35 @@ pub(crate) struct NoKeys;
 impl TenantKeys for NoKeys {
     fn mint(
         &self,
-        _request: &afd_fleet::apikey::MintRequest<'_>,
+        _request: &afd_tenant::apikey::MintRequest<'_>,
         _now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::apikey::Revealed>> + Send {
-        std::future::ready(Err(afd_fleet::Error::datastore_unavailable()))
+    ) -> impl Future<Output = afd_tenant::Result<afd_tenant::apikey::Revealed>> + Send {
+        std::future::ready(Err(afd_tenant::Error::datastore_unavailable()))
     }
 
     fn list(
         &self,
         _tenant: &Uuid7,
-        _page: &afd_core::paging::Page<afd_fleet::apikey::ApiKeySort>,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::apikey::Listing>> + Send {
-        std::future::ready(Err(afd_fleet::Error::datastore_unavailable()))
+        _page: &afd_core::paging::Page<afd_tenant::apikey::ApiKeySort>,
+    ) -> impl Future<Output = afd_tenant::Result<afd_tenant::apikey::Listing>> + Send {
+        std::future::ready(Err(afd_tenant::Error::datastore_unavailable()))
     }
 
     fn revoke(
         &self,
         _tenant: &Uuid7,
         _key: &Uuid7,
-        _intent: afd_fleet::apikey::Deactivation,
+        _intent: afd_tenant::apikey::Deactivation,
         _now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::apikey::Revoked>> + Send {
-        std::future::ready(Err(afd_fleet::Error::datastore_unavailable()))
+    ) -> impl Future<Output = afd_tenant::Result<afd_tenant::apikey::Revoked>> + Send {
+        std::future::ready(Err(afd_tenant::Error::datastore_unavailable()))
     }
 
     fn delete(
         &self,
         _tenant: &Uuid7,
         _key: &Uuid7,
-    ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
-        std::future::ready(Err(afd_fleet::Error::datastore_unavailable()))
+    ) -> impl Future<Output = afd_tenant::Result<()>> + Send {
+        std::future::ready(Err(afd_tenant::Error::datastore_unavailable()))
     }
 }

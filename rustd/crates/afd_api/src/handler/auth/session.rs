@@ -3,8 +3,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_fleet::session::input::{Approval, Code, Opening};
-use afd_fleet::session::{Cancelled, Fingerprint, SessionStatus};
+use afd_tenant::session::input::{Approval, Code, Opening};
+use afd_tenant::session::{Cancelled, Fingerprint, SessionStatus};
 use afd_wire::auth::{
     ApproveSessionRequest, ApproveSessionResponse, DeleteAllSessionsResponse, OpenSessionRequest,
     OpenSessionResponse, PollSessionResponse, VerifySessionRequest, VerifySessionResponse,
@@ -161,7 +161,7 @@ pub(crate) async fn verify<D: Services>(
     {
         Ok(redeemed) => {
             // Whether this was the first redemption or a repeat rides the log
-            // and never the wire — see `afd_fleet::session::Redeemed`.
+            // and never the wire — see `afd_tenant::session::Redeemed`.
             tracing::debug!(
                 repeated = redeemed.repeated,
                 event = "auth_session_verified",

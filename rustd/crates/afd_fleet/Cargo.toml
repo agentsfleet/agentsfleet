@@ -63,8 +63,6 @@ url.workspace = true
 sqlx.workspace = true
 # The error derive every crate under `rustd/` shapes its `Error` with.
 thiserror.workspace = true
-# Lower-case hex for the minted token body.
-hex.workspace = true
 # The Fleet Bundle snapshot store. R2 is S3-compatible and this is the client
 # the workspace manifest chose for it; `bundle` names both the store trait and
 # the error a failed GET carries, so the dependency is this crate's rather than

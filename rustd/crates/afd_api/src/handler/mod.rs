@@ -21,6 +21,8 @@ pub mod tenant;
 
 use axum::response::{IntoResponse as _, Response};
 
+use afd_core::error_code::ErrorCode;
+
 use crate::envelope::ProblemResponse;
 use crate::request_id::RequestId;
 
@@ -50,7 +52,56 @@ pub(crate) fn malformed(detail: &'static str) -> Response {
     .into_response()
 }
 
-pub(crate) fn refuse(error: &afd_fleet::Error, event: &'static str) -> Response {
+/// What a domain crate's error can tell the HTTP edge about itself.
+///
+/// Three questions, and every plane answers all three: which registry code,
+/// which sentence, and whether the datastore was the thing that failed. A trait
+/// rather than one concrete type because there is now more than one plane —
+/// `afd_fleet` answers for the runner, `afd_tenant` for the tenant — and each
+/// owns its own error per `RUST_ERROR_STANDARD`. The edge does not need to know
+/// which it is holding; it needs these three answers.
+pub(crate) trait Refusable {
+    /// The registry code this failure answers with.
+    fn code(&self) -> ErrorCode;
+    /// The sentence the caller is told.
+    fn detail(&self) -> &'static str;
+    /// Whether the datastore behind the plane could not be reached.
+    fn is_datastore_unavailable(&self) -> bool;
+    /// The whole causal chain, for the log and never for the caller.
+    fn reason(&self) -> String;
+}
+
+impl Refusable for afd_fleet::Error {
+    fn code(&self) -> ErrorCode {
+        Self::code(self)
+    }
+    fn detail(&self) -> &'static str {
+        Self::detail(self)
+    }
+    fn is_datastore_unavailable(&self) -> bool {
+        Self::is_datastore_unavailable(self)
+    }
+    fn reason(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl Refusable for afd_tenant::Error {
+    fn code(&self) -> ErrorCode {
+        Self::code(self)
+    }
+    fn detail(&self) -> &'static str {
+        Self::detail(self)
+    }
+    fn is_datastore_unavailable(&self) -> bool {
+        Self::is_datastore_unavailable(self)
+    }
+    fn reason(&self) -> String {
+        self.to_string()
+    }
+}
+
+pub(crate) fn refuse<E: Refusable + ?Sized>(error: &E, event: &'static str) -> Response {
     let request_id = RequestId::mint();
     let code = error.code();
     // Hoisted out of the macro: `tracing`'s `log` bridge compiles a second copy
@@ -60,7 +111,7 @@ pub(crate) fn refuse(error: &afd_fleet::Error, event: &'static str) -> Response 
     // The whole chain, which is where the cause a client is NOT told lives.
     // `Display` on this error renders its code and its kind; the `source()`
     // beneath it is what names the statement or the pool.
-    let reason = error.to_string();
+    let reason = error.reason();
     if error.is_datastore_unavailable() {
         // An outage is the instance's problem to report, and the caller's to
         // back off from. `warn` rather than `error`: the incident belongs to

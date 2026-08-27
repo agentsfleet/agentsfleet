@@ -47,6 +47,7 @@ dependencies = [
  "afd_db",
  "afd_fleet",
  "afd_observability",
+ "afd_tenant",
  "afd_wire",
  "axum",
  "bytes",
@@ -66,6 +67,7 @@ name = "afd_auth"
 version = "0.26.2"
 dependencies = [
  "afd_core",
+ "afd_crypto",
  "hex",
  "sha2 0.11.0",
  "thiserror",
@@ -127,7 +129,6 @@ dependencies = [
  "base64 0.23.1",
  "bytes",
  "futures-util",
- "hex",
  "http",
  "jiff",
  "jsonwebtoken",
@@ -219,6 +220,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_tenant"
+version = "0.26.2"
+dependencies = [
+ "afd_auth",
+ "afd_core",
+ "afd_crypto",
+ "afd_db",
+ "afd_redis",
+ "futures-util",
+ "hex",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "afd_wire"
 version = "0.26.2"
 dependencies = [
@@ -239,6 +260,7 @@ dependencies = [
  "afd_identity",
  "afd_redis",
  "afd_state",
+ "afd_tenant",
  "afd_wire",
  "axum",
  "clap",

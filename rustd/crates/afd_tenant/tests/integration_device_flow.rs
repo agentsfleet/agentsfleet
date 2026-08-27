@@ -18,9 +18,9 @@ use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::SecretBytes;
-use afd_fleet::session::input::{Approval, Code, Opening};
-use afd_fleet::session::{Cancelled, Fingerprint, SessionStatus, Sessions};
 use afd_redis::SessionStore;
+use afd_tenant::session::input::{Approval, Code, Opening};
+use afd_tenant::session::{Cancelled, Fingerprint, SessionStatus, Sessions};
 
 #[path = "support/redis_harness.rs"]
 mod support;
