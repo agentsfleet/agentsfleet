@@ -65,6 +65,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_db/**` | EDIT | one `test-util` constructor, so a suite stubbing a pool-holding service answers with the refusal a real pool with no Postgres behind it gives, rather than inventing afd_db's failures from another crate |
 | `rustd/Cargo.toml` + `rustd/Cargo.lock` | EDIT | new member |
 | `docs/v2/active/M178_001_P1_API_TENANT_WORKSPACE_SURFACE.md` | EDIT | this spec: status, baseline, Discovery log, and the amendments to this table |
+| `rustd/crates/agentsfleetd/src/preflight.rs` | EDIT | `API_URL` joins the resolved knobs — optional with `https://api.agentsfleet.net`, exactly as `runtime_loader.zig` reads it. A minted command-line credential records the deployment that issued it, and that must come from configuration rather than a request's `Host` |
 | `make/test-integration.mk` | EDIT | tenant/workspace integration subset runs against the Rust binary |
 
 ## Applicable Rules
@@ -106,7 +107,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 `/v1/tenants/me/*` (billing, charges, workspaces, provider, models CRUD), `/v1/models`, `/v1/api-keys[/{id}]`, `/v1/cli-credentials[/{id}]`, and workspace CRUD itself (`/v1/workspaces`, `/v1/workspaces/{workspace_id}`) — thin handlers over `afd_state`; api-key and cli-credential mint show the raw secret exactly once and store only hashes.
 
 - **Dimension 2.1** — each tenant route: response-shape parity vs the Zig daemon on seeded data → Test `test_tenant_routes_shape_parity`
-- **Dimension 2.2** — api-key half DONE (mint/list/revoke/delete over `afd_fleet::apikey`); the `afc_` command-line credential half is pending → Test `test_key_lifecycle_reveal_once`
+- **Dimension 2.2** — DONE. Api-key half over `afd_fleet::apikey` (mint/list/revoke/delete); `afc_` command-line half over `afd_fleet::cli_credential` (mint/revoke). The `afc_` mint is one transaction — advisory lock, owner-scoped revoke, insert — and the guard is a TYPE: `FreshSession` admits a browser session alone so a credential cannot mint its successor, `HumanIdentity` admits a terminal too so `logout` needs no browser. → Test `test_key_lifecycle_reveal_once` + `tenant_cli_credential.rs` (5 cases)
 - **Dimension 2.3** — keyset cursor + ordering vocabulary DONE (`afd_api::paging`, 10 unit tests); the seeded-row ordering proof lands with the api-key list handler → Test `test_list_keyset_pagination`
 - **Dimension 2.4** — DONE — every route + method in this spec's Interfaces inventory exists in the Route enum; extras and gaps both fail → Test `test_route_inventory_matches_interfaces`
 
@@ -333,6 +334,16 @@ N/A — no files deleted.
   If a real RLS policy is ever declared in `schema/`, the setting comes back
   transaction-scoped — `set_config(…, true)` inside an explicit `sqlx`
   transaction, never at session level — and that is a small, local change.
+
+- **`GET /v1/cli-credentials` is not ported, because it is not served.**
+  `cli_credentials.zig`'s module comment describes three endpoints and names a
+  list — "how an operator sees which terminals hold one" — but
+  `route_table_invoke.zig` admits `POST` on the collection and `DELETE` on the
+  item, and nothing else. The `_index_` test beside it is about a database
+  INDEX, not a listing. So the list is documented and unserved; porting it
+  would be adding an endpoint in a milestone whose rule is parity.
+  `afd_api::services::TerminalCredentials` records this where the missing verb
+  would otherwise read as an omission.
 
 - **§1 `token_name` is held to printable ASCII.** `UZ-AUTH-017`'s registry entry
   documents "1 to 64 characters from space through tilde"; the Zig store bounds
