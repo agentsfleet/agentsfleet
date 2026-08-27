@@ -25,9 +25,6 @@
 //! bounded and repairable by re-submission. A re-executed run cannot be
 //! un-spent. (`redis_fleet.zig` reasons the same way, at length.)
 
-use redis::ToRedisArgs as _;
-use redis::streams::{StreamReadOptions, StreamReadReply};
-
 use crate::client::Redis;
 use crate::error::{self, Result};
 
@@ -120,15 +117,6 @@ pub fn fleet_stream_key(fleet_id: &str) -> String {
     format!("fleet:{fleet_id}:events")
 }
 
-/// The key one append-once intent is remembered under.
-///
-/// One spelling (RULE UFS): `append_once` writes it and `forget_once` deletes
-/// it, and a pair that drifted would leave the write remembered forever while
-/// the delete removed nothing — a repair intent that could never run again.
-fn once_key(once_id: &str) -> String {
-    format!("{ONCE_KEY_PREFIX}{once_id}")
-}
-
 /// The channel a fleet's live-tail frames are published on.
 ///
 /// `activity_publisher.zig` builds this into a 128-byte stack buffer and has a
@@ -202,6 +190,9 @@ pub struct FleetStreams {
     redis: Redis,
 }
 
+mod consume;
+mod once;
+
 impl FleetStreams {
     /// Binds stream operations to a connection.
     #[must_use]
@@ -267,69 +258,6 @@ impl FleetStreams {
         Ok(EventId(id))
     }
 
-    /// Appends one event AT MOST ONCE, however many times this is called.
-    ///
-    /// The durable intent behind a repair verification is retried until the
-    /// database records which event it produced, and those two writes cannot be
-    /// one transaction — one is Redis and one is Postgres. So the retry has to
-    /// be safe, and "safe" here means the second attempt returns the FIRST
-    /// attempt's event id rather than appending a second event: a duplicate
-    /// would run the same verification twice, with real provider spend.
-    ///
-    /// A `SET NX` beside the append would not do it — the two are separate
-    /// round trips and a crash between them leaves either an event nothing
-    /// remembers or a key naming no event. The script makes the pair atomic,
-    /// which is the property the whole retry loop rests on.
-    ///
-    /// Answers the event id and whether this call is the one that wrote it.
-    ///
-    /// # Errors
-    /// Returns a command error, or an unavailable error when Redis is gone. A
-    /// key holding something that is not a stream is refused by the script
-    /// rather than appended to.
-    pub async fn append_once(
-        &self,
-        once_id: &str,
-        fleet_id: &str,
-        fields: &[(&str, &str)],
-    ) -> Result<Appended> {
-        let key = fleet_stream_key(fleet_id);
-        let mut invocation = APPEND_ONCE.prepare_invoke();
-        invocation
-            .key(once_key(once_id))
-            .key(&key)
-            .arg(STREAM_MAXLEN);
-        for (name, value) in fields {
-            invocation.arg(*name).arg(*value);
-        }
-
-        let (event_id, outcome): (String, String) =
-            self.redis.script(CMD_EVAL, &key, &invocation).await?;
-        if event_id.is_empty() {
-            return Err(error::unexpected_reply(CMD_EVAL));
-        }
-        Ok(Appended {
-            id: EventId(event_id),
-            replayed: outcome == OUTCOME_REPLAYED,
-        })
-    }
-
-    /// Forgets an append-once key.
-    ///
-    /// Called only AFTER the database records which event the intent produced.
-    /// Cleared any earlier and a retry in between would append a second event,
-    /// which is the exact duplicate the key exists to prevent.
-    ///
-    /// # Errors
-    /// Returns a command error when the delete fails.
-    pub async fn forget_once(&self, once_id: &str) -> Result<()> {
-        let key = once_key(once_id);
-        let mut cmd = redis::cmd(CMD_DEL);
-        cmd.arg(&key);
-        let _removed: i64 = self.redis.command(CMD_DEL, &key, &cmd).await?;
-        Ok(())
-    }
-
     /// Drops a fleet's whole event stream, group and all.
     ///
     /// For the purge, and only for it: `DEL` on a stream key removes the
@@ -351,182 +279,6 @@ impl FleetStreams {
         cmd.arg(&key);
         let _removed: i64 = self.redis.command(CMD_DEL, &key, &cmd).await?;
         Ok(())
-    }
-
-    /// Reads the next undelivered event, without blocking.
-    ///
-    /// Never `BLOCK`: this connection is multiplexed, so parking on one stream
-    /// would park every other caller sharing it. The assignment scan probes
-    /// several fleets per poll and the runner long-polls client-side instead.
-    ///
-    /// # Errors
-    /// Returns a command error, or an unavailable error when Redis is gone.
-    /// A vanished group is repaired here rather than reported.
-    pub async fn read_new(&self, fleet_id: &str, consumer: &str) -> Result<Option<FleetEvent>> {
-        self.read(fleet_id, consumer, NEW_ENTRIES).await
-    }
-
-    /// Reads this consumer's oldest pending entry — one delivered but never
-    /// acknowledged, which is what a re-poll after a crash has to find first.
-    ///
-    /// # Errors
-    /// As [`FleetStreams::read_new`].
-    pub async fn read_pending(&self, fleet_id: &str, consumer: &str) -> Result<Option<FleetEvent>> {
-        self.read(fleet_id, consumer, OWN_PENDING).await
-    }
-
-    async fn read(
-        &self,
-        fleet_id: &str,
-        consumer: &str,
-        read_id: &str,
-    ) -> Result<Option<FleetEvent>> {
-        match self.read_once(fleet_id, consumer, read_id).await {
-            Err(failure) if failure.is_group_missing() => {
-                // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-                let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-                tracing::warn!(
-                    fleet_id,
-                    error_code,
-                    event = "fleet_consumer_group_missing_repaired"
-                );
-                self.create_group(fleet_id, GROUP_START_END).await?;
-                self.read_once(fleet_id, consumer, read_id).await
-            }
-            other => other,
-        }
-    }
-
-    async fn read_once(
-        &self,
-        fleet_id: &str,
-        consumer: &str,
-        read_id: &str,
-    ) -> Result<Option<FleetEvent>> {
-        let key = fleet_stream_key(fleet_id);
-        let options = StreamReadOptions::default()
-            .group(FLEET_CONSUMER_GROUP, consumer)
-            .count(1);
-        let mut cmd = redis::cmd(CMD_XREADGROUP);
-        for arg in options.to_redis_args() {
-            cmd.arg(arg);
-        }
-        cmd.arg("STREAMS").arg(&key).arg(read_id);
-
-        let reply: StreamReadReply = self.redis.command(CMD_XREADGROUP, &key, &cmd).await?;
-        Ok(reply
-            .keys
-            .into_iter()
-            .flat_map(|stream| stream.ids)
-            .next()
-            .map(|entry| FleetEvent {
-                id: EventId(entry.id),
-                fields: entry
-                    .map
-                    .into_iter()
-                    .map(|(name, value)| (name, stringify(&value)))
-                    .collect(),
-            }))
-    }
-
-    /// Acknowledges an event, removing it from the consumer's pending list.
-    ///
-    /// # Errors
-    /// Returns a command error when the acknowledgement fails.
-    pub async fn ack(&self, fleet_id: &str, id: &EventId) -> Result<bool> {
-        let key = fleet_stream_key(fleet_id);
-        let mut cmd = redis::cmd(CMD_XACK);
-        cmd.arg(&key).arg(FLEET_CONSUMER_GROUP).arg(id.as_str());
-        let acknowledged: i64 = self.redis.command(CMD_XACK, &key, &cmd).await?;
-        Ok(acknowledged > 0)
-    }
-
-    /// Claims one entry stranded in a dead consumer's pending list.
-    ///
-    /// Entries delivered to a consumer that no longer reads — a retired daemon
-    /// instance, a legacy per-probe consumer name — sit in that consumer's
-    /// pending list forever, because `XREADGROUP >` only ever hands out entries
-    /// nobody has seen. Nothing recovers them except claiming them away, which
-    /// is what this does; the lease path's own-pending read then re-enters the
-    /// entry into the lease flow on the next poll.
-    ///
-    /// One entry per call, so a pathological stream cannot monopolise a sweep
-    /// pass. `None` means the pending list held nothing idle enough, which is
-    /// the ordinary answer for a healthy fleet.
-    ///
-    /// # Errors
-    /// Returns a command error, or an unavailable error when Redis is gone.
-    pub async fn autoclaim(&self, fleet_id: &str, consumer: &str) -> Result<Option<FleetEvent>> {
-        let key = fleet_stream_key(fleet_id);
-        let mut cmd = redis::cmd(CMD_XAUTOCLAIM);
-        cmd.arg(&key)
-            .arg(FLEET_CONSUMER_GROUP)
-            .arg(consumer)
-            .arg(AUTOCLAIM_MIN_IDLE_MS)
-            .arg(AUTOCLAIM_START)
-            .arg("COUNT")
-            .arg(1);
-
-        // The typed reply is the crate's. `redis_fleet_decode.zig` hand-decodes
-        // the same nested array — a length check, two index reads and a field
-        // walk — for want of one.
-        let reply: redis::streams::StreamAutoClaimReply =
-            self.redis.command(CMD_XAUTOCLAIM, &key, &cmd).await?;
-        Ok(reply.claimed.into_iter().next().map(|entry| FleetEvent {
-            id: EventId(entry.id),
-            fields: entry
-                .map
-                .into_iter()
-                .map(|(name, value)| (name, stringify(&value)))
-                .collect(),
-        }))
-    }
-
-    /// Whether this fleet holds work a runner could still pick up.
-    ///
-    /// The backstop for a readiness mark that was lost — an ingress mark that
-    /// failed, an index that was evicted or flushed. The streams are the system
-    /// of record and the index is a hint, so this asks the record.
-    ///
-    /// Two things count as deliverable: entries a group has been handed and not
-    /// acknowledged (`pending`), and entries nobody has been handed at all
-    /// (`lag`). The second is the half a claim can never find, because an entry
-    /// nobody has read is in nobody's pending list.
-    ///
-    /// # Errors
-    /// Returns a command error, or an unavailable error when Redis is gone. A
-    /// probe that cannot answer is REPORTED rather than read as "nothing to
-    /// recover" — this is the recovery path's own backstop, and a silent false
-    /// would leave it inert while looking exactly like an idle system.
-    pub async fn has_deliverable(&self, fleet_id: &str) -> Result<bool> {
-        let key = fleet_stream_key(fleet_id);
-        let mut stream_info = redis::cmd(CMD_XINFO);
-        stream_info.arg("STREAM").arg(&key);
-        let stream: redis::streams::StreamInfoStreamReply =
-            self.redis.command(CMD_XINFO, &key, &stream_info).await?;
-        // No entries ever generated, so nothing to deliver whatever the group
-        // says about itself.
-        if stream.length == 0 {
-            return Ok(false);
-        }
-
-        let mut group_info = redis::cmd(CMD_XINFO);
-        group_info.arg("GROUPS").arg(&key);
-        let groups: redis::streams::StreamInfoGroupsReply =
-            self.redis.command(CMD_XINFO, &key, &group_info).await?;
-        let Some(group) = groups
-            .groups
-            .into_iter()
-            .find(|group| group.name == FLEET_CONSUMER_GROUP)
-        else {
-            // No consumer group yet: no runner has ever read this fleet, so
-            // every entry present is undelivered.
-            return Ok(true);
-        };
-        // A `lag` Redis cannot determine is read as deliverable. The direction
-        // matters and only one of them is safe: a false positive costs one
-        // wasted candidate check, and a false negative strands an event.
-        Ok(group.pending > 0 || group.lag.is_none_or(|lag| lag > 0))
     }
 
     /// Publishes on a channel, for the subscription hub's readers.
