@@ -3,8 +3,11 @@
 # (CI).
 #
 # Stage shape:
-#   1. classify pushed files (since upstream / main fork-point) into 7 flags
-#   2. run matching test-unit-* lanes
+#   1. classify pushed files (since upstream / main fork-point) into 5 flags
+#   2. run matching test-unit-* lanes — cargo backgrounded, JavaScript serial
+#
+# No `orly gate` call: `work` proves nothing here (see below), and `pr` is the
+# comprehensive tier that belongs at CHORE(close).
 #
 # Surfaces:
 #   - test-unit-rustd          (*.rs, rustd/*)
@@ -28,23 +31,25 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-# --- orly gate work ----------------------------------------------------------
-# The cheap tier only: branch shape, tree state, declared commands. `orly gate
-# pr` belongs at CHORE(close), immediately before `gh pr create` — it runs the
-# whole declared verify set, which is the comprehensive tier this hook
-# deliberately leaves to Continuous Integration (CI). Running it here would
+# --- no orly gate here, deliberately -----------------------------------------
+# This hook used to run `orly gate work`. orly 0.8.0 recomposed its gates
+# one-per-cadence, and `work` now runs the repository's declared `conform`
+# command — which here is `make harness-verify`, and harness-verify is
+# STAGED-scoped. Nothing is staged at push time, so all nine audits printed
+# "no files in scope" and the call cost ~3s to prove nothing about the commits
+# being pushed.
+#
+# Dropping it loses no coverage: `conform` already ran against every one of
+# those commits, at commit time, in .githooks/pre-commit — over the staged diff
+# that actually became the commit, which is the only scope where a staged-diff
+# audit means anything. Re-asking at push can only re-answer for an empty set.
+#
+# The whole-worktree answer (`make harness-verify-all`) is a different and
+# strictly larger question — it grades untouched pre-existing debt, not this
+# push — and belongs to `orly gate pr` at CHORE(close) and to Continuous
+# Integration (CI), both of which run it. `orly gate pr` also remains the
+# comprehensive tier this hook deliberately leaves alone: running it here would
 # hold the push open for the stretch github.com kept dropping.
-if command -v orly >/dev/null 2>&1; then
-  # A scratch file in the tree is not part of what is being pushed — the
-  # commits are. The tree criterion belongs to `orly gate pr`, where the
-  # question is whether the reviewer sees what was graded.
-  echo "pre-push: orly gate work"
-  orly gate work --accept-dirty || exit 1
-else
-  echo "pre-push: orly is not installed, and the rule gate cannot be skipped." >&2
-  echo "  npm install --global @agentsfleet/orly" >&2
-  exit 1
-fi
 
 if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
   upstream_ref='@{u}'
