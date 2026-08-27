@@ -4,9 +4,9 @@
 use std::borrow::Cow;
 
 use afd_wire::admin::{
-    AdminLibrariesResponse, AdminLibraryItem, AdminModelCreated, AdminModelItem, AdminModelUpdated,
-    AdminModelsResponse, ModelRates, PlatformKeyDeactivateResponse, PlatformKeyItem,
-    PlatformKeySetResponse, PlatformKeysResponse,
+    AdminLibrariesResponse, AdminLibraryItem, AdminLibraryRequirements, AdminModelCreated,
+    AdminModelItem, AdminModelUpdated, AdminModelsResponse, ModelRates,
+    PlatformKeyDeactivateResponse, PlatformKeyItem, PlatformKeySetResponse, PlatformKeysResponse,
 };
 
 #[test]
@@ -26,7 +26,7 @@ fn test_admin_crud_shape_parity() {
         request_id: Cow::Borrowed("req-models"),
     };
     let libraries = AdminLibrariesResponse {
-        libraries: vec![AdminLibraryItem {
+        entries: vec![AdminLibraryItem {
             id: Cow::Borrowed("github-reviewer"),
             name: Cow::Borrowed("GitHub reviewer"),
             description: Cow::Borrowed("Reviews pull requests"),
@@ -34,11 +34,15 @@ fn test_admin_crud_shape_parity() {
             source_ref: Cow::Borrowed("main"),
             visibility: Cow::Borrowed("public"),
             content_hash: Some(Cow::Borrowed("abc123")),
-            required_credentials: serde_json::json!(["github"]),
-            required_tools: serde_json::json!(["http_request"]),
-            network_hosts: serde_json::json!(["api.github.com"]),
-            trigger_present: true,
+            requirements: AdminLibraryRequirements {
+                credentials: vec![Cow::Borrowed("github")],
+                tools: vec![Cow::Borrowed("http_request")],
+                network_hosts: vec![Cow::Borrowed("api.github.com")],
+                trigger_present: true,
+            },
+            required_credentials_reasons: serde_json::json!({"github":"Reviews pull requests"}),
             updated_at: 1_725_000_000_000,
+            etag: Cow::Borrowed("\"abc123\""),
         }],
     };
 
@@ -48,14 +52,17 @@ fn test_admin_crud_shape_parity() {
     );
     let library_json = serde_json::to_value(libraries).expect("library response serializes");
     let library = library_json
-        .get("libraries")
+        .get("entries")
         .and_then(serde_json::Value::as_array)
         .and_then(|libraries| libraries.first())
         .expect("response holds its one library");
     assert_eq!(
-        library.get("required_credentials"),
+        library
+            .get("requirements")
+            .and_then(|requirements| requirements.get("credentials")),
         Some(&serde_json::json!(["github"]))
     );
+    assert_eq!(library.get("etag"), Some(&serde_json::json!("\"abc123\"")));
     assert!(library.get("skill_markdown").is_none());
     assert!(library.get("support_files").is_none());
 }

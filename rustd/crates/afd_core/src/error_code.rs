@@ -334,6 +334,18 @@ pub const PROVIDER_MODEL_IN_USE: ErrorCode = ErrorCode::declare("UZ-PROVIDER-007
 /// A priced row already has the requested provider/model identity.
 pub const PROVIDER_MODEL_EXISTS: ErrorCode = ErrorCode::declare("UZ-PROVIDER-008");
 
+/// No platform Fleet-library entry has the supplied slug.
+pub const CATALOG_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-CATALOG-001");
+
+/// A row without fetched bundle content cannot be published.
+pub const CATALOG_PUBLISH_WITHOUT_BUNDLE: ErrorCode = ErrorCode::declare("UZ-CATALOG-002");
+
+/// A published row must be withdrawn before deletion.
+pub const CATALOG_DELETE_PUBLISHED: ErrorCode = ErrorCode::declare("UZ-CATALOG-003");
+
+/// The optional `If-Match` value no longer names the editable row.
+pub const CATALOG_ROW_STALE: ErrorCode = ErrorCode::declare("UZ-CATALOG-005");
+
 /// The instance is already serving as many requests as it admits.
 ///
 /// `ERR_API_BACKPRESSURE`. A 429, and the one refusal in this registry that is
@@ -454,6 +466,10 @@ pub const REGISTRY: &[ErrorCode] = &[
     PROVIDER_MODEL_NOT_FOUND,
     PROVIDER_MODEL_IN_USE,
     PROVIDER_MODEL_EXISTS,
+    CATALOG_NOT_FOUND,
+    CATALOG_PUBLISH_WITHOUT_BUNDLE,
+    CATALOG_DELETE_PUBLISHED,
+    CATALOG_ROW_STALE,
     API_BACKPRESSURE,
     CRED_INTEGRATION_NOT_CONNECTED,
     CRED_BROKER_NOT_CONFIGURED,

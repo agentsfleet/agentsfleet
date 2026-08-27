@@ -45,6 +45,12 @@ impl Repository {
     }
 }
 
+/// Whether a branch, tag, or commit is one safe URL segment.
+#[must_use]
+pub fn valid_revision(value: &str) -> bool {
+    valid_segment(value)
+}
+
 /// Production GitHub source with redirects disabled and inspected explicitly.
 #[derive(Debug, Clone)]
 pub struct GithubSource {

@@ -35,6 +35,7 @@ use afd_fleet::secrets::Registry;
 use afd_fleet::streams::{LiveStreams, SSE_MAX_STREAMS_DEFAULT};
 use afd_fleet::vault::Vault;
 use afd_fleet_ops::RunnerLeaseHistory;
+use afd_library::Libraries;
 use afd_redis::Redis;
 use afd_state::Credentials;
 
@@ -60,6 +61,7 @@ pub struct ServingPlane {
     runner_lease_history: RunnerLeaseHistory,
     models: Models,
     platform_keys: PlatformKeys,
+    libraries: Libraries,
 }
 
 impl ServingPlane {
@@ -104,6 +106,7 @@ impl ServingPlane {
             runner_lease_history: RunnerLeaseHistory::new(database.clone()),
             models: Models::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
+            libraries: Libraries::new(database.clone()),
             probes: LiveDependencies::new(database.clone(), queue.clone()),
             authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
             runners: Runners::new(database.clone(), Entropy::new()),
@@ -161,6 +164,10 @@ impl Services for ServingPlane {
 
     fn platform_keys(&self) -> &PlatformKeys {
         &self.platform_keys
+    }
+
+    fn libraries(&self) -> &Libraries {
+        &self.libraries
     }
 
     /// The wall clock, read once per verb by whichever handler asked.

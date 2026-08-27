@@ -2,6 +2,7 @@
 
 use afd_core::error_code::{
     ErrorCode, FLEET_BUNDLE_FETCH_FAILED, FLEET_BUNDLE_INVALID, FLEET_BUNDLE_STORAGE_UNAVAILABLE,
+    INTERNAL_DB_QUERY, INTERNAL_DB_UNAVAILABLE,
 };
 
 use crate::source::SourceFailure;
@@ -133,12 +134,11 @@ impl Error {
             Self::Invalid(_) | Self::FrontmatterUtf8 { .. } | Self::FrontmatterYaml { .. } => {
                 FLEET_BUNDLE_INVALID
             }
-            Self::Storage(_)
-            | Self::Catalogue(_)
-            | Self::Pool(_)
-            | Self::CatalogueJson(_)
-            | Self::Snapshot(_)
-            | Self::Database { .. } => FLEET_BUNDLE_STORAGE_UNAVAILABLE,
+            Self::Storage(_) | Self::Catalogue(_) | Self::Snapshot(_) => {
+                FLEET_BUNDLE_STORAGE_UNAVAILABLE
+            }
+            Self::Pool(_) => INTERNAL_DB_UNAVAILABLE,
+            Self::CatalogueJson(_) | Self::Database { .. } => INTERNAL_DB_QUERY,
             Self::Source(_)
             | Self::Github(_)
             | Self::Archive(_)
@@ -159,6 +159,32 @@ impl Error {
                 | Self::Github(_)
                 | Self::Database { .. }
         )
+    }
+
+    /// Client-safe detail exposed to the HTTP shell.
+    #[must_use]
+    pub const fn detail(&self) -> &'static str {
+        match self {
+            Self::Pool(_) => "Database unavailable",
+            Self::CatalogueJson(_) | Self::Database { .. } => "Database error",
+            Self::Invalid(_) | Self::FrontmatterUtf8 { .. } | Self::FrontmatterYaml { .. } => {
+                "Fleet Bundle is invalid"
+            }
+            Self::Source(_)
+            | Self::Github(_)
+            | Self::Archive(_)
+            | Self::Redirect(_)
+            | Self::ArchivePath(_) => "Fleet Bundle fetch failed",
+            Self::Storage(_) | Self::Catalogue(_) | Self::Snapshot(_) => {
+                "Fleet Bundle storage unavailable"
+            }
+        }
+    }
+
+    /// Whether the backing database could not be reached at all.
+    #[must_use]
+    pub const fn is_datastore_unavailable(&self) -> bool {
+        matches!(self, Self::Pool(_))
     }
 }
 

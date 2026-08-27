@@ -413,6 +413,40 @@ const ENTRIES: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::CATALOG_NOT_FOUND,
+        status: 404,
+        title: "Fleet library entry not found",
+        hint: "No catalog entry matches this id. It may already be deleted — refresh the catalog.",
+        user_message: Some(
+            "We couldn't find that fleet. It may have already been removed — refresh the page.",
+        ),
+    },
+    Problem {
+        code: error_code::CATALOG_PUBLISH_WITHOUT_BUNDLE,
+        status: 409,
+        title: "Cannot publish a fleet with no bundle",
+        hint: "No bundle has been fetched for this entry, so there is nothing to publish. Fetch it from its repository first.",
+        user_message: Some(
+            "There's no bundle for this fleet yet. Fetch it from its repository first, then publish.",
+        ),
+    },
+    Problem {
+        code: error_code::CATALOG_DELETE_PUBLISHED,
+        status: 409,
+        title: "Cannot delete a published fleet",
+        hint: "This fleet is published and installable. Unpublish it first, then delete it.",
+        user_message: Some("This fleet is published. Unpublish it first, then delete it."),
+    },
+    Problem {
+        code: error_code::CATALOG_ROW_STALE,
+        status: 412,
+        title: "Catalog entry changed since you loaded it",
+        hint: "Another operator saved first: `If-Match` names an old version. Refetch the row, re-apply your edit, and retry with the new `etag`.",
+        user_message: Some(
+            "Someone else edited this catalog entry since you opened it. Refresh to see their change, then re-apply your edit.",
+        ),
+    },
+    Problem {
         code: error_code::CRED_INTEGRATION_NOT_CONNECTED,
         status: 404,
         title: "Integration not connected",
