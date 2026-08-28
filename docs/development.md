@@ -11,11 +11,18 @@
 Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githooks`)
 — not in any contributor's dotfiles. Hook fixes are normal repo PRs.
 
-- **pre-push classifies the outgoing range into unit surfaces** by file pattern
-  (`*.zig`/`schema/*.sql` → agentsfleetd, `agentsfleet/*` → agentsfleet, `ui/packages/app/*`
-  → app, website, design-system → both, bundle dirs → bundle). Zero matches →
-  `"no test-relevant files — nothing to run"` and the push sails through. A
-  genuinely docs-only push skips the suite entirely.
+- **pre-push classifies the outgoing range into lint and unit surfaces** by file
+  pattern (`*.rs`/`rustd/*` → `lint-rustd` + `test-unit-rustd`, `cli/*` → cli,
+  `ui/packages/app/*` → app, website → website, design-system → both it and
+  app). Zero matches → `"no test-relevant files — nothing to run"` and the push
+  sails through. A genuinely docs-only push skips the suite entirely.
+- **Clippy is pre-push's, not pre-commit's.** `lint-rustd` compiles the whole
+  workspace under `-D warnings`, which measured 36s to 3m16s per commit — a tax
+  on every commit including the small ones. Pre-commit keeps the checks that
+  cost seconds: the partial-staging reject, `orly gate work` (the `conform`
+  row — UFS, RUST ERR, LOGGING and the rest, over the staged diff), gitleaks,
+  and the fast per-surface gates. This is the split `docs/VERIFY_TIERS.md`
+  already describes; the hooks had drifted from it.
 - **The merge trap:** merging `origin/main` *into* a branch makes the pushed
   range include all of main's recent source files — pre-push then runs the full
   unit lanes for what was a docs-only intent, and `test-unit-agentsfleetd` **hangs if
