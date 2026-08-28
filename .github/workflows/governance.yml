@@ -34,6 +34,23 @@ jobs:
           echo "orly_version from .oracle/orly.json: $version"
           npm install --global "@agentsfleet/orly@${version}"
 
+      # `make harness-verify` — the command .oracle/orly.json declares for
+      # `conform`, and therefore what `orly gate work` below invokes — runs
+      # audits/gitleaks-config.sh, which refuses to guess and exits on a
+      # missing binary. The runner image carries no gitleaks, and the
+      # gitleaks.yml workflow installs its own through an action that does not
+      # publish the binary to this job. Pinned rather than `latest`, so the
+      # allowlist fixtures are graded by a version this file names.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          rm -f gitleaks
+          gitleaks version
+
       - name: orly doctor
         run: orly doctor
 
