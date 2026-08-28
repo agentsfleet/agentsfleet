@@ -205,7 +205,18 @@ Unchanged and NOT to be altered by this spec:
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `db_ssl_mode_resolved` | ops | the pool's connect options are built at boot, once per role | knob name, role, resolved mode, whether the URL declared it | never the connection string, never the password, never the host's credentials | `test_resolved_ssl_mode_is_logged_without_the_url` |
+| `db_ssl_mode_resolved` | ops | a role's connect options are built — every boot-time resolve, not once per role | knob name, role, resolved mode, whether the URL declared it | never the connection string, never the password, never the host's credentials | `test_resolved_ssl_mode_is_logged_without_the_url` |
+
+**Correction to the row above, found in REVIEW.** "Once per role" was an
+assumption, not a reading. `PoolConfig::resolve` has three boot-time callers —
+`agentsfleetd::preflight` (`preflight.rs:196`, API role), `agentsfleetd::migrate`
+(`migrate.rs:33`, migrator role) and `Db::connect_role` (`pool.rs:220`) — so the
+API role emits this line TWICE at boot: once when preflight proves the knob
+resolves, once when the pool is actually built. Both lines are true and both say
+the same thing. It is recorded rather than deduplicated because the fix would be
+a flag threaded through a constructor to suppress a log, which is worse than two
+honest lines. No caller is on the request path, so the line does not scale with
+traffic.
 
 No product signal changes and no funnel moves: every other slice is internal and observable only through the tests above. Metrics review therefore records "no analytics/funnel playbook update required — one operator boot line added, no user-facing event".
 
