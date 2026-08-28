@@ -10,11 +10,19 @@
 # comprehensive tier that belongs at CHORE(close).
 #
 # Surfaces:
-#   - test-unit-rustd          (*.rs, rustd/*)
+#   - lint-rustd + test-unit-rustd (*.rs, rustd/*)
 #   - test-unit-cli            (cli/*)
 #   - test-unit-website        (ui/packages/website/*)
 #   - test-unit-app            (ui/packages/app/*, design-system/* triggers both)
 #   - test-unit-design-system  (ui/packages/design-system/*)
+#
+# `lint-rustd` runs HERE rather than at commit time, and that is the tiering
+# docs/VERIFY_TIERS.md already describes: the `conform` row is pre-commit's and
+# costs seconds, the lint and unit rows are pre-push's. Clippy over the whole
+# workspace is 36s to 3m16s — measured across six commits on one branch — and
+# charging that to every commit is what makes a developer batch unrelated work
+# into one large commit to avoid paying it twice. Once per push covers exactly
+# the same commits before anything leaves the machine.
 #
 # Pre-push is the fast-smoke floor; Continuous Integration (CI) is the
 # comprehensive gate. The split exists because the prior behaviour held the
@@ -60,7 +68,11 @@ fi
 
 pushed_files="$(git diff --name-only "$upstream_ref"..HEAD 2>/dev/null || true)"
 
-needs_test_rustd=0
+# The odd name in this list: it gates BOTH `lint-rustd` and `test-unit-rustd`,
+# where its siblings gate one lane each. One flag because one file pattern
+# answers both questions — a Cargo manifest or the toolchain pin changes what
+# clippy compiles and what the tests compile, identically.
+needs_rustd=0
 needs_test_cli=0
 needs_test_website=0
 needs_test_app=0
@@ -70,7 +82,7 @@ while IFS= read -r f; do
   [ -z "$f" ] && continue
   case "$f" in
     *.rs|rustd/*)
-      needs_test_rustd=1 ;;
+      needs_rustd=1 ;;
     cli/*)
       needs_test_cli=1 ;;
     ui/packages/website/*)
@@ -84,7 +96,7 @@ while IFS= read -r f; do
   esac
 done <<< "$pushed_files"
 
-any_needed=$(( needs_test_rustd + needs_test_cli + needs_test_website + needs_test_app + needs_test_design_system ))
+any_needed=$(( needs_rustd + needs_test_cli + needs_test_website + needs_test_app + needs_test_design_system ))
 
 if [ "$any_needed" -eq 0 ]; then
   echo "pre-push: no test-relevant files since $upstream_ref — nothing to run"
@@ -100,12 +112,19 @@ fi
 # CLI lane flake badly enough to earn its `--timeout 30000` (see
 # make/test-unit.mk). They stay serial among themselves, exactly as before.
 #
-# `test-unit-rustd` is cargo — no jsdom, no PTY, no bun. It contends with the
+# The Rust lanes are cargo — no jsdom, no PTY, no bun. They contend with the
 # JavaScript lanes for CPU alone, which is what a machine's scheduler is for.
-# So it starts FIRST, in the background, and is waited on at the end: when a
-# push touches both Rust and JavaScript surfaces, the whole Rust lane overlaps
+# So they start FIRST, in the background, and are waited on at the end: when a
+# push touches both Rust and JavaScript surfaces, the whole Rust side overlaps
 # the JavaScript ones for free. When a push touches only one class — the common
 # case — behaviour is bit-for-bit what it was.
+#
+# `lint-rustd` and `test-unit-rustd` run as ONE make invocation without `-j`,
+# so they are serial with respect to each other. That is not a missed
+# parallelism: both are cargo over one target directory and would serialize on
+# cargo's own build lock anyway, so `-j` would buy contention rather than
+# overlap. Lint is first because it is the cheaper failure — a clippy error
+# should not wait out a unit suite to be reported.
 failed_names=()
 
 run_lane() {
@@ -118,10 +137,10 @@ run_lane() {
 
 rustd_pid=""
 rustd_log=""
-if [ "$needs_test_rustd" = 1 ]; then
+if [ "$needs_rustd" = 1 ]; then
   rustd_log="$(mktemp)"
-  echo "pre-push: make test-unit-rustd (background — overlaps the JavaScript lanes)"
-  make test-unit-rustd >"$rustd_log" 2>&1 &
+  echo "pre-push: make lint-rustd test-unit-rustd (background — overlaps the JavaScript lanes)"
+  make lint-rustd test-unit-rustd >"$rustd_log" 2>&1 &
   rustd_pid="$!"
 fi
 
@@ -132,9 +151,11 @@ fi
 [ "$needs_test_design_system" = 1 ] && run_lane test-unit-design-system      make test-unit-design-system
 
 if [ -n "$rustd_pid" ]; then
-  echo "pre-push: waiting on test-unit-rustd..."
+  echo "pre-push: waiting on the Rust lanes..."
   if ! wait "$rustd_pid"; then
-    failed_names+=(test-unit-rustd)
+    # One name for both: make stops at the first failing target, and the log
+    # replayed below names which one it was.
+    failed_names+=(lint-rustd/test-unit-rustd)
   fi
   cat "$rustd_log"
   rm -f "$rustd_log"
