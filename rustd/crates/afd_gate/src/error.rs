@@ -57,15 +57,11 @@ pub(crate) enum ErrorKind {
 
     /// The entropy a gate reference is minted from could not be drawn.
     #[error(transparent)]
-    Entropy {
-        source: afd_crypto::error::Error,
-    },
+    Entropy { source: afd_crypto::error::Error },
 
     /// An identifier could not be minted from the current instant.
     #[error(transparent)]
-    Identifier {
-        source: afd_core::error::Error,
-    },
+    Identifier { source: afd_core::error::Error },
 
     /// A money read a gate is priced against failed.
     #[error("the billing store could not answer for the gate plane")]

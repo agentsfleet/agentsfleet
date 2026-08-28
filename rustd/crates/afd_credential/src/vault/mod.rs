@@ -41,8 +41,8 @@ use sqlx::postgres::PgRow;
 
 use crate::error::{Result, query, vault_open};
 
-pub mod sql;
 pub mod rotate;
+pub mod sql;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_SECRET: &str = "vault credential";
@@ -168,11 +168,7 @@ impl Vault {
     /// # Errors
     /// Reports a datastore that would not answer, and any row whose envelope
     /// will not open — see the module note on why this does not degrade.
-    pub async fn open_many(
-        &self,
-        workspace_id: &Uuid7,
-        names: &[&str],
-    ) -> Result<Vec<Held>> {
+    pub async fn open_many(&self, workspace_id: &Uuid7, names: &[&str]) -> Result<Vec<Held>> {
         if names.is_empty() {
             return Ok(Vec::new());
         }

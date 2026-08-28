@@ -98,9 +98,10 @@ impl Error {
             | ErrorKind::ProviderPlatformKeyMissing
             | ErrorKind::ProviderNoWorkspace
             | ErrorKind::ProviderEndpoint { .. }
-            | ErrorKind::Vault { .. } => {
-                (error_code::INTERNAL_OPERATION_FAILED, DETAIL_PROVIDER_UNRESOLVED)
-            }
+            | ErrorKind::Vault { .. } => (
+                error_code::INTERNAL_OPERATION_FAILED,
+                DETAIL_PROVIDER_UNRESOLVED,
+            ),
             // Two vault failures, two codes, matching the two the Zig logs:
             // an envelope that will not open answers the internal code above
             // because WHICH check failed is an oracle, while a body whose
@@ -179,7 +180,8 @@ const DETAIL_UNAVAILABLE: &str = "Database unavailable";
 const DETAIL_DATABASE_ERROR: &str = "The operation could not be completed";
 const DETAIL_PROVIDER_UNRESOLVED: &str = "The model provider could not be resolved";
 const DETAIL_VAULT_INVALID: &str = "The stored credential is not a readable shape";
-const DETAIL_CREDENTIAL_MISSING: &str = "The fleet declared a credential this workspace does not hold";
+const DETAIL_CREDENTIAL_MISSING: &str =
+    "The fleet declared a credential this workspace does not hold";
 
 afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,

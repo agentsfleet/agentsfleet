@@ -32,10 +32,10 @@ use afd_crypto::envelope::{Envelope, Sealer};
 use serde_json::Value;
 use sqlx::Acquire as _;
 
-use afd_core::credential::FIELD_REFRESH_TOKEN;
 use crate::error::{Result, query, vault_data_invalid};
 use crate::vault::sql;
 use crate::vault::{ENVELOPE_AT, KeyRef, Vault};
+use afd_core::credential::FIELD_REFRESH_TOKEN;
 
 /// Statement name, for the context a query failure carries.
 pub(crate) const CONTEXT_ROTATE: &str = "vault credential rotation";

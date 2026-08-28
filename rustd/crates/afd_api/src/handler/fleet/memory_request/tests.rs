@@ -5,6 +5,12 @@
 //! datastore-free — so it is proven here rather than by driving HTTP, and the
 //! HTTP suite is left proving the guard, the rungs and the ownership layer.
 
+#![expect(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
+)]
+
 use afd_fleet::memory::MAX_KEY_LEN;
 use afd_fleet::memory::page::View;
 
@@ -36,7 +42,13 @@ fn should_read_the_recent_list_when_nothing_is_named() {
 /// An empty value reads as absent, on the decoded text.
 #[test]
 fn should_read_an_empty_value_as_absent() {
-    for query in ["query=", "category=", "query=&category=", "limit=", "starting_after="] {
+    for query in [
+        "query=",
+        "category=",
+        "query=&category=",
+        "limit=",
+        "starting_after=",
+    ] {
         let read = Read::parse(query).expect("an empty value is not a malformed one");
         assert_eq!(read.view(), View::Recent, "{query}");
         assert_eq!(read.limit, LIST_LIMIT_DEFAULT, "{query}");
@@ -47,8 +59,14 @@ fn should_read_an_empty_value_as_absent() {
 /// A search and a category filter are different views, and search outranks.
 #[test]
 fn should_resolve_one_view_per_request() {
-    assert_eq!(Read::parse("query=monday").unwrap().view(), View::Search("monday"));
-    assert_eq!(Read::parse("category=core").unwrap().view(), View::Category("core"));
+    assert_eq!(
+        Read::parse("query=monday").unwrap().view(),
+        View::Search("monday")
+    );
+    assert_eq!(
+        Read::parse("category=core").unwrap().view(),
+        View::Category("core")
+    );
     // Both named: the search wins and the category is ignored, never
     // intersected — `parseListParams`' own precedence.
     assert_eq!(
@@ -61,7 +79,10 @@ fn should_resolve_one_view_per_request() {
 #[test]
 fn should_size_a_search_page_differently_from_a_list_page() {
     assert_eq!(Read::parse("query=x").unwrap().limit, RECALL_LIMIT_DEFAULT);
-    assert_eq!(Read::parse("category=core").unwrap().limit, LIST_LIMIT_DEFAULT);
+    assert_eq!(
+        Read::parse("category=core").unwrap().limit,
+        LIST_LIMIT_DEFAULT
+    );
     assert_ne!(RECALL_LIMIT_DEFAULT, LIST_LIMIT_DEFAULT);
 }
 
@@ -80,7 +101,13 @@ fn should_take_the_limit_asked_for_up_to_the_ceiling() {
 /// A limit that is not a positive integer is refused, never coerced.
 #[test]
 fn should_refuse_a_limit_that_is_not_a_positive_integer() {
-    for query in ["limit=0", "limit=-5", "limit=abc", "limit=1.5", "limit=99999999999999999999"] {
+    for query in [
+        "limit=0",
+        "limit=-5",
+        "limit=abc",
+        "limit=1.5",
+        "limit=99999999999999999999",
+    ] {
         assert!(Read::parse(query).is_err(), "{query} is not a page size");
     }
 }
@@ -108,17 +135,25 @@ fn should_refuse_a_continuation_this_walk_did_not_issue() {
         "s:cHJvZA:019abc",
     ] {
         let query = format!("starting_after={token}");
-        assert!(Read::parse(&query).is_err(), "{token} is not this walk's cursor");
+        assert!(
+            Read::parse(&query).is_err(),
+            "{token} is not this walk's cursor"
+        );
     }
 }
 
-/// The limit is judged before the cursor, so a doubly-wrong request is told
-/// about the same half by both daemons.
+/// A request wrong in both halves is refused, as is one wrong in the limit
+/// alone.
+///
+/// WHICH half a doubly-wrong request is told about is the interesting claim,
+/// and it is not made here: a `Refusal` carries a rendered response, and
+/// reading the sentence out of its body needs an async runtime this unit test
+/// does not have. `fleet_memories_input.rs` pins the precedence over HTTP,
+/// where the body is readable.
 #[test]
-fn should_judge_the_limit_before_the_cursor() {
-    let both_wrong = Read::parse("limit=0&starting_after=not-a-cursor");
-    let only_limit = Read::parse("limit=0");
-    assert!(both_wrong.is_err() && only_limit.is_err());
+fn should_refuse_a_request_wrong_in_either_half() {
+    Read::parse("limit=0&starting_after=not-a-cursor").unwrap_err();
+    Read::parse("limit=0").unwrap_err();
 }
 
 /// A query string this daemon cannot decode fails the whole request.
@@ -132,11 +167,20 @@ fn should_refuse_a_query_string_with_a_malformed_escape() {
 /// Query values are form-decoded: `%XX` and a `+` for a space.
 #[test]
 fn should_form_decode_a_query_value() {
-    assert_eq!(Read::parse("query=hello%20world").unwrap().view(), View::Search("hello world"));
-    assert_eq!(Read::parse("query=hello+world").unwrap().view(), View::Search("hello world"));
+    assert_eq!(
+        Read::parse("query=hello%20world").unwrap().view(),
+        View::Search("hello world")
+    );
+    assert_eq!(
+        Read::parse("query=hello+world").unwrap().view(),
+        View::Search("hello world")
+    );
     // An ENCODED plus stays a plus — the substitution runs before the escape
     // reader, so `%2B` never becomes a space.
-    assert_eq!(Read::parse("query=a%2Bb").unwrap().view(), View::Search("a+b"));
+    assert_eq!(
+        Read::parse("query=a%2Bb").unwrap().view(),
+        View::Search("a+b")
+    );
     assert_eq!(form_decode("plain").as_deref(), Some("plain"));
 }
 
@@ -144,7 +188,10 @@ fn should_form_decode_a_query_value() {
 #[test]
 fn should_take_the_first_occurrence_of_a_repeated_parameter() {
     assert_eq!(Read::parse("limit=1&limit=2").unwrap().limit, 1);
-    assert_eq!(Read::parse("query=first&query=second").unwrap().view(), View::Search("first"));
+    assert_eq!(
+        Read::parse("query=first&query=second").unwrap().view(),
+        View::Search("first")
+    );
 }
 
 /// A parameter this read does not serve is ignored, not refused.
@@ -199,26 +246,29 @@ fn should_bound_a_key_by_its_decoded_length() {
     assert_eq!(memory_key(&item(&at_cap)).unwrap().len(), MAX_KEY_LEN);
 
     let over = "k".repeat(MAX_KEY_LEN + 1);
-    assert!(memory_key(&item(&over)).is_err(), "256 bytes is over the cap");
+    assert!(
+        memory_key(&item(&over)).is_err(),
+        "256 bytes is over the cap"
+    );
 
     // The bound is on the DECODED bytes: 255 three-character escapes are 765
     // characters of path and exactly one stored key's worth of bytes.
     let encoded = "%41".repeat(MAX_KEY_LEN);
     assert_eq!(memory_key(&item(&encoded)).unwrap().len(), MAX_KEY_LEN);
     let encoded_over = "%41".repeat(MAX_KEY_LEN + 1);
-    assert!(memory_key(&item(&encoded_over)).is_err());
+    memory_key(&item(&encoded_over)).unwrap_err();
 }
 
 /// An empty key names no row and is refused.
 #[test]
 fn should_refuse_an_empty_key() {
-    assert!(memory_key(&item("")).is_err());
+    memory_key(&item("")).unwrap_err();
 }
 
 /// Bytes that are not text cannot be a stored key.
 #[test]
 fn should_refuse_a_key_that_is_not_text() {
-    assert!(memory_key(&item("%FF%FE")).is_err());
+    memory_key(&item("%FF%FE")).unwrap_err();
     // The decoder itself still produced them — the refusal is the UTF-8 gate
     // above it, not a decode failure.
     assert_eq!(percent_decode("%FF%FE"), Some(vec![0xFF, 0xFE]));

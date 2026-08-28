@@ -21,7 +21,6 @@
 //! raiser, and those live in [`raise`] beside the `From` impls that lift a
 //! foreign error into its variant.
 
-
 use afd_core::error_code::{self, ErrorCode};
 
 pub mod detail;
@@ -243,8 +242,4 @@ impl Error {
             _not_stale => None,
         }
     }
-
 }
-
-
-

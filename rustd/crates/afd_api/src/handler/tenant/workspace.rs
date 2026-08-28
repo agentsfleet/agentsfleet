@@ -257,6 +257,6 @@ fn parse_name(raw: Option<Cow<'_, str>>) -> Result<Option<String>, Refusal> {
 /// One query parameter, percent-decoded — the shared scan, with this route's
 /// refusal sentence when a broken escape refuses the whole query string.
 fn decoded<'q>(query: &'q str, name: &str) -> Result<Option<Cow<'q, str>>, Refusal> {
-    super::decoded_parameter(query, name)
+    crate::handler::decoded_parameter(query, name)
         .map_err(|_broken| Refusal::malformed(DETAIL_MALFORMED_QUERY))
 }

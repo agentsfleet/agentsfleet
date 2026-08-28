@@ -296,7 +296,7 @@ fn parse_cursor(
 /// The shared decode, under this family's unreadable-query sentence — the
 /// Zig handler answers `UZ-LIBRARY-003` for a query string it cannot read.
 fn decoded<'q>(query: &'q str, name: &str) -> Result<Option<Cow<'q, str>>, Refusal> {
-    super::decoded_parameter(query, name).map_err(|_broken| {
+    crate::handler::decoded_parameter(query, name).map_err(|_broken| {
         Refusal::coded(
             error_code::LIBRARY_INPUT_OUT_OF_BOUNDS,
             DETAIL_QUERY_UNREADABLE,

@@ -152,15 +152,13 @@ pub(crate) async fn forget<D: Services>(
 /// a client walking either daemon sees the same page sequence.
 fn next_cursor(entries: &[Entry], limit: i64) -> Option<String> {
     let full = usize::try_from(limit).is_ok_and(|asked| entries.len() == asked);
-    full.then(|| entries.last())
-        .flatten()
-        .map(|last| {
-            Cursor::Timestamp {
-                at_ms: last.created_at_ms,
-                id: last.key.clone(),
-            }
-            .to_string()
-        })
+    full.then(|| entries.last()).flatten().map(|last| {
+        Cursor::Timestamp {
+            at_ms: last.created_at_ms,
+            id: last.key.clone(),
+        }
+        .to_string()
+    })
 }
 
 /// One stored entry as the wire shows it.

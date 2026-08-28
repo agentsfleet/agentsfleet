@@ -130,6 +130,37 @@ async fn a_limit_that_is_not_a_positive_integer_is_refused() {
     }
 }
 
+/// The limit is judged before the cursor.
+///
+/// A request wrong in both halves answers byte for byte what a request wrong
+/// in the limit ALONE answers — which is the whole claim, and it is made here
+/// rather than in the parser's unit tests because only a rendered response
+/// carries the sentence that distinguishes the two refusals. Without this, a
+/// reordering of the two checks would change what an operator is told and no
+/// test would notice.
+#[tokio::test]
+async fn the_limit_is_judged_before_the_cursor() {
+    let both_wrong = reading(&listing("limit=0&starting_after=not-a-cursor")).await;
+    let only_limit = reading(&listing("limit=0")).await;
+
+    assert_eq!(both_wrong.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(only_limit.status(), StatusCode::BAD_REQUEST);
+
+    // `request_id` is minted per response, so the documents are compared on
+    // everything a caller acts on rather than on the whole body.
+    let (wrong, limit) = (
+        harness::json_body(both_wrong).await,
+        harness::json_body(only_limit).await,
+    );
+    for field in ["error_code", "title", "detail"] {
+        assert_eq!(
+            wrong.get(field),
+            limit.get(field),
+            "a doubly-wrong request is told about the cursor, not the limit ({field})"
+        );
+    }
+}
+
 /// A limit over the ceiling is CLAMPED, not refused.
 ///
 /// This surface's own vocabulary, kept from `parseLimitQs`: the workspace
@@ -150,7 +181,12 @@ async fn a_limit_over_the_ceiling_is_clamped_rather_than_refused() {
 /// Silently serving page one is how a client keeps a paging bug for months.
 #[tokio::test]
 async fn a_continuation_this_walk_did_not_issue_is_refused() {
-    for token in ["not-a-cursor", "abc:key", "1700000000000:", "s:cHJvZA:019abc"] {
+    for token in [
+        "not-a-cursor",
+        "abc:key",
+        "1700000000000:",
+        "s:cHJvZA:019abc",
+    ] {
         let response = reading(&listing(&format!("starting_after={token}"))).await;
         assert_eq!(
             response.status(),

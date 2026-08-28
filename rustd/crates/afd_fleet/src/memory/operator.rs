@@ -71,7 +71,10 @@ impl Memories {
         let filter = view.filter();
 
         let mut connection = self.database.acquire().await?;
-        let mut transaction = connection.begin().await.map_err(memory_unavailable(detail))?;
+        let mut transaction = connection
+            .begin()
+            .await
+            .map_err(memory_unavailable(detail))?;
         sqlx::query(sql::ASSUME_MEMORY_ROLE)
             .execute(&mut *transaction)
             .await
@@ -97,7 +100,10 @@ impl Memories {
 
         // Collected before the commit, because the rows borrow the transaction.
         let entries = rows.iter().map(entry).collect::<Result<Vec<_>>>()?;
-        transaction.commit().await.map_err(memory_unavailable(detail))?;
+        transaction
+            .commit()
+            .await
+            .map_err(memory_unavailable(detail))?;
         Ok(entries)
     }
 

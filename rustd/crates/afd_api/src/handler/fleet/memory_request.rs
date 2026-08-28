@@ -190,7 +190,14 @@ fn named<'p>(pairs: &'p [(Cow<'_, str>, Cow<'_, str>)], name: &str) -> Option<&'
 ///
 /// `StringKeyValue.get` scans and returns the first entry under a repeated
 /// name, so `?limit=1&limit=2` is a page of one on both daemons.
-fn decode_pairs(query: &str) -> Result<Vec<(Cow<'_, str>, Cow<'_, str>)>, Refusal> {
+/// One query string's decoded key/value pairs, borrowed where they can be.
+///
+/// Named because the bare type is three nested generics deep at a signature,
+/// and a reader of `decode_pairs` wants to know it hands back pairs — not to
+/// reassemble that from punctuation.
+type Pairs<'q> = Vec<(Cow<'q, str>, Cow<'q, str>)>;
+
+fn decode_pairs(query: &str) -> Result<Pairs<'_>, Refusal> {
     query
         .split('&')
         .filter(|pair| !pair.is_empty())
@@ -254,8 +261,7 @@ fn boundary(raw: Option<&str>) -> Result<Option<Boundary>, Refusal> {
 /// them spends a statement discovering it.
 pub(super) fn memory_key(path: &str) -> Result<String, Refusal> {
     let raw = path.rsplit('/').next().unwrap_or_default();
-    let decoded =
-        percent_decode(raw).ok_or_else(|| Refusal::malformed(DETAIL_KEY_ENCODING))?;
+    let decoded = percent_decode(raw).ok_or_else(|| Refusal::malformed(DETAIL_KEY_ENCODING))?;
     // The bound is on the DECODED bytes, which is what a stored key is measured
     // in. `decodePathSegment` reaches the same answer by writing into a
     // `[MAX_KEY_LEN]u8` and refusing the overflow; the buffer is the workaround,

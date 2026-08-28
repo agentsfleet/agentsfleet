@@ -11,10 +11,10 @@
 //! `service.zig`'s handlers each spell their own `hx.fail(code, detail)` pairs,
 //! twelve times over, and nothing relates a code to its sentence — so two
 //! handlers can describe one failure differently and both compile. Here
-//! [`refusable::refuse`] takes the ERROR, and the error already knows both
+//! the shared refusal writer takes the ERROR, and the error already knows both
 //! (`afd_fleet::Error::code` and `::detail`). There is no pair to get wrong
 //! because there is no pair to write. What each plane can be asked about its
-//! own failure is [`refusable::Refusable`], in its own file: that list grows
+//! own failure is the `Refusable` trait, in its own file: that list grows
 //! once per crate with a fallible surface, and this one grows once per verb.
 
 pub mod approval;
@@ -29,13 +29,15 @@ pub mod tenant;
 
 mod refusable;
 
+use std::borrow::Cow;
+
 use axum::response::{IntoResponse, Response};
 
 use crate::envelope::ProblemResponse;
 use crate::request_id::RequestId;
 
-pub(crate) use self::refusable::{Refusable, refuse};
 use self::refusable::log_refusal;
+pub(crate) use self::refusable::{Refusable, refuse};
 
 /// Refuses a request this daemon cannot read at all.
 ///
@@ -71,6 +73,69 @@ pub(crate) fn parameter<'q>(query: &'q str, name: &str) -> Option<&'q str> {
     })
 }
 
+/// A broken percent-escape, or bytes that decode to no UTF-8 — the caller
+/// owns the sentence, because two route families refuse it differently.
+pub(crate) struct BrokenEscape;
+
+/// One query parameter, percent-decoded the way httpz's `unescape` does.
+///
+/// [`parameter`] scans RAW values because some alphabets here survive a URL
+/// unescaped — a cursor, a limit, a `UUIDv7`. Everything a person can type does
+/// not: a workspace name, a provider filter, an actor glob, a timestamp with
+/// its colons. Those decode through this — `%XX` bytes, `+` as space, and a
+/// stray or short escape refusing the value.
+///
+/// This IS what the daemon it ports does. `httpz`'s `req.query()` calls
+/// `Url.unescape` on every value, so a route reading raw bytes is not
+/// declining to decode — it is disagreeing with the oracle.
+pub(crate) fn decoded_parameter<'q>(
+    query: &'q str,
+    name: &str,
+) -> Result<Option<Cow<'q, str>>, BrokenEscape> {
+    let Some(raw) = parameter(query, name) else {
+        return Ok(None);
+    };
+    if !raw.bytes().any(|byte| byte == b'%' || byte == b'+') {
+        return Ok(Some(Cow::Borrowed(raw)));
+    }
+    let bytes = raw.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while let Some(&byte) = bytes.get(index) {
+        match byte {
+            b'+' => {
+                decoded.push(b' ');
+                index += 1;
+            }
+            b'%' => {
+                let high = bytes.get(index + 1).copied().and_then(hex_value);
+                let low = bytes.get(index + 2).copied().and_then(hex_value);
+                let (Some(high), Some(low)) = (high, low) else {
+                    return Err(BrokenEscape);
+                };
+                decoded.push(high << 4 | low);
+                index += 3;
+            }
+            other => {
+                decoded.push(other);
+                index += 1;
+            }
+        }
+    }
+    let text = String::from_utf8(decoded).map_err(|_not_text| BrokenEscape)?;
+    Ok(Some(Cow::Owned(text)))
+}
+
+/// One hex digit's value, either case.
+const fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
 /// A refusal already rendered, so `?` can carry one out of a handler.
 ///
 /// # Why this exists rather than a `match` at each step
@@ -95,6 +160,13 @@ pub(crate) fn parameter<'q>(query: &'q str, name: &str) -> Option<&'q str> {
 /// render to. The box is `clippy::result_large_err`: a `Response` is over a
 /// hundred bytes, and unboxed it would make every handler's `Result` that size
 /// for a value the success path never carries.
+/// `Debug` so a unit test may `unwrap` a `Result<_, Refusal>`.
+///
+/// The parsers behind these handlers answer `Result<T, Refusal>`, and a test
+/// that asserts on the success arm has to be able to panic with the failure
+/// arm rendered. Derived rather than hand-written: what it prints is the
+/// response, which is what a failing test needs to read.
+#[derive(Debug)]
 pub(crate) struct Refusal(Box<Response>);
 
 impl Refusal {

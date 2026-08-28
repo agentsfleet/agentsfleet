@@ -167,7 +167,11 @@ pub(crate) fn refuse<E: Refusable + ?Sized>(error: &E, event: &'static str) -> R
 }
 
 /// The log line every rendered refusal leaves, whatever its envelope.
-pub(super) fn log_refusal<E: Refusable + ?Sized>(error: &E, event: &'static str, request_id: &RequestId) {
+pub(super) fn log_refusal<E: Refusable + ?Sized>(
+    error: &E,
+    event: &'static str,
+    request_id: &RequestId,
+) {
     // Hoisted out of the macro: `tracing`'s `log` bridge compiles a second copy
     // of every field expression, and llvm-cov scores the copy that never runs.
     let code_field = error.code().as_str();

@@ -19,9 +19,9 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 
+use super::sql;
 use crate::error::{Result, query};
 use crate::gate::store::Gates;
-use super::sql;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_PAUSE: &str = "fleet pause";

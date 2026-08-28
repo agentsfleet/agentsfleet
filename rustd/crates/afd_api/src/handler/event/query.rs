@@ -23,12 +23,16 @@
 //! here. The ownership check is a mounted LAYER in this daemon and runs before
 //! any handler does; that is the port's design and not this file's choice.
 
+use std::borrow::Cow;
+
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_events::{Cursor, DEFAULT_LIMIT, Filter, MAX_LIMIT, glob_to_like, parse_since,
-    prefix_to_like};
+use afd_events::{
+    Cursor, DEFAULT_LIMIT, Filter, MAX_LIMIT, glob_to_like, parse_since, prefix_to_like,
+};
 
-use crate::handler::{Refusal, parameter};
+use super::DETAIL_FLEET_ID;
+use crate::handler::{Refusal, decoded_parameter, parameter};
 
 /// The parameter names, spelled once each (RULE UFS).
 const QUERY_LIMIT: &str = "limit";
@@ -50,14 +54,18 @@ const DETAIL_WINDOW_AMBIGUOUS: &str = "since_and_cursor_mutually_exclusive";
 /// The refusal naming a glob AND a prefix earns.
 const DETAIL_ACTOR_AMBIGUOUS: &str = "actor_and_actor_prefix_mutually_exclusive";
 
-/// The refusal a drill-down that is not an identifier earns.
-const DETAIL_FLEET_ID: &str = "fleet_id must be a UUIDv7";
-
 /// The refusal a window this daemon cannot read earns.
 const DETAIL_SINCE: &str = "invalid_since_format: use Go-style duration (15s, 30m, 2h, 7d) or RFC 3339 (YYYY-MM-DDTHH:MM:SSZ)";
 
 /// The refusal a cursor this daemon did not mint earns.
 const DETAIL_CURSOR: &str = "invalid cursor";
+
+/// The refusal a query string this daemon cannot decode earns.
+///
+/// The WHOLE string, not the parameter that carried the bad escape: `req.query()`
+/// parses in one pass and fails the request, so a broken escape in a parameter
+/// these listings ignore is still a 400.
+const DETAIL_QUERY: &str = "malformed query string";
 
 /// One resolved listing request: what to narrow by, where to resume, how many.
 #[derive(Debug)]
@@ -120,27 +128,38 @@ impl WorkspaceListing {
 struct Params<'q> {
     limit: i64,
     cursor: Option<&'q str>,
-    actor: Option<&'q str>,
-    actor_prefix: Option<&'q str>,
-    since: Option<&'q str>,
+    actor: Option<Cow<'q, str>>,
+    actor_prefix: Option<Cow<'q, str>>,
+    since: Option<Cow<'q, str>>,
     fleet_id: Option<&'q str>,
 }
 
 impl<'q> Params<'q> {
     /// Everything the query string carries, or the first refusal it earns.
+    ///
+    /// # Three parameters are decoded and three are not
+    ///
+    /// `actor`, `actor_prefix` and `since` carry characters a URL encoder
+    /// escapes — an actor is `webhook:github`, a timestamp is
+    /// `2025-01-01T00:00:00Z`, and `encodeURIComponent` escapes the colon in
+    /// both. Read raw, `actor=webhook%3Agithub` binds a LIKE pattern matching
+    /// nothing and answers an empty page, while `since=…T00%3A00%3A00Z` is
+    /// four bytes too long for the shape check and answers 400. `cursor`,
+    /// `limit` and `fleet_id` are drawn from alphabets RFC 3986 leaves alone,
+    /// so an encoder cannot change them and reading them raw is honest.
     fn read(query: &'q str) -> Result<Self, Refusal> {
         let params = Self {
             limit: parse_limit(parameter(query, QUERY_LIMIT))?,
             cursor: parameter(query, QUERY_CURSOR),
-            actor: parameter(query, QUERY_ACTOR),
-            actor_prefix: parameter(query, QUERY_ACTOR_PREFIX),
-            since: parameter(query, QUERY_SINCE),
+            actor: decoded(query, QUERY_ACTOR)?,
+            actor_prefix: decoded(query, QUERY_ACTOR_PREFIX)?,
+            since: decoded(query, QUERY_SINCE)?,
             fleet_id: parameter(query, QUERY_FLEET_ID),
         };
-        if params.cursor.is_some() && params.since.is_some() {
+        if present(query, QUERY_CURSOR) && present(query, QUERY_SINCE) {
             return Err(Refusal::malformed(DETAIL_WINDOW_AMBIGUOUS));
         }
-        if params.actor.is_some() && params.actor_prefix.is_some() {
+        if present(query, QUERY_ACTOR) && present(query, QUERY_ACTOR_PREFIX) {
             return Err(Refusal::malformed(DETAIL_ACTOR_AMBIGUOUS));
         }
         Ok(params)
@@ -150,6 +169,7 @@ impl<'q> Params<'q> {
     fn resolve(self, now: UnixMillis) -> Result<Listing, Refusal> {
         let since = self
             .since
+            .as_deref()
             .map(|raw| parse_since(raw, now))
             .transpose()
             .map_err(|_unreadable| Refusal::malformed(DETAIL_SINCE))?;
@@ -174,9 +194,31 @@ impl<'q> Params<'q> {
     /// choice between two spellings of one filter, not a merge of two.
     fn actor_like(&self) -> Option<String> {
         self.actor
+            .as_deref()
             .map(glob_to_like)
-            .or_else(|| self.actor_prefix.map(prefix_to_like))
+            .or_else(|| self.actor_prefix.as_deref().map(prefix_to_like))
     }
+}
+
+/// One parameter, decoded the way `req.query()` decodes every value.
+///
+/// A broken escape refuses the whole REQUEST rather than the parameter, which
+/// is what `req.query()` does: it parses in one pass and hands the handler an
+/// error, so a bad escape anywhere in the string is a 400.
+fn decoded<'q>(query: &'q str, name: &str) -> Result<Option<Cow<'q, str>>, Refusal> {
+    decoded_parameter(query, name).map_err(|_broken| Refusal::malformed(DETAIL_QUERY))
+}
+
+/// Whether `name` appears at all, with or without a value.
+///
+/// [`parameter`] splits on `=` and answers `None` for a bare key, which would
+/// make `?cursor&since=1h` look like a request naming only a window — and the
+/// two are mutually exclusive precisely because honouring both means guessing.
+/// Presence is a different question from value, so it gets its own reader.
+fn present(query: &str, name: &str) -> bool {
+    query
+        .split('&')
+        .any(|pair| pair.split_once('=').map_or(pair, |(key, _value)| key) == name)
 }
 
 /// The page size, or the refusal a caller outside the band earns.

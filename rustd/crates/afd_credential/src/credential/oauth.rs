@@ -47,7 +47,6 @@ use crate::credential::outcome::{Minted, Outcome, Retry};
 use crate::credential::platform::OauthApp;
 use crate::provider::validate_endpoint;
 
-
 /// The vault-handle field naming the accounts server this refresh token is
 /// redeemable at.
 ///

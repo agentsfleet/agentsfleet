@@ -10,8 +10,8 @@ use sqlx::Row as _;
 use sqlx::postgres::PgRow;
 
 use crate::error::{Result, provider_malformed, query, row_malformed};
-use crate::provider::store::Providers;
 use crate::provider::sql;
+use crate::provider::store::Providers;
 use afd_billing::Posture;
 
 /// Statement name, for the context a query failure carries.

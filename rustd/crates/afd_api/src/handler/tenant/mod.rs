@@ -39,7 +39,6 @@ pub(crate) use self::workspace::{create as create_workspace, list as list_worksp
 /// session — each family keeps its own words.
 pub const DETAIL_TENANT_REQUIRED: &str = "Tenant context required";
 
-use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_core::id::Uuid7;
@@ -72,60 +71,5 @@ async fn tenant_of<D: Services>(
         // not have.
         Ok(None) => Err(Refusal::forbidden(detail)),
         Err(error) => Err(Refusal::at(event)(error)),
-    }
-}
-
-/// A broken percent-escape, or bytes that decode to no UTF-8 — the caller
-/// owns the sentence, because two route families refuse it differently.
-struct BrokenEscape;
-
-/// One query parameter, percent-decoded the way httpz's `unescape` does.
-///
-/// [`parameter`] scans RAW values because most alphabets here survive a URL
-/// unescaped; a workspace name or a provider filter does not — those carry
-/// spaces and any script — so their routes decode through this: `%XX` bytes,
-/// `+` as space, and a stray or short escape refusing the value.
-fn decoded_parameter<'q>(query: &'q str, name: &str) -> Result<Option<Cow<'q, str>>, BrokenEscape> {
-    let Some(raw) = parameter(query, name) else {
-        return Ok(None);
-    };
-    if !raw.bytes().any(|byte| byte == b'%' || byte == b'+') {
-        return Ok(Some(Cow::Borrowed(raw)));
-    }
-    let bytes = raw.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while let Some(&byte) = bytes.get(index) {
-        match byte {
-            b'+' => {
-                decoded.push(b' ');
-                index += 1;
-            }
-            b'%' => {
-                let high = bytes.get(index + 1).copied().and_then(hex_value);
-                let low = bytes.get(index + 2).copied().and_then(hex_value);
-                let (Some(high), Some(low)) = (high, low) else {
-                    return Err(BrokenEscape);
-                };
-                decoded.push(high << 4 | low);
-                index += 3;
-            }
-            other => {
-                decoded.push(other);
-                index += 1;
-            }
-        }
-    }
-    let text = String::from_utf8(decoded).map_err(|_not_text| BrokenEscape)?;
-    Ok(Some(Cow::Owned(text)))
-}
-
-/// One hex digit's value, either case.
-const fn hex_value(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
     }
 }
