@@ -183,6 +183,43 @@ pub const AGENTSFLEET_INSTALL_ROLLED_BACK: ErrorCode = ErrorCode::declare("UZ-AG
 /// choice, and this code would be answering a question they did not ask.
 pub const AGENTSFLEET_SOURCE_STALE: ErrorCode = ErrorCode::declare("UZ-AGT-014");
 
+/// The fleet a memory request names is not one this workspace holds.
+///
+/// `ERR_MEM_AGENTSFLEET_NOT_FOUND` (`error_registry.zig:154`).
+///
+/// A 404 collapsing the same two cases [`AGENTSFLEET_NOT_FOUND`] collapses, for
+/// the same reason: an id naming nothing and an id naming another workspace's
+/// fleet are one answer, and telling them apart would make the endpoint an
+/// oracle. It is a SEPARATE code because the memory surface resolves the fleet
+/// under the api role BEFORE it may touch the `memory` schema at all — a caller
+/// who fails this never reaches the role switch, so `UZ-MEM-002` says no memory
+/// statement ran, where `UZ-AGT-009` is answered by one that did.
+pub const MEM_AGENTSFLEET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-MEM-002");
+
+/// The durable memory store would not answer.
+///
+/// `ERR_MEM_UNAVAILABLE` (`error_registry.zig:155`).
+///
+/// A 503 where a refused statement elsewhere answers
+/// [`INTERNAL_DB_QUERY`](crate::error_code::INTERNAL_DB_QUERY), and the
+/// difference is what the caller is being told. Memory is the one datastore
+/// this product degrades around — a fleet whose durable memory is unreachable
+/// still runs, on ephemeral workspace memory — so the code says this SURFACE is
+/// down rather than that the request was bad. The role switch shares it with
+/// the reads: a connection that cannot become `memory_runtime` is a memory
+/// backend that will not serve, whatever the reason underneath.
+pub const MEM_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-MEM-003");
+
+/// The fleet is holding nothing under the key a forget named.
+///
+/// `ERR_MEM_ENTRY_NOT_FOUND` (`error_registry.zig:156`).
+///
+/// A 404 rather than a silent 204, and that is the whole of why the code
+/// exists: an operator removing a lesson the fleet learned wrong has to find
+/// out they mistyped the key, because the alternative is believing the entry is
+/// gone while the next hydrate seeds it into another run.
+pub const MEM_ENTRY_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-MEM-004");
+
 /// No Fleet Bundle snapshot is stored under the requested content hash.
 ///
 /// `ERR_FLEET_BUNDLE_NOT_FOUND`. Referenced from the Zig registry, never

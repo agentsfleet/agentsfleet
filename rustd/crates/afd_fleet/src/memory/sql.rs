@@ -85,6 +85,129 @@ FROM memory.memory_entries
 WHERE fleet_id = $1::uuid
 ORDER BY updated_at DESC, id DESC";
 
+// ── The operator surface's reads ─────────────────────────────────────────
+//
+// Copied from `http/handlers/memory/sql.zig`, whose own header carries the
+// reasoning: every one is fleet-scoped, bounded, and keyset-paged over
+// `(created_at, key)` — `created_at` rather than `updated_at` because an upsert
+// moves a row's `updated_at` mid-walk, which is exactly the repeat/skip defect
+// cursor paging exists to remove. Served by
+// `idx_memory_entries_fleet_id_created_at_key`; the trailing `created_at`
+// column feeds the continuation cursor and is not part of the wire item.
+//
+// Each read has a first-page form and an `_AFTER` form seeking strictly past
+// the cursor row with a composite row comparison. Six statements rather than
+// one built at run time: a `WHERE` assembled from parts is a `WHERE` a reader
+// has to reassemble, and the only enforcement of verbatim parity with the Zig
+// is REVIEW reading the two side by side.
+//
+// The parameter ORDER is the one thing all six share, and
+// [`crate::memory::browse`] relies on it: fleet, then the filter value where
+// there is one, then the boundary pair where there is one, then the limit. That
+// is what lets one bind pipeline serve every shape.
+
+/// Free-text search over a fleet's memory.
+///
+/// `ESCAPE '\'` is load-bearing: the caller's pattern is built by escaping `%`,
+/// `_` and `\`, so a person typing a literal wildcard matches that character
+/// rather than every row.
+///
+/// `$1` fleet, `$2` the escaped pattern, `$3` the limit.
+pub const SEARCH_ENTRIES: &str = "\
+SELECT key, content, category, updated_at, created_at
+FROM memory.memory_entries
+WHERE fleet_id = $1::uuid
+  AND (key ILIKE $2 ESCAPE '\\' OR content ILIKE $2 ESCAPE '\\')
+ORDER BY created_at DESC, key DESC
+LIMIT $3";
+
+/// [`SEARCH_ENTRIES`], resuming strictly past a boundary row.
+///
+/// `$1` fleet, `$2` pattern, `$3` boundary instant, `$4` boundary key,
+/// `$5` limit.
+pub const SEARCH_ENTRIES_AFTER: &str = "\
+SELECT key, content, category, updated_at, created_at
+FROM memory.memory_entries
+WHERE fleet_id = $1::uuid
+  AND (key ILIKE $2 ESCAPE '\\' OR content ILIKE $2 ESCAPE '\\')
+  AND (created_at, key) < ($3, $4)
+ORDER BY created_at DESC, key DESC
+LIMIT $5";
+
+/// One category of a fleet's memory, newest first.
+///
+/// `$1` fleet, `$2` category, `$3` limit.
+pub const SELECT_ENTRIES_IN_CATEGORY: &str = "\
+SELECT key, content, category, updated_at, created_at
+FROM memory.memory_entries
+WHERE fleet_id = $1::uuid AND category = $2
+ORDER BY created_at DESC, key DESC LIMIT $3";
+
+/// [`SELECT_ENTRIES_IN_CATEGORY`], resuming strictly past a boundary row.
+///
+/// `$1` fleet, `$2` category, `$3` boundary instant, `$4` boundary key,
+/// `$5` limit.
+pub const SELECT_ENTRIES_IN_CATEGORY_AFTER: &str = "\
+SELECT key, content, category, updated_at, created_at
+FROM memory.memory_entries
+WHERE fleet_id = $1::uuid AND category = $2
+  AND (created_at, key) < ($3, $4)
+ORDER BY created_at DESC, key DESC LIMIT $5";
+
+/// A fleet's memory, newest first, bounded.
+///
+/// The sibling of [`SELECT_ALL_FOR_FLEET`] and the difference is who reads it:
+/// hydration takes everything and lets [`window::select`] spend a byte budget,
+/// where a person paging a list takes one page at a time. Different ordering
+/// too — `created_at` here, `updated_at` there — for the reason the block
+/// header gives.
+///
+/// [`window::select`]: crate::memory::window::select
+///
+/// `$1` fleet, `$2` limit.
+pub const SELECT_RECENT_ENTRIES: &str = "\
+SELECT key, content, category, updated_at, created_at
+FROM memory.memory_entries
+WHERE fleet_id = $1::uuid
+ORDER BY created_at DESC, key DESC LIMIT $2";
+
+/// [`SELECT_RECENT_ENTRIES`], resuming strictly past a boundary row.
+///
+/// `$1` fleet, `$2` boundary instant, `$3` boundary key, `$4` limit.
+pub const SELECT_RECENT_ENTRIES_AFTER: &str = "\
+SELECT key, content, category, updated_at, created_at
+FROM memory.memory_entries
+WHERE fleet_id = $1::uuid
+  AND (created_at, key) < ($2, $3)
+ORDER BY created_at DESC, key DESC LIMIT $4";
+
+/// Forget one key.
+///
+/// `RETURNING key` is what separates a real deletion from a no-op, so the
+/// caller can answer 404 for a key the fleet was never holding rather than a
+/// 204 that would let an operator believe a wrong lesson was removed.
+///
+/// Keyed on `(fleet_id, key)` and not on `key` alone: two fleets may each hold
+/// the same key, and forgetting is one fleet's business.
+///
+/// `$1` fleet, `$2` key.
+pub const DELETE_ENTRY_BY_KEY: &str = "\
+DELETE FROM memory.memory_entries
+WHERE fleet_id = $1::uuid AND key = $2
+RETURNING key";
+
+/// Which workspace owns a fleet.
+///
+/// Run under the API role BEFORE any role switch, which is the whole reason it
+/// is here rather than folded into the reads above as a join:
+/// `memory_runtime` cannot see `core`, so the ownership question has to be
+/// answered while the connection can still ask it. `helpers.zig` spells the
+/// same statement inline for the same reason.
+///
+/// `$1` fleet.
+pub const SELECT_FLEET_WORKSPACE: &str = "\
+SELECT workspace_id::text FROM core.fleets WHERE id = $1::uuid";
+
 /// The fleet's live fencing sequence, if this runner holds a live lease on it.
 ///
 /// `COALESCE(a.fencing_seq, l.fencing_token)` so a reclaim that bumped the

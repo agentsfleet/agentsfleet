@@ -158,6 +158,14 @@ fn fleet_handler_for<D: Serving>(verb: FleetRoute) -> Option<MethodRouter<Arc<D>
                 .patch(fleet::detail::patch::<D>)
                 .delete(fleet::detail::purge::<D>),
         ),
+        // GET alone on the collection: the tenant store verb was retired with
+        // the runner-push cutover, so a fleet remembers what it LEARNED and a
+        // POST here would be a caller asserting a memory. It answers 405.
+        FleetRoute::Memories => Some(get(fleet::memory::list::<D>)),
+        // DELETE alone on the item, and there is no GET beside it: one entry is
+        // read by paging the collection, and a per-key read would be a second
+        // way to ask the same question.
+        FleetRoute::Memory => Some(delete(fleet::memory::forget::<D>)),
         FleetRoute::Messages
         | FleetRoute::Schedules
         | FleetRoute::Schedule
@@ -165,8 +173,6 @@ fn fleet_handler_for<D: Serving>(verb: FleetRoute) -> Option<MethodRouter<Arc<D>
         | FleetRoute::Events
         | FleetRoute::EventsStream
         | FleetRoute::Event
-        | FleetRoute::Memories
-        | FleetRoute::Memory
         | FleetRoute::Grants
         | FleetRoute::Grant => None,
     }
