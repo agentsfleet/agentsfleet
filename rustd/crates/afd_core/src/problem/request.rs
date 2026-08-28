@@ -82,10 +82,10 @@ pub(super) const REQUEST: &[Problem] = &[
     Problem {
         code: error_code::APPROVAL_NOT_FOUND,
         status: 404,
-        title: "Approval gate not found",
+        title: "Approval not found",
         hint: "No gate under that id in this workspace. A gate id from another workspace reads as absent on purpose \u{2014} the scope is an authorization, not a filter.",
         user_message: Some(
-            "That approval request is not in this workspace. It may have been resolved already, or the link may be stale.",
+            "That approval action wasn't found. It may have already timed out or been resolved elsewhere.",
         ),
     },
     Problem {
@@ -94,7 +94,7 @@ pub(super) const REQUEST: &[Problem] = &[
         title: "Unknown preference key",
         hint: "The path names a key outside the writable preference registry. Only the keys the dashboard declares can be written; anything else is refused here rather than stored.",
         user_message: Some(
-            "That setting is not one this workspace stores. Reload the page and try again.",
+            "That setting doesn't exist. Reload the page and try again.",
         ),
     },
     Problem {
@@ -103,7 +103,7 @@ pub(super) const REQUEST: &[Problem] = &[
         title: "Preference value too large",
         hint: "A preference value exceeds 1 KiB. A preference holds one small toggle, not a document; store larger state where it belongs.",
         user_message: Some(
-            "That setting holds more than we can save. Try again with a smaller value.",
+            "That setting is too large to save. Reload the page and try again.",
         ),
     },
     Problem {
