@@ -42,6 +42,7 @@ reqwest.workspace = true
 afd_api.workspace = true
 afd_billing.workspace = true
 afd_core.workspace = true
+afd_events.workspace = true
 # The composition root: this crate is the one that names which directory,
 # capability provider and verifier the generic HTTP shell is served through.
 # The operator's approval queue. Its own crate, not an `afd_fleet` module:

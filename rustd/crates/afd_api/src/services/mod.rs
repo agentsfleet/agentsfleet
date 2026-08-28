@@ -37,6 +37,7 @@ mod billing;
 mod catalogue;
 mod device_flow;
 mod fleets;
+mod event;
 mod leasing;
 mod preference;
 mod tenant;
@@ -46,6 +47,7 @@ pub use self::approval::WorkspaceApprovals;
 pub use self::billing::TenantBilling;
 pub use self::catalogue::ModelCatalogue;
 pub use self::device_flow::DeviceFlow;
+pub use self::event::WorkspaceEvents;
 pub use self::fleets::WorkspaceFleets;
 pub use self::leasing::Leasing;
 pub use self::preference::WorkspacePreferences;
@@ -195,6 +197,16 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// The operator's queue of approval gates.
     fn approvals(&self) -> &Self::Approvals;
+
+    /// What the event-history routes act through.
+    ///
+    /// A concrete type for the reason [`Services::Approvals`] is one: a
+    /// Postgres pool and nothing else, with `afd_db::Db::unreachable` as the
+    /// seam.
+    type Events: WorkspaceEvents;
+
+    /// The narrative log a workspace and its fleets wrote.
+    fn events(&self) -> &Self::Events;
 
     /// What the preference and onboarding surfaces act through.
     ///

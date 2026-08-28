@@ -59,6 +59,7 @@ use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
+use afd_events::History;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_fleet::bundle::{Bundles, ContentHash};
 use afd_fleet_lifecycle::Fleets;
@@ -144,6 +145,7 @@ pub(crate) struct Fleet {
     secrets: SecretVault,
     preferences: Preferences,
     approvals: Inbox,
+    events: History,
     billing: Billing,
     catalogue: Models,
     now: UnixMillis,
@@ -191,6 +193,7 @@ impl Fleet {
             secrets: SecretVault::new(database.clone(), kek, Entropy::new()),
             preferences: Preferences::new(database.clone(), Entropy::new()),
             approvals: Inbox::new(database.clone(), queue.clone()),
+            events: History::new(database.clone()),
             billing: Billing::new(database.clone()),
             catalogue: Models::new(database),
             now: UnixMillis::from_millis(FROZEN),
@@ -309,6 +312,7 @@ impl Services for Fleet {
     type Secrets = SecretVault;
     type Preferences = Preferences;
     type Approvals = Inbox;
+    type Events = History;
     type Billing = Billing;
     type Catalogue = Models;
 
@@ -359,6 +363,10 @@ impl Services for Fleet {
 
     fn approvals(&self) -> &Inbox {
         &self.approvals
+    }
+
+    fn events(&self) -> &History {
+        &self.events
     }
 
     fn secrets(&self) -> &SecretVault {

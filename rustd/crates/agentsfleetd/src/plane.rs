@@ -25,6 +25,7 @@ use afd_core::clock::UnixMillis;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
+use afd_events::History;
 use afd_fleet::bundle::Bundles;
 use afd_fleet::gate::Gates;
 use afd_fleet::lease::{Leases, Plane};
@@ -81,6 +82,7 @@ pub struct ServingPlane {
     secrets: SecretVault,
     preferences: Preferences,
     approvals: Inbox,
+    events: History,
     api_url: Box<str>,
 }
 
@@ -140,6 +142,7 @@ impl ServingPlane {
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
             preferences: Preferences::new(database.clone(), Entropy::new()),
             approvals: Inbox::new(database.clone(), queue.clone()),
+            events: History::new(database.clone()),
             api_url: login.api_url,
             logins: Logins::new(
                 afd_redis::SessionStore::new(queue.clone()),
@@ -221,6 +224,7 @@ impl Services for ServingPlane {
     type Secrets = SecretVault;
     type Preferences = Preferences;
     type Approvals = Inbox;
+    type Events = History;
     type Billing = Billing;
     type Catalogue = Models;
 
@@ -273,6 +277,10 @@ impl Services for ServingPlane {
 
     fn approvals(&self) -> &Inbox {
         &self.approvals
+    }
+
+    fn events(&self) -> &History {
+        &self.events
     }
 
     fn secrets(&self) -> &SecretVault {
