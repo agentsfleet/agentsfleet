@@ -16,6 +16,8 @@ workspace = true
 
 [dependencies]
 # The clock a window opens against, and the registry codes.
+# The charges cursor is base64url on the wire.
+base64.workspace = true
 afd_core.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true

@@ -29,14 +29,14 @@
 //! not visible there.
 
 /// The wallet snapshot behind `GET /v1/tenants/me/billing`.
-pub const SELECT_TENANT_BALANCE: &str = "\
+pub(crate) const SELECT_TENANT_BALANCE: &str = "\
 SELECT balance_nanos, updated_at, balance_exhausted_at \
 FROM billing.tenant_wallet \
 WHERE tenant_id = $1::uuid \
 LIMIT 1";
 
 /// The first charges page: newest first, no boundary. `$1` tenant, `$2` limit.
-pub const SELECT_TENANT_CHARGES_PAGE_FIRST: &str = "\
+pub(crate) const SELECT_TENANT_CHARGES_PAGE_FIRST: &str = "\
 SELECT id::text, tenant_id::text, workspace_id::text, fleet_id::text, event_id, \
 charge_type, posture, model, \
 credit_deducted_nanos, \
@@ -49,7 +49,7 @@ LIMIT $2";
 
 /// A later page: strictly older than the cursor's boundary. `$1` tenant,
 /// `$2` boundary instant, `$3` boundary id, `$4` limit.
-pub const SELECT_TENANT_CHARGES_PAGE_AFTER: &str = "\
+pub(crate) const SELECT_TENANT_CHARGES_PAGE_AFTER: &str = "\
 SELECT id::text, tenant_id::text, workspace_id::text, fleet_id::text, event_id, \
 charge_type, posture, model, \
 credit_deducted_nanos, \

@@ -9,8 +9,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_tenant::billing::cursor;
-use afd_tenant::billing::{CHARGES_LIMIT_DEFAULT, CHARGES_LIMIT_MAX, ChargeRow, Wallet};
+use afd_billing::tenant::cursor;
+use afd_billing::tenant::{CHARGES_LIMIT_DEFAULT, CHARGES_LIMIT_MAX, ChargeRow, Wallet};
 use afd_wire::tenant::{BillingResponse, ChargeSummary, ChargesResponse};
 use axum::Json;
 use axum::extract::{RawQuery, State};

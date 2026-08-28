@@ -147,7 +147,7 @@ impl Error {
 }
 
 /// The sentence an unreachable datastore or queue earns.
-const DETAIL_UNAVAILABLE: &str = "Service temporarily unavailable";
+const DETAIL_UNAVAILABLE: &str = "Database unavailable";
 
 /// The sentence a statement that would not run earns.
 const DETAIL_OPERATION_FAILED: &str = "The operation could not be completed";

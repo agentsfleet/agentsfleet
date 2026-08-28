@@ -24,7 +24,7 @@ use afd_core::id::Uuid7;
 use afd_db::Db;
 use sqlx::Row as _;
 
-use crate::sql::billing as sql;
+use crate::tenant_sql as sql;
 use crate::{Result, error};
 
 /// The context a datastore failure on the snapshot path reports under.

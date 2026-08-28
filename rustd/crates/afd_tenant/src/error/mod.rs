@@ -140,11 +140,7 @@ pub(crate) enum ErrorKind {
     #[error("the authenticated subject has no user record")]
     CliCredentialUnknownSubject,
 
-    #[error("a tenant reached billing with no wallet row behind it")]
-    BillingWalletMissing,
 
-    #[error("a charges cursor this daemon never issued")]
-    ChargesCursorInvalid,
 
     #[error("a workspace name carries a character this daemon will not store")]
     WorkspaceNameInvalid,
@@ -274,7 +270,6 @@ impl Error {
             // SENTENCES separate them where separation helps.
             ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
-            | ErrorKind::BillingWalletMissing
             | ErrorKind::CliCredentialMachineCollision => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::SessionFieldInvalid { field } => match field {
                 SessionField::PublicKey => error_code::INVALID_PUBLIC_KEY,
@@ -304,7 +299,6 @@ impl Error {
             }
             ErrorKind::ApiKeyFieldInvalid { .. }
             | ErrorKind::CliCredentialMachineNameInvalid
-            | ErrorKind::ChargesCursorInvalid
             | ErrorKind::WorkspaceNameInvalid
             | ErrorKind::WorkspaceNameTooLong => error_code::INVALID_REQUEST,
             ErrorKind::WorkspaceNameExists => error_code::WORKSPACE_NAME_EXISTS,
@@ -374,8 +368,6 @@ impl Error {
             ErrorKind::CliCredentialMachineNameInvalid => DETAIL_CLI_CREDENTIAL_MACHINE_NAME,
             ErrorKind::CliCredentialNotFound => DETAIL_CLI_CREDENTIAL_NOT_FOUND,
             ErrorKind::CliCredentialUnknownSubject => DETAIL_CLI_CREDENTIAL_UNKNOWN_SUBJECT,
-            ErrorKind::BillingWalletMissing => DETAIL_BILLING_WALLET_MISSING,
-            ErrorKind::ChargesCursorInvalid => DETAIL_CHARGES_CURSOR_INVALID,
             ErrorKind::WorkspaceNameInvalid => DETAIL_WORKSPACE_NAME_INVALID,
             ErrorKind::WorkspaceNameTooLong => DETAIL_WORKSPACE_NAME_TOO_LONG,
             ErrorKind::WorkspaceNameExists => DETAIL_WORKSPACE_NAME_EXISTS,
@@ -518,16 +510,6 @@ pub(crate) fn cli_credential_machine_name() -> Error {
 /// Reports an id naming no live credential this user holds.
 pub(crate) fn cli_credential_not_found() -> Error {
     Error::new(ErrorKind::CliCredentialNotFound)
-}
-
-/// Reports a tenant whose wallet row is not there.
-pub(crate) fn billing_wallet_missing() -> Error {
-    Error::new(ErrorKind::BillingWalletMissing)
-}
-
-/// Refuses a charges cursor this daemon never issued.
-pub(crate) fn charges_cursor_invalid() -> Error {
-    Error::new(ErrorKind::ChargesCursorInvalid)
 }
 
 /// Refuses a workspace name carrying a character this daemon will not store.

@@ -39,6 +39,12 @@ pub mod meter;
 pub mod nanos;
 pub mod rates;
 pub mod sql;
+// The TENANT's read side of the same schema: a wallet snapshot and the paged
+// charge ledger a person reads in the console. It sat in `afd_tenant` while
+// everything that WRITES those rows sat here — so a future billing binary
+// would have had to link the api-key and login plane to serve a balance.
+mod tenant_sql;
+pub mod tenant;
 pub mod store;
 pub mod wallet;
 pub mod window;

@@ -64,6 +64,21 @@ pub enum Error {
         source: afd_crypto::error::Error,
     },
 
+    /// A tenant reached billing with no wallet row behind it.
+    ///
+    /// A broken invariant rather than a race: every tenant is given a wallet at
+    /// signup, so a missing one is a row that should exist and does not.
+    #[error("a tenant reached billing with no wallet row behind it")]
+    WalletMissing,
+
+    /// A charges cursor this daemon never issued.
+    ///
+    /// Carries no source: nothing failed underneath, the bytes were simply not
+    /// a cursor. The tenant plane raised this while the paged charge ledger
+    /// lived there; it moved with the reader.
+    #[error("a charges cursor this daemon never issued")]
+    ChargesCursorInvalid,
+
     /// The pool would not give a connection.
     #[error("the billing store's datastore is unavailable")]
     Datastore {
@@ -78,6 +93,8 @@ impl Error {
     #[must_use]
     pub const fn detail(&self) -> &'static str {
         match self {
+            Self::ChargesCursorInvalid => DETAIL_CURSOR_INVALID,
+            Self::WalletMissing => DETAIL_WALLET_MISSING,
             Self::Query { .. }
             | Self::RowMalformed { .. }
             | Self::Identifier { .. }
@@ -101,6 +118,9 @@ impl Error {
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         match self {
+            // The caller's to correct, unlike everything else here.
+            Self::ChargesCursorInvalid => error_code::INVALID_REQUEST,
+            Self::WalletMissing => error_code::INTERNAL_OPERATION_FAILED,
             Self::Query { .. }
             | Self::RowMalformed { .. }
             | Self::Identifier { .. }
@@ -113,8 +133,24 @@ impl Error {
 /// The sentence a statement that would not run earns.
 const DETAIL_OPERATION_FAILED: &str = "The billing operation could not be completed";
 
+/// The sentence a tenant with no wallet row earns.
+///
+/// The em-dash sentence is `tenant_billing.zig`'s, byte for byte: the row is
+/// written in the tenant-create transaction, so its absence is a bootstrap
+/// invariant broken by surgery or a defect, and the sentence says whose problem
+/// that is. Carried across from `afd_tenant` unchanged when the reader moved.
+const DETAIL_WALLET_MISSING: &str = "Tenant billing row missing — bootstrap invariant violated";
+
+/// The refusal for a charges cursor this daemon never issued.
+///
+/// Lower-case and terse where the keyset cursor's refusals are sentences,
+/// because this is `tenant_billing.zig`'s exact spelling and a cursor may be
+/// judged by either binary mid-cutover. Re-authoring it here would have made
+/// the two daemons answer differently for one condition.
+const DETAIL_CURSOR_INVALID: &str = "invalid cursor";
+
 /// The sentence an unreachable datastore earns.
-const DETAIL_UNAVAILABLE: &str = "Service temporarily unavailable";
+const DETAIL_UNAVAILABLE: &str = "Database unavailable";
 
 /// This crate's result, defaulting to its own error.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -122,6 +158,16 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 /// Reports a statement that would not run, naming what it was doing.
 pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
     move |source| Error::Query { context, source }
+}
+
+/// Reports a tenant with no wallet row behind it.
+pub(crate) fn billing_wallet_missing() -> Error {
+    Error::WalletMissing
+}
+
+/// Refuses a charges cursor this daemon never issued.
+pub(crate) fn charges_cursor_invalid() -> Error {
+    Error::ChargesCursorInvalid
 }
 
 /// Reports a stored value this build cannot read, naming table and column.
