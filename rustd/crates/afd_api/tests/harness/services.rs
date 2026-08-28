@@ -10,9 +10,10 @@
 //! makes the refusal matrix reachable: a verb refuses with the error its own
 //! crate raises rather than one this file invented.
 
+use afd_admin::{Models as AdminModels, PlatformKeys};
 use afd_api::{Planes, Services};
 use afd_approval::{Inbox, IntegrationGrants};
-use afd_auth::mock::{MockCapabilities, MockDirectory};
+use afd_auth::mock::MockCapabilities;
 use afd_auth::verifier::NoVerifier;
 use afd_billing::tenant::Billing;
 use afd_core::clock::UnixMillis;
@@ -20,6 +21,8 @@ use afd_events::{History, Steer};
 use afd_fleet::bundle::Bundles;
 use afd_fleet::memory::Memories;
 use afd_fleet_lifecycle::Fleets;
+use afd_fleet_ops::RunnerLeaseHistory;
+use afd_library::{Libraries, LibraryImports};
 use afd_observability::Analytics;
 use afd_runner::Runners;
 use afd_sse::Live;
@@ -33,10 +36,10 @@ use afd_vault::Vault as SecretVault;
 
 use super::stubs_runner::NoWork;
 use super::stubs_tenant::OneWorkspace;
-use super::{DEPLOYMENT, Fleet};
+use super::{DEPLOYMENT, Directory, Fleet};
 
 impl Services for Fleet {
-    type Auth = Planes<MockDirectory, MockCapabilities, NoVerifier>;
+    type Auth = Planes<Directory, MockCapabilities, NoVerifier>;
     type Leases = NoWork;
     type Sessions = Logins;
     type Workspaces = OneWorkspace;
@@ -141,6 +144,26 @@ impl Services for Fleet {
 
     fn catalogue(&self) -> &Models {
         &self.catalogue
+    }
+
+    fn runner_lease_history(&self) -> &RunnerLeaseHistory {
+        &self.runner_lease_history
+    }
+
+    fn models(&self) -> &AdminModels {
+        &self.admin_models
+    }
+
+    fn platform_keys(&self) -> &PlatformKeys {
+        &self.platform_keys
+    }
+
+    fn libraries(&self) -> &Libraries {
+        &self.libraries
+    }
+
+    fn library_imports(&self) -> &LibraryImports {
+        &self.library_imports
     }
 
     /// A fixed deployment, which is what a real one is too.

@@ -165,7 +165,7 @@ async fn open(
         kek,
         capabilities,
         sessions,
-        bundles: crate::bundles::resolve(config.bundles()),
+        stores: crate::bundles::resolve(config.bundles()),
         broker,
         live,
         analytics: analytics.clone(),

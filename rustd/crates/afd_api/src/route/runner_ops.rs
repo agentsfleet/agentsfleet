@@ -9,12 +9,11 @@
 use afd_auth::Scope;
 
 use super::path::fleet_runner_path;
-use super::{Guard, RouteClass, RouteMeta, Scopes};
+use super::{Guard, RouteClass, RouteMeta, Scopes, Verb};
 
 const RUNNER_ENROLL: &[Scope] = &[Scope::RunnerEnroll];
 const RUNNER_READ: &[Scope] = &[Scope::RunnerRead];
 const RUNNER_WRITE: &[Scope] = &[Scope::RunnerWrite];
-const STREAM_READ: &[Scope] = &[Scope::StreamRead];
 
 /// An operator-plane route over runners.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -31,9 +30,15 @@ pub enum RunnerOpsRoute {
     Events,
     /// One runner's leases.
     Leases,
-    /// The live streams open on this instance.
-    Streams,
 }
+
+// `/v1/fleets/streams` is deliberately absent. The Zig daemon serves it —
+// `routes.zig`'s `fleet_streams_list`, a per-instance operator diagnostic over
+// its SSE registry — and this daemon does not, by Indy's call while merging
+// M179 into M178: nothing consumes it (no UI, no CLI, absent from the public
+// OpenAPI document by its own carve-out), and porting it would mean carrying a
+// live-stream census whose only reader is the endpoint itself. A declared
+// divergence, recorded in M179's Dimension 4.4 rather than left to be noticed.
 
 impl RunnerOpsRoute {
     /// Every operator route over runners.
@@ -44,8 +49,17 @@ impl RunnerOpsRoute {
         Self::Patch,
         Self::Events,
         Self::Leases,
-        Self::Streams,
     ];
+
+    /// The verbs this operator route serves.
+    #[must_use]
+    pub const fn verbs(self) -> &'static [Verb] {
+        match self {
+            Self::Register => &[Verb::Post],
+            Self::List | Self::Get | Self::Events | Self::Leases => &[Verb::Get],
+            Self::Patch => &[Verb::Patch],
+        }
+    }
 
     /// Enrolment is held independently of read and write because it is
     /// uniquely dangerous: the host it creates then receives every tenant's
@@ -56,11 +70,15 @@ impl RunnerOpsRoute {
         let (template, scopes) = match self {
             Self::Register => ("/v1/runners", Scopes::Always(RUNNER_ENROLL)),
             Self::List => ("/v1/fleets/runners", Scopes::Always(RUNNER_READ)),
-            Self::Get => (fleet_runner_path!(""), Scopes::Always(RUNNER_READ)),
-            Self::Patch => (fleet_runner_path!(""), Scopes::Always(RUNNER_WRITE)),
+            // These identities share one axum path. Both carry the same
+            // method-sensitive metadata so merging them cannot retain a
+            // cheaper GET-only gate for PATCH.
+            Self::Get | Self::Patch => (
+                fleet_runner_path!(""),
+                Scopes::rw(RUNNER_READ, RUNNER_WRITE),
+            ),
             Self::Events => (fleet_runner_path!("/events"), Scopes::Always(RUNNER_READ)),
             Self::Leases => (fleet_runner_path!("/leases"), Scopes::Always(RUNNER_READ)),
-            Self::Streams => ("/v1/fleets/streams", Scopes::Always(STREAM_READ)),
         };
         RouteMeta::new(Guard::Bearer, RouteClass::Api, template, scopes)
     }

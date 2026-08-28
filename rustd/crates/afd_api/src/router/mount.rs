@@ -18,11 +18,11 @@ use std::sync::Arc;
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
 use crate::handler::{
-    approval, auth as auth_handler, event, fleet, grant, preference, runner, secret, stream,
-    tenant as tenant_handler,
+    admin, approval, auth as auth_handler, event, fleet, fleet_bundles, grant, operator,
+    preference, runner, secret, stream, tenant as tenant_handler,
 };
 use crate::route::{
-    AuthRoute, FleetRoute, OpsRoute, Route, RunnerOpsRoute, RunnerRoute, TenantRoute,
+    AdminRoute, AuthRoute, FleetRoute, OpsRoute, Route, RunnerOpsRoute, RunnerRoute, TenantRoute,
     WorkspaceRoute,
 };
 
@@ -44,13 +44,14 @@ pub(super) fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D
         Route::Auth(verb) => auth_handler_for::<D>(verb),
         Route::Tenant(verb) => tenant_handler_for::<D>(verb),
         Route::Runner(verb) => Some(runner_handler::<D>(verb)),
-        Route::RunnerOps(verb) => runner_ops_handler::<D>(verb),
+        Route::RunnerOps(verb) => Some(runner_ops_handler::<D>(verb)),
         Route::Workspace(verb) => workspace_handler_for::<D>(verb),
         Route::Fleet(verb) => fleet_handler_for::<D>(verb),
         // Tabled, not yet served. Each of these families arrives with the
         // milestone that ports its handlers; until then the route exists as a
         // template, a guard and a scope rung, and this binary answers 404.
-        Route::Admin(_) | Route::Webhook(_) | Route::Connector(_) => None,
+        Route::Admin(verb) => Some(admin_handler::<D>(verb)),
+        Route::Webhook(_) | Route::Connector(_) => None,
     }
 }
 
@@ -100,10 +101,8 @@ fn tenant_handler_for<D: Serving>(verb: TenantRoute) -> Option<MethodRouter<Arc<
         TenantRoute::Workspaces => Some(get(tenant_handler::list_workspaces::<D>)),
         TenantRoute::CreateWorkspace => Some(post(tenant_handler::create_workspace::<D>)),
         TenantRoute::ModelLibrary => Some(get(tenant_handler::catalogue::<D>)),
-        TenantRoute::Provider
-        | TenantRoute::ModelEntries
-        | TenantRoute::ModelEntry
-        | TenantRoute::FleetBundles => None,
+        TenantRoute::FleetBundles => Some(get(fleet_bundles::list::<D>)),
+        TenantRoute::Provider | TenantRoute::ModelEntries | TenantRoute::ModelEntry => None,
     }
 }
 
@@ -219,16 +218,41 @@ fn runner_handler<D: Serving>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
 }
 
 /// The operator's view over runners — a tenant acting ON the fleet's hosts.
-fn runner_ops_handler<D: Serving>(verb: RunnerOpsRoute) -> Option<MethodRouter<Arc<D>>> {
+///
+/// Every tabled verb is served, so this answers a `MethodRouter` rather than an
+/// `Option`: a verb added later is a compile error until its handler is named,
+/// where an `Option` would let it mount a silent 404.
+fn runner_ops_handler<D: Serving>(verb: RunnerOpsRoute) -> MethodRouter<Arc<D>> {
     match verb {
-        RunnerOpsRoute::Register => Some(post(runner::enrolment::handle::<D>)),
-        // M179's operator surface. Enrolment lands here first because it is the
-        // only one of these the runner plane cannot exist without.
-        RunnerOpsRoute::List
-        | RunnerOpsRoute::Get
-        | RunnerOpsRoute::Patch
-        | RunnerOpsRoute::Events
-        | RunnerOpsRoute::Leases
-        | RunnerOpsRoute::Streams => None,
+        RunnerOpsRoute::Register => post(runner::enrolment::handle::<D>),
+        RunnerOpsRoute::List => get(operator::runners::list::<D>),
+        RunnerOpsRoute::Get => get(operator::runners::detail::<D>),
+        RunnerOpsRoute::Patch => patch(operator::runner_patch::handle::<D>),
+        RunnerOpsRoute::Events => get(operator::events::list::<D>),
+        RunnerOpsRoute::Leases => get(operator::leases::list::<D>),
+    }
+}
+
+/// The platform-administration family — the library, the keys, the catalogue.
+///
+/// Every tabled verb is served, so this answers a `MethodRouter` rather than an
+/// `Option`: a verb added later is a compile error until its handler is named,
+/// where an `Option` would let it mount a silent 404.
+fn admin_handler<D: Serving>(verb: AdminRoute) -> MethodRouter<Arc<D>> {
+    match verb {
+        AdminRoute::FleetLibrary => {
+            get(admin::libraries::list::<D>).merge(post(admin::library_import::create::<D>))
+        }
+        AdminRoute::FleetLibraryEntry => {
+            patch(admin::libraries::patch::<D>).merge(delete(admin::libraries::delete::<D>))
+        }
+        AdminRoute::PlatformKeys => {
+            get(admin::platform_keys::list::<D>).merge(put(admin::platform_keys::set::<D>))
+        }
+        AdminRoute::PlatformKey => delete(admin::platform_keys::deactivate::<D>),
+        AdminRoute::Models => get(admin::models::list::<D>).merge(post(admin::models::create::<D>)),
+        AdminRoute::Model => {
+            patch(admin::models::update::<D>).merge(delete(admin::models::delete::<D>))
+        }
     }
 }

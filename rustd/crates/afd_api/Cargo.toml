@@ -14,11 +14,13 @@ categories.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks the map-backed environment source through afd_core.
 test-util = [
+  "afd_admin/test-util",
   "afd_auth/test-util",
   "afd_core/test-util",
   "afd_crypto/test-util",
   "afd_fleet/test-util",
   "afd_fleet_lifecycle/test-util",
+  "afd_library/test-util",
   "afd_tenant/test-util",
   "afd_vault/test-util",
 ]
@@ -29,6 +31,8 @@ test-util = [
 # graph a wish. axum/tower/tower-http/afd_core arrive with the admission layer
 # and the envelope writer.
 [dependencies]
+# Priced-model and platform-default administration, behind the admin scopes.
+afd_admin.workspace = true
 # The operator's approval queue. Its own crate, not an `afd_fleet` module:
 # showing a person what a fleet wants to do must not pull in leases, money,
 # policy and the sweepers.
@@ -41,9 +45,13 @@ afd_fleet.workspace = true
 afd_runner.workspace = true
 # The workspace fleets surface's store: install, read, edit, purge.
 afd_fleet_lifecycle.workspace = true
+# Small, read-only cross-table projections for operator routes.
+afd_fleet_ops.workspace = true
 # `FleetName` — a fleet's authored slug. Parsed at the edge, so the install path
 # below carries no validation arm of its own.
 afd_fleet_runtime.workspace = true
+# Fleet-library catalogue administration and import services.
+afd_library.workspace = true
 # The tenant plane: api-keys, command-line credentials, the device-flow login
 # surface, and the workspace-ownership resolver the shared layer asks.
 afd_tenant.workspace = true
@@ -82,7 +90,7 @@ afd_core.workspace = true
 afd_events.workspace = true
 # `json` for the probe bodies: unlike the problem+json envelope, which writes
 # its own content type, these are ordinary JSON responses.
-axum = { workspace = true, features = ["json", "matched-path"] }
+axum = { workspace = true, features = ["json", "matched-path", "query"] }
 http.workspace = true
 # The HTTP/1 connection policy: `axum::serve` cannot express a header bound, so
 # the builder is configured here and boot serves connections with it.
@@ -131,6 +139,10 @@ afd_redis = { workspace = true, features = ["test-util"] }
 # handler's page arithmetic is decided over `EventDetailRow`, which is
 # `#[non_exhaustive]`, so the unit tests need that crate's fixture seam.
 afd_events = { workspace = true, features = ["test-util"] }
+# Live-router integration tests resolve both operator and runner credentials
+# through the production Postgres directory.
+afd_state.workspace = true
+sqlx.workspace = true
 # The in-memory backend the bundle-fetch suite drives the snapshot store
 # through, and the byte buffer it seeds one with. A dev-dependency: nothing in
 # this crate's library builds an object store — `Services::bundles` takes one

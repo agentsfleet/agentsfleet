@@ -12,6 +12,7 @@ pub use afd_state::sql::{
 };
 
 pub mod runner;
+pub mod runner_view;
 pub mod sweep;
 
 /// `fleet.runner_events.metadata` keys.
@@ -20,10 +21,18 @@ pub mod sweep;
 /// owns the Zig side; a key spelled inline at a second write site is how a
 /// consumer's `metadata->>'host_id'` silently stops matching.
 pub mod meta {
+    /// The authenticated person who requested an operator mutation.
+    pub const ACTOR_ID: &str = "actor_id";
     /// The host a runner was enrolled for.
     pub const HOST_ID: &str = "host_id";
     /// The isolation tier assigned at enrolment.
     pub const SANDBOX_TIER: &str = "sandbox_tier";
+    /// The egress posture assigned by an operator.
+    pub const NETWORK_POLICY: &str = "network_policy";
+    /// The registry baseline assigned by an operator.
+    pub const REGISTRY_ALLOWLIST: &str = "registry_allowlist";
+    /// The worker ceiling assigned by an operator.
+    pub const WORKER_COUNT: &str = "worker_count";
     /// The liveness instant a transition event records.
     pub const LAST_SEEN_AT: &str = "last_seen_at";
     /// The admin state a transition event moved OUT of.

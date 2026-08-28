@@ -35,6 +35,13 @@ pub(super) const REQUEST: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::PAYLOAD_TOO_LARGE,
+        status: 413,
+        title: "Payload too large",
+        hint: "Request body exceeds the maximum allowed size.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::VAULT_DATA_INVALID,
         status: 400,
         title: "Secret data must be a non-empty JSON object",

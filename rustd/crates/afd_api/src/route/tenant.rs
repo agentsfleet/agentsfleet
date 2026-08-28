@@ -2,7 +2,7 @@
 
 use afd_auth::Scope;
 
-use super::{Guard, NONE, RouteClass, RouteMeta, Scopes};
+use super::{Guard, NONE, RouteClass, RouteMeta, Scopes, Verb};
 
 const BILLING_READ: &[Scope] = &[Scope::BillingRead];
 const WORKSPACE_ADMIN: &[Scope] = &[Scope::WorkspaceAdmin];
@@ -61,6 +61,19 @@ impl TenantRoute {
         Self::CliCredentials,
         Self::CliCredential,
     ];
+
+    /// The verb on the public platform-bundle gallery.
+    ///
+    /// Kept beside the route rather than repeated in M179's inventory test.
+    /// Uploads enter through a library onboarding route; this surface only
+    /// lists already-published snapshots.
+    #[must_use]
+    pub const fn fleet_bundle_verbs(self) -> Option<&'static [Verb]> {
+        match self {
+            Self::FleetBundles => Some(&[Verb::Get]),
+            _ => None,
+        }
+    }
 
     /// The provider and model-registry rows take SECRET scopes rather than
     /// MODEL ones because both reference vault material: what they expose is a

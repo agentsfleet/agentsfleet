@@ -28,6 +28,51 @@ pub(super) const INTEGRATION: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::PROVIDER_MODEL_NOT_IN_CATALOGUE,
+        status: 400,
+        title: "Model not in library",
+        hint: "That model is not in the model library. Pick one from GET /v1/models, or ask for it to be added.",
+        user_message: Some(
+            "That model isn't in our library yet. Pick a listed model, or ask us to add support for it.",
+        ),
+    },
+    Problem {
+        code: error_code::PROVIDER_BASE_URL_INVALID,
+        status: 400,
+        title: "Custom endpoint base_url invalid or unsafe",
+        hint: "`base_url` must be https and must not target a loopback, private, link-local, or cloud-metadata host. Only an `openai-compatible` credential may carry one.",
+        user_message: Some(
+            "That endpoint URL isn't allowed. Use a public https URL for your custom endpoint.",
+        ),
+    },
+    Problem {
+        code: error_code::PROVIDER_MODEL_NOT_FOUND,
+        status: 404,
+        title: "Library model not found",
+        hint: "No library model matches this id. List the library to find one, or add the model first.",
+        user_message: Some(
+            "We couldn't find that model in the library. Refresh the list and try again.",
+        ),
+    },
+    Problem {
+        code: error_code::PROVIDER_MODEL_IN_USE,
+        status: 409,
+        title: "Library model is the active platform default",
+        hint: "This model is the active platform default. Point the default at another library model before deleting it.",
+        user_message: Some(
+            "This model is the active platform default — point the default at another model before deleting it.",
+        ),
+    },
+    Problem {
+        code: error_code::PROVIDER_MODEL_EXISTS,
+        status: 409,
+        title: "Library model already exists",
+        hint: "A library row for this provider and model already exists. Edit the existing row instead of adding a duplicate.",
+        user_message: Some(
+            "That model is already in the library. Edit the existing entry instead of adding a duplicate.",
+        ),
+    },
+    Problem {
         code: error_code::GH_RECONNECT_REQUIRED,
         status: 409,
         title: "GitHub App reconnect required",

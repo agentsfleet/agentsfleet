@@ -58,8 +58,11 @@ pub use self::preference::WorkspacePreferences;
 pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
 pub use self::vault::WorkspaceSecrets;
 
+use afd_admin::{Models as AdminModels, PlatformKeys};
 use afd_core::clock::UnixMillis;
 use afd_fleet::bundle::Bundles;
+use afd_fleet_ops::RunnerLeaseHistory;
+use afd_library::{Libraries, LibraryImports};
 use afd_observability::Analytics;
 use afd_runner::Runners;
 use afd_sse::Live;
@@ -289,6 +292,30 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// The catalogue the `/v1/models` read acts through.
     fn catalogue(&self) -> &Self::Catalogue;
+
+    /// Read-only cross-table projections for fleet operators.
+    ///
+    /// A concrete type for the reason [`Services::bundles`] is one: it holds a
+    /// Postgres pool and nothing else, so `afd_db::Db::unreachable` is the
+    /// whole of the seam a suite needs.
+    fn runner_lease_history(&self) -> &RunnerLeaseHistory;
+
+    /// Priced-model catalogue administration.
+    ///
+    /// Distinct from [`Services::catalogue`], which is the tenant's READ of the
+    /// same rows: this is the admin plane's write, gated behind platform
+    /// scopes, and keeping them apart is what stops a tenant route from
+    /// reaching a mutation by holding the wrong accessor.
+    fn models(&self) -> &AdminModels;
+
+    /// Reveal-free platform-default administration.
+    fn platform_keys(&self) -> &PlatformKeys;
+
+    /// Platform Fleet-library catalogue administration.
+    fn libraries(&self) -> &Libraries;
+
+    /// Validated Fleet-library source and snapshot onboarding.
+    fn library_imports(&self) -> &LibraryImports;
 
     /// This deployment's own base URL, as a minted credential records it.
     ///

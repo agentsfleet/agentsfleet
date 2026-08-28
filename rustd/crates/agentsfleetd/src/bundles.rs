@@ -16,9 +16,23 @@
 use std::sync::Arc;
 
 use afd_fleet::bundle::Bundles;
+use object_store::ObjectStore;
 use object_store::aws::AmazonS3Builder;
 
 use crate::preflight::BundleStoreConfig;
+
+/// Shared read and upload handles over one object-store owner.
+#[derive(Debug)]
+pub struct Stores {
+    reads: Bundles,
+    uploads: Option<Arc<dyn ObjectStore>>,
+}
+
+impl Stores {
+    pub fn split(self) -> (Bundles, Option<Arc<dyn ObjectStore>>) {
+        (self.reads, self.uploads)
+    }
+}
 
 /// Builds the snapshot store an operator configured, if any.
 ///
@@ -26,13 +40,16 @@ use crate::preflight::BundleStoreConfig;
 /// for one whose settings the client refused — the two are the same thing from
 /// a runner's side, and the log line is what separates them for an operator.
 #[must_use]
-pub fn resolve(config: Option<&BundleStoreConfig>) -> Bundles {
+pub(crate) fn resolve(config: Option<&BundleStoreConfig>) -> Stores {
     let Some(config) = config else {
         tracing::info!(
             event = "bundle_store_unconfigured",
             "no R2 knobs are set; Fleet Bundle snapshots will not be served"
         );
-        return Bundles::unconfigured();
+        return Stores {
+            reads: Bundles::unconfigured(),
+            uploads: None,
+        };
     };
     match build(config) {
         Ok(store) => {
@@ -45,7 +62,11 @@ pub fn resolve(config: Option<&BundleStoreConfig>) -> Bundles {
                 event = "bundle_store_ready",
                 "Fleet Bundle snapshot storage configured"
             );
-            Bundles::new(Arc::new(store))
+            let store: Arc<dyn ObjectStore> = Arc::new(store);
+            Stores {
+                reads: Bundles::new(Arc::clone(&store)),
+                uploads: Some(store),
+            }
         }
         Err(error) => {
             // Hoisted: the `log` bridge duplicates field expressions and
@@ -58,7 +79,10 @@ pub fn resolve(config: Option<&BundleStoreConfig>) -> Bundles {
                 event = "bundle_store_unbuildable",
                 "R2 is configured but the client would not build; snapshots will not be served"
             );
-            Bundles::unconfigured()
+            Stores {
+                reads: Bundles::unconfigured(),
+                uploads: None,
+            }
         }
     }
 }

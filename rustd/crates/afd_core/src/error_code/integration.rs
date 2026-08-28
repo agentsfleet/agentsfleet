@@ -1,10 +1,17 @@
-//! The codes that answer for a credential this daemon brokers on a fleet's behalf.
+//! The codes that answer for a third party this daemon reaches on a fleet's
+//! behalf — the credential it brokers, and the provider it spends that
+//! credential at.
 //!
 //! An integration that is not connected, a broker nobody configured, a GitHub
 //! App that needs reconnecting, a grant that is not there, an OAuth exchange
-//! that failed, and the three refusals a repository-write mint can carry. What
-//! they share is a boundary: every one of them is about reaching a THIRD party,
-//! so none can be resolved by editing anything in this repository.
+//! that failed, and the three refusals a repository-write mint can carry.
+//!
+//! `UZ-PROVIDER-*` is the other half of the same boundary: WHICH third party a
+//! run may dial and at what price. Four of the five are about the priced
+//! catalogue row naming that provider — a row this daemon owns — and they sit
+//! here rather than with the request codes because the row exists only to
+//! describe an outside vendor, so an operator reading a catalogue refusal is
+//! already looking at the integration plane.
 
 use super::ErrorCode;
 
@@ -23,6 +30,21 @@ pub const CRED_INTEGRATION_NOT_CONNECTED: ErrorCode = ErrorCode::declare("UZ-CRE
 /// OPERATOR's fault rather than a tenant's: the broker is a boot-wired
 /// singleton, so its absence is a deployment that was never set up to mint.
 pub const CRED_BROKER_NOT_CONFIGURED: ErrorCode = ErrorCode::declare("UZ-CRED-002");
+
+/// The selected provider/model pair has no priced catalogue row.
+pub const PROVIDER_MODEL_NOT_IN_CATALOGUE: ErrorCode = ErrorCode::declare("UZ-PROVIDER-004");
+
+/// A custom endpoint is missing, forbidden, or unsafe for its provider.
+pub const PROVIDER_BASE_URL_INVALID: ErrorCode = ErrorCode::declare("UZ-PROVIDER-005");
+
+/// No priced catalogue row matches the operator-supplied identifier.
+pub const PROVIDER_MODEL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-PROVIDER-006");
+
+/// The active platform default still references the catalogue row.
+pub const PROVIDER_MODEL_IN_USE: ErrorCode = ErrorCode::declare("UZ-PROVIDER-007");
+
+/// A priced row already has the requested provider/model identity.
+pub const PROVIDER_MODEL_EXISTS: ErrorCode = ErrorCode::declare("UZ-PROVIDER-008");
 
 /// The GitHub App installation is gone.
 ///

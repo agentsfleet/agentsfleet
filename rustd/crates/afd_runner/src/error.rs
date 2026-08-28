@@ -17,6 +17,9 @@ pub const DETAIL_REGISTRY_ALLOWLIST: &str = "registry_allowlist entries must be 
 /// The sentence a vanished runner earns.
 pub const DETAIL_RUNNER_NOT_FOUND: &str = "runner not found";
 
+/// `runner_patch.zig`'s refusal when a terminal runner cannot collect an ask.
+pub const DETAIL_SELFTEST_REFUSED: &str = "revoked runners cannot be asked to self-test";
+
 /// Every way enrolling, proving or sweeping a runner can fail.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -50,6 +53,38 @@ pub enum Error {
     /// re-enrolled rather than retried.
     #[error("the presented runner token proved a row that no longer exists")]
     RunnerVanished,
+
+    /// No runner row matches the id an operator addressed.
+    ///
+    /// Distinct from [`Error::RunnerVanished`], which is the same absence
+    /// reached through a runner's OWN authenticated token: that one says the
+    /// host must re-enrol, and this one says the operator typed an id nothing
+    /// holds. They answer different registry codes for that reason.
+    #[error("no runner matches the operator-supplied id")]
+    RunnerNotFound,
+
+    /// A revoked runner was asked to collect a self-test.
+    ///
+    /// Revocation is terminal, so the ask can never be collected — a refusal
+    /// rather than a retry.
+    #[error("a revoked runner cannot collect a self-test request")]
+    SelftestRefused,
+
+    /// A runner row holds an `admin_state` outside the wire enum.
+    #[error("a runner row holds an unknown admin state")]
+    AdminStateMalformed,
+
+    /// Stored JSONB did not survive decoding into its wire value.
+    #[error("{table}.{column} holds JSON this build cannot read")]
+    StoredJson {
+        /// Which table the column belongs to.
+        table: &'static str,
+        /// Which column refused.
+        column: &'static str,
+        /// The decode failure underneath.
+        #[source]
+        source: serde_json::Error,
+    },
 
     /// The caller sent something this plane will not accept.
     ///
@@ -108,12 +143,21 @@ impl Error {
     pub const fn detail(&self) -> &'static str {
         match self {
             Self::Rejected { detail } => detail,
-            Self::RunnerVanished => DETAIL_RUNNER_NOT_FOUND,
+            Self::RunnerVanished | Self::RunnerNotFound => DETAIL_RUNNER_NOT_FOUND,
+            Self::SelftestRefused => DETAIL_SELFTEST_REFUSED,
+            // The four datastore-shaped failures — a statement that reached
+            // Postgres, and three rows this build cannot read — all answer
+            // `INTERNAL_DB_QUERY`, so they share the datastore sentence. The
+            // rest keep this plane's generic one: a sentence has to be true of
+            // every variant mapped to it, and naming one verb makes it false
+            // for the others.
             Self::Query { .. }
             | Self::RowMalformed { .. }
-            | Self::Entropy { .. }
-            | Self::Identifier { .. }
-            | Self::VaultDataInvalid => DETAIL_OPERATION_FAILED,
+            | Self::StoredJson { .. }
+            | Self::AdminStateMalformed => DETAIL_DATABASE_ERROR,
+            Self::Entropy { .. } | Self::Identifier { .. } | Self::VaultDataInvalid => {
+                DETAIL_OPERATION_FAILED
+            }
             Self::Datastore { .. } | Self::Queue { .. } => DETAIL_UNAVAILABLE,
         }
     }
@@ -142,7 +186,15 @@ impl Error {
         match self {
             Self::Rejected { .. } => error_code::INVALID_REQUEST,
             Self::RunnerVanished => error_code::RUN_INVALID_RUNNER_TOKEN,
-            Self::Query { .. } | Self::RowMalformed { .. } => error_code::INTERNAL_DB_QUERY,
+            Self::RunnerNotFound => error_code::RUNNER_NOT_FOUND,
+            Self::SelftestRefused => error_code::RUN_SELFTEST_REFUSED,
+            Self::Query { .. }
+            | Self::RowMalformed { .. }
+            | Self::StoredJson { .. }
+            // A stored `admin_state` outside the wire enum is a ROW this build
+            // cannot read, not an operator's request being wrong — same family
+            // as a column that will not decode.
+            | Self::AdminStateMalformed => error_code::INTERNAL_DB_QUERY,
             // A daemon whose clock cannot name an instant, and a host that
             // cannot draw random bytes, are both THIS process failing — never
             // the caller's request being wrong.
@@ -157,7 +209,22 @@ impl Error {
 }
 
 /// The sentence a statement that would not run earns.
-const DETAIL_OPERATION_FAILED: &str = "Registration could not be completed";
+///
+/// Names the DATASTORE rather than the verb, because every verb in this crate
+/// reaches the same one and a caller cannot act on which of them was running.
+/// The sentence a failure carries has to be true of every variant mapped to it
+/// — `detail()` maps four here — and a verb-shaped sentence is true of at most
+/// one.
+pub const DETAIL_DATABASE_ERROR: &str = "Database error";
+
+/// The sentence this plane's non-statement failures earn.
+///
+/// Entropy that could not be drawn, an instant that could not name an id, and
+/// a stored credential body that is not a readable shape. It reads "runner"
+/// rather than "registration" because this crate is the runner plane, not the
+/// enrolment verb: it also serves the operator views, so a sentence naming one
+/// of its verbs would be wrong for the rest.
+const DETAIL_OPERATION_FAILED: &str = "The runner operation could not be completed";
 
 /// The sentence an unreachable datastore earns.
 const DETAIL_UNAVAILABLE: &str = "Database unavailable";
@@ -190,4 +257,31 @@ pub(crate) const fn rejected(detail: &'static str) -> Error {
 /// Reports a stored credential whose decrypted body is not a readable shape.
 pub(crate) const fn vault_data_invalid() -> Error {
     Error::VaultDataInvalid
+}
+
+/// Reports an operator request addressed to no runner row.
+pub(crate) const fn runner_not_found() -> Error {
+    Error::RunnerNotFound
+}
+
+/// Refuses a self-test ask that a revoked runner can never collect.
+pub(crate) const fn selftest_refused() -> Error {
+    Error::SelftestRefused
+}
+
+/// Reports a runner row whose administrative state is outside the wire enum.
+pub(crate) const fn admin_state_malformed() -> Error {
+    Error::AdminStateMalformed
+}
+
+/// Reports JSONB text that did not survive decoding into its wire value.
+pub(crate) fn stored_json(
+    table: &'static str,
+    column: &'static str,
+) -> impl Fn(serde_json::Error) -> Error {
+    move |source| Error::StoredJson {
+        table,
+        column,
+        source,
+    }
 }

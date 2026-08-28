@@ -17,6 +17,11 @@
 
 use std::sync::Arc;
 
+// Aliased: `afd_tenant::models::Models` below is the tenant's READ of the
+// priced catalogue, and this is the admin plane's WRITE of the same rows. Two
+// things called `Models` in one file is how a reader ends up believing the
+// tenant surface can mutate the catalogue.
+use afd_admin::{Models as AdminModels, PlatformKeys};
 use afd_api::Planes;
 use afd_api::router::{Dependencies, ReadyInputs};
 use afd_approval::{Inbox, IntegrationGrants};
@@ -31,7 +36,9 @@ use afd_fleet::bundle::Bundles;
 use afd_fleet::lease::{Leases, Plane};
 use afd_fleet::memory::Memories;
 use afd_fleet_lifecycle::Fleets;
+use afd_fleet_ops::RunnerLeaseHistory;
 use afd_gate::gate::Gates;
+use afd_library::{Libraries, LibraryImports};
 use afd_runner::Runners;
 use afd_tenant::preference::Preferences;
 // Aliased: `crate::identity::Sessions` is the token VERIFIER, and this is the
@@ -54,6 +61,8 @@ use afd_tenant::workspace::Workspaces;
 // the model-registry lock. Two things called `Vault` in one file is how a
 // reader ends up believing one of them can do the other's job.
 use afd_vault::Vault as SecretVault;
+
+use crate::bundles::Stores;
 
 use crate::identity::{Capabilities, Sessions};
 use crate::probes::LiveDependencies;
@@ -80,6 +89,11 @@ pub struct ServingPlane {
     cli_credentials: CliCredentials,
     billing: Billing,
     models: Models,
+    admin_models: AdminModels,
+    platform_keys: PlatformKeys,
+    libraries: Libraries,
+    library_imports: LibraryImports,
+    runner_lease_history: RunnerLeaseHistory,
     secrets: SecretVault,
     preferences: Preferences,
     approvals: Inbox,
@@ -125,14 +139,28 @@ impl ServingPlane {
             kek,
             capabilities,
             sessions,
-            bundles,
+            stores,
             broker,
             live,
             analytics,
             login,
         } = parts;
+        // One object-store owner, split into the half that READS a snapshot and
+        // the half that WRITES one. A deployment with no upload handle still
+        // serves the catalogue; `LibraryImports::without_store` carries that
+        // absence as a value, the way `Bundles::unconfigured` does.
+        let (bundles, uploads) = stores.split();
+        let library_imports = match uploads {
+            Some(store) => LibraryImports::new(database.clone(), store),
+            None => LibraryImports::without_store(database.clone()),
+        };
         Self {
             bundles,
+            library_imports,
+            runner_lease_history: RunnerLeaseHistory::new(database.clone()),
+            admin_models: AdminModels::new(database.clone(), Entropy::new()),
+            platform_keys: PlatformKeys::new(database.clone()),
+            libraries: Libraries::new(database.clone()),
             workspaces: Workspaces::new(database.clone(), Entropy::new()),
             // Takes the Redis CONNECTION, not a view of it: which views the
             // fleet lifecycle needs is its own business, and assembling them
@@ -203,13 +231,13 @@ pub struct PlaneParts {
     pub capabilities: Capabilities,
     /// What verifies a browser session token.
     pub sessions: Sessions,
-    /// The Fleet Bundle snapshot store, possibly holding its own absence.
+    /// The object-store handles, read and upload, over one owner.
     ///
-    /// Not an `Option`: `Bundles` carries the unconfigured case as a value that
-    /// refuses with a registry code, so a deployment with no R2 knobs hands
-    /// over `Bundles::unconfigured` rather than a `None` this file would unwrap
-    /// into a refusal each handler re-invented.
-    pub bundles: Bundles,
+    /// Split inside [`ServingPlane::new`] rather than out here, because the two
+    /// halves are one configuration decision: a deployment either set the R2
+    /// knobs or did not, and handing over two independently-built values would
+    /// let a caller pair a live reader with an absent writer.
+    pub stores: Stores,
     /// The credential broker, built before the plane because it reads the
     /// vault, which is asynchronous where this constructor is not.
     pub broker: Arc<afd_credential::credential::Broker>,

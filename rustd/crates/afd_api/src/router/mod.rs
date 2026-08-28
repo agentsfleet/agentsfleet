@@ -2,7 +2,8 @@
 //!
 //! # What is mounted, and what is only tabled
 //!
-//! [`Route`] carries all eighty-one endpoints; this binary serves twenty-seven of them.
+//! [`Route`] carries every endpoint identity this product has; this binary
+//! serves a subset of them.
 //! The gap is deliberate and it is STATED: [`handler_for`] is a total match
 //! over every family AND every route within a family, so an endpoint whose
 //! handler has not been ported yet says so in an arm rather than by being
@@ -102,7 +103,8 @@ pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router 
     // Accumulated in a Vec and found linearly: eighty-one routes make this
     // cheaper than hashing, and it preserves the table's order, so the mount
     // log reads the same way every boot.
-    let mut merged: Vec<(&'static str, RouteMeta, MethodRouter<Arc<D>>)> = Vec::new();
+    let mut merged: Vec<(&'static str, RouteMeta, MethodRouter<Arc<D>>)> =
+        Vec::with_capacity(Route::all().count());
     for route in Route::all() {
         let Some(handler) = self::mount::handler_for::<D>(route) else {
             continue;
@@ -114,9 +116,8 @@ pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router 
         let template = meta.template;
         let class = meta.class;
         tracing::debug!(template, ?class, event = "route_mounted", "route mounted");
-        // Counts VERBS, not paths. Two methods on one template are two things
-        // this binary answers, and a count that said one would understate the
-        // surface exactly where the table is easiest to misread.
+        // Counts route identities, not unique paths. Two identities sharing one
+        // template remain two separately tabled pieces of the surface.
         mounted += 1;
         match merged.iter_mut().find(|(known, _, _)| *known == template) {
             // `merge` and not `layer`: the layers go on once, below, after every
