@@ -15,7 +15,7 @@ use sqlx::Row as _;
 use crate::error::{Result, query};
 use crate::gate::decision::{Answer, Status};
 use crate::gate::pending::{Evaluation, GateRef, evaluate};
-use crate::sql;
+use super::sql;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_STATUS: &str = "approval gate status";
@@ -220,7 +220,7 @@ impl Gates {
     /// The durable status of `action_id`, or nothing if it has no row.
     async fn status(&self, action_id: &str) -> Result<Option<Status>> {
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::gate::SELECT_GATE_STATUS)
+        let row = sqlx::query(sql::SELECT_GATE_STATUS)
             .bind(action_id)
             .fetch_optional(&mut *connection)
             .await

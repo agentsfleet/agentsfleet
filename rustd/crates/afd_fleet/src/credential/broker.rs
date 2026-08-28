@@ -90,7 +90,7 @@ const MAX_CACHED_TOKENS: u64 = 8192;
 const FIELD_EXPIRES_AT_MS: &str = "expires_at_ms";
 
 const ROTATING_FIELDS: [&str; 3] = [
-    oauth::FIELD_REFRESH_TOKEN,
+    afd_core::credential::FIELD_REFRESH_TOKEN,
     "access_token",
     FIELD_EXPIRES_AT_MS,
 ];

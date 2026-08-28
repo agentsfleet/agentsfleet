@@ -7,7 +7,6 @@
 
 pub mod broker;
 pub mod github;
-pub mod mint;
 pub mod oauth;
 pub mod outcome;
 pub mod platform;

@@ -36,6 +36,7 @@
 //! guard a tenant's `base_url` passes — and a refused one fails the mint
 //! rather than dialling.
 
+use afd_core::credential::FIELD_REFRESH_TOKEN;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -46,13 +47,6 @@ use crate::credential::outcome::{Minted, Outcome, Retry};
 use crate::credential::platform::OauthApp;
 use crate::provider::validate_endpoint;
 
-/// The vault-handle field carrying the refresh token to exchange.
-///
-/// RFC 6749 names both sides of this wire identically, so it is also the
-/// response field a rotated replacement arrives in — and the field the broker's
-/// cache identity excludes, which is why it is `pub(crate)` rather than
-/// spelled twice (RULE UFS).
-pub(crate) const FIELD_REFRESH_TOKEN: &str = "refresh_token";
 
 /// The vault-handle field naming the accounts server this refresh token is
 /// redeemable at.

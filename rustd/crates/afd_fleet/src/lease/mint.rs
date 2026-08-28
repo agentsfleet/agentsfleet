@@ -199,7 +199,7 @@ impl Plane {
         // What this exchange actually posted, read from the pre-exchange
         // snapshot — the guard the write-back compares the stored row against.
         let Some(posted) = handle
-            .get(crate::credential::oauth::FIELD_REFRESH_TOKEN)
+            .get(afd_core::credential::FIELD_REFRESH_TOKEN)
             .and_then(Value::as_str)
         else {
             return;

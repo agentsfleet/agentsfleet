@@ -33,6 +33,8 @@
 //! the type signature of everything downstream, including the renderer that
 //! lands in a later milestone.
 
+pub mod grant_sql;
+pub mod sql;
 mod anomaly;
 mod claim;
 mod decision;

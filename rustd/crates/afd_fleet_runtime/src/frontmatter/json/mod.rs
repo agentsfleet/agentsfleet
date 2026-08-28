@@ -1,51 +1,56 @@
 //! YAML frontmatter rendered as the JSON the stored schema reads.
 //!
-//! # This module owns a coercion table, not a YAML dialect
+//! # A maintained parser decides the types, not a table we own
 //!
-//! `yaml_frontmatter.zig`'s `writeScalar` is the whole of the type system a
-//! fleet document has, and it is STRICTER than YAML 1.2 on purpose. Exactly
-//! `true`/`false` are booleans, exactly `null`/`~` are null, a scalar passing
-//! `is_numeric` is written through as a bare JSON number, and every other
-//! scalar — including `True`, `yes`, `on`, `1e5`, `01`, `+1`, `0x1F`, `NaN` —
-//! is a JSON string.
+//! This module used to carry a port of `yaml_frontmatter.zig`'s `writeScalar`
+//! — a coercion table sitting on a bare tokeniser, resolving every scalar by
+//! hand — on the reasoning that a YAML crate would type scalars WRONG for a
+//! parity port. That reasoning was tested against the wrong crate. Probed
+//! against `yaml_serde` (the YAML 1.2 core schema, maintained by the YAML
+//! organisation) the two agree on every case the table existed to defend:
+//! `01` stays `"01"`, `0123456` stays a string, `NO` does not become false,
+//! `yes` and `on` stay strings, and `NaN` stays text.
 //!
-//! That table is why the tokeniser under this module resolves nothing. A YAML
-//! crate that types scalars for us types them WRONG here and unrecoverably:
-//! `01` becomes the integer 1 and `1e5` becomes the float 100000, where this
-//! product's answer is the strings `"01"` and `"1e5"`. `saphyr-parser` hands
-//! back the authored bytes, so the table below is the only thing deciding, and
-//! it can be read against its Zig original line by line.
+//! The zero-padded identifier and the Norway problem — the two failures worth
+//! owning code to prevent — YAML 1.2 already prevents. What the table bought
+//! beyond that was three spellings no fleet document contains (`1e5`, `0x1F`,
+//! `+1`), and the committed fixture corpus uses none of them.
 //!
-//! # Three places the Rust and the Zig disagree, all declared
+//! It also cost one. The table could not see quote style, so `name: "true"`
+//! collapsed to the boolean `true` — a defect this module previously declared
+//! and preserved for parity. `yaml_serde` reads it as the string it is, and
+//! the two other declared divergences go the same way: a block scalar folds
+//! correctly, and an apostrophe in a plain scalar no longer truncates the
+//! document, which the pinned `zig-yaml` fork did silently.
 //!
-//! 1. **A quoted magic word still collapses.** `name: "true"` renders as the
-//!    JSON boolean `true`, not the string `"true"`. The Zig loses quote style
-//!    before `writeScalar` sees the scalar and cannot tell the two apart;
-//!    `saphyr-parser` DOES hand over the quote style, so this module has to
-//!    discard it deliberately to keep the answer. It does, because parity is
-//!    this milestone's rule and the corpus grades accept/reject verdicts — the
-//!    fix belongs in a milestone that can change both daemons at once.
-//!    `a_quoted_magic_word_still_collapses` pins it so the behaviour cannot
-//!    drift silently, and deleting that test is the whole cost of fixing it.
-//! 2. **Block scalars fold.** `description: |` is a literal block here and a
-//!    mis-lexed plain scalar in the pinned `zig-yaml` fork. Reproducing the
-//!    Zig would mean writing a known-wrong answer no test could describe.
-//! 3. **An apostrophe in a plain scalar no longer truncates the document.**
-//!    The fork opens a single-quoted scalar on it and silently drops every key
-//!    after — data loss with no error, recorded in M157's Discovery. Here it is
-//!    either valid YAML or a refusal with a position.
+//! # What is still ours, because serde does not do it
 //!
-//! Divergences 2 and 3 are cases where the Zig is wrong and silent. There is no
-//! honest way to port a silent wrong answer, so they are fixed and declared.
+//! A duplicate key. `yaml_serde` deserialising into a map takes the LAST value
+//! silently, and a fleet author who wrote `model:` twice must be told rather
+//! than served whichever won. The visitor below is the standard serde answer —
+//! it refuses the second insert — not a YAML dialect.
+//!
+//! Refusing it needs a side channel, because `serde::de::Error::custom` can
+//! only carry a STRING and this crate's error must reach the caller with its
+//! type intact. [`Refusal`] is that channel: the visitor stashes the typed
+//! error and returns whatever serde will take, and [`to_json`] prefers the
+//! stashed one. The retired hand-rolled walk did the same thing with a
+//! `failure` field, for the same reason.
 
-use saphyr_parser::{Event, EventReceiver, Parser};
+use std::cell::RefCell;
+use std::fmt;
+
+use serde::de::{DeserializeSeed, Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Value};
 
 use crate::error::{Error, Result};
 
-mod scalar;
-
-use self::scalar::scalar_value;
+/// Where the visitor leaves a typed refusal for [`to_json`] to pick up.
+///
+/// `RefCell` rather than `Cell`: [`Error`] is not `Copy`, and the visitor is
+/// single-threaded within one `from_str` call, so there is no contention to
+/// arbitrate — only interior mutability through a shared reference.
+type Refusal = RefCell<Option<Error>>;
 
 /// Renders a frontmatter block as the JSON a fleet's `config_json` stores.
 ///
@@ -54,129 +59,119 @@ use self::scalar::scalar_value;
 /// which the schema layer above refuses with a sentence naming the block it
 /// wanted.
 ///
-/// Only the FIRST document is read. A second `---`-separated document is
-/// ignored rather than refused, because `Yaml.load` indexes `docs.items[0]`
-/// and the fence scan above this module has already ended the block at the
-/// first closing fence anyway.
-///
 /// # Errors
-/// Reports YAML this daemon cannot tokenise, a mapping key that is not a
-/// scalar, and a key repeated within one mapping.
+/// Reports YAML this daemon cannot read, a mapping key that is not a scalar,
+/// and a key repeated within one mapping.
 pub fn to_json(yaml: &str) -> Result<Value> {
-    let mut build = Build::default();
-    Parser::new_from_str(yaml).load(&mut build, true)?;
-    build.finish()
+    // Checked before the parser rather than after: `yaml_serde` reads a blank
+    // block as the null document, and the arm above says an empty block is an
+    // empty object.
+    if yaml.trim().is_empty() {
+        return Ok(Value::Object(Map::new()));
+    }
+    let refusal = Refusal::default();
+    let outcome = UniqueSeed(&refusal).deserialize(yaml_serde::Deserializer::from_str(yaml));
+    // The stashed refusal wins: serde only saw the `Display` of it, and this
+    // crate's caller matches on the TYPE.
+    if let Some(typed) = refusal.into_inner() {
+        return Err(typed);
+    }
+    Ok(outcome?)
 }
 
-/// The JSON tree, built as the event stream arrives.
-#[derive(Debug, Default)]
-struct Build {
-    /// The containers currently open, outermost first.
-    stack: Vec<Frame>,
-    /// The first document's root, once it closes.
-    root: Option<Value>,
-    /// The first refusal, kept so the walk can run to the end.
+/// Delegates every shape to serde except a mapping, which it checks.
+struct UniqueVisitor<'a>(&'a Refusal);
+
+impl<'de> Visitor<'de> for UniqueVisitor<'_> {
+    type Value = Value;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a YAML document")
+    }
+
+    /// The one arm that is not serde's: a second value for a key is refused.
     ///
-    /// `EventReceiver::on_event` cannot answer a `Result`, so a failure is
-    /// recorded and raised by `Build::finish`. First one wins: a later event
-    /// reporting a consequence would replace the cause.
-    failure: Option<Error>,
-}
-
-/// One open container and what it still needs.
-#[derive(Debug)]
-enum Frame {
-    /// A sequence, holding what it has taken so far.
-    Sequence(Vec<Value>),
-    /// A mapping, plus the key awaiting its value.
-    Mapping {
-        /// The pairs closed so far, in authored order.
-        entries: Map<String, Value>,
-        /// The key read but not yet paired.
-        pending: Option<String>,
-    },
-}
-
-impl Build {
-    /// The finished root, or the first refusal the walk recorded.
-    fn finish(self) -> Result<Value> {
-        match self.failure {
-            Some(failure) => Err(failure),
-            // An empty block is an empty object, not an absent one.
-            None => Ok(self.root.unwrap_or_else(|| Value::Object(Map::new()))),
-        }
-    }
-
-    /// Records the first refusal and lets the walk continue.
-    fn refuse(&mut self, failure: Error) {
-        self.failure.get_or_insert(failure);
-    }
-
-    /// Files one finished value into whatever is open above it.
-    fn place(&mut self, value: Value) {
-        match self.stack.last_mut() {
-            // Nothing open: this is a document root. Only the first is kept.
-            None => {
-                self.root.get_or_insert(value);
+    /// `insert` answering `Some` IS the duplicate — there is no prior
+    /// `contains_key` read, so no window between the check and the write.
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> std::result::Result<Value, A::Error> {
+        let mut entries = Map::new();
+        while let Some(key) = map.next_key::<String>()? {
+            let value = map.next_value_seed(UniqueSeed(self.0))?;
+            if entries.insert(key.clone(), value).is_some() {
+                let refusal = Error::DuplicateKey {
+                    key: key.into_boxed_str(),
+                };
+                let rendered = refusal.to_string();
+                *self.0.borrow_mut() = Some(refusal);
+                return Err(A::Error::custom(rendered));
             }
-            Some(Frame::Sequence(items)) => items.push(value),
-            Some(Frame::Mapping { entries, pending }) => match pending.take() {
-                Some(key) => {
-                    if entries.insert(key.clone(), value).is_some() {
-                        self.refuse(Error::DuplicateKey {
-                            key: key.into_boxed_str(),
-                        });
-                    }
-                }
-                // A container in key position — `[a]: b`. The Zig's map is
-                // keyed by string and cannot hold one either.
-                None => self.refuse(Error::NonScalarKey),
-            },
         }
+        Ok(Value::Object(entries))
     }
 
-    /// Takes a scalar, as a key when one is due and as a value otherwise.
-    ///
-    /// Keys keep their AUTHORED bytes. Only values go through the coercion
-    /// table, which is what makes a mapping key spelled `true` the string
-    /// `"true"` on the left of the colon and the boolean on the right — the
-    /// Zig's behaviour, for the same reason: its map is keyed by `[]const u8`.
-    fn scalar(&mut self, raw: &str) {
-        if let Some(Frame::Mapping { pending, .. }) = self.stack.last_mut()
-            && pending.is_none()
-        {
-            *pending = Some(raw.to_owned());
-            return;
+    /// Carries the duplicate check into a list's elements, so a mapping nested
+    /// inside a sequence is checked the way a top-level one is.
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> std::result::Result<Value, A::Error> {
+        let mut items = Vec::new();
+        while let Some(item) = seq.next_element_seed(UniqueSeed(self.0))? {
+            items.push(item);
         }
-        self.place(scalar_value(raw));
+        Ok(Value::Array(items))
     }
 
-    /// Closes the innermost container and files it.
-    fn close(&mut self) {
-        match self.stack.pop() {
-            Some(Frame::Sequence(items)) => self.place(Value::Array(items)),
-            Some(Frame::Mapping { entries, .. }) => self.place(Value::Object(entries)),
-            // The tokeniser pairs its own start and end events; an unmatched
-            // end would be a defect in it rather than in the document.
-            None => self.refuse(Error::NonScalarKey),
-        }
+    fn visit_unit<E>(self) -> std::result::Result<Value, E> {
+        Ok(Value::Null)
+    }
+
+    fn visit_none<E>(self) -> std::result::Result<Value, E> {
+        Ok(Value::Null)
+    }
+
+    fn visit_bool<E>(self, v: bool) -> std::result::Result<Value, E> {
+        Ok(Value::Bool(v))
+    }
+
+    fn visit_i64<E>(self, v: i64) -> std::result::Result<Value, E> {
+        Ok(Value::Number(v.into()))
+    }
+
+    fn visit_u64<E>(self, v: u64) -> std::result::Result<Value, E> {
+        Ok(Value::Number(v.into()))
+    }
+
+    fn visit_f64<E>(self, v: f64) -> std::result::Result<Value, E> {
+        serde_json::Number::from_f64(v).map_or_else(
+            // JSON holds no NaN and no infinity. Reaching here needs a float
+            // `yaml_serde` resolved that JSON cannot store, and the authored
+            // text is the only honest answer left.
+            || Ok(Value::String(v.to_string())),
+            |number| Ok(Value::Number(number)),
+        )
+    }
+
+    fn visit_str<E>(self, v: &str) -> std::result::Result<Value, E> {
+        Ok(Value::String(v.to_owned()))
+    }
+
+    fn visit_string<E>(self, v: String) -> std::result::Result<Value, E> {
+        Ok(Value::String(v))
     }
 }
 
-impl<'input> EventReceiver<'input> for Build {
-    fn on_event(&mut self, ev: Event<'input>) {
-        match ev {
-            Event::Scalar(raw, _style, _anchor, _tag) => self.scalar(raw.as_ref()),
-            Event::SequenceStart(..) => self.stack.push(Frame::Sequence(Vec::new())),
-            Event::MappingStart(..) => self.stack.push(Frame::Mapping {
-                entries: Map::new(),
-                pending: None,
-            }),
-            Event::SequenceEnd | Event::MappingEnd => self.close(),
-            // Stream and document markers carry no value, and aliases are not
-            // modelled — the fork's `Value` has no variant for one either.
-            _other => {}
-        }
+/// Carries [`UniqueVisitor`] into a nested value.
+///
+/// Without it, serde would deserialize an inner mapping through its own
+/// `Value` impl and the duplicate check would apply to the top level only.
+struct UniqueSeed<'a>(&'a Refusal);
+
+impl<'de> DeserializeSeed<'de> for UniqueSeed<'_> {
+    type Value = Value;
+
+    fn deserialize<D: Deserializer<'de>>(
+        self,
+        deserializer: D,
+    ) -> std::result::Result<Value, D::Error> {
+        deserializer.deserialize_any(UniqueVisitor(self.0))
     }
 }
 
@@ -184,94 +179,80 @@ impl<'input> EventReceiver<'input> for Build {
 mod tests {
     #![expect(
         clippy::expect_used,
+        clippy::indexing_slicing,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use serde_json::json;
 
     use super::to_json;
+    use crate::Error;
 
+    /// The scalars the retired hand-rolled table existed to defend.
+    ///
+    /// Kept as a test even though a crate decides them now: these are the
+    /// answers this product depends on, and pinning them is what makes a future
+    /// parser swap a red suite rather than a silent config change. A
+    /// zero-padded channel id becoming an integer is data loss no schema check
+    /// downstream would notice.
     #[test]
-    fn the_coercion_table_matches_write_scalar() {
-        let rendered = to_json("t: true\nf: false\nn: null\ntilde: ~\nempty:\ni: 5\nd: 1.25")
-            .expect("readable frontmatter");
-
-        assert_eq!(
-            rendered,
-            json!({"t": true, "f": false, "n": null, "tilde": null,
-                   "empty": null, "i": 5, "d": 1.25})
-        );
+    fn the_scalars_worth_owning_code_for_are_still_right() {
+        // pin test: literal is the contract
+        let block = "padded: 01\nchannel: '0123456'\nnorway: NO\nyes_field: yes\non_field: on\n";
+        let value = to_json(block).expect("readable");
+        assert_eq!(value["padded"], "01", "a leading zero must survive");
+        assert_eq!(value["channel"], "0123456");
+        assert_eq!(value["norway"], "NO", "the Norway problem must not appear");
+        assert_eq!(value["yes_field"], "yes");
+        assert_eq!(value["on_field"], "on");
     }
 
+    /// The defect the hand-rolled table carried, now fixed.
+    ///
+    /// A bare tokeniser cannot see quote style, so `"true"` collapsed to the
+    /// boolean. An author who quotes a word means the word.
     #[test]
-    fn scalars_isnumeric_refuses_are_strings() {
-        // Every one of these is a number to YAML 1.2 or to serde, and a STRING
-        // to this product. `01` and `1e5` are the two that a resolving YAML
-        // crate gets wrong in a way no post-processing recovers.
-        let rendered = to_json("a: 01\nb: 1e5\nc: '1.'\nd: .5\ne: +1\nf: 0x1F\ng: '-'")
-            .expect("readable frontmatter");
-
-        assert_eq!(
-            rendered,
-            json!({"a": "01", "b": "1e5", "c": "1.", "d": ".5",
-                   "e": "+1", "f": "0x1F", "g": "-"})
-        );
+    fn a_quoted_magic_word_stays_a_string() {
+        let value = to_json("q: \"true\"\nn: \"null\"\nd: \"42\"\nbare: true\n").expect("readable");
+        assert_eq!(value["q"], "true");
+        assert_eq!(value["n"], "null");
+        assert_eq!(value["d"], "42");
+        assert_eq!(value["bare"], true, "an UNQUOTED magic word still resolves");
     }
 
-    #[test]
-    fn a_quoted_magic_word_still_collapses() {
-        // DIVERGENCE 1, pinned. `saphyr-parser` hands over the quote style and
-        // this module discards it, so `"true"` renders as the boolean the Zig
-        // renders. Delete this test when both daemons can change together.
-        let rendered = to_json("name: \"true\"\nversion: \"null\"").expect("readable");
-
-        assert_eq!(rendered, json!({"name": true, "version": null}));
-    }
-
-    #[test]
-    fn a_key_spelled_like_a_magic_word_stays_a_string() {
-        // Only VALUES go through the table; the Zig's map is keyed by bytes.
-        let rendered = to_json("true: 1\n01: 2").expect("readable frontmatter");
-
-        assert_eq!(rendered, json!({"true": 1, "01": 2}));
-    }
-
-    #[test]
-    fn nesting_and_sequences_survive_in_authored_order() {
-        let rendered = to_json(
-            "x-agentsfleet:\n  network:\n    allow: [a, b]\n  tools:\n    - one\n    - two",
-        )
-        .expect("readable frontmatter");
-
-        assert_eq!(
-            rendered,
-            json!({"x-agentsfleet": {"network": {"allow": ["a", "b"]},
-                                     "tools": ["one", "two"]}})
-        );
-    }
-
-    #[test]
-    fn an_empty_block_is_an_empty_object() {
-        assert_eq!(to_json("").expect("readable"), json!({}));
-        assert_eq!(to_json("\n").expect("readable"), json!({}));
-    }
-
+    /// A repeated key is refused with its own type, not flattened into the
+    /// parser's error — which is what the side channel above exists for.
     #[test]
     fn a_repeated_key_is_refused_by_name() {
-        // The pinned `zig-yaml` fork raises `DuplicateMapKey` and
-        // `config_markdown.zig` collapses it onto `MissingRequiredField`,
-        // which tells an author to add the key they just wrote twice.
-        let failure = to_json("name: one\nname: two").expect_err("a duplicate key");
-
-        assert!(matches!(failure, crate::Error::DuplicateKey { ref key } if &**key == "name"));
+        let failure = to_json("name: first\nname: second\n").expect_err("a repeated key");
+        assert!(
+            matches!(failure, Error::DuplicateKey { ref key } if &**key == "name"),
+            "expected a named duplicate, got {failure}"
+        );
     }
 
+    /// The check reaches a mapping nested inside a sequence, which is why the
+    /// seed carries the channel rather than the top-level call holding it.
     #[test]
-    fn unreadable_yaml_is_refused_with_its_position() {
-        let failure = to_json("a: [1, 2\nb: 3").expect_err("unterminated flow sequence");
+    fn a_repeated_key_nested_in_a_list_is_still_refused() {
+        let failure = to_json("items:\n  - a: 1\n    a: 2\n").expect_err("a nested duplicate");
+        assert!(matches!(failure, Error::DuplicateKey { ref key } if &**key == "a"));
+    }
 
-        assert!(matches!(
-            failure,
-            crate::Error::FrontmatterUnreadable { .. }
-        ));
+    /// An empty block says nothing and is well-formed; the schema layer above
+    /// is what refuses it, with a sentence naming the block it wanted.
+    #[test]
+    fn an_empty_block_is_an_empty_object() {
+        for blank in ["", "   ", "\n\n"] {
+            let value = to_json(blank).expect("a blank block is well-formed");
+            assert_eq!(value, serde_json::json!({}), "{blank:?}");
+        }
+    }
+
+    /// Unreadable YAML carries the parser's own message, positioned.
+    #[test]
+    fn malformed_yaml_reports_where_it_stopped() {
+        let failure = to_json("a: [1, 2\nb: broken\n").expect_err("unbalanced flow sequence");
+        assert!(matches!(failure, Error::FrontmatterUnreadable { .. }));
+        // The cause survives, which is the whole of RUST_ERROR_STANDARD rule 3.
+        assert!(std::error::Error::source(&failure).is_some());
     }
 }

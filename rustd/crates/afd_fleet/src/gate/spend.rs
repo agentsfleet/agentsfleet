@@ -32,7 +32,7 @@ use crate::error::{Result, query};
 use crate::gate::decision::Status;
 use crate::gate::detail::KIND_REPOSITORY_WRITE;
 use crate::gate::store::Gates;
-use crate::sql;
+use super::sql;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_SPEND: &str = "write gate spend";
@@ -164,7 +164,7 @@ impl Gates {
         // forget and no path that leaves the row locked.
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_SPEND))?;
 
-        let row = sqlx::query(sql::gate::LOCK_WRITE_GATE_FOR_MINT)
+        let row = sqlx::query(sql::LOCK_WRITE_GATE_FOR_MINT)
             .bind(fleet_id.as_str())
             .bind(event_id)
             .bind(KIND_REPOSITORY_WRITE)
@@ -183,7 +183,7 @@ impl Gates {
             Err(refusal) => return Ok(refused(fleet_id, event_id, refusal)),
         };
 
-        let spent = sqlx::query(sql::gate::SPEND_WRITE_GATE_FOR_MINT)
+        let spent = sqlx::query(sql::SPEND_WRITE_GATE_FOR_MINT)
             .bind(gate_id)
             .bind(Status::Approved.as_str())
             .execute(&mut *transaction)

@@ -234,14 +234,15 @@ pub enum Error {
 
     /// The frontmatter is not YAML this daemon can tokenise.
     ///
-    /// Carries the tokeniser's own error, which names the line and column. The
+    /// Carries the parser's own message, which names the line and column. The
     /// Zig collapses this onto `MissingRequiredField` and puts nothing in the
     /// caller's reach.
+    ///
     #[error("the frontmatter is not readable YAML")]
     FrontmatterUnreadable {
-        /// Where the tokeniser stopped, and why.
+        /// Where the parser stopped, and why.
         #[from]
-        source: saphyr_parser::ScanError,
+        source: yaml_serde::Error,
     },
 
     /// One mapping declares the same key twice.

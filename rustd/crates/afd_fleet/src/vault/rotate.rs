@@ -32,7 +32,7 @@ use afd_crypto::envelope::{Envelope, Sealer};
 use serde_json::Value;
 use sqlx::Acquire as _;
 
-use crate::credential::oauth::FIELD_REFRESH_TOKEN;
+use afd_core::credential::FIELD_REFRESH_TOKEN;
 use crate::error::{Result, query, vault_data_invalid};
 use crate::sql;
 use crate::vault::{ENVELOPE_AT, KeyRef, Vault};
