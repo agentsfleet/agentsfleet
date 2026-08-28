@@ -37,7 +37,7 @@ use afd_wire::runner::{AssignedPolicy, CapabilityReport, ExtraBind};
 
 use afd_core::limits::WorkerCount;
 
-use crate::runner::reconcile::Verdict;
+use crate::reconcile::Verdict;
 
 /// The five columns an assignment is stored in, owned.
 ///
@@ -278,10 +278,10 @@ mod tests {
         };
         let degraded = StoredVerdict {
             degraded: true,
-            reason: Some(crate::runner::reconcile::REASON_NO_CAPABILITY_REPORT.to_owned()),
+            reason: Some(crate::reconcile::REASON_NO_CAPABILITY_REPORT.to_owned()),
         };
         let fresh = Verdict::Degraded {
-            reason: crate::runner::reconcile::REASON_NO_CAPABILITY_REPORT,
+            reason: crate::reconcile::REASON_NO_CAPABILITY_REPORT,
         };
 
         assert!(healthy.differs_from(fresh), "healthy row, degraded verdict");

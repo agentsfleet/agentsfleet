@@ -33,7 +33,7 @@
 use super::rates::Posture;
 use super::{RUN_NANOS_PER_SEC, SliceRates};
 use crate::error::Result;
-use crate::money::store::Accounts;
+use crate::store::Accounts;
 
 /// The runner's cumulative token counts for the whole run.
 ///
@@ -154,12 +154,12 @@ impl Accounts {
 #[cfg(test)]
 mod tests {
     use super::{Cumulative, RUN_FEE_ONLY};
-    use crate::money::nanos::MS_PER_SEC;
+    use crate::nanos::MS_PER_SEC;
 
     /// A token count far above any rate this test publishes, so "adds nothing"
     /// is a statement about the RATE rather than about a small count.
     const TOKENS: i64 = 5_000_000;
-    use crate::money::{RUN_NANOS_PER_SEC, slice_charge};
+    use crate::{RUN_NANOS_PER_SEC, slice_charge};
 
     /// The wire's three counts reach the three columns they name.
     ///

@@ -21,7 +21,7 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 
-use super::runner::Bound;
+use afd_runner::sql::runner::Bound;
 
 /// Claim a fleet's lease slot, bumping the monotonic fence.
 ///
@@ -204,11 +204,11 @@ impl<'a> LeaseRow<'a> {
             .bind(self.status)
             .bind(millis)
             .bind(self.event_row_id.as_str())
-            .bind(super::event_type::LEASE_ACQUIRED)
-            .bind(super::meta::LEASE_ID)
-            .bind(super::meta::FLEET_ID)
-            .bind(super::meta::AGENTSFLEET_EVENT_ID)
-            .bind(super::meta::KIND)
+            .bind(afd_runner::sql::event_type::LEASE_ACQUIRED)
+            .bind(afd_runner::sql::meta::LEASE_ID)
+            .bind(afd_runner::sql::meta::FLEET_ID)
+            .bind(afd_runner::sql::meta::AGENTSFLEET_EVENT_ID)
+            .bind(afd_runner::sql::meta::KIND)
             .bind(self.kind)
     }
 }

@@ -46,12 +46,12 @@ use crate::lease::answer::{EVENT_REFUSED, no_work};
 use crate::lease::envelope::Acquired;
 use crate::lease::installed::Installed;
 use crate::lease::store::Leases;
-use crate::money::Accounts;
-use crate::money::rates::Posture;
 use crate::provider::{Providers, Resolved};
 use crate::secrets::Registry;
-use crate::sql::event::label;
 use crate::vault::Vault;
+use afd_billing::Accounts;
+use afd_billing::rates::Posture;
+use afd_core::event::label;
 
 /// Why a poll came back empty when a gate is waiting on a person.
 ///

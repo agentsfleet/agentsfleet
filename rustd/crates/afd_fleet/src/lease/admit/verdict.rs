@@ -8,7 +8,6 @@
 
 use crate::gate::{Refused, Verdict};
 use crate::lease::admit::{Admission, Refusal, Transient};
-use crate::sql;
 
 /// The gate that stopped a fleet, for a transient's `at`.
 const STOPPED: &str = "gate_auto_kill";
@@ -35,10 +34,10 @@ impl Admission {
             Verdict::Pass => None,
             Verdict::Await(waiting) => Some(Self::Await(waiting)),
             Verdict::Refuse(Refused::Denied) => Some(Self::Refuse(Refusal::labelled(
-                sql::event::label::APPROVAL_DENIED,
+                afd_core::event::label::APPROVAL_DENIED,
             ))),
             Verdict::Refuse(Refused::Expired) => Some(Self::Refuse(Refusal::labelled(
-                sql::event::label::APPROVAL_EXPIRED,
+                afd_core::event::label::APPROVAL_EXPIRED,
             ))),
             Verdict::Killed(_) => Some(Self::Retry(Transient { at: STOPPED })),
             Verdict::Unavailable => Some(Self::Retry(Transient { at: GATE })),
@@ -50,7 +49,6 @@ impl Admission {
 mod tests {
     use crate::gate::{Refused, Trigger, Verdict, Waiting};
     use crate::lease::admit::Admission;
-    use crate::sql;
 
     /// Every verdict the gate can answer, so the table below is walked in full
     /// rather than sampled — a new arm shows up here as a missing row.
@@ -102,13 +100,13 @@ mod tests {
         assert_eq!(
             Admission::of_gate(Verdict::Refuse(Refused::Denied)),
             Some(Admission::Refuse(crate::lease::admit::Refusal::labelled(
-                sql::event::label::APPROVAL_DENIED
+                afd_core::event::label::APPROVAL_DENIED
             )))
         );
         assert_eq!(
             Admission::of_gate(Verdict::Refuse(Refused::Expired)),
             Some(Admission::Refuse(crate::lease::admit::Refusal::labelled(
-                sql::event::label::APPROVAL_EXPIRED
+                afd_core::event::label::APPROVAL_EXPIRED
             )))
         );
     }

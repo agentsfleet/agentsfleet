@@ -1,11 +1,11 @@
 //! The runner plane's seam: what the lease family of verbs acts through.
 
+use afd_billing::Nanos;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet::credential::Minted;
 use afd_fleet::lease::Plane;
 use afd_fleet::memory::Captured;
-use afd_fleet::money::Nanos;
 use afd_wire::activity::ActivityFrame;
 use afd_wire::credentials::MintCredentialRequest;
 use afd_wire::memory::{MemoryDelta, MemoryPushRequest};

@@ -1,0 +1,46 @@
+[package]
+name = "afd_events"
+description = "The narrative log of a fleet: the rows a run writes, the history an operator reads, and the live tail they watch it on."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Identifiers, the clock a row is stamped with, and the registry codes.
+afd_core.workspace = true
+# The Postgres pool every statement here runs on.
+afd_db.workspace = true
+# The live tail subscribes through the process's one pub/sub connection, and a
+# steer appends to the fleet's stream. Both are this crate's, because both are
+# the same question the table answers, asked about the present.
+afd_redis.workspace = true
+# The event type and status spellings the wire carries.
+afd_wire.workspace = true
+# The opaque page cursor. base64url-no-pad, because the value comes back in a
+# query string where a `=` would need percent-encoding.
+base64.workspace = true
+# `since=` takes a calendar string, and `afd_core::clock` is deliberately a
+# clock and an instant TYPE with no calendar in it. Same division
+# `afd_billing::window` draws: UnixMillis at the boundaries, jiff only for
+# the civil-to-instant conversion between them.
+jiff.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a router
+# suite reaches this crate's seam with no datastore behind it.
+test-util = ["afd_core/test-util", "afd_db/test-util", "afd_redis/test-util"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

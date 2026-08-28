@@ -30,15 +30,23 @@ test-util = [
 base64.workspace = true
 # Decoding that reference back to the identifier the gate table stores.
 uuid.workspace = true
-# The principal a verb acts for, and the runner identity carried on it.
-afd_auth.workspace = true
 # Identifiers, the clock, the error-code registry, and the bounded primitives.
+afd_billing.workspace = true
 afd_core.workspace = true
 # The pool every statement in `sql/` runs against.
 afd_db.workspace = true
+# `core.fleet_events`. The table's statements moved out of this crate's
+# `sql::event` and into the crate named for it, so `afd_approval` could reach
+# them without depending on leases, money, policy and four sweepers.
+afd_events.workspace = true
 # The readiness index and the fleet event streams. A lease is the one verb
 # that cannot be served from either datastore alone.
 afd_redis.workspace = true
+# The HOST's plane. The lease is issued TO a runner, so the lease statements
+# bind runner rows through its `Bound`, and finalize writes the one
+# `lease_released` audit row using its vocabulary — the single point the two
+# planes meet.
+afd_runner.workspace = true
 # The runner-plane state reads, and the `admin_state` spelling the credential
 # lookup already owns — imported rather than restated (RULE UFS).
 afd_state.workspace = true
@@ -50,7 +58,6 @@ afd_fleet_runtime.workspace = true
 # The UTC month a spend ceiling opens at. Confined to `money::window`; see the
 # workspace manifest for why a calendar is a dependency and the rolling day is
 # not.
-jiff.workspace = true
 # The entropy a runner token is minted from. Drawn through the workspace's one
 # entropy surface, never through a second call to the operating system.
 afd_crypto.workspace = true
@@ -108,14 +115,9 @@ serde.workspace = true
 # `metadata` a runner event carries are all `jsonb`, built and read as values.
 serde_json.workspace = true
 tracing.workspace = true
-# The sweepers' loop: `select!` over a cancellation token and a sleep, which is
-# what replaces four copies of the Zig's poll-an-atomic-every-100ms wait.
-tokio = { workspace = true, features = ["time", "macros"] }
-# The cancellation token itself — edge-triggered, so a stopping daemon
-# interrupts a sweeper's wait rather than waiting it out.
-tokio-util.workspace = true
 
 [dev-dependencies]
+afd_runner = { workspace = true, features = ["test-util"] }
 # The suites need REAL parallelism: every contention proof in this crate — the
 # affinity race, the reclaim fence, the mint single-flight — is worthless on a
 # single-threaded runtime, because the interleaving it exists to force cannot

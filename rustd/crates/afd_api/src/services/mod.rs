@@ -53,8 +53,8 @@ pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, Worksp
 pub use self::vault::WorkspaceSecrets;
 
 use afd_core::clock::UnixMillis;
-use afd_fleet::Runners;
 use afd_fleet::bundle::Bundles;
+use afd_runner::Runners;
 
 use crate::auth::Authenticator;
 

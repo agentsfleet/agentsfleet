@@ -40,8 +40,8 @@ impl Leasing for NoWork {
         _runner_id: &Uuid7,
         _request: &afd_wire::report::ReportRequest<'_>,
         _now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::money::Nanos>> + Send {
-        std::future::ready(Ok(afd_fleet::money::Nanos::ZERO))
+    ) -> impl Future<Output = afd_fleet::Result<afd_billing::Nanos>> + Send {
+        std::future::ready(Ok(afd_billing::Nanos::ZERO))
     }
 
     /// Accepts every batch of frames and publishes none, which is what a plane

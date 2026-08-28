@@ -32,11 +32,11 @@ use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::Budget;
 use sqlx::Row as _;
 
+use crate::Nanos;
 use crate::error::{Result, query};
-use crate::money::Nanos;
-use crate::money::store::Accounts;
-use crate::money::window::Windows;
 use crate::sql;
+use crate::store::Accounts;
+use crate::window::Windows;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_DRAIN: &str = "fleet budget drain";
@@ -125,13 +125,13 @@ impl Accounts {
     ) -> Result<Spend> {
         let windows = Windows::at(now);
         let mut connection = self.pool().acquire().await?;
-        let row = sqlx::query(sql::billing::SELECT_BUDGET_DRAIN)
+        let row = sqlx::query(sql::SELECT_BUDGET_DRAIN)
             .bind(workspace_id.as_str())
             .bind(fleet_id.as_str())
             .bind(windows.day.as_millis())
             .bind(windows.month.as_millis())
-            .bind(sql::billing::charge::STAGE)
-            .bind(sql::billing::charge::RECEIVE)
+            .bind(sql::charge::STAGE)
+            .bind(sql::charge::RECEIVE)
             .fetch_one(&mut *connection)
             .await
             .map_err(query(CONTEXT_DRAIN))?;
@@ -150,7 +150,7 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
     use super::{Spend, Verdict, covers};
-    use crate::money::{NANOS_PER_USD, Nanos};
+    use crate::{NANOS_PER_USD, Nanos};
     use afd_fleet_runtime::config::Budget;
 
     /// A ceiling built the only way one can be: through the parser that bounds

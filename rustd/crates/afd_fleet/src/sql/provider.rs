@@ -63,8 +63,8 @@ LIMIT 1";
 /// The stored spellings of `core.tenant_model_selection.mode`.
 ///
 /// One declaration each (RULE UFS). These are the same two words
-/// [`Posture`](crate::money::Posture) round-trips through, and they are
-/// declared in [`super::billing::posture`] rather than restated here — the
+/// [`Posture`](afd_billing::Posture) round-trips through, and they are
+/// declared in [`afd_billing::sql::posture`] rather than restated here — the
 /// column and the ledger's `posture` column hold the same vocabulary, and two
 /// spellings would mean a run billed under one word and selected under another.
-pub use super::billing::posture;
+pub use afd_billing::sql::posture;

@@ -47,8 +47,8 @@ use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_fleet::Runners;
 use afd_redis::{FleetStreams, ReadyIndex};
+use afd_runner::Runners;
 use agentsfleetd::serve::{Booted, boot};
 use agentsfleetd::supervisor::Supervisor;
 

@@ -16,10 +16,10 @@
 use afd_core::id::Uuid7;
 use sqlx::Row as _;
 
-use crate::error::{Error, ErrorKind, Result, query, row_malformed};
-use crate::runner::policy::{AssignmentColumns, StoredVerdict};
-use crate::runner::store::Runners;
+use crate::error::{Error, Result, query, row_malformed};
+use crate::policy::{AssignmentColumns, StoredVerdict};
 use crate::sql;
+use crate::store::Runners;
 
 /// The statement name a query failure carries.
 const CONTEXT_SELF_READ: &str = "runner self read";
@@ -36,7 +36,7 @@ const TABLE_RUNNERS: &str = "fleet.runners";
 /// The assignment and the verdict are grouped rather than flat, so the self
 /// read and the heartbeat hand their callers the SAME two types — and so the
 /// decoder that turns either into a wire policy has one shape to accept
-/// (`crate::runner::policy`).
+/// (`crate::policy`).
 #[derive(Debug)]
 pub struct SelfRow {
     /// The runner's identifier, already proven canonical.
@@ -77,7 +77,7 @@ impl Runners {
             .await
             .map_err(query(CONTEXT_SELF_READ))?;
         // Fail closed rather than answer 200 for a phantom runner.
-        let row = found.ok_or_else(|| Error::new(ErrorKind::RunnerVanished))?;
+        let row = found.ok_or_else(|| Error::RunnerVanished)?;
 
         let column = query(CONTEXT_SELF_READ);
         let id: String = row.try_get(0).map_err(&column)?;

@@ -10,9 +10,9 @@ use sqlx::Row as _;
 use sqlx::postgres::PgRow;
 
 use crate::error::{Result, provider_malformed, query, row_malformed};
-use crate::money::Posture;
 use crate::provider::store::Providers;
 use crate::sql;
+use afd_billing::Posture;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_SELECTION: &str = "tenant model selection";

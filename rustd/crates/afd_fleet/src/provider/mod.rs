@@ -32,7 +32,7 @@
 //! strategy files are seventeen unit tests between them and not one of them
 //! opens a connection.
 //!
-//! That is the same split [`crate::money`] draws between its pure arithmetic
+//! That is the same split [`afd_billing`] draws between its pure arithmetic
 //! and its reads, and the same one [`crate::lease::admit::posture`] draws
 //! between a verdict and a fault.
 //!
@@ -62,8 +62,8 @@ use afd_core::id::Uuid7;
 use serde::de::DeserializeOwned;
 
 use crate::error::{Result, provider_malformed, provider_no_workspace, provider_secret_missing};
-use crate::money::Posture;
 use crate::vault::KeyRef;
+use afd_billing::Posture;
 
 pub use self::endpoint::{OPENAI_COMPATIBLE, Rejection};
 // Re-exported crate-wide for the credential broker, which asks the SAME

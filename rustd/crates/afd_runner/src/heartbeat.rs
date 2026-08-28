@@ -24,14 +24,14 @@ use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
 use afd_wire::runner::{CapabilityReport, HeartbeatRequest, SelftestReport};
 use sqlx::{Executor as _, PgConnection, Row as _};
 
-use crate::error::{Error, ErrorKind, Result, query};
-use crate::runner::bounds;
-use crate::runner::policy::{AssignmentColumns, StoredVerdict, capability};
-use crate::runner::reconcile::{Verdict, reconcile};
-use crate::runner::spelling::render_list;
-use crate::runner::store::Runners;
+use crate::bounds;
+use crate::error::{Error, Result, query};
+use crate::policy::{AssignmentColumns, StoredVerdict, capability};
+use crate::reconcile::{Verdict, reconcile};
+use crate::spelling::render_list;
 use crate::sql;
 use crate::sql::runner::Bound;
+use crate::store::Runners;
 
 /// The statement name a policy-read failure carries.
 const CONTEXT_POLICY_READ: &str = "runner policy read";
@@ -129,7 +129,7 @@ impl Runners {
             .map_err(query(CONTEXT_POLICY_READ))?;
         // Fail closed rather than beat a phantom runner: the token is real and
         // the enrolment is gone, so the host must be re-enrolled.
-        let row = found.ok_or_else(|| Error::new(ErrorKind::RunnerVanished))?;
+        let row = found.ok_or_else(|| Error::RunnerVanished)?;
 
         let column = query(CONTEXT_POLICY_READ);
         Ok(PolicyRow {

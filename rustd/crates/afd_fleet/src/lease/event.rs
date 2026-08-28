@@ -31,7 +31,6 @@ use crate::error::{Result, query};
 use crate::lease::admit::Refusal;
 use crate::lease::envelope::Acquired;
 use crate::lease::store::Leases;
-use crate::sql;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_RECEIVED: &str = "fleet event received";
@@ -66,7 +65,7 @@ impl Leases {
     /// parsed it — so there is nothing left here to validate.
     pub async fn record_received(&self, acquired: &Acquired, now: UnixMillis) -> Result<Delivery> {
         let mut connection = self.pool().acquire().await?;
-        let landed = sqlx::query(sql::event::INSERT_FLEET_EVENT)
+        let landed = sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
             .bind(acquired.fleet_id.as_str())
             .bind(&acquired.event_id)
             .bind(acquired.workspace_id.as_str())
@@ -75,7 +74,7 @@ impl Leases {
             .bind(&acquired.request_json)
             .bind(Option::<&str>::None)
             .bind(now.as_millis())
-            .bind(sql::event::EVENT_STATUS_RECEIVED)
+            .bind(afd_core::event::status::RECEIVED)
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT_RECEIVED))?;
@@ -124,13 +123,13 @@ impl Leases {
         now: UnixMillis,
     ) -> Result<Ended> {
         let mut connection = self.pool().acquire().await?;
-        let moved = sqlx::query(sql::event::UPDATE_FLEET_EVENT_FAILURE)
+        let moved = sqlx::query(afd_events::sql::UPDATE_FLEET_EVENT_FAILURE)
             .bind(fleet_id.as_str())
             .bind(event_id)
-            .bind(sql::event::EVENT_STATUS_GATE_BLOCKED)
+            .bind(afd_core::event::status::GATE_BLOCKED)
             .bind(refusal.label)
             .bind(now.as_millis())
-            .bind(sql::event::EVENT_STATUS_RECEIVED)
+            .bind(afd_core::event::status::RECEIVED)
             // Empty stores as SQL NULL through the statement's `NULLIF`, which
             // is what keeps the row shape identical for the refusals that
             // carry no operator-readable instruction.

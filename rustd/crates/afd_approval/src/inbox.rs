@@ -37,11 +37,6 @@ use crate::decision::Decision;
 use crate::sql;
 use crate::{Result, error};
 
-/// The status a continuation event opens in.
-///
-/// `received`, the same word the runner plane's report path flips out of.
-const EVENT_STATUS_RECEIVED: &str = "received";
-
 /// The grant spellings the resolve's second arm writes.
 const GRANT_APPROVED: &str = "approved";
 const GRANT_REVOKED: &str = "revoked";
@@ -358,7 +353,7 @@ impl Inbox {
             .await?;
 
         let mut connection = self.database.acquire().await?;
-        sqlx::query(sql::INSERT_FLEET_EVENT)
+        sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
             .bind(&resolved.fleet_id)
             .bind(appended.id.as_str())
             .bind(&resolved.workspace_id)
@@ -367,7 +362,7 @@ impl Inbox {
             .bind(CONTINUATION_BODY)
             .bind(&resolved.event_id)
             .bind(now.as_millis())
-            .bind(EVENT_STATUS_RECEIVED)
+            .bind(afd_core::event::status::RECEIVED)
             .execute(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_CONTINUE))?;

@@ -19,8 +19,7 @@
 
 use afd_wire::report::{FailureClass, Outcome};
 
-use crate::sql;
-use crate::sql::event::MAX_FAILURE_DETAIL_BYTES;
+use afd_events::sql::MAX_FAILURE_DETAIL_BYTES;
 
 /// The runner's verdict, in the shape the terminal row needs.
 ///
@@ -67,8 +66,8 @@ impl<'a> Verdict<'a> {
     /// The status the event's terminal row takes.
     pub(super) const fn status(self) -> &'static str {
         match self {
-            Self::Succeeded => sql::event::EVENT_STATUS_PROCESSED,
-            Self::Failed { .. } => sql::event::EVENT_STATUS_FLEET_ERROR,
+            Self::Succeeded => afd_core::event::status::PROCESSED,
+            Self::Failed { .. } => afd_core::event::status::FLEET_ERROR,
         }
     }
 
@@ -99,7 +98,7 @@ impl<'a> Verdict<'a> {
 ///
 /// `FailureClass.label()` in the Zig. Derived from the wire enum's own serde
 /// renaming rather than restated, so a rename fails to compile instead of
-/// writing rows nothing queries — the device [`sql::event_type`] uses.
+/// writing rows nothing queries — the device [`crate::sql::event_type`] uses.
 fn class_label(class: FailureClass) -> &'static str {
     match class {
         FailureClass::StartupPosture => "startup_posture",
@@ -115,7 +114,7 @@ fn class_label(class: FailureClass) -> &'static str {
         // Spelled identically to the gate's own refusal label, which is why it
         // is imported rather than written out: one string for the ceiling hit
         // at issue and the ceiling hit mid-run, so an operator greps once.
-        FailureClass::BudgetBreach => sql::event::label::BUDGET_BREACH,
+        FailureClass::BudgetBreach => afd_core::event::label::BUDGET_BREACH,
     }
 }
 

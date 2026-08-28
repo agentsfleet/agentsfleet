@@ -97,7 +97,7 @@ async fn test_report_writes_row_parity() {
         held.fixtures
             .ledger_column(
                 &held.event_id,
-                sql::billing::charge::STAGE,
+                afd_billing::sql::charge::STAGE,
                 "credit_deducted_nanos"
             )
             .await,
@@ -106,7 +106,7 @@ async fn test_report_writes_row_parity() {
     );
     assert_eq!(
         held.fixtures
-            .ledger_column(&held.event_id, sql::billing::charge::STAGE, "wall_ms")
+            .ledger_column(&held.event_id, afd_billing::sql::charge::STAGE, "wall_ms")
             .await,
         Some(SLICE_MS.to_string()),
         "the stage row carries the span it charged over, which the budget drain apportions on"
@@ -180,7 +180,7 @@ async fn test_report_stale_fence_rejected() {
         held.fixtures
             .ledger_column(
                 &held.event_id,
-                sql::billing::charge::STAGE,
+                afd_billing::sql::charge::STAGE,
                 "credit_deducted_nanos"
             )
             .await,

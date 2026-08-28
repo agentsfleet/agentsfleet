@@ -22,8 +22,8 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 
-use super::runner::Bound;
-use crate::money::Meter;
+use afd_billing::Meter;
+use afd_runner::sql::runner::Bound;
 
 /// The lease a renewal is about, scoped to the runner presenting it.
 ///
@@ -204,9 +204,9 @@ impl<'a> RenewRow<'a> {
             .bind(rates.input_nanos_per_mtok)
             .bind(rates.cached_input_nanos_per_mtok)
             .bind(rates.output_nanos_per_mtok)
-            .bind(super::billing::charge::STAGE)
-            .bind(crate::money::nanos::MS_PER_SEC)
-            .bind(crate::money::nanos::TOKENS_PER_MTOK)
+            .bind(afd_billing::sql::charge::STAGE)
+            .bind(afd_billing::nanos::MS_PER_SEC)
+            .bind(afd_billing::nanos::TOKENS_PER_MTOK)
             .bind(self.ledger_id.as_str())
     }
 }

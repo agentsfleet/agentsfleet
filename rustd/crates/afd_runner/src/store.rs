@@ -7,12 +7,12 @@ use afd_db::Db;
 use afd_wire::runner::{AssignedPolicy, RegisterRequest};
 
 use crate::error::{Result, query};
-use crate::runner::reconcile::{Verdict, reconcile};
-use crate::runner::spelling::{policy_wire, render_list, tier_wire};
+use crate::reconcile::{Verdict, reconcile};
+use crate::spelling::{policy_wire, render_list, tier_wire};
 use afd_auth::credential::CredentialKind;
 
-use crate::runner::validate::{HostId, assignment};
 use crate::sql;
+use crate::validate::{HostId, assignment};
 use afd_auth::minted::Minted;
 
 /// Statement names, for the context a query failure carries.

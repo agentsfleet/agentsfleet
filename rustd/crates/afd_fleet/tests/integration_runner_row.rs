@@ -25,8 +25,8 @@ mod requests;
 
 use afd_auth::directory::Digest;
 use afd_core::clock::UnixMillis;
-use afd_fleet::Verdict;
-use afd_fleet::runner::reconcile::REASON_NO_CAPABILITY_REPORT;
+use afd_runner::Verdict;
+use afd_runner::reconcile::REASON_NO_CAPABILITY_REPORT;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
 use self::requests::{ENROLLED_AT, enrolment};

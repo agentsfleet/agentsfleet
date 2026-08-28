@@ -34,6 +34,18 @@ impl From<afd_redis::Error> for Error {
     }
 }
 
+/// A money read or charge failed.
+///
+/// The billing store moved to its own crate with its own error, and the
+/// admission pass still speaks THIS crate's: the posture that decides what a
+/// money fault means lives here, so the fault composes in rather than the
+/// posture moving out.
+impl From<afd_billing::Error> for Error {
+    fn from(source: afd_billing::Error) -> Self {
+        Self::new(ErrorKind::Billing { source })
+    }
+}
+
 /// An identifier could not be minted — the instant is unrepresentable.
 ///
 /// `#[from]` on the KIND, lifted here, so `?` carries a `Uuid7::encode` failure
