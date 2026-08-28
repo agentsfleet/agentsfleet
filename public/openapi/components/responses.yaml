@@ -1,8 +1,0 @@
-components:
-  responses:
-    Error:
-      description: RFC 7807 problem detail error response
-      content:
-        application/problem+json:
-          schema:
-            $ref: ./schemas.yaml#/components/schemas/ErrorBody

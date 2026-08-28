@@ -44,7 +44,6 @@ Run this checklist as part of `CHORE(close)` (per `~/.claude/CLAUDE.md` lifecycl
 - [ ] **Versioning** — added/renamed/removed surface listed in PR description; deprecation uses `Deprecation` + `Sunset` headers; new response fields declare `x-stability` (§9)
 - [ ] **Tests** — happy path + one error per `hx.fail` + idempotency double-PATCH + `Idempotency-Key` replay (where applicable) + ETag mismatch (§10)
 - [ ] **Logging** — sensitive ID values are DEBUG-only or carry `// log-id-allowed:` comment; secret-shaped fields are write-only or one-time-read (§11)
-- [ ] **`make check-openapi` clean** — bundle in sync, redocly lint, error-schema + URL-shape checks pass (§6)
 - [ ] **The repository's declared `verify.unit` command is clean** — the route-scope table's exhaustive match and its tests cover the auth gate matrix (§10)
 - [ ] **No file over 350 lines** (§10)
 - [ ] **`gitleaks detect` clean** (§10)
@@ -406,7 +405,7 @@ Don't invent other extensions without amending this doc.
 
 ## §6 — OpenAPI editing
 
-**`public/openapi.json` is a build artifact.** Never edit it directly. Edits get wiped on `make check-openapi` and CI's bundle-in-sync gate fails the PR.
+**`public/openapi.json` is a committed static artifact.** The split YAML source, the Redocly bundler and the whole `check-openapi` gate family were removed: the Rust daemon will emit this document itself, and until it does the file is edited directly and nothing generates or grades it.
 
 The source of truth lives under `public/openapi/`:
 
@@ -424,7 +423,8 @@ public/openapi/
 
 1. Edit the relevant YAML under `public/openapi/paths/<tag>.yaml`.
 2. Add / rename / remove the corresponding `match()` arm in `src/agentsfleetd/http/router.zig`.
-3. Run `make check-openapi` — bundles YAML → JSON, runs Redocly lint, runs `check_openapi_errors.py`, runs `check_openapi_url_shape.py` (REST §1).
+3. Edit `public/openapi.json` directly. No bundler and no gate stands behind it
+   until the Rust daemon generates its own document.
 4. Commit YAML + bundled JSON + `router.zig` together. Splitting these across commits leaves CI red.
 
 **Router ↔ openapi.json parity is reviewer-enforced.** There is no mechanical gate cross-checking that every `router.match()` arm has a documented openapi path or vice versa. When you add, rename, or remove a route, both surfaces must move in the same diff and the reviewer must verify it. The previous Python parity gate (`audits/check_openapi_sync.py`) and its data file (`route_manifest.zig`, deleted) were retired in M61_002.
@@ -711,7 +711,6 @@ Before opening a PR touching any handler:
 - [ ] POST endpoints accepting `Idempotency-Key` have a replay test: same key + same body → cached response; same key + different body → 4xx (§2)
 - [ ] Mutable resources have an ETag/`If-Match` test: stale `If-Match` → 412 with current `etag` returned (§4)
 - [ ] OpenAPI updated — endpoint definition, request/response schemas, error responses
-- [ ] `make check-openapi` — bundle in sync, redocly lint, error-schema + URL-shape checks, router parity
 - [ ] `gitleaks detect` clean
 - [ ] No new file over 350 lines
 
