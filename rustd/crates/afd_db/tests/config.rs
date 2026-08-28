@@ -502,3 +502,28 @@ fn test_the_boot_line_reports_whether_the_url_declared_the_mode() {
         "a declared mode must read as declared: {rendered}"
     );
 }
+
+/// Every mode a connection URL can declare reaches the log under its own name.
+///
+/// The three ordinary ones are covered by the tests above; these are the rest,
+/// and they are here because the spelling is a contract with whoever is reading
+/// the boot line at three in the morning. A mode that renders as the wrong word
+/// — or as a fallback word covering several — sends them to check a posture the
+/// daemon is not in, and nothing about the log looks wrong.
+#[test]
+fn test_every_declarable_mode_reports_under_its_own_name() {
+    for mode in [
+        "disable",
+        "allow",
+        "prefer",
+        "require",
+        "verify-ca",
+        "verify-full",
+    ] {
+        let url = format!("postgres://u:pw@h:5432/db?sslmode={mode}");
+        let env = env_with(&[("DATABASE_URL", url.as_str())]);
+        let config = PoolConfig::resolve(&env, DbRole::Default)
+            .unwrap_or_else(|error| panic!("{url} was refused: {error}"));
+        assert_eq!(config.ssl_mode(), mode, "{url} reported the wrong mode");
+    }
+}
