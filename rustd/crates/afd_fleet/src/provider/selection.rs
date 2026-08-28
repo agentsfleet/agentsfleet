@@ -11,7 +11,7 @@ use sqlx::postgres::PgRow;
 
 use crate::error::{Result, provider_malformed, query, row_malformed};
 use crate::provider::store::Providers;
-use crate::sql;
+use crate::provider::sql;
 use afd_billing::Posture;
 
 /// Statement name, for the context a query failure carries.
@@ -97,7 +97,7 @@ impl Providers {
     /// surface rather than a value to guess at.
     pub(crate) async fn selection(&self, tenant_id: &Uuid7) -> Result<Option<Selection>> {
         let mut connection = self.pool().acquire().await?;
-        sqlx::query(sql::provider::SELECT_TENANT_MODEL_SELECTION)
+        sqlx::query(sql::SELECT_TENANT_MODEL_SELECTION)
             .bind(tenant_id.as_str())
             .fetch_optional(&mut *connection)
             .await
@@ -116,7 +116,7 @@ impl Providers {
     /// dashboard rather than resolved to an unpriced model.
     pub(crate) async fn platform_default(&self) -> Result<Option<PlatformDefault>> {
         let mut connection = self.pool().acquire().await?;
-        sqlx::query(sql::provider::SELECT_ACTIVE_PLATFORM_DEFAULT)
+        sqlx::query(sql::SELECT_ACTIVE_PLATFORM_DEFAULT)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_PLATFORM))?
@@ -135,7 +135,7 @@ impl Providers {
     /// not an identifier.
     pub(crate) async fn primary_workspace(&self, tenant_id: &Uuid7) -> Result<Option<Uuid7>> {
         let mut connection = self.pool().acquire().await?;
-        let found: Option<String> = sqlx::query_scalar(sql::provider::SELECT_PRIMARY_WORKSPACE)
+        let found: Option<String> = sqlx::query_scalar(sql::SELECT_PRIMARY_WORKSPACE)
             .bind(tenant_id.as_str())
             .fetch_optional(&mut *connection)
             .await

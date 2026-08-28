@@ -34,7 +34,7 @@ use sqlx::Acquire as _;
 
 use afd_core::credential::FIELD_REFRESH_TOKEN;
 use crate::error::{Result, query, vault_data_invalid};
-use crate::sql;
+use crate::vault::sql;
 use crate::vault::{ENVELOPE_AT, KeyRef, Vault};
 
 /// Statement name, for the context a query failure carries.
@@ -71,7 +71,7 @@ struct EnvelopeRow<'a> {
 }
 
 impl<'a> EnvelopeRow<'a> {
-    /// Binds this row to [`sql::vault::UPDATE_SECRET_ENVELOPE`] in `$n` order.
+    /// Binds this row to [`sql::UPDATE_SECRET_ENVELOPE`] in `$n` order.
     fn bind(
         self,
         statement: sqlx::query::Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments>,
@@ -108,7 +108,7 @@ impl Vault {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_ROTATE))?;
 
-        let row = sqlx::query(sql::vault::LOCK_SECRET)
+        let row = sqlx::query(sql::LOCK_SECRET)
             .bind(key.workspace_id.as_str())
             .bind(key.name)
             .fetch_optional(&mut *transaction)
@@ -163,7 +163,7 @@ impl Vault {
             sealed: &sealed,
             now,
         }
-        .bind(sqlx::query(sql::vault::UPDATE_SECRET_ENVELOPE))
+        .bind(sqlx::query(sql::UPDATE_SECRET_ENVELOPE))
         .execute(&mut *transaction)
         .await
         .map_err(query(CONTEXT_ROTATE))?;

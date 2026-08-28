@@ -25,8 +25,8 @@ use sqlx::Row as _;
 use crate::error::{Result, query, row_malformed};
 use crate::lease::affinity::Fence;
 use crate::lease::store::Leases;
-use crate::sql;
-use crate::sql::report::SettleRow;
+use crate::lease::sql;
+use crate::lease::sql::report::SettleRow;
 use afd_billing::{Meter, Nanos};
 
 /// Statement name, for the context a query failure carries.

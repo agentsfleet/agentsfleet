@@ -17,6 +17,7 @@
 //! and no way for a connection to return to the pool with the wrong role. The
 //! hazard is not handled better; it is gone.
 
+pub mod sql;
 pub mod window;
 
 use afd_core::clock::UnixMillis;
@@ -27,7 +28,6 @@ use afd_wire::memory::{MAX_ENTRIES_PER_FLEET, MemoryDelta};
 use sqlx::{Acquire as _, Row as _};
 
 use crate::error::{Result, query};
-use crate::sql;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_LIST: &str = "memory list";
@@ -91,12 +91,12 @@ impl Memories {
     pub async fn list(&self, fleet_id: &Uuid7) -> Result<Vec<MemoryDelta<'static>>> {
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_LIST))?;
-        sqlx::query(sql::memory::ASSUME_MEMORY_ROLE)
+        sqlx::query(sql::ASSUME_MEMORY_ROLE)
             .execute(&mut *transaction)
             .await
             .map_err(query(CONTEXT_LIST))?;
 
-        let rows = sqlx::query(sql::memory::SELECT_ALL_FOR_FLEET)
+        let rows = sqlx::query(sql::SELECT_ALL_FOR_FLEET)
             .bind(fleet_id.as_str())
             .fetch_all(&mut *transaction)
             .await
@@ -154,7 +154,7 @@ impl Memories {
 
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_UPSERT))?;
-        sqlx::query(sql::memory::ASSUME_MEMORY_ROLE)
+        sqlx::query(sql::ASSUME_MEMORY_ROLE)
             .execute(&mut *transaction)
             .await
             .map_err(query(CONTEXT_UPSERT))?;
@@ -163,7 +163,7 @@ impl Memories {
             let mut bytes = [0_u8; ENTROPY_LEN];
             self.entropy.fill(&mut bytes)?;
             let row_id = Uuid7::encode(now, bytes)?;
-            sqlx::query(sql::memory::UPSERT_ENTRY)
+            sqlx::query(sql::UPSERT_ENTRY)
                 .bind(row_id.as_str())
                 .bind(delta.key.as_ref())
                 .bind(delta.content.as_ref())
@@ -176,7 +176,7 @@ impl Memories {
             counted.stored += 1;
         }
 
-        counted.swept = sqlx::query(sql::memory::DELETE_AGED_IN_CATEGORY)
+        counted.swept = sqlx::query(sql::DELETE_AGED_IN_CATEGORY)
             .bind(fleet_id.as_str())
             .bind(window::DAILY_CATEGORY)
             .bind(now.as_millis().saturating_sub(DAILY_RETENTION_MS))
@@ -185,7 +185,7 @@ impl Memories {
             .map_err(query(CONTEXT_SWEEP))?
             .rows_affected();
 
-        counted.evicted = sqlx::query(sql::memory::EVICT_PAST_CAP)
+        counted.evicted = sqlx::query(sql::EVICT_PAST_CAP)
             .bind(fleet_id.as_str())
             .bind(i64::try_from(MAX_ENTRIES_PER_FLEET).unwrap_or(i64::MAX))
             .bind(window::PINNED_CATEGORY)

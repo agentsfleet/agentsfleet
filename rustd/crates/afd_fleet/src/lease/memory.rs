@@ -11,7 +11,7 @@
 //! token is fenced, so a holder a reclaim has superseded writes nothing.
 //!
 //! Neither check is performed here. Both are the `WHERE` of
-//! [`SELECT_LIVE_FENCE_BY_FLEET`](crate::sql::memory::SELECT_LIVE_FENCE_BY_FLEET)
+//! [`SELECT_LIVE_FENCE_BY_FLEET`](crate::crate::memory::sql::SELECT_LIVE_FENCE_BY_FLEET)
 //! and its sibling — a scope the database enforces cannot be a comparison this
 //! code forgets to make.
 
