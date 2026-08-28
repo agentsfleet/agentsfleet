@@ -7,25 +7,11 @@
 
 use super::{Error, ErrorKind};
 
-/// Lifts a foreign error into its variant, so `?` needs no arm at a call site.
-///
-/// Per source type rather than one blanket over `Into<ErrorKind>`, which would
-/// collide with the standard library's reflexive `From<T> for T`.
-macro_rules! lifts {
-    ($($source:ty => $variant:ident),+ $(,)?) => {
-        $(impl From<$source> for Error {
-            fn from(source: $source) -> Self {
-                ErrorKind::$variant { source }.into()
-            }
-        })+
-    };
-}
-
-lifts! {
+afd_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     afd_crypto::error::Error => Crypto,
     afd_core::error::Error => Mint,
-}
+);
 
 /// Reports a statement that failed, naming what it was doing.
 pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {

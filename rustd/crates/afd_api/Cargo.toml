@@ -72,6 +72,7 @@ afd_observability.workspace = true
 # live beside it rather than in this crate.
 afd_billing.workspace = true
 afd_core.workspace = true
+afd_events.workspace = true
 # `json` for the probe bodies: unlike the problem+json envelope, which writes
 # its own content type, these are ordinary JSON responses.
 axum = { workspace = true, features = ["json", "matched-path"] }
