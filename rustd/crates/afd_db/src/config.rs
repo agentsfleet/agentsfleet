@@ -151,6 +151,18 @@ impl PoolConfig {
         self.connect_timeout
     }
 
+    /// The TLS posture this role resolved to, spelled as a connection URL
+    /// spells it.
+    ///
+    /// Published rather than kept to the crate because it is the value an
+    /// operator needs when a connection is refused, and because a posture
+    /// nothing outside this module can read is a promise with no witness — the
+    /// boot line reports it and this is what the boot line reads.
+    #[must_use]
+    pub fn ssl_mode(&self) -> &'static str {
+        ssl_mode_tag(self.connect.get_ssl_mode())
+    }
+
     /// Shortens the handshake budget, for a test that means to exhaust it.
     ///
     /// The production value is a constant because a handshake budget is not an
@@ -209,6 +221,23 @@ fn url_declares_sslmode(url: &str) -> bool {
             .split('&')
             .any(|param| param.split('=').next() == Some("sslmode"))
     })
+}
+
+/// The lower-case spelling of a resolved SSL mode.
+///
+/// The vocabulary is the connection URL's own, so an operator reading the boot
+/// line and an operator reading the knob are reading one set of words. The
+/// match is exhaustive on purpose: a variant sqlx adds must fail this build
+/// rather than reach a log as a fallback word that means nothing.
+const fn ssl_mode_tag(mode: PgSslMode) -> &'static str {
+    match mode {
+        PgSslMode::Disable => "disable",
+        PgSslMode::Allow => "allow",
+        PgSslMode::Prefer => "prefer",
+        PgSslMode::Require => "require",
+        PgSslMode::VerifyCa => "verify-ca",
+        PgSslMode::VerifyFull => "verify-full",
+    }
 }
 
 /// Reads a numeric knob, preferring the role-scoped override over the base

@@ -221,3 +221,70 @@ fn test_a_wrong_scheme_is_not_reported_as_a_malformed_url() {
         "got {error}"
     );
 }
+
+/// The inputs on which the connection string's `sslmode` is decided, pinned
+/// against the implementation that is here now.
+///
+/// Three of these rows are wrong, and the point of committing them green is
+/// that the commit which fixes them has to turn them over in the diff. The
+/// decision today is a substring scan: split the whole URL on the first `?`,
+/// then on `&`, then compare the key bytes against `sslmode`. sqlx decides the
+/// same question by parsing, and the two disagree wherever the raw bytes and
+/// the parsed query are not the same thing — a `?` that belongs to a fragment,
+/// and a key spelling that only survives decoding.
+///
+/// The consequence is not cosmetic in either direction. Reading "declared"
+/// where nothing was declared leaves the connection on sqlx's `prefer`, which
+/// continues in the clear against a server that offers no TLS. Reading
+/// "undeclared" where an operator wrote `disable` forces `require` onto a
+/// deployment that has no TLS to require, and boot fails with nothing in the
+/// message pointing at the knob that caused it.
+#[test]
+fn test_sslmode_detection_pinned_against_hand_rolled() {
+    assert!(
+        std::env::var_os("PGSSLMODE").is_none(),
+        "PGSSLMODE is set here; sqlx reads it as the default for a URL that \
+         declares nothing, so these rows would grade against the environment \
+         rather than against the daemon's own default"
+    );
+
+    // (url, the mode this resolves to TODAY, what makes the row interesting)
+    let pinned = [
+        (
+            "postgres://u:pw@h:5432/db",
+            "require",
+            "silent: the documented default, and the one row that is right",
+        ),
+        (
+            "postgres://u:pw@h:5432/db?sslmode=disable",
+            "disable",
+            "declared plainly: honoured, and the local compose lane needs it",
+        ),
+        (
+            "postgres://u:pw@h:5432/db?ssl-mode=disable",
+            "require",
+            "WRONG: sqlx honours `ssl-mode` as an alias, the scan does not, so \
+             an explicit disable is overridden and boot fails",
+        ),
+        (
+            "postgres://u:pw@h:5432/db?ssl%6Dode=disable",
+            "require",
+            "WRONG: the parser decodes the key, the scan compares it raw, so \
+             again an explicit disable is overridden",
+        ),
+        (
+            "postgres://u:pw@h:5432/db#?sslmode=disable",
+            "prefer",
+            "WRONG, and this is the one that costs TLS: the `?` is inside the \
+             fragment, so nothing was declared, but the scan reads a query and \
+             skips the upgrade — leaving sqlx's cleartext-permitting default",
+        ),
+    ];
+
+    for (url, expected, why) in pinned {
+        let env = env_with(&[("DATABASE_URL", url)]);
+        let config = PoolConfig::resolve(&env, DbRole::Default)
+            .unwrap_or_else(|error| panic!("{url} was refused: {error}"));
+        assert_eq!(config.ssl_mode(), expected, "{url}\n  {why}");
+    }
+}
