@@ -21,7 +21,7 @@ use afd_core::id::Uuid7;
 
 use crate::error::{Result, query};
 use crate::gate::store::Gates;
-use crate::sql;
+use super::sql;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_PAUSE: &str = "fleet pause";
@@ -70,7 +70,7 @@ impl Gates {
     /// fleet is already paused where it counts.
     pub async fn pause(&self, fleet_id: &Uuid7, trigger: Trigger, now: UnixMillis) -> Result<()> {
         let mut connection = self.database().acquire().await?;
-        sqlx::query(sql::gate::PAUSE_FLEET)
+        sqlx::query(sql::PAUSE_FLEET)
             .bind(now.as_millis())
             .bind(fleet_id.as_str())
             .execute(&mut *connection)

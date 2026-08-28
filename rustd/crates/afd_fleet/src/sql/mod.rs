@@ -32,8 +32,6 @@
 
 pub mod activity;
 pub mod fleet;
-pub mod gate;
-pub mod grant;
 pub mod lease;
 pub mod memory;
 pub mod provider;

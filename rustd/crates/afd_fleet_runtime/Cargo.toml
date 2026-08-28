@@ -33,7 +33,7 @@ serde.workspace = true
 serde_json.workspace = true
 # The YAML tokeniser, resolving nothing — see the rationale in the workspace
 # manifest. This crate is the only one that names it.
-saphyr-parser.workspace = true
+yaml_serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

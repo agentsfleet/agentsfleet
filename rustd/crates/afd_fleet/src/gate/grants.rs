@@ -16,7 +16,7 @@ use crate::gate::decision::Status;
 use crate::gate::detail::{KIND_REPOSITORY_WRITE, REPOSITORY_WRITE_SPEND_CEILING};
 use crate::gate::store::Gates;
 use crate::policy::grants::Grants;
-use crate::sql;
+use super::{grant_sql, sql};
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_GRANTS: &str = "integration grants";
@@ -44,9 +44,9 @@ impl Gates {
     /// [`Grants::none`], not an error.
     pub async fn approved_integrations(&self, fleet_id: &Uuid7) -> Result<Grants> {
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::grant::SELECT_APPROVED_SERVICES)
+        let rows = sqlx::query(grant_sql::SELECT_APPROVED_SERVICES)
             .bind(fleet_id.as_str())
-            .bind(sql::grant::STATUS_APPROVED)
+            .bind(grant_sql::STATUS_APPROVED)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_GRANTS))?;
@@ -87,7 +87,7 @@ impl Gates {
         binding: &RepositoryBinding,
     ) -> Result<Option<Uuid7>> {
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::gate::SELECT_APPROVED_WRITE_GATE)
+        let row = sqlx::query(sql::SELECT_APPROVED_WRITE_GATE)
             .bind(fleet_id.as_str())
             .bind(event_id)
             .bind(KIND_REPOSITORY_WRITE)

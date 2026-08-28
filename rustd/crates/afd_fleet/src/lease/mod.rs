@@ -28,6 +28,7 @@ pub mod finalize;
 pub mod installed;
 pub mod issue;
 pub mod memory;
+pub mod mint;
 pub mod pull;
 pub mod reclaim;
 pub mod renew;

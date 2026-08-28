@@ -256,27 +256,36 @@ mod tests {
     }
 
     #[test]
-    fn a_two_part_version_refuses_as_a_shape_rather_than_an_arity() {
-        // Surprising and correct, and the Zig lands in the same place by the
-        // same route: `1.0` passes `is_numeric`, so the converter writes a
-        // JSON NUMBER and `version` never reaches the arity check as a string.
-        // Quoting does not save it — this module discards quote style
-        // (divergence 1), exactly as `writeScalar` does.
+    fn an_unquoted_two_part_version_refuses_as_a_shape() {
+        // `1.0` is a bare YAML float, so it arrives as a JSON NUMBER and never
+        // reaches the arity check as a string. The refusal names the SHAPE,
+        // which is the honest answer: the document did not write a version, it
+        // wrote a number.
         //
-        // The Zig's spelling of the refusal is `MissingRequiredField`, which
-        // says a key is absent when it is plainly present. Same verdict, and
-        // this one names the shape.
-        for source in [
-            "---\nname: probe\ndescription: A probe.\nversion: 1.0\n---\n",
-            "---\nname: probe\ndescription: A probe.\nversion: '1.0'\n---\n",
-        ] {
-            let failure = parse_skill(source).expect_err("a numeric version");
+        // The Zig's spelling is `MissingRequiredField`, which says a key is
+        // absent when it is plainly present. Same verdict, better sentence.
+        let source = "---\nname: probe\ndescription: A probe.\nversion: 1.0\n---\n";
+        let failure = parse_skill(source).expect_err("a numeric version");
+        assert!(
+            matches!(failure, Error::InvalidFieldType { .. }),
+            "an unquoted 1.0 should refuse as a shape"
+        );
+    }
 
-            assert!(
-                matches!(failure, Error::InvalidFieldType { .. }),
-                "{source} should refuse as a shape"
-            );
-        }
+    #[test]
+    fn a_quoted_two_part_version_refuses_as_an_arity() {
+        // Quoting now SAVES it from the number coercion, which is the whole of
+        // what moving to `yaml_serde` fixed: the old hand-rolled table could
+        // not see quote style, so `'1.0'` collapsed to the float 1.0 and
+        // refused as a shape alongside its unquoted twin. A reader who quotes
+        // a version means the string, and now gets it — refused on ARITY,
+        // because `1.0` is two parts where a version is three.
+        let source = "---\nname: probe\ndescription: A probe.\nversion: '1.0'\n---\n";
+        let failure = parse_skill(source).expect_err("a two-part version");
+        assert!(
+            !matches!(failure, Error::InvalidFieldType { .. }),
+            "a quoted 1.0 is a string and must refuse on its arity, not its shape"
+        );
     }
 
     #[test]

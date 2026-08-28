@@ -42,7 +42,7 @@ use crate::gate::claim::Claim;
 use crate::gate::detail::Stated;
 use crate::gate::pending::GateRef;
 use crate::gate::store::Gates;
-use crate::sql;
+use super::sql;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_PARK: &str = "approval gate park";
@@ -160,7 +160,7 @@ impl Gates {
             })?;
 
         let mut connection = self.database().acquire().await?;
-        sql::gate::PendingRow {
+        sql::PendingRow {
             gate_id: &gate_id,
             fleet_id: request.fleet_id,
             workspace_id: request.workspace_id,

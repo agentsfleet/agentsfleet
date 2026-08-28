@@ -8,8 +8,8 @@
 **Priority:** P1 — no behaviour changes, and every build in the repository pays for this one until it lands
 **Categories:** API
 **Batch:** B8 — NOT parallel with anything touching `afd_fleet`; see Dependencies
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
+**Branch:** `feat/m178-tenant-workspace-surface` — folded into M178's branch at Indy's direction rather than taken as its own tree; see Discovery
+**Test Baseline:** `unit=1221 integration=144` — `cargo test --workspace --all-features` at `2839efc18`, and the M176 rustd integration lane's last green count. This milestone's own oracle is that neither number falls.
 **Depends on:** M178_001 — hard, and for two reasons. Its §3–§6 add handlers over `vault`, `secrets`, `gate` and `sweep`, which are the modules this spec restructures; and it CREATES `afd_tenant`, so a branch taken from `main` before it merges would be decomposing a crate graph that no longer exists.
 **Provenance:** LLM-drafted (Claude Opus 5, Aug 27, 2026)
 **Canonical architecture:** `docs/architecture/direction.md` §Two daemons, one contract
