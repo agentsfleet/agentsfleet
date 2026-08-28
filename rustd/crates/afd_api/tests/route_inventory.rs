@@ -72,7 +72,7 @@ const INVENTORY: &[&str] = &[
     // §6 — approvals.
     "/v1/workspaces/{workspace_id}/approvals",
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}",
-    "/v1/workspaces/{workspace_id}/approvals/{gate_id}:{decision}",
+    "/v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}",
     // §7 — onboarding, preferences, fleet-library reads.
     "/v1/workspaces/{workspace_id}/onboarding",
     "/v1/workspaces/{workspace_id}/preferences",

@@ -147,9 +147,9 @@ Workspace + fleet event lists (bounded, `since`-windowed), SSE streams (`/events
 
 `/approvals[/{gate_id}]` + `:approve`/`:deny`, the approval-gate sweeper as a supervised task, and the terminal-row rule: gate-blocked rows are never reopened; a resolved gate lands a NEW event row via `actor=continuation:<original>`.
 
-- **Dimension 6.1** — approve/deny transitions with scope + ownership gates; double-decision → conflict semantics parity → Test `test_approval_decision_races`
+- **Dimension 6.1** — DONE — approve/deny transitions with scope + ownership gates; double-decision → conflict semantics parity → Test `afd_fleet/tests/integration_approval_inbox.rs` (10 cases, live Postgres) + `afd_api/tests/workspace_approvals.rs` (10 cases, in front of the store). The race is Postgres's: both callers run one UPDATE carrying `WHERE status = 'pending'`, exactly one updates a row, and the loser's empty `RETURNING` is what tells "you decided this" from "somebody already had" — so `Resolution` has three arms and an already-answered gate reports the FIRST operator's attribution rather than the caller's. **Path divergence, decided by Indy:** the Zig daemon spells the decision `…/approvals/{gate_id}:approve`, and a router binds one parameter per segment, so that form is indistinguishable from the detail read beside it. The two carry different capabilities and the scope gate is a per-path layer, so the decision moved into its own segment — `…/approvals/{gate_id}/{decision}` — rather than the scope model giving way.
 - **Dimension 6.2** — resolved gate emits a continuation event row; the blocked row stays terminal → Test `test_approval_continuation_row`
-- **Dimension 6.3** — sweeper expiry behaviour matches the Zig sweeper on a seeded corpus → Test `test_approval_sweeper_expiry`
+- **Dimension 6.3** — DONE — sweeper expiry behaviour matches the Zig sweeper on a seeded corpus → Test `afd_fleet/tests/integration_approval_inbox.rs`. `Inbox::expire` takes only `pending` rows past their deadline, so an answer that landed a millisecond early stands — the operator's decision outranks the clock — and a swept row records `system:approval_gate_sweeper` with a reason, because an audit has to tell a gate a human denied from one that ran out of time.
 
 ### §7 — Onboarding, preferences, fleet-library reads, analytics
 

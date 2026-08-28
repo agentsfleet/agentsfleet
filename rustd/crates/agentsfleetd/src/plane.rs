@@ -26,6 +26,7 @@ use afd_db::Db;
 use afd_fleet::Runners;
 use afd_fleet::bundle::Bundles;
 use afd_fleet::gate::Gates;
+use afd_fleet::gate::Inbox;
 use afd_fleet::lease::{Leases, Plane};
 use afd_fleet::memory::Memories;
 use afd_fleet::money::Accounts;
@@ -79,6 +80,7 @@ pub struct ServingPlane {
     models: Models,
     secrets: SecretVault,
     preferences: Preferences,
+    approvals: Inbox,
     api_url: Box<str>,
 }
 
@@ -137,6 +139,7 @@ impl ServingPlane {
             // of the key material, zeroed once, however many stores hold it.
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
             preferences: Preferences::new(database.clone(), Entropy::new()),
+            approvals: Inbox::new(database.clone()),
             api_url: login.api_url,
             logins: Logins::new(
                 afd_redis::SessionStore::new(queue.clone()),
@@ -217,6 +220,7 @@ impl Services for ServingPlane {
     type Fleets = Fleets;
     type Secrets = SecretVault;
     type Preferences = Preferences;
+    type Approvals = Inbox;
     type Billing = Billing;
     type Catalogue = Models;
 
@@ -265,6 +269,10 @@ impl Services for ServingPlane {
 
     fn preferences(&self) -> &Preferences {
         &self.preferences
+    }
+
+    fn approvals(&self) -> &Inbox {
+        &self.approvals
     }
 
     fn secrets(&self) -> &SecretVault {

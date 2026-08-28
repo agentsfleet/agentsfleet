@@ -48,6 +48,7 @@
 
 pub mod activity;
 pub mod admin;
+pub mod approval;
 pub mod auth;
 pub mod credentials;
 pub mod event;
