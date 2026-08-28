@@ -47,6 +47,7 @@
 //! lands, this module moves down to `afd_state` and both callers import it.
 //! Recorded here rather than pre-built: a seam with one caller is a guess.
 
+pub mod sql;
 mod endpoint;
 mod managed;
 mod platform;

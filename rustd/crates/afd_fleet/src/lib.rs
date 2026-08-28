@@ -44,7 +44,6 @@ pub mod memory;
 pub mod policy;
 pub mod provider;
 pub mod secrets;
-pub mod sql;
 pub mod vault;
 
 pub use crate::error::{Error, Result};

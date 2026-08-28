@@ -40,8 +40,8 @@ use sqlx::Row as _;
 use sqlx::postgres::PgRow;
 
 use crate::error::{Result, query, vault_open};
-use crate::sql;
 
+pub mod sql;
 mod rotate;
 
 /// Statement name, for the context a query failure carries.
@@ -50,10 +50,10 @@ const CONTEXT_SECRET: &str = "vault credential";
 /// Statement name, for the context a query failure carries.
 const CONTEXT_SECRETS: &str = "vault credentials";
 
-/// Where the envelope's six components start in [`sql::vault::SELECT_SECRET`].
+/// Where the envelope's six components start in [`sql::SELECT_SECRET`].
 const ENVELOPE_AT: usize = 0;
 
-/// Where they start in [`sql::vault::SELECT_SECRETS_BY_NAMES`], which projects
+/// Where they start in [`sql::SELECT_SECRETS_BY_NAMES`], which projects
 /// the name and the creation instant first.
 ///
 /// The offset is the whole reason one decrypt routine serves both statements,
@@ -143,7 +143,7 @@ impl Vault {
     /// distinction in the log instead.
     pub(crate) async fn open(&self, key: KeyRef<'_>) -> Result<Option<SecretBytes>> {
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query(sql::vault::SELECT_SECRET)
+        let row = sqlx::query(sql::SELECT_SECRET)
             .bind(key.workspace_id.as_str())
             .bind(key.name)
             .fetch_optional(&mut *connection)
@@ -177,7 +177,7 @@ impl Vault {
             return Ok(Vec::new());
         }
         let mut connection = self.database.acquire().await?;
-        let rows = sqlx::query(sql::vault::SELECT_SECRETS_BY_NAMES)
+        let rows = sqlx::query(sql::SELECT_SECRETS_BY_NAMES)
             .bind(workspace_id.as_str())
             .bind(names)
             .fetch_all(&mut *connection)

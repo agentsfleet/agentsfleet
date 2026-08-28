@@ -36,8 +36,8 @@ use crate::error::Result;
 use crate::lease::affinity::Fence;
 use crate::lease::store::Leases;
 use crate::lease::verdict::{Terminal, truncate};
-use crate::sql;
-use crate::sql::session::MAX_CHECKPOINT_RESPONSE_BYTES;
+use crate::lease::sql;
+use crate::lease::sql::session::MAX_CHECKPOINT_RESPONSE_BYTES;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_TERMINAL: &str = "fleet event terminal";

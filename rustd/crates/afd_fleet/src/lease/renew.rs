@@ -2,7 +2,7 @@
 //!
 //! What makes this more than a `SET lease_expires_at` is that reclaimability
 //! and the kill deadline live on two different rows — see
-//! [`crate::sql::renew::RENEW_AND_METER`]. Both move together under one fence,
+//! [`crate::lease::sql::renew::RENEW_AND_METER`]. Both move together under one fence,
 //! or the runner is told the lease is gone.
 //!
 //! # Three gates, three postures, all stated here
@@ -32,8 +32,8 @@ use sqlx::Row as _;
 use crate::error::{Result, lease_lost, lease_max_runtime, query};
 use crate::lease::pull::Plane;
 use crate::lease::store::Leases;
-use crate::sql;
-use crate::sql::renew::RenewRow;
+use crate::lease::sql;
+use crate::lease::sql::renew::RenewRow;
 use afd_billing::rates::Posture;
 use afd_billing::{Cumulative, Nanos};
 

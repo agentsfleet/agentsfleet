@@ -14,6 +14,7 @@
 //! gate, not a design. Here the split falls on what the code DOES — claim,
 //! gate, issue — so no module needs a re-export to stay findable.
 
+pub mod sql;
 pub mod activity;
 pub mod admit;
 pub mod affinity;
