@@ -91,16 +91,14 @@ check-route-registration-doc:  ## REST guide §7 route-registration facts stay f
 RUSTD_DIR := rustd
 
 lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
-	@echo "→ [rustd] Checking Rust formatting..."
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
-	@cd $(RUSTD_DIR) && cargo fmt --check
-	@echo "→ [rustd] Running Clippy (-D warnings)..."
+	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] rustfmt --check" -- cargo fmt --check
 	@# --all-features, not the default set: a crate's `test-util` feature gates
 	@# its mockable input/output core (M-MOCKABLE-SYSCALLS), and without this
 	@# flag that code is never compiled here — so the one module whose whole job
 	@# is to be exercised by tests would be the one module lint never sees.
-	@cd $(RUSTD_DIR) && cargo clippy --workspace --all-targets --all-features -- -D warnings
-	@echo "✓ [rustd] Lint passed"
+	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] clippy -D warnings" -- \
+	  cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 # Every scripts/*_test.py, discovered rather than listed.
 #

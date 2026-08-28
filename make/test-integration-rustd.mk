@@ -82,6 +82,10 @@ _migrate-test-db:
 # which is what keeps live Postgres off the fast lane. Each ignore reason names
 # this target, so a developer who runs one directly is told where it belongs.
 
+# The `2>&1` that used to sit on the cargo invocation is now the wrapper's: it
+# merges the command's stderr into its stdout for the tee, and keeps its OWN
+# progress ticks on stderr. Reinstating a `2>&1` out here would fold those ticks
+# into the tally that `rustd_lane_result.py` parses.
 test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust substrate integration suite against compose Postgres + Redis
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@echo "→ [rustd] Running the Rust integration suite against $(TEST_DATABASE_URL)..."; \
@@ -89,8 +93,8 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 	tally="$(CURDIR)/.tmp/rustd-integration.log"; \
 	code="$(CURDIR)/.tmp/rustd-integration.status"; \
 	rm -f "$$tally" "$$code"; \
-	{ cd $(RUSTD_DIR) && cargo test --workspace --all-features \
-	      -- --ignored 2>&1; \
+	{ cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] integration suite" -- \
+	      cargo test --workspace --all-features -- --ignored; \
 	  echo $$? > "$$code"; } | tee "$$tally"; \
 	python3 "$(CURDIR)/scripts/rustd_lane_result.py" \
 	  --tally "$$tally" --status "$$(cat "$$code")" \
@@ -116,8 +120,9 @@ test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under covera
 	tally="$(CURDIR)/.tmp/rustd-coverage.log"; \
 	code="$(CURDIR)/.tmp/rustd-coverage.status"; \
 	rm -f "$$tally" "$$code"; \
-	{ cd $(RUSTD_DIR) && cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info \
-	      -- --include-ignored 2>&1; \
+	{ cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] coverage run" -- \
+	      cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info \
+	      -- --include-ignored; \
 	  echo $$? > "$$code"; } | tee "$$tally"; \
 	python3 "$(CURDIR)/scripts/rustd_lane_result.py" \
 	  --tally "$$tally" --status "$$(cat "$$code")" \

@@ -39,6 +39,30 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
+# --- progress reporting ------------------------------------------------------
+# The Rust lanes are backgrounded into a log so their output cannot interleave
+# with the JavaScript ones, which is right — but it also meant the longest part
+# of a push (36s to 3m16s of clippy plus the unit suite) printed one line and
+# then went silent. A developer cannot tell a slow lane from a wedged one, so
+# the wait below prints a heartbeat carrying elapsed time and the log's last
+# line. `date +%s` rather than bash 5's `EPOCHSECONDS`: a fresh clone on a Mac
+# without homebrew bash runs /bin/bash 3.2.
+hook_started_at="$(date +%s)"
+
+# Seconds as `12s` under a minute and `2m04s` above it — a bare second count
+# stops being readable at exactly the durations this hook spends most of its
+# time in.
+fmt_elapsed() {
+  local secs="$1"
+  if [ "$secs" -lt 60 ]; then
+    printf '%ds' "$secs"
+  else
+    printf '%dm%02ds' "$((secs / 60))" "$((secs % 60))"
+  fi
+}
+
+since() { printf '%s' "$(fmt_elapsed "$(( $(date +%s) - $1 ))")"; }
+
 # --- no orly gate here, deliberately -----------------------------------------
 # This hook used to run `orly gate work`. orly 0.8.0 recomposed its gates
 # one-per-cadence, and `work` now runs the repository's declared `conform`
@@ -98,10 +122,24 @@ done <<< "$pushed_files"
 
 any_needed=$(( needs_rustd + needs_test_cli + needs_test_website + needs_test_app + needs_test_design_system ))
 
+pushed_count="$(printf '%s\n' "$pushed_files" | grep -c . || true)"
+echo "▶ pre-push: $pushed_count changed file(s) since $upstream_ref"
+
 if [ "$any_needed" -eq 0 ]; then
-  echo "pre-push: no test-relevant files since $upstream_ref — nothing to run"
+  echo "  no test-relevant files — nothing to run"
   exit 0
 fi
+
+# The plan, before anything runs: a developer who knows which lanes were
+# selected can tell "still going" from "picked the wrong lane" without waiting
+# for the answer.
+plan=""
+[ "$needs_rustd"              = 1 ] && plan="$plan lint-rustd+test-unit-rustd"
+[ "$needs_test_cli"           = 1 ] && plan="$plan test-unit-cli"
+[ "$needs_test_website"       = 1 ] && plan="$plan test-unit-website"
+[ "$needs_test_app"           = 1 ] && plan="$plan test-unit-app"
+[ "$needs_test_design_system" = 1 ] && plan="$plan test-unit-design-system"
+echo "  lanes:$plan"
 
 # --- Test lanes --------------------------------------------------------------
 # Split by RESOURCE CLASS, not by "parallel vs serial".
@@ -129,9 +167,14 @@ failed_names=()
 
 run_lane() {
   local name="$1"; shift
-  echo "pre-push: $*"
+  local lane_started_at
+  lane_started_at="$(date +%s)"
+  echo "→ $name: $*"
   if ! "$@"; then
     failed_names+=("$name")
+    echo "✗ $name failed after $(since "$lane_started_at")"
+  else
+    echo "✓ $name ($(since "$lane_started_at"))"
   fi
 }
 
@@ -151,19 +194,36 @@ fi
 [ "$needs_test_design_system" = 1 ] && run_lane test-unit-design-system      make test-unit-design-system
 
 if [ -n "$rustd_pid" ]; then
-  echo "pre-push: waiting on the Rust lanes..."
+  echo "→ waiting on the Rust lanes (output replays below when they finish)"
+  # Poll rather than block straight into `wait`, so the heartbeat can report
+  # elapsed time and the log's last line every 10s. `kill -0` in a `while`
+  # condition is exempt from `set -e`, and bash holds a terminated child's
+  # status until `wait` collects it — so the status below is still the lane's.
+  rustd_waited=0
+  while kill -0 "$rustd_pid" 2>/dev/null; do
+    sleep 2
+    rustd_waited=$(( rustd_waited + 2 ))
+    if [ "$(( rustd_waited % 10 ))" -eq 0 ]; then
+      rustd_last="$(tail -n 1 "$rustd_log" 2>/dev/null | tr -d '\r' | cut -c1-90)"
+      echo "   … rustd $(fmt_elapsed "$rustd_waited") — ${rustd_last:-compiling}"
+    fi
+  done
   if ! wait "$rustd_pid"; then
     # One name for both: make stops at the first failing target, and the log
     # replayed below names which one it was.
     failed_names+=(lint-rustd/test-unit-rustd)
+    echo "✗ lint-rustd/test-unit-rustd failed after $(fmt_elapsed "$rustd_waited")"
+  else
+    echo "✓ lint-rustd/test-unit-rustd ($(fmt_elapsed "$rustd_waited"))"
   fi
   cat "$rustd_log"
   rm -f "$rustd_log"
 fi
 
 if [ "${#failed_names[@]}" -gt 0 ]; then
-  echo "✗ pre-push: failed lanes — ${failed_names[*]}"
+  echo "✗ pre-push: failed lanes — ${failed_names[*]} (after $(since "$hook_started_at"))"
   exit 1
 fi
 
+echo "✔ pre-push passed in $(since "$hook_started_at")"
 exit 0

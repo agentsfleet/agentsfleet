@@ -56,6 +56,46 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
+# --- progress reporting ------------------------------------------------------
+# Every step below either printed one bare line or nothing at all, so a commit
+# that sat for thirty seconds gave no way to tell which gate was thinking. Each
+# stage now reports what it is about to do and how long it took. `date +%s`
+# rather than bash 5's `EPOCHSECONDS`: a fresh clone on a Mac without homebrew
+# bash runs /bin/bash 3.2.
+hook_started_at="$(date +%s)"
+
+# Seconds as `12s` under a minute and `2m04s` above it.
+fmt_elapsed() {
+  local secs="$1"
+  if [ "$secs" -lt 60 ]; then
+    printf '%ds' "$secs"
+  else
+    printf '%dm%02ds' "$((secs / 60))" "$((secs % 60))"
+  fi
+}
+
+since() { printf '%s' "$(fmt_elapsed "$(( $(date +%s) - $1 ))")"; }
+
+# Runs one serial gate, announcing it first and timing it. The gate's own
+# output still goes straight to the terminal — this wraps it, never captures
+# it, because a failing gate's detail is the thing a developer needs most.
+# The status is captured rather than relied on: calling this in a `|| exit 1`
+# context suppresses `set -e` for the whole function body, so a bare `"$@"`
+# would let a FAILING gate fall through to the success line and report ✓.
+step() {
+  local label="$1"; shift
+  local step_started_at rc
+  step_started_at="$(date +%s)"
+  echo "→ $label"
+  rc=0
+  "$@" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "✗ $label failed after $(since "$step_started_at")"
+    return "$rc"
+  fi
+  echo "✓ $label ($(since "$step_started_at"))"
+}
+
 # Checks read the working tree. A partly staged file could otherwise pass with
 # content that is absent from the commit.
 staged_paths="$(git diff --cached --name-only --diff-filter=ACMR | sort -u)"
@@ -77,8 +117,7 @@ fi
 # The tree is dirty by construction inside a commit hook — that is what is
 # being committed — so the tree criterion is told so rather than failing.
 if command -v orly >/dev/null 2>&1; then
-  echo "pre-commit: orly gate work"
-  orly gate work --accept-dirty || exit 1
+  step "orly gate work" orly gate work --accept-dirty || exit 1
 else
   echo "pre-commit: orly is not installed, and the rule gate cannot be skipped." >&2
   echo "  npm install --global @agentsfleet/orly" >&2
@@ -91,8 +130,8 @@ if ! command -v gitleaks >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "pre-commit: gitleaks protect --staged"
-gitleaks protect --staged --redact --verbose --no-banner
+step "gitleaks protect --staged" \
+  gitleaks protect --staged --redact --verbose --no-banner
 
 # --- Classify staged files into per-surface flags ----------------------------
 # Each flag triggers exactly one make target; design-system additionally
@@ -175,6 +214,9 @@ done <<< "$staged"
 
 any_needed=$(( needs_lint_website + needs_lint_app + needs_lint_design_system + needs_lint_cli + needs_lint_shell + needs_check_documentation + needs_check_openapi + needs_check_gh_actions + needs_check_playbooks + needs_check_playbooks_refs + needs_harness_only ))
 
+staged_count="$(printf '%s\n' "$staged" | grep -c . || true)"
+echo "▶ pre-commit: $staged_count staged file(s)"
+
 if [ "$any_needed" -eq 0 ]; then
   if [ "$staged_rustd" = 1 ]; then
     # Said explicitly, because "nothing to lint" would be a lie about a commit
@@ -195,7 +237,7 @@ names=()
 
 launch() {
   local name="$1"; shift
-  echo "pre-commit: $* (parallel)"
+  echo "→ $name: $*"
   "$@" &
   pids+=("$!")
   names+=("$name")
@@ -213,6 +255,13 @@ make_targets=()
 [ "$needs_check_playbooks"      = 1 ] && make_targets+=(check-playbooks)
 [ "$needs_check_playbooks_refs" = 1 ] && make_targets+=(check-playbooks-refs)
 
+# The plan, before anything runs: a developer who knows which targets were
+# selected can tell "still going" from "picked the wrong surface".
+if [ "${#make_targets[@]}" -gt 0 ]; then
+  echo "  targets: ${make_targets[*]}"
+fi
+
+graph_started_at="$(date +%s)"
 [ "${#make_targets[@]}" -gt 0 ] && launch make-graph make -j "${make_targets[@]}"
 
 failed_names=()
@@ -221,11 +270,16 @@ for i in "${!pids[@]}"; do
     failed_names+=("${names[$i]}")
   fi
 done
+if [ "${#pids[@]}" -gt 0 ] && [ "${#failed_names[@]}" -eq 0 ]; then
+  echo "✓ make-graph ($(since "$graph_started_at"))"
+fi
 
 if [ "${#failed_names[@]}" -gt 0 ]; then
-  echo "✗ pre-commit: failed lanes — ${failed_names[*]}"
+  echo "✗ pre-commit: failed lanes — ${failed_names[*]} (after $(since "$hook_started_at"))"
   exit 1
 fi
+
+echo "✔ pre-commit passed in $(since "$hook_started_at")"
 
 # Force exit 0 even if a stray short-circuit ended on a falsy test (bash
 # `[ X -eq 1 ] && { … }` final-statement quirk under set -e).
