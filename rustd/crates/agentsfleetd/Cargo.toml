@@ -40,6 +40,7 @@ test-util = [
 # decisions, and one client per process is what a pool IS.
 reqwest.workspace = true
 afd_api.workspace = true
+afd_billing.workspace = true
 afd_core.workspace = true
 # The composition root: this crate is the one that names which directory,
 # capability provider and verifier the generic HTTP shell is served through.
@@ -79,6 +80,7 @@ afd_crypto.workspace = true
 # The pool and client settings boot resolves BEFORE it opens either.
 afd_db.workspace = true
 afd_redis.workspace = true
+afd_runner.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "time"] }
 # The cancellation token every supervised task stops on.
 tokio-util.workspace = true

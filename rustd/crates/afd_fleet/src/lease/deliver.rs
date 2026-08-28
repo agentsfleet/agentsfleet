@@ -19,7 +19,7 @@ use crate::lease::issue::Billed;
 use crate::lease::pull::{Admission2, Plane};
 use crate::policy::build::{self, Assembled};
 use crate::policy::repair;
-use crate::sql::event::label;
+use afd_core::event::label;
 
 impl Plane {
     /// Assemble the policy and write the row that makes this runner the holder.

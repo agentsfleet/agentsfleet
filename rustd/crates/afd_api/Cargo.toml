@@ -38,6 +38,7 @@ afd_auth.workspace = true
 # points this way and never back: `afd_fleet` names no status code and no
 # router, so a decision it makes can be proven without an HTTP request.
 afd_fleet.workspace = true
+afd_runner.workspace = true
 # The workspace fleets surface's store: install, read, edit, purge.
 afd_fleet_lifecycle.workspace = true
 # `FleetName` — a fleet's authored slug. Parsed at the edge, so the install path
@@ -69,6 +70,7 @@ afd_observability.workspace = true
 # The code registry the envelope is assembled from: a code's status, title,
 # documentation link and end-user sentence are properties OF THE CODE, so they
 # live beside it rather than in this crate.
+afd_billing.workspace = true
 afd_core.workspace = true
 # `json` for the probe bodies: unlike the problem+json envelope, which writes
 # its own content type, these are ordinary JSON responses.

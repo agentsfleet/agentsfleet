@@ -43,6 +43,7 @@ version = "0.26.2"
 dependencies = [
  "afd_approval",
  "afd_auth",
+ "afd_billing",
  "afd_core",
  "afd_crypto",
  "afd_db",
@@ -51,6 +52,7 @@ dependencies = [
  "afd_fleet_runtime",
  "afd_observability",
  "afd_redis",
+ "afd_runner",
  "afd_tenant",
  "afd_vault",
  "afd_wire",
@@ -74,6 +76,7 @@ version = "0.26.2"
 dependencies = [
  "afd_core",
  "afd_db",
+ "afd_events",
  "afd_redis",
  "afd_wire",
  "sqlx",
@@ -93,6 +96,21 @@ dependencies = [
  "thiserror",
  "tokio",
  "zeroize",
+]
+
+[[package]]
+name = "afd_billing"
+version = "0.26.2"
+dependencies = [
+ "afd_core",
+ "afd_crypto",
+ "afd_db",
+ "afd_fleet_runtime",
+ "jiff",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -136,22 +154,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_events"
+version = "0.26.2"
+dependencies = [
+ "afd_core",
+ "afd_db",
+ "afd_redis",
+ "afd_wire",
+ "base64 0.23.1",
+ "jiff",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "afd_fleet"
 version = "0.26.2"
 dependencies = [
  "afd_auth",
+ "afd_billing",
  "afd_core",
  "afd_crypto",
  "afd_db",
+ "afd_events",
  "afd_fleet_runtime",
  "afd_redis",
+ "afd_runner",
  "afd_state",
  "afd_wire",
  "base64 0.23.1",
  "bytes",
  "futures-util",
  "http",
- "jiff",
  "jsonwebtoken",
  "moka",
  "object_store",
@@ -163,7 +199,6 @@ dependencies = [
  "sqlx",
  "thiserror",
  "tokio",
- "tokio-util",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -245,6 +280,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_runner"
+version = "0.26.2"
+dependencies = [
+ "afd_auth",
+ "afd_core",
+ "afd_crypto",
+ "afd_db",
+ "afd_redis",
+ "afd_state",
+ "afd_wire",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "afd_state"
 version = "0.26.2"
 dependencies = [
@@ -310,6 +365,7 @@ dependencies = [
  "afd_api",
  "afd_approval",
  "afd_auth",
+ "afd_billing",
  "afd_core",
  "afd_crypto",
  "afd_db",
@@ -317,6 +373,7 @@ dependencies = [
  "afd_fleet_lifecycle",
  "afd_identity",
  "afd_redis",
+ "afd_runner",
  "afd_state",
  "afd_tenant",
  "afd_vault",

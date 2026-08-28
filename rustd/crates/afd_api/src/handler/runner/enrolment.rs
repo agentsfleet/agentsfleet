@@ -16,7 +16,7 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_fleet::Enrolled;
+use afd_runner::Enrolled;
 use afd_wire::runner::{AssignedPolicy, RegisterRequest, RegisterResponse};
 use axum::Json;
 use axum::body::Bytes;

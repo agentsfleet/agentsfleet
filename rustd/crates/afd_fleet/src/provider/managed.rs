@@ -27,12 +27,12 @@ use serde::Deserialize;
 
 use super::resolved::Dialled;
 use crate::error::{Result, provider_endpoint, provider_malformed};
-use crate::money::Posture;
 use crate::provider::endpoint;
 use crate::provider::resolved::{Resolved, SecretString};
 use crate::provider::selection::Selection;
 use crate::provider::{Resolution, Strategy};
 use crate::vault::KeyRef;
+use afd_billing::Posture;
 use afd_core::id::Uuid7;
 
 /// The credential field a self-managed resolution cannot proceed without.
@@ -174,8 +174,8 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
     use super::SelfManaged;
-    use crate::money::Posture;
     use crate::provider::selection::Selection;
+    use afd_billing::Posture;
     use afd_core::id::Uuid7;
 
     fn workspace() -> Uuid7 {

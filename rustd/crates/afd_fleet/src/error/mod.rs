@@ -106,15 +106,18 @@ pub(crate) enum ErrorKind {
         source: afd_redis::Error,
     },
 
+    #[error("the billing store could not answer for the runner plane")]
+    Billing {
+        #[source]
+        source: afd_billing::Error,
+    },
+
     #[error("statement failed during {context}")]
     Query {
         context: &'static str,
         #[source]
         source: sqlx::Error,
     },
-
-    #[error("the presented runner token proved a row that no longer exists")]
-    RunnerVanished,
 
     #[error("a {table} row holds a value this daemon cannot read: {column}")]
     RowMalformed {

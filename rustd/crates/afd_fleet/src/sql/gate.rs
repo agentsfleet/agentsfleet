@@ -102,7 +102,7 @@ impl<'a> PendingRow<'a> {
     /// The status (`$12`) is supplied here rather than by a caller: every row
     /// this statement writes opens `pending`, and a caller able to pass another
     /// value could write a gate already resolved.
-    pub fn bind(&'a self) -> super::runner::Bound<'a> {
+    pub fn bind(&'a self) -> afd_runner::sql::runner::Bound<'a> {
         sqlx::query(INSERT_GATE)
             .bind(self.gate_id.as_str())
             .bind(self.fleet_id.as_str())

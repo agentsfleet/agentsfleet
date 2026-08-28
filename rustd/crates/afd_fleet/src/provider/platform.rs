@@ -14,12 +14,12 @@
 use serde::Deserialize;
 
 use crate::error::{Result, provider_malformed, provider_platform_key_missing};
-use crate::money::Posture;
 use crate::provider::endpoint;
 use crate::provider::resolved::{Dialled, Resolved, SecretString};
 use crate::provider::selection::PlatformDefault;
 use crate::provider::{Resolution, Strategy};
 use crate::vault::KeyRef;
+use afd_billing::Posture;
 
 /// The credential field a platform default cannot resolve without.
 const FIELD_API_KEY: &str = "api_key";
@@ -121,8 +121,8 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
     use super::{Credential, Platform};
-    use crate::money::Posture;
     use crate::provider::selection::PlatformDefault;
+    use afd_billing::Posture;
     use afd_core::id::Uuid7;
 
     fn workspace() -> Uuid7 {

@@ -22,10 +22,10 @@ use afd_core::id::Uuid7;
 use sqlx::postgres::PgRow;
 use sqlx::{FromRow, Row as _};
 
+use crate::Nanos;
 use crate::error::{Result, query, row_malformed};
-use crate::money::Nanos;
-use crate::money::store::Accounts;
 use crate::sql;
+use crate::store::Accounts;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_PAYER: &str = "tenant for workspace";
@@ -81,7 +81,7 @@ impl Accounts {
     /// holding something this daemon cannot read as an identifier.
     pub async fn payer(&self, workspace_id: &Uuid7) -> Result<Option<Uuid7>> {
         let mut connection = self.pool().acquire().await?;
-        let found: Option<String> = sqlx::query_scalar(sql::billing::SELECT_TENANT_FOR_WORKSPACE)
+        let found: Option<String> = sqlx::query_scalar(sql::SELECT_TENANT_FOR_WORKSPACE)
             .bind(workspace_id.as_str())
             .fetch_optional(&mut *connection)
             .await
@@ -104,7 +104,7 @@ impl Accounts {
     /// Reports a datastore that would not answer.
     pub async fn wallet(&self, tenant_id: &Uuid7) -> Result<Option<Wallet>> {
         let mut connection = self.pool().acquire().await?;
-        sqlx::query_as(sql::billing::SELECT_TENANT_BALANCE)
+        sqlx::query_as(sql::SELECT_TENANT_BALANCE)
             .bind(tenant_id.as_str())
             .fetch_optional(&mut *connection)
             .await

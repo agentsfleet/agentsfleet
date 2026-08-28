@@ -59,7 +59,7 @@ pub fn render_list<T: serde::Serialize>(values: &[T]) -> String {
 mod tests {
     //! The write direction, checked against the read direction it feeds.
     use super::*;
-    use crate::runner::policy::parse_wire;
+    use crate::policy::parse_wire;
 
     /// Every tier this daemon writes parses back to the variant that wrote it.
     ///

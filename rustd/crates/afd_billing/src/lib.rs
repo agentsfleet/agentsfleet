@@ -23,7 +23,7 @@
 //! *what is the verdict* and *what do we do when we cannot reach the datastore
 //! to find out*. Those are separated here — a read answers a value or an
 //! [`Error`](crate::Error), and the fail-open or fail-closed POSTURE belongs to
-//! the caller in [`crate::lease::admit`], declared once per gate beside its
+//! the caller in `afd_fleet::lease::admit`, declared once per gate beside its
 //! name rather than decided at each `catch`.
 //!
 //! `budget.zig` reached the same conclusion on its own and says so: splitting
@@ -31,17 +31,21 @@
 //! function instead of something buried beside a connection. This module takes
 //! that as the rule rather than the exception.
 
+mod error;
+
 pub mod budget;
 pub mod charge;
 pub mod meter;
 pub mod nanos;
 pub mod rates;
+pub mod sql;
 pub mod store;
 pub mod wallet;
 pub mod window;
 
 pub use self::budget::{Spend, Verdict};
 pub use self::charge::Charged;
+pub use self::error::{Error, Result};
 pub use self::meter::{Cumulative, Meter};
 pub use self::nanos::{
     ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, NANOS_PER_USD, Nanos, RECEIVE_NANOS,

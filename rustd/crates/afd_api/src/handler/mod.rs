@@ -105,6 +105,21 @@ impl Refusable for afd_approval::Error {
     }
 }
 
+impl Refusable for afd_runner::Error {
+    fn code(&self) -> ErrorCode {
+        Self::code(self)
+    }
+    fn detail(&self) -> &'static str {
+        Self::detail(self)
+    }
+    fn is_datastore_unavailable(&self) -> bool {
+        Self::is_datastore_unavailable(self)
+    }
+    fn reason(&self) -> String {
+        self.to_string()
+    }
+}
+
 impl Refusable for afd_fleet::Error {
     fn code(&self) -> ErrorCode {
         Self::code(self)

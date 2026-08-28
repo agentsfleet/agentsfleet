@@ -14,8 +14,8 @@
 //! promise, and a promise nobody asserts is a comment.
 use std::borrow::Cow;
 
-use afd_fleet::Verdict;
-use afd_fleet::runner::reconcile::{
+use afd_runner::Verdict;
+use afd_runner::reconcile::{
     Guarantee, REASON_BUBBLEWRAP_MISSING, REASON_CGROUP_CONTROLLERS_MISSING,
     REASON_EGRESS_ENFORCEMENT_UNAVAILABLE, REASON_LANDLOCK_UNAVAILABLE, REASON_NETWORK_NEEDS_CAGE,
     REASON_NO_ASSIGNED_POLICY, REASON_NO_CAPABILITY_REPORT, REASON_SECCOMP_UNAVAILABLE, reconcile,

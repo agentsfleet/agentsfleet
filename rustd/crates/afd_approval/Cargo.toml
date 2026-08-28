@@ -19,6 +19,11 @@ workspace = true
 afd_core.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
+# `core.fleet_events`. The continuation insert this crate used to carry a
+# byte-identical COPY of — the copy existed only because reaching the original
+# meant depending on the whole runner plane, and `afd_events` is that reason
+# removed.
+afd_events.workspace = true
 # An approved gate CONTINUES the run it blocked, which is a stream append —
 # the one reason this crate touches the queue at all.
 afd_redis.workspace = true

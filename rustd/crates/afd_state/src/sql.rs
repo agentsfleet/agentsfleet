@@ -48,6 +48,39 @@ FROM fleet.runners \
 WHERE token_hash = $1 \
 LIMIT 1";
 
+/// The status a `fleet.runner_leases` row opens in.
+///
+/// `protocol.zig`'s `RUNNER_LEASE_STATUS_ACTIVE`. Declared here rather than at
+/// the write site because §3's report flips a row OUT of this value and its
+/// predicate has to name the same spelling the issue wrote (RULE UFS) — two
+/// spellings would mean a report that fences correctly and updates nothing.
+pub const LEASE_STATUS_ACTIVE: &str = "active";
+
+/// The status a REPORTED lease is flipped into.
+///
+/// `protocol.zig`'s `RUNNER_LEASE_STATUS_REPORTED`. The claim-and-settle
+/// statement is the sole `active` → `reported` writer, and it flips this row in
+/// the same statement that charges the final slice — so a lease can never be
+/// `reported` with its last slice unbilled, nor billed twice by a retry that
+/// finds the row already flipped.
+pub const LEASE_STATUS_REPORTED: &str = "reported";
+
+/// The status a reclaimed lease is flipped INTO.
+///
+/// `protocol.zig`'s `RUNNER_LEASE_STATUS_EXPIRED`. The reclaim statement is the
+/// sole `active` → `expired` writer, so this spelling and
+/// [`LEASE_STATUS_ACTIVE`] are the two halves of one predicate and belong
+/// beside each other.
+pub const LEASE_STATUS_EXPIRED: &str = "expired";
+
+/// `fleet.runners.last_seen_at` for a runner that has never connected.
+///
+/// `protocol.zig`'s `RUNNER_LAST_SEEN_NEVER`. A sentinel rather than `NULL`
+/// because the liveness sweep's ordering predicate reads the column directly;
+/// what matters is that the derived state reads `registered` rather than a
+/// fabricated `online`, which is Dimension 6.3.
+pub const LAST_SEEN_NEVER: i64 = 0;
+
 /// The `fleet.runners.admin_state` value that permits the runner plane.
 ///
 /// `protocol.zig`'s `ADMIN_STATE_ACTIVE`. Every other state — cordoned,

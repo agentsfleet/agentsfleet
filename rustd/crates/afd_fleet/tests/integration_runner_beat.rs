@@ -29,8 +29,8 @@ use std::borrow::Cow;
 
 use afd_core::clock::UnixMillis;
 use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
-use afd_fleet::runner::reconcile::{REASON_LANDLOCK_UNAVAILABLE, REASON_NO_CAPABILITY_REPORT};
-use afd_fleet::{NO_REPORT, Verdict};
+use afd_runner::reconcile::{REASON_LANDLOCK_UNAVAILABLE, REASON_NO_CAPABILITY_REPORT};
+use afd_runner::{NO_REPORT, Verdict};
 use afd_wire::runner::{CapabilityReport, HeartbeatRequest, NetworkPolicy, SandboxTier};
 
 use self::requests::{ENROLLED_AT, ONE_BEAT_MS, capable, enrolment};

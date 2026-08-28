@@ -22,8 +22,8 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 
-use super::runner::Bound;
-use crate::money::Meter;
+use afd_billing::Meter;
+use afd_runner::sql::runner::Bound;
 
 /// The lease a report is about, scoped to the runner presenting it.
 ///
@@ -191,7 +191,7 @@ SELECT (SELECT charged FROM guard)          AS charged,
 /// hazard of. Six of those parameters are the three token counts and the four
 /// rates, which is where `renewal_settle.zig` splats a seven-field
 /// `MeterInputs` of bare integers; here they arrive as one
-/// [`Meter`](crate::money::Meter), so a transposition has to get past two named
+/// [`Meter`](afd_billing::Meter), so a transposition has to get past two named
 /// types instead of past nothing.
 ///
 /// The `$n` order is written ONCE, in [`SettleRow::bind`], beside the text it
@@ -219,7 +219,7 @@ impl<'a> SettleRow<'a> {
     /// The charge type, the two lease statuses and the two unit divisors are
     /// constants rather than caller data, so they are supplied here — seventeen
     /// binds, and none a caller has to place positionally. The divisors come
-    /// from [`crate::money`] rather than being written as literals, so the
+    /// from [`afd_billing`] rather than being written as literals, so the
     /// statement and the pure `slice_charge` reference cannot disagree about
     /// what a second or a million tokens is.
     pub fn bind(&'a self) -> Bound<'a> {
@@ -237,11 +237,11 @@ impl<'a> SettleRow<'a> {
             .bind(rates.input_nanos_per_mtok)
             .bind(rates.cached_input_nanos_per_mtok)
             .bind(rates.output_nanos_per_mtok)
-            .bind(super::billing::charge::STAGE)
+            .bind(afd_billing::sql::charge::STAGE)
             .bind(super::LEASE_STATUS_ACTIVE)
             .bind(super::LEASE_STATUS_REPORTED)
-            .bind(crate::money::nanos::MS_PER_SEC)
-            .bind(crate::money::nanos::TOKENS_PER_MTOK)
+            .bind(afd_billing::nanos::MS_PER_SEC)
+            .bind(afd_billing::nanos::TOKENS_PER_MTOK)
             .bind(self.ledger_id.as_str())
             .bind(self.succeeded)
     }

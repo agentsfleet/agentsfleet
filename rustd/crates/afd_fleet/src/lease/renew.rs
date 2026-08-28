@@ -32,10 +32,10 @@ use sqlx::Row as _;
 use crate::error::{Result, lease_lost, lease_max_runtime, query};
 use crate::lease::pull::Plane;
 use crate::lease::store::Leases;
-use crate::money::rates::Posture;
-use crate::money::{Cumulative, Nanos};
 use crate::sql;
 use crate::sql::renew::RenewRow;
+use afd_billing::rates::Posture;
+use afd_billing::{Cumulative, Nanos};
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_LOAD: &str = "renew lease load";
@@ -134,7 +134,7 @@ impl Leases {
         &self,
         lease_id: &str,
         runner_id: &Uuid7,
-        meter: crate::money::Meter,
+        meter: afd_billing::Meter,
         now: UnixMillis,
     ) -> Result<Renewed> {
         let mut bytes = [0u8; afd_core::id::ENTROPY_LEN];

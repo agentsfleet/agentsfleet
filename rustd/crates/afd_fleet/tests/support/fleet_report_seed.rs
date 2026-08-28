@@ -16,6 +16,7 @@
 
 use std::sync::Arc;
 
+use afd_billing::{Accounts, Charged, Cumulative, Meter, Posture, SliceRates};
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
@@ -25,7 +26,6 @@ use afd_fleet::credential::{Broker, Vendors};
 use afd_fleet::lease::Plane;
 use afd_fleet::lease::{Billed, Delivery, Fence, Issued, Leases};
 use afd_fleet::memory::Memories;
-use afd_fleet::money::{Accounts, Charged, Cumulative, Meter, Posture, SliceRates};
 use afd_fleet::provider::Providers;
 use afd_fleet::secrets::Registry;
 use afd_fleet::vault::Vault;

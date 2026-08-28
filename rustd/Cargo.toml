@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_api", "crates/afd_approval", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_runtime", "crates/afd_identity", "crates/afd_observability", "crates/afd_redis", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_api", "crates/afd_approval", "crates/afd_auth", "crates/afd_billing", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_runtime", "crates/afd_identity", "crates/afd_observability", "crates/afd_redis", "crates/afd_runner", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.26.2"
@@ -41,9 +41,18 @@ categories = ["network-programming"]
 afd_api = { path = "crates/afd_api" }
 afd_approval = { path = "crates/afd_approval" }
 afd_auth = { path = "crates/afd_auth" }
+# What a lease costs and what a tenant has. Split out of `afd_fleet` because it
+# reads the `billing.*` schema rather than `core.*`, and only the admission gate
+# calls it — the runner plane's other 23,000 lines never ask about money.
+afd_billing = { path = "crates/afd_billing" }
 afd_core = { path = "crates/afd_core" }
 afd_crypto = { path = "crates/afd_crypto" }
 afd_db = { path = "crates/afd_db" }
+# `core.fleet_events` and its live tail. A crate of its own because the table
+# had no owner: its statements sat in `afd_fleet::sql` behind the whole runner
+# plane, so `afd_approval` copied the insert rather than depend on leases,
+# money, policy and four sweepers to reuse ten lines of SQL.
+afd_events = { path = "crates/afd_events" }
 afd_fleet = { path = "crates/afd_fleet" }
 # Deliberately NOT folded into `afd_fleet`, which is the runner plane and is
 # already 25,500 lines — 3.5 times its nearest sibling, and the exact condition
@@ -55,6 +64,10 @@ afd_fleet_runtime = { path = "crates/afd_fleet_runtime" }
 afd_identity = { path = "crates/afd_identity" }
 afd_observability = { path = "crates/afd_observability" }
 afd_redis = { path = "crates/afd_redis" }
+# The HOST's plane, split from `afd_fleet` (the RUN's plane): enrolment,
+# liveness, the assertion verdict, and the offline/retention sweepers. The two
+# meet at exactly one audit row, and that meeting is a vocabulary import.
+afd_runner = { path = "crates/afd_runner" }
 afd_state = { path = "crates/afd_state" }
 afd_tenant = { path = "crates/afd_tenant" }
 # The workspace secret surface. Deliberately NOT folded into `afd_fleet`, whose
@@ -643,4 +656,32 @@ overflow-checks = true
 
 [profile.bench]
 # Debug symbols so a profiler can attribute samples (M-HOTPATH).
+debug = 1
+
+# The shipped artifact, and the only profile a reported number may come from.
+#
+# `release` is what a developer builds; this is what a deployment runs. The
+# difference is the LTO tail: `fat` gives the whole-program view that lets
+# inlining cross crate boundaries, which is worth real throughput on a daemon
+# whose hot path threads through afd_api -> afd_fleet -> afd_db on every
+# request. It is not the default because it costs link time on every build, and
+# a developer pays that per iteration where a deployment pays it once.
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+
+# Iterating on an OPTIMIZED build without paying the LTO tail each time.
+#
+# `bench` inherits release's `lto = "thin"` and `codegen-units = 1`, so every
+# benchmark edit re-links the whole workspace through a serialized codegen —
+# which is the right setting for the number and the wrong one for the loop that
+# arrives at it. This profile drops both, and keeps symbols so a profiler can
+# still attribute samples. Numbers reported from here are NOT comparable to
+# `dist`: measure on `dist`, iterate here.
+[profile.fast-profile]
+inherits = "release"
+lto = false
+codegen-units = 16
+strip = false
 debug = 1

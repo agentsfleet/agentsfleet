@@ -22,7 +22,7 @@
 //! No activity publish and no connector outbound hand-off: both are §4's, and
 //! both are pure fan-out that writes no durable row this milestone's parity is
 //! measured on. No OTLP spans either — the drained amount comes back as a
-//! VALUE, the way [`crate::money::Accounts::debit_receive`] answers one, and
+//! VALUE, the way [`afd_billing::Accounts::debit_receive`] answers one, and
 //! M181 §5 attaches the instrument. Fusing an exporter into the money path is
 //! what makes `service_billing.zig` unable to run without one configured.
 
@@ -34,8 +34,8 @@ use crate::error::{Result, lease_not_found, stale_fence};
 use crate::lease::pull::Plane;
 use crate::lease::settle::{Reported, Settled};
 use crate::lease::verdict::{Terminal, Verdict};
-use crate::money::rates::Posture;
-use crate::money::{Cumulative, Nanos};
+use afd_billing::rates::Posture;
+use afd_billing::{Cumulative, Nanos};
 
 /// The scoped event a finalize step is logged under when it does not land.
 const EVENT_FINALIZE_FAILED: &str = "report_finalize_step_failed";
@@ -105,7 +105,7 @@ impl Plane {
     /// refuse a report whose run has already happened, because the run cannot
     /// be un-run and the alternative is charging nothing at all. So a fault
     /// meters run-fee-only, exactly as `buildMeterInputs` does — the difference
-    /// is that [`crate::money::Accounts::meter`] hands the decision UP to here,
+    /// is that [`afd_billing::Accounts::meter`] hands the decision UP to here,
     /// where it is one line a reader can find, instead of absorbing it eight
     /// frames down.
     async fn settle(

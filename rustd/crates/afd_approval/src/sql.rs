@@ -121,20 +121,3 @@ UPDATE core.fleet_approval_gates
 SET status = $1, resolved_by = $3, detail = $4, updated_at = $5
 WHERE status = $2 AND timeout_at <= $5
 RETURNING id::text";
-
-/// Record the event a resolved gate continues from.
-///
-/// Byte-identical to `afd_fleet::sql::event::INSERT_FLEET_EVENT`, and copied
-/// rather than shared for the reason this crate exists: the approval surface
-/// writes exactly one kind of event and must not pull the runner plane in to do
-/// it. `ON CONFLICT (fleet_id, event_id) DO NOTHING` is the idempotence
-/// boundary — a retried resolve continues the run once.
-///
-/// `$1` fleet, `$2` event, `$3` workspace, `$4` actor, `$5` type, `$6` body,
-/// `$7` resumes-event, `$8` now, `$9` status.
-pub(crate) const INSERT_FLEET_EVENT: &str = "\
-INSERT INTO core.fleet_events
-  (fleet_id, event_id, workspace_id, actor, event_type,
-   status, request_json, resumes_event_id, created_at, updated_at)
-VALUES ($1::uuid, $2, $3::uuid, $4, $5, $9, $6::jsonb, $7, $8, $8)
-ON CONFLICT (fleet_id, event_id) DO NOTHING";

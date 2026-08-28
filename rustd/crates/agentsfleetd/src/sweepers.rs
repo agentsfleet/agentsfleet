@@ -1,6 +1,6 @@
 //! The background sweepers, spawned here and nowhere else.
 //!
-//! `afd_fleet::sweep` knows what each pass DOES and how the loop around it
+//! `afd_runner::sweep` knows what each pass DOES and how the loop around it
 //! behaves; this file knows which four this daemon runs and what they are built
 //! over. The split is [`crate::plane`]'s: the service crate stays unaware that
 //! a daemon process exists, and the process decides what it starts.
@@ -22,10 +22,10 @@
 
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_fleet::sweep::{
+use afd_redis::Redis;
+use afd_runner::sweep::{
     self, liveness::Liveness, reclaim::Reclaim, repair::Repairs, retention::Retention,
 };
-use afd_redis::Redis;
 
 use crate::supervisor::Supervisor;
 

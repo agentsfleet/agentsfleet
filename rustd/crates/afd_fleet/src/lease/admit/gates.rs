@@ -12,9 +12,8 @@ use afd_core::id::Uuid7;
 
 use crate::lease::admit::fault::{BALANCE, BUDGET};
 use crate::lease::admit::{Admission, Refusal, Request};
-use crate::money::Accounts;
-use crate::money::budget::{self, Verdict};
-use crate::sql;
+use afd_billing::Accounts;
+use afd_billing::budget::{self, Verdict};
 
 /// The credit pool cannot cover this run.
 ///
@@ -33,7 +32,7 @@ const EVENT_BUDGET_BREACH: &str = "lease_budget_breach";
 /// because the estimate was zero would let a catalogue change silently disable
 /// the credit gate.
 ///
-/// A tenant with no wallet row is ADMITTED — see [`crate::money::wallet`] for
+/// A tenant with no wallet row is ADMITTED — see [`afd_billing::wallet`] for
 /// why an unprovisioned tenant is an operator gap rather than a refusal.
 pub(super) async fn balance(
     accounts: &Accounts,
@@ -68,7 +67,7 @@ pub(super) async fn balance(
         "the tenant's credit pool cannot cover this run's floor cost"
     );
     Some(Admission::Refuse(Refusal::labelled(
-        sql::event::label::BALANCE_EXHAUSTED,
+        afd_core::event::label::BALANCE_EXHAUSTED,
     )))
 }
 
@@ -107,6 +106,6 @@ pub(super) async fn fleet_budget(
         "the fleet has reached a ceiling its author declared"
     );
     Some(Admission::Refuse(Refusal::labelled(
-        sql::event::label::BUDGET_BREACH,
+        afd_core::event::label::BUDGET_BREACH,
     )))
 }

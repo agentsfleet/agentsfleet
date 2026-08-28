@@ -21,10 +21,10 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 
 use crate::error::{Result, query};
-use crate::money::rates::Posture;
-use crate::money::store::Accounts;
-use crate::money::{Nanos, RECEIVE_NANOS};
+use crate::rates::Posture;
 use crate::sql;
+use crate::store::Accounts;
+use crate::{Nanos, RECEIVE_NANOS};
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_CHARGE: &str = "usage ledger insert";
@@ -37,7 +37,7 @@ const EVENT_DEBIT: &str = "debit";
 /// Who and what a charge is recorded against.
 ///
 /// One struct rather than nine positional parameters, for the reason
-/// [`crate::sql::lease::LeaseRow`] is one: the insert binds sixteen values and
+/// [`afd_fleet::sql::lease::LeaseRow`] is one: the insert binds sixteen values and
 /// four of them are identifiers of the same shape, which compile clean in any
 /// order. `metering.zig`'s `PreflightContext` groups the same fields for the
 /// same reason and then passes `tenant_id` alongside it rather than inside it,
@@ -93,7 +93,7 @@ impl Accounts {
     /// answer. Every one of those leaves the delivery leasable — the caller
     /// answers no-work and the next poll retries.
     pub async fn debit_receive(&self, charged: Charged<'_>, now: UnixMillis) -> Result<Nanos> {
-        self.record(charged, sql::billing::charge::RECEIVE, RECEIVE_NANOS, now)
+        self.record(charged, sql::charge::RECEIVE, RECEIVE_NANOS, now)
             .await?;
 
         // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
@@ -103,7 +103,7 @@ impl Accounts {
         let nanos = RECEIVE_NANOS.as_i64();
         tracing::debug!(
             event = EVENT_DEBIT,
-            charge_type = sql::billing::charge::RECEIVE,
+            charge_type = sql::charge::RECEIVE,
             tenant_id = tenant,
             agentsfleet_event_id = event,
             nanos,
@@ -137,7 +137,7 @@ impl Accounts {
         let row_id = Uuid7::encode(now, bytes)?;
 
         let mut connection = self.pool().acquire().await?;
-        sqlx::query(sql::billing::INSERT_USAGE_LEDGER)
+        sqlx::query(sql::INSERT_USAGE_LEDGER)
             .bind(row_id.as_str())
             .bind(charged.tenant_id.as_str())
             .bind(charged.workspace_id.as_str())

@@ -30,7 +30,7 @@ use std::fmt::{self, Debug, Formatter};
 use serde::de::{Deserialize, Deserializer};
 use zeroize::Zeroizing;
 
-use crate::money::Posture;
+use afd_billing::Posture;
 
 /// A string that is wiped when it goes out of scope, however it got there.
 ///
@@ -197,7 +197,7 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
     use super::{Resolved, SecretString};
-    use crate::money::Posture;
+    use afd_billing::Posture;
 
     fn resolved() -> Resolved {
         Resolved::new(

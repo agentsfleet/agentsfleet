@@ -22,9 +22,9 @@ use super::{
     DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
     DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND, DETAIL_MINT_FAILED,
     DETAIL_MINT_UNCONFIGURED, DETAIL_PROVIDER_UNRESOLVED, DETAIL_QUEUE_UNAVAILABLE,
-    DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUNNER_NOT_FOUND,
-    DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, DETAIL_WRITE_SPEND_EXHAUSTED,
-    DETAIL_WRITE_UNAPPROVED, Error, ErrorKind,
+    DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS, DETAIL_STALE_FENCE,
+    DETAIL_VAULT_DATA_INVALID, DETAIL_WRITE_SPEND_EXHAUSTED, DETAIL_WRITE_UNAPPROVED, Error,
+    ErrorKind,
 };
 
 impl Error {
@@ -49,16 +49,6 @@ impl Error {
         matches!(self.inner.kind, ErrorKind::Rejected { .. })
     }
 
-    /// Whether an authenticated runner's row has since disappeared.
-    ///
-    /// Answered separately from a rejection because the remedy differs: the
-    /// token is real and the enrolment is gone, so the host must be re-enrolled
-    /// rather than retried.
-    #[must_use]
-    pub fn is_runner_vanished(&self) -> bool {
-        matches!(self.inner.kind, ErrorKind::RunnerVanished)
-    }
-
     /// The registry code this failure answers with.
     ///
     /// Exhaustive, so a new kind fails the build until it is given one — the
@@ -68,10 +58,14 @@ impl Error {
     pub const fn code(&self) -> ErrorCode {
         match self.inner.kind {
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
+            // Delegated, not restated: the billing crate already decides which
+            // of its failures are an outage and which are a statement fault,
+            // and a second copy of that mapping here is the drift this crate's
+            // own module header warns about.
+            ErrorKind::Billing { ref source } => source.code(),
             ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => {
                 error_code::INTERNAL_DB_QUERY
             }
-            ErrorKind::RunnerVanished => error_code::RUN_INVALID_RUNNER_TOKEN,
             ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
             // A daemon whose clock cannot name an instant, and a host that
             // cannot draw random bytes, are both THIS process failing — not the
@@ -196,7 +190,6 @@ impl Error {
     pub const fn detail(&self) -> &'static str {
         match self.inner.kind {
             ErrorKind::Rejected { detail } => detail,
-            ErrorKind::RunnerVanished => DETAIL_RUNNER_NOT_FOUND,
             ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
             // A corrupt sequence joins the two row faults: all three are the
             // database holding something this daemon cannot use, and a caller
@@ -206,6 +199,7 @@ impl Error {
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::SequenceCorrupt => DETAIL_DATABASE_ERROR,
             ErrorKind::Queue { .. } => DETAIL_QUEUE_UNAVAILABLE,
+            ErrorKind::Billing { ref source } => source.detail(),
             ErrorKind::Envelope { .. } => DETAIL_EVENT_MALFORMED,
             ErrorKind::Mint { .. } | ErrorKind::Entropy { .. } => DETAIL_REGISTRATION_FAILED,
             ErrorKind::ProviderMalformed { .. }
@@ -308,9 +302,9 @@ impl Error {
             // got to see.
             ErrorKind::Vault { .. }
             | ErrorKind::Datastore { .. }
+            | ErrorKind::Billing { .. }
             | ErrorKind::Queue { .. }
             | ErrorKind::Query { .. }
-            | ErrorKind::RunnerVanished
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::Envelope { .. }
             | ErrorKind::Rejected { .. }

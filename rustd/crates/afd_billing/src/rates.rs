@@ -25,12 +25,12 @@
 use sqlx::Row as _;
 
 use crate::error::{Result, query};
-use crate::money::store::Accounts;
-use crate::money::{
+use crate::sql;
+use crate::store::Accounts;
+use crate::{
     ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, Nanos, RUN_NANOS_PER_SEC,
     SliceRates, slice_charge,
 };
-use crate::sql;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_RATE: &str = "model rate at revision";
@@ -70,8 +70,8 @@ impl Posture {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Platform => sql::billing::posture::PLATFORM,
-            Self::SelfManaged => sql::billing::posture::SELF_MANAGED,
+            Self::Platform => sql::posture::PLATFORM,
+            Self::SelfManaged => sql::posture::SELF_MANAGED,
         }
     }
 
@@ -82,8 +82,8 @@ impl Posture {
     #[must_use]
     pub fn parse(stored: &str) -> Option<Self> {
         match stored {
-            sql::billing::posture::PLATFORM => Some(Self::Platform),
-            sql::billing::posture::SELF_MANAGED => Some(Self::SelfManaged),
+            sql::posture::PLATFORM => Some(Self::Platform),
+            sql::posture::SELF_MANAGED => Some(Self::SelfManaged),
             _unknown => None,
         }
     }
@@ -193,7 +193,7 @@ impl Accounts {
         model: &str,
     ) -> Result<Option<SliceRates>> {
         let mut connection = self.pool().acquire().await?;
-        let row = sqlx::query(sql::billing::LOAD_RATE_WITH_REVISION)
+        let row = sqlx::query(sql::LOAD_RATE_WITH_REVISION)
             .bind(provider)
             .bind(model)
             .fetch_one(&mut *connection)
@@ -229,7 +229,7 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
     use super::{Estimate, Posture};
-    use crate::money::{Nanos, RUN_NANOS_PER_SEC, slice_charge};
+    use crate::{Nanos, RUN_NANOS_PER_SEC, slice_charge};
 
     #[test]
     fn only_the_platform_posture_needs_the_catalogue() {

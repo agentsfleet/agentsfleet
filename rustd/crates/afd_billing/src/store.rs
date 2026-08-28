@@ -3,7 +3,7 @@
 //! Same shape as [`crate::runner::Runners`] and [`crate::lease::Leases`], for
 //! the same reason: the pool is OWNED here and [`Accounts::pool`] is
 //! `pub(crate)`, so nothing outside this crate can run a money statement that
-//! is not in [`crate::sql::billing`], and the side-by-side parity read of that
+//! is not in [`crate::sql`], and the side-by-side parity read of that
 //! module stays meaningful (Invariant 5).
 //!
 //! # Why there is no rate cache, when the Zig has one
