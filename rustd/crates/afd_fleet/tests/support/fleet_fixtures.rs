@@ -31,7 +31,7 @@ use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
 use afd_fleet::Runners;
-use afd_fleet::gate::{Gates, Inbox};
+use afd_fleet::gate::Gates;
 use afd_fleet::lease::Leases;
 use afd_redis::Redis;
 use sqlx::{AssertSqlSafe, Row as _};
@@ -158,15 +158,6 @@ impl Fixtures {
     ///
     /// Built per call for the same reason [`Fixtures::leases`] is: a handle
     /// over the same `Arc`-backed pool.
-    /// The operator's queue over the same gate rows [`Self::gates`] parks.
-    ///
-    /// A second handle rather than a method on the first: the runner side and
-    /// the person side ask different questions of one table, and a type that
-    /// answered both would let a handler reach the wrong half.
-    pub(crate) fn inbox(&self) -> Inbox {
-        Inbox::new(self.database.clone())
-    }
-
     pub(crate) fn gates(&self) -> Gates {
         Gates::new(self.database.clone(), self.queue().clone(), Entropy::new())
     }

@@ -19,6 +19,27 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
+/// The spellings `core.fleet_approval_gates.status` stores.
+///
+/// Declared HERE, in the crate both planes already read, because two crates
+/// write and read this one column: the runner plane parks a gate at `PENDING`
+/// and reads the durable answer back, and the operator plane writes the answer.
+/// A drift between their two copies would make a row one of them wrote the
+/// other could not read — and the gate would sit pending forever with a human's
+/// answer landing nowhere.
+pub mod status {
+    /// Still waiting on a human.
+    pub const PENDING: &str = "pending";
+    /// A reviewer approved it.
+    pub const APPROVED: &str = "approved";
+    /// A reviewer refused it.
+    pub const DENIED: &str = "denied";
+    /// The deadline passed with no answer.
+    pub const TIMED_OUT: &str = "timed_out";
+    /// The daemon stopped the fleet.
+    pub const AUTO_KILLED: &str = "auto_killed";
+}
+
 /// One gate as the inbox lists it.
 #[derive(Debug, Clone, Serialize)]
 pub struct ApprovalSummary<'a> {

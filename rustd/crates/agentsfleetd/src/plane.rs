@@ -19,6 +19,7 @@ use std::sync::Arc;
 
 use afd_api::router::{Dependencies, ReadyInputs};
 use afd_api::{Planes, Services};
+use afd_approval::Inbox;
 use afd_core::clock::UnixMillis;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::{Kek, SecretBytes};
@@ -26,7 +27,6 @@ use afd_db::Db;
 use afd_fleet::Runners;
 use afd_fleet::bundle::Bundles;
 use afd_fleet::gate::Gates;
-use afd_fleet::gate::Inbox;
 use afd_fleet::lease::{Leases, Plane};
 use afd_fleet::memory::Memories;
 use afd_fleet::money::Accounts;
@@ -139,7 +139,7 @@ impl ServingPlane {
             // of the key material, zeroed once, however many stores hold it.
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
             preferences: Preferences::new(database.clone(), Entropy::new()),
-            approvals: Inbox::new(database.clone()),
+            approvals: Inbox::new(database.clone(), queue.clone()),
             api_url: login.api_url,
             logins: Logins::new(
                 afd_redis::SessionStore::new(queue.clone()),

@@ -6,14 +6,15 @@
 //!
 //! # The decision takes an already-terminal status
 //!
-//! [`WorkspaceApprovals::resolve`] takes [`Status`], and the store refuses
-//! `Pending`. The handler maps the URL's `:approve` / `:deny` suffix onto the
-//! two it can produce, so there is no third spelling for a caller to invent.
+//! [`WorkspaceApprovals::resolve`] takes [`Decision`], which cannot express `pending`.
+//! The handler maps the path's `approve` / `deny` segment onto the two an
+//! operator can write, so there is no third spelling for a caller to invent.
 
+use afd_approval::{
+    Cursor, Decision, Filter, GateRow, Inbox, Resolution, Result as ApprovalResult,
+};
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_fleet::Result as FleetResult;
-use afd_fleet::gate::{Cursor, Filter, GateRow, Inbox, Resolution, Status};
 
 /// Everything the approval routes act through.
 pub trait WorkspaceApprovals: Send + Sync + std::fmt::Debug + 'static {
@@ -27,7 +28,7 @@ pub trait WorkspaceApprovals: Send + Sync + std::fmt::Debug + 'static {
         filter: Filter<'_>,
         cursor: Option<Cursor<'_>>,
         limit: i64,
-    ) -> impl Future<Output = FleetResult<Vec<GateRow>>> + Send;
+    ) -> impl Future<Output = ApprovalResult<Vec<GateRow>>> + Send;
 
     /// One gate, inside this workspace.
     ///
@@ -38,7 +39,7 @@ pub trait WorkspaceApprovals: Send + Sync + std::fmt::Debug + 'static {
         &self,
         workspace: &Uuid7,
         gate: &Uuid7,
-    ) -> impl Future<Output = FleetResult<Option<GateRow>>> + Send;
+    ) -> impl Future<Output = ApprovalResult<Option<GateRow>>> + Send;
 
     /// Answers one gate atomically.
     ///
@@ -48,12 +49,12 @@ pub trait WorkspaceApprovals: Send + Sync + std::fmt::Debug + 'static {
     fn resolve(
         &self,
         action: &str,
-        outcome: Status,
+        outcome: Decision,
         by: &str,
         detail: &str,
         fleet: Option<&str>,
         now: UnixMillis,
-    ) -> impl Future<Output = FleetResult<Resolution>> + Send;
+    ) -> impl Future<Output = ApprovalResult<Resolution>> + Send;
 }
 
 /// The production queue answers all three directly.
@@ -64,7 +65,7 @@ impl WorkspaceApprovals for Inbox {
         filter: Filter<'_>,
         cursor: Option<Cursor<'_>>,
         limit: i64,
-    ) -> impl Future<Output = FleetResult<Vec<GateRow>>> + Send {
+    ) -> impl Future<Output = ApprovalResult<Vec<GateRow>>> + Send {
         Self::page(self, workspace, filter, cursor, limit)
     }
 
@@ -72,19 +73,19 @@ impl WorkspaceApprovals for Inbox {
         &self,
         workspace: &Uuid7,
         gate: &Uuid7,
-    ) -> impl Future<Output = FleetResult<Option<GateRow>>> + Send {
+    ) -> impl Future<Output = ApprovalResult<Option<GateRow>>> + Send {
         Self::one(self, workspace, gate)
     }
 
     fn resolve(
         &self,
         action: &str,
-        outcome: Status,
+        outcome: Decision,
         by: &str,
         detail: &str,
         fleet: Option<&str>,
         now: UnixMillis,
-    ) -> impl Future<Output = FleetResult<Resolution>> + Send {
+    ) -> impl Future<Output = ApprovalResult<Resolution>> + Send {
         Self::resolve(self, action, outcome, by, detail, fleet, now)
     }
 }
