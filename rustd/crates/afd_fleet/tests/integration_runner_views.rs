@@ -22,7 +22,7 @@ mod view_heartbeat;
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_runner::{PageLimit, RunnerEventFilter};
+use afd_runner::{KeysetCursor, PageLimit, RunnerEventFilter};
 use afd_wire::admin::{RunnerAdminAction, RunnerEventType};
 use afd_wire::runner::{NetworkPolicy, RunnerLiveness, SandboxTier};
 
@@ -207,35 +207,81 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) {
         .expect("the token rotates");
 }
 
+/// Walks the whole keyset listing and grades it against the seeded runners.
+///
+/// # Why this does not assert a total
+///
+/// It used to read `assert_eq!((first.total(), second.total()), (3, 3))`, which
+/// holds only if this test OWNS the database. It does not: `Fixtures::create`
+/// takes `TestDatabase::shared`, and `afd_db::test_util` reserves the
+/// per-test database for the migrator suites alone. Every other integration
+/// file enrols runners into the same rows, so the global count is whatever the
+/// lane happens to have run — sixty-five when M178's suites joined M179's, and
+/// three only while this file was nearly the only writer.
+///
+/// What the dimension is actually about survives, and is graded harder: the
+/// composite cursor must walk the whole set skipping no tie and repeating no
+/// row, the total must not move under the walk, and the seeded runners must
+/// come back in their seeded order with their derived liveness.
 async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
     let limit = PageLimit::new(2).expect("two is a valid page limit");
     let now = UnixMillis::from_millis(ENROLLED_AT + 4);
-    let first = fixtures
-        .runners()
-        .list_runners(None, limit, now)
-        .await
-        .expect("the first page loads");
-    let second = fixtures
-        .runners()
-        .list_runners(first.next_cursor(), limit, now)
-        .await
-        .expect("the second page loads");
-    assert_eq!((first.total(), second.total()), (3, 3));
-    assert!(second.next_cursor().is_none());
-    let items = first
-        .into_items()
-        .into_iter()
-        .chain(second.into_items())
-        .collect::<Vec<_>>();
-    let ids = items
+
+    let mut cursor: Option<KeysetCursor> = None;
+    let mut walked = Vec::new();
+    let mut totals = Vec::new();
+    loop {
+        let page = fixtures
+            .runners()
+            .list_runners(cursor.as_ref(), limit, now)
+            .await
+            .expect("the page loads");
+        totals.push(page.total());
+        // Cloned before the page is consumed: `next_cursor` borrows from it,
+        // and the walk needs the boundary to outlive the rows it came with.
+        cursor = page.next_cursor().cloned();
+        walked.extend(page.into_items());
+        if cursor.is_none() {
+            break;
+        }
+    }
+
+    let reported = totals.first().copied().expect("the walk reads a page");
+    assert!(
+        totals.iter().all(|total| *total == reported),
+        "the total moved under the walk: {totals:?}"
+    );
+
+    let ids = walked
         .iter()
         .map(|item| item.id().as_str().to_owned())
         .collect::<Vec<_>>();
+    let unique = ids.iter().collect::<std::collections::HashSet<_>>();
     assert_eq!(
-        ids, seeded.ordered_ids,
+        ids.len(),
+        unique.len(),
+        "the composite cursor repeated a row"
+    );
+    assert_eq!(
+        i64::try_from(ids.len()).expect("the lane holds fewer rows than an i64"),
+        reported,
+        "the walk saw a different number of rows than the page total reported"
+    );
+
+    let seen = ids
+        .iter()
+        .filter(|id| seeded.ordered_ids.contains(id))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        seen, seeded.ordered_ids,
         "the composite cursor skips no ties"
     );
-    for item in items {
+
+    for item in walked
+        .iter()
+        .filter(|item| seeded.ordered_ids.contains(&item.id().as_str().to_owned()))
+    {
         let expected = if item.id() == &seeded.live_runner {
             RunnerLiveness::Online
         } else {
