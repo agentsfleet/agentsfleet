@@ -34,10 +34,10 @@ use afd_redis::EventId;
 
 use crate::error::Result;
 use crate::lease::affinity::Fence;
+use crate::lease::sql;
+use crate::lease::sql::session::MAX_CHECKPOINT_RESPONSE_BYTES;
 use crate::lease::store::Leases;
 use crate::lease::verdict::{Terminal, truncate};
-use crate::sql;
-use crate::sql::event::MAX_CHECKPOINT_RESPONSE_BYTES;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_TERMINAL: &str = "fleet event terminal";
@@ -83,7 +83,7 @@ impl Leases {
             wall_ms,
         } = outcome;
         let mut connection = self.pool().acquire().await?;
-        let moved = sqlx::query(sql::event::UPDATE_FLEET_EVENT_RESULT)
+        let moved = sqlx::query(afd_events::sql::UPDATE_FLEET_EVENT_RESULT)
             .bind(fleet_id.as_str())
             .bind(event_id)
             .bind(verdict.status())
@@ -92,7 +92,7 @@ impl Leases {
             .bind(wall_ms)
             .bind(now.as_millis())
             .bind(verdict.label())
-            .bind(sql::event::EVENT_STATUS_RECEIVED)
+            .bind(afd_core::event::status::RECEIVED)
             .bind(verdict.detail())
             .execute(&mut *connection)
             .await
@@ -135,7 +135,7 @@ impl Leases {
         .to_string();
 
         let mut connection = self.pool().acquire().await?;
-        sqlx::query(sql::event::UPSERT_FLEET_SESSION)
+        sqlx::query(sql::session::UPSERT_FLEET_SESSION)
             .bind(fleet_id.as_str())
             .bind(&document)
             .bind(now.as_millis())
@@ -188,13 +188,13 @@ impl Leases {
         sqlx::query(sql::report::INSERT_RUNNER_EVENT)
             .bind(row_id.as_str())
             .bind(runner_id.as_str())
-            .bind(sql::event_type::LEASE_RELEASED)
+            .bind(afd_runner::sql::event_type::LEASE_RELEASED)
             .bind(now.as_millis())
-            .bind(sql::meta::LEASE_ID)
+            .bind(afd_runner::sql::meta::LEASE_ID)
             .bind(lease_id)
-            .bind(sql::meta::FLEET_ID)
+            .bind(afd_runner::sql::meta::FLEET_ID)
             .bind(fleet_id.as_str())
-            .bind(sql::meta::AGENTSFLEET_EVENT_ID)
+            .bind(afd_runner::sql::meta::AGENTSFLEET_EVENT_ID)
             .bind(event_id)
             .execute(&mut *connection)
             .await

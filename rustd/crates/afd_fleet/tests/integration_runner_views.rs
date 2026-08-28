@@ -22,7 +22,7 @@ mod view_heartbeat;
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_fleet::{PageLimit, RunnerEventFilter};
+use afd_runner::{KeysetCursor, PageLimit, RunnerEventFilter};
 use afd_wire::admin::{RunnerAdminAction, RunnerEventType};
 use afd_wire::runner::{NetworkPolicy, RunnerLiveness, SandboxTier};
 
@@ -66,7 +66,7 @@ async fn runner_views_report_missing_and_malformed_rows_without_partial_success(
         .expect_err("a missing runner has no history");
     for error in [detail_error, event_error] {
         assert_eq!(error.code(), error_code::RUNNER_NOT_FOUND);
-        assert_eq!(error.detail(), afd_fleet::error::DETAIL_RUNNER_NOT_FOUND);
+        assert_eq!(error.detail(), afd_runner::DETAIL_RUNNER_NOT_FOUND);
     }
 
     let enrolled = fixtures
@@ -84,7 +84,14 @@ async fn runner_views_report_missing_and_malformed_rows_without_partial_success(
         .await
         .expect_err("an unknown stored state fails the whole detail");
     assert_eq!(malformed.code(), error_code::INTERNAL_DB_QUERY);
-    assert_eq!(malformed.detail(), afd_fleet::error::DETAIL_DATABASE_ERROR);
+    assert_eq!(malformed.detail(), afd_runner::DETAIL_DATABASE_ERROR);
+    // Restored the moment the assertion is made, and not at the end of the
+    // test. `fleet.runners` is shared with every other suite in this lane, and
+    // an undecodable `admin_state` fails a WHOLE listing rather than the row
+    // that carries it — so while this fixture is stored, any unfiltered
+    // `list_runners` anywhere in the binary refuses. The window is narrowed to
+    // the two statements it takes to prove the refusal.
+    restore_admin_state(&fixtures, &enrolled.runner_id).await;
     insert_unknown_event(&fixtures, &enrolled.runner_id).await;
     let malformed_event = fixtures
         .runners()
@@ -97,10 +104,7 @@ async fn runner_views_report_missing_and_malformed_rows_without_partial_success(
         .await
         .expect_err("an unknown stored event type fails the whole page");
     assert_eq!(malformed_event.code(), error_code::INTERNAL_DB_QUERY);
-    assert_eq!(
-        malformed_event.detail(),
-        afd_fleet::error::DETAIL_DATABASE_ERROR
-    );
+    assert_eq!(malformed_event.detail(), afd_runner::DETAIL_DATABASE_ERROR);
     assert!(std::error::Error::source(&malformed_event).is_some());
     fixtures.cleanup().await;
 }
@@ -117,6 +121,21 @@ async fn overwrite_admin_state(fixtures: &Fixtures, runner: &Uuid7) {
         .execute(&mut *connection)
         .await
         .expect("the malformed fixture state is stored");
+}
+
+/// Puts a decodable state back, so the shared listing reads again.
+async fn restore_admin_state(fixtures: &Fixtures, runner: &Uuid7) {
+    let mut connection = fixtures
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    sqlx::query("UPDATE fleet.runners SET admin_state = $2 WHERE id = $1::uuid")
+        .bind(runner.as_str())
+        .bind("active")
+        .execute(&mut *connection)
+        .await
+        .expect("the fixture state is restored");
 }
 
 async fn insert_unknown_event(fixtures: &Fixtures, runner: &Uuid7) {
@@ -210,35 +229,89 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) {
         .expect("the token rotates");
 }
 
+/// Walks the whole keyset listing and grades it against the seeded runners.
+///
+/// # Why this does not assert a total
+///
+/// It used to read `assert_eq!((first.total(), second.total()), (3, 3))`, which
+/// holds only if this test OWNS the database. It does not: `Fixtures::create`
+/// takes `TestDatabase::shared`, and `afd_db::test_util` reserves the
+/// per-test database for the migrator suites alone. Every other integration
+/// file enrols runners into the same rows, so the global count is whatever the
+/// lane happens to have run — sixty-five when M178's suites joined M179's, and
+/// three only while this file was nearly the only writer.
+///
+/// What the dimension is actually about survives, and is graded harder: the
+/// composite cursor must walk the whole set skipping no tie and repeating no
+/// row, the total must not move under the walk, and the seeded runners must
+/// come back in their seeded order with their derived liveness.
 async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
     let limit = PageLimit::new(2).expect("two is a valid page limit");
     let now = UnixMillis::from_millis(ENROLLED_AT + 4);
-    let first = fixtures
-        .runners()
-        .list_runners(None, limit, now)
-        .await
-        .expect("the first page loads");
-    let second = fixtures
-        .runners()
-        .list_runners(first.next_cursor(), limit, now)
-        .await
-        .expect("the second page loads");
-    assert_eq!((first.total(), second.total()), (3, 3));
-    assert!(second.next_cursor().is_none());
-    let items = first
-        .into_items()
-        .into_iter()
-        .chain(second.into_items())
-        .collect::<Vec<_>>();
-    let ids = items
+
+    let mut cursor: Option<KeysetCursor> = None;
+    let mut walked = Vec::new();
+    let mut totals = Vec::new();
+    loop {
+        let page = fixtures
+            .runners()
+            .list_runners(cursor.as_ref(), limit, now)
+            .await
+            .expect("the page loads");
+        totals.push(page.total());
+        // Cloned before the page is consumed: `next_cursor` borrows from it,
+        // and the walk needs the boundary to outlive the rows it came with.
+        cursor = page.next_cursor().cloned();
+        walked.extend(page.into_items());
+        // Stops at the seeded set rather than walking to the end. The table is
+        // shared with every other suite in this lane, so a full walk reads
+        // rows this test did not write — including the deliberately
+        // undecodable `admin_state` its sibling stores — and none of them is
+        // what this dimension is about.
+        let found = walked
+            .iter()
+            .filter(|item| seeded.ordered_ids.iter().any(|id| id == item.id().as_str()))
+            .count();
+        if cursor.is_none() || found == seeded.ordered_ids.len() {
+            break;
+        }
+    }
+
+    let reported = totals.first().copied().expect("the walk reads a page");
+    assert!(
+        totals.iter().all(|total| *total == reported),
+        "the total moved under the walk: {totals:?}"
+    );
+
+    let ids = walked
         .iter()
         .map(|item| item.id().as_str().to_owned())
         .collect::<Vec<_>>();
+    let unique = ids.iter().collect::<std::collections::HashSet<_>>();
     assert_eq!(
-        ids, seeded.ordered_ids,
+        ids.len(),
+        unique.len(),
+        "the composite cursor repeated a row"
+    );
+    assert!(
+        reported >= i64::try_from(seeded.ordered_ids.len()).expect("three fits an i64"),
+        "the total does not account for the seeded runners: {reported}"
+    );
+
+    let seen = ids
+        .iter()
+        .filter(|id| seeded.ordered_ids.contains(id))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        seen, seeded.ordered_ids,
         "the composite cursor skips no ties"
     );
-    for item in items {
+
+    for item in walked
+        .iter()
+        .filter(|item| seeded.ordered_ids.contains(&item.id().as_str().to_owned()))
+    {
         let expected = if item.id() == &seeded.live_runner {
             RunnerLiveness::Online
         } else {

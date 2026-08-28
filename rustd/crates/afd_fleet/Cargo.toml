@@ -14,25 +14,37 @@ categories.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks the seams the suites drive through the crates that own
 # them, so a test needs no datastore to reach a decision.
-test-util = ["afd_auth/test-util", "afd_core/test-util", "afd_db/test-util"]
+test-util = [
+  "afd_auth/test-util",
+  "afd_core/test-util",
+  "afd_db/test-util",
+  # The queue refusal a stubbed device-flow surface answers with.
+  "afd_redis/test-util",
+]
 
 # Each dependency is added by the module that uses it, for the reason
 # `afd_api`'s manifest states: `unused_crate_dependencies` is how the dependency
 # graph stays a fact rustc checks rather than a claim.
 [dependencies]
-# The compact gate reference in a repair branch name: URL-safe, unpadded.
-base64.workspace = true
-# Decoding that reference back to the identifier the gate table stores.
-uuid.workspace = true
-# The principal a verb acts for, and the runner identity carried on it.
-afd_auth.workspace = true
 # Identifiers, the clock, the error-code registry, and the bounded primitives.
+afd_billing.workspace = true
+afd_credential.workspace = true
+afd_gate.workspace = true
 afd_core.workspace = true
 # The pool every statement in `sql/` runs against.
 afd_db.workspace = true
+# `core.fleet_events`. The table's statements moved out of this crate's
+# `sql::event` and into the crate named for it, so `afd_approval` could reach
+# them without depending on leases, money, policy and four sweepers.
+afd_events.workspace = true
 # The readiness index and the fleet event streams. A lease is the one verb
 # that cannot be served from either datastore alone.
 afd_redis.workspace = true
+# The HOST's plane. The lease is issued TO a runner, so the lease statements
+# bind runner rows through its `Bound`, and finalize writes the one
+# `lease_released` audit row using its vocabulary — the single point the two
+# planes meet.
+afd_runner.workspace = true
 # The runner-plane state reads, and the `admin_state` spelling the credential
 # lookup already owns — imported rather than restated (RULE UFS).
 afd_state.workspace = true
@@ -44,58 +56,23 @@ afd_fleet_runtime.workspace = true
 # The UTC month a spend ceiling opens at. Confined to `money::window`; see the
 # workspace manifest for why a calendar is a dependency and the rolling day is
 # not.
-jiff.workspace = true
 # The entropy a runner token is minted from. Drawn through the workspace's one
 # entropy surface, never through a second call to the operating system.
 afd_crypto.workspace = true
 # The wire shapes this plane answers with. Frozen by M175; consumed, never
 # authored here.
 afd_wire.workspace = true
-# The tenant-supplied endpoint guard parses through a real URL parser rather
-# than scanning bytes for a colon — see `provider::endpoint`.
-url.workspace = true
 sqlx.workspace = true
 # The error derive every crate under `rustd/` shapes its `Error` with.
 thiserror.workspace = true
-# Lower-case hex for the minted token body.
-hex.workspace = true
 # The Fleet Bundle snapshot store. R2 is S3-compatible and this is the client
 # the workspace manifest chose for it; `bundle` names both the store trait and
 # the error a failed GET carries, so the dependency is this crate's rather than
 # the binary's.
 object_store.workspace = true
-# The credential broker's cache AND its single-flight. `get_with` admits one
-# caller per key and parks the rest on the same future, which is the property
-# `broker_flight.zig` exists to hand-roll on top of a cache that lacks it — a
-# rotating refresh provider revokes the whole token family if two cold misses
-# post the same refresh token.
-moka.workspace = true
-# The GitHub App half of the mint: App JWT, transport, typed installation token.
-octocrab.workspace = true
-# The App private key, read from PEM into the signing key `octocrab` takes BY
-# TYPE. Named here rather than reached through `octocrab` because that crate
-# does not re-export it, and the workspace pin is held to `octocrab`'s major for
-# that reason — see the manifest.
-jsonwebtoken.workspace = true
-# `StatusCode`, to classify a failed exchange by what GitHub answered.
-http.workspace = true
-# The broker's cache identity: one digest over a handle's stable fields and a
-# fleet's binding. A real hash rather than the Zig's seeded Wyhash, because the
-# value it keys is one tenant's credential and a collision would hand it to
-# another — see `credential::broker`.
-sha2.workspace = true
-# The refresh-grant half of the mint: one form POST for Zoho, Jira and Linear.
-# Named here rather than reached through `octocrab`, which carries its own
-# client and does not re-export one — and taken with the workspace's `form`
-# feature so the grant is encoded by `serde_urlencoded` rather than by a
-# percent-encoder of ours (see the workspace manifest).
-reqwest.workspace = true
 # The buffer `object_store` answers a GET with, named by `bundle::Snapshot` so a
 # fetched snapshot reaches the HTTP layer without being copied.
 bytes.workspace = true
-# The minted credential is overwritten when the response revealing it is done;
-# a freed `Box<str>` is not.
-zeroize.workspace = true
 # The `Deserialize` bound the stored-column decoders take, and the value
 # deserializer that turns a stored enum spelling back into its wire variant —
 # through `afd_wire`'s own serde renames, so a column and the wire cannot drift.
@@ -104,14 +81,14 @@ serde.workspace = true
 # `metadata` a runner event carries are all `jsonb`, built and read as values.
 serde_json.workspace = true
 tracing.workspace = true
-# The sweepers' loop: `select!` over a cancellation token and a sleep, which is
-# what replaces four copies of the Zig's poll-an-atomic-every-100ms wait.
-tokio = { workspace = true, features = ["time", "macros"] }
-# The cancellation token itself — edge-triggered, so a stopping daemon
-# interrupts a sweeper's wait rather than waiting it out.
-tokio-util.workspace = true
 
 [dev-dependencies]
+# The credential plane moved out; its client and the zeroizing wrapper are
+# still what the lease suite constructs a stub broker with.
+reqwest.workspace = true
+zeroize.workspace = true
+afd_credential = { workspace = true, features = ["test-util"] }
+afd_runner = { workspace = true, features = ["test-util"] }
 # The suites need REAL parallelism: every contention proof in this crate — the
 # affinity race, the reclaim fence, the mint single-flight — is worthless on a
 # single-threaded runtime, because the interleaving it exists to force cannot

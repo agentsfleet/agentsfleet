@@ -19,8 +19,8 @@ use afd_core::id::Uuid7;
 use sqlx::Row as _;
 
 use crate::error::{Result, query, sequence_corrupt};
+use crate::lease::sql;
 use crate::lease::store::Leases;
-use crate::sql;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_FENCE: &str = "live fence lookup";
@@ -41,7 +41,7 @@ impl Leases {
         fleet_id: &Uuid7,
         now: UnixMillis,
     ) -> Result<Option<u64>> {
-        let found = sqlx::query(sql::memory::SELECT_LIVE_FENCE_BY_FLEET)
+        let found = sqlx::query(crate::memory::sql::SELECT_LIVE_FENCE_BY_FLEET)
             .bind(runner_id.as_str())
             .bind(fleet_id.as_str())
             .bind(sql::LEASE_STATUS_ACTIVE)
@@ -65,7 +65,7 @@ impl Leases {
         fleet_id: &Uuid7,
         now: UnixMillis,
     ) -> Result<Option<u64>> {
-        let found = sqlx::query(sql::memory::SELECT_LIVE_FENCE_BY_LEASE)
+        let found = sqlx::query(crate::memory::sql::SELECT_LIVE_FENCE_BY_LEASE)
             .bind(lease_id)
             .bind(runner_id.as_str())
             .bind(fleet_id.as_str())

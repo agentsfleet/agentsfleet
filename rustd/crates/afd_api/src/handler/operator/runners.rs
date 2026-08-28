@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use afd_fleet::{RunnerDetail as StoredDetail, RunnerItem as StoredItem};
+use afd_runner::{RunnerDetail as StoredDetail, RunnerItem as StoredItem};
 use afd_wire::operator::{RunnerDetail, RunnerItem, RunnersResponse};
 use axum::Json;
 use axum::extract::{Path, Query, State};

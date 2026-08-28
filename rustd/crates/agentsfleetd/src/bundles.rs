@@ -23,13 +23,13 @@ use crate::preflight::BundleStoreConfig;
 
 /// Shared read and upload handles over one object-store owner.
 #[derive(Debug)]
-pub(crate) struct Stores {
+pub struct Stores {
     reads: Bundles,
     uploads: Option<Arc<dyn ObjectStore>>,
 }
 
 impl Stores {
-    pub(crate) fn split(self) -> (Bundles, Option<Arc<dyn ObjectStore>>) {
+    pub fn split(self) -> (Bundles, Option<Arc<dyn ObjectStore>>) {
         (self.reads, self.uploads)
     }
 }

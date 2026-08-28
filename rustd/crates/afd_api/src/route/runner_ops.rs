@@ -14,7 +14,6 @@ use super::{Guard, RouteClass, RouteMeta, Scopes, Verb};
 const RUNNER_ENROLL: &[Scope] = &[Scope::RunnerEnroll];
 const RUNNER_READ: &[Scope] = &[Scope::RunnerRead];
 const RUNNER_WRITE: &[Scope] = &[Scope::RunnerWrite];
-const STREAM_READ: &[Scope] = &[Scope::StreamRead];
 
 /// An operator-plane route over runners.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -31,9 +30,15 @@ pub enum RunnerOpsRoute {
     Events,
     /// One runner's leases.
     Leases,
-    /// The live streams open on this instance.
-    Streams,
 }
+
+// `/v1/fleets/streams` is deliberately absent. The Zig daemon serves it —
+// `routes.zig`'s `fleet_streams_list`, a per-instance operator diagnostic over
+// its SSE registry — and this daemon does not, by Indy's call while merging
+// M179 into M178: nothing consumes it (no UI, no CLI, absent from the public
+// OpenAPI document by its own carve-out), and porting it would mean carrying a
+// live-stream census whose only reader is the endpoint itself. A declared
+// divergence, recorded in M179's Dimension 4.4 rather than left to be noticed.
 
 impl RunnerOpsRoute {
     /// Every operator route over runners.
@@ -44,7 +49,6 @@ impl RunnerOpsRoute {
         Self::Patch,
         Self::Events,
         Self::Leases,
-        Self::Streams,
     ];
 
     /// The verbs this operator route serves.
@@ -52,7 +56,7 @@ impl RunnerOpsRoute {
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
             Self::Register => &[Verb::Post],
-            Self::List | Self::Get | Self::Events | Self::Leases | Self::Streams => &[Verb::Get],
+            Self::List | Self::Get | Self::Events | Self::Leases => &[Verb::Get],
             Self::Patch => &[Verb::Patch],
         }
     }
@@ -75,7 +79,6 @@ impl RunnerOpsRoute {
             ),
             Self::Events => (fleet_runner_path!("/events"), Scopes::Always(RUNNER_READ)),
             Self::Leases => (fleet_runner_path!("/leases"), Scopes::Always(RUNNER_READ)),
-            Self::Streams => ("/v1/fleets/streams", Scopes::Always(STREAM_READ)),
         };
         RouteMeta::new(Guard::Bearer, RouteClass::Api, template, scopes)
     }

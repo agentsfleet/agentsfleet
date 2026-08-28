@@ -1,31 +1,25 @@
 //! The behaviour prose a lease carries, lifted out of a fleet's source markdown.
 //!
-//! # Why only this much of the markdown is read here
+//! # Why the lease path reads only this half
 //!
-//! `config_markdown.zig` turns `TRIGGER.md` into a `config_json` at INSTALL
-//! time, and that half belongs to the tenant surface — it needs a YAML parser
-//! and this milestone has no caller for one. What the LEASE path needs is
-//! smaller and shares none of it: the prose after the frontmatter, byte for
-//! byte, with no YAML read at all. So the delimiter scan is ported and the
-//! parser is not.
+//! [`crate::frontmatter`] splits an authored document into its YAML block and
+//! its prose, and the two halves have entirely separate readers. Install and
+//! config-PATCH take the YAML and turn it into `config_json`; the LEASE path
+//! takes the prose, byte for byte, and reads no YAML at all. This module is
+//! that second reader, and it stays its own name because "what a lease
+//! carries" is a question worth answering in one function.
+//!
+//! M177 ported the delimiter scan alone, because the lease path was the only
+//! caller a runner-plane milestone had. The YAML half arrived with the tenant
+//! surface that installs fleets; both now share one scan, so the fence rules
+//! cannot drift between the daemon that stores a document and the daemon that
+//! runs it.
 //!
 //! The prose is soft reasoning input. Hard tool and secret policy travels in
 //! the execution policy, never here, so nothing downstream trusts these bytes
 //! for a decision.
 
-/// The whitespace the frontmatter scan trims.
-///
-/// Spelled as the four bytes rather than `char::is_whitespace`, which also
-/// strips vertical tab, form feed and the Unicode spaces. Instructions are
-/// compared against bytes the Zig produced, and a wider trim would silently
-/// disagree on a document containing one of them.
-const TRIMMED: [char; 4] = [' ', '\t', '\r', '\n'];
-
-/// The frontmatter fence, opening and closing.
-const FENCE: &str = "---";
-
-/// The closing fence as it appears mid-document, at the start of its own line.
-const CLOSING: &str = "\n---";
+use crate::frontmatter;
 
 /// The markdown body that follows the YAML frontmatter.
 ///
@@ -38,36 +32,7 @@ const CLOSING: &str = "\n---";
 /// on "empty prose", and a `Result` here would be a decision nobody can make.
 #[must_use]
 pub fn instructions(source_markdown: &str) -> &str {
-    let trimmed = source_markdown.trim_matches(TRIMMED);
-    let Some(after_open) = trimmed.strip_prefix(FENCE) else {
-        return "";
-    };
-    let Some(close) = closing_fence(after_open) else {
-        return "";
-    };
-    after_open
-        .get(close + CLOSING.len()..)
-        .unwrap_or_default()
-        .trim_matches(TRIMMED)
-}
-
-/// Where the frontmatter closes, if it closes.
-///
-/// The fence must start a line AND end one. Without the second half, a YAML
-/// value like `separator: ---bar` reads as the close and the rest of the
-/// frontmatter becomes prose — so a match that is not followed by a line
-/// ending or the end of input keeps searching rather than stopping.
-fn closing_fence(haystack: &str) -> Option<usize> {
-    let mut from = 0;
-    while let Some(offset) = haystack.get(from..)?.find(CLOSING) {
-        let at = from + offset;
-        let rest = haystack.get(at + CLOSING.len()..).unwrap_or_default();
-        if rest.is_empty() || rest.starts_with('\n') || rest.starts_with('\r') {
-            return Some(at);
-        }
-        from = at + 1;
-    }
-    None
+    frontmatter::scan(source_markdown).map_or("", |block| block.body())
 }
 
 #[cfg(test)]

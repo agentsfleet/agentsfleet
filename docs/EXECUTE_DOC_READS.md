@@ -14,7 +14,7 @@ Every triggered document requires one `📖 DOC READ: <path>` proof-line **per t
 | `*.zig` | `dispatch/write_zig.md`. ZIG GATE per edit. |
 | `*.ts`/`*.tsx`/`*.js`/`*.jsx` | `dispatch/write_ts_adhere_bun.md` — TS FILE SHAPE DECISION (§1) at PLAN, const/import/Bun-primitive discipline, anti-patterns. |
 | `*.rs` | `dispatch/write_rust.md` — ownership, error variants, feature combinations, and contention tests. |
-| Rust error type, `Result` alias, or any fallible signature | `dispatch/write_rust.md` §Error discipline — one error per crate, one `Result` alias, `#[from]` composition, `source()` never returns self. |
+| Rust error type, `Result` alias, or any fallible signature | `dispatch/write_rust.md` §Error discipline — one error per crate, one `Result` alias, `#[from]` composition, `source()` never returns self. ERR-RS fires per edit: `audits/rust-error.sh` (via `dispatch/write_rust.sh`) blocks a `map_err` that stringifies its own cause and an error type with no alias in its crate; the remaining clauses stay judgment. |
 | Designing a Rust function, type, or module; writing `match` on a `Result`/`Option`; any production `unwrap()` | `dispatch/write_rust.md` §Functional design — Result pipelines over control-flow trees, illegal states unrepresentable, bind once, `unwrap` needs a proved invariant. |
 | `*.py` | `dispatch/write_python.md` — parsing boundaries, resource ownership, and specific exceptions. |
 | `*.sh` | `dispatch/write_shell.md` — quoting, array arguments, cleanup, input safety, and shell compatibility. |

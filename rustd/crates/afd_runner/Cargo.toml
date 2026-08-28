@@ -1,0 +1,49 @@
+[package]
+name = "afd_runner"
+description = "The runner control plane: enrolment, liveness, the verdict over what a host may assert, and the sweepers that notice when one goes quiet."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Identifiers, the clock a liveness instant is stamped with, the registry codes.
+afd_core.workspace = true
+# The entropy a runner credential is minted from, and the token digest.
+afd_crypto.workspace = true
+# The minted-credential shape an enrolment answers with, and the kind column's
+# closed vocabulary.
+afd_auth.workspace = true
+# The Postgres pool every statement here runs on.
+afd_db.workspace = true
+# The stored vocabulary two planes share — admin states, lease statuses, the
+# never-seen sentinel — lives below both, where `ADMIN_STATE_*` always has.
+afd_state.workspace = true
+# The reclaim and repair sweepers re-deliver through the fleet streams.
+afd_redis.workspace = true
+# The enrolment and heartbeat request shapes, as the frozen wire spells them.
+afd_wire.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+# The sweepers park between passes on a cancellable timer.
+tokio.workspace = true
+tokio-util.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a caller's
+# suite reaches this crate's seam with no datastore behind it.
+test-util = ["afd_core/test-util", "afd_db/test-util", "afd_redis/test-util"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

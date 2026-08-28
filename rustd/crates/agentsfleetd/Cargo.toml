@@ -41,18 +41,38 @@ afd_admin.workspace = true
 # decisions, and one client per process is what a pool IS.
 reqwest.workspace = true
 afd_api.workspace = true
+afd_billing.workspace = true
+afd_credential.workspace = true
 afd_core.workspace = true
+afd_events.workspace = true
 # The composition root: this crate is the one that names which directory,
 # capability provider and verifier the generic HTTP shell is served through.
+# The operator's approval queue. Its own crate, not an `afd_fleet` module:
+# showing a person what a fleet wants to do must not pull in leases, money,
+# policy and the sweepers.
+afd_approval.workspace = true
 afd_auth.workspace = true
 # The Postgres credential directory the shell authenticates against.
+# The live-stream surface the plane hands the router: the pub/sub hub and the
+# instance's concurrent-stream ceiling, composed once at boot.
+# The product events this daemon reports, and the client behind them.
+afd_observability.workspace = true
+afd_sse.workspace = true
 afd_state.workspace = true
 # The runner control plane behind the `/v1/runners` verbs.
 afd_fleet.workspace = true
+afd_gate.workspace = true
+# The workspace fleets surface's store, handed to the router as one service.
+afd_fleet_lifecycle.workspace = true
 # Read-only operator projections are kept off the runner execution crate.
 afd_fleet_ops.workspace = true
 # Fleet-library catalogue and validated import pipeline.
 afd_library.workspace = true
+# The tenant plane: api-keys, command-line credentials, the device-flow login
+# surface, and the workspace-ownership resolver the shared layer asks.
+afd_tenant.workspace = true
+# The workspace secret surface's store, handed to the router as one service.
+afd_vault.workspace = true
 # The S3 client the Fleet Bundle snapshot store is built on. Named HERE and not
 # in `afd_fleet` because this is the file that decides the store is Cloudflare
 # R2 — `afd_fleet::bundle` takes an already-built `dyn ObjectStore` and knows
@@ -73,6 +93,7 @@ afd_crypto.workspace = true
 # The pool and client settings boot resolves BEFORE it opens either.
 afd_db.workspace = true
 afd_redis.workspace = true
+afd_runner.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "time"] }
 # The cancellation token every supervised task stops on.
 tokio-util.workspace = true

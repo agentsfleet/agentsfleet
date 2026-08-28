@@ -4,31 +4,96 @@
 #
 # Stage shape:
 #   1. reject files with staged and unstaged edits
-#   2. gitleaks --staged              (serial, always)
-#   3. classify staged files by surface
-#   4. make harness-verify            (serial, fast — must run before lints)
+#   2. orly gate work                 (serial — runs the declared `conform`
+#                                       command, i.e. make harness-verify)
+#   3. gitleaks --staged              (serial, always)
+#   4. classify staged files by surface
 #   5. run one parallel Make graph plus the direct auth test
+#
+# orly 0.8.0 recomposed its gates one-per-cadence: `work` now runs the
+# declared `conform` command itself (M06_001, agentsfleet/orly#25), so the
+# explicit `make harness-verify` this hook ran a second time — after `orly
+# gate work` had already run it once, below — is gone. harness-verify still
+# fires exactly once per commit; it fires inside the gate call, not twice.
 #
 # Surfaces:
 #   - check-documentation-rules (*.zig too — it reads command help text out of
 #                               the source; there is no Zig lane)
-#   - lint-rustd               (*.rs, rustd/* — manifests and the toolchain pin
-#                               change what the lane compiles, so they trigger it)
 #   - lint-website             (ui/packages/website/*)
 #   - lint-app                 (ui/packages/app/*, design-system/* triggers both)
 #   - lint-design-system       (ui/packages/design-system/*)
 #   - lint-cli                 (cli/*)
 #   - lint-shell               (scripts/*.sh)
 #   - check-documentation-rules (public API and command help text)
-#   - check-openapi            (public/openapi/*, public/openapi.json)
 #   - check-gh-actions-valid   (.github/workflows/*, Makefile, make/*.mk)
-#   - check-playbooks          (playbooks/*, deploy/*, .github/workflows/* —
-#                               repo-wide playbooks/ ref integrity + shellcheck
-#                               + README parity; refs are executed at deploy time)
+#   - check-playbooks          (playbooks/*, deploy/* — the full gate: static
+#                               analysis + the 21 regression suites + refs)
+#   - check-playbooks-refs     (.github/workflows/*, Makefile, make/*.mk —
+#                               ref integrity + README parity only, ~1s. A
+#                               Makefile edit can re-point a playbooks/ path
+#                               but cannot change a playbook's behaviour.)
+#
+# `lint-rustd` is NOT here. It is `cargo clippy -D warnings` over the whole
+# workspace, and it was the single most expensive thing a commit could trigger:
+# 36s to 3m16s per commit, measured across six commits on one branch. That is a
+# tax on every commit including the small ones, and it is what makes a developer
+# batch unrelated work into one large commit to avoid paying it twice.
+#
+# It moved to pre-push, which is where docs/VERIFY_TIERS.md already said lint
+# belongs: "`orly gate work` runs the `conform` row alone and is what the
+# pre-commit hook fires, so it costs seconds. `orly gate verify` runs the lint,
+# unit, and version rows and is what pre-push fires." The hooks had drifted from
+# their own documented tiering; this closes the gap rather than opening one.
+#
+# No coverage is lost before anything leaves the machine. Nothing reaches a
+# remote without pre-push, and the deterministic Rust audits a commit needs —
+# UFS, RUST ERR, LOGGING, MILESTONE-ID — are `harness-verify`'s and still run
+# here, over the staged diff, inside `orly gate work` above. What moved is the
+# COMPILING half, which is the only half that costs minutes.
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
+
+# --- progress reporting ------------------------------------------------------
+# Every step below either printed one bare line or nothing at all, so a commit
+# that sat for thirty seconds gave no way to tell which gate was thinking. Each
+# stage now reports what it is about to do and how long it took. `date +%s`
+# rather than bash 5's `EPOCHSECONDS`: a fresh clone on a Mac without homebrew
+# bash runs /bin/bash 3.2.
+hook_started_at="$(date +%s)"
+
+# Seconds as `12s` under a minute and `2m04s` above it.
+fmt_elapsed() {
+  local secs="$1"
+  if [ "$secs" -lt 60 ]; then
+    printf '%ds' "$secs"
+  else
+    printf '%dm%02ds' "$((secs / 60))" "$((secs % 60))"
+  fi
+}
+
+since() { printf '%s' "$(fmt_elapsed "$(( $(date +%s) - $1 ))")"; }
+
+# Runs one serial gate, announcing it first and timing it. The gate's own
+# output still goes straight to the terminal — this wraps it, never captures
+# it, because a failing gate's detail is the thing a developer needs most.
+# The status is captured rather than relied on: calling this in a `|| exit 1`
+# context suppresses `set -e` for the whole function body, so a bare `"$@"`
+# would let a FAILING gate fall through to the success line and report ✓.
+step() {
+  local label="$1"; shift
+  local step_started_at rc
+  step_started_at="$(date +%s)"
+  echo "→ $label"
+  rc=0
+  "$@" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "✗ $label failed after $(since "$step_started_at")"
+    return "$rc"
+  fi
+  echo "✓ $label ($(since "$step_started_at"))"
+}
 
 # Checks read the working tree. A partly staged file could otherwise pass with
 # content that is absent from the commit.
@@ -51,8 +116,7 @@ fi
 # The tree is dirty by construction inside a commit hook — that is what is
 # being committed — so the tree criterion is told so rather than failing.
 if command -v orly >/dev/null 2>&1; then
-  echo "pre-commit: orly gate work"
-  orly gate work --accept-dirty || exit 1
+  step "orly gate work" orly gate work --accept-dirty || exit 1
 else
   echo "pre-commit: orly is not installed, and the rule gate cannot be skipped." >&2
   echo "  npm install --global @agentsfleet/orly" >&2
@@ -65,25 +129,26 @@ if ! command -v gitleaks >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "pre-commit: gitleaks protect --staged"
-gitleaks protect --staged --redact --verbose --no-banner
+step "gitleaks protect --staged" \
+  gitleaks protect --staged --redact --verbose --no-banner
 
 # --- Classify staged files into per-surface flags ----------------------------
 # Each flag triggers exactly one make target; design-system additionally
 # triggers app (DS is consumed by app, so a DS change might break app's tsc).
 staged="$(git diff --cached --name-only --diff-filter=ACMR)"
 
-needs_lint_rustd=0
 needs_lint_website=0
 needs_lint_app=0
 needs_lint_design_system=0
 needs_lint_cli=0
 needs_lint_shell=0
 needs_check_documentation=0
-needs_check_openapi=0
 needs_check_gh_actions=0
 needs_check_playbooks=0
+needs_check_playbooks_refs=0
 needs_harness_only=0
+# Not a lane trigger — only what the skip message reports. See the `*.rs` arm.
+staged_rustd=0
 
 while IFS= read -r f; do
   [ -z "$f" ] && continue
@@ -91,14 +156,13 @@ while IFS= read -r f; do
     *.zig)
       needs_check_documentation=1 ;;
     *.rs|rustd/*)
-      # Anything under rustd/ — sources, Cargo manifests, the toolchain pin,
-      # the lockfile — changes what `cargo clippy` compiles or which compiler
-      # compiles it, so all of it routes to the Rust lane. Listed ahead of the
-      # config catch-all below so rustd/Cargo.toml is linted rather than being
-      # waved through as a stray manifest.
-      needs_lint_rustd=1 ;;
-    public/openapi/*|public/openapi.json)
-      needs_check_openapi=1 ;;
+      # Deliberately routes to NOTHING at commit time — an arm rather than an
+      # absence, so somebody looking for the Rust lane reads why it is not here
+      # instead of concluding it was forgotten. See the header note: clippy is
+      # pre-push's now. Kept ahead of the config catch-all below so
+      # rustd/Cargo.toml lands here rather than being routed as a stray
+      # manifest into harness-verify-only.
+      staged_rustd=1 ;;
     ui/packages/website/*)
       needs_lint_website=1 ;;
     ui/packages/app/*)
@@ -116,8 +180,13 @@ while IFS= read -r f; do
       needs_check_gh_actions=1
       needs_check_documentation=1
       # A workflow / Makefile / make-fragment change can re-point or break a
-      # playbooks/ reference (deploy.yml runs playbook gates at deploy time).
-      needs_check_playbooks=1 ;;
+      # playbooks/ REFERENCE (deploy.yml runs playbook gates at deploy time) —
+      # so the reference + README-parity checks fire. It cannot break a
+      # playbook's BEHAVIOUR, so the shellcheck + 21-suite regression half does
+      # not: that half is reachable only by editing playbooks/ itself, and
+      # charging it to every one-line Makefile edit cost ~27s against the ~1s
+      # the reference check actually needs.
+      needs_check_playbooks_refs=1 ;;
     scripts/*.sh)
       needs_lint_shell=1 ;;
     playbooks/*)
@@ -139,16 +208,22 @@ while IFS= read -r f; do
   esac
 done <<< "$staged"
 
-any_needed=$(( needs_lint_rustd + needs_lint_website + needs_lint_app + needs_lint_design_system + needs_lint_cli + needs_lint_shell + needs_check_documentation + needs_check_openapi + needs_check_gh_actions + needs_check_playbooks + needs_harness_only ))
+any_needed=$(( needs_lint_website + needs_lint_app + needs_lint_design_system + needs_lint_cli + needs_lint_shell + needs_check_documentation + needs_check_gh_actions + needs_check_playbooks + needs_check_playbooks_refs + needs_harness_only ))
+
+staged_count="$(printf '%s\n' "$staged" | grep -c . || true)"
+echo "▶ pre-commit: $staged_count staged file(s)"
 
 if [ "$any_needed" -eq 0 ]; then
-  echo "pre-commit: no lint-relevant files staged, skipping harness-verify + targeted lint"
+  if [ "$staged_rustd" = 1 ]; then
+    # Said explicitly, because "nothing to lint" would be a lie about a commit
+    # full of Rust: harness-verify already graded it above, and clippy is the
+    # push's job.
+    echo "pre-commit: Rust staged — audited by harness-verify; clippy runs at pre-push"
+  else
+    echo "pre-commit: no commit-time lint surfaces staged, skipping targeted lint"
+  fi
   exit 0
 fi
-
-# --- harness-verify (serial, fast — full-state gates) ------------------------
-echo "pre-commit: make harness-verify"
-make harness-verify
 
 # --- Scoped checks -----------------------------------------------------------
 # One Make graph lets shared prerequisites run once. The auth portability test
@@ -158,24 +233,30 @@ names=()
 
 launch() {
   local name="$1"; shift
-  echo "pre-commit: $* (parallel)"
+  echo "→ $name: $*"
   "$@" &
   pids+=("$!")
   names+=("$name")
 }
 
 make_targets=()
-[ "$needs_lint_rustd"          = 1 ] && make_targets+=(lint-rustd)
 [ "$needs_lint_website"        = 1 ] && make_targets+=(lint-website)
 [ "$needs_lint_app"            = 1 ] && make_targets+=(lint-app)
 [ "$needs_lint_design_system"  = 1 ] && make_targets+=(lint-design-system)
 [ "$needs_lint_cli"            = 1 ] && make_targets+=(lint-cli)
 [ "$needs_lint_shell"          = 1 ] && make_targets+=(lint-shell)
 [ "$needs_check_documentation" = 1 ] && make_targets+=(check-documentation-rules)
-[ "$needs_check_openapi"       = 1 ] && make_targets+=(check-openapi)
 [ "$needs_check_gh_actions"    = 1 ] && make_targets+=(check-gh-actions-valid)
-[ "$needs_check_playbooks"     = 1 ] && make_targets+=(check-playbooks)
+[ "$needs_check_playbooks"      = 1 ] && make_targets+=(check-playbooks)
+[ "$needs_check_playbooks_refs" = 1 ] && make_targets+=(check-playbooks-refs)
 
+# The plan, before anything runs: a developer who knows which targets were
+# selected can tell "still going" from "picked the wrong surface".
+if [ "${#make_targets[@]}" -gt 0 ]; then
+  echo "  targets: ${make_targets[*]}"
+fi
+
+graph_started_at="$(date +%s)"
 [ "${#make_targets[@]}" -gt 0 ] && launch make-graph make -j "${make_targets[@]}"
 
 failed_names=()
@@ -184,11 +265,16 @@ for i in "${!pids[@]}"; do
     failed_names+=("${names[$i]}")
   fi
 done
+if [ "${#pids[@]}" -gt 0 ] && [ "${#failed_names[@]}" -eq 0 ]; then
+  echo "✓ make-graph ($(since "$graph_started_at"))"
+fi
 
 if [ "${#failed_names[@]}" -gt 0 ]; then
-  echo "✗ pre-commit: failed lanes — ${failed_names[*]}"
+  echo "✗ pre-commit: failed lanes — ${failed_names[*]} (after $(since "$hook_started_at"))"
   exit 1
 fi
+
+echo "✔ pre-commit passed in $(since "$hook_started_at")"
 
 # Force exit 0 even if a stray short-circuit ended on a falsy test (bash
 # `[ X -eq 1 ] && { … }` final-statement quirk under set -e).

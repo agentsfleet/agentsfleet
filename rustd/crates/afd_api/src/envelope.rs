@@ -132,6 +132,23 @@ impl ProblemResponse {
     }
 }
 
+/// The refusal a response carries, for whoever is counting them.
+///
+/// Put on the response as an EXTENSION rather than read back out of the body:
+/// the reporting layer needs the code and the sentence, and buffering a body it
+/// has already serialized — on the failure path, which is the path under load
+/// during an incident — to recover two fields it could have been handed is the
+/// wrong trade. Nothing outside this process sees it.
+#[derive(Debug, Clone)]
+pub struct Refused {
+    /// The registry code the envelope carries.
+    pub code: ErrorCode,
+    /// The operator-readable sentence beside it.
+    pub detail: String,
+    /// The request this daemon answered.
+    pub request_id: String,
+}
+
 impl IntoResponse for ProblemResponse {
     fn into_response(self) -> Response {
         // `Value::to_string` cannot fail — it writes to a String — so there is
@@ -139,7 +156,12 @@ impl IntoResponse for ProblemResponse {
         // `std.json.fmt` writes to a fixed response buffer that can run out;
         // reproducing it in Rust would be a branch nothing can reach, which is
         // dead code wearing a safety jacket.
-        (
+        let refused = Refused {
+            code: self.problem.code(),
+            detail: self.detail.clone(),
+            request_id: self.request_id.clone(),
+        };
+        let mut response = (
             self.status(),
             [(
                 header::CONTENT_TYPE,
@@ -147,6 +169,8 @@ impl IntoResponse for ProblemResponse {
             )],
             self.body().to_string(),
         )
-            .into_response()
+            .into_response();
+        response.extensions_mut().insert(refused);
+        response
     }
 }

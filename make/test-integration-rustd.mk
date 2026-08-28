@@ -48,7 +48,32 @@
 #      whenever the image is rebuilt. `make test-unit-rustd` has always done it
 #      this way; this lane learned it the expensive way, on a red CI run.
 
-.PHONY: test-integration-rustd test-coverage-rustd
+.PHONY: test-integration-rustd test-coverage-rustd _migrate-test-db
+
+# The schema, applied ONCE for the whole lane.
+#
+# `$(TEST_STATE_DEP)` drops the schemas and says "migrations will rebuild on
+# next step". This is that step, and it is the step the port had been skipping:
+# every test built a database of its own and applied all forty-seven
+# `schema/*.sql` files into it, which at a hundred and forty-three tests is
+# about six thousand seven hundred migration applications to produce one schema
+# a hundred and forty-three times. That was the whole of the lane's runtime.
+#
+# The Zig harness never did this. Its contract was one line — "Runs against the
+# LIVE test database. Never creates temp tables." — and a hundred and forty-five
+# integration files honoured it. `afd_db::test_util::TestDatabase::shared` is
+# that contract restored; see that module on what replaces the isolation.
+#
+# Through the daemon's own `migrate` subcommand rather than a bespoke recipe, so
+# the lane applies the schema the way a deployment does — including the ledger,
+# the advisory lock, and the refusal to run against a version this binary does
+# not know. A second path to the same schema is a second thing to drift.
+_migrate-test-db:
+	@echo "→ [infra] Applying migrations once, for the whole lane..."; \
+	cd $(RUSTD_DIR) && DATABASE_URL_MIGRATOR="$(TEST_DATABASE_URL)" \
+	  cargo run --quiet --bin agentsfleetd -- migrate \
+	  || { echo "✗ [infra] migrate failed"; exit 1; }
+	@echo "✓ [infra] Schema applied"
 
 # Integration tests are marked `#[ignore]` in the source and run ONLY here, via
 # `--ignored`. That is the cargo-native gate and it costs nothing at unit time:
@@ -57,15 +82,19 @@
 # which is what keeps live Postgres off the fast lane. Each ignore reason names
 # this target, so a developer who runs one directly is told where it belongs.
 
-test-integration-rustd: $(TEST_STATE_DEP)  ## Run the Rust substrate integration suite against compose Postgres + Redis
+# The `2>&1` that used to sit on the cargo invocation is now the wrapper's: it
+# merges the command's stderr into its stdout for the tee, and keeps its OWN
+# progress ticks on stderr. Reinstating a `2>&1` out here would fold those ticks
+# into the tally that `rustd_lane_result.py` parses.
+test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust substrate integration suite against compose Postgres + Redis
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@echo "→ [rustd] Running the Rust integration suite against $(TEST_DATABASE_URL)..."; \
 	mkdir -p "$(CURDIR)/.tmp"; \
 	tally="$(CURDIR)/.tmp/rustd-integration.log"; \
 	code="$(CURDIR)/.tmp/rustd-integration.status"; \
 	rm -f "$$tally" "$$code"; \
-	{ cd $(RUSTD_DIR) && cargo test --workspace --all-features \
-	      -- --ignored 2>&1; \
+	{ cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] integration suite" -- \
+	      cargo test --workspace --all-features -- --ignored; \
 	  echo $$? > "$$code"; } | tee "$$tally"; \
 	python3 "$(CURDIR)/scripts/rustd_lane_result.py" \
 	  --tally "$$tally" --status "$$(cat "$$code")" \
@@ -84,15 +113,22 @@ test-integration-rustd: $(TEST_STATE_DEP)  ## Run the Rust substrate integration
 # It runs the suite ONCE. Instrumenting the run the lane was already making is
 # what keeps a full verification from executing every live-service test twice
 # on two runners — the mistake the retired Zig graph made and then fixed.
-test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under coverage against live datastores
+# `_migrate-test-db` is a prerequisite here for the same reason it is on the
+# lane above, and its absence was a live defect: `$(TEST_STATE_DEP)` DROPS the
+# schemas and defers to "migrations will rebuild on next step". The lane above
+# has that next step; this one did not, so every run of it met an empty database
+# and every suite that seeds a row failed with `relation "core.tenants" does not
+# exist`. The two targets consume the same reset, so they need the same rebuild.
+test-coverage-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run both Rust test tiers under coverage against live datastores
 	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "✗ cargo-llvm-cov not found. Install via: cargo install cargo-llvm-cov"; exit 1; }
 	@echo "→ [rustd] Measuring both test tiers against $(TEST_DATABASE_URL)..."; \
 	mkdir -p "$(CURDIR)/.tmp"; \
 	tally="$(CURDIR)/.tmp/rustd-coverage.log"; \
 	code="$(CURDIR)/.tmp/rustd-coverage.status"; \
 	rm -f "$$tally" "$$code"; \
-	{ cd $(RUSTD_DIR) && cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info \
-	      -- --include-ignored 2>&1; \
+	{ cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] coverage run" -- \
+	      cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info \
+	      -- --include-ignored; \
 	  echo $$? > "$$code"; } | tee "$$tally"; \
 	python3 "$(CURDIR)/scripts/rustd_lane_result.py" \
 	  --tally "$$tally" --status "$$(cat "$$code")" \

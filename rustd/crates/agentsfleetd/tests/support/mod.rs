@@ -8,6 +8,27 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
+use agentsfleetd::preflight::SESSION_CODE_PEPPER_KNOB;
+
+/// The device-flow pepper, well-formed and never used as a key here.
+///
+/// Required at boot for the reason the master key is: without it the login
+/// surface would store an unpeppered verification-code digest, so a queue
+/// somebody can read becomes a queue somebody can log in from. Every suite that
+/// expects a boot to SUCCEED, or that means to fault one specific OTHER knob,
+/// has to supply it — so it is shaped as a chainable pair-array like
+/// [`IDENTITY`] and chained the same way.
+///
+/// Not a credential: sixty-four hexadecimal characters that never leave these
+/// test binaries. Preflight only asks that the knob carry something, since the
+/// value is an HMAC key and its shape is the operator's business rather than
+/// this daemon's. The knob NAME is borrowed from the library instead of
+/// respelled, so the string exists once in the tree (RULE UFS).
+pub(crate) const SESSION_PEPPER: [(&str, &str); 1] = [(
+    SESSION_CODE_PEPPER_KNOB,
+    "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+)];
+
 /// The identity provider knobs, well-formed and never dialled.
 ///
 /// The daemon refuses to boot without a provider — `preflight` requires it the

@@ -1,0 +1,51 @@
+[package]
+name = "afd_gate"
+description = "What a fleet's configuration permits, and the gate a run stops at when the answer needs a human."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# A gate's spend is priced before it is admitted.
+afd_billing.workspace = true
+# Identifiers, the clock a gate's deadline is measured against, registry codes.
+afd_core.workspace = true
+# What the policy assembly resolves a fleet's declared credentials into.
+afd_credential.workspace = true
+afd_crypto.workspace = true
+# A gate row binds through the runner plane's `Bound`, the shared arity helper
+# every multi-value insert in this workspace uses.
+afd_runner.workspace = true
+# The Postgres pool every statement here runs on.
+afd_db.workspace = true
+# A fleet's declared policy, as its config spells it.
+afd_fleet_runtime.workspace = true
+# A parked run's continuation is a stream append.
+afd_redis.workspace = true
+# The approval status vocabulary this plane shares with the operator's.
+afd_wire.workspace = true
+# The gate reference a parked run is resumed by is base64url on the wire.
+base64.workspace = true
+serde.workspace = true
+uuid.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a caller's
+# suite reaches this crate's seam with no datastore behind it.
+test-util = ["afd_core/test-util", "afd_db/test-util", "afd_credential/test-util"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

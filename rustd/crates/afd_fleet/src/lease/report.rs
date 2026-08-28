@@ -22,7 +22,7 @@
 //! No activity publish and no connector outbound hand-off: both are §4's, and
 //! both are pure fan-out that writes no durable row this milestone's parity is
 //! measured on. No OTLP spans either — the drained amount comes back as a
-//! VALUE, the way [`crate::money::Accounts::debit_receive`] answers one, and
+//! VALUE, the way [`afd_billing::Accounts::debit_receive`] answers one, and
 //! M181 §5 attaches the instrument. Fusing an exporter into the money path is
 //! what makes `service_billing.zig` unable to run without one configured.
 
@@ -34,8 +34,8 @@ use crate::error::{Result, lease_not_found, stale_fence};
 use crate::lease::pull::Plane;
 use crate::lease::settle::{Reported, Settled};
 use crate::lease::verdict::{Terminal, Verdict};
-use crate::money::rates::Posture;
-use crate::money::{Cumulative, Nanos};
+use afd_billing::rates::Posture;
+use afd_billing::{Cumulative, Nanos};
 
 /// The scoped event a finalize step is logged under when it does not land.
 const EVENT_FINALIZE_FAILED: &str = "report_finalize_step_failed";
@@ -43,12 +43,35 @@ const EVENT_FINALIZE_FAILED: &str = "report_finalize_step_failed";
 /// A settled report was written.
 const EVENT_SETTLED: &str = "report_settled";
 
+/// What one settled report leaves its caller with.
+///
+/// A struct rather than a bare [`Nanos`] because the charge was never the only
+/// thing the call learned. The report names a LEASE; which fleet and workspace
+/// it belonged to is resolved by the load inside, and the caller — which
+/// reports the finished run to product analytics — would otherwise have to run
+/// a second statement for a fact this call already held.
+/// Exhaustive on purpose, where most of this crate's public types are not: a
+/// suite stubbing the lease plane has to ANSWER with one of these, and a
+/// `non_exhaustive` struct cannot be built outside the crate that declares it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reconciled {
+    /// What the final slice drained.
+    pub charged: Nanos,
+    /// The fleet that ran.
+    pub fleet_id: Uuid7,
+    /// The workspace it belongs to.
+    pub workspace_id: Uuid7,
+}
+
 impl Plane {
     /// Record one runner's terminal result for a lease it holds.
     ///
-    /// Answers what the final slice drained, so the caller can meter it. The
-    /// answer is a [`Nanos`] rather than a metric emitted here for the reason
-    /// the receive debit gives.
+    /// Answers what the final slice drained, so the caller can meter it, and
+    /// the two identifiers that were only knowable INSIDE this call: the report
+    /// names a lease, and which fleet and workspace that lease belonged to is
+    /// something the load resolved. The caller needs both to report the run,
+    /// and reading them again would be a second statement for a fact this one
+    /// already had.
     ///
     /// # Errors
     /// Refuses a lease that is not this runner's with
@@ -61,7 +84,7 @@ impl Plane {
         runner_id: &Uuid7,
         request: &ReportRequest<'_>,
         now: UnixMillis,
-    ) -> Result<Nanos> {
+    ) -> Result<Reconciled> {
         let lease_id = request.lease_id.as_ref();
         let Some(lease) = self.leases.load_for_report(lease_id, runner_id).await? else {
             return Err(lease_not_found());
@@ -95,7 +118,11 @@ impl Plane {
 
         self.finalize(runner_id, lease_id, &lease, request, verdict, now)
             .await;
-        Ok(charged)
+        Ok(Reconciled {
+            charged,
+            fleet_id: lease.fleet_id,
+            workspace_id: lease.workspace_id,
+        })
     }
 
     /// Price the final slice and spend the fence on it.
@@ -105,7 +132,7 @@ impl Plane {
     /// refuse a report whose run has already happened, because the run cannot
     /// be un-run and the alternative is charging nothing at all. So a fault
     /// meters run-fee-only, exactly as `buildMeterInputs` does — the difference
-    /// is that [`crate::money::Accounts::meter`] hands the decision UP to here,
+    /// is that [`afd_billing::Accounts::meter`] hands the decision UP to here,
     /// where it is one line a reader can find, instead of absorbing it eight
     /// frames down.
     async fn settle(

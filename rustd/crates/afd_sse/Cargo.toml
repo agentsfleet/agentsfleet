@@ -1,0 +1,49 @@
+[package]
+name = "afd_sse"
+description = "One Server-Sent Events connection: the frames it carries, the channels it fans in, and the ceiling on how many of them this instance holds."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# The registry code a shed stream answers with.
+afd_core.workspace = true
+# The process's ONE pub/sub connection. A stream costs a map entry here, never
+# a Redis dial — which is the whole reason a wall of tiles is affordable.
+afd_redis.workspace = true
+# The fan-in polls N subscriptions as one stream, and the tail is a `Stream`
+# the HTTP layer hands to axum without this crate knowing axum exists.
+futures-util.workspace = true
+# The heartbeat cadence, the refresh tick's deadline, and the semaphore the
+# concurrent-stream ceiling is counted on.
+tokio.workspace = true
+# A detached channel ends its own stream on a token, which is what lets the
+# fan-in drop one fleet without disturbing the others.
+tokio-util.workspace = true
+# The two synthetic frames are built as values and serialized, rather than
+# printed as JSON-shaped text: a fleet id reaches the wire through the same
+# escaping every other string does.
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+# The sequencing suite publishes through a REAL hub, because publish ORDER is a
+# property of the transport and of the hub's one pumped connection — there is no
+# publisher in a unit test to observe it with.
+afd_redis.workspace = true
+# So the event macros in the code under test evaluate their fields. Without a
+# subscriber every field expression is skipped, and a test that closes a tail
+# would prove the close path runs without ever proving the line reporting it
+# does. Output goes to a sink.
+tracing-subscriber.workspace = true

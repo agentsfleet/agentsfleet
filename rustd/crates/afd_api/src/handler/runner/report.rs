@@ -23,6 +23,7 @@
 
 use std::sync::Arc;
 
+use afd_observability::Telemetry;
 use afd_wire::report::{ReportRequest, ReportResponse};
 use axum::Json;
 use axum::body::Bytes;
@@ -67,7 +68,22 @@ pub(crate) async fn handle<D: Services>(
         // on the wire: a runner has no use for it, and the reply the stock
         // runner parses is `{"ok":true}`. It exists so M181 §5 can attach the
         // credit instrument without reopening the money path.
-        Ok(_charged) => Json(ReportResponse { ok: true }).into_response(),
+        Ok(settled) => {
+            // Attributed to the WORKSPACE, as the daemon this ports attributes
+            // it: a run has no person behind it — a cron, a webhook and a steer
+            // all end here — and the workspace is the unit the funnels count.
+            services.analytics().report(&Telemetry::FleetCompleted {
+                actor: settled.workspace_id.as_str().to_owned(),
+                workspace_id: settled.workspace_id.as_str().to_owned(),
+                fleet_id: settled.fleet_id.as_str().to_owned(),
+                event_id: request.event_id.as_ref().to_owned(),
+                tokens: request.tokens,
+                wall_ms: request.telemetry.wall_ms,
+                exit_status: request.outcome.as_str().to_owned(),
+                time_to_first_token_ms: u64::from(request.telemetry.time_to_first_token_ms),
+            });
+            Json(ReportResponse { ok: true }).into_response()
+        }
         Err(error) => refuse(&error, EVENT),
     }
 }

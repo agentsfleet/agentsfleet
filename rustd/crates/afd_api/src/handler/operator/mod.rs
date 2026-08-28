@@ -5,4 +5,3 @@ pub(crate) mod leases;
 mod query;
 pub(crate) mod runner_patch;
 pub(crate) mod runners;
-pub(crate) mod streams;

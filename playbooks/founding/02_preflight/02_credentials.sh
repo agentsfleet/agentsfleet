@@ -37,7 +37,11 @@ op_read_with_retry() {
   local value=""
 
   for attempt in $(seq 1 "$attempts"); do
-    sleep "$min_interval_s"
+    # A 0-duration sleep has no observable effect but still forks a process —
+    # tests set OP_READ_MIN_INTERVAL_SECONDS=0 precisely to disable the pacing
+    # delay, and paid a fork per ref-check anyway. Skip the fork when the
+    # delay is a literal no-op; production's real 0.2s default is unaffected.
+    [ "$min_interval_s" = "0" ] || sleep "$min_interval_s"
     if value="$(op read "$ref" 2>/dev/null)"; then
       OP_CACHE_STATUS["$ref"]="ok"
       OP_CACHE_VALUE["$ref"]="$value"

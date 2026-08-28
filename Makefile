@@ -2,6 +2,13 @@
 # agentsfleet MAKEFILE - MODULAR STRUCTURE
 # =============================================================================
 
+# Wraps a long-running command with a quiet-triggered heartbeat, so a lane that
+# spends minutes inside one silent `cargo` invocation can be told apart from one
+# that has wedged. Progress goes to stderr, so a lane that pipes its command
+# through `tee` into a parsed tally is unaffected. Set WITH_PROGRESS_DISABLE=1
+# to pass commands straight through.
+WITH_PROGRESS := $(CURDIR)/scripts/with-progress.sh
+
 include make/dev.mk
 include make/quality.mk
 include make/check-safety-gates.mk
@@ -25,7 +32,6 @@ help:  ## Show all available Makefile targets
 	@echo "  lint-apps-designsystem-cli  Lint app + design-system + agentsfleet"
 	@echo ""
 	@echo "Quality Gates:"
-	@echo "  check-openapi            Bundle YAML → openapi.json + Redocly lint + error-schema + URL-shape checks"
 	@echo "  check-gh-actions-valid   Validate .github/workflows/ (actionlint YAML + shellcheck + make-target refs)"
 	@echo "  check-playbooks          Validate playbooks/ (shellcheck + reference integrity + README/tree parity)"
 	@echo ""

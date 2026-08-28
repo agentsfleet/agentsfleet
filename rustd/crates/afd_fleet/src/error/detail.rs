@@ -216,3 +216,48 @@ pub const DETAIL_BINDING_DRIFT: &str =
 /// `credentials_mint.zig`'s `S_WRITE_SPEND_EXHAUSTED`.
 pub const DETAIL_WRITE_SPEND_EXHAUSTED: &str =
     "Approved write-credential request allowance is exhausted";
+
+// ── The device-flow login surface ────────────────────────────────────────
+//
+// Every sentence below is `session_helpers.zig`'s `failFromStoreError` mapping
+// or the verify dispatcher's, pinned byte-for-byte. Where the Zig writes two
+// spellings for one code — the poll path's "Session already consumed" against
+// the store path's fuller sentence — the fuller one wins and the short one
+// goes: two sentences for one code is the drift RULE UFS names, and a caller
+// matching on the code cannot act on which handler it came from.
+
+// ── The tenant api-key lifecycle ─────────────────────────────────────────
+//
+// Pinned to `api_keys/tenant.zig`'s own sentences. The lifecycle refusals are
+// the ones a dashboard renders directly, so each says what to do next rather
+// than what went wrong.
+
+// ── The memory operator surface ──────────────────────────────────────────
+//
+// Pinned to `memory/handler.zig` and its `helpers.zig`. Four of these answer
+// ONE code, `UZ-MEM-003`, which is the exception the block above warns about
+// and it is a deliberate one: they name four different OPERATIONS rather than
+// four spellings of one, and the operation is the only fact a reader of a 503
+// on this surface can act on.
+
+/// `helpers.zig`'s `S_AGENTSFLEET_NOT_FOUND`.
+///
+/// Lower-case where the fleet plane's own 404 is a sentence, and that is the
+/// Zig's spelling kept: a client comparing bytes across the two daemons must
+/// see no difference.
+pub const DETAIL_MEMORY_AGENTSFLEET_NOT_FOUND: &str = "fleet not found";
+
+/// `handler.zig`'s `S_MEMORY_BACKEND_ROLE_SWITCH_FAILED`.
+pub const DETAIL_MEMORY_ROLE_SWITCH: &str = "memory backend role switch failed";
+
+/// `handler.zig`'s `S_MEMORY_LIST_FAILED` — the recent and category reads.
+pub const DETAIL_MEMORY_LIST_FAILED: &str = "memory list failed";
+
+/// `handler.zig`'s sentence for a refused `?query=` statement.
+pub const DETAIL_MEMORY_SEARCH_FAILED: &str = "memory search failed";
+
+/// `handler.zig`'s sentence for a refused forget.
+pub const DETAIL_MEMORY_FORGET_FAILED: &str = "memory forget failed";
+
+/// `handler.zig`'s `S_MEMORY_ENTRY_NOT_FOUND`.
+pub const DETAIL_MEMORY_ENTRY_NOT_FOUND: &str = "No memory entry with that key";

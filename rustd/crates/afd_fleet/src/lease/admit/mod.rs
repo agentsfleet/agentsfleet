@@ -36,11 +36,10 @@ use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::Budget;
 
 use crate::error::Result;
-use crate::gate::Waiting;
 use crate::lease::event::Delivery;
-use crate::money::rates::Posture;
-use crate::money::{Accounts, Charged, Nanos};
-use crate::sql;
+use afd_billing::rates::Posture;
+use afd_billing::{Accounts, Charged, Nanos};
+use afd_gate::gate::Waiting;
 
 use self::fault::{PAYER, RECEIPT};
 
@@ -185,7 +184,7 @@ pub async fn money_gates(
         // always answers `Some`, and if that posture is ever changed to `Admit`
         // the pass propagates the error instead of silently admitting an event
         // it could not find a payer for.
-        Err(fault) => return PAYER.absorb(&fault).ok_or(fault),
+        Err(fault) => return PAYER.absorb(&fault).ok_or_else(|| fault.into()),
     };
 
     if let Some(stop) = gates::balance(accounts, &request, &tenant_id).await {
@@ -252,5 +251,7 @@ fn unowned_workspace(workspace_id: &Uuid7) -> Admission {
         workspace_id = workspace,
         "the workspace resolves to no tenant; the event cannot be charged to anyone"
     );
-    Admission::Refuse(Refusal::labelled(sql::event::label::TENANT_RESOLVE_FAILED))
+    Admission::Refuse(Refusal::labelled(
+        afd_core::event::label::TENANT_RESOLVE_FAILED,
+    ))
 }

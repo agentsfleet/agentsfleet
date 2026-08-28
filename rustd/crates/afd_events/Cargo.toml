@@ -1,0 +1,65 @@
+[package]
+name = "afd_events"
+description = "The narrative log of a fleet: the rows a run writes, the history an operator reads, and the live tail they watch it on."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Identifiers, the clock a row is stamped with, and the registry codes.
+afd_core.workspace = true
+# The Postgres pool every statement here runs on.
+afd_db.workspace = true
+# The live tail subscribes through the process's one pub/sub connection, and a
+# steer appends to the fleet's stream. Both are this crate's, because both are
+# the same question the table answers, asked about the present.
+afd_redis.workspace = true
+# The event type and status spellings the wire carries.
+afd_wire.workspace = true
+# The opaque page cursor. base64url-no-pad, because the value comes back in a
+# query string where a `=` would need percent-encoding.
+base64.workspace = true
+# `since=` takes a calendar string, and `afd_core::clock` is deliberately a
+# clock and an instant TYPE with no calendar in it. Same division
+# `afd_billing::window` draws: UnixMillis at the boundaries, jiff only for
+# the civil-to-instant conversion between them.
+jiff.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a router
+# suite reaches this crate's seam with no datastore behind it.
+test-util = ["afd_core/test-util", "afd_db/test-util", "afd_redis/test-util"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+# The lane fixture: the shared test database, the role/knob resolution over it,
+# and the identifier minting the seeded rows are addressed by. A dev-dependency
+# feature only — nothing in this crate's library links any of it.
+afd_db = { workspace = true, features = ["test-util"] }
+# The backfill suite delivers its live half through a real tail, because the
+# claim is about the two sets a client actually holds. Acyclic: `afd_sse` knows
+# `afd_redis` and `afd_core`, and nothing about this crate.
+afd_sse.workspace = true
+# The steer suite reads the readiness index by exact field. `ReadyIndex`'s own
+# reader samples at random by design, and the index is shared by every suite in
+# the lane, so an exact `HGET` is the only assertion that cannot flake.
+redis.workspace = true
+# A delivered frame is the publisher's bytes forwarded unrewritten, and reading
+# the event id back out of them is precisely what a reconnecting client does.
+serde_json.workspace = true
+# The frames are polled as a `Stream`, which is what the HTTP layer hands axum.
+futures-util.workspace = true
+# So the event macros in the code under test evaluate their fields.
+tracing-subscriber.workspace = true

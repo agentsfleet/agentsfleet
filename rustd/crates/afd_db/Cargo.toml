@@ -16,9 +16,13 @@ categories.workspace = true
 # map-backed environment source, which is how the role/knob resolution gets
 # tested without mutating process state — `std::env::set_var` is `unsafe` in
 # edition 2024 precisely because a parallel test suite makes it a data race.
-test-util = ["afd_core/test-util"]
+test-util = ["afd_core/test-util", "dep:tracing-subscriber"]
 
 [dependencies]
+# The integration fixture installs a subscriber so `tracing` event macros
+# evaluate their fields at all; without one a diagnostic line reads as
+# unreachable to llvm-cov. Optional — `test-util` is the only thing that wants it.
+tracing-subscriber = { workspace = true, optional = true }
 # The wire codes a datastore failure answers.
 afd_core.workspace = true
 sqlx.workspace = true

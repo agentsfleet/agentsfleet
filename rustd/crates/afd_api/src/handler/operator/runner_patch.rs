@@ -141,7 +141,7 @@ fn mutation<'a>(request: &'a RunnerAdminPatchRequest<'a>) -> Option<Mutation<'a>
 }
 
 fn refuse_rotation(
-    error: &afd_fleet::Error,
+    error: &afd_runner::Error,
     identity: &PersonIdentity,
     runner: &afd_core::id::Uuid7,
 ) -> Response {

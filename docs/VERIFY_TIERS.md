@@ -8,16 +8,33 @@ page carries only what is specific to this repository.
 
 | Tier | Command | When |
 |---|---|---|
-| conform | `make harness-verify` | Always, after EXECUTE and before the rest. Any 🔴 returns to EXECUTE. |
-| lint | `make lint-all` | Always. Rust rides `lint-rustd` (rustfmt + Clippy, warnings are errors); script self-tests ride `lint-scripts`. |
-| unit | `make test-unit-all` | Always. The cargo workspace plus every TypeScript package coverage gate. |
-| version | `make check-version` | Always. `VERSION` against `build.zig.zon`, `cli/package.json` and both `rustd/Cargo.toml` sites. |
+| conform | `make harness-verify` | Section lane and boundary, after EXECUTE and before the rest. Any 🔴 returns to EXECUTE. |
+| lint | `make lint-all` | Boundary. Rust rides `lint-rustd` (rustfmt + Clippy, warnings are errors); script self-tests ride `lint-scripts`. |
+| unit | `make test-unit-all` | Boundary. The cargo workspace plus every TypeScript package coverage gate. |
+| version | `make check-version` | Boundary. `VERSION` against `build.zig.zon`, `cli/package.json` and both `rustd/Cargo.toml` sites. |
+| integration | `make test-integration-rustd` | Boundary. Live Postgres and Redis via docker compose, schemas reset per run. `orly gate pr` skips it on a branch carrying no code. |
 
-These four are exactly what `.oracle/orly.json` declares and exactly what
-`orly gate` runs, so the rubric and the mechanical gate grade one boundary.
+These five are exactly what `.oracle/orly.json` declares and exactly what
+`orly gate pr` runs, so the rubric and the mechanical gate grade one boundary.
 
-There is no slow tier. The Zig integration and memory-leak lanes retired with the
-rest of the Zig gating, so no lane a developer runs needs live Postgres or Redis.
+**Two cadences.** A Section closing is not a milestone closing. Inside a
+Section, run `make harness-verify` plus the lane covering the surface the
+Section touched (`make test-unit-rustd`, `make test-unit-app`, …) — enough to
+prove the Section, never a repository claim. The full table above runs ONCE, at
+CHORE(close).
+
+**Which gate runs which row.** `orly gate work` runs the `conform` row alone and
+is what the pre-commit hook fires, so it costs seconds. `orly gate verify` runs
+the lint, unit, and version rows and is what pre-push fires. `orly gate pr` runs
+the integration row plus the whole-branch and spec criteria, and is what
+CHORE(close) fires — it skips the fast rows because `git.pushed` proves HEAD is
+the commit pre-push already graded.
+
+One lane needs live datastores, and only one. `make/test-infra.mk` brings up
+docker compose Postgres and Redis for `test-integration-rustd`; `make
+test-unit-all` stays datastore-free, because every Rust test needing one is
+`#[ignore]`d and runs only in that lane. `KEEP_TEST_STATE=1` skips the reset for
+the inner loop; Continuous Integration (CI) never sets it.
 
 ## Test Baseline
 
@@ -61,7 +78,14 @@ Paste the deciding line, not the exit code. A gate that reports a number — a s
 against a cap, a count against a budget — is owed that number in the done message.
 
 ```
-✅ Verified: 🧪 lint-all ✓ · 🧪 test-unit-all ✓ <N>p/<M>s · 🔆 harness-verify ✓ · 🔆 check-version ✓
+✅ Verified: 🧪 lint-all ✓ · 🧪 test-unit-all ✓ <N>p/<M>s · 🧩 test-integration-rustd ✓ · 🔆 harness-verify ✓ · 🔆 check-version ✓
+```
+
+A Section lane reports what it ran and says so, never borrowing the repository's
+verdict:
+
+```
+✅ Section verified: 🔆 harness-verify ✓ · 🧪 test-unit-<surface> ✓ <N>p/<M>s
 ```
 
 A skipped target is surfaced as 🟠 with its reason, never dressed as a pass.

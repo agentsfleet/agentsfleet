@@ -4,7 +4,7 @@ agentsfleet exposes a set of machine-readable files at stable public URLs. This 
 
 | File | Served at | Format | Purpose |
 |---|---|---|---|
-| `public/openapi.json` | `/openapi.json` | OpenAPI 3.1 JSON | API reference. **Build artifact** — edit YAML under `public/openapi/` and run `make openapi`. Never hand-edit. |
+| `public/openapi.json` | `/openapi.json` | OpenAPI 3.1 JSON | API reference. **Committed static artifact** — no generator and no gate; edit directly until the Rust daemon emits its own. |
 | `public/llms.txt` | `/llms.txt` | Plain text (llmstxt.org) | Large Language Model (LLM) discovery index. Lists the other machine-readable surfaces and the current operation set. |
 | `public/agentsfleet-manifest.json` | `/agentsfleet-manifest.json` | JSON Linked Data (schema.org) | Structured descriptor of the API operation set, policy classes, and machine-readable URL map. |
 | `public/skill.md` | `/skill.md` | Markdown | Condensed capability description for LLM/tool consumers — execution model, operation table, auth. |
@@ -12,7 +12,9 @@ agentsfleet exposes a set of machine-readable files at stable public URLs. This 
 
 ## Editing rules
 
-- **`openapi.json`** — edit YAML under `public/openapi/`, run `make openapi`. The sync gate (`make check-openapi-sync`) asserts path parity with `src/http/router.zig`. See `public/openapi/AGENTS.md` for the editing recipe.
+- **`openapi.json`** — a committed static artifact. The split YAML, the Redocly
+  bundler and the `check-openapi` gate family were removed: the Rust daemon will
+  emit this document itself, and until it does the file is edited directly.
 - **`llms.txt`, `skill.md`** — hand-edit in place. If you add, rename, or remove an API endpoint, update the operation tables in both files to match the new spec.
 - **`agentsfleet-manifest.json`** — hand-edit in place. Update when the operation set, policy classes, or the machine-readable URL map change.
 - **`heartbeat`** — generated at runtime. Do not hand-edit.

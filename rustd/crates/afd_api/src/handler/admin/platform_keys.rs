@@ -143,8 +143,11 @@ fn request(body: &[u8]) -> Result<Validated<'_>, (error_code::ErrorCode, &'stati
     }
     let source_workspace_id = Uuid7::parse(&request.source_workspace_id)
         .map_err(|_error| (error_code::INVALID_REQUEST, DETAIL_WORKSPACE_ID))?;
-    afd_fleet::provider::validate_endpoint_pair(&request.provider, request.base_url.as_deref())
-        .map_err(|_rejection| (error_code::PROVIDER_BASE_URL_INVALID, DETAIL_BASE_URL))?;
+    afd_credential::provider::validate_endpoint_pair(
+        &request.provider,
+        request.base_url.as_deref(),
+    )
+    .map_err(|_rejection| (error_code::PROVIDER_BASE_URL_INVALID, DETAIL_BASE_URL))?;
     Ok(Validated {
         provider: request.provider,
         source_workspace_id,

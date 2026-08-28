@@ -39,8 +39,31 @@ use crate::error::{self, Result};
 const CMD_SET: &str = "SET";
 const CMD_GET: &str = "GET";
 const CMD_EVAL: &str = "EVAL";
+const CMD_SCAN: &str = "SCAN";
 /// The script tag a first redemption answers with.
 const TAG_SUCCESS: &str = "success";
+/// The script tag every successful transition answers with.
+const TAG_OK: &str = "ok";
+/// The script tag a session no longer at the key answers with.
+const TAG_MISSING: &str = "missing";
+/// The script tag an abort of an already-aborted session answers with.
+const TAG_ALREADY_ABORTED: &str = "already_aborted";
+/// The script tag an abort by anyone but the owner answers with.
+const TAG_NOT_OWNER: &str = "not_owner";
+/// The script tag a terminal, already-redeemed session answers with.
+const TAG_CONSUMED: &str = "consumed";
+/// The script tag a second approval answers with.
+const TAG_CONFLICT: &str = "conflict";
+
+/// The `SCAN` glob that matches every session key.
+const SESSION_KEY_GLOB: &str = "auth:session:*";
+
+/// How many keys one `SCAN` page asks for.
+///
+/// A hint rather than a bound — Redis may answer with more, and the cursor
+/// loop below takes whatever comes rather than sizing a buffer for it, which
+/// is the one place the Zig scan can fail on a page it did not expect.
+const SCAN_PAGE_HINT: usize = 100;
 
 /// Where a session lives, keyed by its id.
 pub const SESSION_KEY_PREFIX: &str = "auth:session:";
@@ -55,6 +78,18 @@ pub const SESSION_TTL: Duration = Duration::from_secs(300);
 /// The atomic transition. Byte-identical to the Zig daemon's copy, which a
 /// test asserts for as long as that copy exists.
 const VERIFY_AND_CONSUME_LUA: &str = include_str!("session/verify_consume.lua");
+
+/// The atomic `pending` -> `verification_pending` transition.
+///
+/// Not byte-pinned to the Zig copy, and deliberately: that one is assembled
+/// from four concatenated Zig string literals with the tag names spliced in,
+/// so there is no single file to compare against. What the two share is the
+/// state machine, and `test_approve_refuses_a_session_past_pending` is what
+/// holds this copy to it.
+const APPROVE_LUA: &str = include_str!("session/approve.lua");
+
+/// The owner-checked abort, for both the single delete and the bulk sweep.
+const ABORT_LUA: &str = include_str!("session/abort.lua");
 
 /// How long a consumed session still answers a repeat of the same request.
 const CONSUME_REPLAY_WINDOW: Duration = Duration::from_secs(60);
@@ -264,6 +299,215 @@ impl SessionStore {
         let reply: Vec<String> = self.redis.command(CMD_EVAL, &key, &cmd).await?;
         parse_outcome(&reply)
     }
+
+    /// Moves a pending session to `verification_pending`, once.
+    ///
+    /// Every value is relayed, not interpreted: the daemon performs no
+    /// elliptic-curve operation for device flow, so the public key and the
+    /// ciphertext are opaque strings it stores and hands back. The code is the
+    /// exception, and only as a digest — `code_hmac_hex` is what the caller
+    /// computed, and the plaintext six digits never reach this crate.
+    ///
+    /// # Errors
+    /// Returns a command error when the evaluation fails, and an
+    /// unexpected-reply error when the script answers with a shape this client
+    /// does not know.
+    pub async fn approve(&self, approval: &Approval<'_>, now_ms: i64) -> Result<ApproveOutcome> {
+        let key = session_key(approval.session_id);
+        let mut cmd = redis::cmd(CMD_EVAL);
+        cmd.arg(APPROVE_LUA)
+            .arg(1)
+            .arg(&key)
+            .arg(approval.dashboard_public_key)
+            .arg(approval.ciphertext)
+            .arg(approval.nonce)
+            .arg(approval.code_hmac_hex)
+            .arg(approval.approver)
+            .arg(now_ms.to_string())
+            .arg(SESSION_TTL.as_secs().to_string());
+
+        let reply: Vec<String> = self.redis.command(CMD_EVAL, &key, &cmd).await?;
+        match reply.first().map(String::as_str) {
+            Some(TAG_OK) => Ok(ApproveOutcome::Approved),
+            Some(TAG_MISSING) => Ok(ApproveOutcome::Missing),
+            // The status the script found is carried through rather than
+            // dropped: an approve that lost a race and an approve of an
+            // already-consumed session are both conflicts, and only the status
+            // says which — the caller renders one refusal and logs the other.
+            Some(TAG_CONFLICT) => Ok(ApproveOutcome::Conflict(reply.get(1).cloned())),
+            _ => Err(error::unexpected_reply("approve")),
+        }
+    }
+
+    /// Aborts one session, if `owner` is the identity that approved it.
+    ///
+    /// The ownership check rides inside the script for the reason the whole
+    /// transition does: split into a read and a write, the window between them
+    /// is where a session the command line has just redeemed gets aborted
+    /// anyway.
+    ///
+    /// # Errors
+    /// As [`SessionStore::approve`].
+    pub async fn abort(
+        &self,
+        session_id: &str,
+        owner: &str,
+        reason: AbortReason,
+    ) -> Result<AbortOutcome> {
+        let key = session_key(session_id);
+        self.abort_key(&key, owner, reason).await
+    }
+
+    /// Aborts every in-flight session `owner` holds, answering how many.
+    ///
+    /// Scans rather than reading an index, exactly as the Zig daemon does,
+    /// because there is no per-owner index to read: sessions are keyed by their
+    /// own id and live five minutes, so the set walked here is bounded by that
+    /// window rather than by how long the tenant has existed.
+    ///
+    /// # Errors
+    /// As [`SessionStore::approve`]. A page that fails ends the walk — the
+    /// count returned by a partial sweep would claim a completeness it does not
+    /// have.
+    pub async fn abort_all_for_owner(
+        &self,
+        owner: &str,
+        reason: AbortReason,
+    ) -> Result<Vec<String>> {
+        let mut aborted = Vec::new();
+        let mut cursor = String::from("0");
+        loop {
+            let (next, keys) = self.scan_page(&cursor).await?;
+            for key in &keys {
+                if self.abort_key(key, owner, reason).await? == AbortOutcome::Aborted {
+                    // The id, not the key: every caller above this one talks in
+                    // session ids, and the prefix is this module's business.
+                    if let Some(id) = key.strip_prefix(SESSION_KEY_PREFIX) {
+                        aborted.push(id.to_owned());
+                    }
+                }
+            }
+            // Redis signals the end of a full pass by handing back the cursor it
+            // started from; anything else is another page.
+            if next == "0" {
+                return Ok(aborted);
+            }
+            cursor = next;
+        }
+    }
+
+    /// Aborts the session at one already-built key.
+    async fn abort_key(&self, key: &str, owner: &str, reason: AbortReason) -> Result<AbortOutcome> {
+        let mut cmd = redis::cmd(CMD_EVAL);
+        cmd.arg(ABORT_LUA)
+            .arg(1)
+            .arg(key)
+            .arg(owner)
+            .arg(reason.as_str())
+            .arg(SESSION_TTL.as_secs().to_string());
+
+        let reply: Vec<String> = self.redis.command(CMD_EVAL, key, &cmd).await?;
+        match reply.first().map(String::as_str) {
+            Some(TAG_OK) => Ok(AbortOutcome::Aborted),
+            Some(TAG_ALREADY_ABORTED) => Ok(AbortOutcome::AlreadyAborted),
+            Some(TAG_MISSING) => Ok(AbortOutcome::Missing),
+            Some(TAG_NOT_OWNER) => Ok(AbortOutcome::NotOwner),
+            Some(TAG_CONSUMED) => Ok(AbortOutcome::Consumed),
+            _ => Err(error::unexpected_reply("abort")),
+        }
+    }
+
+    /// One `SCAN` page: the cursor to continue from, and the keys it found.
+    async fn scan_page(&self, cursor: &str) -> Result<(String, Vec<String>)> {
+        let mut cmd = redis::cmd(CMD_SCAN);
+        cmd.arg(cursor)
+            .arg("MATCH")
+            .arg(SESSION_KEY_GLOB)
+            .arg("COUNT")
+            .arg(SCAN_PAGE_HINT);
+        // `redis` decodes the two-element reply into the tuple directly, so
+        // there is no reply-shape parser here to get wrong — the Zig one is
+        // forty lines and can refuse a page larger than its fixed buffer.
+        self.redis.command(CMD_SCAN, SESSION_KEY_GLOB, &cmd).await
+    }
+}
+
+/// What one dashboard approval carries.
+///
+/// A struct rather than seven positional parameters, because five of them are
+/// strings and two of those are opaque base64: a caller that transposed the
+/// ciphertext and the nonce would compile, store a session nothing can redeem,
+/// and fail in the command line minutes later (`M-TOO-MANY-ARGS`).
+#[derive(Debug, Clone, Copy)]
+pub struct Approval<'a> {
+    /// Which session is being approved.
+    pub session_id: &'a str,
+    /// The dashboard's public key, relayed verbatim.
+    pub dashboard_public_key: &'a str,
+    /// The encrypted credential, relayed verbatim and never opened.
+    pub ciphertext: &'a str,
+    /// The nonce the ciphertext was sealed under.
+    pub nonce: &'a str,
+    /// Lower-case hex of the peppered code digest.
+    pub code_hmac_hex: &'a str,
+    /// The identity clicking Approve.
+    pub approver: &'a str,
+}
+
+/// What an approval attempt did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ApproveOutcome {
+    /// The session moved to `verification_pending`.
+    Approved,
+    /// No session at that key — never created, or its time-to-live passed.
+    Missing,
+    /// The session was already past `pending`, carrying the status it was in.
+    Conflict(Option<String>),
+}
+
+/// Why a session was aborted.
+///
+/// A closed set rather than a caller-supplied string, which is the one place
+/// this deliberately diverges from the Zig store. There the reason is a
+/// `[]const u8` the handler passes and the audit sink separately re-derives, so
+/// the stored reason and the audited one are two spellings that agree by
+/// convention. Here they are one value, and a reason nobody has declared cannot
+/// be written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AbortReason {
+    /// A person cancelled their own login.
+    ExplicitCancel,
+    /// The code was presented wrongly too many times.
+    RateLimitExceeded,
+}
+
+impl AbortReason {
+    /// The stored spelling, which both binaries read.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ExplicitCancel => "explicit_cancel",
+            Self::RateLimitExceeded => "rate_limit_exceeded",
+        }
+    }
+}
+
+/// What an abort attempt did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AbortOutcome {
+    /// This call performed the abort.
+    Aborted,
+    /// The session was already aborted, so this call changed nothing.
+    ///
+    /// Distinguished from [`AbortOutcome::Aborted`] so an audit record is
+    /// written on the transition and not on every idempotent repeat of it.
+    AlreadyAborted,
+    /// No session at that key.
+    Missing,
+    /// The session belongs to another identity.
+    NotOwner,
+    /// The session was already redeemed, so there is nothing to abort.
+    Consumed,
 }
 
 /// Turns the script's tagged array into the outcome it describes.

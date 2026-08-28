@@ -1,14 +1,21 @@
-//! Creating and dropping the database one §7 scenario runs against.
+//! The database one §7 scenario runs against.
 //!
 //! Split from `e2e.rs` by concern rather than by size (RULE FLL): this is the
-//! only place that talks to the lane's ADMIN database, and everything it does
-//! happens either side of the daemon's whole life — a `CREATE DATABASE` before
-//! `boot` and a `DROP … WITH (FORCE)` after the pools close.
+//! only place that answers where a scenario's daemon points.
 //!
-//! Migrating here rather than leaving it to the daemon is deliberate: `boot`
-//! connects with the api role and does not migrate, so a daemon pointed at an
-//! empty database fails its first query instead of its boot, and the failure
-//! reads as a broken port rather than a missing schema.
+//! # The lane's database, not one per scenario
+//!
+//! Each scenario used to `CREATE DATABASE`, migrate all forty-seven
+//! `schema/*.sql` files into it, boot a daemon against it, and `DROP … WITH
+//! (FORCE)` afterwards. It now boots against the database the lane already
+//! migrated — see [`afd_db::test_util`] on what the per-test database cost and
+//! what it was actually buying.
+//!
+//! What keeps scenarios apart is `e2e::unique_ids`: every fleet, workspace and
+//! tenant a scenario touches is minted for it, and the daemon's own statements
+//! carry those in their predicates. The one seed that writes a GLOBAL row —
+//! the model-library rate — is an upsert on `(provider, model_id)`, so two
+//! scenarios agreeing on a price is not a collision.
 #![allow(
     dead_code,
     reason = "test support: shared by several test binaries, each using a subset"
@@ -18,23 +25,7 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
-use afd_core::env::MapEnv;
-use afd_db::Migrator;
-use afd_db::config::DbRole;
 use sqlx::AssertSqlSafe;
-
-/// The lane's admin URL with its database path replaced.
-pub(crate) fn database_url(base_url: &str, name: &str) -> String {
-    let (prefix, tail) = base_url
-        .rsplit_once('/')
-        .expect("a Postgres URL carries a database path");
-    let query = tail.split_once('?').map_or("", |(_, query)| query);
-    if query.is_empty() {
-        format!("{prefix}/{name}")
-    } else {
-        format!("{prefix}/{name}?{query}")
-    }
-}
 
 /// Runs one statement on the lane's admin database.
 pub(crate) async fn admin(base_url: &str, statement: AssertSqlSafe<String>) {
@@ -50,32 +41,11 @@ pub(crate) async fn admin(base_url: &str, statement: AssertSqlSafe<String>) {
     pool.close().await;
 }
 
-/// Creates and migrates a database for one scenario, and answers its URL.
-pub(crate) async fn fresh_database(base_url: &str, name: &str) -> String {
-    // The name is a process id and a counter, never input — which is what makes
-    // interpolating it safe, since Postgres does not bind identifiers.
-    admin(base_url, AssertSqlSafe(format!("CREATE DATABASE {name}"))).await;
-    let url = database_url(base_url, name);
-
-    // Migrated HERE rather than left to the daemon: `boot` connects with the
-    // api role and does not migrate, so a daemon pointed at an empty database
-    // fails its first query instead of its boot, and the failure reads as a
-    // broken port rather than a missing schema.
-    let env = MapEnv::from_pairs(
-        DbRole::ALL
-            .iter()
-            .map(|each| (each.url_knob(), url.as_str())),
-    );
-    let migrator = afd_db::Db::connect(
-        &afd_db::config::PoolConfig::resolve(&env, DbRole::Migrator)
-            .expect("the scenario URL resolves"),
-    )
-    .await
-    .expect("the scenario database must accept a connection");
-    Migrator::new()
-        .run(&migrator)
-        .await
-        .expect("the schema must apply to a fresh database");
-    drop(migrator);
-    url
+/// The URL a scenario's daemon boots against — the lane's own, already migrated.
+///
+/// A function rather than the caller reading the knob, because the migration
+/// used to happen here and a reader following that thread should land on the
+/// note above rather than on nothing.
+pub(crate) fn scenario_database(base_url: &str) -> String {
+    base_url.to_owned()
 }

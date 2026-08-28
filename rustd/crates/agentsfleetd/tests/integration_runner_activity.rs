@@ -51,6 +51,7 @@ mod reads;
 
 use std::time::Duration;
 
+use afd_redis::hub::Received;
 use afd_redis::{Subscription, SubscriptionHub};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
@@ -322,10 +323,13 @@ async fn silence(tail: &mut Subscription) -> Option<Value> {
 
 /// One message off the tail within `budget`, parsed.
 async fn received(tail: &mut Subscription, budget: Duration) -> Option<Value> {
-    let message = tokio::time::timeout(budget, tail.recv()).await.ok()?;
-    let payload = message
-        .expect("the subscription stays live")
-        .map(|it| it.payload)?;
+    let received = tokio::time::timeout(budget, tail.recv()).await.ok()?;
+    let Received::Message(message) = received.expect("the subscription stays live") else {
+        // A lag notice is not a frame this suite published; treat it as
+        // nothing having arrived rather than as the message it was waiting for.
+        return None;
+    };
+    let payload = message.payload;
     Some(serde_json::from_str(&payload).unwrap_or_else(|_malformed| {
         panic!("the tail carried a payload that is not JSON: {payload}")
     }))

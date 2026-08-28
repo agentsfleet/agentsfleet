@@ -204,7 +204,7 @@ impl ClaimSource for ProviderClaims {
             .header(reqwest::header::ACCEPT, "application/json")
             .send()
             .await
-            .map_err(|err| {
+            .inspect_err(|failure| {
                 // Hoisted out of the macro: `tracing`'s `log` feature is on
                 // across this workspace, so a call inside an event field
                 // compiles twice and llvm-cov reports the dead copy.
@@ -212,10 +212,13 @@ impl ClaimSource for ProviderClaims {
                 // The URL is NOT logged: it carries the subject, and a log line
                 // naming who was being resolved during an outage is a record of
                 // who was active.
-                let cause = err.to_string();
+                let cause = failure.to_string();
                 tracing::warn!(cause, event = "scope_fetch_failed");
-                ClaimUnavailable::Unreachable
-            })?;
+            })
+            // `inspect_err` observes, `map_err` maps. Splitting them keeps the
+            // cause out of the error VALUE: this one carries no source, so
+            // stringifying into it would have dropped the chain (RULE ERR-RS).
+            .map_err(|_logged| ClaimUnavailable::Unreachable)?;
 
         if let Some(refusal) = Self::classify(response.status().as_u16()) {
             let code = response.status().as_u16();

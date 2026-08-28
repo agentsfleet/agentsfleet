@@ -112,16 +112,13 @@ impl Subscription {
         &self.channel
     }
 
-    /// Waits for the next message.
+    /// Waits for the next message, or for the news that some were missed.
     ///
     /// # Errors
-    /// Returns a hub-closed error once the hub is shut down. A reader that fell
-    /// behind the buffer is told so by `Ok(None)` — see [`Lagged`].
-    ///
-    /// [`Lagged`]: tokio::sync::broadcast::error::RecvError::Lagged
-    pub async fn recv(&mut self) -> Result<Option<Message>> {
+    /// Returns a hub-closed error once the hub is shut down.
+    pub async fn recv(&mut self) -> Result<Received> {
         match self.receiver.recv().await {
-            Ok(message) => Ok(Some(message)),
+            Ok(message) => Ok(Received::Message(message)),
             Err(broadcast::error::RecvError::Lagged(missed)) => {
                 // Hoisted: see the `tracing` note in the workspace Cargo.toml.
                 let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
@@ -131,11 +128,30 @@ impl Subscription {
                     error_code,
                     event = "hub_subscriber_lagged"
                 );
-                Ok(None)
+                Ok(Received::Lagged(missed))
             }
             Err(broadcast::error::RecvError::Closed) => Err(Error::new(ErrorKind::HubClosed)),
         }
     }
+}
+
+/// What one wait on a subscription produced.
+///
+/// The lag arm carries its COUNT rather than being a bare "you missed some".
+/// A reader that forwards frames to a person owes them the number — the live
+/// stream says "catching up, 12 dropped", and a boolean could only have said
+/// that something went wrong. The buffer is per reader, so a slow one is told
+/// about its own backlog and a fast one on the same channel is unaffected.
+/// Exhaustive on purpose, where most of this workspace's public enums are not:
+/// a wait either produced a message or reported what it missed, and there is no
+/// third answer a later version could add. Marking it `non_exhaustive` would
+/// cost every reader an arm it can never reach.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Received {
+    /// One message, as published.
+    Message(Message),
+    /// The reader fell behind and this many messages were dropped for it.
+    Lagged(u64),
 }
 
 impl Drop for Subscription {

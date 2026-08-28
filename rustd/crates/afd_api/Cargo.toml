@@ -19,7 +19,10 @@ test-util = [
   "afd_core/test-util",
   "afd_crypto/test-util",
   "afd_fleet/test-util",
+  "afd_fleet_lifecycle/test-util",
   "afd_library/test-util",
+  "afd_tenant/test-util",
+  "afd_vault/test-util",
 ]
 
 # Each dependency is added by the module that uses it: `unreachable_pub` and
@@ -28,21 +31,48 @@ test-util = [
 # graph a wish. axum/tower/tower-http/afd_core arrive with the admission layer
 # and the envelope writer.
 [dependencies]
+# Priced-model and platform-default administration, behind the admin scopes.
 afd_admin.workspace = true
+# The operator's approval queue. Its own crate, not an `afd_fleet` module:
+# showing a person what a fleet wants to do must not pull in leases, money,
+# policy and the sweepers.
+afd_approval.workspace = true
 afd_auth.workspace = true
 # The runner control plane behind the `/v1/runners` verbs. The dependency
 # points this way and never back: `afd_fleet` names no status code and no
 # router, so a decision it makes can be proven without an HTTP request.
 afd_fleet.workspace = true
+afd_runner.workspace = true
+# The workspace fleets surface's store: install, read, edit, purge.
+afd_fleet_lifecycle.workspace = true
 # Small, read-only cross-table projections for operator routes.
 afd_fleet_ops.workspace = true
+# `FleetName` — a fleet's authored slug. Parsed at the edge, so the install path
+# below carries no validation arm of its own.
+afd_fleet_runtime.workspace = true
 # Fleet-library catalogue administration and import services.
 afd_library.workspace = true
+# The tenant plane: api-keys, command-line credentials, the device-flow login
+# surface, and the workspace-ownership resolver the shared layer asks.
+afd_tenant.workspace = true
+# The workspace secret surface's store. Two halves behind one seam: the sealing
+# one, and the key-less one the list and the delete are answered by.
+afd_vault.workspace = true
 # The payloads the runner verbs read and answer with. Frozen by M175; consumed,
 # never authored here.
+# One SSE connection's frames, the fan-in behind a workspace stream, and the
+# ceiling on how many this instance holds. None of it needs a router, which is
+# why none of it is in this crate.
+afd_sse.workspace = true
+# The response body of a live stream is a `Stream`; this is what composes one.
+futures-util.workspace = true
 afd_wire.workspace = true
 # The wire payloads borrow, so a body is deserialised out of the request bytes
 # rather than through `axum::Json`, which owns what it parses.
+# The two-parameter path templates take their segments by NAME, which needs a
+# derived deserializer: `Path<String>` reads a single segment and fails the
+# extractor on a route carrying both a workspace and a fleet.
+serde.workspace = true
 serde_json.workspace = true
 # The workspace's one entropy surface, for the request id a refusal carries.
 # Drawing bytes directly here would make `getrandom` reachable from two crates
@@ -54,14 +84,20 @@ afd_observability.workspace = true
 # The code registry the envelope is assembled from: a code's status, title,
 # documentation link and end-user sentence are properties OF THE CODE, so they
 # live beside it rather than in this crate.
+afd_billing.workspace = true
+afd_credential.workspace = true
 afd_core.workspace = true
+afd_events.workspace = true
 # `json` for the probe bodies: unlike the problem+json envelope, which writes
 # its own content type, these are ordinary JSON responses.
 axum = { workspace = true, features = ["json", "matched-path", "query"] }
 http.workspace = true
 # The HTTP/1 connection policy: `axum::serve` cannot express a header bound, so
 # the builder is configured here and boot serves connections with it.
-hyper.workspace = true
+# The version-detecting connection builder the accept loop serves with, and the
+# executor HTTP/2 drives its own per-connection tasks on. A library dependency,
+# not only the dev one below: the connection POLICY lives with the route table.
+hyper-util.workspace = true
 # `sync` only, for the `Semaphore` that IS the admission ceiling. No runtime is
 # started here — a permit is claimed and dropped on whatever runtime the caller
 # already has.
@@ -81,8 +117,12 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-util", 
 # The admission suite drives the layer as a service, without a listener.
 tower = { workspace = true, features = ["util"] }
 # The header-limit suite serves a real connection over a real socket, which is
-# the only tier that can prove a limit hyper enforces while PARSING.
+# the only tier that can prove a limit hyper enforces while PARSING. `hyper`
+# itself is a dev-dependency now and not a library one: the connection builder
+# moved to `hyper-util`'s version-detecting one, and the only remaining namer of
+# `hyper::` is the wire suite that serves a real socket.
 hyper-util.workspace = true
+hyper.workspace = true
 # The span suite collects spans through a `Layer`, which is the only way to see
 # a field as a VALUE rather than as formatted output.
 tracing-subscriber = { workspace = true, features = ["registry"] }
@@ -91,6 +131,14 @@ tracing-subscriber = { workspace = true, features = ["registry"] }
 # transport-class refusal without a datastore, and that constructor is the whole
 # reason `afd_db` is named anywhere in this manifest.
 afd_db = { workspace = true, features = ["test-util"] }
+# For the same reason, and it arrived with the same change: the login surface
+# and the fleet install reach a queue, so the harness needs `Redis::unreachable`
+# to build the real stores over one that answers nothing.
+afd_redis = { workspace = true, features = ["test-util"] }
+# A library dependency too, but named again here for its feature: the thread
+# handler's page arithmetic is decided over `EventDetailRow`, which is
+# `#[non_exhaustive]`, so the unit tests need that crate's fixture seam.
+afd_events = { workspace = true, features = ["test-util"] }
 # Live-router integration tests resolve both operator and runner credentials
 # through the production Postgres directory.
 afd_state.workspace = true

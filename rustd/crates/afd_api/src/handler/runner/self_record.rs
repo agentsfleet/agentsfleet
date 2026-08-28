@@ -9,8 +9,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_fleet::SelfRow;
-use afd_fleet::runner::policy::capability;
+use afd_runner::SelfRow;
+use afd_runner::policy::capability;
 use afd_wire::runner::SelfResponse;
 use axum::Json;
 use axum::extract::State;

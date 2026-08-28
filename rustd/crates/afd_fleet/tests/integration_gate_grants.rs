@@ -31,17 +31,22 @@ mod seed;
 mod requests;
 
 use afd_core::id::Uuid7;
-use afd_fleet::policy::grants::Grants;
+use afd_db::test_util::mint_id;
+use afd_gate::policy::grants::Grants;
 
 use self::seed::{Seeded, seeded};
 use self::support::Fixtures;
 
 /// Grant identifiers, distinct and version-7 so the table's CHECK admits them.
-const GRANT_IDS: [&str; 3] = [
-    "0197a4ba-8d3a-7f13-8abc-1000000000a1",
-    "0197a4ba-8d3a-7f13-8abc-1000000000a2",
-    "0197a4ba-8d3a-7f13-8abc-1000000000a3",
-];
+/// Three grant identifiers this test alone can name.
+///
+/// A function rather than a `const` array: `core.integration_grants.id` is the
+/// primary key, and with every test in the lane sharing one database a fixed
+/// identifier is a unique-violation the moment a second test seeds its own
+/// grants. See [`afd_db::test_util::mint_id`].
+fn grant_ids() -> [String; 3] {
+    [mint_id(), mint_id(), mint_id()]
+}
 
 /// Writes one grant row for `fleet`.
 async fn grant(fixtures: &Fixtures, id: &str, fleet: &str, service: &str, status: &str) {
@@ -80,9 +85,10 @@ async fn test_only_approved_grants_reach_the_set() {
     // nobody currently grants.
     let fixtures = Fixtures::create_with_queue().await;
     let Seeded { fleet, .. } = seeded::<0>(&fixtures).await;
-    grant(&fixtures, GRANT_IDS[0], &fleet, "github", "approved").await;
-    grant(&fixtures, GRANT_IDS[1], &fleet, "zoho", "pending").await;
-    grant(&fixtures, GRANT_IDS[2], &fleet, "slack", "revoked").await;
+    let grants = grant_ids();
+    grant(&fixtures, &grants[0], &fleet, "github", "approved").await;
+    grant(&fixtures, &grants[1], &fleet, "zoho", "pending").await;
+    grant(&fixtures, &grants[2], &fleet, "slack", "revoked").await;
 
     let granted = fixtures
         .gates()
@@ -122,7 +128,7 @@ async fn test_another_fleets_grant_is_not_this_fleets() {
     let fixtures = Fixtures::create_with_queue().await;
     let Seeded { fleet: mine, .. } = seeded::<0>(&fixtures).await;
     let Seeded { fleet: theirs, .. } = seeded::<0>(&fixtures).await;
-    grant(&fixtures, GRANT_IDS[0], &theirs, "github", "approved").await;
+    grant(&fixtures, &grant_ids()[0], &theirs, "github", "approved").await;
 
     let granted = fixtures
         .gates()

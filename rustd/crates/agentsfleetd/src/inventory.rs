@@ -24,9 +24,16 @@ pub const HUB_PUMP: &str = "hub_pump";
 /// The supervised name for the span exporter's flush loop.
 pub const OTLP_EXPORT: &str = "otlp_export";
 
+/// The task that delivers queued product events before the process exits.
+///
+/// Not the reporting itself — that is fire-and-forget on the client's own
+/// background transport. This is its STOP: without it, events captured by the
+/// last requests served are dropped when the client goes away.
+pub const ANALYTICS_FLUSH: &str = "analytics_flush";
+
 /// Every long-lived task a fully booted daemon supervises, in spawn order.
 ///
 /// The accept loop is not here: it is spawned by [`crate::serve::boot`] and is
 /// the server rather than a background task, so it is asserted where it is
 /// created instead of being listed as something boot must go and find.
-pub const BACKGROUND_TASKS: &[&str] = &[HUB_PUMP, OTLP_EXPORT];
+pub const BACKGROUND_TASKS: &[&str] = &[HUB_PUMP, OTLP_EXPORT, ANALYTICS_FLUSH];

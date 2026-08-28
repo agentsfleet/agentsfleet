@@ -1,23 +1,19 @@
-//! A schema-loaded database, and the credential rows a lookup is meant to find.
+//! The lane's database, and the credential rows a lookup is meant to find.
 //!
-//! # Why a database per test
+//! # One database, and what keeps the tests apart in it
 //!
-//! Every assertion here is about what a digest resolves to, and a digest is
-//! unique per test only if the rows are. Sharing one database would make each
-//! test's precondition depend on the previous test's cleanup, which is how a
-//! suite starts passing in one order and failing in another.
+//! Every assertion here is about what a DIGEST resolves to, and a digest is
+//! unique per test because the row it is computed from is: each fixture mints
+//! its own credential material and looks up only what it filed. That is the
+//! isolation; a database per test was belt over braces, and it cost the lane
+//! forty-seven migrations per test to provide.
 //!
-//! # A note on where this belongs
-//!
-//! `afd_db`'s own suites carry a near-identical `TestDatabase`, included by
-//! `#[path]` into three test binaries, and `install_subscriber` is already
-//! written out twice over there. The right home for all of it is
-//! `afd_db::test_util`, behind the feature that already exists for exactly this
-//! — moving it is a follow-up rather than part of this change, because it would
-//! edit a green integration suite that cannot be re-run until the pre-PR lane.
+//! Built on [`afd_db::test_util::TestDatabase`], which is where the four
+//! near-identical copies of this — `afd_db`'s own, `afd_fleet`'s,
+//! `agentsfleetd`'s and the one that used to live here — were always headed.
+//! This is one of the deletions that module predicted.
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
@@ -25,55 +21,52 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
-use afd_core::env::MapEnv;
-use afd_db::config::{DbRole, PoolConfig};
+use afd_db::config::DbRole;
+use afd_db::test_util::TestDatabase;
 use afd_db::{Db, Migrator};
 use sqlx::AssertSqlSafe;
 
-/// The lane's admin connection URL.
-const LANE_KNOB: &str = "TEST_DATABASE_URL";
-
-/// Distinguishes databases created by one process, combined with the process
-/// id so two lanes on one host cannot collide either.
-static SEQUENCE: AtomicU32 = AtomicU32::new(0);
-
-/// A schema-loaded database created for one test and dropped with it.
+/// A handle on the lane's schema-loaded database, and the api-role pool over it.
 pub(crate) struct Fixtures {
-    base_url: String,
-    name: String,
+    lane: TestDatabase,
     database: Db,
 }
 
 impl Fixtures {
-    /// Creates a database, migrates it, and opens the api-role pool.
+    /// Opens the api-role pool against the database the lane already migrated.
+    ///
+    /// What almost every test here wants. The two that DESTROY something take
+    /// [`Fixtures::create_disposable`] instead.
     pub(crate) async fn create() -> Self {
-        install_subscriber();
-        let base_url = std::env::var(LANE_KNOB).unwrap_or_else(|_error| {
-            panic!("{LANE_KNOB} is unset — run these through `make test-integration-rustd`")
-        });
-        let name = format!(
-            "afd_state_{}_{}",
-            std::process::id(),
-            SEQUENCE.fetch_add(1, Ordering::Relaxed)
-        );
-        // The name is a process id and a counter, never input — which is what
-        // makes interpolating it safe, since Postgres does not bind
-        // identifiers. `AssertSqlSafe` is sqlx 0.9 asking that at the type
-        // level; every other statement in this crate is a literal.
-        admin(&base_url, AssertSqlSafe(format!("CREATE DATABASE {name}"))).await;
+        let lane = TestDatabase::shared();
+        Self {
+            database: lane.open(DbRole::Api, &[]).await,
+            lane,
+        }
+    }
 
-        let url = database_url(&base_url, &name);
-        let migrator = open(&url, DbRole::Migrator).await;
+    /// A database of this test's own, created and migrated for it alone.
+    ///
+    /// For the two failure paths that break the datastore on purpose —
+    /// [`Fixtures::drop_table`] and [`Fixtures::destroy_database`]. Those
+    /// cannot run against the shared lane database for the obvious reason: the
+    /// next test would find the table, or the database, gone.
+    ///
+    /// This is the exception the Zig harness carried too, and it stayed one
+    /// file wide there for the same reason it is two tests wide here — a
+    /// database of your own costs forty-seven migrations, so it is worth having
+    /// only when the test is ABOUT the datastore failing.
+    pub(crate) async fn create_disposable() -> Self {
+        let lane = TestDatabase::create().await;
+        let migrator = lane.open(DbRole::Migrator, &[]).await;
         Migrator::new()
             .run(&migrator)
             .await
             .expect("the schema must apply to a fresh database");
         drop(migrator);
-
         Self {
-            database: open(&url, DbRole::Api).await,
-            base_url,
-            name,
+            database: lane.open(DbRole::Api, &[]).await,
+            lane,
         }
     }
 
@@ -82,63 +75,14 @@ impl Fixtures {
         &self.database
     }
 
-    /// Drops the database. Best-effort: a leaked test database is noise in a
-    /// disposable environment, not a failure worth masking the real one with.
+    /// Releases the handle. A no-op against the shared database, and called
+    /// anyway: it is how a test says it is finished.
     pub(crate) async fn cleanup(self) {
-        let Self {
-            base_url,
-            name,
-            database,
-        } = self;
-        // Our own pool goes first, so the drop is not racing connections this
-        // test still holds. `WITH (FORCE)` would evict them anyway; closing is
-        // the difference between a clean teardown and one that relies on it.
-        drop(database);
-
-        let statement = AssertSqlSafe(format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)"));
-        let Ok(pool) = sqlx::PgPool::connect(&base_url).await else {
-            return;
-        };
-        if let Ok(mut connection) = pool.acquire().await {
-            let _dropped = sqlx::query(statement).execute(&mut *connection).await;
-        }
-        pool.close().await;
+        // Our own pool goes first, so nothing is still borrowing a connection
+        // when the handle is released.
+        drop(self.database);
+        self.lane.cleanup().await;
     }
-}
-
-/// The connection URL for one named database on the lane's server.
-fn database_url(base_url: &str, name: &str) -> String {
-    let (prefix, tail) = base_url
-        .rsplit_once('/')
-        .expect("a Postgres URL carries a database path");
-    let query = tail.split_once('?').map_or("", |(_, query)| query);
-    if query.is_empty() {
-        format!("{prefix}/{name}")
-    } else {
-        format!("{prefix}/{name}?{query}")
-    }
-}
-
-/// Opens a pool for one role against `url`.
-async fn open(url: &str, role: DbRole) -> Db {
-    let env = MapEnv::from_pairs(DbRole::ALL.iter().map(|each| (each.url_knob(), url)));
-    Db::connect(&PoolConfig::resolve(&env, role).expect("the test URL resolves"))
-        .await
-        .expect("the test database must accept a connection")
-}
-
-/// Runs one statement on the lane's admin database.
-async fn admin(base_url: &str, statement: AssertSqlSafe<String>) {
-    let pool = sqlx::PgPool::connect(base_url)
-        .await
-        .expect("the lane's database must be reachable");
-    let mut connection = pool.acquire().await.expect("an admin connection");
-    sqlx::query(statement)
-        .execute(&mut *connection)
-        .await
-        .expect("the admin statement must run");
-    drop(connection);
-    pool.close().await;
 }
 
 /// The digest a presented credential is stored under.
@@ -146,28 +90,35 @@ pub(crate) fn digest_of(presented: &str) -> Digest {
     Digest::of(&Presented::new(presented).expect("a fixture credential is not blank"))
 }
 
-/// Installs a subscriber so event macros actually run.
-///
-/// `tracing::error!` asks whether its callsite is enabled BEFORE evaluating the
-/// fields inside it, so with no subscriber a diagnostic's fields never run —
-/// the failure path executes and the line reporting it does not. Output goes to
-/// a sink; the point is evaluation, not reading.
-pub(crate) fn install_subscriber() {
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
-            .with_writer(std::io::sink)
-            .finish();
-        let _previous = tracing::subscriber::set_global_default(subscriber);
-    });
-}
-
 // ── Row seeding ─────────────────────────────────────────────────────────────
 
 /// A canonical `UUIDv7` built from `seed`, for a fixture needing an identifier.
+///
+/// The process id rides in the low field beside the seed. Every test in this
+/// binary already picks a distinct seed, so the seed alone keeps them apart —
+/// but the lane is now ONE database shared by every binary in the run, and a
+/// deterministic identifier is exactly how two suites come to name the same
+/// row. The process id costs nothing and removes the class.
 pub(crate) fn identifier(seed: u32) -> String {
-    format!("01900000-0000-7000-8000-{seed:012x}")
+    format!(
+        "01900000-0000-7000-8000-{:06x}{seed:06x}",
+        std::process::id()
+    )
+}
+
+/// A seed no other call in this binary will use.
+///
+/// For the rows a caller never names: `api_key` and `cli_credential` invent
+/// their own primary key, and each used ONE fixed seed — an id per HELPER
+/// rather than per CALL. Two tests seeding an api key therefore wrote the same
+/// id, which a database apiece hid completely and one shared database reports
+/// as `duplicate key value violates unique constraint "api_keys_pkey"`.
+///
+/// Starts above every seed the suites spell by hand (1..42), so a minted row
+/// can never land on one a test is also naming.
+fn minted_seed() -> u32 {
+    static NEXT: AtomicU32 = AtomicU32::new(9_000);
+    NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
 /// An identifier the schema accepts and [`afd_core::id::Uuid7`] refuses.
@@ -177,7 +128,10 @@ pub(crate) fn identifier(seed: u32) -> String {
 /// this is a value Postgres will store and the port will not read, which is
 /// exactly the corrupt row the malformed-identifier path exists for.
 pub(crate) fn identifier_with_bad_variant(seed: u32) -> String {
-    format!("01900000-0000-7000-0000-{seed:012x}")
+    format!(
+        "01900000-0000-7000-0000-{:06x}{seed:06x}",
+        std::process::id()
+    )
 }
 
 impl Fixtures {
@@ -217,7 +171,7 @@ impl Fixtures {
                   active, revoked_at, created_at, updated_at) \
                  VALUES ($4::uuid, $1::uuid, $2, '', $2, $3, {active}, {revoked_at}, 0, 0)"
             ),
-            &[tenant, digest.as_str(), subject, &identifier(9_001)],
+            &[tenant, digest.as_str(), subject, &identifier(minted_seed())],
         )
         .await;
     }
@@ -240,7 +194,7 @@ impl Fixtures {
                  VALUES ($4::uuid, $1::uuid, $2::uuid, 'fixture', $3, 'afc_', \
                          'test', '127.0.0.1', 0, {revoked_at})"
             ),
-            &[user, tenant, digest.as_str(), &identifier(9_002)],
+            &[user, tenant, digest.as_str(), &identifier(minted_seed())],
         )
         .await;
     }
@@ -271,11 +225,16 @@ impl Fixtures {
     /// The pool still answers; the statement no longer can. That is the shape
     /// of a migration mid-flight, and it is the cheapest deterministic way to
     /// make a query fail without touching the connection.
+    ///
+    /// Only ever a DISPOSABLE fixture's table — see [`Fixtures::destroy_database`].
     pub(crate) async fn drop_table(&self, table: &str) {
         self.run(&format!("DROP TABLE {table} CASCADE"), &[]).await;
     }
 
     /// Destroys the database while this pool still holds connections to it.
+    ///
+    /// Only ever a DISPOSABLE fixture's database — [`Fixtures::create`] holds
+    /// the lane's, and dropping that would take every other test with it.
     ///
     /// Every pooled connection dies with it, so the next acquire fails — the
     /// datastore-unreachable half of the two failure paths, where
@@ -283,9 +242,11 @@ impl Fixtures {
     pub(crate) async fn destroy_database(&self) {
         let statement = AssertSqlSafe(format!(
             "DROP DATABASE IF EXISTS {} WITH (FORCE)",
-            self.name
+            self.lane.database_name().expect(
+                "destroy_database is only reachable from a disposable fixture — see create_disposable"
+            )
         ));
-        let pool = sqlx::PgPool::connect(&self.base_url)
+        let pool = sqlx::PgPool::connect(self.lane.lane_url())
             .await
             .expect("the lane's database must be reachable");
         let mut connection = pool.acquire().await.expect("an admin connection");

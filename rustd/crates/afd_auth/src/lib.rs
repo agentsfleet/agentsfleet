@@ -62,6 +62,7 @@ pub mod credential;
 pub mod directory;
 pub mod error;
 pub mod gate;
+pub mod minted;
 pub mod plane;
 pub mod principal;
 pub mod scope;

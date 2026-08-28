@@ -32,8 +32,8 @@ use serde_json::value::RawValue;
 use sqlx::Row as _;
 
 use crate::error::{Result, query, row_malformed};
+use crate::lease::sql;
 use crate::lease::store::Leases;
-use crate::sql;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_TARGET: &str = "activity lease load";

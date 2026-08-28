@@ -30,9 +30,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** the three production `agentsfleetd` machines serve the Rust binary after a staging soak in which the full-route OpenAPI coverage gate, the complete Zig-side integration suite, the runner parity lane, and the latency/memory budget checks all pass against `agentsfleetd-rs` — with a rehearsed one-move rollback to the warm Zig binary.
+**Goal (testable):** the three production `agentsfleetd` machines serve the Rust binary after a staging soak in which the full-route OpenAPI coverage gate, a black-box HTTP parity suite, the runner parity lane, and the latency/memory budget checks all pass against `agentsfleetd-rs` — with a rehearsed one-move rollback to the warm Zig binary.
+
+> **Correction (Aug 28, 2026 — found while merging M179 into M178).** This
+> section said "the complete Zig-side integration suite … against
+> `agentsfleetd-rs`". That suite cannot target the Rust daemon, and §3 below now
+> carries the reasoning and the replacement. The wording is corrected here
+> rather than left to be discovered at cutover.
 **Problem:** six milestones of parity evidence are per-surface; cutover needs whole-system proof (all routes at once, sustained load, memory over hours, dashboards continuous) plus an exit that is boring — same schema, same stores, binary swap back.
-**Solution summary:** wire the full-route parity gate (a Rust route dump feeding `scripts/check_openapi_route_coverage.py`), extend the release pipeline to build and ship the Rust binary alongside the Zig one, run the staging soak with explicit budgets, execute an all-at-once production swap with load-balancer drain, rehearse rollback in staging first, and record the runbook + decision log in the repository.
+**Solution summary:** wire the full-route parity gate (a Rust route dump compared against the document the Rust daemon itself emits — `scripts/check_openapi_route_coverage.py` was deleted, see §1's correction), extend the release pipeline to build and ship the Rust binary alongside the Zig one, run the staging soak with explicit budgets, execute an all-at-once production swap with load-balancer drain, rehearse rollback in staging first, and record the runbook + decision log in the repository.
 
 ## PR Intent & comprehension handshake
 
@@ -42,7 +48,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Implementing agent — read these first
 
-1. `scripts/check_openapi_route_coverage.py` — the served-vs-documented parity gate; this milestone gives it a Rust route source.
+1. §1's correction below — the served-vs-documented gate this milestone was to extend (`scripts/check_openapi_route_coverage.py`) no longer exists; read why before planning §1.
 2. `docs/architecture/runner_fleet.md` §Multi-replica — the 3-machine production shape, which gauges stay approximate across replicas, and why counters stay exact via sum-by.
 3. `.github/workflows/release.yml` + `deploy/` + `Dockerfile` — the build/ship path the Rust binary joins (CI/CD edits — explicit user approval per repo rule; this spec is the record, and REVIEW re-confirms before merge).
 4. `make/bench.mk` + `bench/` — the existing benchmark harness the latency-budget rows reuse.
@@ -53,10 +59,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `rustd/crates/agentsfleetd/**` | EDIT | `routes --json` dump subcommand + `doctor`/`backfill` subcommand parity |
-| `scripts/check_openapi_route_coverage.py` | EDIT | accepts the Rust route dump as a served-route source |
+| `scripts/check_openapi_route_coverage.py` | ~~EDIT~~ **GONE** | deleted Aug 28, 2026 with the whole `check-openapi` family; §1 builds its replacement rather than extending it |
+| `rustd/crates/afd_api/**` + `rustd/Cargo.toml` | EDIT | §1: the Rust daemon emits its own OpenAPI document (`utoipa`), which is what a route dump is then graded against |
 | `make/dry.mk` | EDIT | dry lane variant booting the Rust daemon |
 | `make/bench.mk` | EDIT | adds `bench-cutover`: Zig-baseline-vs-Rust comparison on the same harness, tolerances as named constants (distinct caller: the cutover checklist) |
-| `make/test-integration.mk` | EDIT | adds `test-handoff`: bidirectional cross-implementation state-handoff lane (distinct caller: the cutover checklist) |
+| `make/test-parity.mk` | CREATE | the black-box HTTP parity + `test-handoff` lanes (distinct caller: the cutover checklist). **CREATE, not EDIT of `make/test-integration.mk`** — M175 §6 deleted that file, as this spec's own Out of Scope section records |
 | `Dockerfile` | EDIT | builds and ships the Rust binary alongside the Zig one |
 | `.github/workflows/release.yml` | EDIT | Rust binary in the release artifact set |
 | `.github/workflows/deploy-dev.yml` | EDIT | staging deploy can select the serving binary |
@@ -96,10 +103,22 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — Full-route parity gate
 
-`agentsfleetd-rs routes --json` dumps the served route × method set from the Route enum. The coverage script today hard-codes the Zig route table as its served source and compares paths only — this milestone extends it with a `--served <file>` argument (the locked interface R1 invokes) and route × method comparison, then grades the Rust daemon with the same script that gates the Zig one. `doctor` and `backfill` subcommands reach behaviour parity so operations tooling does not fork.
+`agentsfleetd-rs routes --json` dumps the served route × method set from the Route enum. `doctor` and `backfill` subcommands reach behaviour parity so operations tooling does not fork.
+
+**Correction — the script this section extended is gone (Aug 28, 2026).**
+`scripts/check_openapi_route_coverage.py` was deleted, with `check_openapi_errors.py`, `check_openapi_url_shape.py`, the Redocly bundler, the split YAML under `public/openapi/`, the `check-openapi` make target and its Continuous Integration job. Indy's call while merging M179 into M178: the script read `src/agentsfleetd/http/routes.zig` as its source of truth for what is SERVED — the daemon being retired — and there was no Rust generator to repoint it at.
+
+Two consequences for this section, which was written to extend that script:
+
+- `public/openapi.json` is now a committed static artifact with nothing generating or grading it. Until the Rust daemon emits its own document, the served-vs-documented direction is unguarded on both daemons.
+- §1 therefore BUILDS the gate rather than extending one. The shape that replaces it: the Rust daemon emits its own OpenAPI document (`utoipa` + `#[utoipa::path]` over the existing handlers), and a small checker compares the `routes --json` dump against that document, route × method, both directions.
+
+**Implementation default — `utoipa`, and NOT `utoipa-axum`.** `utoipa-axum`'s idiom binds path and handler together at the registration site (`OpenApiRouter::routes!(handler)`). This router does the opposite deliberately: `router/mount.rs` maps a `Route` variant to a handler as a TOTAL match, and `router/mod.rs` mounts from `Route::all()` with the template and scopes coming from `RouteMeta`. That totality is load-bearing — it is what makes an unported endpoint a compile error instead of a silent 404, and what `admin_operator_route_inventory.rs` and `route_scopes` key off. Plain `utoipa` gives the same generated document while keeping it: `#[utoipa::path]` emits a `__path_<fn>` type the existing table collects.
+
+Sizing, measured Aug 28, 2026: 97 route variants across 11 enums, 46 mounted, 72 handler functions, 147 public wire types of which 115 carry a `<'a>` lifetime (286 `Cow<'a, str>` fields), 97 documented failure codes, and a current spec of 70 paths / 45 schemas from 30 hand-written YAML files. The annotation pass is the bulk; reconciling 70 paths of hand-written prose against generated output is the part that is judgment rather than typing. `afd_wire`'s manifest states it deliberately depends on nothing but serde — adding a proc-macro there is a decision to take explicitly, not by default.
 
 - **Dimension 1.1** — route dump equals the Zig daemon's served set exactly (diff empty both directions) → Test `test_route_dump_matches_zig_set`
-- **Dimension 1.2** — coverage script passes with the Rust source; a seeded missing route fails it → Test `test_coverage_gate_rust_source`
+- **Dimension 1.2** — the daemon-emitted document covers every served route × method, and a seeded removal fails the check naming it → Test `test_coverage_gate_rust_source`
 - **Dimension 1.3** — `doctor` and `backfill` produce parity outcomes on seeded states → Test `test_ops_subcommand_parity`
 
 ### §2 — Build and ship
@@ -113,10 +132,47 @@ The release pipeline builds the Rust binary (matching the Zig binary's target ma
 
 The whole-system proof on staging: full Zig integration suite + runner parity lane + dry lane against the Rust daemon, sustained mixed load via the new `make bench-cutover` lane (Zig baseline vs Rust, same harness and hardware — the existing bench harness has no comparison mode today, this milestone adds it), chaos probes for the invariant tables (webhook replay, lease fencing under kill, SSE reconnect), and two explicit budgets embedded in `bench-cutover` as named constants — p95 latency per route class within tolerance of the baseline, and a flat RSS ceiling over the soak window (the Rust memory-safety story replaces `make memleak`, which stays Zig-only — recorded decision). **Implementation default:** p95 tolerance = baseline + 10% per route class; RSS ceiling = the Zig daemon's soak peak + 20% — Indy may override either at PLAN; whichever constants Discovery records are the ones the lane embeds, and the lane refuses to run with unset constants, so the P0 gate is a real command with real numbers, never a vibe.
 
-- **Dimension 3.1** — full integration + runner + dry lanes green against the Rust daemon on staging → Test `test_soak_suites_green`
+- **Dimension 3.1** — the black-box HTTP parity suite, the runner parity lane and the dry lane are green against the Rust daemon on staging → Test `test_soak_suites_green`. **Not the Zig `*_integration_test.zig` corpus** — see the §3 correction below for why it cannot grade a different binary.
 - **Dimension 3.2** — p95 per route class within the budget → Test `test_latency_budget`. The baseline is NO LONGER a same-harness Zig run: M175 §6 deleted the lanes that produced it. The budget is an absolute per-route-class number Indy sets at PLAN, and the lane refuses to run with it unset, so the gate stays a real command with real numbers.
 - **Dimension 3.3** — RSS flat within the named ceiling across the soak window under sustained load → Test `test_memory_ceiling_soak`
 - **Dimension 3.4** — chaos probes: replay/fencing/reconnect invariants hold mid-soak → Test `test_soak_chaos_invariants`
+**Correction — the Zig integration corpus cannot grade the Rust daemon (Aug 28, 2026).**
+Found while merging M179 into M178, and recorded here because this section was
+written on the opposite assumption.
+
+The plan read "run the existing Zig suite against `agentsfleetd-rs`". It cannot
+be run that way, for three independent reasons, each checkable in one command:
+
+1. **The lane is gone.** `make/test-integration.mk` does not exist and no
+   `test-integration` target is defined in any `make/*.mk` — M175 §6 deleted it
+   with the rest of the Zig gating. This spec's own Out of Scope section says so;
+   §3.2 was already corrected for it, and §3.1 and R2 had not been.
+2. **The tests are in-process, not black-box.** Of 145 `*integration_test.zig`
+   files, THREE use `std.http.Client`. The rest `@import` Zig modules and call
+   them directly — `test_harness.zig` wires `handler.zig`, the auth middleware
+   and `handlers/common.zig` in the test binary. There is no HTTP boundary to
+   repoint, so "run them against the Rust daemon" has no daemon in the loop.
+3. **Nothing names a daemon.** The only environment knobs those tests read are
+   `TEST_DATABASE_URL` / `DATABASE_URL` — datastore pointers. No base URL exists
+   to override.
+
+What the shared stack actually shares is the DATASTORES, not the request path.
+Point the Zig corpus at a Rust-served environment and it still exercises Zig
+handler code: a green run would report a pass rate for the implementation being
+retired, which is worse than no number because it reads like evidence.
+
+**What replaces it.** A black-box HTTP suite parameterised by base URL, run
+twice — once against the Zig binary, once against `agentsfleetd-rs` — diffing
+status, body and the headers the wire contract names, per route × method. That
+is what yields a parity pass rate worth quoting. Two things already point at it:
+the three `std.http.Client` tests are the seed shape, and Dimension 3.5's
+`test-handoff` lane is already framed as black-box and bidirectional.
+
+Two costs to state at PLAN rather than discover: the Zig binary is no longer
+built by Continuous Integration (Invariant 2), so a Zig-side baseline needs a
+manual build of a frozen revision; and the suite is NEW code, not a flag on
+existing code, so it is scoped work in this milestone rather than a lane switch.
+
 - **Dimension 3.5** — cross-implementation state handoff, both directions: the Rust daemon serves and writes production-shaped state (in-flight leases, stream entries, billing rows, migration ledger); the Zig daemon then boots on the same stores and resumes serving correctly — and the reverse. Rollback safety is demonstrated, not inferred from "same schema" → Test `test_state_handoff_bidirectional` (the `make test-handoff` lane this milestone adds)
 
 ### §4 — Swap, rollback rehearsal, runbook
@@ -315,8 +371,8 @@ No product-analytics changes.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Full-route parity (§1) | `agentsfleetd-rs routes --json > /tmp/served-routes.json && python3 scripts/check_openapi_route_coverage.py --served /tmp/served-routes.json` | exit 0 | P0 | |
-| R2 | Whole-system soak green (§3) | `make test-integration DAEMON=rust` + `make dry-app` (Rust variant) + `make test-handoff` | exit 0 each | P0 | |
+| R1 | Full-route parity (§1) | `agentsfleetd-rs routes --json > /tmp/served.json && agentsfleetd-rs openapi > /tmp/spec.json && python3 scripts/check_route_coverage.py --served /tmp/served.json --spec /tmp/spec.json` | exit 0 | P0 | |
+| R2 | Whole-system soak green (§3) | `make test-parity BASE_URL=<rust>` + `make dry-app` (Rust variant) + `make test-handoff` | exit 0 each | P0 | |
 | R3 | Budgets hold (§3) | `make bench-cutover` | exit 0 (tolerance constants embedded in the lane) | P0 | |
 | R4 | Rollback rehearsed (§4) | `bash playbooks/cutover/probes.sh` on staging, post-swap and post-rollback | exit 0 both runs | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |

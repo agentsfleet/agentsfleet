@@ -1,0 +1,58 @@
+[package]
+name = "afd_credential"
+description = "What a run may use and how it reaches it: the declared secrets, the vault that opens them, the provider they dial, and the short-lived credential a broker mints."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Identifiers, the clock, the registry codes, and the stored credential field
+# names two planes agree on.
+# A provider's posture — which key pays for a call — is the billing plane's
+# vocabulary, read here to decide which credential to dial with.
+afd_billing.workspace = true
+afd_core.workspace = true
+# Opening a sealed handle.
+afd_crypto.workspace = true
+# The Postgres pool every statement here runs on.
+afd_db.workspace = true
+# A fleet's declared credentials and provider selection, as its config spells
+# them.
+afd_fleet_runtime.workspace = true
+# The minted-credential shape the runner is answered with.
+afd_wire.workspace = true
+# The GitHub App flow: a signed assertion, its digest, and the client that
+# exchanges it for an installation token.
+http.workspace = true
+jsonwebtoken.workspace = true
+# The broker's short-lived credential cache. A mint that already happened for
+# this workspace and handle is not re-run inside its TTL.
+moka = { workspace = true, features = ["future"] }
+octocrab.workspace = true
+reqwest.workspace = true
+sha2.workspace = true
+# A credential's bytes are wiped when the value holding them is dropped.
+zeroize.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+url.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a caller's
+# suite reaches this crate's seam with no datastore behind it.
+test-util = ["afd_core/test-util", "afd_db/test-util"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

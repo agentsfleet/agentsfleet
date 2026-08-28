@@ -1,0 +1,42 @@
+[package]
+name = "afd_billing"
+description = "What a lease costs, what a tenant has, and what a fleet has already spent."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# The clock a window opens against, and the registry codes.
+# The charges cursor is base64url on the wire.
+base64.workspace = true
+afd_core.workspace = true
+# The Postgres pool every statement here runs on.
+afd_db.workspace = true
+# The random half of a ledger row's UUIDv7.
+afd_crypto.workspace = true
+# A fleet's declared budget and dollar ceilings, as its config spells them.
+afd_fleet_runtime.workspace = true
+# A month window is a CALENDAR question — `afd_core::clock` is the instant type
+# and the clock source, and carries no calendar. Same division the events
+# crate's `since=` draws.
+jiff.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a caller's
+# suite reaches this crate's seam with no datastore behind it.
+test-util = ["afd_core/test-util", "afd_db/test-util"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc
+.PHONY: lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs check-route-registration-doc
 
 check-documentation-rules:  ## Check public API and command help text
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
@@ -57,24 +57,7 @@ _model_allowlist_check:
 	@python3 scripts/check_model_allowlist.py
 
 
-REDOCLY := bunx @redocly/cli
-
 ROUTE_COVERAGE_TESTS := python3 -m unittest discover -s scripts -t scripts -p 'check_openapi_route_coverage*_test.py'
-
-check-openapi: check-documentation-rules  ## Bundle YAML → openapi.json + public-text + schema + route checks
-	@echo "→ [openapi] Bundling split YAML → public/openapi.json..."
-	@$(REDOCLY) bundle public/openapi/root.yaml -o public/openapi.json >/dev/null
-	@echo "→ [openapi] Redocly lint..."
-	@$(REDOCLY) lint public/openapi.json --config .redocly.yaml
-	@echo "→ [openapi] ErrorBody + application/problem+json schema check..."
-	@python3 scripts/check_openapi_errors.py
-	@echo "→ [openapi] REST §1 URL shape (no verbs in URLs)..."
-	@python3 scripts/check_openapi_url_shape.py
-	@echo "→ [openapi] Route-coverage gate self-tests..."
-	@$(ROUTE_COVERAGE_TESTS)
-	@echo "→ [openapi] REST §7 served-vs-documented route coverage..."
-	@python3 scripts/check_openapi_route_coverage.py
-	@echo "✓ [openapi] Bundle + lint + error-schema + url-shape + route-coverage all green"
 
 check-route-registration-doc:  ## REST guide §7 route-registration facts stay fresh (middleware names, cited paths, make targets, dead prefixes)
 	@python3 scripts/check_route_registration_doc_test.py
@@ -91,16 +74,14 @@ check-route-registration-doc:  ## REST guide §7 route-registration facts stay f
 RUSTD_DIR := rustd
 
 lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
-	@echo "→ [rustd] Checking Rust formatting..."
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
-	@cd $(RUSTD_DIR) && cargo fmt --check
-	@echo "→ [rustd] Running Clippy (-D warnings)..."
+	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] rustfmt --check" -- cargo fmt --check
 	@# --all-features, not the default set: a crate's `test-util` feature gates
 	@# its mockable input/output core (M-MOCKABLE-SYSCALLS), and without this
 	@# flag that code is never compiled here — so the one module whose whole job
 	@# is to be exercised by tests would be the one module lint never sees.
-	@cd $(RUSTD_DIR) && cargo clippy --workspace --all-targets --all-features -- -D warnings
-	@echo "✓ [rustd] Lint passed"
+	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] clippy -D warnings" -- \
+	  cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 # Every scripts/*_test.py, discovered rather than listed.
 #
@@ -137,7 +118,7 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 
-lint-all: lint-rustd lint-scripts _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
+lint-all: lint-rustd lint-scripts _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + make-target ref check
@@ -191,15 +172,20 @@ check-migrate-unprivileged: _ensure-test-infra  ## Migrate from empty as a NON-s
 PLAYBOOK_TEST_SCRUB = -u ENV -u STAGE -u ACTION -u PUSH -u REVISION \
   -u VAULT -u VAULT_DEV -u VAULT_PROD -u WORKER_ITEM -u AGENTSFLEET_API_URL
 
-check-playbooks: check-vault-gate-parity  ## Validate playbooks/ — vault-gate parity + shellcheck + reference integrity + README/tree parity
+# Split by what a change can actually break. The reference-integrity and
+# README-parity halves are cheap greps over the tree and are the ONLY things a
+# Makefile or workflow edit can invalidate (a make target citing a playbook
+# path). The shellcheck + regression-test halves cost minutes and can only be
+# invalidated by editing playbooks/ itself. .githooks/pre-commit routes
+# accordingly, so a one-line make/*.mk change stops paying for 21 test suites.
+check-playbooks: check-playbooks-refs check-vault-gate-parity  ## Validate playbooks/ — vault-gate parity + shellcheck + regression tests + reference integrity + README/tree parity
 	@echo "→ [playbooks] shellcheck on playbooks/**/*.sh..."
 	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
 	@find playbooks -name '*.sh' -print0 | xargs -0 $(SHELLCHECK) --severity=error -x
-	@echo "→ [playbooks] focused shell regression tests..."
-	@set -e; TESTS=$$(find playbooks -type f -name '*_test.sh' | sort); \
-	if [ -z "$$TESTS" ]; then echo "✗ [playbooks] no shell regression tests found"; exit 1; fi; \
-	for test_script in $$TESTS; do echo "  $$test_script"; \
-	  env $(PLAYBOOK_TEST_SCRUB) bash "$$test_script"; done
+	@echo "→ [playbooks] focused shell regression tests (bounded parallel)..."
+	@PLAYBOOK_TEST_SCRUB="$(PLAYBOOK_TEST_SCRUB)" bash scripts/run-playbook-tests.sh
+
+check-playbooks-refs:  ## playbooks/ reference integrity + README parity only (cheap; what a Makefile edit can break)
 	@echo "→ [playbooks] reference integrity — every playbooks/ path resolves..."
 	@# Scans the live operational surface (CI, scripts, active docs, the playbooks
 	@# themselves). Excludes docs/v2/: specs are historical records that

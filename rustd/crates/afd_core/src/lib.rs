@@ -30,12 +30,18 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
 pub mod clock;
+pub mod credential;
 pub mod env;
 pub mod error;
 pub mod error_code;
+#[macro_use]
+mod error_shell;
+pub mod etag;
+pub mod event;
 pub mod id;
 pub mod json;
 pub mod limits;
+pub mod paging;
 pub mod problem;
 pub mod spelling;
 pub mod timing;

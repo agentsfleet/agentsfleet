@@ -27,7 +27,9 @@
 use {opentelemetry as _, tokio as _};
 
 pub mod export;
+pub mod product;
 pub mod runner;
 pub mod semconv;
 
 pub use self::export::{CountingExporter, SpanDrops};
+pub use self::product::{Analytics, Telemetry};
