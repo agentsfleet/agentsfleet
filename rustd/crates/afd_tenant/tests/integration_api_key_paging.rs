@@ -38,7 +38,7 @@ const STEP_MS: i64 = 1_000;
 #[path = "support/apikey_lane.rs"]
 mod support;
 
-use self::support::{ApiKeyLane, PAGE_SIZE};
+use self::support::{ApiKeyLane, NOW_MS, PAGE_SIZE};
 
 /// Dimension 2.3 — a page boundary lands exactly between two rows, ties
 /// included, and the total does not move while a client walks.
@@ -51,7 +51,7 @@ async fn test_list_keyset_pagination() {
     // the tiebreak is exercised rather than assumed. Minted oldest-first, which
     // is the opposite of the order the default sort answers in — a listing that
     // simply echoed insertion order would pass a same-order fixture.
-    let base = lane.instant();
+    let base = NOW_MS;
     lane.mint_key("alpha", base).await;
     lane.mint_key("bravo", base + STEP_MS).await;
     lane.mint_key("charlie", base + 2 * STEP_MS).await;
@@ -144,7 +144,7 @@ async fn test_list_keyset_pagination() {
 async fn test_list_keyset_pagination_by_name() {
     let lane = ApiKeyLane::create().await;
 
-    let base = lane.instant();
+    let base = NOW_MS;
     lane.mint_key("zulu", base).await;
     lane.mint_key("yankee", base + STEP_MS).await;
     lane.mint_key("xray", base + 2 * STEP_MS).await;
@@ -187,6 +187,5 @@ fn names(keys: &[KeyRow]) -> Vec<String> {
 /// `>=` rather than `>`: the corpus deliberately holds a tie, and a tie is
 /// ordered rather than out of order.
 fn is_newest_first(keys: &[KeyRow]) -> bool {
-    keys.windows(2)
-        .all(|pair| pair[0].created_at_ms >= pair[1].created_at_ms)
+    keys.is_sorted_by(|earlier, later| earlier.created_at_ms >= later.created_at_ms)
 }
