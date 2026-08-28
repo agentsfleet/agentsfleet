@@ -135,6 +135,31 @@ pub fn glob_to_like(glob: &str) -> String {
     pattern
 }
 
+/// Translate a client's actor PREFIX into a SQL LIKE pattern.
+///
+/// `actor_prefix=webhook:` selects the same rows `actor=webhook:*` does, and
+/// the two are separate parameters because under prefix mode a literal `*`
+/// matches a literal `*`. So this escapes the metacharacters and appends the
+/// wildcard, where [`glob_to_like`] translates one.
+///
+/// **Declared divergence.** `prefixToLike` escapes `%` and `_` and not `\`,
+/// which leaves a prefix ending in a lone backslash an unterminated escape
+/// sequence — SQLSTATE 22025, reaching the caller as a 500 on a filter they
+/// are entitled to type. [`glob_to_like`] already took the fix on its own
+/// side; taking it here too is what keeps one rule rather than two.
+#[must_use]
+pub fn prefix_to_like(prefix: &str) -> String {
+    let mut pattern = String::with_capacity(prefix.len() + 1);
+    for character in prefix.chars() {
+        if matches!(character, '%' | '_' | '\\') {
+            pattern.push('\\');
+        }
+        pattern.push(character);
+    }
+    pattern.push('%');
+    pattern
+}
+
 #[cfg(test)]
 mod tests {
     #![expect(
@@ -222,6 +247,31 @@ mod tests {
     fn translates_a_glob_to_a_like_pattern() {
         assert_eq!(glob_to_like("steer:*"), "steer:%");
         assert_eq!(glob_to_like("webhook:github"), "webhook:github");
+    }
+
+    #[test]
+    fn a_prefix_becomes_a_pattern_the_glob_form_would_agree_with() {
+        // The two parameters are meant to select the same rows for a prefix
+        // carrying no metacharacter, and that agreement is the whole reason
+        // both exist.
+        assert_eq!(prefix_to_like("webhook:"), "webhook:%");
+        assert_eq!(prefix_to_like("webhook:"), glob_to_like("webhook:*"));
+        assert_eq!(prefix_to_like(""), "%");
+    }
+
+    #[test]
+    fn a_star_in_a_prefix_stays_a_star() {
+        // The difference between the two parameters: under prefix mode a
+        // literal `*` matches a literal `*`, never a wildcard.
+        assert_eq!(prefix_to_like("we_b%h*"), "we\\_b\\%h*%");
+    }
+
+    #[test]
+    fn a_prefix_escapes_the_backslash_the_zig_left_bare() {
+        // The declared divergence, pinned: a trailing lone backslash is an
+        // unterminated escape sequence, and Postgres answers SQLSTATE 22025
+        // rather than simply not matching.
+        assert_eq!(prefix_to_like("path\\"), "path\\\\%");
     }
 
     #[test]

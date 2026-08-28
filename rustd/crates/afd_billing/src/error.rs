@@ -120,8 +120,8 @@ impl Error {
         match self {
             // The caller's to correct, unlike everything else here.
             Self::ChargesCursorInvalid => error_code::INVALID_REQUEST,
-            Self::WalletMissing => error_code::INTERNAL_OPERATION_FAILED,
-            Self::Query { .. }
+            Self::WalletMissing
+            | Self::Query { .. }
             | Self::RowMalformed { .. }
             | Self::Identifier { .. }
             | Self::Entropy { .. } => error_code::INTERNAL_OPERATION_FAILED,

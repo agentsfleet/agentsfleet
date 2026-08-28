@@ -174,6 +174,15 @@ pub(super) const FLEET: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::EVENT_NOT_FOUND,
+        status: 404,
+        title: "Event not found",
+        hint: "This fleet has no event with that identifier in this workspace. An event in another workspace answers the same.",
+        user_message: Some(
+            "We couldn't find that event. It may have aged out, or the identifier doesn't match one on this Fleet.",
+        ),
+    },
+    Problem {
         code: error_code::FLEET_BUNDLE_NOT_FOUND,
         status: 404,
         title: "Fleet Bundle not found",

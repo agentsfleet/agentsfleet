@@ -164,3 +164,76 @@ pub struct EventsResponse<'a> {
     #[serde(borrow)]
     pub next_cursor: Option<Cow<'a, str>>,
 }
+
+/// One event as the expanded view renders it — bodies included.
+///
+/// The sibling of [`EventSummary`], and the two are separate types for the
+/// reason `fleet_event_detail_store.zig` is a separate file from
+/// `fleet_events_store.zig`: a page of up to two hundred rows pays for every
+/// column it selects, and the trigger payload and the agent's full answer are
+/// wanted one row at a time.
+///
+/// Field order is load-bearing here for the same reason it is on
+/// [`EventSummary`], and the two bodies sit in the MIDDLE of the field set
+/// rather than at the end — which is why this cannot be [`EventSummary`] plus
+/// two fields, in this language or the one it ports.
+///
+/// `request_json` is the stored payload serialized to TEXT and carried as a
+/// JSON string, not as an embedded object. That is what `res.json` emits for
+/// the Zig row's `[]u8`, and a client parsing the string a second time is the
+/// contract already in production.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EventDetail<'a> {
+    /// The fleet this event belongs to.
+    #[serde(borrow)]
+    pub fleet_id: Cow<'a, str>,
+    /// The canonical event identifier — the stream entry id that produced it.
+    #[serde(borrow)]
+    pub event_id: Cow<'a, str>,
+    /// The workspace the fleet belongs to.
+    #[serde(borrow)]
+    pub workspace_id: Cow<'a, str>,
+    /// Who or what produced the event.
+    #[serde(borrow)]
+    pub actor: Cow<'a, str>,
+    /// How the event entered the system, as stored.
+    #[serde(borrow)]
+    pub event_type: Cow<'a, str>,
+    /// Where the event's run got to, as stored.
+    #[serde(borrow)]
+    pub status: Cow<'a, str>,
+    /// The trigger payload as stored, serialized to text.
+    #[serde(borrow)]
+    pub request_json: Cow<'a, str>,
+    /// The agent's full answer.
+    ///
+    /// `null` while a run is in flight, and on a run that failed before
+    /// producing one.
+    #[serde(borrow)]
+    pub response_text: Option<Cow<'a, str>>,
+    /// Tokens the run spent, absent until a runner reports.
+    pub tokens: Option<i64>,
+    /// Wall milliseconds the run took, absent until a runner reports.
+    pub wall_ms: Option<i64>,
+    /// What refused or failed the run, absent on a clean one.
+    #[serde(borrow)]
+    pub failure_label: Option<Cow<'a, str>>,
+    /// The operator-readable cause line, absent when none was carried.
+    #[serde(borrow)]
+    pub failure_detail: Option<Cow<'a, str>>,
+    /// The session checkpoint this run wrote, when it wrote one.
+    #[serde(borrow)]
+    pub checkpoint_id: Option<Cow<'a, str>>,
+    /// The event this one continues, set on a continuation.
+    #[serde(borrow)]
+    pub resumes_event_id: Option<Cow<'a, str>>,
+    /// Epoch milliseconds the row was created.
+    pub created_at: i64,
+    /// Epoch milliseconds the row last changed.
+    pub updated_at: i64,
+    /// What this event actually cost, summed over its telemetry rows.
+    ///
+    /// `null` when the event recorded no telemetry — see [`EventSummary`] on
+    /// why that is never rendered as a zero charge.
+    pub cost_nanos: Option<i64>,
+}

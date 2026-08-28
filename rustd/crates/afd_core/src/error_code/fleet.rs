@@ -183,6 +183,15 @@ pub const AGENTSFLEET_INSTALL_ROLLED_BACK: ErrorCode = ErrorCode::declare("UZ-AG
 /// choice, and this code would be answering a question they did not ask.
 pub const AGENTSFLEET_SOURCE_STALE: ErrorCode = ErrorCode::declare("UZ-AGT-014");
 
+/// No event under that identifier, in that fleet, in that workspace.
+///
+/// `ERR_EVENT_NOT_FOUND` (`error_registry.zig:97`). One code for three facts —
+/// no such event, an event of another fleet, an event of another workspace —
+/// because the statement carries the scope as a predicate and hands back one
+/// empty result for all three. A code that told them apart would be disclosing
+/// across a tenant boundary what a caller is not entitled to ask.
+pub const EVENT_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-015");
+
 /// No Fleet Bundle snapshot is stored under the requested content hash.
 ///
 /// `ERR_FLEET_BUNDLE_NOT_FOUND`. Referenced from the Zig registry, never

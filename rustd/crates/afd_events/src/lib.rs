@@ -37,6 +37,6 @@ pub mod sql;
 
 pub use self::error::{Error, Result};
 pub use self::history::{
-    Cursor, DEFAULT_LIMIT, EventRow, Filter, History, MAX_LIMIT, glob_to_like, next_cursor,
-    parse_since,
+    Cursor, DEFAULT_LIMIT, EventDetailRow, EventRow, Filter, History, MAX_LIMIT, glob_to_like,
+    next_cursor, parse_since, prefix_to_like,
 };

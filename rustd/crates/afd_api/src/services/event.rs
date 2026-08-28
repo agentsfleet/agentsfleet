@@ -13,7 +13,7 @@
 //! eventually do.
 
 use afd_core::id::Uuid7;
-use afd_events::{Cursor, EventRow, Filter, History, Result as EventResult};
+use afd_events::{Cursor, EventDetailRow, EventRow, Filter, History, Result as EventResult};
 
 /// Everything the event-history routes act through.
 pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
@@ -47,7 +47,12 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
         limit: i64,
     ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send;
 
-    /// One event, inside this workspace and fleet.
+    /// One event, inside this workspace and fleet, bodies included.
+    ///
+    /// [`EventDetailRow`] rather than the listing's row, because this is the
+    /// only read that carries `request_json` and `response_text`. A page of up
+    /// to two hundred rows would pay for both on every one of them; an expanded
+    /// row is asked for one.
     ///
     /// # Errors
     /// Reports a datastore that would not answer. An event belonging to
@@ -58,7 +63,7 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
         workspace: &Uuid7,
         fleet: &Uuid7,
         event_id: &str,
-    ) -> impl Future<Output = EventResult<Option<EventRow>>> + Send;
+    ) -> impl Future<Output = EventResult<Option<EventDetailRow>>> + Send;
 }
 
 /// The production reader answers all three directly.
@@ -90,7 +95,7 @@ impl WorkspaceEvents for History {
         workspace: &Uuid7,
         fleet: &Uuid7,
         event_id: &str,
-    ) -> impl Future<Output = EventResult<Option<EventRow>>> + Send {
+    ) -> impl Future<Output = EventResult<Option<EventDetailRow>>> + Send {
         Self::detail(self, workspace, fleet, event_id)
     }
 }

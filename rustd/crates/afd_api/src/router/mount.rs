@@ -18,7 +18,8 @@ use std::sync::Arc;
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
 use crate::handler::{
-    approval, auth as auth_handler, fleet, preference, runner, secret, tenant as tenant_handler,
+    approval, auth as auth_handler, event, fleet, preference, runner, secret,
+    tenant as tenant_handler,
 };
 use crate::route::{
     AuthRoute, FleetRoute, OpsRoute, Route, RunnerOpsRoute, RunnerRoute, TenantRoute,
@@ -138,9 +139,8 @@ fn workspace_handler_for<D: Serving>(verb: WorkspaceRoute) -> Option<MethodRoute
         // replacement of it: the same gate cannot be re-answered, so a PUT's
         // idempotency promise would be one this surface does not keep.
         WorkspaceRoute::ApprovalResolve => Some(post(approval::resolve::<D>)),
-        WorkspaceRoute::FleetLibrary | WorkspaceRoute::Events | WorkspaceRoute::EventsStream => {
-            None
-        }
+        WorkspaceRoute::Events => Some(get(event::workspace_list::<D>)),
+        WorkspaceRoute::FleetLibrary | WorkspaceRoute::EventsStream => None,
     }
 }
 
@@ -158,13 +158,13 @@ fn fleet_handler_for<D: Serving>(verb: FleetRoute) -> Option<MethodRouter<Arc<D>
                 .patch(fleet::detail::patch::<D>)
                 .delete(fleet::detail::purge::<D>),
         ),
+        FleetRoute::Events => Some(get(event::fleet_list::<D>)),
+        FleetRoute::Event => Some(get(event::detail::<D>)),
         FleetRoute::Messages
         | FleetRoute::Schedules
         | FleetRoute::Schedule
         | FleetRoute::ScheduleSync
-        | FleetRoute::Events
         | FleetRoute::EventsStream
-        | FleetRoute::Event
         | FleetRoute::Memories
         | FleetRoute::Memory
         | FleetRoute::Grants
