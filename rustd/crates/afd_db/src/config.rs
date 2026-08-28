@@ -16,6 +16,7 @@ use std::str::FromStr as _;
 use std::time::Duration;
 
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
+use url::Url;
 
 use crate::error::{Error, ErrorKind, Result};
 use afd_core::env::EnvSource;
@@ -38,6 +39,18 @@ const CONNECT_TIMEOUT_MS_DEFAULT: u64 = 10_000;
 
 /// The two spellings a Postgres URL may carry, and the only two.
 const POSTGRES_SCHEMES: [&str; 2] = ["postgres://", "postgresql://"];
+
+/// The spellings sqlx accepts for the SSL-mode connection parameter.
+///
+/// This pair is sqlx's, not ours — its URL parser matches `"sslmode" |
+/// "ssl-mode"` and honours either. Asking a narrower set than the parser
+/// answers IS the divergence that made the previous substring scan wrong, so
+/// `test_declared_spellings_are_the_ones_sqlx_honours` grades this list against
+/// the parser rather than against a reading of its source.
+const SSLMODE_QUERY_KEYS: [&str; 2] = ["sslmode", "ssl-mode"];
+
+/// The boot event carrying one role's resolved TLS posture.
+const SSL_MODE_RESOLVED_EVENT: &str = "db_ssl_mode_resolved";
 
 const POOL_SIZE_KNOB: &str = "DATABASE_POOL_SIZE";
 const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
@@ -117,7 +130,7 @@ impl PoolConfig {
 
         Ok(Self {
             role,
-            connect: connect_options(knob, &url)?,
+            connect: connect_options(role, &url)?,
             max_connections: read_knob(env, POOL_SIZE_KNOB, role)
                 .map_or(POOL_SIZE_DEFAULT, clamp_pool_size),
             acquire_timeout: Duration::from_millis(
@@ -188,7 +201,26 @@ impl PoolConfig {
 /// The default is applied only when the URL is silent: `?sslmode=disable` is
 /// how the local compose Postgres — which serves no TLS at all — is reachable,
 /// and honouring it is why the local lane works without a certificate.
-fn connect_options(knob: &'static str, url: &str) -> Result<PgConnectOptions> {
+///
+/// # Why "is it silent?" is asked of the parse and not of the string
+///
+/// It used to be asked of the string — split on the first `?`, then on `&`,
+/// then compare key bytes — and a string scan and a URL parser do not agree on
+/// what a query is. Two disagreements were reachable from a connection string
+/// an operator can write, and each moved the TLS decision:
+///
+/// - `…/db#?sslmode=disable` puts the `?` inside the FRAGMENT. Nothing is
+///   declared, so this should upgrade to `require`; the scan saw a query, read
+///   a declaration, and left the connection on sqlx's `prefer` — which
+///   continues in the clear against a server that offers no TLS.
+/// - `?ssl-mode=disable` and `?ssl%6Dode=disable` are both honoured by sqlx,
+///   whose parser accepts the alias and decodes the key. The scan compared raw
+///   bytes against one spelling, read "undeclared", and forced `require` over
+///   an operator's explicit `disable` — a boot failure whose message says
+///   nothing about the knob that caused it.
+fn connect_options(role: DbRole, url: &str) -> Result<PgConnectOptions> {
+    let knob = role.url_knob();
+
     // The scheme is checked here rather than left to sqlx, which accepts
     // `mysql://host/db` and reads it as host `host`, database `db`. A
     // deployment that pasted the wrong URL then connects somewhere real and
@@ -207,20 +239,46 @@ fn connect_options(knob: &'static str, url: &str) -> Result<PgConnectOptions> {
             source: Box::new(source),
         })
     })?;
-    if url_declares_sslmode(url) {
-        Ok(options)
+
+    // `sqlx_core::Url` IS this crate, so the question asked here and the answer
+    // sqlx acted on come from one parse of one grammar — which is the whole
+    // point, since a second grammar is a second set of inputs to disagree on.
+    //
+    // Fallible rather than an `expect`, though a string sqlx already accepted
+    // cannot fail here: the safe answer to "the query could not be read" is the
+    // same as the answer to "the query said nothing", and trading a boot that
+    // encrypts for a boot that panics is not an improvement.
+    let declared = Url::parse(url).is_ok_and(|parsed| declares_ssl_mode(&parsed));
+    let options = if declared {
+        options
     } else {
-        Ok(options.ssl_mode(PgSslMode::Require))
-    }
+        options.ssl_mode(PgSslMode::Require)
+    };
+
+    // Hoisted: see the `tracing` note in the workspace Cargo.toml. The URL
+    // itself is never a field here — `knob` is the variable's NAME, and every
+    // other value is decided rather than copied, so no userinfo can reach a log
+    // sink through this line.
+    let role_tag = role.tag();
+    let ssl_mode = ssl_mode_tag(options.get_ssl_mode());
+    tracing::info!(
+        knob,
+        role = role_tag,
+        ssl_mode,
+        declared,
+        event = SSL_MODE_RESOLVED_EVENT
+    );
+    Ok(options)
 }
 
-/// Whether the URL's query string names `sslmode` at all.
-fn url_declares_sslmode(url: &str) -> bool {
-    url.split_once('?').is_some_and(|(_, query)| {
-        query
-            .split('&')
-            .any(|param| param.split('=').next() == Some("sslmode"))
-    })
+/// Whether the URL's parsed query declares an SSL mode.
+///
+/// `query_pairs` percent-decodes the key, which is what makes this agree with
+/// sqlx on `ssl%6Dode`, and reads only the query, which is what makes it agree
+/// on a fragment that contains a `?`.
+fn declares_ssl_mode(url: &Url) -> bool {
+    url.query_pairs()
+        .any(|(key, _mode)| SSLMODE_QUERY_KEYS.iter().any(|known| key == *known))
 }
 
 /// The lower-case spelling of a resolved SSL mode.
