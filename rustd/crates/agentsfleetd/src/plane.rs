@@ -42,7 +42,7 @@ use afd_credential::vault::Vault;
 use afd_redis::Redis;
 use afd_state::Credentials;
 use afd_tenant::apikey::ApiKeys;
-use afd_tenant::billing::Billing;
+use afd_billing::tenant::Billing;
 use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
 use afd_tenant::session::Sessions as Logins;

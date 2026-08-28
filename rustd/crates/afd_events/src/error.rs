@@ -123,7 +123,7 @@ const DETAIL_CURSOR: &str = "The cursor is not valid";
 const DETAIL_WINDOW: &str = "since and cursor are mutually exclusive";
 
 /// The sentence an unreachable datastore or queue earns.
-const DETAIL_UNAVAILABLE: &str = "Service temporarily unavailable";
+const DETAIL_UNAVAILABLE: &str = "Database unavailable";
 
 /// This crate's result, defaulting to its own error.
 pub type Result<T, E = Error> = std::result::Result<T, E>;

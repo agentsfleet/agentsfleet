@@ -160,7 +160,7 @@ impl Error {
 const DETAIL_OPERATION_FAILED: &str = "Registration could not be completed";
 
 /// The sentence an unreachable datastore earns.
-const DETAIL_UNAVAILABLE: &str = "Service temporarily unavailable";
+const DETAIL_UNAVAILABLE: &str = "Database unavailable";
 
 /// This crate's result, defaulting to its own error.
 pub type Result<T, E = Error> = std::result::Result<T, E>;

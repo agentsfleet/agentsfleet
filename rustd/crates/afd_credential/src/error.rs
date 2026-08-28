@@ -175,7 +175,7 @@ impl Error {
 }
 
 /// The sentences this plane serves.
-const DETAIL_UNAVAILABLE: &str = "Service temporarily unavailable";
+const DETAIL_UNAVAILABLE: &str = "Database unavailable";
 const DETAIL_DATABASE_ERROR: &str = "The operation could not be completed";
 const DETAIL_PROVIDER_UNRESOLVED: &str = "The model provider could not be resolved";
 const DETAIL_VAULT_INVALID: &str = "The stored credential is not a readable shape";
