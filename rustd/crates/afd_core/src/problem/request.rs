@@ -80,6 +80,15 @@ pub(super) const REQUEST: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::APPROVAL_NOT_FOUND,
+        status: 404,
+        title: "Approval gate not found",
+        hint: "No gate under that id in this workspace. A gate id from another workspace reads as absent on purpose \u{2014} the scope is an authorization, not a filter.",
+        user_message: Some(
+            "That approval request is not in this workspace. It may have been resolved already, or the link may be stale.",
+        ),
+    },
+    Problem {
         code: error_code::PREF_KEY_UNKNOWN,
         status: 400,
         title: "Unknown preference key",

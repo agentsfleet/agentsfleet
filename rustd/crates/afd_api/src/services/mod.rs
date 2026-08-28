@@ -32,6 +32,7 @@
 //! with. Reading the wall clock inside each handler instead would put a
 //! non-deterministic call in the one place a test most needs to pin.
 
+mod approval;
 mod billing;
 mod catalogue;
 mod device_flow;
@@ -41,6 +42,7 @@ mod preference;
 mod tenant;
 mod vault;
 
+pub use self::approval::WorkspaceApprovals;
 pub use self::billing::TenantBilling;
 pub use self::catalogue::ModelCatalogue;
 pub use self::device_flow::DeviceFlow;
@@ -184,6 +186,15 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// The workspace's secrets: store, list, replace, delete.
     fn secrets(&self) -> &Self::Secrets;
+
+    /// What the approval inbox acts through.
+    ///
+    /// A concrete type for the reason [`Services::Secrets`] is one: a Postgres
+    /// pool and nothing else, with `afd_db::Db::unreachable` as the seam.
+    type Approvals: WorkspaceApprovals;
+
+    /// The operator's queue of approval gates.
+    fn approvals(&self) -> &Self::Approvals;
 
     /// What the preference and onboarding surfaces act through.
     ///

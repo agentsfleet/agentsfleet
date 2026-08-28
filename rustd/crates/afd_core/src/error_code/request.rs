@@ -30,6 +30,9 @@ pub const SECRET_REFERENCED_BY_MODEL_ENTRIES: ErrorCode = ErrorCode::declare("UZ
 /// A secret with the requested name already exists in this workspace.
 pub const SECRET_NAME_TAKEN: ErrorCode = ErrorCode::declare("UZ-VAULT-005");
 
+/// No approval gate under that id, in that workspace.
+pub const APPROVAL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-APPROVAL-002");
+
 /// The path named a preference key outside the writable registry.
 pub const PREF_KEY_UNKNOWN: ErrorCode = ErrorCode::declare("UZ-PREFS-001");
 

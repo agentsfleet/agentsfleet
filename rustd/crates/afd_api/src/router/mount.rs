@@ -18,7 +18,7 @@ use std::sync::Arc;
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
 use crate::handler::{
-    auth as auth_handler, fleet, preference, runner, secret, tenant as tenant_handler,
+    approval, auth as auth_handler, fleet, preference, runner, secret, tenant as tenant_handler,
 };
 use crate::route::{
     AuthRoute, FleetRoute, OpsRoute, Route, RunnerOpsRoute, RunnerRoute, TenantRoute,
@@ -129,12 +129,18 @@ fn workspace_handler_for<D: Serving>(verb: WorkspaceRoute) -> Option<MethodRoute
         // dashboard reads, where an absent row and a false one would be two
         // spellings of one thing.
         WorkspaceRoute::Preference => Some(put(preference::write::<D>)),
-        WorkspaceRoute::FleetLibrary
-        | WorkspaceRoute::Events
-        | WorkspaceRoute::EventsStream
-        | WorkspaceRoute::Approvals
-        | WorkspaceRoute::Approval
-        | WorkspaceRoute::ApprovalResolve => None,
+        WorkspaceRoute::Approvals => Some(get(approval::list::<D>)),
+        WorkspaceRoute::Approval => Some(get(approval::detail::<D>)),
+        // POST, because answering a gate is an ACTION on it and not a
+        // replacement of it: the same gate cannot be re-answered, so a PUT's
+        // idempotency promise would be a promise this surface does not keep.
+        // POST, because answering a gate is an ACTION on it and not a
+        // replacement of it: the same gate cannot be re-answered, so a PUT's
+        // idempotency promise would be one this surface does not keep.
+        WorkspaceRoute::ApprovalResolve => Some(post(approval::resolve::<D>)),
+        WorkspaceRoute::FleetLibrary | WorkspaceRoute::Events | WorkspaceRoute::EventsStream => {
+            None
+        }
     }
 }
 

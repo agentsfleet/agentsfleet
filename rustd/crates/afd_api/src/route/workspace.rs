@@ -115,9 +115,15 @@ impl WorkspaceRoute {
                 workspace_path!("/approvals/{gate_id}"),
                 Scopes::Always(APPROVAL_READ),
             ),
+            // Two segments, where the Zig daemon spelled one
+            // (`{gate_id}:approve`). A router binds one parameter per segment,
+            // so the colon form could not be told apart from the detail read
+            // above — and the two carry different capabilities, which a single
+            // mounted path could not express. The decision moved into its own
+            // segment rather than the scope model giving way.
             Self::ApprovalResolve => (
                 api,
-                workspace_path!("/approvals/{gate_id}:{decision}"),
+                workspace_path!("/approvals/{gate_id}/{decision}"),
                 Scopes::Always(APPROVAL_RESOLVE),
             ),
         };

@@ -73,6 +73,7 @@ use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
 // Aliased for the reason the composition root aliases it: `afd_fleet::vault`
 // is the runner plane's reader and this is the workspace-admin surface.
+use afd_fleet::gate::Inbox;
 use afd_tenant::preference::Preferences;
 use afd_vault::Vault as SecretVault;
 use axum::Router;
@@ -142,6 +143,7 @@ pub(crate) struct Fleet {
     fleets: Fleets,
     secrets: SecretVault,
     preferences: Preferences,
+    approvals: Inbox,
     billing: Billing,
     catalogue: Models,
     now: UnixMillis,
@@ -188,6 +190,7 @@ impl Fleet {
             fleets: Fleets::new(database.clone(), queue, Entropy::new()),
             secrets: SecretVault::new(database.clone(), kek, Entropy::new()),
             preferences: Preferences::new(database.clone(), Entropy::new()),
+            approvals: Inbox::new(database.clone()),
             billing: Billing::new(database.clone()),
             catalogue: Models::new(database),
             now: UnixMillis::from_millis(FROZEN),
@@ -305,6 +308,7 @@ impl Services for Fleet {
     type Fleets = Fleets;
     type Secrets = SecretVault;
     type Preferences = Preferences;
+    type Approvals = Inbox;
     type Billing = Billing;
     type Catalogue = Models;
 
@@ -351,6 +355,10 @@ impl Services for Fleet {
 
     fn preferences(&self) -> &Preferences {
         &self.preferences
+    }
+
+    fn approvals(&self) -> &Inbox {
+        &self.approvals
     }
 
     fn secrets(&self) -> &SecretVault {
