@@ -17,32 +17,31 @@
 
 use std::sync::Arc;
 
+use afd_api::Planes;
 use afd_api::router::{Dependencies, ReadyInputs};
-use afd_api::{Planes, Services};
 use afd_approval::{Inbox, IntegrationGrants};
 use afd_billing::Accounts;
-use afd_core::clock::UnixMillis;
+use afd_credential::provider::Providers;
+use afd_credential::secrets::Registry;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
 use afd_events::History;
 use afd_fleet::bundle::Bundles;
-use afd_gate::gate::Gates;
 use afd_fleet::lease::{Leases, Plane};
 use afd_fleet::memory::Memories;
-use afd_credential::provider::Providers;
-use afd_credential::secrets::Registry;
 use afd_fleet_lifecycle::Fleets;
+use afd_gate::gate::Gates;
 use afd_runner::Runners;
 use afd_tenant::preference::Preferences;
 // Aliased: `crate::identity::Sessions` is the token VERIFIER, and this is the
 // device-flow login surface. Two things called `Sessions` in one file is how a
 // reader ends up believing the login surface verifies bearer tokens.
+use afd_billing::tenant::Billing;
 use afd_credential::vault::Vault;
 use afd_redis::Redis;
 use afd_state::Credentials;
 use afd_tenant::apikey::ApiKeys;
-use afd_billing::tenant::Billing;
 use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
 use afd_tenant::session::Sessions as Logins;
@@ -208,120 +207,11 @@ pub struct PlaneParts {
     pub login: LoginConfig,
 }
 
+mod services;
+
 impl Dependencies for ServingPlane {
     fn probe(&self) -> impl Future<Output = ReadyInputs> + Send {
         self.probes.probe()
-    }
-}
-
-impl Services for ServingPlane {
-    type Auth = Authenticator;
-    type Leases = Plane;
-    type Sessions = Logins;
-    type Workspaces = Workspaces;
-    type WorkspaceDirectory = Workspaces;
-    type ApiKeys = ApiKeys;
-    type CliCredentials = CliCredentials;
-    type Fleets = Fleets;
-    type Secrets = SecretVault;
-    type Preferences = Preferences;
-    type Approvals = Inbox;
-    type Grants = IntegrationGrants;
-    type Events = History;
-    type Memories = Memories;
-    type Billing = Billing;
-    type Catalogue = Models;
-
-    fn authenticator(&self) -> &Self::Auth {
-        &self.authenticator
-    }
-
-    fn runners(&self) -> &Runners {
-        &self.runners
-    }
-
-    fn leases(&self) -> &Plane {
-        &self.leases
-    }
-
-    fn bundles(&self) -> &Bundles {
-        &self.bundles
-    }
-
-    fn sessions(&self) -> &Logins {
-        &self.logins
-    }
-
-    fn workspaces(&self) -> &Workspaces {
-        &self.workspaces
-    }
-
-    /// The same value as [`Services::workspaces`], deliberately: production
-    /// holds one directory that answers both seams, and the split exists for
-    /// the suites — see the trait's own note.
-    fn workspace_directory(&self) -> &Workspaces {
-        &self.workspaces
-    }
-
-    fn api_keys(&self) -> &ApiKeys {
-        &self.api_keys
-    }
-
-    fn cli_credentials(&self) -> &CliCredentials {
-        &self.cli_credentials
-    }
-
-    fn fleets(&self) -> &Fleets {
-        &self.fleets
-    }
-
-    fn preferences(&self) -> &Preferences {
-        &self.preferences
-    }
-
-    fn approvals(&self) -> &Inbox {
-        &self.approvals
-    }
-
-    fn grants(&self) -> &IntegrationGrants {
-        &self.grants
-    }
-
-    fn events(&self) -> &History {
-        &self.events
-    }
-
-    /// The store the lease plane already holds. ONE `Memories` in this process:
-    /// reading what a fleet learned and writing it are two verbs over one table.
-    fn memories(&self) -> &Memories {
-        &self.leases.memories
-    }
-
-    fn secrets(&self) -> &SecretVault {
-        &self.secrets
-    }
-
-    fn billing(&self) -> &Billing {
-        &self.billing
-    }
-
-    fn catalogue(&self) -> &Models {
-        &self.models
-    }
-
-    fn deployment(&self) -> &str {
-        &self.api_url
-    }
-
-    /// The wall clock, read once per verb by whichever handler asked.
-    ///
-    /// Not a `Clock` behind an `Arc`: `afd_core::clock` reserves injection for
-    /// an owner that reads repeatedly and asks everything else to take the
-    /// instant as a parameter, which is exactly what a handler does with this.
-    /// A test drives its own instant by implementing `Services` itself, so the
-    /// seam a fixed clock would provide already exists one level up.
-    fn now(&self) -> UnixMillis {
-        afd_core::clock::now()
     }
 }
 

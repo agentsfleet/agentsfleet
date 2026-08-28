@@ -23,7 +23,6 @@
 //! under `UZ-INTERNAL-003` for the same reason, and the operator gets the
 //! distinction in the log instead.
 
-
 use afd_core::error_code::{self, ErrorCode};
 
 pub mod detail;
@@ -174,8 +173,4 @@ impl Error {
             _not_referenced => None,
         }
     }
-
 }
-
-
-

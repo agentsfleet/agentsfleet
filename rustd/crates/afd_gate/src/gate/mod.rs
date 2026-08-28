@@ -33,13 +33,12 @@
 //! the type signature of everything downstream, including the renderer that
 //! lands in a later milestone.
 
-pub mod grant_sql;
-pub mod sql;
 mod anomaly;
 mod claim;
 mod decision;
 mod detail;
 mod first;
+pub mod grant_sql;
 mod grants;
 mod park;
 mod pass;
@@ -47,6 +46,7 @@ mod pause;
 mod pending;
 mod route;
 mod spend;
+pub mod sql;
 mod store;
 
 use afd_fleet_runtime::config::{Behavior, Condition, GatePolicy, GateRule};

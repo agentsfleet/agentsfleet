@@ -17,15 +17,14 @@ use afd_core::error_code::{self, ErrorCode};
 use super::{
     DETAIL_BINDING_DRIFT, DETAIL_BUDGET_EXHAUSTED, DETAIL_BUNDLE_FETCH_FAILED,
     DETAIL_BUNDLE_NOT_FOUND, DETAIL_BUNDLE_STORAGE_UNAVAILABLE, DETAIL_CONFIG_UNREADABLE,
-    DETAIL_CONNECTOR_MINT_FAILED, DETAIL_CONNECTOR_RECONNECT,
-    DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED,
-    DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
-    DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND,
-    DETAIL_MEMORY_AGENTSFLEET_NOT_FOUND, DETAIL_MEMORY_ENTRY_NOT_FOUND, DETAIL_MINT_FAILED,
-    DETAIL_MINT_UNCONFIGURED, DETAIL_QUEUE_UNAVAILABLE,
-    DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS, DETAIL_STALE_FENCE,
-    DETAIL_VAULT_DATA_INVALID, DETAIL_WRITE_SPEND_EXHAUSTED, DETAIL_WRITE_UNAPPROVED, Error,
-    ErrorKind,
+    DETAIL_CONNECTOR_MINT_FAILED, DETAIL_CONNECTOR_RECONNECT, DETAIL_DATABASE_ERROR,
+    DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED, DETAIL_GITHUB_RECONNECT,
+    DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED, DETAIL_LEASE_LOST,
+    DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND, DETAIL_MEMORY_AGENTSFLEET_NOT_FOUND,
+    DETAIL_MEMORY_ENTRY_NOT_FOUND, DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED,
+    DETAIL_QUEUE_UNAVAILABLE, DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS,
+    DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, DETAIL_WRITE_SPEND_EXHAUSTED,
+    DETAIL_WRITE_UNAPPROVED, Error, ErrorKind,
 };
 
 impl Error {
@@ -197,7 +196,14 @@ impl Error {
     #[must_use]
     pub const fn detail(&self) -> &'static str {
         match self.inner.kind {
-            ErrorKind::Rejected { detail } => detail,
+            // The two kinds whose sentence the CALL SITE chose, and the only
+            // two: a rejection names the field it refused, and four operations
+            // answer `UZ-MEM-003` where which of them a 503 came from is the
+            // only fact its reader can act on (see
+            // [`super::report::memory_unavailable`]). Every other kind's
+            // sentence is decided here, so no handler can describe one failure
+            // two ways.
+            ErrorKind::Rejected { detail } | ErrorKind::MemoryUnavailable { detail, .. } => detail,
             ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
             // A corrupt sequence joins the two row faults: all three are the
             // database holding something this daemon cannot use, and a caller
@@ -240,11 +246,6 @@ impl Error {
             ErrorKind::BindingDrift => DETAIL_BINDING_DRIFT,
             ErrorKind::WriteSpendExhausted => DETAIL_WRITE_SPEND_EXHAUSTED,
             ErrorKind::MemoryFleetNotFound => DETAIL_MEMORY_AGENTSFLEET_NOT_FOUND,
-            // The one kind besides `Rejected` whose sentence the CALL SITE
-            // chose. Four operations answer `UZ-MEM-003`, and which of them a
-            // 503 came from is the only fact its reader can act on — see
-            // [`super::report::memory_unavailable`].
-            ErrorKind::MemoryUnavailable { detail, .. } => detail,
             ErrorKind::MemoryEntryNotFound => DETAIL_MEMORY_ENTRY_NOT_FOUND,
         }
     }

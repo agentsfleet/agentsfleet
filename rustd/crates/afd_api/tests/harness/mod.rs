@@ -53,14 +53,15 @@ use afd_auth::mock::{MockCapabilities, MockDirectory};
 use afd_auth::principal::Subject;
 use afd_auth::scope::ScopeSet;
 use afd_auth::verifier::NoVerifier;
+use afd_billing::tenant::Billing;
 use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
-use afd_events::History;
 use afd_db::config::{DbRole, PoolConfig};
+use afd_events::History;
 use afd_fleet::bundle::{Bundles, ContentHash};
 use afd_fleet::memory::Memories;
 use afd_fleet_lifecycle::Fleets;
@@ -68,7 +69,6 @@ use afd_redis::Redis;
 use afd_redis::config::{RedisConfig, RedisRole};
 use afd_runner::Runners;
 use afd_tenant::apikey::ApiKeys;
-use afd_billing::tenant::Billing;
 use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
 use afd_tenant::session::Sessions as Logins;
@@ -299,118 +299,11 @@ impl Fleet {
     }
 }
 
+mod services;
+
 impl Dependencies for Fleet {
     fn probe(&self) -> impl Future<Output = ReadyInputs> + Send {
         std::future::ready(self.ready)
-    }
-}
-
-impl Services for Fleet {
-    type Auth = Planes<MockDirectory, MockCapabilities, NoVerifier>;
-    type Leases = NoWork;
-    type Sessions = Logins;
-    type Workspaces = OneWorkspace;
-    type WorkspaceDirectory = Workspaces;
-    type ApiKeys = ApiKeys;
-    type CliCredentials = CliCredentials;
-    type Fleets = Fleets;
-    type Secrets = SecretVault;
-    type Preferences = Preferences;
-    type Approvals = Inbox;
-    type Grants = IntegrationGrants;
-    type Events = History;
-    type Memories = Memories;
-    type Billing = Billing;
-    type Catalogue = Models;
-
-    fn authenticator(&self) -> &Self::Auth {
-        &self.authenticator
-    }
-
-    fn runners(&self) -> &Runners {
-        &self.runners
-    }
-
-    fn leases(&self) -> &NoWork {
-        &self.leases
-    }
-
-    fn bundles(&self) -> &Bundles {
-        &self.bundles
-    }
-
-    fn sessions(&self) -> &Logins {
-        &self.logins
-    }
-
-    fn workspaces(&self) -> &OneWorkspace {
-        &self.workspaces
-    }
-
-    /// A different value from [`Services::workspaces`], unlike production.
-    ///
-    /// The split is the suites': the ownership seam has to answer HONESTLY for
-    /// both halves of the refusal matrix to be reachable, so it stays
-    /// [`OneWorkspace`], while the directory refuses like every other store.
-    fn workspace_directory(&self) -> &Workspaces {
-        &self.workspace_directory
-    }
-
-    fn api_keys(&self) -> &ApiKeys {
-        &self.api_keys
-    }
-
-    fn cli_credentials(&self) -> &CliCredentials {
-        &self.cli_credentials
-    }
-
-    fn preferences(&self) -> &Preferences {
-        &self.preferences
-    }
-
-    fn approvals(&self) -> &Inbox {
-        &self.approvals
-    }
-
-    fn grants(&self) -> &IntegrationGrants {
-        &self.grants
-    }
-
-    fn events(&self) -> &History {
-        &self.events
-    }
-
-    fn memories(&self) -> &Memories {
-        &self.memories
-    }
-
-    fn secrets(&self) -> &SecretVault {
-        &self.secrets
-    }
-
-    fn fleets(&self) -> &Fleets {
-        &self.fleets
-    }
-
-    fn billing(&self) -> &Billing {
-        &self.billing
-    }
-
-    fn catalogue(&self) -> &Models {
-        &self.catalogue
-    }
-
-    /// A fixed deployment, which is what a real one is too.
-    ///
-    /// Read from configuration in the binary rather than from the request, so a
-    /// constant here is the same KIND of value the daemon serves with — not a
-    /// simplification a suite would have to remember is one.
-    fn deployment(&self) -> &str {
-        DEPLOYMENT
-    }
-
-    fn now(&self) -> UnixMillis {
-        self.now
     }
 }
 

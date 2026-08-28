@@ -58,7 +58,8 @@ pub struct Filter {
 /// in between, and no epoch arithmetic hand-written anywhere.
 ///
 /// # Errors
-/// [`Error::WindowAmbiguous`] is not raised here — that is the caller's check,
+/// A window supplied ALONGSIDE a cursor is not refused here — that is the
+/// caller's check,
 /// because only the caller knows whether a cursor also arrived. Everything this
 /// function refuses is an unreadable window value.
 pub fn parse_since(input: &str, now: UnixMillis) -> Result<UnixMillis, Error> {

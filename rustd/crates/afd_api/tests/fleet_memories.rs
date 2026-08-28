@@ -206,6 +206,15 @@ async fn the_templates_carry_only_the_methods_they_document() {
 
     // And an entry is not read on its own: the collection is the read, and a
     // per-key GET would be a second way to ask one question.
-    let fetched = send(FLEET_READ, Method::GET, &item(KEY), Some(TENANT_KEY)).await;
+    //
+    // `FLEET_WRITE` on a GET is not a typo. The scope layer is mounted from the
+    // route's TEMPLATE, so `Scopes::Always(FLEET_WRITE)` on the item guards
+    // every method on it — including the ones it does not serve — and it runs
+    // BEFORE method dispatch. A `fleet:read` credential here is refused 403 at
+    // the scope rung and never reaches the 405, which would make this assertion
+    // about the scope axis rather than the method one. Answering 403 first is
+    // also the better order: a caller lacking the capability learns nothing
+    // about which methods the template serves.
+    let fetched = send(FLEET_WRITE, Method::GET, &item(KEY), Some(TENANT_KEY)).await;
     assert_eq!(fetched.status(), StatusCode::METHOD_NOT_ALLOWED);
 }

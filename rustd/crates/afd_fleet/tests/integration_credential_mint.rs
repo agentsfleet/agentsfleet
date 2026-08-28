@@ -52,8 +52,8 @@ use afd_crypto::aad::Aad;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::envelope::Sealer;
 use afd_crypto::secret::Kek;
-use afd_gate::gate::WriteApproval;
 use afd_fleet_runtime::config::{Access, RepositoryBinding};
+use afd_gate::gate::WriteApproval;
 
 use self::seed::{Seeded, seeded};
 use self::support::Fixtures;

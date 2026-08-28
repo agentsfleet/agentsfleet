@@ -31,9 +31,9 @@ use sqlx::Row as _;
 
 use crate::error::{Result, lease_lost, lease_max_runtime, query};
 use crate::lease::pull::Plane;
-use crate::lease::store::Leases;
 use crate::lease::sql;
 use crate::lease::sql::renew::RenewRow;
+use crate::lease::store::Leases;
 use afd_billing::rates::Posture;
 use afd_billing::{Cumulative, Nanos};
 

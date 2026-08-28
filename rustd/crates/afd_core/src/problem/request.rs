@@ -93,18 +93,14 @@ pub(super) const REQUEST: &[Problem] = &[
         status: 400,
         title: "Unknown preference key",
         hint: "The path names a key outside the writable preference registry. Only the keys the dashboard declares can be written; anything else is refused here rather than stored.",
-        user_message: Some(
-            "That setting doesn't exist. Reload the page and try again.",
-        ),
+        user_message: Some("That setting doesn't exist. Reload the page and try again."),
     },
     Problem {
         code: error_code::PREF_VALUE_TOO_LARGE,
         status: 400,
         title: "Preference value too large",
         hint: "A preference value exceeds 1 KiB. A preference holds one small toggle, not a document; store larger state where it belongs.",
-        user_message: Some(
-            "That setting is too large to save. Reload the page and try again.",
-        ),
+        user_message: Some("That setting is too large to save. Reload the page and try again."),
     },
     Problem {
         code: error_code::WORKSPACE_NAME_EXISTS,

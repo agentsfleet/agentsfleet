@@ -13,7 +13,6 @@
 //! [`Error::is_group_missing`] exists: the repair path in [`crate::streams`]
 //! asks exactly this question, and nothing else has to guess.
 
-
 use afd_core::error_code::{self, ErrorCode};
 
 /// The result every fallible function in this crate returns.
@@ -155,10 +154,7 @@ impl Error {
             _ => error_code::STARTUP_REDIS_CONNECT,
         }
     }
-
 }
-
-
 
 /// Classifies a failed command.
 ///

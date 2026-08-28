@@ -12,10 +12,10 @@ use afd_db::Db;
 use afd_redis::{ReadyIndex, Redis};
 use sqlx::Row as _;
 
+use super::sql;
 use crate::error::{Result, query};
 use crate::gate::decision::{Answer, Status};
 use crate::gate::pending::{Evaluation, GateRef, evaluate};
-use super::sql;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_STATUS: &str = "approval gate status";

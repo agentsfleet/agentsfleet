@@ -88,7 +88,7 @@ impl Error {
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         match self {
-            Self::Query { .. } | Self::RowMalformed { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            Self::Query { .. } | Self::RowMalformed { .. } => error_code::INTERNAL_DB_QUERY,
             Self::CursorMalformed => error_code::INVALID_REQUEST,
             Self::Datastore { .. } | Self::Queue { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
         }
@@ -96,7 +96,14 @@ impl Error {
 }
 
 /// The sentence a statement that would not run earns.
-const DETAIL_OPERATION_FAILED: &str = "The event history could not be read";
+///
+/// `internalDbError`'s, verbatim. This crate would rather say which surface
+/// failed, and that is exactly the change a client watching for
+/// `UZ-INTERNAL-002` / "Database error" would feel: the pair is what the
+/// daemon in production answers when a fleet-events statement refuses, and
+/// `docs/REST_API_DESIGN_GUIDELINES.md` §9 makes re-spelling it inside `/v1`
+/// a breaking change rather than an improvement.
+const DETAIL_OPERATION_FAILED: &str = "Database error";
 
 /// The sentence a cursor this daemon did not mint earns.
 const DETAIL_CURSOR: &str = "The cursor is not valid";

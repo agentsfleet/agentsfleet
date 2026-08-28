@@ -30,9 +30,9 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
 pub mod clock;
+pub mod credential;
 pub mod env;
 pub mod error;
-pub mod credential;
 pub mod error_code;
 #[macro_use]
 mod error_shell;

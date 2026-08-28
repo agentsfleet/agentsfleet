@@ -15,8 +15,8 @@ use afd_fleet_runtime::FleetConfig;
 use afd_fleet_runtime::config::Mode;
 use afd_fleet_runtime::provider::StaticRegistry;
 
-use afd_credential::provider::{Dialled, Resolved, SecretString};
 use afd_billing::rates::Posture;
+use afd_credential::provider::{Dialled, Resolved, SecretString};
 
 /// The provider key a resolution carries, so a test can assert it travelled.
 pub(super) const KEY: &str = "sk-the-billed-key";

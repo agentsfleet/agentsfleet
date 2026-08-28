@@ -37,12 +37,12 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 
+use super::sql;
 use crate::error::{Error, Result, query};
 use crate::gate::claim::Claim;
 use crate::gate::detail::Stated;
 use crate::gate::pending::GateRef;
 use crate::gate::store::Gates;
-use super::sql;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_PARK: &str = "approval gate park";

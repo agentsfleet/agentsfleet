@@ -15,7 +15,6 @@
 //! shared enum would let each side match on arms the other produces, which is
 //! exactly the coupling splitting the crates was for.
 
-
 use std::fmt::{self, Display, Formatter};
 
 use afd_core::error_code::{self, ErrorCode};
@@ -140,8 +139,6 @@ pub(crate) enum ErrorKind {
     #[error("the authenticated subject has no user record")]
     CliCredentialUnknownSubject,
 
-
-
     #[error("a workspace name carries a character this daemon will not store")]
     WorkspaceNameInvalid,
 
@@ -221,7 +218,6 @@ impl Error {
     pub(crate) fn new(kind: ErrorKind) -> Self {
         Self::from(kind)
     }
-
 
     /// Whether this is a lost race for one machine's live credential.
     ///
@@ -376,8 +372,6 @@ impl Error {
         }
     }
 }
-
-
 
 impl From<afd_db::Error> for Error {
     fn from(source: afd_db::Error) -> Self {

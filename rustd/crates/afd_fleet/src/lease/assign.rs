@@ -27,8 +27,8 @@ use sqlx::Row as _;
 
 use crate::error::{Result, query};
 use crate::lease::envelope::{Acquired, from_fresh, from_reclaim};
-use crate::lease::store::Leases;
 use crate::lease::sql;
+use crate::lease::store::Leases;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_CANDIDATES: &str = "lease candidate scan";

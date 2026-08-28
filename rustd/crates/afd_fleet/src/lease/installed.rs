@@ -20,8 +20,8 @@ use sqlx::Row as _;
 
 use crate::error::{Result, query, row_malformed};
 use crate::lease::assign::FLEET_STATUS_ACTIVE;
-use crate::lease::store::Leases;
 use crate::lease::sql;
+use crate::lease::store::Leases;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_INSTALLED: &str = "fleet claim read";

@@ -28,11 +28,11 @@ use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::RepositoryBinding;
 use sqlx::{Acquire as _, Row as _};
 
+use super::sql;
 use crate::error::{Result, query};
 use crate::gate::decision::Status;
 use crate::gate::detail::KIND_REPOSITORY_WRITE;
 use crate::gate::store::Gates;
-use super::sql;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_SPEND: &str = "write gate spend";

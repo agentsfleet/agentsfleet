@@ -11,12 +11,12 @@ use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::RepositoryBinding;
 use sqlx::Row as _;
 
+use super::{grant_sql, sql};
 use crate::error::{Result, query};
 use crate::gate::decision::Status;
 use crate::gate::detail::{KIND_REPOSITORY_WRITE, REPOSITORY_WRITE_SPEND_CEILING};
 use crate::gate::store::Gates;
 use crate::policy::grants::Grants;
-use super::{grant_sql, sql};
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_GRANTS: &str = "integration grants";

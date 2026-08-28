@@ -15,7 +15,6 @@
 //! [`Error::is_pool_capacity`] and [`Error::is_datastore_unavailable`] are two
 //! questions and `sqlx::Error::PoolTimedOut` is what separates them.
 
-
 use afd_core::error_code::{self, ErrorCode};
 
 use crate::sql::SplitError;
@@ -179,10 +178,7 @@ impl Error {
             | ErrorKind::MigrationSchemaAhead { .. } => error_code::STARTUP_MIGRATION_CHECK,
         }
     }
-
 }
-
-
 
 /// Classifies a failed acquire, which is the one place the two operational
 /// stories separate.

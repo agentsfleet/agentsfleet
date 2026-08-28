@@ -280,4 +280,3 @@ impl Error {
         Self::from(kind)
     }
 }
-
