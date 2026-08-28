@@ -621,6 +621,14 @@ unneeded_field_pattern = "deny"
 unused_result_ok = "deny"
 too_long_first_doc_paragraph = "deny"
 
+[profile.dev]
+# Line tables only, not full DWARF. The default (debug = 2) at 357 locked
+# crates grew target/debug to 57G — 39G deps/ (352k files, mostly stale
+# fingerprints cargo never GCs), 18G incremental/ — and a 70M agentsfleetd.
+# Backtraces and panics keep file:line; lldb keeps stepping but loses variable
+# inspection. Flip to 2 locally when you need that.
+debug = 1
+
 [profile.release]
 # opt-level 3, not 'z': this is a server binary whose cost is CPU per request,
 # not bytes on disk.
