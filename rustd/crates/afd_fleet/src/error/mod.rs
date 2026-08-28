@@ -22,12 +22,12 @@
 //! ONE place that says so, instead of at eight `catch` sites that each decided
 //! it privately.
 
-
-
 pub mod classify;
 pub mod detail;
 pub mod lift;
+pub mod permanence;
 pub mod refuse;
+pub mod report;
 
 pub use self::detail::{
     DETAIL_BUDGET_EXHAUSTED, DETAIL_BUNDLE_FETCH_FAILED, DETAIL_BUNDLE_NOT_FOUND,
@@ -51,6 +51,14 @@ pub use self::detail::{
     DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED, DETAIL_WRITE_SPEND_EXHAUSTED,
     DETAIL_WRITE_UNAPPROVED,
 };
+/// The memory operator surface's sentences, listed apart for the reason the
+/// mint family's are: they arrive together, they are read together, and every
+/// one is pinned to `memory/handler.zig` or its `helpers.zig`.
+pub use self::detail::{
+    DETAIL_MEMORY_AGENTSFLEET_NOT_FOUND, DETAIL_MEMORY_ENTRY_NOT_FOUND,
+    DETAIL_MEMORY_FORGET_FAILED, DETAIL_MEMORY_LIST_FAILED, DETAIL_MEMORY_ROLE_SWITCH,
+    DETAIL_MEMORY_SEARCH_FAILED,
+};
 /// The command-line credential surface's refusals, re-exported as one group for
 /// the reason the api-key family's are: they arrive together and are read
 /// together, and each is pinned to `cli_credentials.zig`.
@@ -59,6 +67,16 @@ pub(crate) use self::refuse::{
     github_mint_failed, github_reconnect_required, grant_required, integration_not_connected,
     lease_lost, lease_max_runtime, lease_not_found, mint_unconfigured, renewal_no_credits,
     stale_fence, write_spend_exhausted, write_unapproved,
+};
+/// The memory operator surface's two refusals, listed apart for the reason the
+/// mint family's sentences are: they arrive together and are read together,
+/// and both are pinned to `memory/handler.zig`.
+pub(crate) use self::refuse::{memory_entry_not_found, memory_fleet_not_found};
+/// Everything that REPORTS a failure rather than answering one, re-exported so
+/// no call site names the file the cap moved them into.
+pub(crate) use self::report::{
+    bundle_missing, bundle_oversized, bundle_storage, bundle_unconfigured, envelope_field,
+    memory_unavailable, query, rejected, row_malformed, sequence_corrupt, vault_data_invalid,
 };
 
 /// The result every fallible function in this crate returns.
@@ -221,6 +239,19 @@ pub(crate) enum ErrorKind {
 
     #[error("the approved write-credential allowance is spent")]
     WriteSpendExhausted,
+
+    #[error("the fleet a memory request names is not this workspace's")]
+    MemoryFleetNotFound,
+
+    #[error("the durable memory store would not answer: {detail}")]
+    MemoryUnavailable {
+        detail: &'static str,
+        #[source]
+        source: sqlx::Error,
+    },
+
+    #[error("the fleet is holding no memory entry under that key")]
+    MemoryEntryNotFound,
 }
 
 /// The refusals a suite outside this crate needs to CONSTRUCT.
@@ -248,102 +279,5 @@ impl Error {
     pub(crate) fn new(kind: ErrorKind) -> Self {
         Self::from(kind)
     }
-
 }
-
-/// Reports a stream entry that does not satisfy the producer's contract.
-///
-/// `field` is `&'static str` rather than an owned name because every caller
-/// passes one of the envelope's own constants — a name that had to be
-/// allocated would mean it came from somewhere other than the contract.
-pub(crate) fn envelope_field(field: &'static str) -> Error {
-    Error::new(ErrorKind::Envelope { field })
-}
-
-/// Refuses a request the caller can correct, quoting the Zig detail verbatim.
-pub(crate) fn rejected(detail: &'static str) -> Error {
-    Error::new(ErrorKind::Rejected { detail })
-}
-
-
-
-
-
-
-
-/// Reports a stored credential body that is not an addressable object.
-pub(crate) fn vault_data_invalid() -> Error {
-    Error::new(ErrorKind::VaultDataInvalid)
-}
-
-
-/// Reports a stored fencing sequence that cannot be one.
-///
-/// Its own kind rather than a saturating read, and the direction is why.
-/// [`Fence::as_u64`](crate::lease::Fence::as_u64) saturates a negative token to
-/// ZERO because zero is below every token a claim can mint, so a corrupt row
-/// fences ITSELF out. The live sequence a memory push is checked against runs
-/// the other way: saturating it to zero would put it below every token in
-/// existence and admit every stale holder. There is no safe value, so there is
-/// no value.
-pub(crate) fn sequence_corrupt() -> Error {
-    Error::new(ErrorKind::SequenceCorrupt)
-}
-
-/// Reports a content hash with no snapshot stored under it.
-///
-/// The ordinary answer for a skill-only bundle, not a fault — see
-/// [`crate::bundle::Bundles::fetch`].
-pub(crate) fn bundle_missing() -> Error {
-    Error::new(ErrorKind::BundleMissing)
-}
-
-/// Reports a deployment that never configured snapshot storage.
-pub(crate) fn bundle_unconfigured() -> Error {
-    Error::new(ErrorKind::BundleUnconfigured)
-}
-
-/// Reports an object store that was reached and would not serve.
-///
-/// The store's own error rides through as `#[source]` rather than being
-/// stringified into a message: a refused signature, an unresolvable endpoint
-/// and a missing bucket are three different operator problems, and the chain is
-/// the only place that distinction survives (`RUST_ERROR_STANDARD` rule 3).
-pub(crate) fn bundle_storage(source: object_store::Error) -> Error {
-    Error::new(ErrorKind::BundleStorage { source })
-}
-
-/// Reports a stored object too large for this daemon to buffer.
-///
-/// Its own kind rather than a storage failure, because it is not one: the store
-/// answered correctly and what it holds is the problem. The size is carried so
-/// the operator's log line names it — nothing puts it on the wire.
-pub(crate) fn bundle_oversized(size: u64) -> Error {
-    Error::new(ErrorKind::BundleOversized { size })
-}
-
-/// Reports a statement that reached Postgres and was refused.
-///
-/// `map_err` that ADDS context the call site alone knows — which statement was
-/// running — and nothing else. The `sqlx::Error` rides through as `#[source]`,
-/// so the chain a fatal renderer walks stays intact (`RUST_ERROR_STANDARD`
-/// rule 3).
-pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
-    move |source| Error::new(ErrorKind::Query { context, source })
-}
-
-/// Reports a column whose stored value is not a shape this daemon can read.
-pub(crate) fn row_malformed(
-    table: &'static str,
-    column: &'static str,
-) -> impl Fn(afd_core::error::Error) -> Error {
-    move |source| {
-        Error::new(ErrorKind::RowMalformed {
-            table,
-            column,
-            source,
-        })
-    }
-}
-
 

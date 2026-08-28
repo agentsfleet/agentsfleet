@@ -174,6 +174,39 @@ pub(super) const FLEET: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::MEM_AGENTSFLEET_NOT_FOUND,
+        status: 404,
+        title: "Fleet not found for memory op",
+        hint: "The fleet_id does not exist or is not in this workspace. Verify both.",
+        // Not dashboard-facing in the Zig entries, and the reachability note
+        // there says why: the code was authored for the runner's memory push.
+        // The operator surface answers it too, and the sentence an integrator
+        // reads is the right one for both.
+        user_message: None,
+    },
+    Problem {
+        code: error_code::MEM_UNAVAILABLE,
+        // 503, and it is the status that carries the degrade-gracefully
+        // promise: the fleet keeps running on ephemeral workspace memory while
+        // this surface is down, so a client backs off rather than failing.
+        status: 503,
+        title: "Saved memory unavailable",
+        hint: "The memory backend is unreachable; the fleet falls back to ephemeral workspace memory. Check MEMORY_RUNTIME_URL.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::MEM_ENTRY_NOT_FOUND,
+        status: 404,
+        title: "Memory entry not found",
+        hint: "No entry with that key exists for this fleet. List the fleet's memories to confirm the exact key.",
+        // The one memory code a person meets: forgetting is an operator's
+        // action taken from the dashboard, so the mistyped key needs a sentence
+        // written for whoever typed it.
+        user_message: Some(
+            "That memory entry is already gone — the fleet isn't holding anything under that key.",
+        ),
+    },
+    Problem {
         code: error_code::FLEET_BUNDLE_NOT_FOUND,
         status: 404,
         title: "Fleet Bundle not found",

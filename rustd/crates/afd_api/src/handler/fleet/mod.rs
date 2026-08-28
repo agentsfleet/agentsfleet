@@ -14,6 +14,8 @@
 //! acting in — never a handler deciding whether it may.
 
 pub mod detail;
+pub mod memory;
+mod memory_request;
 
 use std::borrow::Cow;
 use std::sync::Arc;

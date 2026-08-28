@@ -51,6 +51,27 @@ pub(crate) fn budget_exhausted() -> Error {
     Error::new(ErrorKind::BudgetExhausted)
 }
 
+/// Refuses a memory request naming a fleet this workspace does not hold.
+///
+/// The two builders here are the memory operator surface's, and they keep the
+/// payload-free shape the header describes: each names ONE outcome of one
+/// guarded read. The third memory raiser carries a sentence and therefore lives
+/// in [`super::report`] beside the other statement-shaped reports — a refusal
+/// and a report are different things, and the split follows that rather than
+/// the family.
+pub(crate) fn memory_fleet_not_found() -> Error {
+    Error::new(ErrorKind::MemoryFleetNotFound)
+}
+
+/// Refuses a forget for a key the fleet is not holding.
+///
+/// The 404 that makes a mistyped key visible. A silent 204 would leave an
+/// operator believing a wrong lesson was removed while the next hydrate seeds
+/// it into another run, which is the failure this refusal exists to prevent.
+pub(crate) fn memory_entry_not_found() -> Error {
+    Error::new(ErrorKind::MemoryEntryNotFound)
+}
+
 /// Refuses a mint for an integration this workspace has not connected.
 ///
 /// The ten builders below are the mint's, and they share the shape the six
