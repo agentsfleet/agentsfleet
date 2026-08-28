@@ -74,7 +74,7 @@ use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
 // Aliased for the reason the composition root aliases it: `afd_credential::vault`
 // is the runner plane's reader and this is the workspace-admin surface.
-use afd_approval::Inbox;
+use afd_approval::{Inbox, IntegrationGrants};
 use afd_tenant::preference::Preferences;
 use afd_vault::Vault as SecretVault;
 use axum::Router;
@@ -145,6 +145,7 @@ pub(crate) struct Fleet {
     secrets: SecretVault,
     preferences: Preferences,
     approvals: Inbox,
+    grants: IntegrationGrants,
     events: History,
     billing: Billing,
     catalogue: Models,
@@ -193,6 +194,7 @@ impl Fleet {
             secrets: SecretVault::new(database.clone(), kek, Entropy::new()),
             preferences: Preferences::new(database.clone(), Entropy::new()),
             approvals: Inbox::new(database.clone(), queue.clone()),
+            grants: IntegrationGrants::new(database.clone()),
             events: History::new(database.clone()),
             billing: Billing::new(database.clone()),
             catalogue: Models::new(database),
@@ -312,6 +314,7 @@ impl Services for Fleet {
     type Secrets = SecretVault;
     type Preferences = Preferences;
     type Approvals = Inbox;
+    type Grants = IntegrationGrants;
     type Events = History;
     type Billing = Billing;
     type Catalogue = Models;
@@ -363,6 +366,10 @@ impl Services for Fleet {
 
     fn approvals(&self) -> &Inbox {
         &self.approvals
+    }
+
+    fn grants(&self) -> &IntegrationGrants {
+        &self.grants
     }
 
     fn events(&self) -> &History {

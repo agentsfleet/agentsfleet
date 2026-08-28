@@ -21,6 +21,7 @@ pub mod approval;
 pub mod auth;
 pub mod event;
 pub mod fleet;
+pub mod grant;
 pub mod preference;
 pub mod runner;
 pub mod secret;

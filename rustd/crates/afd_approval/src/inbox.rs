@@ -31,6 +31,7 @@ use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_redis::{FleetStreams, Redis};
 use afd_wire::approval::status;
+use afd_wire::grant::status as grant_status;
 use sqlx::Row as _;
 
 use crate::decision::Decision;
@@ -38,8 +39,12 @@ use crate::sql;
 use crate::{Result, error};
 
 /// The grant spellings the resolve's second arm writes.
-const GRANT_APPROVED: &str = "approved";
-const GRANT_REVOKED: &str = "revoked";
+///
+/// Read from the shared vocabulary, never spelled here: [`crate::grant`] writes
+/// the same column and the runner plane reads it, so a local copy of either
+/// word is a row one writer produces that a reader stops matching.
+const GRANT_APPROVED: &str = grant_status::APPROVED;
+const GRANT_REVOKED: &str = grant_status::REVOKED;
 
 /// The gate kind whose approval also moves an integration grant.
 const KIND_INTEGRATION_GRANT: &str = "integration_grant";

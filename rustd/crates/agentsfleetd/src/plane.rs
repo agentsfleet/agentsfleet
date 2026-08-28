@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use afd_api::router::{Dependencies, ReadyInputs};
 use afd_api::{Planes, Services};
-use afd_approval::Inbox;
+use afd_approval::{Inbox, IntegrationGrants};
 use afd_billing::Accounts;
 use afd_core::clock::UnixMillis;
 use afd_crypto::entropy::Entropy;
@@ -82,6 +82,7 @@ pub struct ServingPlane {
     secrets: SecretVault,
     preferences: Preferences,
     approvals: Inbox,
+    grants: IntegrationGrants,
     events: History,
     api_url: Box<str>,
 }
@@ -142,6 +143,7 @@ impl ServingPlane {
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
             preferences: Preferences::new(database.clone(), Entropy::new()),
             approvals: Inbox::new(database.clone(), queue.clone()),
+            grants: IntegrationGrants::new(database.clone()),
             events: History::new(database.clone()),
             api_url: login.api_url,
             logins: Logins::new(
@@ -224,6 +226,7 @@ impl Services for ServingPlane {
     type Secrets = SecretVault;
     type Preferences = Preferences;
     type Approvals = Inbox;
+    type Grants = IntegrationGrants;
     type Events = History;
     type Billing = Billing;
     type Catalogue = Models;
@@ -277,6 +280,10 @@ impl Services for ServingPlane {
 
     fn approvals(&self) -> &Inbox {
         &self.approvals
+    }
+
+    fn grants(&self) -> &IntegrationGrants {
+        &self.grants
     }
 
     fn events(&self) -> &History {
