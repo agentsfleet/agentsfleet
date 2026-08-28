@@ -37,6 +37,7 @@ mod billing;
 mod catalogue;
 mod device_flow;
 mod fleets;
+mod grant;
 mod event;
 mod leasing;
 mod preference;
@@ -49,6 +50,7 @@ pub use self::catalogue::ModelCatalogue;
 pub use self::device_flow::DeviceFlow;
 pub use self::event::WorkspaceEvents;
 pub use self::fleets::WorkspaceFleets;
+pub use self::grant::FleetGrants;
 pub use self::leasing::Leasing;
 pub use self::preference::WorkspacePreferences;
 pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
@@ -197,6 +199,18 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// The operator's queue of approval gates.
     fn approvals(&self) -> &Self::Approvals;
+
+    /// What the integration-grant routes act through.
+    ///
+    /// A concrete type for the reason [`Services::Approvals`] is one: a
+    /// Postgres pool and nothing else, with `afd_db::Db::unreachable` as the
+    /// seam. Separate from the inbox beside it because the two are separate
+    /// stores over separate tables — the queue also holds a Redis connection,
+    /// for a continuation a grant decision never lands.
+    type Grants: FleetGrants;
+
+    /// A fleet's standing permissions to reach a third party.
+    fn grants(&self) -> &Self::Grants;
 
     /// What the event-history routes act through.
     ///

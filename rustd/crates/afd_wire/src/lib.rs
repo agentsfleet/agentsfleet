@@ -53,6 +53,7 @@ pub mod auth;
 pub mod credentials;
 pub mod event;
 pub mod fleet;
+pub mod grant;
 pub mod lease;
 pub mod memory;
 pub mod models;
