@@ -148,6 +148,13 @@ pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router 
         // template it was refused for — Zig cannot see those at all, because
         // it 404s before opening a trace.
         .route_layer(from_fn(trace::record))
+        // Outermost of the three, so it sees the response every layer beneath
+        // it wrote — the scope rung's 403 and the admission shed's 429 included,
+        // neither of which reaches a handler that could have reported itself.
+        .route_layer(from_fn_with_state(
+            Arc::clone(&dependencies),
+            crate::telemetry::record::<D>,
+        ))
         .with_state(dependencies)
 }
 

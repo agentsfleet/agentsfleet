@@ -24,6 +24,9 @@ const CONTEXT_PAGE: &str = "list workspace fleets";
 /// The context a failed detail read reports under.
 const CONTEXT_DETAIL: &str = "read one fleet";
 
+/// What the ingress check was doing, for the operator's log line.
+const CONTEXT_INGRESS: &str = "read a fleet's ingress status";
+
 /// The context a row this daemon cannot read reports under.
 const CONTEXT_ROW: &str = "read fleet row";
 
@@ -187,6 +190,36 @@ impl Fleets {
 
     /// One fleet of `workspace`, whole.
     ///
+    /// Whether this fleet will take new work, without reading what it is.
+    ///
+    /// `Result<Option<_>>`: a fleet this workspace does not hold is an ANSWER
+    /// the caller renders as 404, and a datastore that would not say is a
+    /// failure. Collapsing them would make an outage look like a deleted fleet.
+    ///
+    /// Narrow on purpose. [`Self::detail`] answers the same question and also
+    /// loads two authored documents that may each run to 64 KiB — a cost worth
+    /// paying to render a fleet and not worth paying to decide whether a
+    /// message may be posted to it. The statement is the one the purge's
+    /// pre-flight already runs.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer, or a status this build
+    /// cannot read.
+    pub async fn ingress_status(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+    ) -> Result<Option<FleetStatus>> {
+        let mut connection = self.database.acquire().await?;
+        let found = sqlx::query(sql::SELECT_FLEET_STATUS)
+            .bind(fleet.as_str())
+            .bind(workspace.as_str())
+            .fetch_optional(connection.as_mut())
+            .await
+            .map_err(error::query(CONTEXT_INGRESS))?;
+        found.as_ref().map(|row| status_at(row, 0)).transpose()
+    }
+
     /// # Errors
     /// Refuses an id naming no fleet THIS workspace holds — the statement is
     /// workspace-scoped, so a fleet somebody else owns is indistinguishable from

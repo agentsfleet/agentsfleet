@@ -15,6 +15,8 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
+use afd_observability::Telemetry;
+
 use crate::auth::DashboardIdentity;
 use crate::client::Origin;
 use crate::handler::{malformed, refuse};
@@ -123,6 +125,15 @@ pub(crate) async fn approve<D: Services>(
     {
         Ok(()) => {
             let request_id = RequestId::mint();
+            // The moment a person completes a sign-in. Reported HERE rather
+            // than at the verify beside it: the verify is the terminal
+            // collecting its credential and knows no subject, and attributing
+            // a login to nobody is the same as not reporting it.
+            services.analytics().report(&Telemetry::AuthLoginCompleted {
+                actor: dashboard.subject().to_owned(),
+                session_id: session_id.clone(),
+                request_id: request_id.as_str().to_owned(),
+            });
             Json(ApproveSessionResponse {
                 request_id: Cow::Owned(request_id.as_str().to_owned()),
             })

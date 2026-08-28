@@ -18,7 +18,7 @@ use std::sync::Arc;
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
 use crate::handler::{
-    approval, auth as auth_handler, event, fleet, grant, preference, runner, secret,
+    approval, auth as auth_handler, event, fleet, grant, preference, runner, secret, stream,
     tenant as tenant_handler,
 };
 use crate::route::{
@@ -140,7 +140,10 @@ fn workspace_handler_for<D: Serving>(verb: WorkspaceRoute) -> Option<MethodRoute
         // idempotency promise would be one this surface does not keep.
         WorkspaceRoute::ApprovalResolve => Some(post(approval::resolve::<D>)),
         WorkspaceRoute::Events => Some(get(event::workspace_list::<D>)),
-        WorkspaceRoute::FleetLibrary | WorkspaceRoute::EventsStream => None,
+        // The workspace multiplex: ONE connection carrying every fleet the
+        // caller can read, so a wall of L tiles costs one stream and not L.
+        WorkspaceRoute::EventsStream => Some(get(stream::workspace::<D>)),
+        WorkspaceRoute::FleetLibrary => None,
     }
 }
 
@@ -175,11 +178,20 @@ fn fleet_handler_for<D: Serving>(verb: FleetRoute) -> Option<MethodRouter<Arc<D>
         // read by paging the collection, and a per-key read would be a second
         // way to ask the same question.
         FleetRoute::Memory => Some(delete(fleet::memory::forget::<D>)),
-        FleetRoute::Messages
-        | FleetRoute::Schedules
-        | FleetRoute::Schedule
-        | FleetRoute::ScheduleSync
-        | FleetRoute::EventsStream => None,
+        // GET reads the thread and POST steers it — the read and the write
+        // rungs the route table already splits this template on.
+        FleetRoute::Messages => {
+            Some(get(fleet::message::thread::<D>).post(fleet::message::steer::<D>))
+        }
+        // One fleet's live tail. `/events/stream` and `/events/{event_id}` are
+        // siblings under one prefix, and the static segment is what must win —
+        // otherwise the stream route is read as an event whose id is the word
+        // `stream` and answers "Event not found". `matchit` ranks a literal
+        // above a parameter regardless of insertion order, which is why this
+        // holds; it is pinned at the ROUTER level because a stream route never
+        // closes its connection and so cannot be probed over HTTP.
+        FleetRoute::EventsStream => Some(get(stream::fleet::<D>)),
+        FleetRoute::Schedules | FleetRoute::Schedule | FleetRoute::ScheduleSync => None,
     }
 }
 

@@ -174,6 +174,13 @@ pub(super) const FLEET: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::AGENTSFLEET_PAUSED_INGRESS,
+        status: 409,
+        title: "Fleet is paused",
+        hint: "This fleet is not active and refuses new work. Resume it with: `agentsfleet resume <fleet>`, then retry.",
+        user_message: Some("This Fleet is paused. Resume it before sending new work."),
+    },
+    Problem {
         code: error_code::EVENT_NOT_FOUND,
         status: 404,
         title: "Event not found",

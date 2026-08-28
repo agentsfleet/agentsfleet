@@ -17,6 +17,22 @@ pub enum Outcome {
     FleetError,
 }
 
+impl Outcome {
+    /// The verdict as it is spelled on the wire and in a stored row.
+    ///
+    /// The same bytes `serde` writes — the `rename_all` above and this must
+    /// agree, because a product event groups runs by this string while the
+    /// event row stores the serialized one, and a dashboard joining the two
+    /// would silently find nothing if they drifted.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Processed => "processed",
+            Self::FleetError => "fleet_error",
+        }
+    }
+}
+
 /// Why a run failed, at the granularity the classification site knows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

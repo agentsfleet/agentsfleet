@@ -153,6 +153,38 @@ pub enum BootFailure {
     Listen(#[from] std::io::Error),
 }
 
+impl BootFailure {
+    /// Which boot step refused, in the vocabulary the product event reports.
+    ///
+    /// Named here beside the variants rather than matched at the reporting call
+    /// site: a variant added later fails THIS match, where a `_` arm at the
+    /// call site would have reported the new failure as one of the old ones.
+    #[must_use]
+    pub const fn phase(&self) -> &'static str {
+        match *self {
+            Self::Environment(_) => "preflight",
+            Self::Database(_) => "database",
+            Self::Queue(_) => "queue",
+            Self::Listen(_) => "listen",
+        }
+    }
+
+    /// The registry code this failure answers under.
+    ///
+    /// An environment fault is the one that names a knob; the other three are
+    /// a dependency that would not answer, which is the same fact whichever
+    /// dependency it was.
+    #[must_use]
+    pub const fn code(&self) -> afd_core::error_code::ErrorCode {
+        match *self {
+            Self::Environment(_) => afd_core::error_code::STARTUP_ENV_CHECK,
+            Self::Database(_) => afd_core::error_code::STARTUP_DB_CONNECT,
+            Self::Queue(_) => afd_core::error_code::STARTUP_REDIS_CONNECT,
+            Self::Listen(_) => afd_core::error_code::INTERNAL_OPERATION_FAILED,
+        }
+    }
+}
+
 /// Why a migration could not run, or did not finish.
 ///
 /// Composed by `From` per `docs/RUST_ERROR_STANDARD.md`, so `?` lifts and the

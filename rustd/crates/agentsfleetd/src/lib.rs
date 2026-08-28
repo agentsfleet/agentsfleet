@@ -39,7 +39,7 @@ pub use self::cli::{Cli, Command};
 pub use self::daemon::{Daemon, Outcome, StopCause};
 pub use self::error::{BootFailure, Fault, MigrateFailure, Refusal};
 pub use self::identity::{Capabilities, Sessions};
-pub use self::inventory::{BACKGROUND_TASKS, HUB_PUMP, OTLP_EXPORT};
+pub use self::inventory::{ANALYTICS_FLUSH, BACKGROUND_TASKS, HUB_PUMP, OTLP_EXPORT};
 pub use self::migrate::migrate;
 pub use self::plane::{Authenticator, ServingPlane, Shared};
 pub use self::preflight::{BootConfig, BundleStoreConfig, IdentityConfig, preflight};

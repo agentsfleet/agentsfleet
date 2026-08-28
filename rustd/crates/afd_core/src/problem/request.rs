@@ -167,6 +167,23 @@ pub(super) const REQUEST: &[Problem] = &[
         user_message: Some("We couldn't finish that request. Try again shortly."),
     },
     Problem {
+        code: error_code::STARTUP_ENV_CHECK,
+        status: 500,
+        title: "Required settings missing",
+        hint: "Required environment variables are missing. Run 'agentsfleetd doctor' to see which ones.",
+        // Pre-listen: this is reported to the product analytics and to stderr,
+        // never as an HTTP response, so there is no dashboard to render a
+        // sentence into. The Zig entry carries the same reachability note.
+        user_message: None,
+    },
+    Problem {
+        code: error_code::STARTUP_DB_CONNECT,
+        status: 500,
+        title: "Data service unavailable",
+        hint: "Database is unreachable. Check that DATABASE_URL is set and the database accepts connections.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::STARTUP_MIGRATION_CHECK,
         status: 500,
         title: "Stored data is not ready",

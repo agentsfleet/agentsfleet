@@ -86,3 +86,18 @@ pub const STARTUP_MIGRATION_CHECK: ErrorCode = ErrorCode::declare("UZ-STARTUP-00
 /// identical — the datastore is not there — and the operator's distinction is
 /// kept in `afd_redis::Error`'s variants rather than on the wire.
 pub const STARTUP_REDIS_CONNECT: ErrorCode = ErrorCode::declare("UZ-STARTUP-004");
+
+/// A knob is unset, blank, or not the shape this daemon can use.
+///
+/// `ERR_STARTUP_ENV_CHECK`. The one boot refusal that names something an
+/// operator can fix without reaching a datastore, which is why it is its own
+/// code rather than folded into the dependency failures beside it.
+pub const STARTUP_ENV_CHECK: ErrorCode = ErrorCode::declare("UZ-STARTUP-001");
+
+/// Postgres would not answer at boot.
+///
+/// `ERR_STARTUP_DB_CONNECT`. Distinct from [`INTERNAL_DB_UNAVAILABLE`], which
+/// is a pool that would not answer a REQUEST: this one means the process never
+/// started, and an orchestrator restarting it is the right response where a
+/// client backing off is the right response to the other.
+pub const STARTUP_DB_CONNECT: ErrorCode = ErrorCode::declare("UZ-STARTUP-003");

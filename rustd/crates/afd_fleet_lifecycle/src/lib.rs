@@ -39,6 +39,7 @@ pub mod error;
 
 mod edit;
 mod install;
+mod live_set;
 mod purge;
 mod read;
 mod sql;
@@ -66,6 +67,9 @@ pub struct Fleets {
     streams: FleetStreams,
     ready: ReadyIndex,
     entropy: Entropy,
+    /// One enumeration per workspace per tick, shared by every viewer of it.
+    /// See [`live_set`] for why this read is cached where the others are not.
+    live_sets: live_set::LiveSets,
 }
 
 impl Fleets {
@@ -82,6 +86,7 @@ impl Fleets {
             streams: FleetStreams::new(queue.clone()),
             ready: ReadyIndex::new(queue),
             entropy,
+            live_sets: live_set::live_sets(),
         }
     }
 }
@@ -126,6 +131,17 @@ impl FleetStatus {
             Self::Stopped => "stopped",
             Self::Killed => "killed",
         }
+    }
+
+    /// Whether this fleet will take new work.
+    ///
+    /// `active` and nothing else, exactly as `isRunnable`. The distinction is
+    /// load-bearing on the steer: a message accepted for a stopped fleet is a
+    /// 202 whose run never happens, so the surface refuses loudly instead —
+    /// see the ingress refusal in `handler::fleet::message`.
+    #[must_use]
+    pub const fn is_runnable(self) -> bool {
+        matches!(self, Self::Active)
     }
 
     /// The status a stored spelling names, if this daemon knows it.

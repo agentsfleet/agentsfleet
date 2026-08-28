@@ -43,12 +43,35 @@ const EVENT_FINALIZE_FAILED: &str = "report_finalize_step_failed";
 /// A settled report was written.
 const EVENT_SETTLED: &str = "report_settled";
 
+/// What one settled report leaves its caller with.
+///
+/// A struct rather than a bare [`Nanos`] because the charge was never the only
+/// thing the call learned. The report names a LEASE; which fleet and workspace
+/// it belonged to is resolved by the load inside, and the caller — which
+/// reports the finished run to product analytics — would otherwise have to run
+/// a second statement for a fact this call already held.
+/// Exhaustive on purpose, where most of this crate's public types are not: a
+/// suite stubbing the lease plane has to ANSWER with one of these, and a
+/// `non_exhaustive` struct cannot be built outside the crate that declares it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reconciled {
+    /// What the final slice drained.
+    pub charged: Nanos,
+    /// The fleet that ran.
+    pub fleet_id: Uuid7,
+    /// The workspace it belongs to.
+    pub workspace_id: Uuid7,
+}
+
 impl Plane {
     /// Record one runner's terminal result for a lease it holds.
     ///
-    /// Answers what the final slice drained, so the caller can meter it. The
-    /// answer is a [`Nanos`] rather than a metric emitted here for the reason
-    /// the receive debit gives.
+    /// Answers what the final slice drained, so the caller can meter it, and
+    /// the two identifiers that were only knowable INSIDE this call: the report
+    /// names a lease, and which fleet and workspace that lease belonged to is
+    /// something the load resolved. The caller needs both to report the run,
+    /// and reading them again would be a second statement for a fact this one
+    /// already had.
     ///
     /// # Errors
     /// Refuses a lease that is not this runner's with
@@ -61,7 +84,7 @@ impl Plane {
         runner_id: &Uuid7,
         request: &ReportRequest<'_>,
         now: UnixMillis,
-    ) -> Result<Nanos> {
+    ) -> Result<Reconciled> {
         let lease_id = request.lease_id.as_ref();
         let Some(lease) = self.leases.load_for_report(lease_id, runner_id).await? else {
             return Err(lease_not_found());
@@ -95,7 +118,11 @@ impl Plane {
 
         self.finalize(runner_id, lease_id, &lease, request, verdict, now)
             .await;
-        Ok(charged)
+        Ok(Reconciled {
+            charged,
+            fleet_id: lease.fleet_id,
+            workspace_id: lease.workspace_id,
+        })
     }
 
     /// Price the final slice and spend the fence on it.

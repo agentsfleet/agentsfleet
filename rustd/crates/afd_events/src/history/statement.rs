@@ -103,6 +103,31 @@ pub(super) const SELECT_DETAIL: &str = concat!(
     "WHERE workspace_id = $1::uuid AND fleet_id = $2::uuid AND event_id = $3"
 );
 
+/// One fleet's chat thread, bodies included, keyset-paged newest-first.
+///
+/// The third statement built from the same vocabulary, and the reason the
+/// bodies are a separate macro rather than spliced into one list: the thread
+/// pays for them exactly as the expanded read does, and the listing beside
+/// them still does not.
+///
+/// The cursor is NULL-gated the way [`SELECT_PAGE`]'s is, so the first page
+/// and the resumed page are one text rather than the two
+/// `fleet_event_detail_store.zig` carries — a fix applied to one of two is the
+/// failure mode that shape invites.
+///
+/// `$1` workspace, `$2` fleet, `$3` cursor timestamp or NULL, `$4` cursor
+/// event id, `$5` limit.
+pub(super) const SELECT_THREAD_PAGE: &str = concat!(
+    shared_columns!(),
+    body_columns!(),
+    from_events!(),
+    "WHERE workspace_id = $1::uuid
+  AND fleet_id = $2::uuid
+  AND ($3::bigint IS NULL OR (created_at, event_id) < ($3, $4))
+ORDER BY created_at DESC, event_id DESC
+LIMIT $5"
+);
+
 #[cfg(test)]
 mod tests {
     #![expect(
@@ -118,6 +143,7 @@ mod tests {
         // actually expand from it rather than carrying a hand-copied prefix.
         assert!(SELECT_PAGE.starts_with(shared_columns!()));
         assert!(SELECT_DETAIL.starts_with(shared_columns!()));
+        assert!(SELECT_THREAD_PAGE.starts_with(shared_columns!()));
     }
 
     #[test]
@@ -126,6 +152,8 @@ mod tests {
         // to two hundred rows must not carry a trigger payload and an agent's
         // full answer per row.
         assert!(SELECT_DETAIL.contains(body_columns!()));
+        // The thread pays for them too — it IS the expanded read, paged.
+        assert!(SELECT_THREAD_PAGE.contains(body_columns!()));
         assert!(!SELECT_PAGE.contains("request_json"));
         assert!(!SELECT_PAGE.contains("response_text"));
     }
@@ -136,12 +164,14 @@ mod tests {
         // decoder, which reads by index. That only holds while the bodies come
         // after all fifteen of them — so the ordering is an invariant of the
         // text, not a convention of how it was written.
-        let bodies = SELECT_DETAIL
-            .find("request_json")
-            .expect("the detail read selects the trigger payload");
-        let last_shared = SELECT_DETAIL
-            .find("cost_nanos")
-            .expect("every read selects the summed cost");
-        assert!(bodies > last_shared);
+        for text in [SELECT_DETAIL, SELECT_THREAD_PAGE] {
+            let bodies = text
+                .find("request_json")
+                .expect("a bodies-included read selects the trigger payload");
+            let last_shared = text
+                .find("cost_nanos")
+                .expect("every read selects the summed cost");
+            assert!(bodies > last_shared);
+        }
     }
 }

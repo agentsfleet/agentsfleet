@@ -65,6 +65,25 @@ impl EventType {
     }
 }
 
+/// The field names an event carries as a Redis stream entry.
+///
+/// Declared here for the reason [`EventType`]'s spellings are: they cross a
+/// boundary. A producer writes them and the runner's pull reads them back, so
+/// a pair that drifted would make an event one plane wrote one the other
+/// cannot recognise — and there are three producers now (the steer, the
+/// approval continuation, the repair sweeper), which is two more than a
+/// hand-spelled literal survives.
+pub mod field {
+    /// Who or what produced the event.
+    pub const ACTOR: &str = "actor";
+    /// How the event entered the system.
+    pub const EVENT_TYPE: &str = "event_type";
+    /// The workspace the fleet belongs to.
+    pub const WORKSPACE_ID: &str = "workspace_id";
+    /// The trigger payload, carried verbatim.
+    pub const REQUEST_JSON: &str = "request_json";
+}
+
 /// One event on the wire, flat by convention.
 ///
 /// `request_json` is opaque JSON bytes carried verbatim — the runner re-parses
@@ -236,4 +255,57 @@ pub struct EventDetail<'a> {
     /// `null` when the event recorded no telemetry — see [`EventSummary`] on
     /// why that is never rendered as a zero charge.
     pub cost_nanos: Option<i64>,
+}
+
+/// A page of one fleet's chat thread, bodies included.
+///
+/// The sibling of [`EventsResponse`], and it carries [`EventDetail`] where
+/// that carries [`EventSummary`]: the chat view needs the newest turns WITH
+/// their payload and answer, and used to fan out one detail request per turn
+/// to get them.
+///
+/// # `total` is always null, and is on the wire anyway
+///
+/// `messages_list.zig` writes `.total = null` and has never written anything
+/// else — the count would cost a second statement per page for a number the
+/// view does not render. Dropping the key would be a byte mismatch against
+/// the daemon still serving, so it stays, typed as the count it would hold.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThreadResponse<'a> {
+    /// The turns on this page, newest first.
+    pub items: Vec<EventDetail<'a>>,
+    /// How many turns the thread holds in total. Never populated.
+    pub total: Option<u32>,
+    /// Where the next page resumes, or `null` when this one ends the walk.
+    #[serde(borrow)]
+    pub next_cursor: Option<Cow<'a, str>>,
+}
+
+/// `POST /v1/workspaces/{ws}/fleets/{id}/messages` — an operator's steer.
+///
+/// One field, and unknown ones are ignored rather than refused, which is what
+/// `parseFromSlice(.{ .ignore_unknown_fields = true })` does. A client sending
+/// a field this build does not read is not making a mistake it needs telling
+/// about.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteerRequest<'a> {
+    /// What to say to the fleet.
+    #[serde(borrow)]
+    pub message: Cow<'a, str>,
+}
+
+/// What a steer answers with: 202, and the id the run will be found under.
+///
+/// `event_id` is the stream entry id Redis minted, which IS the canonical
+/// event id — the CLI filters the live tail on it to follow the message it
+/// just sent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteerAccepted<'a> {
+    /// Always `accepted`. A field rather than an implied 202, because that is
+    /// what the daemon this ports writes.
+    #[serde(borrow)]
+    pub status: Cow<'a, str>,
+    /// The canonical event id the steer became.
+    #[serde(borrow)]
+    pub event_id: Cow<'a, str>,
 }

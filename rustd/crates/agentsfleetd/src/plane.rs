@@ -39,7 +39,9 @@ use afd_tenant::preference::Preferences;
 // reader ends up believing the login surface verifies bearer tokens.
 use afd_billing::tenant::Billing;
 use afd_credential::vault::Vault;
+use afd_observability::Analytics;
 use afd_redis::Redis;
+use afd_sse::Live;
 use afd_state::Credentials;
 use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
@@ -83,6 +85,9 @@ pub struct ServingPlane {
     approvals: Inbox,
     grants: IntegrationGrants,
     events: History,
+    steering: afd_events::Steer,
+    live: Live,
+    analytics: Analytics,
     api_url: Box<str>,
 }
 
@@ -122,6 +127,8 @@ impl ServingPlane {
             sessions,
             bundles,
             broker,
+            live,
+            analytics,
             login,
         } = parts;
         Self {
@@ -144,6 +151,9 @@ impl ServingPlane {
             approvals: Inbox::new(database.clone(), queue.clone()),
             grants: IntegrationGrants::new(database.clone()),
             events: History::new(database.clone()),
+            steering: afd_events::Steer::new(queue.clone()),
+            live,
+            analytics,
             api_url: login.api_url,
             logins: Logins::new(
                 afd_redis::SessionStore::new(queue.clone()),
@@ -203,6 +213,21 @@ pub struct PlaneParts {
     /// The credential broker, built before the plane because it reads the
     /// vault, which is asynchronous where this constructor is not.
     pub broker: Arc<afd_credential::credential::Broker>,
+    /// Where product events go, holding its own absence.
+    ///
+    /// Not an `Option`, for the reason [`PlaneParts::bundles`] is not: a
+    /// deployment naming no `PostHog` project reports nothing, and a caller that
+    /// had to ask before reporting is a caller that can forget.
+    pub analytics: Analytics,
+    /// The live-stream surface, holding its own absence.
+    ///
+    /// Not an `Option`, for the reason [`PlaneParts::bundles`] is not: an
+    /// instance whose pub/sub connection could not be opened still SERVES the
+    /// stream routes, silently, and `afd_sse::Live::detached` is that case as a
+    /// value rather than as a `None` this file would unwrap into a refusal.
+    /// Built before the plane because opening the hub is asynchronous where
+    /// this constructor is not.
+    pub live: Live,
     /// What the device-flow login surface needs from configuration.
     pub login: LoginConfig,
 }

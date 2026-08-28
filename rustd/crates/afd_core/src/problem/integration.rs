@@ -99,4 +99,19 @@ pub(super) const INTEGRATION: &[Problem] = &[
         // renders a problem page is ever reached to render this one.
         user_message: None,
     },
+    Problem {
+        code: error_code::SSE_STREAM_CAP,
+        // 503, not the 429 its neighbour answers, and the difference is real:
+        // backpressure means "you are asking too fast" and this means "this
+        // instance cannot hold another stream". `public/openapi/paths/fleets.yaml`
+        // documents the 503 to clients, so the status is a published contract
+        // and not a call this port gets to make.
+        status: 503,
+        title: "Activity stream capacity reached",
+        hint: "The API is at its activity-stream limit. Close unused dashboard tabs or retry shortly.",
+        // A refused SSE connect surfaces to a browser as a stream-level
+        // reconnect, never as a rendered problem page — the Zig entry carries
+        // the same reachability note.
+        user_message: None,
+    },
 ];

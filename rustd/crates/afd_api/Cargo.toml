@@ -52,6 +52,12 @@ afd_tenant.workspace = true
 afd_vault.workspace = true
 # The payloads the runner verbs read and answer with. Frozen by M175; consumed,
 # never authored here.
+# One SSE connection's frames, the fan-in behind a workspace stream, and the
+# ceiling on how many this instance holds. None of it needs a router, which is
+# why none of it is in this crate.
+afd_sse.workspace = true
+# The response body of a live stream is a `Stream`; this is what composes one.
+futures-util.workspace = true
 afd_wire.workspace = true
 # The wire payloads borrow, so a body is deserialised out of the request bytes
 # rather than through `axum::Json`, which owns what it parses.
@@ -80,7 +86,10 @@ axum = { workspace = true, features = ["json", "matched-path"] }
 http.workspace = true
 # The HTTP/1 connection policy: `axum::serve` cannot express a header bound, so
 # the builder is configured here and boot serves connections with it.
-hyper.workspace = true
+# The version-detecting connection builder the accept loop serves with, and the
+# executor HTTP/2 drives its own per-connection tasks on. A library dependency,
+# not only the dev one below: the connection POLICY lives with the route table.
+hyper-util.workspace = true
 # `sync` only, for the `Semaphore` that IS the admission ceiling. No runtime is
 # started here — a permit is claimed and dropped on whatever runtime the caller
 # already has.
@@ -100,8 +109,12 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-util", 
 # The admission suite drives the layer as a service, without a listener.
 tower = { workspace = true, features = ["util"] }
 # The header-limit suite serves a real connection over a real socket, which is
-# the only tier that can prove a limit hyper enforces while PARSING.
+# the only tier that can prove a limit hyper enforces while PARSING. `hyper`
+# itself is a dev-dependency now and not a library one: the connection builder
+# moved to `hyper-util`'s version-detecting one, and the only remaining namer of
+# `hyper::` is the wire suite that serves a real socket.
 hyper-util.workspace = true
+hyper.workspace = true
 # The span suite collects spans through a `Layer`, which is the only way to see
 # a field as a VALUE rather than as formatted output.
 tracing-subscriber = { workspace = true, features = ["registry"] }
@@ -114,6 +127,10 @@ afd_db = { workspace = true, features = ["test-util"] }
 # and the fleet install reach a queue, so the harness needs `Redis::unreachable`
 # to build the real stores over one that answers nothing.
 afd_redis = { workspace = true, features = ["test-util"] }
+# A library dependency too, but named again here for its feature: the thread
+# handler's page arithmetic is decided over `EventDetailRow`, which is
+# `#[non_exhaustive]`, so the unit tests need that crate's fixture seam.
+afd_events = { workspace = true, features = ["test-util"] }
 # The in-memory backend the bundle-fetch suite drives the snapshot store
 # through, and the byte buffer it seeds one with. A dev-dependency: nothing in
 # this crate's library builds an object store — `Services::bundles` takes one

@@ -164,7 +164,7 @@ pub(crate) async fn purge<D: Services>(
 ///
 /// Which is what keeps the `::uuid` cast in the statements from ever being the
 /// thing that fails, leaving every error from below a genuine datastore fault.
-pub(super) fn parse_fleet_id(raw: &str) -> Result<Uuid7, Refusal> {
+pub(crate) fn parse_fleet_id(raw: &str) -> Result<Uuid7, Refusal> {
     Uuid7::parse(raw).map_err(|_not_an_identifier| Refusal::malformed(DETAIL_FLEET_ID))
 }
 

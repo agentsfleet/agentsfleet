@@ -49,7 +49,7 @@ pub use self::approval::WorkspaceApprovals;
 pub use self::billing::TenantBilling;
 pub use self::catalogue::ModelCatalogue;
 pub use self::device_flow::DeviceFlow;
-pub use self::event::WorkspaceEvents;
+pub use self::event::{FleetSteering, WorkspaceEvents};
 pub use self::fleets::WorkspaceFleets;
 pub use self::grant::FleetGrants;
 pub use self::leasing::Leasing;
@@ -60,7 +60,9 @@ pub use self::vault::WorkspaceSecrets;
 
 use afd_core::clock::UnixMillis;
 use afd_fleet::bundle::Bundles;
+use afd_observability::Analytics;
 use afd_runner::Runners;
+use afd_sse::Live;
 
 use crate::auth::Authenticator;
 
@@ -224,6 +226,30 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// A fleet's durable memory: the page, and the forget.
     fn memories(&self) -> &Self::Memories;
+
+    /// What the steer verb acts through.
+    type Steering: FleetSteering;
+
+    /// A fleet's message ingress.
+    fn steering(&self) -> &Self::Steering;
+
+    /// Where this instance's product events go.
+    ///
+    /// A concrete type for the reason [`Services::bundles`] is one: it carries
+    /// its own absence, so a deployment reporting nothing is a value rather
+    /// than a `None` each handler would have to branch on.
+    fn analytics(&self) -> &Analytics;
+
+    /// What both live-stream routes act through.
+    ///
+    /// A concrete type where [`Services::Leases`] is an associated one, and the
+    /// difference is what each is over: a lease plane holds a Redis connection
+    /// opened by CONNECTING, while this holds a pub/sub hub and a semaphore,
+    /// and `afd_sse::Live::detached` already lets a suite build one with no
+    /// server behind it. The seam is inside the type, so it does not also need
+    /// to be a parameter on this trait — the same shape [`Services::bundles`]
+    /// takes, and for the same reason.
+    fn live(&self) -> &Live;
 
     /// What the event-history routes act through.
     ///

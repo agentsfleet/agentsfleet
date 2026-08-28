@@ -201,7 +201,7 @@ fn summary(row: &EventRow) -> EventSummary<'_> {
 /// The bodies sit between `status` and `tokens` because that is the order the
 /// daemon this ports already emits — see `afd_wire::event::EventDetail` on why
 /// the two wire types are not one type plus two fields.
-fn expanded(event: &EventDetailRow) -> EventDetail<'_> {
+pub(crate) fn expanded(event: &EventDetailRow) -> EventDetail<'_> {
     let row = &event.row;
     EventDetail {
         fleet_id: Cow::Borrowed(&row.fleet_id),
