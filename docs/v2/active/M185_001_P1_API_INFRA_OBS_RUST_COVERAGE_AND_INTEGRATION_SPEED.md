@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M185
 **Workstream:** 001
 **Date:** Aug 28, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the daemon's reliability proof is below its declared bar and its only live-datastore lane pays avoidable compilation, connection, cache, and disk costs
 **Categories:** API INFRA OBS
 **Batch:** B1 — follows M184's measured crate decomposition and changes the Rust verification boundary
-**Branch:** set at CHORE(open)
-**Test Baseline:** set at CHORE(open) from `make test-unit-all` and `make test-integration-rustd`
+**Branch:** feat/m185-rust-coverage-speed
+**Test Baseline:** latest green CI Rust corpus `unit + integration = 1629`; local CHORE(open) Rust unit lane green, while the repository unit target exposed one unrelated app flake in each of two runs (`2405/2406` app tests passed); local integration reached `2 passed` before six concurrent Redis connections timed out, and the focused retry passed `6/6`. The local wall time is contention-tainted by two sibling worktrees and is not a performance baseline.
 **Depends on:** M184_001 — its measured critical path proves sibling width, not crate count, is the parallelism lever
 **Provenance:** LLM-drafted (GPT-5, Aug 28, 2026)
 **Canonical architecture:** `docs/architecture/testing.md` §Coverage
