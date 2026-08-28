@@ -32,6 +32,18 @@ use http::Method;
 /// family that lost a route would otherwise pass every other test here.
 const ZIG_ROUTE_COUNT: usize = 81;
 
+/// Routes the Zig serves that this daemon deliberately does not table.
+///
+/// One: `/v1/fleets/streams`, dropped by Indy's call while merging M179 —
+/// see `afd_api::route::runner_ops` for the reasoning and M179's Dimension 4.4
+/// for the record. Counted rather than subtracted inline so the divergence has
+/// to be justified to change: a SECOND route going missing still fails this
+/// test, which is the whole reason the count is pinned.
+const DECLARED_DIVERGENCES: usize = 1;
+
+/// What this daemon's union must carry.
+const RUST_ROUTE_COUNT: usize = ZIG_ROUTE_COUNT - DECLARED_DIVERGENCES;
+
 /// Every family's roster is reachable from `Route::all`, and nothing is
 /// counted twice.
 ///
@@ -49,9 +61,10 @@ fn test_every_route_is_walked_exactly_once() {
     );
     assert_eq!(
         walked.len(),
-        ZIG_ROUTE_COUNT,
-        "the walk covers {} routes, the Zig union carried {ZIG_ROUTE_COUNT} — \
-         a route was dropped or added without the count moving with it",
+        RUST_ROUTE_COUNT,
+        "the walk covers {} routes; the Zig union carried {ZIG_ROUTE_COUNT} and \
+         this daemon declares {DECLARED_DIVERGENCES} of them unported — a route \
+         was dropped or added without the count moving with it",
         walked.len()
     );
 

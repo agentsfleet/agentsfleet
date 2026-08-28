@@ -6,7 +6,7 @@
 
 use afd_auth::Scope;
 
-use super::{Guard, RouteClass, RouteMeta, Scopes};
+use super::{Guard, RouteClass, RouteMeta, Scopes, Verb};
 
 const PLATFORM_LIBRARY_WRITE: &[Scope] = &[Scope::PlatformLibraryWrite];
 const PLATFORM_KEY_READ: &[Scope] = &[Scope::PlatformKeyRead];
@@ -41,6 +41,21 @@ impl AdminRoute {
         Self::Models,
         Self::Model,
     ];
+
+    /// The verbs this route identity serves.
+    ///
+    /// The collection identities each carry their read and create/replace
+    /// pair. The leaf identities carry only mutation verbs; there is no secret
+    /// reveal route hiding behind a `GET /platform-keys/{provider}`.
+    #[must_use]
+    pub const fn verbs(self) -> &'static [Verb] {
+        match self {
+            Self::FleetLibrary | Self::Models => &[Verb::Get, Verb::Post],
+            Self::FleetLibraryEntry | Self::Model => &[Verb::Patch, Verb::Delete],
+            Self::PlatformKeys => &[Verb::Get, Verb::Put],
+            Self::PlatformKey => &[Verb::Delete],
+        }
+    }
 
     /// Reads take the `read` rung; anything that changes the platform's shared
     /// state takes `admin` rather than a `write` rung, because there is no

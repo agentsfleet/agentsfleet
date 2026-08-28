@@ -1,0 +1,47 @@
+[package]
+name = "afd_library"
+description = "Fleet Bundle validation, canonical snapshots, and library-source imports."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+test-util = ["afd_core/test-util", "afd_db/test-util"]
+
+[dependencies]
+afd_core.workspace = true
+afd_db.workspace = true
+afd_fleet_runtime.workspace = true
+bytes.workspace = true
+flate2.workspace = true
+futures-util.workspace = true
+headers.workspace = true
+hex.workspace = true
+object_store.workspace = true
+reqwest.workspace = true
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+sha2.workspace = true
+sqlx.workspace = true
+tar.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt"] }
+tracing.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+afd_fleet.workspace = true
+async-trait.workspace = true
+futures-util.workspace = true
+
+[lints]
+workspace = true

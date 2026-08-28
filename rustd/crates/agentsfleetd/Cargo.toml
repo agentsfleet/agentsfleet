@@ -35,6 +35,7 @@ test-util = [
 ]
 
 [dependencies]
+afd_admin.workspace = true
 # The client every credential exchange is posted through. Built here rather than
 # inside the broker because a connection pool and a deadline are composition-root
 # decisions, and one client per process is what a pool IS.
@@ -63,6 +64,10 @@ afd_fleet.workspace = true
 afd_gate.workspace = true
 # The workspace fleets surface's store, handed to the router as one service.
 afd_fleet_lifecycle.workspace = true
+# Read-only operator projections are kept off the runner execution crate.
+afd_fleet_ops.workspace = true
+# Fleet-library catalogue and validated import pipeline.
+afd_library.workspace = true
 # The tenant plane: api-keys, command-line credentials, the device-flow login
 # surface, and the workspace-ownership resolver the shared layer asks.
 afd_tenant.workspace = true

@@ -17,11 +17,14 @@
 //! own failure is the `Refusable` trait, in its own file: that list grows
 //! once per crate with a fallible surface, and this one grows once per verb.
 
+pub mod admin;
 pub mod approval;
 pub mod auth;
 pub mod event;
 pub mod fleet;
+pub(crate) mod fleet_bundles;
 pub mod grant;
+pub mod operator;
 pub mod preference;
 pub mod runner;
 pub mod secret;
@@ -49,12 +52,19 @@ pub(crate) use self::refusal::Refusal;
 /// Shared by every verb that reads one, rather than restated per handler: two
 /// spellings would be two different envelopes for one class of refusal.
 pub(crate) fn malformed(detail: &'static str) -> Response {
-    crate::envelope::ProblemResponse::new(
-        afd_core::error_code::INVALID_REQUEST,
-        detail,
-        crate::request_id::RequestId::mint(),
-    )
-    .into_response()
+    reject(afd_core::error_code::INVALID_REQUEST, detail)
+}
+
+/// Writes a registry refusal whose detail only the call site knows.
+///
+/// The escape hatch beside [`Refusal`], for the handlers that answer a
+/// `Response` directly rather than through `?`: a code this daemon chose and a
+/// sentence the plane below had no way to phrase. Everything with an error type
+/// behind it goes through [`refuse`] instead, so the code and the sentence come
+/// from the crate that raised it.
+pub(crate) fn reject(code: afd_core::error_code::ErrorCode, detail: &'static str) -> Response {
+    crate::envelope::ProblemResponse::new(code, detail, crate::request_id::RequestId::mint())
+        .into_response()
 }
 
 /// One query-string parameter, by name.

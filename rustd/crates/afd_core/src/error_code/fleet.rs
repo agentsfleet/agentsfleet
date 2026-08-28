@@ -4,7 +4,8 @@
 //! classifies a refusal by BOTH status and code, so several entries here carry
 //! a note about which status is load-bearing. `UZ-AGT-*` is the fleet itself —
 //! its install, its configuration, its lifecycle. `UZ-BUNDLE-*` is the snapshot
-//! a runner materialises support files from, and `UZ-API-001` is the shed that
+//! a runner materialises support files from, `UZ-CATALOG-*` is the platform
+//! library those bundles are curated in, and `UZ-API-001` is the shed that
 //! happens before any of it.
 
 use super::ErrorCode;
@@ -82,6 +83,13 @@ pub const RUN_LEASE_LOST: ErrorCode = ErrorCode::declare("UZ-RUN-011");
 /// operator tops up for one and edits `TRIGGER.md` for the other.
 pub const RUN_LEASE_RENEWAL_NO_CREDITS: ErrorCode = ErrorCode::declare("UZ-RUN-012");
 
+/// No runner row matches an operator-supplied runner id.
+///
+/// `ERR_RUNNER_NOT_FOUND` in the Zig registry. Unlike
+/// [`RUN_INVALID_RUNNER_TOKEN`], the caller has already authenticated on the
+/// operator plane, so naming the missing resource is safe and actionable.
+pub const RUNNER_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-RUN-014");
+
 /// A fleet has reached a spend ceiling its own author declared.
 ///
 /// `ERR_RUN_BUDGET_EXCEEDED`. Referenced from the Zig registry, never declared
@@ -94,6 +102,13 @@ pub const RUN_LEASE_RENEWAL_NO_CREDITS: ErrorCode = ErrorCode::declare("UZ-RUN-0
 /// that distinguishes them rides the log line, where it can be read without
 /// making a client branch on it.
 pub const RUN_BUDGET_EXCEEDED: ErrorCode = ErrorCode::declare("UZ-RUN-015");
+
+/// An operator asked a revoked runner to self-test.
+///
+/// `ERR_RUN_SELFTEST_REFUSED` in the Zig registry. Revocation is terminal and
+/// the runner will never heartbeat to collect the request, so this is a
+/// conflict rather than a malformed action.
+pub const RUN_SELFTEST_REFUSED: ErrorCode = ErrorCode::declare("UZ-RUN-018");
 
 /// A fleet declared a credential the vault does not hold.
 ///
@@ -238,6 +253,12 @@ pub const MEM_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-MEM-003");
 /// gone while the next hydrate seeds it into another run.
 pub const MEM_ENTRY_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-MEM-004");
 
+/// Untrusted Fleet Bundle bytes failed validation.
+///
+/// `ERR_FLEET_BUNDLE_INVALID` in the Zig registry. The detail kept by the
+/// importing service identifies the violated bound without exposing content.
+pub const FLEET_BUNDLE_INVALID: ErrorCode = ErrorCode::declare("UZ-BUNDLE-001");
+
 /// No Fleet Bundle snapshot is stored under the requested content hash.
 ///
 /// `ERR_FLEET_BUNDLE_NOT_FOUND`. Referenced from the Zig registry, never
@@ -253,6 +274,11 @@ pub const MEM_ENTRY_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-MEM-004");
 /// make the endpoint an oracle for which snapshots exist.
 pub const FLEET_BUNDLE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-BUNDLE-002");
 
+/// An external Fleet Bundle source could not be fetched.
+///
+/// `ERR_FLEET_BUNDLE_FETCH_FAILED` in the Zig registry.
+pub const FLEET_BUNDLE_FETCH_FAILED: ErrorCode = ErrorCode::declare("UZ-BUNDLE-004");
+
 /// The Fleet Bundle snapshot store is unconfigured, or would not answer.
 ///
 /// `ERR_FLEET_BUNDLE_STORAGE_UNAVAILABLE`. Referenced from the Zig registry
@@ -264,6 +290,21 @@ pub const FLEET_BUNDLE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-BUNDLE-002"
 /// request id — an unconfigured store names a knob nobody set, and a fetch
 /// failure carries the store's own error as its source.
 pub const FLEET_BUNDLE_STORAGE_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-BUNDLE-005");
+
+/// No platform Fleet-library entry has the supplied slug.
+pub const CATALOG_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-CATALOG-001");
+
+/// A row without fetched bundle content cannot be published.
+pub const CATALOG_PUBLISH_WITHOUT_BUNDLE: ErrorCode = ErrorCode::declare("UZ-CATALOG-002");
+
+/// A published row must be withdrawn before deletion.
+pub const CATALOG_DELETE_PUBLISHED: ErrorCode = ErrorCode::declare("UZ-CATALOG-003");
+
+/// A different source repository already owns the bundle's declared slug.
+pub const CATALOG_ID_COLLISION: ErrorCode = ErrorCode::declare("UZ-CATALOG-004");
+
+/// The optional `If-Match` value no longer names the editable row.
+pub const CATALOG_ROW_STALE: ErrorCode = ErrorCode::declare("UZ-CATALOG-005");
 
 /// The instance is already serving as many requests as it admits.
 ///

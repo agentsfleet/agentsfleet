@@ -48,6 +48,7 @@
 
 pub mod activity;
 pub mod admin;
+mod admin_catalogue;
 pub mod approval;
 pub mod auth;
 pub mod credentials;
@@ -57,6 +58,7 @@ pub mod grant;
 pub mod lease;
 pub mod memory;
 pub mod models;
+pub mod operator;
 pub mod paths;
 pub mod policy;
 pub mod preference;

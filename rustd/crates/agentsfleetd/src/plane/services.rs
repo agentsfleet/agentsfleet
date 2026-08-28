@@ -13,6 +13,7 @@
 //! in the one file that is only ever a mapping, rather than somewhere a reader
 //! has to disentangle it from the boot sequence.
 
+use afd_admin::{Models as AdminModels, PlatformKeys};
 use afd_api::Services;
 use afd_approval::{Inbox, IntegrationGrants};
 use afd_billing::tenant::Billing;
@@ -22,6 +23,8 @@ use afd_fleet::bundle::Bundles;
 use afd_fleet::lease::Plane;
 use afd_fleet::memory::Memories;
 use afd_fleet_lifecycle::Fleets;
+use afd_fleet_ops::RunnerLeaseHistory;
+use afd_library::{Libraries, LibraryImports};
 use afd_observability::Analytics;
 use afd_runner::Runners;
 use afd_sse::Live;
@@ -141,6 +144,31 @@ impl Services for ServingPlane {
 
     fn catalogue(&self) -> &Models {
         &self.models
+    }
+
+    fn runner_lease_history(&self) -> &RunnerLeaseHistory {
+        &self.runner_lease_history
+    }
+
+    /// The admin plane's WRITE of the priced catalogue.
+    ///
+    /// A different store from [`Services::catalogue`], which is the tenant's
+    /// read of the same rows — the split is what keeps a tenant route from
+    /// reaching a mutation by holding the wrong accessor.
+    fn models(&self) -> &AdminModels {
+        &self.admin_models
+    }
+
+    fn platform_keys(&self) -> &PlatformKeys {
+        &self.platform_keys
+    }
+
+    fn libraries(&self) -> &Libraries {
+        &self.libraries
+    }
+
+    fn library_imports(&self) -> &LibraryImports {
+        &self.library_imports
     }
 
     fn deployment(&self) -> &str {

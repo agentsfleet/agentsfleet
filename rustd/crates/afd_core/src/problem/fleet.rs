@@ -74,6 +74,15 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::RUNNER_NOT_FOUND,
+        status: 404,
+        title: "Runner not found",
+        hint: "No runner matches this runner_id. Verify the platform admin minted the runner before mutating it.",
+        user_message: Some(
+            "We couldn't find that runner. It may have been removed — refresh the list.",
+        ),
+    },
+    Problem {
         code: error_code::RUN_BUDGET_EXCEEDED,
         // 402, and the status is load-bearing rather than decorative: the stock
         // runner classifies a renew refusal by BOTH status and code, and
@@ -86,6 +95,15 @@ pub(super) const FLEET: &[Problem] = &[
         // Not dashboard-facing: this rides the runner-to-control-plane wire
         // protocol, and the Zig entry carries the same reachability note.
         user_message: None,
+    },
+    Problem {
+        code: error_code::RUN_SELFTEST_REFUSED,
+        status: 409,
+        title: "Self-test refused: runner is revoked",
+        hint: "A revoked runner never heartbeats again, so it cannot pick the request up. Enroll a replacement runner and test that one instead.",
+        user_message: Some(
+            "This runner is revoked, so it can't run a self-test. Enroll a new runner to test one.",
+        ),
     },
     Problem {
         code: error_code::AGENTSFLEET_CREDENTIAL_MISSING,
@@ -223,6 +241,15 @@ pub(super) const FLEET: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::FLEET_BUNDLE_INVALID,
+        status: 400,
+        title: "Invalid Fleet Bundle",
+        hint: "The supplied Fleet Bundle is missing `SKILL.md` or contains unsafe, oversized, or malformed files.",
+        user_message: Some(
+            "That Fleet Bundle isn't valid. It's missing `SKILL.md`, or has an unsafe or oversized file. Check the source and try again.",
+        ),
+    },
+    Problem {
         code: error_code::FLEET_BUNDLE_NOT_FOUND,
         status: 404,
         title: "Fleet Bundle not found",
@@ -232,10 +259,62 @@ pub(super) const FLEET: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::FLEET_BUNDLE_FETCH_FAILED,
+        status: 502,
+        title: "Fleet Bundle fetch failed",
+        hint: "The Fleet Bundle source could not be fetched from GitHub. The repository may be missing or private, or GitHub may be unreachable. Verify the source reference and retry.",
+        user_message: Some(
+            "We couldn't fetch that Fleet Bundle from GitHub. Check the source and try again.",
+        ),
+    },
+    Problem {
         code: error_code::FLEET_BUNDLE_STORAGE_UNAVAILABLE,
         status: 503,
         title: "Fleet Bundle storage unavailable",
         hint: "Snapshot storage is not configured or is unavailable, so the validated bundle could not be stored. Retry later or contact the operator.",
         user_message: Some("We couldn't store your Fleet Bundle right now. Try again shortly."),
+    },
+    Problem {
+        code: error_code::CATALOG_NOT_FOUND,
+        status: 404,
+        title: "Fleet library entry not found",
+        hint: "No catalog entry matches this id. It may already be deleted — refresh the catalog.",
+        user_message: Some(
+            "We couldn't find that fleet. It may have already been removed — refresh the page.",
+        ),
+    },
+    Problem {
+        code: error_code::CATALOG_PUBLISH_WITHOUT_BUNDLE,
+        status: 409,
+        title: "Cannot publish a fleet with no bundle",
+        hint: "No bundle has been fetched for this entry, so there is nothing to publish. Fetch it from its repository first.",
+        user_message: Some(
+            "There's no bundle for this fleet yet. Fetch it from its repository first, then publish.",
+        ),
+    },
+    Problem {
+        code: error_code::CATALOG_DELETE_PUBLISHED,
+        status: 409,
+        title: "Cannot delete a published fleet",
+        hint: "This fleet is published and installable. Unpublish it first, then delete it.",
+        user_message: Some("This fleet is published. Unpublish it first, then delete it."),
+    },
+    Problem {
+        code: error_code::CATALOG_ID_COLLISION,
+        status: 409,
+        title: "Catalog id already taken by another repository",
+        hint: "This catalog id already belongs to a different source repository. Rename the bundle, or retry with replace to overwrite deliberately.",
+        user_message: Some(
+            "A different repository already owns this fleet's name. Rename the bundle, or confirm you want to replace it.",
+        ),
+    },
+    Problem {
+        code: error_code::CATALOG_ROW_STALE,
+        status: 412,
+        title: "Catalog entry changed since you loaded it",
+        hint: "Another operator saved first: `If-Match` names an old version. Refetch the row, re-apply your edit, and retry with the new `etag`.",
+        user_message: Some(
+            "Someone else edited this catalog entry since you opened it. Refresh to see their change, then re-apply your edit.",
+        ),
     },
 ];

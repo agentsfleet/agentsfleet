@@ -16,7 +16,7 @@
 use {afd_wire as _, serde_json as _, sqlx as _};
 
 pub mod banner;
-pub mod bundles;
+mod bundles;
 pub mod cli;
 pub mod credentials;
 pub mod daemon;

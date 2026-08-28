@@ -23,22 +23,31 @@
 
 mod error;
 
+pub mod admin;
 pub mod bounds;
 pub mod heartbeat;
 pub mod policy;
 pub mod reconcile;
 pub mod record;
+mod rotate;
 pub mod spelling;
 pub mod sql;
 pub mod store;
 pub mod sweep;
 pub mod validate;
+pub mod view;
 
+pub use self::admin::{PolicyAssigned, SelftestRequested};
 pub use self::error::{
-    DETAIL_HOST_ID_BOUNDS, DETAIL_REGISTRY_ALLOWLIST, DETAIL_RUNNER_NOT_FOUND, Error, Result,
+    DETAIL_DATABASE_ERROR, DETAIL_HOST_ID_BOUNDS, DETAIL_REGISTRY_ALLOWLIST,
+    DETAIL_RUNNER_NOT_FOUND, DETAIL_SELFTEST_REFUSED, Error, Result,
 };
 pub use self::heartbeat::{Beat, NO_REPORT};
 pub use self::policy::{AssignmentColumns, StoredVerdict};
 pub use self::reconcile::{Verdict, reconcile};
 pub use self::record::SelfRow;
 pub use self::store::{Enrolled, Runners};
+pub use self::view::{
+    KeysetCursor, PageLimit, RunnerDetail, RunnerEventFilter, RunnerEventPage, RunnerItem,
+    RunnerPage,
+};
