@@ -33,6 +33,33 @@ pub const SECRET_REFERENCED_BY_MODEL_ENTRIES: ErrorCode = ErrorCode::declare("UZ
 /// A secret with the requested name already exists in this workspace.
 pub const SECRET_NAME_TAKEN: ErrorCode = ErrorCode::declare("UZ-VAULT-005");
 
+/// This fleet has no usable webhook signing secret configured.
+///
+/// `ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED` (`error_registry.zig:67`). An
+/// operator's misconfiguration, answered before any verification is attempted —
+/// there is nothing to verify a signature against.
+pub const WEBHOOK_CREDENTIAL_NOT_CONFIGURED: ErrorCode = ErrorCode::declare("UZ-WH-020");
+
+/// A signed delivery presented no signature, or one that did not match.
+///
+/// `ERR_WEBHOOK_SIG_INVALID` (`error_registry.zig:65`). One code for absent,
+/// malformed and mismatched: telling a sender WHICH way its proof failed
+/// narrows a forger's search, and no honest sender acts differently on the
+/// three.
+///
+/// UNIFIED across this surface (M180). The Zig daemon answers
+/// `UZ-APPROVAL-003` for approval deliveries and `UZ-SLK-010` for Slack events;
+/// the Rust daemon answers this for all of them.
+pub const WEBHOOK_SIGNATURE_INVALID: ErrorCode = ErrorCode::declare("UZ-WH-010");
+
+/// A correctly-signed delivery arrived outside its freshness window.
+///
+/// `ERR_WEBHOOK_TIMESTAMP_STALE` (`error_registry.zig:66`). Distinct from
+/// [`WEBHOOK_SIGNATURE_INVALID`] because a provider ACTS on the difference: a
+/// late delivery is one to retry, a bad signature is one never to send again.
+/// Unified with `UZ-SLK-011` per M180.
+pub const WEBHOOK_TIMESTAMP_STALE: ErrorCode = ErrorCode::declare("UZ-WH-011");
+
 /// No approval gate under that id, in that workspace.
 pub const APPROVAL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-APPROVAL-002");
 

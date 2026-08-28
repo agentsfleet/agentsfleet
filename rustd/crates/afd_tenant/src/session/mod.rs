@@ -37,7 +37,7 @@ pub mod input;
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_crypto::entropy::Entropy;
-use afd_crypto::mac::Mac256;
+use afd_crypto::mac::HmacSha256Tag;
 use afd_crypto::secret::SecretBytes;
 use afd_redis::session::{
     AbortOutcome, AbortReason, ApproveOutcome, SessionState, SessionStore, VerifyOutcome,
@@ -305,8 +305,11 @@ impl Sessions {
     /// session cannot be replayed against another even when the two happen to
     /// show the same six digits.
     fn code_digest(&self, session_id: &str, code: &str) -> String {
-        Mac256::compute_peppered(&self.code_pepper, &[session_id.as_bytes(), code.as_bytes()])
-            .to_hex()
+        HmacSha256Tag::compute_peppered(
+            &self.code_pepper,
+            &[session_id.as_bytes(), code.as_bytes()],
+        )
+        .to_hex()
     }
 
     /// Draws a fresh session identifier.

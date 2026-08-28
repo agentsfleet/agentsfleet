@@ -53,13 +53,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `rustd/crates/afd_api/**` | EDIT | Route variants + handlers: `/v1/webhooks/{fleet_id}[/approval|/github]`, `/v1/webhooks/svix/{fleet_id}`, `/v1/ingress/{provider}`, `/v1/ingress/qstash/schedules`, `/v1/connectors/{provider}/callback` (GET relay / POST complete), `/v1/connectors/slack/events`, `/v1/auth/identity-events/clerk`, workspace+fleet `/schedules[/{schedule_id}[:sync]]` |
-| `rustd/crates/afd_auth/**` | EDIT | the ingress verification layers (constant-time), vendored Svix verifier under `src/vendor/` |
 | `rustd/crates/afd_crypto/**` | EDIT | `Mac256` → `HmacSha256Tag` rename (mechanical, its own commit before §1) |
 | `rustd/crates/afd_tenant/**` | EDIT | the one out-of-crate consumer of the renamed tag type |
 | `rustd/crates/afd_core/**` | EDIT | `UZ-WH-*` codes declared in the error-code registry (`error_code/request.rs` family) |
 | `rustd/crates/afd_redis/**` | EDIT | dedicated (non-multiplexed) connection seam for the blocking outbound consumer — the `hub.rs` precedent |
-| `rustd/crates/afd_cron/**` | CREATE | schedules store, QStash client, sync service, fire-queue handling |
-| `rustd/crates/afd_connectors/**` | CREATE | connector callback flows, Slack event handling, outbound answer worker |
+| `rustd/crates/afd_webhook/**` | CREATE | §1 — the signature wall: scheme table, Slack v0, vendored Svix verifier under `src/vendor/`. Pure verdicts, no datastore and no framework, so every branch is provable without either |
+| `rustd/crates/afd_qstash/**` | CREATE | §3 — one vendor boundary, both directions: the inbound HS256 delivery verifier and the outbound schedule REST client. Swapping cron providers touches this crate alone |
+| `rustd/crates/afd_schedule/**` | CREATE | §3 — our own rows: store, generations, sync leases, cron/timezone validation with the parity guard, fire resolution. Depends on `afd_qstash`; never the reverse |
+| `rustd/crates/afd_connector/**` | CREATE | §4 — OAuth state mint/verify/consume, the provider registry, callback grants into the vault, Slack event handling |
+| `rustd/crates/afd_outbound/**` | CREATE | §5 — the delivery queue and its supervised worker. **The only crate that imports a connector poster**, keeping the report path provider-agnostic (the Zig's Invariant 9) |
 | `rustd/crates/agentsfleetd/**` | EDIT | outbound worker joins the supervisor |
 | `rustd/Cargo.toml` | EDIT | new members + the cron-parser dependency |
 | `make/test-integration-rustd.mk` | EDIT | ingress/cron/connector subset against the Rust binary |
