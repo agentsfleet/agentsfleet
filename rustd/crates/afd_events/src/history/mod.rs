@@ -25,16 +25,21 @@
 //! webhook burst is most of them.
 
 mod cursor;
+mod detail;
 mod filter;
 mod row;
+mod statement;
 
 use afd_core::id::Uuid7;
 use afd_db::Db;
 
 use crate::error::{self, Result};
 
+use self::statement::{SELECT_DETAIL, SELECT_PAGE};
+
 pub use self::cursor::Cursor;
-pub use self::filter::{Filter, glob_to_like, parse_since};
+pub use self::detail::EventDetailRow;
+pub use self::filter::{Filter, glob_to_like, parse_since, prefix_to_like};
 pub use self::row::EventRow;
 
 /// What each read was doing, for the operator's log line.
@@ -50,63 +55,6 @@ pub const DEFAULT_LIMIT: i64 = 50;
 /// `LIMIT_MAX`, mirrored. The ceiling is the correlated cost subselect's bound
 /// as much as the payload's: it executes once per returned row.
 pub const MAX_LIMIT: i64 = 200;
-
-/// The column list both statements are built from, as a macro so `concat!`
-/// can splice it at compile time.
-///
-/// A `const` cannot be concatenated into another `const`, and the alternative —
-/// writing the fourteen columns and the cost subselect out twice — is exactly
-/// the drift this exists to prevent. `fleet_events_store.zig` repeats its own
-/// `EVENTS_SELECT` across eight concatenated variants for want of this.
-///
-/// `cost_nanos` is a correlated subselect rather than a `LEFT JOIN`: billing
-/// writes up to two ledger rows per event — `receive` and `stage`, unique on
-/// `(event_id, charge_type)` — so a join would duplicate the event row per leg
-/// and a page of 50 would render as 100. The subselect keeps one row per event
-/// and yields SQL NULL where no telemetry exists.
-macro_rules! select_columns {
-    () => {
-        "\
-SELECT fleet_id::text, event_id, workspace_id::text, actor, event_type,
-       status, tokens, wall_ms,
-       failure_label, failure_detail, checkpoint_id, resumes_event_id,
-       created_at, updated_at,
-       (SELECT SUM(te.credit_deducted_nanos)::bigint
-          FROM billing.usage_ledger te
-         WHERE te.event_id = core.fleet_events.event_id
-           AND te.fleet_id = core.fleet_events.fleet_id) AS cost_nanos
-FROM core.fleet_events
-"
-    };
-}
-
-/// The listing statement, shared by both entry points.
-///
-/// `$1` workspace, `$2` fleet or NULL, `$3` cursor timestamp or NULL,
-/// `$4` cursor event id, `$5` actor LIKE or NULL, `$6` since or NULL,
-/// `$7` limit.
-const SELECT_PAGE: &str = concat!(
-    select_columns!(),
-    "WHERE workspace_id = $1::uuid
-  AND ($2::text IS NULL OR fleet_id = $2::uuid)
-  AND ($3::bigint IS NULL OR (created_at, event_id) < ($3, $4))
-  AND ($5::text IS NULL OR actor LIKE $5)
-  AND ($6::bigint IS NULL OR created_at >= $6)
-ORDER BY created_at DESC, event_id DESC
-LIMIT $7"
-);
-
-/// One event by its identifier, scoped to the workspace and fleet that own it.
-///
-/// The scoping is in the STATEMENT rather than checked after the read: a row
-/// belonging to another workspace must not come back and then be filtered, or
-/// the filter becomes the only thing standing between two tenants.
-///
-/// `$1` workspace, `$2` fleet, `$3` event.
-const SELECT_ONE: &str = concat!(
-    select_columns!(),
-    "WHERE workspace_id = $1::uuid AND fleet_id = $2::uuid AND event_id = $3"
-);
 
 /// The operator's read side of `core.fleet_events`.
 #[derive(Debug, Clone)]
@@ -173,11 +121,15 @@ impl History {
         .await
     }
 
-    /// One event, or nothing.
+    /// One event, bodies included, or nothing.
     ///
     /// `Result<Option<_>>`: a row that is not there is an ANSWER, and a
     /// datastore that would not say is a failure. Collapsing the two would make
     /// an outage look like a deleted event to every caller.
+    ///
+    /// This is the only read that carries `request_json` and `response_text`.
+    /// A listing is asked for up to two hundred rows and would pay for both on
+    /// every one of them; an expanded row is asked for one.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
@@ -186,16 +138,16 @@ impl History {
         workspace: &Uuid7,
         fleet: &Uuid7,
         event_id: &str,
-    ) -> Result<Option<EventRow>> {
+    ) -> Result<Option<EventDetailRow>> {
         let mut connection = self.database.acquire().await?;
-        let found = sqlx::query(SELECT_ONE)
+        let found = sqlx::query(SELECT_DETAIL)
             .bind(workspace.as_str())
             .bind(fleet.as_str())
             .bind(event_id)
             .fetch_optional(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_DETAIL))?;
-        found.as_ref().map(EventRow::read).transpose()
+        found.as_ref().map(EventDetailRow::read).transpose()
     }
 
     /// The one statement both listings run.
@@ -281,13 +233,5 @@ mod tests {
     fn a_full_page_resumes_from_its_last_row() {
         let page = vec![row_at(10, "a"), row_at(9, "b")];
         assert_eq!(next_cursor(&page, 2), Some(Cursor::after(9, "b")));
-    }
-
-    #[test]
-    fn both_statements_share_one_column_list() {
-        // The macro is the single source; this pins that both statements
-        // actually expand from it rather than carrying a hand-copied prefix.
-        assert!(SELECT_PAGE.starts_with(select_columns!()));
-        assert!(SELECT_ONE.starts_with(select_columns!()));
     }
 }

@@ -373,6 +373,27 @@ N/A — no files deleted.
 
 ### Declared divergences
 
+- **The port is a REFACTOR, not a transliteration — recorded because two
+  parallel agents had to be corrected mid-flight.** The Zig is the oracle for
+  OBSERVABLE behaviour only: the wire shape, JSON key set and key order, error
+  codes, `detail` sentences, and what is accepted versus refused. Its internal
+  structure carries no authority. Specifically, the Zig's `error{Failed}!T`
+  plus `hx.fail` side-effect pattern is what a Rust port must NOT reproduce —
+  `dispatch/write_rust.md` RULE FN-RS wants the fallible path as a `Result`
+  pipeline, and RULE ERR-RS wants one error type per crate with a `Result`
+  alias, `#[from]` composition, and `map_err` only to ADD context. Logging goes
+  through the shared refusal writer per the LOGGING gate, never hand-spelled
+  code/sentence pairs per call site.
+- **Crate size is a build-time decision, and a growing crate gets split rather
+  than piled onto.** Where an independent crate would compile in parallel, link
+  independently, or shrink the incremental rebuild, it is made. M184 on this
+  branch is the worked precedent — `afd_fleet` 25,520 lines into six crates —
+  and it is also the precedent for reporting the result honestly: the predicted
+  34% critical-path win came in at 7%, because `credential -> gate -> fleet` is
+  a chain and not siblings. A split is justified with measured before/after line
+  counts; a decision NOT to split is justified in the same place.
+
+
 - **`since=` refuses an impossible calendar date; the Zig rolls it over.**
   `parseRfc3339Z` validates the day as `1..=31` for every month and then runs a
   days-from-civil conversion, so it ACCEPTS `2026-02-31T00:00:00Z` and silently

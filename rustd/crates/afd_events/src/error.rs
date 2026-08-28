@@ -40,13 +40,6 @@ pub enum Error {
     #[error("the cursor is not one this daemon issued")]
     CursorMalformed,
 
-    /// `since` and `cursor` were both supplied.
-    ///
-    /// They answer the same question two ways — one names a moment, the other
-    /// names a row — and honouring both means guessing which the caller meant.
-    #[error("since and cursor are mutually exclusive")]
-    WindowAmbiguous,
-
     /// The pool would not give a connection.
     #[error("the event store's datastore is unavailable")]
     Datastore {
@@ -79,19 +72,8 @@ impl Error {
         match self {
             Self::Query { .. } | Self::RowMalformed { .. } => DETAIL_OPERATION_FAILED,
             Self::CursorMalformed => DETAIL_CURSOR,
-            Self::WindowAmbiguous => DETAIL_WINDOW,
             Self::Datastore { .. } | Self::Queue { .. } => DETAIL_UNAVAILABLE,
         }
-    }
-
-    /// Whether the caller can fix this by sending a different request.
-    ///
-    /// The question the HTTP edge turns on first: a bad cursor is the client's
-    /// to correct and answers 400, where everything else is this instance's
-    /// problem.
-    #[must_use]
-    pub const fn is_client_fault(&self) -> bool {
-        matches!(self, Self::CursorMalformed | Self::WindowAmbiguous)
     }
 
     /// Whether the datastore or queue behind this crate could not be reached.
@@ -107,7 +89,7 @@ impl Error {
     pub const fn code(&self) -> ErrorCode {
         match self {
             Self::Query { .. } | Self::RowMalformed { .. } => error_code::INTERNAL_OPERATION_FAILED,
-            Self::CursorMalformed | Self::WindowAmbiguous => error_code::INVALID_REQUEST,
+            Self::CursorMalformed => error_code::INVALID_REQUEST,
             Self::Datastore { .. } | Self::Queue { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
         }
     }
@@ -118,9 +100,6 @@ const DETAIL_OPERATION_FAILED: &str = "The event history could not be read";
 
 /// The sentence a cursor this daemon did not mint earns.
 const DETAIL_CURSOR: &str = "The cursor is not valid";
-
-/// The sentence supplying both window forms earns.
-const DETAIL_WINDOW: &str = "since and cursor are mutually exclusive";
 
 /// The sentence an unreachable datastore or queue earns.
 const DETAIL_UNAVAILABLE: &str = "Database unavailable";
