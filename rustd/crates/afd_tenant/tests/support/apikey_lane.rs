@@ -69,11 +69,6 @@ impl ApiKeyLane {
         lane
     }
 
-    /// The instant this fixture's corpus starts at.
-    pub(crate) const fn instant(&self) -> i64 {
-        NOW_MS
-    }
-
     /// Mints one key called `name`, stamped at `at_ms`.
     ///
     /// The instant is a PARAMETER rather than a clock read, which is the whole
