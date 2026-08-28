@@ -41,6 +41,7 @@ dependencies = [
 name = "afd_api"
 version = "0.26.2"
 dependencies = [
+ "afd_approval",
  "afd_auth",
  "afd_core",
  "afd_crypto",
@@ -65,6 +66,20 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "afd_approval"
+version = "0.26.2"
+dependencies = [
+ "afd_core",
+ "afd_db",
+ "afd_redis",
+ "afd_wire",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -293,6 +308,7 @@ name = "agentsfleetd"
 version = "0.26.2"
 dependencies = [
  "afd_api",
+ "afd_approval",
  "afd_auth",
  "afd_core",
  "afd_crypto",

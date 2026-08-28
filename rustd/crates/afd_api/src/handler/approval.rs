@@ -26,9 +26,9 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_approval::{Decision, Filter, GateRow, Resolution};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_fleet::gate::{Filter, GateRow, Resolution, Status};
 use afd_wire::approval::{
     ApprovalSummary, ApprovalsResponse, ResolveApprovalRequest, ResolvedResponse,
 };
@@ -194,10 +194,10 @@ async fn read_gate<D: Services>(
 }
 
 /// The status the path's verb resolves to.
-fn parse_decision(decision: &str) -> Result<Status, Refusal> {
+fn parse_decision(decision: &str) -> Result<Decision, Refusal> {
     match decision {
-        "approve" => Ok(Status::Approved),
-        "deny" => Ok(Status::Denied),
+        "approve" => Ok(Decision::Approved),
+        "deny" => Ok(Decision::Denied),
         _unknown => Err(Refusal::malformed(DETAIL_UNKNOWN_DECISION)),
     }
 }

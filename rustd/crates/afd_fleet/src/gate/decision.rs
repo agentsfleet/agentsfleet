@@ -14,6 +14,7 @@
 //! failing test behind it.
 
 use afd_core::spelling::from_spelling;
+use afd_wire::approval::status;
 use serde::Deserialize;
 
 /// The Redis mirror's word for an approval.
@@ -101,11 +102,11 @@ impl Status {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Pending => "pending",
-            Self::Approved => "approved",
-            Self::Denied => "denied",
-            Self::TimedOut => "timed_out",
-            Self::AutoKilled => "auto_killed",
+            Self::Pending => status::PENDING,
+            Self::Approved => status::APPROVED,
+            Self::Denied => status::DENIED,
+            Self::TimedOut => status::TIMED_OUT,
+            Self::AutoKilled => status::AUTO_KILLED,
         }
     }
 

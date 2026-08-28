@@ -29,17 +29,18 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_db::Db;
+use afd_redis::{FleetStreams, Redis};
+use afd_wire::approval::status;
 use sqlx::Row as _;
 
-use crate::gate::Status;
-use crate::sql::gate as sql;
+use crate::decision::Decision;
+use crate::sql;
 use crate::{Result, error};
 
-/// The status a queue read defaults to.
+/// The status a continuation event opens in.
 ///
-/// An inbox is the gates still waiting; a person asking for the resolved ones
-/// says so. Bound as a parameter, never inlined (RULE NSQ).
-const PENDING: &str = "pending";
+/// `received`, the same word the runner plane's report path flips out of.
+const EVENT_STATUS_RECEIVED: &str = "received";
 
 /// The grant spellings the resolve's second arm writes.
 const GRANT_APPROVED: &str = "approved";
@@ -61,17 +62,32 @@ const SWEEPER: &str = "system:approval_gate_sweeper";
 /// What a swept gate records as its detail.
 const SWEPT_DETAIL: &str = "the approval window closed with no answer";
 
-/// The refusal a resolve to `pending` earns.
-///
-/// A caller bug rather than a state: "resolve this to still-waiting" is not a
-/// transition, and admitting it would write a row that looks answered and
-/// blocks forever.
-const DETAIL_NOT_TERMINAL: &str = "a gate resolution must be terminal";
-
 const CONTEXT_PAGE: &str = "gate.inbox.page";
 const CONTEXT_ONE: &str = "gate.inbox.one";
 const CONTEXT_RESOLVE: &str = "gate.inbox.resolve";
 const CONTEXT_EXPIRE: &str = "gate.inbox.expire";
+const CONTEXT_CONTINUE: &str = "gate.inbox.continuation";
+
+/// The actor a continuation event records.
+///
+/// `continuation:<the event the gate blocked>`, so the history of a run reads
+/// forward: the blocked row says what was stopped, and this one says what it
+/// was stopped BY and resumed from. A reader following the chain never has to
+/// join back through the gate table.
+const CONTINUATION_ACTOR_PREFIX: &str = "continuation:";
+
+/// The body a continuation carries.
+///
+/// Empty rather than a copy of the original request: the runner re-reads the
+/// blocked event's own body through `resumes_event_id`, and duplicating it here
+/// would make two rows that could disagree about what was asked.
+const CONTINUATION_BODY: &str = "{}";
+
+/// The stream fields a continuation is appended with.
+const FIELD_ACTOR: &str = "actor";
+const FIELD_EVENT_TYPE: &str = "event_type";
+const FIELD_WORKSPACE: &str = "workspace_id";
+const FIELD_REQUEST: &str = "request_json";
 
 /// One gate as the inbox shows it.
 #[derive(Debug, Clone)]
@@ -129,7 +145,7 @@ pub struct Cursor<'a> {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Filter<'a> {
     /// Only gates at this status; pending when absent.
-    pub status: Option<Status>,
+    pub status: Option<Decision>,
     /// Only gates raised by this fleet.
     pub fleet_id: Option<&'a str>,
     /// Only gates of this kind.
@@ -171,19 +187,28 @@ pub struct Resolved {
     pub resolved_by: String,
     /// Their note.
     pub detail: String,
+    /// The event the gate blocked, which a continuation resumes from.
+    pub event_id: String,
+    /// The continuation this decision landed, when it landed one.
+    ///
+    /// `Some` only for an approval THIS caller won: a denial continues
+    /// nothing, and a caller who lost the race did not write the row the
+    /// winner already did.
+    pub continuation_event_id: Option<String>,
 }
 
 /// The operator's queue over one workspace's gates.
 #[derive(Debug, Clone)]
 pub struct Inbox {
     database: Db,
+    queue: Redis,
 }
 
 impl Inbox {
-    /// A queue over `database`.
+    /// A queue over `database`, continuing approved runs on `queue`.
     #[must_use]
-    pub const fn new(database: Db) -> Self {
-        Self { database }
+    pub const fn new(database: Db, queue: Redis) -> Self {
+        Self { database, queue }
     }
 
     /// One page of `workspace`'s gates, oldest first.
@@ -200,7 +225,7 @@ impl Inbox {
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query(sql::SELECT_GATE_PAGE)
             .bind(workspace.as_str())
-            .bind(filter.status.map_or(PENDING, Status::as_str))
+            .bind(filter.status.map_or(status::PENDING, Decision::as_str))
             .bind(filter.fleet_id.unwrap_or(NO_FILTER))
             .bind(filter.gate_kind.unwrap_or(NO_FILTER))
             .bind(cursor.is_some())
@@ -245,22 +270,21 @@ impl Inbox {
     /// the SAME untrusted payload: without it, an actor holding a signature for
     /// one fleet could answer another's gate by guessing an action id.
     ///
+    /// There is no "resolve to pending" arm to refuse: [`Decision`] cannot
+    /// express it, so the statement needs no guard and no caller can ask.
+    ///
     /// # Errors
-    /// Reports a datastore that would not answer. Refuses to write
-    /// [`Status::Pending`] — a resolve that resolves to nothing is a caller
-    /// bug, not a state.
+    /// Reports a datastore that would not answer, and a queue that would not
+    /// take the continuation an approval lands.
     pub async fn resolve(
         &self,
         action: &str,
-        outcome: Status,
+        outcome: Decision,
         by: &str,
         detail: &str,
         fleet: Option<&str>,
         now: UnixMillis,
     ) -> Result<Resolution> {
-        if outcome == Status::Pending {
-            return Err(error::rejected(DETAIL_NOT_TERMINAL));
-        }
         let scope = fleet.unwrap_or(NO_FILTER);
         let mut connection = self.database.acquire().await?;
 
@@ -270,9 +294,9 @@ impl Inbox {
             .bind(by)
             .bind(now.as_millis())
             .bind(action)
-            .bind(PENDING)
+            .bind(status::PENDING)
             .bind(scope)
-            .bind(Status::Approved.as_str())
+            .bind(status::APPROVED)
             .bind(GRANT_APPROVED)
             .bind(GRANT_REVOKED)
             .bind(KIND_INTEGRATION_GRANT)
@@ -281,7 +305,14 @@ impl Inbox {
             .map_err(error::query(CONTEXT_RESOLVE))?;
 
         if let Some(row) = won {
-            return Ok(Resolution::Resolved(read_resolved(&row)?));
+            let mut resolved = read_resolved(&row)?;
+            // The continuation is part of RESOLVING, not something a caller
+            // remembers to do afterwards: an approval that landed without one
+            // is a run a person unblocked and nothing restarted.
+            if outcome.continues_the_run() {
+                resolved.continuation_event_id = self.continue_from(&resolved, now).await?;
+            }
+            return Ok(Resolution::Resolved(resolved));
         }
 
         // Nothing updated: either somebody answered first, or there was never
@@ -300,6 +331,50 @@ impl Inbox {
         })
     }
 
+    /// Lands the event that resumes the run an approved gate had blocked.
+    ///
+    /// The blocked row is NEVER reopened. This is a new event carrying
+    /// `resumes_event_id`, so the history keeps both the run that was stopped
+    /// and the run that followed from the answer — reopening the first would
+    /// erase the fact that a person was ever asked.
+    ///
+    /// Idempotent on the gate's ACTION: the stream append is `append_once`
+    /// keyed by it, and the row insert carries the `(fleet_id, event_id)`
+    /// conflict arm, so a retried resolve continues the run exactly once.
+    async fn continue_from(&self, resolved: &Resolved, now: UnixMillis) -> Result<Option<String>> {
+        let actor = format!("{CONTINUATION_ACTOR_PREFIX}{}", resolved.event_id);
+        let kind = afd_wire::event::EventType::Continuation.as_str();
+        let appended = FleetStreams::new(self.queue.clone())
+            .append_once(
+                &resolved.action_id,
+                &resolved.fleet_id,
+                &[
+                    (FIELD_ACTOR, actor.as_str()),
+                    (FIELD_EVENT_TYPE, kind),
+                    (FIELD_WORKSPACE, resolved.workspace_id.as_str()),
+                    (FIELD_REQUEST, CONTINUATION_BODY),
+                ],
+            )
+            .await?;
+
+        let mut connection = self.database.acquire().await?;
+        sqlx::query(sql::INSERT_FLEET_EVENT)
+            .bind(&resolved.fleet_id)
+            .bind(appended.id.as_str())
+            .bind(&resolved.workspace_id)
+            .bind(&actor)
+            .bind(kind)
+            .bind(CONTINUATION_BODY)
+            .bind(&resolved.event_id)
+            .bind(now.as_millis())
+            .bind(EVENT_STATUS_RECEIVED)
+            .execute(&mut *connection)
+            .await
+            .map_err(error::query(CONTEXT_CONTINUE))?;
+
+        Ok(Some(appended.id.as_str().to_owned()))
+    }
+
     /// Expires every gate whose deadline has passed, reporting how many.
     ///
     /// Scoped to PENDING rows, so an answer that landed a millisecond before
@@ -311,8 +386,8 @@ impl Inbox {
     pub async fn expire(&self, now: UnixMillis) -> Result<u64> {
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query(sql::EXPIRE_GATES)
-            .bind(Status::TimedOut.as_str())
-            .bind(PENDING)
+            .bind(status::TIMED_OUT)
+            .bind(status::PENDING)
             .bind(SWEEPER)
             .bind(SWEPT_DETAIL)
             .bind(now.as_millis())
@@ -359,5 +434,7 @@ fn read_resolved(row: &sqlx::postgres::PgRow) -> Result<Resolved> {
         updated_at: row.try_get(5).map_err(&unreadable)?,
         resolved_by: row.try_get(6).map_err(&unreadable)?,
         detail: row.try_get(7).map_err(&unreadable)?,
+        event_id: row.try_get(8).map_err(&unreadable)?,
+        continuation_event_id: None,
     })
 }

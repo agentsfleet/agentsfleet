@@ -1,0 +1,40 @@
+[package]
+name = "afd_approval"
+description = "The operator's side of an approval gate: the queue, the one decision Postgres admits, and the continuation an approval lands."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Identifiers, the clock a decision is stamped with, and the registry codes.
+afd_core.workspace = true
+# The Postgres pool every statement here runs on.
+afd_db.workspace = true
+# An approved gate CONTINUES the run it blocked, which is a stream append —
+# the one reason this crate touches the queue at all.
+afd_redis.workspace = true
+# The stored status spellings and the event type a continuation carries. Shared
+# with the runner plane rather than copied: two crates read this one column.
+afd_wire.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a router
+# suite reaches this crate's seam with no datastore behind it.
+test-util = ["afd_core/test-util", "afd_db/test-util", "afd_redis/test-util"]
+
+[dev-dependencies]
+# The race the resolve exists to decide is worthless single-threaded: the
+# interleaving two operators produce cannot happen without threads under it.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

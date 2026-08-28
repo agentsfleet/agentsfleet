@@ -43,6 +43,10 @@ afd_api.workspace = true
 afd_core.workspace = true
 # The composition root: this crate is the one that names which directory,
 # capability provider and verifier the generic HTTP shell is served through.
+# The operator's approval queue. Its own crate, not an `afd_fleet` module:
+# showing a person what a fleet wants to do must not pull in leases, money,
+# policy and the sweepers.
+afd_approval.workspace = true
 afd_auth.workspace = true
 # The Postgres credential directory the shell authenticates against.
 afd_state.workspace = true

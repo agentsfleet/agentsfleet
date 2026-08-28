@@ -73,7 +73,7 @@ use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
 // Aliased for the reason the composition root aliases it: `afd_fleet::vault`
 // is the runner plane's reader and this is the workspace-admin surface.
-use afd_fleet::gate::Inbox;
+use afd_approval::Inbox;
 use afd_tenant::preference::Preferences;
 use afd_vault::Vault as SecretVault;
 use axum::Router;
@@ -187,10 +187,10 @@ impl Fleet {
                 Entropy::new(),
                 FIXTURE_APP_URL,
             ),
-            fleets: Fleets::new(database.clone(), queue, Entropy::new()),
+            fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
             secrets: SecretVault::new(database.clone(), kek, Entropy::new()),
             preferences: Preferences::new(database.clone(), Entropy::new()),
-            approvals: Inbox::new(database.clone()),
+            approvals: Inbox::new(database.clone(), queue.clone()),
             billing: Billing::new(database.clone()),
             catalogue: Models::new(database),
             now: UnixMillis::from_millis(FROZEN),
