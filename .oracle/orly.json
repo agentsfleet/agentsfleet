@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "orly_version": "0.9.1",
+  "orly_version": "0.9.2",
   "packs": [
     "language.rust",
     "product.agentsfleet"

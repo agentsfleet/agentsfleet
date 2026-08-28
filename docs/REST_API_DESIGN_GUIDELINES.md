@@ -405,8 +405,6 @@ Don't invent other extensions without amending this doc.
 
 ## §6 — OpenAPI editing
 
-**`public/openapi.json` is a committed static artifact.** The split YAML source, the Redocly bundler and the whole `check-openapi` gate family were removed: the Rust daemon will emit this document itself, and until it does the file is edited directly and nothing generates or grades it.
-
 The source of truth lives under `public/openapi/`:
 
 ```
@@ -423,9 +421,7 @@ public/openapi/
 
 1. Edit the relevant YAML under `public/openapi/paths/<tag>.yaml`.
 2. Add / rename / remove the corresponding `match()` arm in `src/agentsfleetd/http/router.zig`.
-3. Edit `public/openapi.json` directly. No bundler and no gate stands behind it
-   until the Rust daemon generates its own document.
-4. Commit YAML + bundled JSON + `router.zig` together. Splitting these across commits leaves CI red.
+3. Commit YAML + bundled JSON + `router.zig` together. Splitting these across commits leaves CI red.
 
 **Router ↔ openapi.json parity is reviewer-enforced.** There is no mechanical gate cross-checking that every `router.match()` arm has a documented openapi path or vice versa. When you add, rename, or remove a route, both surfaces must move in the same diff and the reviewer must verify it. The previous Python parity gate (`audits/check_openapi_sync.py`) and its data file (`route_manifest.zig`, deleted) were retired in M61_002.
 
