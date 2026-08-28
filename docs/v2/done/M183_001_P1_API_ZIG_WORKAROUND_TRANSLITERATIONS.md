@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M183
 **Workstream:** 001
 **Date:** Aug 26, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — one confirmed finding drops a TLS requirement on the datastore connection; the rest is hygiene that decides how much of the port a reader can trust
 **Categories:** API
 **Batch:** B7 — parallel with M182; touches no wire field and no schema, so it shares no surface
@@ -250,19 +250,19 @@ No product signal changes and no funnel moves: every other slice is internal and
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | The connection string is no longer searched by substring (§1) | `grep -n "split_once('?')" rustd/crates/afd_db/src/config.rs` | 0 matches | P0 | |
+| R1 | The connection string is no longer searched by substring (§1) | `grep -n "split_once('?')" rustd/crates/afd_db/src/config.rs` | 0 matches | P0 | ✅ `grep -n "split_once('?')" …/config.rs` → 0 matches |
 | R2 | No internal window is a bare integer (§2) | — | **parked with §2** | — | ⏸️ follow-up |
 | R3 | One declaration of the millisecond divisor (§3) | — | **parked with §3** | — | ⏸️ follow-up |
 | R4 | Every keep names what a crate cannot express (§4) | — | **parked with §4** | — | ⏸️ follow-up |
-| R5 | No wire, stored or schema shape moved (Invariant 1) | `git diff --name-only origin/main...HEAD \| grep -E '^(schema/\|rustd/crates/afd_wire/\|public/openapi/)'` | no output | P0 | |
-| R6 | Every swap was preceded by a test proven red on the old code (Invariant 4) | `grep -cE '^ +red-proof:' docs/v2/*/M183_001_*.md` | `1` — one swap ships; §2 and §3 are parked. Anchored to the Discovery bullet's indent because the unanchored form counted this row's own command | P0 | |
-| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Integration tier green (§1 touches the pool) | `make test-integration-rustd` | exit 0 | P0 | |
-| S4 | Lint clean | `make lint-all` | exit 0 | P0 | |
-| S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -E '\.rs$' \| xargs wc -l \| awk '$1>350 && $2!="total"'` | no output | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| R5 | No wire, stored or schema shape moved (Invariant 1) | `git diff --name-only origin/main...HEAD \| grep -E '^(schema/\|rustd/crates/afd_wire/\|public/openapi/)'` | no output | P0 | ✅ no `schema/`, `afd_wire/` or `public/openapi/` path in the diff |
+| R6 | Every swap was preceded by a test proven red on the old code (Invariant 4) | `grep -cE '^ +red-proof:' docs/v2/*/M183_001_*.md` | `1` — one swap ships; §2 and §3 are parked. Anchored to the Discovery bullet's indent because the unanchored form counted this row's own command | P0 | ✅ `grep -cE '^ +red-proof:'` → `1`; §1's proof observed at the swap |
+| R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 7 paths changed, every one in the table above |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ `make harness-verify` → ALL GATES GREEN |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `make test-unit-all` → exit 0, `✓ All unit lanes passed` |
+| S3 | Integration tier green (§1 touches the pool) | `make test-integration-rustd` | exit 0 | P0 | ✅ `make test-integration-rustd` → exit 0, `✓ Integration suite passed (191 tests)` |
+| S4 | Lint clean | `make lint-all` | exit 0 | P0 | ✅ `make lint-all` → exit 0, `✓ All lint checks passed` |
+| S5 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -E '\.rs$' \| xargs wc -l \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no `*.rs` in the diff over 350 lines (max 343) |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `gitleaks detect` → `no leaks found`, 4807 commits scanned |
 
 **Command source rule:** every S-row Verify command is copied **verbatim from `.oracle/orly.json`** (`conform`, `verify.*`) — the same set `orly gate` runs, so the rubric and the mechanical PR gate grade one boundary. The gate BLOCKs a staged pending/active spec whose rubric omits the declared `conform` or `verify.unit` command; a rubric naming a runner the repository does not declare is wrong by construction.
 
@@ -391,7 +391,41 @@ No product signal changes and no funnel moves: every other slice is internal and
   surface reads it, and no product signal moved. The "once per role" wording in
   the Metrics table was an assumption and is corrected above — the API role
   emits it twice at boot because `preflight` and the pool each resolve.
-- **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
+- **Skill-chain outcomes**
+  - `/orly-write-unit-test` — Hardening mode. 10-row diff ledger above, all
+    resolved. Found one real gap nothing had failed on: `ssl_mode_tag` has six
+    arms and the suite reached three, so `allow`, `verify-ca` and `verify-full`
+    could have rendered as the wrong word in the boot line. Mutation 5/5 killed.
+  - `/orly-write-integration-test` — **not** `N/A`: the diff crosses a module
+    boundary with real input/output, because a resolved mode is only a claim
+    until a socket agrees with it. `test_pool_connects_under_each_resolved_mode`
+    runs against the compose Postgres, which serves no TLS: the lane URL's
+    declared `disable` connects, and the same URL with its query stripped
+    resolves to `require` and is refused. red-proof: asserting the silent URL
+    CONNECTS turns it red with
+    `DatastoreUnavailable { source: Tls("server does not support TLS") }`.
+    Tiers met: T1 (real pool over real Postgres), T3 (the resolved posture
+    asserted either side), T4 (the refusal classified as unreachable rather than
+    capacity). T5/T6/T7/T9 not applicable — the surface is a pure resolution
+    plus one probe, holds no lease, streams nothing, and is not a daemon.
+  - `/review` — one pass. The Codex adversarial pass over the diff returned no
+    production-impacting findings and verified the options carrying the resolved
+    mode into the event are the same ones handed to the connect probe and the
+    lazy pool (`config/tls.rs:76` → `pool.rs:63`). The pass I ran myself found
+    one gap and it is now pinned: sqlx compares the query key case-sensitively,
+    so `?SSLMODE=disable` is ignored by the driver and this crate correctly
+    refuses to count it — behaviour that predates the branch, but was resting on
+    nothing.
+  - `orly-babysit-prs` — runs after the push.
+
+- **Test Delta** — unit `6159 → 6166` (+7), all in `afd_db`: rustd
+  `1442 → 1449`; app, website, cli and design-system unchanged. Integration
+  `191 → 192` (+1, the TLS lane). Positive on a code-adding diff, so no
+  justification is owed.
+
+- **Headroom note for the follow-up** — `tests/config_tls.rs` sits at 343 of
+  350. It is finished for §1, but the next test that lands in it splits the file
+  first rather than after.
 - **Red-proofs (Invariant 4)** — one expected, not three: §2 and §3 are parked.
 
   red-proof: §1 — `test_sslmode_detection_pinned_against_hand_rolled` was
@@ -412,6 +446,8 @@ The spec was opened with an explicit instruction to take the confirmed defect
 and park the rest, and that instruction is the deferral record for §2–§5:
 
 > Indy (2026-08-28 23:20): "Read the @docs/v2/pending/M183_001_P1_API_ZIG_WORKAROUND_TRANSLITERATIONS.md and start the important needed fixes, not all? absolutely needed? other we cn park awhen we move the spec to done" — context: §2, §3, §4 and §5 are parked; §1 is taken in full.
+
+> Indy (2026-08-29 03:05): "dont forget to make the milestone done, with the override from indy saying the other sections are parked" — context: this spec moves to `done/` with `Status: DONE` on §1 alone; §2, §3, §4 and §5 are parked to a follow-up by the same instruction, and the R2/R3/R4 rubric rows read ⏸️ rather than red.
 
 What that buys and what it costs, so the next reader does not re-derive it:
 
