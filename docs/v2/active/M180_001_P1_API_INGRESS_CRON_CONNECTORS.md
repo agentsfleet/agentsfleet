@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M180
 **Workstream:** 001
 **Date:** Aug 23, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — trigger-plane parity; the Zig daemon keeps serving production while this lands
 **Categories:** API
 **Batch:** B5 — after M178 (approvals + workspace surface it feeds)
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
+**Branch:** feat/m180-ingress-cron-connectors
+**Test Baseline:** deferred to CHORE(close) per Indy override (Aug 29 2026): no `make test-unit-all` / `make test-integration-rustd` runs mid-milestone — `cargo fmt` + `cargo clippy` per section only; the full declared `verify.*` set runs once at the boundary, where the Test Delta is graded against `origin/main`'s counts
 **Depends on:** M178_001 (approvals, workspace event surface); M179_001 (shared seams — `afd_api`, `rustd/Cargo.toml`, `make/test-integration.mk` — settle before ingress starts); M177_001 (fleet services); M176_001 (substrate)
 **Provenance:** LLM-drafted (Claude Fable 5, Aug 23, 2026)
 **Canonical architecture:** `docs/architecture/data_flow.md` §B. TRIGGER (six producers, one ingress) + `docs/architecture/connectors.md`
@@ -32,19 +32,19 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** every signature-verified ingress route (fleet webhooks + approval + GitHub, Svix, QStash schedule fire, connector callbacks, Slack events, Clerk identity events), the schedules surface (CRUD + `:sync`) with its Upstash QStash (external cron provider) sync service, and the connector outbound worker serve from `agentsfleetd-rs` with signature verdicts, rejection codes, replay suppression, and stream writes equal to the Zig daemon.
 **Problem:** the trigger plane is the daemon's unauthenticated-edge: HMAC (hash-based message authentication code) verification, timestamp windows, and replay suppression are the only wall between the internet and `XADD fleet:{id}:events` — a port defect here is a security defect, and cron double-fires or lost webhooks corrupt the "operational outcomes do not fall into limbo" promise.
-**Solution summary:** port the four signature middlewares (webhook signature, webhook HMAC, Svix, trusted-client-IP) with constant-time compares, the ingress handler groups, the schedules store + QStash client + sync service, the connector callback relay/complete pair + Slack events, and the outbound answer worker as a supervised task — graded by signature fixture matrices and the integration subset.
+**Solution summary:** port the signature wall — six verification paths (per-fleet webhook HMAC, approval HMAC, Svix, Slack v0, QStash JWT) plus the non-verifying trusted-client-IP derivation — with constant-time compares, the ingress handler groups, the schedules store + QStash client + sync service, the connector callback relay/complete pair + Slack events, and the outbound answer worker as a supervised task — graded by signature fixture matrices and the integration subset.
 
 ## PR Intent & comprehension handshake
 
 - **PR title (eventual):** feat(rustd): signed ingress, schedules + QStash, connectors
 - **Intent (one sentence):** every external event producer — webhook, cron, connector — lands events through `agentsfleetd-rs` with the same signatures accepted, the same forgeries rejected, and the same stream entries written.
-- **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch → STOP and reconcile before any edit.
+- **Handshake** (filled at PLAN, Aug 29 2026): the Rust daemon takes over every route where something outside the platform starts work — a provider's webhook, a QStash schedule fire, a connector's OAuth return, a Slack event — verifying each delivery's signature exactly as the Zig daemon would, writing the same stream entries, suppressing the same replays, and delivering fleet answers outward through the same queue; a provider can be pointed at either daemon and observe no difference except the unified rejection codes recorded below. `ASSUMPTIONS I'M MAKING:` 1. rejection codes unify on `UZ-WH-*` across this surface (Indy's call, Aug 28) — a recorded divergence from the Zig, not parity; 2. the M178 approvals service and M179 seams on `main` are the ones this builds on; 3. the connector provider set is the Zig registry's five (Slack, GitHub, Zoho, Jira, Linear), no additions; 4. the crate verdicts in Prior-Art below are settled and not re-litigated at REVIEW.
 
 ## Implementing agent — read these first
 
 1. `docs/architecture/data_flow.md` §B. TRIGGER — the six producers on one ingress, entry-id-as-event-id, the three webhook rejection codes (UZ-WH-020 misconfig · UZ-WH-010 bad signature · UZ-WH-011 stale timestamp, 5-minute window), and QStash replay suppression.
 2. `src/agentsfleetd/crypto/hmac_sig.zig` — the canonical HMAC construction (single source; scrubbed key pads) the Rust canon must match bit-for-bit.
-3. `src/agentsfleetd/auth/middleware/` — `webhook_sig.zig`, `webhook_hmac.zig`, `svix_signature.zig`, `trusted_client_ip.zig` — verification order and failure codes.
+3. `src/agentsfleetd/auth/middleware/` — `webhook_sig.zig`, `webhook_hmac.zig`, `svix_signature.zig`, `trusted_client_ip.zig` — plus the two verifiers outside that tree: `http/handlers/connectors/slack/slack_sig.zig` (in-handler, per-request vault secret) and `cron/QStashVerifier.zig` (HS256 JWT, dual-key rotation). Verification order and failure codes.
 4. `src/agentsfleetd/cron/` — `Service.zig`, `Store.zig`, `QStashClient.zig`: the daemon owns no timer; QStash calls back in, signature-verified.
 5. `src/agentsfleetd/queue/` outbound worker + `docs/architecture/connectors.md` — connector answer delivery semantics.
 
@@ -53,12 +53,17 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `rustd/crates/afd_api/**` | EDIT | Route variants + handlers: `/v1/webhooks/{fleet_id}[/approval|/github]`, `/v1/webhooks/svix/{fleet_id}`, `/v1/ingress/{provider}`, `/v1/ingress/qstash/schedules`, `/v1/connectors/{provider}/callback` (GET relay / POST complete), `/v1/connectors/slack/events`, `/v1/auth/identity-events/clerk`, workspace+fleet `/schedules[/{schedule_id}[:sync]]` |
-| `rustd/crates/afd_auth/**` | EDIT | the four ingress middlewares with constant-time verification |
+| `rustd/crates/afd_auth/**` | EDIT | the ingress verification layers (constant-time), vendored Svix verifier under `src/vendor/` |
+| `rustd/crates/afd_crypto/**` | EDIT | `Mac256` → `HmacSha256Tag` rename (mechanical, its own commit before §1) |
+| `rustd/crates/afd_tenant/**` | EDIT | the one out-of-crate consumer of the renamed tag type |
+| `rustd/crates/afd_core/**` | EDIT | `UZ-WH-*` codes declared in the error-code registry (`error_code/request.rs` family) |
+| `rustd/crates/afd_redis/**` | EDIT | dedicated (non-multiplexed) connection seam for the blocking outbound consumer — the `hub.rs` precedent |
 | `rustd/crates/afd_cron/**` | CREATE | schedules store, QStash client, sync service, fire-queue handling |
 | `rustd/crates/afd_connectors/**` | CREATE | connector callback flows, Slack event handling, outbound answer worker |
 | `rustd/crates/agentsfleetd/**` | EDIT | outbound worker joins the supervisor |
-| `rustd/Cargo.toml` | EDIT | new members |
-| `make/test-integration.mk` | EDIT | ingress/cron/connector subset against the Rust binary |
+| `rustd/Cargo.toml` | EDIT | new members + the cron-parser dependency |
+| `make/test-integration-rustd.mk` | EDIT | ingress/cron/connector subset against the Rust binary |
+| `tests/fixtures/webhooks/**` | CREATE | GitHub delivery corpus for Dimension 2.3 — built from the Zig daemon's accept/reject behaviour (two fixtures exist today; a corpus does not) |
 
 ## Applicable Rules
 
@@ -80,14 +85,28 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 ## Prior-Art / Reference Implementations
 
 - **Reference:** `src/agentsfleetd/` ingress/cron/connector trees (Zig daemon) — behaviour and code source of truth; `crypto/hmac_sig.zig` is the byte-level oracle for the signature canon.
-- **Reference:** M176 afd_crypto — the HMAC canon lands there once; this milestone consumes it (no second implementation — RULE UFS/OWN).
-- **Reference:** `docs/architecture/data_flow.md` §B. TRIGGER — the invariant table is the acceptance oracle for rejection codes and replay behaviour.
+- **Reference:** M176 afd_crypto — the HMAC canon lands there once; this milestone consumes it (no second implementation — RULE UFS/OWN). Renamed `HmacSha256Tag` here: the type is the authentication tag, not the algorithm.
+- **Reference:** `docs/architecture/data_flow.md` §B. TRIGGER — the invariant table is the acceptance oracle for replay behaviour; rejection codes diverge deliberately (see Interfaces).
+
+**Crate verdicts (settled Aug 28–29, 2026 — Indy + two external reviews + build probes; not re-litigated at REVIEW):**
+
+| Surface | Verdict | Decisive evidence |
+|---|---|---|
+| Per-fleet HMAC | local, closed `SigningScheme` enum over `HmacSha256Tag` | no crate owns "a table of webhook schemes"; a config DSL is the failure mode |
+| Svix | **vendor** upstream verifier (`afd_auth/src/vendor/svix_verify.rs`, MIT, pinned SHA, patch list) | `svix = { default-features = false }` does not compile (5 errors in its own `connector.rs`, probed); full crate drags the API client. Upstream has shipped a signature-bypass fix, so lineage over re-derivation. **The Zig daemon is the behavioural oracle, not svix 2.1.0** — upstream also accepts `webhook-*` fallback headers and bare secrets; where upstream and Zig disagree, Zig wins and the delta is recorded |
+| Slack v0 | local over `HmacSha256Tag` | scheme is stable and published; the SDK's verifier feature is unreachable without ~22 mandatory crates incl. `ctrlc` |
+| QStash verify | `jsonwebtoken` 10.4 (`aws_lc_rs`, in the lock) | explicit `Validation`: `validate_aud = false` (v10.4 default `true` rejects any future `aud` claim — source-verified), `validate_nbf = true`, `leeway = 0`, iss/sub pinned, `jti`+`body` as non-optional claim fields |
+| QStash CRUD | local `reqwest` 0.13 adapter | both existing SDK crates unmaintained (39 and 21 recent downloads) and force jsonwebtoken 9 / reqwest 0.12-ring / sha2 0.10; typed outcome classification is the deliverable |
+| Cron validation | `philiprehberger-cron-parser` 0.3.0 + parity guard | zero-dependency, std-only (probed). Differential test vs the Zig grammar: 16 agree, 5 disagree — guard rejects the five (names/macros, `*/61` step-over-span, reversed ranges; the last two are crate bugs, reported upstream) |
+| Outbound retry | `backon` (in the lock, proven in `afd_fleet_lifecycle::install`) | jitter is a recorded improvement over the Zig's flat `200ms << attempt` |
+
+The rustls invariant, stated precisely: exactly one `CryptoProvider` — `aws-lc-rs`; `rustls/ring` must not be enabled (feature-graph check, not a package grep — `ring` in the lock is resolvable, not compiled). `chrono` is already in the binary via `object_store`/`octocrab`/`posthog-rs`; domain civil-time stays `jiff`.
 
 ## Sections (implementation slices)
 
-### §1 — Signature middlewares
+### §1 — The signature wall
 
-`webhook_sig`, `webhook_hmac`, `svix_signature`, `trusted_client_ip` as tower layers over the afd_crypto canon: constant-time compares, the three rejection codes (UZ-WH-020 / UZ-WH-010 / UZ-WH-011), the 5-minute timestamp window, Svix's scheme (id.timestamp.payload, base64 secrets, multiple signatures header).
+Six verification paths, not the four the draft counted: `webhook_sig` (per-fleet provider HMAC), `webhook_hmac` (approval deliveries), `svix_signature` (vendored upstream verifier), the Slack v0 verdict (in-handler — its secret is a per-request vault read, not a boot secret), and the QStash JWT verifier (§3 consumes it; it lands here with the wall). All over the afd_crypto canon: constant-time compares, the three rejection codes (UZ-WH-020 / UZ-WH-010 / UZ-WH-011), the 5-minute timestamp window. `trusted_client_ip` ports in this section too but is not part of the wall — it verifies nothing; it is pure XFF/`Fly-Client-IP` derivation with an audit trail.
 
 - **Dimension 1.1** — signature matrix per middleware: valid passes; wrong key, tampered body, missing header, malformed header each → the documented code → Test `test_signature_matrix_per_middleware`
 - **Dimension 1.2** — timestamp window: 4m59s accepted, 5m01s → UZ-WH-011; skew in both directions → Test `test_timestamp_window_bounds`
@@ -124,6 +143,8 @@ Workspace+fleet `/schedules[/{schedule_id}[:sync]]` CRUD, the schedules store, t
 
 The connector outbound queue worker as a supervised task: delivers fleet answers to connector destinations with jittered retry/backoff, failure accounting, and clean shutdown (joins on stop; in-flight delivery completes or re-queues).
 
+Two recorded departures from the Zig, both improvements over workarounds it documents in its own comments: (1) the worker owns a **dedicated non-multiplexed Redis connection** (new seam in afd_redis, `hub.rs` precedent) and blocks on `XREADGROUP BLOCK` instead of the 250 ms idle poll — the poll existed because Zig's pooled connections could not park on a stream; `tokio::select!` races the blocking read against the supervisor's `CancellationToken`. Dropping the read future does not cancel the command server-side, so the pending-first read on resume is load-bearing, and Dimension 5.2 proves it. (2) The retry backoff is `backon`'s jittered schedule, where the Zig retried at a flat `200ms << attempt` — Dimension 5.1's "jittered" is this improvement, not parity. Delivery stays serial: two answers into one Slack thread must not reorder.
+
 - **Dimension 5.1** — queued answer delivered once; destination 5xx → retry with backoff then documented terminal handling → Test `test_outbound_delivery_retry`
 - **Dimension 5.2** — shutdown mid-delivery: task joins; no lost or double-delivered answer → Test `test_outbound_shutdown_no_loss`
 
@@ -151,7 +172,12 @@ Ingress routes (per src/agentsfleetd/http/route_template.zig):
   POST /v1/auth/identity-events/clerk
   /v1/workspaces/{id}/fleets/{fleet_id}/schedules[/{schedule_id}[:sync]]
 Rejection codes: UZ-WH-020 (misconfig) · UZ-WH-010 (bad signature) ·
-UZ-WH-011 (stale timestamp, 5-minute window) — existing registry, referenced.
+UZ-WH-011 (stale timestamp, 5-minute window) — UNIFIED across this surface
+(Indy's call, Aug 28 2026). The Zig answers three families here — the approval
+webhook UZ-APPROVAL-003, Slack events UZ-SLK-010/011 — and the Rust collapses
+them onto UZ-WH-*. A deliberate divergence, not parity: the error docs in
+~/Projects/docs change with it, and M181's rollback note must say a reverted
+Zig daemon answers the old codes.
 Stream write: XADD fleet:{id}:events — entry id IS the canonical event id.
 ```
 
@@ -214,7 +240,7 @@ No product-analytics changes (machine-facing ingress; parity port).
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Signature wall holds (§1) | `cd rustd && cargo test signature` | exit 0 | P0 | |
-| R2 | Ingress + replay parity (§2, §3) | `make test-integration` (ingress/cron lane) | exit 0 | P0 | |
+| R2 | Ingress + replay parity (§2, §3) | `make test-integration-rustd` (ingress/cron subset rides the lane) | exit 0 | P0 | |
 | R3 | Connector flows (§4, §5) | `cd rustd && cargo test connector` + `cargo test outbound` | exit 0 | P0 | |
 | R4 | Route inventory parity for the ingress groups (§2) | `cd rustd && cargo test test_route_inventory_matches_interfaces` | exit 0 | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
@@ -265,6 +291,8 @@ N/A — no files deleted.
 ## Discovery (consult log)
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
+- **§1 shape (Aug 29):** verification cores land in `afd_auth` as pure functions with typed verdicts (the Zig `svix_verify.zig`/`slack_sig.zig` shape); the tower/axum shells wire in at §2 with the routes, matching `afd_api`'s Gate pattern — `afd_auth` stays framework-free, as it is today.
+- **Test cadence (Indy, Aug 29):** no unit/integration lanes mid-milestone; `cargo fmt` + `cargo clippy` at each section boundary; one commit per completed section; the declared `verify.*` set runs once at CHORE(close).
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
