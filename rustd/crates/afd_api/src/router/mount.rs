@@ -18,7 +18,8 @@ use std::sync::Arc;
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
 use crate::handler::{
-    approval, auth as auth_handler, fleet, preference, runner, secret, tenant as tenant_handler,
+    approval, auth as auth_handler, fleet, grant, preference, runner, secret,
+    tenant as tenant_handler,
 };
 use crate::route::{
     AuthRoute, FleetRoute, OpsRoute, Route, RunnerOpsRoute, RunnerRoute, TenantRoute,
@@ -148,9 +149,10 @@ fn workspace_handler_for<D: Serving>(verb: WorkspaceRoute) -> Option<MethodRoute
 ///
 /// The detail route carries three methods on one template — read, edit and
 /// purge — which is why it is one `MethodRouter` rather than three arms. The
-/// rest arrive with the sections that own them: the message thread and the
-/// event surface with §5, the hosted schedules and the integration grants after
-/// them.
+/// integration grants land beside it: one method each, and the two are separate
+/// arms because they are separate templates carrying separate capabilities. The
+/// rest arrive with the sections that own them — the message thread, the event
+/// surface, the memories and the hosted schedules.
 fn fleet_handler_for<D: Serving>(verb: FleetRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
         FleetRoute::Detail => Some(
@@ -158,6 +160,12 @@ fn fleet_handler_for<D: Serving>(verb: FleetRoute) -> Option<MethodRouter<Arc<D>
                 .patch(fleet::detail::patch::<D>)
                 .delete(fleet::detail::purge::<D>),
         ),
+        // GET alone on the collection and DELETE alone on the item, which is
+        // the whole surface: a grant is seeded by the install and answered
+        // through the approval inbox, so there is no POST here to create one
+        // and no PATCH to edit one.
+        FleetRoute::Grants => Some(get(grant::list::<D>)),
+        FleetRoute::Grant => Some(delete(grant::revoke::<D>)),
         FleetRoute::Messages
         | FleetRoute::Schedules
         | FleetRoute::Schedule
@@ -166,9 +174,7 @@ fn fleet_handler_for<D: Serving>(verb: FleetRoute) -> Option<MethodRouter<Arc<D>
         | FleetRoute::EventsStream
         | FleetRoute::Event
         | FleetRoute::Memories
-        | FleetRoute::Memory
-        | FleetRoute::Grants
-        | FleetRoute::Grant => None,
+        | FleetRoute::Memory => None,
     }
 }
 

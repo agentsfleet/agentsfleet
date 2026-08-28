@@ -8,11 +8,17 @@
 /// The `status` a grant must hold for a fleet to mint against it.
 ///
 /// One of three — `pending`, `approved`, `revoked` — and the only one that
-/// admits anything. The other two are not spelled here because nothing in this
+/// admits anything. The other two are not named here because nothing in this
 /// crate needs to tell them apart: absent, pending and revoked are all "no",
 /// and a reader that distinguished them would invite a caller to treat one of
 /// them as a maybe.
-pub const STATUS_APPROVED: &str = "approved";
+///
+/// Read from [`afd_wire::grant::status`] rather than spelled again, for the
+/// reason the approval vocabulary is: `afd_approval` WRITES this column — an
+/// approval moves the grant, and the operator's revoke moves it back — so a
+/// second copy of the word here is a row one plane writes that the other stops
+/// matching.
+pub const STATUS_APPROVED: &str = afd_wire::grant::status::APPROVED;
 
 /// Every integration `fleet_id` may mint against, in one read.
 ///

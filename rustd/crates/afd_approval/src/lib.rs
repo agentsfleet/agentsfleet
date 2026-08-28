@@ -1,4 +1,12 @@
-//! The operator's side of an approval gate.
+//! The operator's side of a standing decision: an approval gate, and the
+//! integration grant an approval leaves behind.
+//!
+//! Two tables, one authority. [`Inbox`] is the queue of questions a person is
+//! being asked; [`IntegrationGrants`] is the memory of the answers, which the
+//! credential mint consults long after the gate is closed. They meet in
+//! `sql::RESOLVE_GATE`, where answering a grant-kind gate moves the grant in
+//! the same statement — a crash between two would leave a gate saying yes over
+//! a grant that never heard.
 //!
 //! # Why this is not a module inside `afd_fleet`
 //!
@@ -27,9 +35,11 @@
 
 mod decision;
 mod error;
+mod grant;
 mod inbox;
 mod sql;
 
 pub use self::decision::Decision;
 pub use self::error::{Error, Result};
+pub use self::grant::{GrantRow, IntegrationGrants, Revocation};
 pub use self::inbox::{Cursor, Filter, GateRow, Inbox, Resolution, Resolved};
