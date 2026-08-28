@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M183
 **Workstream:** 001
 **Date:** Aug 26, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — one confirmed finding drops a TLS requirement on the datastore connection; the rest is hygiene that decides how much of the port a reader can trust
 **Categories:** API
 **Batch:** B7 — parallel with M182; touches no wire field and no schema, so it shares no surface
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
+**Branch:** `fix/m183-sslmode-parsed-not-searched`
+**Test Baseline:** `unit=6159 integration=measured at VERIFY` — `make test-unit-all` green at `34387641b` (rustd 1442 + app 2406 + website 175 + cli 1624 + design-system 512). The integration count is taken from the same `make test-integration-rustd` run that grades S3, because this branch's diff is one Rust leaf and the docker lane is a gate there rather than a number here.
 **Depends on:** M177_001 (four instances of this defect class were found and three fixed there; this spec sweeps the rest)
 **Provenance:** LLM-drafted (Claude Opus 5, Aug 26, 2026)
 **Canonical architecture:** `docs/architecture/direction.md` §Two daemons, one contract
@@ -52,11 +52,21 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Files Changed (blast radius)
 
+**This branch (§1).** Every other row moved below when §2–§5 were parked; see
+Discovery §Scope taken this pass.
+
 | File | Action | Why |
 |------|--------|-----|
 | `rustd/crates/afd_db/src/config.rs` | EDIT | the TLS decision stops being a substring search over the connection string |
 | `rustd/crates/afd_db/Cargo.toml` | EDIT | declares whatever §1 resolves the URL with, in the file's existing justification style |
 | `rustd/crates/afd_db/tests/config.rs` | EDIT | the pinning cases land here first, then the post-swap assertions |
+| `rustd/crates/afd_db/src/pool.rs` | EDIT | the boot line Dimension 1.4 adds is emitted beside `pool_initialized`'s test surface |
+| `docs/v2/done/M183_001_P1_API_ZIG_WORKAROUND_TRANSLITERATIONS.md` | EDIT | the Graded column and the Discovery record are this spec's durable output |
+
+**Follow-up PR (§2–§5), not opened by this branch.**
+
+| File | Action | Why |
+|------|--------|-----|
 | `rustd/crates/afd_identity/src/capability.rs` | EDIT | the freshness and staleness windows become one typed pair; the swap stops compiling |
 | `rustd/crates/afd_identity/src/jwks/cache.rs` | EDIT | the same window type, so the two caches agree by construction |
 | `rustd/crates/afd_identity/src/jwks/verifier.rs` | EDIT | the config field that feeds the key cache follows its type |
@@ -72,7 +82,6 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/src/runner/validate.rs` | EDIT | the keep marker on the allowlist host check |
 | `rustd/crates/afd_db/src/migration.rs` | EDIT | the keep marker on the const-evaluated slot parse |
 | `rustd/crates/afd_core/src/error_code.rs` | EDIT | the keep marker on the const-evaluated code grammar |
-| `docs/v2/done/M183_001_P1_API_ZIG_WORKAROUND_TRANSLITERATIONS.md` | EDIT | §5's coverage ledger and the Graded column are this spec's durable output |
 
 ## Applicable Rules
 
@@ -116,6 +125,8 @@ Ordered by what a wrong answer costs, not by which grep found it. §1 changes a 
 
 ### §2 — A duration is a `Duration`, and two windows are one value
 
+**PARKED — follow-up PR.** No live caller passes the pair in the wrong order or a negative window; see Discovery §Scope taken this pass.
+
 `ProviderCapabilities::with_windows(source, clock, ttl_ms: i64, ceiling_ms: i64)` takes two adjacent same-typed integers whose order the compiler cannot check, and the ordering invariant they depend on — an entry may not be stale-servable before it is refreshable — is asserted nowhere. Its body already pays for the mismatch: `u64::try_from(ceiling_ms.max(0)).unwrap_or(u64::MAX)` before `Duration::from_millis`. `KeyCache::new(source, clock, ttl_ms)` and `verifier::Config::ttl_ms` carry the same integer. `Duration` is std and already used at fifteen sites here; this adds nothing. **Implementation default:** one type holding both windows, whose constructor returns `Result` and refuses `ttl > ceiling` — parse, don't validate, per RULE FN-RS. Scope is `afd_identity` only: the `_ms` fields in `afd_wire`, `afd_redis::session` and `afd_fleet::gate` are stored and wire shapes, and Invariant 1 puts them out of scope.
 
 - **Dimension 2.1** — both windows' current behaviour is pinned at the boundaries (age exactly at TTL, exactly at ceiling, one past each) before the type changes → Test `test_capability_window_boundaries_pinned`
@@ -124,6 +135,8 @@ Ordered by what a wrong answer costs, not by which grep found it. §1 changes a 
 - **Dimension 2.4** — a negative or absurd millisecond input is refused where it used to be clamped silently → Test `test_negative_window_is_refused_not_clamped`
 
 ### §3 — One concept, one spelling
+
+**PARKED — follow-up PR.** Restated literals; nothing observable changes.
 
 Four concepts are each spelled more than once, and one of them disagrees with itself. `MILLIS_PER_SECOND` is declared privately in `afd_core/src/clock.rs` and again in `afd_fleet/src/gate/store.rs`, and a third time as `MS_PER_SEC` in `afd_fleet/src/money/nanos.rs`. `rediss://` is inline in `afd_redis::Config::is_tls` while `REDIS_SCHEMES` sits above it, so adding a scheme to the table leaves `is_tls` behind. The base64url engine is named at three production modules. And "a lower-case hex body" is written three times: `afd_core::id::first_violation` and `afd_auth::authenticate::accepts_shape` agree (upper-case rejected), while `afd_crypto::secret::decode_hex_into` accepts upper-case because `hex` is case-insensitive — a real difference readable only by opening all three. **Implementation default:** unify the two that agree, and give the one that differs a comment saying so; a shared predicate that quietly changed `secret.rs`'s acceptance would be this spec's own defect class.
 
@@ -134,12 +147,16 @@ Four concepts are each spelled more than once, and one of them disagrees with it
 
 ### §4 — The keeps carry their reason in the file
 
+**PARKED — follow-up PR.** Doc comments only; the keeps it would mark are not opened by this branch.
+
 Roughly fifteen hand-rolls reviewed under M177 were judged deliberate, and nothing in the repository records that judgement — so the next auditor re-derives it, and the one after that. This slice writes it down at the site. Each keep gets a doc section headed `# Why this is hand-written` naming what a crate could not express: the const-evaluated ones (`afd_db::migration::version_of`, `afd_core::error_code::is_registry_spelling`) because `str::parse` is not `const fn` and the assertion must fail the build; `afd_fleet::runner::validate::registry_host_valid` because a permissive URL parse in an egress allowlist is a hole in the cage; `afd_fleet_runtime::instructions` because the bytes are compared against bytes the Zig produced; `afd_core::id` because `Uuid::parse_str` normalises the upper case this product rejects. Per RULE NRC the marker earns its place only where a future agent would otherwise re-derive the judgement — a keep whose reason is already in the signature gets no marker and is listed in §5 instead.
 
 - **Dimension 4.1** — every file in §5's KEEP set carries the marker, and it names a capability rather than a preference → Test `test_every_keep_names_what_a_crate_cannot_express`
 - **Dimension 4.2** — the marker's phrasing is one literal, so the §5 ledger and the audit grep cannot drift apart → Test `test_keep_marker_is_one_spelling`
 
 ### §5 — The coverage ledger
+
+**PARKED — follow-up PR.** A ledger over the six slices this branch no longer sweeps.
 
 The audit's value is the swept-clean list, not the finding count. This slice records, in this spec's own body before it moves to `done/`, one row per surface: the grep or inspection that covered it, what it returned, and the verdict. The surfaces are the seven the sweep was scoped to — parsing and serialization; URL, URI and header handling; date, time and duration arithmetic; string casing, trimming and normalization; collection choices; error composition and classification; retry, backoff and rate-limit arithmetic — plus a row for each surface that is clean because the code does not exist yet (`afd_api` mounts no path parameters and the axum `query` feature is deliberately unenabled), so a later reader does not read absence as coverage.
 
@@ -291,3 +308,27 @@ No product signal changes and no funnel moves: every other slice is internal and
 - **Red-proofs (Invariant 4)** — one `red-proof:` line per swap, naming the clause deleted and the pinning test that then failed. Three expected: §1, §2, §3.
 - **Coverage ledger (§5)** — one row per swept surface: the command, what it returned, and the verdicts. Populated during EXECUTE.
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`. An agent-unilateral deferral is **incomplete scope, not deferral**, and blocks CHORE(close) until the item lands or the quote is captured.
+
+### Scope taken this pass — §1 only
+
+The spec was opened with an explicit instruction to take the confirmed defect
+and park the rest, and that instruction is the deferral record for §2–§5:
+
+> Indy (2026-08-28 23:20): "Read the @docs/v2/pending/M183_001_P1_API_ZIG_WORKAROUND_TRANSLITERATIONS.md and start the important needed fixes, not all? absolutely needed? other we cn park awhen we move the spec to done" — context: §2, §3, §4 and §5 are parked; §1 is taken in full.
+
+What that buys and what it costs, so the next reader does not re-derive it:
+
+- **§1 is taken** because it is the only slice that changes a security posture.
+  Two of its three divergences are reachable through an ordinary connection
+  string — `?ssl-mode=disable` and a `#?sslmode=…` fragment — and one of them
+  drops the TLS requirement the module documentation promises.
+- **§2 is parked.** The swap risk it names is real but latent: every in-tree
+  caller of `with_windows` passes the constants in the documented order, and the
+  `.max(0)` clamp is reachable only from a caller that passes a negative. No
+  production call site does. Filed for the follow-up PR the budget allows.
+- **§3, §4 and §5 are parked.** None of them changes an observable behaviour;
+  §3 is restated literals, §4 is doc comments, §5 is a ledger over slices that
+  are no longer being swept this pass.
+
+The Files Changed table below is scoped to §1 accordingly; the rows for §2–§5
+stay listed as the follow-up's blast radius, not this branch's.
