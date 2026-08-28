@@ -26,6 +26,13 @@ tracing-subscriber = { workspace = true, optional = true }
 # The wire codes a datastore failure answers.
 afd_core.workspace = true
 sqlx.workspace = true
+# Reads the connection string's query, so the TLS decision is taken from the
+# same parse sqlx acts on rather than from a substring scan over the raw bytes.
+# `sqlx_core::Url` IS this crate at this version, so a second grammar is not
+# being introduced — one is being removed. Already in the lock through
+# sqlx-core, redis and reqwest independently; this is a manifest entry on a
+# crate that was already compiling.
+url.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
@@ -34,6 +41,11 @@ tracing.workspace = true
 # Installed by the test harness so event macros evaluate their fields; see the
 # workspace manifest for why that is a correctness concern and not a coverage one.
 tracing-subscriber.workspace = true
+# The boot line's proof reads the event back out of a subscriber, which needs
+# tracing's own API (`Level`, `subscriber::with_default`) and not only the
+# `fmt` builder — an integration test is its own crate and does not inherit the
+# library's dependencies.
+tracing.workspace = true
 # The contention proofs need real parallelism, not a current-thread runtime
 # interleaving two futures politely.
 # `net` and `io-util` belong to the fault-injection harness, not the library:
