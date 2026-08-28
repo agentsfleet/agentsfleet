@@ -112,445 +112,62 @@ impl Problem {
     }
 }
 
-/// Reused title, so two entries cannot drift apart in their spelling.
-const TITLE_REQUEST_FAILED: &str = "Request failed";
+mod auth;
+mod fleet;
+mod integration;
+mod request;
+
+/// The families, in `REGISTRY` order — which is the order [`ENTRIES`] takes.
+///
+/// Split the same way [`crate::error_code`] is, so a code and the entry
+/// describing it live in comparable files. `test_entries_match_the_zig_registry`
+/// walks both against the Zig table, and a family that had drifted out of order
+/// would fail there rather than in a reader's memory.
+const FAMILIES: [&[Problem]; 4] = [
+    self::request::REQUEST,
+    self::auth::AUTH,
+    self::fleet::FLEET,
+    self::integration::INTEGRATION,
+];
+
+/// How many entries the families hold between them.
+const TOTAL: usize = FAMILIES[0].len() + FAMILIES[1].len() + FAMILIES[2].len() + FAMILIES[3].len();
 
 /// One entry per code this workspace declares, in `REGISTRY` order.
 ///
-/// Every string is byte-identical to the Zig entry it mirrors, and
+/// Flattened from [`FAMILIES`] at compile time rather than written out once
+/// more: a table assembled from its parts cannot disagree with them, and
+/// `Problem` is `Copy`, so the assembly costs nothing at run time. Every string
+/// is byte-identical to the Zig entry it mirrors, and
 /// `test_entries_match_the_zig_registry` reads that file and fails if either
-/// side moves — the same device the code list itself is held to.
-const ENTRIES: &[Problem] = &[
-    Problem {
-        code: error_code::UUIDV7_INVALID_ID_SHAPE,
-        status: 400,
-        title: "Invalid identifier shape",
-        hint: "The identifier is not a valid version 7 universally unique identifier (UUID).",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::INVALID_REQUEST,
-        status: 400,
-        title: "Invalid request",
-        hint: "The request body or parameters are invalid. Check the API documentation.",
-        user_message: Some(
-            "That request wasn't valid. Double-check the values you entered and try again.",
-        ),
-    },
-    Problem {
-        code: error_code::PAYLOAD_TOO_LARGE,
-        status: 413,
-        title: "Payload too large",
-        hint: "Request body exceeds the maximum allowed size.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::VAULT_DATA_INVALID,
-        status: 400,
-        title: "Secret data must be a non-empty JSON object",
-        hint: "The body's 'data' field must be a JSON object with at least one key. Strings, arrays, scalars, and `{}` are rejected.",
-        user_message: Some(
-            "That secret needs at least one field. Enter it as a JSON object with one or more keys — not a bare string or list.",
-        ),
-    },
-    Problem {
-        code: error_code::INTERNAL_OPERATION_FAILED,
-        status: 500,
-        title: TITLE_REQUEST_FAILED,
-        hint: "An internal operation failed. Check the err= field. If it continues, run 'agentsfleetd doctor'.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::INTERNAL_DB_UNAVAILABLE,
-        status: 503,
-        title: "Service unavailable",
-        hint: "Check that DATABASE_URL is set and the database server is reachable. Run 'agentsfleetd doctor' to verify.",
-        user_message: Some("A required service is unavailable. Try again shortly."),
-    },
-    Problem {
-        code: error_code::INTERNAL_DB_QUERY,
-        status: 500,
-        title: TITLE_REQUEST_FAILED,
-        hint: "A database query failed. Check the err= field and database logs.",
-        user_message: Some("We couldn't finish that request. Try again shortly."),
-    },
-    Problem {
-        code: error_code::STARTUP_MIGRATION_CHECK,
-        status: 500,
-        title: "Stored data is not ready",
-        hint: "Database migration state could not be verified. Check database connectivity.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::STARTUP_REDIS_CONNECT,
-        status: 500,
-        title: "Event service unavailable",
-        hint: "Redis is unreachable. Check that REDIS_URL_API is set and the Redis server accepts connections. Run 'agentsfleetd doctor' to verify.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::AUTH_INSUFFICIENT_SCOPE,
-        status: 403,
-        title: "Insufficient scope",
-        hint: "Your token lacks a required scope. The error detail names it; see the [Scopes](/api-reference/scopes) reference.",
-        user_message: Some(
-            "You need an additional scope for that. Ask an agentsfleet admin to grant the scope this action requires.",
-        ),
-    },
-    Problem {
-        code: error_code::AUTH_UNAUTHORIZED,
-        status: 401,
-        title: "Unauthorized",
-        hint: "Authentication required. Provide a valid Bearer token.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::AUTH_TOKEN_EXPIRED,
-        status: 401,
-        title: "Token expired",
-        hint: "Your authentication token has expired. Re-authenticate.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::AUTH_UNAVAILABLE,
-        status: 503,
-        title: "Authentication service unavailable",
-        hint: "Authentication service is temporarily unavailable. Retry shortly.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::AUTH_CLI_CREDENTIAL_REVOKED,
-        status: 401,
-        title: "Command-line credential revoked",
-        hint: "This credential was revoked by a logout or by a newer login from this machine. Run `agentsfleet login` to get a new one.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::APIKEY_REVOKED,
-        status: 401,
-        title: "API key has been revoked",
-        hint: "This key was revoked and can no longer authenticate. Mint a replacement with: POST /v1/api-keys",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::RUN_INVALID_RUNNER_TOKEN,
-        status: 401,
-        title: "Invalid runner token",
-        hint: "The Bearer runner_token is missing, malformed, or not recognized. Re-register the runner.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::RUN_STALE_FENCING_TOKEN,
-        // 409, matching the Zig entry's `.conflict`. The word is exact: two
-        // runners each hold a lease they believe is live, and the fence is what
-        // settles which one is. Not a 403 — nothing about the credential is
-        // wrong — and not a 410, because the resource is very much still there,
-        // owned by somebody else.
-        status: 409,
-        title: "Stale fencing token",
-        hint: "The lease was reclaimed by a newer holder. This report is rejected; the current holder's result wins.",
-        // Not dashboard-facing: this rides the runner-to-control-plane wire
-        // contract, and the Zig entry carries the same reachability note.
-        user_message: None,
-    },
-    Problem {
-        code: error_code::RUN_LEASE_NOT_FOUND,
-        status: 404,
-        title: "Lease not found",
-        hint: "No active lease matches this lease_id for the presenting runner; it may have expired, been reclaimed, or never existed.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::RUN_ADMIN_STATE_BLOCKED,
-        status: 401,
-        title: "Runner admin state blocks access",
-        hint: "This runner is cordoned, draining, drained, or revoked and cannot call the runner plane. Re-enroll the host to mint a fresh runner token.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
-        // 409 like the lost verdict beside it, and the pair is the reason both
-        // codes exist: the STATUS cannot tell a runner whether its result is
-        // still wanted, so the code has to.
-        status: 409,
-        title: "Lease exceeded max runtime",
-        hint: "The lease reached its maximum runtime and cannot renew. The runner stops the child and reports any result.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::RUN_LEASE_LOST,
-        status: 409,
-        title: "Lease lost",
-        hint: "The lease moved to another runner before renewal. The former runner must stop its child.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
-        // 402, and load-bearing for the reason the entry below it is: the stock
-        // runner classifies a renew refusal by status AND code. Both 402s stop
-        // the run; the code is what says which pool ran dry, and therefore
-        // whether an operator tops up a balance or edits a ceiling.
-        status: 402,
-        title: "Lease renewal blocked: no credits",
-        hint: "The tenant balance cannot cover another run slice. The lease does not renew, and the run stops cleanly.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::RUNNER_NOT_FOUND,
-        status: 404,
-        title: "Runner not found",
-        hint: "No runner matches this runner_id. Verify the platform admin minted the runner before mutating it.",
-        user_message: Some(
-            "We couldn't find that runner. It may have been removed — refresh the list.",
-        ),
-    },
-    Problem {
-        code: error_code::RUN_BUDGET_EXCEEDED,
-        // 402, and the status is load-bearing rather than decorative: the stock
-        // runner classifies a renew refusal by BOTH status and code, and
-        // `control_plane_client_test.zig` pins that a UZ-RUN-015 arriving on
-        // any other terminal status is NOT a budget breach. A 403 here would
-        // leave the runner treating an exhausted ceiling as an auth failure.
-        status: 402,
-        title: "Lease renewal blocked: fleet budget exhausted",
-        hint: "The fleet reached its daily_dollars or monthly_dollars limit from `TRIGGER.md`, so the run stops. The tenant balance is fine; this is the fleet's own budget.",
-        // Not dashboard-facing: this rides the runner-to-control-plane wire
-        // protocol, and the Zig entry carries the same reachability note.
-        user_message: None,
-    },
-    Problem {
-        code: error_code::RUN_SELFTEST_REFUSED,
-        status: 409,
-        title: "Self-test refused: runner is revoked",
-        hint: "A revoked runner never heartbeats again, so it cannot pick the request up. Enroll a replacement runner and test that one instead.",
-        user_message: Some(
-            "This runner is revoked, so it can't run a self-test. Enroll a new runner to test one.",
-        ),
-    },
-    Problem {
-        code: error_code::AGENTSFLEET_CREDENTIAL_MISSING,
-        // 424, matching the Zig entry's `.failed_dependency`. The fleet's own
-        // request is well-formed; what is missing is a credential it depends
-        // on, which is the distinction this status exists to make.
-        status: 424,
-        title: "Fleet credential missing",
-        hint: "A required credential is not in the vault. Add it with: `agentsfleet secret create <NAME>`",
-        // Not dashboard-facing, and the Zig entry carries the same reachability
-        // note: this is a CLI and API-key surface, and on the lease path it is
-        // logged rather than rendered at all.
-        user_message: None,
-    },
-    Problem {
-        code: error_code::FLEET_BUNDLE_INVALID,
-        status: 400,
-        title: "Invalid Fleet Bundle",
-        hint: "The supplied Fleet Bundle is missing `SKILL.md` or contains unsafe, oversized, or malformed files.",
-        user_message: Some(
-            "That Fleet Bundle isn't valid. It's missing `SKILL.md`, or has an unsafe or oversized file. Check the source and try again.",
-        ),
-    },
-    Problem {
-        code: error_code::FLEET_BUNDLE_NOT_FOUND,
-        status: 404,
-        title: "Fleet Bundle not found",
-        hint: "No installable library entry or stored snapshot matches the request in this workspace.",
-        user_message: Some(
-            "We couldn't find that Fleet Bundle. It may not be installed in this workspace yet — check the Fleet library.",
-        ),
-    },
-    Problem {
-        code: error_code::FLEET_BUNDLE_FETCH_FAILED,
-        status: 502,
-        title: "Fleet Bundle fetch failed",
-        hint: "The Fleet Bundle source could not be fetched from GitHub. The repository may be missing or private, or GitHub may be unreachable. Verify the source reference and retry.",
-        user_message: Some(
-            "We couldn't fetch that Fleet Bundle from GitHub. Check the source and try again.",
-        ),
-    },
-    Problem {
-        code: error_code::FLEET_BUNDLE_STORAGE_UNAVAILABLE,
-        status: 503,
-        title: "Fleet Bundle storage unavailable",
-        hint: "Snapshot storage is not configured or is unavailable, so the validated bundle could not be stored. Retry later or contact the operator.",
-        user_message: Some("We couldn't store your Fleet Bundle right now. Try again shortly."),
-    },
-    Problem {
-        code: error_code::PROVIDER_MODEL_NOT_IN_CATALOGUE,
-        status: 400,
-        title: "Model not in library",
-        hint: "That model is not in the model library. Pick one from GET /v1/models, or ask for it to be added.",
-        user_message: Some(
-            "That model isn't in our library yet. Pick a listed model, or ask us to add support for it.",
-        ),
-    },
-    Problem {
-        code: error_code::PROVIDER_BASE_URL_INVALID,
-        status: 400,
-        title: "Custom endpoint base_url invalid or unsafe",
-        hint: "`base_url` must be https and must not target a loopback, private, link-local, or cloud-metadata host. Only an `openai-compatible` credential may carry one.",
-        user_message: Some(
-            "That endpoint URL isn't allowed. Use a public https URL for your custom endpoint.",
-        ),
-    },
-    Problem {
-        code: error_code::PROVIDER_MODEL_NOT_FOUND,
-        status: 404,
-        title: "Library model not found",
-        hint: "No library model matches this id. List the library to find one, or add the model first.",
-        user_message: Some(
-            "We couldn't find that model in the library. Refresh the list and try again.",
-        ),
-    },
-    Problem {
-        code: error_code::PROVIDER_MODEL_IN_USE,
-        status: 409,
-        title: "Library model is the active platform default",
-        hint: "This model is the active platform default. Point the default at another library model before deleting it.",
-        user_message: Some(
-            "This model is the active platform default — point the default at another model before deleting it.",
-        ),
-    },
-    Problem {
-        code: error_code::PROVIDER_MODEL_EXISTS,
-        status: 409,
-        title: "Library model already exists",
-        hint: "A library row for this provider and model already exists. Edit the existing row instead of adding a duplicate.",
-        user_message: Some(
-            "That model is already in the library. Edit the existing entry instead of adding a duplicate.",
-        ),
-    },
-    Problem {
-        code: error_code::CATALOG_NOT_FOUND,
-        status: 404,
-        title: "Fleet library entry not found",
-        hint: "No catalog entry matches this id. It may already be deleted — refresh the catalog.",
-        user_message: Some(
-            "We couldn't find that fleet. It may have already been removed — refresh the page.",
-        ),
-    },
-    Problem {
-        code: error_code::CATALOG_PUBLISH_WITHOUT_BUNDLE,
-        status: 409,
-        title: "Cannot publish a fleet with no bundle",
-        hint: "No bundle has been fetched for this entry, so there is nothing to publish. Fetch it from its repository first.",
-        user_message: Some(
-            "There's no bundle for this fleet yet. Fetch it from its repository first, then publish.",
-        ),
-    },
-    Problem {
-        code: error_code::CATALOG_DELETE_PUBLISHED,
-        status: 409,
-        title: "Cannot delete a published fleet",
-        hint: "This fleet is published and installable. Unpublish it first, then delete it.",
-        user_message: Some("This fleet is published. Unpublish it first, then delete it."),
-    },
-    Problem {
-        code: error_code::CATALOG_ID_COLLISION,
-        status: 409,
-        title: "Catalog id already taken by another repository",
-        hint: "This catalog id already belongs to a different source repository. Rename the bundle, or retry with replace to overwrite deliberately.",
-        user_message: Some(
-            "A different repository already owns this fleet's name. Rename the bundle, or confirm you want to replace it.",
-        ),
-    },
-    Problem {
-        code: error_code::CATALOG_ROW_STALE,
-        status: 412,
-        title: "Catalog entry changed since you loaded it",
-        hint: "Another operator saved first: `If-Match` names an old version. Refetch the row, re-apply your edit, and retry with the new `etag`.",
-        user_message: Some(
-            "Someone else edited this catalog entry since you opened it. Refresh to see their change, then re-apply your edit.",
-        ),
-    },
-    Problem {
-        code: error_code::CRED_INTEGRATION_NOT_CONNECTED,
-        status: 404,
-        title: "Integration not connected",
-        hint: "No connected integration matches this id in the fleet's workspace. Connect it from the dashboard first.",
-        user_message: Some(
-            "That integration isn't connected. Connect it from the Integrations page, then try again.",
-        ),
-    },
-    Problem {
-        code: error_code::CRED_BROKER_NOT_CONFIGURED,
-        status: 503,
-        title: "Credential broker not configured",
-        hint: "The on-demand credential broker is not configured on this deployment. An operator must set it up before runners can mint credentials.",
-        // Runner-only mint endpoint; the Zig entry carries the same
-        // reachability note, and nothing in `ui/packages/app` fetches it.
-        user_message: None,
-    },
-    Problem {
-        code: error_code::GH_RECONNECT_REQUIRED,
-        status: 409,
-        title: "GitHub App reconnect required",
-        hint: "The GitHub App installation was uninstalled or revoked, so no token can be minted. Reconnect GitHub from the dashboard.",
-        // Surfaced to the agent as a tool failure, not to a dashboard fetch.
-        user_message: None,
-    },
-    Problem {
-        code: error_code::GH_MINT_FAILED,
-        status: 502,
-        title: "GitHub token mint failed",
-        hint: "GitHub did not return an installation token. Retry shortly; if it continues, check GitHub status and the App configuration.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::GRANT_NOT_FOUND,
-        status: 403,
-        title: "No integration grant for service",
-        hint: "This fleet has no approved grant for the target service. Check it with `GET /v1/workspaces/{ws}/fleets/{id}/integration-grants` and resolve its approval.",
-        // Runner-only mint and lease gate.
-        user_message: None,
-    },
-    Problem {
-        code: error_code::CONNECTOR_OAUTH_EXCHANGE_FAILED,
-        status: 502,
-        title: "Connector OAuth exchange failed",
-        hint: "The connector's OAuth exchange was rejected. Start the connect again; if it repeats, check the provider app credentials and redirect URL.",
-        user_message: Some(
-            "That connection didn't go through. Try connecting again from the dashboard.",
-        ),
-    },
-    Problem {
-        code: error_code::REPAIR_WRITE_UNAPPROVED,
-        status: 403,
-        title: "Write mint requires an approved gate",
-        hint: "No repository-write approval was answered for this event, so no write-scoped token issues. The run continues read-only.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::REPAIR_BINDING_DRIFT,
-        status: 403,
-        title: "Fleet binding changed since approval",
-        hint: "The fleet's repository binding no longer matches the approved card. Re-raise the approval so a human sees the current reach.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::REPAIR_SPEND_EXHAUSTED,
-        status: 403,
-        title: "Write request allowance exhausted",
-        hint: "This approval already funded 32 write-credential requests. Answer a new repository-write approval first.",
-        user_message: None,
-    },
-    Problem {
-        code: error_code::API_BACKPRESSURE,
-        status: 429,
-        title: "Too many requests",
-        hint: "The API is at its request limit. Wait for the Retry-After delay, then retry.",
-        // No dashboard sentence, and the Zig entry says why in its own
-        // reachability note: a shed happens before routing, so nothing that
-        // renders a problem page is ever reached to render this one.
-        user_message: None,
-    },
-];
+/// side moves.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "every index is bounded by the loop condition above it, and the whole block is const-evaluated — an out-of-bounds here is a build failure, not a panic"
+)]
+const ENTRIES: [Problem; TOTAL] = {
+    let mut flat = [Problem::UNKNOWN; TOTAL];
+    let mut at = 0;
+    let mut family = 0;
+    while family < FAMILIES.len() {
+        let entries = FAMILIES[family];
+        let mut index = 0;
+        while index < entries.len() {
+            flat[at] = entries[index];
+            at += 1;
+            index += 1;
+        }
+        family += 1;
+    }
+    flat
+};
 
 /// Every entry, for the exhaustive walks the tests do.
 ///
-/// `ENTRIES` is private because it is a lookup table rather than a list anyone
-/// should iterate for its own sake; this is the read-only view the tests use to
-/// prove it total against [`crate::error_code::REGISTRY`].
+/// [`ENTRIES`] is private because it is a lookup table rather than a list
+/// anyone should iterate for its own sake; this is the read-only view the tests
+/// use to prove it total against [`crate::error_code::REGISTRY`].
 #[must_use]
 pub const fn entries() -> &'static [Problem] {
-    ENTRIES
+    &ENTRIES
 }

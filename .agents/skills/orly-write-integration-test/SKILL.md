@@ -1,12 +1,10 @@
 ---
 name: orly-write-integration-test
 description: >
-  Service-layer integration tests against real dependencies (Postgres, Redis,
-  full HTTP router + middleware) with deterministic failure injection,
-  per-test isolation, drain + leak audits, and 100-or-more-connection parallelism
-  proofs. Sister of orly-write-unit-test. Use for handlers, repos, services, or
-  any real-I/O module-boundary crossing. Not for browser E2E (gstack /qa) or
-  pure logic (orly-write-unit-test).
+  Service-layer integration tests against real dependencies — Postgres, Redis,
+  full HTTP router and middleware — with failure injection, per-test isolation,
+  and leak audits. Use for handlers, repositories, services, or any real
+  input/output module boundary; not for browser end-to-end or pure logic.
 ---
 
 # Write Integration Test

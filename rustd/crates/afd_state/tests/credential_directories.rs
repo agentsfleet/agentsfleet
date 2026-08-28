@@ -137,7 +137,11 @@ async fn test_a_cli_credential_resolves_through_its_user() {
 async fn test_a_revoked_cli_credential_resolves_as_revoked() {
     let fixtures = Fixtures::create().await;
     let tenant = fixtures.tenant(&identifier(5)).await;
-    let user = fixtures.user(&identifier(6), &tenant, "auth0|holder").await;
+    // A subject of its own: `uq_users_oidc_subject` is unique across the whole
+    // table, so the sibling test's "auth0|holder" is not free to reuse here.
+    let user = fixtures
+        .user(&identifier(6), &tenant, "auth0|holder-revoked")
+        .await;
     let digest = digest_of("afc_fixture_revoked");
     fixtures.cli_credential(&user, &tenant, &digest, true).await;
 
@@ -293,7 +297,7 @@ async fn test_a_session_token_is_not_looked_up() {
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_a_refused_statement_is_unavailable_not_unknown() {
-    let fixtures = Fixtures::create().await;
+    let fixtures = Fixtures::create_disposable().await;
     let tenant = fixtures.tenant(&identifier(30)).await;
     let digest = digest_of("agt_t_fixture_outage");
     fixtures
@@ -320,7 +324,7 @@ async fn test_a_refused_statement_is_unavailable_not_unknown() {
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_an_unreachable_datastore_is_unavailable() {
-    let fixtures = Fixtures::create().await;
+    let fixtures = Fixtures::create_disposable().await;
     let directory = Credentials::new(fixtures.database().clone());
     fixtures.destroy_database().await;
 

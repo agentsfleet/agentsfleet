@@ -33,17 +33,33 @@ use afd_core::id::Uuid7;
 use afd_core::timing::LEASE_TTL_MS;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
-use self::requests::{ENROLLED_AT, enrolment};
+use self::requests::{ENROLLED_AT, enrolment_tagged, placement_tag};
+use afd_db::test_util::mint_id;
+
 use self::support::Fixtures;
 
-/// The fleet every test here contends for.
-const FLEET: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ec001";
+/// The fleet one test contends for, and the rows it hangs from.
+///
+/// Minted per test rather than three `const`s shared by all four. These are
+/// PRIMARY KEYS, and with every test in the lane sharing one database a fixed
+/// one is a unique-violation the moment a second test seeds its own fleet —
+/// see [`afd_db::test_util::mint_id`].
+struct Ids {
+    fleet: String,
+    workspace: String,
+    tenant: String,
+}
 
-/// Its workspace.
-const WORKSPACE: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ec002";
-
-/// Its billing tenant.
-const TENANT: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0ec003";
+impl Ids {
+    /// Three identifiers no other test in this lane can name.
+    fn mint() -> Self {
+        Self {
+            fleet: mint_id(),
+            workspace: mint_id(),
+            tenant: mint_id(),
+        }
+    }
+}
 
 /// How many runners pile onto one slot.
 ///
@@ -58,10 +74,15 @@ const CONTENDERS: usize = 4;
 /// Fixed-size so callers DESTRUCTURE rather than index: `let [a, b] = …` cannot
 /// panic, where `runners[1]` can, and a contention test that panics on its own
 /// scaffolding reports the wrong failure.
-async fn enrol<const N: usize>(fixtures: &Fixtures) -> [Uuid7; N] {
+async fn enrol<const N: usize>(fixtures: &Fixtures, tag: &str) -> [Uuid7; N] {
     let mut runners = Vec::with_capacity(N);
     for _ in 0..N {
-        let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowListEgress, 1);
+        let request = enrolment_tagged(
+            SandboxTier::LandlockFull,
+            NetworkPolicy::AllowListEgress,
+            1,
+            tag,
+        );
         let enrolled = fixtures
             .runners()
             .register(&request, UnixMillis::from_millis(ENROLLED_AT))
@@ -83,11 +104,13 @@ async fn enrol<const N: usize>(fixtures: &Fixtures) -> [Uuid7; N] {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_lease_affinity_race() {
     let fixtures = Fixtures::create_with_queue().await;
+    let ids = Ids::mint();
+    let tag = placement_tag(&ids.fleet);
     fixtures
-        .seed_fleet(FLEET, WORKSPACE, TENANT, ENROLLED_AT)
+        .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag, ENROLLED_AT)
         .await;
-    let runners: [Uuid7; CONTENDERS] = enrol(&fixtures).await;
-    let fleet = Uuid7::parse(FLEET).expect("the fixture id is a v7 spelling");
+    let runners: [Uuid7; CONTENDERS] = enrol(&fixtures, &tag).await;
+    let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
     let leases = fixtures.leases();
     let now = UnixMillis::from_millis(ENROLLED_AT);
 
@@ -110,7 +133,7 @@ async fn test_lease_affinity_race() {
         "exactly one runner may hold a fleet's slot; the losers read as taken, not as errors"
     );
     assert_eq!(
-        fixtures.affinity_column(FLEET, "fencing_seq").await,
+        fixtures.affinity_column(&ids.fleet, "fencing_seq").await,
         Some("1".to_owned()),
         "a slot claimed for the first time opens at fence one"
     );
@@ -133,11 +156,13 @@ async fn test_lease_affinity_race() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_reclaim_bumps_fence() {
     let fixtures = Fixtures::create_with_queue().await;
+    let ids = Ids::mint();
+    let tag = placement_tag(&ids.fleet);
     fixtures
-        .seed_fleet(FLEET, WORKSPACE, TENANT, ENROLLED_AT)
+        .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag, ENROLLED_AT)
         .await;
-    let [first_runner, second_runner] = enrol(&fixtures).await;
-    let fleet = Uuid7::parse(FLEET).expect("the fixture id is a v7 spelling");
+    let [first_runner, second_runner] = enrol(&fixtures, &tag).await;
+    let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
     let leases = fixtures.leases();
     let now = UnixMillis::from_millis(ENROLLED_AT);
 
@@ -184,11 +209,13 @@ async fn test_reclaim_bumps_fence() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_a_superseded_holder_cannot_release_the_live_slot() {
     let fixtures = Fixtures::create_with_queue().await;
+    let ids = Ids::mint();
+    let tag = placement_tag(&ids.fleet);
     fixtures
-        .seed_fleet(FLEET, WORKSPACE, TENANT, ENROLLED_AT)
+        .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag, ENROLLED_AT)
         .await;
-    let [first_runner, second_runner] = enrol(&fixtures).await;
-    let fleet = Uuid7::parse(FLEET).expect("the fixture id is a v7 spelling");
+    let [first_runner, second_runner] = enrol(&fixtures, &tag).await;
+    let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
     let leases = fixtures.leases();
     let now = UnixMillis::from_millis(ENROLLED_AT);
 
@@ -211,7 +238,7 @@ async fn test_a_superseded_holder_cannot_release_the_live_slot() {
         .expect("a guarded release is a no-op, never a fault");
 
     assert_eq!(
-        fixtures.affinity_column(FLEET, "leased_until").await,
+        fixtures.affinity_column(&ids.fleet, "leased_until").await,
         Some(live.leased_until.as_millis().to_string()),
         "the live holder's claim must survive a superseded holder's release"
     );
@@ -222,7 +249,7 @@ async fn test_a_superseded_holder_cannot_release_the_live_slot() {
         .await
         .expect("the current holder's release must run");
     assert_eq!(
-        fixtures.affinity_column(FLEET, "leased_until").await,
+        fixtures.affinity_column(&ids.fleet, "leased_until").await,
         Some(lapsed.as_millis().to_string()),
         "the current holder frees the slot it actually holds"
     );
@@ -240,11 +267,13 @@ async fn test_a_superseded_holder_cannot_release_the_live_slot() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_a_reclaim_preserves_the_meter_a_fresh_lease_resets() {
     let fixtures = Fixtures::create_with_queue().await;
+    let ids = Ids::mint();
+    let tag = placement_tag(&ids.fleet);
     fixtures
-        .seed_fleet(FLEET, WORKSPACE, TENANT, ENROLLED_AT)
+        .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag, ENROLLED_AT)
         .await;
-    let [first_runner, second_runner] = enrol(&fixtures).await;
-    let fleet = Uuid7::parse(FLEET).expect("the fixture id is a v7 spelling");
+    let [first_runner, second_runner] = enrol(&fixtures, &tag).await;
+    let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
     let leases = fixtures.leases();
     let now = UnixMillis::from_millis(ENROLLED_AT);
 
@@ -255,7 +284,7 @@ async fn test_a_reclaim_preserves_the_meter_a_fresh_lease_resets() {
         .expect("an unclaimed slot is winnable");
 
     // Stand in for a run that metered some tokens before its holder died.
-    fixtures.set_metered_input(FLEET, METERED).await;
+    fixtures.set_metered_input(&ids.fleet, METERED).await;
 
     let lapsed = first.leased_until.saturating_add_millis(1);
     leases
@@ -266,7 +295,7 @@ async fn test_a_reclaim_preserves_the_meter_a_fresh_lease_resets() {
 
     assert_eq!(
         fixtures
-            .affinity_column(FLEET, "metered_input_tokens")
+            .affinity_column(&ids.fleet, "metered_input_tokens")
             .await,
         Some(METERED.to_string()),
         "a reclaim meters FORWARD, so the claim must not clear the cursor"
@@ -279,7 +308,7 @@ async fn test_a_reclaim_preserves_the_meter_a_fresh_lease_resets() {
         .expect("the reset must run");
     assert_eq!(
         fixtures
-            .affinity_column(FLEET, "metered_input_tokens")
+            .affinity_column(&ids.fleet, "metered_input_tokens")
             .await,
         Some("0".to_owned()),
         "a fresh lease meters from zero"

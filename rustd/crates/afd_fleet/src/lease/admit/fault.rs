@@ -2,7 +2,7 @@
 //!
 //! # Named for the fault, not for the posture
 //!
-//! `Posture` is already taken, and by the money path: [`crate::money::Posture`]
+//! `Posture` is already taken, and by the money path: [`afd_billing::Posture`]
 //! is who supplies the provider key, which is the spelling
 //! `billing.usage_ledger.posture` uses and therefore the one that keeps its
 //! name. A module called `posture` beside it meant [`super`] imported
@@ -21,7 +21,6 @@
 
 use afd_core::error_code;
 
-use crate::error::Error;
 use crate::lease::admit::{Admission, Transient};
 
 /// What a gate's own failure decides.
@@ -87,7 +86,7 @@ impl Gate {
     /// spells that `absorb(&fault).ok_or(fault)`: one expression, and if the
     /// posture is ever changed to `Admit` the gate propagates the error instead
     /// of silently admitting — which is the right way for that edit to fail.
-    pub(super) fn absorb(self, fault: &Error) -> Option<Admission> {
+    pub(super) fn absorb(self, fault: &afd_billing::Error) -> Option<Admission> {
         // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
         // scores the dead copy.
         let code = error_code::INTERNAL_DB_QUERY.as_str();

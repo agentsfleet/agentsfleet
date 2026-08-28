@@ -13,7 +13,9 @@
 mod support;
 
 use afd_core::env::MapEnv;
-use agentsfleetd::preflight::{ENCRYPTION_MASTER_KEY_KNOB, Fault, preflight};
+use agentsfleetd::preflight::{
+    ENCRYPTION_MASTER_KEY_KNOB, Fault, SESSION_CODE_PEPPER_KNOB, preflight,
+};
 
 /// The API role's Postgres knob — the name an operator actually exports.
 const DATABASE_KNOB: &str = "DATABASE_URL_API";
@@ -32,7 +34,14 @@ const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef01234567
 
 /// The datastore and key knobs, plus `extra`, plus a usable identity provider.
 fn env_with(extra: [(&str, &str); 3]) -> MapEnv {
-    MapEnv::from_pairs(extra.into_iter().chain(support::IDENTITY))
+    // The pepper is chained rather than passed in `extra`, because no test
+    // here is ABOUT the pepper: each holds it good and varies one other knob.
+    MapEnv::from_pairs(
+        extra
+            .into_iter()
+            .chain(support::SESSION_PEPPER)
+            .chain(support::IDENTITY),
+    )
 }
 
 /// An environment with every knob this daemon refuses to boot without.
@@ -55,7 +64,12 @@ fn test_preflight_lists_missing() {
 
     let mut knobs = refusal.knobs();
     knobs.sort_unstable();
-    let mut expected = vec![DATABASE_KNOB, REDIS_KNOB, ENCRYPTION_MASTER_KEY_KNOB];
+    let mut expected = vec![
+        DATABASE_KNOB,
+        REDIS_KNOB,
+        ENCRYPTION_MASTER_KEY_KNOB,
+        SESSION_CODE_PEPPER_KNOB,
+    ];
     expected.extend(support::IDENTITY.map(|(knob, _value)| knob));
     expected.sort_unstable();
     assert_eq!(
@@ -164,6 +178,41 @@ fn test_preflight_separates_unusable_from_unset() {
     );
 }
 
+/// The login pepper is refused when unset, like the key it sits beside.
+///
+/// Every other test here holds the pepper good and varies something else, so
+/// without this one the knob could be dropped from the required set and the
+/// suite would stay green: `complete()` would simply stop supplying a value
+/// nobody asked for. This is the test that fails when that happens.
+#[test]
+fn test_preflight_requires_the_login_pepper() {
+    // Built from the complete set MINUS the pepper, rather than assembled by
+    // hand, so the environment cannot drift away from `complete()` and start
+    // failing for some second reason.
+    let env = MapEnv::from_pairs(
+        [
+            (DATABASE_KNOB, GOOD_DATABASE),
+            (REDIS_KNOB, GOOD_REDIS),
+            (ENCRYPTION_MASTER_KEY_KNOB, GOOD_KEK),
+        ]
+        .into_iter()
+        .chain(support::IDENTITY),
+    );
+
+    let refusal =
+        preflight(&env).expect_err("an unpeppered digest is not a login this daemon serves");
+
+    assert_eq!(
+        refusal.knobs(),
+        vec![SESSION_CODE_PEPPER_KNOB],
+        "the pepper is the only knob withheld, so it is the only fault"
+    );
+    assert!(
+        matches!(refusal.faults().first(), Some(&Fault::Missing { .. })),
+        "an unset pepper is missing, not invalid: {refusal:?}"
+    );
+}
+
 /// A complete environment resolves, and hands back what boot will open.
 #[test]
 fn test_preflight_resolves_a_complete_environment() {
@@ -185,5 +234,11 @@ fn test_preflight_resolves_a_complete_environment() {
     assert!(
         !format!("{:?}", config.kek()).contains(GOOD_KEK),
         "a resolved master key must not render its own material"
+    );
+    // The pepper is key material for the same reason and gets the same
+    // treatment: it reaches boot, and it does not reach a log line.
+    assert!(
+        !format!("{:?}", config.session_code_pepper()).contains(support::SESSION_PEPPER[0].1),
+        "a resolved login pepper must not render its own material"
     );
 }

@@ -19,7 +19,7 @@ use afd_core::env::MapEnv;
 use afd_crypto::entropy::Entropy;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_db::{Db, Migrator};
-use afd_fleet::Runners;
+use afd_runner::Runners;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 use http::{Method, StatusCode};
 use sqlx::AssertSqlSafe;

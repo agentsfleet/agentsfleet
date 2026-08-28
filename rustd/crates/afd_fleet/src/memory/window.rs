@@ -29,7 +29,7 @@ use afd_wire::memory::MemoryDelta;
 
 /// The one category that hydrates before recency is considered.
 ///
-/// Shared with [`crate::sql::memory::EVICT_PAST_CAP`], which protects exactly
+/// Shared with [`crate::sql::EVICT_PAST_CAP`], which protects exactly
 /// this category when choosing eviction victims. One declaration keeps the two
 /// in lockstep — hydration must never pin what eviction deletes first, which is
 /// what `fleet_memory.zig` needs a `comptime` assertion over a static map to

@@ -47,19 +47,18 @@ use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_fleet::Runners;
 use afd_redis::{FleetStreams, ReadyIndex};
+use afd_runner::Runners;
 use agentsfleetd::serve::{Booted, boot};
 use agentsfleetd::supervisor::Supervisor;
-use sqlx::AssertSqlSafe;
 
-use crate::e2e_db::{admin, fresh_database};
+use crate::e2e_db::scenario_database;
 use crate::e2e_seed::{
     DEEP_POOL, enrolment, seed_fleet, seed_model_rate, seed_platform_default, seed_provider_key,
     seed_wallet,
 };
 
-use crate::support::{IDENTITY, install_subscriber};
+use crate::support::{IDENTITY, SESSION_PEPPER, install_subscriber};
 
 /// Where the lane publishes the Postgres it brought up.
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
@@ -132,6 +131,9 @@ fn daemon_environment(database: &str) -> MapEnv {
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
         ]
         .into_iter()
+        // Required at boot, and resolved rather than used: this lane boots the
+        // daemon for real, so it has to satisfy preflight in full.
+        .chain(SESSION_PEPPER)
         .chain(IDENTITY),
     )
 }
@@ -168,10 +170,6 @@ fn unique_ids() -> (String, String, String) {
 pub(crate) struct Scenario {
     /// The daemon under test. Dropped last, after the supervisor is shut down.
     pub(crate) booted: Booted,
-    /// The lane's admin URL, for dropping this scenario's database.
-    admin_url: String,
-    /// The database this scenario created and the daemon was pointed at.
-    database_name: String,
     /// Where to send requests, already spelled as an origin.
     pub(crate) base: String,
     /// The fleet holding the seeded event.
@@ -198,13 +196,9 @@ pub(crate) struct Scenario {
 /// like a broken poll.
 pub(crate) async fn scenario(supervisor: &mut Supervisor) -> Scenario {
     install_subscriber();
-    let admin_url = lane(DATABASE_LANE_KNOB);
-    let database_name = format!(
-        "afd_e2e_{}_{}",
-        std::process::id(),
-        SEQUENCE.fetch_add(1, Ordering::Relaxed)
-    );
-    let database_url = fresh_database(&admin_url, &database_name).await;
+    // The lane's database, already migrated. Scenarios are kept apart by the
+    // identifiers `unique_ids` mints below, not by a database apiece.
+    let database_url = scenario_database(&lane(DATABASE_LANE_KNOB));
 
     let booted = boot(&daemon_environment(&database_url), EPHEMERAL, supervisor)
         .await
@@ -239,8 +233,6 @@ pub(crate) async fn scenario(supervisor: &mut Supervisor) -> Scenario {
         token: enrolled.token.expose().to_owned(),
         seeded_at: now,
         booted,
-        admin_url,
-        database_name,
     }
 }
 
@@ -265,27 +257,15 @@ impl Scenario {
     /// would evict them, and closing is the difference between a clean teardown
     /// and one that relies on eviction.
     pub(crate) async fn cleanup(self) {
-        let Self {
-            booted,
-            admin_url,
-            database_name,
-            fleet,
-            ..
-        } = self;
+        let Self { booted, fleet, .. } = self;
 
         let index = ReadyIndex::new(booted.queue.clone());
         if let Ok(token) = index.mark(&fleet, &fleet).await {
             let _cleared = index.clear_if_unchanged(&fleet, &token).await;
         }
         drop(booted);
-
-        admin(
-            &admin_url,
-            AssertSqlSafe(format!(
-                "DROP DATABASE IF EXISTS {database_name} WITH (FORCE)"
-            )),
-        )
-        .await;
+        // Nothing to drop: the scenario ran in the lane's own database, and its
+        // rows are keyed by identifiers no other scenario can name.
     }
 }
 

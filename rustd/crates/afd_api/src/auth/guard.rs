@@ -124,8 +124,14 @@ pub async fn prove<D: Services>(
     // rather than a parameter because axum has no other way to hand a value
     // from a layer to a handler — and the extractor is what keeps that
     // stringly-typed lookup out of every handler body.
-    request.extensions_mut().insert(principal);
-    next.run(request).await
+    request.extensions_mut().insert(principal.clone());
+    let mut response = next.run(request).await;
+    // And onto the RESPONSE, for the reporting layer outside this one. A
+    // request extension travels inward only, so a refusal written beneath here
+    // would otherwise be attributed to nobody — which is the difference between
+    // "a person hit a wall" and "something did".
+    response.extensions_mut().insert(principal);
+    response
 }
 
 /// Writes a refusal, and logs it against the same request id the caller sees.

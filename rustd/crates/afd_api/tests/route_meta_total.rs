@@ -32,6 +32,18 @@ use http::Method;
 /// family that lost a route would otherwise pass every other test here.
 const ZIG_ROUTE_COUNT: usize = 81;
 
+/// Routes the Zig serves that this daemon deliberately does not table.
+///
+/// One: `/v1/fleets/streams`, dropped by Indy's call while merging M179 —
+/// see `afd_api::route::runner_ops` for the reasoning and M179's Dimension 4.4
+/// for the record. Counted rather than subtracted inline so the divergence has
+/// to be justified to change: a SECOND route going missing still fails this
+/// test, which is the whole reason the count is pinned.
+const DECLARED_DIVERGENCES: usize = 1;
+
+/// What this daemon's union must carry.
+const RUST_ROUTE_COUNT: usize = ZIG_ROUTE_COUNT - DECLARED_DIVERGENCES;
+
 /// Every family's roster is reachable from `Route::all`, and nothing is
 /// counted twice.
 ///
@@ -49,9 +61,10 @@ fn test_every_route_is_walked_exactly_once() {
     );
     assert_eq!(
         walked.len(),
-        ZIG_ROUTE_COUNT,
-        "the walk covers {} routes, the Zig union carried {ZIG_ROUTE_COUNT} — \
-         a route was dropped or added without the count moving with it",
+        RUST_ROUTE_COUNT,
+        "the walk covers {} routes; the Zig union carried {ZIG_ROUTE_COUNT} and \
+         this daemon declares {DECLARED_DIVERGENCES} of them unported — a route \
+         was dropped or added without the count moving with it",
         walked.len()
     );
 
@@ -267,5 +280,53 @@ fn test_each_method_resolves_to_its_own_rung() {
     let events = Route::Fleet(FleetRoute::Events).meta().scopes;
     for method in [Method::GET, Method::POST, Method::DELETE] {
         assert_eq!(events.required(&method), &[Scope::FleetRead]);
+    }
+}
+
+/// Every workspace-addressed route carries the ownership check, and no other does.
+///
+/// The one property that, if it broke, would break silently and in exactly the
+/// wrong direction: a route deriving `Ownership::None` by accident serves one
+/// tenant's rows to another with nothing failing. That is the failure
+/// `cross_workspace_idor_test.zig` exists because of, and it is why the derived
+/// answer is checked against the template here rather than trusted.
+///
+/// The check is deliberately written the OTHER way round from the derivation:
+/// this asks `str::contains` at runtime, where `Ownership::of` walks bytes in a
+/// `const fn`. Two implementations of one predicate that must agree is the
+/// point — a bug in the `const` scanner shows up here rather than in production.
+#[test]
+fn test_ownership_is_checked_exactly_where_the_path_names_a_workspace() {
+    for route in Route::all() {
+        let meta = route.meta();
+        let addressed = meta.template.contains(afd_api::route::WORKSPACE_PARAMETER);
+        assert_eq!(
+            meta.ownership.is_checked(),
+            addressed,
+            "{}: template names a workspace = {addressed}, ownership checked = {}",
+            meta.template,
+            meta.ownership.is_checked()
+        );
+    }
+}
+
+/// A route that checks ownership is a route that proved a credential first.
+///
+/// Ownership asks whose an object is, which is a question about an identity —
+/// so a route asking it with no bearer to identify would be asking about
+/// nobody. The layer would then refuse every request, which is safe and useless;
+/// this fails the build instead, at the table, where the mistake is.
+#[test]
+fn test_every_owned_route_is_also_guarded() {
+    for route in Route::all() {
+        let meta = route.meta();
+        if meta.ownership.is_checked() {
+            assert_eq!(
+                meta.guard,
+                Guard::Bearer,
+                "{} checks ownership, so it must prove a tenant credential",
+                meta.template
+            );
+        }
     }
 }

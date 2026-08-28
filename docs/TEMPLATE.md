@@ -100,6 +100,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Categories:** {API | CLI | UI | SKILL | DOCS | OBS | INFRA — alphabetised, one or more}
 **Batch:** B{1-4} — {parallel execution context}
 **Branch:** {feat/mNN-name — added at CHORE(open)}
+<!-- A deliberately folded workstream adds Folded-into metadata per dispatch/lifecycle.md. -->
 **Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
 **Depends on:** {M{N}_{NNN} (one-line reason), …}
 **Provenance:** human-written | LLM-drafted ({model}, {date}) | agent-generated (pre-spec, {source doc})

@@ -72,27 +72,33 @@ impl Credentials {
     where
         R: for<'r> FromRow<'r, PgRow> + Send + Unpin,
     {
-        let mut connection = self.database.acquire().await.map_err(|source| {
-            let code = error_code::INTERNAL_DB_UNAVAILABLE.as_str();
-            let reason = source.to_string();
-            tracing::warn!(
-                error_code = code,
-                class,
-                reason,
-                event = "credential_lookup_unavailable",
-                "no connection for a credential lookup — answering unavailable, \
+        let mut connection = self
+            .database
+            .acquire()
+            .await
+            .inspect_err(|failure| {
+                let code = error_code::INTERNAL_DB_UNAVAILABLE.as_str();
+                let reason = failure.to_string();
+                tracing::warn!(
+                    error_code = code,
+                    class,
+                    reason,
+                    event = "credential_lookup_unavailable",
+                    "no connection for a credential lookup — answering unavailable, \
                  never unknown, so a caller is not told its credential is bad"
-            );
-            Unavailable
-        })?;
+                );
+            })
+            // `inspect_err` observes, `map_err` maps: this error carries no source,
+            // so stringifying into it would have dropped the chain (RULE ERR-RS).
+            .map_err(|_logged| Unavailable)?;
 
         sqlx::query_as::<_, R>(statement)
             .bind(digest.as_str())
             .fetch_optional(&mut *connection)
             .await
-            .map_err(|source| {
+            .inspect_err(|failure| {
                 let code = error_code::INTERNAL_DB_QUERY.as_str();
-                let reason = source.to_string();
+                let reason = failure.to_string();
                 tracing::warn!(
                     error_code = code,
                     class,
@@ -100,8 +106,10 @@ impl Credentials {
                     event = "credential_lookup_failed",
                     "credential lookup failed"
                 );
-                Unavailable
             })
+            // `inspect_err` observes, `map_err` maps: the cause reaches the log
+            // and never the error VALUE, which carries no source (RULE ERR-RS).
+            .map_err(|_logged| Unavailable)
     }
 
     /// `agt_t` — the key's row, and the person who minted it.

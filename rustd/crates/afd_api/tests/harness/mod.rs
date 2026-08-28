@@ -6,20 +6,36 @@
 //! against the thing that ships — including the layer ORDER, which a test
 //! calling a handler directly cannot see at all.
 //!
-//! # Why the pool is real and unreachable rather than mocked
+//! # Every store is the REAL one, over datastores that answer nothing
 //!
-//! There is no seam between `afd_fleet` and Postgres, deliberately: the
-//! statements are the parity target, so a fake store would prove a handler
-//! against SQL nobody runs. Instead the store holds a pool over an address that
-//! answers nothing ([`afd_db::Db::unreachable`]), which is exactly what a
-//! datastore outage looks like from the request path — and lets a suite prove
-//! the transport-class refusal (RULE ECL) without stopping a container.
+//! There is no seam between a store and its statements, deliberately: the SQL
+//! is the parity target, so a fake store would prove a handler against SQL
+//! nobody runs. Each store here therefore holds a pool over an address that
+//! answers nothing ([`afd_db::Db::unreachable`]) and, where it needs one, a
+//! queue built the same way ([`afd_redis::Redis::unreachable`]). That is
+//! exactly what a datastore outage looks like from the request path, and it
+//! lets a suite prove the transport-class refusal (RULE ECL) without stopping a
+//! container.
+//!
+//! This replaced eight hand-written `No*` stubs, one per service seam, each
+//! spelling `Err(Error::datastore_unavailable())` in every method. They were
+//! not wrong, they were REDUNDANT — and worse than redundant in one specific
+//! way: a stub that INVENTS the refusal keeps agreeing with the suite after the
+//! real store stops producing it. Deleting them also deleted the
+//! `test-util` constructors that existed only to fabricate that error.
+//!
+//! Two stubs survive, and neither is a uniform refusal — which is the line:
+//! [`OneWorkspace`] answers ownership honestly so both halves of that matrix
+//! stay reachable, and [`NoWork`] answers a lease plane's verbs with success so
+//! the runner routes are reachable at all. Each carries test LOGIC no real
+//! store over a dead datastore could stand in for.
 //!
 //! A test that needs rows is an integration test, `#[ignore]`d and run by
 //! `make test-integration-rustd`. This harness is for everything BEFORE the
-//! first row is read, which is where §1's dimensions live.
+//! first row is read.
 #![allow(
     dead_code,
+    unused_imports,
     reason = "shared across suites; each uses the subset its dimensions need"
 )]
 #![expect(
@@ -29,38 +45,63 @@
 
 use std::sync::Arc;
 
-use afd_admin::{Models, PlatformKeys};
 use afd_api::router::{Dependencies, ReadyInputs, build};
-use afd_api::services::Leasing;
 use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Planes, Services};
-use afd_auth::credential::{CredentialKind, Presented};
+use afd_auth::credential::CredentialKind;
 use afd_auth::directory::{CredentialDirectory, CredentialRecord, Digest, Liveness};
 use afd_auth::error::Unavailable;
 use afd_auth::mock::{MockCapabilities, MockDirectory};
 use afd_auth::principal::Subject;
 use afd_auth::scope::ScopeSet;
 use afd_auth::verifier::NoVerifier;
+use afd_billing::tenant::Billing;
 use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
+use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_fleet::Runners;
+use afd_events::{History, Steer};
 use afd_fleet::bundle::{Bundles, ContentHash};
-use afd_fleet::streams::{LiveStreams, SSE_MAX_STREAMS_DEFAULT};
+use afd_fleet::memory::Memories;
+use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_library::{Libraries, LibraryImports};
+use afd_observability::Analytics;
+use afd_redis::Redis;
+use afd_redis::config::{RedisConfig, RedisRole};
+use afd_runner::Runners;
+use afd_sse::{Ceiling, Live};
 use afd_state::Credentials;
+use afd_tenant::apikey::ApiKeys;
+use afd_tenant::cli_credential::CliCredentials;
+use afd_tenant::models::Models;
+use afd_tenant::session::Sessions as Logins;
+use afd_tenant::workspace::Workspaces;
+// Aliased for the reason the composition root aliases it: `afd_credential::vault`
+// is the runner plane's reader and this is the workspace-admin surface.
+use afd_admin::{Models as AdminModels, PlatformKeys};
+use afd_approval::{Inbox, IntegrationGrants};
+use afd_tenant::preference::Preferences;
+use afd_vault::Vault as SecretVault;
 use axum::Router;
-use axum::body::Body;
-use axum::response::Response;
 use bytes::Bytes;
-use http::{Method, Request};
 use object_store::ObjectStoreExt as _;
 use object_store::memory::InMemory;
-use serde_json::Value;
-use tower::ServiceExt as _;
+
+mod readiness;
+
+use self::readiness::{unreachable_pool, unreachable_queue};
+mod stubs_runner;
+mod stubs_tenant;
+mod support;
+
+pub(crate) use self::stubs_runner::NoWork;
+pub(crate) use self::stubs_tenant::{DEPLOYMENT, OWNED_WORKSPACE, OneWorkspace};
+pub(crate) use self::support::{
+    file_runner, json_body, presented, runner_id, send, send_with_headers, tenant,
+};
 
 /// A Postgres nobody is listening on.
 ///
@@ -70,8 +111,31 @@ use tower::ServiceExt as _;
 /// acquire budgets.
 const NOWHERE: &str = "postgres://runner:secret@127.0.0.1:1/agentsfleet";
 
+/// A Redis nobody is listening on, for the same reason and on the same port.
+const NOWHERE_QUEUE: &str = "redis://127.0.0.1:1";
+
+/// The pool knob naming how long an acquire may spend before it reports.
+const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
+
+/// What this harness sets it to — see [`unreachable_pool`].
+const ACQUIRE_TIMEOUT_MS: &str = "50";
+
 /// A fixed instant, so every row a verb writes is stamped predictably.
 const FROZEN: i64 = 1_760_000_000_000;
+
+/// The process key the secret store seals under.
+///
+/// Never used to seal anything here — every write refuses at the pool, before
+/// an envelope is built — but a `Vault` cannot be CONSTRUCTED without one, which
+/// is the invariant that type exists to carry. Supplying a fixture key is how a
+/// suite honours it rather than working around it.
+const FIXTURE_KEK: [u8; 32] = [0x11; 32];
+
+/// The pepper the device-flow code digest is computed under, for the same reason.
+const FIXTURE_PEPPER: &[u8] = b"fixture-session-code-pepper";
+
+/// The dashboard origin a login surface composes approval links against.
+const FIXTURE_APP_URL: &str = "https://app.fixture.test";
 
 /// The seams a suite arranges, and the state the router is built over.
 #[derive(Debug)]
@@ -84,9 +148,25 @@ pub(crate) struct Fleet {
     runners: Runners,
     leases: NoWork,
     bundles: Bundles,
-    streams: LiveStreams,
+    workspaces: OneWorkspace,
+    workspace_directory: Workspaces,
+    api_keys: ApiKeys,
+    cli_credentials: CliCredentials,
+    logins: Logins,
+    fleets: Fleets,
+    secrets: SecretVault,
+    preferences: Preferences,
+    approvals: Inbox,
+    grants: IntegrationGrants,
+    events: History,
+    live: Live,
+    analytics: Analytics,
+    steering: Steer,
+    memories: Memories,
+    billing: Billing,
+    catalogue: Models,
     runner_lease_history: RunnerLeaseHistory,
-    models: Models,
+    admin_models: AdminModels,
     platform_keys: PlatformKeys,
     libraries: Libraries,
     library_imports: LibraryImports,
@@ -94,6 +174,10 @@ pub(crate) struct Fleet {
 }
 
 /// The same auth seam backed either by the fast map or production Postgres.
+///
+/// `Fleet::new` files credentials into the map, which needs no datastore; the
+/// live-router suites resolve the same seam through real Postgres so a scope
+/// gate is proven against the rows a migration actually created.
 #[derive(Debug, Clone)]
 pub(crate) enum Directory {
     Mock(MockDirectory),
@@ -113,129 +197,28 @@ impl CredentialDirectory for Directory {
     }
 }
 
-/// A lease plane that always answers no-work.
+/// How many streams a fixture instance carries.
 ///
-/// The production plane holds a Redis connection that is opened by CONNECTING,
-/// so these suites cannot build one — and should not: what they prove is the
-/// router's guard, scope and refusal matrix, which is decided BEFORE any verb
-/// runs. A stub that always answers the same thing keeps that boundary honest,
-/// because a suite here cannot accidentally start asserting on lease
-/// behaviour that belongs to `afd_fleet`'s own integration lane.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct NoWork;
-
-impl Leasing for NoWork {
-    fn lease(
-        &self,
-        _runner_id: &Uuid7,
-        _degraded: bool,
-        _now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
-        std::future::ready(Ok(r#"{"lease":null,"retry_after_ms":1000}"#.to_owned()))
-    }
-
-    /// Accepts every report and charges nothing, which is what a plane with no
-    /// work in it would do.
-    ///
-    /// Deliberately not a refusal. A suite here proves the guard, scope and
-    /// refusal matrix in FRONT of the verb, so what it needs is for an
-    /// authenticated runner to REACH the handler — and every refusal this verb
-    /// can raise needs a real lease row to be refused against, which is
-    /// `afd_fleet`'s integration lane and its live Postgres. Returning an error
-    /// here would put a code on the wire that no datastore decided, and a
-    /// router suite asserting on it would be asserting on this stub.
-    fn report(
-        &self,
-        _runner_id: &Uuid7,
-        _request: &afd_wire::report::ReportRequest<'_>,
-        _now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::money::Nanos>> + Send {
-        std::future::ready(Ok(afd_fleet::money::Nanos::ZERO))
-    }
-
-    /// Accepts every batch of frames and publishes none, which is what a plane
-    /// with no queue behind it does.
-    ///
-    /// The truest of the three stubs: publishing IS best-effort in production,
-    /// so a plane that drops every frame and answers `Ok` is not pretending —
-    /// it is one end of the range the real verb already spans.
-    fn activity(
-        &self,
-        _runner_id: &Uuid7,
-        _lease_id: &str,
-        _frames: &[afd_wire::activity::ActivityFrame<'_>],
-    ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
-        std::future::ready(Ok(()))
-    }
-
-    /// Mints nothing, and says so with the code a deployment holding no
-    /// platform credential answers.
-    ///
-    /// A REFUSAL where the three stubs above answer `Ok`, and the asymmetry is
-    /// the verb's: `mint` has no success this suite could assert without a
-    /// vault row, a grant and a vendor, so an `Ok` here would have to invent a
-    /// token. `UZ-CRED-002` is the honest answer for a plane with no platform
-    /// credentials in it — the same one production gives — and it still proves
-    /// what these suites are for: that an authenticated runner REACHES the
-    /// handler and an unauthenticated one does not.
-    fn mint(
-        &self,
-        _runner_id: &Uuid7,
-        _request: &afd_wire::credentials::MintCredentialRequest<'_>,
-        _now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::credential::Minted>> + Send {
-        std::future::ready(Err(afd_fleet::Error::mint_unconfigured()))
-    }
-
-    /// Hydrates nothing, which is what a fleet that has never run remembers.
-    ///
-    /// An empty window is a real answer, not a stand-in: a first run seeds from
-    /// exactly this.
-    fn hydrate(
-        &self,
-        _runner_id: &Uuid7,
-        _fleet_id: &Uuid7,
-        _now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<Vec<afd_wire::memory::MemoryDelta<'static>>>> + Send
-    {
-        std::future::ready(Ok(Vec::new()))
-    }
-
-    /// Stores nothing and says so, for the reason [`NoWork::report`] accepts.
-    fn capture(
-        &self,
-        _runner_id: &Uuid7,
-        _fleet_id: &Uuid7,
-        _request: &afd_wire::memory::MemoryPushRequest<'_>,
-        _now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::memory::Captured>> + Send {
-        std::future::ready(Ok(afd_fleet::memory::Captured::default()))
-    }
-
-    /// Renews to the instant asked about, for the reason [`NoWork::report`]
-    /// accepts.
-    fn renew(
-        &self,
-        _runner_id: &Uuid7,
-        _lease_id: &str,
-        _request: afd_wire::report::RenewRequest,
-        now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<UnixMillis>> + Send {
-        std::future::ready(Ok(now))
-    }
-}
+/// Above anything a suite opens, so a stream refused in a test is refused by
+/// the thing that test is about. The one suite that DOES prove the ceiling
+/// lowers it with [`Fleet::carrying_at_most`].
+const DEFAULT_STREAM_CEILING: usize = 64;
 
 impl Fleet {
     /// An instance whose dependencies answer, whose directory is empty, and
-    /// whose Postgres is not there.
+    /// whose Postgres and Redis are not there.
+    ///
+    /// Every store below is the PRODUCTION one. None of them is reachable, so
+    /// every verb refuses at its first acquire — with the error its own crate
+    /// raises, not one this file made up.
     pub(crate) fn new() -> Self {
         let mock = MockDirectory::new();
         let directory = Directory::Mock(mock.clone());
         let capabilities = MockCapabilities::new();
-        let environment = MapEnv::from_pairs([(DbRole::Api.url_knob(), NOWHERE)]);
-        let pool = PoolConfig::resolve(&environment, DbRole::Api)
-            .expect("the fixture connection string is well formed");
-        let database = Db::unreachable(&pool);
+        let database = Db::unreachable(&unreachable_pool());
+        let queue = Redis::unreachable(&unreachable_queue())
+            .expect("a lazy manager opens no socket, so it cannot fail to open one");
+        let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
         Self {
             ready: ReadyInputs {
                 database: true,
@@ -247,45 +230,109 @@ impl Fleet {
             capabilities,
             runners: Runners::new(database.clone(), Entropy::new()),
             runner_lease_history: RunnerLeaseHistory::new(database.clone()),
-            models: Models::new(database.clone(), Entropy::new()),
+            admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
             libraries: Libraries::new(database.clone()),
-            library_imports: LibraryImports::without_store(database),
+            library_imports: LibraryImports::without_store(database.clone()),
             leases: NoWork,
             // Unconfigured by default, so a suite that says nothing about
             // snapshots proves the refusal a deployment with no R2 knobs gives
             // — which is most of them.
             bundles: Bundles::unconfigured(),
-            streams: LiveStreams::new(SSE_MAX_STREAMS_DEFAULT),
+            workspaces: OneWorkspace,
+            workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
+            api_keys: ApiKeys::new(database.clone(), Entropy::new()),
+            cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
+            logins: Logins::new(
+                afd_redis::SessionStore::new(queue.clone()),
+                SecretBytes::new(FIXTURE_PEPPER.to_vec()),
+                Entropy::new(),
+                FIXTURE_APP_URL,
+            ),
+            fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
+            secrets: SecretVault::new(database.clone(), kek, Entropy::new()),
+            preferences: Preferences::new(database.clone(), Entropy::new()),
+            approvals: Inbox::new(database.clone(), queue.clone()),
+            grants: IntegrationGrants::new(database.clone()),
+            events: History::new(database.clone()),
+            // Detached, not connected: a hub opens a pub/sub SOCKET, which is
+            // the one seam in this file that has no `unreachable` form. The
+            // stream routes still answer and still charge the ceiling, which is
+            // the whole of what a refusal-matrix suite reads.
+            live: Live::detached(Ceiling::new(DEFAULT_STREAM_CEILING)),
+            // Silent: a suite must not open a socket to a product-analytics
+            // vendor, and every reporting call is infallible either way.
+            analytics: Analytics::silent(),
+            steering: Steer::new(queue.clone()),
+            memories: Memories::new(database.clone(), Entropy::new()),
+            billing: Billing::new(database.clone()),
+            catalogue: Models::new(database),
             now: UnixMillis::from_millis(FROZEN),
         }
     }
 
     /// An instance whose credential directory and stores share live Postgres.
+    ///
+    /// The seam the admin and operator suites need: everything else in this
+    /// file refuses at the first acquire, which proves a refusal matrix and
+    /// nothing about a row. Redis stays unreachable — no suite built on this
+    /// reaches a queue, and opening one would make a datastore lane out of a
+    /// router lane.
     pub(crate) fn live(database: Db, subject: &str, scopes: ScopeSet) -> Self {
         let who = Subject::new(subject).expect("the fixture subject is not blank");
         let capabilities = MockCapabilities::new().with(&who, scopes);
+        let mock_directory = MockDirectory::new();
         let directory = Directory::Live(Credentials::new(database.clone()));
+        let queue = Redis::unreachable(&unreachable_queue())
+            .expect("a lazy manager opens no socket, so it cannot fail to open one");
+        let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
         Self {
             ready: ReadyInputs {
                 database: true,
                 queue: true,
             },
-            mock_directory: MockDirectory::new(),
             authenticator: Planes::new(directory.clone(), capabilities.clone(), NoVerifier),
+            mock_directory,
             directory,
             capabilities,
             runners: Runners::new(database.clone(), Entropy::new()),
+            leases: NoWork,
+            bundles: Bundles::unconfigured(),
+            workspaces: OneWorkspace,
+            workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
+            api_keys: ApiKeys::new(database.clone(), Entropy::new()),
+            cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
+            logins: Logins::new(
+                afd_redis::SessionStore::new(queue.clone()),
+                SecretBytes::new(FIXTURE_PEPPER.to_vec()),
+                Entropy::new(),
+                FIXTURE_APP_URL,
+            ),
+            fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
+            secrets: SecretVault::new(database.clone(), kek, Entropy::new()),
+            preferences: Preferences::new(database.clone(), Entropy::new()),
+            approvals: Inbox::new(database.clone(), queue.clone()),
+            grants: IntegrationGrants::new(database.clone()),
+            events: History::new(database.clone()),
+            live: Live::detached(Ceiling::new(DEFAULT_STREAM_CEILING)),
+            analytics: Analytics::silent(),
+            steering: Steer::new(queue),
+            memories: Memories::new(database.clone(), Entropy::new()),
+            billing: Billing::new(database.clone()),
+            catalogue: Models::new(database.clone()),
             runner_lease_history: RunnerLeaseHistory::new(database.clone()),
-            models: Models::new(database.clone(), Entropy::new()),
+            admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
             libraries: Libraries::new(database.clone()),
             library_imports: LibraryImports::without_store(database),
-            leases: NoWork,
-            bundles: Bundles::unconfigured(),
-            streams: LiveStreams::new(SSE_MAX_STREAMS_DEFAULT),
             now: UnixMillis::from_millis(FROZEN),
         }
+    }
+
+    /// An instance that will carry `streams` at once and no more.
+    pub(crate) fn carrying_at_most(mut self, streams: usize) -> Self {
+        self.live = Live::detached(Ceiling::new(streams));
+        self
     }
 
     /// An instance reporting `ready` to `/readyz`.
@@ -306,6 +353,33 @@ impl Fleet {
         let _filed = self.mock_directory.clone().with(
             CredentialKind::TenantApiKey,
             &presented(key),
+            CredentialRecord::Person {
+                tenant: tenant(),
+                subject: who.clone(),
+                live: Liveness::Live,
+            },
+        );
+        self.capabilities = self.capabilities.with(&who, scopes);
+        self
+    }
+
+    /// Files a person row under the digest of an `afc_` command-line credential.
+    ///
+    /// Sibling of [`Self::with_person`], and the difference is the whole point:
+    /// the two resolve to the same person with the same capabilities and differ
+    /// only in credential CLASS, which is exactly the axis the command-line
+    /// credential routes refuse on. A suite cannot prove that rule with one of
+    /// them.
+    pub(crate) fn with_terminal(
+        mut self,
+        credential: &str,
+        subject: &str,
+        scopes: ScopeSet,
+    ) -> Self {
+        let who = Subject::new(subject).expect("the fixture subject is not blank");
+        self.mock_directory = self.mock_directory.with(
+            CredentialKind::CliCredential,
+            &presented(credential),
             CredentialRecord::Person {
                 tenant: tenant(),
                 subject: who.clone(),
@@ -355,123 +429,4 @@ impl Fleet {
     }
 }
 
-impl Dependencies for Fleet {
-    fn probe(&self) -> impl Future<Output = ReadyInputs> + Send {
-        std::future::ready(self.ready)
-    }
-}
-
-impl Services for Fleet {
-    type Auth = Planes<Directory, MockCapabilities, NoVerifier>;
-    type Leases = NoWork;
-
-    fn authenticator(&self) -> &Self::Auth {
-        &self.authenticator
-    }
-
-    fn runners(&self) -> &Runners {
-        &self.runners
-    }
-
-    fn leases(&self) -> &NoWork {
-        &self.leases
-    }
-
-    fn bundles(&self) -> &Bundles {
-        &self.bundles
-    }
-
-    fn streams(&self) -> &LiveStreams {
-        &self.streams
-    }
-
-    fn runner_lease_history(&self) -> &RunnerLeaseHistory {
-        &self.runner_lease_history
-    }
-
-    fn models(&self) -> &Models {
-        &self.models
-    }
-
-    fn platform_keys(&self) -> &PlatformKeys {
-        &self.platform_keys
-    }
-
-    fn libraries(&self) -> &Libraries {
-        &self.libraries
-    }
-
-    fn library_imports(&self) -> &LibraryImports {
-        &self.library_imports
-    }
-
-    fn now(&self) -> UnixMillis {
-        self.now
-    }
-}
-
-/// The tenant every fixture person acts in.
-pub(crate) fn tenant() -> Uuid7 {
-    Uuid7::parse("019329c5-0000-7000-8000-000000000001").expect("the fixture tenant is canonical")
-}
-
-/// A runner identifier a fixture files a row under.
-pub(crate) fn runner_id() -> Uuid7 {
-    Uuid7::parse("019329c5-0000-7000-8000-0000000000a1").expect("the fixture runner is canonical")
-}
-
-/// Files a runner row, replacing whatever was under that credential.
-///
-/// Takes the directory by reference and clones inside, because `MockDirectory`
-/// is a builder over shared state: `with` mutates the state every clone points
-/// at and then hands the handle back. A suite revoking between two requests
-/// wants the mutation and not the handle, and saying so once here keeps a
-/// discarded return value out of every test that does it.
-pub(crate) fn file_runner(directory: &MockDirectory, token: &str, runner: &Uuid7, live: Liveness) {
-    let _filed = directory.clone().with(
-        CredentialKind::RunnerToken,
-        &presented(token),
-        CredentialRecord::Machine {
-            runner: runner.clone(),
-            degraded: false,
-            live,
-        },
-    );
-}
-
-/// A credential as the directory keys it — by the digest of what is PRESENTED,
-/// so a fixture names the value a test will actually send.
-fn presented(raw: &str) -> Presented {
-    Presented::from_authorization(&format!("Bearer {raw}"))
-        .expect("a fixture credential is never blank")
-}
-
-/// One request at `router`, with an optional credential.
-pub(crate) async fn send(
-    router: &Router,
-    method: Method,
-    path: &str,
-    credential: Option<&str>,
-    body: &str,
-) -> Response {
-    let mut request = Request::builder().method(method).uri(path);
-    if let Some(token) = credential {
-        request = request.header(http::header::AUTHORIZATION, format!("Bearer {token}"));
-    }
-    let request = request
-        .body(Body::from(body.to_owned()))
-        .expect("the test request is well formed");
-    router
-        .clone()
-        .oneshot(request)
-        .await
-        .expect("axum is infallible")
-}
-
-/// Reads a response body back as JSON.
-pub(crate) async fn json_body(response: Response) -> Value {
-    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .expect("a test response body is small and in memory");
-    serde_json::from_slice(&bytes).expect("the response must be valid JSON")
-}
+mod services;

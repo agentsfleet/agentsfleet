@@ -16,8 +16,8 @@ use afd_core::id::Uuid7;
 use sqlx::Row as _;
 
 use crate::error::{Result, query};
+use crate::lease::sql;
 use crate::lease::store::Leases;
-use crate::sql;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_RECLAIM: &str = "lease reclaim";

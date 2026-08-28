@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_api", "crates/afd_auth", "crates/afd_core", "crates/afd_crypto", "crates/afd_db", "crates/afd_fleet", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_identity", "crates/afd_library", "crates/afd_observability", "crates/afd_redis", "crates/afd_state", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_api", "crates/afd_approval", "crates/afd_auth", "crates/afd_billing", "crates/afd_core", "crates/afd_credential", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_identity", "crates/afd_library", "crates/afd_observability", "crates/afd_redis", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.27.0"
@@ -40,18 +40,62 @@ categories = ["network-programming"]
 # path (M-CRATES-IN-WORKSPACE).
 afd_admin = { path = "crates/afd_admin" }
 afd_api = { path = "crates/afd_api" }
+afd_approval = { path = "crates/afd_approval" }
 afd_auth = { path = "crates/afd_auth" }
+# What a lease costs and what a tenant has. Split out of `afd_fleet` because it
+# reads the `billing.*` schema rather than `core.*`, and only the admission gate
+# calls it — the runner plane's other 23,000 lines never ask about money.
+afd_billing = { path = "crates/afd_billing" }
 afd_core = { path = "crates/afd_core" }
+# What a run may USE: the declared secret, the vault that opens it, the provider
+# it dials, the token a broker mints. Split from afd_fleet once the one misfiled
+# file (an `impl Plane` living under credential/) stopped tying it to the lease.
+afd_credential = { path = "crates/afd_credential" }
 afd_crypto = { path = "crates/afd_crypto" }
 afd_db = { path = "crates/afd_db" }
+# `core.fleet_events` and its live tail. A crate of its own because the table
+# had no owner: its statements sat in `afd_fleet::sql` behind the whole runner
+# plane, so `afd_approval` copied the insert rather than depend on leases,
+# money, policy and four sweepers to reuse ten lines of SQL.
+afd_events = { path = "crates/afd_events" }
 afd_fleet = { path = "crates/afd_fleet" }
+# What a fleet is ALLOWED to do, and the gate a run stops at when the answer
+# needs a person. The lease plane calls down into it at two moments and it
+# calls back at none, which is what let it out.
+afd_gate = { path = "crates/afd_gate" }
+# Deliberately NOT folded into `afd_fleet`, which is the runner plane and is
+# already 25,500 lines — 3.5 times its nearest sibling, and the exact condition
+# that forced `afd_tenant` out of it. Nor into `afd_tenant`, whose api-key and
+# login modules would then rebuild behind a YAML parser and a Redis stream
+# client they never call.
+afd_fleet_lifecycle = { path = "crates/afd_fleet_lifecycle" }
+# The operator's READ plane: cross-table projections a dashboard asks for, over
+# a pool and the wire types and nothing else. Separate from `afd_runner`, which
+# is the host's own plane and WRITES it — a lease-history join reaching for
+# `core.fleets` and `core.fleet_events` would put both on the heartbeat path.
 afd_fleet_ops = { path = "crates/afd_fleet_ops" }
 afd_fleet_runtime = { path = "crates/afd_fleet_runtime" }
 afd_identity = { path = "crates/afd_identity" }
 afd_library = { path = "crates/afd_library" }
 afd_observability = { path = "crates/afd_observability" }
 afd_redis = { path = "crates/afd_redis" }
+# The HOST's plane, split from `afd_fleet` (the RUN's plane): enrolment,
+# liveness, the assertion verdict, and the offline/retention sweepers. The two
+# meet at exactly one audit row, and that meeting is a vocabulary import.
+afd_runner = { path = "crates/afd_runner" }
+# One SSE connection's frames and the fan-in behind a workspace stream. Its own
+# crate rather than a module in `afd_api`: the frame shapes, the sequence
+# discipline and the concurrent-stream ceiling are decided with no router in
+# sight, and `afd_api` is already the workspace's largest crate.
+afd_sse = { path = "crates/afd_sse" }
 afd_state = { path = "crates/afd_state" }
+afd_tenant = { path = "crates/afd_tenant" }
+# The workspace secret surface. Deliberately NOT folded into `afd_fleet`, whose
+# `vault` module is the RUNNER plane's reader — it opens a declared credential
+# for a lease, refuses to degrade a row, and never lists — nor into `afd_state`,
+# which is the credential directory the authentication path cannot start
+# without and would then rebuild every login when a projection column moved.
+afd_vault = { path = "crates/afd_vault" }
 afd_wire = { path = "crates/afd_wire" }
 
 # `default-features = false` throughout, features named explicitly, so a member
@@ -71,6 +115,29 @@ async-trait = { version = "0.1.92", default-features = false }
 # each pull their own dependency and none of them is a shape this product
 # authors. Its `garde_derive` rides the syn 2.0.119 already in the lock.
 garde = { version = "0.23.0", default-features = false, features = ["derive"] }
+
+# The YAML frontmatter of an authored `TRIGGER.md`.
+#
+# The spec's default was a maintained `serde_yaml` fork, and the first EXECUTE
+# pass rejected every one of them — `serde_norway` last published Dec 2024,
+# `serde_yml` self-deprecated — and fell back to `saphyr-parser`, a bare
+# tokeniser, on the reasoning that any resolving crate would type scalars wrong
+# for a parity port.
+#
+# That reasoning was tested against the wrong crate and is retracted. `yaml_serde`
+# is the maintained `serde_yaml` fork under the YAML organisation itself
+# (github.com/yaml/yaml-serde), and probed against the cases the hand-rolled
+# coercion table existed to defend it agrees on all of them: `01` stays "01",
+# `0123456` stays a string, `NO` does not become false, `NaN` stays text. It
+# also gets RIGHT the one case the table got wrong — a quoted `"true"` is the
+# string, where a bare tokeniser cannot see quote style and collapsed it to a
+# boolean.
+#
+# What it costs: three spellings resolve where the table stringified them
+# (`1e5`, `0x1F`, `+1`). No document in `tests/fixtures/` uses any of them, and
+# `config_json` is written at install/patch rather than re-parsed on read, so
+# no stored configuration changes meaning. Recorded as a declared divergence.
+yaml_serde = { version = "0.10.7", default-features = false }
 
 # The command line, derived rather than hand-rolled.
 #
@@ -230,6 +297,10 @@ aws-lc-rs = { version = "1.18.0", default-features = false, features = [
 # existed only to stop an out-of-order response resurrecting a pre-revocation
 # claim. With one flight per subject there is no second response to be out of
 # order with.
+posthog-rs = { version = "0.25.3", default-features = false, features = ["async-client"] }
+# The workspace's first-run naming. Declared here like every other dependency:
+# a version in a member manifest is the one place drift can start.
+petname = { version = "3.2.0", default-features = false, features = ["default-words"] }
 moka = { version = "0.12.16", default-features = false, features = ["future"] }
 
 # The JWKS fetch, the provider capability call, and the object-store transport.
@@ -315,9 +386,21 @@ redis = { version = "1.6.0", default-features = false, features = [
 #
 # `default-features = false` drops `form`, `multipart` and the macros: this API
 # speaks JSON, and a body format the daemon never accepts is a parser it should
-# not link. `http1` only — the dashboard proxy terminates TLS and speaks HTTP/1
-# upstream, and `http2` would pull a second frame layer for a hop that has no
-# use for one. `tokio` for the listener, `json` for the envelope.
+# not link. `tokio` for the listener, `json` for the envelope.
+#
+# `http2` is ON, reversing the earlier call here that `http1` was enough because
+# the tunnel speaks HTTP/1 upstream. That reasoning still describes today
+# accurately — `deploy/fly/cloudflared-*/config.yml` points at
+# `http://agentsfleetd-*.internal:3000`, and cloudflared speaks h1 to an origin
+# unless told otherwise — so this feature changes nothing on its own.
+#
+# It is on for §5's event streams. A browser caps concurrent HTTP/1.1
+# connections per origin at six, and every open SSE stream holds one, so a few
+# dashboard tabs starve everything else on that origin. HTTP/2 multiplexes them
+# and the cap stops mattering. The browser ALREADY gets that from the Cloudflare
+# edge, which is why this is not urgent; what it buys is the origin hop, so the
+# daemon is not the reason the tunnel cannot be switched to `http2Origin` later.
+# The other half of that change lives in `deploy/`, not here.
 #
 # NOTE for §5's route table: axum's `get()` handler ALSO answers HEAD by
 # default. agentsfleetd has never served HEAD — its matchers switch on GET,
@@ -330,8 +413,22 @@ redis = { version = "1.6.0", default-features = false, features = [
 # writes its own body and content type.
 axum = { version = "0.8.9", default-features = false, features = [
     "http1",
+    # HTTP/2 for the SSE surface. A browser caps concurrent HTTP/1.1 connections
+    # per origin at six, and every open event stream holds one — a dashboard
+    # with a few tabs starves everything else on the origin. HTTP/2 multiplexes
+    # them onto one connection and the cap stops mattering. The Cloudflare
+    # tunnel already gives the browser h2 today; this is the origin hop, which
+    # is what a baremetal deployment without a proxy in front actually serves.
+    "http2",
     "tokio",
 ] }
+# The retry LOOP, rather than the schedule. `afd_redis::Backoff` computes the
+# delays and is proven on the subscription hub's reconnect; what was hand-rolled
+# beside it was the counter and the terminal rule — and the loop guard is
+# precisely where the Zig install shipped its bug, leaving the last delay
+# unreachable. 26.9M recent downloads against tokio-retry's 10.1M, and on 1.x
+# where tokio-retry is still 0.3.
+backon = { version = "1.6.0", default-features = false, features = ["tokio-sleep"] }
 # Tower is the middleware algebra axum composes; `tower-http` carries the
 # ready-made layers. The admission ceiling is ours (it counts in-flight
 # requests per route CLASS, which no off-the-shelf layer knows about), but the
@@ -346,10 +443,23 @@ tower-http = { version = "0.7.0", default-features = false, features = [
 # header buffer, and §5's Dimension 5.3 is precisely a bound on the header
 # buffer. `server` + `http1` only — no client, and no h2 for a hop the
 # dashboard proxy already terminates.
-hyper = { version = "1.11.0", default-features = false, features = ["server", "http1"] }
+# `client` for the dev-only side of one suite: the protocol-negotiation test
+# drives the same listener with an HTTP/1.1 client and an HTTP/2 one, and there
+# is no other way to prove the auto builder serves both.
+hyper = { version = "1.11.0", default-features = false, features = ["server", "client", "http1", "http2"] }
 # The tokio adapter for hyper's own I/O traits, and nothing else: `TokioIo` is
 # what lets a `tokio::net::TcpStream` be served by a hyper connection.
-hyper-util = { version = "0.1.20", default-features = false, features = ["tokio"] }
+hyper-util = { version = "0.1.20", default-features = false, features = [
+    "tokio",
+    # The version-detecting connection builder. A browser caps concurrent
+    # HTTP/1.1 connections per origin at six and every open event stream holds
+    # one, so a dashboard with a few tabs starves the rest of the origin. The
+    # `http2` feature on axum was enabled for exactly this and the accept loop
+    # never used it — this is the half that was missing.
+    "server-auto",
+    "http1",
+    "http2",
+] }
 # The HTTP vocabulary types, shared with axum rather than re-exported through
 # it: `route_meta` names methods and statuses and has no business depending on
 # a web framework to do it.
@@ -557,6 +667,14 @@ unneeded_field_pattern = "deny"
 unused_result_ok = "deny"
 too_long_first_doc_paragraph = "deny"
 
+[profile.dev]
+# Line tables only, not full DWARF. The default (debug = 2) at 357 locked
+# crates grew target/debug to 57G — 39G deps/ (352k files, mostly stale
+# fingerprints cargo never GCs), 18G incremental/ — and a 70M agentsfleetd.
+# Backtraces and panics keep file:line; lldb keeps stepping but loses variable
+# inspection. Flip to 2 locally when you need that.
+debug = 1
+
 [profile.release]
 # opt-level 3, not 'z': this is a server binary whose cost is CPU per request,
 # not bytes on disk.
@@ -571,4 +689,32 @@ overflow-checks = true
 
 [profile.bench]
 # Debug symbols so a profiler can attribute samples (M-HOTPATH).
+debug = 1
+
+# The shipped artifact, and the only profile a reported number may come from.
+#
+# `release` is what a developer builds; this is what a deployment runs. The
+# difference is the LTO tail: `fat` gives the whole-program view that lets
+# inlining cross crate boundaries, which is worth real throughput on a daemon
+# whose hot path threads through afd_api -> afd_fleet -> afd_db on every
+# request. It is not the default because it costs link time on every build, and
+# a developer pays that per iteration where a deployment pays it once.
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+
+# Iterating on an OPTIMIZED build without paying the LTO tail each time.
+#
+# `bench` inherits release's `lto = "thin"` and `codegen-units = 1`, so every
+# benchmark edit re-links the whole workspace through a serialized codegen —
+# which is the right setting for the number and the wrong one for the loop that
+# arrives at it. This profile drops both, and keeps symbols so a profiler can
+# still attribute samples. Numbers reported from here are NOT comparable to
+# `dist`: measure on `dist`, iterate here.
+[profile.fast-profile]
+inherits = "release"
+lto = false
+codegen-units = 16
+strip = false
 debug = 1

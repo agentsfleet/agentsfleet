@@ -17,27 +17,50 @@
 
 use std::sync::Arc;
 
-use afd_admin::{Models, PlatformKeys};
+// Aliased: `afd_tenant::models::Models` below is the tenant's READ of the
+// priced catalogue, and this is the admin plane's WRITE of the same rows. Two
+// things called `Models` in one file is how a reader ends up believing the
+// tenant surface can mutate the catalogue.
+use afd_admin::{Models as AdminModels, PlatformKeys};
+use afd_api::Planes;
 use afd_api::router::{Dependencies, ReadyInputs};
-use afd_api::{Planes, Services};
-use afd_core::clock::UnixMillis;
+use afd_approval::{Inbox, IntegrationGrants};
+use afd_billing::Accounts;
+use afd_credential::provider::Providers;
+use afd_credential::secrets::Registry;
 use afd_crypto::entropy::Entropy;
-use afd_crypto::secret::Kek;
+use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
-use afd_fleet::Runners;
+use afd_events::History;
 use afd_fleet::bundle::Bundles;
-use afd_fleet::gate::Gates;
 use afd_fleet::lease::{Leases, Plane};
 use afd_fleet::memory::Memories;
-use afd_fleet::money::Accounts;
-use afd_fleet::provider::Providers;
-use afd_fleet::secrets::Registry;
-use afd_fleet::streams::{LiveStreams, SSE_MAX_STREAMS_DEFAULT};
-use afd_fleet::vault::Vault;
+use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
+use afd_gate::gate::Gates;
 use afd_library::{Libraries, LibraryImports};
+use afd_runner::Runners;
+use afd_tenant::preference::Preferences;
+// Aliased: `crate::identity::Sessions` is the token VERIFIER, and this is the
+// device-flow login surface. Two things called `Sessions` in one file is how a
+// reader ends up believing the login surface verifies bearer tokens.
+use afd_billing::tenant::Billing;
+use afd_credential::vault::Vault;
+use afd_observability::Analytics;
 use afd_redis::Redis;
+use afd_sse::Live;
 use afd_state::Credentials;
+use afd_tenant::apikey::ApiKeys;
+use afd_tenant::cli_credential::CliCredentials;
+use afd_tenant::models::Models;
+use afd_tenant::session::Sessions as Logins;
+use afd_tenant::workspace::Workspaces;
+// Aliased: `afd_credential::vault::Vault` above is the RUNNER plane's reader — it
+// opens a credential a fleet declared and never lists — and this is the
+// workspace-admin surface that seals, lists without a key, and deletes under
+// the model-registry lock. Two things called `Vault` in one file is how a
+// reader ends up believing one of them can do the other's job.
+use afd_vault::Vault as SecretVault;
 
 use crate::bundles::Stores;
 
@@ -59,12 +82,27 @@ pub struct ServingPlane {
     runners: Runners,
     leases: Plane,
     bundles: Bundles,
-    streams: LiveStreams,
-    runner_lease_history: RunnerLeaseHistory,
+    logins: Logins,
+    workspaces: Workspaces,
+    fleets: Fleets,
+    api_keys: ApiKeys,
+    cli_credentials: CliCredentials,
+    billing: Billing,
     models: Models,
+    admin_models: AdminModels,
     platform_keys: PlatformKeys,
     libraries: Libraries,
     library_imports: LibraryImports,
+    runner_lease_history: RunnerLeaseHistory,
+    secrets: SecretVault,
+    preferences: Preferences,
+    approvals: Inbox,
+    grants: IntegrationGrants,
+    events: History,
+    steering: afd_events::Steer,
+    live: Live,
+    analytics: Analytics,
+    api_url: Box<str>,
 }
 
 impl ServingPlane {
@@ -94,15 +132,23 @@ impl ServingPlane {
     /// Invariant 3 as an ownership fact rather than as a rule about who reads
     /// which variable.
     #[must_use]
-    pub(crate) fn new(
-        database: Db,
-        queue: Redis,
-        kek: Arc<Kek>,
-        capabilities: Capabilities,
-        sessions: Sessions,
-        stores: Stores,
-        broker: Arc<afd_fleet::credential::Broker>,
-    ) -> Self {
+    pub fn new(parts: PlaneParts) -> Self {
+        let PlaneParts {
+            database,
+            queue,
+            kek,
+            capabilities,
+            sessions,
+            stores,
+            broker,
+            live,
+            analytics,
+            login,
+        } = parts;
+        // One object-store owner, split into the half that READS a snapshot and
+        // the half that WRITES one. A deployment with no upload handle still
+        // serves the catalogue; `LibraryImports::without_store` carries that
+        // absence as a value, the way `Bundles::unconfigured` does.
         let (bundles, uploads) = stores.split();
         let library_imports = match uploads {
             Some(store) => LibraryImports::new(database.clone(), store),
@@ -110,12 +156,39 @@ impl ServingPlane {
         };
         Self {
             bundles,
-            streams: LiveStreams::new(SSE_MAX_STREAMS_DEFAULT),
+            library_imports,
             runner_lease_history: RunnerLeaseHistory::new(database.clone()),
-            models: Models::new(database.clone(), Entropy::new()),
+            admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
             libraries: Libraries::new(database.clone()),
-            library_imports,
+            workspaces: Workspaces::new(database.clone(), Entropy::new()),
+            // Takes the Redis CONNECTION, not a view of it: which views the
+            // fleet lifecycle needs is its own business, and assembling them
+            // here would mean editing this file whenever that answer changed.
+            fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
+            api_keys: ApiKeys::new(database.clone(), Entropy::new()),
+            cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
+            billing: Billing::new(database.clone()),
+            models: Models::new(database.clone()),
+            // Takes the same shared key every other sealing store does, so a
+            // row this daemon writes opens under the key the runner plane
+            // reads it back with. `Arc::clone` and not a `Kek` clone: one copy
+            // of the key material, zeroed once, however many stores hold it.
+            secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+            preferences: Preferences::new(database.clone(), Entropy::new()),
+            approvals: Inbox::new(database.clone(), queue.clone()),
+            grants: IntegrationGrants::new(database.clone()),
+            events: History::new(database.clone()),
+            steering: afd_events::Steer::new(queue.clone()),
+            live,
+            analytics,
+            api_url: login.api_url,
+            logins: Logins::new(
+                afd_redis::SessionStore::new(queue.clone()),
+                login.code_pepper,
+                Entropy::new(),
+                &login.app_url,
+            ),
             probes: LiveDependencies::new(database.clone(), queue.clone()),
             authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
             runners: Runners::new(database.clone(), Entropy::new()),
@@ -133,66 +206,88 @@ impl ServingPlane {
     }
 }
 
+/// Everything [`ServingPlane::new`] is assembled from.
+///
+/// A parameter object rather than eight positional arguments, and not only to
+/// satisfy a lint. Each field is CONNECTED or BUILT before it gets here, which
+/// is the property the constructor's own note is about — boot has already
+/// proven the pools answer, resolved the snapshot store's absence into a value,
+/// and read this deployment's platform credentials out of the vault. Naming
+/// them at the call site is what makes that readable in one place.
+#[derive(Debug)]
+pub struct PlaneParts {
+    /// The API role's Postgres pool, open and proven.
+    pub database: Db,
+    /// The API role's Redis, open and proven.
+    pub queue: Redis,
+    /// The master key every stored credential is sealed under.
+    ///
+    /// Already shared: `preflight` resolved and validated it and refuses boot
+    /// without one, so every store below that opens a sealed row takes the SAME
+    /// key — Milestone Invariant 3 as an ownership fact rather than as a rule
+    /// about who reads which variable.
+    pub kek: Arc<Kek>,
+    /// Where a subject's capability claim is read from.
+    pub capabilities: Capabilities,
+    /// What verifies a browser session token.
+    pub sessions: Sessions,
+    /// The object-store handles, read and upload, over one owner.
+    ///
+    /// Split inside [`ServingPlane::new`] rather than out here, because the two
+    /// halves are one configuration decision: a deployment either set the R2
+    /// knobs or did not, and handing over two independently-built values would
+    /// let a caller pair a live reader with an absent writer.
+    pub stores: Stores,
+    /// The credential broker, built before the plane because it reads the
+    /// vault, which is asynchronous where this constructor is not.
+    pub broker: Arc<afd_credential::credential::Broker>,
+    /// Where product events go, holding its own absence.
+    ///
+    /// Not an `Option`, for the reason [`PlaneParts::bundles`] is not: a
+    /// deployment naming no `PostHog` project reports nothing, and a caller that
+    /// had to ask before reporting is a caller that can forget.
+    pub analytics: Analytics,
+    /// The live-stream surface, holding its own absence.
+    ///
+    /// Not an `Option`, for the reason [`PlaneParts::bundles`] is not: an
+    /// instance whose pub/sub connection could not be opened still SERVES the
+    /// stream routes, silently, and `afd_sse::Live::detached` is that case as a
+    /// value rather than as a `None` this file would unwrap into a refusal.
+    /// Built before the plane because opening the hub is asynchronous where
+    /// this constructor is not.
+    pub live: Live,
+    /// What the device-flow login surface needs from configuration.
+    pub login: LoginConfig,
+}
+
+mod services;
+
 impl Dependencies for ServingPlane {
     fn probe(&self) -> impl Future<Output = ReadyInputs> + Send {
         self.probes.probe()
     }
 }
 
-impl Services for ServingPlane {
-    type Auth = Authenticator;
-    type Leases = Plane;
-
-    fn authenticator(&self) -> &Self::Auth {
-        &self.authenticator
-    }
-
-    fn runners(&self) -> &Runners {
-        &self.runners
-    }
-
-    fn leases(&self) -> &Plane {
-        &self.leases
-    }
-
-    fn bundles(&self) -> &Bundles {
-        &self.bundles
-    }
-
-    fn streams(&self) -> &LiveStreams {
-        &self.streams
-    }
-
-    fn runner_lease_history(&self) -> &RunnerLeaseHistory {
-        &self.runner_lease_history
-    }
-
-    fn models(&self) -> &Models {
-        &self.models
-    }
-
-    fn platform_keys(&self) -> &PlatformKeys {
-        &self.platform_keys
-    }
-
-    fn libraries(&self) -> &Libraries {
-        &self.libraries
-    }
-
-    fn library_imports(&self) -> &LibraryImports {
-        &self.library_imports
-    }
-
-    /// The wall clock, read once per verb by whichever handler asked.
+/// What the device-flow login surface needs from configuration.
+///
+/// A struct rather than two more positional parameters on a constructor that
+/// already takes seven: a `SecretBytes` and a `String` next to each other are
+/// two arguments a caller can transpose without the compiler noticing, and the
+/// consequence would be a pepper rendered into every login URL.
+#[derive(Debug, Clone)]
+pub struct LoginConfig {
+    /// The key a verification code's digest is taken under.
+    pub code_pepper: SecretBytes,
+    /// Where a person goes to approve a login.
+    pub app_url: String,
+    /// This deployment's own base URL, as a minted credential records it.
     ///
-    /// Not a `Clock` behind an `Arc`: `afd_core::clock` reserves injection for
-    /// an owner that reads repeatedly and asks everything else to take the
-    /// instant as a parameter, which is exactly what a handler does with this.
-    /// A test drives its own instant by implementing `Services` itself, so the
-    /// seam a fixed clock would provide already exists one level up.
-    fn now(&self) -> UnixMillis {
-        afd_core::clock::now()
-    }
+    /// Beside `app_url` because the two are read from configuration together
+    /// and are the same kind of fact — where a person goes, and where this
+    /// daemon answers. Never a request's `Host`: a credential and the
+    /// deployment that minted it are one fact, and a client-asserted host
+    /// would let them disagree.
+    pub api_url: Box<str>,
 }
 
 /// The plane, ready to hand to the router.

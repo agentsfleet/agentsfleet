@@ -18,6 +18,10 @@ test-util = ["afd_core/test-util"]
 
 [dependencies]
 afd_core.workspace = true
+# Entropy for the credential mint. `Minted` lives here because it is built from
+# this crate's own `CredentialKind` and `Digest`; the random bytes behind it are
+# the one part it does not own.
+afd_crypto.workspace = true
 thiserror.workspace = true
 # The credential digest. Every stored credential column holds a plain unsalted
 # SHA-256 of the presented value, so this is a parity requirement rather than a

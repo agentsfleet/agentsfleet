@@ -13,7 +13,7 @@
 //!
 //! `axum::serve` exposes no way to bound the header buffer, and Dimension 5.3
 //! is a bound on the header buffer. So the accept loop is ours and
-//! [`afd_api::http1_builder`] carries the limit — the same builder §5's
+//! [`afd_api::connection_builder`] carries the limit — the same builder §5's
 //! oversize-head test drives.
 //!
 //! # Every connection is a supervised child of the accept loop
@@ -24,17 +24,24 @@
 //! and a detached connection can outlive the pools it reads through. That is
 //! the unsupervised spawn path Dimension 7.5 says does not exist.
 
+mod accept;
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, http1_builder};
+use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT};
 use afd_core::env::EnvSource;
 use afd_db::Db;
-use afd_redis::Redis;
-use hyper_util::rt::TokioIo;
+use afd_observability::{Analytics, Telemetry};
+use afd_redis::{Redis, RedisConfig, SubscriptionHub};
+use afd_sse::{Ceiling, Live};
 use tokio::net::TcpListener;
-use tokio_util::sync::CancellationToken;
 
+pub use self::accept::Acceptor;
+#[cfg(feature = "test-util")]
+pub use self::accept::serve_accepts;
+
+use self::accept::accept_loop;
 use crate::daemon::{Daemon, Outcome};
 #[doc(inline)]
 pub use crate::error::BootFailure;
@@ -83,8 +90,42 @@ pub async fn boot<E: EnvSource + ?Sized>(
     // 1. Every knob, validated before a single socket opens. A key that cannot
     //    work must refuse boot BEFORE anything serves, which is only a promise
     //    if nothing has been opened yet.
+    //
+    //    This one refusal is NOT reported: where the events go is itself a knob,
+    //    and a preflight that failed is a preflight that did not read it. The
+    //    fault is on stderr, which is where an operator reading a container that
+    //    will not start is already looking.
     let config: BootConfig = preflight(env)?;
+    let analytics = open_analytics(config.posthog()).await;
 
+    match open(config, analytics.clone(), port, supervisor).await {
+        Ok(booted) => Ok(booted),
+        Err(failure) => {
+            analytics.report(&Telemetry::StartupFailed {
+                command: COMMAND_SERVE.to_owned(),
+                phase: failure.phase().to_owned(),
+                reason: failure.to_string(),
+                error_code: failure.code().as_str().to_owned(),
+            });
+            // Delivered before returning, because the caller's next move is to
+            // render the fault and exit — and a queued event on a client that
+            // is about to be dropped is an event nobody sees.
+            analytics.flush().await;
+            Err(failure)
+        }
+    }
+}
+
+/// The subcommand a boot failure names.
+const COMMAND_SERVE: &str = "serve";
+
+/// Everything after the knobs are known, so its failures can be reported.
+async fn open(
+    config: BootConfig,
+    analytics: Analytics,
+    port: u16,
+    supervisor: &mut Supervisor,
+) -> Result<Booted, BootFailure> {
     // 2. Postgres, then Redis — the Zig order, and the useful one: a daemon
     //    with no database has nothing to serve, so it is the first thing worth
     //    failing on.
@@ -107,25 +148,60 @@ pub async fn boot<E: EnvSource + ?Sized>(
     // the plane's constructor is not. A deployment holding none still boots and
     // still serves every other verb.
     let broker = crate::credentials::resolve(
-        &afd_fleet::vault::Vault::new(database.clone(), Arc::clone(&kek)),
+        &afd_credential::vault::Vault::new(database.clone(), Arc::clone(&kek)),
         config.platform_admin_workspace(),
     )
     .await;
-    let plane: Shared = Arc::new(ServingPlane::new(
-        database.clone(),
-        queue.clone(),
+    // The pub/sub hub, opened once for the process: every live stream rides
+    // this ONE connection, so a wall of tiles costs map entries rather than
+    // dials. An instance that cannot open it still serves — the stream routes
+    // answer and stay silent, and every other verb is unaffected — because a
+    // best-effort surface must not be able to refuse boot.
+    let live = open_live(config.redis(), config.sse_max_streams()).await;
+    let hub = live.hub().cloned();
+    let plane: Shared = Arc::new(ServingPlane::new(crate::plane::PlaneParts {
+        database: database.clone(),
+        queue: queue.clone(),
         kek,
         capabilities,
         sessions,
-        crate::bundles::resolve(config.bundles()),
+        stores: crate::bundles::resolve(config.bundles()),
         broker,
-    ));
+        live,
+        analytics: analytics.clone(),
+        login: crate::plane::LoginConfig {
+            code_pepper: config.session_code_pepper().clone(),
+            app_url: config.app_url().to_owned(),
+            api_url: config.api_url().into(),
+        },
+    }));
     let router = afd_api::router::build(plane, &Admission::new(DEFAULT_MAX_IN_FLIGHT));
+
+    // The pump itself lives inside the hub; what is supervised here is its
+    // STOP. A shutdown closes the hub, which closes every channel a live stream
+    // is waiting on — so the streams unwind and their tasks end, instead of
+    // parking on a socket nobody is reading.
+    if let Some(hub) = hub {
+        supervisor.spawn(crate::HUB_PUMP, move |token| async move {
+            token.cancelled().await;
+            hub.shutdown();
+        });
+    }
 
     // 4. The background sweepers, before the listener: they read through pools
     //    that are open by now, and starting them after the socket would leave a
     //    window where the plane serves while nothing is noticing dead runners.
     crate::sweepers::spawn(&mut *supervisor, &database, &queue);
+    // The worker set is up. `concurrency` is how many supervised tasks this
+    // process carries — the closest true reading of the Zig's field, whose
+    // runner daemon is not what this binary is.
+    // Saturating rather than a cast: the field is 16-bit on the wire, and a
+    // process with more than 65,535 supervised tasks reports the ceiling rather
+    // than wrapping to a small number that would read as healthy.
+    let supervised = u16::try_from(supervisor.inventory().len()).unwrap_or(u16::MAX);
+    analytics.report(&Telemetry::WorkerStarted {
+        concurrency: supervised,
+    });
 
     // 5. Listen last. Until this line the process is not reachable, which is
     //    what makes every refusal above a refusal rather than an outage.
@@ -134,6 +210,19 @@ pub async fn boot<E: EnvSource + ?Sized>(
 
     supervisor.spawn(ACCEPT_LOOP, move |token| {
         accept_loop(listener, router, token)
+    });
+
+    // Reported only once the socket is bound, so `server_started` means an
+    // instance that can be reached and not one that got as far as trying.
+    analytics.report(&Telemetry::ServerStarted {
+        port: address.port(),
+    });
+    // Delivering what is queued is part of stopping: an event captured by the
+    // last request served is one this daemon still owes. Supervised so it runs
+    // in shutdown order, before the pools the caller drops.
+    supervisor.spawn(crate::ANALYTICS_FLUSH, move |token| async move {
+        token.cancelled().await;
+        analytics.flush().await;
     });
 
     Ok(Booted {
@@ -175,84 +264,6 @@ fn announce_identity(capabilities: &Capabilities) {
 
 /// The supervised name of the accept loop.
 pub const ACCEPT_LOOP: &str = "accept_loop";
-
-/// The accept syscall, as a seam.
-///
-/// M-MOCKABLE-SYSCALLS. `accept()` fails for reasons a test cannot arrange —
-/// the process is out of file descriptors, the peer reset between the SYN and
-/// the accept — and the loop's answer to that (log it, keep serving) is the
-/// difference between one dropped client and a daemon that stops accepting.
-/// Making the syscall a trait is what lets that answer be tested at all.
-pub trait Acceptor: Send + 'static {
-    /// Waits for the next connection.
-    ///
-    /// # Errors
-    /// Returns whatever the underlying accept returned. A failure is one
-    /// client, not the end of serving, and the loop treats it that way.
-    fn accept(&self) -> impl Future<Output = std::io::Result<tokio::net::TcpStream>> + Send;
-}
-
-impl Acceptor for TcpListener {
-    async fn accept(&self) -> std::io::Result<tokio::net::TcpStream> {
-        Self::accept(self).await.map(|(stream, _peer)| stream)
-    }
-}
-
-/// Serves until cancelled, spawning one supervised task per connection.
-async fn accept_loop<A: Acceptor>(listener: A, router: axum::Router, token: CancellationToken) {
-    loop {
-        let accepted = tokio::select! {
-            // Cancellation is checked against a genuinely blocked accept, not
-            // between iterations — the property Dimension 7.5 exists to prove.
-            () = token.cancelled() => break,
-            accepted = listener.accept() => accepted,
-        };
-
-        let stream = match accepted {
-            Ok(stream) => stream,
-            Err(error) => {
-                // Hoisted: the `log` bridge duplicates field expressions and
-                // llvm-cov scores the copy that never runs.
-                let reason = error.to_string();
-                tracing::warn!(
-                    reason,
-                    event = "accept_failed",
-                    "accept failed; still serving"
-                );
-                continue;
-            }
-        };
-
-        let service = router.clone();
-        let connection_token = token.clone();
-        tokio::spawn(async move {
-            let served = http1_builder().serve_connection(
-                TokioIo::new(stream),
-                hyper::service::service_fn(move |request| {
-                    let service = service.clone();
-                    async move { tower::ServiceExt::oneshot(service, request).await }
-                }),
-            );
-            tokio::select! {
-                () = connection_token.cancelled() => {}
-                result = served => drop(result),
-            }
-        });
-    }
-}
-
-/// Runs `accept_loop` over any [`Acceptor`], for tests that need a faulty one.
-///
-/// The production path goes through [`boot`], which supplies a real
-/// `TcpListener`; this exists so a suite can supply one that fails.
-#[cfg(feature = "test-util")]
-pub async fn serve_accepts<A: Acceptor>(
-    listener: A,
-    router: axum::Router,
-    token: CancellationToken,
-) {
-    accept_loop(listener, router, token).await;
-}
 
 /// Runs the daemon to completion, then drops what it borrowed.
 ///
@@ -302,4 +313,38 @@ where
     // dropped only after a shutdown that joined every task reading through them.
     drop(booted);
     Ok(outcome)
+}
+
+/// The live-stream surface, or its silent form when the hub will not open.
+///
+/// The ceiling is built either way: an instance that carries no frames still
+/// has to refuse the stream past its ceiling, so a client learns the same thing
+/// about capacity whether or not this deployment's pub/sub connection came up.
+async fn open_live(config: &RedisConfig, max_streams: usize) -> Live {
+    let ceiling = Ceiling::new(max_streams);
+    match SubscriptionHub::start(config.clone()).await {
+        Ok(hub) => Live::new(hub, ceiling),
+        Err(unopened) => {
+            let code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str();
+            let reason = unopened.to_string();
+            tracing::warn!(
+                error_code = code,
+                reason,
+                event = "hub_unavailable",
+                "the live-stream surface will carry no frames; every other verb is unaffected"
+            );
+            Live::detached(ceiling)
+        }
+    }
+}
+
+/// The product-analytics reporter, or its silent form.
+///
+/// A deployment naming no project reports nothing — which is every developer's
+/// and every test's, so it is a value rather than a refusal.
+async fn open_analytics(config: Option<&crate::preflight::PostHogConfig>) -> Analytics {
+    match config {
+        Some(project) => Analytics::resolve(&project.project_key, project.host.as_deref()).await,
+        None => Analytics::silent(),
+    }
 }

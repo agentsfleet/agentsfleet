@@ -24,10 +24,10 @@ use sqlx::Row as _;
 
 use crate::error::{Result, query, row_malformed};
 use crate::lease::affinity::Fence;
+use crate::lease::sql;
+use crate::lease::sql::report::SettleRow;
 use crate::lease::store::Leases;
-use crate::money::{Meter, Nanos};
-use crate::sql;
-use crate::sql::report::SettleRow;
+use afd_billing::{Meter, Nanos};
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_LOAD: &str = "report lease load";
@@ -186,7 +186,7 @@ impl Leases {
 #[cfg(test)]
 mod tests {
     use super::Settled;
-    use crate::money::Nanos;
+    use afd_billing::Nanos;
 
     /// A fenced settle has nowhere to carry a charge.
     ///

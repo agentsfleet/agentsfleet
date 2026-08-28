@@ -28,12 +28,14 @@ pub mod finalize;
 pub mod installed;
 pub mod issue;
 pub mod memory;
+pub mod mint;
 pub mod pull;
 pub mod reclaim;
 pub mod renew;
 pub mod report;
 pub mod scope;
 pub mod settle;
+pub mod sql;
 pub mod store;
 pub mod verdict;
 

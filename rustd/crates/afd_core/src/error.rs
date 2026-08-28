@@ -115,3 +115,12 @@ impl std::error::Error for Error {
         std::error::Error::source(&self.kind)
     }
 }
+
+/// The sentence a caller is told when a datastore cannot be reached.
+///
+/// `problem_response.zig`'s `internalDbUnavailable`, byte for byte. Declared
+/// here because every plane answers it and three of them had drifted onto an
+/// invented "Service temporarily unavailable" — which meant one condition
+/// reaching a client as two different sentences depending on which plane the
+/// request happened to hit.
+pub const DETAIL_DATABASE_UNAVAILABLE: &str = "Database unavailable";

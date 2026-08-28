@@ -24,10 +24,18 @@
 //! triggers may not share a source, a repository binding is optional as a WHOLE
 //! rather than key by key.
 //!
-//! Four behaviours changed on purpose, and each is declared in [`error`]:
-//! a malformed field no longer reports as a missing one, a non-string `skill`
-//! is no longer silently dropped, a gate failure keeps its own class, and a
-//! threshold is bounded by a constant named for what it bounds.
+//! Five behaviours changed on purpose, and each is declared in [`error`] or in
+//! [`frontmatter`]: a malformed field no longer reports as a missing one, a
+//! non-string `skill` is no longer silently dropped, a gate failure keeps its
+//! own class, a threshold is bounded by a constant named for what it bounds,
+//! and the same no-silent-drop rule now covers every optional `SKILL.md` key.
+//!
+//! # Two documents, one scan
+//!
+//! [`frontmatter`] owns the `---` fence walk and the YAML-to-JSON conversion
+//! that install and config-PATCH need; [`instructions`] takes the prose half
+//! for the lease path. Both go through one scanner, so the two daemons cannot
+//! disagree about where a document's configuration ends.
 //!
 //! # What it deliberately does not do
 //!
@@ -42,12 +50,14 @@
 
 pub mod config;
 pub mod error;
+pub mod frontmatter;
 pub mod instructions;
 pub mod name;
 pub mod provider;
 
 pub use self::config::FleetConfig;
 pub use self::error::{Error, Result};
+pub use self::frontmatter::{ParsedTrigger, SkillMetadata, parse_skill, parse_trigger};
 pub use self::instructions::instructions;
 pub use self::name::{CredentialName, FleetName, Version};
 pub use self::provider::{ProviderRegistry, WebhookProvider};

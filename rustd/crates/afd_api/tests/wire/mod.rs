@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use afd_api::http1_builder;
+use afd_api::connection_builder;
 use http::{Request, Response, StatusCode};
 use hyper::body::Incoming;
 use hyper::service::service_fn;
@@ -111,7 +111,7 @@ async fn accept_one(listener: TcpListener, handler_ran: Arc<AtomicBool>) {
     // The result is deliberately dropped: an oversize head makes hyper refuse
     // and report a parse error here, which is the SUCCESS path for that case.
     drop(
-        http1_builder()
+        connection_builder()
             .serve_connection(TokioIo::new(stream), service)
             .await,
     );

@@ -1,9 +1,8 @@
 {
   "schema_version": 1,
-  "orly_version": "0.7.1",
+  "orly_version": "0.9.2",
   "packs": [
     "language.rust",
-    "persona.indy",
     "product.agentsfleet"
   ],
   "commands": {
@@ -70,9 +69,12 @@
     "audits/cross-tier-rates.sh",
     "audits/deinit-pairs.sh",
     "audits/design-tokens.sh",
+    "audits/doc-read.sh",
     "audits/error-codes.sh",
     "audits/logging.sh",
     "audits/msid-ui.sh",
+    "audits/rule-ledger-lib.sh",
+    "audits/rust-error.sh",
     "audits/spec-template.sh",
     "audits/sql-mod.sh",
     "audits/ufs.sh",
@@ -89,6 +91,7 @@
     "dispatch/write_pr_description.md",
     "dispatch/write_python.md",
     "dispatch/write_rust.md",
+    "dispatch/write_rust.sh",
     "dispatch/write_shell.md",
     "dispatch/write_spec.md",
     "dispatch/write_sql.md",

@@ -25,6 +25,8 @@
 
 mod guard;
 mod identity;
+mod ownership;
+mod person;
 
 use afd_auth::authenticate::Registry;
 use afd_auth::capability::CapabilitySource;
@@ -36,7 +38,13 @@ use afd_auth::{Error, Plane};
 use crate::route::Guard;
 
 pub use self::guard::{Gate, prove};
-pub use self::identity::{PersonIdentity, RunnerIdentity};
+pub use self::identity::RunnerIdentity;
+pub use self::ownership::{Acting, Owned, Owner, WorkspaceContext, own};
+pub use self::person::{
+    AnyClass, ClassPolicy, DETAIL_NOT_DASHBOARD, DETAIL_PERSON_REQUIRED, DETAIL_SESSION_REQUIRED,
+    DashboardClass, DashboardIdentity, FreshSession, FreshSessionClass, HumanClass, HumanIdentity,
+    PersonIdentity, Proven,
+};
 
 /// What proves a credential presented on a plane.
 ///

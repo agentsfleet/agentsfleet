@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use afd_core::id::Uuid7;
-use afd_fleet::{KeysetCursor, PageLimit, RunnerEventFilter};
+use afd_runner::{KeysetCursor, PageLimit, RunnerEventFilter};
 use afd_wire::admin::RunnerEventType;
 
 const QUERY_LIMIT: &str = "limit";

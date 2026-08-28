@@ -46,12 +46,12 @@ use crate::e2e::{GOOD_KEK, MODEL, PROVIDER};
 /// A pool deep enough that no gate under test clamps against it.
 pub(crate) const DEEP_POOL: i64 = 1_000_000_000_000;
 
-/// The catalogue row a seeded rate is written under.
+/// The catalogue row every scenario's rate is written under.
 ///
-/// Shaped so `ck_model_library_id_uuidv7` passes — the character after the
-/// second dash is `7`. Constant, and upserted on `(provider, model_id)`: every
-/// scenario prices the same model, so the second one to run updates the row the
-/// first wrote rather than colliding with it.
+/// Fixed and SHARED. Every scenario prices the same `(PROVIDER, MODEL)`, so the
+/// `ON CONFLICT (provider, model_id)` arm below is the one that fires and it
+/// resolves to THIS row: Postgres tests the arbiter index before it attempts
+/// the insert, so the primary key never comes into it.
 const CATALOGUE_ROW: &str = "0195b4ba-8d3a-7e2e-8abc-000000000001";
 
 /// Per-million-token rates a seeded catalogue row carries.
@@ -262,10 +262,19 @@ pub(crate) async fn seed_platform_default(booted: &Booted, workspace: &str, now:
     .expect("the platform default seed must run");
 }
 
-/// The vault row a seeded catalogue row is dialled with.
+/// The vault row a seeded provider key is written under.
 ///
-/// Shaped so `ck_vault_secrets_id_uuidv7` passes.
-const VAULT_ROW: &str = "0195b4ba-8d3a-7d1a-8abc-000000000001";
+/// MINTED, where [`CATALOGUE_ROW`] above it is a constant, and the difference is
+/// the rule: a catalogue rate is one shared row every scenario writes the same
+/// way, but a provider key belongs to ONE workspace and `scenario` mints a fresh
+/// one per run. So the `ON CONFLICT (workspace_id, key_name)` arm never fires
+/// between two scenarios, the PRIMARY KEY is what they would collide on, and a
+/// shared constant would drop the second scenario's key and leave it resolving
+/// against a workspace that has none. `mint_id` shapes it so
+/// `ck_vault_secrets_id_uuidv7` passes.
+fn vault_row() -> String {
+    afd_db::test_util::mint_id()
+}
 
 /// The credential body the platform strategy reads.
 ///
@@ -313,7 +322,7 @@ pub(crate) async fn seed_provider_key(booted: &Booted, workspace: &str, now: Uni
          VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
          ON CONFLICT (workspace_id, key_name) DO NOTHING",
     )
-    .bind(VAULT_ROW)
+    .bind(vault_row())
     .bind(workspace)
     .bind(PROVIDER)
     .bind(envelope.kek_version())

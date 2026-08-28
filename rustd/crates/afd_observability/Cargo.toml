@@ -23,6 +23,15 @@ afd_wire.workspace = true
 # unused. The OTLP transport is boot's, because an endpoint is configuration
 # and this crate has none.
 opentelemetry_sdk.workspace = true
+# The OFFICIAL PostHog Rust client. `default-features = false` drops its error
+# tracking, which is `tracing`'s job here and would otherwise ship a second
+# stack-trace path; `async-client` is the batching, background-flushing
+# transport a request path must never wait on.
+posthog-rs = { workspace = true, default-features = false, features = ["async-client"] }
+# The event payloads, and the deduplication key a finished run reports under.
+serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]

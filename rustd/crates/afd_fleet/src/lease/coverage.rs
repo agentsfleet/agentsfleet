@@ -28,7 +28,7 @@ use afd_core::clock::UnixMillis;
 use crate::error::{Result, budget_exhausted, renewal_no_credits};
 use crate::lease::pull::Plane;
 use crate::lease::renew::Renewing;
-use crate::money::budget::{self, Verdict};
+use afd_billing::budget::{self, Verdict};
 
 /// The tenant's pool cannot fund another slice.
 const EVENT_NO_CREDITS: &str = "renew_no_credits";
@@ -138,8 +138,10 @@ impl Plane {
             .await
         {
             Ok(spend) => spend,
+            // Lifted into this crate's error first, so all three gates log
+            // through one shape and the operator greps one event.
             Err(fault) => {
-                admit_unreadable("spend", lease, lease_id, &fault);
+                admit_unreadable("spend", lease, lease_id, &crate::Error::from(fault));
                 return Ok(());
             }
         };

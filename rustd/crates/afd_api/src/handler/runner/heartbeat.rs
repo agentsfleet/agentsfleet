@@ -16,8 +16,8 @@
 //! must not be able to fail its own liveness by sending nonsense, because a
 //! host that cannot beat is a host the fleet reads as dead. So the body is
 //! parsed LENIENTLY here — anything unreadable becomes
-//! [`afd_fleet::NO_REPORT`] — and the bounds on what does parse are the
-//! service's (`afd_fleet::runner::bounds`).
+//! [`afd_runner::NO_REPORT`] — and the bounds on what does parse are the
+//! service's (`afd_runner::bounds`).
 //!
 //! That leniency stops at the size limit, which is enforced before this runs:
 //! `hyper` refuses an oversize head and axum's body limit refuses an oversize
@@ -26,7 +26,7 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_fleet::{Beat, NO_REPORT};
+use afd_runner::{Beat, NO_REPORT};
 use afd_wire::runner::{HeartbeatRequest, HeartbeatResponse, HeartbeatStatus};
 use axum::Json;
 use axum::body::Bytes;

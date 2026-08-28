@@ -2,8 +2,8 @@
 //!
 //! # What is mounted, and what is only tabled
 //!
-//! [`Route`] carries all eighty-one endpoint identities; this binary serves
-//! twenty-six of them.
+//! [`Route`] carries every endpoint identity this product has; this binary
+//! serves a subset of them.
 //! The gap is deliberate and it is STATED: [`handler_for`] is a total match
 //! over every family AND every route within a family, so an endpoint whose
 //! handler has not been ported yet says so in an arm rather than by being
@@ -27,7 +27,15 @@
 //! outermost: a shed has to stay cheaper than the work it refuses, and proving
 //! a credential means a datastore round trip. Authentication and the capability
 //! gate come next, so a handler never runs for a caller who should not reach
-//! it. Nothing is left for a handler to remember.
+//! it. Ownership is innermost, because it is the only one of the three that
+//! runs a statement — a caller who is over the ceiling or short a capability is
+//! refused before this daemon reaches Postgres on their behalf.
+//!
+//! Nothing is left for a handler to remember. That last layer is the one the
+//! Zig daemon never lifted: `authorizeWorkspace` is called by hand at the top
+//! of every workspace handler, and a handler that forgets is a cross-tenant
+//! read with nothing failing. Here it is mounted from the route's own template
+//! (`Ownership::of`), so forgetting is not a thing a handler can do.
 //!
 //! # HEAD
 //!
@@ -40,6 +48,7 @@
 //! Stopping it per route would mean remembering `.head(refuse)` eighty-one
 //! times. It is one fact about the daemon, so it is one layer.
 
+mod mount;
 mod probes;
 mod trace;
 
@@ -49,15 +58,12 @@ use axum::Router;
 use axum::extract::Request;
 use axum::middleware::{Next, from_fn, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{MethodRouter, delete, get, patch, post, put};
+use axum::routing::MethodRouter;
 use http::{Method, StatusCode};
 
 use crate::admission::{Admission, admit, is_metered};
-use crate::auth::{Gate, plane_of, prove};
-use crate::handler::{admin, fleet_bundles, operator, runner};
-use crate::route::{
-    AdminRoute, OpsRoute, Route, RouteMeta, RunnerOpsRoute, RunnerRoute, TenantRoute,
-};
+use crate::auth::{Gate, Owner, own, plane_of, prove};
+use crate::route::{Route, RouteMeta};
 use crate::services::Services;
 
 pub use self::probes::{Dependencies, ReadyInputs, ready_decision};
@@ -100,7 +106,7 @@ pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router 
     let mut merged: Vec<(&'static str, RouteMeta, MethodRouter<Arc<D>>)> =
         Vec::with_capacity(Route::all().count());
     for route in Route::all() {
-        let Some(handler) = handler_for::<D>(route) else {
+        let Some(handler) = self::mount::handler_for::<D>(route) else {
             continue;
         };
         // Hoisted for the same reason every other call-bearing log field
@@ -143,6 +149,13 @@ pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router 
         // template it was refused for — Zig cannot see those at all, because
         // it 404s before opening a trace.
         .route_layer(from_fn(trace::record))
+        // Outermost of the three, so it sees the response every layer beneath
+        // it wrote — the scope rung's 403 and the admission shed's 429 included,
+        // neither of which reaches a handler that could have reported itself.
+        .route_layer(from_fn_with_state(
+            Arc::clone(&dependencies),
+            crate::telemetry::record::<D>,
+        ))
         .with_state(dependencies)
 }
 
@@ -158,118 +171,27 @@ fn layered<D: Serving>(
     dependencies: &Arc<D>,
     admission: &Admission,
 ) -> MethodRouter<Arc<D>> {
-    let guarded = if plane_of(meta.guard).is_some() {
-        let gate = Gate::new(Arc::clone(dependencies), meta);
-        handler.layer(from_fn_with_state(gate, prove::<D>))
+    // Innermost, so it runs LAST of the three and closest to the handler. That
+    // ordering is the whole cost argument: ownership is the only one of the
+    // three that reaches a datastore, and a caller who is over the ceiling or
+    // short a capability must be refused before this daemon runs a statement
+    // for them.
+    let owned = if meta.ownership.is_checked() {
+        let owner = Owner::new(Arc::clone(dependencies), meta.template);
+        handler.layer(from_fn_with_state(owner, own::<D>))
     } else {
         handler
+    };
+    let guarded = if plane_of(meta.guard).is_some() {
+        let gate = Gate::new(Arc::clone(dependencies), meta);
+        owned.layer(from_fn_with_state(gate, prove::<D>))
+    } else {
+        owned
     };
     if is_metered(meta.class) {
         guarded.layer(from_fn_with_state(admission.clone(), admit))
     } else {
         guarded
-    }
-}
-
-/// The handler for `route`, or `None` when this binary does not serve it.
-///
-/// Total at BOTH levels — over the ten families, and over every route within
-/// each — so a new endpoint fails the build until somebody says whether this
-/// binary answers it. The Zig `route_table.zig` is total over the union too;
-/// what it cannot express is the difference between "tabled and unserved" and
-/// "forgotten", because every unserved route falls into the same `else`.
-fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D>>> {
-    match route {
-        Route::Ops(ops) => Some(match ops {
-            OpsRoute::Healthz => get(probes::healthz),
-            OpsRoute::Readyz => get(probes::readyz::<D>),
-        }),
-        Route::Runner(verb) => Some(runner_handler::<D>(verb)),
-        Route::RunnerOps(verb) => Some(runner_ops_handler::<D>(verb)),
-        Route::Admin(verb) => Some(admin_handler::<D>(verb)),
-        Route::Tenant(TenantRoute::FleetBundles) => Some(get(fleet_bundles::list::<D>)),
-        // Tabled, not yet served. Each of these families arrives with the
-        // milestone that ports its handlers; until then the route exists as a
-        // template, a guard and a scope rung, and this binary answers 404.
-        Route::Auth(_)
-        | Route::Tenant(
-            TenantRoute::ModelLibrary
-            | TenantRoute::CreateWorkspace
-            | TenantRoute::Billing
-            | TenantRoute::BillingCharges
-            | TenantRoute::Workspaces
-            | TenantRoute::Provider
-            | TenantRoute::ModelEntries
-            | TenantRoute::ModelEntry
-            | TenantRoute::ApiKeys
-            | TenantRoute::ApiKey
-            | TenantRoute::CliCredentials
-            | TenantRoute::CliCredential,
-        )
-        | Route::Webhook(_)
-        | Route::Workspace(_)
-        | Route::Fleet(_)
-        | Route::Connector(_) => None,
-    }
-}
-
-/// The mounted part of the platform administration table.
-fn admin_handler<D: Serving>(verb: AdminRoute) -> MethodRouter<Arc<D>> {
-    match verb {
-        AdminRoute::FleetLibrary => {
-            get(admin::libraries::list::<D>).merge(post(admin::library_import::create::<D>))
-        }
-        AdminRoute::FleetLibraryEntry => {
-            patch(admin::libraries::patch::<D>).merge(delete(admin::libraries::delete::<D>))
-        }
-        AdminRoute::PlatformKeys => {
-            get(admin::platform_keys::list::<D>).merge(put(admin::platform_keys::set::<D>))
-        }
-        AdminRoute::PlatformKey => delete(admin::platform_keys::deactivate::<D>),
-        AdminRoute::Models => get(admin::models::list::<D>).merge(post(admin::models::create::<D>)),
-        AdminRoute::Model => {
-            patch(admin::models::update::<D>).merge(delete(admin::models::delete::<D>))
-        }
-    }
-}
-
-/// The runner plane's verbs — a runner speaking for itself.
-/// Not an `Option`, where its two sibling tables are.
-///
-/// Every verb on this plane is now SERVED — the mint was the last one tabled —
-/// so a `None` arm here would be a possibility the type admits and the code
-/// cannot produce. The compiler enforces the difference: a verb added to
-/// [`RunnerRoute`] without a handler fails this match, where an `Option` would
-/// have let it default to 404 and look deliberate.
-fn runner_handler<D: Serving>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
-    match verb {
-        RunnerRoute::SelfRecord => get(runner::self_record::handle::<D>),
-        RunnerRoute::Heartbeat => post(runner::heartbeat::handle::<D>),
-        RunnerRoute::Lease => post(runner::lease::handle::<D>),
-        RunnerRoute::Report => post(runner::report::handle::<D>),
-        RunnerRoute::Renew => post(runner::renew::handle::<D>),
-        RunnerRoute::Activity => post(runner::activity::handle::<D>),
-        RunnerRoute::MemoryHydrate => get(runner::memory::hydrate::<D>),
-        RunnerRoute::MemoryCapture => post(runner::memory::capture::<D>),
-        RunnerRoute::Bundle => get(runner::bundle::handle::<D>),
-        RunnerRoute::CredentialsMint => post(runner::credential::handle::<D>),
-    }
-}
-
-/// The operator's view over runners — a tenant acting ON the fleet's hosts.
-///
-/// Every tabled verb is served. Keeping this total makes a newly added verb a
-/// compile error until its handler is selected instead of silently mounting a
-/// 404 through an unnecessary `Option`.
-fn runner_ops_handler<D: Serving>(verb: RunnerOpsRoute) -> MethodRouter<Arc<D>> {
-    match verb {
-        RunnerOpsRoute::Register => post(runner::enrolment::handle::<D>),
-        RunnerOpsRoute::List => get(operator::runners::list::<D>),
-        RunnerOpsRoute::Get => get(operator::runners::detail::<D>),
-        RunnerOpsRoute::Patch => patch(operator::runner_patch::handle::<D>),
-        RunnerOpsRoute::Events => get(operator::events::list::<D>),
-        RunnerOpsRoute::Leases => get(operator::leases::list::<D>),
-        RunnerOpsRoute::Streams => get(operator::streams::list::<D>),
     }
 }
 

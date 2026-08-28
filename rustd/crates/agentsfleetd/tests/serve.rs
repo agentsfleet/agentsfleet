@@ -43,9 +43,10 @@ fn parses_but_dead() -> MapEnv {
             (KEK_KNOB, GOOD_KEK),
         ]
         .into_iter()
-        // Required at boot, and resolved rather than dialled — so a well-formed
-        // provider keeps this fixture's failure the DATASTORE one it is
-        // asserting about.
+        // Both are required at boot and resolved rather than dialled, so
+        // supplying them well-formed keeps this fixture's failure the DATASTORE
+        // one it is asserting about.
+        .chain(support::SESSION_PEPPER)
         .chain(support::IDENTITY),
     )
 }

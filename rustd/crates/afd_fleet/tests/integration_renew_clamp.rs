@@ -36,11 +36,11 @@ mod seed;
 #[path = "support/fleet_report_seed.rs"]
 mod report_seed;
 
+use afd_billing::{Cumulative, Meter, SliceRates};
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::timing::{LEASE_TTL_MS, MAX_RUNTIME_MS};
 use afd_fleet::lease::{Billed, Delivery, Renewed};
-use afd_fleet::money::{Cumulative, Meter, SliceRates};
 
 use self::requests::ENROLLED_AT;
 use self::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
@@ -128,7 +128,7 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
         early,
         Renewed::Extended {
             expires_at: now.saturating_add_millis(LEASE_TTL_MS),
-            charged: afd_fleet::money::Nanos::ZERO,
+            charged: afd_billing::Nanos::ZERO,
         },
         "with hours of budget left, a renewal takes the full lease TTL"
     );
@@ -157,7 +157,7 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
         clamped,
         Renewed::Extended {
             expires_at: ceiling,
-            charged: afd_fleet::money::Nanos::ZERO,
+            charged: afd_billing::Nanos::ZERO,
         },
         "inside the last TTL of its budget, a run is given the remainder and not a fresh window"
     );

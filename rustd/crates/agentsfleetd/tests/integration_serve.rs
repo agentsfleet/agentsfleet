@@ -61,9 +61,11 @@ fn lane_environment() -> MapEnv {
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
         ]
         .into_iter()
-        // The provider is required at boot. This lane boots for real, so it
-        // must supply one — resolved rather than dialled, so well-formed is
-        // enough and nothing here reaches the issuer.
+        // The provider and the login pepper are required at boot. This lane
+        // boots for real, so it must supply both — each is resolved rather
+        // than used, so well-formed is enough and nothing here reaches the
+        // issuer or takes a digest.
+        .chain(support::SESSION_PEPPER)
         .chain(support::IDENTITY),
     )
 }
@@ -109,22 +111,32 @@ async fn test_boot_to_ready_on_compose() {
         .await
         .expect("the lane's Postgres and Redis are up");
 
-    // Every task the daemon spawns, in spawn order: the four sweepers §6 put
-    // under the supervisor, then the accept loop. Asserted as the WHOLE
-    // inventory rather than as a `contains`, because the claim this test makes
-    // is C2 — nothing runs outside the supervisor — and a subset check would
-    // pass for a sweeper that had quietly gone back to a bare `tokio::spawn`
-    // and so would never be cancelled at shutdown.
+    // Every task the daemon spawns, in spawn order: the pub/sub pump the live
+    // streams read through, the four sweepers §6 put under the supervisor, the
+    // accept loop, and the analytics flush that drains queued product events
+    // before the process exits. Asserted as the WHOLE inventory rather than as
+    // a `contains`, because the claim this test makes is C2 — nothing runs
+    // outside the supervisor — and a subset check would pass for a sweeper that
+    // had quietly gone back to a bare `tokio::spawn` and so would never be
+    // cancelled at shutdown.
+    //
+    // `inventory::OTLP_EXPORT` is in `BACKGROUND_TASKS` and deliberately not
+    // here: the exporter's flush loop is spawned only where a span endpoint is
+    // configured, and the lane configures none. Listing it would make this
+    // assertion fail on the very environment it exists to describe.
     assert_eq!(
         supervisor.inventory(),
         vec![
+            agentsfleetd::inventory::HUB_PUMP,
             agentsfleetd::sweepers::LIVENESS,
             agentsfleetd::sweepers::RECLAIM,
             agentsfleetd::sweepers::RETENTION,
             agentsfleetd::sweepers::REPAIR,
             agentsfleetd::serve::ACCEPT_LOOP,
+            agentsfleetd::inventory::ANALYTICS_FLUSH,
         ],
-        "a booted daemon supervises its sweepers and its accept loop"
+        "a booted daemon supervises its pump, its sweepers, its accept loop \
+         and its analytics flush"
     );
     assert_ne!(
         booted.address.port(),

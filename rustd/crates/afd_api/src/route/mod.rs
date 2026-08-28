@@ -142,7 +142,7 @@ impl Route {
     }
 }
 
-/// The four facts that used to live in four files.
+/// The five facts that used to live in four files and 165 handler bodies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RouteMeta {
     /// What must be presented before a handler runs.
@@ -156,6 +156,8 @@ pub struct RouteMeta {
     pub template: &'static str,
     /// The capability this route requires, which may depend on the method.
     pub scopes: Scopes,
+    /// Which object in the path must belong to the caller before a handler runs.
+    pub ownership: Ownership,
 }
 
 impl RouteMeta {
@@ -172,6 +174,107 @@ impl RouteMeta {
             class,
             template,
             scopes,
+            ownership: Ownership::of(template),
+        }
+    }
+}
+
+/// Which object named in the path must belong to the caller.
+///
+/// # The half of authorization the Zig daemon never lifted out of its handlers
+///
+/// Capability and ownership are independent questions — "may you do this kind
+/// of thing" and "is this particular thing yours" — and only the first is in
+/// the Zig route table. The second is `authorizeWorkspace`, called BY HAND at
+/// the top of each workspace handler. Around a hundred and sixty-five handlers
+/// call it; a handler that does not is a cross-tenant read, and nothing fails
+/// when somebody forgets, because nothing anywhere says the call should have
+/// been there. `cross_workspace_idor_test.zig` exists because that has already
+/// happened once.
+///
+/// Here it is a fact about the ROUTE, read by the router while it mounts and
+/// enforced by a layer in front of every handler that needs it. A handler
+/// cannot forget it, because a handler is not what performs it.
+///
+/// # Why it is derived from the template rather than declared
+///
+/// A declared field would be one more thing per route to get right, and the
+/// answer is already written in the path: a route addressed by a workspace
+/// spells `{workspace_id}` and one that is not does not. Deriving it means the
+/// two cannot disagree — there is no second place for the fact to live.
+///
+/// The operator plane's fleet-addressed routes (`/v1/fleets/{fleet_id}/…`)
+/// resolve their workspace through the fleet row instead, which is a different
+/// statement and a different verdict. They arrive with M179 and will add a
+/// variant here; until then no route in the table needs one, so declaring it
+/// now would be a branch nothing can reach.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ownership {
+    /// Nothing in the path names a tenant-owned object.
+    ///
+    /// The tenant plane's own routes are all of this kind: `/v1/api-keys` acts
+    /// on whatever the credential resolved to, so there is no identifier to
+    /// check it against and the statement's own tenant predicate IS the
+    /// boundary.
+    None,
+    /// The path's `{workspace_id}` must belong to the caller's tenant.
+    Workspace,
+}
+
+impl Ownership {
+    /// What `template` names, from the parameters it carries.
+    #[must_use]
+    pub const fn of(template: &'static str) -> Self {
+        if contains(template.as_bytes(), WORKSPACE_PARAMETER.as_bytes()) {
+            Self::Workspace
+        } else {
+            Self::None
+        }
+    }
+
+    /// Whether a route of this kind needs the ownership layer mounted.
+    #[must_use]
+    pub const fn is_checked(self) -> bool {
+        matches!(self, Self::Workspace)
+    }
+}
+
+/// The path parameter a workspace-owned route is addressed by.
+///
+/// The macros in [`path`] spell it too, because `concat!` takes literals and a
+/// `const` is not one; `the_workspace_macros_carry_the_parameter_ownership_reads`
+/// is what holds the two together, since a rename that missed one would derive
+/// [`Ownership::None`] for a whole family and serve it cross-tenant with
+/// nothing failing (RULE UFS).
+pub const WORKSPACE_PARAMETER: &str = "{workspace_id}";
+
+/// Whether `haystack` contains `needle`, in a `const` context.
+///
+/// Slice patterns and recursion rather than index arithmetic, which is the same
+/// device `afd_core::error_code`'s spelling check uses and for the same reason:
+/// every bound is proven by the pattern, so there is no comparison a reader has
+/// to check and no index that could be out of range
+/// (`clippy::indexing_slicing`). The depth is the template's length — sixty-odd
+/// bytes — and every call site is a `const` item, so it runs while the binary
+/// is built rather than while it serves.
+const fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+    if starts_with(haystack, needle) {
+        return true;
+    }
+    match haystack {
+        [] => false,
+        [_, rest @ ..] => contains(rest, needle),
+    }
+}
+
+/// Whether `haystack` begins with `needle`.
+const fn starts_with(haystack: &[u8], needle: &[u8]) -> bool {
+    match (haystack, needle) {
+        // An empty needle is a prefix of everything, which terminates the walk.
+        (_, []) => true,
+        ([], _) => false,
+        ([head, haystack @ ..], [wanted, needle @ ..]) => {
+            *head == *wanted && starts_with(haystack, needle)
         }
     }
 }

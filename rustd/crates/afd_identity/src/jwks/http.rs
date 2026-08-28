@@ -122,15 +122,24 @@ impl HttpKeySet {
 }
 impl KeySetSource for HttpKeySet {
     async fn fetch(&self) -> Result<Vec<u8>, VerifyError> {
-        let response = self.client.get(&self.url).send().await.map_err(|err| {
-            // Hoisted out of the macro: `tracing`'s `log` feature is on across
-            // this workspace, so a call inside an event field compiles twice
-            // and llvm-cov reports the dead copy.
-            let cause = err.to_string();
-            let url = self.url.clone();
-            tracing::warn!(url, cause, event = "jwks_fetch_failed");
-            VerifyError::KeySetUnavailable
-        })?;
+        let response = self
+            .client
+            .get(&self.url)
+            .send()
+            .await
+            .inspect_err(|failure| {
+                // Hoisted out of the macro: `tracing`'s `log` feature is on
+                // across this workspace, so a call inside an event field
+                // compiles twice and llvm-cov reports the dead copy.
+                let cause = failure.to_string();
+                let url = self.url.clone();
+                tracing::warn!(url, cause, event = "jwks_fetch_failed");
+            })
+            // `inspect_err` observes, `map_err` maps. Splitting them is what
+            // keeps the cause out of the error VALUE: this error carries no
+            // source, so stringifying into it would have dropped the chain
+            // (RULE ERR-RS). Logged here, discarded there, deliberately.
+            .map_err(|_logged| VerifyError::KeySetUnavailable)?;
         let status = response.status();
         if !status.is_success() {
             let code = status.as_u16();
