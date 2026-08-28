@@ -163,16 +163,30 @@ fn test_declared_spellings_are_the_ones_sqlx_honours() {
         );
     }
 
-    // The negative half: a key that merely contains one of the spellings is
-    // not one, or `?not-sslmode=x` would suppress the upgrade.
-    let url = "postgres://u:pw@h:5432/db?not-sslmode=disable";
-    let env = env_with(&[("DATABASE_URL", url)]);
-    let config = PoolConfig::resolve(&env, DbRole::Default).unwrap();
-    assert_eq!(
-        config.ssl_mode(),
-        "require",
-        "substring is not a declaration"
-    );
+    // The negative half, and every row agrees with sqlx rather than with an
+    // idea of what the operator meant.
+    //
+    // `not-sslmode` matters because a key that merely CONTAINS a spelling must
+    // not count, or it would suppress the upgrade. `SSLMODE` matters more, and
+    // is the uncomfortable one: sqlx compares the key case-sensitively and
+    // answers an upper-case spelling by logging `ignoring unrecognized connect
+    // parameter` and moving on. So an operator who writes it gets `require`
+    // and a boot failure against a server with no TLS. That is not this
+    // branch's doing — it read the same way before — and the alternative is
+    // worse: honouring a key sqlx ignores would skip the upgrade over a
+    // `disable` that never reached the driver, which is a silent cleartext
+    // connection instead of a loud refusal. Pinned so the agreement is a
+    // decision rather than an accident.
+    for ignored in ["not-sslmode", "SSLMODE", "SslMode"] {
+        let url = format!("postgres://u:pw@h:5432/db?{ignored}=disable");
+        let env = env_with(&[("DATABASE_URL", url.as_str())]);
+        let config = PoolConfig::resolve(&env, DbRole::Default).unwrap();
+        assert_eq!(
+            config.ssl_mode(),
+            "require",
+            "sqlx ignores `{ignored}`, so it cannot count as a declaration"
+        );
+    }
 }
 
 /// Where a captured event's bytes go, or `None` when nothing is capturing.
