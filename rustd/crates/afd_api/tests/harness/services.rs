@@ -16,11 +16,13 @@ use afd_auth::mock::{MockCapabilities, MockDirectory};
 use afd_auth::verifier::NoVerifier;
 use afd_billing::tenant::Billing;
 use afd_core::clock::UnixMillis;
-use afd_events::History;
+use afd_events::{History, Steer};
 use afd_fleet::bundle::Bundles;
 use afd_fleet::memory::Memories;
 use afd_fleet_lifecycle::Fleets;
+use afd_observability::Analytics;
 use afd_runner::Runners;
+use afd_sse::Live;
 use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
@@ -47,6 +49,7 @@ impl Services for Fleet {
     type Approvals = Inbox;
     type Grants = IntegrationGrants;
     type Events = History;
+    type Steering = Steer;
     type Memories = Memories;
     type Billing = Billing;
     type Catalogue = Models;
@@ -106,6 +109,18 @@ impl Services for Fleet {
 
     fn events(&self) -> &History {
         &self.events
+    }
+
+    fn live(&self) -> &Live {
+        &self.live
+    }
+
+    fn analytics(&self) -> &Analytics {
+        &self.analytics
+    }
+
+    fn steering(&self) -> &Steer {
+        &self.steering
     }
 
     fn memories(&self) -> &Memories {

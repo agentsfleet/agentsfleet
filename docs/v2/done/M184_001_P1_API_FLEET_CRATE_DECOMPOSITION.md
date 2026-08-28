@@ -8,7 +8,7 @@
 **Priority:** P1 — no behaviour changes, and every build in the repository pays for this one until it lands
 **Categories:** API
 **Batch:** B8 — NOT parallel with anything touching `afd_fleet`; see Dependencies
-**Branch:** `feat/m178-tenant-workspace-surface` — folded into M178's branch at Indy's direction rather than taken as its own tree; see Discovery
+**Branch:** _none of its own._ M184 took no tree and no branch: its commits ride M178_001's stream at Indy's direction, rather than being cut as a second stream over the same crates; see Discovery. The branch is deliberately not NAMED on this line, because that header is what `orly`'s `closedSpecPath` reads to decide which stream a worktree is closing — and two `done/` specs both naming one branch is the "one stream per worktree" violation that check exists to catch. This milestone is not that: the relationship is a fold, and this line now says so rather than claiming a tree M184 never had.
 **Test Baseline:** `unit=1221 integration=144` — `cargo test --workspace --all-features` at `2839efc18`, and the M176 rustd integration lane's last green count. This milestone's own oracle is that neither number falls.
 **Depends on:** M178_001 — hard, and for two reasons. Its §3–§6 add handlers over `vault`, `secrets`, `gate` and `sweep`, which are the modules this spec restructures; and it CREATES `afd_tenant`, so a branch taken from `main` before it merges would be decomposing a crate graph that no longer exists.
 **Provenance:** LLM-drafted (Claude Opus 5, Aug 27, 2026)

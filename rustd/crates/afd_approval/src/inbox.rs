@@ -88,10 +88,10 @@ const CONTINUATION_ACTOR_PREFIX: &str = "continuation:";
 const CONTINUATION_BODY: &str = "{}";
 
 /// The stream fields a continuation is appended with.
-const FIELD_ACTOR: &str = "actor";
-const FIELD_EVENT_TYPE: &str = "event_type";
-const FIELD_WORKSPACE: &str = "workspace_id";
-const FIELD_REQUEST: &str = "request_json";
+const FIELD_ACTOR: &str = afd_wire::event::field::ACTOR;
+const FIELD_EVENT_TYPE: &str = afd_wire::event::field::EVENT_TYPE;
+const FIELD_WORKSPACE: &str = afd_wire::event::field::WORKSPACE_ID;
+const FIELD_REQUEST: &str = afd_wire::event::field::REQUEST_JSON;
 
 /// The operator's queue over one workspace's gates.
 #[derive(Debug, Clone)]

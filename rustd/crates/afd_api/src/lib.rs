@@ -24,7 +24,7 @@
 // everything else.
 #[cfg(test)]
 use {
-    afd_db as _, afd_redis as _, bytes as _, hyper_util as _, object_store as _, tower as _,
+    afd_db as _, afd_redis as _, bytes as _, hyper as _, object_store as _, tower as _,
     tracing_subscriber as _,
 };
 
@@ -39,6 +39,7 @@ pub mod route;
 pub mod router;
 pub mod server;
 pub mod services;
+mod telemetry;
 
 pub use self::admission::{Admission, DEFAULT_MAX_IN_FLIGHT, admit, is_metered};
 pub use self::auth::{Authenticator, Planes, RunnerIdentity};
@@ -46,5 +47,5 @@ pub use self::envelope::{CONTENT_TYPE_PROBLEM_JSON, ProblemResponse};
 pub use self::request_id::{RequestId, UNKNOWN_REQUEST_ID};
 pub use self::route::{Guard, Route, RouteClass, RouteMeta, Scopes};
 pub use self::router::{Dependencies, ReadyInputs, Serving, ready_decision};
-pub use self::server::{MAX_REQUEST_HEADER_BYTES, http1_builder};
+pub use self::server::{MAX_REQUEST_HEADER_BYTES, connection_builder};
 pub use self::services::Services;

@@ -22,7 +22,9 @@ use afd_fleet::bundle::Bundles;
 use afd_fleet::lease::Plane;
 use afd_fleet::memory::Memories;
 use afd_fleet_lifecycle::Fleets;
+use afd_observability::Analytics;
 use afd_runner::Runners;
+use afd_sse::Live;
 use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
@@ -47,6 +49,7 @@ impl Services for ServingPlane {
     type Approvals = Inbox;
     type Grants = IntegrationGrants;
     type Events = History;
+    type Steering = afd_events::Steer;
     type Memories = Memories;
     type Billing = Billing;
     type Catalogue = Models;
@@ -108,6 +111,18 @@ impl Services for ServingPlane {
 
     fn events(&self) -> &History {
         &self.events
+    }
+
+    fn live(&self) -> &Live {
+        &self.live
+    }
+
+    fn analytics(&self) -> &Analytics {
+        &self.analytics
+    }
+
+    fn steering(&self) -> &afd_events::Steer {
+        &self.steering
     }
 
     /// The store the lease plane already holds. ONE `Memories` in this process:

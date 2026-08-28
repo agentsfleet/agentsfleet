@@ -3,6 +3,7 @@
 use afd_api::services::Leasing;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_fleet::lease::report::Reconciled;
 
 /// A lease plane that always answers no-work.
 ///
@@ -40,8 +41,12 @@ impl Leasing for NoWork {
         _runner_id: &Uuid7,
         _request: &afd_wire::report::ReportRequest<'_>,
         _now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<afd_billing::Nanos>> + Send {
-        std::future::ready(Ok(afd_billing::Nanos::ZERO))
+    ) -> impl Future<Output = afd_fleet::Result<Reconciled>> + Send {
+        std::future::ready(Ok(Reconciled {
+            charged: afd_billing::Nanos::ZERO,
+            fleet_id: fixture_id(),
+            workspace_id: fixture_id(),
+        }))
     }
 
     /// Accepts every batch of frames and publishes none, which is what a plane
@@ -114,4 +119,15 @@ impl Leasing for NoWork {
     ) -> impl Future<Output = afd_fleet::Result<UnixMillis>> + Send {
         std::future::ready(Ok(now))
     }
+}
+
+/// The identifier a stubbed settle reports against.
+///
+/// One value for both the fleet and the workspace: nothing in a router suite
+/// reads either — the stub exists so an authenticated runner REACHES the
+/// handler — and two spellings would suggest a distinction this stub does not
+/// make.
+fn fixture_id() -> Uuid7 {
+    Uuid7::parse("01924f4e-0000-7000-8000-00000000fee7")
+        .expect("a fixture identifier is well formed")
 }

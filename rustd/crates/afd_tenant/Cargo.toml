@@ -44,7 +44,7 @@ sha2.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-petname = { version = "3.2", default-features = false, features = ["default-words"] }
+petname.workspace = true
 
 [features]
 # M-TEST-UTIL. Unlocks the seams the suites drive through the crates that own

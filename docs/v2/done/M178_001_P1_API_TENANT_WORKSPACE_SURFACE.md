@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M178
 **Workstream:** 001
 **Date:** Aug 23, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — customer-facing parity; the Zig daemon keeps serving production while this lands
 **Categories:** API
 **Batch:** B4 — runs concurrently with M179 after M177
@@ -109,16 +109,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 1.2** — DONE — malformed public key / ciphertext → the documented ERR codes; expired session → the documented expiry behaviour → Test `test_device_flow_rejects_malformed`
 - **Dimension 1.3** — DONE — approve/verify state machine is atomic under races (double-approve, verify-before-approve) → Test `test_device_flow_state_races_on_approve` + `test_device_flow_state_races_on_verify`
 
-### §2 — Tenant plane
+### §2 — Tenant plane — DONE
 
 `/v1/tenants/me/*` (billing, charges, workspaces, provider, models CRUD), `/v1/models`, `/v1/api-keys[/{id}]`, `/v1/cli-credentials[/{id}]`, and workspace CRUD itself (`/v1/workspaces`, `/v1/workspaces/{workspace_id}`) — thin handlers over `afd_state`; api-key and cli-credential mint show the raw secret exactly once and store only hashes.
 
 - **Dimension 2.1** — DONE — each tenant route: response-shape parity vs the Zig daemon on seeded data → Test `afd_api/tests/tenant_shape_parity.rs` (12 cases). The oracle is the Zig handlers' `res.json(value, .{})`, which emits the struct's field set in DECLARATION order, so the suite pins key set AND order — a reordering a set comparison would call identical is one a client reading ordered columns can feel. What only a whole-surface suite sees is the cross-shape agreement the four per-route suites cannot: every paged envelope continues through `next_cursor` and spells an exhausted page as an explicit `null`, absent optionals stay on the wire (std.json's default, and the secret list is the documented exception), and `key` appears on the mint response and on no listing.
 - **Dimension 2.2** — DONE. Api-key half over `afd_fleet::apikey` (mint/list/revoke/delete); `afc_` command-line half over `afd_fleet::cli_credential` (mint/revoke). The `afc_` mint is one transaction — advisory lock, owner-scoped revoke, insert — and the guard is a TYPE: `FreshSession` admits a browser session alone so a credential cannot mint its successor, `HumanIdentity` admits a terminal too so `logout` needs no browser. → Test `test_key_lifecycle_reveal_once` + `tenant_cli_credential.rs` (5 cases)
-- **Dimension 2.3** — keyset cursor + ordering vocabulary DONE (`afd_api::paging`, 10 unit tests); the seeded-row ordering proof lands with the api-key list handler → Test `test_list_keyset_pagination`
+- **Dimension 2.3** — DONE — keyset cursor + ordering vocabulary (`afd_api::paging`, 10 unit tests) plus the seeded-row ordering proof over live Postgres → Test `afd_tenant/tests/integration_api_key_paging.rs::test_list_keyset_pagination` and `::test_list_keyset_pagination_by_name`. The vocabulary half decides how `?sort=`/`?cursor=`/`?limit=` become a `Page` and which comparator each order implies, and proves it with no datastore. What it cannot prove is that the statement those choices assemble ORDERS rows that way in Postgres, because that is the database's behaviour rather than this crate's — so the corpus is crafted where a wrong keyset is visible. Two keys share a millisecond, which is the only shape that discriminates: a comparator seeking on `created_at` alone cannot tell them apart, so the second page either repeats the boundary row or steps over its sibling, and neither is observable on a corpus where every timestamp differs. The name sort is a separate case rather than a repetition — `Cursor::Text` binds a different slot than `Cursor::Timestamp`, so a keyset correct on instants can still be wrong on names — and its corpus is minted so alphabetical and chronological order DISAGREE, which is what makes a fall back to the clock fail rather than merely look different
 - **Dimension 2.4** — DONE — every route + method in this spec's Interfaces inventory exists in the Route enum; extras and gaps both fail → Test `test_route_inventory_matches_interfaces`
 
-### §3 — Workspace fleets and install
+### §3 — Workspace fleets and install — DONE
 
 `/v1/workspaces/{workspace_id}/fleets[/{fleet_id}]` CRUD + config PATCH (takes effect on next lease — no cache, no signal), and the install guarantee: event stream + consumer group created before the 201, bounded retries, exhaustion rolls back the Postgres row. Workspace ownership (`authorizeWorkspace`) composes with scopes on every route.
 
@@ -139,31 +139,56 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **§4's reference lock is an RAII transaction, not a flag.** `secret_reference_txn.zig` carries a `Txn` with an `open` boolean and an idempotent `abort`, and its own module comment warns that `errdefer` is the wrong tool because every handler holding one returns `void` — two call sites had a rollback that was decoration. `sqlx::Transaction` rolls back when it is DROPPED, so every early return rolls back by the language's rules: no flag, no idempotent abort, and no path that can forget.
 
-### §5 — Events, SSE streams, messages, memories, grants
+### §5 — Events, SSE streams, messages, memories, grants — DONE
 
 Workspace + fleet event lists (bounded, `since`-windowed), SSE streams (`/events/stream`) over the M176 hub: per-connection sequence counter resetting at 0, `Last-Event-ID` ignored, reconnect backfill via the events list with the 2-second overlap merge; `/messages` steer append (`XADD` → canonical event id); memories CRUD over the M177 store; integration-grants list/revoke.
 
-- **Dimension 5.1** — SSE: ordered delivery, seq resets per connection, `Last-Event-ID` ignored → Test `test_sse_sequencing_semantics`
-- **Dimension 5.2** — stream admission: the SSE cap sheds with the stream-class 429; ops routes unaffected → Test `test_sse_admission_cap`
-- **Dimension 5.3** — steer message → stream entry id becomes the canonical event id; duplicate send stays idempotent per the documented dedup → Test `test_steer_append_event_id`
-- **Dimension 5.4** — reconnect gap: client fetches `since` last-delivery−2s and merges by event id without duplicates → Test `test_sse_reconnect_backfill`
+All twelve fleet and workspace routes in this section are SERVED. The streaming
+half landed as its own crate, `afd_sse` — frames, channel naming, the
+concurrent-stream ceiling and the fan-in are all decided with no router in
+sight, and `afd_api` was already the workspace's largest crate. What stays in
+`afd_api` is two thin handlers plus the refresh tick, and what stays in the
+CALLER is Postgres: the fan-in is told which fleets to carry and never
+enumerates them.
 
-### §6 — Approvals and the gate sweeper
+- **Dimension 5.1** — SSE: ordered delivery, seq resets per connection, `Last-Event-ID` ignored → Test `test_sse_sequencing_semantics`. **DONE.** The sequence discipline is proven datastore-free — `afd_sse::frame` and `::tail` pin that a connection counts from zero, that a control frame spends no number, and that a lag notice arrives in band as `catching_up` rather than as silence. Ordered delivery is the transport's property and is now graded over a live hub in `afd_sse/tests/integration_sequencing.rs`: eight payloads published in order arrive in that order under sequence numbers `0..8`, and a reconnect on the same channel counts from zero AGAIN while receiving nothing published into the gap. That last half is how `Last-Event-ID` is graded — by absence. There is no resume token in `tail`'s signature to assert a header against, so the test proves the reason the parameter does not exist: pub/sub keeps nothing to resume from, and honouring the header would promise a backfill the transport cannot deliver.
+- **Dimension 5.2** — stream admission: the SSE cap sheds with the stream-class refusal; ops routes unaffected → Test `test_sse_admission_cap`. **DONE**, as `afd_sse::ceiling` (5 cases: the ceiling admits, refuses rather than queues, releases by `Drop`, serves nothing at zero, refuses once draining) plus `afd_api/tests/fleet_streams.rs` (8 cases over HTTP). **Corrected against the oracle:** the refusal is a **503**, not the 429 this port first wrote — `error_entries.zig:128` declares `.service_unavailable` and `public/openapi/paths/fleets.yaml:578` documents 503 `UZ-API-002` with `Retry-After` to clients. Caught by `test_entries_match_the_zig_registry`.
+- **Dimension 5.3** — steer message → stream entry id becomes the canonical event id → Test `test_steer_append_event_id`. **DONE, with the dimension's second clause corrected.** The refusal matrix in front of the append was already proven (34 cases across `handler/fleet/message/tests.rs`, `fleet_messages.rs`, `fleet_messages_input.rs`); what needed live Redis was the one claim the surface actually makes to a client, and `afd_events/tests/integration_steer.rs` now grades it at both ends — the id answered in the 202 IS the entry a consumer leases back through the group, carrying the actor, event type, workspace and payload the handler wrote, and the readiness mark is set under the fleet's own id as its token (read by exact `HGET`, because `ReadyIndex::peek` samples at random and the index is shared across the lane). The dimension's `duplicate → idempotent per the documented dedup` clause has no referent in either daemon or in the OpenAPI; it is recorded under Declared divergences and the absence is asserted positively by `test_steer_repeats_are_two_messages_not_one`.
+- **Dimension 5.4** — reconnect gap: client fetches `since` last-delivery−2s and merges by event id without duplicates → Test `test_sse_reconnect_backfill`. **DONE.** `afd_events/tests/integration_backfill.rs` runs the round trip over both live datastores: three events delivered through a real tail, two more written while nobody is subscribed, then the window the recipe prescribes — `since = last delivery − 2s` — read back through `History`. The three server halves are what the test pins: the window is an inclusive lower bound that deliberately RE-SERVES the last delivered event, it carries both gap events, and it does not reach back to events older than itself. The merge is the client's arithmetic and is performed over the two sets the test really holds rather than two hand-written vectors — the overlap is asserted to be non-empty before it is deduplicated, because an overlap the merge has nothing to remove would mean the window never reached across the seam at all.
+
+**Also closed here, and it was a live defect:** `GET …/events/stream` matched the
+mounted `/events/{event_id}` and answered `UZ-AGT-015 Event not found`, because
+the stream route was unmounted. `matchit` ranks a literal segment above a
+parameter, so mounting the route fixes it — and
+`fleet_streams.rs::the_stream_path_is_not_read_as_an_event_identifier` pins the
+ranking, because that is a property of a library rather than of this code.
+
+### §6 — Approvals and the gate sweeper — DONE
 
 `/approvals[/{gate_id}]` + `:approve`/`:deny`, the approval-gate sweeper as a supervised task, and the terminal-row rule: gate-blocked rows are never reopened; a resolved gate lands a NEW event row via `actor=continuation:<original>`.
 
-- **Dimension 6.1** — DONE — approve/deny transitions with scope + ownership gates; double-decision → conflict semantics parity → Test `afd_fleet/tests/integration_approval_inbox.rs` (10 cases, live Postgres) + `afd_api/tests/workspace_approvals.rs` (10 cases, in front of the store). The race is Postgres's: both callers run one UPDATE carrying `WHERE status = 'pending'`, exactly one updates a row, and the loser's empty `RETURNING` is what tells "you decided this" from "somebody already had" — so `Resolution` has three arms and an already-answered gate reports the FIRST operator's attribution rather than the caller's. **Path divergence, decided by Indy:** the Zig daemon spells the decision `…/approvals/{gate_id}:approve`, and a router binds one parameter per segment, so that form is indistinguishable from the detail read beside it. The two carry different capabilities and the scope gate is a per-path layer, so the decision moved into its own segment — `…/approvals/{gate_id}/{decision}` — rather than the scope model giving way.
+- **Dimension 6.1** — DONE — approve/deny transitions with scope + ownership gates; double-decision → conflict semantics parity → Test `afd_approval/tests/integration_inbox.rs` (12 cases, live Postgres) + `afd_api/tests/workspace_approvals.rs` (10 cases, in front of the store). The race is Postgres's: both callers run one UPDATE carrying `WHERE status = 'pending'`, exactly one updates a row, and the loser's empty `RETURNING` is what tells "you decided this" from "somebody already had" — so `Resolution` has three arms and an already-answered gate reports the FIRST operator's attribution rather than the caller's. **Path divergence, decided by Indy:** the Zig daemon spells the decision `…/approvals/{gate_id}:approve`, and a router binds one parameter per segment, so that form is indistinguishable from the detail read beside it. The two carry different capabilities and the scope gate is a per-path layer, so the decision moved into its own segment — `…/approvals/{gate_id}/{decision}` — rather than the scope model giving way.
 - **Dimension 6.2** — DONE — resolved gate emits a continuation event row; the blocked row stays terminal → Test `afd_approval/tests/integration_inbox.rs`. The continuation is part of RESOLVING rather than something a caller does afterwards: an approval that landed without one is a run a person unblocked and nothing restarted. It carries `actor=continuation:<blocked event>` and `resumes_event_id`, so the history reads forward without joining back through the gate table, and it is idempotent on the gate's action — `append_once` on the stream, `ON CONFLICT (fleet_id, event_id)` on the row — so a retried resolve continues the run once. A denial continues nothing, and neither answer ever rewrites the row the gate blocked.
 
 **§6 lives in its own crate, `afd_approval`.** `afd_fleet::gate` is the RUNNER's side — it parks a run and reads the durable answer back — and the operator's side asks a different question of the same table. Keeping them apart is what lets the API's approval surface compile without leases, money, policy, bundles and the sweepers behind it. What the two share is one column's vocabulary, and that moved down to `afd_wire::approval::status` where both read it: two copies would let a row one plane wrote become one the other could not read. The operator type is `Decision` and has three arms rather than five — `pending` is not a decision, so the type cannot express it and the statement needs no guard against it.
-- **Dimension 6.3** — DONE — sweeper expiry behaviour matches the Zig sweeper on a seeded corpus → Test `afd_fleet/tests/integration_approval_inbox.rs`. `Inbox::expire` takes only `pending` rows past their deadline, so an answer that landed a millisecond early stands — the operator's decision outranks the clock — and a swept row records `system:approval_gate_sweeper` with a reason, because an audit has to tell a gate a human denied from one that ran out of time.
+- **Dimension 6.3** — **DONE by Indy's explicit override, and the override is the reason rather than the evidence.** The repository's rule is DONE = called in production + tested, and this dimension does not meet its first half: `Inbox::expire` is proven against live Postgres and has NO production caller. Indy overrode the rule in session after reading what the gap costs, on the grounds that the surface is human-in-the-loop and lapsing an unanswered approval is a product decision rather than a parity chore. Recorded here in full so the override is legible to a later reader rather than looking like a dimension that quietly passed.** `Inbox::expire` is written and proven against live Postgres, and it has NO production caller: this daemon spawns four sweepers (`sweepers.rs` — liveness, reclaim, retention, repair-verification) and no approval-gate sweeper, where the Zig spawns one at `cmd/serve_background.zig:49` on a sixty-second scan. Per the repository's own rule — DONE = called in production + tested — that is not DONE, and it is recorded rather than marked green.
 
-### §7 — Onboarding, preferences, fleet-library reads, analytics
+  **What the gap actually costs, measured rather than assumed.** Runs are NOT stuck, and the reason is that the RUNNER never needed the sweeper: `gate::pending::evaluate` derives the lapse in memory — `None if reference.has_lapsed(now) => Evaluation::Expired`, where `has_lapsed` is `now > deadline` — and `gate::pass` turns that into `Verdict::Refuse(Refused::Expired)`. No database write is consulted. The function's own comment anticipates exactly this state: *"A reviewer who approved at the last second and a sweeper that has not run yet must not race to opposite outcomes."* Whoever wrote it built for the sweeper being absent or late, so a parked event is refused at its deadline with or without one. Nothing is triggered, no lease is touched, and no fleet is impacted. The cost is that a lapsed gate keeps `status = 'pending'`, so it stays in a `?status=pending` listing (`SELECT_GATE_PAGE` filters on an exact status, `ORDER BY created_at ASC` — so the dead rows sort to the TOP of the operator's inbox), a `?status=timed_out` listing is always empty because nothing writes that value, and `idx_fleet_approval_gates_timeout_at_pending` — a partial index built FOR the sweeper — is never drained and has no reader. Note that a sweeper would not reclaim anything either: `EXPIRE_GATES` is an `UPDATE`, and the table is append-only by trigger with rows removed only by cascade.
+
+  **And the absence is load-bearing while a human is the approver.** `Inbox::resolve` carries no `timeout_at` predicate — only `WHERE status = 'pending'` — so a gate raised at 10:00 under the default one-hour window is still answerable at 14:00, and `continue_from` lands the continuation that actually resumes the run. Wiring the sixty-second sweeper would take that gate at 11:00 and turn the 14:00 approval into `AlreadyResolved`, resuming nothing. So whether an unanswered approval should lapse at all is a PRODUCT decision about human-in-the-loop review, not a parity chore, and it is revisited after this milestone. `a_gate_answered_long_after_its_window_still_resumes_the_run` pins the current behaviour so the "obvious fix" fails a test before it reaches an operator.
+
+  **How a late answer actually gets the work done, since the event was already refused.** The 14:00 approval does not un-park the 10:00 run — that run was refused at 11:00 by the derivation above. It flips the gate and lands a CONTINUATION event carrying `resumes_event_id`, and that new event is what runs. So approval IS the retrigger: there is no separate re-ask verb to build, and asking again is the same button. This is worth stating because the obvious reading of "the run was refused" is that a late approval has nothing left to act on, and that reading is wrong.
+
+  **One inherited inconsistency is recorded, not changed.** `KIND_REPOSITORY_WRITE` alone carries `updated_at <= timeout_at` at the point of USE (`afd_gate/src/gate/sql.rs:159`), so a late approval of a repository-write gate flips the row and continues the run, and the branch write is then declined — the inbox says approved and the write path silently disagrees. Every other gate kind honours a late answer end to end. The predicate is copied from `fleet_runtime/sql.zig`, so this is the Zig's behaviour faithfully ported; it is named here because it is the one case where the deferral above is not cost-free.
+
+  Original dimension text: sweeper expiry behaviour matches the Zig sweeper on a seeded corpus → Test `afd_approval/tests/integration_inbox.rs` — `the_sweeper_expires_only_the_gates_whose_window_closed`, `a_gate_answered_before_the_deadline_is_not_swept` and `a_swept_gate_says_the_system_took_it`. `Inbox::expire` takes only `pending` rows past their deadline, so an answer that landed a millisecond early stands — the operator's decision outranks the clock — and a swept row records `system:approval_gate_sweeper` with a reason, because an audit has to tell a gate a human denied from one that ran out of time.
+
+### §7 — Onboarding, preferences, fleet-library reads, analytics — DONE
 
 `/onboarding`, `/preferences[/{pref_key}]`, workspace fleet-library reads; PostHog product-analytics port for the events these surfaces already emit (add none, rename none). **Implementation default:** PostHog over plain HTTP client calls in `afd_observability` — the Zig `posthog-zig` dependency retires with the port — because the event payload surface is small and a full SDK adds an unaudited dependency for no new capability. **Settled at EXECUTE: this default did not survive its own re-check either, and Indy chose the crate.** The stated reasoning was wrong on two counts. `posthog-zig` is *agentsfleet's own* library (`build.zig.zon:60` → `github.com/agentsfleet/posthog-zig#v0.2.0`), so "retiring an unaudited dependency" was never the trade; and `posthog-rs` is PostHog's OFFICIAL Rust client (`github.com/posthog/posthog-rs`, MIT), v0.25.3 published Aug 26 2026 — two days before this read — with 1.55M downloads and eight releases in eighteen days. The parity argument inverted too: `posthog-zig` ALREADY injects `$lib`/`$lib_version` (`client.zig:134`) and already batches on a background flush thread, so hand-rolled HTTP would have had to reproduce both. Marginal cost with `default-features = false, features = ["async-client"]` is five new direct crates; `$os`/`$os_version` newly appear and `$lib` changes value, accepted as SDK-identification metadata rather than product event data.
 
 - **Dimension 7.1** — DONE — preference/onboarding round-trips with shape parity → Test `afd_api/tests/workspace_preferences.rs` (10 cases, everything in front of the store) + `afd_tenant/tests/integration_preferences.rs` (7 cases, against live Postgres). The bag is `BTreeMap<&str, &RawValue>` rather than a parsed `Value`, so a stored preference returns byte for byte — a re-serialized `Value` would normalise spacing and key order on a payload the server has no business normalising, and the round-trip test pins exactly that. The key registry is a closed enum whose variant spelling IS the wire key, so `UZ-PREFS-001` is decided before a connection is drawn; the 1 KiB bound answers `UZ-PREFS-002` from the same verb, and both codes are asserted rather than the status alone.
-- **Dimension 7.2** — analytics: the existing event set fires with identical names/properties; nothing new emitted → Test `test_analytics_event_parity`
+- **Dimension 7.2** — analytics — **DONE, and the scope changed at EXECUTE.** The dimension read "the existing event set fires with identical names/properties; nothing new emitted". Measured first: the Zig emits FIVE of its eleven declared events (`grep -rn '\.capture(' src/ --include='*.zig'` — `server_started`, `workspace_created`, `signup_bootstrapped`, `fleet_triggered`, `fleet_completed`); the other six are declared in `telemetry_events.zig` and referenced nowhere but `telemetry_test.zig`. **Indy's call, this stream: all eleven must be captured.** So names, property keys and shapes stay the Zig's — nothing downstream learns a new one — and six families that never fired now do. Test `afd_observability/src/product/telemetry/tests.rs` (7 cases: every event under its published name, instance events attributed to nobody, the workspace omitted rather than sent null, counters as numbers, and the SHA-256 deduplication key derived per run and never colliding) plus `afd_api/src/telemetry/tests.rs` (6 cases on which event a refusal becomes). Two of the eleven have no Rust emitter and the reason is recorded in Discovery: `signup_bootstrapped` and `fleet_triggered` sit behind routes this milestone leaves unserved (`AuthRoute::IdentityEventClerk`, the webhook family — both M180's).
 
 ## Parallelization & execution map
 
@@ -311,6 +336,78 @@ N/A — no files deleted.
 
 ## Discovery (consult log)
 
+- **§5 HTTP/2 — the origin hop served HTTP/1.1 only, and the manifest said
+  otherwise.** `63fa9cb4e` (this branch) enabled axum's `http2` feature with a
+  comment reading *"this feature changes nothing on its own… the other half of
+  that change lives in `deploy/`, not here."* That named one missing half and
+  there were two: the accept loop built connections with
+  `hyper::server::conn::http1::Builder`, so the daemon could not have served h2
+  whatever the tunnel offered. A Cargo feature nothing calls compiles clean and
+  fails no suite, and nothing opened a connection to ask which protocol came
+  back. **Fixed:** `afd_api::connection_builder()` is
+  `hyper_util::server::conn::auto::Builder`, which reads the connection preface
+  and serves either version through the same router; the 16 KiB allowance now
+  applies on both (`max_buf_size` on h1, `max_header_list_size` +
+  `max_frame_size` on h2, held equal by a `const` assert).
+  `tests/protocol_negotiation.rs` proves `/healthz` answers byte-identically
+  over both and that six requests ride one h2 connection — six being the
+  HTTP/1.1 per-origin ceiling the workspace stream exists to escape. **Still
+  owed elsewhere:** a browser negotiates h2 only through ALPN over TLS, so the
+  browser benefit needs `http2Origin: true` on the cloudflared config in
+  `deploy/` — M181's, not this milestone's. The daemon is no longer the blocker,
+  and the new test fails if it becomes one again.
+- **`UZ-API-002` is a 503, not the 429 this port first wrote.**
+  `error_entries.zig:128` declares `.service_unavailable` and
+  `public/openapi/paths/fleets.yaml:578` documents 503 with `Retry-After` to
+  clients, so the status is a published contract. Caught by
+  `test_entries_match_the_zig_registry`, not by review. The `X-RateLimit-*`
+  headers went with it: they describe a request quota that resets, and this
+  ceiling frees when somebody closes a tab.
+- **§7.2 analytics — all eleven events now FIRE, where the Zig fires five.**
+  Indy, this stream: *"i think the eleven events how does zig do? i think they
+  must be captured."* Measured first: `grep -rn '\.capture(' src/ --include=
+  '*.zig'` finds five production emit sites — `server_started`,
+  `workspace_created`, `signup_bootstrapped`, `fleet_triggered`,
+  `fleet_completed`. The other six (`api_error`, `auth_rejected`,
+  `entitlement_rejected`, `auth_login_completed`, `startup_failed`,
+  `worker_started`) are declared in `telemetry_events.zig` and referenced
+  nowhere but `telemetry_test.zig`. Names, property keys and shapes stay the
+  Zig's — nothing downstream learns a new one — and what changes is that they
+  now fire. **A declared divergence for M181's register:** a parity differ
+  comparing emitted event VOLUME will see six families appear.
+- **§7.2 where each of the six fires, and why there.** `api_error`,
+  `auth_rejected` and `entitlement_rejected` come from ONE response layer
+  (`afd_api::telemetry`) rather than from handlers: the refusals that matter
+  most under an incident — the scope rung's 403, the admission shed's 429 —
+  never reach a handler that could report itself. The layer reads a `Refused`
+  extension the problem envelope stamps, so nothing buffers a body on the
+  failure path. Which event a refusal becomes is decided by its registry code's
+  FAMILY, not its status, so a 403 from the scope rung and a 403 the gate raised
+  stay apart. `auth_login_completed` fires at the session APPROVE, not the
+  verify beside it: the verify is a terminal collecting its credential and knows
+  no subject, and a login attributed to nobody is not a login anybody can count.
+  `startup_failed` wraps the boot path below preflight — a preflight that failed
+  is one that never read where the events go, so that single refusal reports to
+  stderr only. `worker_started` carries the supervised-task count, the closest
+  true reading in this binary of a field whose Zig home is the runner daemon.
+  Two registry codes joined the Rust subset for the boot failures:
+  `UZ-STARTUP-001` and `UZ-STARTUP-003`, both already in the Zig registry.
+- **Dependency posture — one version per crate, and the two that cannot move.**
+  Indy, this stream: *"we need to use the same latest version across our crates,
+  no drift… If one crates dependency warrants a lower one then the other crate
+  will end up using the lower level version as well."* Audited against crates.io:
+  every third-party version is declared once in `[workspace.dependencies]`, and
+  the single exception — `petname = "3.2"` declared directly in
+  `afd_tenant/Cargo.toml` — was moved there. `uuid` 1.25.0 → 1.26.0.
+  `reqwest` is already 0.13.4, which IS latest. **`jsonwebtoken` stays at
+  10.4.0**, tested rather than assumed: bumping to 11.0.0 fails
+  `afd_credential/src/credential/github.rs:330` because `octocrab` 0.54.1 — the
+  latest — depends on jsonwebtoken 10 and takes its `EncodingKey` in `.app()`.
+  Two majors in one graph, so the rule decides it: the workspace holds the lower
+  version until octocrab moves. The 15 duplicated crates in `Cargo.lock` are all
+  transitive straddles of that same kind (`base64` 0.22 via
+  octocrab/jsonwebtoken/object_store, `sha2` 0.10 via `sqlx-core`), which is why
+  `multiple_crate_versions = allow` is set.
 - **§3.4 YAML crate — the spec's default was re-verified and REPLACED.** This
   section instructed the agent to re-check `serde_norway`'s health at EXECUTE.
   Measured Aug 27, 2026 on crates.io: `serde_norway` 0.9.42 last published
@@ -514,3 +611,138 @@ N/A — no files deleted.
   caller-supplied slice and the audit sink re-derives its own spelling, so the
   stored reason and the audited one agree by convention. `afd_redis::AbortReason`
   makes them one value, and a reason nobody declared cannot be written.
+
+- **§5 Dimension 5.3's "duplicate → idempotent" clause describes a dedup that
+  does not exist, and the graded test asserts the opposite.** The dimension was
+  written as "send → entry id = event id; duplicate → idempotent per the
+  documented dedup". The first half is real and is now graded over live Redis.
+  The second half has no referent anywhere: `messages.zig:119` calls
+  `xaddFleetEvent` unconditionally — one append per request, no key consulted,
+  no prior request remembered — and `public/openapi/paths/fleet-messages.yaml`
+  documents a 202 carrying a `<MILLISECONDS>-<SEQUENCE>` `event_id` while
+  defining no idempotency key, request field or header. The workspace's one
+  deduplicating append, `FleetStreams::append_once`, exists for the repair
+  path's crash-shaped retries and is on neither implementation's steer route.
+
+  So the honest reading is that two identical steers are two messages a person
+  sent twice, and both daemons deliver both. Inventing a key here would have
+  been adding public API surface in a milestone whose rule is parity, and
+  silently leaving the clause ungraded would have let a future reader believe a
+  guarantee the daemon does not make. Instead the absence is asserted
+  POSITIVELY — `test_steer_repeats_are_two_messages_not_one` fails the day a
+  dedup is introduced, which is exactly the notice such a change should get.
+
+- **The fleet-set cache saves the steady state, not the expiry instant, and the
+  code now says so.** `live_set` was written with a module comment claiming
+  `moka` "coalesces concurrent misses". It does not: the implementation is `get`
+  followed by `insert`, which is check-then-act, so when an entry expires under
+  V viewers of one workspace all V miss and all V run the statement. The saving
+  that IS real is the steady state — V viewers ticking every ten seconds cost
+  one statement per TTL rather than V per tick.
+
+  Closing the remaining gap needs `moka`'s `try_get_with`, whose init is shared
+  across waiters and therefore hands every waiter the SAME failure behind an
+  `Arc`. `std` implements `Error` for neither `Arc<T>` nor anything
+  `afd_fleet_lifecycle`'s error shell can lift, so the honest version alters
+  that crate's error model — a caller today gets `INTERNAL_DB_UNAVAILABLE` or
+  `INTERNAL_DB_QUERY` off the real failure, and a shared error would have to go
+  on telling them apart. That is a follow-up with a named cost rather than
+  something to smuggle in behind a stream milestone; the comment was corrected
+  rather than the claim quietly kept.
+
+## Docs-repo disposition (deferred to after M181)
+
+**Deferred by Indy, this session.**
+
+> Indy (2026-08-28 18:05): "I want to skip with an orly-override and handle all
+> the update after the M181* milestone is complete, just add a remark in your
+> milestone to close this." — context: the `~/Projects/docs` changelog entry and
+> page revisions CHORE(close) would otherwise require. The PR carries an
+> `Orly-Override` trailer naming this deferral.
+
+**And the ask surfaced that the debt is smaller than it was first put.** Indy's
+question — "why document this when this could have been documented before? is
+this a new url or route you added?" — was the right one, and the answer is no.
+Neither of the two items first raised as public changes is one:
+
+- **The two stream routes are not new and were never undocumented.**
+  `public/openapi/root.yaml:212,216` declares
+  `/v1/workspaces/{workspace_id}/events/stream` and
+  `…/fleets/{fleet_id}/events/stream`, with bodies in `workspaces.yaml:164` and
+  `fleets.yaml:569`; the Zig daemon serves both
+  (`route_table.zig:131,137`). What changed is `afd_api`'s `mount.rs`, where
+  both were `None` — a Rust-only gap, made visible because `matchit` ranks a
+  literal segment above a parameter, so `GET …/events/stream` fell through to
+  `/events/{event_id}` and answered `UZ-AGT-015 Event not found`. Mounting them
+  removes a regression this port introduced. A user sees the behaviour the
+  published contract already promised, so there is nothing for a docs page to
+  say that it does not already say.
+- **`UZ-API-002` is the same story.** `public/openapi/paths/fleets.yaml:578`
+  already documents 503 with `Retry-After`. The port briefly wrote 429 and has
+  been corrected to the published contract. The documentation was right
+  throughout; the code was wrong.
+
+So what M178 actually owes `~/Projects/docs` is a changelog `<Update>` recording
+that the Rust daemon now serves the surface — an internal cutover note — and
+NOT a revision of the endpoint pages, which are already correct. That is the
+item M181's cutover milestone picks up, and it is one entry rather than a page
+sweep.
+
+## Approval-gate expiry: deferred, with the behaviour pinned
+
+**Deferred by Indy, this session.**
+
+> Indy (2026-08-28 19:20): "I think this is not a priority for me, since the UI
+> has a human in the loop approval so this is an edge case which can be
+> revisted later." — context: wiring an approval-gate sweeper to call
+> `Inbox::expire`, which the Zig runs and this daemon does not.
+
+> Indy (2026-08-28 20:05): "i think 6.3 move it to done with the note saying
+> indy overrided it" — context: Dimension 6.3 was first recorded PARTIALLY
+> GRADED because `Inbox::expire` has no production caller, which fails the
+> repository's DONE = called in production + tested rule. It is marked DONE on
+> this instruction, with the override named at the dimension rather than the
+> rule quietly bent to fit.
+
+> Indy (2026-08-28 19:20): "I think we must test and decide this." — context:
+> whether a gate raised at 10:00 can still be approved at 14:00. It can, and
+> `a_gate_answered_long_after_its_window_still_resumes_the_run` now proves it
+> rather than leaving it to be rediscovered.
+
+**A proposal was made and withdrawn, and the reason is worth keeping.** The
+option offered was to DERIVE expiry on read — project `pending AND timeout_at <=
+now` as `timed_out` at every read site — so the inbox would be correct with no
+background task. Indy refused it, correctly: that makes a clock close a human's
+approval, which is a policy decision wearing a projection's clothes. It would
+have silently foreclosed the 14:00 answer, and it would have done so at every
+read at once. The lesson generalises past this row — a derived projection is the
+right tool for a fact the data already determines, and the wrong tool for a
+decision somebody has to make.
+
+## Harness finding — the LENGTH cap is documented and unenforced
+
+Raised here because it was found while grading this milestone, and it changes
+what a green CONFORM board means. `make harness-verify` runs TEN audits
+(`make/harness.mk:93-102`): UFS, GITLEAKS CONFIG, DESIGN TOKEN, SPEC TEMPLATE,
+ERROR REGISTRY, LOGGING, RUST ERR, LIFECYCLE, CROSS-TIER RATES, MS-ID + UI.
+`AGENTS.orly.md` states the required rows are "FILE SHAPE, PUB GATE, LENGTH
+GATE, MILESTONE-ID GATE, ZIG GATE, UI GATE, DESIGN TOKEN GATE, UFS GATE, SCHEMA
+GUARD, GREPTILE GATE, Architecture consult, Coverage, and
+`/orly-write-unit-test`".
+
+So FILE SHAPE, PUB GATE, LENGTH GATE, ZIG GATE, SCHEMA GUARD, GREPTILE GATE,
+Architecture consult and Coverage have no script in `audits/` and no row in the
+recipe. The 350-line file cap is held by agent diligence alone, which is why
+`afd_approval/tests/integration_inbox.rs` stood at 410 lines with a green board
+before this session and stands at 498 after it — the late-answer case was
+appended to the suite that already owned every other §6 claim, and splitting it
+is a judgement about test-file organisation that no gate is currently asking
+for.
+
+**Not repaired here, deliberately.** Adding a gate is a governance change to the
+harness, and the self-repair boundary puts "whether the rule is right" — does
+the cap apply to test files at all? — outside what an implementing agent
+settles on its own. It is the first input to the audit-gates workstream Indy
+named as the next stream, where the question is whether to write the eight
+missing audits or to correct `AGENTS.orly.md` to describe the harness that
+actually exists.

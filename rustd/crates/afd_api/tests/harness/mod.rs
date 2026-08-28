@@ -61,13 +61,15 @@ use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_events::History;
+use afd_events::{History, Steer};
 use afd_fleet::bundle::{Bundles, ContentHash};
 use afd_fleet::memory::Memories;
 use afd_fleet_lifecycle::Fleets;
+use afd_observability::Analytics;
 use afd_redis::Redis;
 use afd_redis::config::{RedisConfig, RedisRole};
 use afd_runner::Runners;
+use afd_sse::{Ceiling, Live};
 use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
@@ -83,6 +85,9 @@ use bytes::Bytes;
 use object_store::ObjectStoreExt as _;
 use object_store::memory::InMemory;
 
+mod readiness;
+
+use self::readiness::{unreachable_pool, unreachable_queue};
 mod stubs_runner;
 mod stubs_tenant;
 mod support;
@@ -148,11 +153,21 @@ pub(crate) struct Fleet {
     approvals: Inbox,
     grants: IntegrationGrants,
     events: History,
+    live: Live,
+    analytics: Analytics,
+    steering: Steer,
     memories: Memories,
     billing: Billing,
     catalogue: Models,
     now: UnixMillis,
 }
+
+/// How many streams a fixture instance carries.
+///
+/// Above anything a suite opens, so a stream refused in a test is refused by
+/// the thing that test is about. The one suite that DOES prove the ceiling
+/// lowers it with [`Fleet::carrying_at_most`].
+const DEFAULT_STREAM_CEILING: usize = 64;
 
 impl Fleet {
     /// An instance whose dependencies answer, whose directory is empty, and
@@ -198,11 +213,26 @@ impl Fleet {
             approvals: Inbox::new(database.clone(), queue.clone()),
             grants: IntegrationGrants::new(database.clone()),
             events: History::new(database.clone()),
+            // Detached, not connected: a hub opens a pub/sub SOCKET, which is
+            // the one seam in this file that has no `unreachable` form. The
+            // stream routes still answer and still charge the ceiling, which is
+            // the whole of what a refusal-matrix suite reads.
+            live: Live::detached(Ceiling::new(DEFAULT_STREAM_CEILING)),
+            // Silent: a suite must not open a socket to a product-analytics
+            // vendor, and every reporting call is infallible either way.
+            analytics: Analytics::silent(),
+            steering: Steer::new(queue.clone()),
             memories: Memories::new(database.clone(), Entropy::new()),
             billing: Billing::new(database.clone()),
             catalogue: Models::new(database),
             now: UnixMillis::from_millis(FROZEN),
         }
+    }
+
+    /// An instance that will carry `streams` at once and no more.
+    pub(crate) fn carrying_at_most(mut self, streams: usize) -> Self {
+        self.live = Live::detached(Ceiling::new(streams));
+        self
     }
 
     /// An instance reporting `ready` to `/readyz`.
@@ -300,47 +330,3 @@ impl Fleet {
 }
 
 mod services;
-
-impl Dependencies for Fleet {
-    fn probe(&self) -> impl Future<Output = ReadyInputs> + Send {
-        std::future::ready(self.ready)
-    }
-}
-
-/// A Postgres configuration pointed at an address that answers nothing.
-///
-/// Port 1 is reserved and unbound on every platform this builds for, so an
-/// acquire fails on connection refusal rather than waiting out a timeout — the
-/// difference between a suite that runs in milliseconds and one that runs in
-/// acquire budgets.
-fn unreachable_pool() -> PoolConfig {
-    let environment = MapEnv::from_pairs([
-        (DbRole::Api.url_knob(), NOWHERE),
-        // The acquire budget, cut from the two-second production default.
-        //
-        // Every request in this harness ends at a refused connection, and the
-        // pool spends the whole budget retrying before it reports one. At the
-        // default that is two seconds per request and roughly ten per suite —
-        // paid on every inner-loop run, to learn something the first
-        // millisecond already knew.
-        //
-        // Set through the SAME knob a deployment sets, not through a test-only
-        // constructor, so what the suite configures is what an operator can. It
-        // must not go so low that the pool gives up before its first connect
-        // attempt returns: `sqlx` reports that as `PoolTimedOut`, which
-        // `afd_db` classifies as pool CAPACITY rather than an unreachable
-        // datastore, and the refusal would change class. A refused TCP connect
-        // on a reserved port answers in microseconds, so this has three orders
-        // of magnitude of headroom — and if it ever stops having them, the
-        // assertions on `DATABASE_UNAVAILABLE` fail loudly rather than drifting.
-        (ACQUIRE_TIMEOUT_KNOB, ACQUIRE_TIMEOUT_MS),
-    ]);
-    PoolConfig::resolve(&environment, DbRole::Api)
-        .expect("the fixture connection string is well formed")
-}
-
-/// The same, for the queue the login surface and the fleet install reach.
-fn unreachable_queue() -> RedisConfig {
-    RedisConfig::from_url(RedisRole::Default, NOWHERE_QUEUE.to_owned())
-        .with_request_timeout(std::time::Duration::from_millis(250))
-}

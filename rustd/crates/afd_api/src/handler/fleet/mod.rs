@@ -16,6 +16,7 @@
 pub mod detail;
 pub mod memory;
 mod memory_request;
+pub mod message;
 
 use std::borrow::Cow;
 use std::sync::Arc;

@@ -1,10 +1,10 @@
 //! The runner plane's seam: what the lease family of verbs acts through.
 
-use afd_billing::Nanos;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_credential::credential::Minted;
 use afd_fleet::lease::Plane;
+use afd_fleet::lease::report::Reconciled;
 use afd_fleet::memory::Captured;
 use afd_wire::activity::ActivityFrame;
 use afd_wire::credentials::MintCredentialRequest;
@@ -51,7 +51,7 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         runner_id: &Uuid7,
         request: &ReportRequest<'_>,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<Nanos>> + Send;
+    ) -> impl Future<Output = afd_fleet::Result<Reconciled>> + Send;
 
     /// Extend one live lease's deadline, metering the slice since the last.
     ///
@@ -155,7 +155,7 @@ impl Leasing for Plane {
         runner_id: &Uuid7,
         request: &ReportRequest<'_>,
         now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<Nanos>> + Send {
+    ) -> impl Future<Output = afd_fleet::Result<Reconciled>> + Send {
         Self::report(self, runner_id, request, now)
     }
 

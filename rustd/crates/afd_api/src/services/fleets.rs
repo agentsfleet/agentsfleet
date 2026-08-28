@@ -9,9 +9,12 @@
 //! differently right from the real one.
 
 use afd_core::clock::UnixMillis;
+use std::collections::BTreeSet;
+use std::sync::Arc;
+
 use afd_core::id::Uuid7;
 use afd_fleet_lifecycle::{
-    After, FleetDetail, FleetPage, Install, Patch, Patched, Result as FleetResult,
+    After, FleetDetail, FleetPage, FleetStatus, Install, Patch, Patched, Result as FleetResult,
 };
 
 /// Everything the workspace fleets routes act through.
@@ -48,6 +51,35 @@ pub trait WorkspaceFleets: Send + Sync + std::fmt::Debug + 'static {
         workspace: &Uuid7,
         fleet: &Uuid7,
     ) -> impl Future<Output = FleetResult<FleetDetail>> + Send;
+
+    /// Whether this fleet will take new work, without reading what it is.
+    ///
+    /// `Ok(None)` for a fleet this workspace does not hold, which the caller
+    /// renders as 404 — the statement is workspace-scoped, so a fleet somebody
+    /// else owns and one that never existed are one answer.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer.
+    fn ingress_status(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+    ) -> impl Future<Output = FleetResult<Option<FleetStatus>>> + Send;
+
+    /// Every fleet this workspace holds, by identifier.
+    ///
+    /// The live wall's tick. Cached in the store rather than per connection —
+    /// the set is a property of the workspace, so one enumeration serves every
+    /// viewer of it. Whether THIS caller may see them is decided per request by
+    /// the ownership layer and is never cached with the set.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer. An empty workspace is an
+    /// empty set.
+    fn live_set(
+        &self,
+        workspace: &Uuid7,
+    ) -> impl Future<Output = FleetResult<Arc<BTreeSet<String>>>> + Send;
 
     /// Installs one fleet, its event stream and consumer group included.
     ///
@@ -109,6 +141,21 @@ impl WorkspaceFleets for afd_fleet_lifecycle::Fleets {
         fleet: &Uuid7,
     ) -> impl Future<Output = FleetResult<FleetDetail>> + Send {
         Self::detail(self, workspace, fleet)
+    }
+
+    fn ingress_status(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+    ) -> impl Future<Output = FleetResult<Option<FleetStatus>>> + Send {
+        Self::ingress_status(self, workspace, fleet)
+    }
+
+    fn live_set(
+        &self,
+        workspace: &Uuid7,
+    ) -> impl Future<Output = FleetResult<Arc<BTreeSet<String>>>> + Send {
+        Self::live_set(self, workspace)
     }
 
     fn install(

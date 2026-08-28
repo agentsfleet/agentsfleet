@@ -183,6 +183,16 @@ pub const AGENTSFLEET_INSTALL_ROLLED_BACK: ErrorCode = ErrorCode::declare("UZ-AG
 /// choice, and this code would be answering a question they did not ask.
 pub const AGENTSFLEET_SOURCE_STALE: ErrorCode = ErrorCode::declare("UZ-AGT-014");
 
+/// The fleet will not take new work, so a steer was refused rather than taken.
+///
+/// `ERR_AGENTSFLEET_PAUSED_INGRESS` (`error_registry.zig:94`).
+///
+/// A 409 carrying `current_state`, and the status is the whole point: a
+/// message accepted for a stopped fleet would be a 202 whose run never
+/// happens, and a person watching for their answer would wait forever. The
+/// caller branches on paused-versus-stopped without re-reading the fleet.
+pub const AGENTSFLEET_PAUSED_INGRESS: ErrorCode = ErrorCode::declare("UZ-AGT-012");
+
 /// No event under that identifier, in that fleet, in that workspace.
 ///
 /// `ERR_EVENT_NOT_FOUND` (`error_registry.zig:97`). One code for three facts —
@@ -263,3 +273,14 @@ pub const FLEET_BUNDLE_STORAGE_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-B
 /// moment it is written nothing about the request has been looked at; what it
 /// carries instead is `Retry-After`, which is the only actionable fact there is.
 pub const API_BACKPRESSURE: ErrorCode = ErrorCode::declare("UZ-API-001");
+
+/// This instance is already carrying as many event streams as it will hold.
+///
+/// `ERR_SSE_STREAM_CAP`. A 503 where its neighbour is a 429, and the split is
+/// the point: backpressure counts requests IN FLIGHT and means "you are asking
+/// too fast", while a stream is in flight for minutes and this means "this
+/// instance cannot hold another one". Counting them on one ceiling would let a
+/// wall of dashboards close the API, so streams are capped on their own and
+/// shed with their own code — a client that sees this reopens the STREAM later
+/// rather than slowing every request down.
+pub const SSE_STREAM_CAP: ErrorCode = ErrorCode::declare("UZ-API-002");

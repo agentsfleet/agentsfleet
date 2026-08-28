@@ -20,13 +20,17 @@
 //! there is no window in which a daemon with an unusable KEK has already
 //! opened a listening socket.
 
-use std::fmt;
+mod config;
+mod read;
+
+pub use self::config::{BootConfig, BundleStoreConfig, IdentityConfig, PostHogConfig};
+
+use self::read::{bundle_store, classify, identity, is_set, read_kek, required};
 
 use afd_core::env::EnvSource;
 use afd_core::id::Uuid7;
-use afd_crypto::secret::{Kek, SecretBytes};
+use afd_crypto::secret::SecretBytes;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_identity::ProviderSecret;
 use afd_redis::config::{RedisConfig, RedisRole};
 
 #[doc(inline)]
@@ -92,6 +96,32 @@ pub const API_URL_KNOB: &str = "API_URL";
 /// The deployment [`API_URL_KNOB`] falls back to.
 const API_URL_DEFAULT: &str = "https://api.agentsfleet.net";
 
+/// How many concurrent event streams one instance carries.
+///
+/// `SSE_MAX_STREAMS`, and it is a knob rather than a constant because it is the
+/// one ceiling an operator tunes against their own host: a stream costs a task
+/// and a pub/sub map entry, so the right number is a property of the box.
+/// The `PostHog` project this deployment reports product events to.
+///
+/// `POSTHOG_API_KEY`. Unset is most deployments — every developer's, every
+/// test — and it means the daemon reports nothing rather than refusing to boot.
+const POSTHOG_KEY_KNOB: &str = "POSTHOG_API_KEY";
+
+/// Where those events are ingested.
+///
+/// `POSTHOG_HOST`, unset in every deployment the Zig runs: it hardcodes the US
+/// ingestion host. A knob rather than a constant because a self-hosted `PostHog`
+/// and the EU region are both real, and neither is a code change.
+const POSTHOG_HOST_KNOB: &str = "POSTHOG_HOST";
+
+const SSE_MAX_STREAMS_KNOB: &str = "SSE_MAX_STREAMS";
+
+/// `SSE_MAX_STREAMS_DEFAULT`, mirrored.
+const SSE_MAX_STREAMS_DEFAULT: usize = 64;
+
+/// Why a stream ceiling that will not parse refuses boot.
+const WHY_SSE_MAX_STREAMS: &str = "a whole number of concurrent event streams, at least 1";
+
 /// The Cloudflare account the Fleet Bundle bucket lives under.
 pub const R2_ACCOUNT_ID_KNOB: &str = "R2_ACCOUNT_ID";
 
@@ -148,154 +178,6 @@ const WHY_SECRET: &str = "the provider secret that authorises reading a subject'
 /// them in isolation — it is that some are set and some are not.
 const WHY_R2: &str = "Fleet Bundle snapshot storage needs all four R2 knobs or none; set the rest, or unset them all to serve without snapshots";
 
-/// The identity provider a deployment has, when it has one.
-///
-/// Owned and complete: a value of this type means every knob the provider needs
-/// was present and usable, so nothing downstream re-checks. The absence of one
-/// is the other half of the rule — see [`identity`].
-#[derive(Debug, Clone)]
-pub struct IdentityConfig {
-    /// The required `iss` claim, and the base the key-set URL derives from.
-    pub issuer: Box<str>,
-    /// The required `aud` claim.
-    pub audience: Box<str>,
-    /// An explicit key-set endpoint, when the derived one is not wanted.
-    pub jwks_url: Option<Box<str>>,
-    /// The provider API base a capability claim is read from.
-    pub api_base: Box<str>,
-    /// The secret that authorises that read.
-    pub secret: ProviderSecret,
-}
-
-/// What boot needs resolved before it opens anything.
-#[derive(Debug)]
-pub struct BootConfig {
-    api_pool: PoolConfig,
-    redis: RedisConfig,
-    kek: Kek,
-    session_code_pepper: SecretBytes,
-    app_url: Box<str>,
-    api_url: Box<str>,
-    identity: IdentityConfig,
-    bundles: Option<BundleStoreConfig>,
-    platform_admin_workspace: Option<Uuid7>,
-}
-
-/// The Fleet Bundle snapshot store's credentials, complete.
-///
-/// Owned and whole, like [`IdentityConfig`]: a value of this type means all
-/// four knobs were present, so nothing downstream re-checks.
-#[derive(Debug, Clone)]
-pub struct BundleStoreConfig {
-    /// The Cloudflare account the endpoint is derived from.
-    pub account_id: Box<str>,
-    /// The access key id the GET is signed with.
-    pub access_key_id: Box<str>,
-    /// The secret half of that key.
-    pub secret_access_key: Box<str>,
-    /// The bucket snapshots are stored in.
-    pub bucket: Box<str>,
-}
-
-impl BundleStoreConfig {
-    /// The account-scoped endpoint `r2.zig` builds from the same account id.
-    #[must_use]
-    pub fn endpoint(&self) -> String {
-        format!("https://{}.r2.cloudflarestorage.com", self.account_id)
-    }
-
-    /// The region label R2 requires, which is fixed rather than configured.
-    #[must_use]
-    pub const fn region() -> &'static str {
-        R2_REGION
-    }
-}
-
-impl BootConfig {
-    /// Settings for the API role's Postgres pool.
-    #[must_use]
-    pub const fn api_pool(&self) -> &PoolConfig {
-        &self.api_pool
-    }
-
-    /// Settings for the API role's Redis client.
-    #[must_use]
-    pub const fn redis(&self) -> &RedisConfig {
-        &self.redis
-    }
-
-    /// The master key every vault read is decrypted with.
-    #[must_use]
-    pub const fn kek(&self) -> &Kek {
-        &self.kek
-    }
-
-    /// The key a device-flow verification code's digest is taken under.
-    ///
-    /// Held as the raw configured BYTES rather than as a decoded key, and that
-    /// is a wire-format fact rather than an oversight: the Zig daemon keys its
-    /// HMAC with the sixty-four hexadecimal characters as text, both binaries
-    /// write the same session blob, and a Lua script compares the two digests
-    /// as strings. Decoding here would silently invalidate every session the
-    /// other binary approved.
-    #[must_use]
-    pub const fn session_code_pepper(&self) -> &SecretBytes {
-        &self.session_code_pepper
-    }
-
-    /// Where a person goes to approve a command-line login.
-    #[must_use]
-    pub const fn app_url(&self) -> &str {
-        &self.app_url
-    }
-
-    /// This deployment's own base URL, as a minted credential records it.
-    ///
-    /// Read from configuration rather than from a request's `Host`, because a
-    /// credential and the deployment that minted it are ONE fact: a
-    /// client-asserted host would let the two disagree, and the row would then
-    /// name a deployment that never issued it.
-    #[must_use]
-    pub const fn api_url(&self) -> &str {
-        &self.api_url
-    }
-
-    /// The identity provider, which every boot has.
-    ///
-    /// Not optional: `runtime_validate.zig` refuses to boot without
-    /// `OIDC_ISSUER` and `OIDC_AUDIENCE`, and a daemon that answered a tenant
-    /// request differently from the one it replaces would be a cutover
-    /// divergence discovered in production. A deployment that wants only the
-    /// runner plane still configures a provider; what it does not do is serve
-    /// the tenant surface.
-    #[must_use]
-    pub const fn identity(&self) -> &IdentityConfig {
-        &self.identity
-    }
-
-    /// The workspace this deployment's own platform credentials live in.
-    ///
-    /// Optional for [`Self::bundles`]' reason: a deployment that mints no
-    /// third-party credentials still serves everything else, and refusing to
-    /// boot would take the product down for an endpoint nobody called.
-    #[must_use]
-    pub const fn platform_admin_workspace(&self) -> Option<&Uuid7> {
-        self.platform_admin_workspace.as_ref()
-    }
-
-    /// The Fleet Bundle snapshot store, when this deployment has one.
-    ///
-    /// Optional where [`Self::identity`] is not, and `serve_r2.zig` draws the
-    /// same line: it builds an R2 client only when all four knobs are present
-    /// and serves everything else regardless. Most deployments run fleets with
-    /// no support files and never reach the verb, so refusing to boot would
-    /// take the whole product down for an endpoint nobody called.
-    #[must_use]
-    pub const fn bundles(&self) -> Option<&BundleStoreConfig> {
-        self.bundles.as_ref()
-    }
-}
-
 /// Reads every boot knob, reporting ALL faults rather than the first.
 ///
 /// # Errors
@@ -340,6 +222,42 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
             .unwrap_or_else(|| fallback.to_owned())
             .into_boxed_str()
     };
+    // Set and unparseable is a typo, and a typo here would otherwise surface as
+    // a dashboard that silently refuses every stream — the furthest possible
+    // point from the mistake. Unset is the default, which is most deployments.
+    let sse_max_streams = env
+        .get(SSE_MAX_STREAMS_KNOB)
+        .map(|raw| raw.trim().to_owned())
+        .filter(|raw| !raw.is_empty())
+        .map_or(Some(SSE_MAX_STREAMS_DEFAULT), |raw| {
+            classify(
+                &mut faults,
+                true,
+                SSE_MAX_STREAMS_KNOB,
+                WHY_SSE_MAX_STREAMS,
+                raw.parse::<usize>()
+                    .ok()
+                    .filter(|streams| *streams > 0)
+                    .ok_or(WHY_SSE_MAX_STREAMS),
+            )
+        })
+        .unwrap_or(SSE_MAX_STREAMS_DEFAULT);
+    // Absent is analytics off, and it is not a fault: a deployment that reports
+    // nothing is the normal case, and refusing to boot over an unset key would
+    // make every developer configure a product-analytics project to run the
+    // daemon.
+    let posthog = env
+        .get(POSTHOG_KEY_KNOB)
+        .map(|raw| raw.trim().to_owned())
+        .filter(|raw| !raw.is_empty())
+        .map(|project_key| PostHogConfig {
+            project_key: project_key.into_boxed_str(),
+            host: env
+                .get(POSTHOG_HOST_KNOB)
+                .map(|raw| raw.trim().to_owned())
+                .filter(|raw| !raw.is_empty())
+                .map(String::into_boxed_str),
+        });
     let dashboard = optional_url(APP_URL_KNOB, APP_URL_DEFAULT);
     let deployment = optional_url(API_URL_KNOB, API_URL_DEFAULT);
     let identity = identity(env, &mut faults);
@@ -378,6 +296,8 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
                 identity,
                 bundles,
                 platform_admin_workspace,
+                sse_max_streams,
+                posthog,
             })
         }
         // Anything else: a knob that is missing or unusable, the identity
@@ -385,164 +305,4 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
         // fault, so the refusal names them all rather than the first.
         _refused => Err(Refusal::new(faults)),
     }
-}
-
-/// Resolves the snapshot store, which a boot may legitimately not have.
-///
-/// Three outcomes, not two. All four knobs set is a store; none set is a
-/// deployment that serves no snapshots, which is not a fault and pushes none.
-/// SOME set is a fault per missing knob, and that is the case this function
-/// exists for: a half-configured store boots fine and then fails at the first
-/// bundle fetch, which is the furthest possible point from the mistake — the
-/// same rule `cmd/doctor.zig` records for a half-configured identity provider.
-fn bundle_store<E: EnvSource + ?Sized>(
-    env: &E,
-    faults: &mut Vec<Fault>,
-) -> Option<BundleStoreConfig> {
-    if R2_KNOBS.iter().all(|knob| !is_set(env, knob)) {
-        return None;
-    }
-    let values: Vec<Option<String>> = R2_KNOBS
-        .iter()
-        .map(|knob| required(env, faults, knob, WHY_R2))
-        .collect();
-    let [
-        Some(account_id),
-        Some(access_key_id),
-        Some(secret_access_key),
-        Some(bucket),
-    ] = values.as_slice()
-    else {
-        return None;
-    };
-    Some(BundleStoreConfig {
-        account_id: account_id.as_str().into(),
-        access_key_id: access_key_id.as_str().into(),
-        secret_access_key: secret_access_key.as_str().into(),
-        bucket: bucket.as_str().into(),
-    })
-}
-
-/// Resolves the identity provider, which every boot must have.
-///
-/// Returns `None` after pushing a fault for each knob that is unset or
-/// unusable. There is no "configured nothing" answer: `runtime_validate.zig`
-/// exits with `fatal: OIDC is required — set OIDC_ISSUER and OIDC_AUDIENCE`,
-/// and this daemon replaces that one. `cmd/doctor.zig` records the narrower
-/// half of the same rule — "reject at boot (e.g. `OIDC_JWKS_URL` set but
-/// `OIDC_ISSUER` missing)" — because a half-configured provider fails at the
-/// first tenant request rather than at boot, which is the furthest possible
-/// point from the mistake.
-fn identity<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Option<IdentityConfig> {
-    let issuer = required(env, faults, OIDC_ISSUER_KNOB, WHY_ISSUER);
-    let audience = required(env, faults, OIDC_AUDIENCE_KNOB, WHY_AUDIENCE);
-    let api_base = required(env, faults, PROVIDER_API_BASE_KNOB, WHY_API_BASE);
-    let raw_secret = required(env, faults, PROVIDER_SECRET_KNOB, WHY_SECRET);
-
-    let secret = raw_secret.and_then(|raw| {
-        classify(
-            faults,
-            true,
-            PROVIDER_SECRET_KNOB,
-            WHY_SECRET,
-            ProviderSecret::new(&raw),
-        )
-    });
-
-    let (Some(issuer), Some(audience), Some(api_base), Some(secret)) =
-        (issuer, audience, api_base, secret)
-    else {
-        return None;
-    };
-    Some(IdentityConfig {
-        issuer: issuer.into(),
-        audience: audience.into(),
-        // Optional by design: the key-set endpoint is DERIVED from the issuer
-        // unless an operator has a reason, which is what keeps the two from
-        // ever naming different providers.
-        jwks_url: env
-            .get(OIDC_JWKS_URL_KNOB)
-            .map(|value| value.trim().to_owned())
-            .filter(|value| !value.is_empty())
-            .map(Into::into),
-        api_base: api_base.into(),
-        secret,
-    })
-}
-
-/// Reads a knob that must be present, recording a fault when it is not.
-fn required<E: EnvSource + ?Sized>(
-    env: &E,
-    faults: &mut Vec<Fault>,
-    knob: &'static str,
-    why: &'static str,
-) -> Option<String> {
-    let value = env
-        .get(knob)
-        .map(|raw| raw.trim().to_owned())
-        .filter(|raw| !raw.is_empty());
-    if value.is_none() {
-        faults.push(Fault::Missing { knob, why });
-    }
-    value
-}
-
-/// Whether `knob` carries a value that is not blank.
-fn is_set<E: EnvSource + ?Sized>(env: &E, knob: &str) -> bool {
-    env.get(knob).is_some_and(|value| !value.trim().is_empty())
-}
-
-/// Records a resolver's failure as missing or invalid, by whether it was set.
-///
-/// The resolvers answer with one error type for both cases, and they are
-/// different operator problems: "you forgot this" is fixed by supplying a
-/// value, "what you wrote does not work" by correcting one. Collapsing them
-/// would make the second read like the first.
-fn classify<T, E: fmt::Display>(
-    faults: &mut Vec<Fault>,
-    was_set: bool,
-    knob: &'static str,
-    why: &'static str,
-    outcome: Result<T, E>,
-) -> Option<T> {
-    match outcome {
-        Ok(value) => Some(value),
-        Err(error) if was_set => {
-            faults.push(Fault::Invalid {
-                knob,
-                why: error.to_string(),
-            });
-            None
-        }
-        Err(_unset) => {
-            faults.push(Fault::Missing { knob, why });
-            None
-        }
-    }
-}
-
-/// Resolves the master key, which no sibling crate reads from the environment.
-///
-/// `afd_crypto` deliberately takes hex rather than a knob name — it is the
-/// layer that must not know where a key came from — so the read belongs here.
-fn read_kek<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Option<Kek> {
-    let Some(hex) = env
-        .get(ENCRYPTION_MASTER_KEY_KNOB)
-        .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty())
-    else {
-        faults.push(Fault::Missing {
-            knob: ENCRYPTION_MASTER_KEY_KNOB,
-            why: WHY_KEK,
-        });
-        return None;
-    };
-
-    classify(
-        faults,
-        true,
-        ENCRYPTION_MASTER_KEY_KNOB,
-        WHY_KEK,
-        Kek::from_hex(&hex),
-    )
 }

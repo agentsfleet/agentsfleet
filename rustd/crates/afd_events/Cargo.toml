@@ -43,4 +43,23 @@ tracing.workspace = true
 test-util = ["afd_core/test-util", "afd_db/test-util", "afd_redis/test-util"]
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+# The lane fixture: the shared test database, the role/knob resolution over it,
+# and the identifier minting the seeded rows are addressed by. A dev-dependency
+# feature only — nothing in this crate's library links any of it.
+afd_db = { workspace = true, features = ["test-util"] }
+# The backfill suite delivers its live half through a real tail, because the
+# claim is about the two sets a client actually holds. Acyclic: `afd_sse` knows
+# `afd_redis` and `afd_core`, and nothing about this crate.
+afd_sse.workspace = true
+# The steer suite reads the readiness index by exact field. `ReadyIndex`'s own
+# reader samples at random by design, and the index is shared by every suite in
+# the lane, so an exact `HGET` is the only assertion that cannot flake.
+redis.workspace = true
+# A delivered frame is the publisher's bytes forwarded unrewritten, and reading
+# the event id back out of them is precisely what a reconnecting client does.
+serde_json.workspace = true
+# The frames are polled as a `Stream`, which is what the HTTP layer hands axum.
+futures-util.workspace = true
+# So the event macros in the code under test evaluate their fields.
+tracing-subscriber.workspace = true

@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_api", "crates/afd_approval", "crates/afd_auth", "crates/afd_billing", "crates/afd_core", "crates/afd_credential", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_gate", "crates/afd_fleet_lifecycle", "crates/afd_fleet_runtime", "crates/afd_identity", "crates/afd_observability", "crates/afd_redis", "crates/afd_runner", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_api", "crates/afd_approval", "crates/afd_auth", "crates/afd_billing", "crates/afd_core", "crates/afd_credential", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_gate", "crates/afd_fleet_lifecycle", "crates/afd_fleet_runtime", "crates/afd_identity", "crates/afd_observability", "crates/afd_redis", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.26.2"
@@ -76,6 +76,11 @@ afd_redis = { path = "crates/afd_redis" }
 # liveness, the assertion verdict, and the offline/retention sweepers. The two
 # meet at exactly one audit row, and that meeting is a vocabulary import.
 afd_runner = { path = "crates/afd_runner" }
+# One SSE connection's frames and the fan-in behind a workspace stream. Its own
+# crate rather than a module in `afd_api`: the frame shapes, the sequence
+# discipline and the concurrent-stream ceiling are decided with no router in
+# sight, and `afd_api` is already the workspace's largest crate.
+afd_sse = { path = "crates/afd_sse" }
 afd_state = { path = "crates/afd_state" }
 afd_tenant = { path = "crates/afd_tenant" }
 # The workspace secret surface. Deliberately NOT folded into `afd_fleet`, whose
@@ -182,7 +187,7 @@ getrandom = { version = "0.4.3", default-features = false }
 # than a new dependency.
 url = { version = "2.5.8", default-features = false }
 
-uuid = { version = "1.25.0", default-features = false, features = ["v7", "std"] }
+uuid = { version = "1.26.0", default-features = false, features = ["v7", "std"] }
 
 # Civil-calendar arithmetic, for the monthly budget window.
 #
@@ -277,6 +282,10 @@ aws-lc-rs = { version = "1.18.0", default-features = false, features = [
 # existed only to stop an out-of-order response resurrecting a pre-revocation
 # claim. With one flight per subject there is no second response to be out of
 # order with.
+posthog-rs = { version = "0.25.3", default-features = false, features = ["async-client"] }
+# The workspace's first-run naming. Declared here like every other dependency:
+# a version in a member manifest is the one place drift can start.
+petname = { version = "3.2.0", default-features = false, features = ["default-words"] }
 moka = { version = "0.12.16", default-features = false, features = ["future"] }
 
 # The JWKS fetch, the provider capability call, and the object-store transport.
@@ -419,10 +428,23 @@ tower-http = { version = "0.7.0", default-features = false, features = [
 # header buffer, and §5's Dimension 5.3 is precisely a bound on the header
 # buffer. `server` + `http1` only — no client, and no h2 for a hop the
 # dashboard proxy already terminates.
-hyper = { version = "1.11.0", default-features = false, features = ["server", "http1"] }
+# `client` for the dev-only side of one suite: the protocol-negotiation test
+# drives the same listener with an HTTP/1.1 client and an HTTP/2 one, and there
+# is no other way to prove the auto builder serves both.
+hyper = { version = "1.11.0", default-features = false, features = ["server", "client", "http1", "http2"] }
 # The tokio adapter for hyper's own I/O traits, and nothing else: `TokioIo` is
 # what lets a `tokio::net::TcpStream` be served by a hyper connection.
-hyper-util = { version = "0.1.20", default-features = false, features = ["tokio"] }
+hyper-util = { version = "0.1.20", default-features = false, features = [
+    "tokio",
+    # The version-detecting connection builder. A browser caps concurrent
+    # HTTP/1.1 connections per origin at six and every open event stream holds
+    # one, so a dashboard with a few tabs starves the rest of the origin. The
+    # `http2` feature on axum was enabled for exactly this and the accept loop
+    # never used it — this is the half that was missing.
+    "server-auto",
+    "http1",
+    "http2",
+] }
 # The HTTP vocabulary types, shared with axum rather than re-exported through
 # it: `route_meta` names methods and statuses and has no business depending on
 # a web framework to do it.

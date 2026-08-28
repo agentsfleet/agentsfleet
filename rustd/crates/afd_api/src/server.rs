@@ -1,4 +1,4 @@
-//! The HTTP/1 connection policy this daemon serves under.
+//! The connection policy this daemon serves under, on both protocol versions.
 //!
 //! # The same number, for the opposite reason
 //!
@@ -28,7 +28,8 @@
 //! per 16 KiB on a large upload and changes nothing about what is accepted:
 //! bodies stream, and their own limit is a separate concern from this one.
 
-use hyper::server::conn::http1;
+use hyper_util::rt::TokioExecutor;
+use hyper_util::server::conn::auto;
 
 /// Room for a request's status line and headers.
 ///
@@ -37,23 +38,61 @@ use hyper::server::conn::http1;
 /// rather than read without bound.
 pub const MAX_REQUEST_HEADER_BYTES: usize = 16 * 1024;
 
+/// The largest frame this server will read on an HTTP/2 stream.
+///
+/// The HTTP/1 ceiling above, applied to the protocol that has its own word for
+/// it. Not the same GUARANTEE — h2 bounds headers with
+/// `SETTINGS_MAX_HEADER_LIST_SIZE` and this bounds a DATA frame — but the same
+/// posture: a client must not be able to make this server allocate without a
+/// stated bound.
+///
+/// Spelled as its own literal rather than cast from the sibling above, because
+/// h2's settings are 32-bit by protocol and a cast would be a truncation the
+/// compiler is right to flag. The two are asserted equal below, so they cannot
+/// drift.
+pub const MAX_FRAME_BYTES: u32 = 16 * 1024;
+
+// The one fact both constants state, checked at compile time rather than
+// written twice and hoped about.
+const _: () = assert!(MAX_FRAME_BYTES as usize == MAX_REQUEST_HEADER_BYTES);
+
 /// The connection builder every listener in this daemon serves with.
 ///
 /// Exposed as a builder rather than applied inside an accept loop because the
 /// accept loop belongs to boot, and the POLICY belongs here with the route
 /// table and the admission ceiling — the three facts about how this server
 /// answers before a handler is chosen.
+///
+/// # Why the protocol is detected rather than fixed
+///
+/// A browser opens at most six concurrent HTTP/1.1 connections per origin, and
+/// every live event stream holds one of them for as long as a tab is open. A
+/// dashboard with a handful of tabs therefore starves its own origin — the
+/// stream surface would work and everything else on the page would queue behind
+/// it. HTTP/2 multiplexes every request onto one connection and the cap stops
+/// being a fact about the product.
+///
+/// So this is `auto`, not `http1`: it reads the connection preface and serves
+/// whichever protocol arrived. HTTP/1.1 clients are unaffected — the curl in
+/// every runbook, the stock runner, the Node proxy — and a browser that offers
+/// h2 gets it. Prior-knowledge h2c, which is what a proxy terminating TLS in
+/// front of this server forwards.
 #[must_use]
-pub fn http1_builder() -> http1::Builder {
-    let mut builder = http1::Builder::new();
-    builder.max_buf_size(MAX_REQUEST_HEADER_BYTES);
+pub fn connection_builder() -> auto::Builder<TokioExecutor> {
+    let mut builder = auto::Builder::new(TokioExecutor::new());
+    builder.http1().max_buf_size(MAX_REQUEST_HEADER_BYTES);
+    builder
+        .http2()
+        .max_header_list_size(MAX_FRAME_BYTES)
+        .max_frame_size(MAX_FRAME_BYTES);
     // hyper's own default is ~400 KB and nothing announces that it changed, so
     // a bound this important is worth one line an operator can grep for when a
     // client starts getting 431s it did not get from the Zig daemon.
     tracing::debug!(
         max_request_header_bytes = MAX_REQUEST_HEADER_BYTES,
-        event = "http1_policy_set",
-        "http/1 connection policy set"
+        max_frame_bytes = MAX_FRAME_BYTES,
+        event = "http_connection_policy_set",
+        "connection policy set for both protocol versions"
     );
     builder
 }

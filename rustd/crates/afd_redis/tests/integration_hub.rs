@@ -15,6 +15,7 @@
 
 use std::time::Duration;
 
+use afd_redis::hub::Received;
 use afd_redis::streams::FleetStreams;
 use afd_redis::{Backoff, SubscriptionHub};
 use tokio::sync::Mutex;
@@ -70,11 +71,13 @@ async fn test_hub_refcount_single_connection() {
     // Every reader receives the same message.
     publish_until_delivered(&publisher, &channel, "hello", &mut readers[0]).await;
     for reader in &mut readers[1..] {
-        let message = tokio::time::timeout(DELIVERY_BUDGET, reader.recv())
+        let received = tokio::time::timeout(DELIVERY_BUDGET, reader.recv())
             .await
             .expect("delivery within budget")
-            .expect("the hub is live")
-            .expect("a message, not a lag notice");
+            .expect("the hub is live");
+        let Received::Message(message) = received else {
+            panic!("a message, not a lag notice");
+        };
         assert_eq!(message.payload, "hello");
         assert_eq!(message.channel, channel);
     }
@@ -167,7 +170,7 @@ async fn publish_until_delivered(
             .expect("publish succeeds");
 
         match tokio::time::timeout(Duration::from_millis(100), reader.recv()).await {
-            Ok(Ok(Some(message))) if message.payload == payload => return,
+            Ok(Ok(Received::Message(message))) if message.payload == payload => return,
             Ok(Ok(_)) => {}
             Ok(Err(failure)) => panic!("the hub closed: {failure}"),
             Err(_elapsed) => {}
@@ -249,11 +252,12 @@ async fn test_a_lagging_reader_is_told_and_a_stopped_hub_closes() {
     let mut lagged = false;
     for _ in 0..600_u16 {
         match tokio::time::timeout(Duration::from_millis(200), reader.recv()).await {
-            Ok(Ok(None)) => {
+            Ok(Ok(Received::Lagged(missed))) => {
+                assert!(missed > 0, "a lag notice reports how many were dropped");
                 lagged = true;
                 break;
             }
-            Ok(Ok(Some(_))) => {}
+            Ok(Ok(Received::Message(_))) => {}
             Ok(Err(failure)) => panic!("the hub closed early: {failure}"),
             Err(_elapsed) => break,
         }

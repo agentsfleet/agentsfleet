@@ -35,7 +35,7 @@ use afd_db::Db;
 
 use crate::error::{self, Result};
 
-use self::statement::{SELECT_DETAIL, SELECT_PAGE};
+use self::statement::{SELECT_DETAIL, SELECT_PAGE, SELECT_THREAD_PAGE};
 
 pub use self::cursor::Cursor;
 pub use self::detail::EventDetailRow;
@@ -46,9 +46,20 @@ pub use self::row::EventRow;
 const CONTEXT_FLEET_PAGE: &str = "read a fleet's history";
 const CONTEXT_WORKSPACE_PAGE: &str = "read a workspace's history";
 const CONTEXT_DETAIL: &str = "read one event";
+const CONTEXT_THREAD: &str = "read a fleet's message thread";
 
 /// The page a caller gets when they name no size.
 pub const DEFAULT_LIMIT: i64 = 50;
+
+/// The page a caller of the message thread gets when they name no size.
+pub const THREAD_DEFAULT_LIMIT: i64 = 20;
+
+/// The largest message-thread page this surface will build.
+///
+/// `LIMIT_MAX` from `messages_list.zig`, and deliberately an order of
+/// magnitude below [`MAX_LIMIT`]: every row here carries a trigger payload and
+/// an agent's full answer, where a listing row carries neither.
+pub const THREAD_MAX_LIMIT: i64 = 25;
 
 /// The largest page this surface will build.
 ///
@@ -148,6 +159,39 @@ impl History {
             .await
             .map_err(error::query(CONTEXT_DETAIL))?;
         found.as_ref().map(EventDetailRow::read).transpose()
+    }
+
+    /// One page of a fleet's chat thread, newest first, bodies included.
+    ///
+    /// The caller asks for one row MORE than it will serve: whether a next
+    /// page exists is then a fact rather than a guess, which is what lets the
+    /// byte budget above it cut a page short and still hand back an honest
+    /// cursor.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer, or a row this build cannot
+    /// read.
+    pub async fn thread_page(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        cursor: Option<&Cursor>,
+        limit: i64,
+    ) -> Result<Vec<EventDetailRow>> {
+        let mut connection = self.database.acquire().await?;
+        let rows = sqlx::query(SELECT_THREAD_PAGE)
+            .bind(workspace.as_str())
+            .bind(fleet.as_str())
+            .bind(cursor.map(|at| at.created_at))
+            // Bound unconditionally and read only when the guard passes, so
+            // the argument count is fixed whether or not a cursor arrived.
+            .bind(cursor.map_or("", |at| at.event_id.as_str()))
+            .bind(limit.clamp(1, THREAD_MAX_LIMIT + 1))
+            .fetch_all(&mut *connection)
+            .await
+            .map_err(error::query(CONTEXT_THREAD))?;
+
+        rows.iter().map(EventDetailRow::read).collect()
     }
 
     /// The one statement both listings run.

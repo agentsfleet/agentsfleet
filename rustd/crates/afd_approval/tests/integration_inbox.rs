@@ -36,6 +36,13 @@ const OTHER_OPERATOR: &str = "human:somebody-else";
 /// The note an operator leaves.
 const NOTE: &str = "looks right";
 
+/// How long after its deadline the late-answer case answers a gate.
+///
+/// Three hours, against a default window of one — comfortably past any window
+/// a sweeper would have taken the row on, so the test cannot pass by accident
+/// on a fast machine.
+const LATE_ANSWER_MS: i64 = 3 * 60 * 60 * 1_000;
+
 /// The resolver a swept gate records, mirrored from the store.
 const SWEEPER: &str = "system:approval_gate_sweeper";
 
@@ -406,5 +413,86 @@ async fn resolving_a_gate_does_not_reopen_the_event_it_blocked() {
         before,
         lane.event_count().await,
         "answering a gate never rewrites the event it blocked"
+    );
+}
+
+/// A gate nobody answered inside its window is still answerable HOURS later,
+/// and answering it still resumes the run.
+///
+/// The worked case is the one an operator actually meets: a fleet asks to write
+/// to a repository at 10:00 under the default one-hour window
+/// (`afd_fleet_runtime::config::gates::DEFAULT_TIMEOUT_MS`), nobody is at their
+/// desk, and a person approves it at 14:00 — three hours after the window
+/// closed. That approval lands, and the run it blocked continues.
+///
+/// # This test exists to stop a well-meaning sweeper from breaking it
+///
+/// The Zig daemon spawns an approval-gate sweeper
+/// (`cmd/serve_background.zig:49`) that flips `pending` → `timed_out` every
+/// sixty seconds. This daemon does not: `Inbox::expire` has no production
+/// caller. That gap reads like an omission, and the obvious "fix" is to wire the
+/// sweeper — which would take the 10:00 gate at 11:00 and make the 14:00
+/// approval answer `AlreadyResolved` instead of resuming anything.
+///
+/// So the absence is load-bearing for as long as a human is the approver, and
+/// this is the test that says so. Wiring a sweeper is a PRODUCT decision about
+/// whether an unanswered approval should lapse — not a parity chore — and it
+/// fails here first.
+///
+/// # The one place a late answer is still refused, and it is not this one
+///
+/// `KIND_REPOSITORY_WRITE` alone carries a second predicate at the point of
+/// USE: `sql::SELECT_APPROVED_WRITE_GATE` requires
+/// `updated_at <= timeout_at`, so a late approval of a repository-write gate
+/// flips the row and continues the run, and the branch write is then declined.
+/// Every other gate kind honours the answer end to end. That inconsistency is
+/// inherited from `fleet_runtime/sql.zig` and is recorded in the spec rather
+/// than silently changed here.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_gate_answered_long_after_its_window_still_resumes_the_run() {
+    let lane = Lane::create().await;
+
+    // Raised at 10:00 with the default one-hour window: the deadline passed
+    // three hours before the answer arrives.
+    let deadline = NOW_MS - LATE_ANSWER_MS;
+    let action = lane.seed_gate(deadline).await;
+
+    let outcome = lane
+        .inbox
+        .resolve(
+            &action,
+            Decision::Approved,
+            OPERATOR,
+            NOTE,
+            None,
+            UnixMillis::from_millis(NOW_MS),
+        )
+        .await
+        .expect("the resolve must not fault");
+
+    let resolved = match outcome {
+        Resolution::Resolved(resolved) => resolved,
+        other => unreachable!(
+            "a gate past its window is still PENDING and must be answerable, got {other:?}"
+        ),
+    };
+
+    assert_eq!(
+        lane.status_of(&action).await,
+        "approved",
+        "a late answer is an answer: nothing swept this gate out from under it"
+    );
+
+    // The row flipping is not the claim — the run restarting is. An approval
+    // that changed a status and continued nothing is a person told "done" over
+    // work that never resumed.
+    let continuation = resolved
+        .continuation_event_id
+        .expect("a late approval must still continue the run it unblocked");
+    assert_eq!(
+        lane.event_column(&continuation, "resumes_event_id").await,
+        Some(resolved.event_id.clone()),
+        "the continuation names the blocked event it resumes"
     );
 }

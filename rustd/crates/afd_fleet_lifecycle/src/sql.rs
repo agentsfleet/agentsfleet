@@ -122,7 +122,15 @@ WHERE id = $3::uuid AND workspace_id = $4::uuid AND status = $5";
 pub(crate) const DELETE_FLEET: &str = "\
 DELETE FROM core.fleets WHERE id = $1::uuid AND workspace_id = $2::uuid";
 
-/// The status alone, for the purge's pre-flight classification.
+/// Every fleet identifier in one workspace.
+///
+/// `$1` workspace. No ORDER BY: the caller collects into a `BTreeSet`, which
+/// is what makes the order stable, and asking Postgres to sort a set the caller
+/// re-sorts anyway would be paying twice.
+pub(crate) const SELECT_FLEET_IDS: &str = "\
+SELECT id::text FROM core.fleets WHERE workspace_id = $1::uuid";
+
+/// The status alone, for the purge's pre-flight and the steer's ingress check.
 ///
 /// `$1` fleet · `$2` workspace.
 pub(crate) const SELECT_FLEET_STATUS: &str = "\

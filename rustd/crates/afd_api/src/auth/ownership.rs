@@ -145,8 +145,14 @@ pub async fn own<D: Services>(
         .await
     {
         Ok(Some(tenant)) => {
-            request.extensions_mut().insert(Owned { workspace, tenant });
-            next.run(request).await
+            let verdict = Owned { workspace, tenant };
+            request.extensions_mut().insert(verdict.clone());
+            let mut response = next.run(request).await;
+            // Onto the response too, for the reporting layer outside this one:
+            // a request extension travels inward only, and a refusal written
+            // beneath here belongs to a workspace somebody can filter on.
+            response.extensions_mut().insert(verdict);
+            response
         }
         // A workspace that is not this caller's, and one that does not exist,
         // are ONE answer — see [`DETAIL_NOT_YOURS`].
@@ -248,6 +254,53 @@ impl<S: Send + Sync> axum::extract::FromRequestParts<S> for WorkspaceContext {
                         request_id = request_id_field,
                         event = "workspace_context_absent",
                         "a workspace handler ran with no ownership verdict — its layer is not mounted"
+                    );
+                    ProblemResponse::new(
+                        error_code::INTERNAL_OPERATION_FAILED,
+                        DETAIL_NOT_YOURS,
+                        request_id,
+                    )
+                    .into_response()
+                }),
+        )
+    }
+}
+
+/// The caller themselves, for the one surface that has to ask again.
+///
+/// Every other verb is authorized once, by the layer, and is finished before
+/// the answer could go stale. A live stream is open for as long as somebody
+/// has a tab, so its membership check has to RUN AGAIN on a tick — and running
+/// again needs the principal, not just the verdict the layer reached. This is
+/// the only reason it is extractable at all.
+#[derive(Debug, Clone)]
+pub struct Acting(pub Principal);
+
+impl<S: Send + Sync> axum::extract::FromRequestParts<S> for Acting {
+    type Rejection = Response;
+
+    fn from_request_parts(
+        parts: &mut http::request::Parts,
+        _state: &S,
+    ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
+        std::future::ready(
+            parts
+                .extensions
+                .get::<Principal>()
+                .cloned()
+                .map(Self)
+                .ok_or_else(|| {
+                    let request_id = RequestId::mint();
+                    let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+                    let request_id_field = request_id.as_str();
+                    // `error`, for the reason the sibling above is: a handler
+                    // naming the caller, mounted on a route with no guard layer, is
+                    // the routing table and the router disagreeing.
+                    tracing::error!(
+                        error_code = code,
+                        request_id = request_id_field,
+                        event = "principal_absent",
+                        "a handler asked who the caller is with no guard in front of it"
                     );
                     ProblemResponse::new(
                         error_code::INTERNAL_OPERATION_FAILED,

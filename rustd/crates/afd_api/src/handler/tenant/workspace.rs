@@ -21,6 +21,8 @@ use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
+use afd_observability::Telemetry;
+
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
 use crate::request_id::RequestId;
@@ -133,6 +135,16 @@ pub(crate) async fn create<D: Services>(
                 Refusal::at(EVENT_CREATE)(error)
             }
         })?;
+    // Reported after the row is written, so the funnel counts workspaces that
+    // exist. Fire-and-forget: the reporter queues and returns, because a person
+    // waiting on a 201 must not also be waiting on an analytics endpoint.
+    services.analytics().report(&Telemetry::WorkspaceCreated {
+        actor: person.subject().as_str().to_owned(),
+        workspace_id: created.id.as_str().to_owned(),
+        tenant_id: tenant.as_str().to_owned(),
+        request_id: RequestId::mint().as_str().to_owned(),
+    });
+
     Ok((
         StatusCode::CREATED,
         Json(created_response(&created, &tenant)),

@@ -13,7 +13,7 @@
 //! eventually do.
 
 use afd_core::id::Uuid7;
-use afd_events::{Cursor, EventDetailRow, EventRow, Filter, History, Result as EventResult};
+use afd_events::{Cursor, EventDetailRow, EventRow, Filter, History, Result as EventResult, Steer};
 
 /// Everything the event-history routes act through.
 pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
@@ -46,6 +46,22 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
         cursor: Option<&Cursor>,
         limit: i64,
     ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send;
+
+    /// One page of a fleet's chat thread, newest first, bodies included.
+    ///
+    /// The caller asks for one row more than it will serve — see
+    /// [`afd_events::History::thread_page`] on why has-more is a fact here and
+    /// not a guess.
+    ///
+    /// # Errors
+    /// As [`Self::page_for_fleet`].
+    fn thread_for_fleet(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        cursor: Option<&Cursor>,
+        limit: i64,
+    ) -> impl Future<Output = EventResult<Vec<EventDetailRow>>> + Send;
 
     /// One event, inside this workspace and fleet, bodies included.
     ///
@@ -90,6 +106,16 @@ impl WorkspaceEvents for History {
         Self::page_for_fleet(self, workspace, fleet, filter, cursor, limit)
     }
 
+    fn thread_for_fleet(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        cursor: Option<&Cursor>,
+        limit: i64,
+    ) -> impl Future<Output = EventResult<Vec<EventDetailRow>>> + Send {
+        Self::thread_page(self, workspace, fleet, cursor, limit)
+    }
+
     fn one(
         &self,
         workspace: &Uuid7,
@@ -97,5 +123,38 @@ impl WorkspaceEvents for History {
         event_id: &str,
     ) -> impl Future<Output = EventResult<Option<EventDetailRow>>> + Send {
         Self::detail(self, workspace, fleet, event_id)
+    }
+}
+
+/// What the steer verb acts through.
+///
+/// Its own trait rather than a method on [`WorkspaceEvents`], because it is
+/// its own store: the reads hold a Postgres pool, and this holds a Redis
+/// connection opened by CONNECTING — which is exactly the seam a suite proving
+/// the refusal matrix must not have to construct.
+pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
+    /// Puts one message on the fleet's stream, answering with its event id.
+    ///
+    /// # Errors
+    /// Reports a queue that would not take the append.
+    fn append(
+        &self,
+        fleet: &str,
+        workspace: &str,
+        actor: &str,
+        request_json: &str,
+    ) -> impl Future<Output = EventResult<String>> + Send;
+}
+
+/// The production ingress answers directly.
+impl FleetSteering for Steer {
+    fn append(
+        &self,
+        fleet: &str,
+        workspace: &str,
+        actor: &str,
+        request_json: &str,
+    ) -> impl Future<Output = EventResult<String>> + Send {
+        Self::append(self, fleet, workspace, actor, request_json)
     }
 }

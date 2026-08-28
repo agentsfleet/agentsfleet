@@ -34,6 +34,9 @@ afd_redis.workspace = true
 # a config PATCH both store the JSON this produces, and neither may store a
 # document the lease path could not read back.
 afd_fleet_runtime.workspace = true
+# One fleet enumeration per workspace per tick, shared by every live stream
+# watching it — and `get`/`insert` coalesce the misses a cadence produces.
+moka.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
