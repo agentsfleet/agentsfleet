@@ -3,7 +3,7 @@
 use afd_billing::Nanos;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_fleet::credential::Minted;
+use afd_credential::credential::Minted;
 use afd_fleet::lease::Plane;
 use afd_fleet::memory::Captured;
 use afd_wire::activity::ActivityFrame;

@@ -32,7 +32,7 @@ mod requests;
 
 use afd_core::id::Uuid7;
 use afd_db::test_util::mint_id;
-use afd_fleet::policy::grants::Grants;
+use afd_gate::policy::grants::Grants;
 
 use self::seed::{Seeded, seeded};
 use self::support::Fixtures;

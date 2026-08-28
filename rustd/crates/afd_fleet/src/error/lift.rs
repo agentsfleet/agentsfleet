@@ -40,6 +40,27 @@ impl From<afd_redis::Error> for Error {
 /// admission pass still speaks THIS crate's: the posture that decides what a
 /// money fault means lives here, so the fault composes in rather than the
 /// posture moving out.
+/// A secret, provider or credential read failed.
+///
+/// The plane that resolves what a run may USE moved to its own crate; the
+/// lease still speaks THIS crate's error, so the fault composes in rather than
+/// the lease's vocabulary moving out.
+/// A policy assembly or gate read failed.
+///
+/// The plane that decides what a fleet may DO moved to its own crate; the
+/// lease still speaks this crate's error, so the fault composes in.
+impl From<afd_gate::Error> for Error {
+    fn from(source: afd_gate::Error) -> Self {
+        Self::new(ErrorKind::Gate { source })
+    }
+}
+
+impl From<afd_credential::Error> for Error {
+    fn from(source: afd_credential::Error) -> Self {
+        Self::new(ErrorKind::Credential { source })
+    }
+}
+
 impl From<afd_billing::Error> for Error {
     fn from(source: afd_billing::Error) -> Self {
         Self::new(ErrorKind::Billing { source })

@@ -6,7 +6,7 @@
 //! total function over a small enum, which means it can be proven exhaustively
 //! without a datastore. Everything else in `admit` needs one.
 
-use crate::gate::{Refused, Verdict};
+use afd_gate::gate::{Refused, Verdict};
 use crate::lease::admit::{Admission, Refusal, Transient};
 
 /// The gate that stopped a fleet, for a transient's `at`.
@@ -47,7 +47,7 @@ impl Admission {
 
 #[cfg(test)]
 mod tests {
-    use crate::gate::{Refused, Trigger, Verdict, Waiting};
+    use afd_gate::gate::{Refused, Trigger, Verdict, Waiting};
     use crate::lease::admit::Admission;
 
     /// Every verdict the gate can answer, so the table below is walked in full

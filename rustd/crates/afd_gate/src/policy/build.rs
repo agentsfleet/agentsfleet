@@ -28,8 +28,8 @@ use crate::policy::context::{self, Overlay};
 use crate::policy::egress::{self, Misconfigured};
 use crate::policy::grants::{Grants, first_ungranted};
 use crate::policy::shape::{network, wire_binding};
-use crate::provider::Resolved;
-use crate::secrets::Declared;
+use afd_credential::provider::Resolved;
+use afd_credential::secrets::Declared;
 
 /// What the assembly produced.
 #[derive(Debug)]
@@ -152,8 +152,8 @@ mod tests {
 
     use crate::policy::fixture::{KEY, RESOLVED_CAP_TOKENS, config, provider, resolved_with};
     use crate::policy::grants::Grants;
-    use crate::provider::{Dialled, Resolved};
-    use crate::secrets::Declared;
+    use afd_credential::provider::{Dialled, Resolved};
+    use afd_credential::secrets::Declared;
 
     /// The assembled policy, or a panic naming what parked instead.
     fn ready<'a>(

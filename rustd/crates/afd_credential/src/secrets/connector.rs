@@ -255,6 +255,15 @@ const DECLARED: &[Descriptor] = &[
 pub struct Registry;
 
 impl Registry {
+    /// The shipped registry, as a value a caller outside this crate can hold.
+    ///
+    /// `#[non_exhaustive]` stops another crate naming the unit struct, which is
+    /// the point — a field added here must not break them. It also leaves them
+    /// no way to obtain one, and `Default::default()` returns a temporary that
+    /// a borrowed connector cannot outlive. A `const` is the value with a
+    /// `'static` lifetime, which is what the borrow actually needs.
+    pub const SHIPPED: Self = Self;
+
     /// Every connector this daemon ships, in declaration order.
     ///
     /// The seam the boot-time platform load walks: a deployment's App and OAuth

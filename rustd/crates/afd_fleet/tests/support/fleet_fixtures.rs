@@ -30,7 +30,7 @@ use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
-use afd_fleet::gate::Gates;
+use afd_gate::gate::Gates;
 use afd_fleet::lease::Leases;
 use afd_redis::Redis;
 use afd_runner::Runners;

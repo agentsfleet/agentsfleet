@@ -40,15 +40,15 @@ use afd_core::id::Uuid7;
 use afd_wire::event::EventType;
 
 use crate::error::Result;
-use crate::gate::{Check, Gates};
+use afd_gate::gate::{Check, Gates};
 use crate::lease::admit::{Admission, Billed as Admitted, Refusal, Request, money_gates};
 use crate::lease::answer::{EVENT_REFUSED, no_work};
 use crate::lease::envelope::Acquired;
 use crate::lease::installed::Installed;
 use crate::lease::store::Leases;
-use crate::provider::{Providers, Resolved};
-use crate::secrets::Registry;
-use crate::vault::Vault;
+use afd_credential::provider::{Providers, Resolved};
+use afd_credential::secrets::Registry;
+use afd_credential::vault::Vault;
 use afd_billing::Accounts;
 use afd_billing::rates::Posture;
 use afd_core::event::label;
@@ -105,7 +105,7 @@ pub struct Plane {
     /// whole point of the cache is that every request shares it, and a `Plane`
     /// clone that deep-copied it would give each cloned handle its own — which
     /// is a cache that never hits and a single-flight that never single-flights.
-    pub broker: std::sync::Arc<crate::credential::Broker>,
+    pub broker: std::sync::Arc<afd_credential::credential::Broker>,
     /// The connector set a mintable credential is classified against.
     ///
     /// A field rather than an argument: which connectors this daemon ships

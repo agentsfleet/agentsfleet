@@ -40,18 +40,18 @@ use afd_fleet_runtime::config::Access;
 use afd_wire::credentials::MintCredentialRequest;
 use serde_json::Value;
 
-use crate::credential::broker::Ask;
-use crate::credential::outcome::{Minted, Outcome};
+use afd_credential::credential::broker::Ask;
+use afd_credential::credential::outcome::{Minted, Outcome};
 use crate::error::{
     Result, binding_drift, connector_mint_failed, connector_reconnect_required, github_mint_failed,
     github_reconnect_required, grant_required, integration_not_connected, lease_not_found,
     mint_unconfigured, vault_data_invalid, write_spend_exhausted, write_unapproved,
 };
-use crate::gate::WriteApproval;
+use afd_gate::gate::WriteApproval;
 use crate::lease::pull::Plane;
 use crate::lease::scope::MintScope;
-use crate::secrets::connector::{Connector, Connectors as _, Exchange, Supply};
-use crate::vault::KeyRef;
+use afd_credential::secrets::connector::{Connector, Connectors as _, Exchange, Supply};
+use afd_credential::vault::KeyRef;
 
 /// The connector whose write mints are gated on a human's answer.
 ///

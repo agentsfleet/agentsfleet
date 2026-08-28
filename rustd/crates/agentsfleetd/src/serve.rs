@@ -107,7 +107,7 @@ pub async fn boot<E: EnvSource + ?Sized>(
     // the plane's constructor is not. A deployment holding none still boots and
     // still serves every other verb.
     let broker = crate::credentials::resolve(
-        &afd_fleet::vault::Vault::new(database.clone(), Arc::clone(&kek)),
+        &afd_credential::vault::Vault::new(database.clone(), Arc::clone(&kek)),
         config.platform_admin_workspace(),
     )
     .await;

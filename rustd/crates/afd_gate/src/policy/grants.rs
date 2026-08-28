@@ -17,7 +17,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::secrets::{Declared, Mintable};
+use afd_credential::secrets::{Declared, Mintable};
 
 /// The integrations this workspace may mint without asking a human again.
 ///
@@ -79,7 +79,7 @@ mod tests {
 
     use crate::policy::build::{Assembled, Inputs, assemble};
     use crate::policy::fixture::{config, provider};
-    use crate::secrets::Declared;
+    use afd_credential::secrets::Declared;
 
     #[test]
     fn a_workspace_that_granted_nothing_holds_nothing() {
