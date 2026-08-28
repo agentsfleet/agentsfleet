@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_api", "crates/afd_approval", "crates/afd_auth", "crates/afd_billing", "crates/afd_core", "crates/afd_credential", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_identity", "crates/afd_library", "crates/afd_observability", "crates/afd_redis", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_api", "crates/afd_approval", "crates/afd_auth", "crates/afd_billing", "crates/afd_core", "crates/afd_credential", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_identity", "crates/afd_library", "crates/afd_observability", "crates/afd_redis", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.27.0"
@@ -96,6 +96,12 @@ afd_tenant = { path = "crates/afd_tenant" }
 # which is the credential directory the authentication path cannot start
 # without and would then rebuild every login when a projection column moved.
 afd_vault = { path = "crates/afd_vault" }
+# The signature wall: what an unauthenticated delivery must prove before
+# anything reads its body. Its own crate rather than a module in `afd_auth`,
+# which answers a different question — who a CALLER is and what they may do.
+# A signed delivery has no principal, and the wall must be provable with no
+# datastore, no runtime and no router.
+afd_webhook = { path = "crates/afd_webhook" }
 afd_wire = { path = "crates/afd_wire" }
 
 # `default-features = false` throughout, features named explicitly, so a member

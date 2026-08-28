@@ -15,7 +15,7 @@ use std::error::Error as _;
 
 use afd_crypto::aad::Aad;
 use afd_crypto::envelope::{Envelope, Sealer};
-use afd_crypto::mac::Mac256;
+use afd_crypto::mac::HmacSha256Tag;
 use afd_crypto::secret::{Dek, Kek};
 
 const KEK_HEX: &str = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
@@ -46,8 +46,8 @@ fn one_of_each() -> Vec<(&'static str, afd_crypto::error::Error)> {
         ),
         (
             "mac mismatch",
-            Mac256::compute(&kek(), b"a")
-                .verify(&Mac256::compute(&kek(), b"b"))
+            HmacSha256Tag::compute(&kek(), b"a")
+                .verify(&HmacSha256Tag::compute(&kek(), b"b"))
                 .expect_err("different messages"),
         ),
         (
