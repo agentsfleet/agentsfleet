@@ -228,6 +228,7 @@ impl Services for ServingPlane {
     type Approvals = Inbox;
     type Grants = IntegrationGrants;
     type Events = History;
+    type Memories = Memories;
     type Billing = Billing;
     type Catalogue = Models;
 
@@ -288,6 +289,12 @@ impl Services for ServingPlane {
 
     fn events(&self) -> &History {
         &self.events
+    }
+
+    /// The store the lease plane already holds. ONE `Memories` in this process:
+    /// reading what a fleet learned and writing it are two verbs over one table.
+    fn memories(&self) -> &Memories {
+        &self.leases.memories
     }
 
     fn secrets(&self) -> &SecretVault {

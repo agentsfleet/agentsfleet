@@ -62,6 +62,7 @@ use afd_db::Db;
 use afd_events::History;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_fleet::bundle::{Bundles, ContentHash};
+use afd_fleet::memory::Memories;
 use afd_fleet_lifecycle::Fleets;
 use afd_redis::Redis;
 use afd_redis::config::{RedisConfig, RedisRole};
@@ -147,6 +148,7 @@ pub(crate) struct Fleet {
     approvals: Inbox,
     grants: IntegrationGrants,
     events: History,
+    memories: Memories,
     billing: Billing,
     catalogue: Models,
     now: UnixMillis,
@@ -196,6 +198,7 @@ impl Fleet {
             approvals: Inbox::new(database.clone(), queue.clone()),
             grants: IntegrationGrants::new(database.clone()),
             events: History::new(database.clone()),
+            memories: Memories::new(database.clone(), Entropy::new()),
             billing: Billing::new(database.clone()),
             catalogue: Models::new(database),
             now: UnixMillis::from_millis(FROZEN),
@@ -316,6 +319,7 @@ impl Services for Fleet {
     type Approvals = Inbox;
     type Grants = IntegrationGrants;
     type Events = History;
+    type Memories = Memories;
     type Billing = Billing;
     type Catalogue = Models;
 
@@ -374,6 +378,10 @@ impl Services for Fleet {
 
     fn events(&self) -> &History {
         &self.events
+    }
+
+    fn memories(&self) -> &Memories {
+        &self.memories
     }
 
     fn secrets(&self) -> &SecretVault {

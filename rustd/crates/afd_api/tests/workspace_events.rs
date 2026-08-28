@@ -18,10 +18,9 @@
 //! rendered row and the `404` an absent event earns all need a statement that
 //! ran, and live in the `#[ignore]`d lane `make test-integration-rustd` runs.
 //!
-//! An EMPTY path segment is absent for a different reason: it reaches no
-//! handler in either daemon — `route_matchers.zig::Path::param` refuses one at
-//! the matcher and axum answers a bare 404 for a trailing one — so the
-//! handler's own empty-`event_id` guard has no served behaviour to pin.
+//! An EMPTY path segment is absent for another reason: it reaches no handler in
+//! either daemon — `Path::param` refuses one at the Zig matcher, axum answers a
+//! bare 404 for a trailing one — so the empty-`event_id` guard pins nothing.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -41,6 +40,7 @@ use axum::extract::Path;
 use axum::response::Response;
 use axum::routing::get;
 use http::{Method, StatusCode};
+use serde_json::Value;
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
 
@@ -50,10 +50,9 @@ const TENANT_KEY: &str = "agt_te7e7e7e7decafbaddecafbaddecafbaddecafbaddecafbadd
 /// The subject the fixture credential resolves to.
 const SUBJECT: &str = "user_2events";
 
-/// A well-formed workspace identifier that is somebody else's.
+/// Two well-formed workspace identifiers that are not the fixture's, so the
+/// "not yours" and "no such thing" halves can be compared against each other.
 const FOREIGN_WORKSPACE: &str = "01924f4e-0000-7000-8000-0000000000ee";
-
-/// A second, so "not yours" and "no such thing" can be compared.
 const UNKNOWN_WORKSPACE: &str = "01924f4e-0000-7000-8000-0000000000ed";
 
 /// A well-formed fleet identifier the fixture addresses.
@@ -136,7 +135,7 @@ async fn send(scopes: ScopeSet, method: Method, path: &str, credential: Option<&
     harness::send(&fleet.router(), method, path, credential, "").await
 }
 
-/// One fully authorised read, so what answers is the axis under test.
+/// One fully authorised read, so the axis under test is what answers.
 async fn authorised(path: &str) -> Response {
     send(FLEET_READ, Method::GET, path, Some(TENANT_KEY)).await
 }
@@ -145,7 +144,10 @@ async fn authorised(path: &str) -> Response {
 async fn refusal_of(response: Response) -> (StatusCode, String, String) {
     let status = response.status();
     let body = harness::json_body(response).await;
-    let read = |key: &str| body[key].as_str().expect("a refusal carries it").to_owned();
+    let read = |key: &str| {
+        let field = body.get(key).and_then(Value::as_str);
+        field.expect("every refusal carries it").to_owned()
+    };
     (status, read("detail"), read("error_code"))
 }
 
@@ -254,8 +256,7 @@ async fn every_route_reaches_the_store_once_its_path_is_valid() {
 /// the bound only refuses an identifier long enough to be an attack on the
 /// index rather than a lookup. Both sides in one case, because the off-by-one a
 /// `>=` in place of a `>` would introduce is invisible from either half alone:
-/// it would refuse a legitimate identifier and read, to whoever held it, as an
-/// event that had gone missing.
+/// it would refuse a legitimate identifier, and read as a missing event.
 #[tokio::test]
 async fn an_event_id_is_looked_up_up_to_the_length_bound_and_not_past_it() {
     let at_bound = one_event(OWNED_WORKSPACE, FLEET, &"e".repeat(EVENT_ID_MAX_LEN));
@@ -291,8 +292,8 @@ async fn the_templates_carry_only_the_methods_they_document() {
     let refused = [
         (Method::POST, workspace_history(OWNED_WORKSPACE)),
         (Method::POST, fleet_history(OWNED_WORKSPACE, FLEET)),
-        (Method::DELETE, one_event(OWNED_WORKSPACE, FLEET, EVENT)),
         (Method::PUT, one_event(OWNED_WORKSPACE, FLEET, EVENT)),
+        (Method::DELETE, one_event(OWNED_WORKSPACE, FLEET, EVENT)),
     ];
     for (method, path) in refused {
         let answer = send(FLEET_READ, method.clone(), &path, Some(TENANT_KEY)).await;

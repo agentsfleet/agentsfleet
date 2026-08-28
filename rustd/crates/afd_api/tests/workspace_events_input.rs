@@ -1,36 +1,35 @@
 //! What the two event listings refuse about the QUERY STRING.
 //!
 //! Sibling of `workspace_events.rs`, which pins who may read the narrative log
-//! at all and what the path has to say. Split along the axis each proves: that
-//! one is the guard, the rung, the ownership layer and the three path segments,
-//! and this is the five parameters and the two mutual exclusions a caller meets
-//! once past them.
+//! and what the path has to say. Split along the axis each proves: that one is
+//! the guard, the rung, the ownership layer and the three path segments; this
+//! is the five parameters and the two mutual exclusions beyond them.
 //!
 //! # Why every one of these is worth a case
 //!
 //! These sentences are already on the wire. `docs/REST_API_DESIGN_GUIDELINES.md`
 //! §9 treats a narrowing of a served surface as a breaking change, and the Zig
-//! daemon is still the thing answering these paths in production — so a value
-//! it accepts and this port refuses is a regression a dashboard hits, and a
-//! value it refuses and this port accepts is a filter silently doing nothing.
-//! The oracle is `workspaces/events.zig` and `fleets/events.zig`; the strings
-//! below are theirs, spelled out here rather than imported so that a test and
-//! the code under test cannot agree with each other by construction.
+//! daemon still answers these paths in production — so a value it takes and
+//! this port refuses is a regression a dashboard hits, and a value it refuses
+//! and this port takes is a filter silently doing nothing. The oracle is
+//! `workspaces/events.zig` and `fleets/events.zig`; the strings below are
+//! theirs, spelled out rather than imported so that the test and the code under
+//! test cannot agree with each other by construction.
 //!
 //! # The refusal ORDER is part of the surface
 //!
-//! A request can be wrong in several ways at once, and which sentence comes
-//! back tells a caller what to fix first. `limit`, then the two exclusions,
-//! then the drill-down, then the window and the cursor — pinned here in the
-//! cases that supply two faults together.
+//! A request can be wrong several ways at once, and which sentence comes back
+//! tells a caller what to fix first: `limit`, then the two exclusions, then the
+//! drill-down, then the window and the cursor. Pinned in the cases below that
+//! supply two faults together.
 //!
 //! # What this suite deliberately does not prove
 //!
 //! No row is read. A parameter that survives every check reaches the production
 //! store over a Postgres nobody is listening on and earns a `503`, and that
 //! refusal is the evidence it was ACCEPTED rather than quietly dropped. Which
-//! rows a `LIKE` pattern or a cursor boundary actually selects is a live-Postgres
-//! fact and lives in the `#[ignore]`d lane `make test-integration-rustd` runs.
+//! rows a `LIKE` pattern or a cursor boundary selects is a live-Postgres fact,
+//! and lives in the `#[ignore]`d lane `make test-integration-rustd` runs.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -96,20 +95,15 @@ fn fleet_history(suffix: &str) -> String {
 
 /// One fully authorised read, so what answers is the parameter under test.
 async fn authorised(path: &str) -> Response {
-    let router = Fleet::new()
-        .with_person(TENANT_KEY, SUBJECT, FLEET_READ)
-        .router();
-    harness::send(&router, Method::GET, path, Some(TENANT_KEY), "").await
+    let fleet = Fleet::new().with_person(TENANT_KEY, SUBJECT, FLEET_READ);
+    harness::send(&fleet.router(), Method::GET, path, Some(TENANT_KEY), "").await
 }
 
 /// Reads a problem document's `detail` back.
 async fn detail_of(response: Response) -> String {
     let document = harness::json_body(response).await;
-    document
-        .get("detail")
-        .and_then(Value::as_str)
-        .expect("every refusal carries a detail")
-        .to_owned()
+    let detail = document.get("detail").and_then(Value::as_str);
+    detail.expect("every refusal carries a detail").to_owned()
 }
 
 /// Asserts `suffix` is refused on the workspace listing with `expected`.
@@ -121,16 +115,11 @@ async fn assert_refused(suffix: &str, expected: &str) {
     let response = authorised(&workspace_history(suffix)).await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{suffix}");
     let document = harness::json_body(response).await;
-    assert_eq!(
-        document.get("error_code").and_then(Value::as_str),
-        Some(error_code::INVALID_REQUEST.as_str()),
-        "{suffix}: a query a caller can fix is theirs, not this instance's"
-    );
-    assert_eq!(
-        document.get("detail").and_then(Value::as_str),
-        Some(expected),
-        "{suffix}"
-    );
+    let field = |key: &str| document.get(key).and_then(Value::as_str);
+    let seen = (field("error_code"), field("detail"));
+    // A query a caller can fix is theirs to fix, never this instance's fault.
+    let want = (Some(error_code::INVALID_REQUEST.as_str()), Some(expected));
+    assert_eq!(seen, want, "{suffix}");
 }
 
 /// Asserts `suffix` survived every check and reached the event store.
@@ -298,16 +287,10 @@ async fn naming_both_actor_spellings_is_refused_before_the_store() {
 #[tokio::test]
 async fn a_cursor_and_a_window_together_are_refused_before_the_store_is_asked() {
     let minted = Cursor::after(FROZEN_MS, "1785699668169-0").encode();
-    assert_refused(
-        &format!("?cursor={minted}&since=2h"),
-        DETAIL_WINDOW_AMBIGUOUS,
-    )
-    .await;
-    assert_refused(
-        "?actor=a&actor_prefix=b&cursor=x&since=1h",
-        DETAIL_WINDOW_AMBIGUOUS,
-    )
-    .await;
+    let both = format!("?cursor={minted}&since=2h");
+    assert_refused(&both, DETAIL_WINDOW_AMBIGUOUS).await;
+    let every_ambiguity = "?actor=a&actor_prefix=b&cursor=x&since=1h";
+    assert_refused(every_ambiguity, DETAIL_WINDOW_AMBIGUOUS).await;
 }
 
 /// The console's drill-down narrows the workspace listing, or is refused.
@@ -342,8 +325,8 @@ async fn the_drill_down_is_not_a_parameter_the_per_fleet_listing_reads() {
 ///
 /// The property the port is built on — one `Params` read by two entry points —
 /// asserted rather than assumed. Two hand-written parsers is what the Zig has,
-/// and it is why `fleets/events.zig` and `workspaces/events.zig` carry two
-/// copies of `prefixToLike` that had already drifted apart on the backslash.
+/// and it is why its two handlers carry copies of `prefixToLike` that had
+/// already drifted apart on the backslash.
 #[tokio::test]
 async fn both_listings_answer_one_parser() {
     let shared = [

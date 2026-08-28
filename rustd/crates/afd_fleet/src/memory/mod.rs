@@ -17,6 +17,8 @@
 //! and no way for a connection to return to the pool with the wrong role. The
 //! hazard is not handled better; it is gone.
 
+pub mod operator;
+pub mod page;
 pub mod sql;
 pub mod window;
 
@@ -243,7 +245,12 @@ fn admit<'a, 'b>(deltas: &'a [MemoryDelta<'b>]) -> Admitted<'a, 'b> {
 }
 
 /// Longest stored key. `helpers.zig`'s `MAX_KEY_LEN`.
-const MAX_KEY_LEN: usize = 255;
+///
+/// Public because the operator surface bounds a path segment by it before it
+/// decodes one: a key too long to have been STORED cannot name a row, so the
+/// HTTP edge refuses it rather than spending a statement discovering that. One
+/// declaration, so the write cap and the read cap cannot drift apart.
+pub const MAX_KEY_LEN: usize = 255;
 
 /// Longest stored content. `helpers.zig`'s `MAX_CONTENT_LEN`.
 const MAX_CONTENT_LEN: usize = 16 * 1024;
