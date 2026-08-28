@@ -40,6 +40,7 @@ mod fleets;
 mod grant;
 mod event;
 mod leasing;
+mod memory;
 mod preference;
 mod tenant;
 mod vault;
@@ -52,6 +53,7 @@ pub use self::event::WorkspaceEvents;
 pub use self::fleets::WorkspaceFleets;
 pub use self::grant::FleetGrants;
 pub use self::leasing::Leasing;
+pub use self::memory::FleetMemories;
 pub use self::preference::WorkspacePreferences;
 pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
 pub use self::vault::WorkspaceSecrets;
@@ -211,6 +213,17 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// A fleet's standing permissions to reach a third party.
     fn grants(&self) -> &Self::Grants;
+    /// What the fleet memory routes act through.
+    ///
+    /// A concrete type for the reason [`Services::Approvals`] is one: a
+    /// Postgres pool and an entropy source, both with the seam a suite drives
+    /// them through. The SAME store the runner plane's capture writes with —
+    /// production holds one `Memories`, because an operator reading what a
+    /// fleet learned and a runner writing it are two verbs over one table.
+    type Memories: FleetMemories;
+
+    /// A fleet's durable memory: the page, and the forget.
+    fn memories(&self) -> &Self::Memories;
 
     /// What the event-history routes act through.
     ///

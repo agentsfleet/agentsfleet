@@ -66,3 +66,48 @@ pub struct MemoryHydrateResponse<'a> {
     #[serde(borrow)]
     pub memory: Vec<MemoryDelta<'a>>,
 }
+
+/// One stored entry as the OPERATOR surface renders it.
+///
+/// A [`MemoryDelta`] plus the instant it was last written. The runner's two
+/// verbs carry no timestamp — a fleet being seeded with what it knows has no
+/// use for one — while a person reading the list is deciding whether a lesson
+/// is still current, which is the whole question `updated_at` answers.
+///
+/// Field order is load-bearing. `memory/handler.zig` hands its `MemoryEntry`
+/// straight to `res.json`, which emits the struct's fields in DECLARATION
+/// order, and a dashboard diffing two responses byte-for-byte would see a
+/// reorder as a change.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryEntry<'a> {
+    /// The stable key the fleet remembers this under.
+    #[serde(borrow)]
+    pub key: Cow<'a, str>,
+    /// What it remembers.
+    #[serde(borrow)]
+    pub content: Cow<'a, str>,
+    /// The retention category, which decides eviction order.
+    #[serde(borrow)]
+    pub category: Cow<'a, str>,
+    /// Epoch milliseconds, as a JSON NUMBER — never a decimal string.
+    pub updated_at: i64,
+}
+
+/// `GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories` — one page.
+///
+/// Exactly three fields, and an integration test pins the count: a page that
+/// grew a fourth would be a shape the dashboard's parser did not agree to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MemoriesResponse<'a> {
+    /// The entries on this page, newest first.
+    #[serde(borrow)]
+    pub items: Vec<MemoryEntry<'a>>,
+    /// How many are on THIS page — not the fleet's whole count. The name is
+    /// the one that shipped, and `handler.zig` answers the page length too.
+    pub total: usize,
+    /// Where the next page resumes, or `null` on the last one.
+    #[serde(borrow)]
+    pub next_cursor: Option<Cow<'a, str>>,
+}
