@@ -113,7 +113,13 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 # It runs the suite ONCE. Instrumenting the run the lane was already making is
 # what keeps a full verification from executing every live-service test twice
 # on two runners — the mistake the retired Zig graph made and then fixed.
-test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under coverage against live datastores
+# `_migrate-test-db` is a prerequisite here for the same reason it is on the
+# lane above, and its absence was a live defect: `$(TEST_STATE_DEP)` DROPS the
+# schemas and defers to "migrations will rebuild on next step". The lane above
+# has that next step; this one did not, so every run of it met an empty database
+# and every suite that seeds a row failed with `relation "core.tenants" does not
+# exist`. The two targets consume the same reset, so they need the same rebuild.
+test-coverage-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run both Rust test tiers under coverage against live datastores
 	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "✗ cargo-llvm-cov not found. Install via: cargo install cargo-llvm-cov"; exit 1; }
 	@echo "→ [rustd] Measuring both test tiers against $(TEST_DATABASE_URL)..."; \
 	mkdir -p "$(CURDIR)/.tmp"; \

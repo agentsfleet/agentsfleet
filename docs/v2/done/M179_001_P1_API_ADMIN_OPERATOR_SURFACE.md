@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M179
 **Workstream:** 001
 **Date:** Aug 23, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing parity; the Zig daemon keeps serving production while this lands
 **Categories:** API
 **Batch:** B4 — runs concurrently with M178 after M177 (disjoint route groups; the shared files — `afd_api`, `afd_fleet`, `afd_state`, `rustd/Cargo.toml`, `make/test-integration.mk` — are append-only seams coordinated at merge)
@@ -219,16 +219,16 @@ No product-analytics changes (operator surface; parity port).
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Route inventory parity for the admin/operator groups (§1) | `cd rustd && cargo test test_route_inventory_matches_interfaces` | exit 0 | P0 | |
-| R2 | Integration subset green on the Rust daemon | `make test-integration` (admin/operator lane) | exit 0 | P0 | |
-| R3 | Trust boundary holds (§2) | `cd rustd && cargo test bundle` | exit 0 | P0 | |
-| R4 | Runner administration parity (§4) | `make test-integration-rustd` | exit 0 incl. service and HTTP rotation tests | P0 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S4 | Version sync | `make check-version` | exit 0 | P0 | |
-| S5 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| R1 | Route inventory parity for the admin/operator groups (§1) | `cd rustd && cargo test test_route_inventory_matches_interfaces` | exit 0 | P0 | ✅ runs inside `make test-unit-all` (S2), which passed; the inventory omits `/v1/fleets/streams` per Dimension 4.4 |
+| R2 | Integration subset green on the Rust daemon | `make test-integration-rustd` | exit 0 | P0 | ⏳ pending — the lane runs at `orly gate pr`/CI, not on the merge. The spec said `make test-integration`; no such target exists (M175 retired that name), so the row is corrected to the declared `verify.integration` command. |
+| R3 | Trust boundary holds (§2) | `cd rustd && cargo test bundle` | exit 0 | P0 | ✅ runs inside `make test-unit-all` (S2), which passed |
+| R4 | Runner administration parity (§4) | `make test-integration-rustd` | exit 0 incl. service and HTTP rotation tests | P0 | ⏳ pending with R2 |
+| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ⚠️ not gradeable as written — the diff is M178+M179 merged, so it exceeds this spec's table by M178's whole surface |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ all 10 gates green |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ exit 0; all unit lanes + coverage gates |
+| S3 | Lint green | `make lint-all` | exit 0 | P0 | ✅ exit 0 |
+| S4 | Version sync | `make check-version` | exit 0 | P0 | ✅ all versions match 0.27.0 |
+| S5 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found |
 | S6 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
 
 **Command source rule:** S1–S4 are copied verbatim from `.oracle/orly.json` (`conform`, `verify.lint`, `verify.unit`, `verify.version`) — the set `orly gate` runs; S5–S6 are the template's repository hygiene gates (secret scan, oversize sweep), deliberately outside the declared set; R-rows name oracles this spec's own Files Changed create, so every command is copy-paste by merge time.
