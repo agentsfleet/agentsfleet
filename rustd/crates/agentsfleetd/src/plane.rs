@@ -27,18 +27,18 @@ use afd_crypto::secret::{Kek, SecretBytes};
 use afd_db::Db;
 use afd_events::History;
 use afd_fleet::bundle::Bundles;
-use afd_fleet::gate::Gates;
+use afd_gate::gate::Gates;
 use afd_fleet::lease::{Leases, Plane};
 use afd_fleet::memory::Memories;
-use afd_fleet::provider::Providers;
-use afd_fleet::secrets::Registry;
+use afd_credential::provider::Providers;
+use afd_credential::secrets::Registry;
 use afd_fleet_lifecycle::Fleets;
 use afd_runner::Runners;
 use afd_tenant::preference::Preferences;
 // Aliased: `crate::identity::Sessions` is the token VERIFIER, and this is the
 // device-flow login surface. Two things called `Sessions` in one file is how a
 // reader ends up believing the login surface verifies bearer tokens.
-use afd_fleet::vault::Vault;
+use afd_credential::vault::Vault;
 use afd_redis::Redis;
 use afd_state::Credentials;
 use afd_tenant::apikey::ApiKeys;
@@ -47,7 +47,7 @@ use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
 use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
-// Aliased: `afd_fleet::vault::Vault` above is the RUNNER plane's reader — it
+// Aliased: `afd_credential::vault::Vault` above is the RUNNER plane's reader — it
 // opens a credential a fleet declared and never lists — and this is the
 // workspace-admin surface that seals, lists without a key, and deletes under
 // the model-registry lock. Two things called `Vault` in one file is how a
@@ -201,7 +201,7 @@ pub struct PlaneParts {
     pub bundles: Bundles,
     /// The credential broker, built before the plane because it reads the
     /// vault, which is asynchronous where this constructor is not.
-    pub broker: Arc<afd_fleet::credential::Broker>,
+    pub broker: Arc<afd_credential::credential::Broker>,
     /// What the device-flow login surface needs from configuration.
     pub login: LoginConfig,
 }

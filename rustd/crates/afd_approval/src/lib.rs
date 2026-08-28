@@ -2,7 +2,7 @@
 //!
 //! # Why this is not a module inside `afd_fleet`
 //!
-//! `afd_fleet::gate` is the RUNNER's side: it parks a run behind a gate and
+//! `afd_gate::gate` is the RUNNER's side: it parks a run behind a gate and
 //! reads the durable answer back. This crate is the PERSON's side, and the two
 //! ask different questions of one table — a runner asks about one action it
 //! already holds, an operator browses a queue they did not raise and answers

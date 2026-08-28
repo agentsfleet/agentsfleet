@@ -71,6 +71,7 @@ afd_observability.workspace = true
 # documentation link and end-user sentence are properties OF THE CODE, so they
 # live beside it rather than in this crate.
 afd_billing.workspace = true
+afd_credential.workspace = true
 afd_core.workspace = true
 afd_events.workspace = true
 # `json` for the probe bodies: unlike the problem+json envelope, which writes

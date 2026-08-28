@@ -36,7 +36,7 @@ use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::Budget;
 
 use crate::error::Result;
-use crate::gate::Waiting;
+use afd_gate::gate::Waiting;
 use crate::lease::event::Delivery;
 use afd_billing::rates::Posture;
 use afd_billing::{Accounts, Charged, Nanos};

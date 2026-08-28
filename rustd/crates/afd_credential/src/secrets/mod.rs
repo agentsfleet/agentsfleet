@@ -176,7 +176,10 @@ impl Declared {
     }
 }
 
-#[cfg(test)]
+// M-TEST-UTIL: gated on the feature rather than `cfg(test)`, because the
+// caller that needs it is the POLICY suite in `afd_fleet` — a different crate,
+// whose test build cannot see this one's `cfg(test)` items.
+#[cfg(any(test, feature = "test-util"))]
 impl Declared {
     /// A declaration carrying mintable entries and no stored values.
     ///
@@ -184,7 +187,7 @@ impl Declared {
     /// grant pass needs only the mintable half. This hands a sibling unit test
     /// that half directly rather than making it stand up a datastore to prove
     /// a decision no datastore takes part in.
-    pub(crate) fn with_mintable<'a>(entries: impl IntoIterator<Item = (&'a str, &'a str)>) -> Self {
+    pub fn with_mintable<'a>(entries: impl IntoIterator<Item = (&'a str, &'a str)>) -> Self {
         Self {
             secrets_map: Map::new(),
             mintable: entries

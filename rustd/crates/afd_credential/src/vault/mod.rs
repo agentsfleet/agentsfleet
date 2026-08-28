@@ -42,7 +42,7 @@ use sqlx::postgres::PgRow;
 use crate::error::{Result, query, vault_open};
 
 pub mod sql;
-mod rotate;
+pub mod rotate;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_SECRET: &str = "vault credential";
@@ -141,7 +141,7 @@ impl Vault {
     /// authenticate. The last two are deliberately indistinguishable to a
     /// caller: which check failed is an oracle, and the operator gets the
     /// distinction in the log instead.
-    pub(crate) async fn open(&self, key: KeyRef<'_>) -> Result<Option<SecretBytes>> {
+    pub async fn open(&self, key: KeyRef<'_>) -> Result<Option<SecretBytes>> {
         let mut connection = self.database.acquire().await?;
         let row = sqlx::query(sql::SELECT_SECRET)
             .bind(key.workspace_id.as_str())
@@ -168,7 +168,7 @@ impl Vault {
     /// # Errors
     /// Reports a datastore that would not answer, and any row whose envelope
     /// will not open — see the module note on why this does not degrade.
-    pub(crate) async fn open_many(
+    pub async fn open_many(
         &self,
         workspace_id: &Uuid7,
         names: &[&str],

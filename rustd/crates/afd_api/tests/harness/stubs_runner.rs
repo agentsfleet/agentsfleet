@@ -74,7 +74,7 @@ impl Leasing for NoWork {
         _runner_id: &Uuid7,
         _request: &afd_wire::credentials::MintCredentialRequest<'_>,
         _now: UnixMillis,
-    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::credential::Minted>> + Send {
+    ) -> impl Future<Output = afd_fleet::Result<afd_credential::credential::Minted>> + Send {
         std::future::ready(Err(afd_fleet::Error::mint_unconfigured()))
     }
 

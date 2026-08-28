@@ -3,7 +3,7 @@
 //!
 //! # Why this is its own crate
 //!
-//! `afd_fleet::vault` already reads `vault.secrets`, and it stays where it is.
+//! `afd_credential::vault` already reads `vault.secrets`, and it stays where it is.
 //! That reader is the RUNNER plane's: it opens a credential a fleet declared,
 //! refuses to degrade a row it cannot read, and never lists. This is the
 //! workspace-ADMIN plane: it seals, it lists without a key, and it holds the

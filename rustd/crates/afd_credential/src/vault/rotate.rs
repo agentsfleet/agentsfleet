@@ -38,7 +38,7 @@ use crate::vault::sql;
 use crate::vault::{ENVELOPE_AT, KeyRef, Vault};
 
 /// Statement name, for the context a query failure carries.
-const CONTEXT_ROTATE: &str = "vault credential rotation";
+pub(crate) const CONTEXT_ROTATE: &str = "vault credential rotation";
 
 /// What one write-back did.
 ///
@@ -46,7 +46,7 @@ const CONTEXT_ROTATE: &str = "vault credential rotation";
 /// needs to tell "nothing to do" from "somebody else got there first" — the
 /// second is a reconnect racing a mint, and it is worth seeing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Rotated {
+pub enum Rotated {
     /// The handle now holds the replacement.
     Persisted,
     /// The stored handle is no longer the one this exchange posted from, so the
@@ -98,7 +98,7 @@ impl Vault {
     /// Reports a datastore that would not answer, an envelope that will not
     /// open or re-seal, and a stored body that is not a JSON object. None of
     /// them fails the mint that called this — see the module note.
-    pub(crate) async fn rotate_refresh_token(
+    pub async fn rotate_refresh_token(
         &self,
         key: KeyRef<'_>,
         posted: &str,

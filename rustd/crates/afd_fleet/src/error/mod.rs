@@ -90,6 +90,18 @@ pub(crate) enum ErrorKind {
         source: afd_db::Error,
     },
 
+    #[error("the gate plane could not answer for the runner plane")]
+    Gate {
+        #[source]
+        source: afd_gate::Error,
+    },
+
+    #[error("the credential plane could not answer for the runner plane")]
+    Credential {
+        #[source]
+        source: afd_credential::Error,
+    },
+
     #[error("the queue backing the runner plane would not answer")]
     Queue {
         #[source]
@@ -141,32 +153,8 @@ pub(crate) enum ErrorKind {
         source: afd_fleet_runtime::Error,
     },
 
-    #[error("a stored provider credential holds no usable {field}")]
-    ProviderMalformed { field: &'static str },
-
-    #[error("the tenant's provider selection names a vault row that is not held")]
-    ProviderSecretMissing,
-
-    #[error("no active platform provider default is configured")]
-    ProviderPlatformKeyMissing,
-
-    #[error("the tenant has no workspace to resolve a credential in")]
-    ProviderNoWorkspace,
-
-    #[error("a stored provider endpoint was refused: {reason}")]
-    ProviderEndpoint { reason: &'static str },
-
-    #[error("a stored credential envelope would not open")]
-    Vault {
-        #[source]
-        source: afd_crypto::error::Error,
-    },
-
     #[error("a stored credential body is not the JSON object the tool bridge addresses")]
     VaultDataInvalid,
-
-    #[error("the fleet declared a credential this workspace does not hold")]
-    CredentialMissing,
 
     #[error("a stored fencing sequence is not a sequence")]
     SequenceCorrupt,
@@ -277,61 +265,17 @@ pub(crate) fn rejected(detail: &'static str) -> Error {
     Error::new(ErrorKind::Rejected { detail })
 }
 
-/// Reports a stored provider credential that cannot be read as one.
-///
-/// `field` names WHICH part is unusable, for the operator's log line. It never
-/// reaches the caller — see [`DETAIL_PROVIDER_UNRESOLVED`].
-pub(crate) fn provider_malformed(field: &'static str) -> Error {
-    Error::new(ErrorKind::ProviderMalformed { field })
-}
 
-/// Reports a provider selection naming a vault row that is not held.
-pub(crate) fn provider_secret_missing() -> Error {
-    Error::new(ErrorKind::ProviderSecretMissing)
-}
 
-/// Reports that no operator has set an active platform default.
-pub(crate) fn provider_platform_key_missing() -> Error {
-    Error::new(ErrorKind::ProviderPlatformKeyMissing)
-}
 
-/// Reports a tenant with no workspace to resolve a credential in.
-pub(crate) fn provider_no_workspace() -> Error {
-    Error::new(ErrorKind::ProviderNoWorkspace)
-}
 
-/// Reports a stored endpoint the SSRF guard refused.
-///
-/// `reason` is the guard's own word for what it refused, never the URL and
-/// never the host — the `api_key` sits beside both in the same credential, and a
-/// rejection line that quotes the credential is a rejection line that leaks it.
-pub(crate) fn provider_endpoint(reason: &'static str) -> Error {
-    Error::new(ErrorKind::ProviderEndpoint { reason })
-}
 
-/// Reports a stored envelope that is malformed or will not authenticate.
-///
-/// `map_err` rather than `?`, because the blanket [`From`] for this foreign
-/// type already means "the host could not draw entropy" — and an envelope that
-/// will not open is not that. This is the carve-out the standard names: a
-/// conversion that ADDS the context the call site alone knows, with the cause
-/// riding through as `#[source]` so the chain stays intact.
-pub(crate) fn vault_open(source: afd_crypto::error::Error) -> Error {
-    Error::new(ErrorKind::Vault { source })
-}
 
 /// Reports a stored credential body that is not an addressable object.
 pub(crate) fn vault_data_invalid() -> Error {
     Error::new(ErrorKind::VaultDataInvalid)
 }
 
-/// Reports a declared credential with no vault row.
-///
-/// The log line — with the workspace and the name an operator needs — is
-/// written at the call site, which is the only place that holds them.
-pub(crate) fn credential_missing() -> Error {
-    Error::new(ErrorKind::CredentialMissing)
-}
 
 /// Reports a stored fencing sequence that cannot be one.
 ///

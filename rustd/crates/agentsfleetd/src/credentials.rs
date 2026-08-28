@@ -1,6 +1,6 @@
 //! The credential broker, assembled here and nowhere else.
 //!
-//! The composition root's half of `afd_fleet::credential`: that module knows
+//! The composition root's half of `afd_credential::credential`: that module knows
 //! how to mint, cache and single-flight, and this one knows where this
 //! deployment's own App and OAuth clients are kept and which HTTP client the
 //! exchanges go out through. Nothing else in the daemon names either.
@@ -25,10 +25,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use afd_core::id::Uuid7;
-use afd_fleet::credential::platform::Platform;
-use afd_fleet::credential::{Broker, Vendors};
-use afd_fleet::secrets::Registry;
-use afd_fleet::vault::Vault;
+use afd_credential::credential::platform::Platform;
+use afd_credential::credential::{Broker, Vendors};
+use afd_credential::secrets::Registry;
+use afd_credential::vault::Vault;
 
 /// How long one vendor token exchange may take.
 ///

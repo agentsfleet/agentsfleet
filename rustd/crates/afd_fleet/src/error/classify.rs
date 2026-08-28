@@ -17,11 +17,11 @@ use afd_core::error_code::{self, ErrorCode};
 use super::{
     DETAIL_BINDING_DRIFT, DETAIL_BUDGET_EXHAUSTED, DETAIL_BUNDLE_FETCH_FAILED,
     DETAIL_BUNDLE_NOT_FOUND, DETAIL_BUNDLE_STORAGE_UNAVAILABLE, DETAIL_CONFIG_UNREADABLE,
-    DETAIL_CONNECTOR_MINT_FAILED, DETAIL_CONNECTOR_RECONNECT, DETAIL_CREDENTIAL_MISSING,
+    DETAIL_CONNECTOR_MINT_FAILED, DETAIL_CONNECTOR_RECONNECT,
     DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED,
     DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
     DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND, DETAIL_MINT_FAILED,
-    DETAIL_MINT_UNCONFIGURED, DETAIL_PROVIDER_UNRESOLVED, DETAIL_QUEUE_UNAVAILABLE,
+    DETAIL_MINT_UNCONFIGURED, DETAIL_QUEUE_UNAVAILABLE,
     DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS, DETAIL_STALE_FENCE,
     DETAIL_VAULT_DATA_INVALID, DETAIL_WRITE_SPEND_EXHAUSTED, DETAIL_WRITE_UNAPPROVED, Error,
     ErrorKind,
@@ -63,6 +63,10 @@ impl Error {
             // and a second copy of that mapping here is the drift this crate's
             // own module header warns about.
             ErrorKind::Billing { ref source } => source.code(),
+            // Delegated for the reason Billing is: the credential plane already
+            // decides which of its failures is an outage and which is a fault.
+            ErrorKind::Credential { ref source } => source.code(),
+            ErrorKind::Gate { ref source } => source.code(),
             ErrorKind::Query { .. } | ErrorKind::RowMalformed { .. } => {
                 error_code::INTERNAL_DB_QUERY
             }
@@ -92,19 +96,13 @@ impl Error {
             | ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::Queue { .. }
-            | ErrorKind::ProviderMalformed { .. }
-            | ErrorKind::ProviderSecretMissing
-            | ErrorKind::ProviderPlatformKeyMissing
-            | ErrorKind::ProviderNoWorkspace
-            | ErrorKind::ProviderEndpoint { .. }
             // A stored config this daemon cannot read joins the family for the
             // registry reason the queue does: the finer code an operator would
             // want does not exist in the Zig registry, and minting one here
             // would fire the ERROR REGISTRY gate over a registry this family
             // does not own. The parser's own error says which rule the
             // document broke, and it survives in the source chain.
-            | ErrorKind::ConfigUnreadable { .. }
-            | ErrorKind::Vault { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            | ErrorKind::ConfigUnreadable { .. } => error_code::INTERNAL_OPERATION_FAILED,
             // Two vault failures, two codes, matching the two the Zig logs:
             // `crypto_store.decrypt_failed` answers the internal code above
             // because which check failed is an oracle, while `vault.zig`'s
@@ -115,7 +113,6 @@ impl Error {
             // it is the one an operator can ACT on: the fleet named a
             // credential and nobody stored it. `secrets_resolve.zig` logs the
             // same code, and the entry already exists in the Zig registry.
-            ErrorKind::CredentialMissing => error_code::AGENTSFLEET_CREDENTIAL_MISSING,
             // The six lease-lifecycle refusals, each with its own registry
             // code. None of them is an internal failure and none is a bad
             // request: they are all one fact — this runner may not do this to
@@ -200,16 +197,11 @@ impl Error {
             | ErrorKind::SequenceCorrupt => DETAIL_DATABASE_ERROR,
             ErrorKind::Queue { .. } => DETAIL_QUEUE_UNAVAILABLE,
             ErrorKind::Billing { ref source } => source.detail(),
+            ErrorKind::Credential { ref source } => source.detail(),
+            ErrorKind::Gate { ref source } => source.detail(),
             ErrorKind::Envelope { .. } => DETAIL_EVENT_MALFORMED,
             ErrorKind::Mint { .. } | ErrorKind::Entropy { .. } => DETAIL_REGISTRATION_FAILED,
-            ErrorKind::ProviderMalformed { .. }
-            | ErrorKind::ProviderSecretMissing
-            | ErrorKind::ProviderPlatformKeyMissing
-            | ErrorKind::ProviderNoWorkspace
-            | ErrorKind::ProviderEndpoint { .. }
-            | ErrorKind::Vault { .. } => DETAIL_PROVIDER_UNRESOLVED,
             ErrorKind::VaultDataInvalid => DETAIL_VAULT_DATA_INVALID,
-            ErrorKind::CredentialMissing => DETAIL_CREDENTIAL_MISSING,
             ErrorKind::ConfigUnreadable { .. } => DETAIL_CONFIG_UNREADABLE,
             ErrorKind::StaleFence => DETAIL_STALE_FENCE,
             ErrorKind::LeaseNotFound => DETAIL_LEASE_NOT_FOUND,
@@ -272,37 +264,31 @@ impl Error {
     #[must_use]
     pub const fn is_config_permanent(&self) -> bool {
         match self.inner.kind {
-            ErrorKind::ProviderMalformed { .. }
-            | ErrorKind::ProviderSecretMissing
-            | ErrorKind::ProviderPlatformKeyMissing
-            | ErrorKind::ProviderNoWorkspace
             // A declared credential nobody stored, and a stored body that is
             // not an addressable object, are both things a human has to go and
             // fix. `resolveSecretsMap`'s `error.CredentialNotFound` reaches
             // `blockEvent` through the fleet loop's own permanent arm, so this
             // classification is the Zig's rather than a correction to it.
-            | ErrorKind::CredentialMissing
             | ErrorKind::VaultDataInvalid
             // A document that will not parse does not become parseable by
             // being read again. Every poll would re-read the same bytes, fail
             // the same rule, and leave the delivery leasable forever — so this
             // earns the terminal row, which is the thing that puts the fleet
             // in front of a human.
-            | ErrorKind::ConfigUnreadable { .. }
-            // The corrected one — see the divergence note above.
-            | ErrorKind::ProviderEndpoint { .. } => true,
+            | ErrorKind::ConfigUnreadable { .. } => true,
             // Everything else is infrastructure, and infrastructure recovers.
             //
-            // `Vault` stays here on purpose, next to the variant that just
-            // moved. An envelope that will not open is USUALLY permanent too —
-            // a damaged row, a rotated key — but it is also what a truncated
-            // read or a half-written row looks like, and those do recover. The
-            // asymmetry is not an oversight: a stored URL is data this daemon
-            // parsed and rejected, while an unopened envelope is data it never
-            // got to see.
-            ErrorKind::Vault { .. }
-            | ErrorKind::Datastore { .. }
+            // The provider family — a stored endpoint the SSRF guard refused,
+            // a selection naming a vault row nobody holds — moved to
+            // `afd_credential` with the code that raises it, and is classified
+            // there. What reaches here is [`ErrorKind::Credential`], whose own
+            // plane already decided; it sits in this arm because a credential
+            // fault is not a fleet DOCUMENT fault, which is the question this
+            // function answers.
+            ErrorKind::Datastore { .. }
             | ErrorKind::Billing { .. }
+            | ErrorKind::Credential { .. }
+            | ErrorKind::Gate { .. }
             | ErrorKind::Queue { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }

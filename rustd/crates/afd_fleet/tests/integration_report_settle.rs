@@ -37,7 +37,7 @@ mod seed;
 mod report_seed;
 
 use afd_fleet::lease::Settled;
-use afd_fleet::sql;
+use afd_fleet::lease::sql;
 
 use self::report_seed::{DEEP_POOL, SLICE_MS, SLICE_NANOS, held, run_fee_meter};
 

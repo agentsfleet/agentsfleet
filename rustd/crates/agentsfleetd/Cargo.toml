@@ -41,6 +41,7 @@ test-util = [
 reqwest.workspace = true
 afd_api.workspace = true
 afd_billing.workspace = true
+afd_credential.workspace = true
 afd_core.workspace = true
 afd_events.workspace = true
 # The composition root: this crate is the one that names which directory,
@@ -54,6 +55,7 @@ afd_auth.workspace = true
 afd_state.workspace = true
 # The runner control plane behind the `/v1/runners` verbs.
 afd_fleet.workspace = true
+afd_gate.workspace = true
 # The workspace fleets surface's store, handed to the router as one service.
 afd_fleet_lifecycle.workspace = true
 # The tenant plane: api-keys, command-line credentials, the device-flow login

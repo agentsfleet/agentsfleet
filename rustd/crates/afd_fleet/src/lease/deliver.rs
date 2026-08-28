@@ -17,8 +17,8 @@ use crate::lease::envelope::Acquired;
 use crate::lease::installed::Installed;
 use crate::lease::issue::Billed;
 use crate::lease::pull::{Admission2, Plane};
-use crate::policy::build::{self, Assembled};
-use crate::policy::repair;
+use afd_gate::policy::build::{self, Assembled};
+use afd_gate::policy::repair;
 use afd_core::event::label;
 
 impl Plane {

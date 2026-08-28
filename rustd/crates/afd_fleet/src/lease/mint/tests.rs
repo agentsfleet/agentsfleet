@@ -13,14 +13,17 @@ use afd_core::error_code;
 use zeroize::Zeroizing;
 
 use super::accept;
-use crate::credential::outcome::{Minted, Outcome, Retry};
-use crate::secrets::connector::{Connector, Connectors as _, Registry};
+use afd_credential::credential::outcome::{Minted, Outcome, Retry};
+use afd_credential::secrets::connector::{Connector, Connectors as _, Registry};
 
 /// The connector a handle naming `name` resolves to in the shipped registry.
 fn connector(name: &str) -> &'static dyn Connector {
-    // The registry is a unit struct, so the borrow it hands out lives as long
-    // as the declared table it points into.
-    Registry
+    // The registry is a `#[non_exhaustive]` unit struct, so a caller outside
+    // its crate reaches it through `Default` rather than by naming the value.
+    // The borrow it hands out lives as long as the declared table it points
+    // into.
+    const REGISTRY: Registry = Registry::SHIPPED;
+    REGISTRY
         .resolve(name)
         .expect("the shipped registry declares it")
 }
