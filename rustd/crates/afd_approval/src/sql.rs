@@ -1,9 +1,9 @@
 //! Every statement this crate runs, collected, and nothing else.
 //!
 //! Text is byte-identical to `fleet_runtime/sql.zig`'s operator-side
-//! statements. Row-equivalence is the cutover invariant, so a statement is
-//! copied rather than re-derived; where a `$n` order looks odd, it is odd in
-//! the original too.
+//! statements, and to `integration_grants/workspace.zig` for the grant half.
+//! Row-equivalence is the cutover invariant, so a statement is copied rather
+//! than re-derived; where a `$n` order looks odd, it is odd in the original too.
 /// One page of a workspace's gates, oldest first.
 ///
 /// Copied from `fleet_runtime/sql.zig`'s `SELECT_GATE_PAGE`. The fleet name is
@@ -121,3 +121,56 @@ UPDATE core.fleet_approval_gates
 SET status = $1, resolved_by = $3, detail = $4, updated_at = $5
 WHERE status = $2 AND timeout_at <= $5
 RETURNING id::text";
+
+/// Whether `$1` is a fleet that `$2` holds.
+///
+/// The port of `common.getFleetWorkspaceId` plus the equality check that
+/// follows every one of its call sites: the Zig fetches the fleet's workspace
+/// and compares it in the handler, which is one round trip's worth of row to
+/// answer a yes-or-no the predicate can answer itself.
+///
+/// Both grant verbs run it FIRST, because both must tell "no such fleet here"
+/// from their own absent row, and the two carry different codes. A fleet in
+/// another workspace answers no rows — never a 403 — so the endpoint cannot be
+/// an oracle for which fleet identifiers are real.
+pub(crate) const SELECT_FLEET_IN_WORKSPACE: &str = "\
+SELECT 1 FROM core.fleets WHERE id = $1::uuid AND workspace_id = $2::uuid";
+
+/// Every grant a fleet holds, newest first.
+///
+/// Copied from `integration_grants/workspace.zig`'s `innerListGrants`. Unpaged
+/// and unfiltered: a fleet holds at most one grant per service — the unique
+/// constraint on `(fleet_id, service)` says so — and the supported-service
+/// count is what bounds the page. `requested_reason` is the wire's `reason`.
+///
+/// `$1` fleet.
+pub(crate) const SELECT_FLEET_GRANTS: &str = "\
+SELECT id::text, service, status, created_at, approved_at, revoked_at, requested_reason
+FROM core.integration_grants
+WHERE fleet_id = $1::uuid
+ORDER BY created_at DESC";
+
+/// Revokes one grant, scoped to the workspace that holds its fleet.
+///
+/// Copied from `integration_grants/workspace.zig`'s `innerRevokeGrant`,
+/// including the join to `core.fleets` the handler had already made redundant.
+/// That redundancy is the point and it is load-bearing: if the fleet-scope read
+/// above is ever dropped from this crate, the statement still refuses a
+/// cross-workspace revoke, and `workspace.zig`'s own integration test runs this
+/// exact text with a foreign workspace to prove it.
+///
+/// `g.status != $1` is what makes a second revoke report nothing rather than
+/// re-stamping `revoked_at`, so the caller can tell "I revoked it" from
+/// "it was already gone" without a read-then-write.
+///
+/// `$1` revoked status, `$2` now, `$3` grant, `$4` fleet, `$5` workspace.
+pub(crate) const REVOKE_GRANT: &str = "\
+UPDATE core.integration_grants g
+SET status = $1, revoked_at = $2
+FROM core.fleets z
+WHERE g.id = $3::uuid
+  AND g.fleet_id = $4::uuid
+  AND z.id = g.fleet_id
+  AND z.workspace_id = $5::uuid
+  AND g.status != $1
+RETURNING g.id";

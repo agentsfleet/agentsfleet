@@ -51,6 +51,15 @@ pub(super) const INTEGRATION: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::GRANT_REVOKE_NOT_FOUND,
+        status: 404,
+        title: "Integration grant not found",
+        hint: "No grant with that id exists for this fleet, or it was already revoked. List current grants with `GET /v1/workspaces/{ws}/fleets/{id}/integration-grants`.",
+        user_message: Some(
+            "We couldn't find that grant request. It may have already been resolved — refresh the list.",
+        ),
+    },
+    Problem {
         code: error_code::CONNECTOR_OAUTH_EXCHANGE_FAILED,
         status: 502,
         title: "Connector OAuth exchange failed",

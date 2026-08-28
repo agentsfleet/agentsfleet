@@ -49,6 +49,16 @@ pub const GH_MINT_FAILED: ErrorCode = ErrorCode::declare("UZ-GH-002");
 /// and a caller able to tell them apart would treat pending as a maybe.
 pub const GRANT_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-GRANT-001");
 
+/// The revoke addressed a grant this fleet does not hold.
+///
+/// `ERR_GRANT_REVOKE_NOT_FOUND` (`error_registry.zig:196`). A 404 where
+/// [`GRANT_NOT_FOUND`] is a 403, and the difference is who is being refused:
+/// that one tells a RUNNER its mint is ungranted, this tells an OPERATOR the
+/// row they aimed at is not there. "Already revoked" answers the same code on
+/// purpose — the revoke is idempotent in intent and the grant is not usable
+/// either way, so telling the two apart would only invite a caller to retry.
+pub const GRANT_REVOKE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-GRANT-002");
+
 /// A connector's OAuth exchange was rejected.
 ///
 /// `ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED` (`error_registry.zig:239`). The
