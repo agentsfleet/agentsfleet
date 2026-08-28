@@ -56,6 +56,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_state/**` | EDIT | extends the M176-created repository crate: billing/wallet reads, model library + tenant models, tenant provider, preferences, onboarding, signup bootstrap. **Amended at EXECUTE — the vault did NOT land here.** This crate is the credential directory the authentication path cannot start without; putting AES-GCM behind it would rebuild every login when a projection column moved, and `afd_crypto` is an edge its three directories never call |
 | `rustd/crates/afd_fleet_lifecycle/**` | ADD | §3's store: install, read, edit, purge. A new member rather than a module in `afd_fleet` (25,500 lines — 3.5× its nearest sibling, the condition that forced `afd_tenant` out) or in `afd_tenant` (which would acquire a YAML parser and a Redis stream client its api-key and login modules never call) |
 | `rustd/crates/afd_vault/**` | ADD | §4's store: the sealed write, the never-decrypting list, and the reference lock a delete is taken under. A new member for the same reason §3 got one, plus one of its own: `afd_fleet::vault` already reads `vault.secrets` and stays put, because it is the RUNNER plane's reader — it opens a credential a fleet declared, refuses to degrade a row it cannot read, and never lists. Two failure policies over one table; folding them together means one of the two losing |
+| `rustd/crates/afd_events/**` | ADD | §5's store: the narrative log's reads, the live tail, and the steer append. `core.fleet_events` had no owner — its statements sat in `afd_fleet::sql::event` behind the whole runner plane, so `afd_approval` carried a byte-identical COPY of the insert rather than depend on leases, money, policy and four sweepers to reuse ten lines of SQL. This crate is that reason removed |
+| `rustd/crates/afd_billing/**` | ADD | **Indy, mid-stream.** `money/` plus the `billing.*` statements, out of `afd_fleet`. Reads a different schema from everything around it, and only the admission gate calls it |
+| `rustd/crates/afd_runner/**` | ADD | **Indy, mid-stream.** `runner/` + `sweep/` plus `fleet.runners`/`fleet.runner_events`, out of `afd_fleet`. The HOST's plane where `afd_fleet` is the RUN's; the two meet at one audit row |
+| `rustd/crates/afd_state/**` (vocabulary) | EDIT | `LEASE_STATUS_*` and `LAST_SEEN_NEVER` join `ADMIN_STATE_*`, which was already here because two planes read it |
+| `rustd/crates/afd_core/src/event.rs` | ADD | `status` and `failure_label` spellings. NOT `afd_wire`, which depends on nothing but serde because it is a byte-exact port of the frozen `/v1/runners` contract — and neither column is on it |
 | `rustd/crates/afd_observability/**` | EDIT | PostHog product-event emission for the surfaces this milestone ports (§7) |
 | `rustd/crates/afd_fleet/**` | EDIT | install flow (ensure-stream retries + rollback), approvals service + gate sweeper, steer message append |
 | `rustd/crates/afd_auth/**` | EDIT | CLI-credential mint/revoke service glue; Clerk metadata fetch worker port |
@@ -155,7 +160,7 @@ Workspace + fleet event lists (bounded, `since`-windowed), SSE streams (`/events
 
 ### §7 — Onboarding, preferences, fleet-library reads, analytics
 
-`/onboarding`, `/preferences[/{pref_key}]`, workspace fleet-library reads; PostHog product-analytics port for the events these surfaces already emit (add none, rename none). **Implementation default:** PostHog over plain HTTP client calls in `afd_observability` — the Zig `posthog-zig` dependency retires with the port — because the event payload surface is small and a full SDK adds an unaudited dependency for no new capability.
+`/onboarding`, `/preferences[/{pref_key}]`, workspace fleet-library reads; PostHog product-analytics port for the events these surfaces already emit (add none, rename none). **Implementation default:** PostHog over plain HTTP client calls in `afd_observability` — the Zig `posthog-zig` dependency retires with the port — because the event payload surface is small and a full SDK adds an unaudited dependency for no new capability. **Settled at EXECUTE: this default did not survive its own re-check either, and Indy chose the crate.** The stated reasoning was wrong on two counts. `posthog-zig` is *agentsfleet's own* library (`build.zig.zon:60` → `github.com/agentsfleet/posthog-zig#v0.2.0`), so "retiring an unaudited dependency" was never the trade; and `posthog-rs` is PostHog's OFFICIAL Rust client (`github.com/posthog/posthog-rs`, MIT), v0.25.3 published Aug 26 2026 — two days before this read — with 1.55M downloads and eight releases in eighteen days. The parity argument inverted too: `posthog-zig` ALREADY injects `$lib`/`$lib_version` (`client.zig:134`) and already batches on a background flush thread, so hand-rolled HTTP would have had to reproduce both. Marginal cost with `default-features = false, features = ["async-client"]` is five new direct crates; `$os`/`$os_version` newly appear and `$lib` changes value, accepted as SDK-identification metadata rather than product event data.
 
 - **Dimension 7.1** — DONE — preference/onboarding round-trips with shape parity → Test `afd_api/tests/workspace_preferences.rs` (10 cases, everything in front of the store) + `afd_tenant/tests/integration_preferences.rs` (7 cases, against live Postgres). The bag is `BTreeMap<&str, &RawValue>` rather than a parsed `Value`, so a stored preference returns byte for byte — a re-serialized `Value` would normalise spacing and key order on a payload the server has no business normalising, and the round-trip test pins exactly that. The key registry is a closed enum whose variant spelling IS the wire key, so `UZ-PREFS-001` is decided before a connection is drawn; the 1 KiB bound answers `UZ-PREFS-002` from the same verb, and both codes are asserted rather than the status alone.
 - **Dimension 7.2** — analytics: the existing event set fires with identical names/properties; nothing new emitted → Test `test_analytics_event_parity`
@@ -367,6 +372,31 @@ N/A — no files deleted.
 - **Deferrals** — every "deferred to follow-up" needs an **Indy-acked verbatim quote** here, format `> Indy (YYYY-MM-DD HH:MM): "<quote>" — context: <which item, why>`.
 
 ### Declared divergences
+
+- **`since=` refuses an impossible calendar date; the Zig rolls it over.**
+  `parseRfc3339Z` validates the day as `1..=31` for every month and then runs a
+  days-from-civil conversion, so it ACCEPTS `2026-02-31T00:00:00Z` and silently
+  lands in March. `afd_events` shape-checks the same twenty-character `…Z` form
+  and then hands the parse to `jiff`, which refuses it. That is a narrowing,
+  which `docs/REST_API_DESIGN_GUIDELINES.md` §9 classes as breaking — taken
+  deliberately, because an impossible calendar date is not a client contract
+  and rolling it over answers a question nobody asked. The alternative was
+  hand-writing Howard Hinnant's algorithm beside a maintained calendar crate
+  the workspace already carries for `afd_billing::window`.
+
+- **Two cursor formats survive, and neither is re-spelled.** The events
+  endpoints take `?cursor=` carrying base64url of `{created_at}:{event_id}`
+  (`fleet_events_filter.zig`), while `afd_core::paging::Cursor` spells a
+  timestamp boundary `{millis}:{id}` in the clear (`keyset_cursor.zig`). The
+  REST guide §3 forbids a request-side `?cursor=` name for NEW endpoints and
+  §9 forbids renaming a query parameter inside `/v1` — "same rule for
+  path-param names and query-param names". These are not new endpoints: the
+  grammar is already exposed in production and a dashboard holds a cursor
+  across a deploy, so §9 wins and §3's own grandfathering of `approvals/list`
+  and `api_keys/list` is the precedent. `afd_events` carries its own `Cursor`
+  with a test that decodes a cursor the Zig daemon issued. Converging the two
+  is a `/v2` change.
+
 
 - **The RLS session-context write is not ported.** `common_authz_sql.zig` keeps
   a second copy of the ownership verdict carrying
