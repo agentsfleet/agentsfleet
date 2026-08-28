@@ -41,11 +41,12 @@ Define an agent in Markdown, connect a webhook, and get an evidenced diagnosis a
 | Directory | What |
 |---|---|
 | `src/` | Zig backend — `agentsfleetd` control plane (HTTP, leases) + `agentsfleet-runner` execution daemon |
+| `rustd/` | Rust workspace — the control plane's port, one crate per plane, built as `agentsfleetd` |
 | `ui/packages/app/` | Dashboard — Next.js, Clerk auth |
 | `ui/packages/website/` | Marketing site — [agentsfleet.net](https://agentsfleet.net) |
 | `ui/packages/design-system/` | Shared UI components |
 | `cli/` | Command-line interface (CLI) — install, manage agents, tail runs |
-| `public/openapi/` | OpenAPI spec |
+| `public/openapi.json` | OpenAPI spec — a committed artifact, edited directly |
 | `schema/` | Postgres migrations |
 | `playbooks/` | First setup, deployment, verification, and operations |
 
@@ -53,7 +54,7 @@ Define an agent in Markdown, connect a webhook, and get an evidenced diagnosis a
 
 ## Local development
 
-**Prerequisites:** [Zig 0.16.0](https://ziglang.org/download/) · [Docker](https://www.docker.com) (Postgres + Redis) · [Bun ≥1.3](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
+**Prerequisites:** [Zig 0.16.0](https://ziglang.org/download/) · [Rust 1.98.0](https://rustup.rs) (pinned by `rustd/rust-toolchain.toml`; `mise install` resolves it) · [Docker](https://www.docker.com) (Postgres + Redis) · [Bun ≥1.3](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
 
 ```bash
 git clone https://github.com/agentsfleet/agentsfleet.git
@@ -72,7 +73,7 @@ bun install && bun run dev
 ```bash
 make lint-all
 make test-unit-all
-make test-integration   # needs make up running
+make test-integration-rustd   # needs Docker: live Postgres + Redis
 ```
 
 ---
@@ -101,10 +102,20 @@ by [orly](https://github.com/agentsfleet/orly) and recorded in
 `.oracle/orly.json`. A clone carries its own rules; nothing resolves out of a
 developer's home directory.
 
+Install orly at the version this repository records, so a local run and
+Continuous Integration grade against the same rules:
+
 ```bash
-bunx @agentsfleet/orly update   # re-materialise at the installed version
+npm install -g "@agentsfleet/orly@$(jq -r .orly_version .oracle/orly.json)"
+
 orly doctor                     # report drift between the lock and the tree
+orly update --no-hooks          # re-materialise at the installed version
+orly gate work                  # what the pre-commit hook runs
 ```
+
+`--no-hooks` is not optional here: this repository owns `.githooks/pre-commit`
+and `.githooks/pre-push`, and orly declines to overwrite hooks it did not
+write.
 
 `make harness-verify` runs the gates from `audits/` in this repository.
 
