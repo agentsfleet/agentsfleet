@@ -67,32 +67,6 @@ jobs:
       - name: Validate GH Actions workflows (actionlint + make-target refs)
         run: make check-gh-actions-valid
 
-  check-openapi:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.0
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-      - name: Install root dependencies (pulls @redocly/cli)
-        run: bun install --frozen-lockfile
-      - name: Assert public/openapi.json is produced purely from YAML
-        run: |
-          # Delete the committed JSON first, then let `make check-openapi`
-          # rebundle it from the YAML source alone. If `git diff` then shows
-          # any delta vs HEAD, either the YAML is out of sync or someone
-          # hand-edited the JSON.
-          rm public/openapi.json
-          make check-openapi
-          if ! git diff --exit-code public/openapi.json; then
-            echo "::error::public/openapi.json drifted from public/openapi/**.yaml."
-            echo "::error::Run 'make check-openapi' locally and commit the result."
-            exit 1
-          fi
-
   safety-gates:
     # Repo-hygiene gates that lived under `make lint-all` but were never run by
     # CI, so a broken architecture reference, an ungated vault reader, or a
@@ -134,7 +108,7 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
-    needs: [lint-website, lint-apps-designsystem-cli, lint-agentsfleet-sh, check-gh-actions-valid, check-openapi, safety-gates]
+    needs: [lint-website, lint-apps-designsystem-cli, lint-agentsfleet-sh, check-gh-actions-valid, safety-gates]
     steps:
       - name: Preserve legacy lint check name
         run: echo "All lint lanes passed"

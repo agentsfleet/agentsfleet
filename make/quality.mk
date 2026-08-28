@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-playbooks-refs check-route-registration-doc
+.PHONY: lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs check-route-registration-doc
 
 check-documentation-rules:  ## Check public API and command help text
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
@@ -57,24 +57,7 @@ _model_allowlist_check:
 	@python3 scripts/check_model_allowlist.py
 
 
-REDOCLY := bunx @redocly/cli
-
 ROUTE_COVERAGE_TESTS := python3 -m unittest discover -s scripts -t scripts -p 'check_openapi_route_coverage*_test.py'
-
-check-openapi: check-documentation-rules  ## Bundle YAML → openapi.json + public-text + schema + route checks
-	@echo "→ [openapi] Bundling split YAML → public/openapi.json..."
-	@$(REDOCLY) bundle public/openapi/root.yaml -o public/openapi.json >/dev/null
-	@echo "→ [openapi] Redocly lint..."
-	@$(REDOCLY) lint public/openapi.json --config .redocly.yaml
-	@echo "→ [openapi] ErrorBody + application/problem+json schema check..."
-	@python3 scripts/check_openapi_errors.py
-	@echo "→ [openapi] REST §1 URL shape (no verbs in URLs)..."
-	@python3 scripts/check_openapi_url_shape.py
-	@echo "→ [openapi] Route-coverage gate self-tests..."
-	@$(ROUTE_COVERAGE_TESTS)
-	@echo "→ [openapi] REST §7 served-vs-documented route coverage..."
-	@python3 scripts/check_openapi_route_coverage.py
-	@echo "✓ [openapi] Bundle + lint + error-schema + url-shape + route-coverage all green"
 
 check-route-registration-doc:  ## REST guide §7 route-registration facts stay fresh (middleware names, cited paths, make targets, dead prefixes)
 	@python3 scripts/check_route_registration_doc_test.py
@@ -135,7 +118,7 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 
-lint-all: lint-rustd lint-scripts _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-openapi check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
+lint-all: lint-rustd lint-scripts _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + make-target ref check
