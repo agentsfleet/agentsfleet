@@ -279,7 +279,6 @@ fn test_sslmode_detection_pinned_against_hand_rolled() {
     }
 }
 
-
 /// A password carrying the query syntax cannot smuggle a declaration past the
 /// TLS default, in either of the two forms it can reach the daemon in.
 ///
@@ -312,7 +311,9 @@ fn test_password_bearing_query_syntax_still_requires_tls() {
     let error = PoolConfig::resolve(&env, DbRole::Default)
         .expect_err("an unencoded `?` in a password is not a parseable URL");
     assert!(
-        error.to_string().contains("is not a Postgres connection URL"),
+        error
+            .to_string()
+            .contains("is not a Postgres connection URL"),
         "got {error}"
     );
 }
@@ -367,7 +368,11 @@ fn test_declared_spellings_are_the_ones_sqlx_honours() {
     let url = "postgres://u:pw@h:5432/db?not-sslmode=disable";
     let env = env_with(&[("DATABASE_URL", url)]);
     let config = PoolConfig::resolve(&env, DbRole::Default).unwrap();
-    assert_eq!(config.ssl_mode(), "require", "substring is not a declaration");
+    assert_eq!(
+        config.ssl_mode(),
+        "require",
+        "substring is not a declaration"
+    );
 }
 
 /// Where a captured event's bytes go, or `None` when nothing is capturing.
@@ -385,7 +390,8 @@ struct SinkWriter;
 /// A test that panicked while holding it already failed; making the NEXT test
 /// fail for that reason would report one defect twice and hide the second.
 fn sink() -> std::sync::MutexGuard<'static, Option<Vec<u8>>> {
-    SINK.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    SINK.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 impl std::io::Write for SinkWriter {
