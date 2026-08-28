@@ -85,6 +85,13 @@ async fn runner_views_report_missing_and_malformed_rows_without_partial_success(
         .expect_err("an unknown stored state fails the whole detail");
     assert_eq!(malformed.code(), error_code::INTERNAL_DB_QUERY);
     assert_eq!(malformed.detail(), afd_runner::DETAIL_DATABASE_ERROR);
+    // Restored the moment the assertion is made, and not at the end of the
+    // test. `fleet.runners` is shared with every other suite in this lane, and
+    // an undecodable `admin_state` fails a WHOLE listing rather than the row
+    // that carries it — so while this fixture is stored, any unfiltered
+    // `list_runners` anywhere in the binary refuses. The window is narrowed to
+    // the two statements it takes to prove the refusal.
+    restore_admin_state(&fixtures, &enrolled.runner_id).await;
     insert_unknown_event(&fixtures, &enrolled.runner_id).await;
     let malformed_event = fixtures
         .runners()
@@ -114,6 +121,21 @@ async fn overwrite_admin_state(fixtures: &Fixtures, runner: &Uuid7) {
         .execute(&mut *connection)
         .await
         .expect("the malformed fixture state is stored");
+}
+
+/// Puts a decodable state back, so the shared listing reads again.
+async fn restore_admin_state(fixtures: &Fixtures, runner: &Uuid7) {
+    let mut connection = fixtures
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    sqlx::query("UPDATE fleet.runners SET admin_state = $2 WHERE id = $1::uuid")
+        .bind(runner.as_str())
+        .bind("active")
+        .execute(&mut *connection)
+        .await
+        .expect("the fixture state is restored");
 }
 
 async fn insert_unknown_event(fixtures: &Fixtures, runner: &Uuid7) {
@@ -241,7 +263,16 @@ async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
         // and the walk needs the boundary to outlive the rows it came with.
         cursor = page.next_cursor().cloned();
         walked.extend(page.into_items());
-        if cursor.is_none() {
+        // Stops at the seeded set rather than walking to the end. The table is
+        // shared with every other suite in this lane, so a full walk reads
+        // rows this test did not write — including the deliberately
+        // undecodable `admin_state` its sibling stores — and none of them is
+        // what this dimension is about.
+        let found = walked
+            .iter()
+            .filter(|item| seeded.ordered_ids.iter().any(|id| id == item.id().as_str()))
+            .count();
+        if cursor.is_none() || found == seeded.ordered_ids.len() {
             break;
         }
     }
@@ -262,10 +293,9 @@ async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
         unique.len(),
         "the composite cursor repeated a row"
     );
-    assert_eq!(
-        i64::try_from(ids.len()).expect("the lane holds fewer rows than an i64"),
-        reported,
-        "the walk saw a different number of rows than the page total reported"
+    assert!(
+        reported >= i64::try_from(seeded.ordered_ids.len()).expect("three fits an i64"),
+        "the total does not account for the seeded runners: {reported}"
     );
 
     let seen = ids
