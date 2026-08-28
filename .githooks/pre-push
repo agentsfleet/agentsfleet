@@ -10,7 +10,7 @@
 # comprehensive tier that belongs at CHORE(close).
 #
 # Surfaces:
-#   - lint-rustd + test-unit-rustd (*.rs, rustd/*)
+#   - lint-rustd                   (*.rs, rustd/*)
 #   - test-unit-cli            (cli/*)
 #   - test-unit-website        (ui/packages/website/*)
 #   - test-unit-app            (ui/packages/app/*, design-system/* triggers both)
@@ -92,10 +92,13 @@ fi
 
 pushed_files="$(git diff --name-only "$upstream_ref"..HEAD 2>/dev/null || true)"
 
-# The odd name in this list: it gates BOTH `lint-rustd` and `test-unit-rustd`,
-# where its siblings gate one lane each. One flag because one file pattern
-# answers both questions — a Cargo manifest or the toolchain pin changes what
-# clippy compiles and what the tests compile, identically.
+# Gates `lint-rustd` alone. It used to gate `test-unit-rustd` beside it, and
+# that lane moved out by Indy's call: `cargo test --workspace --all-features`
+# cost about seven minutes of every Rust push to re-answer what `orly gate pr`
+# and Continuous Integration (CI) both ask again anyway, while clippy — the
+# cheaper failure, and the one a reviewer should never have to catch — costs
+# about one. Pre-commit routes Rust to nothing, so this is the only local
+# clippy: keeping it is what stops a `-D warnings` error reaching the remote.
 needs_rustd=0
 needs_test_cli=0
 needs_test_website=0
@@ -134,7 +137,7 @@ fi
 # selected can tell "still going" from "picked the wrong lane" without waiting
 # for the answer.
 plan=""
-[ "$needs_rustd"              = 1 ] && plan="$plan lint-rustd+test-unit-rustd"
+[ "$needs_rustd"              = 1 ] && plan="$plan lint-rustd"
 [ "$needs_test_cli"           = 1 ] && plan="$plan test-unit-cli"
 [ "$needs_test_website"       = 1 ] && plan="$plan test-unit-website"
 [ "$needs_test_app"           = 1 ] && plan="$plan test-unit-app"
@@ -157,12 +160,9 @@ echo "  lanes:$plan"
 # the JavaScript ones for free. When a push touches only one class — the common
 # case — behaviour is bit-for-bit what it was.
 #
-# `lint-rustd` and `test-unit-rustd` run as ONE make invocation without `-j`,
-# so they are serial with respect to each other. That is not a missed
-# parallelism: both are cargo over one target directory and would serialize on
-# cargo's own build lock anyway, so `-j` would buy contention rather than
-# overlap. Lint is first because it is the cheaper failure — a clippy error
-# should not wait out a unit suite to be reported.
+# `lint-rustd` is one cargo invocation over one target directory. The unit lane
+# that used to run beside it is now `orly gate pr`'s and CI's; a clippy error is
+# the cheaper failure and is what this lane exists to report.
 failed_names=()
 
 run_lane() {
@@ -182,8 +182,8 @@ rustd_pid=""
 rustd_log=""
 if [ "$needs_rustd" = 1 ]; then
   rustd_log="$(mktemp)"
-  echo "pre-push: make lint-rustd test-unit-rustd (background — overlaps the JavaScript lanes)"
-  make lint-rustd test-unit-rustd >"$rustd_log" 2>&1 &
+  echo "pre-push: make lint-rustd (background — overlaps the JavaScript lanes)"
+  make lint-rustd >"$rustd_log" 2>&1 &
   rustd_pid="$!"
 fi
 
@@ -211,10 +211,10 @@ if [ -n "$rustd_pid" ]; then
   if ! wait "$rustd_pid"; then
     # One name for both: make stops at the first failing target, and the log
     # replayed below names which one it was.
-    failed_names+=(lint-rustd/test-unit-rustd)
-    echo "✗ lint-rustd/test-unit-rustd failed after $(fmt_elapsed "$rustd_waited")"
+    failed_names+=(lint-rustd)
+    echo "✗ lint-rustd failed after $(fmt_elapsed "$rustd_waited")"
   else
-    echo "✓ lint-rustd/test-unit-rustd ($(fmt_elapsed "$rustd_waited"))"
+    echo "✓ lint-rustd ($(fmt_elapsed "$rustd_waited"))"
   fi
   cat "$rustd_log"
   rm -f "$rustd_log"
