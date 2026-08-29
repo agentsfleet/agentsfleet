@@ -4,6 +4,8 @@ mod harness;
 
 #[path = "auth_sessions.rs"]
 mod auth_sessions;
+#[path = "integration_auth_sessions.rs"]
+mod integration_auth_sessions;
 #[path = "fleet_grants.rs"]
 mod fleet_grants;
 #[path = "integration_fleet_lifecycle.rs"]

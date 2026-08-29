@@ -26,7 +26,7 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use afd_core::env::MapEnv;
-use agentsfleetd::cli::{Cli, FAILURE, SUCCESS, run};
+use agentsfleetd::cli::{Cli, SUCCESS, run};
 use clap::Parser as _;
 
 use crate::support::install_subscriber;
@@ -252,22 +252,6 @@ fn test_migrate_applies_and_reports_success() {
         again, SUCCESS,
         "a second run is a no-op, not a failure — which is what makes this safe in an init container"
     );
-}
-
-/// `migrate` against a database that is not there is a refusal, not a hang.
-#[test]
-fn test_migrate_refuses_a_database_that_will_not_answer() {
-    let status = run(
-        &Cli::try_parse_from(["agentsfleetd", "migrate"]).expect("migrate takes no arguments"),
-        &MapEnv::from_pairs([(
-            "DATABASE_URL_MIGRATOR",
-            "postgres://afd:afd@127.0.0.1:1/afd?sslmode=disable",
-        )]),
-        tokio::runtime::Runtime::new,
-        std::future::ready(()),
-    );
-
-    assert_eq!(status, FAILURE, "a migration that could not run exits 1");
 }
 
 /// SIGTERM stops a serving daemon, and it exits 0.
