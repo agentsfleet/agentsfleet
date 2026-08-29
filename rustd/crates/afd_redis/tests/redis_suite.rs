@@ -87,6 +87,8 @@ mod integration_ready;
 mod integration_session;
 #[path = "integration_streams.rs"]
 mod integration_streams;
+#[path = "integration_tls_trust.rs"]
+mod integration_tls_trust;
 #[path = "keys_and_config.rs"]
 mod keys_and_config;
 #[path = "misbehaving_server.rs"]
