@@ -27,7 +27,7 @@ use afd_core::clock::UnixMillis;
 
 use afd_approval::{Decision, Filter, Resolution};
 
-use self::lane::{Lane, NOW_MS, WINDOW_MS};
+use self::lane::{Lane, NOW_MS, WINDOW_MS, sweeper_exclusive};
 
 /// Who answers, when a test needs an operator.
 const OPERATOR: &str = "human:fixture";
@@ -207,6 +207,8 @@ async fn a_gate_id_from_another_workspace_is_indistinguishable_from_absent() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn the_sweeper_expires_only_the_gates_whose_window_closed() {
+    // the sweep is global; a sibling's lapsed gate is in its statement.
+    let _sweeper = sweeper_exclusive().await;
     let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
 
@@ -236,6 +238,8 @@ async fn the_sweeper_expires_only_the_gates_whose_window_closed() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_gate_answered_before_the_deadline_is_not_swept() {
+    // the sweep is global; a sibling's lapsed gate is in its statement.
+    let _sweeper = sweeper_exclusive().await;
     let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
     // Deadline already past, and a person answered anyway — the ordering a
@@ -262,6 +266,8 @@ async fn a_gate_answered_before_the_deadline_is_not_swept() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_swept_gate_says_the_system_took_it() {
+    // the sweep is global; a sibling's lapsed gate is in its statement.
+    let _sweeper = sweeper_exclusive().await;
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(NOW_MS - 1).await;
     lane.inbox
@@ -451,6 +457,8 @@ async fn resolving_a_gate_does_not_reopen_the_event_it_blocked() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_gate_answered_long_after_its_window_still_resumes_the_run() {
+    // this gate is past its window, so a sibling's sweep would take it.
+    let _sweeper = sweeper_exclusive().await;
     let lane = Lane::isolated().await;
 
     // Raised at 10:00 with the default one-hour window: the deadline passed

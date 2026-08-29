@@ -81,6 +81,21 @@ pub(crate) const GOOD_KEK: &str =
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 /// Distinguishes scenarios built by one process, so two never share a fleet.
+/// One scenario at a time, because the ready stream is one queue.
+///
+/// Every scenario boots a REAL daemon, and every daemon polls the same
+/// `fleet:ready` consumer group — competing consumers, which is what that
+/// group is for in production. Two concurrent scenarios therefore race for
+/// each other's seeded event: the winner leases work it did not seed, stamps
+/// its activity with that event, and publishes to a fleet channel the other
+/// test is subscribed to. Both tests then fail, and neither failure names the
+/// cause.
+///
+/// Minted identifiers cannot fix this. They keep the ROWS apart in Postgres;
+/// the queue is one key and the group is one group. The lock is held by the
+/// `Scenario` itself, so exclusivity is not something a test has to remember.
+static READY_STREAM: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 static SEQUENCE: AtomicU32 = AtomicU32::new(0);
 
 /// The provider a seeded catalogue row is filed under.
@@ -186,6 +201,12 @@ pub(crate) struct Scenario {
     pub(crate) token: String,
     /// The instant the seed was stamped with.
     pub(crate) seeded_at: UnixMillis,
+    /// Exclusive use of the ready stream, for as long as this scenario lives.
+    ///
+    /// Last field, so it is released only after the daemon above has been
+    /// dropped and stopped polling — a guard freed while a daemon still reads
+    /// the group would hand the next scenario a competitor.
+    _exclusive: tokio::sync::MutexGuard<'static, ()>,
 }
 
 /// Boots the daemon and seeds one funded fleet with one event and one runner.
@@ -196,8 +217,12 @@ pub(crate) struct Scenario {
 /// like a broken poll.
 pub(crate) async fn scenario(supervisor: &mut Supervisor) -> Scenario {
     install_subscriber();
-    // The lane's database, already migrated. Scenarios are kept apart by the
-    // identifiers `unique_ids` mints below, not by a database apiece.
+    // Before the daemon boots, because booting one is joining the consumer
+    // group this guards.
+    let exclusive = READY_STREAM.lock().await;
+    // The lane's database, already migrated. Scenarios are kept apart in
+    // Postgres by the identifiers `unique_ids` mints below, not by a database
+    // apiece, and on the ready stream by the guard above.
     let database_url = scenario_database(&lane(DATABASE_LANE_KNOB));
 
     let booted = boot(&daemon_environment(&database_url), EPHEMERAL, supervisor)
@@ -233,6 +258,7 @@ pub(crate) async fn scenario(supervisor: &mut Supervisor) -> Scenario {
         token: enrolled.token.expose().to_owned(),
         seeded_at: now,
         booted,
+        _exclusive: exclusive,
     }
 }
 
