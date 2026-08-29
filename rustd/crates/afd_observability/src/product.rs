@@ -91,3 +91,6 @@ impl Analytics {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

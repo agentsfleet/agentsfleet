@@ -105,3 +105,40 @@ impl Live {
         .boxed()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "stream admission and pending futures are the invariants under test"
+    )]
+
+    use std::collections::BTreeSet;
+    use std::time::Duration;
+
+    use futures_util::StreamExt as _;
+
+    use super::Live;
+    use crate::ceiling::Ceiling;
+
+    #[tokio::test]
+    async fn detached_live_streams_are_admitted_but_stay_silent() {
+        let live = Live::detached(Ceiling::new(2));
+        assert!(live.hub().is_none());
+        assert_eq!(live.capacity(), 2);
+        let slot = live.admit().expect("the first detached stream is admitted");
+        assert_eq!(live.carrying(), 1);
+
+        let mut tail = live.tail_of("fleet-a");
+        tokio::time::timeout(Duration::from_millis(1), tail.next())
+            .await
+            .expect_err("a detached tail must remain pending");
+
+        let mut multiplex = live.multiplex_of(&BTreeSet::from(["fleet-a".to_owned()]));
+        tokio::time::timeout(Duration::from_millis(1), multiplex.next())
+            .await
+            .expect_err("a detached fan-in must remain pending");
+        drop(slot);
+        assert_eq!(live.carrying(), 0);
+    }
+}

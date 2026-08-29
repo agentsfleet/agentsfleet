@@ -51,10 +51,7 @@ use afd_redis::streams::FleetStreams;
 use afd_sse::{channel, tail};
 use futures_util::StreamExt as _;
 
-#[path = "support/events_lane.rs"]
-mod support;
-
-use self::support::{DELIVERY_BUDGET, EventsLane};
+use crate::support::{DELIVERY_BUDGET, EventsLane};
 
 /// The instant the fixture calls "now", as epoch milliseconds.
 ///

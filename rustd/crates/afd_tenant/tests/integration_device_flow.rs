@@ -10,7 +10,6 @@
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
@@ -22,10 +21,7 @@ use afd_redis::SessionStore;
 use afd_tenant::session::input::{Approval, Code, Opening};
 use afd_tenant::session::{Cancelled, Fingerprint, SessionStatus, Sessions};
 
-#[path = "support/redis_harness.rs"]
-mod support;
-
-use self::support::RedisHarness;
+use crate::redis_harness::RedisHarness;
 
 /// The dashboard this suite's login URLs are built against.
 const APP_URL: &str = "https://app-dev.agentsfleet.net/";

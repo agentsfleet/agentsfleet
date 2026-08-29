@@ -43,7 +43,7 @@ credit_deducted_nanos, \
 token_count_input, token_count_output, wall_ms, \
 created_at \
 FROM billing.usage_ledger \
-WHERE tenant_id = $1 \
+WHERE tenant_id = $1::uuid \
 ORDER BY created_at DESC, usage_ledger.id DESC \
 LIMIT $2";
 
@@ -56,7 +56,7 @@ credit_deducted_nanos, \
 token_count_input, token_count_output, wall_ms, \
 created_at \
 FROM billing.usage_ledger \
-WHERE tenant_id = $1 \
-AND (created_at, id) < ($2, $3) \
+WHERE tenant_id = $1::uuid \
+AND (created_at, id) < ($2, $3::uuid) \
 ORDER BY created_at DESC, usage_ledger.id DESC \
 LIMIT $4";

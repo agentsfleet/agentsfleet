@@ -32,23 +32,6 @@
     reason = "test target: an unmet precondition should fail the test loudly, and a missing lane knob is one"
 )]
 
-mod support;
-
-#[path = "support/e2e_db.rs"]
-mod e2e_db;
-
-#[path = "support/e2e_seed.rs"]
-mod e2e_seed;
-
-#[path = "support/e2e.rs"]
-mod e2e;
-
-#[path = "support/e2e_wire.rs"]
-mod wire;
-
-#[path = "support/e2e_reads.rs"]
-mod reads;
-
 use std::time::Duration;
 
 use afd_redis::hub::Received;
@@ -56,8 +39,8 @@ use afd_redis::{Subscription, SubscriptionHub};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 
-use self::e2e::{Scenario, redis_config, scenario};
-use self::wire::{capable_beat, claim, field, json, post};
+use crate::e2e::{Scenario, redis_config, scenario};
+use crate::wire::{capable_beat, claim, field, json, post};
 
 /// How long a published frame is given to reach the subscriber.
 ///

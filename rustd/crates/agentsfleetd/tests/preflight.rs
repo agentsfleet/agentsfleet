@@ -10,8 +10,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-mod support;
-
 use afd_core::env::MapEnv;
 use agentsfleetd::preflight::{
     ENCRYPTION_MASTER_KEY_KNOB, Fault, SESSION_CODE_PEPPER_KNOB, preflight,
@@ -39,8 +37,8 @@ fn env_with(extra: [(&str, &str); 3]) -> MapEnv {
     MapEnv::from_pairs(
         extra
             .into_iter()
-            .chain(support::SESSION_PEPPER)
-            .chain(support::IDENTITY),
+            .chain(crate::support::SESSION_PEPPER)
+            .chain(crate::support::IDENTITY),
     )
 }
 
@@ -70,7 +68,7 @@ fn test_preflight_lists_missing() {
         ENCRYPTION_MASTER_KEY_KNOB,
         SESSION_CODE_PEPPER_KNOB,
     ];
-    expected.extend(support::IDENTITY.map(|(knob, _value)| knob));
+    expected.extend(crate::support::IDENTITY.map(|(knob, _value)| knob));
     expected.sort_unstable();
     assert_eq!(
         knobs, expected,
@@ -196,7 +194,7 @@ fn test_preflight_requires_the_login_pepper() {
             (ENCRYPTION_MASTER_KEY_KNOB, GOOD_KEK),
         ]
         .into_iter()
-        .chain(support::IDENTITY),
+        .chain(crate::support::IDENTITY),
     );
 
     let refusal =
@@ -238,7 +236,8 @@ fn test_preflight_resolves_a_complete_environment() {
     // The pepper is key material for the same reason and gets the same
     // treatment: it reaches boot, and it does not reach a log line.
     assert!(
-        !format!("{:?}", config.session_code_pepper()).contains(support::SESSION_PEPPER[0].1),
+        !format!("{:?}", config.session_code_pepper())
+            .contains(crate::support::SESSION_PEPPER[0].1),
         "a resolved login pepper must not render its own material"
     );
 }

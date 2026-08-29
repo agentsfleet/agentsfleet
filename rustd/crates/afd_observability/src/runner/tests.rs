@@ -112,3 +112,57 @@ fn concurrent_first_records_of_one_runner_produce_one_series() {
     assert_eq!(metrics.series_count(), 1);
     assert_eq!(metrics.overflowed(), 0);
 }
+
+#[test]
+fn admission_recheck_returns_the_series_that_won_the_race() {
+    let metrics = RunnerMetrics::new();
+    let runner_id = runner(7);
+    let first = metrics
+        .admit(&runner_id)
+        .expect("the empty table admits the runner");
+    let rechecked = metrics
+        .admit(&runner_id)
+        .expect("an already-admitted runner reuses its series");
+
+    assert!(Arc::ptr_eq(&first, &rechecked));
+    assert_eq!(metrics.series_count(), 1);
+}
+
+#[test]
+fn every_failure_class_and_runner_gauge_uses_the_admitted_series() {
+    let metrics = RunnerMetrics::default();
+    let runner_id = runner(1);
+    metrics.processed(&runner_id);
+    metrics.seen(&runner_id, 1_760_000_000_000);
+    metrics.leased(&runner_id);
+    metrics.released(&runner_id);
+
+    for reason in [
+        FailureClass::StartupPosture,
+        FailureClass::PolicyDeny,
+        FailureClass::TimeoutKill,
+        FailureClass::OomKill,
+        FailureClass::ResourceKill,
+        FailureClass::RunnerCrash,
+        FailureClass::TransportLoss,
+        FailureClass::LandlockDeny,
+        FailureClass::LeaseExpired,
+        FailureClass::RenewalTerminate,
+        FailureClass::BudgetBreach,
+    ] {
+        metrics.failed(&runner_id, Some(reason));
+    }
+    metrics.failed(&runner_id, None);
+
+    assert_eq!(metrics.series_count(), 1);
+    assert_eq!(metrics.overflowed(), 0);
+}
+
+#[test]
+fn gauges_ignore_a_runner_that_has_not_acquired_a_series() {
+    let metrics = RunnerMetrics::new();
+    metrics.seen("unknown", 1);
+    metrics.leased("unknown");
+    metrics.released("unknown");
+    assert_eq!(metrics.series_count(), 0);
+}

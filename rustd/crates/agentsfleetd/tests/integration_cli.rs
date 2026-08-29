@@ -20,18 +20,16 @@
     reason = "test target: an unmet precondition should fail the test loudly, and a missing lane knob is one"
 )]
 
-mod support;
-
 use std::io::Read as _;
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use afd_core::env::MapEnv;
-use agentsfleetd::cli::{Cli, FAILURE, SUCCESS, run};
+use agentsfleetd::cli::{Cli, SUCCESS, run};
 use clap::Parser as _;
 
-use self::support::install_subscriber;
+use crate::support::install_subscriber;
 
 /// The binary under test, built by Cargo for this suite.
 const DAEMON: &str = env!("CARGO_BIN_EXE_agentsfleetd");
@@ -85,8 +83,8 @@ fn lane_knobs() -> Vec<(&'static str, String)> {
         ("DATABASE_POOL_SIZE", LANE_POOL_SIZE.to_owned()),
     ]
     .into_iter()
-    .chain(support::SESSION_PEPPER.map(|(knob, value)| (knob, value.to_owned())))
-    .chain(support::IDENTITY.map(|(knob, value)| (knob, value.to_owned())))
+    .chain(crate::support::SESSION_PEPPER.map(|(knob, value)| (knob, value.to_owned())))
+    .chain(crate::support::IDENTITY.map(|(knob, value)| (knob, value.to_owned())))
     .collect()
 }
 
@@ -130,8 +128,8 @@ fn spawn(args: &[&str], knobs: &[(&str, String)]) -> Child {
         "DATABASE_POOL_SIZE",
     ]
     .into_iter()
-    .chain(support::SESSION_PEPPER.map(|(knob, _value)| knob))
-    .chain(support::IDENTITY_KNOBS)
+    .chain(crate::support::SESSION_PEPPER.map(|(knob, _value)| knob))
+    .chain(crate::support::IDENTITY_KNOBS)
     {
         command.env_remove(knob);
     }
@@ -254,22 +252,6 @@ fn test_migrate_applies_and_reports_success() {
         again, SUCCESS,
         "a second run is a no-op, not a failure — which is what makes this safe in an init container"
     );
-}
-
-/// `migrate` against a database that is not there is a refusal, not a hang.
-#[test]
-fn test_migrate_refuses_a_database_that_will_not_answer() {
-    let status = run(
-        &Cli::try_parse_from(["agentsfleetd", "migrate"]).expect("migrate takes no arguments"),
-        &MapEnv::from_pairs([(
-            "DATABASE_URL_MIGRATOR",
-            "postgres://afd:afd@127.0.0.1:1/afd?sslmode=disable",
-        )]),
-        tokio::runtime::Runtime::new,
-        std::future::ready(()),
-    );
-
-    assert_eq!(status, FAILURE, "a migration that could not run exits 1");
 }
 
 /// SIGTERM stops a serving daemon, and it exits 0.

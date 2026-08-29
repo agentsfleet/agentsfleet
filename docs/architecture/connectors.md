@@ -2,7 +2,7 @@
 
 > Parent: [`README.md`](./README.md) · Sibling: [`../AUTH.md`](../AUTH.md) §OAuth connectors (flow behavior, trust-anchor mechanics, error taxonomy of the shipped providers). · User-facing setup: [docs.agentsfleet.net/fleets/connectors](https://docs.agentsfleet.net/fleets/connectors).
 >
-> Scope: the platform shape — the comptime registry + archetype dispatch that makes a new provider a data entry, the callback and event-ingress trust anchors, the bounded-outbound rule for vendor calls, and the connector-vs-integration terminology. Read this before adding a provider or writing any connector outbound call. Flow behavior stays in AUTH.md; this doc owns the invariants that make the flows generic.
+> Scope: the platform shape — the compile-time registry + archetype dispatch that makes a new provider a data entry, the callback and event-ingress trust anchors, the bounded-outbound rule for vendor calls, and the connector-vs-integration terminology. Read this before adding a provider or writing any connector outbound call. Flow behavior stays in AUTH.md; this doc owns the invariants that make the flows generic.
 
 ## Facts
 
@@ -11,16 +11,16 @@ Every row is extracted from the sections below; the owner column names the secti
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
 | Vocabulary | connector ≠ integration | connector = auth + credential plumbing; integration = a capability built ON the credential | §Terminology |
-| Registry | comptime `[]const ConnectorSpec`, `REGISTRY.len` pinned at 5 | adding a provider is one entry + a small hook file; never new route or flow code | §The registry |
-| Dispatch | on archetype SHAPE, never provider id | exhaustive switch on the tagged union; registry invariants are `@compileError`s | §The registry |
+| Registry | a compile-time `ConnectorSpec` table, its length pinned at 5 | adding a provider is one entry + a small hook file; never new route or flow code | §The registry |
+| Dispatch | on archetype SHAPE, never provider id | exhaustive match on the tagged union; registry invariants are compile-time errors | §The registry |
 | Archetypes | 2 — `oauth2` · `app_install` | `slack` / `zoho` (multi-DC) / `jira` / `linear` · `github`; the `api_key` archetype was considered and dropped (M108_002) | §Archetypes |
 | Trust anchors | 4 | signed single-use state bound to workspace and starter identity (`UZ-CONN-002`) · user-authorization installation proof (`UZ-CONN-008`) · admin-vault `<provider>-app` bags (`UZ-CONN-001`) · provider signatures | §Trust anchors |
 | GitHub App URLs | 2, different jobs | `/api/connectors/github/callback` on the dashboard (browser install) vs `/v1/ingress/github` on the API (machine events) | §GitHub App |
 | Disconnect | internal state only | `DELETE` removes the workspace handle and routing rows; provider authorization remains active | §The registry |
 | Binding writes | one transaction per provider and workspace | every callback and Disconnect share a transaction-scoped writer lock | §The registry |
 | App replay identity | authenticated body digest, per fleet | the unsigned delivery header is diagnostic only; failed fan-out legs retry without duplicating others | §GitHub App |
-| Outbound HTTP | `bounded_fetch.zig` only, grep-gated | pin → arm → fetch → disarm; refusal is `UZ-CONN-003` (502); deadlines named per call class (10 s / 10 s / 1.5 s) | §Bounded outbound |
-| Residual unbounded window | the TLS handshake | `std.http.Client.connect` does TCP+TLS atomically; tracked follow-up | §Bounded outbound |
+| Outbound HTTP | the connectors' bounded-fetch entry only, grep-gated | pin → arm → fetch → disarm; refusal is `UZ-CONN-003` (502); deadlines named per call class (10 s / 10 s / 1.5 s) | §Bounded outbound |
+| Residual unbounded window | the TLS handshake | the HTTP client's connect does TCP+TLS atomically; tracked follow-up | §Bounded outbound |
 | Front-door failures | 404 vs 503 | unknown provider → `UZ-CONN-004`; registry id with no `<provider>-app` bag → `UZ-CONN-001`, fail-loud | §Unknown vs unconfigured |
 
 ## Traps
@@ -39,41 +39,40 @@ Each trap is enforced in its owner section; this list is the index.
 
 | Term | Means | Lives in |
 |---|---|---|
-| **connector** | auth + credential plumbing for a third-party provider: the connect/callback/status routes, the vaulted per-workspace credential handle, the platform app secrets | `src/agentsfleetd/http/handlers/connectors/` |
+| **connector** | auth + credential plumbing for a third-party provider: the connect/callback/status routes, the vaulted per-workspace credential handle, the platform app secrets | `rustd/crates/afd_credential/` + the connector routes in `rustd/crates/afd_http/src/route/connector.rs` |
 | **integration** | a product-facing capability built ON a connector's credential (the Slack resident bot, GitHub fleet triggers, future Zoho/Jira/Linear surfaces) | feature code that consumes the vault handle |
 
 A workspace *connects* a provider once (connector); everything fleets then do with that credential is *integration*. Specs, UI copy, and code comments follow this split — "Slack integration is broken" and "Slack connector is broken" name different layers.
 
 ## The registry: a provider is a data entry
 
-`handlers/connectors/registry.zig` holds a comptime `[]const ConnectorSpec`. Adding a provider is ONE entry (plus a small per-provider hook file) — never new route or flow code:
+The connector registry (`rustd/crates/afd_credential/`) holds a compile-time `ConnectorSpec` table. Adding a provider is ONE entry (plus a small per-provider hook file) — never new route or flow code:
 
 ```
-            ┌──────────────────────────────────────────────────────────────────────┐
-            │ REGISTRY = [_]ConnectorSpec{                                         │
-            │   { provider, display_name, archetype: union(enum){                  │
-            │       oauth2:      {flow, refresh, exchange_failed_code, post_auth}, │
+            ┌─────────────────────────────────────────────────────────────────────────────┐
+            │ REGISTRY = ConnectorSpec[                                                   │
+            │   { provider, display_name, archetype: enum {                               │
+            │       oauth2:      {flow, refresh, exchange_failed_code, post_auth},        │
             │       app_install: {state, build_connect_url, build_install_url, complete}, │
-            │   }, respond_status }                                                │
-            │ }  + comptime validation (dup ids, scopes, id agreement…)            │
-            └──────────────────────────────────────────────────────────────────────┘
+            │   }, respond_status }                                                       │
+            │ ]  + compile-time validation (dup ids, scopes, id agreement…)               │
+            └─────────────────────────────────────────────────────────────────────────────┘
    runtime lookup(provider) ── null → 404 UZ-CONN-004 (body names the id)
-                              ── hit  → exhaustive switch on ARCHETYPE
-            ┌───────────────────────────────────────────────────────────────────────────┐
-            │ generic {provider} handlers: connect.zig · callback.zig · status.zig      │
-            │                              disconnect.zig                               │
-            │ per-provider deltas: slack/{spec,callback,status}.zig,                    │
-            │                      github/{spec,connect,callback,status}.zig,           │
-            │                      zoho/{spec,callback,multi_dc}.zig,                   │
-            │                      jira/{spec,callback}.zig, linear/{spec,callback}.zig │
-            └───────────────────────────────────────────────────────────────────────────┘
+                              ── hit  → exhaustive match on ARCHETYPE
+            ┌───────────────────────────────────────────────────────────────────────┐
+            │ generic {provider} handlers: connect · callback · status · disconnect │
+            │ per-provider deltas: slack {spec, callback, status},                  │
+            │                      github {spec, connect, callback, status},        │
+            │                      zoho {spec, callback, multi_dc},                 │
+            │                      jira {spec, callback}, linear {spec, callback}   │
+            └───────────────────────────────────────────────────────────────────────┘
 ```
 
 - **Routes are generic.** `POST /v1/workspaces/{ws}/connectors/{provider}/connect`, `GET` or `DELETE /v1/workspaces/{ws}/connectors/{provider}`, and authenticated `POST /v1/connectors/{provider}/callback` use the same matchers for every provider. The dashboard owns `/api/connectors/{provider}/callback`. The old API `GET` callback only relays browsers to that dashboard route. `DELETE` requires `connector:write`, removes only `agentsfleet` state, and returns 204 when repeated. Provider authorization remains active outside `agentsfleet`.
-- **Dispatch is on SHAPE, never on provider id.** The archetype tagged-union owns which flow runs; handlers switch exhaustively on it (a new archetype cannot land half-wired — the compiler forces every arm). No `if provider == "slack"` exists anywhere in the flow.
-- **Invariants are compile-time facts.** Duplicate/empty provider ids, an oauth2 entry without scopes or an exchange-failed code, or a flow whose embedded provider id disagrees with its entry — all `@compileError`, not review vigilance.
+- **Dispatch is on SHAPE, never on provider id.** The archetype tagged-union owns which flow runs; handlers match exhaustively on it (a new archetype cannot land half-wired — the compiler forces every arm). No `if provider == "slack"` exists anywhere in the flow.
+- **Invariants are compile-time facts.** Duplicate/empty provider ids, an oauth2 entry without scopes or an exchange-failed code, or a flow whose embedded provider id disagrees with its entry — all compile-time errors, not review vigilance.
 - **Binding writes are atomic.** Each provider callback and Disconnect takes one transaction-scoped PostgreSQL advisory lock for `(provider, workspace_id)`. The transaction commits the vault handle and each routing row together. A callback cannot recreate a connector while Disconnect is removing it.
-- **Inbound routing follows the provider's real shape.** App-level webhooks whose payload carries a stable routing key use `POST /v1/ingress/{provider}`, but the shipped implementation is provider-owned: GitHub lives in `handlers/ingress/github.zig`, and its routing statements live with the GitHub connector in `handlers/connectors/github/sql.zig`. Slack keeps `POST /v1/connectors/slack/events` because its challenge, retry, timestamp, channel, and thread semantics are load-bearing. Jira and Linear have connected credentials but no inbound integration yet. Generic connect plumbing does not imply generic event behavior.
+- **Inbound routing follows the provider's real shape.** App-level webhooks whose payload carries a stable routing key use `POST /v1/ingress/{provider}`, but the shipped implementation is provider-owned: GitHub has its own `/v1/ingress/github` handler, and its routing statements live with the GitHub connector in `rustd/crates/afd_credential/`. Slack keeps `POST /v1/connectors/slack/events` because its challenge, retry, timestamp, channel, and thread semantics are load-bearing. Jira and Linear have connected credentials but no inbound integration yet. Generic connect plumbing does not imply generic event behavior.
 
 ## Archetypes
 
@@ -82,7 +81,7 @@ A workspace *connects* a provider once (connector); everything fleets then do wi
 | `oauth2` | authorize-redirect → code exchange (deadline-armed) → `post_auth` hook parses + persists | `code` + `state` | vault handle (+ provider-specific rows, e.g. Slack's `connector_installs`) | `slack`, `zoho` (multi-DC — the callback's `location` resolves the effective token endpoint), `jira`, `linear` |
 | `app_install` | user authorization → discover or verify App installation → `complete` hook; zero installations continue to the vendor install page | `code` + `state`; `installation_id` is optional | vault handle + non-secret connector-install routing row | `github` |
 
-**There is no `api_key` archetype.** One was considered for operator-pasted vendor keys (Datadog, Grafana, Fly) and dropped (M108_002). A static vendor key is just a workspace secret referenced as `${secrets.<name>.<field>}`, not a connector: it never had a connect/callback round-trip or a platform app secret to protect. Those three providers are plain `agentsfleet secret create` entries, never registry entries. `REGISTRY.len` is pinned at 5 (`registry.zig`'s own pin test) — five OAuth/app-install connectors, not eight.
+**There is no `api_key` archetype.** One was considered for operator-pasted vendor keys (Datadog, Grafana, Fly) and dropped (M108_002). A static vendor key is just a workspace secret referenced as `${secrets.<name>.<field>}`, not a connector: it never had a connect/callback round-trip or a platform app secret to protect. Those three providers are plain `agentsfleet secret create` entries, never registry entries. `REGISTRY`'s length is pinned at 5 (the registry's own pin test) — five OAuth/app-install connectors, not eight.
 
 ## Trust anchors
 
@@ -268,12 +267,12 @@ Receiving a signed event does not hand GitHub credentials to a fleet. When a lea
 
 ## Bounded outbound: every vendor call is armed
 
-`handlers/connectors/bounded_fetch.zig` is the **only sanctioned outbound HTTP entry** for connector code — grep-gated (spec eval E8): no raw `std.http.Client` elsewhere under `handlers/connectors/`. It mirrors the runner's control-plane client: pin the pooled socket → `arm` the watchdog → fetch → `disarm`, with the shared `Watchdog` promoted to the named module `src/lib/call_deadline/` (both build graphs consume it — the runner's deadlines are unchanged).
+The connectors' bounded-fetch entry is the **only sanctioned outbound HTTP entry** for connector code — grep-gated (spec eval E8): no raw HTTP client is constructed anywhere else in connector code. It mirrors the runner's control-plane client: pin the pooled socket → `arm` the watchdog → fetch → `disarm`, with the shared `Watchdog` promoted to a named call-deadline module (both planes consume it — the runner's deadlines are unchanged).
 
 - **Fail-closed, no unbounded branch.** A call either runs armed or is refused: watchdog-unavailable (thread spawn failure) and pin failure both refuse the call (`UZ-CONN-003`, 502) instead of falling through to an unarmed fetch. The invariant is code-path-true — there is no fallback branch to take.
 - **Deadlines are named per call class**, once: token exchange (10 s), outbound post (10 s), thread re-read (1.5 s — M106's ingress bound, kept).
 - **Watchdog ownership follows the concurrency of the path.** A watchdog arms exactly ONE call at a time. The serialized outbound worker owns one across its loop; the request-concurrent paths (OAuth exchange, mention-ingress thread re-read) hold one per request — sharing an instance across concurrent requests would let two arms clobber each other and leave one call unbounded.
-- **Residual window: connection setup.** Name resolution, the TCP dial, **and the TLS handshake** happen before a pooled handle exists to arm. DNS + dial are OS-bounded (connect timeouts); the TLS handshake read is **not** — `std.http.Client.connect` does TCP+TLS atomically, so we cannot arm between them without a setup deadline mechanism that does not exist yet. So a vendor that completes TCP then stalls the TLS handshake is the one unbounded branch left (tracked as a follow-up, together with bounding the outbound callers that are not connectors — JWKS, Clerk, OTLP, fleet-bundle fetches, and the credential broker's GitHub mint — which M108_001 deferred). The armed surface is the post-handshake read stage, where the M100/M106 incidents actually lived (vendor accepts + handshakes, then stalls the response). This is a strict improvement, not a regression: pre-M108 the *entire* call — connect, handshake, and read — was unbounded.
+- **Residual window: connection setup.** Name resolution, the TCP dial, **and the TLS handshake** happen before a pooled handle exists to arm. DNS + dial are OS-bounded (connect timeouts); the TLS handshake read is **not** — the HTTP client's connect does TCP+TLS atomically, so we cannot arm between them without a setup deadline mechanism that does not exist yet. So a vendor that completes TCP then stalls the TLS handshake is the one unbounded branch left (tracked as a follow-up, together with bounding the outbound callers that are not connectors — JWKS, Clerk, OTLP, fleet-bundle fetches, and the credential broker's GitHub mint — which M108_001 deferred). The armed surface is the post-handshake read stage, where the M100/M106 incidents actually lived (vendor accepts + handshakes, then stalls the response). This is a strict improvement, not a regression: pre-M108 the *entire* call — connect, handshake, and read — was unbounded.
 - **No pool slot rides a vendor call.** Credentials load under a short acquire released before the exchange; the events ingress pre-loads the bot token and returns its slot before the thread re-read (closes merged-PR #468's P1).
 
 Deadline fired, watchdog unarmable, or vendor unreachable → `UZ-CONN-003` (502) + a `connector_vendor_call_refused` warn naming provider, call class, and `reason` (the per-class distinction) — never URL query or token material.
@@ -288,8 +287,8 @@ Deadline fired, watchdog unarmable, or vendor unreachable → `UZ-CONN-003` (502
 ## Adding a provider (the recipe)
 
 1. Provider id as a `common` constant (RULE UFS) — it is simultaneously the route segment, the vault-key stem (`<provider>-app`, `fleet:<provider>`), and the registry id.
-2. A `<provider>/spec.zig` data file (oauth2: endpoints/scopes; app_install: state binding) + the archetype's hook functions (oauth2: `post_auth` body parse + rows; app_install: `build_install_url` + `complete`).
-3. One `ConnectorSpec` entry in `registry.zig`.
+2. A `<provider>` spec data file (oauth2: endpoints/scopes; app_install: state binding) + the archetype's hook functions (oauth2: `post_auth` body parse + rows; app_install: `build_install_url` + `complete`).
+3. One `ConnectorSpec` entry in the registry.
 4. Provision the `<provider>-app` bag in the admin vault. (An operator-supplied vendor key with no browser round-trip — Datadog/Grafana/Fly's shape — isn't a connector at all; it's a plain workspace secret, `agentsfleet secret create`, never a registry entry.)
 5. Tests: the generic-route suites already cover the flow; add hook-level tests for the provider's parse/persist deltas.
 

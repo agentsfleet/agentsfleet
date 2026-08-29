@@ -26,9 +26,7 @@
 
 use afd_fleet_runtime::{parse_skill, parse_trigger};
 
-mod support;
-
-use self::support::{FIRST_PARTY, MODEL_VALUE, TOOL_HTTP_REQUEST, fixture};
+use crate::support::{FIRST_PARTY, MODEL_VALUE, TOOL_HTTP_REQUEST, fixture};
 
 /// `trigger/minimal.md` carries the cron trigger, tool and ceiling it declares.
 #[test]

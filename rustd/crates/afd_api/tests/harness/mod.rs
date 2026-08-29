@@ -50,10 +50,10 @@ use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Planes, Services};
 use afd_auth::credential::CredentialKind;
 use afd_auth::directory::{CredentialDirectory, CredentialRecord, Digest, Liveness};
 use afd_auth::error::Unavailable;
-use afd_auth::mock::{MockCapabilities, MockDirectory};
+use afd_auth::mock::{MockCapabilities, MockDirectory, MockVerifier};
 use afd_auth::principal::Subject;
 use afd_auth::scope::ScopeSet;
-use afd_auth::verifier::NoVerifier;
+use afd_auth::verifier::VerifyError;
 use afd_billing::tenant::Billing;
 use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
@@ -100,7 +100,8 @@ mod support;
 pub(crate) use self::stubs_runner::NoWork;
 pub(crate) use self::stubs_tenant::{DEPLOYMENT, OWNED_WORKSPACE, OneWorkspace};
 pub(crate) use self::support::{
-    file_runner, json_body, presented, runner_id, send, send_with_headers, tenant,
+    connect_redis, file_runner, json_body, presented, redis_config, runner_id, send,
+    send_with_headers, tenant,
 };
 
 /// A Postgres nobody is listening on.
@@ -144,7 +145,7 @@ pub(crate) struct Fleet {
     mock_directory: MockDirectory,
     directory: Directory,
     capabilities: MockCapabilities,
-    authenticator: Planes<Directory, MockCapabilities, NoVerifier>,
+    authenticator: Planes<Directory, MockCapabilities, MockVerifier>,
     runners: Runners,
     leases: NoWork,
     bundles: Bundles,
@@ -204,229 +205,6 @@ impl CredentialDirectory for Directory {
 /// lowers it with [`Fleet::carrying_at_most`].
 const DEFAULT_STREAM_CEILING: usize = 64;
 
-impl Fleet {
-    /// An instance whose dependencies answer, whose directory is empty, and
-    /// whose Postgres and Redis are not there.
-    ///
-    /// Every store below is the PRODUCTION one. None of them is reachable, so
-    /// every verb refuses at its first acquire — with the error its own crate
-    /// raises, not one this file made up.
-    pub(crate) fn new() -> Self {
-        let mock = MockDirectory::new();
-        let directory = Directory::Mock(mock.clone());
-        let capabilities = MockCapabilities::new();
-        let database = Db::unreachable(&unreachable_pool());
-        let queue = Redis::unreachable(&unreachable_queue())
-            .expect("a lazy manager opens no socket, so it cannot fail to open one");
-        let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
-        Self {
-            ready: ReadyInputs {
-                database: true,
-                queue: true,
-            },
-            mock_directory: mock,
-            authenticator: Planes::new(directory.clone(), capabilities.clone(), NoVerifier),
-            directory,
-            capabilities,
-            runners: Runners::new(database.clone(), Entropy::new()),
-            runner_lease_history: RunnerLeaseHistory::new(database.clone()),
-            admin_models: AdminModels::new(database.clone(), Entropy::new()),
-            platform_keys: PlatformKeys::new(database.clone()),
-            libraries: Libraries::new(database.clone()),
-            library_imports: LibraryImports::without_store(database.clone()),
-            leases: NoWork,
-            // Unconfigured by default, so a suite that says nothing about
-            // snapshots proves the refusal a deployment with no R2 knobs gives
-            // — which is most of them.
-            bundles: Bundles::unconfigured(),
-            workspaces: OneWorkspace,
-            workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
-            api_keys: ApiKeys::new(database.clone(), Entropy::new()),
-            cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
-            logins: Logins::new(
-                afd_redis::SessionStore::new(queue.clone()),
-                SecretBytes::new(FIXTURE_PEPPER.to_vec()),
-                Entropy::new(),
-                FIXTURE_APP_URL,
-            ),
-            fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
-            secrets: SecretVault::new(database.clone(), kek, Entropy::new()),
-            preferences: Preferences::new(database.clone(), Entropy::new()),
-            approvals: Inbox::new(database.clone(), queue.clone()),
-            grants: IntegrationGrants::new(database.clone()),
-            events: History::new(database.clone()),
-            // Detached, not connected: a hub opens a pub/sub SOCKET, which is
-            // the one seam in this file that has no `unreachable` form. The
-            // stream routes still answer and still charge the ceiling, which is
-            // the whole of what a refusal-matrix suite reads.
-            live: Live::detached(Ceiling::new(DEFAULT_STREAM_CEILING)),
-            // Silent: a suite must not open a socket to a product-analytics
-            // vendor, and every reporting call is infallible either way.
-            analytics: Analytics::silent(),
-            steering: Steer::new(queue.clone()),
-            memories: Memories::new(database.clone(), Entropy::new()),
-            billing: Billing::new(database.clone()),
-            catalogue: Models::new(database),
-            now: UnixMillis::from_millis(FROZEN),
-        }
-    }
-
-    /// An instance whose credential directory and stores share live Postgres.
-    ///
-    /// The seam the admin and operator suites need: everything else in this
-    /// file refuses at the first acquire, which proves a refusal matrix and
-    /// nothing about a row. Redis stays unreachable — no suite built on this
-    /// reaches a queue, and opening one would make a datastore lane out of a
-    /// router lane.
-    pub(crate) fn live(database: Db, subject: &str, scopes: ScopeSet) -> Self {
-        let who = Subject::new(subject).expect("the fixture subject is not blank");
-        let capabilities = MockCapabilities::new().with(&who, scopes);
-        let mock_directory = MockDirectory::new();
-        let directory = Directory::Live(Credentials::new(database.clone()));
-        let queue = Redis::unreachable(&unreachable_queue())
-            .expect("a lazy manager opens no socket, so it cannot fail to open one");
-        let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
-        Self {
-            ready: ReadyInputs {
-                database: true,
-                queue: true,
-            },
-            authenticator: Planes::new(directory.clone(), capabilities.clone(), NoVerifier),
-            mock_directory,
-            directory,
-            capabilities,
-            runners: Runners::new(database.clone(), Entropy::new()),
-            leases: NoWork,
-            bundles: Bundles::unconfigured(),
-            workspaces: OneWorkspace,
-            workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
-            api_keys: ApiKeys::new(database.clone(), Entropy::new()),
-            cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
-            logins: Logins::new(
-                afd_redis::SessionStore::new(queue.clone()),
-                SecretBytes::new(FIXTURE_PEPPER.to_vec()),
-                Entropy::new(),
-                FIXTURE_APP_URL,
-            ),
-            fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
-            secrets: SecretVault::new(database.clone(), kek, Entropy::new()),
-            preferences: Preferences::new(database.clone(), Entropy::new()),
-            approvals: Inbox::new(database.clone(), queue.clone()),
-            grants: IntegrationGrants::new(database.clone()),
-            events: History::new(database.clone()),
-            live: Live::detached(Ceiling::new(DEFAULT_STREAM_CEILING)),
-            analytics: Analytics::silent(),
-            steering: Steer::new(queue),
-            memories: Memories::new(database.clone(), Entropy::new()),
-            billing: Billing::new(database.clone()),
-            catalogue: Models::new(database.clone()),
-            runner_lease_history: RunnerLeaseHistory::new(database.clone()),
-            admin_models: AdminModels::new(database.clone(), Entropy::new()),
-            platform_keys: PlatformKeys::new(database.clone()),
-            libraries: Libraries::new(database.clone()),
-            library_imports: LibraryImports::without_store(database),
-            now: UnixMillis::from_millis(FROZEN),
-        }
-    }
-
-    /// An instance that will carry `streams` at once and no more.
-    pub(crate) fn carrying_at_most(mut self, streams: usize) -> Self {
-        self.live = Live::detached(Ceiling::new(streams));
-        self
-    }
-
-    /// An instance reporting `ready` to `/readyz`.
-    pub(crate) const fn reporting(mut self, ready: ReadyInputs) -> Self {
-        self.ready = ready;
-        self
-    }
-
-    /// Files a runner row under the digest of `token`.
-    pub(crate) fn with_runner(self, token: &str, runner: &Uuid7, live: Liveness) -> Self {
-        file_runner(&self.mock_directory, token, runner, live);
-        self
-    }
-
-    /// Files a person row under the digest of `key`, holding `scopes`.
-    pub(crate) fn with_person(mut self, key: &str, subject: &str, scopes: ScopeSet) -> Self {
-        let who = Subject::new(subject).expect("the fixture subject is not blank");
-        let _filed = self.mock_directory.clone().with(
-            CredentialKind::TenantApiKey,
-            &presented(key),
-            CredentialRecord::Person {
-                tenant: tenant(),
-                subject: who.clone(),
-                live: Liveness::Live,
-            },
-        );
-        self.capabilities = self.capabilities.with(&who, scopes);
-        self
-    }
-
-    /// Files a person row under the digest of an `afc_` command-line credential.
-    ///
-    /// Sibling of [`Self::with_person`], and the difference is the whole point:
-    /// the two resolve to the same person with the same capabilities and differ
-    /// only in credential CLASS, which is exactly the axis the command-line
-    /// credential routes refuse on. A suite cannot prove that rule with one of
-    /// them.
-    pub(crate) fn with_terminal(
-        mut self,
-        credential: &str,
-        subject: &str,
-        scopes: ScopeSet,
-    ) -> Self {
-        let who = Subject::new(subject).expect("the fixture subject is not blank");
-        self.mock_directory = self.mock_directory.with(
-            CredentialKind::CliCredential,
-            &presented(credential),
-            CredentialRecord::Person {
-                tenant: tenant(),
-                subject: who.clone(),
-                live: Liveness::Live,
-            },
-        );
-        self.capabilities = self.capabilities.with(&who, scopes);
-        self
-    }
-
-    /// Backs this instance with an in-memory snapshot store holding `body`
-    /// under `content_hash`.
-    ///
-    /// `object_store::memory::InMemory` rather than a mock of our own: it is
-    /// the backend the workspace manifest names for exactly this, so what the
-    /// suite drives is the same client production drives with a different
-    /// backing store — not a second implementation that could agree with the
-    /// test and disagree with R2.
-    ///
-    /// Async because a `put` is, which is why it is not one of the `const`
-    /// builders above.
-    pub(crate) async fn with_snapshot(mut self, content_hash: &str, body: &[u8]) -> Self {
-        let store = InMemory::new();
-        let hash = ContentHash::parse(content_hash).expect("the fixture digest is well formed");
-        store
-            .put(&hash.snapshot_key(), Bytes::copy_from_slice(body).into())
-            .await
-            .expect("an in-memory put cannot fail");
-        self.bundles = Bundles::new(Arc::new(store));
-        self
-    }
-
-    /// The directory, for a suite that revokes between two requests.
-    pub(crate) const fn directory(&self) -> &MockDirectory {
-        &self.mock_directory
-    }
-
-    /// The capability source, for a suite that narrows a subject.
-    pub(crate) const fn capabilities(&self) -> &MockCapabilities {
-        &self.capabilities
-    }
-
-    /// The production router, over this instance.
-    pub(crate) fn router(self) -> Router {
-        let admission = Admission::new(DEFAULT_MAX_IN_FLIGHT);
-        build(Arc::new(self), &admission)
-    }
-}
+mod fleet;
 
 mod services;

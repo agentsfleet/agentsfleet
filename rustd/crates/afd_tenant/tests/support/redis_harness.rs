@@ -26,7 +26,7 @@ impl RedisHarness {
     pub(crate) async fn connect() -> Self {
         install_subscriber();
         let config = Self::config();
-        let redis = Redis::connect(&config)
+        let redis = afd_redis::test_util::connect_live(&config)
             .await
             .expect("the lane's Redis must be reachable");
         Self { redis }

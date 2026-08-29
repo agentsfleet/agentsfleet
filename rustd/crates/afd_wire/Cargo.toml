@@ -1,5 +1,7 @@
 [package]
 name = "afd_wire"
+# One aggregated test binary; see tests/wire_suite.rs for why.
+autotests = false
 description = "Serde port of the frozen /v1/runners control protocol the daemon and runner exchange."
 version.workspace = true
 edition.workspace = true
@@ -25,3 +27,7 @@ serde_json.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "wire_suite"
+path = "tests/wire_suite.rs"

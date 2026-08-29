@@ -75,6 +75,16 @@ pub(crate) fn live_sets() -> LiveSets {
 }
 
 impl Fleets {
+    /// Expires one cached workspace enumeration for a live-store fixture.
+    ///
+    /// Production writers invalidate this cache themselves. A fixture that
+    /// inserts a row directly needs the same hook so it can prove the refresh
+    /// without sleeping out the production TTL.
+    #[cfg(feature = "test-util")]
+    pub async fn invalidate_live_set(&self, workspace: &Uuid7) {
+        self.live_sets.invalidate(workspace.as_str()).await;
+    }
+
     /// Every fleet this workspace holds, by identifier.
     ///
     /// Sorted, because the set is announced to a client as a list and a set

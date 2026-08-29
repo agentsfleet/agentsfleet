@@ -13,8 +13,7 @@
 use afd_admin::{Models as AdminModels, PlatformKeys};
 use afd_api::{Planes, Services};
 use afd_approval::{Inbox, IntegrationGrants};
-use afd_auth::mock::MockCapabilities;
-use afd_auth::verifier::NoVerifier;
+use afd_auth::mock::{MockCapabilities, MockVerifier};
 use afd_billing::tenant::Billing;
 use afd_core::clock::UnixMillis;
 use afd_events::{History, Steer};
@@ -39,7 +38,7 @@ use super::stubs_tenant::OneWorkspace;
 use super::{DEPLOYMENT, Directory, Fleet};
 
 impl Services for Fleet {
-    type Auth = Planes<Directory, MockCapabilities, NoVerifier>;
+    type Auth = Planes<Directory, MockCapabilities, MockVerifier>;
     type Leases = NoWork;
     type Sessions = Logins;
     type Workspaces = OneWorkspace;
