@@ -16,7 +16,7 @@
 use std::sync::Arc;
 
 use afd_core::id::Uuid7;
-use afd_wire::memory::{MemoryHydrateResponse, MemoryPushRequest};
+use afd_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, MemoryPushRequest};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -77,19 +77,14 @@ pub(crate) async fn capture<D: Services>(
         .capture(runner.id(), &fleet, &request, services.now())
         .await
     {
-        // The tallies only, and assembled here rather than as a wire type in
-        // `afd_wire`: the Zig builds the same anonymous struct inline and no
-        // fixture pins it, so declaring one would claim a frozen shape that the
-        // wire-v2 corpus does not actually carry.
-        //
-        // A runner acts on `stored` and `skipped` — the first says its memory
-        // landed, the second says some was refused for shape and it should look
-        // at what it sends. The sweep and eviction counts stay in the log: they
-        // are the daemon's housekeeping, not a fact about this request.
-        Ok(counted) => Json(serde_json::json!({
-            "stored": counted.stored,
-            "skipped": counted.skipped,
-        }))
+        // The tallies only; the sweep and eviction counts stay in the log,
+        // being the daemon's housekeeping rather than a fact about this
+        // request. `MemoryCaptureResponse` carries the reasoning for the two
+        // that survive.
+        Ok(counted) => Json(MemoryCaptureResponse {
+            stored: counted.stored,
+            skipped: counted.skipped,
+        })
         .into_response(),
         Err(error) => refuse(&error, EVENT_CAPTURE),
     }
