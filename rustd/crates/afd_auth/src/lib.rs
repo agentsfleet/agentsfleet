@@ -7,10 +7,10 @@
 //! composes with it, because holding `fleet:write` must not let a caller touch
 //! a workspace they do not own.
 //!
-//! The former `user < operator < admin` role ladder and the `platform_admin`
-//! flag are gone from the product; they were undocumented capability bundles.
+//! There is no role ladder and no capability flag: a role is an undocumented
+//! bundle, and "what may this principal do" has to have an enumerable answer.
 //! See `docs/AUTH.md` §Scope catalogue for the vocabulary and the provisioning
-//! grants, and `src/agentsfleetd/auth/scopes.zig` for the canon this mirrors.
+//! grants.
 //!
 //! # The shape, and why it is not the Zig daemon's
 //!

@@ -158,3 +158,7 @@ pub struct Terminal<'a> {
     /// Wall-clock milliseconds the run took.
     pub wall_ms: i64,
 }
+
+#[cfg(test)]
+#[path = "verdict/tests.rs"]
+mod tests;

@@ -33,7 +33,8 @@ use afd_auth::principal::Subject;
 use afd_auth::scope::ScopeSet;
 use afd_auth::verifier::{NoVerifier, TokenVerifier, VerifiedClaims, VerifyError};
 use afd_identity::{
-    HttpKeySet, JwksVerifier, ProviderCapabilities, ProviderClaims, VerifierConfig, jwks_url,
+    ClaimUnavailable, HttpKeySet, JwksVerifier, ProviderCapabilities, ProviderClaims,
+    VerifierConfig, jwks_url,
 };
 
 use crate::preflight::IdentityConfig;
@@ -98,16 +99,42 @@ impl TokenVerifier for Sessions {
 /// longer reach this function at all.
 #[must_use]
 pub fn resolve(identity: &IdentityConfig) -> (Capabilities, Sessions) {
-    (capabilities(identity), sessions(identity))
+    resolve_with(identity, build_claims, build_key_set)
 }
 
-/// The capability seam for a configured provider.
-fn capabilities(identity: &IdentityConfig) -> Capabilities {
-    match ProviderClaims::new(
+fn resolve_with<C, K>(
+    identity: &IdentityConfig,
+    claim_builder: C,
+    key_set_builder: K,
+) -> (Capabilities, Sessions)
+where
+    C: FnOnce(&IdentityConfig) -> Result<ProviderClaims, ClaimUnavailable>,
+    K: FnOnce(String, Duration) -> Result<HttpKeySet, VerifyError>,
+{
+    (
+        capabilities(identity, claim_builder),
+        sessions(identity, key_set_builder),
+    )
+}
+
+fn build_claims(identity: &IdentityConfig) -> Result<ProviderClaims, ClaimUnavailable> {
+    ProviderClaims::new(
         identity.api_base.clone(),
         identity.secret.clone(),
         PROVIDER_TIMEOUT,
-    ) {
+    )
+}
+
+fn build_key_set(url: String, timeout: Duration) -> Result<HttpKeySet, VerifyError> {
+    HttpKeySet::new(url, timeout)
+}
+
+/// The capability seam for a configured provider.
+fn capabilities<C>(identity: &IdentityConfig, build: C) -> Capabilities
+where
+    C: FnOnce(&IdentityConfig) -> Result<ProviderClaims, ClaimUnavailable>,
+{
+    match build(identity) {
         Ok(claims) => Capabilities::Provider(ProviderCapabilities::new(
             claims,
             Arc::new(afd_core::clock::SystemClock),
@@ -128,13 +155,16 @@ fn capabilities(identity: &IdentityConfig) -> Capabilities {
 }
 
 /// The session seam for a configured issuer.
-fn sessions(identity: &IdentityConfig) -> Sessions {
+fn sessions<K>(identity: &IdentityConfig, build: K) -> Sessions
+where
+    K: FnOnce(String, Duration) -> Result<HttpKeySet, VerifyError>,
+{
     // The key-set URL is DERIVED from the issuer unless overridden, so the two
     // can never name different providers — the property `jwks_url` exists for.
     let Some(url) = jwks_url(identity.jwks_url.as_deref(), Some(&identity.issuer)) else {
         return Sessions::Unconfigured(NoVerifier);
     };
-    match HttpKeySet::new(url, KEY_SET_TIMEOUT) {
+    match build(url, KEY_SET_TIMEOUT) {
         Ok(key_set) => Sessions::Jwks(Arc::new(JwksVerifier::new(
             key_set,
             VerifierConfig::new(identity.issuer.clone(), identity.audience.clone()),
@@ -152,3 +182,7 @@ fn sessions(identity: &IdentityConfig) -> Sessions {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "identity/tests.rs"]
+mod tests;

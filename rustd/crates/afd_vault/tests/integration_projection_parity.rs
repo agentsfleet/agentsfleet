@@ -29,10 +29,7 @@
 
 use afd_vault::Kind;
 
-#[path = "support/lane.rs"]
-mod support;
-
-use self::support::{Lane, StoredProjection, body, named};
+use crate::support::{Lane, StoredProjection, body, named};
 
 /// A provider key carrying every descriptor a `provider_key` can have.
 const PROVIDER_KEY: &str =

@@ -46,10 +46,7 @@ use afd_redis::ready::READY_INDEX_KEY;
 use afd_redis::streams::FleetStreams;
 use afd_wire::event::{EventType, field};
 
-#[path = "support/events_lane.rs"]
-mod support;
-
-use self::support::EventsLane;
+use crate::support::EventsLane;
 
 /// The consumer name the test reads the stream back under.
 ///

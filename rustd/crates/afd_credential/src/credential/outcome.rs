@@ -111,3 +111,7 @@ impl Outcome {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "outcome/tests.rs"]
+mod tests;

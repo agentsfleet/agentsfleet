@@ -209,7 +209,7 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::{DECLARED, ProviderRegistry as _, StaticRegistry};
+    use super::{DECLARED, ProviderRegistry as _, Scheme, StaticRegistry, WebhookProvider as _};
 
     #[test]
     fn a_declared_source_resolves_to_its_scheme() {
@@ -282,5 +282,22 @@ mod tests {
                 scheme.source
             );
         }
+    }
+
+    #[test]
+    fn scheme_constructors_preserve_every_declared_field_at_runtime() {
+        let prefixed = Scheme::prefixed("github", "x-signature", "sha256=");
+        assert_eq!(prefixed.source(), "github");
+        assert_eq!(prefixed.signature_header(), "x-signature");
+        assert_eq!(prefixed.signature_prefix(), "sha256=");
+        assert_eq!(prefixed.timestamp_header(), None);
+
+        let bare = Scheme::bare("linear", "linear-signature");
+        assert_eq!(bare.source(), "linear");
+        assert_eq!(bare.signature_prefix(), "");
+
+        let timestamped = Scheme::timestamped("slack", "x-signature", "v0=", "x-timestamp");
+        assert_eq!(timestamped.source(), "slack");
+        assert_eq!(timestamped.timestamp_header(), Some("x-timestamp"));
     }
 }

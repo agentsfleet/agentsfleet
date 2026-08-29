@@ -10,6 +10,7 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::Access;
+use afd_wire::policy::ExecutionPolicy;
 
 use crate::error::Result;
 use crate::lease::answer::{EVENT_LEASED, no_work, render};
@@ -32,25 +33,26 @@ impl Plane {
         admitted: Admission2,
         now: UnixMillis,
     ) -> Result<String> {
-        let Admission2 {
-            acquired,
-            installed,
-            event_type,
-            resolved,
-            billed,
-        } = admitted;
-
         let declared = self
             .vault
-            .declared(&acquired.workspace_id, &names(&installed), &self.connectors)
+            .declared(
+                &admitted.acquired.workspace_id,
+                &names(&admitted.installed),
+                &self.connectors,
+            )
             .await?;
-        let branch = self.repair_branch(&acquired, &installed).await?;
-        let granted = self.gates.approved_integrations(&acquired.fleet_id).await?;
+        let branch = self
+            .repair_branch(&admitted.acquired, &admitted.installed)
+            .await?;
+        let granted = self
+            .gates
+            .approved_integrations(&admitted.acquired.fleet_id)
+            .await?;
 
         let policy = match build::assemble(
             build::Inputs {
-                config: &installed.config,
-                provider: &resolved,
+                config: &admitted.installed.config,
+                provider: &admitted.resolved,
                 declared: &declared,
                 repair_branch: branch.as_deref(),
             },
@@ -72,7 +74,7 @@ impl Plane {
                 let reason = misconfigured.to_string();
                 return self
                     .refused(
-                        &acquired,
+                        &admitted.acquired,
                         label::BINDING_UNENFORCEABLE,
                         runner_id,
                         &reason,
@@ -81,31 +83,50 @@ impl Plane {
                     .await;
             }
         };
+        self.issue_ready(runner_id, &admitted, *policy, now).await
+    }
 
+    async fn issue_ready(
+        &self,
+        runner_id: &Uuid7,
+        admitted: &Admission2,
+        policy: ExecutionPolicy<'_>,
+        now: UnixMillis,
+    ) -> Result<String> {
         // LAST, and only once everything above succeeded.
         let issued = self
             .leases
             .issue(
                 runner_id,
-                &acquired,
+                &admitted.acquired,
                 Billed {
-                    tenant_id: &billed.tenant_id,
-                    posture: billed.posture.as_str(),
-                    provider: &billed.provider,
-                    model: &billed.model,
+                    tenant_id: &admitted.billed.tenant_id,
+                    posture: admitted.billed.posture.as_str(),
+                    provider: &admitted.billed.provider,
+                    model: &admitted.billed.model,
                 },
                 now,
             )
             .await?;
+        let runner_id = runner_id.as_str();
+        let lease_id = issued.lease_id.as_str();
+        let fleet_id = admitted.acquired.fleet_id.as_str();
+        let agentsfleet_event_id = admitted.acquired.event_id.as_str();
         tracing::info!(
             event = EVENT_LEASED,
-            runner_id = runner_id.as_str(),
-            lease_id = issued.lease_id.as_str(),
-            fleet_id = acquired.fleet_id.as_str(),
-            agentsfleet_event_id = acquired.event_id.as_str(),
+            runner_id,
+            lease_id,
+            fleet_id,
+            agentsfleet_event_id,
             "a lease was issued"
         );
-        render(&issued.lease_id, &acquired, event_type, &installed, *policy)
+        render(
+            &issued.lease_id,
+            &admitted.acquired,
+            admitted.event_type,
+            &admitted.installed,
+            policy,
+        )
     }
 
     /// The branch a write-bound lease may author on, if one is authorised.

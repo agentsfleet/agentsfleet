@@ -33,10 +33,7 @@
 
 use afd_vault::{Deleted, Kind};
 
-#[path = "support/lane.rs"]
-mod support;
-
-use self::support::{Lane, body, named};
+use crate::support::{Lane, body, named};
 
 /// A provider key, as an operator would store one.
 const PROVIDER_KEY: &str =
@@ -75,7 +72,7 @@ async fn a_stored_secret_round_trips_from_write_to_list_to_delete() {
     assert_eq!(provider_key.kind, Kind::ProviderKey);
     assert_eq!(provider_key.provider.as_deref(), Some("anthropic"));
     assert_eq!(provider_key.base_url, None);
-    assert_eq!(provider_key.created_at_ms, support::NOW_MS);
+    assert_eq!(provider_key.created_at_ms, crate::support::NOW_MS);
 
     let endpoint = row(1);
     assert_eq!(endpoint.kind, Kind::CustomEndpoint);

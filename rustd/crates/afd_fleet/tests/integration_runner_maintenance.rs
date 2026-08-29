@@ -2,13 +2,8 @@
 #![cfg(feature = "test-util")]
 #![expect(clippy::expect_used, reason = "test preconditions fail loudly")]
 
-#[path = "support/fleet_queue.rs"]
-mod queue;
-#[path = "support/fleet_requests.rs"]
-mod requests;
-#[path = "support/fleet_fixtures.rs"]
-mod support;
-
+use crate::requests;
+use crate::support;
 use afd_auth::credential::{CredentialKind, Presented};
 use afd_auth::directory::{CredentialDirectory as _, Digest};
 use afd_core::clock::UnixMillis;

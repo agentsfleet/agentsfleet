@@ -5,19 +5,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use crate::requests;
+use crate::support;
+use crate::view_heartbeat;
 use std::borrow::Cow;
-
-#[path = "support/fleet_fixtures.rs"]
-mod support;
-
-#[path = "support/fleet_queue.rs"]
-mod queue;
-
-#[path = "support/fleet_requests.rs"]
-mod requests;
-
-#[path = "support/view_heartbeat.rs"]
-mod view_heartbeat;
 
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
@@ -243,8 +234,25 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) {
 ///
 /// What the dimension is actually about survives, and is graded harder: the
 /// composite cursor must walk the whole set skipping no tie and repeating no
-/// row, the total must not move under the walk, and the seeded runners must
+/// row, every page must account for the seeded runners, and those runners must
 /// come back in their seeded order with their derived liveness.
+///
+/// # Why it does not assert the total HOLDS STILL either
+///
+/// It also used to assert every page reported the same total, and that clause
+/// outlived the count it replaced for the same reason: it was true of the test
+/// environment, not of the code. Each page is its own query and so its own MVCC
+/// snapshot, so a runner enrolled between two pages legitimately changes the
+/// count — Postgres promises consistency WITHIN a statement, never across a
+/// walk. The clause passed only while `cargo` ran this file as its own binary,
+/// which serialised it against every sibling that writes here. Aggregating the
+/// suites into one binary runs them concurrently and the total moved, exactly
+/// as the database allows: `[68, 68, ..., 68, 69]`.
+///
+/// Asserting it back would be pinning an accident of test scheduling. What
+/// keyset pagination actually guarantees under a concurrent writer is below,
+/// and is the stronger claim: the walk skips no seeded row, repeats none, and
+/// every page's total accounts for the seeded set.
 async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
     let limit = PageLimit::new(2).expect("two is a valid page limit");
     let now = UnixMillis::from_millis(ENROLLED_AT + 4);
@@ -277,10 +285,10 @@ async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
         }
     }
 
-    let reported = totals.first().copied().expect("the walk reads a page");
+    let seeded_count = i64::try_from(seeded.ordered_ids.len()).expect("three fits an i64");
     assert!(
-        totals.iter().all(|total| *total == reported),
-        "the total moved under the walk: {totals:?}"
+        totals.iter().all(|total| *total >= seeded_count),
+        "a page reported a total that cannot account for the seeded runners: {totals:?}"
     );
 
     let ids = walked
@@ -292,10 +300,6 @@ async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
         ids.len(),
         unique.len(),
         "the composite cursor repeated a row"
-    );
-    assert!(
-        reported >= i64::try_from(seeded.ordered_ids.len()).expect("three fits an i64"),
-        "the total does not account for the seeded runners: {reported}"
     );
 
     let seen = ids

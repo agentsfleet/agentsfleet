@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_api", "crates/afd_approval", "crates/afd_auth", "crates/afd_billing", "crates/afd_core", "crates/afd_credential", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_identity", "crates/afd_library", "crates/afd_observability", "crates/afd_redis", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_api", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_billing", "crates/afd_core", "crates/afd_credential", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_library", "crates/afd_observability", "crates/afd_redis", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.27.0"
@@ -40,6 +40,9 @@ categories = ["network-programming"]
 # path (M-CRATES-IN-WORKSPACE).
 afd_admin = { path = "crates/afd_admin" }
 afd_api = { path = "crates/afd_api" }
+afd_api_operator = { path = "crates/afd_api_operator" }
+afd_api_runner = { path = "crates/afd_api_runner" }
+afd_api_tenant = { path = "crates/afd_api_tenant" }
 afd_approval = { path = "crates/afd_approval" }
 afd_auth = { path = "crates/afd_auth" }
 # What a lease costs and what a tenant has. Split out of `afd_fleet` because it
@@ -63,6 +66,7 @@ afd_fleet = { path = "crates/afd_fleet" }
 # needs a person. The lease plane calls down into it at two moments and it
 # calls back at none, which is what let it out.
 afd_gate = { path = "crates/afd_gate" }
+afd_http = { path = "crates/afd_http" }
 # Deliberately NOT folded into `afd_fleet`, which is the runner plane and is
 # already 25,500 lines — 3.5 times its nearest sibling, and the exact condition
 # that forced `afd_tenant` out of it. Nor into `afd_tenant`, whose api-key and

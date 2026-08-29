@@ -88,14 +88,53 @@ fn test_both_url_schemes_are_accepted() {
     }
 }
 
-/// Defaults, when nothing is tuned: four connections, a two-second acquire.
+/// Defaults, when nothing is tuned: a budget-derived pool, a two-second acquire.
+///
+/// The size is asserted as the FORMULA, not as a number, so that changing the
+/// rule fails here and has to be changed on purpose rather than absorbed.
 #[test]
 fn test_defaults_match_the_documented_sizing() {
     let env = env_with(&[("DATABASE_URL", URL)]);
     let config = PoolConfig::resolve(&env, DbRole::Default).unwrap();
-    assert_eq!(config.max_connections(), 4, "256 in-flight / 64 per conn");
+    assert_eq!(
+        config.max_connections(),
+        expected_default_pool_size(),
+        "a share of the service connection budget, not of the host"
+    );
     assert_eq!(config.acquire_timeout(), Duration::from_millis(2_000));
     assert_eq!(config.connect_timeout(), Duration::from_millis(10_000));
+}
+
+/// A quarter of the ceiling is established before any request needs it.
+///
+/// The floor exists so a burst after boot finds live connections instead of
+/// paying a handshake apiece inside the acquire budget. It is established by
+/// `Db::warm` and not by sqlx, which cannot bootstrap it from zero on a lazy
+/// pool; warm never fails, so it stays a warming policy and never a boot gate.
+#[test]
+fn test_the_warm_floor_is_a_quarter_of_the_ceiling() {
+    let env = env_with(&[("DATABASE_URL", URL)]);
+    let config = PoolConfig::resolve(&env, DbRole::Default).unwrap();
+    assert_eq!(
+        config.min_connections(),
+        (expected_default_pool_size() / 4).max(1),
+        "a quarter of the ceiling, and never zero"
+    );
+}
+
+/// The default pool size, by the same two facts the code uses.
+///
+/// Duplicated deliberately: a test that called the private function would prove
+/// only that it equals itself. This states the documented rule independently,
+/// so a change to the rule fails here and has to be made on purpose.
+///
+/// The rule is a share of the DATABASE's capacity and no longer reads the host
+/// at all — a connection costs a Postgres backend, not a local core — so this
+/// derives the same number on every runner.
+fn expected_default_pool_size() -> u32 {
+    const SERVICE_CONNECTION_BUDGET: u32 = 80;
+    const EXPECTED_REPLICAS: u32 = 4;
+    SERVICE_CONNECTION_BUDGET / EXPECTED_REPLICAS
 }
 
 /// A role-scoped override beats the shared knob; the shared knob applies to
@@ -132,7 +171,11 @@ fn test_unusable_pool_sizes_fall_back_to_the_default() {
     for value in ["0", "banana", "", "99999999999999999999"] {
         let env = env_with(&[("DATABASE_URL", URL), ("DATABASE_POOL_SIZE", value)]);
         let config = PoolConfig::resolve(&env, DbRole::Default).unwrap();
-        assert_eq!(config.max_connections(), 4, "{value:?} did not fall back");
+        assert_eq!(
+            config.max_connections(),
+            expected_default_pool_size(),
+            "{value:?} did not fall back"
+        );
     }
 }
 

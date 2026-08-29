@@ -52,6 +52,9 @@ pub(crate) enum ErrorKind {
         source: Box<redis::RedisError>,
     },
 
+    #[error("the {role} Redis did not connect within {waited_ms}ms")]
+    ConnectTimeout { role: &'static str, waited_ms: u128 },
+
     #[error("{command} did not answer within {waited_ms}ms")]
     Timeout {
         command: &'static str,
@@ -104,7 +107,9 @@ impl Error {
     pub fn is_unavailable(&self) -> bool {
         matches!(
             self.inner.kind,
-            ErrorKind::Unreachable { .. } | ErrorKind::Timeout { .. }
+            ErrorKind::Unreachable { .. }
+                | ErrorKind::ConnectTimeout { .. }
+                | ErrorKind::Timeout { .. }
         )
     }
 
@@ -194,6 +199,11 @@ pub(crate) fn timed_out(command: &'static str, waited_ms: u128) -> Error {
     Error::new(ErrorKind::Timeout { command, waited_ms })
 }
 
+/// A connection that did not finish inside its whole-operation budget.
+pub(crate) fn connect_timed_out(role: &'static str, waited_ms: u128) -> Error {
+    Error::new(ErrorKind::ConnectTimeout { role, waited_ms })
+}
+
 /// A reply whose shape the client does not recognise.
 pub(crate) fn unexpected_reply(what: &'static str) -> Error {
     Error::new(ErrorKind::UnexpectedReply { what })
@@ -239,6 +249,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
                 source: Box::new(redis_failure()),
             }),
         ),
+        ("connect timeout", connect_timed_out("default", 5_000)),
         ("timeout", timed_out("XADD", 5_000)),
         (
             "command",
