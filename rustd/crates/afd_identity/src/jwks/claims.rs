@@ -81,16 +81,28 @@ impl Claims {
             })
     }
 
-    /// Wherever `name` is PRESENT, top level before `metadata`, whatever type.
+    /// Wherever `name` carries a VALUE, top level before `metadata`, whatever
+    /// type.
     ///
     /// The distinction [`Self::raw_claim`] cannot make. That one asks "is there
     /// a readable string here", so a value of the wrong type reads to it as no
     /// value at all — which is the right answer for a claim that grants and the
     /// wrong one for a claim that restricts. A number, an object or a boolean
     /// under `workspace_id` is still something an operator put there.
+    ///
+    /// A `null` does not stop the ladder, and that is the one rung where both
+    /// readers must agree. `null` is the spelling of "no value", so a rung
+    /// carrying one is an EMPTY rung rather than an answer: selecting it would
+    /// let a template that projects `workspace_id: null` at the top level hide
+    /// a ceiling sitting under `metadata`, and hide it as "no ceiling" — the
+    /// same silent grant [`Self::ceiling`] exists to refuse, reached by the one
+    /// route that walks past its type check. [`Self::raw_claim`] already skips
+    /// a null because `as_str()` reads it as absent; this skips it on purpose
+    /// rather than as a side effect of asking a different question.
     fn present_claim(&self, name: &str) -> Option<&serde_json::Value> {
         self.rest
             .get(name)
+            .filter(|value| !value.is_null())
             .or_else(|| self.rest.get(CLAIM_METADATA)?.as_object()?.get(name))
     }
 
@@ -130,6 +142,9 @@ impl Claims {
     /// An explicit JSON `null` is the exception, and is treated as absent: it
     /// is the spelling of "no value", not of a restriction, so a template that
     /// projects an unset field as `null` must not refuse every token it mints.
+    /// [`Self::present_claim`] skips it rather than selecting it, so "absent"
+    /// means absent from the whole ladder — a null at the top level leaves a
+    /// ceiling under `metadata` still readable, and still enforced.
     ///
     /// # Errors
     /// [`VerifyError::UnreadableCeiling`] when the claim is present with any
