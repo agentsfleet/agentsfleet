@@ -73,6 +73,11 @@ impl Db {
 
         let mut builder = PgPoolOptions::new()
             .max_connections(config.max_connections())
+            // The floor sqlx maintains in the background. Without it the pool
+            // opens its first connection inside the first request, and an
+            // establishment measured at 147-337 ms lands inside an acquire
+            // budget that was sized for a wait, not a handshake.
+            .min_connections(config.min_connections())
             .acquire_timeout(acquire_timeout);
 
         if role == DbRole::Migrator {
@@ -93,18 +98,32 @@ impl Db {
             });
         }
 
-        // Lazy, because the probe above already proved the datastore answers.
-        // A second eager handshake here would only re-ask a question whose
-        // answer is one line up.
+        // Lazy, and deliberately so after measuring the alternative.
+        //
+        // `connect_with` establishes `min_connections` before returning, which
+        // is what a warm pool wants — but sqlx hands it `acquire_timeout` as
+        // its deadline, the same number that bounds how long one REQUEST waits.
+        // Those are different budgets with no separate knob: twelve connections
+        // at the 147-337 ms each this lane measures do not fit in two seconds
+        // under load, and `Db::connect` failed outright — "waited 2000ms for a
+        // api connection and the pool had none" — a process refusing to start
+        // where it previously started and warmed as it went. Raising the floor
+        // for reliability making boot MORE fragile is a trap, so the floor is
+        // left to the maintainer sqlx runs for exactly this ("min_connections
+        // is guaranteed by the idle reaper now"): warm moments after boot
+        // rather than before it, with the first request or two still paying a
+        // handshake — a smaller cost than a boot that can fail.
         let pool = builder.connect_lazy_with(config.connect_options());
 
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let role_tag = role.tag();
         let max_connections = config.max_connections();
+        let min_connections = config.min_connections();
         let acquire_timeout_ms = acquire_timeout.as_millis();
         tracing::info!(
             role = role_tag,
             size = max_connections,
+            warm = min_connections,
             acquire_timeout_ms,
             event = "pool_initialized"
         );
