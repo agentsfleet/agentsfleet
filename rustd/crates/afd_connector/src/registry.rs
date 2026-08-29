@@ -21,6 +21,22 @@
 
 use crate::provider::Provider;
 
+/// What RFC 6749 says a scope list is joined by, and Atlassian obeys.
+///
+/// The standard's ABNF is `scope = scope-token *( SP scope-token )`, and a
+/// scope-token's alphabet EXCLUDES the space and includes the comma. So a
+/// conformant parser reading `a,b` sees one scope literally named `a,b` — the
+/// standard is unambiguous here and the three vendors below are not following
+/// it. Accommodated because they are the servers, not because it is arguable.
+const SCOPE_SPACE: char = ' ';
+
+/// What Slack, Zoho and Linear join a scope list by instead.
+///
+/// Three of the four OAuth connectors here, which is why the delimiter is a
+/// per-provider field and not a constant anybody may assume — see
+/// [`Oauth2Flow::scope_delimiter`].
+const SCOPE_COMMA: char = ',';
+
 /// The authorize parameter asking a provider to re-show its consent screen.
 ///
 /// Two connectors send it, which is why it is named rather than spelled twice:
@@ -67,8 +83,22 @@ pub struct Oauth2Flow {
     /// [`crate::zoho`] on why the code is only redeemable at the data centre
     /// that issued it.
     pub token_endpoint: &'static str,
-    /// What access is asked for, in the provider's own delimiter.
+    /// What access is asked for, joined by [`Oauth2Flow::scope_delimiter`].
     pub scopes: &'static str,
+    /// What this provider joins scopes with — on the request AND in its answer.
+    ///
+    /// A field rather than a constant, because it is the fact most likely to be
+    /// assumed rather than read. RFC 6749 says space; three of the four
+    /// connectors here say comma, and only Atlassian follows the standard. A
+    /// reader who assumes one delimiter gets two of them wrong.
+    ///
+    /// It is also what the `oauth2` crate gets wrong and why this workspace
+    /// does not carry it — `code.rs:149` joins with a space building the URL and
+    /// `helpers.rs:95` splits on a space reading the answer, both hard-coded. On
+    /// the answer side that yields ONE scope carrying commas, which lands in
+    /// `core.connector_installs.scopes` as a single bogus array element with
+    /// nothing failing. Recorded in the spec's Discovery log.
+    pub scope_delimiter: char,
     /// The provider-specific authorize parameters beyond the shared five.
     ///
     /// Pairs rather than a pre-encoded tail, which is where this departs from
@@ -118,6 +148,7 @@ impl Provider {
                 // Receive mentions, post replies, and read the recent thread on
                 // a mention. Whole-channel history is deliberately absent.
                 scopes: "app_mentions:read,chat:write,channels:history",
+                scope_delimiter: SCOPE_COMMA,
                 extra_query: &[],
                 // A Slack bot token is long-lived, so there is nothing to
                 // re-mint from and no refresh entry for the broker to hold.
@@ -133,6 +164,7 @@ impl Provider {
                 authorize_endpoint: "https://accounts.zoho.com/oauth/v2/auth",
                 token_endpoint: crate::zoho::US_TOKEN_ENDPOINT,
                 scopes: "Desk.organization.READ,Desk.basic.READ",
+                scope_delimiter: SCOPE_COMMA,
                 extra_query: &[("access_type", "offline"), (PARAM_PROMPT, PROMPT_CONSENT)],
                 refresh: true,
             }),
@@ -144,6 +176,7 @@ impl Provider {
                 // provider uses, so the delimiter is provider data.
                 scopes: "read:jira-work read:jira-user write:jira-work \
                          read:servicedesk-request write:servicedesk-request offline_access",
+                scope_delimiter: SCOPE_SPACE,
                 extra_query: &[
                     ("audience", "api.atlassian.com"),
                     (PARAM_PROMPT, PROMPT_CONSENT),
@@ -154,6 +187,7 @@ impl Provider {
                 authorize_endpoint: "https://linear.app/oauth/authorize",
                 token_endpoint: "https://api.linear.app/oauth/token",
                 scopes: "read,comments:create",
+                scope_delimiter: SCOPE_COMMA,
                 extra_query: &[],
                 refresh: true,
             }),
@@ -248,6 +282,60 @@ mod tests {
                 assert!(flow.token_endpoint.starts_with("https://"));
             }
         }
+    }
+
+    /// Each connector's declared delimiter is the one its scope list uses.
+    ///
+    /// The drift guard, and the reason the delimiter is a field at all. A
+    /// declaration nothing checks is a comment: someone adding a provider can
+    /// write comma-joined scopes beside `SCOPE_SPACE` and the request would ask
+    /// for one scope named after all of them, which most vendors answer by
+    /// granting nothing and reporting success. Here the two cannot disagree —
+    /// a list carrying the OTHER delimiter and none of its own fails this.
+    #[test]
+    fn every_connectors_scope_list_uses_the_delimiter_it_declares() {
+        for provider in Provider::ALL.iter().copied() {
+            let Archetype::Oauth2(flow) = provider.archetype() else {
+                continue;
+            };
+            let other = if flow.scope_delimiter == super::SCOPE_COMMA {
+                super::SCOPE_SPACE
+            } else {
+                super::SCOPE_COMMA
+            };
+
+            assert!(
+                flow.scopes.contains(flow.scope_delimiter),
+                "`{provider}` declares `{}` and its scope list carries none",
+                flow.scope_delimiter,
+            );
+            assert!(
+                !flow.scopes.contains(other),
+                "`{provider}` declares `{}` and its scope list also carries `{other}`",
+                flow.scope_delimiter,
+            );
+        }
+    }
+
+    /// Three of the four OAuth connectors deviate from the standard.
+    ///
+    /// Pinned as a PRODUCT fact, not an implementation detail: it is the reason
+    /// this workspace carries its own authorize-URL and scope parse rather than
+    /// the `oauth2` crate, whose delimiter is a hard-coded space in both
+    /// directions. A future reader wondering why should find the count here.
+    #[test]
+    fn only_atlassian_among_the_connectors_follows_the_standard_delimiter() {
+        let deviating = Provider::ALL
+            .iter()
+            .copied()
+            .filter_map(|provider| match provider.archetype() {
+                Archetype::Oauth2(flow) => Some(flow.scope_delimiter),
+                Archetype::AppInstall(_) => None,
+            })
+            .filter(|delimiter| *delimiter != super::SCOPE_SPACE)
+            .count();
+
+        assert_eq!(deviating, 3, "Slack, Zoho and Linear delimit with a comma");
     }
 
     /// Slack's token is long-lived; the other three OAuth connectors refresh.

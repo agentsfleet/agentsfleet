@@ -198,7 +198,12 @@ impl Connectors {
             Archetype::AppInstall(install) => crate::registry::Oauth2Flow {
                 authorize_endpoint: install.authorize_endpoint,
                 token_endpoint: install.token_endpoint,
+                // A GitHub App carries its own permissions rather than OAuth
+                // scopes, so there is no list and nothing to join. The
+                // delimiter is the standard's, which is what a reader would
+                // assume anyway and what nothing here will ever spend.
                 scopes: "",
+                scope_delimiter: ' ',
                 extra_query: &[],
                 refresh: false,
             },

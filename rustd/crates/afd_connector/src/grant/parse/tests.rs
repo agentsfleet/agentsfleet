@@ -12,6 +12,7 @@
 #![expect(
     clippy::expect_used,
     clippy::indexing_slicing,
+    clippy::panic,
     reason = "a test asserts by panicking, and a fixture reads its own JSON by \
               index; the manifest's restriction set is for the daemon"
 )]
@@ -21,6 +22,18 @@ use serde_json::{Map, Value, json};
 
 use super::{refresh_triple, slack};
 use crate::provider::Provider;
+use crate::registry::Archetype;
+
+/// The delimiter Slack joins its granted scopes with, read from the registry.
+///
+/// Taken from the shipped entry rather than spelled here, so a case cannot pass
+/// against a delimiter the daemon does not actually use.
+fn slack_delimiter() -> char {
+    match Provider::Slack.archetype() {
+        Archetype::Oauth2(flow) => flow.scope_delimiter,
+        Archetype::AppInstall(_) => panic!("Slack is an OAuth connector"),
+    }
+}
 
 /// The instant every refresh case connects at.
 const NOW: i64 = 1_700_000_000_000;
@@ -104,7 +117,7 @@ fn without(mut answer: Value, absent: &str) -> Value {
 /// Slack's answer becomes the handle and the routing row together.
 #[test]
 fn a_slack_install_answer_becomes_a_handle_and_a_routing_row() {
-    let grant = slack(&slack_answer()).expect("a complete install answer");
+    let grant = slack(&slack_answer(), slack_delimiter()).expect("a complete install answer");
 
     assert_eq!(grant.handle["integration"], json!(Provider::Slack.id()));
     assert_eq!(grant.handle["bot_token"], json!(BOT_TOKEN_VALUE));
@@ -128,7 +141,7 @@ fn a_slack_answer_saying_not_ok_is_no_grant() {
     let mut refused = slack_answer();
     refused[OK] = json!(false);
 
-    assert!(slack(&refused).is_none());
+    assert!(slack(&refused, slack_delimiter()).is_none());
 }
 
 /// Every field the Slack handle cannot be built without refuses when absent.
@@ -140,7 +153,10 @@ fn a_slack_answer_missing_a_required_field_is_no_grant() {
     for absent in [ACCESS_TOKEN, BOT_USER_ID, TEAM] {
         let answer = without(slack_answer(), absent);
 
-        assert!(slack(&answer).is_none(), "`{absent}` is required");
+        assert!(
+            slack(&answer, slack_delimiter()).is_none(),
+            "`{absent}` is required"
+        );
     }
 }
 
@@ -152,7 +168,7 @@ fn a_slack_team_without_a_name_still_yields_a_grant() {
     answer[TEAM][ACCOUNT_ID] = json!(TEAM_ID_VALUE);
     let answer = without(answer, "scope");
 
-    let grant = slack(&answer).expect("a nameless team is a real install");
+    let grant = slack(&answer, slack_delimiter()).expect("a nameless team is a real install");
 
     assert_eq!(grant.handle["team_name"], json!(""));
     assert!(grant.install.expect("routing row").scopes.is_empty());
