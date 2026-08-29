@@ -22,8 +22,7 @@
 use afd_auth::scope::{Scope, parse_claim};
 use afd_auth::verifier::VerifyError;
 
-mod support;
-use support::signing::{
+use crate::support::signing::{
     AUDIENCE, ISSUER, NOT_EXPIRED, TENANT, TEST_KEY_PKCS1_B64, WORKSPACE, verify,
 };
 

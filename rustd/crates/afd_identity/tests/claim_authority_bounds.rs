@@ -15,8 +15,7 @@
 
 use afd_auth::verifier::VerifyError;
 
-mod support;
-use support::signing::{
+use crate::support::signing::{
     AUDIENCE, ISSUER, NOT_EXPIRED, NOW_MS, NOW_S, TENANT, WORKSPACE, verify, verify_at,
 };
 

@@ -9,6 +9,15 @@
 //! The key is `auth/crypto/rs256_sign.zig`'s `TEST_KEY_PKCS1_B64` — generated
 //! offline, never used in production, and already embedded there to drive the
 //! signer. `claim_shapes` pins that byte-for-byte.
+//!
+//! The allow sits HERE rather than on each suite that includes it. Every test
+//! file carries its own copy for its own body, but `identity_suite` declares
+//! `support` once at the crate root, so a suite's inner attribute never reaches
+//! this module — the lint would fire on shared scaffolding no test file owns.
+#![expect(
+    clippy::expect_used,
+    reason = "test support: an unmet precondition should fail the test loudly"
+)]
 
 use std::sync::Arc;
 
