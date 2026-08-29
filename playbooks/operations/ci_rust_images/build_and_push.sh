@@ -46,8 +46,6 @@ load_versions() {
   . "$VERSIONS_FILE"
   set +a
   : "${RUST_VERSION:?RUST_VERSION missing from versions.env}"
-  : "${BUN_VERSION:?BUN_VERSION missing from versions.env}"
-  : "${GITLEAKS_VERSION:?GITLEAKS_VERSION missing from versions.env}"
 }
 
 # The one check that makes this image trustworthy: an image whose compiler
@@ -99,22 +97,20 @@ cmd_build() {
 
   local rev_suffix="" tag action_flag="--push"
   [ -n "$REVISION" ] && rev_suffix="-${REVISION}"
-  tag="${REGISTRY}/ci-rust-ubuntu:${RUST_VERSION}${rev_suffix}"
+  tag="${REGISTRY}/ci-rust-slim:${RUST_VERSION}${rev_suffix}"
   [ "$PUSH" -eq 0 ] && action_flag="--load"
 
   # An array, so a registry or tag carrying a space cannot split into two words.
   local -a build_args=(
     --platform linux/amd64
     --build-arg "RUST_VERSION=$RUST_VERSION"
-    --build-arg "BUN_VERSION=$BUN_VERSION"
-    --build-arg "GITLEAKS_VERSION=$GITLEAKS_VERSION"
-    -f "$SCRIPT_DIR/Dockerfile.ubuntu"
+    -f "$SCRIPT_DIR/Dockerfile.slim"
     -t "$tag"
     "$action_flag"
     "$SCRIPT_DIR"
   )
 
-  log "→ building ci-rust-ubuntu (linux/amd64) → $tag"
+  log "→ building ci-rust-slim (linux/amd64) → $tag"
   docker buildx build "${build_args[@]}"
   ok "done → $tag"
   log "smoke-verify it with the commands in 001_playbook.md §3"
