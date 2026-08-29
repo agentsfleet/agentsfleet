@@ -88,12 +88,10 @@ fn test_both_url_schemes_are_accepted() {
     }
 }
 
-/// Defaults, when nothing is tuned: a host-derived pool, a two-second acquire.
+/// Defaults, when nothing is tuned: a budget-derived pool, a two-second acquire.
 ///
-/// The size is asserted as the FORMULA, not as a number. It is ten per core on
-/// a host of four cores or fewer and fifty above that, so a literal would pin
-/// this suite to the machine that wrote it and fail on a smaller runner — the
-/// kind of red that reads as a defect and is not one.
+/// The size is asserted as the FORMULA, not as a number, so that changing the
+/// rule fails here and has to be changed on purpose rather than absorbed.
 #[test]
 fn test_defaults_match_the_documented_sizing() {
     let env = env_with(&[("DATABASE_URL", URL)]);
@@ -101,7 +99,7 @@ fn test_defaults_match_the_documented_sizing() {
     assert_eq!(
         config.max_connections(),
         expected_default_pool_size(),
-        "ten per core up to four cores, fifty above"
+        "a share of the service connection budget, not of the host"
     );
     assert_eq!(config.acquire_timeout(), Duration::from_millis(2_000));
     assert_eq!(config.connect_timeout(), Duration::from_millis(10_000));
@@ -110,8 +108,9 @@ fn test_defaults_match_the_documented_sizing() {
 /// A quarter of the ceiling is established before any request needs it.
 ///
 /// The floor exists so a burst after boot finds live connections instead of
-/// paying a handshake apiece inside the acquire budget. It is maintained in the
-/// background, so it is a warming policy and never a boot gate.
+/// paying a handshake apiece inside the acquire budget. It is established by
+/// `Db::warm` and not by sqlx, which cannot bootstrap it from zero on a lazy
+/// pool; warm never fails, so it stays a warming policy and never a boot gate.
 #[test]
 fn test_the_warm_floor_is_a_quarter_of_the_ceiling() {
     let env = env_with(&[("DATABASE_URL", URL)]);
@@ -123,20 +122,19 @@ fn test_the_warm_floor_is_a_quarter_of_the_ceiling() {
     );
 }
 
-/// The default pool size this host derives, by the same two facts the code uses.
+/// The default pool size, by the same two facts the code uses.
 ///
 /// Duplicated deliberately: a test that called the private function would prove
 /// only that it equals itself. This states the documented rule independently,
 /// so a change to the rule fails here and has to be made on purpose.
+///
+/// The rule is a share of the DATABASE's capacity and no longer reads the host
+/// at all — a connection costs a Postgres backend, not a local core — so this
+/// derives the same number on every runner.
 fn expected_default_pool_size() -> u32 {
-    const SMALL_HOST_CORES: usize = 4;
-    let cores =
-        std::thread::available_parallelism().map_or(SMALL_HOST_CORES, std::num::NonZero::get);
-    if cores <= SMALL_HOST_CORES {
-        u32::try_from(cores).unwrap_or(1) * 10
-    } else {
-        50
-    }
+    const SERVICE_CONNECTION_BUDGET: u32 = 80;
+    const EXPECTED_REPLICAS: u32 = 4;
+    SERVICE_CONNECTION_BUDGET / EXPECTED_REPLICAS
 }
 
 /// A role-scoped override beats the shared knob; the shared knob applies to
