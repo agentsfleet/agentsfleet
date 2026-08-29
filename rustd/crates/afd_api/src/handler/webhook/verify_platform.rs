@@ -19,6 +19,8 @@
 
 use std::sync::Arc;
 
+use afd_connector::Provider;
+use afd_crypto::secret::SecretBytes;
 use afd_webhook::Scheme;
 use afd_webhook::{Refusal as WallRefusal, Verdict};
 use axum::body::Bytes;
@@ -26,7 +28,7 @@ use http::HeaderMap;
 
 use super::verify::{ProvenApp, header, wall};
 use crate::handler::Refusal;
-use crate::services::{Services, WebhookIngress as _};
+use crate::services::{Services, WebhookIngress as _, WorkspaceConnectors as _};
 
 /// The scoped event a failed platform-secret read is logged under.
 const EVENT_PLATFORM: &str = "webhook_platform_secret_failed";
@@ -78,11 +80,38 @@ async fn proven<D: Services>(
         return Err(wall(WallRefusal::Unconfigured));
     };
 
+    checked(
+        services,
+        scheme,
+        &secret,
+        signature_header,
+        timestamp_header,
+        headers,
+        body,
+    )
+}
+
+/// The verdict half, once the secret is in hand.
+///
+/// Split from [`proven`] because the two callers below differ only in WHERE the
+/// secret comes from — the ingress seam's platform bag for an App, the
+/// connector seam's `<provider>-app` bag for Slack — and nothing else. Keeping
+/// the header read and the verdict mapping in one place is what stops the two
+/// from drifting into answering the same forged signature differently.
+fn checked<D: Services>(
+    services: &Arc<D>,
+    scheme: Scheme,
+    secret: &SecretBytes,
+    signature_header: &str,
+    timestamp_header: Option<&str>,
+    headers: &HeaderMap,
+    body: Bytes,
+) -> Result<ProvenApp, Refusal> {
     let presented = header(headers, signature_header);
     let timestamp = timestamp_header.and_then(|name| header(headers, name));
 
     match scheme.verify_at(
-        &secret,
+        secret,
         presented,
         timestamp,
         &body,
@@ -91,6 +120,70 @@ async fn proven<D: Services>(
         Verdict::Verified => Ok(ProvenApp { body }),
         Verdict::Refused(refusal) => Err(wall(refusal)),
     }
+}
+
+/// Proves a connector's inbound delivery against this deployment's app secret.
+///
+/// Provider-general: the scheme comes from
+/// [`Scheme::for_source`] over the provider's own id — the same resolution
+/// [`verified_app`] uses — and the secret from the connector seam by provider.
+/// Nothing here is per-vendor, so a connector that starts delivering events is
+/// a [`afd_webhook::Scheme`] arm and a registry arm, not a second copy of this.
+///
+/// # Why the secret comes from the connector seam and not the ingress one
+///
+/// A connector's signing secret is a FIELD of its `<provider>-app` vault bag —
+/// the same document the OAuth client id and secret live in, because one
+/// registration at the vendor produces all of them. [`proven`]'s reader looks
+/// for `webhook_secret` in a bag of its own, which that document does not
+/// carry, so pointing it here would fail closed on a correctly configured
+/// deployment. `afd_connector::app` is the one reader of that bag on either
+/// daemon, which is what stops an operator being able to rotate half an app.
+///
+/// The headers are the scheme's OWN, unlike [`verified_approval`] which reuses
+/// the construction under headers this daemon publishes. Here the sender really
+/// is the vendor, so the header names are theirs.
+///
+/// # Errors
+/// `UZ-WH-020` for a deployment with no admin workspace, no app for this
+/// connector, an app carrying no signing secret, or a provider this daemon
+/// ships no signature scheme for; `UZ-WH-010` for a signature that did not
+/// match and `UZ-WH-011` for one outside its window.
+pub(crate) async fn verified_connector_events<D: Services>(
+    services: &Arc<D>,
+    provider: Provider,
+    headers: &HeaderMap,
+    body: Bytes,
+) -> Result<ProvenApp, Refusal> {
+    // Before the vault, as in [`verified_app`]: reading a secret for a provider
+    // whose deliveries cannot be verified either way spends a decrypt on a
+    // doomed request, and lets a probe measure the difference.
+    let Some(scheme) = Scheme::for_source(provider.id()) else {
+        return Err(wall(WallRefusal::Unconfigured));
+    };
+
+    let Some(admin) = services.platform_admin_workspace() else {
+        return Err(wall(WallRefusal::Unconfigured));
+    };
+
+    let Some(secret) = services
+        .connectors()
+        .signing_secret(admin, provider)
+        .await
+        .map_err(Refusal::at(EVENT_PLATFORM))?
+    else {
+        return Err(wall(WallRefusal::Unconfigured));
+    };
+
+    checked(
+        services,
+        scheme,
+        &secret,
+        scheme.signature_header(),
+        scheme.timestamp_header(),
+        headers,
+        body,
+    )
 }
 
 /// Proves an App delivery against the deployment's own App secret.

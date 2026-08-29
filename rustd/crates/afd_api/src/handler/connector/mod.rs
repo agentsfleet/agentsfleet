@@ -30,6 +30,7 @@
 pub mod callback;
 pub mod catalogue;
 pub mod connect;
+pub mod events;
 pub mod status;
 
 use std::sync::Arc;

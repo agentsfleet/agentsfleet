@@ -87,6 +87,25 @@ pub trait WorkspaceConnectors: Send + Sync + std::fmt::Debug + 'static {
         now: UnixMillis,
     ) -> impl Future<Output = ConnectorResult<Landed>> + Send;
 
+    /// What `provider` signs its deliveries to this deployment with.
+    ///
+    /// Here rather than on [`super::WebhookIngress`] because the secret is a
+    /// FIELD of the `<provider>-app` bag this seam already owns — the same
+    /// document `start` reads its client credentials out of. Reaching it
+    /// through the ingress seam would mean a second reader for one row and a
+    /// second place for the key name to drift, which is the duplication
+    /// `afd_connector::app` exists as one module to avoid.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer and an envelope that would not
+    /// open. A deployment that configured no app, and an app carrying no
+    /// signing secret, are both `Ok(None)`.
+    fn signing_secret(
+        &self,
+        admin: &Uuid7,
+        provider: Provider,
+    ) -> impl Future<Output = ConnectorResult<Option<SecretBytes>>> + Send;
+
     /// This workspace's connection to `provider`, or nothing.
     ///
     /// # Errors
@@ -155,6 +174,14 @@ impl WorkspaceConnectors for Connectors {
         now: UnixMillis,
     ) -> impl Future<Output = ConnectorResult<Landed>> + Send {
         Self::finish(self, finishing, now)
+    }
+
+    fn signing_secret(
+        &self,
+        admin: &Uuid7,
+        provider: Provider,
+    ) -> impl Future<Output = ConnectorResult<Option<SecretBytes>>> + Send {
+        Self::signing_secret(self, admin, provider)
     }
 
     fn connection(

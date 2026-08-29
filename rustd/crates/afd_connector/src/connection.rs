@@ -21,6 +21,7 @@
 use std::collections::BTreeSet;
 
 use afd_core::id::Uuid7;
+use afd_crypto::secret::SecretBytes;
 
 use crate::connect::Connectors;
 use crate::error::Result;
@@ -59,6 +60,33 @@ impl Catalogued {
 }
 
 impl Connectors {
+    /// What `provider` signs its deliveries to this DEPLOYMENT with.
+    ///
+    /// Read from the admin workspace's `<provider>-app` bag rather than from a
+    /// tenant's, because the secret belongs to the app registration this
+    /// deployment owns — one secret for every workspace that installed it.
+    /// Slack's is the only one today; see [`crate::app::PlatformApp`] on why it
+    /// lives in the same document as the OAuth pair.
+    ///
+    /// This crate still verifies nothing. It hands the secret to the caller and
+    /// `afd_webhook` does the checking, which is the split the module note
+    /// states: one wall for every surface that has one.
+    ///
+    /// `Ok(None)` for a deployment that has configured no app for `provider`,
+    /// or an app carrying no signing secret — both are `UZ-WH-020` one layer
+    /// up, and neither is a delivery accepted unverified.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer and an envelope that would not
+    /// open.
+    pub async fn signing_secret(
+        &self,
+        admin: &Uuid7,
+        provider: Provider,
+    ) -> Result<Option<SecretBytes>> {
+        self.app.signing_secret(admin, provider).await
+    }
+
     /// This workspace's connection to `provider`, or nothing.
     ///
     /// # Errors
