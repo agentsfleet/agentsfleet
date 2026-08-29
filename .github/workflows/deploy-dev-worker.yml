@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 15
     if: vars.DEV_WORKER_READY == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v8
         with:
@@ -32,7 +32,7 @@ jobs:
           path: dist
 
       - name: Load Tailscale credentials from 1Password
-        uses: 1password/load-secrets-action@v4
+        uses: 1password/load-secrets-action@v5
         with:
           export-env: true
         env:
@@ -76,7 +76,7 @@ jobs:
       - name: Record worker result
         run: echo "deploy-worker-dev result = ${{ needs.deploy-worker-dev.result }}"
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # The runner deploy used to announce itself from the target host, via a
       # webhook file the workflow wrote there. A merge dropped the step that

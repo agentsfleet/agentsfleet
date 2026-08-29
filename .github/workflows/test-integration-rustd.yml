@@ -50,7 +50,7 @@ jobs:
     # covers a cold instrumented workspace build on an uncached runner.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       # No toolchain input: rustd/rust-toolchain.toml is the single pin, and
       # rustup installs it on first use inside that directory. Naming a version
       # here would be a second source of truth that silently disagrees.
@@ -58,7 +58,7 @@ jobs:
         run: rustup show && cargo --version
         working-directory: rustd
       - name: Cache cargo registry
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -86,7 +86,7 @@ jobs:
         run: make test-coverage-rustd
       - name: Upload Rust coverage to Codecov
         if: success()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: rustd/lcov.info

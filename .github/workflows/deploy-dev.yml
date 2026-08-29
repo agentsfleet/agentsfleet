@@ -42,9 +42,9 @@ jobs:
   check-credentials:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: 1password/install-cli-action@v3
+      - uses: 1password/install-cli-action@v4
 
       - name: Check vault credentials
         env:
@@ -109,7 +109,7 @@ jobs:
     needs: [acceptance, worker]
     if: always()
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # One verdict, every gate. Green requires qa-dev, acceptance-e2e-dev,
       # and cli-acceptance-dev to be "success". A skipped or canceled

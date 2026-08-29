@@ -28,7 +28,7 @@ jobs:
   qa-dev:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun-playwright
         with:
@@ -39,7 +39,7 @@ jobs:
           lock-file: bun.lock
 
       - name: Load Vercel bypass secret from 1Password
-        uses: 1password/load-secrets-action@v4
+        uses: 1password/load-secrets-action@v5
         with:
           export-env: true
         env:
@@ -82,7 +82,7 @@ jobs:
     # that needs more than 10 minutes IS a release-readiness failure.
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun-playwright
         with:
@@ -100,7 +100,7 @@ jobs:
         working-directory: cli
 
       - name: Load Clerk DEV credentials from 1Password
-        uses: 1password/load-secrets-action@v4
+        uses: 1password/load-secrets-action@v5
         with:
           export-env: true
         env:
@@ -149,7 +149,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun-playwright
         with:
@@ -159,7 +159,7 @@ jobs:
           lock-file: cli/bun.lock
 
       - name: Load Clerk DEV credentials from 1Password (AFTER install)
-        uses: 1password/load-secrets-action@v4
+        uses: 1password/load-secrets-action@v5
         with:
           export-env: true
         env:
