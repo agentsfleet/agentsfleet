@@ -5,7 +5,7 @@
 //! When [`Fleets::install`] answers `Ok`, the `core.fleets` row exists AND the
 //! per-fleet event stream and its consumer group exist. An event published a
 //! millisecond later finds the group the lease `XREADGROUP` needs. Redis gets
-//! four attempts across [`STREAM_BACKOFF`], jittered so concurrent installs do
+//! four attempts across [`stream_backoff`], jittered so concurrent installs do
 //! not retry in step; if it never answers, the Postgres row is
 //! deleted and the caller is told nothing was created — a promise they can act
 //! on, because retrying is then safe.
@@ -29,7 +29,6 @@
 
 mod authored;
 mod row;
-mod schedule;
 
 use std::time::Duration;
 
@@ -37,30 +36,36 @@ use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_fleet_runtime::FleetName;
-use afd_redis::Backoff;
 
-use backon::Retryable as _;
-
-use self::schedule::Schedule;
+use backon::{ExponentialBuilder, Retryable as _};
 
 use crate::error::{self, ErrorKind, Result};
 use crate::{FleetStatus, Fleets, sql};
 
-/// What the stream setup waits between attempts.
+/// What the stream setup waits between attempts, and how many it gets.
 ///
-/// `afd_redis::Backoff` rather than a fixed table, and rather than a retry
-/// crate: it is the workspace's own schedule, it is already the one the pub/sub
-/// pump reconnects on, and it JITTERS. The Zig's fixed `[100, 500, 1500]` means
-/// every install racing the same struggling Redis retries in the same
-/// millisecond — the reconnect storm that keeps it down, which is the reason
-/// the hub's schedule spreads its delays in the first place.
+/// `backon`'s builder rather than a fixed table: the Zig's `[100, 500, 1500]`
+/// means every install racing the same struggling Redis retries in the same
+/// millisecond — the reconnect storm that keeps it down — and `with_jitter`
+/// spreads them.
 ///
 /// Doubling from 200ms, capped at 1500ms: three sleeps come to 1.4s before
-/// jitter and about 1.75s with it, inside the 2.1s wall the Zig documents. The
-/// first retry lands sooner, so a Redis that blips for 150ms is caught on the
-/// second try instead of after 600ms of waiting.
-const STREAM_BACKOFF: Backoff =
-    Backoff::new(Duration::from_millis(200), Duration::from_millis(1500));
+/// jitter, inside the 2.1s wall the Zig documents. The first retry lands
+/// sooner, so a Redis that blips for 150ms is caught on the second try instead
+/// of after 600ms of waiting.
+///
+/// `max_times` is RETRIES, one fewer than the attempts, and it is derived from
+/// [`STREAM_ATTEMPTS`] rather than written as a number. That direction is the
+/// one that cannot go wrong: the Zig wrote its sleeps down and derived the
+/// count with `attempt + 1 >= len`, leaving its last entry unreachable while
+/// the comment beside it promised four tries.
+fn stream_backoff() -> ExponentialBuilder {
+    ExponentialBuilder::new()
+        .with_min_delay(Duration::from_millis(200))
+        .with_max_delay(Duration::from_millis(1500))
+        .with_max_times(STREAM_ATTEMPTS - 1)
+        .with_jitter()
+}
 
 /// How many times the stream setup is tried before the install gives up.
 ///
@@ -69,7 +74,7 @@ const STREAM_BACKOFF: Backoff =
 /// wrote the sleeps down and derived the count with `attempt + 1 >= len`,
 /// leaving its last entry unreachable while the comment beside it promised four
 /// tries — and it shipped that way until a reviewer caught it.
-const STREAM_ATTEMPTS: u32 = 4;
+const STREAM_ATTEMPTS: usize = 4;
 
 /// The context the activation flip reports a failed statement under.
 const CONTEXT_ACTIVATE: &str = "activate installed fleet";
@@ -188,13 +193,10 @@ impl Fleets {
 
     /// Creates the stream and its consumer group, or spends the whole schedule.
     ///
-    /// The LOOP is `backon`'s, not ours. The schedule below is still
-    /// `afd_redis::Backoff` — the delays are the workspace's own and are proven
-    /// on the subscription hub's reconnect — but the counter and the
-    /// stop-after-the-last-attempt rule are the library's. That is the half
-    /// worth handing over: the Zig's shipped bug was in its loop guard
-    /// (`attempt + 1 >= len` left the final delay unreachable while the comment
-    /// beside it promised four tries), not in its numbers.
+    /// The loop AND the schedule are `backon`'s. The half most worth handing
+    /// over is the loop guard: the Zig's shipped bug was `attempt + 1 >= len`,
+    /// which left the final delay unreachable while the comment beside it
+    /// promised four tries.
     ///
     /// `when` is what makes the retry mean something. Only a TRANSPORT failure
     /// is retried; a Redis that answered and refused the command will refuse it
@@ -203,7 +205,7 @@ impl Fleets {
     /// person wait out a foregone conclusion.
     async fn ensure_stream(&self, fleet: &str) -> Result<()> {
         (|| async { self.streams.ensure_group(fleet).await })
-            .retry(Schedule::new(self.jitter()))
+            .retry(stream_backoff())
             .when(afd_redis::Error::is_unavailable)
             .notify(|failure: &afd_redis::Error, delay: Duration| {
                 let sleep_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX);
@@ -218,20 +220,6 @@ impl Fleets {
             })
             .await
             .map_err(Into::into)
-    }
-
-    /// Spread for one backoff delay, so concurrent installs do not retry in step.
-    ///
-    /// Drawn ONCE per install and advanced per attempt, rather than redrawn each
-    /// time: an entropy failure mid-retry would otherwise silently collapse the
-    /// spread back to lockstep, which is the failure this exists to prevent.
-    /// Zero when the host cannot draw entropy — the delays stay correct, they
-    /// just stop being spread.
-    fn jitter(&self) -> u64 {
-        let mut bytes = [0u8; 8];
-        self.entropy
-            .fill(&mut bytes)
-            .map_or(0, |()| u64::from_be_bytes(bytes))
     }
 
     /// Deletes the row an install could not finish, on a FRESH connection.

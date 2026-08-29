@@ -8,13 +8,21 @@
 //! subtree. Reaching them from a sibling would need accessors, and an accessor
 //! on a store is an invitation to make some other call through it.
 //!
-//! # Reading a connection never opens an envelope
+//! # Answering a question about a connection rarely opens an envelope
 //!
-//! Two of the three answers here come from [`afd_vault::Directory`], which
-//! holds no key: whether a name exists, and which names exist. Only the label
-//! read opens anything, and it opens exactly one row. `catalog.zig` decrypts
+//! The catalogue answer comes from [`afd_vault::Directory`], which holds no
+//! key: it asks which names exist and nothing else. `catalog.zig` decrypts
 //! every credential a workspace holds to answer the same question, which is
 //! what made its own budget comment necessary.
+//!
+//! Two reads DO open one row each, and they are opening it for different
+//! things. [`Grants::connection`] opens a handle to read the label a person
+//! sees — public data that happens to be stored beside a secret. [`Grants::
+//! bot_token`] opens it for the secret itself, has exactly one caller
+//! (`afd_outbound`, posting a fleet's answer back), and hands the bytes on
+//! still wrapped so they zero on drop. The split is the point: [`Connection`]
+//! carries no field that could hold a token, so a status surface reaching for
+//! one does not compile.
 //!
 //! # A disconnect leaves the provider alone
 //!
@@ -27,10 +35,11 @@
 use std::collections::BTreeSet;
 
 use afd_core::id::Uuid7;
+use afd_crypto::secret::SecretBytes;
 use afd_vault::{Deleted, SecretName};
 
 use super::Grants;
-use super::parse::{HANDLE_INTEGRATION, HANDLE_LABEL};
+use super::parse::{HANDLE_BOT_TOKEN, HANDLE_INTEGRATION, HANDLE_LABEL};
 use crate::error::{Result, query};
 use crate::provider::Provider;
 use crate::sql;
@@ -132,6 +141,48 @@ impl Grants {
             .copied()
             .filter(|provider| stored.contains(provider.grant_key()))
             .collect())
+    }
+
+    /// The bot token this workspace's grant holds for `provider`.
+    ///
+    /// The ONE read in this module that opens an envelope for what is inside
+    /// it rather than to answer a question about it, and it exists for exactly
+    /// one caller: `afd_outbound`, delivering a fleet's answer back to the
+    /// place the question came from. Nothing on the request path calls it —
+    /// [`Connection`] is deliberately shaped so a status surface cannot.
+    ///
+    /// # Why the token stays [`SecretBytes`]
+    ///
+    /// It is zeroed on drop, and handing back a `String` would silently end
+    /// that: the caller builds one `Authorization` header from it and has no
+    /// reason to keep a copy. The vault's own note says a caller that copies
+    /// the bytes owns what happens next, and this one does not copy them.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer and an envelope that would not
+    /// open. `None` for every shape that is not a landed grant carrying a token
+    /// — no handle, a body that is not an object, an object with no
+    /// [`HANDLE_INTEGRATION`] marker, a token field that is absent or empty.
+    /// A caller cannot act differently on any of them: all four mean this
+    /// workspace cannot post as itself until somebody reconnects.
+    pub async fn bot_token(
+        &self,
+        workspace: &Uuid7,
+        provider: Provider,
+    ) -> Result<Option<SecretBytes>> {
+        let Ok(name) = SecretName::parse(provider.grant_key()) else {
+            return Ok(None);
+        };
+        let Some(stored) = self.vault.load(workspace, &name).await? else {
+            return Ok(None);
+        };
+        let Ok(handle) = serde_json::from_slice::<serde_json::Value>(stored.expose()) else {
+            return Ok(None);
+        };
+        if handle.get(HANDLE_INTEGRATION).is_none() {
+            return Ok(None);
+        }
+        Ok(text(&handle, HANDLE_BOT_TOKEN).map(|token| SecretBytes::new(token.into_bytes())))
     }
 
     /// Forgets this workspace's connection to `provider`.

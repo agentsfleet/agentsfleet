@@ -33,6 +33,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use backon::ExponentialBuilder;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::config::RedisConfig;
@@ -56,41 +57,30 @@ pub struct Message {
 }
 
 /// How long the pump waits before redialling a dropped connection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Backoff {
-    initial: Duration,
-    max: Duration,
-}
-
-impl Backoff {
-    /// The production schedule: a fifth of a second, doubling to five.
-    pub const PRODUCTION: Self = Self {
-        initial: Duration::from_millis(200),
-        max: Duration::from_secs(5),
-    };
-
-    /// A schedule a test can wait out.
-    #[must_use]
-    pub const fn new(initial: Duration, max: Duration) -> Self {
-        Self { initial, max }
-    }
-
-    /// The delay after `attempt` consecutive failures, doubling and capped.
-    ///
-    /// Jitter is deliberate: without it every process that lost the same Redis
-    /// redials in the same millisecond, and the reconnect storm is what keeps
-    /// it down. Public because the schedule is a promise to whoever runs this —
-    /// how long an outage takes to recover from is an operational number, not
-    /// an implementation detail.
-    #[must_use]
-    pub fn delay(self, attempt: u32, jitter: u64) -> Duration {
-        let doubled = self
-            .initial
-            .saturating_mul(2_u32.saturating_pow(attempt.min(16)));
-        let capped = doubled.min(self.max);
-        let spread = u64::try_from(capped.as_millis() / 4).unwrap_or(0);
-        capped + Duration::from_millis(if spread == 0 { 0 } else { jitter % spread })
-    }
+///
+/// A schedule is an operational promise — how long an outage takes to recover
+/// from — so it is named here rather than buried in the pump, and it is
+/// `backon`'s builder rather than a type of ours. Jitter is on: without it
+/// every process that lost the same Redis redials in the same millisecond, and
+/// the reconnect storm is what keeps it down.
+///
+/// There is no attempt limit, and that is the pub/sub contract rather than an
+/// oversight: a reader holds a receiver, not a connection, so there is nobody
+/// to hand a give-up to and nothing sensible to do with one but try again.
+/// `without_max_times` overrides `backon`'s default of three.
+///
+/// Jitter here ADDS to the step rather than replacing it — `backon` offsets by
+/// a random amount inside `(0, current_delay)` — so a delay lands in
+/// `[step, 2 × step)` and the ceiling below is on the step, not on the wait.
+#[must_use]
+pub const fn production_backoff() -> ExponentialBuilder {
+    // A fifth of a second, doubling to five — the schedule this hub has always
+    // redialled on.
+    ExponentialBuilder::new()
+        .with_min_delay(Duration::from_millis(200))
+        .with_max_delay(Duration::from_secs(5))
+        .without_max_times()
+        .with_jitter()
 }
 
 /// A live subscription. Dropping it releases the caller's interest in the
@@ -206,21 +196,24 @@ impl SubscriptionHub {
     /// Returns an unavailable error when the first connection cannot be made.
     /// Later drops are the pump's problem, not the caller's.
     pub async fn start(config: RedisConfig) -> Result<Self> {
-        Self::start_with_backoff(config, Backoff::PRODUCTION).await
+        Self::start_with_backoff(config, production_backoff()).await
     }
 
     /// Starts the hub with a reconnect schedule of the caller's choosing.
     ///
     /// # Errors
     /// As [`SubscriptionHub::start`].
-    pub async fn start_with_backoff(config: RedisConfig, backoff: Backoff) -> Result<Self> {
+    pub async fn start_with_backoff(
+        config: RedisConfig,
+        schedule: ExponentialBuilder,
+    ) -> Result<Self> {
         let (commands, receiver) = mpsc::unbounded_channel();
         let inner = Arc::new(HubInner {
             channels: Mutex::new(HashMap::new()),
             connections_opened: AtomicU64::new(0),
         });
 
-        pump::spawn(config, backoff, Arc::clone(&inner), receiver).await?;
+        pump::spawn(config, schedule, Arc::clone(&inner), receiver).await?;
         Ok(Self { inner, commands })
     }
 

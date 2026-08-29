@@ -29,7 +29,7 @@ use crate::provider::Provider;
 pub(crate) const HANDLE_INTEGRATION: &str = "integration";
 
 /// Handle fields, one spelling each (RULE UFS).
-const HANDLE_BOT_TOKEN: &str = "bot_token";
+pub(crate) const HANDLE_BOT_TOKEN: &str = "bot_token";
 /// See [`HANDLE_BOT_TOKEN`].
 const HANDLE_BOT_USER_ID: &str = "bot_user_id";
 /// See [`HANDLE_BOT_TOKEN`].
