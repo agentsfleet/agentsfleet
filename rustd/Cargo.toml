@@ -256,7 +256,15 @@ uuid = { version = "1.26.0", default-features = false, features = ["v7", "std"] 
 # The rolling DAY window is NOT a calendar question and does not use this:
 # `authoring.mdx` documents it as "rolling 24-hour", not "since midnight", so it
 # stays plain millisecond subtraction in `money::window` where that is legible.
-jiff = { version = "0.2.35", default-features = false, features = ["std"] }
+# `tzdb-zoneinfo` reads the system timezone database rather than bundling one:
+# zero extra crates, zero binary growth, and the deploy image already ships
+# `/usr/share/zoneinfo` (debian:bookworm-slim, verified). It is what lets a zone
+# name be VALIDATED against the real database instead of pattern-matched — see
+# `afd_cron::validate::timezone`.
+jiff = { version = "0.2.35", default-features = false, features = [
+  "std",
+  "tzdb-zoneinfo",
+] }
 
 # Base64url, for JSON Web Key components and the three segments of a session
 # token. `default-features = false` is load-bearing here rather than habitual:
