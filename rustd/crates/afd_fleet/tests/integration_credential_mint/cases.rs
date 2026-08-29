@@ -1,6 +1,7 @@
 //! Live credential-mint behavior and ordering cases.
 
 use super::*;
+use crate::requests;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]

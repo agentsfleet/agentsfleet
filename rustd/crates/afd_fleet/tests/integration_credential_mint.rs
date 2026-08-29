@@ -24,27 +24,13 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-#[path = "support/fleet_fixtures.rs"]
-mod support;
-
-#[path = "support/fleet_queue.rs"]
-mod queue;
-
-#[path = "support/fleet_lease_reads.rs"]
-mod lease_reads;
-
-#[path = "support/fleet_lease_seed.rs"]
-mod seed;
-
-#[path = "support/fleet_requests.rs"]
-mod requests;
-
-#[path = "support/fleet_report_reads.rs"]
-mod report_reads;
-
-#[path = "support/fleet_report_seed.rs"]
-mod report_seed;
-
+// Child of this suite, not a crate-root module: it reaches its parent
+// through `super::`, so it must stay nested here. The path is relative
+// to THIS file's directory, which the aggregator does not change.
+#[path = "integration_credential_mint/cases.rs"]
+mod cases;
+use crate::seed;
+use crate::support;
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
@@ -306,6 +292,3 @@ fn declared() -> RepositoryBinding {
 
 /// The recorded form of [`declared`].
 const STATED_BINDING: &str = r#"{"repositories":["acme/payments"],"access":"write","base":"main"}"#;
-
-#[path = "integration_credential_mint/cases.rs"]
-mod cases;

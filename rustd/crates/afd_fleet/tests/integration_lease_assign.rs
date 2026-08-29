@@ -19,21 +19,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-#[path = "support/fleet_fixtures.rs"]
-mod support;
-
-#[path = "support/fleet_queue.rs"]
-mod queue;
-
-#[path = "support/fleet_lease_reads.rs"]
-mod lease_reads;
-
-#[path = "support/fleet_lease_seed.rs"]
-mod seed;
-
-#[path = "support/fleet_requests.rs"]
-mod requests;
-
+use crate::queue;
+use crate::requests;
+use crate::seed;
+use crate::support;
 use afd_core::clock::UnixMillis;
 use afd_fleet::lease::Kind;
 

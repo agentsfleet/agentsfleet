@@ -16,18 +16,13 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-#[path = "support/fleet_fixtures.rs"]
-mod support;
-
-#[path = "support/fleet_queue.rs"]
-mod queue;
-
-#[path = "support/fleet_requests.rs"]
-mod requests;
-
+// Child of this suite, not a crate-root module: it reaches its parent
+// through `super::`, so it must stay nested here. The path is relative
+// to THIS file's directory, which the aggregator does not change.
 #[path = "integration_runner_beat/recovery.rs"]
 mod recovery;
-
+use crate::requests;
+use crate::support;
 use std::borrow::Cow;
 
 use afd_core::clock::UnixMillis;
