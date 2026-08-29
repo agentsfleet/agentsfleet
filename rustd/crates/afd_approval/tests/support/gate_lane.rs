@@ -10,21 +10,30 @@
 //! borrowing them from `afd_fleet::tests` would put leases, money and policy
 //! behind a test about a person answering a question.
 //!
-//! # Nothing is set up per test, and nothing is torn down
+//! # One tenant, and a workspace and fleet per test
 //!
-//! The tenant, workspace and fleet are SHARED SCAFFOLDING: every test wants the
-//! same three rows, so they are fixed constants written under
-//! `ON CONFLICT (id) DO NOTHING`. Whichever test runs first writes them and the
-//! rest are no-ops — which is the whole point of one migrated database, and
-//! what minting a fresh triple per test would quietly undo.
-//!
-//! GATES are the opposite: each test resolves or expires its own, so those are
-//! minted. That is the line — shared when every writer writes the same row,
-//! minted when a test mutates it or asserts its shape.
+//! The tenant is shared scaffolding: every test writes the same row under
+//! `ON CONFLICT (id) DO NOTHING`, whichever runs first wins, and nothing
+//! asserts over it. The workspace and fleet are minted per test, because tests
+//! DO assert over those — a count of a fleet's events, a listing of a
+//! workspace's queue — and on one shared database a fixed pair puts every
+//! sibling's rows inside this test's answer. That was a real failure, three
+//! runs in a row on two different tests, and it is the line: shared when every
+//! writer writes the same row, minted the moment a test reads a set.
 //!
 //! There is no teardown. `TestDatabase::shared` owns no database to drop, so a
 //! `cleanup` here would be a call every test makes that does nothing, implying
 //! an isolation boundary that is not there.
+//!
+//! # The sweeper is global, so its tests take a lock
+//!
+//! `Inbox::expire` is a system-wide statement by design — `WHERE status =
+//! pending AND timeout_at <= now`, no workspace or fleet in it — which is what
+//! a sweeper must be in production and what no amount of identifier minting can
+//! isolate. A test that sweeps therefore expires every OTHER test's lapsed
+//! gate, and a test whose premise is a gate past its window finds it already
+//! resolved. Those two groups take [`sweeper_exclusive`] and run one at a time;
+//! everything else still runs concurrently.
 //!
 //! # Redis is here because an approval CONTINUES a run
 //!
@@ -60,6 +69,21 @@ const REDIS_URL_KNOB: &str = "TEST_REDIS_URL";
 const REDIS_CA_KNOB: &str = "TEST_REDIS_CA_CERT";
 
 /// The instant every fixture row is stamped with.
+/// Serialises the tests the global sweeper cannot be isolated from.
+///
+/// Held for the whole test body by anything that calls `Inbox::expire`, and by
+/// anything that seeds a gate already past its window and expects to find it
+/// PENDING. Both sides are needed: the lock exists to keep those two groups
+/// apart, and a lock only one side takes keeps nothing apart at all.
+///
+/// A `tokio` mutex rather than the standard library's, because the guard is
+/// held across `await` points, and it does not poison — one failing test leaves
+/// the rest runnable rather than turning a single red into a suite of them.
+pub(crate) async fn sweeper_exclusive() -> tokio::sync::MutexGuard<'static, ()> {
+    static SWEEPER: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    SWEEPER.lock().await
+}
+
 pub(crate) const NOW_MS: i64 = 1_760_000_000_000;
 
 /// The tenant every gate in this suite hangs from.
