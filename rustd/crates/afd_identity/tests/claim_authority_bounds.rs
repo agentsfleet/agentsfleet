@@ -204,3 +204,67 @@ fn test_a_populated_positional_array_payload_is_refused() {
     let refused = verify(&positional).expect_err("a claim set is an object, never a sequence");
     assert_eq!(refused, VerifyError::Malformed);
 }
+
+/// A ceiling of the wrong JSON TYPE refuses, exactly as a bad string does.
+///
+/// The hole the first cut of this fix left open, and the one an adversarial
+/// review found: the ladder asked `as_str()`, so a ceiling of `42` was not a
+/// bad value but no value — it fell through to the `metadata` lookup, found
+/// nothing, and returned "no ceiling". An identity-provider template that
+/// projected the workspace id as a number rather than a string would therefore
+/// have un-confined every holder silently, which is the precise grant this
+/// variant was added to prevent.
+#[test]
+fn test_a_ceiling_of_the_wrong_type_is_refused() {
+    for value in ["42", "true", "{}", "[]", "3.5", "{\"id\":\"x\"}"] {
+        let refused = verify(&payload_with(&format!(",\"workspace_id\":{value}")))
+            .expect_err("a ceiling that is not a canonical identifier is refused");
+
+        assert_eq!(refused, VerifyError::UnreadableCeiling, "{value}");
+    }
+}
+
+/// An explicit JSON `null` ceiling means no ceiling, not an unreadable one.
+///
+/// `null` is the spelling of "no value", not of a restriction someone set, so a
+/// template projecting an unset field must not refuse every token it mints.
+#[test]
+fn test_a_null_ceiling_reads_as_no_ceiling() {
+    let claims = verify(&payload_with(",\"workspace_id\":null"))
+        .expect("an explicitly empty ceiling is not a broken one");
+
+    assert!(claims.workspace_scope.is_none());
+}
+
+/// A nested ceiling of the wrong type is refused too.
+///
+/// The type check has to sit on the same ladder the string read does, or the
+/// fix holds for a top-level projection and silently not for a nested one.
+#[test]
+fn test_a_nested_ceiling_of_the_wrong_type_is_refused() {
+    let nested = format!(
+        "{{\"sub\":\"user_bounded\",\"iss\":\"{ISSUER}\",\"aud\":\"{AUDIENCE}\",\
+         \"exp\":{NOT_EXPIRED},\"metadata\":{{\"tenant_id\":\"{TENANT}\",\
+         \"workspace_id\":42}}}}"
+    );
+
+    let refused = verify(&nested).expect_err("a nested ceiling is a ceiling");
+    assert_eq!(refused, VerifyError::UnreadableCeiling);
+}
+
+/// A non-integer `nbf` is honoured rather than rejected as malformed.
+///
+/// RFC 7519 defines `NumericDate` as a JSON numeric value and permits a
+/// non-integer one. Before this milestone `nbf` sat in the flattened remainder
+/// where any shape was tolerated; naming it as an integer would have turned a
+/// conforming token into a whole-verification `Malformed` — an outage for that
+/// issuer, reported as a bad token.
+#[test]
+fn test_a_fractional_not_before_is_read_rather_than_refused() {
+    let refused = verify(&payload_with(&format!(",\"nbf\":{}.5", NOW_S + 60)))
+        .expect_err("a fractional nbf in the future is still in the future");
+    assert_eq!(refused, VerifyError::NotYetValid);
+
+    verify(&payload_with(&format!(",\"nbf\":{}.5", NOW_S - 60)))
+        .expect("a fractional nbf in the past does not interfere");
+}
