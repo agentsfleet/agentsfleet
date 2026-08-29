@@ -22,15 +22,12 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-#[path = "support/gate_lane.rs"]
-mod lane;
-
 use afd_approval::{IntegrationGrants, Revocation};
 use afd_core::id::Uuid7;
 use afd_wire::grant::status;
 use sqlx::Row as _;
 
-use self::lane::{Lane, NOW_MS};
+use crate::lane::{Lane, NOW_MS};
 
 /// The instant a revoke in this suite stamps.
 const REVOKED_AT_MS: i64 = NOW_MS + 5_000;
@@ -51,7 +48,7 @@ const FOREIGN_WORKSPACE: &str = "01900000-0000-7000-8000-0000000000ff";
 /// `created_at` is a parameter because the list's whole claim is an ORDER, and
 /// a fixture that fixed the instant could not express one.
 async fn seed_grant(lane: &Lane, service: &str, state: &str, created_at: i64) -> Uuid7 {
-    let id = lane::mint();
+    let id = crate::lane::mint();
     let approved_at = (state == status::APPROVED).then_some(created_at + 1);
     let revoked_at = (state == status::REVOKED).then_some(created_at + 2);
     sqlx::query(
@@ -225,7 +222,7 @@ async fn a_revoke_moves_the_row_once_and_reports_the_second_as_absent() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_grant_this_fleet_does_not_hold_is_absent() {
     let lane = Lane::isolated().await;
-    let stranger = lane::mint();
+    let stranger = crate::lane::mint();
 
     let outcome = grants(&lane)
         .revoke(&lane.workspace, &lane.fleet, &stranger, Lane::now())

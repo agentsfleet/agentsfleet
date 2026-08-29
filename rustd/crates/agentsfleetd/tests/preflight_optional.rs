@@ -5,8 +5,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-mod support;
-
 use afd_core::env::MapEnv;
 use agentsfleetd::preflight::{
     API_URL_KNOB, APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, Fault, PLATFORM_ADMIN_WORKSPACE_KNOB,
@@ -29,8 +27,8 @@ fn with_optional<'a>(optional: impl IntoIterator<Item = (&'a str, &'a str)>) -> 
             (ENCRYPTION_MASTER_KEY_KNOB, GOOD_KEK),
         ]
         .into_iter()
-        .chain(support::SESSION_PEPPER)
-        .chain(support::IDENTITY)
+        .chain(crate::support::SESSION_PEPPER)
+        .chain(crate::support::IDENTITY)
         .chain(optional),
     )
 }

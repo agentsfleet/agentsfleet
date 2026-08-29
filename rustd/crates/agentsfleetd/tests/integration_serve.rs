@@ -21,13 +21,11 @@
     reason = "test target: an unmet precondition should fail the test loudly, and a missing lane knob is one"
 )]
 
-mod support;
-
 use afd_core::env::MapEnv;
 use agentsfleetd::serve::boot;
 use agentsfleetd::supervisor::Supervisor;
 
-use self::support::install_subscriber;
+use crate::support::install_subscriber;
 
 /// Where the lane publishes the Postgres it brought up.
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
@@ -65,8 +63,8 @@ fn lane_environment() -> MapEnv {
         // boots for real, so it must supply both — each is resolved rather
         // than used, so well-formed is enough and nothing here reaches the
         // issuer or takes a digest.
-        .chain(support::SESSION_PEPPER)
-        .chain(support::IDENTITY),
+        .chain(crate::support::SESSION_PEPPER)
+        .chain(crate::support::IDENTITY),
     )
 }
 
