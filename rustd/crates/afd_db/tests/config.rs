@@ -88,14 +88,55 @@ fn test_both_url_schemes_are_accepted() {
     }
 }
 
-/// Defaults, when nothing is tuned: four connections, a two-second acquire.
+/// Defaults, when nothing is tuned: a host-derived pool, a two-second acquire.
+///
+/// The size is asserted as the FORMULA, not as a number. It is ten per core on
+/// a host of four cores or fewer and fifty above that, so a literal would pin
+/// this suite to the machine that wrote it and fail on a smaller runner — the
+/// kind of red that reads as a defect and is not one.
 #[test]
 fn test_defaults_match_the_documented_sizing() {
     let env = env_with(&[("DATABASE_URL", URL)]);
     let config = PoolConfig::resolve(&env, DbRole::Default).unwrap();
-    assert_eq!(config.max_connections(), 4, "256 in-flight / 64 per conn");
+    assert_eq!(
+        config.max_connections(),
+        expected_default_pool_size(),
+        "ten per core up to four cores, fifty above"
+    );
     assert_eq!(config.acquire_timeout(), Duration::from_millis(2_000));
     assert_eq!(config.connect_timeout(), Duration::from_millis(10_000));
+}
+
+/// A quarter of the ceiling is established before any request needs it.
+///
+/// The floor exists so a burst after boot finds live connections instead of
+/// paying a handshake apiece inside the acquire budget. It is maintained in the
+/// background, so it is a warming policy and never a boot gate.
+#[test]
+fn test_the_warm_floor_is_a_quarter_of_the_ceiling() {
+    let env = env_with(&[("DATABASE_URL", URL)]);
+    let config = PoolConfig::resolve(&env, DbRole::Default).unwrap();
+    assert_eq!(
+        config.min_connections(),
+        (expected_default_pool_size() / 4).max(1),
+        "a quarter of the ceiling, and never zero"
+    );
+}
+
+/// The default pool size this host derives, by the same two facts the code uses.
+///
+/// Duplicated deliberately: a test that called the private function would prove
+/// only that it equals itself. This states the documented rule independently,
+/// so a change to the rule fails here and has to be made on purpose.
+fn expected_default_pool_size() -> u32 {
+    const SMALL_HOST_CORES: usize = 4;
+    let cores =
+        std::thread::available_parallelism().map_or(SMALL_HOST_CORES, std::num::NonZero::get);
+    if cores <= SMALL_HOST_CORES {
+        u32::try_from(cores).unwrap_or(1) * 10
+    } else {
+        50
+    }
 }
 
 /// A role-scoped override beats the shared knob; the shared knob applies to
@@ -132,7 +173,11 @@ fn test_unusable_pool_sizes_fall_back_to_the_default() {
     for value in ["0", "banana", "", "99999999999999999999"] {
         let env = env_with(&[("DATABASE_URL", URL), ("DATABASE_POOL_SIZE", value)]);
         let config = PoolConfig::resolve(&env, DbRole::Default).unwrap();
-        assert_eq!(config.max_connections(), 4, "{value:?} did not fall back");
+        assert_eq!(
+            config.max_connections(),
+            expected_default_pool_size(),
+            "{value:?} did not fall back"
+        );
     }
 }
 

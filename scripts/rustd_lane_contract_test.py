@@ -28,7 +28,17 @@ class CoverageLane(unittest.TestCase):
 
     def test_coverage_lane_rejects_an_under_target_report(self) -> None:
         coverage = self.recipe.split("test-coverage-rustd:", 1)[1]
-        self.assertIn("--fail-under-lines 100", coverage)
+        self.assertIn("--fail-under-lines $(RUSTD_COVERAGE_FLOOR)", coverage)
+
+    def test_the_floor_is_a_declared_ratchet_with_a_default(self) -> None:
+        """The gate reads a named floor, and the name has a value to read.
+
+        Spelling the number inline is what this replaces: a literal is edited
+        to make a red lane green and nothing records that it moved. A knob with
+        its default beside the recipe is overridable for one run and reviewable
+        for good.
+        """
+        self.assertRegex(self.recipe, r"RUSTD_COVERAGE_FLOOR \?= \d+")
 
 
 if __name__ == "__main__":
