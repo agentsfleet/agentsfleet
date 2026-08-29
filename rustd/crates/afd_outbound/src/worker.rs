@@ -123,10 +123,27 @@ impl<S: Deliver> Worker<S> {
     /// loop's next turn re-reads, and the blocking read's own interval is what
     /// keeps a failing Redis from being asked in a tight spin.
     async fn next(&mut self, token: &CancellationToken) -> Turn {
-        // Before anything else, and before the token is consulted: a shutdown
-        // that arrived while a previous job was delivering must not skip past
-        // the pending list, because this read is the ONLY thing that finds what
-        // the last process was handed.
+        // First, and before the pending list: a cancelled worker stops.
+        //
+        // The pending-first read below serves RESUME — a process finding what
+        // the LAST one was handed. It is not how this process finishes its own
+        // work, and consulting it after a cancellation is a loop that does not
+        // terminate: `deliver_and_ack` hands a job back at shutdown by leaving
+        // it UNACKNOWLEDGED on purpose, so the very next pending read returns
+        // that same entry, delivers it again, and hands it back again. The
+        // worker never reaches a stop it was already asked for.
+        //
+        // Leaving the entry is the whole point, and nothing is lost by stopping
+        // here: it stays in this consumer's pending list, and the next
+        // process's pending-first read is what picks it up. That hand-off is
+        // the "re-queues" half of Dimension 5.2.
+        if token.is_cancelled() {
+            return Turn::Stopped;
+        }
+
+        // The resume read. A process that starts — or restarts after a crash —
+        // reaches its predecessor's unacknowledged entries only through this;
+        // `read_blocking` below offers new entries and never re-offers those.
         match self.reader.read_pending().await {
             Ok(Some(job)) => return Turn::Job(Box::new(job)),
             Ok(None) => {}
@@ -134,9 +151,6 @@ impl<S: Deliver> Worker<S> {
                 report("outbound_read_pending_failed", &failure.into());
                 return Turn::Idle;
             }
-        }
-        if token.is_cancelled() {
-            return Turn::Stopped;
         }
 
         tokio::select! {
