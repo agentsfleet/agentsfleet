@@ -75,9 +75,6 @@ const WIRE_BOT_USER_ID: &str = "bot_user_id";
 /// Milliseconds in a second, for the expiry arithmetic.
 const MS_PER_SECOND: i64 = 1_000;
 
-/// What Slack joins its granted scopes with on the wire.
-const SCOPE_SEPARATOR: char = ',';
-
 /// What Slack's install answer routes back to a workspace.
 ///
 /// The reverse-routing row: an event arriving from a Slack team has to resolve
@@ -108,10 +105,15 @@ pub struct Grant {
 
 /// Slack's `oauth.v2.access` answer, as a handle and an install row.
 ///
+/// `delimiter` is the provider's, taken from [`crate::registry::Oauth2Flow`]
+/// rather than spelled here. The answer's delimiter is a SECOND fact beside the
+/// request's, and hard-coding it is the mistake this crate exists partly to
+/// avoid — see that field's own note.
+///
 /// `None` for `{"ok":false}` and for any answer missing a field the handle
 /// cannot be built without — see the module note on why 200 is not enough.
 #[must_use]
-pub fn slack(body: &Value) -> Option<Grant> {
+pub fn slack(body: &Value, delimiter: char) -> Option<Grant> {
     if body.get(WIRE_OK)?.as_bool() != Some(true) {
         return None;
     }
@@ -148,7 +150,7 @@ pub fn slack(body: &Value) -> Option<Grant> {
             // string: the column is a `text[]`, and a reader splitting it back
             // out would be the second place the delimiter is known.
             scopes: scope
-                .split(SCOPE_SEPARATOR)
+                .split(delimiter)
                 .filter(|granted| !granted.is_empty())
                 .map(Into::into)
                 .collect(),

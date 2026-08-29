@@ -22,9 +22,18 @@
 //!   base64url(workspace "|" subject_tag "|" nonce "|" exp_ms) "." hex(mac)
 //! ```
 //!
-//! Byte-identical to `state.zig`. A connect started against the Zig daemon and
-//! completed against this one during a cutover has to verify, so neither the
-//! separator, the encoding, nor the field order is this crate's to improve.
+//! Inherited from `state.zig` because the format is sound, NOT because a
+//! cutover depends on it — nothing is in production, so there are no in-flight
+//! connects to preserve. A wire format on this port stands on its own merits.
+//!
+//! And a caution for whoever reads the HMAC and infers more from it than is
+//! there: the signature is not what makes this safe. An opaque random token
+//! with the workspace, subject and expiry held in the store instead of in the
+//! token reaches the same unforgeability, the same starter binding and the same
+//! single-use — `oauth2::CsrfToken` is exactly that, and it is not weaker. What
+//! the signature buys is that the store answers ONE question ("spent?") rather
+//! than being the authority on what the token means. See the spec's Discovery
+//! log, where the comparison is recorded with its measurements.
 //!
 //! # The verify does not consume, and that ordering is load-bearing
 //!

@@ -122,7 +122,12 @@ impl Connectors {
         // Total over the providers, so a sixth cannot land with an exchange
         // that works and a handle nobody wrote.
         let grant = match provider {
-            Provider::Slack => parse::slack(&body),
+            // The answer's delimiter is the provider's own, read from the
+            // registry rather than assumed — see `Oauth2Flow::scope_delimiter`.
+            Provider::Slack => match provider.archetype() {
+                Archetype::Oauth2(flow) => parse::slack(&body, flow.scope_delimiter),
+                Archetype::AppInstall(_) => None,
+            },
             Provider::Zoho => {
                 let base = zoho::accounts_base(location);
                 let mut extras = Map::new();
