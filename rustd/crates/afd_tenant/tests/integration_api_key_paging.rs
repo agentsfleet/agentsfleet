@@ -35,10 +35,7 @@ use afd_tenant::apikey::{ApiKeySort, KeyRow};
 /// naming this makes that pair legible as the deliberate exception it is.
 const STEP_MS: i64 = 1_000;
 
-#[path = "support/apikey_lane.rs"]
-mod support;
-
-use self::support::{ApiKeyLane, NOW_MS, PAGE_SIZE};
+use crate::apikey_lane::{ApiKeyLane, NOW_MS, PAGE_SIZE};
 
 /// Dimension 2.3 — a page boundary lands exactly between two rows, ties
 /// included, and the total does not move while a client walks.

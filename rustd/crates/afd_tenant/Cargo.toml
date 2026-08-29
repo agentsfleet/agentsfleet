@@ -1,5 +1,7 @@
 [package]
 name = "afd_tenant"
+# One aggregated test binary; see tests/tenant_suite.rs for why.
+autotests = false
 description = "The tenant plane: api-keys, command-line credentials, device-flow login, and workspace ownership."
 version.workspace = true
 edition.workspace = true
@@ -71,3 +73,7 @@ tracing-subscriber.workspace = true
 # Reads a stored session envelope back, so the suite asserts on what Redis holds
 # rather than on what this crate says it wrote.
 serde_json.workspace = true
+
+[[test]]
+name = "tenant_suite"
+path = "tests/tenant_suite.rs"

@@ -9,7 +9,6 @@
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
@@ -17,10 +16,7 @@ use std::time::Duration;
 
 use afd_redis::ready::ReadyIndex;
 
-#[path = "support/redis_harness.rs"]
-mod support;
-
-use self::support::RedisHarness;
+use crate::support::RedisHarness;
 
 /// The readiness index only clears a mark the caller actually saw.
 ///

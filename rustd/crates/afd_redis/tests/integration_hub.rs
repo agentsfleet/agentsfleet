@@ -20,10 +20,7 @@ use afd_redis::streams::FleetStreams;
 use afd_redis::{Backoff, SubscriptionHub};
 use tokio::sync::Mutex;
 
-#[path = "support/redis_harness.rs"]
-mod support;
-
-use self::support::RedisHarness;
+use crate::support::RedisHarness;
 
 /// Serialises the two hub tests. See the module documentation.
 static HUB_LANE: Mutex<()> = Mutex::const_new(());

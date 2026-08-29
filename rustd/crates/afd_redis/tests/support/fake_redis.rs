@@ -32,10 +32,7 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::{TcpListener, TcpStream};
 
-#[path = "subscriber.rs"]
-mod subscriber;
-
-pub(crate) use self::subscriber::install_subscriber;
+pub(crate) use crate::subscriber::install_subscriber;
 
 /// What the fake does when a command arrives.
 #[derive(Debug, Clone)]
