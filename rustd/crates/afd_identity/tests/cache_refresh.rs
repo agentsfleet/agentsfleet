@@ -11,7 +11,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 

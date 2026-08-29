@@ -8,7 +8,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-
 use afd_auth::principal::Subject;
 use afd_identity::capability::ClaimSource;
 use afd_identity::error::ClaimUnavailable;

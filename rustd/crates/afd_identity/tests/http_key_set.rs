@@ -15,7 +15,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-
 use afd_auth::verifier::VerifyError;
 use afd_identity::HttpKeySet;
 use afd_identity::jwks::source::{KeySetSource, MAX_RESPONSE_BYTES};
