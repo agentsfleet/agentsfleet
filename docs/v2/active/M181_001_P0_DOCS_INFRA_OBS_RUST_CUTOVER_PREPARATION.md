@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M181
 **Workstream:** 001
 **Date:** Aug 30, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — everything the swap needs that does not need the swap's route surface
 **Categories:** DOCS | INFRA | OBS
 **Batch:** B6 — family closer, first half; runs concurrent with M180_001
-**Branch:** added at CHORE(open)
-**Test Baseline:** set at CHORE(open) — `unit=<N> integration=<M>` from the repository's declared `verify.*` commands (`.oracle/orly.json`)
+**Branch:** feat/m181-cutover-prep
+**Test Baseline:** deferred to CHORE(close) per Indy override (Aug 29 2026, recorded on M180_001): no `make test-unit-all` / `make test-integration-rustd` runs mid-milestone — `cargo fmt` + `cargo clippy` per section only; the full declared `verify.*` set runs once at the boundary, where the Test Delta is graded against `origin/main`'s counts
 **Depends on:** M177_001 (runner plane); M176_001 (substrate, `afd_observability`)
 **Provenance:** split from the single M181_001 cutover spec (LLM-drafted, Claude Fable 5, Aug 23, 2026) on the axis "needs the full route surface or does not"; this half does not
 **Canonical architecture:** `docs/architecture/observability.md` §The three signal paths + `docs/architecture/runner_fleet.md` §Multi-replica
