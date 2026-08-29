@@ -29,12 +29,22 @@ pub(crate) struct RedisHarness {
 }
 
 impl RedisHarness {
-    /// Connects, with a deadline short enough that a hung server fails a test
-    /// rather than the whole lane's timeout.
+    /// Connects through the crate's own admission gate, not around it.
+    ///
+    /// `connect_live` is what every other crate's lane harness calls, and this
+    /// crate owning it is not a reason to skip it. The gate serializes the
+    /// handshake and retries a lapsed budget, which matters here for the same
+    /// reason it matters there: the whole cost of a lane connection is the
+    /// rustls handshake against an RSA-2048 certificate, redone per connection
+    /// with no session resumption. That is CPU work competing with the suite
+    /// that asked for it, so under load the budget lapses on a Redis that is
+    /// perfectly healthy. `Redis::connect` stays the right call for the
+    /// fault-injection suites next door, which point at private endpoints and
+    /// want the raw failure.
     pub(crate) async fn connect() -> Self {
         install_subscriber();
         let config = Self::config();
-        let redis = Redis::connect(&config)
+        let redis = afd_redis::test_util::connect_live(&config)
             .await
             .expect("the lane's Redis must be reachable");
         Self {

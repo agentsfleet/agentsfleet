@@ -24,9 +24,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use redis::aio::ConnectionManager;
-#[cfg(feature = "test-util")]
-use redis::aio::ConnectionManagerConfig;
+use redis::aio::{ConnectionManager, ConnectionManagerConfig};
 use redis::{Cmd, FromRedisValue, Value};
 
 use crate::config::{RedisConfig, RedisRole};
@@ -37,6 +35,59 @@ static NEXT_CONNECT_ATTEMPT: AtomicU64 = AtomicU64::new(0);
 
 /// The liveness probe, and the only command this module issues by name.
 const CMD_PING: &str = "PING";
+
+/// The invariant every constant below serves.
+///
+/// `connect_inner` runs the driver's whole reconnection ladder inside
+/// [`RedisConfig::connect_timeout`]. For the outer deadline to be the LAST
+/// thing that fires rather than the first, the ladder's worst case has to fit:
+///
+/// ```text
+/// (CONNECT_RETRIES + 1) * CONNECT_ATTEMPT_TIMEOUT   <- the attempts
+///   + jittered sum of the backoff delays            <- the sleeps
+///   < RedisConfig::connect_timeout                  <- the outer budget
+/// ```
+///
+/// `redis` 1.6.0 satisfies none of that by default. It ships six retries over a
+/// jittered doubling backoff from 100 ms with `max_delay: None`, so `backon`'s
+/// own 60 s ceiling applies and nothing caps the ladder
+/// (`connection_manager.rs`, `DEFAULT_NUMBER_OF_CONNECTION_RETRIES`). The six
+/// base delays are 100+200+400+800+1600+3200 = 6300 ms of SLEEP, and because
+/// `backon`'s jitter is additive — each delay becomes `d..2d` — the real range
+/// is 6.3 s to 12.6 s, before a single connection attempt is counted.
+///
+/// Against a 5 s budget that ladder cannot be exhausted. The failure this
+/// produces is not "connecting is slow": most first failures recover on the
+/// next attempt after a 100–200 ms sleep. It is that a run of failures leaves
+/// the driver mid-ladder when the outer deadline cancels it, and the caller is
+/// handed `ConnectTimeout` — an error naming Redis, carrying no trace of
+/// whatever actually caused the retries. The initiating error is destroyed.
+///
+/// So bounding the ladder IS the diagnostic fix. Once the worst case fits, the
+/// driver always returns its own error first, and that error keeps its source
+/// chain through [`ErrorKind::Unreachable`].
+const CONNECT_RETRIES: usize = 2;
+
+/// The floor and ceiling of the driver's backoff between those retries.
+///
+/// Bounded rather than derived from the budget: a fraction-of-budget ladder
+/// would grow with the budget and re-create the problem on a generous one.
+/// Worst case here is jitter-doubled 50+100 = 300 ms.
+const CONNECT_RETRY_MIN_DELAY: Duration = Duration::from_millis(50);
+const CONNECT_RETRY_MAX_DELAY: Duration = Duration::from_millis(100);
+
+/// The deadline on ONE connection attempt, pinned rather than inherited.
+///
+/// `redis` defaults this to 1 s and the response deadline to 500 ms
+/// (`client.rs`, `DEFAULT_CONNECTION_TIMEOUT`). Those are reasonable, and they
+/// are still written down here: the invariant above multiplies this value by
+/// the attempt count, so a future release changing its own default would move
+/// our worst case without touching this crate. Pinning makes the arithmetic
+/// ours.
+const CONNECT_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// The deadline on the reply within one attempt, pinned for the same reason.
+const CONNECT_RESPONSE_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// A connection to one role's Redis.
 ///
@@ -107,12 +158,14 @@ impl Redis {
 
     async fn connect_inner(config: &RedisConfig) -> Result<Self> {
         let client = build_client(config)?;
-        let manager = ConnectionManager::new(client).await.map_err(|source| {
-            Error::new(ErrorKind::Unreachable {
-                role: config.role().tag(),
-                source: Box::new(source),
-            })
-        })?;
+        let manager = ConnectionManager::new_with_config(client, connect_retry_policy())
+            .await
+            .map_err(|source| {
+                Error::new(ErrorKind::Unreachable {
+                    role: config.role().tag(),
+                    source: Box::new(source),
+                })
+            })?;
 
         let redis = Self {
             role: config.role(),
@@ -156,14 +209,13 @@ impl Redis {
         // `new_lazy_with_config` builds the manager WITHOUT opening a socket,
         // which is the whole point: `connect` above opens one and pings it, and
         // this seam exists to skip exactly that.
-        let manager =
-            ConnectionManager::new_lazy_with_config(client, ConnectionManagerConfig::new())
-                .map_err(|source| {
-                    Error::new(ErrorKind::Unreachable {
-                        role: config.role().tag(),
-                        source: Box::new(source),
-                    })
-                })?;
+        let manager = ConnectionManager::new_lazy_with_config(client, connect_retry_policy())
+            .map_err(|source| {
+                Error::new(ErrorKind::Unreachable {
+                    role: config.role().tag(),
+                    source: Box::new(source),
+                })
+            })?;
         Ok(Self {
             role: config.role(),
             manager,
@@ -262,6 +314,19 @@ impl Redis {
 /// by path rather than from a trust store. `REDIS_TLS_CA_CERT_FILE` is the same
 /// knob `redis_config.zig` reads, and the same file the Zig lane extracts from
 /// the container.
+/// The driver's reconnection ladder, bounded to fit inside a connect budget.
+///
+/// See [`CONNECT_RETRIES`] for why the default does not fit. This is also what
+/// [`Redis::unreachable`] builds on, so the two paths answer with one policy.
+pub(crate) fn connect_retry_policy() -> ConnectionManagerConfig {
+    ConnectionManagerConfig::new()
+        .set_number_of_retries(CONNECT_RETRIES)
+        .set_min_delay(CONNECT_RETRY_MIN_DELAY)
+        .set_max_delay(CONNECT_RETRY_MAX_DELAY)
+        .set_connection_timeout(Some(CONNECT_ATTEMPT_TIMEOUT))
+        .set_response_timeout(Some(CONNECT_RESPONSE_TIMEOUT))
+}
+
 pub(crate) fn build_client(config: &RedisConfig) -> Result<redis::Client> {
     let Some(path) = config.ca_cert_file() else {
         return redis::Client::open(config.url()).map_err(|source| {
@@ -292,4 +357,119 @@ pub(crate) fn build_client(config: &RedisConfig) -> Result<redis::Client> {
             source: Box::new(source),
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::{
+        CONNECT_ATTEMPT_TIMEOUT, CONNECT_RESPONSE_TIMEOUT, CONNECT_RETRIES,
+        CONNECT_RETRY_MAX_DELAY, CONNECT_RETRY_MIN_DELAY, connect_retry_policy,
+    };
+    use crate::config::{RedisConfig, RedisRole};
+
+    /// The longest the driver's ladder can take before it gives an answer.
+    ///
+    /// Attempts and sleeps both count. `backon` doubles the delay per retry,
+    /// caps it at `max_delay`, and adds a random `(0, delay)` on top — jitter is
+    /// ADDITIVE, so one retry's ceiling is twice its capped delay, not the
+    /// delay. Budgeting against `max_delay` alone would under-count by half.
+    fn worst_case_ladder() -> Duration {
+        let attempts = CONNECT_ATTEMPT_TIMEOUT * u32::try_from(CONNECT_RETRIES + 1).unwrap();
+
+        let mut sleeps = Duration::ZERO;
+        let mut delay = CONNECT_RETRY_MIN_DELAY;
+        for _ in 0..CONNECT_RETRIES {
+            sleeps += delay.min(CONNECT_RETRY_MAX_DELAY) * 2;
+            delay *= 2;
+        }
+
+        attempts + sleeps
+    }
+
+    fn default_budget() -> Duration {
+        RedisConfig::from_url(RedisRole::Default, "redis://127.0.0.1:6379".to_owned())
+            .connect_timeout()
+    }
+
+    /// The regression this pins, and the reason it is a correctness test rather
+    /// than a performance one.
+    ///
+    /// `redis`'s defaults put a 6.3–12.6 s ladder inside a 5 s budget, which
+    /// cannot be exhausted. The damage is not the waiting: it is that the outer
+    /// deadline cancels the driver mid-ladder, so the error that started the
+    /// retries never returns and the caller is told `ConnectTimeout` — pointing
+    /// every future investigation at Redis rather than at the real fault.
+    ///
+    /// While the ladder fits, the driver's own error always arrives first and
+    /// keeps its source chain. So this assertion is what makes the crate's
+    /// errors truthful, and any change to the five constants has to preserve it.
+    #[test]
+    fn test_the_connect_ladder_answers_before_the_budget_expires() {
+        let worst = worst_case_ladder();
+        let budget = default_budget();
+
+        assert!(
+            worst < budget,
+            "attempts plus jittered backoff must finish inside the connect \
+             budget, or the driver is cancelled mid-retry and its error is lost: \
+             worst case {worst:?} against a {budget:?} budget",
+        );
+    }
+
+    /// The policy is applied, and applied where this module says it is.
+    ///
+    /// Separate from the budget proof because the two fail for different
+    /// reasons: this catches a policy that stopped being applied at all — a
+    /// bare `ConnectionManagerConfig::new()` creeping back into `connect_inner`
+    /// and silently restoring the six-retry default — where that one catches a
+    /// policy still applied but grown past the budget.
+    #[test]
+    fn test_the_driver_never_inherits_its_own_unbounded_defaults() {
+        let policy = connect_retry_policy();
+
+        assert_eq!(
+            policy.number_of_retries(),
+            CONNECT_RETRIES,
+            "the six-retry default must not be inherited",
+        );
+        assert_eq!(
+            policy.max_delay(),
+            Some(CONNECT_RETRY_MAX_DELAY),
+            "`max_delay: None` is what let backon's 60 s ceiling apply",
+        );
+        assert_eq!(policy.min_delay(), CONNECT_RETRY_MIN_DELAY);
+        assert_eq!(policy.connection_timeout(), Some(CONNECT_ATTEMPT_TIMEOUT));
+        assert_eq!(policy.response_timeout(), Some(CONNECT_RESPONSE_TIMEOUT));
+    }
+
+    /// The arithmetic that made the default wrong, kept as a worked example.
+    ///
+    /// Without it a reader has to trust the prose in [`CONNECT_RETRIES`]. This
+    /// recomputes `redis`'s shipped defaults — six retries, 100 ms minimum,
+    /// doubling, uncapped — and shows the result does not fit, so the claim the
+    /// constants are chosen against stays checkable rather than remembered.
+    #[test]
+    fn test_the_shipped_defaults_are_the_ones_that_do_not_fit() {
+        const SHIPPED_RETRIES: u32 = 6;
+        const SHIPPED_MIN_DELAY: Duration = Duration::from_millis(100);
+
+        let mut sleeps = Duration::ZERO;
+        let mut delay = SHIPPED_MIN_DELAY;
+        for _ in 0..SHIPPED_RETRIES {
+            // Uncapped: `max_delay` is None, so backon's 60 s ceiling is the
+            // only limit and no delay here approaches it.
+            sleeps += delay;
+            delay *= 2;
+        }
+
+        assert_eq!(sleeps, Duration::from_millis(6300));
+        assert!(
+            sleeps > default_budget(),
+            "the shipped ladder sleeps {sleeps:?} against a {:?} budget, before \
+             a single connection attempt is counted",
+            default_budget(),
+        );
+    }
 }

@@ -94,8 +94,17 @@ ZIG_TEST_FILTER_ARG = $(if $(strip $(TEST_FILTER)),-Dtest-filter="$(TEST_FILTER)
 # fails at connect with SSLNotSupportedByServer before it can run. It is IN the
 # default rather than appended by a recipe, so a hosted URL supplied from the
 # environment keeps its TLS instead of having it stripped by a lane.
-TEST_DATABASE_URL ?= postgres://agentsfleet:agentsfleet@localhost:$(COMPOSE_PG_PORT)/agentsfleetdb?sslmode=disable
-TEST_REDIS_URL ?= rediss://:agentsfleet@localhost:$(COMPOSE_REDIS_PORT)
+#
+# 127.0.0.1, not `localhost`. The name costs a resolver round trip on every
+# connection, and on macOS it occasionally costs a five-second one: measured
+# over 20 sequential Redis connects, `localhost` ran a 566 ms median with a
+# 6343 ms worst case, and the literal address ran 246 ms with a 2194 ms worst.
+# Every live test opens its own connection, so the median is multiplied across
+# the lane and the tail is what made `ConnectTimeout` a coin flip against the
+# 5 s connect budget. The Redis certificate carries `IP:127.0.0.1` in its SAN
+# beside `DNS:localhost`, so TLS verification is unaffected.
+TEST_DATABASE_URL ?= postgres://agentsfleet:agentsfleet@127.0.0.1:$(COMPOSE_PG_PORT)/agentsfleetdb?sslmode=disable
+TEST_REDIS_URL ?= rediss://:agentsfleet@127.0.0.1:$(COMPOSE_REDIS_PORT)
 # Cert path — populated by _ensure-test-infra after Redis is healthy. Do NOT shell-expand
 # at parse time; Redis may not be running yet when the Makefile is first evaluated.
 TEST_REDIS_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt

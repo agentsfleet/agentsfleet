@@ -81,7 +81,9 @@ async fn connected() -> (Db, Redis) {
     ]);
     let redis_config = RedisConfig::resolve(&redis_env, RedisRole::Api)
         .expect("the lane publishes a usable Redis URL");
-    let queue = Redis::connect(&redis_config)
+    // Through the admission gate, like every other lane harness: the handshake
+    // is the expensive part and it queues behind the rest of the suite.
+    let queue = afd_redis::test_util::connect_live(&redis_config)
         .await
         .expect("the lane's Redis is up");
 
