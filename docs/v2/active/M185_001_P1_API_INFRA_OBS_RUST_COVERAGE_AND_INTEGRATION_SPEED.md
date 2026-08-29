@@ -227,7 +227,7 @@ Public HTTP routes, payloads, status codes, error codes, configuration knobs, sc
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Rust product coverage reaches the committed bar (§4) | `make test-coverage-rustd` | exit 0 and literal `100.00%` | P0 | |
+| R1 | Rust product coverage holds the declared ratchet floor (§4) | `make test-coverage-rustd` | exit 0 against `RUSTD_COVERAGE_FLOOR` (96) | P0 | |
 | R2 | Equivalent live coverage runs are materially faster (§1, §3, §6) | the `lane-phases` line in this PR's Rust coverage job log, against the same line on the preceding PR's job | `tests_s` ratio at most `0.80`, equal denominator | P0 | |
 | R3 | Redis dead-end startup obeys its configured deadline (§2) | `cd rustd && cargo test -p afd_redis --all-features --test integration_ready -- --ignored` | exit 0 and dead-end case below its asserted bound | P0 | |
 | R4 | HTTP crates form measured parallel siblings (§3) | `cd rustd && cargo test -p afd_api --all-features http_plane_dependency_graph` | exit 0 and zero cross-sibling edges | P1 | |
@@ -289,6 +289,19 @@ Public HTTP routes, payloads, status codes, error codes, configuration knobs, sc
 - **Patch-vs-refactor verdict:** this is a **refactor** because the bottleneck crosses build orchestration, runtime boundaries, crate ownership, and test seams, while the external behaviour remains locked.
 
 ## Discovery (consult log)
+
+- **Coverage closes on a ratchet, not on 100% (user's call, this session).** The
+  lane's `--fail-under-lines` moves from 100 to a declared `RUSTD_COVERAGE_FLOOR`
+  of 96, set from the measured 96.0219% rather than from a fresh run. Verbatim:
+  *"i dont want ot keep rre running lane for no reason, given the space
+  constraint, so i think lets fix the coverage overal to reach at 96% and move
+  on to th enext"*, and the option taken was **"Set gate to 96 now, no run"**
+  with its stated risk — that 96.0219% is stale, and a real number below 96
+  leaves the lane red anyway.
+
+  The 100% contract is NOT retired; §4's remaining 1,045 missed lines across 153
+  files are deferred, not cancelled. The floor only ever moves up.
+
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: user approved the analysis, requested `$orly-spec-new`, and authorized implementation in a dedicated worktree. The committed 100% target remains authoritative; 99% is not treated as a new floor.
 - **Metrics review** — creation baseline: successful commit `34387641b` ran the make coverage boundary in 523 wall seconds, including a separate normal migration build; 1,629 tests executed, Rust product coverage was 20,947/25,961 lines, one Redis binary consumed 28.86 seconds, and the workflow saved 5.68 GB of Cargo cache. No analytics or funnel playbook update is required because no user workflow changes.

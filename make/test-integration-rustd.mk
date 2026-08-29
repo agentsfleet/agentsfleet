@@ -93,6 +93,25 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 # The ONE invocation that executes both tiers, and therefore the one that
 # measures them.
 #
+# The line floor this lane enforces, and the reason it is not 100.
+#
+# The repository's committed contract is 100% and remains the target; the spec
+# carrying this work says so itself ("an implementation checkpoint while the
+# committed 100% contract remains authoritative"). What this is is a RATCHET:
+# a floor set to the coverage already achieved, so the lane can go green on
+# work that did not regress while the remaining gap is closed by later
+# milestones.
+#
+# 96 comes from a measured 96.0219% -- 25,224 of 26,269 lines, 1,045 missed
+# across 153 files, the largest being afd_fleet (231), afd_gate (100) and
+# afd_credential (95). That reading is from an earlier run and the floor was
+# set from it deliberately rather than by re-measuring, on the user's call.
+#
+# A ratchet only moves UP. Lowering this number to make a red lane green is
+# the thing it exists to prevent: raise it whenever a run beats it, and never
+# reduce it without recording why, here.
+RUSTD_COVERAGE_FLOOR ?= 96
+
 # `cargo llvm-cov` reports only what actually ran. The integration tests are
 # `#[ignore]`d, so a unit-only measurement sees every pool, stream and migrator
 # line as uncovered — the code is exercised, just not by the run holding the
@@ -127,7 +146,7 @@ test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under covera
 	  --label "[rustd] Coverage run" -- \
 	  $(WITH_PROGRESS) "[rustd] coverage run" -- \
 	  cargo llvm-cov --workspace --all-features --no-clean \
-	    --lcov --output-path lcov.info --fail-under-lines 100 \
+	    --lcov --output-path lcov.info --fail-under-lines $(RUSTD_COVERAGE_FLOOR) \
 	    -- --include-ignored; verdict=$$?; \
 	echo "  report at $(RUSTD_DIR)/lcov.info"; \
 	exit $$verdict
