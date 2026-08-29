@@ -1,7 +1,7 @@
 //! Mounted platform administration routes through the production router.
 #![cfg(feature = "test-util")]
 
-mod harness;
+use crate::harness;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
@@ -167,8 +167,17 @@ async fn platform_key_mutations_validate_pairing_before_io() {
 #[tokio::test]
 async fn library_catalogue_routes_require_write_scope_and_validate_before_io() {
     let admin = fleet(Scope::PlatformLibraryWrite);
+    assert_library_list_reaches_store(&admin).await;
+    assert_invalid_library_imports(&admin).await;
+    assert_oversized_library_import(&admin).await;
+    assert_valid_library_import_reaches_store(&admin).await;
+    assert_library_patch_validation(&admin).await;
+    assert_library_delete_and_scope(&admin).await;
+}
+
+async fn assert_library_list_reaches_store(admin: &axum::Router) {
     let list = send(
-        &admin,
+        admin,
         Method::GET,
         "/v1/admin/fleet-libraries",
         Some(PLATFORM_KEY),
@@ -176,7 +185,9 @@ async fn library_catalogue_routes_require_write_scope_and_validate_before_io() {
     )
     .await;
     assert_eq!(list.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
 
+async fn assert_invalid_library_imports(admin: &axum::Router) {
     for body in [
         "",
         "[]",
@@ -185,7 +196,7 @@ async fn library_catalogue_routes_require_write_scope_and_validate_before_io() {
         r#"{"source_kind":"upload","skill_markdown":"---","support_files":[{}]}"#,
     ] {
         let refused = send(
-            &admin,
+            admin,
             Method::POST,
             "/v1/admin/fleet-libraries",
             Some(PLATFORM_KEY),
@@ -194,7 +205,9 @@ async fn library_catalogue_routes_require_write_scope_and_validate_before_io() {
         .await;
         assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
     }
+}
 
+async fn assert_oversized_library_import(admin: &axum::Router) {
     let oversized = serde_json::json!({
         "source_kind": "upload",
         "source_ref": "unit/oversized",
@@ -202,7 +215,7 @@ async fn library_catalogue_routes_require_write_scope_and_validate_before_io() {
     })
     .to_string();
     let refused = send(
-        &admin,
+        admin,
         Method::POST,
         "/v1/admin/fleet-libraries",
         Some(PLATFORM_KEY),
@@ -211,9 +224,11 @@ async fn library_catalogue_routes_require_write_scope_and_validate_before_io() {
     .await;
     assert_eq!(refused.status(), StatusCode::PAYLOAD_TOO_LARGE);
     assert_eq!(code(refused).await, Some("UZ-REQ-002"));
+}
 
+async fn assert_valid_library_import_reaches_store(admin: &axum::Router) {
     let import = send(
-        &admin,
+        admin,
         Method::POST,
         "/v1/admin/fleet-libraries",
         Some(PLATFORM_KEY),
@@ -221,7 +236,9 @@ async fn library_catalogue_routes_require_write_scope_and_validate_before_io() {
     )
     .await;
     assert_eq!(import.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
 
+async fn assert_library_patch_validation(admin: &axum::Router) {
     for body in [
         "",
         "[]",
@@ -229,7 +246,7 @@ async fn library_catalogue_routes_require_write_scope_and_validate_before_io() {
         r#"{"required_credentials_reasons":[]}"#,
     ] {
         let refused = send(
-            &admin,
+            admin,
             Method::PATCH,
             "/v1/admin/fleet-libraries/example",
             Some(PLATFORM_KEY),
@@ -240,7 +257,7 @@ async fn library_catalogue_routes_require_write_scope_and_validate_before_io() {
     }
 
     let patch = send(
-        &admin,
+        admin,
         Method::PATCH,
         "/v1/admin/fleet-libraries/example",
         Some(PLATFORM_KEY),
@@ -248,9 +265,11 @@ async fn library_catalogue_routes_require_write_scope_and_validate_before_io() {
     )
     .await;
     assert_eq!(patch.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
 
+async fn assert_library_delete_and_scope(admin: &axum::Router) {
     let delete = send(
-        &admin,
+        admin,
         Method::DELETE,
         "/v1/admin/fleet-libraries/example",
         Some(PLATFORM_KEY),

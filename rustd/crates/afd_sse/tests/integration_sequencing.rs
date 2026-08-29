@@ -31,10 +31,12 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use std::collections::BTreeSet;
 use std::time::Duration;
 
 use afd_redis::SubscriptionHub;
 use afd_redis::streams::FleetStreams;
+use afd_sse::FanIn;
 use afd_sse::channel;
 use afd_sse::frame::Frame;
 use afd_sse::tail::tail;
@@ -96,12 +98,16 @@ async fn test_sse_sequencing_semantics() {
     // broadcast that already exists, so priming once is enough for both tails.
     let mut primer = hub.subscribe(&activity);
     prime(&publisher, &activity, &mut primer).await;
+    assert_ordered_frames(&publisher, &hub, &activity).await;
+    assert_reconnect_starts_over(&publisher, &hub, &activity, &mut primer).await;
+}
 
-    let mut first = Box::pin(tail(hub.subscribe(&activity)));
+async fn assert_ordered_frames(publisher: &FleetStreams, hub: &SubscriptionHub, activity: &str) {
+    let mut first = Box::pin(tail(hub.subscribe(activity)));
 
     for n in 0..ORDERED_FRAMES {
         publisher
-            .publish(&activity, &payload(n))
+            .publish(activity, &payload(n))
             .await
             .expect("the publish reaches Redis");
     }
@@ -120,32 +126,26 @@ async fn test_sse_sequencing_semantics() {
             "frame {n} arrived out of publish order, or rewritten"
         );
     }
+}
 
-    // The gap: this connection is gone, and what is published now reaches
-    // nobody. Pub/sub has no replay, which is the whole reason the daemon
-    // ignores `Last-Event-ID` rather than honouring it.
-    drop(first);
+async fn assert_reconnect_starts_over(
+    publisher: &FleetStreams,
+    hub: &SubscriptionHub,
+    activity: &str,
+    primer: &mut afd_redis::Subscription,
+) {
     let missed = r#"{"kind":"run_output","n":"during-the-gap"}"#;
     publisher
-        .publish(&activity, missed)
+        .publish(activity, missed)
         .await
         .expect("the publish reaches Redis");
 
-    // Waited for on the PRIMER before reconnecting, and this is load-bearing
-    // rather than tidiness. A broadcast receiver starts at the sender's current
-    // tail, so "the reconnect does not see the gap frame" is only true once the
-    // pump has already broadcast it. Subscribing while that frame is still in
-    // flight would hand it to the new receiver and fail this test for the one
-    // reason it is not about. The primer seeing it is the proof the pump is
-    // past it.
-    drain_until(&mut primer, missed).await;
+    drain_until(primer, missed).await;
 
-    // A reconnect. The primer has held the channel subscribed throughout, so
-    // this subscription is live the moment it is handed over.
-    let mut second = Box::pin(tail(hub.subscribe(&activity)));
+    let mut second = Box::pin(tail(hub.subscribe(activity)));
     let resumed = payload(0);
     publisher
-        .publish(&activity, &resumed)
+        .publish(activity, &resumed)
         .await
         .expect("the publish reaches Redis");
 
@@ -159,6 +159,83 @@ async fn test_sse_sequencing_semantics() {
         "the reconnect must receive what was published after it subscribed, \
          and never the frame published into the gap — there is nothing to resume from"
     );
+}
+
+/// A workspace fan-in attaches only its authorised fleet set, numbers valid
+/// frames across channels, drops an unrouteable payload without spending a
+/// number, and detaches a fleet on the next authorization refresh.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Redis: make test-integration-rustd"]
+async fn test_workspace_fan_in_tracks_authorised_fleets_and_valid_frames() {
+    let lane = SseLane::connect().await;
+    let publisher = FleetStreams::new(lane.redis.clone());
+    let alpha = lane.fleet("fanin-alpha");
+    let beta = lane.fleet("fanin-beta");
+    let alpha_channel = channel::activity(&alpha);
+    let beta_channel = channel::activity(&beta);
+    let hub = SubscriptionHub::start(SseLane::config())
+        .await
+        .expect("the hub starts");
+
+    // Prime each server-side subscription before the fan-in joins its local
+    // broadcast. Once the channel exists, `subscribe` adds a receiver without
+    // a second Redis round trip, so no fixed sleep is involved.
+    let mut alpha_primer = hub.subscribe(&alpha_channel);
+    prime(&publisher, &alpha_channel, &mut alpha_primer).await;
+    let mut beta_primer = hub.subscribe(&beta_channel);
+    prime(&publisher, &beta_channel, &mut beta_primer).await;
+
+    let mut fan_in = FanIn::new(Some(hub));
+    let wanted = BTreeSet::from([beta.clone(), alpha.clone()]);
+    let attached = fan_in.sync_to(&wanted);
+    assert_eq!(attached.attached, 2);
+    assert_eq!(attached.detached, 0);
+    assert!(attached.is_change());
+    assert_eq!(fan_in.fleets(), vec![alpha.clone(), beta.clone()]);
+    assert!(!fan_in.sync_to(&wanted).is_change());
+    assert_fan_in_delivery(&publisher, &mut fan_in, &alpha, &beta).await;
+
+    let remaining = BTreeSet::from([beta.clone()]);
+    let detached = fan_in.sync_to(&remaining);
+    assert_eq!(detached.attached, 0);
+    assert_eq!(detached.detached, 1);
+    assert_eq!(fan_in.fleets(), vec![beta]);
+}
+
+async fn assert_fan_in_delivery(
+    publisher: &FleetStreams,
+    fan_in: &mut FanIn,
+    alpha: &str,
+    beta: &str,
+) {
+    let beta_channel = channel::activity(beta);
+    publisher
+        .publish(&beta_channel, &payload(3))
+        .await
+        .expect("a valid fan-in frame reaches Redis");
+    let first = tokio::time::timeout(DELIVERY_BUDGET, fan_in.next_frame())
+        .await
+        .expect("the fan-in yields its first frame");
+    assert_eq!(first.seq, 0);
+    assert!(
+        first.data.contains(beta),
+        "the frame is tagged by its fleet"
+    );
+
+    let alpha_channel = channel::activity(alpha);
+    publisher
+        .publish(&alpha_channel, "not-json")
+        .await
+        .expect("the malformed payload still reaches the channel");
+    publisher
+        .publish(&alpha_channel, &payload(4))
+        .await
+        .expect("the valid payload follows it");
+    let second = tokio::time::timeout(DELIVERY_BUDGET, fan_in.next_frame())
+        .await
+        .expect("the fan-in skips the malformed payload");
+    assert_eq!(second.seq, 1);
+    assert!(second.data.contains(alpha));
 }
 
 /// The next frame, or a failed test rather than a hung lane.

@@ -6,7 +6,8 @@
 //! negative assertions here need.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
+use std::thread::{self, ThreadId};
 
 use tracing::field::{Field, Visit};
 use tracing::span::{Attributes, Id, Record};
@@ -21,6 +22,8 @@ pub(crate) struct SpanRecord {
     pub(crate) name: String,
     /// Every field on it, rendered as text.
     pub(crate) fields: HashMap<String, String>,
+    /// The test-harness thread that opened the span.
+    thread: ThreadId,
 }
 
 impl SpanRecord {
@@ -33,22 +36,29 @@ impl SpanRecord {
 /// Collects spans for the duration of one test.
 pub(crate) struct Recorder {
     spans: Arc<Mutex<Vec<SpanRecord>>>,
-    /// Dropping this detaches the subscriber, so one test's spans cannot leak
-    /// into the next one's assertions.
-    _guard: subscriber::DefaultGuard,
+    start: usize,
+    thread: ThreadId,
 }
+
+static SPANS: OnceLock<Arc<Mutex<Vec<SpanRecord>>>> = OnceLock::new();
 
 impl Recorder {
     /// Installs a recorder for the current thread and its tasks.
     pub(crate) fn install() -> Self {
-        let spans = Arc::new(Mutex::new(Vec::new()));
-        let layer = CollectingLayer {
-            spans: Arc::clone(&spans),
-        };
-        let guard = subscriber::set_default(Registry::default().with(layer));
+        let spans = Arc::clone(SPANS.get_or_init(|| {
+            let spans = Arc::new(Mutex::new(Vec::new()));
+            let layer = CollectingLayer {
+                spans: Arc::clone(&spans),
+            };
+            subscriber::set_global_default(Registry::default().with(layer))
+                .expect("the HTTP test binary installs one tracing subscriber");
+            spans
+        }));
+        let start = spans.lock().unwrap_or_else(PoisonError::into_inner).len();
         Self {
             spans,
-            _guard: guard,
+            start,
+            thread: thread::current().id(),
         }
     }
 
@@ -57,7 +67,11 @@ impl Recorder {
         self.spans
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+            .iter()
+            .skip(self.start)
+            .filter(|span| span.thread == self.thread)
+            .cloned()
+            .collect()
     }
 }
 
@@ -76,6 +90,7 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for CollectingLayer {
             .push(SpanRecord {
                 name: attrs.metadata().name().to_owned(),
                 fields,
+                thread: thread::current().id(),
             });
     }
 
@@ -87,7 +102,12 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for CollectingLayer {
             return;
         };
         let mut spans = self.spans.lock().unwrap_or_else(PoisonError::into_inner);
-        let Some(record) = spans.iter_mut().rev().find(|span| span.name == name) else {
+        let thread = thread::current().id();
+        let Some(record) = spans
+            .iter_mut()
+            .rev()
+            .find(|span| span.name == name && span.thread == thread)
+        else {
             return;
         };
         values.record(&mut TextVisitor(&mut record.fields));

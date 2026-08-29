@@ -13,8 +13,8 @@ Every memory row belongs to **one fleet**, keyed by the column **`fleet_id`** (U
 | Fact | Where it's enforced |
 |---|---|
 | Store column is `fleet_id`; the upsert key is the unique index `(key, fleet_id)` | `schema/820_memory_entries.sql` (`fleet_id UUID NOT NULL REFERENCES core.fleets`; `idx_memory_entries_key_fleet_id`) |>>>>>>> origin/main
-| Every read/write scopes `WHERE fleet_id = $1` (never a fetch-all + in-memory filter) | `src/agentsfleetd/memory/fleet_memory.zig` — the only `INSERT`/cap/sweep/list path |
-| `fleet_id` is **server-derived from the lease**, never client-supplied (Insecure-Direct-Object-Reference guard) | `src/agentsfleetd/http/handlers/runner/memory.zig` (`lease.fleet_id == {fleet_id}`) |
+| Every read/write scopes `WHERE fleet_id = $1` (never a fetch-all + in-memory filter) | `rustd/crates/afd_fleet/src/memory/` — the only `INSERT`/cap/sweep/list path |
+| `fleet_id` is **server-derived from the lease**, never client-supplied (Insecure-Direct-Object-Reference guard) | `rustd/crates/afd_api_runner/src/handler/runner/memory.rs` (`lease.fleet_id == {fleet_id}`) |
 | Two fleets never share a namespace — Fleet A cannot read Fleet B's memory | role isolation (§2) + the `(key, fleet_id)` key |
 
 > [!NOTE]
@@ -48,7 +48,7 @@ The four tools (`memory_store` / `memory_recall` / `memory_list` / `memory_forge
 | Concern | Path |
 |---|---|
 | Schema (table, `(key, fleet_id)` index, role grants, `fleet_id` foreign key + cascade) | `schema/820_memory_entries.sql` |>>>>>>> origin/main
-| The only write/read adapter (`WHERE fleet_id = $1`, `ON CONFLICT (key, fleet_id)`) | `src/agentsfleetd/memory/fleet_memory.zig` |
-| Runner hydrate/capture endpoints (lease-derived `fleet_id`, fencing) | `src/agentsfleetd/http/handlers/runner/memory.zig` |
-| Tenant read and forget (ownership-gated) | `src/agentsfleetd/http/handlers/memory/handler.zig` |
+| The only write/read adapter (`WHERE fleet_id = $1`, `ON CONFLICT (key, fleet_id)`) | `rustd/crates/afd_fleet/src/memory/` |
+| Runner hydrate/capture endpoints (lease-derived `fleet_id`, fencing) | `rustd/crates/afd_api_runner/src/handler/runner/memory.rs` |
+| Tenant read and forget (ownership-gated) | `rustd/crates/afd_api_tenant/src/handler/fleet/memory.rs` |
 | In-run store seeding (`:memory:` SQLite) | `src/runner/engine/inrun_memory.zig` |

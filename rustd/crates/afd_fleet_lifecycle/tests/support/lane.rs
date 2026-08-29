@@ -100,7 +100,7 @@ impl Lane {
     pub(crate) async fn create() -> Self {
         let database = TestDatabase::shared();
         let pool = database.open(DbRole::Api, &[]).await;
-        let queue = Redis::connect(&redis_config())
+        let queue = afd_redis::test_util::connect_live(&redis_config())
             .await
             .expect("the lane's Redis must be reachable");
         let fleets = Fleets::new(pool.clone(), queue.clone(), Entropy::new());

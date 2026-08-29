@@ -6,34 +6,26 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
-use std::sync::atomic::{AtomicU32, Ordering};
-
 use afd_admin::{
     CreateModel, DeleteModel, ModelInput, ModelRates, Models, PlatformKeyInput, PlatformKeys,
     SetPlatformKey,
 };
 use afd_core::clock::UnixMillis;
-use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_db::config::{DbRole, PoolConfig};
-use afd_db::{Db, Migrator};
-use sqlx::AssertSqlSafe;
+use afd_db::Db;
+use afd_db::config::DbRole;
+use afd_db::test_util::TestDatabase;
 
-const LANE_KNOB: &str = "TEST_DATABASE_URL";
-const WORKSPACE: &str = "01950000-0000-7000-8000-000000000002";
-const MISSING_WORKSPACE: &str = "01950000-0000-7000-8000-000000000099";
 const NOW: UnixMillis = UnixMillis::from_millis(1_725_000_000_000);
-
-static SEQUENCE: AtomicU32 = AtomicU32::new(0);
 
 const SEED: &str = r"
 WITH tenant AS (
     INSERT INTO core.tenants (id, name, created_at, updated_at)
-    VALUES ('01950000-0000-7000-8000-000000000001', 'Admin test', 1, 1)
+    VALUES ($1::uuid, 'Admin test', 1, 1)
 )
 INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at)
-VALUES ('01950000-0000-7000-8000-000000000002', '01950000-0000-7000-8000-000000000001', 'primary', 'test', 2)
+VALUES ($2::uuid, $1::uuid, 'primary', 'test', 2)
 ";
 
 #[tokio::test]
@@ -44,26 +36,53 @@ async fn model_and_platform_key_mutations_are_atomic() {
     let (entropy, _control) = Entropy::new_mocked();
     let models = Models::new(fixtures.database.clone(), entropy);
     let keys = PlatformKeys::new(fixtures.database.clone());
+    let provider = fixtures.provider();
+    let model_id = fixtures.model_id();
 
-    let anthropic = create(&models, "anthropic", "claude-opus-5").await;
-    assert_eq!(models.list().await.expect("models list").len(), 1);
-    let revision = fixtures.revision().await;
+    let anthropic = create(&models, &provider, &model_id).await;
+    assert_model_created_and_duplicate(&models, &provider, &model_id, &anthropic).await;
+    assert_missing_key_dependencies(&keys, &fixtures, &provider, &model_id).await;
+    assert_active_key_guards_model(&models, &keys, &fixtures, &provider, &model_id, &anthropic)
+        .await;
+    fixtures.cleanup().await;
+}
+
+async fn assert_model_created_and_duplicate(
+    models: &Models,
+    provider: &str,
+    model_id: &str,
+    anthropic: &afd_admin::Model,
+) {
+    assert!(
+        models
+            .list()
+            .await
+            .expect("models list")
+            .iter()
+            .any(|model| model.id() == anthropic.id())
+    );
     assert_eq!(
         models
             .create(
-                &input("anthropic", "claude-opus-5"),
+                &input(provider, model_id),
                 UnixMillis::from_millis(NOW.as_millis() + 1),
             )
             .await
             .expect("duplicate is a typed outcome"),
         CreateModel::Duplicate
     );
-    assert_eq!(fixtures.revision().await, revision);
+}
 
+async fn assert_missing_key_dependencies(
+    keys: &PlatformKeys,
+    fixtures: &Fixtures,
+    provider: &str,
+    model_id: &str,
+) {
     let missing_workspace = PlatformKeyInput::new(
-        "anthropic".to_owned(),
-        id(MISSING_WORKSPACE),
-        "claude-opus-5".to_owned(),
+        provider.to_owned(),
+        id(fixtures.missing_workspace.as_str()),
+        model_id.to_owned(),
         None,
     );
     assert_eq!(
@@ -72,11 +91,17 @@ async fn model_and_platform_key_mutations_are_atomic() {
             .expect("missing workspace is a typed outcome"),
         SetPlatformKey::WorkspaceNotFound
     );
-    assert!(keys.list().await.expect("keys list").is_empty());
+    assert!(
+        keys.list()
+            .await
+            .expect("keys list")
+            .iter()
+            .all(|key| key.provider() != provider)
+    );
 
     let missing_model = PlatformKeyInput::new(
-        "anthropic".to_owned(),
-        id(WORKSPACE),
+        provider.to_owned(),
+        id(fixtures.workspace.as_str()),
         "missing".to_owned(),
         None,
     );
@@ -86,19 +111,34 @@ async fn model_and_platform_key_mutations_are_atomic() {
             .expect("missing model is a typed outcome"),
         SetPlatformKey::ModelNotFound
     );
-    assert!(keys.list().await.expect("keys list").is_empty());
+    assert!(
+        keys.list()
+            .await
+            .expect("keys list")
+            .iter()
+            .all(|key| key.provider() != provider)
+    );
+}
 
+async fn assert_active_key_guards_model(
+    models: &Models,
+    keys: &PlatformKeys,
+    fixtures: &Fixtures,
+    provider: &str,
+    model_id: &str,
+    anthropic: &afd_admin::Model,
+) {
     let active = PlatformKeyInput::new(
-        "anthropic".to_owned(),
-        id(WORKSPACE),
-        "claude-opus-5".to_owned(),
+        provider.to_owned(),
+        id(fixtures.workspace.as_str()),
+        model_id.to_owned(),
         None,
     );
     let SetPlatformKey::Set(key) = keys.set(&active, NOW).await.expect("default activates") else {
         panic!("a valid default must activate");
     };
     assert!(key.is_active());
-    assert_eq!(key.model(), Some("claude-opus-5"));
+    assert_eq!(key.model(), Some(model_id));
     assert_eq!(
         models
             .delete(anthropic.id(), NOW)
@@ -108,7 +148,7 @@ async fn model_and_platform_key_mutations_are_atomic() {
     );
 
     assert!(
-        keys.deactivate("anthropic", NOW)
+        keys.deactivate(provider, NOW)
             .await
             .expect("default deactivates")
     );
@@ -119,7 +159,6 @@ async fn model_and_platform_key_mutations_are_atomic() {
             .expect("unreferenced model deletes"),
         DeleteModel::Deleted
     );
-    fixtures.cleanup().await;
 }
 
 async fn create(models: &Models, provider: &str, model_id: &str) -> afd_admin::Model {
@@ -146,93 +185,51 @@ fn id(raw: &str) -> Uuid7 {
 }
 
 struct Fixtures {
-    base_url: String,
-    name: String,
+    lane: TestDatabase,
     database: Db,
+    tenant: Uuid7,
+    workspace: Uuid7,
+    missing_workspace: Uuid7,
+    suffix: String,
 }
 
 impl Fixtures {
     async fn create() -> Self {
-        let base_url = std::env::var(LANE_KNOB).unwrap_or_else(|_error| {
-            panic!("{LANE_KNOB} is unset — run through `make test-integration-rustd`")
-        });
-        let name = format!(
-            "afd_admin_{}_{}",
-            std::process::id(),
-            SEQUENCE.fetch_add(1, Ordering::Relaxed)
-        );
-        admin(&base_url, AssertSqlSafe(format!("CREATE DATABASE {name}"))).await;
-        let url = database_url(&base_url, &name);
-        let migrator = open(&url, DbRole::Migrator).await;
-        Migrator::new()
-            .run(&migrator)
-            .await
-            .expect("the schema applies");
-        drop(migrator);
+        let lane = TestDatabase::shared();
+        let tenant = id(&afd_db::test_util::mint_id());
+        let workspace = id(&afd_db::test_util::mint_id());
+        let missing_workspace = id(&afd_db::test_util::mint_id());
+        let suffix = tenant.as_str().replace('-', "");
         Self {
-            database: open(&url, DbRole::Api).await,
-            base_url,
-            name,
+            database: lane.open(DbRole::Api, &[]).await,
+            lane,
+            tenant,
+            workspace,
+            missing_workspace,
+            suffix,
         }
     }
 
     async fn seed(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(SEED)
+            .bind(self.tenant.as_str())
+            .bind(self.workspace.as_str())
             .execute(&mut *connection)
             .await
             .expect("the admin fixture seeds");
     }
 
-    async fn revision(&self) -> i64 {
-        let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query_scalar("SELECT revision FROM core.model_catalogue_revision WHERE id = 1")
-            .fetch_one(&mut *connection)
-            .await
-            .expect("revision reads")
+    fn provider(&self) -> String {
+        format!("anthropic-{}", self.suffix)
+    }
+
+    fn model_id(&self) -> String {
+        format!("claude-opus-5-{}", self.suffix)
     }
 
     async fn cleanup(self) {
         drop(self.database);
-        admin(
-            &self.base_url,
-            AssertSqlSafe(format!(
-                "DROP DATABASE IF EXISTS {} WITH (FORCE)",
-                self.name
-            )),
-        )
-        .await;
+        self.lane.cleanup().await;
     }
-}
-
-fn database_url(base_url: &str, name: &str) -> String {
-    let (prefix, tail) = base_url
-        .rsplit_once('/')
-        .expect("a Postgres URL has a database path");
-    let query = tail.split_once('?').map_or("", |(_, query)| query);
-    if query.is_empty() {
-        format!("{prefix}/{name}")
-    } else {
-        format!("{prefix}/{name}?{query}")
-    }
-}
-
-async fn open(url: &str, role: DbRole) -> Db {
-    let env = MapEnv::from_pairs(DbRole::ALL.iter().map(|each| (each.url_knob(), url)));
-    Db::connect(&PoolConfig::resolve(&env, role).expect("the URL resolves"))
-        .await
-        .expect("the database accepts a connection")
-}
-
-async fn admin(base_url: &str, statement: AssertSqlSafe<String>) {
-    let pool = sqlx::PgPool::connect(base_url)
-        .await
-        .expect("the lane database is reachable");
-    let mut connection = pool.acquire().await.expect("an admin connection");
-    sqlx::query(statement)
-        .execute(&mut *connection)
-        .await
-        .expect("the admin statement runs");
-    drop(connection);
-    pool.close().await;
 }

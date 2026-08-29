@@ -10,21 +10,30 @@
 //! borrowing them from `afd_fleet::tests` would put leases, money and policy
 //! behind a test about a person answering a question.
 //!
-//! # Nothing is set up per test, and nothing is torn down
+//! # One tenant, and a workspace and fleet per test
 //!
-//! The tenant, workspace and fleet are SHARED SCAFFOLDING: every test wants the
-//! same three rows, so they are fixed constants written under
-//! `ON CONFLICT (id) DO NOTHING`. Whichever test runs first writes them and the
-//! rest are no-ops — which is the whole point of one migrated database, and
-//! what minting a fresh triple per test would quietly undo.
-//!
-//! GATES are the opposite: each test resolves or expires its own, so those are
-//! minted. That is the line — shared when every writer writes the same row,
-//! minted when a test mutates it or asserts its shape.
+//! The tenant is shared scaffolding: every test writes the same row under
+//! `ON CONFLICT (id) DO NOTHING`, whichever runs first wins, and nothing
+//! asserts over it. The workspace and fleet are minted per test, because tests
+//! DO assert over those — a count of a fleet's events, a listing of a
+//! workspace's queue — and on one shared database a fixed pair puts every
+//! sibling's rows inside this test's answer. That was a real failure, three
+//! runs in a row on two different tests, and it is the line: shared when every
+//! writer writes the same row, minted the moment a test reads a set.
 //!
 //! There is no teardown. `TestDatabase::shared` owns no database to drop, so a
 //! `cleanup` here would be a call every test makes that does nothing, implying
 //! an isolation boundary that is not there.
+//!
+//! # The sweeper is global, so its tests take a lock
+//!
+//! `Inbox::expire` is a system-wide statement by design — `WHERE status =
+//! pending AND timeout_at <= now`, no workspace or fleet in it — which is what
+//! a sweeper must be in production and what no amount of identifier minting can
+//! isolate. A test that sweeps therefore expires every OTHER test's lapsed
+//! gate, and a test whose premise is a gate past its window finds it already
+//! resolved. Those two groups take [`sweeper_exclusive`] and run one at a time;
+//! everything else still runs concurrently.
 //!
 //! # Redis is here because an approval CONTINUES a run
 //!
@@ -50,7 +59,6 @@ use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
-use afd_redis::Redis;
 use afd_redis::config::{RedisConfig, RedisRole};
 use sqlx::Row as _;
 
@@ -60,6 +68,21 @@ const REDIS_URL_KNOB: &str = "TEST_REDIS_URL";
 /// The environment knob naming its certificate authority.
 const REDIS_CA_KNOB: &str = "TEST_REDIS_CA_CERT";
 
+/// Serialises the tests the global sweeper cannot be isolated from.
+///
+/// Held for the whole test body by anything that calls `Inbox::expire`, and by
+/// anything that seeds a gate already past its window and expects to find it
+/// PENDING. Both sides are needed: the lock exists to keep those two groups
+/// apart, and a lock only one side takes keeps nothing apart at all.
+///
+/// A `tokio` mutex rather than the standard library's, because the guard is
+/// held across `await` points, and it does not poison — one failing test leaves
+/// the rest runnable rather than turning a single red into a suite of them.
+pub(crate) async fn sweeper_exclusive() -> tokio::sync::MutexGuard<'static, ()> {
+    static SWEEPER: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    SWEEPER.lock().await
+}
+
 /// The instant every fixture row is stamped with.
 pub(crate) const NOW_MS: i64 = 1_760_000_000_000;
 
@@ -68,12 +91,6 @@ pub(crate) const NOW_MS: i64 = 1_760_000_000_000;
 /// Fixed, readable and SHARED — see the module note. Version-7 shaped so the
 /// schema's `ck_*_id_uuidv7` admits it.
 const TENANT: &str = "0195b4ba-8d3a-7a11-8abc-000000000001";
-
-/// Its workspace.
-const WORKSPACE: &str = "0195b4ba-8d3a-7a11-8abc-000000000002";
-
-/// The fleet the gates belong to.
-const FLEET: &str = "0195b4ba-8d3a-7a11-8abc-000000000003";
 
 /// How long a fixture gate waits before the sweeper may take it.
 pub(crate) const WINDOW_MS: i64 = 60_000;
@@ -101,22 +118,14 @@ pub(crate) struct Lane {
 }
 
 impl Lane {
-    /// The shared scaffolding: one tenant, one workspace, one fleet.
-    ///
-    /// Idempotent, so the first test to run writes the three rows and every
-    /// later one costs three no-op statements. Use this wherever a test
-    /// addresses its gate by ACTION — which is every test that resolves or
-    /// expires one.
-    pub(crate) async fn create() -> Self {
-        Self::open(WORKSPACE.to_owned(), FLEET.to_owned()).await
-    }
-
     /// A workspace and fleet of this test's OWN, under the shared tenant.
     ///
-    /// For the reads that count rows: a queue listing asserts what a workspace
-    /// holds, and on one shared database every other test's gates would be in
-    /// the answer. Minted because the test asserts the SHAPE of what it sees,
-    /// which is the same rule the gates themselves follow.
+    /// The only constructor, because on one shared database every alternative
+    /// is a race. A lane on fixed identifiers puts every test's gates in every
+    /// other test's fleet: a count of that fleet's events reads a sibling's
+    /// continuation, and a sweep over that workspace expires the gate a
+    /// sibling is about to answer. Both are real failures this suite has had.
+    /// Minting the pair costs three seeding statements and removes the class.
     pub(crate) async fn isolated() -> Self {
         Self::open(mint().as_str().to_owned(), mint().as_str().to_owned()).await
     }
@@ -125,7 +134,7 @@ impl Lane {
     async fn open(workspace: String, fleet: String) -> Self {
         let database = TestDatabase::shared();
         let pool = database.open(DbRole::Api, &[]).await;
-        let queue = Redis::connect(&redis_config())
+        let queue = afd_redis::test_util::connect_live(&redis_config())
             .await
             .expect("the lane's Redis must be reachable");
 

@@ -26,10 +26,7 @@ use std::time::Duration;
 use afd_redis::config::{RedisConfig, RedisRole};
 use afd_redis::{Backoff, SubscriptionHub};
 
-#[path = "support/fake_redis.rs"]
-mod fake_redis;
-
-use self::fake_redis::{FakeRedis, Reply, closed_port, install_subscriber};
+use crate::fake_redis::{FakeRedis, Reply, closed_port, install_subscriber};
 
 /// Short enough that a hang fails the test rather than the lane's timeout.
 const BUDGET: Duration = Duration::from_secs(10);

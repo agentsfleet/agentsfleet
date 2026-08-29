@@ -227,5 +227,8 @@ mod tests {
         assert!(!Verdict::Admit.refuses());
         assert!(Verdict::DayExceeded.refuses());
         assert!(Verdict::MonthExceeded.refuses());
+        assert_eq!(Verdict::Admit.as_str(), "admit");
+        assert_eq!(Verdict::DayExceeded.as_str(), "day_exceeded");
+        assert_eq!(Verdict::MonthExceeded.as_str(), "month_exceeded");
     }
 }

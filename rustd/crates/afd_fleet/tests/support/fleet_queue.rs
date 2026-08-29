@@ -64,7 +64,7 @@ pub(crate) fn unreachable() -> Redis {
 
 /// Connects to the lane's Redis.
 pub(crate) async fn connect() -> Redis {
-    Redis::connect(&config())
+    afd_redis::test_util::connect_live(&config())
         .await
         .expect("the lane's Redis must be reachable")
 }

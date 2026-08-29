@@ -107,7 +107,7 @@ The catalog id comes from the bundle's frontmatter `name:`, **not** the reposito
 | | `content_hash`, `requirements_json` | the content address + parsed requirements (the R2 key is derived from `content_hash`, never stored as a public field) |
 | **Postgres `core.fleets`** | `source_markdown`, `trigger_markdown`, `bundle_content_hash`, `bundle_snapshot_key` | the live, editable fleet copy + the content identity the runner materializes from |
 
-Caps (`importer.zig`): **32 support files · 64 KiB per file · 256 KiB total.**
+Caps (`rustd/crates/afd_library/src/validate.rs`): **32 support files · 64 KiB per file · 256 KiB total.**
 
 **No dual-write.** Support-file bytes live in R2 only; Postgres holds a path/size/hash manifest and the content hash. The legacy per-workspace `core.fleet_bundles` table — which stored full support-file content inline and was installed from by `bundle_id` — was removed; install now resolves from a Fleet library tier (below).
 

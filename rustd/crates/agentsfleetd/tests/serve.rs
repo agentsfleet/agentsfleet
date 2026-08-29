@@ -10,8 +10,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-mod support;
-
 use afd_core::env::MapEnv;
 use agentsfleetd::serve::{Acceptor, BootFailure, DEFAULT_PORT, serve_accepts};
 use agentsfleetd::supervisor::Supervisor;
@@ -46,8 +44,8 @@ fn parses_but_dead() -> MapEnv {
         // Both are required at boot and resolved rather than dialled, so
         // supplying them well-formed keeps this fixture's failure the DATASTORE
         // one it is asserting about.
-        .chain(support::SESSION_PEPPER)
-        .chain(support::IDENTITY),
+        .chain(crate::support::SESSION_PEPPER)
+        .chain(crate::support::IDENTITY),
     )
 }
 
@@ -67,6 +65,8 @@ async fn test_boot_refuses_an_unusable_environment_before_connecting() {
         matches!(failure, BootFailure::Environment(_)),
         "boot must refuse on the environment, before any connection: {failure:?}"
     );
+    assert_eq!(failure.phase(), "preflight");
+    assert_eq!(failure.code(), afd_core::error_code::STARTUP_ENV_CHECK);
     assert!(
         supervisor.inventory().is_empty(),
         "nothing is supervised by a boot that refused"
@@ -93,6 +93,8 @@ async fn test_boot_refuses_when_a_datastore_will_not_answer() {
         matches!(failure, BootFailure::Database(_)),
         "the URL parsed, so this is a database failure and not an environment one: {failure:?}"
     );
+    assert_eq!(failure.phase(), "database");
+    assert_eq!(failure.code(), afd_core::error_code::STARTUP_DB_CONNECT);
     assert!(
         supervisor.inventory().is_empty(),
         "the accept loop is spawned last; a boot that failed earlier supervises nothing"
@@ -126,6 +128,11 @@ fn test_every_boot_failure_renders_a_reason() {
         "address already in use",
     ));
     assert!(listen.to_string().contains("cannot listen"));
+    assert_eq!(listen.phase(), "listen");
+    assert_eq!(
+        listen.code(),
+        afd_core::error_code::INTERNAL_OPERATION_FAILED
+    );
     assert!(
         std::error::Error::source(&listen)
             .expect("the io error is the source")
@@ -140,6 +147,18 @@ fn test_every_boot_failure_renders_a_reason() {
     assert!(
         matches!(lifted, BootFailure::Listen(_)),
         "an io error lifts to the listen variant on its own"
+    );
+
+    let (_kind, queue_source) = afd_redis::error::one_of_each_kind()
+        .into_iter()
+        .next()
+        .expect("the Redis error fixture is exhaustive");
+    let queue = BootFailure::from(queue_source);
+    assert_eq!(queue.phase(), "queue");
+    assert_eq!(queue.code(), afd_core::error_code::STARTUP_REDIS_CONNECT);
+    assert!(
+        std::error::Error::source(&queue).is_some(),
+        "the queue failure preserves the original Redis error"
     );
 }
 

@@ -7,6 +7,9 @@
 
 use afd_core::error_code::{self, ErrorCode};
 
+#[cfg(test)]
+mod tests;
+
 /// The result every fallible function in this crate returns.
 ///
 /// One alias per crate, defaulted to this crate's own [`Error`], so a reader
@@ -56,12 +59,18 @@ pub(crate) enum ErrorKind {
     },
 
     /// The entropy a gate reference is minted from could not be drawn.
-    #[error(transparent)]
-    Entropy { source: afd_crypto::error::Error },
+    #[error("the entropy source could not answer for the gate plane")]
+    Entropy {
+        #[source]
+        source: afd_crypto::error::Error,
+    },
 
     /// An identifier could not be minted from the current instant.
-    #[error(transparent)]
-    Identifier { source: afd_core::error::Error },
+    #[error("an identifier could not be minted for the gate plane")]
+    Identifier {
+        #[source]
+        source: afd_core::error::Error,
+    },
 
     /// A money read a gate is priced against failed.
     #[error("the billing store could not answer for the gate plane")]

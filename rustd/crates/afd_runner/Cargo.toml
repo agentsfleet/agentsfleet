@@ -1,5 +1,6 @@
 [package]
 name = "afd_runner"
+autotests = false
 description = "The runner control plane: enrolment, liveness, the verdict over what a host may assert, and the sweepers that notice when one goes quiet."
 version.workspace = true
 edition.workspace = true
@@ -47,3 +48,8 @@ test-util = ["afd_core/test-util", "afd_db/test-util", "afd_redis/test-util"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[[test]]
+name = "runner_suite"
+path = "tests/runner_suite.rs"
+required-features = ["test-util"]

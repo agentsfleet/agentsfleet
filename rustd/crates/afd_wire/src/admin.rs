@@ -215,3 +215,7 @@ pub struct FleetStreamsResponse<'a> {
     /// Instance-wide admission ceiling.
     pub max_streams: u32,
 }
+
+#[cfg(test)]
+#[path = "admin/tests.rs"]
+mod tests;

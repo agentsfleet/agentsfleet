@@ -16,50 +16,49 @@ Every row is extracted from the sections below; the owner column names the secti
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
 | Signal paths | 3 | OTLP push (no collector hop) · <img src="https://cdn.simpleicons.org/posthog" width="14" alt="" /> PostHog · 🐘 Postgres (money) | §The three signal paths |
-| Metric namespace | `agentsfleet_` runtime families; dotted semconv cost families | `otel_metrics_families.zig` declares every exported name; the namespace guard reads the registry | §The three signal paths |
+| Metric namespace | `agentsfleet_` runtime families; dotted semconv cost families | the metric-family registry declares every exported name; the namespace guard reads it | §The three signal paths |
 | Runner telemetry | deliberately bare | `record_metric` is a no-op stub; local logfmt to the host, liveness over `/v1/runners` | §`agentsfleet-runner` — deliberately bare |
-| Library read series | 102 total, comptime-asserted | closed enums; a new member fails the build, never grows the export | §Library read stages are metrics, not spans |
+| Library read series | 102 total, build-asserted | closed enums; a new member fails the build, never grows the export | §Library read stages are metrics, not spans |
 | Trace budget | 10 generic spans per monotonic second | 4 runner rejections + 4 server errors + 2 sampled successes; successful runner verbs never enqueue | §Traces |
 | OTLP queues | logs 2047 · traces 1023 · metrics 1023 (derived series ceiling: 256 cost + runtime worst case) | fire-and-forget; a full ring drops, never blocks; no retry, deliberately | §The OTLP exporter substrate, §Capacity and loss audit |
-| PostHog events | 5 production captures | `FleetCompleted` fires only after the fenced claim; `$insert_id` = SHA-256 of `fleet_id \|\| 0x00 \|\| event_id` | §PostHog is product analytics |
+| PostHog events | 9 captured, 2 declared-uncaptured | `FleetCompleted` fires only after the fenced claim; `$insert_id` = SHA-256 of `fleet_id \|\| 0x00 \|\| event_id` | §PostHog is product analytics |
 | Per-runner label ceiling | 4096 exact `runner_id` slots | counters overflow to `_other`, gauges drop | §Label registry |
 | Tenant identity on metrics | never | exact per-workspace cost is a Postgres ledger query, which is exact rather than bounded | §Label registry |
 | Log envelope | 4 KiB buffer, `truncated=true` on overflow | exporter-internal scopes stay stderr-only so a failing exporter cannot feed itself | §The shared logging module |
 | Performance gating | nothing gates on a percentile | the exported series are the evidence; a threshold that cannot fail reports success forever | §Library read stages are metrics, not spans |
-| The M61 naming trap | the live OTel export survived `OTEL_EXPORT_REMOVAL` | check `otel_logs.zig` / `otel_traces.zig` + the `GRAFANA_OTLP_*` gate, never the milestone name | §The M61 naming trap |
+| The M61 naming trap | the live OTel export survived `OTEL_EXPORT_REMOVAL` | check the OTLP log and trace exporters + the `GRAFANA_OTLP_*` gate, never the milestone name | §The M61 naming trap |
 | Production wiring truth | per-surface state, each row with its code evidence | re-read the evidence column rather than trusting the row | §Signal routing |
 
 ## The three signal paths
 
-All of it lives under `src/agentsfleetd/observability/`.
+The control plane's telemetry surfaces live in `afd_observability`.
 
 | Path | What | Consumer |
 |---|---|---|
 | OTLP (push) | logs → Loki, traces → Tempo, metrics (runtime + cost families) → Mimir. Direct to <img src="https://cdn.simpleicons.org/grafana" width="14" alt="" /> Grafana Cloud; **no collector hop**. Gated on the `GRAFANA_OTLP_*` env triple. The daemon's **only** metrics egress: there is no pull endpoint. | Grafana Cloud, operator dashboards |
 | <img src="https://cdn.simpleicons.org/posthog" width="14" alt="" /> PostHog | nullable client, product events only | product analytics |
-| Postgres | per-run execution telemetry + billing counters in `src/agentsfleetd/state/` | the money system of record |
+| Postgres | per-run execution telemetry + billing counters in `afd_billing` | the money system of record |
 
 **One process, one registry.** Every runtime family carries the `agentsfleet_`
 prefix; the evented cost families use the dotted OpenTelemetry
 semantic-convention names listed at the end of this file.
-`otel_metrics_families.zig` declares every exported name, and the namespace
-guard fails on any family outside the registry. `fleet_id`, log event names,
+The metric-family registry declares every exported name, and the namespace
+guard fails on any family outside it. `fleet_id`, log event names,
 `EventKind` tags, and the Redis consumer group keep their old spelling; the
 namespace rule covers only exported metric families.
 
 **One registry row is the whole family.** Beside its wire identity, each
 family declares its label dimensions — the closed enum per label key, plus an
 at-most-one dynamic dimension (request model, runner identifier) — in
-`otel_metrics_dims.zig`, the registry's sibling. The instrument layer
-(`otel_instruments.zig`) generates everything downstream from that one table
-at compile time: the flat atomic storage cells (one per label combination), a
+the dimension table, the registry's sibling. The instrument layer
+generates everything downstream from that one table at build time: the flat atomic storage cells (one per label combination), a
 typed writer whose label struct makes a wrong or missing dimension a compile
 error, snapshot reads, and the flush-time collect loop that emits every cell —
 zero values included — into the aggregator. Sources that cannot be storage
 cells (the Redis pool snapshot, the resident-set probe, flush-thread liveness)
 are `live_read` hooks the collect loop runs after the cells; their absence
 keeps the family out of the window rather than faking a zero. Labels are
-interned to comptime indices, so a sample is a fixed ≤128-byte value and the
+interned to build-time indices, so a sample is a fixed ≤128-byte value and the
 aggregator locates a series by open-addressed hash instead of a linear scan.
 Adding a family is one registry row plus one writer call; everything else —
 storage, collection, series ceiling, census membership — derives from the
@@ -76,14 +75,13 @@ metrics.
 The milestone named `OTEL_EXPORT_REMOVAL` did **not** remove the live OTel
 export. It deleted a dead trio (`otel_export`/`otel_histogram`/`otel_json`) and
 kept `otel_logs` and `otel_traces` wired. Before touching anything OTel-shaped,
-check `otel_logs.zig` / `otel_traces.zig` and the `GRAFANA_OTLP_*` gate, not
+check the OTLP log and trace exporters and the `GRAFANA_OTLP_*` gate, not
 the milestone name.
 
 ## Metric family census — what to watch, and what it means
 
 This table is the complete export: every family the daemon pushes over OTLP
-appears exactly once, pinned against the declared registry in
-`otel_metrics_families.zig`.
+appears exactly once, pinned against the declared metric-family registry.
 
 Category legend: **latency** (how slow), **traffic** (how much), **errors**
 (what failed), **saturation** (how full), **health** (is the plumbing itself
@@ -171,7 +169,7 @@ The runner (`src/runner/`) carries no metrics, OTel, or PostHog. Its lone
 `record_metric` hook is a no-op stub. It emits logfmt locally for the host
 operator and reports liveness and results over `/v1/runners` (heartbeat,
 `/renew`, result-report). `agentsfleetd` owns the runner's observable state in
-`metrics_runner.zig` and derives fleet liveness itself. Runners are cattle
+`afd_observability`'s per-runner table and derives fleet liveness itself. Runners are cattle
 (`runner_fleet.md`); an exporter on the runner would re-couple it to the
 backends the split removed.
 
@@ -222,11 +220,12 @@ and retry limits plus the allowlist proof.
 
 | Surface | State | Evidence |
 |---|---|---|
-| structured stderr | installed, called | `main.zig` registers the sink |
-| OTLP logs | called when configured | `preflight.zig` installs; every accepted line fans out |
-| OTLP traces | called when configured | `server.zig` emits `http.request`; `metering.zig` emits `fleet.delivery` |
-| OTLP run metrics | called when configured | `service_report.zig` after the fenced claim |
-| PostHog events | partly called when configured | five production captures (list below) |
+| structured stderr | installed, called | `rustd/crates/agentsfleetd/src/logs.rs` installs the subscriber on stderr at boot; `AGENTSFLEET_LOG_LEVEL` sets the level |
+| server spans | emitted | `rustd/crates/afd_api/src/router/trace.rs` opens one span per matched request, carrying the route template, the method and the status — never the raw path |
+| OTLP logs | absent | no transport: `rustd/crates/afd_observability/src/lib.rs` states the OTLP transport is not in the crate |
+| OTLP traces | absent | no transport: `otlp_export` is a reserved name in `rustd/crates/agentsfleetd/src/inventory.rs` with no spawn site |
+| OTLP run metrics | absent | no transport, and no exported metric family is declared under `rustd/crates/` |
+| PostHog events | installed, called when configured | `rustd/crates/afd_observability/src/product.rs`; boot opens the client, the supervised `analytics_flush` task drains it before exit |
 | runner exporter | absent | one local stderr sink, nothing else |
 
 ## Metrics stay semantic
@@ -251,7 +250,7 @@ rejects a request. The runner has no span producer; its verbs carry no trace
 field. `event_id` and `lease_id` correlate logs instead. A future runner span
 producer must first define a bounded span budget and durable context ownership.
 
-**Route policy** (`http/route_trace.zig`): successful heartbeat, lease, renew,
+**Route policy.** Successful heartbeat, lease, renew,
 activity, and report requests never enqueue spans. Responses ≥ 500 enter the
 server-error bucket. Matched runner 4xx (including admission-shed 429) enter
 the runner-rejection bucket. Other sub-500 responses use deterministic head
@@ -268,15 +267,15 @@ budget. The ceiling is now fixed at any fleet size.
 
 The authenticated library reads (tenant model registry, global catalogue,
 Fleet gallery) record stage timing as fixed-cardinality families in
-`library_stages.zig`. A six-stage read emitting spans would spend most of a
+the library stage registry. A six-stage read emitting spans would spend most of a
 second's span admission on its own timing and evict the server-error spans the
 budget protects. Stage timing is high-frequency, closed-label data; that is
 what a metric is for. The trace half is unchanged: `traceparent` in, one
 `http.request` span out. The browser client mints a fresh root per request
 (`ui/packages/app/lib/api/client.ts`); it holds no parent span.
 
-Label members live in the label registry below. Series are fixed at compile
-time: 102 total, asserted at comptime, so a new enum member fails the build
+Label members live in the label registry below. Series are fixed at build
+time: 102 total, asserted by the build, so a new enum member fails the build
 instead of growing the export.
 
 | Family | Labels | Series |
@@ -303,7 +302,7 @@ Design points, each load-bearing:
   meaning: it times the batch presence query, and its decryption counter is
   pinned at zero. A regression that reintroduces per-row decryption shows up
   as a stage that suddenly decrypts, not one that silently reappears.
-- One outcome per request on every exit path. `library_read_scope.zig` owns
+- One outcome per request on every exit path. The read-scope layer owns
   the lifecycle; the default outcome is `internal_error`, so an unclassified
   path surfaces as something to investigate, never as `ok`.
 
@@ -323,9 +322,15 @@ holds two 1000-slot buffer sides (≤ 2000 resident events); a full write side
 drops the new event and counts it. `capture` does not return admission, so
 application wording says `submitted`, never `captured` or `delivered`.
 
-Five production events: `ServerStarted`, `WorkspaceCreated`, `FleetTriggered`,
-`SignupBootstrapped`, `FleetCompleted`. `FleetCompleted` fires only after the
-fenced report claim returns `claimed=true`, so replays emit nothing. Its
+Nine events reach production code: `ServerStarted`, `WorkerStarted`,
+`StartupFailed`, `WorkspaceCreated`, `FleetCompleted`, `ApiError`,
+`AuthLoginCompleted`, `AuthRejected`, `EntitlementRejected`. Two more —
+`FleetTriggered` and `SignupBootstrapped` — are declared and mapped but emitted
+by nothing: they appear in the telemetry enum, its property mapper and its own
+tests, and in no call site. A declared event nobody captures is a dashboard
+panel that stays empty for a reason no operator can see from the outside, so
+either the capture lands or the variant goes. `FleetCompleted` fires only after
+the fenced report claim returns `claimed=true`, so replays emit nothing. Its
 `$insert_id` is the SHA-256 hex digest of `fleet_id || 0x00 || event_id`.
 Runner-controlled `u64` properties saturate at `maxInt(i64)`. Scheduler
 mechanics, raw logs, spans, heartbeats, renewals, and activity frames never
@@ -333,24 +338,27 @@ become PostHog events.
 
 ## The shared logging module
 
-`src/lib/logging/` is the one logger for both binaries:
+One logging discipline serves both binaries, in three parts:
 
-- `mod.zig` — `log.scoped(.tag).level("event", .{…})`.
-- `envelope.zig` — enforces `ts_ms=`, `level=`, `scope=`; scrubs newlines.
-- `sinks.zig` — fans out to stderr **and** OTLP; 4 KiB buffer with
+- **The scoped emit API** — one call shape per record, so every site carries its
+  scope and its event name rather than composing a line.
+- **The log envelope** — enforces `ts_ms=`, `level=`, `scope=`; scrubs newlines.
+- **The sink fan-out** — stderr **and** OTLP; 4 KiB buffer with
   `truncated=true` on overflow; exporter-internal scopes stay stderr-only so a
   failing exporter cannot enqueue its own warnings forever.
 
-Any `log.scoped(...)` call site is conformant by construction. Field rules:
+A call site that goes through the scoped API is conformant by construction. The
+control plane's records leave through a stderr subscriber installed at boot
+(`rustd/crates/agentsfleetd/src/logs.rs`, level from `AGENTSFLEET_LOG_LEVEL`);
+the runner's go to the host supervisor. Field rules:
 `docs/LOGGING_STANDARD.md`, committed in this repository.
 
 ## The OTLP exporter substrate
 
-One pipeline (`observability/otlp/`) serves traces (`/v1/traces`), logs
-(`/v1/logs`), and metrics (`/v1/metrics`): a lock-free MPSC `Ring`, shared
-`GrafanaOtlpConfig`, a persistent basic-auth `Client`, and an
-`Exporter(hooks)` flush thread. It borrows the cancel-capable `std.Io` from
-`std.process.Init`, never `common.globalIo()`, and creates no extra pool.
+One pipeline serves traces (`/v1/traces`), logs (`/v1/logs`), and metrics
+(`/v1/metrics`): a lock-free MPSC ring, one shared endpoint configuration, a
+persistent basic-auth client, and a supervised flush task. The flush task is
+cancellable where it waits and creates no pool of its own.
 
 - Emission is fire-and-forget: a full ring drops the entry, never blocks.
 - Wake thresholds: 50 logs, 50 traces, 768 metrics (leaves 255 usable slots
@@ -411,8 +419,8 @@ variables; the architecture bounds what the application owns.
 
 Metric coalescing happens after ring admission, so it reduces wire series, not
 enqueue pressure. The aggregator's series ceiling is derived in
-`otel_metrics_families.zig`: the 256-series cost sub-budget plus the declared
-runtime families' comptime worst case, so adding a family grows the ceiling
+the metric-family registry: the 256-series cost sub-budget plus the declared
+runtime families' build-time worst case, so adding a family grows the ceiling
 instead of evicting cost attribution.
 `agentsfleet.telemetry.samples_dropped` covers ring and aggregation loss but
 only arrives if a later export succeeds; the
@@ -446,8 +454,9 @@ distinct-value guard cannot cap series across replicas and restarts. Exact
 per-workspace cost is a Postgres query against the ledger, which is exact
 rather than bounded.
 
-**Model attribution is derived, not guessed.** `semconv.zig` computes the
-admissible distinct `(provider, model)` pairs from the fixed attribute sets
+**Model attribution is derived, not guessed.** The semantic-convention layer
+(`afd_observability`'s `semconv`) computes the admissible distinct
+`(provider, model)` pairs from the fixed attribute sets
 (postures × error-type slots × token types × charge classes) and the
 aggregator passes its own ceiling in, so the two cannot disagree. A provider
 with no well-known name, a pair past the budget, or a value past the payload
@@ -475,7 +484,7 @@ Every committed debit emits once; uncommitted, stale-fenced, or replayed
 operations emit nothing. Flush coalesces the evented cost families into one
 **delta** dataPoint per (metric, labelset), converted to cumulative
 downstream; the runtime snapshot counters are natively cumulative and need no
-conversion (`otel_metrics_families.zig` documents the temporality split). With
+conversion (the metric-family registry documents the temporality split). With
 the pull endpoint retired, this push is the one metrics egress — when the pipe
 itself dies, the store-side `metrics-exporter-dead` absence rule is the
 watchdog.

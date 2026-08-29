@@ -123,10 +123,6 @@ impl<'de> Visitor<'de> for UniqueVisitor<'_> {
         Ok(Value::Null)
     }
 
-    fn visit_none<E>(self) -> std::result::Result<Value, E> {
-        Ok(Value::Null)
-    }
-
     fn visit_bool<E>(self, v: bool) -> std::result::Result<Value, E> {
         Ok(Value::Bool(v))
     }
@@ -151,10 +147,6 @@ impl<'de> Visitor<'de> for UniqueVisitor<'_> {
 
     fn visit_str<E>(self, v: &str) -> std::result::Result<Value, E> {
         Ok(Value::String(v.to_owned()))
-    }
-
-    fn visit_string<E>(self, v: String) -> std::result::Result<Value, E> {
-        Ok(Value::String(v))
     }
 }
 
@@ -254,5 +246,19 @@ mod tests {
         assert!(matches!(failure, Error::FrontmatterUnreadable { .. }));
         // The cause survives, which is the whole of RUST_ERROR_STANDARD rule 3.
         assert!(std::error::Error::source(&failure).is_some());
+    }
+
+    #[test]
+    fn root_scalars_keep_their_json_types() {
+        for (yaml, expected) in [
+            ("null", serde_json::Value::Null),
+            ("true", serde_json::json!(true)),
+            ("-7", serde_json::json!(-7)),
+            ("7", serde_json::json!(7)),
+            ("1.5", serde_json::json!(1.5)),
+            ("word", serde_json::json!("word")),
+        ] {
+            assert_eq!(to_json(yaml).expect("root scalar is readable"), expected);
+        }
     }
 }

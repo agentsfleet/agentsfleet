@@ -1,7 +1,7 @@
 //! Operator-route guards and mounting through the production router.
 #![cfg(feature = "test-util")]
 
-mod harness;
+use crate::harness;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
@@ -21,49 +21,7 @@ async fn operator_reads_are_mounted_behind_their_exact_scopes() {
             ScopeSet::from_scopes(&[Scope::RunnerRead]),
         )
         .router();
-    let reached = send(
-        &runner_reader,
-        Method::GET,
-        "/v1/fleets/runners",
-        Some(TENANT_KEY),
-        "",
-    )
-    .await;
-    assert_eq!(reached.status(), StatusCode::SERVICE_UNAVAILABLE);
-    assert_eq!(
-        json_body(reached)
-            .await
-            .get("error_code")
-            .and_then(serde_json::Value::as_str),
-        Some("UZ-INTERNAL-001")
-    );
-
-    let leases = send(
-        &runner_reader,
-        Method::GET,
-        &format!("/v1/fleets/runners/{RUNNER}/leases"),
-        Some(TENANT_KEY),
-        "",
-    )
-    .await;
-    assert_eq!(leases.status(), StatusCode::SERVICE_UNAVAILABLE);
-    assert_eq!(
-        json_body(leases)
-            .await
-            .get("error_code")
-            .and_then(serde_json::Value::as_str),
-        Some("UZ-INTERNAL-001")
-    );
-
-    let events = send(
-        &runner_reader,
-        Method::GET,
-        &format!("/v1/fleets/runners/{RUNNER}/events"),
-        Some(TENANT_KEY),
-        "",
-    )
-    .await;
-    assert_eq!(events.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_runner_reads_reach_store(&runner_reader).await;
 
     let fleet_reader = Fleet::new()
         .with_person(
@@ -81,6 +39,52 @@ async fn operator_reads_are_mounted_behind_their_exact_scopes() {
     )
     .await;
     assert_eq!(bundles.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+async fn assert_runner_reads_reach_store(runner_reader: &axum::Router) {
+    let reached = send(
+        runner_reader,
+        Method::GET,
+        "/v1/fleets/runners",
+        Some(TENANT_KEY),
+        "",
+    )
+    .await;
+    assert_eq!(reached.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        json_body(reached)
+            .await
+            .get("error_code")
+            .and_then(serde_json::Value::as_str),
+        Some("UZ-INTERNAL-001")
+    );
+
+    let leases = send(
+        runner_reader,
+        Method::GET,
+        &format!("/v1/fleets/runners/{RUNNER}/leases"),
+        Some(TENANT_KEY),
+        "",
+    )
+    .await;
+    assert_eq!(leases.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        json_body(leases)
+            .await
+            .get("error_code")
+            .and_then(serde_json::Value::as_str),
+        Some("UZ-INTERNAL-001")
+    );
+
+    let events = send(
+        runner_reader,
+        Method::GET,
+        &format!("/v1/fleets/runners/{RUNNER}/events"),
+        Some(TENANT_KEY),
+        "",
+    )
+    .await;
+    assert_eq!(events.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
 #[tokio::test]
@@ -199,6 +203,11 @@ async fn runner_patch_is_mounted_behind_runner_write_and_rejects_shape_before_io
             ScopeSet::from_scopes(&[Scope::RunnerWrite]),
         )
         .router();
+    assert_runner_patch_shapes(&writer).await;
+    assert_runner_patch_policy(&writer).await;
+}
+
+async fn assert_runner_patch_shapes(writer: &axum::Router) {
     for body in [
         "",
         r"{}",
@@ -206,7 +215,7 @@ async fn runner_patch_is_mounted_behind_runner_write_and_rejects_shape_before_io
         r#"{"action":"not_an_action"}"#,
     ] {
         let malformed = send(
-            &writer,
+            writer,
             Method::PATCH,
             &format!("/v1/fleets/runners/{RUNNER}"),
             Some(TENANT_KEY),
@@ -222,9 +231,11 @@ async fn runner_patch_is_mounted_behind_runner_write_and_rejects_shape_before_io
             Some("UZ-REQ-001")
         );
     }
+}
 
+async fn assert_runner_patch_policy(writer: &axum::Router) {
     let unsafe_policy = send(
-        &writer,
+        writer,
         Method::PATCH,
         &format!("/v1/fleets/runners/{RUNNER}"),
         Some(TENANT_KEY),
@@ -241,7 +252,7 @@ async fn runner_patch_is_mounted_behind_runner_write_and_rejects_shape_before_io
     );
 
     let reached = send(
-        &writer,
+        writer,
         Method::PATCH,
         &format!("/v1/fleets/runners/{RUNNER}"),
         Some(TENANT_KEY),

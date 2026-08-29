@@ -11,12 +11,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-#[path = "support/preference_lane.rs"]
-mod lane;
-
 use afd_tenant::preference::{PrefKey, bag_is_true};
 
-use self::lane::Lane;
+use crate::preference_lane::Lane;
 
 /// A value with formatting a re-serializing implementation would normalise.
 ///

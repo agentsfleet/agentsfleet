@@ -40,9 +40,14 @@ concurrency:
 jobs:
   test-integration-rustd:
     runs-on: ubuntu-latest
-    # The suite creates a database per test and applies all 47 migrations into
-    # each. Generous, because the alternative to a timeout that is too tight is
-    # a lane that goes red on a slow runner and teaches people to re-run it.
+    # CI never performs an edit-build-edit loop, so incremental objects buy it
+    # no latency and made the restored/uploaded target cache several gigabytes
+    # larger. Keep developers' dev-profile default intact; bound this lane only.
+    env:
+      CARGO_INCREMENTAL: '0'
+    # The suite shares one migrated database; only migrator fault tests create
+    # scratch databases because schema state is what they exercise. This still
+    # covers a cold instrumented workspace build on an uncached runner.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
@@ -52,52 +57,20 @@ jobs:
       - name: Show the pinned toolchain
         run: rustup show && cargo --version
         working-directory: rustd
-      # Compiler artifacts, shared with the unit lane through `shared-key`.
-      #
-      # This replaced a hand-rolled `actions/cache` over `~/.cargo` +
-      # `rustd/target`, which had two faults the comment beside it recorded
-      # honestly and then worked around rather than fixed:
-      #
-      #  - `actions/cache` never re-saves on a hit, so `rustd/target` was frozen
-      #    at whatever the FIRST run under a given `Cargo.lock` left there,
-      #    including a partial tree from a failed job.
-      #  - Two lanes compiling the same crates had to hold two caches under two
-      #    keys, because one shared key meant whichever finished last overwrote
-      #    the other every run. That is the workaround `shared-key` removes.
-      #
-      # Prior art checked before choosing this, per the operating model: the
-      # sibling `e2e-observability-platform` runs the SAME rustc 1.98.0 under
-      # GitLab CI and caches `.cargo/registry` + `.cargo/git` while explicitly
-      # refusing to cache `target/` — "to avoid stale artifact/fingerprint
-      # mismatches across pipeline runs" (`.gitlab/ci/quality-gates.yml`). Its
-      # conclusion is right and is exactly what `rust-cache` implements
-      # properly: it keeps dependency builds, PRUNES the workspace's own
-      # artifacts before saving, keys on the lockfile plus the rustc version
-      # plus the enabled features, and sets `CARGO_INCREMENTAL=0` — which that
-      # sibling has to set by hand on every job.
-      #
-      # It also declines that sibling's other half deliberately. It reaches for
-      # `sccache` as a `RUSTC_WRAPPER`, then has to switch it back off for the
-      # unit-test job over proc-macro cache corruption (mozilla/sccache#1924,
-      # cited in its own config). A compilation cache that must be disabled per
-      # job to stay correct is not one to adopt on the evidence of the repo that
-      # disabled it.
-      #
-      # `save-if` is what makes the sharing deliberate rather than racy. A
-      # `shared-key` drops the job name from the cache key, so BOTH lanes
-      # compute the same primary key; Actions caches are immutable and the two
-      # run concurrently, so whichever reached its post step first would save
-      # and the other would be rejected as already-existing, its artifacts
-      # discarded — with a race deciding which lane's build got kept. This lane never writes;
-      # the unit lane on the default branch is the one writer. That
-      # is the arrangement `test.yml` already reasons about at the top of this
-      # file, where the `push: branches: [main]` trigger exists so a main run
-      # populates the cache each Pull Request branch restores from.
-      - uses: Swatinem/rust-cache@v2
+      - name: Cache cargo registry
+        uses: actions/cache@v5
         with:
-          workspaces: rustd
-          shared-key: rustd
-          save-if: false
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          # Instrumented binaries cannot be restored across source revisions:
+          # `--no-clean` intentionally combines the migration and test passes,
+          # and cargo-llvm-cov would then discover both revisions in one report.
+          # Registry sources are immutable by checksum and retain the useful
+          # network saving without uploading multi-gigabyte target trees.
+          key: cargo-integration-v3-${{ runner.os }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+          restore-keys: |
+            cargo-integration-v3-${{ runner.os }}-
       # `make test-integration-rustd` depends on `_reset-test-db`, which brings
       # compose up, waits for healthchecks, drops schemas and flushes Redis.
       # KEEP_TEST_STATE is never set here: a green run under it would prove

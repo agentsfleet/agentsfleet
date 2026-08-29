@@ -15,7 +15,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-mod harness;
+use crate::harness;
 
 use afd_auth::scope::ScopeSet;
 use afd_tenant::models::cursor::{CURSOR_VERSION, Cursor, render};
