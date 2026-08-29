@@ -11,6 +11,13 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+# M-TEST-UTIL. Unlocks the reader below for a sibling crate's suite. It exposes
+# the VALIDATING door rather than a bypass of it, which is the opposite of the
+# `from_parts` seams `GatePolicy` and `RepositoryBinding` carry — see
+# `Binding::stored` for why a shortcut would have nothing to shorten.
+test-util = []
+
 [dependencies]
 # Identifiers, the instant a delivery is stamped with, and the registry codes.
 afd_core.workspace = true

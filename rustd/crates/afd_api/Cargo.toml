@@ -20,6 +20,7 @@ test-util = [
   "afd_crypto/test-util",
   "afd_fleet/test-util",
   "afd_fleet_lifecycle/test-util",
+  "afd_ingress/test-util",
   "afd_library/test-util",
   "afd_tenant/test-util",
   "afd_vault/test-util",

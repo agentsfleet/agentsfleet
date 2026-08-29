@@ -99,6 +99,37 @@ impl Binding {
         Self::select(fleet, workspace, stored_status, document, Some(source))
     }
 
+    /// Either reader, reachable from a sibling crate's suite.
+    ///
+    /// Behind `test-util` (`M-TEST-UTIL`), and what it unlocks is REACH rather
+    /// than a shortcut. The `from_parts` seams `GatePolicy` and
+    /// `RepositoryBinding` carry exist because their production doors VALIDATE
+    /// and a suite wants to skip the validation; this one is the production
+    /// door, exported. There is nothing here worth bypassing — [`Self::select`]
+    /// is a status parse and a document parse, and a constructor that skipped
+    /// them would only be skipping the two things this type exists to have
+    /// done. A suite that built a `Binding` around them could pair a status
+    /// with a trigger the document never declared, which is precisely the
+    /// invalid state the parse rules out.
+    ///
+    /// `source` selects as [`Self::read_for_source`] does; `None` takes the
+    /// first, as [`Self::read`] does. Both are exposed through one function
+    /// because a suite proving the difference between them needs to call them
+    /// the same way.
+    ///
+    /// # Errors
+    /// As [`Self::read`].
+    #[cfg(feature = "test-util")]
+    pub fn stored(
+        fleet: Uuid7,
+        workspace: Uuid7,
+        stored_status: &str,
+        document: &str,
+        source: Option<&str>,
+    ) -> Result<Option<Self>> {
+        Self::select(fleet, workspace, stored_status, document, source)
+    }
+
     /// Both readers, over the trigger `source` selects.
     fn select(
         fleet: Uuid7,

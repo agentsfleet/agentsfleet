@@ -28,7 +28,42 @@ mod verify;
 
 pub(crate) use self::verify::{verified, verified_app};
 
+use http::HeaderMap;
 use serde::Serialize;
+
+/// The header GitHub names the delivery's kind in.
+///
+/// Read by both routes that serve GitHub — the per-fleet one and the App
+/// ingress — so it is declared once. Two copies of a provider's wire header
+/// name is the shape that lets one surface be fixed and the other left.
+pub(crate) const HEADER_EVENT: &str = "x-github-event";
+
+/// The header GitHub carries its own delivery identifier in.
+///
+/// The value a redelivery REPEATS, which is what makes it the idempotency key
+/// on the per-fleet route — see [`afd_ingress::Delivery::event_id`]. The App
+/// ingress deliberately does NOT key on it; that route's reason is in
+/// [`afd_ingress::replay_id`].
+pub(crate) const HEADER_DELIVERY: &str = "x-github-delivery";
+
+/// The refusal a delivery this daemon cannot read as its own claimed event
+/// earns.
+///
+/// `UZ-WH-002`'s sentence, and it is one sentence for two causes on purpose: a
+/// missing event header and a body that is not the event the header names are
+/// the same bug from a sender's side, and telling them apart tells a forger
+/// which half they got right.
+pub(crate) const DETAIL_EVENT_HEADER: &str =
+    "Webhook payload could not be parsed. Check Content-Type and body.";
+
+/// One header's value, when it is one this daemon can read as text.
+///
+/// A header carrying bytes that are not visible ASCII resolves to `None`, which
+/// every caller then treats as absent — see [`verify`]'s own copy of this note
+/// for why the two are not told apart on the signature path.
+pub(crate) fn text<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
+    headers.get(name).and_then(|value| value.to_str().ok())
+}
 
 /// What a delivery this daemon accepted is answered with.
 ///

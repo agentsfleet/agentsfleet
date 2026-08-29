@@ -91,52 +91,22 @@ use bytes::Bytes;
 use object_store::ObjectStoreExt as _;
 use object_store::memory::InMemory;
 
+mod instance;
 mod readiness;
-
-use self::readiness::{unreachable_pool, unreachable_queue};
+mod stubs_ingress;
 mod stubs_runner;
 mod stubs_tenant;
 mod support;
 
+/// Signed deliveries, as a provider would present them.
+pub(crate) mod webhook;
+
+pub(crate) use self::stubs_ingress::{HarnessIngress, Recorded, Scripted};
 pub(crate) use self::stubs_runner::NoWork;
 pub(crate) use self::stubs_tenant::{DEPLOYMENT, OWNED_WORKSPACE, OneWorkspace};
 pub(crate) use self::support::{
     file_runner, json_body, presented, runner_id, send, send_with_headers, tenant,
 };
-
-/// A Postgres nobody is listening on.
-///
-/// Port 1 is reserved and unbound on every platform this builds for, so an
-/// acquire fails on connection refusal rather than waiting out a timeout — the
-/// difference between a suite that runs in milliseconds and one that runs in
-/// acquire budgets.
-const NOWHERE: &str = "postgres://runner:secret@127.0.0.1:1/agentsfleet";
-
-/// A Redis nobody is listening on, for the same reason and on the same port.
-const NOWHERE_QUEUE: &str = "redis://127.0.0.1:1";
-
-/// The pool knob naming how long an acquire may spend before it reports.
-const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
-
-/// What this harness sets it to — see [`unreachable_pool`].
-const ACQUIRE_TIMEOUT_MS: &str = "50";
-
-/// A fixed instant, so every row a verb writes is stamped predictably.
-const FROZEN: i64 = 1_760_000_000_000;
-
-/// The process key the secret store seals under.
-///
-/// Never used to seal anything here — every write refuses at the pool, before
-/// an envelope is built — but a `Vault` cannot be CONSTRUCTED without one, which
-/// is the invariant that type exists to carry. Supplying a fixture key is how a
-/// suite honours it rather than working around it.
-const FIXTURE_KEK: [u8; 32] = [0x11; 32];
-
-/// The pepper the device-flow code digest is computed under, for the same reason.
-const FIXTURE_PEPPER: &[u8] = b"fixture-session-code-pepper";
-
-/// The dashboard origin a login surface composes approval links against.
-const FIXTURE_APP_URL: &str = "https://app.fixture.test";
 
 /// The seams a suite arranges, and the state the router is built over.
 #[derive(Debug)]
@@ -156,7 +126,8 @@ pub(crate) struct Fleet {
     logins: Logins,
     fleets: Fleets,
     secrets: SecretVault,
-    ingress: Ingress,
+    ingress: HarnessIngress,
+    platform_admin: Option<Uuid7>,
     preferences: Preferences,
     approvals: Inbox,
     grants: IntegrationGrants,
@@ -199,157 +170,29 @@ impl CredentialDirectory for Directory {
     }
 }
 
-/// How many streams a fixture instance carries.
-///
-/// Above anything a suite opens, so a stream refused in a test is refused by
-/// the thing that test is about. The one suite that DOES prove the ceiling
-/// lowers it with [`Fleet::carrying_at_most`].
-const DEFAULT_STREAM_CEILING: usize = 64;
 
 impl Fleet {
-    /// An instance whose dependencies answer, whose directory is empty, and
-    /// whose Postgres and Redis are not there.
+    /// An instance whose ingress ANSWERS, rather than refusing at an acquire.
     ///
-    /// Every store below is the PRODUCTION one. None of them is reachable, so
-    /// every verb refuses at its first acquire — with the error its own crate
-    /// raises, not one this file made up.
-    pub(crate) fn new() -> Self {
-        let mock = MockDirectory::new();
-        let directory = Directory::Mock(mock.clone());
-        let capabilities = MockCapabilities::new();
-        let database = Db::unreachable(&unreachable_pool());
-        let queue = Redis::unreachable(&unreachable_queue())
-            .expect("a lazy manager opens no socket, so it cannot fail to open one");
-        let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
-        Self {
-            ready: ReadyInputs {
-                database: true,
-                queue: true,
-            },
-            mock_directory: mock,
-            authenticator: Planes::new(directory.clone(), capabilities.clone(), NoVerifier),
-            directory,
-            capabilities,
-            runners: Runners::new(database.clone(), Entropy::new()),
-            runner_lease_history: RunnerLeaseHistory::new(database.clone()),
-            admin_models: AdminModels::new(database.clone(), Entropy::new()),
-            platform_keys: PlatformKeys::new(database.clone()),
-            libraries: Libraries::new(database.clone()),
-            library_imports: LibraryImports::without_store(database.clone()),
-            leases: NoWork,
-            // Unconfigured by default, so a suite that says nothing about
-            // snapshots proves the refusal a deployment with no R2 knobs gives
-            // — which is most of them.
-            bundles: Bundles::unconfigured(),
-            workspaces: OneWorkspace,
-            workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
-            api_keys: ApiKeys::new(database.clone(), Entropy::new()),
-            cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
-            logins: Logins::new(
-                afd_redis::SessionStore::new(queue.clone()),
-                SecretBytes::new(FIXTURE_PEPPER.to_vec()),
-                Entropy::new(),
-                FIXTURE_APP_URL,
-            ),
-            fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
-            secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
-            ingress: Ingress::new(
-                database.clone(),
-                SecretVault::new(database.clone(), kek, Entropy::new()),
-                queue.clone(),
-            ),
-            preferences: Preferences::new(database.clone(), Entropy::new()),
-            approvals: Inbox::new(database.clone(), queue.clone()),
-            grants: IntegrationGrants::new(database.clone()),
-            events: History::new(database.clone()),
-            // Detached, not connected: a hub opens a pub/sub SOCKET, which is
-            // the one seam in this file that has no `unreachable` form. The
-            // stream routes still answer and still charge the ceiling, which is
-            // the whole of what a refusal-matrix suite reads.
-            live: Live::detached(Ceiling::new(DEFAULT_STREAM_CEILING)),
-            // Silent: a suite must not open a socket to a product-analytics
-            // vendor, and every reporting call is infallible either way.
-            analytics: Analytics::silent(),
-            steering: Steer::new(queue.clone()),
-            memories: Memories::new(database.clone(), Entropy::new()),
-            billing: Billing::new(database.clone()),
-            catalogue: Models::new(database),
-            now: UnixMillis::from_millis(FROZEN),
-        }
-    }
-
-    /// An instance whose credential directory and stores share live Postgres.
-    ///
-    /// The seam the admin and operator suites need: everything else in this
-    /// file refuses at the first acquire, which proves a refusal matrix and
-    /// nothing about a row. Redis stays unreachable — no suite built on this
-    /// reaches a queue, and opening one would make a datastore lane out of a
-    /// router lane.
-    pub(crate) fn live(database: Db, subject: &str, scopes: ScopeSet) -> Self {
-        let who = Subject::new(subject).expect("the fixture subject is not blank");
-        let capabilities = MockCapabilities::new().with(&who, scopes);
-        let mock_directory = MockDirectory::new();
-        let directory = Directory::Live(Credentials::new(database.clone()));
-        let queue = Redis::unreachable(&unreachable_queue())
-            .expect("a lazy manager opens no socket, so it cannot fail to open one");
-        let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
-        Self {
-            ready: ReadyInputs {
-                database: true,
-                queue: true,
-            },
-            authenticator: Planes::new(directory.clone(), capabilities.clone(), NoVerifier),
-            mock_directory,
-            directory,
-            capabilities,
-            runners: Runners::new(database.clone(), Entropy::new()),
-            leases: NoWork,
-            bundles: Bundles::unconfigured(),
-            workspaces: OneWorkspace,
-            workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
-            api_keys: ApiKeys::new(database.clone(), Entropy::new()),
-            cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
-            logins: Logins::new(
-                afd_redis::SessionStore::new(queue.clone()),
-                SecretBytes::new(FIXTURE_PEPPER.to_vec()),
-                Entropy::new(),
-                FIXTURE_APP_URL,
-            ),
-            fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
-            secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
-            ingress: Ingress::new(
-                database.clone(),
-                SecretVault::new(database.clone(), kek, Entropy::new()),
-                queue.clone(),
-            ),
-            preferences: Preferences::new(database.clone(), Entropy::new()),
-            approvals: Inbox::new(database.clone(), queue.clone()),
-            grants: IntegrationGrants::new(database.clone()),
-            events: History::new(database.clone()),
-            live: Live::detached(Ceiling::new(DEFAULT_STREAM_CEILING)),
-            analytics: Analytics::silent(),
-            steering: Steer::new(queue),
-            memories: Memories::new(database.clone(), Entropy::new()),
-            billing: Billing::new(database.clone()),
-            catalogue: Models::new(database.clone()),
-            runner_lease_history: RunnerLeaseHistory::new(database.clone()),
-            admin_models: AdminModels::new(database.clone(), Entropy::new()),
-            platform_keys: PlatformKeys::new(database.clone()),
-            libraries: Libraries::new(database.clone()),
-            library_imports: LibraryImports::without_store(database),
-            now: UnixMillis::from_millis(FROZEN),
-        }
-    }
-
-    /// An instance that will carry `streams` at once and no more.
-    pub(crate) fn carrying_at_most(mut self, streams: usize) -> Self {
-        self.live = Live::detached(Ceiling::new(streams));
+    /// The one seam a signed-ingress suite has to arrange: every store in this
+    /// harness is the production one over a datastore that is not there, which
+    /// proves what these routes refuse and nothing about what they do once a
+    /// delivery is believed. See [`stubs_ingress`] on why that arm exists and
+    /// what it deliberately does not stand in for.
+    pub(crate) fn with_ingress(mut self, scripted: &Arc<Scripted>) -> Self {
+        self.ingress = HarnessIngress::Scripted(Arc::clone(scripted));
         self
     }
 
-    /// An instance reporting `ready` to `/readyz`.
-    pub(crate) const fn reporting(mut self, ready: ReadyInputs) -> Self {
-        self.ready = ready;
+    /// An instance that configured a platform admin workspace.
+    ///
+    /// `None` is the default and it is a real deployment state rather than an
+    /// unset fixture: an App signs every installation's deliveries with ONE
+    /// secret belonging to the deployment, so a daemon that was given no admin
+    /// workspace has nowhere to read it from and fails closed. Leaving the
+    /// default alone is how a suite reaches that branch.
+    pub(crate) fn with_platform_admin(mut self, workspace: Uuid7) -> Self {
+        self.platform_admin = Some(workspace);
         self
     }
 

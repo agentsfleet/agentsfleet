@@ -17,12 +17,12 @@ use afd_auth::mock::MockCapabilities;
 use afd_auth::verifier::NoVerifier;
 use afd_billing::tenant::Billing;
 use afd_core::clock::UnixMillis;
+use afd_core::id::Uuid7;
 use afd_events::{History, Steer};
 use afd_fleet::bundle::Bundles;
 use afd_fleet::memory::Memories;
 use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
-use afd_ingress::Ingress;
 use afd_library::{Libraries, LibraryImports};
 use afd_observability::Analytics;
 use afd_runner::Runners;
@@ -37,7 +37,7 @@ use afd_vault::Vault as SecretVault;
 
 use super::stubs_runner::NoWork;
 use super::stubs_tenant::OneWorkspace;
-use super::{DEPLOYMENT, Directory, Fleet};
+use super::{DEPLOYMENT, Directory, Fleet, HarnessIngress};
 
 impl Services for Fleet {
     type Auth = Planes<Directory, MockCapabilities, NoVerifier>;
@@ -53,7 +53,7 @@ impl Services for Fleet {
     type Approvals = Inbox;
     type Grants = IntegrationGrants;
     type Events = History;
-    type Ingress = Ingress;
+    type Ingress = HarnessIngress;
     type Steering = Steer;
     type Memories = Memories;
     type Billing = Billing;
@@ -124,8 +124,20 @@ impl Services for Fleet {
         &self.analytics
     }
 
-    fn ingress(&self) -> &Ingress {
+    fn ingress(&self) -> &HarnessIngress {
         &self.ingress
+    }
+
+    /// The deployment's own admin workspace, when a suite configured one.
+    ///
+    /// Answered from a field rather than as a constant `None`, unlike
+    /// [`Services::deployment`] beside it, and the difference is that both
+    /// answers are reachable states of a real daemon: a deployment with no
+    /// admin workspace refuses every App delivery as unconfigured, and one with
+    /// it serves them. A suite that could not say which it was could prove only
+    /// half of that.
+    fn platform_admin_workspace(&self) -> Option<&Uuid7> {
+        self.platform_admin.as_ref()
     }
 
     fn steering(&self) -> &Steer {

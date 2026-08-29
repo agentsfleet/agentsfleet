@@ -29,21 +29,13 @@ use http::{HeaderMap, StatusCode};
 
 use crate::handler::fleet::detail::{FleetPath, parse_fleet_id};
 use crate::handler::{Refusal, webhook};
+use webhook::{DETAIL_EVENT_HEADER, HEADER_DELIVERY, HEADER_EVENT, text};
 use crate::services::{Services, WebhookIngress as _};
 
 use super::github::{Ingest, Policy, classify};
 
 /// The scoped event a failed append is logged under.
 const EVENT_APPEND: &str = "webhook_github_append_failed";
-
-/// The header GitHub names the delivery's kind in.
-const HEADER_EVENT: &str = "x-github-event";
-
-/// The header GitHub carries its own delivery identifier in.
-///
-/// The value a redelivery REPEATS, which is what makes it the idempotency key —
-/// see [`afd_ingress::Delivery::event_id`].
-const HEADER_DELIVERY: &str = "x-github-delivery";
 
 /// The actor a GitHub-driven wake records.
 ///
@@ -52,14 +44,6 @@ const HEADER_DELIVERY: &str = "x-github-delivery";
 /// this fleet when a webhook did — the same reasoning `afd_events::ACTOR_MACHINE`
 /// carries for an api-key wake.
 const ACTOR_GITHUB: &str = "webhook:github";
-
-/// The refusal a delivery with no event header earns.
-///
-/// `UZ-WH-002` rather than a signature refusal: it is decided AFTER the wall, so
-/// the sender has already proved it holds the secret. This is their bug, and
-/// naming it costs nothing.
-const DETAIL_EVENT_HEADER: &str =
-    "Webhook payload could not be parsed. Check Content-Type and body.";
 
 /// `POST /v1/webhooks/{fleet_id}/github`.
 ///
@@ -130,9 +114,4 @@ pub(crate) async fn receive<D: Services>(
 /// The 200 a deliberately-dropped delivery answers with.
 fn ignored(reason: &'static str) -> Response {
     (StatusCode::OK, Json(webhook::Ignored { ignored: reason })).into_response()
-}
-
-/// One header's value, when it is one this daemon can read as text.
-fn text<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
-    headers.get(name).and_then(|value| value.to_str().ok())
 }
