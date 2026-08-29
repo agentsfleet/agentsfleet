@@ -178,7 +178,7 @@ describe("approveApproval", () => {
     );
     await approveApproval(WORKSPACE_ID, GATE_ID, TOKEN, "looks good");
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(`${BACKEND_BASE}${PATH_PREFIX}/${GATE_ID}:approve`);
+    expect(url).toBe(`${BACKEND_BASE}${PATH_PREFIX}/${GATE_ID}/approve`);
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body as string)).toEqual({ reason: "looks good" });
   });
@@ -273,7 +273,7 @@ describe("denyApproval", () => {
     );
     const result = await denyApproval(WORKSPACE_ID, GATE_ID, TOKEN, "blocking");
     const url = fetchMock.mock.calls[0]![0] as string;
-    expect(url).toBe(`${BACKEND_BASE}${PATH_PREFIX}/${GATE_ID}:deny`);
+    expect(url).toBe(`${BACKEND_BASE}${PATH_PREFIX}/${GATE_ID}/deny`);
     expect(result.kind).toBe("resolved");
     if (result.kind === "resolved") {
       expect(result.data.outcome).toBe("denied");
@@ -325,7 +325,7 @@ describe("resolve base URL — server-side (window undefined)", () => {
       fetchMock.mockResolvedValueOnce(resolved());
       await approveApproval(WORKSPACE_ID, GATE_ID, TOKEN);
       const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe(`https://api-test.agentsfleet.net${PATH_PREFIX}/${GATE_ID}:approve`);
+      expect(url).toBe(`https://api-test.agentsfleet.net${PATH_PREFIX}/${GATE_ID}/approve`);
     } finally {
       if (prev === undefined) delete process.env.NEXT_PUBLIC_API_URL;
       else process.env.NEXT_PUBLIC_API_URL = prev;

@@ -89,7 +89,12 @@ const INVENTORY: &[&str] = &[
 const DEFERRED_TO_M180: &[&str] = &[
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}",
-    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}:sync",
+    // `/sync`, where the Zig daemon spells it `{schedule_id}:sync`. The router
+    // cannot carry a literal after a parameter inside one segment, so the verb
+    // became its own — the same divergence the approval decision took, argued
+    // at `FleetRoute::ScheduleSync`. This roster is the gate that would catch
+    // the two spellings drifting apart again.
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}/sync",
     "/v1/workspaces/{workspace_id}/connectors",
     "/v1/workspaces/{workspace_id}/connectors/{provider}",
     "/v1/workspaces/{workspace_id}/connectors/{provider}/connect",
