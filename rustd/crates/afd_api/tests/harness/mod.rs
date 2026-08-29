@@ -170,7 +170,6 @@ impl CredentialDirectory for Directory {
     }
 }
 
-
 impl Fleet {
     /// An instance whose ingress ANSWERS, rather than refusing at an acquire.
     ///

@@ -39,6 +39,21 @@ pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
         binding: &Binding,
     ) -> impl Future<Output = IngressResult<Option<SecretBytes>>> + Send;
 
+    /// The Svix `whsec_…` this fleet's trigger names.
+    ///
+    /// A separate reader from [`Self::signing_secret`] because it is a separate
+    /// stored SHAPE, not a separate policy: the HMAC family stores a JSON
+    /// object and reads one field out of it, and Svix stores the raw string.
+    /// Two readers over one vault, which is what keeps the parsing in the crate
+    /// that knows the shape rather than in the route that wanted a key.
+    ///
+    /// # Errors
+    /// As [`Self::signing_secret`].
+    fn svix_secret(
+        &self,
+        binding: &Binding,
+    ) -> impl Future<Output = IngressResult<Option<SecretBytes>>> + Send;
+
     /// The App's own signing secret, held by the platform admin workspace.
     ///
     /// Takes the workspace and the key by name rather than a [`Binding`],
@@ -103,6 +118,13 @@ impl WebhookIngress for Ingress {
         binding: &Binding,
     ) -> impl Future<Output = IngressResult<Option<SecretBytes>>> + Send {
         Self::signing_secret(self, binding)
+    }
+
+    fn svix_secret(
+        &self,
+        binding: &Binding,
+    ) -> impl Future<Output = IngressResult<Option<SecretBytes>>> + Send {
+        Self::svix_secret(self, binding)
     }
 
     fn platform_secret(

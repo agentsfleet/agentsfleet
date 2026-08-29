@@ -19,7 +19,6 @@
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
-    clippy::unwrap_used,
     reason = "a test asserts by panicking; the daemon's restriction set is the manifest's"
 )]
 
@@ -51,8 +50,7 @@ const EVENT_WORKFLOW_RUN: &str = "workflow_run";
 const EVENT_PUSH: &str = "push";
 
 /// A trigger admitting pushes and nothing else.
-const TRIGGER_PUSH_ONLY: &str =
-    r#"[{"type":"webhook","source":"github","events":["push"]}]"#;
+const TRIGGER_PUSH_ONLY: &str = r#"[{"type":"webhook","source":"github","events":["push"]}]"#;
 
 /// The actor a GitHub-driven wake records — `github_route.rs`'s `ACTOR_GITHUB`.
 const ACTOR_GITHUB: &str = "webhook:github";
@@ -91,12 +89,24 @@ async fn deliver(ingress: &Arc<Scripted>, event: &str, delivery: &str, body: &st
 /// What one request answered.
 type Response = axum::response::Response;
 
+/// One field of a response document, or `Null` where it is absent.
+///
+/// Absent reads as `Null` rather than panicking so an assertion failure names
+/// the field that was missing instead of the line that looked for it.
+fn field<'d>(document: &'d Value, name: &str) -> &'d Value {
+    document.get(name).unwrap_or(&Value::Null)
+}
+
 /// The `ignored` reason a 200 carries.
 async fn ignored_reason(response: Response) -> String {
     let status = response.status();
     let document = json_body(response).await;
-    assert_eq!(status, StatusCode::OK, "a dropped delivery answers 200: {document}");
-    document["ignored"]
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "a dropped delivery answers 200: {document}"
+    );
+    field(&document, "ignored")
         .as_str()
         .expect("a dropped delivery names the rule that dropped it")
         .to_owned()
@@ -117,21 +127,30 @@ async fn a_signed_failed_run_wakes_the_fleet_and_answers_the_events_id() {
     assert_eq!(response.status(), StatusCode::ACCEPTED);
     let document = json_body(response).await;
     assert_eq!(
-        document["replayed"], Value::Bool(false),
+        *field(&document, "replayed"),
+        Value::Bool(false),
         "the first delivery of an event is not a replay"
     );
 
     let appended = ingress.deliveries();
-    assert_eq!(appended.len(), 1, "one delivery is one append: {appended:?}");
+    assert_eq!(
+        appended.len(),
+        1,
+        "one delivery is one append: {appended:?}"
+    );
     let Recorded {
         surface,
         fleet,
         event_id,
         actor,
         ..
-    } = &appended[0];
+    } = appended.first().expect("one delivery is one append");
 
-    assert_eq!(*surface, Surface::Fleet, "the URL named the fleet, so the claim is the per-fleet one");
+    assert_eq!(
+        *surface,
+        Surface::Fleet,
+        "the URL named the fleet, so the claim is the per-fleet one"
+    );
     assert_eq!(fleet, signed::FLEET);
     assert_eq!(
         event_id,
@@ -143,7 +162,7 @@ async fn a_signed_failed_run_wakes_the_fleet_and_answers_the_events_id() {
         "a webhook wake names the provider and no person"
     );
     assert!(
-        document["event_id"]
+        field(&document, "event_id")
             .as_str()
             .is_some_and(|id| !id.is_empty()),
         "the response carries the stream id an operator searches history by: \
@@ -175,11 +194,13 @@ async fn a_redelivery_repeats_the_first_claim_and_reports_that_it_did() {
     let second = json_body(second).await;
 
     assert_eq!(
-        second["event_id"], first["event_id"],
+        field(&second, "event_id"),
+        field(&first, "event_id"),
         "a sender comparing two responses must see the same event both times"
     );
     assert_eq!(
-        second["replayed"], Value::Bool(true),
+        *field(&second, "replayed"),
+        Value::Bool(true),
         "a repeat is REPORTED rather than hidden — a lost delivery and a \
          suppressed one are different facts to whoever is debugging"
     );
@@ -232,7 +253,7 @@ async fn an_allow_list_is_measured_against_the_header_not_the_payload() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let document = json_body(response).await;
     assert_eq!(
-        document["error_code"],
+        *field(&document, "error_code"),
         Value::String(error_code::WEBHOOK_MALFORMED.as_str().to_owned()),
         "a body that is not the event its own header claims is the sender's bug"
     );
@@ -298,7 +319,11 @@ async fn a_delivery_with_no_identifier_falls_back_to_the_fleet_it_addressed() {
 
     assert_eq!(response.status(), StatusCode::ACCEPTED);
     assert_eq!(
-        ingress.deliveries()[0].event_id,
+        ingress
+            .deliveries()
+            .first()
+            .expect("the delivery was appended")
+            .event_id,
         signed::FLEET,
         "with no sender identifier the fleet id is the key, so two such \
          deliveries collapse rather than running the fleet twice"

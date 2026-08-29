@@ -61,7 +61,11 @@ fn path() -> String {
 ///
 /// Both halves in one helper so no case can assert the code and forget the
 /// silence — see the module note on why the second is the real property.
-async fn refused(ingress: &Arc<Scripted>, headers: &[(http::HeaderName, &str)], body: &str) -> String {
+async fn refused(
+    ingress: &Arc<Scripted>,
+    headers: &[(http::HeaderName, &str)],
+    body: &str,
+) -> String {
     let router = Fleet::new().with_ingress(ingress).router();
     let response = send_with_headers(&router, Method::POST, &path(), None, body, headers).await;
 
@@ -76,8 +80,9 @@ async fn refused(ingress: &Arc<Scripted>, headers: &[(http::HeaderName, &str)], 
         "a refused delivery must reach no stream — a route that appended first \
          would answer this same code with the fleet already woken"
     );
-    document["error_code"]
-        .as_str()
+    document
+        .get("error_code")
+        .and_then(serde_json::Value::as_str)
         .expect("every refusal carries its registry code")
         .to_owned()
 }
@@ -118,7 +123,11 @@ async fn a_delivery_carrying_no_signature_is_refused_and_appends_nothing() {
 #[tokio::test]
 async fn a_signature_from_the_wrong_key_is_refused_and_appends_nothing() {
     let ingress = holding(signed::TRIGGER_GITHUB, Some(signed::SECRET));
-    let forged = signed::signature(Scheme::BodyHex, signed::WRONG_SECRET, RUN_FAILURE.as_bytes());
+    let forged = signed::signature(
+        Scheme::BodyHex,
+        signed::WRONG_SECRET,
+        RUN_FAILURE.as_bytes(),
+    );
     let headers = signed::github_headers(EVENT_WORKFLOW_RUN, signed::DELIVERY_ID, &forged);
 
     assert_eq!(

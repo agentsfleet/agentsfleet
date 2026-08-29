@@ -15,6 +15,7 @@
 
 use std::sync::Arc;
 
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
 use crate::handler::{
@@ -58,26 +59,35 @@ pub(super) fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D
 
 /// Deliveries proven by a signature over the body rather than by a bearer.
 ///
-/// `None` for the five routes M180's later sections own — the fleet envelope
-/// and its Svix twin, the approval delivery, the App ingress and the `QStash`
-/// fire path. Each is an arm rather than an absence from a list, so an endpoint
-/// that is tabled and unserved says so where somebody looking for it will read
-/// it.
+/// `None` for the `QStash` fire path, which §3 owns. It is an arm rather than
+/// an absence from a list, so an endpoint that is tabled and unserved says so
+/// where somebody looking for it will read it.
 ///
-/// There is no layer above these. `plane_of` answers `None` for
+/// # The one layer these carry, and why it is here rather than in `layered`
+///
+/// [`DefaultBodyLimit`], at [`webhook::BUFFER_CEILING`]. Every route in this
+/// family is reachable with no credential at all — the proof is a signature
+/// over the body, which cannot be checked until the body has been read — so
+/// these are the routes where an unauthenticated sender decides how much memory
+/// this daemon holds. A cap belongs on exactly them, and putting it in
+/// `layered` would either cap families that do not need it or need a row in the
+/// route table to say which do.
+///
+/// The verdict layer is still absent: `plane_of` answers `None` for
 /// `Guard::WebhookSignature` because a signed delivery carries no principal to
 /// resolve, so the check the guard names happens INSIDE the handler — see
 /// [`crate::handler::webhook`] on why the per-fleet secret makes that the only
 /// place it can happen.
 fn webhook_handler_for<D: Serving>(verb: WebhookRoute) -> Option<MethodRouter<Arc<D>>> {
-    match verb {
-        WebhookRoute::GitHub => Some(post(webhook::github_route::receive::<D>)),
-        WebhookRoute::AppIngress => Some(post(webhook::app_route::receive::<D>)),
-        WebhookRoute::Receive
-        | WebhookRoute::ReceiveSvix
-        | WebhookRoute::Approval
-        | WebhookRoute::QstashSchedules => None,
-    }
+    let handler = match verb {
+        WebhookRoute::Receive => post(webhook::receive_route::receive::<D>),
+        WebhookRoute::GitHub => post(webhook::github_route::receive::<D>),
+        WebhookRoute::ReceiveSvix => post(webhook::svix_route::receive::<D>),
+        WebhookRoute::Approval => post(webhook::approval_route::receive::<D>),
+        WebhookRoute::AppIngress => post(webhook::app_route::receive::<D>),
+        WebhookRoute::QstashSchedules => return None,
+    };
+    Some(handler.layer(DefaultBodyLimit::max(webhook::BUFFER_CEILING)))
 }
 
 /// The device-flow login surface — the one bearer family with no scope.

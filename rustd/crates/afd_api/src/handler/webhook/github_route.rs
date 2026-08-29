@@ -29,21 +29,13 @@ use http::{HeaderMap, StatusCode};
 
 use crate::handler::fleet::detail::{FleetPath, parse_fleet_id};
 use crate::handler::{Refusal, webhook};
-use webhook::{DETAIL_EVENT_HEADER, HEADER_DELIVERY, HEADER_EVENT, text};
 use crate::services::{Services, WebhookIngress as _};
+use webhook::{DETAIL_EVENT_HEADER, HEADER_DELIVERY, HEADER_EVENT, text};
 
 use super::github::{Ingest, Policy, classify};
 
 /// The scoped event a failed append is logged under.
 const EVENT_APPEND: &str = "webhook_github_append_failed";
-
-/// The actor a GitHub-driven wake records.
-///
-/// Names the PROVIDER and no person. A delivery carries a `sender.login`, and
-/// recording that would let an actor-shaped assertion certify that a human woke
-/// this fleet when a webhook did — the same reasoning `afd_events::ACTOR_MACHINE`
-/// carries for an api-key wake.
-const ACTOR_GITHUB: &str = "webhook:github";
 
 /// `POST /v1/webhooks/{fleet_id}/github`.
 ///
@@ -57,6 +49,7 @@ pub(crate) async fn receive<D: Services>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
+    webhook::within_cap(&body)?;
     let delivery_id = text(&headers, HEADER_DELIVERY)
         .unwrap_or(&fleet_id)
         .to_owned();
@@ -94,7 +87,7 @@ pub(crate) async fn receive<D: Services>(
             &proven.binding,
             &afd_ingress::Delivery {
                 event_id: &delivery_id,
-                actor: ACTOR_GITHUB,
+                actor: &webhook::actor(proven.binding.source()),
                 request_json: &digest,
             },
         )

@@ -22,7 +22,6 @@ use std::sync::Arc;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_ingress::Binding;
-use afd_webhook::Scheme;
 use afd_webhook::{Refusal as WallRefusal, Verdict};
 use axum::body::Bytes;
 use http::HeaderMap;
@@ -31,13 +30,13 @@ use crate::handler::Refusal;
 use crate::services::{Services, WebhookIngress as _};
 
 /// The scoped event a failed resolution is logged under.
-const EVENT_BINDING: &str = "webhook_binding_failed";
+pub(super) const EVENT_BINDING: &str = "webhook_binding_failed";
 
 /// The refusal a delivery to a fleet this daemon does not serve earns.
 ///
 /// `error_entries.zig:133`'s sentence for `UZ-WH-001`, verbatim: a provider's
 /// delivery log shows it to an operator wiring up an integration.
-const DETAIL_FLEET_NOT_FOUND: &str = "No fleet is registered for this webhook endpoint.";
+pub(super) const DETAIL_FLEET_NOT_FOUND: &str = "No fleet is registered for this webhook endpoint.";
 
 /// A delivery that proved itself, with the fleet it proved itself to.
 ///
@@ -117,70 +116,12 @@ pub(crate) async fn verified<D: Services>(
 /// Carries no [`Binding`], and that absence is the App ingress in one type: the
 /// delivery has proved it came from the App, which says nothing yet about which
 /// fleets it is for. Those are resolved AFTER this, from the payload's own
-/// installation id. Constructible only by [`verified_app`], for the same reason
+/// installation id. Constructible only by [`super::verify_platform`], for the same reason
 /// [`Verified`] is.
 #[derive(Debug)]
 pub(crate) struct ProvenApp {
     /// The RAW bytes, exactly as received — see [`Verified::body`].
     pub(crate) body: Bytes,
-}
-
-/// Proves an App delivery against the deployment's own secret.
-///
-/// The same five steps as [`verified`] in the same order, over a different
-/// secret: an App signs every installation's deliveries with ONE secret that
-/// belongs to this deployment, so steps 1 and 3 read the platform admin
-/// workspace instead of a fleet's row. Steps 2, 4 and 5 are unchanged, which is
-/// the point of both crossings living in one file.
-///
-/// A deployment that configured no admin workspace refuses every delivery here
-/// as [`WallRefusal::Unconfigured`]. That is the fail-closed answer and not a
-/// degradation: without the secret there is nothing to check a signature
-/// against, and accepting unverified deliveries would be strictly worse than
-/// serving none.
-///
-/// # Errors
-/// `UZ-WH-020` for a deployment with no usable App secret, `UZ-WH-010` for a
-/// signature that did not match and `UZ-WH-011` for one outside its window.
-pub(crate) async fn verified_app<D: Services>(
-    services: &Arc<D>,
-    source: &str,
-    secret_key: &str,
-    headers: &HeaderMap,
-    body: Bytes,
-) -> Result<ProvenApp, Refusal> {
-    let Some(scheme) = Scheme::for_source(source) else {
-        return Err(wall(WallRefusal::Unconfigured));
-    };
-
-    let Some(admin) = services.platform_admin_workspace() else {
-        return Err(wall(WallRefusal::Unconfigured));
-    };
-
-    let Some(secret) = services
-        .ingress()
-        .platform_secret(admin, secret_key)
-        .await
-        .map_err(Refusal::at(EVENT_BINDING))?
-    else {
-        return Err(wall(WallRefusal::Unconfigured));
-    };
-
-    let presented = header(headers, scheme.signature_header());
-    let timestamp = scheme
-        .timestamp_header()
-        .and_then(|name| header(headers, name));
-
-    match scheme.verify_at(
-        &secret,
-        presented,
-        timestamp,
-        &body,
-        services.now().as_seconds(),
-    ) {
-        Verdict::Verified => Ok(ProvenApp { body }),
-        Verdict::Refused(refusal) => Err(wall(refusal)),
-    }
 }
 
 /// One header's value, when it is one this daemon can read as text.
@@ -189,7 +130,7 @@ pub(crate) async fn verified_app<D: Services>(
 /// to `Refusal::Signature` — the same answer an absent header earns, which is
 /// correct: neither is a proof, and telling them apart narrows a forger's
 /// search for no honest sender's benefit.
-fn header<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
+pub(super) fn header<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
     headers.get(name).and_then(|value| value.to_str().ok())
 }
 
@@ -199,6 +140,6 @@ fn header<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
 /// this call site, which is what keeps the two ingress families answering one
 /// delivery the same way. `afd_webhook::verdict` owns the mapping and the
 /// `scheme_matrix` suite pins it.
-fn wall(refusal: WallRefusal) -> Refusal {
+pub(super) fn wall(refusal: WallRefusal) -> Refusal {
     Refusal::coded(refusal.code(), refusal.detail())
 }
