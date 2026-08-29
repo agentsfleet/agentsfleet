@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M185
 **Workstream:** 001
 **Date:** Aug 28, 2026
-**Status:** DONE
+**Status:** IN_PROGRESS
 **Priority:** P1 — the daemon's reliability proof is below its declared bar and its only live-datastore lane pays avoidable compilation, connection, cache, and disk costs
 **Categories:** API INFRA OBS
 **Batch:** B1 — follows M184's measured crate decomposition and changes the Rust verification boundary
@@ -332,3 +332,41 @@ Public HTTP routes, payloads, status codes, error codes, configuration knobs, sc
   §1's declared phase evidence resolves it. `rustd_lane_result.py` now splits the lane at cargo's `Finished` line and prints `lane-phases compile_s=… tests_s=… total_s=… tests=…`. `tests_s` excludes compilation, so it compares across a cached and an uncached runner; `compile_s` is reported beside it rather than folded in, and a run whose build never finished reports `unsplit` rather than inventing a zero. R2 grades `tests_s`. No workflow change is needed — the line lands in the job log.
 - **Benchmark ordering — coverage first (user agreed).** §4 adds tests, and tests change the lane's wall time, so any before/after pair recorded before coverage closes is invalidated the moment it lands. R2 is also unmeasurable while the lane exits non-zero at 96.02% against a `--fail-under-lines 100` gate: there is no passing `after` run to compare. §4 completes, then R2 is measured once.
 - **Deferrals** — none.
+
+
+- **Aggregation defect found after close; two suites de-aggregate (user's
+  call, this session).** Two quiet-core `make test-integration-rustd` runs
+  failed with disjoint failure sets — `daemon_suite` 4 (both activity tests,
+  e2e duplicate-work, seeded row shapes), then `approval_suite` 1 (a
+  gate-past-its-window test found its gate already swept) — falsifying the
+  contamination theory the earlier `orly gate pr` red was closed under, and
+  reclassifying the one green `integ24` run as scheduling luck. Mechanism:
+  aggregation (`c174249e1`, `6571113a1`) made e2e scenarios concurrent while
+  every scenario's daemon competes on the single `fleet:ready` consumer group
+  (`rustd/crates/afd_redis/src/ready.rs:28`, XREADGROUP at
+  `rustd/crates/afd_redis/src/streams/consume.rs:74-80`), so one scenario's
+  daemon claims another scenario's seeded event; and the approval sweeper
+  resolves every expired gate in the shared database, including a sibling
+  test's. The aggregation audit checked global-count assertions and missed
+  global ACTORS. The user chose de-aggregation of `agentsfleetd` (1→16) and
+  `afd_approval` (1→2) over serializing the conflicting tests, a per-scenario
+  stream namespace, or an override — the workspace presents 44 integration
+  binaries, not 28. This also closes the open "activity tests red→green,
+  cause unknown" thread: the cause was never pool sizing.
+
+
+- **Adversarial review (Tarzy) triaged; no code change folded into this PR
+  (user: "go").** Already satisfied in-tree: the eager `connect_with` warm-up
+  was never shipped — `rustd/crates/afd_db/src/pool.rs:116` is
+  `connect_lazy_with` and boot probes exactly one connection (`pool.rs:63`).
+  Already ruled next-milestone: the `Db::acquire` pool-snapshot
+  misclassification. Recorded for the next milestone: derive
+  `DATABASE_POOL_SIZE` from a database connection budget instead of
+  core-count analogy (stock Postgres offers ~97 ordinary slots, so 2×50
+  already oversubscribes); measure the warm floor instead of defaulting to
+  max/4; a TLS wrong-hostname test and a TLS reconnect test (the current
+  accept/refuse pair proves chain validation, not hostname verification); an
+  ownership audit of the lane's ~200 Redis connections; a TLS re-benchmark
+  without `docker compose exec` in the timed path; and splitting boot-retry
+  policy from `ConnectionManager` reconnect policy so startup, reconnect, and
+  supervisor restarts do not each run generous exponential ladders.
