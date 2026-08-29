@@ -6,10 +6,6 @@
 //! Redis store is production code over an unreachable lazy connection, so 503
 //! proves a well-formed request reached the service boundary.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "integration preconditions should fail the test loudly"
-)]
 
 use crate::harness;
 
