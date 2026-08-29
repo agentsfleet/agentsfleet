@@ -21,35 +21,76 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Build linux/amd64 binaries
+      - name: Build the runner (linux/amd64)
         run: |
-          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl -Dgit-commit="${GITHUB_SHA::7}"
           zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl
           mkdir -p dist
-          cp zig-out/bin/agentsfleetd       dist/agentsfleetd-linux-amd64
           cp zig-out/bin/agentsfleet-runner dist/agentsfleet-runner-linux-amd64
 
       - uses: actions/upload-artifact@v7
         with:
           name: dev-binaries
-          path: |
-            dist/agentsfleetd-linux-amd64
-            dist/agentsfleet-runner-linux-amd64
+          path: dist/agentsfleet-runner-linux-amd64
           retention-days: 3
 
   # ── 1b. Build Docker image and push dev-latest to GHCR ───────────────────
   # Runs on the Ubuntu runner (Docker daemon required; not available inside a
   # container job).  Downloads compiled binaries from compile-dev.
+  # The daemon the dev image serves. Runs beside compile-dev rather than after
+  # it: the runner and the daemon share no build input, so serialising them
+  # would add the slower one's time to the faster one's for nothing.
+  daemon-dev:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            .cargo-cache/registry
+            .cargo-cache/git
+            rustd/target
+          key: cargo-dist-amd64-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+          restore-keys: |
+            cargo-dist-amd64-
+
+      # Same shape as the release build — docker run rather than a container
+      # job, so the JS actions above and below stay on the host.
+      - name: Build the daemon in Alpine (musl-native)
+        run: |
+          mkdir -p .cargo-cache/registry .cargo-cache/git rustd/target dist
+          docker run --rm \
+            -v "$PWD:/w" \
+            -v "$PWD/.cargo-cache/registry:/usr/local/cargo/registry" \
+            -v "$PWD/.cargo-cache/git:/usr/local/cargo/git" \
+            -w /w/rustd \
+            rust:1.98-alpine \
+            sh -c '
+              set -e
+              apk add --no-cache build-base perl cmake go linux-headers
+              cargo build --profile dist --bin agentsfleetd
+            '
+          sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
+          cp rustd/target/dist/agentsfleetd dist/agentsfleetd-rs-linux-amd64
+          chmod +x dist/agentsfleetd-rs-linux-amd64
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dev-daemon
+          path: dist/agentsfleetd-rs-linux-amd64
+          retention-days: 3
+
   push-dev:
-    needs: compile-dev
+    needs: [compile-dev, daemon-dev]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v8
         with:
-          name: dev-binaries
+          pattern: dev-*
           path: dist
+          merge-multiple: true
 
       - uses: docker/setup-buildx-action@v4
 

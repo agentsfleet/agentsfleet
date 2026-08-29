@@ -32,20 +32,34 @@ define _buildx
 		$(3)
 endef
 
+# Both architectures, built the way the release builds them: inside a
+# musl-native Alpine container, so the musl target is the host target and no
+# cross linker has to be configured on a developer's machine.
 _prepare_prebuilt_linux_binaries:
 	mkdir -p dist
-	zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
-	cp zig-out/bin/agentsfleetd dist/agentsfleetd-linux-amd64
-	chmod +x dist/agentsfleetd-linux-amd64
-	zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux
-	cp zig-out/bin/agentsfleetd dist/agentsfleetd-linux-arm64
-	chmod +x dist/agentsfleetd-linux-arm64
+	@for arch in amd64:x86_64 arm64:aarch64; do \
+	  out="$${arch%%:*}"; platform="$${arch##*:}"; \
+	  echo "→ [image] building the daemon for linux/$$out..."; \
+	  docker run --rm --platform "linux/$$out" \
+	    -v "$(CURDIR):/w" -w /w/rustd rust:1.98-alpine \
+	    sh -c 'apk add --no-cache build-base perl cmake go linux-headers >/dev/null && cargo build --profile dist --bin agentsfleetd' \
+	    || exit 1; \
+	  cp rustd/target/dist/agentsfleetd "dist/agentsfleetd-rs-linux-$$out"; \
+	  chmod +x "dist/agentsfleetd-rs-linux-$$out"; \
+	  rm -rf rustd/target/dist; \
+	  echo "✓ [image] dist/agentsfleetd-rs-linux-$$out ($$platform)"; \
+	done
 
 build: _prepare_prebuilt_linux_binaries ## Build production container (uses prebuilt linux binaries)
 	$(call _buildx,Dockerfile,$(_PROD_TAGS),)
 
-build-dev:  ## Build development container (multi-arch)
-	$(call _buildx,Dockerfile.dev,$(_DEV_TAGS),)
+# One Dockerfile, two tag sets. `Dockerfile.dev` has not existed for some time,
+# so this target could only ever fail — while `push-dev` beneath it built the
+# same image from `Dockerfile` and worked. Development and production differ in
+# what they are TAGGED and where they deploy, never in what is in the image;
+# a second Dockerfile would be a second thing to keep true.
+build-dev: _prepare_prebuilt_linux_binaries  ## Build development container (multi-arch)
+	$(call _buildx,Dockerfile,$(_DEV_TAGS),)
 
 build-linux-alpine:  ## Compile inside Alpine with musl-native OpenSSL; asserts zero NEEDED + no INTERP (mirrors CI)
 	@echo "→ Building aarch64-linux inside Alpine (native ARM, static OpenSSL)..."
