@@ -39,10 +39,7 @@ use std::time::Instant;
 use afd_core::error_code;
 use afd_fleet_lifecycle::{Install, LibrarySource};
 
-#[path = "support/lane.rs"]
-mod support;
-
-use self::support::{LIBRARY_ID, Lane};
+use crate::support::{LIBRARY_ID, Lane};
 
 /// The install request every test here makes.
 fn request() -> Install<'static> {

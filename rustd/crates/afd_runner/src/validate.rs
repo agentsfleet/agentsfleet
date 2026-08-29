@@ -195,9 +195,15 @@ fn contains_path(parent: &str, child: &str) -> bool {
 
 #[cfg(test)]
 mod extra_bind_tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "validated boundary values are test fixture preconditions"
+    )]
+
     use std::borrow::Cow;
 
-    use afd_wire::runner::BindMode;
+    use afd_core::limits::MAX_WORKERS;
+    use afd_wire::runner::{BindMode, NetworkPolicy, SandboxTier};
 
     use super::*;
 
@@ -207,6 +213,67 @@ mod extra_bind_tests {
             mode: BindMode::ReadOnly,
             note: Cow::Borrowed("operator reason"),
         }
+    }
+
+    fn policy(registry_allowlist: Vec<Cow<'_, str>>, worker_count: u32) -> AssignedPolicy<'_> {
+        AssignedPolicy {
+            sandbox_tier: SandboxTier::LandlockFull,
+            network_policy: NetworkPolicy::AllowListEgress,
+            registry_allowlist,
+            worker_count,
+            extra_binds: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn host_identifiers_and_worker_counts_are_parsed_at_the_boundary() {
+        let host = HostId::new("runner.example").expect("the host id is valid");
+        assert_eq!(host.as_str(), "runner.example");
+        let _empty = HostId::new("").expect_err("an empty host id is refused");
+        let too_long = "h".repeat(MAX_HOST_ID_LEN + 1);
+        let _too_long = HostId::new(&too_long).expect_err("an overlong host id is refused");
+
+        assert_eq!(
+            assignment(&policy(Vec::new(), 0))
+                .expect("zero workers is clamped")
+                .worker_count
+                .get(),
+            1
+        );
+        assert_eq!(
+            assignment(&policy(Vec::new(), u32::MAX))
+                .expect("an excessive worker count is clamped")
+                .worker_count
+                .get(),
+            MAX_WORKERS
+        );
+    }
+
+    #[test]
+    fn registry_entries_accept_only_bare_hosts_and_optional_decimal_ports() {
+        for admitted in ["registry.example", "registry_1.example:443"] {
+            let _stored = assignment(&policy(vec![Cow::Borrowed(admitted)], 1))
+                .expect("a bare registry host is accepted");
+        }
+        for refused in [
+            "",
+            ":443",
+            "registry.example:",
+            "registry.example:123456",
+            "registry.example:44x",
+            "registry.example:443:extra",
+            "https://registry.example",
+            "bad host",
+        ] {
+            let error = assignment(&policy(vec![Cow::Borrowed(refused)], 1))
+                .expect_err("the registry entry is not a host[:port]");
+            assert_eq!(error.detail(), DETAIL_REGISTRY_ALLOWLIST, "{refused}");
+        }
+
+        let over = (0..=MAX_REGISTRY_ENTRIES)
+            .map(|index| Cow::Owned(format!("registry-{index}.example")))
+            .collect();
+        let _over = assignment(&policy(over, 1)).expect_err("the registry count is bounded");
     }
 
     #[test]

@@ -8,7 +8,7 @@ This is a cross-cutting topic. The data model lives in the tenant provider recor
 
 The billing model is **credit-based, Amp-style**: every tenant has a single credit balance in nanos (1 USD = 1,000,000,000 nanos); events deduct credits at two points (receive + run); when the balance hits zero the gate trips. There are no plan tiers in the cost function and no "included events" tier ladder — credits flow in (one-time starter grant in v2.0; Stripe purchase in v2.1+) and credits flow out per event. Receive is a fixed amount in both postures; **run** is posture-dispatched and is the friction-reducing gradient (platform default subsidises inference; self-managed runs cheaper because the user is paying their own provider for tokens). This file is the **concept reference** — it describes shape and behaviour.
 
-> **Where the live values are.** [`https://agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing) is the canonical source of truth for current rates and the starter-grant value. There is no promotional window (§2.3). This doc and the scenarios in this directory deliberately do not quote dollar amounts — they go stale the moment a rate moves. For implementers: server-authoritative constants live in `src/agentsfleetd/state/tenant_billing.zig` (pin-tested), mirrored to `ui/packages/website/src/lib/rates.ts` and `~/Projects/docs/snippets/rates.mdx`. Identifier names match across Zig/TS/JS so a rate bump is a coordinated PR.
+> **Where the live values are.** [`https://agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing) is the canonical source of truth for current rates and the starter-grant value. There is no promotional window (§2.3). This doc and the scenarios in this directory deliberately do not quote dollar amounts — they go stale the moment a rate moves. For implementers: server-authoritative constants live in `rustd/crates/afd_billing/src/nanos.rs` (pin-tested), mirrored to `ui/packages/website/src/lib/rates.ts` and `~/Projects/docs/snippets/rates.mdx`. Identifier names match across Rust/TS/JS so a rate bump is a coordinated PR.
 
 ---
 
@@ -20,7 +20,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 |---|---|---|---|
 | Currency unit | nanos — 1 USD = 1,000,000,000 | `billing.tenant_wallet.balance_nanos BIGINT CHECK (>= 0)`; i64 caps one tenant at ~$9.2B | §2 |
 | Postures | exactly 2, tenant-scoped | `core.tenant_model_selection.mode` ∈ {`platform`, `self_managed`}; a missing row means `platform` | §1 |
-| Debit points | 2 per event | receive (`EVENT_NANOS`, posture-independent today) + run (metered per `/renew`, settled at report — M80_010) | §3 |
+| Debit points | 2 per event | receive (`RECEIVE_NANOS`, posture-independent today) + run (metered per `/renew`, settled at report — M80_010) | §3 |
 | Run slice charge | `run_fee + token_cost` | `run_fee = elapsed_ms × RUN_NANOS_PER_SEC / 1000`; platform adds the three-tier Δ-token cost; self-managed records tokens but never charges them | §3, §4.2 |
 | Wallet clamp | `charged = LEAST(slice, balance)` | wallet write is `GREATEST(0, …)` — never negative, never credits a negative Δ | §3 |
 | Money writes per slice | 2, atomic | wallet debit + accumulated `stage` ledger row, inside the fenced renewal CTE (which also advances the two lease cursors) | §3 |
@@ -39,7 +39,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Plan tiers | none in the cost function | future paid plans manifest as grants or top-ups, never a `compute_charge` branch | §2.4 |
 | Posture switch | claim-time snapshot wins | posture resolved once, at gate time, before the receive deduct | §7 |
 | Blocked rows | terminal | no automatic replay after top-up; resume writes a continuation event | §6 |
-| Live dollar values | never in this doc | canonical on `agentsfleet.net/#pricing`; constants pinned across 4 files by `audits/cross-tier-rates.sh` | preamble, §4.2 |
+| Live dollar values | never in this doc | canonical on `agentsfleet.net/#pricing`; the constants are declared once per surface and carry each other's names | preamble, §4.2 |
 
 ## Traps
 
@@ -109,7 +109,7 @@ Every tenant has exactly one balance: `billing.tenant_wallet.balance_nanos` (`BI
 
 ### 2.1 The starter grant
 
-Each new tenant receives a **one-time starter credit** at tenant-create time, named `STARTER_CREDIT_NANOS` in `src/agentsfleetd/state/tenant_billing.zig`. The credit is inserted into `tenant_billing.balance_nanos` synchronously when the tenant row is created. There is no replenish; it's a one-time onboarding allowance, not a recurring stipend. Read the source for the current dollar amount; it sits behind a pin test that fails if it drifts from the Mintlify display snippet.
+Each new tenant receives a **one-time starter credit** at tenant-create time, a named constant in `afd_billing`. The credit is inserted into `tenant_billing.balance_nanos` synchronously when the tenant row is created. There is no replenish; it's a one-time onboarding allowance, not a recurring stipend. Read the source for the current dollar amount; it sits behind a pin test that fails if it drifts from the Mintlify display snippet.
 
 Under M80_010's metering the grant drains at the run fee (`RUN_NANOS_PER_SEC` × runtime) under self-managed, and at the run fee plus the three-tier per-token cost under platform. A quiet long run therefore stretches the grant further than a token-heavy one, and platform spend depends on the model (see §4.2). The grant is sized so a new user comfortably covers a few thousand runs on either posture without thinking about top-ups.
 
@@ -165,8 +165,8 @@ Every event triggers two debits, in this order, from the same `tenant_billing.ba
 
 | # | Debit | When | Amount | Posture-dependent? |
 |---|---|---|---|---|
-| 1 | **Receive** | Right after `INSERT fleet_events (status='received')` and the gate passes | `computeReceiveCharge(posture)` = `EVENT_NANOS` | No today — both postures use the same `EVENT_NANOS` constant. Function signature keeps `posture` so a future ratchet can re-introduce asymmetry without touching callers. |
-| 2 | **Run** | Metered **incrementally** across the run — a delta on every `/renew`, settled at report (M80_010 replaced the one-shot lease-issue estimate) | `computeStageCharge` over the per-slice deltas (run fee + token delta) | Yes — platform: per-second run fee (`RUN_NANOS_PER_SEC`) + per-token cost (input/cached-input/output) from the model-library rate cache. self-managed: the run fee only (tokens recorded, not charged). |
+| 1 | **Receive** | Right after `INSERT fleet_events (status='received')` and the gate passes | `debit_receive` records `RECEIVE_NANOS` | No today — both postures use the same `RECEIVE_NANOS` constant. The charge keeps `posture` so a future ratchet can re-introduce asymmetry without touching callers. |
+| 2 | **Run** | Metered **incrementally** across the run — a delta on every `/renew`, settled at report (M80_010 replaced the one-shot lease-issue estimate) | `slice_charge` over the per-slice deltas (run fee + token delta) | Yes — platform: per-second run fee (`RUN_NANOS_PER_SEC`) + per-token cost (input/cached-input/output) from the model-library rate cache. self-managed: the run fee only (tokens recorded, not charged). |
 
 Why two debit points and not one:
 
@@ -192,9 +192,9 @@ Properties: same-lease renewals are serialised (`FOR UPDATE` on lease+slot), so 
 
 ---
 
-## 4. `computeReceiveCharge` and `computeStageCharge`
+## 4. The receive charge and the stage charge
 
-Two functions, both in `src/agentsfleetd/state/tenant_billing.zig`. Both take `posture`. Neither takes plan. Receive is posture-independent in the current rate table; the signature keeps `posture` so a future ratchet can re-introduce asymmetry without a fn-shape change.
+Two charge paths, both in `rustd/crates/afd_billing`. Both take `posture`. Neither takes plan. Receive is posture-independent in the current rate table; the signature keeps `posture` so a future ratchet can re-introduce asymmetry without a fn-shape change.
 
 ### 4.0 Worked examples up front
 
@@ -207,16 +207,17 @@ Two events for John, taken at different points in his journey, drive the worked 
 
 Function shape:
 
-```zig
-pub const Posture = enum { platform, self_managed };
+```rust
+pub enum Posture { Platform, SelfManaged }
 
-pub fn computeReceiveCharge(posture: Posture) i64 {
-    _ = posture;
-    return EVENT_NANOS;
-}
+/// What receiving one event costs, under either posture.
+pub const RECEIVE_NANOS: Nanos = Nanos(0);
+
+/// Records that charge. `posture` rides the ledger row rather than the amount.
+pub async fn debit_receive(&self, charged: Charged<'_>, now: UnixMillis) -> Result<Nanos>
 ```
 
-Receive is a single named constant, `EVENT_NANOS`, defined in `src/agentsfleetd/state/tenant_billing.zig`. Both postures currently resolve to the same value via this function; the `posture` parameter stays on the signature so a future ratchet can re-introduce asymmetry without touching callers. The function shape is what matters: posture-aware, plan-independent, plumbed through the lease path (`leaseNext` / `runBilling`). Live value lives in the source — read it there; pin tests lock it.
+Receive is a single named constant, `RECEIVE_NANOS`, defined in `rustd/crates/afd_billing/src/nanos.rs`. Both postures currently resolve to the same value; the `posture` stays on the charge so a future ratchet can re-introduce asymmetry without touching callers. The shape is what matters: posture-aware, plan-independent, plumbed through the lease path. Live value lives in the source — read it there; pin tests lock it.
 
 ### 4.2 Run charge
 
@@ -224,39 +225,39 @@ Function shape:
 
 Function shape (M80_010) — **deltas** in, run fee + three-tier token cost out; the cumulative→delta subtraction happens in the renewal CTE, so this function never sees cumulative counts:
 
-```zig
-pub fn computeStageCharge(
-    conn:       *pg.Conn,      // the caller's already-acquired connection (M143 §2.2)
-    provider:   []const u8,    // composite-key half — "anthropic", "pioneer", … (§9)
-    posture:    Posture,
-    model:      []const u8,    // "accounts/fireworks/models/kimi-k3", "kimi-k3", …
-    elapsed_ms: i64,           // active wall time of the slice
-    d_input:    u32,           // per-slice token deltas (CTE-computed max(0, cumulative − metered))
-    d_cached:   u32,
-    d_output:   u32,
-) !i64 {
-    // self_managed prices with NO statement at all. Only the platform branch
-    // consults the catalogue, and it prices against the generation `conn`
-    // observes. No clock is involved at any point.
-    // An uncatalogued model is an OPERATIONAL state, not a programmer bug: an
-    // admin can DELETE a rate row while a tenant still names that model. This
-    // used to panic, which aborted the whole replica for one fleet's stale
-    // model, on every replica that picked the fleet up. It returns an error so
-    // each caller takes its own documented posture — see §2.3.
-    const rates = (try resolveRenewSliceRates(conn, provider, posture, model)) orelse
-        return error.ModelNotPriced;
-    // ms-precision: divide AFTER multiplying, so a 20_500 ms slice bills the full
-    // 20.5 s, not a second-truncated 20 s (the per-slice debits then sum to the
-    // real runtime × rate — never under-bill across N renewals).
-    return sliceCharge(rates, elapsed_ms, d_input, d_cached, d_output);
-}
+```rust
+// Rate resolution runs on the caller's already-acquired connection (M143 §2.2)
+// against §9's composite key: provider ("anthropic", "pioneer", …) and model
+// ("accounts/fireworks/models/kimi-k3", "kimi-k3", …).
+//
+// self_managed prices with NO statement at all
+// (`Posture::rates_without_catalogue`). Only the platform branch consults the
+// catalogue (`Accounts::catalogue_rates`), and it prices against the generation
+// that connection observes. No clock is involved at any point.
+// An uncatalogued model is an OPERATIONAL state, not a programmer bug: an
+// admin can DELETE a rate row while a tenant still names that model. This
+// used to panic, which aborted the whole replica for one fleet's stale
+// model, on every replica that picked the fleet up. It is reported so
+// each caller takes its own documented posture — see §2.3.
+let rates: SliceRates = ...;                // otherwise error.ModelNotPriced
+
+// ms-precision: divide AFTER multiplying, so a 20_500 ms slice bills the full
+// 20.5 s, not a second-truncated 20 s (the per-slice debits then sum to the
+// real runtime × rate — never under-bill across N renewals).
+pub const fn slice_charge(
+    rates:               SliceRates,
+    elapsed_ms:          i64,  // active wall time of the slice
+    input_tokens:        i64,  // per-slice token deltas (CTE-computed max(0, cumulative − metered))
+    cached_input_tokens: i64,
+    output_tokens:       i64,
+) -> Nanos
 ```
 
-One named constant drives the run fee — `RUN_NANOS_PER_SEC`, in `src/agentsfleetd/state/tenant_billing.zig`, applied identically to **both** postures. Under platform: the run fee plus a three-tier per-token component (input / cached-input / output) from the model-library rate cache (§10). Under self-managed: the run fee only — we did not pay for the tokens, only for running the fleet.
+One named constant drives the run fee — `RUN_NANOS_PER_SEC`, in `rustd/crates/afd_billing/src/nanos.rs`, applied identically to **both** postures. Under platform: the run fee plus a three-tier per-token component (input / cached-input / output) from the model-library rate cache (§10). Under self-managed: the run fee only — we did not pay for the tokens, only for running the fleet.
 
-Posture changes only whether the per-token component is added (platform) or not (self-managed); the run fee is the same. That gradient is the friction-reducing signal: on-ramp on platform without a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. `RUN_NANOS_PER_SEC` is pinned across the four rate files (`tenant_billing.zig` + `rates.ts` + `app/lib/types.ts` + `cli/src/constants/billing.ts`) by `audits/cross-tier-rates.sh` so a bump surfaces immediately.
+Posture changes only whether the per-token component is added (platform) or not (self-managed); the run fee is the same. That gradient is the friction-reducing signal: on-ramp on platform without a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. `RUN_NANOS_PER_SEC` is spelled in four rate files (`nanos.rs` + `rates.ts` + `app/lib/types.ts` + `cli/src/constants/billing.ts`), and a bump has to land in all four: each names the others, so the review that misses one is the thing that catches it.
 
-Rates come from a process-local cache in front of `core.model_library` (`state/model_rate_cache.zig`), on the shared `common.CacheTable` primitive. The table is the single source of truth; the cache exists to keep the charge path off it in the common case.
+Rates come from a process-local cache in front of `core.model_library` (`afd_billing`), on a shared cache-table primitive. The table is the single source of truth; the cache exists to keep the charge path off it in the common case.
 
 **A miss loads, it does not answer (M143 §2.2).** The cache is fixed-capacity and evicts, so it cannot promise completeness — and a charge path must never read "evicted" as "this model is not in the catalogue". It used to: an absent entry panicked the issue-time estimate and silently dropped renewal to run-fee-only, which is the revenue leak this milestone closes. So a miss loads the one row it asked about, and "not catalogued" is now a database answer.
 
@@ -275,7 +276,7 @@ A worked example with hardcoded dollar amounts goes stale the moment a rate move
 **Platform posture, single event (M80_010):**
 
 ```
-total_nanos = EVENT_NANOS                              // receive
+total_nanos = RECEIVE_NANOS                            // receive
             + Σ_slices [ (elapsed_ms/1000) × RUN_NANOS_PER_SEC            // run fee
                        + (Δinput  × rate.input_nanos_per_mtok)        / 1_000_000
                        + (Δcached × rate.cached_input_nanos_per_mtok) / 1_000_000
@@ -287,11 +288,11 @@ The token component dominates a token-heavy run; the run fee dominates a long, q
 **Self-managed posture, single event (M80_010):**
 
 ```
-total_nanos = EVENT_NANOS                              // receive
+total_nanos = RECEIVE_NANOS                            // receive
             + Σ_slices [ (elapsed_ms/1000) × RUN_NANOS_PER_SEC ]         // run fee only, no token math
 ```
 
-`RUN_NANOS_PER_SEC` is the one run rate for both postures (receive stays `EVENT_NANOS`); platform additionally layers the three-tier token cost. The live dollar amounts are canonical on [`agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing); implementers read the pin-tested constants in `src/agentsfleetd/state/tenant_billing.zig` and the model library (GET /v1/models) for the per-token rates.
+`RUN_NANOS_PER_SEC` is the one run rate for both postures (receive stays `RECEIVE_NANOS`); platform additionally layers the three-tier token cost. The live dollar amounts are canonical on [`agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing); implementers read the pin-tested constants in `rustd/crates/afd_billing/src/nanos.rs` and the model library (GET /v1/models) for the per-token rates.
 
 ---
 
@@ -463,7 +464,7 @@ core.tenant_model_entries (id, tenant_id, model_id, secret_ref, created_at, upda
 
 **Entries reference keys — they never own credential material.** `secret_ref` names a `vault.secrets` row (§8.1); the entry table carries no `provider` / `base_url` / `api_key` columns. `GET /v1/tenants/me/models` joins each entry to its secret's §8.2-safe metadata projection (provider, kind, `base_url`, `has_key`) at read time, the same projection §8.3's credential list already uses — `api_key` is structurally absent from the join, not filtered out. A keyless endpoint (Out of Scope: runner auth behaviour is unchanged) stores an empty `api_key` in the secret body so the activate/resolve chain in §9 stays uniform whether or not a key exists.
 
-**Activation upserts the entry — the registry is always representable by construction.** The tenant's *active* selection still lives on `core.tenant_model_selection` (renamed from `tenant_providers` this milestone — see below). The selection write (`upsertSelfManaged` in `state/tenant_provider.zig`) upserts the matching entry row and writes the selection inside one `BEGIN`/`COMMIT` transaction. `ensureEntry` is `INSERT … ON CONFLICT DO NOTHING`, a clean no-op on the common re-activation case. So "every active selection has a matching entry" holds for every caller, and a partial failure leaves nothing behind. Repeat PUTs converge (PUT stays idempotent). `GET /v1/tenants/me/models` is a **pure read**: it computes each entry's `active` flag by comparing `(secret_ref, model_id)` against the selection row and never writes. Side effect worth knowing: a secret activated via bare `PUT /provider` is immediately referenced by an entry, so the referenced-secret delete guard (above) protects the credential backing the active selection. (The original M121 shape was a synthesize-on-read self-heal inside GET; it was reworked pre-merge — a read handler mutating rows papered over an invariant the write path was allowed to violate. Pre-2.0, no legacy backfill: an old selection with no entry simply shows no Active row until the next activation.)
+**Activation upserts the entry — the registry is always representable by construction.** The tenant's *active* selection still lives on `core.tenant_model_selection` (renamed from `tenant_providers` this milestone — see below). The selection write (`rustd/crates/afd_credential/`) upserts the matching entry row and writes the selection inside one `BEGIN`/`COMMIT` transaction. The entry upsert is `INSERT … ON CONFLICT DO NOTHING`, a clean no-op on the common re-activation case. So "every active selection has a matching entry" holds for every caller, and a partial failure leaves nothing behind. Repeat PUTs converge (PUT stays idempotent). `GET /v1/tenants/me/models` is a **pure read**: it computes each entry's `active` flag by comparing `(secret_ref, model_id)` against the selection row and never writes. Side effect worth knowing: a secret activated via bare `PUT /provider` is immediately referenced by an entry, so the referenced-secret delete guard (above) protects the credential backing the active selection. (The original M121 shape was a synthesize-on-read self-heal inside GET; it was reworked pre-merge — a read handler mutating rows papered over an invariant the write path was allowed to violate. Pre-2.0, no legacy backfill: an old selection with no entry simply shows no Active row until the next activation.)
 
 **Guards.** POST/PATCH validate `secret_ref` names an existing vault secret (`UZ-MODELS-002` 404 otherwise) and refuse an exact `(model_id, secret_ref)` duplicate (`UZ-MODELS-003` 409). DELETE refuses the entry backing the tenant's active selection (`UZ-MODELS-001` 409) — the UI pre-disables Remove on that row rather than round-tripping the guard. The existing secret-delete path (`DELETE /v1/workspaces/{ws}/secrets/{name}`) is extended symmetrically: deleting a secret still referenced by ≥1 entry is refused, naming the reference count, so a credential can never be deleted out from under a live entry.
 
@@ -502,7 +503,7 @@ The OpenAI-compatible client routes the call to `https://api.fireworks.ai/infere
 
 The single source of truth for model context caps **and per-model token rates** is the `core.model_library` table, managed by platform admins through `POST/PATCH/DELETE /v1/admin/models` and read by tenants through the bearer-authed **`GET /v1/models`**. The install-time vs trigger-time resolution flow — which posture reads what, when, and how the frontmatter overlay works — is documented in [`user_flow.md` §8.7](./user_flow.md#87-model-and-context-cap-origin-platform-vs-self-managed); this section covers what the library *is* and how it is served.
 
-For billing specifically: `computeStageCharge` prices platform-posture slices from a process-local rate cache in front of `core.model_library`, validated against the catalogue generation the caller's own connection observes (see §4.2). It makes no network call; it does read the generation on a connection it already holds, which is what keeps a slice from being priced against a catalogue state that has since changed.
+For billing specifically: the stage charge prices platform-posture slices from a process-local rate cache in front of `core.model_library`, validated against the catalogue generation the caller's own connection observes (see §4.2). It makes no network call; it does read the generation on a connection it already holds, which is what keeps a slice from being priced against a catalogue state that has since changed.
 
 Read shape. **Live values are the source of truth** — the snippet below shows the response *shape*, not canonical values. Specific nanos-per-million figures change as upstream provider pricing moves and the admin-fleet reconciles. Do not hardcode them in code or paraphrase them in docs.
 
@@ -534,7 +535,7 @@ What the catalogue holds is curated in `scripts/model-library-allowlist.json` an
 Properties:
 
 - **Reading the catalogue requires an authenticated tenant.** There is no public route, no alias and no redirect; an unauthenticated request gets `404`. Per-token rates are margin data, so they sit behind auth like any other tenant read. The dashboard fetches through a token-minting Server Action, and the command-line interface resolves caps server-side via `PUT /v1/tenants/me/provider`.
-- **The response carries no global rate block.** Rates reach each surface from its own pinned constants — `src/agentsfleetd/state/tenant_billing.zig` server-side, `cli/src/constants/billing.ts`, and the website's `rates.ts` — which the cross-tier audit pins together.
+- **The response carries no global rate block.** Rates reach each surface from its own pinned constants — `rustd/crates/afd_billing/src/nanos.rs` server-side, `cli/src/constants/billing.ts`, and the website's `rates.ts` — which the cross-tier audit pins together.
 - **Consumed per-session, not cached at the edge.** The dashboard fetches the library once per session; the payload is small and the read is no longer a Content Delivery Network (CDN) concern.
 - **Resolved at install or provider-set time, never at trigger time.** The context cap is pinned in either `tenant_model_selection` (self-managed) or the synth-default constant (platform). Token rates load into the process cache on first use and are invalidated by the catalogue generation stored with them; the hot path never makes a network call. There is deliberately **no boot-time warm** — a bulk preload would be a second way to fill one cache, and the two would drift.
 

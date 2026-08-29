@@ -4,10 +4,11 @@
 //!
 //! `billing.usage_ledger.credit_deducted_nanos` is `BIGINT`, and every drain in
 //! this product is a whole number of nanos. One US dollar is
-//! [`NANOS_PER_USD`]; the rate constants below are the Zig ledger's, imported
-//! rather than re-derived, because `audits/cross-tier-rates.sh` pins their
-//! Zig spellings across four files and a second set of numbers here would be a
-//! second source of truth for what a second of runtime costs.
+//! [`NANOS_PER_USD`]; the rate constants below are declared once, here, and
+//! carried rather than re-derived — the website, the dashboard and the
+//! command-line interface each spell the same numbers for display, and a
+//! second set derived here would be a second source of truth for what a second
+//! of runtime costs. A bump lands in all four or in none.
 //!
 //! # Why not a decimal crate
 //!
@@ -228,6 +229,11 @@ pub const fn slice_charge(
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "the validated budget is the conversion fixture precondition"
+    )]
+
     use super::{
         ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, NANOS_PER_USD,
         NANOS_PER_USD_F64, Nanos, RUN_NANOS_PER_SEC, SliceRates, slice_charge,
@@ -305,6 +311,15 @@ mod tests {
 
         // And a five-dollar daily ceiling is five billion nanos.
         assert_eq!(NANOS_PER_USD * 5, 5_000_000_000);
+
+        let config = afd_fleet_runtime::FleetConfig::stored(
+            r#"{"name":"b","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":5}}}"#,
+        )
+        .expect("the fixture document is well-formed");
+        assert_eq!(
+            Nanos::from_dollars(config.budget().daily()),
+            Nanos::from_i64(5 * NANOS_PER_USD)
+        );
     }
 
     #[test]

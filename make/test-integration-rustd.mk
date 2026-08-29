@@ -13,20 +13,13 @@
 #
 # Three things in the recipe are load-bearing and easy to "simplify" away:
 #
-#   1. The exit code travels through a FILE, not `set -o pipefail`. This recipe
-#      runs under /bin/sh, which is dash on the CI runner, and dash has no
-#      pipefail. Piping into `tee` without it reports tee's status, which turns
-#      every failing suite into a green lane.
-#   1a. `test-coverage-rustd` captures that verdict into `$verdict` and exits on
-#      it, because a LAST LINE decides a recipe. It used to end
-#      `…rustd_lane_result.py …; echo "report at …"`, so the recipe's status was
-#      the echo's — always 0. The script printed `✗ Coverage run failed`, make
-#      called it a success, and CI only went red further down when Codecov could
-#      not find the `lcov.info` a failed run never wrote. That is item 1 again,
-#      one line lower: the lane knew, and could not say so. It matters more here
-#      than anywhere else in this file, because `make test-coverage-rustd` is
-#      what `.oracle/orly.json` declares for `verify.integration` — a gate whose
-#      green was unfalsifiable.
+#   1. The Python wrapper OWNS the child process. This recipe runs under
+#      /bin/sh, which is dash on the CI runner, and dash has no `pipefail`.
+#      Piping through `tee` would report tee's status; writing Cargo's status to
+#      a side file instead made disk exhaustion replace the original failure.
+#      The wrapper streams and tallies output while retaining the child's status
+#      in memory, so neither shell feature nor writable diagnostic file decides
+#      whether the lane passed.
 #   2. The lane fails when the suite reports ZERO passing tests. A selection
 #      that matches nothing exits 0, and "0 tests ran" is indistinguishable from
 #      "everything passed" by exit status alone — the Zig lane learned this the
@@ -82,27 +75,43 @@ _migrate-test-db:
 # which is what keeps live Postgres off the fast lane. Each ignore reason names
 # this target, so a developer who runs one directly is told where it belongs.
 
-# The `2>&1` that used to sit on the cargo invocation is now the wrapper's: it
-# merges the command's stderr into its stdout for the tee, and keeps its OWN
-# progress ticks on stderr. Reinstating a `2>&1` out here would fold those ticks
-# into the tally that `rustd_lane_result.py` parses.
+# The wrapper merges the command's stderr into stdout itself. Its diagnostic log
+# is best-effort: losing that file may lose a convenience artifact, never the
+# child's exit status or the passing-test count held in memory.
 test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust substrate integration suite against compose Postgres + Redis
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@echo "→ [rustd] Running the Rust integration suite against $(TEST_DATABASE_URL)..."; \
 	mkdir -p "$(CURDIR)/.tmp"; \
 	tally="$(CURDIR)/.tmp/rustd-integration.log"; \
-	code="$(CURDIR)/.tmp/rustd-integration.status"; \
-	rm -f "$$tally" "$$code"; \
-	{ cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] integration suite" -- \
-	      cargo test --workspace --all-features -- --ignored; \
-	  echo $$? > "$$code"; } | tee "$$tally"; \
+	rm -f "$$tally"; \
 	python3 "$(CURDIR)/scripts/rustd_lane_result.py" \
-	  --tally "$$tally" --status "$$(cat "$$code")" \
-	  --label "[rustd] Integration suite"
+	  --tally "$$tally" --cwd "$(RUSTD_DIR)" \
+	  --label "[rustd] Integration suite" -- \
+	  $(WITH_PROGRESS) "[rustd] integration suite" -- \
+	  cargo test --workspace --all-features --test '*' -- --ignored
 
 # The ONE invocation that executes both tiers, and therefore the one that
 # measures them.
 #
+# The line floor this lane enforces, and the reason it is not 100.
+#
+# The repository's committed contract is 100% and remains the target; the spec
+# carrying this work says so itself ("an implementation checkpoint while the
+# committed 100% contract remains authoritative"). What this is is a RATCHET:
+# a floor set to the coverage already achieved, so the lane can go green on
+# work that did not regress while the remaining gap is closed by later
+# milestones.
+#
+# 96 comes from a measured 96.0219% -- 25,224 of 26,269 lines, 1,045 missed
+# across 153 files, the largest being afd_fleet (231), afd_gate (100) and
+# afd_credential (95). That reading is from an earlier run and the floor was
+# set from it deliberately rather than by re-measuring, on the user's call.
+#
+# A ratchet only moves UP. Lowering this number to make a red lane green is
+# the thing it exists to prevent: raise it whenever a run beats it, and never
+# reduce it without recording why, here.
+RUSTD_COVERAGE_FLOOR ?= 96
+
 # `cargo llvm-cov` reports only what actually ran. The integration tests are
 # `#[ignore]`d, so a unit-only measurement sees every pool, stream and migrator
 # line as uncovered — the code is exercised, just not by the run holding the
@@ -113,25 +122,31 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 # It runs the suite ONCE. Instrumenting the run the lane was already making is
 # what keeps a full verification from executing every live-service test twice
 # on two runners — the mistake the retired Zig graph made and then fixed.
-# `_migrate-test-db` is a prerequisite here for the same reason it is on the
-# lane above, and its absence was a live defect: `$(TEST_STATE_DEP)` DROPS the
-# schemas and defers to "migrations will rebuild on next step". The lane above
-# has that next step; this one did not, so every run of it met an empty database
-# and every suite that seeds a row failed with `relation "core.tenants" does not
-# exist`. The two targets consume the same reset, so they need the same rebuild.
-test-coverage-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run both Rust test tiers under coverage against live datastores
+# The coverage lane still migrates after the reset, but it does so through
+# `cargo llvm-cov run --no-report`. The old `_migrate-test-db` prerequisite
+# built the full daemon normally and the coverage invocation then built the
+# same graph again with instrumentation. `--no-clean` carries the migrator's
+# profile and instrumented artifacts into the test run, so there is one LLVM
+# corpus and no preceding normal daemon build.
+test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under coverage against live datastores
 	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "✗ cargo-llvm-cov not found. Install via: cargo install cargo-llvm-cov"; exit 1; }
+	@echo "→ [rustd] Removing stale instrumented workspace artifacts..."; \
+	cd $(RUSTD_DIR) && cargo llvm-cov clean --workspace
+	@echo "→ [infra] Applying migrations through the instrumented daemon..."; \
+	cd $(RUSTD_DIR) && DATABASE_URL_MIGRATOR="$(TEST_DATABASE_URL)" \
+	  cargo llvm-cov run --all-features --no-report --bin agentsfleetd -- migrate \
+	  || { echo "✗ [infra] instrumented migrate failed"; exit 1; }
+	@echo "✓ [infra] Instrumented schema applied"
 	@echo "→ [rustd] Measuring both test tiers against $(TEST_DATABASE_URL)..."; \
 	mkdir -p "$(CURDIR)/.tmp"; \
 	tally="$(CURDIR)/.tmp/rustd-coverage.log"; \
-	code="$(CURDIR)/.tmp/rustd-coverage.status"; \
-	rm -f "$$tally" "$$code"; \
-	{ cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] coverage run" -- \
-	      cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info \
-	      -- --include-ignored; \
-	  echo $$? > "$$code"; } | tee "$$tally"; \
+	rm -f "$$tally"; \
 	python3 "$(CURDIR)/scripts/rustd_lane_result.py" \
-	  --tally "$$tally" --status "$$(cat "$$code")" \
-	  --label "[rustd] Coverage run"; verdict=$$?; \
+	  --tally "$$tally" --cwd "$(RUSTD_DIR)" \
+	  --label "[rustd] Coverage run" -- \
+	  $(WITH_PROGRESS) "[rustd] coverage run" -- \
+	  cargo llvm-cov --workspace --all-features --no-clean \
+	    --lcov --output-path lcov.info --fail-under-lines $(RUSTD_COVERAGE_FLOOR) \
+	    -- --include-ignored; verdict=$$?; \
 	echo "  report at $(RUSTD_DIR)/lcov.info"; \
 	exit $$verdict

@@ -53,27 +53,9 @@ use afd_credential::secrets::Registry;
 use afd_credential::vault::Vault;
 use afd_gate::gate::{Check, Gates};
 
-/// Why a poll came back empty when a gate is waiting on a person.
-///
-/// Declared once because BOTH arms of the gate pass reach it — the first
-/// delivery that raises a gate, and the re-poll that finds it still open — and
-/// the two sit ninety lines apart. Two spellings would be two different
-/// sentences in the log for one state (RULE UFS).
-const AWAITING_APPROVAL: &str = "a human owes an answer";
+mod step;
 
-/// Either the pass continues, or it already has its answer.
-///
-/// The verb below is a sequence of steps that can each end it, and every
-/// ending is the SAME shape — a serialized no-work or refusal. Spelling that
-/// as a type lets each step stay a few lines and read as one decision, instead
-/// of one function carrying nine early returns and the reader having to hold
-/// which of them wrote a row.
-pub(super) enum Step<T> {
-    /// Carry on, with this.
-    Go(T),
-    /// Stop; these are the bytes.
-    Stop(String),
-}
+use self::step::{AWAITING_APPROVAL, Step};
 
 /// Everything the lease verb acts through.
 ///
@@ -169,10 +151,6 @@ impl Plane {
         let Some(acquired) = self.leases.select(runner_id, now).await? else {
             return Ok(Step::Stop(no_work(runner_id, "no leasable work")?));
         };
-        // Everything past here holds a CLAIM. Stopping below leaves it to lapse
-        // rather than releasing it: the fence has already advanced, so a
-        // release would only let a second runner take work this poll decided
-        // not to run.
         let Some(installed) = self.leases.installed(&acquired.fleet_id).await? else {
             return Ok(Step::Stop(no_work(
                 runner_id,
@@ -180,14 +158,8 @@ impl Plane {
             )?));
         };
 
-        // Write ONE, and it precedes every gate: a refusal needs a row to mark
-        // terminal.
         let delivery = self.leases.record_received(&acquired, now).await?;
 
-        // Decided before any gate, because it is decided AFTER the lease row
-        // otherwise: a producer from a newer build can write a type this daemon
-        // has no execution path for, and that delivery must end rather than be
-        // issued to a runner and fail to render.
         let Some(event_type) = EventType::parse(&acquired.event_type) else {
             let reason = acquired.event_type.clone();
             return self
@@ -202,10 +174,6 @@ impl Plane {
                 .map(Step::Stop);
         };
 
-        // The payer, which the provider resolution needs and the money pass
-        // resolves again. One extra indexed single-row read on the lease path,
-        // accepted so that exactly ONE place decides what an unowned workspace
-        // means — the money pass, below, which refuses it.
         let resolved = match self.accounts.payer(&acquired.workspace_id).await? {
             Some(tenant) => Some(self.providers.resolve(&tenant).await?),
             None => None,
@@ -232,8 +200,6 @@ impl Plane {
         if let Some(stop) = self.judged(&acquired, &installed, now).await {
             return self.stopped(&acquired, stop, runner_id, now).await;
         }
-        // Admitted implies a payer, and a payer implies a resolution — the
-        // money pass refuses the workspace that has neither.
         let Some(resolved) = resolved else {
             return Ok(Step::Stop(no_work(runner_id, "admitted with no provider")?));
         };
@@ -344,11 +310,14 @@ impl Plane {
                 now,
             )
             .await?;
+        let runner_id_field = runner_id.as_str();
+        let fleet_id_field = acquired.fleet_id.as_str();
+        let event_id_field = acquired.event_id.as_str();
         tracing::warn!(
             event = EVENT_REFUSED,
-            runner_id = runner_id.as_str(),
-            fleet_id = acquired.fleet_id.as_str(),
-            agentsfleet_event_id = acquired.event_id.as_str(),
+            runner_id = runner_id_field,
+            fleet_id = fleet_id_field,
+            agentsfleet_event_id = event_id_field,
             label,
             reason,
             "the event was ended at a gate"

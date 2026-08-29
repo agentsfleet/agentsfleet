@@ -285,3 +285,7 @@ pub(crate) fn stored_json(
         source,
     }
 }
+
+#[cfg(test)]
+#[path = "error/tests.rs"]
+mod tests;

@@ -27,7 +27,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-mod harness;
+use crate::harness;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};

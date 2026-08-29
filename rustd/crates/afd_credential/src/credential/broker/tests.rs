@@ -215,6 +215,8 @@ async fn a_refusal_is_handed_to_every_waiter_and_cached_by_none() {
     for (refusal, expected) in [
         (Outcome::MintFailed(Retry::Transient), "a transient failure"),
         (Outcome::ReconnectRequired, "a dead connection"),
+        (Outcome::UnknownIntegration, "an unknown integration"),
+        (Outcome::Unconfigured, "an unconfigured integration"),
     ] {
         let vendor = Counting::new(Answer::Refused(refusal), Duration::from_millis(20));
         let broker = Arc::new(broker(&vendor));
@@ -322,38 +324,4 @@ async fn two_asks_share_an_entry_only_when_serving_one_the_others_token_is_corre
     assert_eq!(vendor.calls(), 5, "a rotated credential missed the cache");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_handle_naming_nothing_this_registry_carries_is_its_own_answer() {
-    let vendor = Counting::new(Answer::Token { rotates: false }, Duration::ZERO);
-    let broker = broker(&vendor);
-    let workspace = workspace();
-
-    for unknown in [
-        json!({INTEGRATION: "githubb"}),
-        json!({"api_token": "no integration field"}),
-        json!(["not an object"]),
-    ] {
-        let outcome = broker.mint(ask(&workspace, &unknown, None)).await;
-        assert!(
-            matches!(outcome, Outcome::UnknownIntegration),
-            "{unknown}: {outcome:?}"
-        );
-    }
-    assert_eq!(vendor.calls(), 0, "an unresolvable handle reached a vendor");
-}
-
-#[test]
-fn a_stored_handle_hands_back_what_it_holds_and_refuses_when_it_holds_nothing() {
-    // The `static` connector's whole exchange. A handle with no token is a
-    // connection a human finishes, not a failure to retry.
-    let held = stored(&json!({INTEGRATION: "static", "token": "ghp_stored"}));
-    let minted = held.minted().expect("a static handle carries its token");
-    assert_eq!(minted.token.as_str(), "ghp_stored");
-    assert_eq!(minted.expires_at_ms, i64::MAX);
-    assert!(minted.rotated_refresh_token.is_none());
-
-    assert!(matches!(
-        stored(&json!({INTEGRATION: "static"})),
-        Outcome::ReconnectRequired
-    ));
-}
+mod edges;

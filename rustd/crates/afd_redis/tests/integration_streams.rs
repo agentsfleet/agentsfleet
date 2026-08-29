@@ -6,16 +6,12 @@
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
 use afd_redis::streams::{FleetStreams, fleet_stream_key};
 
-#[path = "support/redis_harness.rs"]
-mod support;
-
-use self::support::RedisHarness;
+use crate::support::RedisHarness;
 
 /// Dimension 3.1 — the round trip, and the identity claim inside it.
 ///
