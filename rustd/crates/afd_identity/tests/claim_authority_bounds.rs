@@ -236,6 +236,53 @@ fn test_a_null_ceiling_reads_as_no_ceiling() {
     assert!(claims.workspace_scope.is_none());
 }
 
+/// A top-level `null` does not shadow a ceiling nested under `metadata`.
+///
+/// Two rules meet here and each is right on its own: the ladder reads the top
+/// level before `metadata`, and a `null` means "unset". Letting the null win
+/// the first rule combines them into the exact grant this file exists to
+/// refuse — a confinement an operator wrote under `metadata`, reported to
+/// `WorkspaceDirectory::authorize` as no confinement at all, which is
+/// indistinguishable from a holder who was never confined. The shape is not
+/// hypothetical: a template that starts projecting the claim to the top level
+/// emits the unset field as `null` while the nested projection is still there.
+#[test]
+fn test_a_null_at_the_top_level_does_not_shadow_a_nested_ceiling() {
+    let shadowed = format!(
+        "{{\"sub\":\"user_bounded\",\"iss\":\"{ISSUER}\",\"aud\":\"{AUDIENCE}\",\
+         \"exp\":{NOT_EXPIRED},\"workspace_id\":null,\
+         \"metadata\":{{\"tenant_id\":\"{TENANT}\",\"workspace_id\":\"{WORKSPACE}\"}}}}"
+    );
+
+    let claims = verify(&shadowed).expect("a nested ceiling is still a ceiling");
+
+    assert_eq!(
+        claims
+            .workspace_scope
+            .as_ref()
+            .map(afd_core::id::Uuid7::as_str),
+        Some(WORKSPACE)
+    );
+}
+
+/// The same shadowing must not hide an UNREADABLE nested ceiling either.
+///
+/// The other half, and the half with teeth: carrying a readable ceiling through
+/// proves the ladder walks on, while this proves the refusal walks with it. A
+/// fix that only restored the happy path would still drop the restriction in
+/// the case the daemon cannot act on, which is the one that grants access.
+#[test]
+fn test_a_null_at_the_top_level_does_not_hide_an_unreadable_nested_ceiling() {
+    let shadowed = format!(
+        "{{\"sub\":\"user_bounded\",\"iss\":\"{ISSUER}\",\"aud\":\"{AUDIENCE}\",\
+         \"exp\":{NOT_EXPIRED},\"workspace_id\":null,\
+         \"metadata\":{{\"tenant_id\":\"{TENANT}\",\"workspace_id\":42}}}}"
+    );
+
+    let refused = verify(&shadowed).expect_err("an unreadable nested ceiling is refused");
+    assert_eq!(refused, VerifyError::UnreadableCeiling);
+}
+
 /// A nested ceiling of the wrong type is refused too.
 ///
 /// The type check has to sit on the same ladder the string read does, or the
