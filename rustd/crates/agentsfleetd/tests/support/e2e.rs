@@ -1,27 +1,25 @@
 //! §7's scenario: a booted daemon, a funded fleet, and an enrolled runner.
 //!
-//! # A database per scenario, and the daemon pointed at it
+//! # One lane database, and one ready stream
 //!
-//! Every other live-datastore suite here creates a database per test and drops
-//! it, and this one has to as well — but the seam is different, because §7
-//! proves a runner against the daemon that SERVES rather than against a store
-//! this file built. So the database is created and migrated first and `boot` is
-//! handed it through `DATABASE_URL_API`: the daemon opens the fixture's
-//! database, not the other way round.
+//! Every scenario boots a real daemon against the lane's own database, handed
+//! to it through `DATABASE_URL_API`. Scenarios are kept apart in Postgres by
+//! the identifiers `unique_ids` mints, not by a database apiece.
 //!
-//! It is not tidiness. Sharing the lane database made the assignment pass see
-//! TEN candidate fleets — every scenario an earlier run had left behind — and
-//! `ORDER BY … created_at ASC` correctly handed back the oldest one, which
-//! carried a config from before this file seeded a parseable document. The
-//! symptom was `UZ-INTERNAL-003` on a fleet that had just been written
-//! correctly, and no amount of re-reading THIS scenario's seed could explain
-//! it, because the row being read belonged to a different one.
+//! That is enough for rows and not enough for the queue. `fleet:ready` is one
+//! hash for the whole deployment and the assignment pass takes a candidate at
+//! random from it, so two concurrent scenarios race for each other's seeded
+//! event: the winner leases work it did not seed, stamps its activity with that
+//! event, and publishes to a fleet channel the other test is subscribed to.
+//! Minted identifiers cannot reach that — a queue is one key and a group is one
+//! group. [`READY_STREAM`] serialises scenarios instead, and the guard rides on
+//! [`Scenario`] so a test cannot forget to take it.
 //!
-//! Redis has no per-test equivalent and stays shared. That is safe for the same
-//! reason it is safe next door: the candidate scan filters ready marks through
-//! `core.fleets` in the daemon's own database, so another scenario's mark
-//! cannot survive the join — and [`Scenario::cleanup`] clears this one's anyway,
-//! so a bounded peek is never crowded by suites that have finished.
+//! A test CAN still forget to release it correctly. `Supervisor` has no `Drop`,
+//! so a scenario that never calls `shutdown().await` leaves its tasks running
+//! after the guard is gone, and the next scenario boots beside a live
+//! competitor. End every scenario with `supervisor.shutdown().await` then
+//! `run.cleanup().await`, in that order.
 //!
 //! # Why the clock is real
 //!
