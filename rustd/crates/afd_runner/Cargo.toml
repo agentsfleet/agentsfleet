@@ -50,6 +50,6 @@ test-util = ["afd_core/test-util", "afd_db/test-util", "afd_redis/test-util"]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [[test]]
-name = "runner_sweeps"
-path = "tests/sweeps.rs"
+name = "runner_suite"
+path = "tests/runner_suite.rs"
 required-features = ["test-util"]

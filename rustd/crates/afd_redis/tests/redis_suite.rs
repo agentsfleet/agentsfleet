@@ -73,8 +73,8 @@ mod support;
 
 #[path = "connect_refusals.rs"]
 mod connect_refusals;
-#[path = "diagnose_connect.rs"]
-mod diagnose_connect;
+#[path = "integration_diagnose_connect.rs"]
+mod integration_diagnose_connect;
 #[path = "error_surface.rs"]
 mod error_surface;
 #[path = "hub_socket_faults.rs"]
