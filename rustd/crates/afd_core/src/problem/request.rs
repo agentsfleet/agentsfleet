@@ -157,28 +157,31 @@ pub(super) const REQUEST: &[Problem] = &[
         code: error_code::SCHEDULE_NOT_FOUND,
         status: 404,
         title: "Schedule not found",
-        hint: "No schedule under that id belongs to this fleet. A schedule id from another fleet reads as absent on purpose.",
+        hint: "No schedule matches this identifier for the selected Fleet.",
         user_message: None,
     },
     Problem {
+        // 409, not 400: the Zig answers `conflict` and a status is a property
+        // of the CODE — the two binaries disagreeing about it is what sends a
+        // client down a branch the other daemon never produces.
         code: error_code::SCHEDULE_LIMIT_REACHED,
-        status: 400,
+        status: 409,
         title: "Schedule limit reached",
-        hint: "This fleet already holds as many schedules as it may. Delete one before creating another.",
+        hint: "A Fleet can hold at most 32 schedules. Remove one before creating another.",
         user_message: None,
     },
     Problem {
         code: error_code::SCHEDULE_KEY_TAKEN,
         status: 409,
-        title: "Schedule key taken",
-        hint: "This fleet already has a schedule registered under that upstream key.",
+        title: "Schedule source already exists",
+        hint: "A schedule already uses this source key for the selected Fleet. Pick a different source or update the existing schedule.",
         user_message: None,
     },
     Problem {
         code: error_code::SCHEDULE_SYNCING,
         status: 409,
-        title: "Schedule is synchronising",
-        hint: "Another writer is registering this schedule with the scheduler. Try again in a moment.",
+        title: "Schedule update busy",
+        hint: "Another schedule mutation holds the synchronization lease. Retry after the reported delay.",
         user_message: None,
     },
     Problem {

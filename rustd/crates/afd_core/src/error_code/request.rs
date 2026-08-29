@@ -108,22 +108,34 @@ pub const APPROVAL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-APPROVAL-002");
 
 /// No schedule under that identifier belongs to this fleet.
 ///
-/// One answer for a schedule that never existed and one belonging to another
-/// fleet, for the reason `WEBHOOK_FLEET_NOT_FOUND` gives about its own pair:
-/// telling them apart confirms an identifier across an ownership boundary.
-pub const SCHEDULE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-SCHED-001");
+/// `ERR_SCHEDULE_NOT_FOUND` (`error_registry.zig:100`). One answer for a
+/// schedule that never existed and one belonging to another fleet, for the
+/// reason `WEBHOOK_FLEET_NOT_FOUND` gives about its own pair: telling them
+/// apart confirms an identifier across an ownership boundary.
+///
+/// The number is the ZIG's, not this family's ordinal. `UZ-SCHED-001` is
+/// `ERR_SCHEDULE_INVALID` over there and a client already branches on it, so
+/// numbering this family from one would have made two daemons answer one code
+/// with two meanings — a 404 here and a 422 there.
+pub const SCHEDULE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-SCHED-002");
 
 /// This fleet already holds as many schedules as it may.
-pub const SCHEDULE_LIMIT_REACHED: ErrorCode = ErrorCode::declare("UZ-SCHED-002");
+///
+/// `ERR_SCHEDULE_LIMIT_REACHED` (`error_registry.zig:101`).
+pub const SCHEDULE_LIMIT_REACHED: ErrorCode = ErrorCode::declare("UZ-SCHED-003");
 
 /// This fleet already registered a schedule under that upstream key.
-pub const SCHEDULE_KEY_TAKEN: ErrorCode = ErrorCode::declare("UZ-SCHED-003");
+///
+/// `ERR_SCHEDULE_CONFLICT` (`error_registry.zig:106`), whose entry names the
+/// source key exactly.
+pub const SCHEDULE_KEY_TAKEN: ErrorCode = ErrorCode::declare("UZ-SCHED-008");
 
 /// Another syncer holds this schedule.
 ///
-/// Distinct from a not-found: the row EXISTS and the caller may retry in a
-/// moment, so the two answers send a caller to different places.
-pub const SCHEDULE_SYNCING: ErrorCode = ErrorCode::declare("UZ-SCHED-004");
+/// `ERR_SCHEDULE_UPDATE_BUSY` (`error_registry.zig:104`). Distinct from a
+/// not-found: the row EXISTS and the caller may retry in a moment, so the two
+/// answers send a caller to different places.
+pub const SCHEDULE_SYNCING: ErrorCode = ErrorCode::declare("UZ-SCHED-006");
 
 /// The path named a preference key outside the writable registry.
 pub const PREF_KEY_UNKNOWN: ErrorCode = ErrorCode::declare("UZ-PREFS-001");
