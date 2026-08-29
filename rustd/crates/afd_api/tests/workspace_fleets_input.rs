@@ -13,7 +13,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-mod harness;
+use crate::harness;
 
 use http::{Method, StatusCode};
 use serde_json::Value;

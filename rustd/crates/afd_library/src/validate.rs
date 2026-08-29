@@ -95,3 +95,7 @@ fn validate_path(raw: &str) -> Result<(), InvalidBundle> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "validate/tests.rs"]
+mod tests;

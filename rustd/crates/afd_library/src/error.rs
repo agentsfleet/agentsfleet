@@ -284,3 +284,7 @@ impl Error {
 
 /// The result returned by fallible operations in this crate.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
+
+#[cfg(test)]
+#[path = "error/tests.rs"]
+mod tests;

@@ -228,6 +228,11 @@ pub const fn slice_charge(
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "the validated budget is the conversion fixture precondition"
+    )]
+
     use super::{
         ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, NANOS_PER_USD,
         NANOS_PER_USD_F64, Nanos, RUN_NANOS_PER_SEC, SliceRates, slice_charge,
@@ -305,6 +310,15 @@ mod tests {
 
         // And a five-dollar daily ceiling is five billion nanos.
         assert_eq!(NANOS_PER_USD * 5, 5_000_000_000);
+
+        let config = afd_fleet_runtime::FleetConfig::stored(
+            r#"{"name":"b","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":5}}}"#,
+        )
+        .expect("the fixture document is well-formed");
+        assert_eq!(
+            Nanos::from_dollars(config.budget().daily()),
+            Nanos::from_i64(5 * NANOS_PER_USD)
+        );
     }
 
     #[test]

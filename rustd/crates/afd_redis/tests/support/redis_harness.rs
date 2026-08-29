@@ -11,6 +11,11 @@ use std::time::Duration;
 use afd_redis::Redis;
 use afd_redis::config::{RedisConfig, RedisRole};
 
+#[path = "subscriber.rs"]
+mod subscriber;
+
+use self::subscriber::install_subscriber;
+
 const URL_KNOB: &str = "TEST_REDIS_URL";
 const CA_KNOB: &str = "TEST_REDIS_CA_CERT";
 
@@ -56,27 +61,4 @@ impl RedisHarness {
     pub(crate) fn name(&self, suffix: &str) -> String {
         format!("{}_{suffix}", self.prefix)
     }
-}
-
-/// Installs a subscriber so event macros actually run.
-///
-/// `tracing::warn!` asks whether its callsite is enabled BEFORE it evaluates
-/// the fields inside it. With no subscriber, every field expression in every
-/// diagnostic in this workspace is skipped — the events are not merely
-/// unrecorded, their arguments never execute. A test that exercises a failure
-/// path therefore proves the path runs but never proves the line that reports
-/// it does, and the first sign of a panicking `Display` in a log field would be
-/// production.
-///
-/// Output goes to a sink: the point is that the fields are evaluated, not that
-/// anybody reads them.
-pub(crate) fn install_subscriber() {
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
-            .with_writer(std::io::sink)
-            .finish();
-        let _ = tracing::subscriber::set_global_default(subscriber);
-    });
 }

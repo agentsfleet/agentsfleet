@@ -95,6 +95,7 @@ impl Fleets {
             .await
             .map_err(error::query(CONTEXT_COMMIT))?;
 
+        self.live_sets.invalidate(workspace.as_str()).await;
         self.forget_state(fleet.as_str()).await;
         Ok(())
     }

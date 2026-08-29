@@ -38,7 +38,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** Make Rust coverage complete and faster
 - **Intent (one sentence):** Give engineers a faster, disk-bounded live Rust proof that reaches the repository's declared coverage bar and reports the real cause of every failure.
-- **Handshake:** I understand this as a reliability and verification refactor, not a request to inflate coverage by exclusions or low-value line execution. ASSUMPTIONS I'M MAKING: 99% is an implementation checkpoint while the committed 100% contract remains authoritative; `make test-integration-rustd` stays the sole live Postgres and Redis lane; public routes, schemas, commands, flags, and wire payloads do not change; an internal crate boundary ships only when timing proves sibling parallelism; and generated Cargo caches are never deleted automatically.
+- **Handshake:** I understand this as a reliability and verification refactor, not a request to inflate coverage by exclusions or low-value line execution. ASSUMPTIONS I'M MAKING: 99% is an implementation checkpoint while the committed 100% contract remains authoritative; `make test-integration-rustd` stays the sole live Postgres and Redis lane; public routes, schemas, commands, flags, and wire payloads do not change; an internal crate boundary ships only when timing proves sibling parallelism; normal developer Cargo caches are never deleted automatically; and the coverage target may clean only its own instrumented corpus so stale binaries cannot falsify the report.
 - **Golden path:** the make target starts compose and verifies the Redis certificate, resets Postgres schemas and Redis state, runs the daemon's real migrator under the same LLVM instrumentation used by the tests, executes unit plus ignored live tests once, preserves the child status while streaming output, emits phase and coverage evidence, writes LCOV, enforces the declared line bar, and uploads that exact report. No second schema path, migration implementation, test pass, or coverage denominator exists.
 
 ## Implementing agent — read these first
@@ -70,6 +70,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_db/tests/integration_migrate.rs`, `rustd/crates/afd_db/tests/integration_migrate_faults.rs`, and `rustd/crates/afd_db/tests/integration_pool.rs` | EDIT | consume the existing crate-owned scratch database utility |
 | `rustd/crates/afd_db/tests/support/test_database.rs` | DELETE | remove the duplicate scratch-database lifecycle and subscriber |
 | `docs/architecture/testing.md` | EDIT | describe the real I/O-bearing Rust coverage lane and local enforcement |
+| `docs/architecture/scaling.md` | EDIT | `REDIS_CONNECT_TIMEOUT_MS` is a new operator knob; it belongs beside `REDIS_REQUEST_TIMEOUT_MS` in all three places that knob appears |
 | `crates` | DELETE | remove the tracked, zero-byte, unreferenced root orphan |
 
 ## Applicable Rules
@@ -77,6 +78,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **`docs/greptile-learnings/RULES.md`** — RULE GRD grounds the lane and coverage claims; RULE NDC, RULE NLR, RULE HLP, RULE ORP, and RULE CHR remove dead or duplicate surfaces completely; RULE ECL and RULE ERR-RS preserve timeout classification and causes; RULE UFS prevents duplicated protocol/event spellings; RULE TST-NAM and RULE TNM keep durable behavioural test names; RULE ITF preserves real-schema fixtures; RULE MKP requires truthful pipeline exit propagation; RULE FLL constrains every touched source and test file.
 - **`dispatch/write_rust.md` and `docs/RUST_ERROR_STANDARD.md`** — every Rust fallible seam remains a `Result` pipeline with one owning error type and no stringified cause.
 - **`docs/LOGGING_STANDARD.md`** — Redis and supervisor boundary events are paired, structured, byte-compatible or intentionally migrated, and tested with an enabled subscriber.
+- **Microsoft Rust Guidelines** — use small sibling crates rather than serialized chains, workspace-owned manifests, mockable system boundaries, `From`-based error composition, structured low-overhead logging, non-tautological tests, bounded async state, and reasoned `expect` lint overrides.
 - **`dispatch/write_python.md`** — lane and benchmark scripts keep subprocess ownership, typed parsing, and negative-path tests explicit.
 
 ## Applicable Gates
@@ -185,7 +187,7 @@ Public HTTP routes, payloads, status codes, error codes, configuration knobs, sc
 4. Every fixture mints scoped identifiers and every shared-state assertion carries that scope — enforced by integration stress tests and source audits for unscoped whole-table counts.
 5. New Rust crate errors compose with `#[from]`; contextual `map_err` retains the cause; data-only failures need no source — enforced by `audits/rust-error.sh` and focused unit tests.
 6. Boundary operations emit started plus exactly one completed or failed event; event renames require an explicit compatibility migration — enforced by captured-subscriber tests.
-7. Generated targets may fail closed on insufficient disk but are never silently or automatically deleted by a verification target — enforced by lane-runner tests.
+7. Normal developer targets may fail closed on insufficient disk but are never silently or automatically deleted by a verification target. The coverage lane cleans only its scoped `target/llvm-cov-target` corpus before measurement so stale instrumented binaries cannot enter a new report — enforced by lane-runner tests.
 
 ## Metrics & Observability
 
@@ -265,7 +267,7 @@ Public HTTP routes, payloads, status codes, error codes, configuration knobs, sc
 - Coverage exclusions, lowered Codecov targets, generated line touches, or deletion whose purpose is denominator reduction.
 - Splitting the serialized credential → gate → fleet chain again; M184 already proved it cannot compile in parallel.
 - A production workspace crate whose only consumer is test support.
-- Automatic deletion of developer Cargo or Docker caches.
+- Automatic deletion of normal developer Cargo or Docker caches; the coverage lane owns and may clean only its scoped LLVM-instrumented corpus.
 
 ## Product Clarity (authoring record)
 

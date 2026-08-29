@@ -14,6 +14,8 @@
 
 use afd_api::services::WorkspaceOwnership;
 use afd_core::id::Uuid7;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// The identifier of the one workspace [`OneWorkspace`] answers for.
 ///
@@ -37,8 +39,34 @@ pub(crate) const DEPLOYMENT: &str = "https://api.fixture.test";
 /// were asked, which is exactly what a real store over a dead pool does, only
 /// with the error invented instead of raised. This encodes a DECISION, and no
 /// datastore state can stand in for it.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct OneWorkspace;
+#[derive(Debug, Clone)]
+pub(crate) struct OneWorkspace {
+    owned: Uuid7,
+    authorized: Arc<AtomicBool>,
+}
+
+impl OneWorkspace {
+    /// The stable workspace used by datastore-free routing suites.
+    pub(crate) fn fixed() -> Self {
+        Self {
+            owned: Uuid7::parse(OWNED_WORKSPACE).expect("the fixture workspace is canonical"),
+            authorized: Arc::new(AtomicBool::new(true)),
+        }
+    }
+
+    /// A minted workspace used by a live fixture without global row collisions.
+    pub(crate) fn owning(owned: Uuid7) -> Self {
+        Self {
+            owned,
+            authorized: Arc::new(AtomicBool::new(true)),
+        }
+    }
+
+    /// Revokes this fixture principal for a stream refresh proof.
+    pub(crate) fn revoke(&self) {
+        self.authorized.store(false, Ordering::Release);
+    }
+}
 
 impl WorkspaceOwnership for OneWorkspace {
     fn authorize(
@@ -50,7 +78,7 @@ impl WorkspaceOwnership for OneWorkspace {
         // statement binds nothing that could match, so the answer is a denial
         // rather than an error.
         let tenant = principal.tenant().cloned();
-        let owned = workspace.as_str() == OWNED_WORKSPACE;
+        let owned = workspace == &self.owned && self.authorized.load(Ordering::Acquire);
         std::future::ready(Ok(tenant.filter(|_| owned)))
     }
 

@@ -32,6 +32,11 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::{TcpListener, TcpStream};
 
+#[path = "subscriber.rs"]
+mod subscriber;
+
+pub(crate) use self::subscriber::install_subscriber;
+
 /// What the fake does when a command arrives.
 #[derive(Debug, Clone)]
 pub(crate) enum Reply {
@@ -40,6 +45,8 @@ pub(crate) enum Reply {
     /// Answer nothing and close the socket. This is a server dying mid-command,
     /// which is what the dropped-connection classification is written for.
     Hangup,
+    /// Keep the socket open and never answer this command.
+    Silent,
     /// The confirmation Redis sends for `SUBSCRIBE`, echoing the channel the
     /// client asked for. Built here rather than written literally because the
     /// channel name is the test's, not this file's.
@@ -226,6 +233,7 @@ async fn serve(mut socket: TcpStream, control: Arc<Control>) {
             let bytes = match reply {
                 Reply::Raw(raw) => raw.as_bytes().to_vec(),
                 Reply::Hangup => return,
+                Reply::Silent => continue,
                 Reply::SubscribeAck => confirmation("subscribe", request.first_argument()),
                 Reply::UnsubscribeAck => confirmation("unsubscribe", request.first_argument()),
             };
@@ -267,70 +275,10 @@ fn confirmation(kind: &str, channel: &[u8]) -> Vec<u8> {
     out
 }
 
-/// One parsed request.
-#[derive(Debug)]
-struct Request {
-    name: String,
-    arguments: Vec<Vec<u8>>,
-    consumed: usize,
-}
+#[path = "fake_redis/resp.rs"]
+mod resp;
 
-impl Request {
-    /// The first argument, or empty when the command carried none.
-    fn first_argument(&self) -> &[u8] {
-        self.arguments.first().map_or(&[], Vec::as_slice)
-    }
-}
-
-/// Reads one `*N` array of bulk strings.
-///
-/// `None` means the buffer holds an incomplete request and the caller should
-/// read more — never that the request was bad. This server is a fixture, and a
-/// fixture that tried to diagnose malformed input would be diagnosing the
-/// client library rather than the code under test.
-fn parse_command(buffer: &[u8]) -> Option<Request> {
-    let mut cursor = 0_usize;
-    let (header, used) = read_line(buffer, cursor)?;
-    if !header.starts_with('*') {
-        return None;
-    }
-    let count: usize = header.get(1..)?.parse().ok()?;
-    cursor = used;
-
-    let mut name = None;
-    let mut arguments = Vec::new();
-    for index in 0..count {
-        let (marker, after_marker) = read_line(buffer, cursor)?;
-        let length: usize = marker.strip_prefix('$')?.parse().ok()?;
-        let end = after_marker.checked_add(length)?;
-        // The trailing CRLF has to be present too, or the argument is only
-        // partly here and the whole request must wait for another read.
-        if buffer.get(end..end.checked_add(2)?)? != b"\r\n" {
-            return None;
-        }
-        let field = buffer.get(after_marker..end)?;
-        if index == 0 {
-            name = Some(String::from_utf8_lossy(field).to_uppercase());
-        } else {
-            arguments.push(field.to_vec());
-        }
-        cursor = end.checked_add(2)?;
-    }
-
-    name.map(|command| Request {
-        name: command,
-        arguments,
-        consumed: cursor,
-    })
-}
-
-/// Reads one CRLF-terminated line, returning it and the offset past it.
-fn read_line(buffer: &[u8], from: usize) -> Option<(String, usize)> {
-    let rest = buffer.get(from..)?;
-    let break_at = rest.windows(2).position(|pair| pair == b"\r\n")?;
-    let line = String::from_utf8_lossy(rest.get(..break_at)?).into_owned();
-    Some((line, from.checked_add(break_at)?.checked_add(2)?))
-}
+use self::resp::parse_command;
 
 /// A loopback port with nothing listening on it.
 ///
@@ -346,22 +294,4 @@ pub(crate) async fn closed_port() -> String {
         .expect("a bound listener has an address");
     drop(listener);
     format!("redis://{addr}")
-}
-
-/// Installs a subscriber so event macros actually run.
-///
-/// The same trap the live harness carries, and it bites harder here: these
-/// tests exist to exercise failure paths, and every one of those paths reports
-/// itself through a `tracing` event whose fields are never evaluated without a
-/// subscriber installed. Output goes to a sink — the point is that the fields
-/// run, not that anybody reads them.
-pub(crate) fn install_subscriber() {
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
-            .with_writer(std::io::sink)
-            .finish();
-        let _ignored = tracing::subscriber::set_global_default(subscriber);
-    });
 }

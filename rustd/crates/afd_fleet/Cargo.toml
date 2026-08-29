@@ -17,6 +17,7 @@ categories.workspace = true
 test-util = [
   "afd_auth/test-util",
   "afd_core/test-util",
+  "afd_crypto/test-util",
   "afd_db/test-util",
   # The queue refusal a stubbed device-flow surface answers with.
   "afd_redis/test-util",

@@ -50,7 +50,6 @@ use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
-use afd_redis::Redis;
 use afd_redis::config::{RedisConfig, RedisRole};
 use sqlx::Row as _;
 
@@ -125,7 +124,7 @@ impl Lane {
     async fn open(workspace: String, fleet: String) -> Self {
         let database = TestDatabase::shared();
         let pool = database.open(DbRole::Api, &[]).await;
-        let queue = Redis::connect(&redis_config())
+        let queue = afd_redis::test_util::connect_live(&redis_config())
             .await
             .expect("the lane's Redis must be reachable");
 

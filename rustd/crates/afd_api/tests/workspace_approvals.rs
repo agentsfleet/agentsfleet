@@ -25,7 +25,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-mod harness;
+use crate::harness;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::error_code;
@@ -290,6 +290,22 @@ async fn a_decision_needs_no_note() {
         StatusCode::BAD_REQUEST,
         "an absent note is not a malformed request"
     );
+}
+
+/// Plain and escaped notes are both valid JSON strings and reach the store.
+#[tokio::test]
+async fn a_decision_accepts_borrowed_and_decoded_notes() {
+    for body in [
+        r#"{"reason":"reviewed"}"#,
+        r#"{"reason":"line one\nline two"}"#,
+    ] {
+        let response = authorised(Method::POST, &decision("approve"), body).await;
+        assert_ne!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "a valid note must not be rejected as malformed: {body}"
+        );
+    }
 }
 
 /// The templates carry only the methods they document.
