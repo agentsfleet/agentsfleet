@@ -30,49 +30,59 @@ use afd_core::env::EnvSource;
 /// sits healthy. `Db::acquire` then reads a pool below its ceiling as evidence
 /// the datastore is absent and answers 503.
 ///
-/// `core_api` sizes against two facts instead of an assumption — the host's CPU
-/// count and Postgres's hundred-connection ceiling — and states the second in
-/// `components/database/src/config.rs`: "This make sure the `max_connections` in
-/// close to 100 in postgres."
+/// The ceiling is a share of the DATABASE's capacity, not the host's.
 ///
-/// Its shape is ported here and its NUMBER is taken too: fifty, which is what
-/// `core_api` runs in `local.toml`, `testapi.toml` and `devapi.toml`. Its own
-/// code default is forty and every one of its environments overrides upward,
-/// so forty is the number nothing actually runs on.
+/// A connection costs a Postgres backend process, and how many the server can
+/// serve has nothing to do with how many cores this replica has. Sizing from
+/// `available_parallelism` produced a per-replica fifty, and a stock Postgres
+/// admits a hundred connections with three reserved for superusers — so two
+/// replicas at fifty exhaust the ordinary slots before a migration, an
+/// operator session, or any other service has asked for one.
 ///
-/// `apiprod.toml` goes to seventy-five. That is left to the deployment rather
-/// than written here, because at seventy-five a stock hundred-connection
-/// Postgres serves a single replica — so it travels with a Postgres
-/// `max_connections` raise, which is a deploy decision. The knob is
-/// `DATABASE_POOL_SIZE`, role-suffixable as `DATABASE_POOL_SIZE_API`.
+/// So the default divides a budget by the replicas expected to share it. Both
+/// numbers are deliberately conservative, because being wrong low costs queuing
+/// on one replica and being wrong high costs every client of that database at
+/// once — including the ones that would have to be running for anyone to
+/// notice.
+///
+/// A deployment that knows its own budget sets `DATABASE_POOL_SIZE`
+/// (role-suffixable as `DATABASE_POOL_SIZE_API`), which is where a real number
+/// belongs: it travels with the Postgres `max_connections` the deployment
+/// actually runs, and that is not a fact this file can know.
 fn pool_size_default() -> u32 {
-    const SMALL_HOST_CORES: usize = 4;
-    const PER_CORE_ON_A_SMALL_HOST: u32 = 10;
-    const CEILING: u32 = 50;
+    /// Ordinary slots this service may take of a stock hundred-connection
+    /// Postgres, after the three superuser reservations and a margin for the
+    /// migrator, operator sessions, and monitoring.
+    const SERVICE_CONNECTION_BUDGET: u32 = 80;
 
-    let cores =
-        std::thread::available_parallelism().map_or(SMALL_HOST_CORES, std::num::NonZero::get);
-    // `cores` is bounded by SMALL_HOST_CORES on this branch, so the conversion
-    // cannot lose anything; the fallback keeps that true without an unwrap.
-    let small = u32::try_from(cores.min(SMALL_HOST_CORES)).unwrap_or(1);
-    if cores <= SMALL_HOST_CORES {
-        small * PER_CORE_ON_A_SMALL_HOST
-    } else {
-        CEILING
-    }
+    /// Replicas expected to share that budget.
+    const EXPECTED_REPLICAS: u32 = 4;
+
+    SERVICE_CONNECTION_BUDGET / EXPECTED_REPLICAS
 }
 
 /// How much of the pool is established BEFORE a request needs it.
 ///
-/// The knob that stops a connection being opened in a request's path. sqlx
-/// maintains this floor in the background (`min_connections_maintenance`), so a
-/// burst finds live connections rather than a handshake apiece. Without it the
-/// pool starts at zero — `connect_lazy_with` — and the first traffic after boot
-/// pays the establishment cost the acquire budget was never meant to cover.
+/// The knob that stops a connection being opened in a request's path. Without
+/// it the pool starts at zero — `connect_lazy_with` — and the first traffic
+/// after boot pays an establishment measured at 147-337 ms inside an acquire
+/// budget sized for a wait, not a handshake.
+///
+/// **This floor is established by [`crate::Db::warm`], not by sqlx.** Passing
+/// `min_connections` to the builder is necessary and not sufficient: sqlx only
+/// bootstraps the floor from zero when BOTH `max_lifetime` and `idle_timeout`
+/// are `None` (`pool/inner.rs`, the `(None, None)` arm), and its defaults set
+/// both. Every other arm reaches the floor through the idle reaper, whose body
+/// is `for _ in 0..num_idle()` — zero on a pool that has never opened a
+/// connection, so the body never runs and the floor is never approached. The
+/// setting still earns its place: once connections exist, the reaper does keep
+/// the pool from falling below it.
 ///
 /// A quarter of the ceiling rather than all of it: connections held open cost
 /// Postgres slots whether or not traffic exists, and the point is to remove the
 /// cold start, not to reserve the whole pool against a burst that may not come.
+/// The right number is a measured steady-state concurrency, which this file
+/// cannot know; `DATABASE_MIN_POOL_SIZE` is where a measured one goes.
 fn min_connections_default(max_connections: u32) -> u32 {
     const WARM_FRACTION: u32 = 4;
     (max_connections / WARM_FRACTION).max(1)

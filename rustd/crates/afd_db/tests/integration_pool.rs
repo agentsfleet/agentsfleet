@@ -9,6 +9,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use std::time::Duration;
+
 use afd_core::env::MapEnv;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
@@ -169,4 +171,68 @@ async fn test_pools_open_every_role_and_close() {
     );
 
     database.cleanup().await;
+}
+
+/// Dimension 2.4 — the warm floor is real, not merely configured.
+///
+/// The test this suite did not have. `min_connections` was passed to sqlx and
+/// believed; sqlx bootstraps that floor from zero only when `max_lifetime` and
+/// `idle_timeout` are both `None`, its defaults set both, and every other arm
+/// reaches the floor through an idle reaper whose loop body runs `num_idle()`
+/// times — zero, forever, on a pool nothing has opened. The knob established
+/// nothing and no test could tell, because the only assertion was arithmetic
+/// on the configured number.
+///
+/// So this one asks the pool. `size()` is sqlx's count of connections it has
+/// actually opened, and after `warm` it must have reached the floor.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_the_warm_floor_is_established_not_merely_configured() {
+    const FLOOR: &str = "4";
+    const CEILING: &str = "8";
+
+    let database = TestDatabase::shared();
+    let db = database
+        .open(
+            DbRole::Api,
+            &[
+                ("DATABASE_POOL_SIZE_API", CEILING),
+                ("DATABASE_MIN_POOL_SIZE_API", FLOOR),
+            ],
+        )
+        .await;
+
+    assert_eq!(
+        db.size(),
+        0,
+        "a lazy pool opens nothing until something asks it to"
+    );
+
+    let warmed = db.warm(Duration::from_secs(10)).await;
+
+    assert_eq!(warmed, 4, "the whole floor was established");
+    assert!(
+        db.size() >= 4,
+        "and the pool holds them: sqlx reports {} open",
+        db.size()
+    );
+}
+
+/// A floor of zero asks for nothing and waits for nothing.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_a_zero_floor_warms_nothing() {
+    let database = TestDatabase::shared();
+    let db = database
+        .open(
+            DbRole::Api,
+            &[
+                ("DATABASE_POOL_SIZE_API", "4"),
+                ("DATABASE_MIN_POOL_SIZE_API", "0"),
+            ],
+        )
+        .await;
+
+    assert_eq!(db.warm(Duration::from_secs(10)).await, 0);
+    assert_eq!(db.size(), 0, "nothing was opened");
 }

@@ -42,6 +42,9 @@ pub struct Db {
     /// Kept because `acquire` needs it to tell a full pool from an absent
     /// datastore, and sqlx does not report a pool's configured ceiling back.
     max_connections: u32,
+    /// Kept because [`Self::warm`] establishes this floor itself; sqlx cannot
+    /// bootstrap it on a lazy pool, and does not report it back either.
+    min_connections: u32,
 }
 
 impl Db {
@@ -102,17 +105,18 @@ impl Db {
         //
         // `connect_with` establishes `min_connections` before returning, which
         // is what a warm pool wants — but sqlx hands it `acquire_timeout` as
-        // its deadline, the same number that bounds how long one REQUEST waits.
-        // Those are different budgets with no separate knob: twelve connections
-        // at the 147-337 ms each this lane measures do not fit in two seconds
-        // under load, and `Db::connect` failed outright — "waited 2000ms for a
-        // api connection and the pool had none" — a process refusing to start
-        // where it previously started and warmed as it went. Raising the floor
-        // for reliability making boot MORE fragile is a trap, so the floor is
-        // left to the maintainer sqlx runs for exactly this ("min_connections
-        // is guaranteed by the idle reaper now"): warm moments after boot
-        // rather than before it, with the first request or two still paying a
-        // handshake — a smaller cost than a boot that can fail.
+        // its deadline, the same number that bounds how long one REQUEST waits,
+        // and it opens them one after another. Twelve connections at the
+        // 147-337 ms each this lane measures do not fit in two seconds under
+        // load, and `Db::connect` failed outright — a process refusing to start
+        // where it previously started and warmed as it went.
+        //
+        // So the pool opens empty and [`Db::warm`] fills it afterwards, on a
+        // budget of its own. What is NOT relied on is sqlx
+        // filling it: the background bootstrap runs only when `max_lifetime`
+        // and `idle_timeout` are both `None`, and leaving them unset is not
+        // that — the defaults are `Some`, which buys the reaper this pool wants
+        // and costs the one-shot warm-up it would otherwise have had.
         let pool = builder.connect_lazy_with(config.connect_options());
 
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
@@ -132,6 +136,7 @@ impl Db {
             pool,
             acquire_timeout,
             max_connections,
+            min_connections,
         })
     }
 
@@ -159,6 +164,7 @@ impl Db {
                 .connect_lazy_with(config.connect_options()),
             acquire_timeout: config.acquire_timeout(),
             max_connections: config.max_connections(),
+            min_connections: config.min_connections(),
         }
     }
 
@@ -183,6 +189,87 @@ impl Db {
             }
             classify_acquire(self.role.tag(), waited_ms, source)
         })
+    }
+
+    /// Opens connections up to the configured floor, before traffic needs them.
+    ///
+    /// # By holding them, not by releasing them
+    ///
+    /// Acquiring in a loop warms exactly ONE connection: each acquire returns
+    /// the connection the previous iteration just released, and the pool never
+    /// has a reason to open a second. The floor is only reached by holding
+    /// every connection at once, which is what forces the pool to open one more
+    /// each time — so this gathers the guards and drops them together.
+    ///
+    /// # On a budget of its own
+    ///
+    /// `deadline` is the caller's, and it is deliberately not `acquire_timeout`:
+    /// that one bounds a single request's wait, and warming is a boot activity
+    /// whose cost is `floor × establishment`. Every individual acquire is still
+    /// bounded by `acquire_timeout` underneath, so a hung server cannot make
+    /// this outlast its own deadline by much.
+    ///
+    /// # Errors
+    /// Never. A pool that could not reach its floor is a slower pool, not a
+    /// broken one — the datastore's reachability was already proven by the
+    /// probe in [`Self::connect`], and failing boot over a warm-up would trade
+    /// the cold start for an outage. The shortfall is returned so the caller
+    /// can report it, and logged here so it is visible without one.
+    pub async fn warm(&self, deadline: Duration) -> u32 {
+        let target = self.min_connections;
+        if target == 0 {
+            return 0;
+        }
+
+        let held = tokio::time::timeout(deadline, async {
+            let mut connections = Vec::with_capacity(target as usize);
+            // Sequential requests for connections that are all held: the pool
+            // has to open a new one each time, because none is ever returned.
+            for _ in 0..target {
+                match self.pool.acquire().await {
+                    Ok(connection) => connections.push(connection),
+                    Err(_) => break,
+                }
+            }
+            connections
+        })
+        .await
+        .map_or(0, |connections| {
+            let opened = connections.len();
+            drop(connections);
+            u32::try_from(opened).unwrap_or(target)
+        });
+
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+        let role_tag = self.role.tag();
+        let deadline_ms = deadline.as_millis();
+        if held < target {
+            tracing::warn!(
+                role = role_tag,
+                warmed = held,
+                target,
+                deadline_ms,
+                event = "pool_warm_incomplete"
+            );
+        } else {
+            tracing::info!(
+                role = role_tag,
+                warmed = held,
+                deadline_ms,
+                event = "pool_warmed"
+            );
+        }
+        held
+    }
+
+    /// How many connections the pool currently holds open, idle or checked out.
+    ///
+    /// The census sqlx keeps, exposed so a test can prove [`Self::warm`]
+    /// actually opened something. A configured floor and an established one are
+    /// different claims, and only this one can tell them apart.
+    #[must_use]
+    pub fn size(&self) -> u32 {
+        self.pool.size()
     }
 
     /// The role this pool serves.
