@@ -4,10 +4,11 @@
 //!
 //! `billing.usage_ledger.credit_deducted_nanos` is `BIGINT`, and every drain in
 //! this product is a whole number of nanos. One US dollar is
-//! [`NANOS_PER_USD`]; the rate constants below are the Zig ledger's, imported
-//! rather than re-derived, because `audits/cross-tier-rates.sh` pins their
-//! Zig spellings across four files and a second set of numbers here would be a
-//! second source of truth for what a second of runtime costs.
+//! [`NANOS_PER_USD`]; the rate constants below are declared once, here, and
+//! carried rather than re-derived — the website, the dashboard and the
+//! command-line interface each spell the same numbers for display, and a
+//! second set derived here would be a second source of truth for what a second
+//! of runtime costs. A bump lands in all four or in none.
 //!
 //! # Why not a decimal crate
 //!

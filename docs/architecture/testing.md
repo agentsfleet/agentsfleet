@@ -58,6 +58,38 @@ Both git hooks dispatch on `*.rs` and on `rustd/*`: manifests and the toolchain
 pin change what the lane compiles and which compiler compiles it, so they trigger
 it too.
 
+## Rust test naming — the filename declares the tier
+
+Three shapes, and the tier is readable without opening the file.
+
+| Shape | Needs a live datastore | Lane | `#[ignore]` |
+|---|---|---|---|
+| `integration_<subject>.rs` | yes — Postgres, Redis, or a booted daemon | `make test-integration-rustd` | on every test in the file |
+| `<subject>.rs` | no | `make test-unit-rustd` | on nothing in the file |
+| `<crate>_suite.rs` | — | — | declares `#[path]` modules only, holds no test of its own |
+
+**The filename and the attribute must agree.** `cargo test` runs the
+non-ignored tests and the integration target passes `-- --ignored` to run the
+rest, so a live test without its `#[ignore]` is a unit lane that fails the
+moment Docker is closed — the one failure this rule prevents outright.
+
+**What this rule is NOT is a safety property, and the distinction matters.**
+`#[ignore]` alone decides which lane runs a test; the filename decides nothing.
+An `#[ignore]`d test in a file with no `integration_` prefix still runs under
+`-- --ignored`. So a misfiled test is a readability defect, not a skipped one,
+and the value of the naming rule is that a directory listing answers "what does
+this crate prove without a database" before anyone opens a file.
+
+**The mechanism that actually loses a test is reachability.** A crate with
+`autotests = false` compiles only the files a `[[test]]` target names, plus
+whatever those files pull in with `#[path]`. A file listed nowhere is not a
+skipped test, it is not a test at all: it compiles in no binary, appears in no
+count, and fails nothing. That is how suites in this repository reached a
+milestone having never executed. The gate worth writing checks that every
+`tests/*.rs` holding a `#[test]` is reachable from a declared target — the
+audit currently reports one unreachable file, `afd_runner/tests/support.rs`,
+which holds no test and is a support module.
+
 ## Test isolation on a shared datastore (rules ISO-1 to ISO-3)
 
 One lane, one Postgres, one Redis, and tests that run concurrently inside every

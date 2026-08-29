@@ -57,7 +57,7 @@ These are two different fields on two different tables. Mixing them up is the mo
 
 A `trigger.type: api` fleet typically receives `event_type: chat` events from the steer/chat API. A `trigger.type: webhook` fleet receives `event_type: webhook`. A continuation `agentsfleetd` enqueues under context chunking produces `event_type: continuation` regardless of the original `trigger.type`. The two fields are orthogonal — never the same value, never the same table.
 
-Source of truth: `config_helpers.zig` (`parseFleetTrigger`) for `trigger.type`; `event_envelope.zig` (`EventType`) for `event_type`.
+Source of truth: `rustd/crates/afd_fleet_runtime/src/config/trigger.rs` (`Trigger`) for `trigger.type`; `rustd/crates/afd_wire/src/event.rs` (`EventType`) for `event_type`.
 
 ---
 

@@ -28,8 +28,7 @@
 #   and `make lint-all` / CI — the audits default to full-codebase via
 #   `git ls-files`; only this pre-commit target opts into `--staged`.
 #
-#   cross-tier-rates.sh always checks its fixed rate-pin file set (no scope
-#   flag). msid-ui.sh is diff-shaped by construction and stays on `--staged`.
+#   msid-ui.sh is diff-shaped by construction and stays on `--staged`.
 #
 #   M68 commit 02c1f3cf (the orphan-cleanup slip) was the forcing
 #   function — pre-commit `HEAD` is the prior commit, so a `BASE...HEAD`
@@ -98,7 +97,6 @@ harness-verify:  ## Run every deterministic gate audit (mechanical HARNESS VERIF
 	$(call HARNESS_RUN,LOGGING,$(ORLY_ROOT)/audits/logging.sh --staged)
 	$(call HARNESS_RUN,RUST ERR,$(ORLY_ROOT)/audits/rust-error.sh --staged)
 	$(call HARNESS_RUN,LIFECYCLE,$(ORLY_ROOT)/audits/deinit-pairs.sh --staged)
-	$(call HARNESS_RUN,CROSS-TIER RATES,$(ORLY_ROOT)/audits/cross-tier-rates.sh)
 	$(call HARNESS_RUN,MS-ID + UI,$(ORLY_ROOT)/audits/msid-ui.sh --staged)
 	@printf "$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)$(C_GREEN)ALL GATES GREEN$(C_RESET) $(C_GREY)── ready for VERIFY$(C_RESET)\n\n"
 
@@ -117,6 +115,5 @@ harness-verify-all:  ## Whole-worktree variant for periodic deep audits
 	$(call HARNESS_RUN,LOGGING,$(ORLY_ROOT)/audits/logging.sh)
 	$(call HARNESS_RUN,RUST ERR,$(ORLY_ROOT)/audits/rust-error.sh)
 	$(call HARNESS_RUN,LIFECYCLE,$(ORLY_ROOT)/audits/deinit-pairs.sh)
-	$(call HARNESS_RUN,CROSS-TIER RATES,$(ORLY_ROOT)/audits/cross-tier-rates.sh)
 	$(call HARNESS_RUN,MS-ID + UI,$(ORLY_ROOT)/audits/msid-ui.sh --diff)
 	@printf "$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)$(C_GREEN)ALL GATES GREEN$(C_RESET) $(C_GREY)── whole-worktree sweep clean$(C_RESET)\n\n"
