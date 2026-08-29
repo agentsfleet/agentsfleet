@@ -93,9 +93,25 @@ impl FleetRoute {
                 fleet_path!("/schedules/{schedule_id}"),
                 Scopes::rw(SCHEDULE_READ, SCHEDULE_WRITE),
             ),
+            // `/sync` as its own segment, where the Zig daemon and the shipped
+            // clients spell it `…/{schedule_id}:sync`. A deliberate divergence,
+            // and the same one the approval decision took — see
+            // [`crate::route::WorkspaceRoute::ApprovalResolve`].
+            //
+            // The reason is the router: `matchit` refuses any literal after a
+            // parameter inside one segment (`tree.rs:783`, "Prefixes after route
+            // parameters are not supported"), so a custom verb cannot be part of
+            // a pattern here at all. The alternative was capturing the whole leaf
+            // and stripping the suffix in the handler, which works but leaves the
+            // verb invisible to the route table — and this table exists so that
+            // every fact about a route is stated in one place.
+            //
+            // A published-surface change, so it travels with its clients:
+            // `cli/src/lib/api-paths.ts` and `public/openapi.json` name the new
+            // spelling in the same diff.
             Self::ScheduleSync => (
                 api,
-                fleet_path!("/schedules/{schedule_id}:sync"),
+                fleet_path!("/schedules/{schedule_id}/sync"),
                 Scopes::Always(SCHEDULE_WRITE),
             ),
             Self::Events => (api, fleet_path!("/events"), Scopes::Always(FLEET_READ)),
