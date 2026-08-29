@@ -37,11 +37,16 @@ fn composed_failures_delegate_classification_and_keep_causes() -> Result<(), &'s
             .map(|(_kind, error)| error)
             .ok_or("database test utility has no outage kind")
     };
+    // By name, not by position. `one_of_each_kind` enumerates EVERY kind, and
+    // its data-only ones — a missing URL knob, a closed hub — truthfully carry
+    // no cause. Taking the first entry made this case's `source()` assertion a
+    // hostage to that vector's ordering; "unreachable" is the kind this test
+    // actually means, because it is the one that wraps a driver failure.
     let queue = afd_redis::error::one_of_each_kind()
         .into_iter()
-        .next()
+        .find(|(kind, _error)| *kind == "unreachable")
         .map(|(_kind, error)| error)
-        .ok_or("queue test utility exposes no error")?;
+        .ok_or("queue test utility exposes no unreachable error")?;
     let identifier = afd_core::id::Uuid7::parse("not-an-id")
         .err()
         .ok_or("the malformed fixture unexpectedly parsed")?;
@@ -53,20 +58,43 @@ fn composed_failures_delegate_classification_and_keep_causes() -> Result<(), &'s
         .err()
         .ok_or("the controlled entropy source unexpectedly answered")?;
 
+    // The third column is whether the gate is a NEW causal link, and it is not
+    // uniform — demanding a cause from every variant would demand an invented
+    // one. `Datastore`, `Queue`, `Credential`, and `Billing` each add a
+    // gate-voiced sentence over a failure that happened elsewhere, so the
+    // inner error is their `source`. `Entropy` and `Identifier` are
+    // `#[error(transparent)]`: the gate adds no sentence, so it adds no link,
+    // and `source()` forwards to the inner error's own — which is `None`,
+    // because a refused entropy draw and a malformed identifier are data, not
+    // consequences of some other failure.
     let cases = [
-        (Error::from(database()?), true),
-        (Error::from(queue), false),
-        (Error::from(afd_credential::Error::from(database()?)), true),
-        (Error::from(afd_billing::Error::from(database()?)), true),
-        (Error::from(entropy), false),
-        (Error::from(identifier), false),
+        ("database", Error::from(database()?), true, true),
+        ("queue", Error::from(queue), false, true),
+        (
+            "credential",
+            Error::from(afd_credential::Error::from(database()?)),
+            true,
+            true,
+        ),
+        (
+            "billing",
+            Error::from(afd_billing::Error::from(database()?)),
+            true,
+            true,
+        ),
+        ("entropy", Error::from(entropy), false, false),
+        ("identifier", Error::from(identifier), false, false),
     ];
 
-    for (failure, unavailable) in cases {
-        assert_eq!(failure.is_datastore_unavailable(), unavailable);
-        assert!(!failure.code().as_str().is_empty());
-        assert!(!failure.detail().is_empty());
-        assert!(failure.source().is_some());
+    for (name, failure, unavailable, has_cause) in cases {
+        assert_eq!(failure.is_datastore_unavailable(), unavailable, "{name}");
+        assert!(!failure.code().as_str().is_empty(), "{name}");
+        assert!(!failure.detail().is_empty(), "{name}");
+        assert_eq!(
+            failure.source().is_some(),
+            has_cause,
+            "{name} disagrees with its declared causality"
+        );
     }
     Ok(())
 }
