@@ -26,6 +26,8 @@
 //! attempted with an empty secret. `afd_ingress::secret` fails closed the same
 //! way and for the same reason.
 
+use std::collections::BTreeSet;
+
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretBytes;
 use afd_vault::{SecretName, Vault};
@@ -112,6 +114,41 @@ impl PlatformApp {
             return Ok(None);
         };
         Ok(field(&bag, FIELD_SIGNING_SECRET).map(|secret| SecretBytes::new(secret.into_bytes())))
+    }
+
+    /// Which providers this deployment has configured an app for.
+    ///
+    /// One listing, no decryption: [`Provider::app_key`] derives the name, and
+    /// membership answers the catalogue's `configured` column without opening a
+    /// single envelope. `catalog.zig` asks the same question with a batch
+    /// existence check for the same reason — the answer is about presence, and
+    /// paying to decrypt five client secrets to render five booleans would put
+    /// plaintext in the process for a page that displays none.
+    ///
+    /// A deployment with no admin workspace holds no apps, which is why the
+    /// caller passes an `Option` and gets an empty set rather than a refusal:
+    /// every provider then reads as not configured, which is exactly true.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer.
+    pub async fn provisioned(&self, admin: Option<&Uuid7>) -> Result<BTreeSet<Provider>> {
+        let Some(admin) = admin else {
+            return Ok(BTreeSet::new());
+        };
+        let stored: BTreeSet<String> = self
+            .vault
+            .directory()
+            .list(admin)
+            .await?
+            .into_iter()
+            .map(|secret| secret.name)
+            .collect();
+
+        Ok(Provider::ALL
+            .iter()
+            .copied()
+            .filter(|provider| stored.contains(&provider.app_key()))
+            .collect())
     }
 
     /// The `<provider>-app` document, parsed, or nothing.

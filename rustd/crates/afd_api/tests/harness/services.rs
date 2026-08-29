@@ -16,6 +16,7 @@ use afd_approval::{Inbox, IntegrationGrants};
 use afd_auth::mock::MockCapabilities;
 use afd_auth::verifier::NoVerifier;
 use afd_billing::tenant::Billing;
+use afd_connector::Connectors;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_events::{History, Steer};
@@ -37,7 +38,7 @@ use afd_vault::Vault as SecretVault;
 
 use super::stubs_runner::NoWork;
 use super::stubs_tenant::OneWorkspace;
-use super::{DEPLOYMENT, Directory, Fleet, HarnessIngress, SCHEDULE_DESTINATION};
+use super::{DEPLOYMENT, Directory, FIXTURE_APP_URL, Fleet, HarnessIngress, SCHEDULE_DESTINATION};
 
 impl Services for Fleet {
     type Auth = Planes<Directory, MockCapabilities, NoVerifier>;
@@ -55,6 +56,7 @@ impl Services for Fleet {
     type Events = History;
     type Ingress = HarnessIngress;
     type Schedules = SchedulePlane;
+    type Connectors = Connectors;
     type Steering = Steer;
     type Memories = Memories;
     type Billing = Billing;
@@ -131,6 +133,20 @@ impl Services for Fleet {
 
     fn schedules(&self) -> &SchedulePlane {
         &self.schedules
+    }
+
+    fn connectors(&self) -> &Connectors {
+        &self.connectors
+    }
+
+    /// The same fixed base the device-flow surface signs its login links with.
+    ///
+    /// A real URL rather than a placeholder, because it is half of what a
+    /// connect proves: the `redirect_uri` a code is minted against is built
+    /// from this, and a base that is not a URL would make every connect refuse
+    /// for a reason no test was about.
+    fn dashboard(&self) -> &str {
+        FIXTURE_APP_URL
     }
 
     /// No signing keys, which is the fail-closed default.

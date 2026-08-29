@@ -22,6 +22,7 @@
 //! answer. The other order leaves a grant nothing routes to yet, which is the
 //! state a reconnect is in for a millisecond anyway.
 
+pub mod holding;
 pub mod parse;
 
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -37,6 +38,7 @@ use crate::error::{Result, query};
 use crate::provider::Provider;
 use crate::sql;
 
+pub use self::holding::{Connection, Forgotten};
 pub use self::parse::{Grant, Install};
 
 /// The context a failed install write reports under.

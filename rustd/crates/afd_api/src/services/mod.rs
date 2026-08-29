@@ -35,6 +35,7 @@
 mod approval;
 mod billing;
 mod catalogue;
+mod connector;
 mod device_flow;
 mod event;
 mod fleets;
@@ -50,6 +51,7 @@ mod vault;
 pub use self::approval::WorkspaceApprovals;
 pub use self::billing::TenantBilling;
 pub use self::catalogue::ModelCatalogue;
+pub use self::connector::WorkspaceConnectors;
 pub use self::device_flow::DeviceFlow;
 pub use self::event::{FleetSteering, WorkspaceEvents};
 pub use self::fleets::WorkspaceFleets;
@@ -284,6 +286,29 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
     /// cannot be reached through a [`afd_ingress::Binding`], because it has to
     /// be verified before there is a binding to reach it through.
     fn platform_admin_workspace(&self) -> Option<&Uuid7>;
+
+    /// What the connector routes act through.
+    ///
+    /// An associated type for the reason [`Services::Ingress`] is one: the
+    /// concrete flow holds a Redis connection opened by CONNECTING — a
+    /// round-trip's single-use slot lives there — so a suite proving the
+    /// refusal matrix in front of these routes cannot build one and must not
+    /// need to.
+    type Connectors: WorkspaceConnectors;
+
+    /// What a connect is started, finished, read and forgotten through.
+    fn connectors(&self) -> &Self::Connectors;
+
+    /// Where a PERSON goes, as distinct from where this daemon answers.
+    ///
+    /// Beside [`Services::deployment`] and never the same string. Every
+    /// connector redirect is built from this one: the `redirect_uri` a provider
+    /// mints its code against, the relay the browser is sent back through, and
+    /// the page a completed connect lands on. Reading it from a request's
+    /// `Host` would let a provider's registered callback and this daemon's idea
+    /// of it disagree, which fails as `redirect_uri_mismatch` at the vendor and
+    /// reads like a rotated credential.
+    fn dashboard(&self) -> &str;
 
     /// What the steer verb acts through.
     type Steering: FleetSteering;

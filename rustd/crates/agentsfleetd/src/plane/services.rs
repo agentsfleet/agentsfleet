@@ -54,6 +54,7 @@ impl Services for ServingPlane {
     type Events = History;
     type Ingress = afd_ingress::Ingress;
     type Schedules = afd_api::SchedulePlane;
+    type Connectors = afd_connector::Connectors;
     type Steering = afd_events::Steer;
     type Memories = Memories;
     type Billing = Billing;
@@ -85,6 +86,16 @@ impl Services for ServingPlane {
 
     fn schedules(&self) -> &afd_api::SchedulePlane {
         &self.schedules
+    }
+
+    fn connectors(&self) -> &afd_connector::Connectors {
+        &self.connectors
+    }
+
+    /// Where a PERSON goes, which is a different deployment fact from
+    /// [`Services::deployment`] below and never the same string.
+    fn dashboard(&self) -> &str {
+        &self.app_url
     }
 
     fn schedule_signing_keys(&self) -> Option<&afd_cron::SigningKeys> {

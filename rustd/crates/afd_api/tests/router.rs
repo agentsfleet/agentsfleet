@@ -222,6 +222,14 @@ async fn test_only_the_ported_routes_are_mounted() {
                 | Route::RunnerOps(_)
                 // M179's platform-administration family, every verb served.
                 | Route::Admin(_)
+                // M180 §2 and §3's signed ingress, every verb served — the
+                // family's mount is total with no `Option`. Only the QStash fire
+                // is reachable by this loop; the rest name a fleet or a provider
+                // in their templates and are skipped above. Listed as a family
+                // anyway, for the reason the note above gives: a served route
+                // left out because the loop cannot reach it makes the matcher
+                // and the router disagree the moment the skip is lifted.
+                | Route::Webhook(_)
                 // The device-flow login surface, which M178 §1 mounts. The
                 // identity-provider delivery stays unmounted: it is proven by a
                 // Svix signature rather than a bearer, so it lands with M180's
@@ -270,4 +278,42 @@ async fn test_only_the_ported_routes_are_mounted() {
             );
         }
     }
+}
+
+/// One template, two guards — and the merge must not flatten them to one.
+///
+/// `/v1/connectors/{provider}/callback` is the provider's unauthenticated
+/// redirect on GET and the dashboard's bearer-proven completion on POST. The
+/// mount loop merges same-template routes into one `MethodRouter` because axum
+/// takes one per path, and merging BEFORE layering would put a single guard on
+/// the merged pair — whichever route the loop reached first. `ConnectorRoute`'s
+/// roster reaches `Callback` before `Complete`, so that guard is the OPEN one,
+/// and the endpoint that redeems an authorization code and writes a connection
+/// would have answered anyone who found the URL.
+///
+/// Two assertions rather than one. The POST alone would also pass on a router
+/// that had lost the OPEN guard instead — bearer everywhere is safe and wrong —
+/// so the GET is asserted beside it, and together they say the two guards
+/// survived the merge as two.
+#[tokio::test]
+async fn test_the_callback_pair_keeps_a_guard_each_through_the_merge() {
+    const PATH: &str = "/v1/connectors/github/callback";
+
+    let unproven = send(Method::POST, PATH, ALL_HEALTHY).await;
+    assert_eq!(
+        unproven.status(),
+        StatusCode::UNAUTHORIZED,
+        "the completion redeems a code and writes a connection: it is bearer-guarded, \
+         and merging it with the open relay must not surrender that"
+    );
+
+    // Sent with no `state`, so the relay refuses on its own terms — which is
+    // the assertion: reaching a handler's OWN refusal proves the request got
+    // past the guard rather than being turned away in front of it.
+    let relayed = send(Method::GET, PATH, ALL_HEALTHY).await;
+    assert_ne!(
+        relayed.status(),
+        StatusCode::UNAUTHORIZED,
+        "the provider's browser carries no credential of ours, so the relay stays open"
+    );
 }

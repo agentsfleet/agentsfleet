@@ -19,12 +19,12 @@ use axum::extract::DefaultBodyLimit;
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
 use crate::handler::{
-    admin, approval, auth as auth_handler, event, fleet, fleet_bundles, grant, operator,
+    admin, approval, auth as auth_handler, connector, event, fleet, fleet_bundles, grant, operator,
     preference, runner, schedule, secret, stream, tenant as tenant_handler, webhook,
 };
 use crate::route::{
-    AdminRoute, AuthRoute, FleetRoute, OpsRoute, Route, RunnerOpsRoute, RunnerRoute, TenantRoute,
-    WebhookRoute, WorkspaceRoute,
+    AdminRoute, AuthRoute, ConnectorRoute, FleetRoute, OpsRoute, Route, RunnerOpsRoute,
+    RunnerRoute, TenantRoute, WebhookRoute, WorkspaceRoute,
 };
 
 use super::{Serving, probes};
@@ -48,12 +48,43 @@ pub(super) fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D
         Route::RunnerOps(verb) => Some(runner_ops_handler::<D>(verb)),
         Route::Workspace(verb) => workspace_handler_for::<D>(verb),
         Route::Fleet(verb) => Some(fleet_handler_for::<D>(verb)),
-        // Tabled, not yet served. Each of these families arrives with the
-        // milestone that ports its handlers; until then the route exists as a
-        // template, a guard and a scope rung, and this binary answers 404.
         Route::Admin(verb) => Some(admin_handler::<D>(verb)),
         Route::Webhook(verb) => Some(webhook_handler_for::<D>(verb)),
-        Route::Connector(_) => None,
+        Route::Connector(verb) => connector_handler_for::<D>(verb),
+    }
+}
+
+/// Connecting a workspace to a third party, and reading what is connected.
+///
+/// `None` for exactly one route, and it is an arm rather than an absence so
+/// the endpoint that is not served says so where somebody looking for it will
+/// read it.
+///
+/// # Two routes on one template, and why the guards do not merge
+///
+/// [`ConnectorRoute::Callback`] and [`ConnectorRoute::Complete`] share
+/// `/v1/connectors/{provider}/callback` and differ in GUARD — the provider's
+/// redirect carries no credential of ours, the dashboard's completion carries
+/// a bearer. [`super::build`] therefore layers each route with its OWN metadata
+/// before merging the two method routers, which is the only reason a
+/// same-template pair may disagree about its guard at all.
+fn connector_handler_for<D: Serving>(verb: ConnectorRoute) -> Option<MethodRouter<Arc<D>>> {
+    match verb {
+        ConnectorRoute::Catalog => Some(get(connector::catalogue::list::<D>)),
+        // GET reads and DELETE forgets, on one template: two verbs on one
+        // resource, and there is no PUT beside them because a connection is
+        // produced by a consent round-trip and cannot be asserted.
+        ConnectorRoute::Status => {
+            Some(get(connector::status::read::<D>).delete(connector::status::disconnect::<D>))
+        }
+        ConnectorRoute::Connect => Some(post(connector::connect::start::<D>)),
+        ConnectorRoute::Callback => Some(get(connector::callback::relay::<D>)),
+        ConnectorRoute::Complete => Some(post(connector::callback::complete::<D>)),
+        // Tabled, not yet served: the Slack events ingress is proven by a Slack
+        // v0 signature over its body rather than by anything this family
+        // carries, so it lands with the delivery path that reads it rather than
+        // with the authorisation flows here.
+        ConnectorRoute::SlackEvents => None,
     }
 }
 

@@ -106,12 +106,14 @@ pub struct ServingPlane {
     steering: afd_events::Steer,
     ingress: Ingress,
     schedules: SchedulePlane,
+    connectors: afd_connector::Connectors,
     schedule_keys: Option<SigningKeys>,
     schedule_destination: String,
     platform_admin_workspace: Option<Uuid7>,
     live: Live,
     analytics: Analytics,
     api_url: Box<str>,
+    app_url: String,
 }
 
 impl ServingPlane {
@@ -160,6 +162,10 @@ impl ServingPlane {
         // the half that WRITES one. A deployment with no upload handle still
         // serves the catalogue; `LibraryImports::without_store` carries that
         // absence as a value, the way `Bundles::unconfigured` does.
+        // The exchange dials the vendor and the Jira site listing dials it
+        // again, so both take the same handle: one pool for everything this
+        // family sends outbound — see `crate::credentials`.
+        let vendor_client = crate::credentials::vendor_exchange_client();
         let (bundles, uploads) = stores.split();
         let library_imports = match uploads {
             Some(store) => LibraryImports::new(database.clone(), store),
@@ -218,6 +224,31 @@ impl ServingPlane {
                 Fire::new(queue.clone()),
                 Entropy::new(),
             ),
+            // The SAME key every other sealing store takes, twice over and
+            // deliberately: the platform half opens this deployment's own
+            // `<provider>-app` bags in the admin workspace, and the grant half
+            // seals a tenant's handle in theirs. Two `Vault` values over one
+            // table, for the reason the ingress beside them is two — a reader
+            // of the deployment's credentials and a writer of a workspace's are
+            // different surfaces, and one value serving both would let a
+            // connector route reach the wrong workspace's secrets by holding
+            // the wrong handle.
+            connectors: afd_connector::Connectors::new(
+                afd_connector::PlatformApp::new(SecretVault::new(
+                    database.clone(),
+                    Arc::clone(&kek),
+                    Entropy::new(),
+                )),
+                afd_connector::Grants::new(
+                    SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+                    database.clone(),
+                    Entropy::new(),
+                ),
+                afd_connector::Exchange::new(vendor_client.clone()),
+                vendor_client,
+                queue.clone(),
+                Entropy::new(),
+            ),
             live,
             analytics,
             api_url: login.api_url,
@@ -227,6 +258,10 @@ impl ServingPlane {
                 Entropy::new(),
                 &login.app_url,
             ),
+            // After `logins` above, which BORROWS it: a struct literal
+            // evaluates its fields in order, so moving it first would leave
+            // nothing for the device-flow surface to read.
+            app_url: login.app_url,
             probes: LiveDependencies::new(database.clone(), queue.clone()),
             authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
             runners: Runners::new(database.clone(), Entropy::new()),

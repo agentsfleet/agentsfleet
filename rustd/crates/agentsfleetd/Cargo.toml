@@ -67,6 +67,9 @@ afd_fleet.workspace = true
 afd_gate.workspace = true
 # The signed-ingress plane the webhook and App ingress routes resolve through.
 afd_ingress.workspace = true
+# The connect flow the connector routes act through, assembled here because its
+# two vault halves read different workspaces — see `plane.rs`.
+afd_connector.workspace = true
 # The workspace fleets surface's store, handed to the router as one service.
 afd_fleet_lifecycle.workspace = true
 # Read-only operator projections are kept off the runner execution crate.

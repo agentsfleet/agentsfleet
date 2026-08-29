@@ -57,7 +57,9 @@
 mod complete;
 
 pub mod app;
+pub mod callback;
 pub mod connect;
+pub mod connection;
 pub mod error;
 pub mod exchange;
 pub mod grant;
@@ -70,11 +72,13 @@ pub mod state;
 pub mod zoho;
 
 pub use self::app::PlatformApp;
+pub use self::callback::Handoff;
 pub use self::complete::{Finishing, Landed};
 pub use self::connect::{Connectors, Spent, Started, Starting};
+pub use self::connection::Catalogued;
 pub use self::error::{Error, Result};
 pub use self::exchange::{AppCredentials, Exchange, Exchanged};
-pub use self::grant::{Grant, Grants, Install};
+pub use self::grant::{Connection, Forgotten, Grant, Grants, Install};
 pub use self::provider::Provider;
 pub use self::registry::{AppInstall, Archetype, Oauth2Flow, STATE_TTL_SECONDS, StateBinding};
 pub use self::state::{Rejected, Verified};

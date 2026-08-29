@@ -28,7 +28,7 @@ use std::fmt;
 /// (Datadog, Grafana, Fly) are workspace secrets referenced as
 /// `${secrets.<name>.<field>}` and were never connectors — `registry.zig`
 /// records the same decision where it dropped its `api_key` archetype.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Provider {
     /// Slack, whose bot token answers mentions in a channel.
     Slack,

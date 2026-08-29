@@ -101,6 +101,7 @@ mod support;
 /// Signed deliveries, as a provider would present them.
 pub(crate) mod webhook;
 
+pub(crate) use self::instance::FIXTURE_APP_URL;
 pub(crate) use self::stubs_ingress::{HarnessIngress, Recorded, Scripted};
 pub(crate) use self::stubs_runner::NoWork;
 pub(crate) use self::stubs_tenant::{DEPLOYMENT, OWNED_WORKSPACE, OneWorkspace};
@@ -136,6 +137,7 @@ pub(crate) struct Fleet {
     secrets: SecretVault,
     ingress: HarnessIngress,
     schedules: SchedulePlane,
+    connectors: afd_connector::Connectors,
     schedule_keys: Option<afd_cron::SigningKeys>,
     platform_admin: Option<Uuid7>,
     preferences: Preferences,

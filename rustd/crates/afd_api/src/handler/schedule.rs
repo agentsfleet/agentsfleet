@@ -5,7 +5,7 @@
 //! The row is saved either way, and the answer carries the sync state so the
 //! caller can see which happened. Answering 502 for an upstream refusal would
 //! be telling a person their schedule was not created when it was — and the
-//! next `:sync` would then repair a schedule they believe does not exist.
+//! next sync would then repair a schedule they believe does not exist.
 //!
 //! # A delete does not delete
 //!
@@ -310,7 +310,10 @@ pub(crate) async fn purge<D: Services>(
     held_or(removed, StatusCode::OK)
 }
 
-/// `POST …/schedules/{schedule_id}:sync`.
+/// `POST …/schedules/{schedule_id}/sync`.
+///
+/// `/sync` rather than the Zig's `:sync` — a published-surface divergence the
+/// router forces, argued at [`crate::route::FleetRoute::ScheduleSync`].
 ///
 /// # Errors
 /// As [`patch`].
