@@ -266,13 +266,23 @@ impl<S: Send + Sync> axum::extract::FromRequestParts<S> for WorkspaceContext {
     }
 }
 
-/// The caller themselves, for the one surface that has to ask again.
+/// The caller themselves, for the two surfaces the layer cannot serve.
 ///
-/// Every other verb is authorized once, by the layer, and is finished before
-/// the answer could go stale. A live stream is open for as long as somebody
-/// has a tab, so its membership check has to RUN AGAIN on a tick — and running
-/// again needs the principal, not just the verdict the layer reached. This is
-/// the only reason it is extractable at all.
+/// Every other verb is authorized once, by the layer mounted from the route's
+/// own template, and is finished before the answer could go stale. Two are not,
+/// for different reasons, and both need the principal rather than the verdict
+/// the layer reached:
+///
+/// - A live stream is open for as long as somebody has a tab, so its membership
+///   check has to RUN AGAIN on a tick.
+/// - The connector completion names no workspace in its PATH — the workspace is
+///   inside the signed state, unreadable until the signature has been checked —
+///   so `Ownership::of` mounts nothing and the check happens in the handler, at
+///   the one point in the order where it is both possible and still ahead of
+///   the nonce spend. See [`crate::handler::connector::callback`].
+///
+/// Those are the only reasons it is extractable at all. A third caller is a
+/// route that should have declared its workspace in its template.
 #[derive(Debug, Clone)]
 pub struct Acting(pub Principal);
 

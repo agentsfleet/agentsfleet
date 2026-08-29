@@ -73,6 +73,11 @@ afd_fleet_runtime.workspace = true
 # afd_ingress is one — the check runs HERE, in the handler.
 afd_cron.workspace = true
 afd_ingress.workspace = true
+# The connect round-trip and the three reads over what it landed, plus the two
+# dashboard URLs a callback travels through. A library dependency for the reason
+# the two above are: the handlers hold the flow directly, and the `Provider`
+# enum is what the route segment is parsed into at the edge.
+afd_connector.workspace = true
 # The signature wall. A library dependency rather than a dev one because the
 # check genuinely runs HERE: `plane_of` answers `None` for the webhook guards,
 # so there is no layer to put it in — see `handler::webhook`. This crate

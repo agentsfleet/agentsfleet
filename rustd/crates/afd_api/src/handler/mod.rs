@@ -20,6 +20,7 @@
 pub mod admin;
 pub mod approval;
 pub mod auth;
+pub mod connector;
 pub mod event;
 pub mod fleet;
 pub(crate) mod fleet_bundles;

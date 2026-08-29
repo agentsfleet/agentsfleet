@@ -103,7 +103,7 @@ pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router 
     // Accumulated in a Vec and found linearly: eighty-one routes make this
     // cheaper than hashing, and it preserves the table's order, so the mount
     // log reads the same way every boot.
-    let mut merged: Vec<(&'static str, RouteMeta, MethodRouter<Arc<D>>)> =
+    let mut merged: Vec<(&'static str, MethodRouter<Arc<D>>)> =
         Vec::with_capacity(Route::all().count());
     for route in Route::all() {
         let Some(handler) = self::mount::handler_for::<D>(route) else {
@@ -119,19 +119,27 @@ pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router 
         // Counts route identities, not unique paths. Two identities sharing one
         // template remain two separately tabled pieces of the surface.
         mounted += 1;
-        match merged.iter_mut().find(|(known, _, _)| *known == template) {
-            // `merge` and not `layer`: the layers go on once, below, after every
-            // method for this path is in place. Layering each half separately
-            // would put two authenticators on one route.
-            Some((_, _, existing)) => {
-                let combined = std::mem::replace(existing, axum::routing::any(unreachable_stub));
-                *existing = combined.merge(handler);
+        // Layered with ITS OWN row, before the merge, because a template is not
+        // an identity: `/v1/connectors/{provider}/callback` is the provider's
+        // unauthenticated redirect on GET and the dashboard's bearer-proven
+        // completion on POST, and the route table says so. Layering the merged
+        // pair once would silently give the whole path whichever guard was
+        // reached first, which for that pair is the open one.
+        //
+        // This costs nothing a same-guard pair notices: `MethodRouter::layer`
+        // maps each method's endpoint on its own, so merging two layered
+        // routers leaves one layer stack per method rather than two on either.
+        let guarded = layered(handler, meta, &dependencies, admission);
+        match merged.iter_mut().find(|(known, _)| *known == template) {
+            Some(slot) => {
+                let combined = std::mem::replace(&mut slot.1, axum::routing::any(unreachable_stub));
+                slot.1 = combined.merge(guarded);
             }
-            None => merged.push((template, meta, handler)),
+            None => merged.push((template, guarded)),
         }
     }
-    for (template, meta, handler) in merged {
-        router = router.route(template, layered(handler, meta, &dependencies, admission));
+    for (template, handler) in merged {
+        router = router.route(template, handler);
     }
     // Once, at boot. An operator reading a startup log should be able to see
     // how much of the surface this binary actually answers without counting

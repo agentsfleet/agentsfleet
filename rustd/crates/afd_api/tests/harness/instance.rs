@@ -19,6 +19,7 @@ use afd_auth::principal::Subject;
 use afd_auth::scope::ScopeSet;
 use afd_auth::verifier::NoVerifier;
 use afd_billing::tenant::Billing;
+use afd_connector::{Connectors, Exchange, Grants, PlatformApp};
 use afd_core::clock::UnixMillis;
 use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
@@ -78,7 +79,11 @@ const FIXTURE_KEK: [u8; 32] = [0x11; 32];
 const FIXTURE_PEPPER: &[u8] = b"fixture-session-code-pepper";
 
 /// The dashboard origin a login surface composes approval links against.
-const FIXTURE_APP_URL: &str = "https://app.fixture.test";
+///
+/// Also what a connect builds its `redirect_uri` from, which is why it is
+/// crate-visible: the login surface and the connector surface must agree about
+/// where a person goes, and two fixtures for one fact would let them differ.
+pub(crate) const FIXTURE_APP_URL: &str = "https://app.fixture.test";
 
 /// How many streams a fixture instance carries.
 ///
@@ -134,6 +139,27 @@ impl Fleet {
             ),
             fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+            // The production connect flow, over stores that are not there and a
+            // vendor nothing resolves. Same rule as every other seam: the
+            // refusal a route gives is the one `afd_connector` raises, so the
+            // whole matrix in front of these routes is reachable with no
+            // datastore — which is the entire reason the seam is a trait.
+            connectors: Connectors::new(
+                PlatformApp::new(SecretVault::new(
+                    database.clone(),
+                    Arc::clone(&kek),
+                    Entropy::new(),
+                )),
+                Grants::new(
+                    SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+                    database.clone(),
+                    Entropy::new(),
+                ),
+                Exchange::new(reqwest::Client::new()),
+                reqwest::Client::new(),
+                queue.clone(),
+                Entropy::new(),
+            ),
             // The production ingress, over stores that are not there. A suite
             // proving what happens PAST the first acquire swaps this arm out
             // with `Fleet::with_ingress`.
@@ -221,6 +247,27 @@ impl Fleet {
             ),
             fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+            // The production connect flow, over stores that are not there and a
+            // vendor nothing resolves. Same rule as every other seam: the
+            // refusal a route gives is the one `afd_connector` raises, so the
+            // whole matrix in front of these routes is reachable with no
+            // datastore — which is the entire reason the seam is a trait.
+            connectors: Connectors::new(
+                PlatformApp::new(SecretVault::new(
+                    database.clone(),
+                    Arc::clone(&kek),
+                    Entropy::new(),
+                )),
+                Grants::new(
+                    SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+                    database.clone(),
+                    Entropy::new(),
+                ),
+                Exchange::new(reqwest::Client::new()),
+                reqwest::Client::new(),
+                queue.clone(),
+                Entropy::new(),
+            ),
             // The production ingress, over stores that are not there. A suite
             // proving what happens PAST the first acquire swaps this arm out
             // with `Fleet::with_ingress`.

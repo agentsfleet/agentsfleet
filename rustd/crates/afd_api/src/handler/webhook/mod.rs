@@ -29,7 +29,7 @@ pub(crate) mod receive_route;
 pub(crate) mod svix_route;
 
 mod verify;
-mod verify_platform;
+pub(crate) mod verify_platform;
 mod verify_svix;
 
 pub(crate) use self::verify::verified;

@@ -63,6 +63,25 @@ impl Refusable for afd_cron::Error {
     }
 }
 
+impl Refusable for afd_connector::Error {
+    fn code(&self) -> ErrorCode {
+        Self::code(self)
+    }
+    fn detail(&self) -> &'static str {
+        Self::detail(self)
+    }
+    /// Read from the code rather than from a predicate of its own, for the
+    /// reason [`afd_cron::Error`] above is: the crate answers the unavailable
+    /// code for both a pool that would not answer and a queue that is gone, and
+    /// a second predicate would be a second place for the two to disagree.
+    fn is_datastore_unavailable(&self) -> bool {
+        Self::code(self) == afd_core::error_code::INTERNAL_DB_UNAVAILABLE
+    }
+    fn reason(&self) -> String {
+        self.to_string()
+    }
+}
+
 impl Refusable for afd_approval::Error {
     fn code(&self) -> ErrorCode {
         Self::code(self)

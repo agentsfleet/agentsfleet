@@ -26,7 +26,7 @@ use crate::provider::Provider;
 ///
 /// Read by the runner plane when it opens the handle, so it is part of the
 /// stored shape rather than a convenience.
-const HANDLE_INTEGRATION: &str = "integration";
+pub(crate) const HANDLE_INTEGRATION: &str = "integration";
 
 /// Handle fields, one spelling each (RULE UFS).
 const HANDLE_BOT_TOKEN: &str = "bot_token";
@@ -47,7 +47,7 @@ const HANDLE_EXPIRES_AT: &str = "expires_at_ms";
 /// See [`HANDLE_BOT_TOKEN`].
 const HANDLE_CONNECTED_AT: &str = "connected_at_ms";
 /// See [`HANDLE_BOT_TOKEN`].
-const HANDLE_LABEL: &str = "label";
+pub(crate) const HANDLE_LABEL: &str = "label";
 
 /// Wire fields of a provider's exchange answer, one spelling each.
 const WIRE_OK: &str = "ok";
