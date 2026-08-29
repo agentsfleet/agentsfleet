@@ -1,27 +1,25 @@
 //! §7's scenario: a booted daemon, a funded fleet, and an enrolled runner.
 //!
-//! # A database per scenario, and the daemon pointed at it
+//! # One lane database, and one ready stream
 //!
-//! Every other live-datastore suite here creates a database per test and drops
-//! it, and this one has to as well — but the seam is different, because §7
-//! proves a runner against the daemon that SERVES rather than against a store
-//! this file built. So the database is created and migrated first and `boot` is
-//! handed it through `DATABASE_URL_API`: the daemon opens the fixture's
-//! database, not the other way round.
+//! Every scenario boots a real daemon against the lane's own database, handed
+//! to it through `DATABASE_URL_API`. Scenarios are kept apart in Postgres by
+//! the identifiers `unique_ids` mints, not by a database apiece.
 //!
-//! It is not tidiness. Sharing the lane database made the assignment pass see
-//! TEN candidate fleets — every scenario an earlier run had left behind — and
-//! `ORDER BY … created_at ASC` correctly handed back the oldest one, which
-//! carried a config from before this file seeded a parseable document. The
-//! symptom was `UZ-INTERNAL-003` on a fleet that had just been written
-//! correctly, and no amount of re-reading THIS scenario's seed could explain
-//! it, because the row being read belonged to a different one.
+//! That is enough for rows and not enough for the queue. `fleet:ready` is one
+//! hash for the whole deployment and the assignment pass takes a candidate at
+//! random from it, so two concurrent scenarios race for each other's seeded
+//! event: the winner leases work it did not seed, stamps its activity with that
+//! event, and publishes to a fleet channel the other test is subscribed to.
+//! Minted identifiers cannot reach that — a queue is one key and a group is one
+//! group. [`READY_STREAM`] serialises scenarios instead, and the guard rides on
+//! [`Scenario`] so a test cannot forget to take it.
 //!
-//! Redis has no per-test equivalent and stays shared. That is safe for the same
-//! reason it is safe next door: the candidate scan filters ready marks through
-//! `core.fleets` in the daemon's own database, so another scenario's mark
-//! cannot survive the join — and [`Scenario::cleanup`] clears this one's anyway,
-//! so a bounded peek is never crowded by suites that have finished.
+//! A test CAN still forget to release it correctly. `Supervisor` has no `Drop`,
+//! so a scenario that never calls `shutdown().await` leaves its tasks running
+//! after the guard is gone, and the next scenario boots beside a live
+//! competitor. End every scenario with `supervisor.shutdown().await` then
+//! `run.cleanup().await`, in that order.
 //!
 //! # Why the clock is real
 //!
@@ -81,6 +79,21 @@ pub(crate) const GOOD_KEK: &str =
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 /// Distinguishes scenarios built by one process, so two never share a fleet.
+/// One scenario at a time, because the ready stream is one queue.
+///
+/// Every scenario boots a REAL daemon, and every daemon polls the same
+/// `fleet:ready` consumer group — competing consumers, which is what that
+/// group is for in production. Two concurrent scenarios therefore race for
+/// each other's seeded event: the winner leases work it did not seed, stamps
+/// its activity with that event, and publishes to a fleet channel the other
+/// test is subscribed to. Both tests then fail, and neither failure names the
+/// cause.
+///
+/// Minted identifiers cannot fix this. They keep the ROWS apart in Postgres;
+/// the queue is one key and the group is one group. The lock is held by the
+/// `Scenario` itself, so exclusivity is not something a test has to remember.
+static READY_STREAM: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 static SEQUENCE: AtomicU32 = AtomicU32::new(0);
 
 /// The provider a seeded catalogue row is filed under.
@@ -186,6 +199,12 @@ pub(crate) struct Scenario {
     pub(crate) token: String,
     /// The instant the seed was stamped with.
     pub(crate) seeded_at: UnixMillis,
+    /// Exclusive use of the ready stream, for as long as this scenario lives.
+    ///
+    /// Last field, so it is released only after the daemon above has been
+    /// dropped and stopped polling — a guard freed while a daemon still reads
+    /// the group would hand the next scenario a competitor.
+    _exclusive: tokio::sync::MutexGuard<'static, ()>,
 }
 
 /// Boots the daemon and seeds one funded fleet with one event and one runner.
@@ -196,8 +215,12 @@ pub(crate) struct Scenario {
 /// like a broken poll.
 pub(crate) async fn scenario(supervisor: &mut Supervisor) -> Scenario {
     install_subscriber();
-    // The lane's database, already migrated. Scenarios are kept apart by the
-    // identifiers `unique_ids` mints below, not by a database apiece.
+    // Before the daemon boots, because booting one is joining the consumer
+    // group this guards.
+    let exclusive = READY_STREAM.lock().await;
+    // The lane's database, already migrated. Scenarios are kept apart in
+    // Postgres by the identifiers `unique_ids` mints below, not by a database
+    // apiece, and on the ready stream by the guard above.
     let database_url = scenario_database(&lane(DATABASE_LANE_KNOB));
 
     let booted = boot(&daemon_environment(&database_url), EPHEMERAL, supervisor)
@@ -221,7 +244,7 @@ pub(crate) async fn scenario(supervisor: &mut Supervisor) -> Scenario {
         .await
         .expect("enrolment must succeed");
 
-    let event_id = enqueue(&booted, &fleet, &workspace, now).await;
+    let event_id = enqueue(&booted, &fleet, &workspace, EVENT_TYPE, now).await;
 
     Scenario {
         base,
@@ -233,10 +256,23 @@ pub(crate) async fn scenario(supervisor: &mut Supervisor) -> Scenario {
         token: enrolled.token.expose().to_owned(),
         seeded_at: now,
         booted,
+        _exclusive: exclusive,
     }
 }
 
 impl Scenario {
+    /// Appends another event under this scenario's ready fleet.
+    pub(crate) async fn enqueue_event(&self, event_type: &str) -> String {
+        enqueue(
+            &self.booted,
+            &self.fleet,
+            &self.workspace,
+            event_type,
+            afd_core::clock::now(),
+        )
+        .await
+    }
+
     /// Takes the tenant's wallet to zero.
     ///
     /// A row holding ZERO, not a missing row: the credits gate draws that
@@ -274,7 +310,13 @@ impl Scenario {
 /// Both halves: ingress appends and marks in one path, so a mark with no entry
 /// is a state the daemon never produces and a fixture that made one would be
 /// testing a shape nothing ships.
-async fn enqueue(booted: &Booted, fleet: &str, workspace: &str, now: UnixMillis) -> String {
+async fn enqueue(
+    booted: &Booted,
+    fleet: &str,
+    workspace: &str,
+    event_type: &str,
+    now: UnixMillis,
+) -> String {
     let streams = FleetStreams::new(booted.queue.clone());
     streams
         .ensure_group(fleet)
@@ -285,7 +327,7 @@ async fn enqueue(booted: &Booted, fleet: &str, workspace: &str, now: UnixMillis)
         .append(
             fleet,
             &[
-                ("type", EVENT_TYPE),
+                ("type", event_type),
                 ("actor", ACTOR),
                 ("workspace_id", workspace),
                 ("request", REQUEST_JSON),

@@ -1,0 +1,30 @@
+[package]
+name = "afd_api_runner"
+description = "Runner-control HTTP handlers over host and lease services."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+test-util = ["afd_fleet/test-util"]
+
+[dependencies]
+afd_core.workspace = true
+afd_fleet.workspace = true
+afd_http.workspace = true
+afd_observability.workspace = true
+afd_runner.workspace = true
+afd_wire.workspace = true
+axum = { workspace = true, features = ["json"] }
+http.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

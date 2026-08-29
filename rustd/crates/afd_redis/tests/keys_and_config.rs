@@ -231,6 +231,37 @@ fn test_request_timeout_knob() {
     }
 }
 
+/// Connection establishment has its own whole-operation deadline, so a stuck
+/// handshake cannot consume an unbounded lane while command tuning stays
+/// independent.
+#[test]
+fn test_connect_timeout_knob() {
+    let default =
+        RedisConfig::resolve(&env_with(&[("REDIS_URL", URL)]), RedisRole::Default).unwrap();
+    assert_eq!(default.connect_timeout(), Duration::from_millis(5_000));
+
+    let tuned = RedisConfig::resolve(
+        &env_with(&[("REDIS_URL", URL), ("REDIS_CONNECT_TIMEOUT_MS", "250")]),
+        RedisRole::Default,
+    )
+    .unwrap();
+    assert_eq!(tuned.connect_timeout(), Duration::from_millis(250));
+    assert_eq!(
+        tuned.request_timeout(),
+        Duration::from_millis(5_000),
+        "connection tuning must not shorten established commands"
+    );
+
+    for bad in ["0", "banana", ""] {
+        let config = RedisConfig::resolve(
+            &env_with(&[("REDIS_URL", URL), ("REDIS_CONNECT_TIMEOUT_MS", bad)]),
+            RedisRole::Default,
+        )
+        .unwrap();
+        assert_eq!(config.connect_timeout(), Duration::from_millis(5_000));
+    }
+}
+
 /// The certificate authority path is read from the knob the Zig side reads.
 #[test]
 fn test_ca_cert_file_comes_from_the_documented_knob() {

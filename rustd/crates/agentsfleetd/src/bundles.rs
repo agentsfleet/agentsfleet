@@ -41,6 +41,15 @@ impl Stores {
 /// a runner's side, and the log line is what separates them for an operator.
 #[must_use]
 pub(crate) fn resolve(config: Option<&BundleStoreConfig>) -> Stores {
+    resolve_with(config, &build)
+}
+
+/// Resolves through an injected builder so the fail-open boundary is
+/// deterministic under test without inventing malformed production settings.
+fn resolve_with(
+    config: Option<&BundleStoreConfig>,
+    builder: &dyn Fn(&BundleStoreConfig) -> object_store::Result<object_store::aws::AmazonS3>,
+) -> Stores {
     let Some(config) = config else {
         tracing::info!(
             event = "bundle_store_unconfigured",
@@ -51,7 +60,7 @@ pub(crate) fn resolve(config: Option<&BundleStoreConfig>) -> Stores {
             uploads: None,
         };
     };
-    match build(config) {
+    match builder(config) {
         Ok(store) => {
             // The bucket and the endpoint, never the key. `R2_SECRET_ACCESS_KEY`
             // is a credential and this line is the one an operator pastes into a
@@ -103,3 +112,7 @@ fn build(config: &BundleStoreConfig) -> object_store::Result<object_store::aws::
         .with_virtual_hosted_style_request(false)
         .build()
 }
+
+#[cfg(test)]
+#[path = "bundles/tests.rs"]
+mod tests;

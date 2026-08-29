@@ -27,10 +27,7 @@ use afd_redis::SubscriptionHub;
 use afd_redis::config::{RedisConfig, RedisRole};
 use backon::ExponentialBuilder;
 
-#[path = "support/fake_redis.rs"]
-mod fake_redis;
-
-use self::fake_redis::{FakeRedis, Reply, closed_port, install_subscriber};
+use crate::fake_redis::{FakeRedis, Reply, closed_port, install_subscriber};
 
 /// Short enough that a hang fails the test rather than the lane's timeout.
 const BUDGET: Duration = Duration::from_secs(10);

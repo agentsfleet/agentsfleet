@@ -123,3 +123,7 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
 pub(crate) fn row_malformed(column: &'static str) -> impl Fn(sqlx::Error) -> Error {
     move |source| Error::RowMalformed { column, source }
 }
+
+#[cfg(test)]
+#[path = "error/tests.rs"]
+mod tests;

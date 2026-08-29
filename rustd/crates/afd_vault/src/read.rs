@@ -116,11 +116,14 @@ fn read_row(row: &PgRow) -> Result<SecretSummary> {
             // would otherwise be a wall of warnings for a condition one
             // operator command fixes. The stored spelling is carried so a
             // NEWER daemon's vocabulary is visible when it does appear.
+            let stored = stored_kind.as_deref().unwrap_or_default();
+            let backfilled = unknown.is_some();
+            let name_field = name.as_str();
             tracing::debug!(
                 column = COLUMN_KIND,
-                stored = stored_kind.as_deref().unwrap_or_default(),
-                backfilled = unknown.is_some(),
-                name = name.as_str(),
+                stored,
+                backfilled,
+                name = name_field,
                 event = "secret_kind_degraded",
             );
             Ok(SecretSummary {

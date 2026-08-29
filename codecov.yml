@@ -2,9 +2,10 @@ coverage:
   status:
     project:
       default:
-        # 100, not `auto`. Everything Codecov now measures is held to 100 by its
+        # 100, not `auto`. Everything Codecov measures is held to 100 by its
         # own runner: app, website and the agentsfleet CLI by their vitest and
-        # enforce-coverage configs, and the Rust workspace by `cargo llvm-cov`.
+        # enforce-coverage configs, and the Rust workspace by `cargo llvm-cov`
+        # in the one live-datastore coverage lane.
         # `auto` compares against the parent commit, which would have quietly
         # accepted a slide the moment one lane dropped a point.
         #
@@ -17,20 +18,19 @@ coverage:
     # just "coverage fell". Every one of them is 100: the three TypeScript
     # packages are pinned there by their own runners (cli/bunfig.toml plus
     # scripts/enforce-coverage.mjs, ui/packages/app/vitest.config.ts,
-    # ui/packages/website/vite.config.ts) and the Rust workspace measures 100.00%
-    # lines and functions today.
+    # ui/packages/website/vite.config.ts) and the Rust workspace enforces its
+    # line target before upload.
     #
     # Every threshold is 0%: the target IS the bar, with no give. A patch status
     # grades only the lines this diff touched, so on a small diff one unhit line
     # reds the build — intentionally. A red always names a genuinely unhit added
     # line, and the answer is a test, never absorbed slack.
     patch:
-      # 100, not a measured-minus-margin floor. These crates are pure value and
-      # serialization with no input/output, no runtime and no external
-      # dependency, so every line is reachable from a test and `cargo llvm-cov`
-      # reports 100.00% lines and 100.00% functions today. A floor below what the
-      # suite actually achieves is slack nobody asked for, and the TypeScript
-      # packages are already held to exactly this bar.
+      # 100, not a measured-minus-margin floor. These crates now include live
+      # Postgres, Redis, HTTP and runtime paths, so the Rust job measures unit
+      # and ignored integration tests together and enforces this line target
+      # before it uploads. The TypeScript packages are held to the same bar by
+      # their own runners.
       #
       # If a later milestone adds a genuinely untestable line, move this number
       # in the same change and say why — do not let it drift down silently.

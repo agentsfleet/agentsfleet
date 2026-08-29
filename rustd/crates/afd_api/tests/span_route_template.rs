@@ -10,7 +10,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-mod harness;
+use crate::harness;
 mod recorder;
 
 use afd_observability::semconv;

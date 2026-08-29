@@ -180,18 +180,11 @@ impl ServingPlane {
             platform_keys: PlatformKeys::new(database.clone()),
             libraries: Libraries::new(database.clone()),
             workspaces: Workspaces::new(database.clone(), Entropy::new()),
-            // Takes the Redis CONNECTION, not a view of it: which views the
-            // fleet lifecycle needs is its own business, and assembling them
-            // here would mean editing this file whenever that answer changed.
             fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
             billing: Billing::new(database.clone()),
             models: Models::new(database.clone()),
-            // Takes the same shared key every other sealing store does, so a
-            // row this daemon writes opens under the key the runner plane
-            // reads it back with. `Arc::clone` and not a `Kek` clone: one copy
-            // of the key material, zeroed once, however many stores hold it.
             secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
             preferences: Preferences::new(database.clone(), Entropy::new()),
             approvals: Inbox::new(database.clone(), queue.clone()),
@@ -398,3 +391,6 @@ pub struct LoginConfig {
 /// a handle: cloning the plane itself would clone a pool handle, an entropy
 /// selector and two registries per request, which is work with no product.
 pub type Shared = Arc<ServingPlane>;
+
+#[cfg(test)]
+mod tests;

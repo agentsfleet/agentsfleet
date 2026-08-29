@@ -21,13 +21,11 @@
     reason = "test target: an unmet precondition should fail the test loudly, and a missing lane knob is one"
 )]
 
-mod support;
-
 use afd_core::env::MapEnv;
 use agentsfleetd::serve::boot;
 use agentsfleetd::supervisor::Supervisor;
 
-use self::support::install_subscriber;
+use crate::support::install_subscriber;
 
 /// Where the lane publishes the Postgres it brought up.
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
@@ -65,8 +63,8 @@ fn lane_environment() -> MapEnv {
         // boots for real, so it must supply both — each is resolved rather
         // than used, so well-formed is enough and nothing here reaches the
         // issuer or takes a digest.
-        .chain(support::SESSION_PEPPER)
-        .chain(support::IDENTITY),
+        .chain(crate::support::SESSION_PEPPER)
+        .chain(crate::support::IDENTITY),
     )
 }
 
@@ -143,6 +141,17 @@ async fn test_boot_to_ready_on_compose() {
         booted.address.port(),
         0,
         "the bound port is resolved, not the request"
+    );
+
+    // Asserted BEFORE `/readyz`, deliberately. The readiness probe acquires a
+    // connection, and on a cold lazy pool that acquire opens one — so checking
+    // after it would pass on a daemon that never warmed at all. Boot is the
+    // only thing that can have filled the pool at this point.
+    assert!(
+        booted.database.size() >= booted.database.min_connections(),
+        "boot warms the pool to its floor: {} open against a floor of {}",
+        booted.database.size(),
+        booted.database.min_connections()
     );
 
     assert_eq!(

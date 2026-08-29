@@ -168,6 +168,19 @@ mod tests {
     }
 
     #[test]
+    fn the_bare_arm_resolves_with_no_prefix_and_no_timestamp() {
+        let resolved = StaticRegistry.resolve("linear").expect("linear is declared");
+
+        assert_eq!(resolved.signature_header(), "linear-signature");
+        assert_eq!(
+            resolved.signature_prefix(),
+            "",
+            "carrying no prefix is a property of the scheme, not an empty value in a row"
+        );
+        assert_eq!(resolved.timestamp_header(), None);
+    }
+
+    #[test]
     fn an_undeclared_source_resolves_to_nothing() {
         assert!(
             StaticRegistry.resolve("jira").is_none(),

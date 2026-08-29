@@ -24,8 +24,13 @@ TEST_INFRA_PORTS := $(shell bash scripts/test-infra-ports.sh 2>/dev/null)
 AGENTSFLEET_PG_HOST_PORT     ?= $(or $(word 1,$(TEST_INFRA_PORTS)),5432)
 AGENTSFLEET_REDIS_HOST_PORT  ?= $(or $(word 2,$(TEST_INFRA_PORTS)),6379)
 AGENTSFLEET_QSTASH_HOST_PORT ?= $(or $(word 3,$(TEST_INFRA_PORTS)),8080)
+# The plaintext Redis port, derived from the TLS one rather than allocated, so
+# a worktree's two Redis ports move together and the allocator keeps owning one
+# number per service.
+AGENTSFLEET_REDIS_PLAIN_HOST_PORT ?= $(shell echo $$(( $(AGENTSFLEET_REDIS_HOST_PORT) + 1000 )))
 export AGENTSFLEET_PG_HOST_PORT
 export AGENTSFLEET_REDIS_HOST_PORT
+export AGENTSFLEET_REDIS_PLAIN_HOST_PORT
 export AGENTSFLEET_QSTASH_HOST_PORT
 
 # The live ports are still discovered from the running container rather than
@@ -50,6 +55,7 @@ export AGENTSFLEET_QSTASH_HOST_PORT
 # because the caller provisioned the infra itself and told us where it is.
 COMPOSE_PG_PORT = $(or $(strip $(shell docker compose port postgres 5432 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_PG_HOST_PORT))
 COMPOSE_REDIS_PORT = $(or $(strip $(shell docker compose port redis 6379 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_REDIS_HOST_PORT))
+COMPOSE_REDIS_PLAIN_PORT = $(or $(strip $(shell docker compose port redis 6380 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_REDIS_PLAIN_HOST_PORT))
 COMPOSE_QSTASH_PORT = $(or $(strip $(shell docker compose port qstash 8080 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_QSTASH_HOST_PORT))
 
 # Optional narrowing, for studying ONE failure without the rest of the lane's
@@ -94,12 +100,41 @@ ZIG_TEST_FILTER_ARG = $(if $(strip $(TEST_FILTER)),-Dtest-filter="$(TEST_FILTER)
 # fails at connect with SSLNotSupportedByServer before it can run. It is IN the
 # default rather than appended by a recipe, so a hosted URL supplied from the
 # environment keeps its TLS instead of having it stripped by a lane.
-TEST_DATABASE_URL ?= postgres://agentsfleet:agentsfleet@localhost:$(COMPOSE_PG_PORT)/agentsfleetdb?sslmode=disable
-TEST_REDIS_URL ?= rediss://:agentsfleet@localhost:$(COMPOSE_REDIS_PORT)
+#
+# 127.0.0.1, not `localhost`. The name costs a resolver round trip on every
+# connection, and on macOS it occasionally costs a five-second one: measured
+# over 20 sequential Redis connects, `localhost` ran a 566 ms median with a
+# 6343 ms worst case, and the literal address ran 246 ms with a 2194 ms worst.
+# Every live test opens its own connection, so the median is multiplied across
+# the lane and the tail is what made `ConnectTimeout` a coin flip against the
+# 5 s connect budget. The Redis certificate carries `IP:127.0.0.1` in its SAN
+# beside `DNS:localhost`, so TLS verification is unaffected.
+TEST_DATABASE_URL ?= postgres://agentsfleet:agentsfleet@127.0.0.1:$(COMPOSE_PG_PORT)/agentsfleetdb?sslmode=disable
+# `redis://`, not `rediss://`, and the reason is measured rather than assumed.
+#
+# A TLS connect to the lane's Redis runs a 232 ms median against 0.1 ms for
+# plain TCP to the same server, and that difference is a handshake re-proving a
+# certificate authority which is identical on every one of the two hundred
+# connects a lane opens. It is not merely slow: a connect's budget starts
+# BEFORE the connection is admitted, so the queue those handshakes build is
+# what spends the budget, and a perfectly healthy Redis answers `ConnectTimeout`
+# to whichever test sat deepest in it.
+#
+# Nothing about TLS goes unproven. It moves to `TEST_REDIS_TLS_URL` below and is
+# proven where proving it means something -- and proven harder, because that
+# suite asserts a foreign authority is REFUSED, which an all-TLS lane never did:
+# every connect there used the right certificate, so a lane that had silently
+# stopped verifying would have passed exactly the same.
+TEST_REDIS_URL ?= redis://:agentsfleet@127.0.0.1:$(COMPOSE_REDIS_PLAIN_PORT)
+# The same server over TLS, for the suite whose subject IS the trust decision.
+TEST_REDIS_TLS_URL ?= rediss://:agentsfleet@127.0.0.1:$(COMPOSE_REDIS_PORT)
 # Cert path — populated by _ensure-test-infra after Redis is healthy. Do NOT shell-expand
 # at parse time; Redis may not be running yet when the Makefile is first evaluated.
 TEST_REDIS_CA_CERT ?= $(CURDIR)/.tmp/redis-ca.crt
-export TEST_DATABASE_URL TEST_REDIS_URL TEST_REDIS_CA_CERT
+# The authority that signed nothing here, for the refusal half of the trust
+# dimension. Extracted beside the real one; see `integration_tls_trust.rs`.
+TEST_REDIS_FOREIGN_CA ?= $(CURDIR)/.tmp/redis-foreign-ca.crt
+export TEST_DATABASE_URL TEST_REDIS_URL TEST_REDIS_TLS_URL TEST_REDIS_CA_CERT TEST_REDIS_FOREIGN_CA
 # QStash local dev server (docker-compose `qstash` service). The emulator ships a
 # hardcoded local identity and rejects anything else (a different user 404s, a
 # different password 401s), so this is a fixture we reproduce, not a credential we
@@ -144,6 +179,7 @@ else
 	@# container satisfies. Every TLS connection then failed signature
 	@# verification, which reads as dozens of unrelated Redis test failures.
 	@docker compose cp redis:/tls/ca.crt "$(TEST_REDIS_CA_CERT)"
+	@docker compose cp redis:/tls/foreign-ca.crt "$(TEST_REDIS_FOREIGN_CA)"
 	@test -s "$(TEST_REDIS_CA_CERT)" || { echo "✗ Failed to extract Redis TLS cert"; exit 1; }
 	@# Freshness, not size: the copied cert must be byte-identical to the one the
 	@# server is actually presenting.

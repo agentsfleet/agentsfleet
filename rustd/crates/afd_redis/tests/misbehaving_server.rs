@@ -15,16 +15,15 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use std::error::Error as _;
 use std::time::Duration;
 
 use afd_redis::Redis;
 use afd_redis::config::{RedisConfig, RedisRole};
 use afd_redis::streams::FleetStreams;
 
-#[path = "support/fake_redis.rs"]
-mod fake_redis;
-
-use self::fake_redis::{FakeRedis, Reply, install_subscriber};
+use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
+use crate::recorder::Recorder;
 
 /// Short enough that a hang fails the test rather than the lane's timeout.
 const BUDGET: Duration = Duration::from_secs(10);
@@ -33,6 +32,74 @@ const BUDGET: Duration = Duration::from_secs(10);
 fn config_for(server: &FakeRedis) -> RedisConfig {
     RedisConfig::from_url(RedisRole::Default, server.url())
         .with_request_timeout(Duration::from_secs(2))
+}
+
+/// Checks one API-role connection emitted one correlated start/failure pair.
+fn assert_connection_pair(recorder: &Recorder) {
+    let events: Vec<_> = recorder
+        .events()
+        .into_iter()
+        .filter(|record| record.fields.get("role").is_some_and(|role| role == "api"))
+        .collect();
+    assert_eq!(
+        events.len(),
+        2,
+        "one connection must emit one pair: {events:?}"
+    );
+    let started = events.first().expect("the pair has a started event");
+    let failed = events.last().expect("the pair has a failed event");
+    assert_eq!(started.level, tracing::Level::INFO);
+    assert_eq!(failed.level, tracing::Level::WARN);
+    assert_eq!(
+        started.fields.get("event").map(String::as_str),
+        Some("redis_connect_started")
+    );
+    assert_eq!(
+        failed.fields.get("event").map(String::as_str),
+        Some("redis_connect_failed")
+    );
+    assert_eq!(
+        started.fields.get("attempt_id"),
+        failed.fields.get("attempt_id")
+    );
+    assert!(failed.fields.contains_key("error_code"));
+}
+
+/// A socket that accepts the client and never answers the liveness probe is
+/// bounded by the connection budget itself. The elapsed deadline is this
+/// crate's fact, so it has no invented driver source.
+#[tokio::test]
+async fn test_redis_connect_honours_its_deadline() {
+    let recorder = Recorder::install();
+    let server = FakeRedis::spawn(&[("PING", Reply::Silent)]).await;
+    let budget = Duration::from_millis(100);
+    let config = RedisConfig::from_url(RedisRole::Api, server.url())
+        .with_request_timeout(Duration::from_secs(2))
+        .with_connect_timeout(budget);
+
+    let started = std::time::Instant::now();
+    let error = Redis::connect(&config)
+        .await
+        .expect_err("a silent liveness probe must time out");
+
+    assert!(
+        error.is_unavailable(),
+        "a connect timeout is an outage: {error}"
+    );
+    assert!(
+        error.to_string().contains("100ms"),
+        "the failure must carry its configured budget: {error}"
+    );
+    assert!(
+        error.source().is_none(),
+        "an elapsed deadline has no lower-level cause"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "the configured deadline must bound the whole connection"
+    );
+
+    assert_connection_pair(&recorder);
 }
 
 /// A `PING` answered with anything but `PONG` is an unexpected reply, not a

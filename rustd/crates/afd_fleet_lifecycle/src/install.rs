@@ -160,12 +160,18 @@ impl Fleets {
         drop(connection);
 
         match self.finish(workspace, &id, now).await {
-            Ok(()) => Ok(Installed {
-                id,
-                name,
-                status: FleetStatus::Active,
-                webhook_sources: authored.webhook_sources(),
-            }),
+            Ok(()) => {
+                // A workspace wall may already hold the pre-install set. Drop
+                // it only after both datastores and the active row agree, so
+                // the next refresh observes the committed fleet immediately.
+                self.live_sets.invalidate(workspace.as_str()).await;
+                Ok(Installed {
+                    id,
+                    name,
+                    status: FleetStatus::Active,
+                    webhook_sources: authored.webhook_sources(),
+                })
+            }
             Err(unfinished) => Err(self.roll_back(workspace, &id, &unfinished).await),
         }
     }

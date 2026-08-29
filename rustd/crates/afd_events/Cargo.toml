@@ -1,5 +1,7 @@
 [package]
 name = "afd_events"
+# One aggregated test binary; see tests/events_suite.rs for why.
+autotests = false
 description = "The narrative log of a fleet: the rows a run writes, the history an operator reads, and the live tail they watch it on."
 version.workspace = true
 edition.workspace = true
@@ -63,3 +65,7 @@ serde_json.workspace = true
 futures-util.workspace = true
 # So the event macros in the code under test evaluate their fields.
 tracing-subscriber.workspace = true
+
+[[test]]
+name = "events_suite"
+path = "tests/events_suite.rs"

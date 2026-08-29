@@ -13,6 +13,8 @@ use crate::error::{Error, ErrorKind, Result};
 
 const REQUEST_TIMEOUT_KNOB: &str = "REDIS_REQUEST_TIMEOUT_MS";
 const REQUEST_TIMEOUT_MS_DEFAULT: u64 = 5_000;
+const CONNECT_TIMEOUT_KNOB: &str = "REDIS_CONNECT_TIMEOUT_MS";
+const CONNECT_TIMEOUT_MS_DEFAULT: u64 = 5_000;
 
 /// Where a self-signed certificate authority is read from, for the local
 /// compose Redis. Unset means the system trust store.
@@ -59,6 +61,7 @@ pub struct RedisConfig {
     role: RedisRole,
     url: String,
     ca_cert_file: Option<PathBuf>,
+    connect_timeout: Duration,
     request_timeout: Duration,
 }
 
@@ -101,11 +104,15 @@ impl RedisConfig {
                 .map(|value| value.trim().to_owned())
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from),
-            request_timeout: Duration::from_millis(
-                env.get(REQUEST_TIMEOUT_KNOB)
-                    .and_then(|raw| raw.trim().parse::<u64>().ok())
-                    .filter(|millis| *millis > 0)
-                    .unwrap_or(REQUEST_TIMEOUT_MS_DEFAULT),
+            connect_timeout: timeout_from_env(
+                env,
+                CONNECT_TIMEOUT_KNOB,
+                CONNECT_TIMEOUT_MS_DEFAULT,
+            ),
+            request_timeout: timeout_from_env(
+                env,
+                REQUEST_TIMEOUT_KNOB,
+                REQUEST_TIMEOUT_MS_DEFAULT,
             ),
         })
     }
@@ -118,6 +125,7 @@ impl RedisConfig {
             role,
             url,
             ca_cert_file: None,
+            connect_timeout: Duration::from_millis(CONNECT_TIMEOUT_MS_DEFAULT),
             request_timeout: Duration::from_millis(REQUEST_TIMEOUT_MS_DEFAULT),
         }
     }
@@ -126,6 +134,13 @@ impl RedisConfig {
     #[must_use]
     pub fn with_ca_cert_file(mut self, path: Option<PathBuf>) -> Self {
         self.ca_cert_file = path;
+        self
+    }
+
+    /// Shortens the whole connection-and-probe budget.
+    #[must_use]
+    pub const fn with_connect_timeout(mut self, timeout: Duration) -> Self {
+        self.connect_timeout = timeout;
         self
     }
 
@@ -161,9 +176,24 @@ impl RedisConfig {
         self.ca_cert_file.as_deref()
     }
 
+    /// How long connection establishment and its liveness probe may take.
+    #[must_use]
+    pub const fn connect_timeout(&self) -> Duration {
+        self.connect_timeout
+    }
+
     /// How long any one command may take.
     #[must_use]
     pub const fn request_timeout(&self) -> Duration {
         self.request_timeout
     }
+}
+
+fn timeout_from_env<E: EnvSource + ?Sized>(env: &E, knob: &str, fallback_ms: u64) -> Duration {
+    Duration::from_millis(
+        env.get(knob)
+            .and_then(|raw| raw.trim().parse::<u64>().ok())
+            .filter(|millis| *millis > 0)
+            .unwrap_or(fallback_ms),
+    )
 }

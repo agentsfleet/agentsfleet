@@ -234,6 +234,19 @@ pub(crate) async fn seed_model_rate(booted: &Booted, now: UnixMillis) {
 /// Ordered AFTER the catalogue seed: the table's foreign key requires
 /// `(provider, model)` to name a priced row, so the reverse order fails on the
 /// constraint rather than on anything under test.
+///
+/// # Written once, never overwritten
+///
+/// `provider` is the table's PRIMARY KEY, so this row is platform-wide by
+/// definition and no scenario can hold one of its own — it is scaffolding, like
+/// the tenant, not state a test owns. The conflict clause therefore takes
+/// NOTHING: the first scenario to arrive writes the row and every later one
+/// leaves it alone. An overwrite would point `source_workspace_id` at the
+/// newest scenario's workspace while an earlier scenario is still leasing
+/// against it, which is a shared mutable row under concurrent readers — the
+/// class `docs/architecture/testing.md` names ISO-1. The value written is a
+/// fixture either way: whichever workspace wins holds the same seeded provider
+/// key, and its rows outlive the run.
 pub(crate) async fn seed_platform_default(booted: &Booted, workspace: &str, now: UnixMillis) {
     let at = now.as_millis();
     let mut connection = booted
@@ -246,11 +259,7 @@ pub(crate) async fn seed_platform_default(booted: &Booted, workspace: &str, now:
            (provider, source_workspace_id, active, model, context_cap_tokens,
             created_at, updated_at)
          VALUES ($1, $2::uuid, TRUE, $3, $4, $5, $5)
-         ON CONFLICT (provider) DO UPDATE
-           SET source_workspace_id = EXCLUDED.source_workspace_id,
-               active = EXCLUDED.active,
-               model = EXCLUDED.model,
-               updated_at = EXCLUDED.updated_at",
+         ON CONFLICT (provider) DO NOTHING",
     )
     .bind(PROVIDER)
     .bind(workspace)

@@ -46,6 +46,8 @@ pub mod outbound;
 pub mod ready;
 pub mod session;
 pub mod streams;
+#[cfg(feature = "test-util")]
+pub mod test_util;
 
 pub use afd_core::env::EnvSource;
 

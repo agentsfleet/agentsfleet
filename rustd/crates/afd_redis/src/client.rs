@@ -21,18 +21,73 @@
 //! site. [`Redis::command`] is that call site, so no caller can start an
 //! unbounded Redis operation by forgetting to wrap one.
 
-use std::time::Duration;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
-use redis::aio::ConnectionManager;
-#[cfg(feature = "test-util")]
-use redis::aio::ConnectionManagerConfig;
+use redis::aio::{ConnectionManager, ConnectionManagerConfig};
 use redis::{Cmd, FromRedisValue, Value};
 
 use crate::config::{RedisConfig, RedisRole};
 use crate::error::{self, Error, ErrorKind, Result};
 
+/// Correlates one connection boundary's started and terminal records.
+static NEXT_CONNECT_ATTEMPT: AtomicU64 = AtomicU64::new(0);
+
 /// The liveness probe, and the only command this module issues by name.
 const CMD_PING: &str = "PING";
+
+/// The invariant every constant below serves.
+///
+/// `connect_inner` runs the driver's whole reconnection ladder inside
+/// [`RedisConfig::connect_timeout`]. For the outer deadline to be the LAST
+/// thing that fires rather than the first, the ladder's worst case has to fit:
+///
+/// ```text
+/// (CONNECT_RETRIES + 1) * CONNECT_ATTEMPT_TIMEOUT   <- the attempts
+///   + jittered sum of the backoff delays            <- the sleeps
+///   < RedisConfig::connect_timeout                  <- the outer budget
+/// ```
+///
+/// `redis` 1.6.0 satisfies none of that by default. It ships six retries over a
+/// jittered doubling backoff from 100 ms with `max_delay: None`, so `backon`'s
+/// own 60 s ceiling applies and nothing caps the ladder
+/// (`connection_manager.rs`, `DEFAULT_NUMBER_OF_CONNECTION_RETRIES`). The six
+/// base delays are 100+200+400+800+1600+3200 = 6300 ms of SLEEP, and because
+/// `backon`'s jitter is additive — each delay becomes `d..2d` — the real range
+/// is 6.3 s to 12.6 s, before a single connection attempt is counted.
+///
+/// Against a 5 s budget that ladder cannot be exhausted. The failure this
+/// produces is not "connecting is slow": most first failures recover on the
+/// next attempt after a 100–200 ms sleep. It is that a run of failures leaves
+/// the driver mid-ladder when the outer deadline cancels it, and the caller is
+/// handed `ConnectTimeout` — an error naming Redis, carrying no trace of
+/// whatever actually caused the retries. The initiating error is destroyed.
+///
+/// So bounding the ladder IS the diagnostic fix. Once the worst case fits, the
+/// driver always returns its own error first, and that error keeps its source
+/// chain through [`ErrorKind::Unreachable`].
+const CONNECT_RETRIES: usize = 2;
+
+/// The floor and ceiling of the driver's backoff between those retries.
+///
+/// Bounded rather than derived from the budget: a fraction-of-budget ladder
+/// would grow with the budget and re-create the problem on a generous one.
+/// Worst case here is jitter-doubled 50+100 = 300 ms.
+const CONNECT_RETRY_MIN_DELAY: Duration = Duration::from_millis(50);
+const CONNECT_RETRY_MAX_DELAY: Duration = Duration::from_millis(100);
+
+/// The deadline on ONE connection attempt, pinned rather than inherited.
+///
+/// `redis` defaults this to 1 s and the response deadline to 500 ms
+/// (`client.rs`, `DEFAULT_CONNECTION_TIMEOUT`). Those are reasonable, and they
+/// are still written down here: the invariant above multiplies this value by
+/// the attempt count, so a future release changing its own default would move
+/// our worst case without touching this crate. Pinning makes the arithmetic
+/// ours.
+const CONNECT_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// The deadline on the reply within one attempt, pinned for the same reason.
+const CONNECT_RESPONSE_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// A connection to one role's Redis.
 ///
@@ -53,13 +108,64 @@ impl Redis {
     /// Returns an unavailable error when Redis cannot be reached, and a config
     /// error when a certificate authority file was named but not readable.
     pub async fn connect(config: &RedisConfig) -> Result<Self> {
+        let started = Instant::now();
+        let attempt_id = NEXT_CONNECT_ATTEMPT.fetch_add(1, Ordering::Relaxed);
+        let role = config.role().tag();
+        let timeout_ms = config.connect_timeout().as_millis();
+        let tls = config.is_tls();
+        tracing::info!(
+            attempt_id,
+            role,
+            timeout_ms,
+            tls,
+            event = "redis_connect_started"
+        );
+
+        let result =
+            match tokio::time::timeout(config.connect_timeout(), Self::connect_inner(config)).await
+            {
+                Ok(result) => result,
+                Err(_elapsed) => Err(error::connect_timed_out(role, timeout_ms)),
+            };
+        let duration_ms = started.elapsed().as_millis();
+        match result {
+            Ok(redis) => {
+                let request_timeout_ms = config.request_timeout().as_millis();
+                tracing::info!(
+                    attempt_id,
+                    role,
+                    duration_ms,
+                    request_timeout_ms,
+                    tls,
+                    event = "redis_connect_completed"
+                );
+                Ok(redis)
+            }
+            Err(failure) => {
+                let error_code = failure.code().as_str();
+                tracing::warn!(
+                    attempt_id,
+                    role,
+                    duration_ms,
+                    error_code,
+                    reason = %failure,
+                    event = "redis_connect_failed"
+                );
+                Err(failure)
+            }
+        }
+    }
+
+    async fn connect_inner(config: &RedisConfig) -> Result<Self> {
         let client = build_client(config)?;
-        let manager = ConnectionManager::new(client).await.map_err(|source| {
-            Error::new(ErrorKind::Unreachable {
-                role: config.role().tag(),
-                source: Box::new(source),
-            })
-        })?;
+        let manager = ConnectionManager::new_with_config(client, connect_retry_policy())
+            .await
+            .map_err(|source| {
+                Error::new(ErrorKind::Unreachable {
+                    role: config.role().tag(),
+                    source: Box::new(source),
+                })
+            })?;
 
         let redis = Self {
             role: config.role(),
@@ -70,12 +176,6 @@ impl Redis {
         // exist: `ConnectionManager::new` establishes one, but the boot
         // preflight's claim is that Redis SERVES, and only a reply proves that.
         redis.ping().await?;
-
-        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-        let role = config.role().tag();
-        let request_timeout_ms = config.request_timeout().as_millis();
-        let tls = config.is_tls();
-        tracing::info!(role, request_timeout_ms, tls, event = "redis_connected");
         Ok(redis)
     }
 
@@ -109,14 +209,13 @@ impl Redis {
         // `new_lazy_with_config` builds the manager WITHOUT opening a socket,
         // which is the whole point: `connect` above opens one and pings it, and
         // this seam exists to skip exactly that.
-        let manager =
-            ConnectionManager::new_lazy_with_config(client, ConnectionManagerConfig::new())
-                .map_err(|source| {
-                    Error::new(ErrorKind::Unreachable {
-                        role: config.role().tag(),
-                        source: Box::new(source),
-                    })
-                })?;
+        let manager = ConnectionManager::new_lazy_with_config(client, connect_retry_policy())
+            .map_err(|source| {
+                Error::new(ErrorKind::Unreachable {
+                    role: config.role().tag(),
+                    source: Box::new(source),
+                })
+            })?;
         Ok(Self {
             role: config.role(),
             manager,
@@ -215,8 +314,28 @@ impl Redis {
 /// by path rather than from a trust store. `REDIS_TLS_CA_CERT_FILE` is the same
 /// knob `redis_config.zig` reads, and the same file the Zig lane extracts from
 /// the container.
+/// The driver's reconnection ladder, bounded to fit inside a connect budget.
+///
+/// See [`CONNECT_RETRIES`] for why the default does not fit. This is also what
+/// [`Redis::unreachable`] builds on, so the two paths answer with one policy.
+pub(crate) fn connect_retry_policy() -> ConnectionManagerConfig {
+    ConnectionManagerConfig::new()
+        .set_number_of_retries(CONNECT_RETRIES)
+        .set_min_delay(CONNECT_RETRY_MIN_DELAY)
+        .set_max_delay(CONNECT_RETRY_MAX_DELAY)
+        .set_connection_timeout(Some(CONNECT_ATTEMPT_TIMEOUT))
+        .set_response_timeout(Some(CONNECT_RESPONSE_TIMEOUT))
+}
+
 pub(crate) fn build_client(config: &RedisConfig) -> Result<redis::Client> {
-    let Some(path) = config.ca_cert_file() else {
+    // A certificate authority is meaningless without TLS, and `redis` does not
+    // merely ignore one: `build_with_tls` on a `redis://` URL fails the whole
+    // connect with `InvalidClientConfig`. Branching on whether a CA is
+    // CONFIGURED rather than on whether the connection is TLS made every
+    // caller that keeps a CA path around for its TLS endpoint unable to open a
+    // plaintext one — which is exactly what the lane does now that ordinary
+    // suites take the plaintext port and only the trust suite takes `rediss://`.
+    let Some(path) = config.ca_cert_file().filter(|_| config.is_tls()) else {
         return redis::Client::open(config.url()).map_err(|source| {
             Error::new(ErrorKind::Unreachable {
                 role: config.role().tag(),
@@ -245,4 +364,171 @@ pub(crate) fn build_client(config: &RedisConfig) -> Result<redis::Client> {
             source: Box::new(source),
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::{
+        CONNECT_ATTEMPT_TIMEOUT, CONNECT_RESPONSE_TIMEOUT, CONNECT_RETRIES,
+        CONNECT_RETRY_MAX_DELAY, CONNECT_RETRY_MIN_DELAY, build_client, connect_retry_policy,
+    };
+    use crate::config::{RedisConfig, RedisRole};
+
+    /// The longest the driver's ladder can take before it gives an answer.
+    ///
+    /// Attempts and sleeps both count. `backon` doubles the delay per retry,
+    /// caps it at `max_delay`, and adds a random `(0, delay)` on top — jitter is
+    /// ADDITIVE, so one retry's ceiling is twice its capped delay, not the
+    /// delay. Budgeting against `max_delay` alone would under-count by half.
+    fn worst_case_ladder() -> Duration {
+        // Summed rather than multiplied: the retry count is a `usize` because
+        // that is what the driver's setter takes, and converting it to scale a
+        // `Duration` buys a fallible conversion that cannot fail, for nothing.
+        let mut attempts = Duration::ZERO;
+        for _ in 0..=CONNECT_RETRIES {
+            attempts += CONNECT_ATTEMPT_TIMEOUT;
+        }
+
+        let mut sleeps = Duration::ZERO;
+        let mut delay = CONNECT_RETRY_MIN_DELAY;
+        for _ in 0..CONNECT_RETRIES {
+            sleeps += delay.min(CONNECT_RETRY_MAX_DELAY) * 2;
+            delay *= 2;
+        }
+
+        attempts + sleeps
+    }
+
+    fn default_budget() -> Duration {
+        RedisConfig::from_url(RedisRole::Default, "redis://127.0.0.1:6379".to_owned())
+            .connect_timeout()
+    }
+
+    /// The regression this pins, and the reason it is a correctness test rather
+    /// than a performance one.
+    ///
+    /// `redis`'s defaults put a 6.3–12.6 s ladder inside a 5 s budget, which
+    /// cannot be exhausted. The damage is not the waiting: it is that the outer
+    /// deadline cancels the driver mid-ladder, so the error that started the
+    /// retries never returns and the caller is told `ConnectTimeout` — pointing
+    /// every future investigation at Redis rather than at the real fault.
+    ///
+    /// While the ladder fits, the driver's own error always arrives first and
+    /// keeps its source chain. So this assertion is what makes the crate's
+    /// errors truthful, and any change to the five constants has to preserve it.
+    #[test]
+    fn test_the_connect_ladder_answers_before_the_budget_expires() {
+        let worst = worst_case_ladder();
+        let budget = default_budget();
+
+        assert!(
+            worst < budget,
+            "attempts plus jittered backoff must finish inside the connect \
+             budget, or the driver is cancelled mid-retry and its error is lost: \
+             worst case {worst:?} against a {budget:?} budget",
+        );
+    }
+
+    /// The policy is applied, and applied where this module says it is.
+    ///
+    /// Separate from the budget proof because the two fail for different
+    /// reasons: this catches a policy that stopped being applied at all — a
+    /// bare `ConnectionManagerConfig::new()` creeping back into `connect_inner`
+    /// and silently restoring the six-retry default — where that one catches a
+    /// policy still applied but grown past the budget.
+    #[test]
+    fn test_the_driver_never_inherits_its_own_unbounded_defaults() {
+        let policy = connect_retry_policy();
+
+        assert_eq!(
+            policy.number_of_retries(),
+            CONNECT_RETRIES,
+            "the six-retry default must not be inherited",
+        );
+        assert_eq!(
+            policy.max_delay(),
+            Some(CONNECT_RETRY_MAX_DELAY),
+            "`max_delay: None` is what let backon's 60 s ceiling apply",
+        );
+        assert_eq!(policy.min_delay(), CONNECT_RETRY_MIN_DELAY);
+        assert_eq!(policy.connection_timeout(), Some(CONNECT_ATTEMPT_TIMEOUT));
+        assert_eq!(policy.response_timeout(), Some(CONNECT_RESPONSE_TIMEOUT));
+    }
+
+    /// The arithmetic that made the default wrong, kept as a worked example.
+    ///
+    /// Without it a reader has to trust the prose in [`CONNECT_RETRIES`]. This
+    /// recomputes `redis`'s shipped defaults — six retries, 100 ms minimum,
+    /// doubling, uncapped — and shows the result does not fit, so the claim the
+    /// constants are chosen against stays checkable rather than remembered.
+    #[test]
+    fn test_the_shipped_defaults_are_the_ones_that_do_not_fit() {
+        const SHIPPED_RETRIES: u32 = 6;
+        const SHIPPED_MIN_DELAY: Duration = Duration::from_millis(100);
+
+        let mut sleeps = Duration::ZERO;
+        let mut delay = SHIPPED_MIN_DELAY;
+        for _ in 0..SHIPPED_RETRIES {
+            // Uncapped: `max_delay` is None, so backon's 60 s ceiling is the
+            // only limit and no delay here approaches it.
+            sleeps += delay;
+            delay *= 2;
+        }
+
+        assert_eq!(sleeps, Duration::from_millis(6300));
+        assert!(
+            sleeps > default_budget(),
+            "the shipped ladder sleeps {sleeps:?} against a {:?} budget, before \
+             a single connection attempt is counted",
+            default_budget(),
+        );
+    }
+
+    /// A configured authority does not make a plaintext endpoint a TLS one.
+    ///
+    /// The scheme selects the transport; the certificate authority only says
+    /// whom to trust once TLS is chosen. Branching on whether a CA is
+    /// CONFIGURED sends a `redis://` URL into `build_with_tls`, which refuses
+    /// the pair outright with `InvalidClientConfig` — so a caller holding a CA
+    /// path for its TLS endpoint could not open a plaintext one at all. That is
+    /// the lane's own shape: ordinary suites take the plaintext port while the
+    /// trust suite takes `rediss://`, both from a process that has the CA
+    /// configured.
+    ///
+    /// The path names a file that does not exist, and that is the assertion:
+    /// the plaintext branch never reads it. A build that succeeds here proves
+    /// the CA was not consulted, and one that reports `CaCertUnreadable` proves
+    /// the branch went the wrong way.
+    #[test]
+    fn test_a_configured_authority_does_not_force_tls_on_a_plaintext_url() {
+        let config = RedisConfig::from_url(RedisRole::Api, "redis://127.0.0.1:6379".to_owned())
+            .with_ca_cert_file(Some("/nonexistent/authority.pem".into()));
+
+        assert!(
+            build_client(&config).is_ok(),
+            "a redis:// URL opens plaintext whatever authority is configured"
+        );
+    }
+
+    /// And the scheme that does mean TLS still reaches the authority.
+    ///
+    /// The mirror of the case above: same unreadable path, `rediss://` this
+    /// time, so the client must try to READ it and fail on the file rather than
+    /// quietly open a plaintext connection to a TLS port. Without this arm the
+    /// test above is satisfied by a `build_client` that never does TLS at all.
+    #[test]
+    fn test_a_tls_url_reads_the_authority_it_was_given() {
+        let config = RedisConfig::from_url(RedisRole::Api, "rediss://127.0.0.1:6380".to_owned())
+            .with_ca_cert_file(Some("/nonexistent/authority.pem".into()));
+
+        let refusal = build_client(&config).err().map(|error| error.to_string());
+        assert!(
+            refusal
+                .as_deref()
+                .is_some_and(|message| message.contains("/nonexistent/authority.pem")),
+            "a rediss:// URL must consult the authority and name it when unreadable: {refusal:?}"
+        );
+    }
 }

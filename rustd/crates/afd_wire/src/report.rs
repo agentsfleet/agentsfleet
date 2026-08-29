@@ -225,3 +225,7 @@ pub struct ReportResponse {
     /// Whether the write landed.
     pub ok: bool,
 }
+
+#[cfg(test)]
+#[path = "report/tests.rs"]
+mod tests;

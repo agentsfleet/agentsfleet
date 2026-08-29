@@ -5,15 +5,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-#[path = "support/fleet_fixtures.rs"]
-mod support;
-
-#[path = "support/fleet_queue.rs"]
-mod queue;
-
-#[path = "support/fleet_requests.rs"]
-mod requests;
-
+use crate::requests;
+use crate::support;
 use std::borrow::Cow;
 use std::sync::Arc;
 
