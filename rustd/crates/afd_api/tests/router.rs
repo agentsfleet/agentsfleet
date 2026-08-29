@@ -12,7 +12,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-mod harness;
+use crate::harness;
 
 use afd_api::route::{AuthRoute, OpsRoute, Route, RunnerRoute, TenantRoute};
 use afd_api::router::{ReadyInputs, ready_decision};
@@ -204,61 +204,7 @@ async fn test_only_the_ported_routes_are_mounted() {
             continue;
         }
         let response = send(Method::GET, template, ALL_HEALTHY).await;
-        let mounted = matches!(
-            route,
-            Route::Ops(OpsRoute::Healthz | OpsRoute::Readyz)
-                | Route::Runner(
-                    RunnerRoute::SelfRecord
-                        | RunnerRoute::Heartbeat
-                        | RunnerRoute::Lease
-                        | RunnerRoute::Report
-                        | RunnerRoute::Renew
-                        | RunnerRoute::Activity
-                        | RunnerRoute::MemoryHydrate
-                        | RunnerRoute::MemoryCapture
-                        | RunnerRoute::Bundle
-                        | RunnerRoute::CredentialsMint
-                )
-                | Route::RunnerOps(_)
-                // M179's platform-administration family, every verb served.
-                | Route::Admin(_)
-                // M180 §2 and §3's signed ingress, every verb served — the
-                // family's mount is total with no `Option`. Only the QStash fire
-                // is reachable by this loop; the rest name a fleet or a provider
-                // in their templates and are skipped above. Listed as a family
-                // anyway, for the reason the note above gives: a served route
-                // left out because the loop cannot reach it makes the matcher
-                // and the router disagree the moment the skip is lifted.
-                | Route::Webhook(_)
-                // The device-flow login surface, which M178 §1 mounts. The
-                // identity-provider delivery stays unmounted: it is proven by a
-                // Svix signature rather than a bearer, so it lands with M180's
-                // signed-ingress work.
-                | Route::Auth(
-                    AuthRoute::CreateSession
-                        | AuthRoute::PollSession
-                        | AuthRoute::ApproveSession
-                        | AuthRoute::VerifySession
-                        | AuthRoute::DeleteSession
-                        | AuthRoute::DeleteAllSessions
-                )
-                // §2's api-key lifecycle, the command-line credentials beside
-                // it, the billing reads, and the workspace directory. The
-                // rest of the tenant plane — the model registry, the provider
-                // row — is tabled and unserved until its handlers land.
-                | Route::Tenant(
-                    TenantRoute::ApiKeys
-                        | TenantRoute::ApiKey
-                        | TenantRoute::CliCredentials
-                        | TenantRoute::CliCredential
-                        | TenantRoute::Billing
-                        | TenantRoute::BillingCharges
-                        | TenantRoute::Workspaces
-                        | TenantRoute::CreateWorkspace
-                        | TenantRoute::ModelLibrary
-                        | TenantRoute::FleetBundles
-                )
-        );
+        let mounted = is_mounted(route);
 
         if mounted {
             // Not a 200: a mounted route answers its guard's refusal, or a 405
@@ -316,4 +262,58 @@ async fn test_the_callback_pair_keeps_a_guard_each_through_the_merge() {
         StatusCode::UNAUTHORIZED,
         "the provider's browser carries no credential of ours, so the relay stays open"
     );
+}
+
+/// Whether this binary serves `route`, as a statement independent of the loop.
+const fn is_mounted(route: Route) -> bool {
+    matches!(
+        route,
+        Route::Ops(OpsRoute::Healthz | OpsRoute::Readyz)
+            | Route::Runner(
+                RunnerRoute::SelfRecord
+                    | RunnerRoute::Heartbeat
+                    | RunnerRoute::Lease
+                    | RunnerRoute::Report
+                    | RunnerRoute::Renew
+                    | RunnerRoute::Activity
+                    | RunnerRoute::MemoryHydrate
+                    | RunnerRoute::MemoryCapture
+                    | RunnerRoute::Bundle
+                    | RunnerRoute::CredentialsMint
+            )
+            | Route::RunnerOps(_)
+            | Route::Admin(_)
+            // The device-flow login surface only. The identity-provider
+            // delivery stays unmounted: it is proven by a Svix signature
+            // rather than by a bearer, and its handler is not ported.
+            | Route::Auth(
+                AuthRoute::CreateSession
+                    | AuthRoute::PollSession
+                    | AuthRoute::ApproveSession
+                    | AuthRoute::VerifySession
+                    | AuthRoute::DeleteSession
+                    | AuthRoute::DeleteAllSessions
+            )
+            // M180 §2 and §3's signed ingress, and §4's connector family —
+            // both mounts are total, so no verb in either is unserved. Only
+            // the QStash fire is reachable by this loop; the rest name a fleet
+            // or a provider in their templates and are skipped above. Listed
+            // as families anyway, for the reason the note above gives: a
+            // served route left out because the loop cannot reach it makes the
+            // matcher and the router disagree the moment the skip is lifted.
+            | Route::Webhook(_)
+            | Route::Connector(_)
+            | Route::Tenant(
+                TenantRoute::ApiKeys
+                    | TenantRoute::ApiKey
+                    | TenantRoute::CliCredentials
+                    | TenantRoute::CliCredential
+                    | TenantRoute::Billing
+                    | TenantRoute::BillingCharges
+                    | TenantRoute::Workspaces
+                    | TenantRoute::CreateWorkspace
+                    | TenantRoute::ModelLibrary
+                    | TenantRoute::FleetBundles
+            )
+    )
 }

@@ -2,37 +2,29 @@
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "integration preconditions should fail the test loudly"
 )]
 
-mod harness;
-
-use std::borrow::Cow;
-use std::sync::atomic::{AtomicU32, Ordering};
+use crate::harness;
 
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::clock::UnixMillis;
-use afd_core::env::MapEnv;
+use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_db::config::{DbRole, PoolConfig};
-use afd_db::{Db, Migrator};
+use afd_db::Db;
+use afd_db::config::DbRole;
+use afd_db::test_util::TestDatabase;
 use afd_runner::Runners;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
 use http::{Method, StatusCode};
-use sqlx::AssertSqlSafe;
+use std::borrow::Cow;
 
 use self::harness::{Fleet, json_body, send};
 
-const LANE_KNOB: &str = "TEST_DATABASE_URL";
 const OPERATOR: &str = "fixture:platform-operator";
-const OPERATOR_TOKEN: &str =
-    "agt_t0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const NOW: UnixMillis = UnixMillis::from_millis(1_760_000_000_000);
-
-static SEQUENCE: AtomicU32 = AtomicU32::new(0);
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -61,7 +53,7 @@ async fn platform_operator_rotates_runner_token_once() {
         &router,
         Method::PATCH,
         &format!("/v1/fleets/runners/{runner_id}"),
-        Some(OPERATOR_TOKEN),
+        Some(&fixtures.operator_token),
         r#"{"action":"rotate"}"#,
     )
     .await;
@@ -106,52 +98,44 @@ fn enrolment() -> RegisterRequest<'static> {
 }
 
 struct Fixtures {
-    base_url: String,
-    name: String,
+    lane: TestDatabase,
     database: Db,
+    tenant: Uuid7,
+    operator_token: String,
 }
 
 impl Fixtures {
     async fn create() -> Self {
-        let base_url = std::env::var(LANE_KNOB).unwrap_or_else(|_error| {
-            panic!("{LANE_KNOB} is unset — run through `make test-integration-rustd`")
-        });
-        let name = format!(
-            "afd_api_rotation_{}_{}",
-            std::process::id(),
-            SEQUENCE.fetch_add(1, Ordering::Relaxed)
-        );
-        admin(&base_url, AssertSqlSafe(format!("CREATE DATABASE {name}"))).await;
-        let url = database_url(&base_url, &name);
-        let migrator = open(&url, DbRole::Migrator).await;
-        Migrator::new()
-            .run(&migrator)
-            .await
-            .expect("the schema applies");
-        drop(migrator);
+        let lane = TestDatabase::shared();
+        let first = afd_db::test_util::mint_id().replace('-', "");
+        let second = afd_db::test_util::mint_id().replace('-', "");
         Self {
-            database: open(&url, DbRole::Api).await,
-            base_url,
-            name,
+            database: lane.open(DbRole::Api, &[]).await,
+            tenant: Uuid7::parse(&afd_db::test_util::mint_id())
+                .expect("the fixture tenant id is well formed"),
+            operator_token: format!("agt_t{first}{second}"),
+            lane,
         }
     }
 
     async fn seed_operator(&self) {
-        let digest = Digest::of(&Presented::new(OPERATOR_TOKEN).expect("fixture token is valid"));
+        let digest =
+            Digest::of(&Presented::new(&self.operator_token).expect("fixture token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenant AS (\
                INSERT INTO core.tenants (id, name, created_at, updated_at) \
-               VALUES ('019329c5-0000-7000-8000-000000000001', 'Rotation test', 1, 1)\
+               VALUES ($2::uuid, 'Rotation test', 1, 1)\
              ) \
              INSERT INTO core.api_keys \
                (id, tenant_id, key_name, description, key_hash, created_by, \
                 active, revoked_at, created_at, updated_at) \
-             VALUES ('019329c5-0000-7000-8000-000000000002', \
-                     '019329c5-0000-7000-8000-000000000001', 'operator', '', \
-                     $1, $2, TRUE, NULL, 1, 1)",
+             VALUES ($3::uuid, $2::uuid, 'operator', '', \
+                     $1, $4, TRUE, NULL, 1, 1)",
         )
         .bind(digest.as_str())
+        .bind(self.tenant.as_str())
+        .bind(afd_db::test_util::mint_id())
         .bind(OPERATOR)
         .execute(&mut *connection)
         .await
@@ -172,45 +156,6 @@ impl Fixtures {
 
     async fn cleanup(self) {
         drop(self.database);
-        admin(
-            &self.base_url,
-            AssertSqlSafe(format!(
-                "DROP DATABASE IF EXISTS {} WITH (FORCE)",
-                self.name
-            )),
-        )
-        .await;
+        self.lane.cleanup().await;
     }
-}
-
-fn database_url(base_url: &str, name: &str) -> String {
-    let (prefix, tail) = base_url
-        .rsplit_once('/')
-        .expect("a Postgres URL has a database path");
-    let query = tail.split_once('?').map_or("", |(_, query)| query);
-    if query.is_empty() {
-        format!("{prefix}/{name}")
-    } else {
-        format!("{prefix}/{name}?{query}")
-    }
-}
-
-async fn open(url: &str, role: DbRole) -> Db {
-    let env = MapEnv::from_pairs(DbRole::ALL.iter().map(|each| (each.url_knob(), url)));
-    Db::connect(&PoolConfig::resolve(&env, role).expect("the URL resolves"))
-        .await
-        .expect("the database accepts a connection")
-}
-
-async fn admin(base_url: &str, statement: AssertSqlSafe<String>) {
-    let pool = sqlx::PgPool::connect(base_url)
-        .await
-        .expect("the lane database is reachable");
-    let mut connection = pool.acquire().await.expect("an admin connection");
-    sqlx::query(statement)
-        .execute(&mut *connection)
-        .await
-        .expect("the admin statement runs");
-    drop(connection);
-    pool.close().await;
 }

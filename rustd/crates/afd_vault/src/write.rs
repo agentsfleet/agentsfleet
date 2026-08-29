@@ -76,10 +76,13 @@ impl Vault {
         if written.rows_affected() == 0 {
             return Err(ErrorKind::NameTaken.into());
         }
+        let workspace_id = workspace.as_str();
+        let secret_name = name.as_str();
+        let secret_kind = projection.kind.as_str();
         tracing::debug!(
-            workspace = workspace.as_str(),
-            name = name.as_str(),
-            kind = projection.kind.as_str(),
+            workspace = workspace_id,
+            name = secret_name,
+            kind = secret_kind,
             event = "secret_created",
         );
         Ok(())
@@ -131,10 +134,13 @@ impl Vault {
         if written.rows_affected() == 0 {
             return Err(ErrorKind::NotFound.into());
         }
+        let workspace_id = workspace.as_str();
+        let secret_name = name.as_str();
+        let secret_kind = projection.kind.as_str();
         tracing::debug!(
-            workspace = workspace.as_str(),
-            name = name.as_str(),
-            kind = projection.kind.as_str(),
+            workspace = workspace_id,
+            name = secret_name,
+            kind = secret_kind,
             event = "secret_replaced",
         );
         Ok(())

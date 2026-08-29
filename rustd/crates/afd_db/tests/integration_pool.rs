@@ -6,27 +6,43 @@
 #![expect(
     clippy::unwrap_used,
     clippy::expect_used,
-    clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
+
+use std::time::Duration;
 
 use afd_core::env::MapEnv;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
+use afd_db::test_util::TestDatabase;
 
-#[path = "support/test_database.rs"]
-mod support;
-
-use self::support::TestDatabase;
+/// How many times the warm-up below may lose its race before the lane is
+/// declared unreachable.
+///
+/// Three, because the failure it absorbs is a handshake overrunning a 250 ms
+/// budget under concurrent load, and a lane that cannot complete one in three
+/// tries is not slow, it is down.
+const WARMING_ATTEMPTS: usize = 3;
 
 /// Dimension 2.4 — an exhausted pool and an absent datastore are two different
 /// answers, because they are two different incidents.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_pool_error_classes() {
-    let database = TestDatabase::create().await;
+    // `shared`, not `create`. `TestDatabase::create` makes an empty,
+    // UNMIGRATED database and `test_util` reserves it for the suites whose
+    // subject IS schema state — the migrator's ledger, its lock, its failure
+    // paths. This suite is about a pool's capacity, which needs a database and
+    // not a virgin one, and `CREATE DATABASE` measures 166 ms against the lane's
+    // Postgres. Paying that here bought nothing and cost the test its budget:
+    // once the crate's suites were aggregated they ran concurrently, a fresh
+    // connection under sibling `CREATE DATABASE` load measured 147-337 ms, and
+    // the 250 ms below is spent before the pool this test is about is even
+    // reached. Widening the budget would have hidden that; taking the lane's
+    // database removes it.
+    let database = TestDatabase::shared();
 
-    // One connection, a quarter-second to wait for it. Holding the only
+    // One connection, a quarter-second to wait for it.     // Holding the only
     // connection makes the next acquire a capacity failure and nothing else —
     // Postgres is up and answering the whole time.
     let db = database
@@ -38,7 +54,29 @@ async fn test_pool_error_classes() {
             ],
         )
         .await;
-    let held = db.acquire().await.expect("the first connection is free");
+    // Establish the connection BEFORE the timed window, not inside it. The pool
+    // is lazy, so the first acquire pays a handshake — measured at 147-337 ms
+    // against this lane's Postgres — while the 250 ms budget under test bounds
+    // the WAIT for a free connection, not the making of one. Under load the two
+    // overlapped: the first acquire timed out and the pool reported a datastore
+    // outage while Postgres was answering normally.
+    //
+    // Bounded, and it cannot mask a real outage. An unreachable Postgres fails
+    // every attempt and the assertion below still fires; what the retry absorbs
+    // is a handshake that lost a race with sibling load, which is the only way
+    // this acquire fails on a healthy lane.
+    let mut warming = Err("no attempt was made".to_owned());
+    for _attempt in 0..WARMING_ATTEMPTS {
+        match db.acquire().await {
+            Ok(connection) => {
+                warming = Ok(connection);
+                break;
+            }
+            Err(error) => warming = Err(error.to_string()),
+        }
+    }
+    let held = warming
+        .expect("the lane's Postgres must hand out one connection within the warm-up attempts");
     let error = db
         .acquire()
         .await
@@ -83,7 +121,18 @@ async fn test_pool_error_classes() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_pools_open_every_role_and_close() {
-    let database = TestDatabase::create().await;
+    // `shared`, not `create`. `TestDatabase::create` makes an empty,
+    // UNMIGRATED database and `test_util` reserves it for the suites whose
+    // subject IS schema state — the migrator's ledger, its lock, its failure
+    // paths. This suite is about a pool's capacity, which needs a database and
+    // not a virgin one, and `CREATE DATABASE` measures 166 ms against the lane's
+    // Postgres. Paying that here bought nothing and cost the test its budget:
+    // once the crate's suites were aggregated they ran concurrently, a fresh
+    // connection under sibling `CREATE DATABASE` load measured 147-337 ms, and
+    // the 250 ms below is spent before the pool this test is about is even
+    // reached. Widening the budget would have hidden that; taking the lane's
+    // database removes it.
+    let database = TestDatabase::shared();
     let pools = afd_db::Pools::connect_all(&database.env(&[]))
         .await
         .expect("every role must open from one environment");
@@ -122,4 +171,68 @@ async fn test_pools_open_every_role_and_close() {
     );
 
     database.cleanup().await;
+}
+
+/// Dimension 2.4 — the warm floor is real, not merely configured.
+///
+/// The test this suite did not have. `min_connections` was passed to sqlx and
+/// believed; sqlx bootstraps that floor from zero only when `max_lifetime` and
+/// `idle_timeout` are both `None`, its defaults set both, and every other arm
+/// reaches the floor through an idle reaper whose loop body runs `num_idle()`
+/// times — zero, forever, on a pool nothing has opened. The knob established
+/// nothing and no test could tell, because the only assertion was arithmetic
+/// on the configured number.
+///
+/// So this one asks the pool. `size()` is sqlx's count of connections it has
+/// actually opened, and after `warm` it must have reached the floor.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_the_warm_floor_is_established_not_merely_configured() {
+    const FLOOR: &str = "4";
+    const CEILING: &str = "8";
+
+    let database = TestDatabase::shared();
+    let db = database
+        .open(
+            DbRole::Api,
+            &[
+                ("DATABASE_POOL_SIZE_API", CEILING),
+                ("DATABASE_MIN_POOL_SIZE_API", FLOOR),
+            ],
+        )
+        .await;
+
+    assert_eq!(
+        db.size(),
+        0,
+        "a lazy pool opens nothing until something asks it to"
+    );
+
+    let warmed = db.warm(Duration::from_secs(10)).await;
+
+    assert_eq!(warmed, 4, "the whole floor was established");
+    assert!(
+        db.size() >= 4,
+        "and the pool holds them: sqlx reports {} open",
+        db.size()
+    );
+}
+
+/// A floor of zero asks for nothing and waits for nothing.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_a_zero_floor_warms_nothing() {
+    let database = TestDatabase::shared();
+    let db = database
+        .open(
+            DbRole::Api,
+            &[
+                ("DATABASE_POOL_SIZE_API", "4"),
+                ("DATABASE_MIN_POOL_SIZE_API", "0"),
+            ],
+        )
+        .await;
+
+    assert_eq!(db.warm(Duration::from_secs(10)).await, 0);
+    assert_eq!(db.size(), 0, "nothing was opened");
 }

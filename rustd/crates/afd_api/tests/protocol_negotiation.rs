@@ -24,7 +24,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-mod harness;
+use crate::harness;
 
 use std::convert::Infallible;
 use std::time::Duration;

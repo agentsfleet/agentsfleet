@@ -1,0 +1,11 @@
+//! Signed-ingress HTTP regression suite.
+//!
+//! The webhook, connector-events and scheduled-fire surfaces: everything the
+//! sender proves with a signature over the body rather than with a bearer.
+
+mod harness;
+
+#[path = "webhook_fleet_route.rs"]
+mod webhook_fleet_route;
+#[path = "webhook_wall_refusals.rs"]
+mod webhook_wall_refusals;

@@ -174,8 +174,7 @@ impl FanIn {
             let Some(arrival) = self.arrivals.next().await else {
                 // Nothing attached. Park until the caller's next `sync_to`
                 // gives us a channel; polling an empty set would spin.
-                std::future::pending::<()>().await;
-                continue;
+                return std::future::pending().await;
             };
             match arrival {
                 // A control frame, so it spends no sequence number.
@@ -229,4 +228,34 @@ fn arrivals(
             }
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "a timeout completing would violate the parking invariant under test"
+    )]
+
+    use std::collections::BTreeSet;
+
+    use super::FanIn;
+
+    #[test]
+    fn a_detached_fan_in_stays_empty_and_debug_hides_transport_details() {
+        let mut fan_in = FanIn::new(None);
+        let wanted = BTreeSet::from(["fleet-a".to_owned(), "fleet-b".to_owned()]);
+
+        assert_eq!(fan_in.sync_to(&wanted).attached, 0);
+        assert!(fan_in.fleets().is_empty());
+        assert_eq!(format!("{fan_in:?}"), "FanIn { attached: 0, seq: 0, .. }");
+    }
+
+    #[tokio::test]
+    async fn an_empty_fan_in_parks_instead_of_spinning_or_ending() {
+        let mut fan_in = FanIn::new(None);
+        tokio::time::timeout(std::time::Duration::from_millis(1), fan_in.next_frame())
+            .await
+            .expect_err("an empty fan-in must remain pending");
+    }
 }

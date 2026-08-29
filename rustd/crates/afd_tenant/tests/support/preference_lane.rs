@@ -98,11 +98,17 @@ impl Lane {
 
     /// Gives the tenant its own model selection, so `model_configured` is true
     /// without depending on whatever platform default the lane happens to hold.
+    /// `mode` must be a spelling `afd_billing::sql::posture` declares —
+    /// `self_managed` here. This crate never reads the column, so a bad value
+    /// sits inert in its own tests and detonates in whichever suite resolves a
+    /// posture from the row; `'byok'` did exactly that. A dev-dependency on
+    /// `afd_billing` to name the constant would add a build edge for a value
+    /// this crate does not read, so the spelling is pinned by this comment.
     pub(crate) async fn seed_tenant_model(&self, model: &str) {
         sqlx::query(
             "INSERT INTO core.tenant_model_selection
                (tenant_id, mode, provider, model, context_cap_tokens, created_at, updated_at)
-             VALUES ($1::uuid, 'byok', 'anthropic', $2, 200000, $3, $3)
+             VALUES ($1::uuid, 'self_managed', 'anthropic', $2, 200000, $3, $3)
              ON CONFLICT (tenant_id) DO UPDATE
                SET model = EXCLUDED.model, updated_at = EXCLUDED.updated_at",
         )

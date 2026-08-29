@@ -1,5 +1,7 @@
 [package]
 name = "afd_fleet"
+# One aggregated integration binary; see tests/fleet_suite.rs for why.
+autotests = false
 description = "The runner control plane: enrolment, liveness, lease assignment, report settlement, and the sweepers behind them."
 version.workspace = true
 edition.workspace = true
@@ -17,6 +19,7 @@ categories.workspace = true
 test-util = [
   "afd_auth/test-util",
   "afd_core/test-util",
+  "afd_crypto/test-util",
   "afd_db/test-util",
   # The queue refusal a stubbed device-flow surface answers with.
   "afd_redis/test-util",
@@ -120,3 +123,7 @@ afd_redis = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true
+
+[[test]]
+name = "fleet_suite"
+path = "tests/fleet_suite.rs"

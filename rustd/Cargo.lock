@@ -60,6 +60,10 @@ name = "afd_api"
 version = "0.27.0"
 dependencies = [
  "afd_admin",
+ "afd_api_ingress",
+ "afd_api_operator",
+ "afd_api_runner",
+ "afd_api_tenant",
  "afd_approval",
  "afd_auth",
  "afd_billing",
@@ -73,8 +77,8 @@ dependencies = [
  "afd_fleet",
  "afd_fleet_lifecycle",
  "afd_fleet_ops",
- "afd_fleet_runtime",
- "afd_gate",
+ "afd_http",
+ "afd_identity",
  "afd_ingress",
  "afd_library",
  "afd_observability",
@@ -92,9 +96,7 @@ dependencies = [
  "http",
  "hyper",
  "hyper-util",
- "jiff",
  "object_store",
- "octocrab",
  "reqwest",
  "serde",
  "serde_json",
@@ -103,6 +105,102 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "afd_api_ingress"
+version = "0.27.0"
+dependencies = [
+ "afd_approval",
+ "afd_connector",
+ "afd_core",
+ "afd_cron",
+ "afd_crypto",
+ "afd_db",
+ "afd_events",
+ "afd_fleet",
+ "afd_fleet_lifecycle",
+ "afd_gate",
+ "afd_http",
+ "afd_identity",
+ "afd_ingress",
+ "afd_observability",
+ "afd_vault",
+ "afd_webhook",
+ "afd_wire",
+ "axum",
+ "http",
+ "jiff",
+ "octocrab",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "afd_api_operator"
+version = "0.27.0"
+dependencies = [
+ "afd_admin",
+ "afd_core",
+ "afd_credential",
+ "afd_http",
+ "afd_library",
+ "afd_runner",
+ "afd_wire",
+ "axum",
+ "http",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "afd_api_runner"
+version = "0.27.0"
+dependencies = [
+ "afd_core",
+ "afd_fleet",
+ "afd_http",
+ "afd_observability",
+ "afd_runner",
+ "afd_wire",
+ "axum",
+ "http",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "afd_api_tenant"
+version = "0.27.0"
+dependencies = [
+ "afd_approval",
+ "afd_auth",
+ "afd_billing",
+ "afd_connector",
+ "afd_core",
+ "afd_cron",
+ "afd_crypto",
+ "afd_events",
+ "afd_fleet",
+ "afd_fleet_lifecycle",
+ "afd_fleet_runtime",
+ "afd_http",
+ "afd_ingress",
+ "afd_library",
+ "afd_observability",
+ "afd_sse",
+ "afd_tenant",
+ "afd_vault",
+ "afd_webhook",
+ "afd_wire",
+ "axum",
+ "futures-util",
+ "http",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -203,6 +301,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "url",
  "zeroize",
 ]
@@ -258,6 +357,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -375,6 +475,41 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "afd_http"
+version = "0.27.0"
+dependencies = [
+ "afd_admin",
+ "afd_approval",
+ "afd_auth",
+ "afd_billing",
+ "afd_connector",
+ "afd_core",
+ "afd_credential",
+ "afd_cron",
+ "afd_crypto",
+ "afd_db",
+ "afd_events",
+ "afd_fleet",
+ "afd_fleet_lifecycle",
+ "afd_fleet_ops",
+ "afd_ingress",
+ "afd_library",
+ "afd_observability",
+ "afd_runner",
+ "afd_sse",
+ "afd_tenant",
+ "afd_vault",
+ "afd_wire",
+ "axum",
+ "http",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "tracing",
 ]
 
 [[package]]

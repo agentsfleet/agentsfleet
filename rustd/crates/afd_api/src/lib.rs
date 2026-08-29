@@ -24,21 +24,27 @@
 // everything else.
 #[cfg(test)]
 use {
-    afd_db as _, afd_redis as _, afd_state as _, bytes as _, hyper as _, hyper_util as _,
-    object_store as _, reqwest as _, sqlx as _, tower as _, tracing_subscriber as _,
+    afd_admin as _, afd_approval as _, afd_billing as _, afd_connector as _, afd_credential as _,
+    afd_cron as _, afd_crypto as _, afd_db as _, afd_events as _, afd_fleet as _,
+    afd_fleet_lifecycle as _, afd_fleet_ops as _, afd_identity as _, afd_ingress as _,
+    afd_webhook as _, reqwest as _,
+    afd_library as _, afd_redis as _, afd_runner as _, afd_sse as _, afd_state as _,
+    afd_tenant as _, afd_vault as _, afd_wire as _, bytes as _, futures_util as _, hyper as _,
+    hyper_util as _, object_store as _, serde as _, sqlx as _, tokio as _, tower as _,
+    tracing_subscriber as _,
 };
 
-pub mod admission;
-pub mod auth;
-pub mod client;
-pub mod envelope;
-pub mod etag;
+pub use afd_http::admission;
+pub use afd_http::auth;
+pub use afd_http::client;
+pub use afd_http::envelope;
+pub use afd_http::etag;
 pub mod handler;
-pub mod request_id;
-pub mod route;
+pub use afd_http::request_id;
+pub use afd_http::route;
 pub mod router;
 pub mod server;
-pub mod services;
+pub use afd_http::services;
 mod telemetry;
 
 pub use self::admission::{Admission, DEFAULT_MAX_IN_FLIGHT, admit, is_metered};

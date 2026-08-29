@@ -11,8 +11,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-mod support;
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -91,7 +89,7 @@ impl KeySetSource for NeverAnswers {
 /// exist together to prevent.
 #[test]
 fn test_two_verifications_racing_a_cold_cache_cost_one_fetch() {
-    support::install_subscriber();
+    crate::support::install_subscriber();
     block_on(async {
         let source = YieldingKeySet {
             document: format!(
@@ -126,7 +124,7 @@ fn test_two_verifications_racing_a_cold_cache_cost_one_fetch() {
 /// issuer" sends them to the network.
 #[test]
 fn test_a_cold_cache_with_no_reachable_source_is_unavailable() {
-    support::install_subscriber();
+    crate::support::install_subscriber();
     block_on(async {
         let verifier =
             JwksVerifier::new(NeverAnswers, VerifierConfig::new(ISSUER, AUDIENCE), clock());
@@ -152,7 +150,7 @@ fn test_a_cold_cache_with_no_reachable_source_is_unavailable() {
 /// is why every test in this file installs one.
 #[test]
 fn test_declined_keys_are_reported_when_a_set_is_installed() {
-    support::install_subscriber();
+    crate::support::install_subscriber();
     block_on(async {
         let document = format!(
             "{{\"keys\":[{{\"kty\":\"EC\",\"kid\":\"ec\"}},\

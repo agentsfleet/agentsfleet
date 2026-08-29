@@ -94,17 +94,34 @@ impl<D: Dependencies + Services> Serving for D {}
 /// not declare.
 pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router {
     let mut router = Router::new();
+    let (mounted, merged) = mounted_routes(&dependencies, admission);
+    for (template, handler) in merged {
+        router = router.route(template, handler);
+    }
+    let tabled = Route::all().count();
+    tracing::info!(mounted, tabled, event = "router_built", "router built");
+    router
+        .route_layer(from_fn(refuse_head))
+        .route_layer(from_fn(trace::record))
+        .route_layer(from_fn_with_state(
+            Arc::clone(&dependencies),
+            crate::telemetry::record::<D>,
+        ))
+        .with_state(dependencies)
+}
+
+/// One mounted template and the method router that serves it.
+///
+/// Named because the pair travels together out of [`mounted_routes`] and back
+/// into the merge loop; the tuple spelled inline reads as noise at both ends.
+type MountedRoute<D> = (&'static str, MethodRouter<Arc<D>>);
+
+fn mounted_routes<D: Serving>(
+    dependencies: &Arc<D>,
+    admission: &Admission,
+) -> (usize, Vec<MountedRoute<D>>) {
     let mut mounted = 0usize;
-    // Two ROUTES can share one TEMPLATE — memory hydrate and capture differ by
-    // method, and the route table says so in its own comment. axum takes one
-    // `MethodRouter` per path and panics on a second, so same-template routes
-    // are merged into one before mounting rather than mounted twice.
-    //
-    // Accumulated in a Vec and found linearly: eighty-one routes make this
-    // cheaper than hashing, and it preserves the table's order, so the mount
-    // log reads the same way every boot.
-    let mut merged: Vec<(&'static str, MethodRouter<Arc<D>>)> =
-        Vec::with_capacity(Route::all().count());
+    let mut merged = Vec::with_capacity(Route::all().count());
     for route in Route::all() {
         let Some(handler) = self::mount::handler_for::<D>(route) else {
             continue;
@@ -116,55 +133,22 @@ pub fn build<D: Serving>(dependencies: Arc<D>, admission: &Admission) -> Router 
         let template = meta.template;
         let class = meta.class;
         tracing::debug!(template, ?class, event = "route_mounted", "route mounted");
+        let handler = layered(handler, meta, dependencies, admission);
         // Counts route identities, not unique paths. Two identities sharing one
         // template remain two separately tabled pieces of the surface.
         mounted += 1;
-        // Layered with ITS OWN row, before the merge, because a template is not
-        // an identity: `/v1/connectors/{provider}/callback` is the provider's
-        // unauthenticated redirect on GET and the dashboard's bearer-proven
-        // completion on POST, and the route table says so. Layering the merged
-        // pair once would silently give the whole path whichever guard was
-        // reached first, which for that pair is the open one.
-        //
-        // This costs nothing a same-guard pair notices: `MethodRouter::layer`
-        // maps each method's endpoint on its own, so merging two layered
-        // routers leaves one layer stack per method rather than two on either.
-        let guarded = layered(handler, meta, &dependencies, admission);
         match merged.iter_mut().find(|(known, _)| *known == template) {
-            Some(slot) => {
-                let combined = std::mem::replace(&mut slot.1, axum::routing::any(unreachable_stub));
-                slot.1 = combined.merge(guarded);
+            // The handler already carries only its own route's layers. Merging
+            // preserves those per-method services without making an open GET
+            // and a bearer DELETE share an authenticator.
+            Some((_, existing)) => {
+                let combined = std::mem::replace(existing, axum::routing::any(unreachable_stub));
+                *existing = combined.merge(handler);
             }
-            None => merged.push((template, guarded)),
+            None => merged.push((template, handler)),
         }
     }
-    for (template, handler) in merged {
-        router = router.route(template, handler);
-    }
-    // Once, at boot. An operator reading a startup log should be able to see
-    // how much of the surface this binary actually answers without counting
-    // handlers — the gap between the table and the mount list is the single
-    // most misreadable thing about this milestone.
-    let tabled = Route::all().count();
-    tracing::info!(mounted, tabled, event = "router_built", "router built");
-    router
-        // `route_layer`, not `layer`: a HEAD at a path this binary does not
-        // serve is a 404, exactly as it is in Zig, rather than a 405 that
-        // implies the path exists. It also means an unmatched request opens no
-        // span, which is what keeps a raw path out of the exporter.
-        .route_layer(from_fn(refuse_head))
-        // Outside the refusal, so a refused HEAD is still recorded under the
-        // template it was refused for — Zig cannot see those at all, because
-        // it 404s before opening a trace.
-        .route_layer(from_fn(trace::record))
-        // Outermost of the three, so it sees the response every layer beneath
-        // it wrote — the scope rung's 403 and the admission shed's 429 included,
-        // neither of which reaches a handler that could have reported itself.
-        .route_layer(from_fn_with_state(
-            Arc::clone(&dependencies),
-            crate::telemetry::record::<D>,
-        ))
-        .with_state(dependencies)
+    (mounted, merged)
 }
 
 /// Wraps `handler` in exactly the layers its route's row calls for.

@@ -10,20 +10,17 @@ repository.workspace = true
 readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
+autotests = false
 
 [features]
 # M-TEST-UTIL. Unlocks the map-backed environment source through afd_core.
 test-util = [
-  "afd_admin/test-util",
+  "afd_api_ingress/test-util",
+  "afd_api_operator/test-util",
+  "afd_api_runner/test-util",
+  "afd_api_tenant/test-util",
   "afd_auth/test-util",
   "afd_core/test-util",
-  "afd_crypto/test-util",
-  "afd_fleet/test-util",
-  "afd_fleet_lifecycle/test-util",
-  "afd_ingress/test-util",
-  "afd_library/test-util",
-  "afd_tenant/test-util",
-  "afd_vault/test-util",
 ]
 
 # Each dependency is added by the module that uses it: `unreachable_pub` and
@@ -32,96 +29,17 @@ test-util = [
 # graph a wish. axum/tower/tower-http/afd_core arrive with the admission layer
 # and the envelope writer.
 [dependencies]
-# GitHub's webhook payloads, typed. Already a workspace dependency for App
-# JWT minting, already resolved under `default-features = false` with the
-# aws-lc-rs features — so `models::webhook_events` adds ONE direct dependency
-# and no transitive crate at all (all 27 of its mandatory deps are already in
-# the lock). The Zig hand-walks the same payloads because its stdlib has no
-# derive; that is a Zig constraint, not a design (RULE PORT).
-octocrab.workspace = true
-# The repair-branch prefix one delivery is checked against. Imported rather
-# than re-declared: a second spelling would let the ingress wake a fleet on
-# its own repair output, which is the loop the check exists to break.
-afd_gate.workspace = true
-# The receipt stamp a digest carries. `normalizer/github.zig` computes the
-# civil date from epoch seconds by hand because Zig's stdlib has no date
-# type; jiff is already this workspace's domain-time crate.
-jiff.workspace = true
-# Priced-model and platform-default administration, behind the admin scopes.
-afd_admin.workspace = true
-# The operator's approval queue. Its own crate, not an `afd_fleet` module:
-# showing a person what a fleet wants to do must not pull in leases, money,
-# policy and the sweepers.
-afd_approval.workspace = true
+afd_api_ingress.workspace = true
+afd_api_operator.workspace = true
+afd_api_runner.workspace = true
+afd_api_tenant.workspace = true
+afd_http.workspace = true
 afd_auth.workspace = true
-# The runner control plane behind the `/v1/runners` verbs. The dependency
-# points this way and never back: `afd_fleet` names no status code and no
-# router, so a decision it makes can be proven without an HTTP request.
-afd_fleet.workspace = true
-afd_runner.workspace = true
-# The workspace fleets surface's store: install, read, edit, purge.
-afd_fleet_lifecycle.workspace = true
-# Small, read-only cross-table projections for operator routes.
-afd_fleet_ops.workspace = true
-# `FleetName` — a fleet's authored slug. Parsed at the edge, so the install path
-# below carries no validation arm of its own.
-afd_fleet_runtime.workspace = true
-# What a signed delivery resolves against: the fleet's binding, its signing
-# secret, and the at-most-once append the webhook handlers below act through.
-# Fleet schedules: the store, the scheduler it is reconciled against, and the
-# verifier the signed fire crosses. A library dependency for the reason
-# afd_ingress is one — the check runs HERE, in the handler.
-afd_cron.workspace = true
-afd_ingress.workspace = true
-# The connect round-trip and the three reads over what it landed, plus the two
-# dashboard URLs a callback travels through. A library dependency for the reason
-# the two above are: the handlers hold the flow directly, and the `Provider`
-# enum is what the route segment is parsed into at the edge.
-afd_connector.workspace = true
-# The signature wall. A library dependency rather than a dev one because the
-# check genuinely runs HERE: `plane_of` answers `None` for the webhook guards,
-# so there is no layer to put it in — see `handler::webhook`. This crate
-# computes no tag of its own; it hands bytes to `Scheme::verify_at` and matches
-# on the `Verdict`.
-afd_webhook.workspace = true
-# Fleet-library catalogue administration and import services.
-afd_library.workspace = true
-# The tenant plane: api-keys, command-line credentials, the device-flow login
-# surface, and the workspace-ownership resolver the shared layer asks.
-afd_tenant.workspace = true
-# The workspace secret surface's store. Two halves behind one seam: the sealing
-# one, and the key-less one the list and the delete are answered by.
-afd_vault.workspace = true
-# The payloads the runner verbs read and answer with. Frozen by M175; consumed,
-# never authored here.
-# One SSE connection's frames, the fan-in behind a workspace stream, and the
-# ceiling on how many this instance holds. None of it needs a router, which is
-# why none of it is in this crate.
-afd_sse.workspace = true
-# The response body of a live stream is a `Stream`; this is what composes one.
-futures-util.workspace = true
-afd_wire.workspace = true
-# The wire payloads borrow, so a body is deserialised out of the request bytes
-# rather than through `axum::Json`, which owns what it parses.
-# The two-parameter path templates take their segments by NAME, which needs a
-# derived deserializer: `Path<String>` reads a single segment and fails the
-# extractor on a route carrying both a workspace and a fleet.
-serde.workspace = true
 serde_json.workspace = true
-# The workspace's one entropy surface, for the request id a refusal carries.
-# Drawing bytes directly here would make `getrandom` reachable from two crates
-# and end the "one system call" claim `afd_crypto` is built around.
-afd_crypto.workspace = true
 # The attribute vocabulary a span carries. The dependency points this way on
 # purpose: a route template is a fact here and a string there.
 afd_observability.workspace = true
-# The code registry the envelope is assembled from: a code's status, title,
-# documentation link and end-user sentence are properties OF THE CODE, so they
-# live beside it rather than in this crate.
-afd_billing.workspace = true
-afd_credential.workspace = true
 afd_core.workspace = true
-afd_events.workspace = true
 # `json` for the probe bodies: unlike the problem+json envelope, which writes
 # its own content type, these are ordinary JSON responses.
 axum = { workspace = true, features = ["json", "matched-path", "query"] }
@@ -132,10 +50,6 @@ http.workspace = true
 # executor HTTP/2 drives its own per-connection tasks on. A library dependency,
 # not only the dev one below: the connection POLICY lives with the route table.
 hyper-util.workspace = true
-# `sync` only, for the `Semaphore` that IS the admission ceiling. No runtime is
-# started here — a permit is claimed and dropped on whatever runtime the caller
-# already has.
-tokio.workspace = true
 # One warn per shed. §6 attaches the subscriber; until then this goes nowhere,
 # which is the correct default for a library.
 tracing.workspace = true
@@ -144,13 +58,33 @@ tracing.workspace = true
 # The route table is pure, so it needs no runtime to test — the admission layer
 # and the envelope writer bring tokio and the subscriber with them.
 [dev-dependencies]
+afd_identity.workspace = true
+afd_webhook.workspace = true
+afd_ingress = { workspace = true, features = ["test-util"] }
+afd_cron.workspace = true
+afd_connector.workspace = true
 # The harness assembles the production schedules plane over stores that are not
 # there, which needs the client type its constructor takes.
 reqwest.workspace = true
+afd_admin = { workspace = true, features = ["test-util"] }
+afd_approval.workspace = true
+afd_billing.workspace = true
+afd_credential.workspace = true
+afd_crypto = { workspace = true, features = ["test-util"] }
+afd_fleet = { workspace = true, features = ["test-util"] }
+afd_fleet_lifecycle = { workspace = true, features = ["test-util"] }
+afd_fleet_ops.workspace = true
+afd_library = { workspace = true, features = ["test-util"] }
+afd_runner.workspace = true
+afd_sse.workspace = true
+afd_tenant = { workspace = true, features = ["test-util"] }
+afd_vault = { workspace = true, features = ["test-util"] }
+afd_wire.workspace = true
+serde.workspace = true
 # The envelope suite renders through axum's own IntoResponse and reads the body
 # back, and the admission suite needs REAL parallelism to put more requests in
 # flight at once than the ceiling admits.
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-util", "net", "time"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-util", "net", "time", "test-util"] }
 # The admission suite drives the layer as a service, without a listener.
 tower = { workspace = true, features = ["util"] }
 # The header-limit suite serves a real connection over a real socket, which is
@@ -186,6 +120,28 @@ sqlx.workspace = true
 # already built.
 object_store.workspace = true
 bytes.workspace = true
+# Live SSE tests consume one body chunk without waiting for the infinite stream.
+futures-util.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "http_substrate"
+path = "tests/http_substrate_suite.rs"
+
+[[test]]
+name = "tenant_plane"
+path = "tests/tenant_plane_suite.rs"
+
+[[test]]
+name = "runner_plane"
+path = "tests/runner_plane_suite.rs"
+
+[[test]]
+name = "operator_plane"
+path = "tests/operator_plane_suite.rs"
+
+[[test]]
+name = "ingress_plane"
+path = "tests/ingress_plane_suite.rs"

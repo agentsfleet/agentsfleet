@@ -8,10 +8,12 @@ traced per event) and [`runner_fleet.md`](./runner_fleet.md) (the control/execut
 split). Channel and stream **names** are canonical in `data_flow.md`; this file
 owns the thread/lock/shutdown layer on top of them.
 
-The Allocator and concurrency rules `A1–A6` / `C1–C5` live in the Zig discipline
-façade (`dispatch/write_zig.md`); this doc is where the `C`-rules become the
-system's concrete invariants, and it is the seed the discipline roster
-(`audits/zig-discipline-roster.txt`) expands against.
+The concurrency rules `C1–C5` are the system's concrete invariants and bind both
+planes. Their statement beside the Allocator rules `A1–A6` lives in the Zig
+discipline façade (`dispatch/write_zig.md`), which is what the runner's
+compliance roster (`audits/zig-discipline-roster.txt`) expands against; the
+control plane holds the same five in Rust, where the compiler carries three of
+them.
 
 ---
 
@@ -21,48 +23,56 @@ Every row is extracted from the sections below; the owner column names the secti
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Concurrency rules | C1–C5 | SPSC receiver-frees · stop→join→deinit · no blocking under a consumer's lock · one documented mutex per aggregate · thread-confined by default | §The five invariants |
-| Long-lived threads | 11 control-plane + 3 runner | each with a declared spawn point, protection, and stop path | §Thread map |
-| Shutdown flags | 2, deliberately split | a boot-window SIGTERM cannot kill the background stack while the server may still come up | §Thread map |
-| Registered locks | 7 | `hub.mutex` and `hub.wire` are never held together; a wire send happens under `hub.wire` alone | §Lock-invariant registry |
-| Deadline schedulers | exactly one per process root | registrations target a connection *generation*, never a descriptor; arming is fail-CLOSED everywhere | §The deadline-ownership invariant |
-| Shutdown order | 7 steps, LIFO-deferred | the scheduler is constructed after — and torn down before — anything that arms into it | §Shutdown choreography |
-| Io precondition | concurrency-capable `std.Io` required | `common.globalIo()` cannot `select.concurrent`; fail-CLOSED turns that into a refused boot | §The deadline-ownership invariant |
-| Test handshake | `common.Event` | `set()` one side, bounded `timedWait()` the other — no sleeps, no polling races | §Shutdown choreography |
+| Concurrency rules | C1–C5 | declared producer/consumer, receiver owns the payload · stop→join→drop · no blocking under a consumer's lock · one documented lock per aggregate · task/thread-confined by default | §The five invariants |
+| Long-lived work | 7 supervised control-plane tasks (8 with a span endpoint configured) + one per connection · 3 runner threads | each with a declared spawn point, protection, and stop path | §Thread map |
+| Shutdown flags | none | the half-dead-node window the two flags protected is an ordering here, not shared mutable state | §Why there is no signal watcher |
+| Registered locks | 8 | the pub/sub socket is behind none of them — it is owned by one task and reached by command | §Lock-invariant registry |
+| Deadline ownership | runner: exactly one scheduler per process root · control plane: one deadline per call site | registrations target a connection *generation*, never a descriptor; arming is fail-CLOSED everywhere | §The deadline-ownership invariant |
+| Shutdown order | decide why → cancel and join → drop | teardown is in the outer `run`, so every early return still tears down | §Shutdown choreography |
+| Cancellation reach | every long-lived task selects its own I/O against the token | a genuinely blocked `accept()` is interrupted mid-read, not at the next poll interval | §Shutdown choreography |
+| Test handshake | handshakes, never sleeps | channels and `CancellationToken` on the control plane, `common.Event` on the runner; `start_paused` pays no wall clock for a join timeout | §Shutdown choreography |
 | Discipline scope | one roster line per folder | enforcement scope is data, not logic; RULE NLR owns files outside the roster | §Expanding the discipline base |
 
 ## Traps
 
 Each trap is enforced in its owner section; this list is the index.
 
-- Never hold `hub.mutex` together with `hub.wire`; acquire one at a time (§Lock-invariant registry).
-- Never do a blocking wire send while holding the map mutex — the C3 fix that ended the hub hazard (§Lock-invariant registry).
+- Never `tokio::spawn` outside the supervisor or the accept loop's per-connection arm — a detached task outlives the pools it reads through (§Thread map).
+- Never issue a `SUBSCRIBE`/`UNSUBSCRIBE` from anywhere but the pump task; a subscriber enqueues a command instead, and the enqueue is what may happen under the channel map's lock because it cannot block (§Lock-invariant registry).
+- Never do a blocking wire send while holding the map lock — the C3 fix that ended the hub hazard (§Lock-invariant registry).
 - A scheduler callback is a bounded, non-reentrant leaf — it must never call back into scheduler barriers (§Lock-invariant registry).
-- Never free shared maps before their threads have joined; a timed-out drain never proceeds to free (§Shutdown choreography).
-- Never hand `common.globalIo()` to a network owner that needs concurrency (§The deadline-ownership invariant).
-- New cross-thread channels must be SPSC with a carried allocator; reshaping existing ones is a separate judgment with this doc as input (§Channel inventory).
+- Never free shared state before its tasks and threads have joined; a timed-out drain never proceeds to free (§Shutdown choreography).
+- New cross-boundary channels declare one producer and one consumer, and the payload's ownership at the boundary; reshaping existing ones is a separate judgment with this doc as input (§Channel inventory).
 - Channel and stream *names* are canonical in `data_flow.md`, not here (preamble).
 
 ## The five invariants (rules C1–C5)
 
-1. **C1 — SPSC channels, receiver frees.** Every channel that crosses a thread
-   boundary has a single declared producer and single consumer; the payload
-   carries its own allocator and the receiver frees it in a `defer` at the top of
-   the handler.
-2. **C2 — stop → join → deinit.** Shutdown signals stop, joins the worker, and
-   only then deinits shared state. A bounded drain that times out never frees
-   state a straggler thread can still touch.
+1. **C1 — declared producer and consumer, receiver owns the payload.** Every
+   channel that crosses a task or thread boundary has a single declared producer
+   and a declared consumer, and ownership at the boundary is unambiguous: on the
+   control plane the value moves to the receiver and the compiler is the proof;
+   on the runner the payload carries its own allocator and the receiver frees it
+   in a `defer` at the top of the handler. A channel read by several consumers
+   hands each of them its own copy and tells a slow one what it missed.
+2. **C2 — stop → join → drop.** Shutdown signals stop, joins the worker, and
+   only then releases shared state. A bounded drain that times out never frees
+   state a straggler can still touch.
 3. **C3 — no blocking work under a lock the consumer needs.** A blocking socket
    write or push is never done while holding a lock the consumer must acquire to
    make progress. Lock state is an explicit parameter, not an ambient assumption.
-4. **C4 — one documented mutex per shared aggregate.** Each shared aggregate has
-   exactly one mutex whose doc comment states precisely what it protects and any
-   ordering constraint; `lock(); defer unlock();` adjacent.
-5. **C5 — thread-confined by default.** State touched by one thread carries no
-   lock but says so (`// only touched by thread X`); `*Locked`-suffixed functions
-   mark lock-required entry points.
+4. **C4 — one documented lock per shared aggregate.** Each shared aggregate has
+   exactly one lock whose doc comment states precisely what it protects and any
+   ordering constraint, and the guard's scope is visible where it is taken.
+5. **C5 — confined by default.** State touched by one task or thread carries no
+   lock but says so; on the control plane an exclusive borrow is the statement,
+   on the runner it is a `// only touched by thread X` comment plus
+   `*Locked`-suffixed lock-required entry points.
 
-The primitives are in [`src/lib/common/sync.zig`](../../src/lib/common/sync.zig):
+The control plane's primitives are tokio's: `CancellationToken` for stop,
+`tokio::select!` to race I/O against it, `tokio::time::timeout` for a deadline,
+`broadcast` and `mpsc` for fan-out and commands, `tokio::sync::Mutex` where a
+guard is held across an await and `std::sync::Mutex` where a leaf map is not.
+The runner's are in [`lib/common/sync.zig`](../../src/lib/common/sync.zig):
 `Mutex` (arg-free `lock`/`unlock` over `std.Io.Mutex`), `Condition`, a rebuilt
 `WaitGroup`, and `Event` — the one-shot, poll-based replacement for the
 `std.Thread.ResetEvent` that Zig 0.16 removed, used for deterministic
@@ -72,35 +82,44 @@ stop→join handshakes in lifecycle tests.
 
 ## Thread map
 
-Every long-lived thread, who spawns it, the shared state it touches, how that
-state is protected, and how the thread is stopped and joined.
+Every long-lived task and thread, who spawns it, the shared state it touches,
+how that state is protected, and how it is stopped and joined.
 
 ### `agentsfleetd` (control plane)
 
-The daemon's background fleet is spawned in `cmd/serve_background.zig`
-(`BackgroundThreads.start`) and torn down in `cmd/serve_shutdown.zig`.
+Nothing runs outside the supervisor. `Supervisor::spawn`
+(`rustd/crates/agentsfleetd/src/supervisor.rs`) is the only caller of
+`tokio::spawn` in the daemon apart from the accept loop's per-connection arm and
+the hub's own pump: it hands each task a `CancellationToken`, keeps its
+`JoinHandle`, and `shutdown` consumes the supervisor so nothing a task borrowed
+can be dropped until every handle has been joined. A task that will not stop
+inside `JOIN_TIMEOUT` (10 s) is reported by name rather than hanging the process.
 
-Two shutdown flags, deliberately split (`serve_shutdown.zig`): the raw signal
-flag (`shutdown_requested`, read only by the watcher) and the background-stop
-flag the sweepers/outbound worker receive via `serve_shutdown.flag()`. The
-background flag flips only when the watcher actually stops a published server
-or at teardown disarm — a boot-window SIGTERM therefore cannot kill the
-background stack while the server may still come up and briefly serve
-(the half-dead-node window).
+The inventory is asserted, not described: `test_boot_to_ready_on_compose`
+(`rustd/crates/agentsfleetd/tests/integration_serve.rs`) compares a booted
+daemon's whole inventory against the names below, so a task added to boot without
+a name — or a sweeper that quietly went back to a bare spawn — is a failing test.
 
-| Thread | Spawned by | Touches | Protection | Stop path |
+| Task | Spawned by | Touches | Protection | Stop path |
 |---|---|---|---|---|
-| signal watcher | `serve_shutdown.signalWatcher` | the signal flag + the background-stop flag | atomic flags; armed only **after** the server is published (boot-window SIGTERM survives) | one-shot; stops the published server, releases the background loops, returns |
-| event bus | `events/bus.runThread` | the in-proc event queue | `bus.mutex` | `bus.stop()` → loop exits → joined |
-| approval-gate sweeper | `fleet_runtime/approval_gate_sweeper.run` | Postgres (own conn) | none shared (per-thread conn) | background-stop flag → exits → joined |
-| liveness sweeper | `fleet/liveness_sweeper.run` | Postgres (own conn) | none shared | background-stop flag → exits → joined |
-| reclaim sweeper | `fleet/reclaim_sweeper.run` | Postgres + Redis (own conns) | none shared | background-stop flag → exits → joined |
-| outbound worker | `queue/outbound_worker.run` | Redis outbound stream (own conn) | none shared | background-stop flag → exits → joined |
-| SSE hub reader | `events/subscription_hub_reader.readerMain` | the one shared pub/sub connection + the `channels` map | `hub.wire` (connection) + `hub.mutex` (map), acquired one at a time | `stop()` → reader observes stop → joined under `hub.wire` |
-| install worker | `http/handlers/fleets/create_install_steps.worker` (detached) | pool + queue during install | guarded by `install_wg` (`WaitGroup`) | teardown `serve_shutdown.awaitInstallWorkers` before pool/queue deinit — never proceeds under a live worker; each expired round warns with the straggler count |
-| Clerk metadata fetch worker | `auth/clerk_fetch_worker` (detached, per signup webhook) | only self-lifetime memory (owned copies of its payload) | atomic in-flight counter capped at `MAX_IN_FLIGHT_FETCHES` — a burst beyond the cap is rejected and logged, never an unbounded thread per webhook | `drainForShutdown()` performs a bounded wait for in-flight workers at serve teardown; a timed-out straggler touches nothing shared, so the drain can expire safely |
-| OTLP flush | `observability/otlp/exporter.flushLoop` | the export ring | atomic single-flight claim on `g_running` | flag → loop exits → joined |
-| deadline scheduler worker | `cmd/serve_deadline.Owned.start` (M139) | the earliest-deadline `std.Treap` + registration map — never a socket | `scheduler.mutex`; interruption reaches a transport only through its owner's generation check | `stop()` refuses new arms, drains pending registrations, waits for in-flight callbacks; `deinit` joins the worker **after** every network user has finished its guards |
+| accept loop (`accept_loop`) | `serve::listen` | the listener; the shared `Router` by clone | none shared mutable | `select!` over `token.cancelled()` and a genuinely blocked `accept()` → loop breaks → joined |
+| connection (one per socket) | the accept loop | one connection's request stream | none shared mutable; the router is cloned per connection | the same token: `select!` over `cancelled()` and the served connection |
+| SSE hub pump (`hub_pump`) | `afd_redis`'s `SubscriptionHub::start`; stopped by the supervised task `serve::spawn_background` registers | the one shared pub/sub connection + the `channels` map | it owns the socket outright — no lock; the map under its own mutex | the supervised task observes cancellation and calls `hub.shutdown()`, which clears the map so every reader is told; the pump returns when the last command sender drops |
+| liveness sweeper (`sweeper:liveness`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
+| reclaim sweeper (`sweeper:reclaim`) | `sweepers::spawn` | Postgres + Redis, and the sweep's own keyset cursor | `Mutex<Cursor>` (leaf) | as above |
+| retention sweeper (`sweeper:retention`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | as above |
+| repair-verification dispatcher (`sweeper:repair-verification`) | `sweepers::spawn` | Postgres + Redis, and its own pacing value | `Mutex<Duration>` (leaf) | as above |
+| span export (`otlp_export`) | boot, and only where a span endpoint is configured — a deployment with none supervises the seven above and no more | the batch span processor's queue | the SDK's own batching; the spans it failed to deliver are counted on an atomic | cancellation → the flush loop ends → joined |
+| analytics flush (`analytics_flush`) | `serve::open`, last | the product-analytics client's queued events | none shared mutable | awaits cancellation, then flushes before the client is dropped |
+
+A sweep that fails is reported and retried on the next pass: every pass here is
+idempotent and bounded, and a sweeper that exited on a datastore blip would need
+a daemon restart to get liveness back.
+
+The fleet runtime's remaining background work — an in-process event bus, the
+outbound connector worker, install-step workers, the signup metadata fetch —
+arrives as supervised tasks with bounded drains when it arrives, because there is
+no unsupervised spawn path here to arrive as anything else.
 
 ### `agentsfleet-runner` (execution plane)
 
@@ -117,52 +136,66 @@ Rooted at `src/runner/main.zig`, isolated from datastore code (enforced by
 
 ## Channel inventory
 
-Cross-thread and cross-process channels, with SPSC roles and payload ownership.
-Redis stream/channel **names** are canonical in [`data_flow.md`](./data_flow.md) §"Two streams + one
-pub/sub channel"; the roles below are the concurrency view.
+Cross-task and cross-process channels, with producer/consumer roles and payload
+ownership. Redis stream/channel **names** are canonical in
+[`data_flow.md`](./data_flow.md) §"Two streams + one pub/sub channel"; the roles
+below are the concurrency view.
 
 | Channel | Kind | Producer → Consumer | Payload ownership |
 |---|---|---|---|
-| in-proc event bus | bounded queue + `Condition` wakeup | request threads → the single bus thread | the bus thread frees each dequeued event (receiver-frees, C1) |
-| subscription epoch/queue | per-subscription futex-epoch + bounded queue | the hub reader (producer) → one SSE stream thread (consumer) | the SSE consumer frees each frame it copies out (C1) |
+| hub commands | unbounded `mpsc` | any subscriber or dropped `Subscription` → the one pump task | `Subscribe`/`Unsubscribe` moves to the pump; unbounded so the enqueue can happen under the channel map's lock without blocking |
+| channel fan-out | `broadcast`, 256 messages per channel | the pump (producer) → every reader subscribed to that channel | each reader receives its own clone; a reader that falls 256 behind is told the count it missed rather than losing them silently (C1) |
+| cancellation | `CancellationToken` | the supervisor → every supervised task and every live connection | edge-triggered; a task selects it against its own I/O, so it is interrupted mid-read |
 | `fleet:{id}:events` | Redis stream + consumer group `fleet_lease` | steer/webhook/cron/continuation `XADD` → `agentsfleetd` non-blocking `XREADGROUP` per lease | durable; `XACK`ed at report, idempotent on replay |
 | `fleet:{id}:activity` | Redis pub/sub (ephemeral) | `agentsfleetd` `PUBLISH` (+ runner-forwarded frames) → the hub's one shared `SUBSCRIBE` connection, fanned out by copy | ephemeral; each SSE stream owns its copied frame |
 | `fleet:control` | **removed at the M80 cutover** | — | — |
 
 The hub holds exactly **one** pub/sub connection for all viewers, refcounting
 `SUBSCRIBE` per channel-with-viewers — the per-stream connections are gone
-(`data_flow.md`). New cross-thread channels must be SPSC with a carried allocator
-(C1); reshaping the existing ones is a separate judgment with this doc as input.
+(`data_flow.md`), and `test_hub_refcount_single_connection` is what holds it. New
+cross-boundary channels declare one producer and one consumer and say who owns
+the payload (C1); reshaping the existing ones is a separate judgment with this
+doc as input.
 
 ---
 
 ## Lock-invariant registry
 
-Every mutex in the discipline base, exactly what it protects, and its ordering
-constraint. Each is documented at its declaration (C4); the roster grep
-(`test_base_mutexes_documented`) holds the count of declarations equal to the
-count of invariant comments.
+Every lock in the discipline base, exactly what it protects, and its ordering
+constraint. Each is documented at its declaration (C4); on the runner the roster
+grep (`test_base_mutexes_documented`) holds the count of declarations equal to
+the count of invariant comments.
 
 | Lock | Declared at | Protects | Ordering |
 |---|---|---|---|
-| `bus.mutex` | `events/bus.zig` | the in-proc event queue; orders a producer push against the consumer's predicate check | leaf — held alone |
-| `subscription.mutex` | `events/subscription.zig` | the subscription epoch counter; the epoch is read under the lock before a futex sleep (bump-then-wake) | leaf — held alone |
-| `hub.mutex` | `events/subscription_hub.zig` | the `channels → subscribers` map and **nothing else** | never held together with `hub.wire` — acquire one at a time |
-| `hub.wire` | `events/subscription_hub.zig` | the one shared pub/sub connection and **all** wire sends (`SUBSCRIBE`/`UNSUBSCRIBE`) and teardown | never nested with `hub.mutex` |
+| hub channel map | `afd_redis`'s `HubInner` | the `channel → (broadcast sender, reader count)` map and **nothing else** | leaf, and never held across an await — the only thing done under it is the command enqueue, which cannot block |
+| runner series table | `afd_observability`'s `RunnerMetrics` | the `runner_id → counters` map, up to 4096 series | read lock for LOOKUP only; the counters are atomics incremented after the guard is released, so a slow recorder never blocks a fast one |
+| reclaim cursor | `afd_runner`'s reclaim sweeper | the keyset cursor one pass resumes from | leaf — held alone, and only by the single sweeper task |
+| repair pacing | `afd_runner`'s repair-verification dispatcher | the interval the dispatcher shortens while a backlog drains | leaf — held alone |
+| JWKS cache | `afd_identity`'s `KeyCache` | the held key set (read/write lock) and the single-flight gate (mutex) | the flight gate is held across the fetch with the key-set lock **released**, so a cache hit never queues behind a slow provider |
 | `WaitGroup.mutex` | `lib/common/sync.zig` | the counting barrier's `count`; `start`/`finish`/`wait` are all guarded | leaf — held alone |
 | `scheduler.mutex` | `lib/call_deadline/scheduler.zig` | deadlines, registrations, lifecycle state, worker handle, identifier allocation | released around every target callback — a callback is a bounded, non-reentrant leaf that must never call back into scheduler barriers |
 | `SocketOwner.mutex` | `lib/call_deadline/SocketOwner.zig` | generation, handle, and the interrupted flag together; held across the `shutdown(2)` so a completing attempt cannot swap in a recycled descriptor between check and syscall | leaf — held alone; taken from the scheduler worker inside a callback and from the owning caller, never nested with another lock |
 
 The load-bearing ordering rule (the C3 fix that ended the hub's
-blocking-write-under-the-map-mutex hazard): a wire send is bounded by a
-scheduler guard and taken under `hub.wire` alone, never while `hub.mutex` is
-held.
+blocking-write-under-the-map-mutex hazard): the pub/sub socket is behind no lock
+at all. One task owns it, and a subscriber that wants a `SUBSCRIBE` or an
+`UNSUBSCRIBE` enqueues a command. The enqueue happens while the channel map is
+still locked, deliberately — that ordering is what stops an `Unsubscribe`
+overtaking the `Subscribe` of a reader arriving on the same channel — and it is
+safe only because the queue is unbounded and the send therefore cannot block.
 
 ### The deadline-ownership invariant (M139)
 
-Each process root owns exactly **one** `ProcessScheduler`
-(`agentsfleetd`: `cmd/serve_deadline.zig`; `agentsfleet-runner`:
-`daemon/runner_deadline.zig`) and passes it explicitly to every network owner —
+Every network call is bounded, and the two planes bound it in different places.
+On the control plane the deadline is at the call site — a `tokio::time::timeout`
+around the operation, and a `select!` against the cancellation token for anything
+long-lived — so there is no shared registration map to keep consistent and no
+generation check to get wrong. Postgres stays outside any scheduler on purpose:
+the pool's acquire and connect timeouts already bound it.
+
+The runner owns exactly **one** `ProcessScheduler`
+(`daemon/runner_deadline.zig`) and passes it explicitly to every network owner —
 there is no hidden global and no per-call watchdog thread. A registration
 targets a `SocketOwner` **connection generation**, never a descriptor number:
 the owner advances the generation before an attempt becomes interruptible and
@@ -170,146 +203,79 @@ validates it under its own lock at fire time, so a late fire against a replaced
 connection returns `stale` and touches nothing. `Guard.finish()` and
 `Scheduler.stop()` are quiescence barriers — after either returns, the selected
 callbacks are neither running nor eligible to run, which is what makes a
-stack-local owner safe to leave scope. Arming is fail-CLOSED everywhere: a
-scheduler that cannot arm refuses the call; no path falls through to an
-unbounded run.
-
-The bounded connection setup adds an **Io precondition**: the dial is raced
-against the budget with `std.Io.Select` (`queue/redis_subscriber.zig`
-`dialWithinBudget`), so the `io` a process root hands its network owners must
-support concurrency. Production always satisfies this — `main.zig` passes the
-process-init Io. `common.globalIo()` does **not** (it is the statically
-single-threaded instance; its first `select.concurrent` fails with
-`ConcurrencyUnavailable`, and fail-CLOSED turns that into a refused boot).
-Any harness that boots `serve.run` or starts the hub must construct its own
-`std.Io.Threaded` — the shape `http/test_harness.zig` (`hub_io`) and the
-serve-lifecycle test both follow.
+stack-local owner safe to leave scope. Arming is fail-CLOSED: a scheduler that
+cannot arm refuses the call; no path falls through to an unbounded run.
 
 ---
 
 ## Shutdown choreography
 
-The stop → join → deinit sequence (C2), including the ordering M126_001 corrected.
-
-1. **Signal.** SIGTERM/SIGINT wakes the signal watcher, which sets the global
-   shutdown flag. The watcher is armed only after the server is published, so a
-   SIGTERM landing in the boot window no longer fires against a null server
-   (the watcher re-arms and the server still stops).
-2. **Observe.** Every background loop — the three sweepers, the outbound worker,
-   the event bus — reads the shared flag and exits its loop; the sweeper
-   round-waits re-arm so a signal mid-round is not lost.
-3. **Join detached work first.** Teardown calls `install_wg.wait()` so any
-   detached install worker has returned before the pool and queue it uses are
-   deinited — no use-after-free against a shutting-down datastore.
-4. **Tear streaming down under its own lock.** `deinitStreaming`
-   (`serve_shutdown.zig`) stops the SSE hub: `stop()` runs the teardown under
-   `hub.wire`, so no live stream thread can be mid-send when the connection is
-   closed, and the `channels` map is freed only after the reader has joined —
-   never under a straggler. The event bus `stop()` is ordered the same way.
-5. **Free shared maps only after joins.** The hub/registry maps are freed only
-   once their threads have joined; a bounded drain that logged an incomplete
-   result never proceeds to free state a straggler could still reach.
-6. **Datastores last.** The Postgres pool and Redis queue deinit after every
-   thread that could touch them has joined.
-7. **Deadline scheduler after its users (M139).** `Scheduler.stop()` rejects
-   new arms, interrupts and drains pending registrations, and waits for
-   in-flight callbacks; network users then finish their guards before their
-   owners deinit, and only then does scheduler storage deinit. In both
-   processes the ordering is encoded as a LIFO defer at the root: the scheduler
-   is constructed after — and therefore torn down before — nothing that still
-   arms into it (`serve.run`'s defer chain; `runner/main.zig` deinits it after
-   `runLoop` has joined every worker).
-
-The deterministic test handshake for these sequences is `common.Event`
-(`sync.zig`) — `set()` on one side, bounded `timedWait()` on the other — so
-lifecycle tests exercise the real stop→join order with no sleeps or polling races.
-
----
-
-## The Rust task map (`rustd/`, M176 §7)
-
-The Zig thread map above stays authoritative for the shipping daemon. This is
-what each of its `agentsfleetd` rows became in the Rust port, and it is not
-prose: `rustd/crates/agentsfleetd/src/inventory.rs` carries the same table as
-`THREAD_MAP`, and `tests/daemon.rs` asserts the row count and that every row has
-a disposition. A row deleted here without being deleted there is a red test.
-
-The milestone each deferral is owed by is named in `THREAD_MAP` rather than
-here, and asserted there. This document cites only milestones that have landed
-(`check-architecture-doc` enforces that), so a table naming unstarted ones would
-either fail the gate or go stale the moment one was renumbered.
-
-Three dispositions. The distinction between the last two is the point — a
-deferral without a milestone is an omission wearing a label.
-
-| Zig thread | Disposition | Why |
-|---|---|---|
-| signal watcher | **Retired** | `tokio::signal` is awaited in the run loop. No thread, and no flags to race |
-| event bus | Deferred | fleet runtime |
-| approval-gate sweeper | Deferred | fleet runtime |
-| liveness sweeper | Deferred | fleet runtime |
-| reclaim sweeper | Deferred | fleet runtime |
-| outbound worker | Deferred | fleet runtime |
-| SSE hub reader | **Supervised** (`hub_pump`) | `afd_redis`'s pub/sub pump |
-| install worker | Deferred | fleet runtime. Detached in Zig behind a `WaitGroup`; becomes a supervised task with a bounded drain, because no unsupervised spawn path exists here |
-| Clerk metadata fetch worker | Deferred | signup arrives with the tenant surface |
-| OTLP flush | **Supervised** (`otlp_export`) | the batch span processor |
-| deadline scheduler worker | **Retired** | deadlines are `tokio::time::timeout` at call sites; nothing schedules them centrally |
-
-### The two retirements, and what they cost
-
-Both retired rows are threads that existed only to work around the absence of
-async, and both took real machinery with them.
-
-**The signal watcher and its two flags.** `serve_shutdown.zig` keeps
-`shutdown_requested` and `background_stop` apart so a SIGTERM arriving during
-boot cannot kill the background stack while the server may still come up and
-briefly serve — the half-dead-node window. It needs two flags because the
-watcher is a separate thread polling every 100ms, so "the signal arrived" and
-"the server stopped" are events that genuinely race.
-
-They cannot race in `Daemon::run`, because they are statements in order: await
-whichever of server-or-signal finishes first, then cancel the supervisor, then
-let the caller drop the pools. A signal during boot leaves an already-resolved
-future; the server comes up, sees it resolved, and stops. Same property, one
-less piece of shared mutable state. The `select!` is `biased` so the answer is a
-fact about the futures rather than about tokio's branch order — asserted by
-`test_boot_window_sigterm`, which fails if the arms are swapped.
-
-**The deadline scheduler (M139).** A treap-backed registration map and a worker
-thread existed so one thread could interrupt another's blocked socket.
-`tokio::time::timeout` at the call site is the same guarantee with no shared map
-to keep consistent and no generation check to get wrong. `CancellationToken` is
-edge-triggered, so a task selecting over its own I/O and `cancelled()` is
-interrupted mid-read rather than at the next 100ms poll — proven for a real
-blocked `accept()` by `test_task_inventory_and_cancellation`, which carries a
-control so the negative is not vacuous.
-
-### Rust shutdown choreography
-
-Replaces steps 1–7 above for the port. Fewer steps, and the reduction is the
-result rather than the goal: most of that list is orderings that a `defer` chain
-had to hold by hand.
+The stop → join → drop sequence (C2). Three steps on the control plane, and the
+reduction is the result rather than the goal: most of a longer list is orderings
+that a teardown had to hold by hand.
 
 1. **Decide why.** `Daemon::run` awaits whichever of the server or the signal
-   finishes first, and names it — `Signalled` or `ServerStopped`. `serve.zig`
-   models only the first; a daemon that waits solely for a signal hangs when its
-   listener dies of something else.
+   finishes first, and names it — `Signalled` or `ServerStopped`. Both are
+   modelled because a daemon that waits solely for a signal hangs when its
+   listener dies of something else: a lost bind, an accept loop that returned,
+   a runtime that shut its I/O driver. That process is unkillable except by
+   SIGKILL and reports nothing on its way out. The `select!` is `biased`, so the
+   answer is a fact about the futures rather than about tokio's branch order.
 2. **Cancel and join, unconditionally.** The teardown is in the outer `run`, not
    inside the loop — exonum's `ApiManager::run`/`run_inner` split, taken for its
    one property: every early return still tears down. `Supervisor::shutdown`
    cancels the token, then joins every handle with a `JOIN_TIMEOUT` deadline,
    reporting any task that would not stop by name instead of hanging the process.
+   Cancellation is edge-triggered and reaches into a blocked read, so a task is
+   interrupted where it is waiting rather than at the next poll interval —
+   proven for a real blocked `accept()` by `test_task_inventory_and_cancellation`,
+   which carries a control so the negative is not vacuous. Streaming stops here
+   too: `hub.shutdown()` clears the channel map, so a reader parked on the hub
+   gets a hub-closed error it can act on rather than waiting on a socket nobody
+   is pumping.
 3. **Drop last.** `shutdown` consumes the supervisor, so what the tasks borrowed
-   cannot be dropped until it returns. Invariant C2 becomes a borrow-checker
-   fact rather than a defer ordering — asserted as an observation by
-   `Arc::strong_count` after teardown in `test_shutdown_joins_all_tasks`.
+   cannot be dropped until it returns, and the pools are dropped by the caller
+   after that. Invariant C2 becomes a borrow-checker fact rather than a teardown
+   ordering — asserted as an observation by `Arc::strong_count` after teardown in
+   `test_shutdown_joins_all_tasks`.
 
-Handshakes, not sleeps, in every one of these tests — the `common.Event`
-discipline above, expressed as channels and `CancellationToken`. The abandoned-
-task assertions run under `#[tokio::test(start_paused)]`, so a ten-second join
-timeout costs no wall clock: with every task parked the runtime advances to the
-next deadline itself.
+On the runner the same three steps are a LIFO defer chain at the root: the
+scheduler is constructed after — and therefore torn down before — anything that
+still arms into it, and `runner/main.zig` deinits it after `runLoop` has joined
+every worker. `Scheduler.stop()` rejects new arms, interrupts and drains pending
+registrations, and waits for in-flight callbacks; network users then finish their
+guards before their owners deinit, and only then does scheduler storage deinit.
+
+Handshakes, not sleeps, in every one of these tests. The runner's is
+`common.Event` (`sync.zig`) — `set()` on one side, bounded `timedWait()` on the
+other; the control plane's are channels and `CancellationToken`. The
+abandoned-task assertions run under `#[tokio::test(start_paused)]`, so a
+ten-second join timeout costs no wall clock: with every task parked the runtime
+advances to the next deadline itself.
+
+### Why there is no signal watcher and no shutdown flags
+
+Two flags kept apart — a raw signal flag and a background-stop flag — protect one
+window: a SIGTERM arriving during boot must not kill the background stack while
+the server may still come up and briefly serve. That is the half-dead-node
+window, and it needs two flags only where a watcher thread polls, because there
+"the signal arrived" and "the server stopped" are events that genuinely race.
+
+They cannot race in `Daemon::run`, because they are statements in order: await
+whichever of server-or-signal finishes first, then cancel the supervisor, then
+let the caller drop the pools. A signal during boot leaves an already-resolved
+future; the server comes up, sees it resolved, and stops. Same property, one less
+piece of shared mutable state, and no 100 ms of shutdown latency paid on every
+task. `test_boot_window_sigterm` fails if the `select!` arms are swapped.
+
+### Why the control plane has no central deadline scheduler
+
+A treap-backed registration map and a worker thread exist so one thread can
+interrupt another's blocked socket, and the runner needs exactly that. On the
+control plane `tokio::time::timeout` at the call site is the same guarantee with
+no shared map to keep consistent and no generation check to get wrong, and
+`CancellationToken` is edge-triggered, so a task selecting over its own I/O and
+`cancelled()` is interrupted mid-read.
 
 ---
 

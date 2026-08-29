@@ -105,7 +105,14 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
 /// Held for the readers that name a column rather than a statement; the page
 /// and detail reads go through [`query`] because a `try_get` failure already
 /// names the column and the type it refused.
-#[expect(dead_code, reason = "the reads name their statement, not their column")]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the reads name their statement, not their column")
+)]
 pub(crate) fn row_malformed(column: &'static str) -> impl Fn(sqlx::Error) -> Error {
     move |source| Error::RowMalformed { column, source }
 }
+
+#[cfg(test)]
+#[path = "error/tests.rs"]
+mod tests;

@@ -1,5 +1,7 @@
 [package]
 name = "afd_crypto"
+# One aggregated test binary; see tests/crypto_suite.rs for why.
+autotests = false
 description = "Envelope encryption and message authentication, byte-compatible with the Zig daemon's vault."
 version.workspace = true
 edition.workspace = true
@@ -40,3 +42,7 @@ serde_json.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "crypto_suite"
+path = "tests/crypto_suite.rs"

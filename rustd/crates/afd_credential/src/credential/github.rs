@@ -31,13 +31,14 @@
 use std::collections::{BTreeMap, HashSet};
 
 use afd_fleet_runtime::config::{Access, RepositoryBinding};
-use octocrab::Octocrab;
-use octocrab::models::AppId;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::credential::outcome::{Minted, Outcome, Retry};
-use crate::credential::platform::GithubApp;
+use crate::credential::outcome::{Outcome, Retry};
+
+mod exchange;
+
+pub use self::exchange::{Exchange, mint};
 
 /// The permission a repository-scoped mint asks for on `contents`.
 ///
@@ -267,108 +268,6 @@ impl Granted {
 
 #[cfg(test)]
 mod tests;
-
-/// The vault-handle field naming the App installation to mint for.
-const FIELD_INSTALLATION_ID: &str = "installation_id";
-
-/// How long an installation token lasts, per GitHub's documentation.
-///
-/// Bounded locally rather than read from the response's `expires_at`, which is
-/// `integration_github.zig`'s decision and is carried over deliberately. It
-/// holds only while GitHub never issues a SHORTER one: were that to change,
-/// this would cache a token past its death rather than re-mint early, and a
-/// child would meet a 401 mid-run. Recorded here because the risk is invisible
-/// at the call site (Indy vetoed narrowing it, this stream).
-const INSTALLATION_TOKEN_TTL_MS: i64 = 60 * 60 * 1000;
-
-/// Everything one GitHub mint needs.
-#[derive(Debug, Clone, Copy)]
-pub struct Exchange<'a> {
-    /// This deployment's App — the signing key never leaves the process.
-    pub app: &'a GithubApp,
-    /// The workspace's stored handle, naming which installation to mint for.
-    pub handle: &'a Value,
-    /// The fleet's declared reach. `None` refuses BEFORE anything is signed.
-    pub binding: Option<&'a RepositoryBinding>,
-    /// The instant the token's expiry is measured from.
-    pub now_ms: i64,
-}
-
-/// Mints a repository-scoped installation token.
-///
-/// # The order of the checks is the security property
-///
-/// The binding is required BEFORE the JWT is built and before any request is
-/// sent. A missing declaration cannot reach the exchange, because the body that
-/// would carry it is what narrows the token: GitHub reads an empty body as the
-/// installation's FULL permission set across EVERY repository it covers, for an
-/// hour. So the absence of a declaration refuses rather than widens — the
-/// direction `integration_github.zig` also fails in, and the one that matters.
-pub async fn mint(exchange: Exchange<'_>) -> Outcome {
-    let Some(installation_id) = exchange
-        .handle
-        .as_object()
-        .and_then(|handle| handle.get(FIELD_INSTALLATION_ID))
-        .and_then(installation_id)
-    else {
-        // A handle with no installation is a connection that was removed or
-        // never finished, which a human reconnects — not a failure to retry.
-        return Outcome::ReconnectRequired;
-    };
-    let Some(binding) = exchange.binding else {
-        return Outcome::MintFailed(Retry::Permanent);
-    };
-
-    let key = match jsonwebtoken::EncodingKey::from_rsa_pem(exchange.app.private_key_pem.as_bytes())
-    {
-        Ok(key) => key,
-        // The platform's own key does not parse. Permanent, and an operator's
-        // to fix — no tenant can act on it, and no retry will change it.
-        Err(_unusable) => return Outcome::MintFailed(Retry::Permanent),
-    };
-    let Ok(client) = Octocrab::builder()
-        .app(AppId(exchange.app.app_id), key)
-        .build()
-    else {
-        return Outcome::MintFailed(Retry::Permanent);
-    };
-
-    let request = ScopedRequest::for_binding(binding);
-    // `post`, NOT `installation_and_token()`. That method sends a hardcoded
-    // `{}` and would mint the installation's full scope — see the module
-    // header. This is the one call that carries the narrowing.
-    let granted: Granted = match client
-        .post(
-            format!("/app/installations/{installation_id}/access_tokens"),
-            Some(&request),
-        )
-        .await
-    {
-        Ok(granted) => granted,
-        Err(error) => return classify(&error),
-    };
-
-    if let Err(overreach) = granted.verify(binding, request.permissions()) {
-        // The exchange SUCCEEDED and the token is real; it simply reaches
-        // further, or less far, than the fleet declared. It is dropped here
-        // rather than delivered, and the token never leaves this function.
-        tracing::warn!(
-            ?overreach,
-            event = "github_mint_overreach",
-            "discarding a GitHub token whose reach does not match the fleet's binding"
-        );
-        return Outcome::MintFailed(Retry::Permanent);
-    }
-
-    Outcome::Ok(Minted {
-        token: granted.token.into(),
-        expires_at_ms: exchange.now_ms.saturating_add(INSTALLATION_TOKEN_TTL_MS),
-        // An App installation token has nothing to rotate: the App key is the
-        // long-lived credential and it never leaves this deployment, so there
-        // is no per-tenant secret for GitHub to replace.
-        rotated_refresh_token: None,
-    })
-}
 
 /// The installation id, however the handle spells it.
 ///

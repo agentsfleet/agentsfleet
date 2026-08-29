@@ -1,5 +1,7 @@
 [package]
 name = "afd_fleet_runtime"
+# One aggregated test binary; see tests/runtime_suite.rs for why.
+autotests = false
 description = "Fleet configuration: the stored authoring document, parsed once into the typed policy every gate reads."
 version.workspace = true
 edition.workspace = true
@@ -44,3 +46,7 @@ serde_json.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "runtime_suite"
+path = "tests/runtime_suite.rs"

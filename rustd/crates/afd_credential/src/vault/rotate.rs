@@ -122,7 +122,7 @@ impl Vault {
         };
 
         let stored = self.decrypt(&row, ENVELOPE_AT, key)?;
-        let mut handle: Value =
+        let mut handle: serde_json::Map<String, Value> =
             serde_json::from_slice(stored.expose()).map_err(|_shape| vault_data_invalid())?;
         // Compares against what this exchange actually posted, which is the one
         // thing the lock cannot tell us: a reconnect that landed BEFORE this
@@ -139,13 +139,7 @@ impl Vault {
         // as they were, so the broker's cache identity is unchanged and an
         // ordinary rotation remains a cache hit.
         //
-        // Through `as_object_mut` rather than an index: indexing a `Value` with
-        // a key PANICS when the value is not an object, and the shape check
-        // above proved only that the refresh token reads as a string.
-        let Some(fields) = handle.as_object_mut() else {
-            return Err(vault_data_invalid());
-        };
-        fields.insert(
+        handle.insert(
             FIELD_REFRESH_TOKEN.to_owned(),
             Value::String(replacement.to_owned()),
         );

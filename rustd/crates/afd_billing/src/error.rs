@@ -181,3 +181,7 @@ pub(crate) fn row_malformed(
         source,
     }
 }
+
+#[cfg(test)]
+#[path = "error/tests.rs"]
+mod tests;

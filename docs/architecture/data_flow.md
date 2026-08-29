@@ -67,7 +67,7 @@ The diagrams live with their flows — each is the section's proof, so none is d
 | Two per-delivery tables (`events` + `telemetry`) | different write authorities and retention rules | §The three durable stores |
 | `fleet:control` removed | no per-fleet threads left to orchestrate | §Two streams + one pub/sub channel |
 | Dedicated Redis tier collapsed | idle cost now tracks lease-poll frequency, not fleet count | §Connection topology; M80_002 |
-| `Hx.db()` returns a named error set, not `?DbScope` | `PoolTimeout` and `PoolUnavailable` are different operator pages | §The Postgres pool |
+| A pool acquire answers a typed error, not an absent connection | `PoolTimeout` and `PoolUnavailable` are different operator pages | §The Postgres pool |
 | Gap recovery is client-side, not server resume | no channel or frame-shape change; the durable table is the recovery source | §Two streams; M122 |
 | QStash owns the clock | the runner and its disposable child own no schedule timer | §B. TRIGGER |
 | Upload-bundle picker path deferred | Indy-acked 2026-06-20 | §A. INSTALL |
@@ -443,22 +443,21 @@ An acquire can fail two ways, and they are **different operator problems**:
 | `PoolTimeout` | every connection is leased and the acquire budget elapsed | capacity — pool size, or the slow query holding a slot |
 | `PoolUnavailable` | the pool could not produce a connection at all | the datastore — reachability, credentials, TLS |
 
-`Hx.db()` returns those as a named error set. It previously returned
-`?DbScope`, which erased the distinction at the handler boundary and put both
-behind one alert; the handler that needed to tell them apart worked around it by
-acquiring from the pool directly, which meant reimplementing the
-acquire/release pairing `DbScope` exists to make unskippable. Both are now
-gone. The library reads record the difference as
+The pool acquire answers those as a typed error, and the two are asked apart
+by name (`rustd/crates/afd_db/src/error.rs` — `is_pool_capacity` against
+`is_datastore_unavailable`). An acquire that answered only an absent connection
+would erase the distinction at the handler boundary and put both behind one
+alert, and the handler that needed to tell them apart would acquire from the
+pool directly — reimplementing the acquire/release pairing the pooled-connection
+guard makes unskippable. The library reads record the difference as
 `agentsfleet_library_pool_result_total{pool_result="timeout"|"error"}`.
 
 **What the pool guarantees, and what it does not.** Releasing an occupied slot
 lets at least one queued waiter progress, and every waiter either acquires or
 receives the configured timeout — no waiter blocks forever. There is **no
-ordering or fairness guarantee**: the vendored `pg.zig` fork wakes waiters from
-a 2 ms poll loop rather than a queue (`Io.Condition` has no timed wait), so
-which waiter wins is scheduling. `db/pool_bounded_progress_integration_test.zig`
-proves the two real guarantees against a live size-1 pool and deliberately
-declines to assert the third.
+ordering or fairness guarantee**: which waiter wins is scheduling. `afd_db`'s
+live-pool integration suite proves the two real guarantees against a live
+size-1 pool and deliberately declines to assert the third.
 
 ## Config reload — pull-per-lease, no signal
 
@@ -655,7 +654,7 @@ not authority by itself.
    > SLACK (M106): a fifth producer — the Slack-resident
    > bot lands an actor=slack:<user> event on fleet:{channel_fleet_id}:events
    > via the webhook-producer XADD shape (signature-authed, no principal —
-   > webhooks/fleet.zig) after POST /v1/connectors/slack/events resolves
+   > afd_http/src/route/webhook.rs) after POST /v1/connectors/slack/events resolves
    > team_id → workspace (core.connector_installs) and (team_id, channel_id) →
    > channel-resident fleet (core.connector_channels). On first mention the
    > fleet is materialized through the existing fleet-create path
@@ -730,7 +729,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
           (status='received', actor, request_json)
           ON CONFLICT (fleet_id, event_id) DO NOTHING   (idempotent on replay)
      2. PUBLISH fleet:{id}:activity { kind:"event_received", event_id, actor }
-     3. Gates + billing (mirror of metering.zig):
+     3. Gates + billing (mirror of afd_billing):
           balance gate → budget gate → receive debit → approval gate → run debit.
           The BUDGET gate is the fleet's own ceiling, resolved from the config
           the session already carries; it sits after the tenant credit pool and
@@ -849,20 +848,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    dead runner is fenced out at claimReport (UZ-RUN-005).
 ```
 
-**The issue-time run debit is a daemon divergence during cutover (M177).** The
-sequence above is the INTENDED billing shape and is what `agentsfleetd-rs`
-implements. The Zig daemon does not: `fleet/service_billing.zig` ends its gate
-pass with `// No issue-time stage debit: run fee + tokens meter on /renew +
-settle at report`, and `fleet_runtime/metering.zig` exports `debitReceive` as
-its only debit. So during cutover the two daemons charge differently at lease —
-the Rust one debits a floor-token run estimate that the Zig one defers to
-`/renew`. This is a deliberate, declared divergence rather than a port defect
-(Indy, M177 §2): the Rust daemon is written to the documented behaviour, the
-Zig daemon is not being changed, and the cutover-soak milestone named in
-[`roadmap.md`](./roadmap.md) carries the divergence into the cutover register. Anything reconciling ledger rows across the two daemons has
-to know which one wrote them.
-
-**Slack-resident answer round-trip (M106).** For the Slack producer in §"B. TRIGGER" two connector-specific hops bracket this generic trace without altering it. *At ingress:* `connectors/slack/thread.zig` does a best-effort re-read of the recent thread (Slack `conversations.replies`, bounded to the last-N messages) so the leased `request_json` carries same-thread context. It **never throws**: a failed or absent re-fetch degrades to an empty thread, and the answer still runs from the mention alone. *On the way out:* the answer is not posted from the report handler directly. Step 7's report path calls `enqueueOutboundAnswer` (`fleet/service_report.zig`) — if the reporting fleet has a `core.connector_channels` binding it enqueues a `provider`-tagged job onto the generic `connector:outbound` stream (`queue/connector_outbound.zig`); a non-connector fleet, empty answer, or any failure is a logged no-op that never fails the finalized report. The boot-started `outbound/worker.zig` consumer (the one blocking Redis consumer sized in [`scaling.md`](./scaling.md)) then reads the job, routes it by `provider`, and posts the answer back in-thread with bounded retry + pending-first redelivery. The core report path stays provider-agnostic (Invariant 9) — the worker is the only place a connector poster is imported.
+**Slack-resident answer round-trip (M106).** For the Slack producer in §"B. TRIGGER" two connector-specific hops bracket this generic trace without altering it. *At ingress:* the Slack connector's thread re-read does a best-effort re-read of the recent thread (Slack `conversations.replies`, bounded to the last-N messages) so the leased `request_json` carries same-thread context. It **never throws**: a failed or absent re-fetch degrades to an empty thread, and the answer still runs from the mention alone. *On the way out:* the answer is not posted from the report handler directly. Step 7's report path hands the answer off — if the reporting fleet has a `core.connector_channels` binding it enqueues a `provider`-tagged job onto the generic `connector:outbound` stream; a non-connector fleet, empty answer, or any failure is a logged no-op that never fails the finalized report. The boot-started outbound-worker consumer (the one blocking Redis consumer sized in [`scaling.md`](./scaling.md)) then reads the job, routes it by `provider`, and posts the answer back in-thread with bounded retry + pending-first redelivery. The core report path stays provider-agnostic (Invariant 9) — the worker is the only place a connector poster is imported.
 
 ### D. WATCH  (user-side: how the live tail surfaces)
 
@@ -968,7 +954,7 @@ to know which one wrote them.
 |---|---|
 | PG (`core.fleets`, `core.fleet_events`, etc.) | Row-Level Security by `workspace_id`. The API enforces via `app.workspace_id` session var; the control-plane lease/report path uses the service role with explicit WHERE filtering. |
 | Redis data plane (`fleet:{id}:events`) | Key namespaced by fleet UUID (globally unique); no cross-tenant collision possible. No RLS in Redis — protected by `fleet_id` being unguessable + API gatekeeping. |
-| Runner ↔ control plane | The `agt_r` token authenticates the runner per call; `me` resolves from the token. The lease carries exactly one fleet's event + scoped secrets; a runner never sees another tenant's data plane. Enrollment is gated on the `platform_admin` claim (M80_005) — only agentsfleet's platform admin may add a host to the shared fleet, via the dashboard "Add runner" (M84_001). Trust-gated placement (don't put other-tenant work on a weak sandbox tier) is operator-assigned, deferred to a later milestone (M85_001 shipped label-matching placement only, not trust tiers; M80_007 shipped as the observability spec). |
+| Runner ↔ control plane | The `agt_r` token authenticates the runner per call; `me` resolves from the token. The lease carries exactly one fleet's event + scoped secrets; a runner never sees another tenant's data plane. Enrollment is gated on the `runner:enroll` scope — only a token carrying it may add a host to the shared fleet, via the dashboard "Add runner". Trust-gated placement (don't put other-tenant work on a weak sandbox tier) is operator-assigned, deferred to a later milestone (M85_001 shipped label-matching placement only, not trust tiers; M80_007 shipped as the observability spec). |
 | Sandboxed child | Per-execution: secrets resolved at the lease, delivered via the child's stdin only, substituted at the tool bridge inside the sandbox, never flowing as raw strings into fleet context. |
 
 ## One active lease per fleet — the ownership model

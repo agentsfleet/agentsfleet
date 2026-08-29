@@ -40,9 +40,14 @@ concurrency:
 jobs:
   test-integration-rustd:
     runs-on: ubuntu-latest
-    # The suite creates a database per test and applies all 47 migrations into
-    # each. Generous, because the alternative to a timeout that is too tight is
-    # a lane that goes red on a slow runner and teaches people to re-run it.
+    # CI never performs an edit-build-edit loop, so incremental objects buy it
+    # no latency and made the restored/uploaded target cache several gigabytes
+    # larger. Keep developers' dev-profile default intact; bound this lane only.
+    env:
+      CARGO_INCREMENTAL: '0'
+    # The suite shares one migrated database; only migrator fault tests create
+    # scratch databases because schema state is what they exercise. This still
+    # covers a cold instrumented workspace build on an uncached runner.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
@@ -52,19 +57,20 @@ jobs:
       - name: Show the pinned toolchain
         run: rustup show && cargo --version
         working-directory: rustd
-      - name: Cache cargo registry and build output
+      - name: Cache cargo registry
         uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            rustd/target
-          # Distinct from test.yml's key: this lane builds the same crates with
-          # the same features, but sharing one key between two workflows means
-          # whichever finishes last overwrites the other's entry every run.
-          key: cargo-integration-${{ runner.os }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+          # Instrumented binaries cannot be restored across source revisions:
+          # `--no-clean` intentionally combines the migration and test passes,
+          # and cargo-llvm-cov would then discover both revisions in one report.
+          # Registry sources are immutable by checksum and retain the useful
+          # network saving without uploading multi-gigabyte target trees.
+          key: cargo-integration-v3-${{ runner.os }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
           restore-keys: |
-            cargo-integration-${{ runner.os }}-
+            cargo-integration-v3-${{ runner.os }}-
       # `make test-integration-rustd` depends on `_reset-test-db`, which brings
       # compose up, waits for healthchecks, drops schemas and flushes Redis.
       # KEEP_TEST_STATE is never set here: a green run under it would prove

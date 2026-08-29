@@ -36,8 +36,6 @@
     reason = "test target: an unmet precondition should fail the test loudly, and a missing lane knob is one"
 )]
 
-mod support;
-
 use afd_api::router::Dependencies as _;
 use afd_core::env::MapEnv;
 use afd_db::Db;
@@ -46,7 +44,7 @@ use afd_redis::Redis;
 use afd_redis::config::{CA_CERT_FILE_KNOB, RedisConfig, RedisRole};
 use agentsfleetd::probes::LiveDependencies;
 
-use self::support::install_subscriber;
+use crate::support::install_subscriber;
 
 /// Where the lane publishes the Postgres it brought up.
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
@@ -81,7 +79,9 @@ async fn connected() -> (Db, Redis) {
     ]);
     let redis_config = RedisConfig::resolve(&redis_env, RedisRole::Api)
         .expect("the lane publishes a usable Redis URL");
-    let queue = Redis::connect(&redis_config)
+    // Through the admission gate, like every other lane harness: the handshake
+    // is the expensive part and it queues behind the rest of the suite.
+    let queue = afd_redis::test_util::connect_live(&redis_config)
         .await
         .expect("the lane's Redis is up");
 

@@ -45,7 +45,14 @@ tracing.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a caller's
 # suite reaches this crate's seam with no datastore behind it.
-test-util = ["afd_core/test-util", "afd_db/test-util", "afd_credential/test-util"]
+test-util = [
+    "afd_core/test-util",
+    "afd_crypto/test-util",
+    "afd_db/test-util",
+    "afd_credential/test-util",
+    "afd_fleet_runtime/test-util",
+    "afd_redis/test-util",
+]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -1,5 +1,7 @@
 [package]
 name = "afd_core"
+# One aggregated test binary; see tests/core_suite.rs for why.
+autotests = false
 description = "Domain primitives shared by every agentsfleetd crate: identity, error codes, bounded values."
 version.workspace = true
 edition.workspace = true
@@ -42,3 +44,7 @@ uuid.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "core_suite"
+path = "tests/core_suite.rs"

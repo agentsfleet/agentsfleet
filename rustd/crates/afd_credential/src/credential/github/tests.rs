@@ -15,7 +15,9 @@
 use afd_fleet_runtime::config::{Access, RepositoryBinding};
 use serde_json::json;
 
-use super::{Granted, Overreach, Permission, ScopedRequest};
+use super::{Exchange, Granted, Overreach, Permission, ScopedRequest, installation_id, mint};
+use crate::credential::outcome::{Outcome, Retry};
+use crate::credential::platform::GithubApp;
 
 /// The repository every case here declares, OWNER-QUALIFIED.
 ///
@@ -207,3 +209,54 @@ fn test_permission_levels_order_so_that_stronger_is_greater() {
     assert!(Permission::Write < Permission::Admin);
     assert!(Permission::Admin < Permission::Unknown);
 }
+
+#[test]
+fn installation_ids_accept_only_unsigned_numbers_and_decimal_strings() {
+    assert_eq!(installation_id(&json!(42)), Some(42));
+    assert_eq!(installation_id(&json!("42")), Some(42));
+    for invalid in [json!(-1), json!("not-a-number"), json!({}), json!([])] {
+        assert_eq!(installation_id(&invalid), None);
+    }
+}
+
+#[tokio::test]
+async fn mint_refuses_before_transport_when_narrowing_inputs_are_unusable() {
+    let app = GithubApp {
+        app_id: 7,
+        private_key_pem: "not a private key".to_owned().into(),
+    };
+    let usable_handle = json!({"installation_id": 42});
+    let repository = binding(Access::Read);
+
+    let absent_installation = mint(Exchange {
+        app: &app,
+        handle: &json!({}),
+        binding: Some(&repository),
+        now_ms: 1,
+    })
+    .await;
+    assert!(matches!(absent_installation, Outcome::ReconnectRequired));
+
+    let absent_binding = mint(Exchange {
+        app: &app,
+        handle: &usable_handle,
+        binding: None,
+        now_ms: 1,
+    })
+    .await;
+    assert!(matches!(
+        absent_binding,
+        Outcome::MintFailed(Retry::Permanent)
+    ));
+
+    let bad_key = mint(Exchange {
+        app: &app,
+        handle: &usable_handle,
+        binding: Some(&repository),
+        now_ms: 1,
+    })
+    .await;
+    assert!(matches!(bad_key, Outcome::MintFailed(Retry::Permanent)));
+}
+
+mod transport;
