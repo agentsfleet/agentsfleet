@@ -205,8 +205,12 @@ mod tests {
         for (body, expected) in [
             (b"".as_slice(), DETAIL_BODY_REQUIRED),
             (b"[]".as_slice(), DETAIL_MALFORMED_JSON),
+            (br#"{"source_kind":"upload"}"#, DETAIL_MISSING_SKILL),
+            // Carries the skill so the missing-skill guard above passes and the
+            // attachment arm is the one that answers. Without it this case
+            // silently graded the wrong refusal.
             (
-                br#"{"source_kind":"upload","support_files":[{}]}"#,
+                br#"{"source_kind":"upload","skill_markdown":"---","support_files":[{}]}"#,
                 DETAIL_UPLOAD_ATTACHMENTS,
             ),
             (
