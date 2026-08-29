@@ -12,7 +12,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use afd_redis::Redis;
 use afd_redis::config::{RedisConfig, RedisRole};
@@ -83,7 +83,17 @@ async fn diagnose_where_connect_spends_its_time() {
     }
     report("Redis::connect sequential", whole);
 
-    // Phase 3: concurrently, which is what the lane actually does.
+    // Phase 3: concurrently and UNGATED — the diagnosis, not an assertion.
+    //
+    // This phase measured the root cause on its first run: 40 raw connects
+    // finished in 7.8 s, which is 195 ms apiece — the SAME rate as the
+    // sequential phase. Concurrent connects do not parallelize: each costs
+    // ~230 ms of serialized work, so simultaneous connects form a queue, and a
+    // connect's 5 s budget starts before it is admitted. Everything deeper
+    // than ~21 in the queue times out. 28 of 40 did. That is the lane's
+    // ConnectTimeout, reproduced on demand.
+    //
+    // So raw failures here are the finding, not a fault: this phase REPORTS.
     let started_all = Instant::now();
     let mut tasks = Vec::new();
     for _ in 0..SAMPLES {
@@ -95,23 +105,55 @@ async fn diagnose_where_connect_spends_its_time() {
         }));
     }
     let mut concurrent = Vec::with_capacity(SAMPLES);
-    let mut failures = 0;
+    let mut raw_failures = 0;
     for task in tasks {
         let (elapsed, ok) = task.await.expect("the probe task must not panic");
         if !ok {
-            failures += 1;
+            raw_failures += 1;
         }
         concurrent.push(elapsed);
     }
     report("Redis::connect concurrent", concurrent);
     println!(
-        "concurrent wall time = {:?}, failures = {failures}",
+        "concurrent wall time = {:?}, raw (ungated) failures = {raw_failures} of {SAMPLES}",
+        started_all.elapsed()
+    );
+
+    // Phase 4: concurrently and GATED — the invariant the lane relies on.
+    //
+    // `connect_live` holds a one-permit semaphore across the handshake, so a
+    // connect's budget starts AFTER admission and queueing time is spent
+    // waiting on the permit, not on the deadline. Every lane harness routes
+    // through it; this asserts what they assume: under the same concurrency
+    // that fails the raw path, the gated path loses nobody.
+    let started_all = Instant::now();
+    let mut tasks = Vec::new();
+    for _ in 0..SAMPLES {
+        let config = config.clone();
+        tasks.push(tokio::spawn(async move {
+            let started = Instant::now();
+            let outcome = afd_redis::test_util::connect_live(&config).await;
+            (started.elapsed().as_micros(), outcome.is_ok())
+        }));
+    }
+    let mut gated = Vec::with_capacity(SAMPLES);
+    let mut gated_failures = 0;
+    for task in tasks {
+        let (elapsed, ok) = task.await.expect("the probe task must not panic");
+        if !ok {
+            gated_failures += 1;
+        }
+        gated.push(elapsed);
+    }
+    report("connect_live concurrent", gated);
+    println!(
+        "gated wall time = {:?}, failures = {gated_failures} of {SAMPLES}",
         started_all.elapsed()
     );
 
     assert_eq!(
-        failures, 0,
-        "no connect should fail against a healthy Redis"
+        gated_failures, 0,
+        "the admission gate exists so that queueing never spends a connect's \
+         own budget; a failure through it is the lane's real defect"
     );
-    let _ = Duration::from_secs(0);
 }
