@@ -29,6 +29,9 @@ afd_crypto.workspace = true
 afd_redis.workspace = true
 # The event type and stream field names a fire is appended under.
 afd_wire.workspace = true
+# Resolving a zone name against the system timezone database, so a schedule
+# carrying one the scheduler would reject is refused here instead.
+jiff.workspace = true
 # The constant-time comparison a body claim is checked with — the same
 # primitive `afd_crypto::mac` compares a tag through (RULE CTM).
 subtle.workspace = true

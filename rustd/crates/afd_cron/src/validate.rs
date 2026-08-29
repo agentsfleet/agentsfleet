@@ -22,6 +22,7 @@
 //! fixed upstream, and each is a check ON TOP of a successful parse — none of
 //! them re-implements one.
 
+use jiff::tz::TimeZone;
 use philiprehberger_cron_parser::CronExpr;
 
 /// The longest expression this daemon will read.
@@ -73,9 +74,6 @@ const RANGE_SEPARATOR: char = '-';
 /// The character a step is introduced by.
 const STEP_SEPARATOR: char = '/';
 
-/// The character a zone's region and city are separated by.
-const ZONE_SEPARATOR: char = '/';
-
 /// Whether `expression` is one this daemon will register.
 ///
 /// # Errors
@@ -108,35 +106,33 @@ pub fn cron(expression: &str) -> Result<(), Invalid> {
     Ok(())
 }
 
-/// Whether `value` is a zone name this daemon will pass upstream.
+/// Whether `value` names a zone the system timezone database knows.
 ///
-/// Shape only, deliberately: the set of real zone names belongs to the timezone
-/// database and changes without this daemon being rebuilt, so refusing an
-/// unknown-but-well-formed name here would reject a zone the external scheduler
-/// accepts. What is refused is anything a path-joining consumer would read
-/// differently from the way it was written.
+/// Resolved rather than pattern-matched. A shape check accepts `Foo/Bar` — it
+/// has the right characters and the right separator — and this daemon would
+/// then store it, register it upstream, and learn it was wrong from a vendor
+/// error nobody reads. `TimeZone::get` asks the database that actually defines
+/// the answer.
+///
+/// The length bound stays in front of it, because the lookup is a filesystem
+/// read keyed on the name and an unbounded one is an unbounded path.
 ///
 /// # Errors
 /// [`Invalid::Timezone`] for an empty name, one over [`MAX_TIMEZONE_LEN`], or
-/// one carrying a character or separator placement this daemon will not send.
+/// one the timezone database does not define.
 pub fn timezone(value: &str) -> Result<(), Invalid> {
     if value.is_empty() || value.len() > MAX_TIMEZONE_LEN {
         return Err(Invalid::Timezone);
     }
-
-    let last = value.len().saturating_sub(1);
-    let mut previous_slash = false;
-    for (index, character) in value.char_indices() {
-        let slash = character == ZONE_SEPARATOR;
-        if slash && (index == 0 || previous_slash || index == last) {
-            return Err(Invalid::Timezone);
-        }
-        if !slash && !is_zone_character(character) {
-            return Err(Invalid::Timezone);
-        }
-        previous_slash = slash;
+    // A name carrying a separator the database would resolve through the
+    // filesystem is refused before the lookup: `..` in a zone name is a path
+    // traversal into whatever else that directory holds.
+    if value.contains("..") {
+        return Err(Invalid::Timezone);
     }
-    Ok(())
+    TimeZone::get(value)
+        .map(|_zone| ())
+        .map_err(|_unknown| Invalid::Timezone)
 }
 
 /// Whether `value` is a message worth waking a fleet with.
@@ -189,9 +185,4 @@ fn range_is_ordered(item: &str) -> bool {
         // verdict rather than second-guessed here.
         _unparsed => true,
     }
-}
-
-/// Whether a character may appear in a zone name outside a separator.
-const fn is_zone_character(character: char) -> bool {
-    character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '+')
 }
