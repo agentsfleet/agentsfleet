@@ -32,10 +32,7 @@
 use afd_core::error_code;
 use afd_fleet_lifecycle::{ConfigSource, Install, LibrarySource, Patch, Requested};
 
-#[path = "support/lane.rs"]
-mod support;
-
-use self::support::{LIBRARY_ID, Lane, TRIGGER_MD_EDITED};
+use crate::support::{LIBRARY_ID, Lane, TRIGGER_MD_EDITED};
 
 /// The install every test here starts from.
 async fn installed(lane: &Lane) -> afd_fleet_lifecycle::Installed {
@@ -217,7 +214,7 @@ async fn two_conditional_writes_race_and_exactly_one_of_them_lands() {
     // Bound before the join: both futures borrow their request, and a temporary
     // built inside the macro would be dropped while still held.
     let edited = conditional(TRIGGER_MD_EDITED);
-    let original = conditional(support::TRIGGER_MD);
+    let original = conditional(crate::support::TRIGGER_MD);
     let (first, second) = tokio::join!(
         lane.fleets
             .patch(&lane.workspace, &fleet.id, &edited, Lane::now()),
