@@ -137,6 +137,58 @@ pub enum Archetype {
     AppInstall(AppInstall),
 }
 
+/// The one-time exchange a provider runs before it will deliver events.
+///
+/// A closed enum for the reason [`Archetype`] is one: a provider whose
+/// handshake this daemon has no arm for must fail to compile rather than fall
+/// through to "no handshake" and go quietly unanswered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Handshake {
+    /// The provider sends events without proving the endpoint first.
+    ///
+    /// The common case, and the one a new connector most likely wants: a
+    /// delivery is proven by its signature and nothing precedes it.
+    None,
+    /// The provider posts a body carrying a value it wants echoed back.
+    ///
+    /// Slack's `url_verification` is one of these, and it is not unusual —
+    /// several vendors prove endpoint ownership this way, differing only in
+    /// which fields carry the kind and the value. Those two names are the
+    /// whole of the difference, so they are FIELDS rather than a per-provider
+    /// branch.
+    Echo(Echo),
+}
+
+/// Which fields carry an [`Handshake::Echo`] exchange.
+///
+/// Named rather than positional because all three are strings that would
+/// silently swap: a `type_field`/`echo_field` transposition compiles, passes a
+/// signature check, and fails only at the vendor's endpoint-verification screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Echo {
+    /// The envelope field naming the delivery's kind.
+    pub type_field: &'static str,
+    /// The value of that field which marks this delivery as the handshake.
+    pub type_value: &'static str,
+    /// The field carrying the value to echo — read from the request under this
+    /// name and written to the response under it too.
+    pub echo_field: &'static str,
+}
+
+/// How a provider delivers events INBOUND to this deployment.
+///
+/// `None` from [`Provider::event_ingress`] for a provider that delivers none,
+/// which is four of the five today. The signature SCHEME is deliberately not a
+/// field: [`afd_webhook::Scheme::for_source`] already resolves it from the
+/// provider id, and a second table naming the same fact is the drift RULE UFS
+/// exists to catch — a provider could be configured with one scheme and
+/// verified under another, and the failure would read as a rotated secret.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EventIngress {
+    /// What the provider does before it will send anything.
+    pub handshake: Handshake,
+}
+
 impl Provider {
     /// The flow this provider runs.
     #[must_use]
@@ -191,6 +243,37 @@ impl Provider {
                 extra_query: &[],
                 refresh: true,
             }),
+        }
+    }
+
+    /// How this provider delivers events to us, if it delivers any.
+    ///
+    /// `None` is the default answer and the honest one for four of the five:
+    /// a connector this deployment only ever CALLS has no inbound surface, and
+    /// the events route refuses a path naming one before it reads a header.
+    ///
+    /// Adding a connector that does deliver — a second chat vendor, an MCP
+    /// gateway — is an arm here plus its [`afd_webhook::Scheme`] entry. Neither
+    /// the route, the wall, nor the handler changes, which is the same claim
+    /// [`Self::archetype`] makes for the outbound half.
+    #[must_use]
+    pub const fn event_ingress(self) -> Option<EventIngress> {
+        match self {
+            // `url_verification`, per Slack's Events API. The field names are
+            // Slack's wire contract and are read from here rather than spelled
+            // in the handler, so a second echo-handshake vendor is data.
+            Self::Slack => Some(EventIngress {
+                handshake: Handshake::Echo(Echo {
+                    type_field: "type",
+                    type_value: "url_verification",
+                    echo_field: "challenge",
+                }),
+            }),
+            // GitHub delivers to `/v1/ingress/{provider}` — an App's events go
+            // to the installation-wide surface, not to the per-workspace
+            // connector one, because one App signs for every installation.
+            // Zoho, Jira and Linear are called and do not call back.
+            Self::GitHub | Self::Zoho | Self::Jira | Self::Linear => None,
         }
     }
 

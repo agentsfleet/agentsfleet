@@ -23,8 +23,14 @@ pub enum ConnectorRoute {
     Complete,
     /// Everything connectable from this workspace.
     Catalog,
-    /// Slack's event delivery.
-    SlackEvents,
+    /// A connector's inbound event delivery.
+    ///
+    /// Proven by a signature over the body against this deployment's own app
+    /// secret for that connector — no bearer, and no workspace in the path to
+    /// read one for. Which connectors answer here is
+    /// [`afd_connector::Provider::event_ingress`]'s to say; Slack is the only
+    /// one today.
+    Events,
 }
 
 impl ConnectorRoute {
@@ -35,7 +41,7 @@ impl ConnectorRoute {
         Self::Callback,
         Self::Complete,
         Self::Catalog,
-        Self::SlackEvents,
+        Self::Events,
     ];
 
     /// `Callback` and `Complete` share a template and differ in guard, which
@@ -69,9 +75,16 @@ impl ConnectorRoute {
                 "/v1/connectors/{provider}/callback",
                 Scopes::Always(NONE),
             ),
-            Self::SlackEvents => (
-                Guard::Open,
-                "/v1/connectors/slack/events",
+            // `WebhookSignature` rather than `Open`, and the difference is a
+            // claim rather than a layer: `plane_of` answers `None` for both,
+            // because a signed delivery carries no principal to resolve. What
+            // the guard records is that this route IS proven — Invariant 2
+            // reads the route metadata to say nothing reaches a stream write
+            // unverified, and an `Open` row here would make that read wrong
+            // about the one connector route that has a wall in front of it.
+            Self::Events => (
+                Guard::WebhookSignature,
+                "/v1/connectors/{provider}/events",
                 Scopes::Always(NONE),
             ),
         };

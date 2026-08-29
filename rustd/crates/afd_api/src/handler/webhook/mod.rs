@@ -33,7 +33,7 @@ pub(crate) mod verify_platform;
 mod verify_svix;
 
 pub(crate) use self::verify::verified;
-pub(crate) use self::verify_platform::verified_app;
+pub(crate) use self::verify_platform::{verified_app, verified_connector_events};
 
 use afd_core::error_code;
 use axum::body::Bytes;

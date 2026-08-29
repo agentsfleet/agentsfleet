@@ -101,9 +101,12 @@ const DEFERRED_TO_M180: &[&str] = &[
     // The provider's redirect back, which carries no workspace in its path —
     // the provider only knows the state parameter it was handed.
     "/v1/connectors/{provider}/callback",
-    // Slack's signed event delivery — ingress, so M180's rather than this
-    // milestone's, even though the table files it under the connector family.
-    "/v1/connectors/slack/events",
+    // A connector's signed event delivery — ingress, so M180's rather than
+    // this milestone's, even though the table files it under the connector
+    // family. The segment is the provider, as it is on the callback beside it:
+    // Slack is the only connector that delivers today, and the template that
+    // serves it serves the next one without a route change.
+    "/v1/connectors/{provider}/events",
     "/v1/fleets/bundles",
 ];
 
