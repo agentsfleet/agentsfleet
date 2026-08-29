@@ -14,6 +14,14 @@ use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_db::test_util::TestDatabase;
 
+/// How many times the warm-up below may lose its race before the lane is
+/// declared unreachable.
+///
+/// Three, because the failure it absorbs is a handshake overrunning a 250 ms
+/// budget under concurrent load, and a lane that cannot complete one in three
+/// tries is not slow, it is down.
+const WARMING_ATTEMPTS: usize = 3;
+
 /// Dimension 2.4 — an exhausted pool and an absent datastore are two different
 /// answers, because they are two different incidents.
 #[tokio::test(flavor = "multi_thread")]
@@ -44,7 +52,29 @@ async fn test_pool_error_classes() {
             ],
         )
         .await;
-    let held = db.acquire().await.expect("the first connection is free");
+    // Establish the connection BEFORE the timed window, not inside it. The pool
+    // is lazy, so the first acquire pays a handshake — measured at 147-337 ms
+    // against this lane's Postgres — while the 250 ms budget under test bounds
+    // the WAIT for a free connection, not the making of one. Under load the two
+    // overlapped: the first acquire timed out and the pool reported a datastore
+    // outage while Postgres was answering normally.
+    //
+    // Bounded, and it cannot mask a real outage. An unreachable Postgres fails
+    // every attempt and the assertion below still fires; what the retry absorbs
+    // is a handshake that lost a race with sibling load, which is the only way
+    // this acquire fails on a healthy lane.
+    let mut warming = Err("no attempt was made".to_owned());
+    for _attempt in 0..WARMING_ATTEMPTS {
+        match db.acquire().await {
+            Ok(connection) => {
+                warming = Ok(connection);
+                break;
+            }
+            Err(error) => warming = Err(error.to_string()),
+        }
+    }
+    let held = warming
+        .expect("the lane's Postgres must hand out one connection within the warm-up attempts");
     let error = db
         .acquire()
         .await

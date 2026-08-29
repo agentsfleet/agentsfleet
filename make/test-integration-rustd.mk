@@ -88,7 +88,7 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 	  --tally "$$tally" --cwd "$(RUSTD_DIR)" \
 	  --label "[rustd] Integration suite" -- \
 	  $(WITH_PROGRESS) "[rustd] integration suite" -- \
-	  cargo test --workspace --all-features -- --ignored
+	  cargo test --workspace --all-features --test '*' -- --ignored
 
 # The ONE invocation that executes both tiers, and therefore the one that
 # measures them.

