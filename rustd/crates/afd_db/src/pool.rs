@@ -272,6 +272,16 @@ impl Db {
         self.pool.size()
     }
 
+    /// The floor [`Self::warm`] targets.
+    ///
+    /// Exposed for the same reason as [`Self::size`]: a caller that warms can
+    /// then say whether the floor was REACHED, and the two numbers are the
+    /// whole of that claim.
+    #[must_use]
+    pub const fn min_connections(&self) -> u32 {
+        self.min_connections
+    }
+
     /// The role this pool serves.
     #[must_use]
     pub const fn role(&self) -> DbRole {

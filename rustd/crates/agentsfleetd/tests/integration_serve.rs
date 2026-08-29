@@ -142,6 +142,17 @@ async fn test_boot_to_ready_on_compose() {
         "the bound port is resolved, not the request"
     );
 
+    // Asserted BEFORE `/readyz`, deliberately. The readiness probe acquires a
+    // connection, and on a cold lazy pool that acquire opens one — so checking
+    // after it would pass on a daemon that never warmed at all. Boot is the
+    // only thing that can have filled the pool at this point.
+    assert!(
+        booted.database.size() >= booted.database.min_connections(),
+        "boot warms the pool to its floor: {} open against a floor of {}",
+        booted.database.size(),
+        booted.database.min_connections()
+    );
+
     assert_eq!(
         get_status(booted.address, "/readyz").await,
         200,

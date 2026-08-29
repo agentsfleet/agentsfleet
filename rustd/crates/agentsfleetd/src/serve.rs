@@ -29,6 +29,7 @@ mod optional;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT};
 use afd_core::env::EnvSource;
@@ -119,6 +120,15 @@ pub async fn boot<E: EnvSource + ?Sized>(
 /// The subcommand a boot failure names.
 const COMMAND_SERVE: &str = "serve";
 
+/// How long boot spends establishing the pool's floor before it serves.
+///
+/// The floor is a quarter of the ceiling and each connection costs the 147-337
+/// ms this lane measures, so the whole warm-up fits here several times over.
+/// It is a deadline and not a requirement: [`Db::warm`] cannot fail, and a pool
+/// that did not fill is a slower pool rather than a broken one — the datastore
+/// was already proven reachable by `Db::connect`. Boot proceeds either way.
+const POOL_WARM_DEADLINE: Duration = Duration::from_secs(5);
+
 /// Everything after the knobs are known, so its failures can be reported.
 async fn open(
     config: BootConfig,
@@ -155,6 +165,12 @@ struct Runtime {
 
 async fn open_runtime(config: &BootConfig, analytics: &Analytics) -> Result<Runtime, BootFailure> {
     let database = Db::connect(config.api_pool()).await?;
+    // Before the router exists, so the first request finds live connections
+    // instead of paying a handshake inside an acquire budget sized for a wait.
+    // sqlx does not do this itself: it bootstraps `min_connections` only when
+    // `idle_timeout` and `max_lifetime` are both unset, and its own defaults
+    // set both. `warm` reports its shortfall through `pool_warm_incomplete`.
+    database.warm(POOL_WARM_DEADLINE).await;
     let queue = Redis::connect(config.redis()).await?;
     let (capabilities, sessions) = crate::identity::resolve(config.identity());
     announce_identity(&capabilities);
