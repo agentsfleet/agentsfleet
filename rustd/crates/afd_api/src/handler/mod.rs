@@ -30,6 +30,7 @@ pub mod runner;
 pub mod secret;
 pub mod stream;
 pub mod tenant;
+pub mod webhook;
 
 mod refusable;
 mod refusal;

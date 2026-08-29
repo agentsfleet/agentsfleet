@@ -33,6 +33,22 @@ pub const SECRET_REFERENCED_BY_MODEL_ENTRIES: ErrorCode = ErrorCode::declare("UZ
 /// A secret with the requested name already exists in this workspace.
 pub const SECRET_NAME_TAKEN: ErrorCode = ErrorCode::declare("UZ-VAULT-005");
 
+/// The path named a fleet this daemon has no row for.
+///
+/// `ERR_WEBHOOK_FLEET_NOT_FOUND` (`error_entries.zig:133`). Answered before any
+/// secret is resolved, and it is the ONE refusal on this surface that a caller
+/// earns without presenting a signature — there is no fleet whose secret could
+/// have been asked for.
+pub const WEBHOOK_FLEET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-WH-001");
+
+/// A verified delivery whose body is not the shape its header claims.
+///
+/// `ERR_WEBHOOK_MALFORMED` (`error_entries.zig:134`). Decided AFTER the
+/// signature, never before: a body that fails to parse has still proved it came
+/// from the holder of the secret, so this is the sender's own bug rather than an
+/// intruder's, and telling them so costs nothing.
+pub const WEBHOOK_MALFORMED: ErrorCode = ErrorCode::declare("UZ-WH-002");
+
 /// This fleet has no usable webhook signing secret configured.
 ///
 /// `ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED` (`error_registry.zig:67`). An
@@ -59,6 +75,33 @@ pub const WEBHOOK_SIGNATURE_INVALID: ErrorCode = ErrorCode::declare("UZ-WH-010")
 /// late delivery is one to retry, a bad signature is one never to send again.
 /// Unified with `UZ-SLK-011` per M180.
 pub const WEBHOOK_TIMESTAMP_STALE: ErrorCode = ErrorCode::declare("UZ-WH-011");
+
+/// An App delivery whose installation resolves to no workspace.
+///
+/// `ERR_WEBHOOK_INSTALL_NOT_MAPPED` (`error_entries.zig:141`). Never a refusal
+/// on the wire: the App ingress answers 200 and names this as the reason it
+/// dropped the delivery. The sender is a correctly configured provider signing
+/// with the right secret — what is missing is a `core.connector_installs` row,
+/// which only an operator reconnecting the App can supply. A 4xx would put a
+/// delivery nobody can act on into a three-day retry loop.
+pub const WEBHOOK_INSTALL_NOT_MAPPED: ErrorCode = ErrorCode::declare("UZ-WH-021");
+
+/// An App delivery no fleet in the resolved workspace subscribed to.
+///
+/// `ERR_WEBHOOK_SUBSCRIPTION_NOT_FOUND` (`error_entries.zig:142`). The ordinary
+/// case rather than a fault, and 200 for the same reason as
+/// [`WEBHOOK_INSTALL_NOT_MAPPED`]: an App receives every event for every
+/// repository in an installation, and a workspace subscribes a few fleets to a
+/// few of them. Almost every delivery this daemon accepts ends here.
+pub const WEBHOOK_SUBSCRIPTION_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-WH-022");
+
+/// A delivery whose body is past the ingress limit.
+///
+/// `ERR_WEBHOOK_PAYLOAD_TOO_LARGE` (`error_entries.zig:143`). Decided on the
+/// byte count BEFORE the body is hashed, let alone parsed: the cap is what
+/// bounds the work an unauthenticated request can ask this daemon to do, so
+/// spending an HMAC over a body to find out it was too big would defeat it.
+pub const WEBHOOK_PAYLOAD_TOO_LARGE: ErrorCode = ErrorCode::declare("UZ-WH-030");
 
 /// No approval gate under that id, in that workspace.
 pub const APPROVAL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-APPROVAL-002");

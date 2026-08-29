@@ -283,3 +283,65 @@ fn a_verdict_reports_its_refusal_and_nothing_else() {
     assert!(!refused.is_verified());
     assert_eq!(refused.refusal(), Some(Refusal::StaleTimestamp));
 }
+
+/// Whether `scheme` has a row in [`Scheme::ALL`].
+///
+/// The `match` is the compile-time half of the proof: a variant added to the
+/// enum makes this arm non-exhaustive and the suite stops building, so a scheme
+/// cannot reach production verifiable-but-unresolvable — signable by a fleet
+/// whose trigger nothing can complete.
+fn is_listed(scheme: Scheme) -> bool {
+    match scheme {
+        Scheme::BodyHex | Scheme::BodyHexBare | Scheme::SlackV0 => Scheme::ALL.contains(&scheme),
+    }
+}
+
+#[test]
+fn the_declared_list_is_total_over_the_enum() {
+    for scheme in [Scheme::BodyHex, Scheme::BodyHexBare, Scheme::SlackV0] {
+        assert!(is_listed(scheme), "{scheme:?} is not in Scheme::ALL");
+    }
+    assert_eq!(
+        Scheme::ALL.len(),
+        3,
+        "a variant was added to ALL without a row in this suite"
+    );
+}
+
+#[test]
+fn every_scheme_resolves_from_the_source_it_names() {
+    for scheme in Scheme::ALL {
+        assert_eq!(
+            Scheme::for_source(scheme.source()),
+            Some(*scheme),
+            "`{}` does not round-trip through its own source",
+            scheme.source()
+        );
+    }
+}
+
+#[test]
+fn every_source_is_declared_once() {
+    for (index, scheme) in Scheme::ALL.iter().enumerate() {
+        let duplicate = Scheme::ALL
+            .iter()
+            .skip(index + 1)
+            .any(|other| other.source() == scheme.source());
+
+        assert!(!duplicate, "`{}` is declared twice", scheme.source());
+    }
+}
+
+#[test]
+fn an_undeclared_source_resolves_to_nothing() {
+    // A provider the daemon does not ship must not silently borrow another's
+    // scheme — that would verify a delivery against the wrong basestring.
+    assert_eq!(Scheme::for_source("jira"), None);
+    assert_eq!(Scheme::for_source(""), None);
+    assert_eq!(
+        Scheme::for_source("GitHub"),
+        None,
+        "sources are matched exactly; a fleet authored with the wrong case is a \
+         misconfiguration to report, not one to guess through"
+    );
+}

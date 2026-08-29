@@ -17,7 +17,7 @@
 //! putting AES-GCM behind it would rebuild every login when a `meta_*` column
 //! moved.
 //!
-//! # Nothing here opens an envelope
+//! # No ROUTE opens an envelope
 //!
 //! The workspace secret surface is four verbs — create, list, replace, delete —
 //! and not one of them returns a stored value. A secret is write-only by
@@ -37,6 +37,12 @@
 //! and a `noteDecrypt` funnel every decrypt site must remember to call. A
 //! counter proves what happened on the run that was measured; a missing field
 //! proves what can happen at all.
+//!
+//! [`Vault::load`] is the one verb that DOES open an envelope, and it is not on
+//! this surface at all: no route reaches it, and it answers one name rather
+//! than a page. It exists because a signature check needs the shared secret to
+//! compute a tag with. See [`load`] on exactly which of the three guarantees
+//! above it touches, which is none of them.
 //!
 //! # What it does not contain
 //!
@@ -58,6 +64,7 @@ use tokio as _;
 // respelling it. The other two are private modules whose worthwhile types are
 // re-exported below, so the crate has one import path per name rather than two.
 pub mod error;
+mod load;
 
 mod delete;
 mod projection;

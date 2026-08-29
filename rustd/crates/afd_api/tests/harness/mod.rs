@@ -83,6 +83,7 @@ use afd_tenant::workspace::Workspaces;
 // is the runner plane's reader and this is the workspace-admin surface.
 use afd_admin::{Models as AdminModels, PlatformKeys};
 use afd_approval::{Inbox, IntegrationGrants};
+use afd_ingress::Ingress;
 use afd_tenant::preference::Preferences;
 use afd_vault::Vault as SecretVault;
 use axum::Router;
@@ -155,6 +156,7 @@ pub(crate) struct Fleet {
     logins: Logins,
     fleets: Fleets,
     secrets: SecretVault,
+    ingress: Ingress,
     preferences: Preferences,
     approvals: Inbox,
     grants: IntegrationGrants,
@@ -250,7 +252,12 @@ impl Fleet {
                 FIXTURE_APP_URL,
             ),
             fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
-            secrets: SecretVault::new(database.clone(), kek, Entropy::new()),
+            secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+            ingress: Ingress::new(
+                database.clone(),
+                SecretVault::new(database.clone(), kek, Entropy::new()),
+                queue.clone(),
+            ),
             preferences: Preferences::new(database.clone(), Entropy::new()),
             approvals: Inbox::new(database.clone(), queue.clone()),
             grants: IntegrationGrants::new(database.clone()),
@@ -309,7 +316,12 @@ impl Fleet {
                 FIXTURE_APP_URL,
             ),
             fleets: Fleets::new(database.clone(), queue.clone(), Entropy::new()),
-            secrets: SecretVault::new(database.clone(), kek, Entropy::new()),
+            secrets: SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+            ingress: Ingress::new(
+                database.clone(),
+                SecretVault::new(database.clone(), kek, Entropy::new()),
+                queue.clone(),
+            ),
             preferences: Preferences::new(database.clone(), Entropy::new()),
             approvals: Inbox::new(database.clone(), queue.clone()),
             grants: IntegrationGrants::new(database.clone()),

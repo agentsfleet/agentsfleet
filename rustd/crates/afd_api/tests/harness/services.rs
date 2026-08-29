@@ -22,6 +22,7 @@ use afd_fleet::bundle::Bundles;
 use afd_fleet::memory::Memories;
 use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
+use afd_ingress::Ingress;
 use afd_library::{Libraries, LibraryImports};
 use afd_observability::Analytics;
 use afd_runner::Runners;
@@ -52,6 +53,7 @@ impl Services for Fleet {
     type Approvals = Inbox;
     type Grants = IntegrationGrants;
     type Events = History;
+    type Ingress = Ingress;
     type Steering = Steer;
     type Memories = Memories;
     type Billing = Billing;
@@ -120,6 +122,10 @@ impl Services for Fleet {
 
     fn analytics(&self) -> &Analytics {
         &self.analytics
+    }
+
+    fn ingress(&self) -> &Ingress {
+        &self.ingress
     }
 
     fn steering(&self) -> &Steer {

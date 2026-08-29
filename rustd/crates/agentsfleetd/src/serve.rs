@@ -166,6 +166,7 @@ async fn open(
         capabilities,
         sessions,
         stores: crate::bundles::resolve(config.bundles()),
+        platform_admin_workspace: config.platform_admin_workspace().cloned(),
         broker,
         live,
         analytics: analytics.clone(),

@@ -31,6 +31,21 @@ test-util = [
 # graph a wish. axum/tower/tower-http/afd_core arrive with the admission layer
 # and the envelope writer.
 [dependencies]
+# GitHub's webhook payloads, typed. Already a workspace dependency for App
+# JWT minting, already resolved under `default-features = false` with the
+# aws-lc-rs features — so `models::webhook_events` adds ONE direct dependency
+# and no transitive crate at all (all 27 of its mandatory deps are already in
+# the lock). The Zig hand-walks the same payloads because its stdlib has no
+# derive; that is a Zig constraint, not a design (RULE PORT).
+octocrab.workspace = true
+# The repair-branch prefix one delivery is checked against. Imported rather
+# than re-declared: a second spelling would let the ingress wake a fleet on
+# its own repair output, which is the loop the check exists to break.
+afd_gate.workspace = true
+# The receipt stamp a digest carries. `normalizer/github.zig` computes the
+# civil date from epoch seconds by hand because Zig's stdlib has no date
+# type; jiff is already this workspace's domain-time crate.
+jiff.workspace = true
 # Priced-model and platform-default administration, behind the admin scopes.
 afd_admin.workspace = true
 # The operator's approval queue. Its own crate, not an `afd_fleet` module:
@@ -50,6 +65,15 @@ afd_fleet_ops.workspace = true
 # `FleetName` — a fleet's authored slug. Parsed at the edge, so the install path
 # below carries no validation arm of its own.
 afd_fleet_runtime.workspace = true
+# What a signed delivery resolves against: the fleet's binding, its signing
+# secret, and the at-most-once append the webhook handlers below act through.
+afd_ingress.workspace = true
+# The signature wall. A library dependency rather than a dev one because the
+# check genuinely runs HERE: `plane_of` answers `None` for the webhook guards,
+# so there is no layer to put it in — see `handler::webhook`. This crate
+# computes no tag of its own; it hands bytes to `Scheme::verify_at` and matches
+# on the `Verdict`.
+afd_webhook.workspace = true
 # Fleet-library catalogue administration and import services.
 afd_library.workspace = true
 # The tenant plane: api-keys, command-line credentials, the device-flow login

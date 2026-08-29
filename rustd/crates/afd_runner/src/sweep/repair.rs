@@ -38,7 +38,7 @@ use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_redis::Redis;
-use afd_redis::streams::FleetStreams;
+use afd_redis::streams::{FleetStreams, OnceScope};
 use afd_wire::event::EventType;
 use serde::Serialize;
 use sqlx::Row as _;
@@ -294,6 +294,7 @@ impl Repairs {
         let appended = self
             .streams
             .append_once(
+                OnceScope::FleetIntent,
                 &intent.id,
                 &intent.verifier_fleet_id,
                 &[
@@ -341,7 +342,7 @@ impl Repairs {
 
         let mut forgotten = Vec::with_capacity(page.len());
         for id in &page {
-            match self.streams.forget_once(id).await {
+            match self.streams.forget_once(OnceScope::FleetIntent, id).await {
                 Ok(()) => forgotten.push(id.clone()),
                 // Left for the next pass: the row keeps its uncleared marker,
                 // so nothing is lost by not recording this one.

@@ -78,6 +78,45 @@ pub enum Scheme {
 }
 
 impl Scheme {
+    /// Every scheme this daemon knows, in declaration order.
+    ///
+    /// Exists so [`Self::for_source`] can scan without a second table. A
+    /// variant missing from here would be verifiable but unresolvable — a fleet
+    /// could sign with it and never have its trigger completed — so the suite
+    /// proves the list is total over the enum.
+    pub const ALL: &'static [Self] = &[Self::BodyHex, Self::BodyHexBare, Self::SlackV0];
+
+    /// The `source` an authored trigger names this scheme's provider by.
+    ///
+    /// The scheme and the name a person writes in `TRIGGER.md` belong together:
+    /// `afd_fleet_runtime`'s provider registry completes a trigger's signature
+    /// block from these strings, and the ingress verifies with the same value
+    /// it resolved. Two tables would let a fleet be configured with one
+    /// header and checked against another, and the resulting failure reads as
+    /// a wrong secret rather than a wrong header.
+    #[must_use]
+    pub const fn source(self) -> &'static str {
+        match self {
+            Self::BodyHex => "github",
+            Self::BodyHexBare => "linear",
+            Self::SlackV0 => "slack",
+        }
+    }
+
+    /// The scheme a trigger's `source` names, if this daemon ships one.
+    ///
+    /// `None` is "no scheme is declared for that name", which a caller answers
+    /// however its own surface requires — config parsing accepts it when the
+    /// trigger names its own header, and ingress refuses it as
+    /// [`Refusal::NotConfigured`].
+    #[must_use]
+    pub fn for_source(source: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|scheme| scheme.source() == source)
+    }
+
     /// The header the signature arrives in.
     ///
     /// Lowercase, and that is load-bearing rather than stylistic: header lookup
