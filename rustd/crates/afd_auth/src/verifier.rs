@@ -73,6 +73,22 @@ pub enum VerifyError {
     /// A required standard claim is absent.
     #[error("token is missing a required claim")]
     MissingClaim,
+    /// A claim that NARROWS this token's authority is present but unreadable.
+    ///
+    /// Deliberately NOT [`Self::MissingClaim`]. An absent ceiling means no
+    /// ceiling, which is the permissive default every token in service relies
+    /// on; a ceiling that is present and unreadable is a restriction someone
+    /// applied that this daemon cannot apply. Giving the two the same variant
+    /// would let the second be handled as the first, which grants the access
+    /// the restriction existed to withhold and reports nothing.
+    #[error("token carries an unreadable authority-narrowing claim")]
+    UnreadableCeiling,
+    /// The `nbf` claim is in the future — the token is not valid yet.
+    ///
+    /// Separate from [`Self::Expired`] because the two bound opposite ends of
+    /// a token's life and an operator chasing one is not chasing the other.
+    #[error("token is not valid yet")]
+    NotYetValid,
     /// The `iss` claim is not the configured issuer.
     #[error("token issuer does not match")]
     IssuerMismatch,

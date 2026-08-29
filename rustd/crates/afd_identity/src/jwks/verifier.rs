@@ -14,10 +14,19 @@
 //! `jsonwebtoken` would do all of this, and `core_api-develop` uses it — then
 //! hand-writes `has_correct_issuer`, `has_correct_subject`,
 //! `has_secret_name_claim` and `has_account_uid_claim` on top, because the
-//! crate's built-in `Validation` did not fit. The same wall is here: it
-//! validates `exp` against `SystemTime` with no seam, and Dimension 4.2 needs
-//! an expired-token test that does not depend on the wall clock. Owning the
-//! four checks costs forty lines and keeps every one of them steerable.
+//! crate's built-in `Validation` did not fit. The same wall is here, and it was
+//! re-checked against the pinned `jsonwebtoken 10.4.0` rather than taken on
+//! trust: `validation.rs` reads the clock by calling a free
+//! `get_current_timestamp()` inside a `pub(crate) fn validate`, with no clock
+//! parameter and no way to reach it, so every expiry test would have to move
+//! the wall clock. Two of its defaults would also have to be overridden rather
+//! than inherited — `leeway: 60` against a session token that lives sixty
+//! seconds, and `validate_nbf: false`. Owning the checks keeps all of them
+//! steerable, and this note is version-pinned because it is a claim about a
+//! dependency that can change underneath it.
+//!
+//! No cryptography is owned here. RS256 is `aws_lc_rs`, base64 is `base64`, and
+//! the payload is `serde_json` — what this file owns is ORDER and POLICY.
 
 use std::sync::Arc;
 
@@ -25,9 +34,9 @@ use afd_auth::credential::Presented;
 use afd_auth::principal::Subject;
 use afd_auth::verifier::{TokenVerifier, VerifiedClaims, VerifyError};
 use afd_core::clock::Clock;
-use afd_core::id::Uuid7;
 
 use crate::jwks::cache::{DEFAULT_TTL_MS, KeyCache};
+use crate::jwks::claims::{CLAIM_TENANT_ID, Claims};
 use crate::jwks::key_set::SigningKey;
 use crate::jwks::source::KeySetSource;
 use crate::jwt::{Header, Segments, decode_segment};
@@ -127,8 +136,15 @@ impl<S: KeySetSource> JwksVerifier<S> {
 
     /// Checks the standard claims and lifts the ones this daemon acts on.
     fn read_claims(&self, payload: &[u8]) -> Result<VerifiedClaims, VerifyError> {
-        let claims: Claims =
-            serde_json::from_slice(payload).map_err(|_invalid| VerifyError::Malformed)?;
+        // The same object-only reader the header and the key set are read
+        // through. `serde_json::from_slice` fills a derived struct from a JSON
+        // ARRAY, taking its elements positionally, and this payload is the one
+        // of the three that carries the authorisation decision. It happens to
+        // be safe today only because `#[serde(flatten)]` suppresses the
+        // sequence path — an incidental property of a field that exists for an
+        // unrelated reason, and not something to leave a guarantee resting on.
+        let claims: Claims = afd_core::json::object_from_slice(payload)
+            .map_err(|_invalid| VerifyError::Malformed)?;
 
         if claims.iss.as_deref() != Some(&*self.issuer) {
             return Err(VerifyError::IssuerMismatch);
@@ -136,13 +152,28 @@ impl<S: KeySetSource> JwksVerifier<S> {
         if !claims.audience_contains(&self.audience) {
             return Err(VerifyError::AudienceMismatch);
         }
+        // One clock read for both time bounds, so they can never disagree about
+        // when "now" was.
+        let now = self.clock.now().as_seconds();
         let exp = claims.exp.ok_or(VerifyError::MissingClaim)?;
         // `exp` is seconds since the epoch; the clock reads milliseconds.
         // Comparing in seconds is what the Zig daemon does
         // (`jwks_standard_claims.zig`: `if (exp <= now_s)`), including the
         // boundary: a token expiring exactly now is expired.
-        if exp <= self.clock.now().as_seconds() {
+        if exp <= now {
             return Err(VerifyError::Expired);
+        }
+        // Checked when present, never required. The configured provider sends
+        // `nbf` on every session token — ten seconds behind `iat` — so this is
+        // unreachable against it; but the issuer is a deployment knob, which
+        // makes this verifier's contract "an OIDC provider" rather than one
+        // vendor, and RFC 7519's not-before rule makes a future `nbf` a
+        // refusal. No
+        // leeway, for the reason `exp` has none: the session token lives sixty
+        // seconds, and a skew allowance large enough to matter is a meaningful
+        // fraction of its whole life.
+        if claims.nbf.is_some_and(|nbf| nbf > now) {
+            return Err(VerifyError::NotYetValid);
         }
         let subject = claims
             .sub
@@ -157,7 +188,10 @@ impl<S: KeySetSource> JwksVerifier<S> {
             // anyway, and failing the whole verification would report a
             // provisioning problem as a bad token.
             tenant: claims.identifier(CLAIM_TENANT_ID),
-            workspace_scope: claims.identifier(CLAIM_WORKSPACE_ID),
+            // Fallible where the tenant is not: an unreadable ceiling refuses
+            // the token rather than reading as "no ceiling". See
+            // `Claims::ceiling` for why the two claims part company here.
+            workspace_scope: claims.ceiling()?,
             scope_claim: claims.scopes.map(Into::into),
         })
     }
@@ -173,74 +207,6 @@ impl<S: KeySetSource> TokenVerifier for JwksVerifier<S> {
         // await would tie the caller's lifetime to this verification.
         let token = presented.expose().to_owned();
         async move { self.verify_token(&token).await }
-    }
-}
-
-/// The tenant claim's name, in both places it may appear.
-const CLAIM_TENANT_ID: &str = "tenant_id";
-/// The workspace-ceiling claim's name.
-const CLAIM_WORKSPACE_ID: &str = "workspace_id";
-/// The object the provider nests its metadata claims under.
-///
-/// `clerk_metadata_payload.zig` writes exactly two keys into `public_metadata`,
-/// and the session-token template projects `metadata.tenant_id` — so on a real
-/// deployment the tenant is NESTED, and a reader that only looked at the top
-/// level would find it on no production token at all.
-const CLAIM_METADATA: &str = "metadata";
-
-/// The claims this daemon reads. Everything else the issuer sends is ignored.
-#[derive(Debug, serde::Deserialize)]
-struct Claims {
-    sub: Option<String>,
-    iss: Option<String>,
-    aud: Option<serde_json::Value>,
-    exp: Option<i64>,
-    /// Everything else, so the nested metadata object stays reachable without
-    /// naming a second struct for one lookup.
-    #[serde(flatten)]
-    rest: serde_json::Map<String, serde_json::Value>,
-    /// The capability claim, top level ONLY.
-    ///
-    /// `claims.zig` is emphatic about this: an earlier ladder tried `OAuth2`'s
-    /// `scope` BEFORE this one, so a token carrying a standard `scope` claim
-    /// would silently have supplied a different capability set. One place, and
-    /// a reader that cannot say which value it trusted is the bug.
-    scopes: Option<String>,
-}
-
-impl Claims {
-    /// An identifier claim, read top-level first and then under `metadata`.
-    ///
-    /// The ladder `claims.zig::getClerkTenantId` walks, and in that order: a
-    /// top-level projection wins over the nested one, so a template that starts
-    /// projecting to the top level does not need both readers changed at once.
-    fn identifier(&self, name: &str) -> Option<Uuid7> {
-        let raw = self
-            .rest
-            .get(name)
-            .and_then(serde_json::Value::as_str)
-            .or_else(|| {
-                self.rest
-                    .get(CLAIM_METADATA)?
-                    .as_object()?
-                    .get(name)?
-                    .as_str()
-            })?;
-        Uuid7::parse(raw).ok()
-    }
-
-    /// Whether `aud` names `wanted`, as a string or inside an array.
-    ///
-    /// Both shapes are legal in the specification and providers use both, so
-    /// accepting only one would refuse a conforming token.
-    fn audience_contains(&self, wanted: &str) -> bool {
-        match &self.aud {
-            Some(serde_json::Value::String(one)) => one == wanted,
-            Some(serde_json::Value::Array(many)) => many
-                .iter()
-                .any(|item| item.as_str().is_some_and(|value| value == wanted)),
-            _ => false,
-        }
     }
 }
 
