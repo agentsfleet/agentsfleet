@@ -1,7 +1,5 @@
 [package]
 name = "agentsfleetd"
-# One aggregated test binary; see tests/daemon_suite.rs for why.
-autotests = false
 description = "The daemon: subcommand parsing, boot choreography, and the task supervisor."
 version.workspace = true
 edition.workspace = true
@@ -143,7 +141,3 @@ afd_wire.workspace = true
 
 [lints]
 workspace = true
-
-[[test]]
-name = "daemon_suite"
-path = "tests/daemon_suite.rs"

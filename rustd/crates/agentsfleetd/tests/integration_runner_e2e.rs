@@ -32,15 +32,32 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+mod support;
+
+#[path = "support/e2e_db.rs"]
+mod e2e_db;
+
+#[path = "support/e2e_seed.rs"]
+mod e2e_seed;
+
+#[path = "support/e2e.rs"]
+mod e2e;
+
+#[path = "support/e2e_wire.rs"]
+mod wire;
+
+#[path = "support/e2e_reads.rs"]
+mod reads;
+
 #[path = "integration_runner_e2e/money_gate.rs"]
 mod money_gate;
 
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 
-use crate::e2e::{Scenario, scenario};
-use crate::reads::{balance, counter_column, event_column, lease_column, lease_rows, ledger_rows};
-use crate::wire::{
+use self::e2e::{Scenario, scenario};
+use self::reads::{balance, counter_column, event_column, lease_column, lease_rows, ledger_rows};
+use self::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN, capable_beat, claim, field, get,
     json, post, report_body,
 };

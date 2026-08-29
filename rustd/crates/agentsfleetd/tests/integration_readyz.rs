@@ -36,6 +36,8 @@
     reason = "test target: an unmet precondition should fail the test loudly, and a missing lane knob is one"
 )]
 
+mod support;
+
 use afd_api::router::Dependencies as _;
 use afd_core::env::MapEnv;
 use afd_db::Db;
@@ -44,7 +46,7 @@ use afd_redis::Redis;
 use afd_redis::config::{CA_CERT_FILE_KNOB, RedisConfig, RedisRole};
 use agentsfleetd::probes::LiveDependencies;
 
-use crate::support::install_subscriber;
+use self::support::install_subscriber;
 
 /// Where the lane publishes the Postgres it brought up.
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";

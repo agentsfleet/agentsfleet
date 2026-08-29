@@ -21,6 +21,8 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+mod support;
+
 use afd_core::env::MapEnv;
 use agentsfleetd::cli::{Cli, Command, FAILURE, SUCCESS, on_runtime, run, status_for};
 use agentsfleetd::daemon::{Outcome, StopCause};
@@ -50,10 +52,10 @@ fn parses_but_dead() -> MapEnv {
         .into_iter()
         // Required at boot, and — like everything else in this fixture —
         // resolved rather than used.
-        .chain(crate::support::SESSION_PEPPER)
+        .chain(support::SESSION_PEPPER)
         // The provider is required at boot, and — like the datastores above —
         // resolved rather than dialled, so a well-formed value is enough here.
-        .chain(crate::support::IDENTITY),
+        .chain(support::IDENTITY),
     )
 }
 

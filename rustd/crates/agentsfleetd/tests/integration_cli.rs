@@ -20,6 +20,8 @@
     reason = "test target: an unmet precondition should fail the test loudly, and a missing lane knob is one"
 )]
 
+mod support;
+
 use std::io::Read as _;
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::process::{Child, Command, Stdio};
@@ -29,7 +31,7 @@ use afd_core::env::MapEnv;
 use agentsfleetd::cli::{Cli, FAILURE, SUCCESS, run};
 use clap::Parser as _;
 
-use crate::support::install_subscriber;
+use self::support::install_subscriber;
 
 /// The binary under test, built by Cargo for this suite.
 const DAEMON: &str = env!("CARGO_BIN_EXE_agentsfleetd");
@@ -83,8 +85,8 @@ fn lane_knobs() -> Vec<(&'static str, String)> {
         ("DATABASE_POOL_SIZE", LANE_POOL_SIZE.to_owned()),
     ]
     .into_iter()
-    .chain(crate::support::SESSION_PEPPER.map(|(knob, value)| (knob, value.to_owned())))
-    .chain(crate::support::IDENTITY.map(|(knob, value)| (knob, value.to_owned())))
+    .chain(support::SESSION_PEPPER.map(|(knob, value)| (knob, value.to_owned())))
+    .chain(support::IDENTITY.map(|(knob, value)| (knob, value.to_owned())))
     .collect()
 }
 
@@ -128,8 +130,8 @@ fn spawn(args: &[&str], knobs: &[(&str, String)]) -> Child {
         "DATABASE_POOL_SIZE",
     ]
     .into_iter()
-    .chain(crate::support::SESSION_PEPPER.map(|(knob, _value)| knob))
-    .chain(crate::support::IDENTITY_KNOBS)
+    .chain(support::SESSION_PEPPER.map(|(knob, _value)| knob))
+    .chain(support::IDENTITY_KNOBS)
     {
         command.env_remove(knob);
     }

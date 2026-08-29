@@ -26,12 +26,29 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+mod support;
+
+#[path = "support/e2e_db.rs"]
+mod e2e_db;
+
+#[path = "support/e2e_seed.rs"]
+mod e2e_seed;
+
+#[path = "support/e2e.rs"]
+mod e2e;
+
+#[path = "support/e2e_wire.rs"]
+mod wire;
+
+#[path = "support/e2e_reads.rs"]
+mod reads;
+
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
-use crate::e2e::{MODEL, POSTURE, scenario};
-use crate::reads::{assert_shape, lease_column};
-use crate::wire::{
+use self::e2e::{MODEL, POSTURE, scenario};
+use self::reads::{assert_shape, lease_column};
+use self::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, OUTPUT_TOKENS, capable_beat, claim, json, post,
     report_body,
 };
