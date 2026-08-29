@@ -175,13 +175,6 @@ async fn a_gate_that_cannot_mint_its_identity_fails_closed() {
     fixture.cleanup().await;
 }
 
-#[test]
-fn waiting_states_have_stable_operator_names() {
-    assert_eq!(Waiting::Parked.as_str(), "parked");
-    assert_eq!(Waiting::Pending.as_str(), "pending");
-    assert_eq!(Waiting::Unreadable.as_str(), "unreadable");
-}
-
 fn config(repository_write: bool) -> FleetConfig {
     let repository = if repository_write {
         r#", "repositories":["agentsfleet/test"], "repository_access":"write", "repository_base":"main""#

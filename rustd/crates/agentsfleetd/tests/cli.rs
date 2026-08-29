@@ -236,3 +236,19 @@ fn test_only_a_clean_stop_is_success() {
         "a server that returned on its own was not asked to stop"
     );
 }
+
+/// `migrate` against a database that is not there is a refusal, not a hang.
+#[test]
+fn test_migrate_refuses_a_database_that_will_not_answer() {
+    let status = run(
+        &Cli::try_parse_from(["agentsfleetd", "migrate"]).expect("migrate takes no arguments"),
+        &MapEnv::from_pairs([(
+            "DATABASE_URL_MIGRATOR",
+            "postgres://afd:afd@127.0.0.1:1/afd?sslmode=disable",
+        )]),
+        tokio::runtime::Runtime::new,
+        std::future::ready(()),
+    );
+
+    assert_eq!(status, FAILURE, "a migration that could not run exits 1");
+}
