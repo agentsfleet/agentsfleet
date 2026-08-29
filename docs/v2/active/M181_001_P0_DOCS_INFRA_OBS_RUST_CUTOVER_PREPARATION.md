@@ -146,7 +146,11 @@ The image is distroless as a consequence rather than a preference: a static bina
 
 **The crate gains its first error type here.** Constructing an instrument set from a registry is fallible, and `docs/RUST_ERROR_STANDARD.md` lists this crate as having no fallible function today. It takes the standard's shape on the commit that ends that — not later, and not exempt for predating the rule.
 
-- **Dimension 3.1** — every metric family the Zig registry declares is emitted under the same name, label keys and value type; a family present on one side only is named and fails → Test `test_metric_family_registry_parity`
+**The oracle already exists, and it is not the Zig source (found while planning §3).** The section was written assuming the Rust registry would be graded against `otel_metrics_families.zig` — which would mean parsing Zig from a Rust test, or freezing a copied fixture that drifts. Neither is needed: `docs/architecture/observability.md` carries a **Metric family census** that lists every exported family exactly once, and the Zig suite already pins its own registry against it (`test_census_matches_exported_families`, which fails both on a census entry that is not a declared family and on a declared family missing from the census). The census names 71 families; the Zig `MetricId` enum declares 71.
+
+So the census is the contract, and both implementations are graded against the same document rather than against each other. That survives the Zig daemon's retirement, which a fixture extracted from its source would not, and it means a family added to one side without the other fails on both.
+
+- **Dimension 3.1** — every family the architecture census names is emitted under that exact name, with the census's label keys and the declared value type; a family on one side only is named and fails → Test `test_metric_family_registry_parity`
 - **Dimension 3.2** — past the cardinality cap, memory stays constant and the overflow series carries the pinned Zig spelling rather than the SDK default → Test `test_metric_cardinality_overflow_spelling`
 - **Dimension 3.3** — the metrics exporter drops rather than blocks when its queue fills, and the drop counter climbs, exactly as the span exporter does → Test `test_metric_export_drops_never_blocks`
 - **Dimension 3.4** — the crate's error type composes its sources by `#[from]`, and no variant's `source()` returns its own kind → Test `test_observability_error_chain_shape`
