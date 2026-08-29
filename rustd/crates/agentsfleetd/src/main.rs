@@ -19,9 +19,13 @@ use agentsfleetd::cli::{Cli, run};
 use clap::Parser as _;
 
 fn main() -> ExitCode {
-    // `Cli::parse` exits on `--help`, `--version` and usage errors, so it comes
-    // first — but it writes nothing on the path that continues, which is what
-    // lets the nameplate still be the process's first output.
+    // `Cli::parse` exits the process itself on `--help`, `--version` and any
+    // usage error — 2 for the last of those, which is what `serve_args.zig`'s
+    // three error variants were reaching for and never managed: a usage error
+    // is not a boot refusal, and an init system restarting on the latter should
+    // not restart on the former. It comes first here because it writes nothing
+    // on the path that continues, which is what lets the nameplate still be the
+    // process's first output.
     let cli = Cli::parse();
 
     // The first write of the process, before the subscriber, the runtime, or
@@ -40,18 +44,13 @@ fn main() -> ExitCode {
         cli.no_banner,
     );
 
-    // `install` answers
+    // Before anything that might have something to say. `install` answers
     // whether it took the process-wide slot; at boot there is nobody to have
     // taken it first, and a daemon that could not install a subscriber is
     // still a daemon that should serve — so the answer is dropped here rather
     // than turned into a refusal to start.
     let _installed = agentsfleetd::logs::install(&ProcessEnv);
 
-    // `Cli::parse` exits the process itself on `--help`, `--version` and any
-    // usage error — 2 for the last of those, which is what `serve_args.zig`'s
-    // three error variants were reaching for and never managed: a usage error
-    // is not a boot refusal, and an init system restarting on the latter should
-    // not restart on the former.
     ExitCode::from(run(
         &cli,
         &ProcessEnv,
