@@ -13,9 +13,9 @@ jobs:
   check-credentials:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: 1password/install-cli-action@v3
+      - uses: 1password/install-cli-action@v4
 
       - name: Check vault credentials
         env:
@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: check-credentials
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Verify tag matches VERSION file
         run: |
           TAG=${GITHUB_REF#refs/tags/v}
@@ -51,7 +51,7 @@ jobs:
       # static-link symlinks. Multi-arch image; linux/amd64 selected on x86_64 runner.
       image: ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r4
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Build (x86_64-linux)
         run: |
@@ -144,7 +144,7 @@ jobs:
     needs: verify-tag
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Build aarch64-linux inside Alpine (musl-native static OpenSSL)
         # Pre-baked image: ci-zig-alpine multi-arch manifest carries linux/arm64,
@@ -205,7 +205,7 @@ jobs:
     needs: verify-tag
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: mlugg/setup-zig@v2
         with:
@@ -237,7 +237,7 @@ jobs:
     permissions:
       packages: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Download linux/amd64 binary
         uses: actions/download-artifact@v8
@@ -283,9 +283,9 @@ jobs:
       run:
         working-directory: cli
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 25
           registry-url: https://registry.npmjs.org
@@ -314,7 +314,7 @@ jobs:
       # `--provenance`. The publisher pins owner/repo/workflow, so renaming any
       # of the three breaks it silently.
       - name: Load npm token from 1Password (fallback until a publisher exists)
-        uses: 1password/load-secrets-action@v4
+        uses: 1password/load-secrets-action@v5
         with:
           export-env: true
         env:
@@ -355,7 +355,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v8
         with:
@@ -368,7 +368,7 @@ jobs:
       # requests for this tag, so the release still says what shipped without a
       # file to maintain.
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           body: "[Full changelog for this release →](https://docs.agentsfleet.net/changelog)"
           generate_release_notes: true
@@ -396,10 +396,10 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Load PROD deploy secrets from 1Password
-        uses: 1password/load-secrets-action@v4
+        uses: 1password/load-secrets-action@v5
         with:
           export-env: true
         env:
@@ -425,7 +425,7 @@ jobs:
           R2_ACCESS_KEY_ID: op://${{ vars.VAULT_PROD }}/cloudflare-r2/access-key-id
           R2_SECRET_ACCESS_KEY: op://${{ vars.VAULT_PROD }}/cloudflare-r2/secret-access-key
           R2_BUCKET: op://${{ vars.VAULT_PROD }}/cloudflare-r2/bucket
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master, 2026-04-08
       - name: Stage Fly secrets from vault (applied on next deploy)
         run: |
           flyctl secrets set \
@@ -586,7 +586,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v8
         with:
@@ -597,7 +597,7 @@ jobs:
         run: tar -xzf dist/agentsfleet-runner-linux-amd64.tar.gz -C dist
 
       - name: Load Tailscale credentials from 1Password
-        uses: 1password/load-secrets-action@v4
+        uses: 1password/load-secrets-action@v5
         with:
           export-env: true
         env:
@@ -649,7 +649,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v8
         with:
@@ -660,7 +660,7 @@ jobs:
         run: tar -xzf dist/agentsfleet-runner-linux-amd64.tar.gz -C dist
 
       - name: Load Tailscale credentials from 1Password
-        uses: 1password/load-secrets-action@v4
+        uses: 1password/load-secrets-action@v5
         with:
           export-env: true
         env:
@@ -719,7 +719,7 @@ jobs:
       - deploy-worker-fleet-prod
     if: always()
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Compose release verdict
         id: verdict

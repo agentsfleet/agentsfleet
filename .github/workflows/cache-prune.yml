@@ -47,7 +47,7 @@ jobs:
       APPLY: ${{ github.event_name == 'schedule' && 'true' || inputs.apply }}
       RETAIN_PER_FAMILY: '2'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: List caches and resolve pull-request states
         run: |

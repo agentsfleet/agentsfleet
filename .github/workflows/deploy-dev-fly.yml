@@ -12,10 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Load secrets from 1Password
-        uses: 1password/load-secrets-action@v4
+        uses: 1password/load-secrets-action@v5
         with:
           export-env: true
         env:
@@ -36,7 +36,7 @@ jobs:
           GRAFANA_OTLP_INSTANCE_ID: op://${{ vars.VAULT_DEV }}/grafana-dev/instance-id
           GRAFANA_OTLP_API_KEY: op://${{ vars.VAULT_DEV }}/grafana-dev/api-key
           OIDC_ISSUER: op://${{ vars.VAULT_DEV }}/clerk-dev/issuer
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master, 2026-04-08
       - name: Stage Fly secrets from vault (applied on next deploy)
         run: |
           flyctl secrets set \

@@ -16,7 +16,7 @@ jobs:
       startsWith(github.event.deployment.environment, 'Production')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -66,7 +66,7 @@ jobs:
         working-directory: ${{ steps.detect.outputs.workdir }}
 
       - name: Load Vercel bypass secret from 1Password
-        uses: 1password/load-secrets-action@v4
+        uses: 1password/load-secrets-action@v5
         with:
           export-env: true
         env:
@@ -106,7 +106,7 @@ jobs:
       group: acceptance-e2e-prod
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -136,7 +136,7 @@ jobs:
 
       - name: Restore Playwright browser cache
         id: playwright-cache-acceptance
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           # Real inputs only: the repo-root lock (ui/packages/app has no lock
@@ -154,7 +154,7 @@ jobs:
         working-directory: ui/packages/app
 
       - name: Load Clerk PROD credentials from 1Password
-        uses: 1password/load-secrets-action@v4
+        uses: 1password/load-secrets-action@v5
         with:
           export-env: true
         env:

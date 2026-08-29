@@ -35,7 +35,7 @@ jobs:
   test-unit-rustd:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       # No toolchain input here: rustd/rust-toolchain.toml is the single pin, and
       # rustup installs it on first use inside that directory. Naming a version
       # in this file would be a second source of truth that silently disagrees.
@@ -43,7 +43,7 @@ jobs:
         run: rustup show && rustc --version && cargo --version
         working-directory: rustd
       - name: Cache cargo registry and build output
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -67,7 +67,7 @@ jobs:
   test-unit-cli:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
@@ -80,7 +80,7 @@ jobs:
       # Written by the step above; the cli lane already emits lcov.
       - name: Upload cli coverage to Codecov
         if: success()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: cli/coverage/lcov.info
@@ -91,7 +91,7 @@ jobs:
   test-unit-website:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
@@ -104,7 +104,7 @@ jobs:
       # Written by the step above; the website lane already emits lcov.
       - name: Upload website coverage to Codecov
         if: success()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ui/packages/website/coverage/lcov.info
@@ -115,7 +115,7 @@ jobs:
   test-unit-app:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
@@ -128,7 +128,7 @@ jobs:
       # Written by the step above; the app lane already emits lcov.
       - name: Upload app coverage to Codecov
         if: success()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ui/packages/app/coverage/lcov.info
@@ -139,7 +139,7 @@ jobs:
   test-unit-design-system:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
@@ -153,7 +153,7 @@ jobs:
   bundle-size-website:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
@@ -170,7 +170,7 @@ jobs:
   bundle-size-app:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
