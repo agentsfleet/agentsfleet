@@ -23,6 +23,8 @@
 
 #[path = "config.rs"]
 mod config;
+#[path = "config_tls.rs"]
+mod config_tls;
 #[path = "error_surface.rs"]
 mod error_surface;
 #[path = "integration_migrate.rs"]
@@ -33,6 +35,8 @@ mod integration_migrate_faults;
 mod integration_pool;
 #[path = "integration_pool_faults.rs"]
 mod integration_pool_faults;
+#[path = "integration_pool_tls.rs"]
+mod integration_pool_tls;
 #[path = "lock_policy.rs"]
 mod lock_policy;
 #[path = "migrations.rs"]

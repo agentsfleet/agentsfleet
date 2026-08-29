@@ -50,4 +50,10 @@ async fn test_lease_money_gate_refusal() {
         Some(0),
         "the refused poll charges nothing"
     );
+
+    // Before the scenario drops, because dropping it releases the ready-stream
+    // guard and `Supervisor` has no `Drop` of its own: a daemon left running
+    // here becomes the next scenario's competitor on `fleet:ready`.
+    supervisor.shutdown().await;
+    run.cleanup().await;
 }

@@ -68,7 +68,6 @@ const REDIS_URL_KNOB: &str = "TEST_REDIS_URL";
 /// The environment knob naming its certificate authority.
 const REDIS_CA_KNOB: &str = "TEST_REDIS_CA_CERT";
 
-/// The instant every fixture row is stamped with.
 /// Serialises the tests the global sweeper cannot be isolated from.
 ///
 /// Held for the whole test body by anything that calls `Inbox::expire`, and by
@@ -84,6 +83,7 @@ pub(crate) async fn sweeper_exclusive() -> tokio::sync::MutexGuard<'static, ()> 
     SWEEPER.lock().await
 }
 
+/// The instant every fixture row is stamped with.
 pub(crate) const NOW_MS: i64 = 1_760_000_000_000;
 
 /// The tenant every gate in this suite hangs from.
