@@ -50,7 +50,7 @@ const SWEEPER: &str = "system:approval_gate_sweeper";
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn two_operators_answering_one_gate_resolve_to_one_decision() {
-    let lane = Lane::create().await;
+    let lane = Lane::isolated().await;
     let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
     let now = UnixMillis::from_millis(NOW_MS);
 
@@ -86,7 +86,7 @@ async fn two_operators_answering_one_gate_resolve_to_one_decision() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_settled_gate_keeps_its_first_answer() {
-    let lane = Lane::create().await;
+    let lane = Lane::isolated().await;
     let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
     let now = UnixMillis::from_millis(NOW_MS);
 
@@ -119,7 +119,7 @@ async fn a_settled_gate_keeps_its_first_answer() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_decision_scoped_to_another_fleet_resolves_nothing() {
-    let lane = Lane::create().await;
+    let lane = Lane::isolated().await;
     let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
     let stranger = afd_db::test_util::mint_id();
     let now = UnixMillis::from_millis(NOW_MS);
@@ -207,7 +207,7 @@ async fn a_gate_id_from_another_workspace_is_indistinguishable_from_absent() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn the_sweeper_expires_only_the_gates_whose_window_closed() {
-    let lane = Lane::create().await;
+    let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
 
     let lapsed = lane.seed_gate(NOW_MS - 1).await;
@@ -236,7 +236,7 @@ async fn the_sweeper_expires_only_the_gates_whose_window_closed() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_gate_answered_before_the_deadline_is_not_swept() {
-    let lane = Lane::create().await;
+    let lane = Lane::isolated().await;
     let now = UnixMillis::from_millis(NOW_MS);
     // Deadline already past, and a person answered anyway — the ordering a
     // sweep must not undo.
@@ -262,7 +262,7 @@ async fn a_gate_answered_before_the_deadline_is_not_swept() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_swept_gate_says_the_system_took_it() {
-    let lane = Lane::create().await;
+    let lane = Lane::isolated().await;
     let action = lane.seed_gate(NOW_MS - 1).await;
     lane.inbox
         .expire(UnixMillis::from_millis(NOW_MS))
@@ -281,7 +281,7 @@ async fn a_swept_gate_says_the_system_took_it() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_approved_gate_lands_a_continuation_naming_what_it_resumes() {
-    let lane = Lane::create().await;
+    let lane = Lane::isolated().await;
     let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
 
     let outcome = lane
@@ -327,7 +327,7 @@ async fn an_approved_gate_lands_a_continuation_naming_what_it_resumes() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_denied_gate_continues_nothing() {
-    let lane = Lane::create().await;
+    let lane = Lane::isolated().await;
     let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
     let before = lane.event_count().await;
 
@@ -358,7 +358,7 @@ async fn a_denied_gate_continues_nothing() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_second_answer_does_not_continue_the_run_again() {
-    let lane = Lane::create().await;
+    let lane = Lane::isolated().await;
     let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
     let now = UnixMillis::from_millis(NOW_MS);
 
@@ -389,7 +389,7 @@ async fn a_second_answer_does_not_continue_the_run_again() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn resolving_a_gate_does_not_reopen_the_event_it_blocked() {
-    let lane = Lane::create().await;
+    let lane = Lane::isolated().await;
     let action = lane.seed_gate(NOW_MS + WINDOW_MS).await;
 
     let before = lane.event_count().await;
@@ -451,7 +451,7 @@ async fn resolving_a_gate_does_not_reopen_the_event_it_blocked() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_gate_answered_long_after_its_window_still_resumes_the_run() {
-    let lane = Lane::create().await;
+    let lane = Lane::isolated().await;
 
     // Raised at 10:00 with the default one-hour window: the deadline passed
     // three hours before the answer arrives.

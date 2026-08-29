@@ -68,12 +68,6 @@ pub(crate) const NOW_MS: i64 = 1_760_000_000_000;
 /// schema's `ck_*_id_uuidv7` admits it.
 const TENANT: &str = "0195b4ba-8d3a-7a11-8abc-000000000001";
 
-/// Its workspace.
-const WORKSPACE: &str = "0195b4ba-8d3a-7a11-8abc-000000000002";
-
-/// The fleet the gates belong to.
-const FLEET: &str = "0195b4ba-8d3a-7a11-8abc-000000000003";
-
 /// How long a fixture gate waits before the sweeper may take it.
 pub(crate) const WINDOW_MS: i64 = 60_000;
 
@@ -100,22 +94,14 @@ pub(crate) struct Lane {
 }
 
 impl Lane {
-    /// The shared scaffolding: one tenant, one workspace, one fleet.
-    ///
-    /// Idempotent, so the first test to run writes the three rows and every
-    /// later one costs three no-op statements. Use this wherever a test
-    /// addresses its gate by ACTION — which is every test that resolves or
-    /// expires one.
-    pub(crate) async fn create() -> Self {
-        Self::open(WORKSPACE.to_owned(), FLEET.to_owned()).await
-    }
-
     /// A workspace and fleet of this test's OWN, under the shared tenant.
     ///
-    /// For the reads that count rows: a queue listing asserts what a workspace
-    /// holds, and on one shared database every other test's gates would be in
-    /// the answer. Minted because the test asserts the SHAPE of what it sees,
-    /// which is the same rule the gates themselves follow.
+    /// The only constructor, because on one shared database every alternative
+    /// is a race. A lane on fixed identifiers puts every test's gates in every
+    /// other test's fleet: a count of that fleet's events reads a sibling's
+    /// continuation, and a sweep over that workspace expires the gate a
+    /// sibling is about to answer. Both are real failures this suite has had.
+    /// Minting the pair costs three seeding statements and removes the class.
     pub(crate) async fn isolated() -> Self {
         Self::open(mint().as_str().to_owned(), mint().as_str().to_owned()).await
     }
