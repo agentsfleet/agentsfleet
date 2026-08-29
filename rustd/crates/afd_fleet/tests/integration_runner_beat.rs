@@ -25,13 +25,19 @@ mod queue;
 #[path = "support/fleet_requests.rs"]
 mod requests;
 
+#[path = "integration_runner_beat/recovery.rs"]
+mod recovery;
+
 use std::borrow::Cow;
 
 use afd_core::clock::UnixMillis;
 use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
-use afd_runner::reconcile::{REASON_LANDLOCK_UNAVAILABLE, REASON_NO_CAPABILITY_REPORT};
-use afd_runner::{NO_REPORT, Verdict};
-use afd_wire::runner::{CapabilityReport, HeartbeatRequest, NetworkPolicy, SandboxTier};
+use afd_crypto::entropy::Entropy;
+use afd_runner::reconcile::REASON_NO_CAPABILITY_REPORT;
+use afd_runner::{NO_REPORT, Runners, Verdict};
+use afd_wire::runner::{
+    CapabilityReport, HeartbeatRequest, NetworkPolicy, SandboxTier, SelftestCheck, SelftestReport,
+};
 
 use self::requests::{ENROLLED_AT, ONE_BEAT_MS, capable, enrolment};
 use self::support::Fixtures;
@@ -211,73 +217,15 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
     fixtures.cleanup().await;
 }
 
-/// A host that loses a mechanism is degraded on the next beat, and named.
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
-    let fixtures = Fixtures::create().await;
-    let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1);
-    let enrolled = fixtures
-        .runners()
-        .register(&request, UnixMillis::from_millis(ENROLLED_AT))
-        .await
-        .expect("enrolment must succeed");
-    let runner = enrolled.runner_id.as_str().to_owned();
-
-    let healthy = HeartbeatRequest {
-        capability_report: Some(capable()),
-        selftest: None,
-    };
-    fixtures
-        .runners()
-        .heartbeat(
-            &enrolled.runner_id,
-            &healthy,
-            UnixMillis::from_millis(ENROLLED_AT + ONE_BEAT_MS),
-        )
-        .await
-        .expect("the first beat clears the verdict");
-
-    // The kernel was rebuilt without filesystem isolation.
-    let lost = HeartbeatRequest {
-        capability_report: Some(CapabilityReport {
-            landlock: false,
-            ..capable()
-        }),
-        selftest: None,
-    };
-    let answered = fixtures
-        .runners()
-        .heartbeat(
-            &enrolled.runner_id,
-            &lost,
-            UnixMillis::from_millis(ENROLLED_AT + 2 * ONE_BEAT_MS),
-        )
-        .await
-        .expect("the second beat must not fail");
-
-    assert_eq!(
-        answered.verdict,
-        Verdict::Degraded {
-            reason: REASON_LANDLOCK_UNAVAILABLE
-        }
-    );
-    assert_eq!(
-        fixtures.runner_column(&runner, "degraded_reason").await,
-        Some(REASON_LANDLOCK_UNAVAILABLE.to_owned()),
-        "the reason is on the ROW, because that is what an operator greps"
-    );
-
-    fixtures.cleanup().await;
-}
-
-/// A token that authenticated against a row since reaped fails closed.
+/// Failures in optional beat work cannot turn a live host into an offline one.
 ///
-/// NOT collapsed into a bad-token rejection: the credential is real and the
-/// enrolment is gone, so the remedy is to re-enrol the host rather than retry.
+/// This drives two independent failure seams in one beat: the self-test
+/// summary contradicts its checks, and the event identifier's entropy source
+/// refuses. The former must be ignored and the latter must fall back to the
+/// liveness-only statement. Neither is allowed to fail the request.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_a_vanished_runner_is_its_own_failure() {
+async fn test_optional_heartbeat_failures_still_land_liveness() {
     let fixtures = Fixtures::create().await;
     let request = enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1);
     let enrolled = fixtures
@@ -285,27 +233,53 @@ async fn test_a_vanished_runner_is_its_own_failure() {
         .register(&request, UnixMillis::from_millis(ENROLLED_AT))
         .await
         .expect("enrolment must succeed");
-    let phantom = afd_core::id::Uuid7::parse("019329c5-0000-7000-8000-0000000000ff")
-        .expect("the fixture identifier is canonical");
+    let runner = enrolled.runner_id.as_str().to_owned();
+    let (entropy, entropy_control) = Entropy::new_mocked();
+    entropy_control.fail_next();
+    let runners = Runners::new(fixtures.database.clone(), entropy);
+    let inconsistent = HeartbeatRequest {
+        capability_report: None,
+        selftest: Some(SelftestReport {
+            checks: vec![SelftestCheck {
+                name: Cow::Borrowed("the sandbox launched"),
+                ok: true,
+                detail: Cow::Borrowed("the probe completed"),
+            }],
+            all_ok: false,
+            sandbox_tier: Cow::Borrowed("dev_none"),
+            network_policy: Cow::Borrowed("allow_all"),
+        }),
+    };
+    let beat_at = ENROLLED_AT + ONE_BEAT_MS;
 
-    let read = fixtures.runners().self_record(&phantom).await;
-    let beat = fixtures
-        .runners()
-        .heartbeat(&phantom, &NO_REPORT, UnixMillis::from_millis(ENROLLED_AT))
-        .await;
-
-    for outcome in [read.err(), beat.err()] {
-        let error = outcome.expect("a phantom runner must not resolve");
-        assert!(error.is_runner_vanished());
-        assert_eq!(error.code().as_str(), "UZ-RUN-001");
-        assert_eq!(error.detail(), "runner not found");
-    }
-    // The real runner is untouched by the phantom's failure.
-    fixtures
-        .runners()
-        .self_record(&enrolled.runner_id)
+    let answered = runners
+        .heartbeat(
+            &enrolled.runner_id,
+            &inconsistent,
+            UnixMillis::from_millis(beat_at),
+        )
         .await
-        .expect("a phantom's failure must not disturb a real row");
+        .expect("optional write failures must not fail liveness");
+
+    assert!(
+        !answered.selftest_requested,
+        "a refused unsolicited verdict does not fabricate an operator request"
+    );
+    assert_eq!(
+        fixtures.runner_column(&runner, "selftest_checks").await,
+        None,
+        "a contradictory verdict is not persisted"
+    );
+    assert_eq!(
+        fixtures.runner_column(&runner, "last_seen_at").await,
+        Some(beat_at.to_string()),
+        "entropy failure falls back to the liveness-only statement"
+    );
+    assert_eq!(
+        fixtures.events(&runner).await,
+        vec!["runner_registered".to_owned()],
+        "without an event identifier, the fallback writes no false transition"
+    );
 
     fixtures.cleanup().await;
 }

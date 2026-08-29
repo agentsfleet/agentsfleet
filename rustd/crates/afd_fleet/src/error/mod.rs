@@ -29,6 +29,9 @@ pub mod permanence;
 pub mod refuse;
 pub mod report;
 
+#[cfg(test)]
+mod tests;
+
 pub use self::detail::{
     DETAIL_BUDGET_EXHAUSTED, DETAIL_BUNDLE_FETCH_FAILED, DETAIL_BUNDLE_NOT_FOUND,
     DETAIL_BUNDLE_STORAGE_UNAVAILABLE, DETAIL_CONFIG_UNREADABLE, DETAIL_CREDENTIAL_MISSING,

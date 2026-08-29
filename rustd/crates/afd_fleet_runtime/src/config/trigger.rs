@@ -297,3 +297,7 @@ fn prove_unique(triggers: &[Trigger]) -> Result<()> {
             }))
         })
 }
+
+#[cfg(test)]
+#[path = "trigger/tests.rs"]
+mod tests;

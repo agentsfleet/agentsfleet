@@ -21,7 +21,8 @@
 //! site. [`Redis::command`] is that call site, so no caller can start an
 //! unbounded Redis operation by forgetting to wrap one.
 
-use std::time::Duration;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 use redis::aio::ConnectionManager;
 #[cfg(feature = "test-util")]
@@ -30,6 +31,9 @@ use redis::{Cmd, FromRedisValue, Value};
 
 use crate::config::{RedisConfig, RedisRole};
 use crate::error::{self, Error, ErrorKind, Result};
+
+/// Correlates one connection boundary's started and terminal records.
+static NEXT_CONNECT_ATTEMPT: AtomicU64 = AtomicU64::new(0);
 
 /// The liveness probe, and the only command this module issues by name.
 const CMD_PING: &str = "PING";
@@ -53,6 +57,55 @@ impl Redis {
     /// Returns an unavailable error when Redis cannot be reached, and a config
     /// error when a certificate authority file was named but not readable.
     pub async fn connect(config: &RedisConfig) -> Result<Self> {
+        let started = Instant::now();
+        let attempt_id = NEXT_CONNECT_ATTEMPT.fetch_add(1, Ordering::Relaxed);
+        let role = config.role().tag();
+        let timeout_ms = config.connect_timeout().as_millis();
+        let tls = config.is_tls();
+        tracing::info!(
+            attempt_id,
+            role,
+            timeout_ms,
+            tls,
+            event = "redis_connect_started"
+        );
+
+        let result =
+            match tokio::time::timeout(config.connect_timeout(), Self::connect_inner(config)).await
+            {
+                Ok(result) => result,
+                Err(_elapsed) => Err(error::connect_timed_out(role, timeout_ms)),
+            };
+        let duration_ms = started.elapsed().as_millis();
+        match result {
+            Ok(redis) => {
+                let request_timeout_ms = config.request_timeout().as_millis();
+                tracing::info!(
+                    attempt_id,
+                    role,
+                    duration_ms,
+                    request_timeout_ms,
+                    tls,
+                    event = "redis_connect_completed"
+                );
+                Ok(redis)
+            }
+            Err(failure) => {
+                let error_code = failure.code().as_str();
+                tracing::warn!(
+                    attempt_id,
+                    role,
+                    duration_ms,
+                    error_code,
+                    reason = %failure,
+                    event = "redis_connect_failed"
+                );
+                Err(failure)
+            }
+        }
+    }
+
+    async fn connect_inner(config: &RedisConfig) -> Result<Self> {
         let client = build_client(config)?;
         let manager = ConnectionManager::new(client).await.map_err(|source| {
             Error::new(ErrorKind::Unreachable {
@@ -70,12 +123,6 @@ impl Redis {
         // exist: `ConnectionManager::new` establishes one, but the boot
         // preflight's claim is that Redis SERVES, and only a reply proves that.
         redis.ping().await?;
-
-        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-        let role = config.role().tag();
-        let request_timeout_ms = config.request_timeout().as_millis();
-        let tls = config.is_tls();
-        tracing::info!(role, request_timeout_ms, tls, event = "redis_connected");
         Ok(redis)
     }
 

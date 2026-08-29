@@ -40,34 +40,47 @@ pub(crate) async fn assert_shape(
         .await
         .expect("a pooled connection");
 
-    let columns: Vec<String> = sqlx::query(
+    let columns = column_names(&mut connection, schema, name).await;
+    assert!(
+        !columns.is_empty(),
+        "{table} has no columns — the migrations did not apply"
+    );
+    let row = matching_row(&mut connection, &columns, table, predicate, bind).await;
+    let populated = populated_columns(&columns, &row);
+    assert_eq!(
+        populated, recorded,
+        "{table}'s populated columns drifted from the recorded shape — a ported \
+         statement stopped filling one, or a migration added one nothing writes"
+    );
+}
+
+async fn column_names(
+    connection: &mut sqlx::PgConnection,
+    schema: &str,
+    name: &str,
+) -> Vec<String> {
+    sqlx::query(
         "SELECT column_name FROM information_schema.columns
           WHERE table_schema = $1 AND table_name = $2
           ORDER BY ordinal_position",
     )
     .bind(schema)
     .bind(name)
-    .fetch_all(&mut *connection)
+    .fetch_all(connection)
     .await
     .expect("the catalogue read must run")
     .into_iter()
     .map(|row| row.try_get::<String, _>(0).expect("a column name is text"))
-    .collect();
-    assert!(
-        !columns.is_empty(),
-        "{table} has no columns — the migrations did not apply"
-    );
+    .collect()
+}
 
-    // One statement, one row: every column asked for at once, so the answer
-    // cannot straddle two snapshots of a row a sweeper might be touching.
-    //
-    // `ORDER BY created_at, id` is NOT cosmetic. `fetch_optional` takes the
-    // first row the server happens to return and ignores the rest, and two of
-    // these predicates legitimately match more than one row — a runner writes a
-    // narrative row at enrolment and another at claim. Without an order the
-    // suite asserts against whichever row Postgres felt like returning, which
-    // is a test that passes until it does not. `id` breaks the tie because
-    // `created_at` is a millisecond and two rows can share one.
+async fn matching_row(
+    connection: &mut sqlx::PgConnection,
+    columns: &[String],
+    table: &str,
+    predicate: &str,
+    bind: &str,
+) -> sqlx::postgres::PgRow {
     let projection = columns
         .iter()
         .map(|column| format!("({column} IS NOT NULL)::text"))
@@ -76,14 +89,16 @@ pub(crate) async fn assert_shape(
     let statement = AssertSqlSafe(format!(
         "SELECT {projection} FROM {table} WHERE {predicate} ORDER BY created_at, id LIMIT 1"
     ));
-    let row = sqlx::query(statement)
+    sqlx::query(statement)
         .bind(bind)
-        .fetch_optional(&mut *connection)
+        .fetch_optional(connection)
         .await
         .expect("the shape read must run")
-        .unwrap_or_else(|| panic!("{table} carries no row matching {predicate}"));
+        .unwrap_or_else(|| panic!("{table} carries no row matching {predicate}"))
+}
 
-    let populated: Vec<&str> = columns
+fn populated_columns<'a>(columns: &'a [String], row: &sqlx::postgres::PgRow) -> Vec<&'a str> {
+    columns
         .iter()
         .enumerate()
         .filter(|(index, _)| {
@@ -92,13 +107,7 @@ pub(crate) async fn assert_shape(
                 == "true"
         })
         .map(|(_, column)| column.as_str())
-        .collect();
-
-    assert_eq!(
-        populated, recorded,
-        "{table}'s populated columns drifted from the recorded shape — a ported \
-         statement stopped filling one, or a migration added one nothing writes"
-    );
+        .collect()
 }
 
 /// One column of a lease row, as text.
@@ -117,6 +126,27 @@ pub(crate) async fn lease_column(run: &Scenario, lease: &str, column: &str) -> O
         .fetch_optional(&mut *connection)
         .await
         .expect("the lease read must run")
+        .map(|row| row.try_get(0).expect("the column must be readable as text"))
+}
+
+/// One column of the scenario fleet's event row, as text.
+pub(crate) async fn event_column(run: &Scenario, event: &str, column: &str) -> Option<String> {
+    let statement = AssertSqlSafe(format!(
+        "SELECT {column}::text FROM core.fleet_events \
+         WHERE fleet_id = $1::uuid AND event_id = $2"
+    ));
+    let mut connection = run
+        .booted
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    sqlx::query(statement)
+        .bind(&run.fleet)
+        .bind(event)
+        .fetch_optional(&mut *connection)
+        .await
+        .expect("the event read must run")
         .map(|row| row.try_get(0).expect("the column must be readable as text"))
 }
 

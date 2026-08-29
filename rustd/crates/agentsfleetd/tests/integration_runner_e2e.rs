@@ -49,17 +49,19 @@ mod wire;
 #[path = "support/e2e_reads.rs"]
 mod reads;
 
+#[path = "integration_runner_e2e/money_gate.rs"]
+mod money_gate;
+
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 
 use self::e2e::{Scenario, scenario};
-use self::reads::{balance, counter_column, lease_column, lease_rows, ledger_rows};
+use self::reads::{balance, counter_column, event_column, lease_column, lease_rows, ledger_rows};
 use self::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN, capable_beat, claim, field, get,
     json, post, report_body,
 };
 
-/// for nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
 async fn test_runner_suite_vs_rust_daemon() {
@@ -67,9 +69,19 @@ async fn test_runner_suite_vs_rust_daemon() {
     let run = scenario(&mut supervisor).await;
     let http = reqwest::Client::new();
 
-    // ── The credential is refused before anything else is proven ────────────
-    // First, so a suite that somehow authenticated nothing cannot report green
-    // on the verbs below.
+    assert_unknown_credential_is_refused(&http, &run).await;
+    prove_runner_ready(&http, &run).await;
+    let (lease_id, fence) = claim_seeded_lease(&http, &run).await;
+    prove_live_lease_satellites(&http, &run, &lease_id).await;
+    capture_memory(&http, &run, &lease_id, fence).await;
+    settle_report(&http, &run, &lease_id, fence).await;
+    assert_unsupported_event_ends(&http, &run).await;
+
+    supervisor.shutdown().await;
+    run.cleanup().await;
+}
+
+async fn assert_unknown_credential_is_refused(http: &reqwest::Client, run: &Scenario) {
     let unknown = http
         .get(format!("{}/v1/runners/me", run.base))
         .bearer_auth(UNKNOWN_TOKEN)
@@ -81,9 +93,10 @@ async fn test_runner_suite_vs_rust_daemon() {
         401,
         "a well-formed token belonging to no row is refused by the directory"
     );
+}
 
-    // ── Self-read and beat ──────────────────────────────────────────────────
-    let self_record = get(&http, &run, "/v1/runners/me").await;
+async fn prove_runner_ready(http: &reqwest::Client, run: &Scenario) {
+    let self_record = get(http, run, "/v1/runners/me").await;
     assert_eq!(
         self_record.status().as_u16(),
         200,
@@ -96,7 +109,7 @@ async fn test_runner_suite_vs_rust_daemon() {
          and the store scope by the same identity"
     );
 
-    let beat = post(&http, &run, "/v1/runners/me/heartbeats", &capable_beat()).await;
+    let beat = post(http, run, "/v1/runners/me/heartbeats", &capable_beat()).await;
     assert_eq!(beat.status().as_u16(), 200, "a beat is accepted");
     assert_eq!(
         field(&json(beat).await, "degraded"),
@@ -104,9 +117,10 @@ async fn test_runner_suite_vs_rust_daemon() {
         "and the proven capabilities clear the degraded verdict, which is what \
          makes the poll below leasable rather than fail-closed"
     );
+}
 
-    // ── The lease ───────────────────────────────────────────────────────────
-    let leased = post(&http, &run, "/v1/runners/me/leases", &json!({})).await;
+async fn claim_seeded_lease(http: &reqwest::Client, run: &Scenario) -> (String, u64) {
+    let leased = post(http, run, "/v1/runners/me/leases", &json!({})).await;
     assert_eq!(
         leased.status().as_u16(),
         200,
@@ -122,12 +136,13 @@ async fn test_runner_suite_vs_rust_daemon() {
         &json!(run.event_id),
         "the daemon handed back the event this scenario put on the stream"
     );
-    let (lease_id, fence) = claim(lease);
+    claim(lease)
+}
 
-    // ── Memory, under the lease's fence ─────────────────────────────────────
+async fn capture_memory(http: &reqwest::Client, run: &Scenario, lease_id: &str, fence: u64) {
     let captured = post(
-        &http,
-        &run,
+        http,
+        run,
         &format!("/v1/runners/me/memory/{}", run.fleet),
         &json!({
             "lease_id": lease_id,
@@ -145,11 +160,12 @@ async fn test_runner_suite_vs_rust_daemon() {
         200,
         "the holder of the current fence may write the fleet's memory"
     );
+}
 
-    // ── The report ──────────────────────────────────────────────────────────
-    let before = balance(&run).await;
-    let report = report_body(&lease_id, &run.event_id, fence);
-    let settled = post(&http, &run, "/v1/runners/me/reports", &report).await;
+async fn settle_report(http: &reqwest::Client, run: &Scenario, lease_id: &str, fence: u64) {
+    let before = balance(run).await;
+    let report = report_body(lease_id, &run.event_id, fence);
+    let settled = post(http, run, "/v1/runners/me/reports", &report).await;
     assert_eq!(settled.status().as_u16(), 200, "the report is accepted");
     assert_eq!(
         json(settled).await,
@@ -157,12 +173,105 @@ async fn test_runner_suite_vs_rust_daemon() {
         "and says so in the shape a runner parses"
     );
 
-    assert_settled(&run, &lease_id, before).await;
+    assert_settled(run, lease_id, before).await;
+    assert_replay_is_fenced(http, run, lease_id, &report).await;
+}
 
-    assert_replay_is_fenced(&http, &run, &lease_id, &report).await;
+async fn assert_unsupported_event_ends(http: &reqwest::Client, run: &Scenario) {
+    let unsupported = run.enqueue_event("future_event_type").await;
+    let refused = post(http, run, "/v1/runners/me/leases", &json!({})).await;
+    assert_eq!(refused.status().as_u16(), 200);
+    assert_eq!(field(&json(refused).await, "lease"), &Value::Null);
+    assert_eq!(
+        event_column(run, &unsupported, "status").await.as_deref(),
+        Some("gate_blocked"),
+        "the unsupported stream entry is ended instead of being retried forever"
+    );
+}
 
-    supervisor.shutdown().await;
-    run.cleanup().await;
+/// The side-channel verbs operate on the same live lease and identity.
+async fn prove_live_lease_satellites(http: &reqwest::Client, run: &Scenario, lease_id: &str) {
+    assert_memory_hydrates(http, run).await;
+    assert_lease_renews(http, run, lease_id).await;
+    assert_activity_degrades_gracefully(http, run, lease_id).await;
+    assert_credential_and_duplicate_refusals(http, run, lease_id).await;
+}
+
+async fn assert_memory_hydrates(http: &reqwest::Client, run: &Scenario) {
+    let hydrated = get(http, run, &format!("/v1/runners/me/memory/{}", run.fleet)).await;
+    assert_eq!(hydrated.status().as_u16(), 200);
+    assert_eq!(json(hydrated).await, json!({"memory": []}));
+}
+
+async fn assert_lease_renews(http: &reqwest::Client, run: &Scenario, lease_id: &str) {
+    let renewed = post(
+        http,
+        run,
+        &format!("/v1/runners/me/leases/{lease_id}/renew"),
+        &json!({"input_tokens": 10, "cached_input_tokens": 2, "output_tokens": 3}),
+    )
+    .await;
+    assert_eq!(renewed.status().as_u16(), 200);
+    assert!(
+        field(&json(renewed).await, "lease_expires_at")
+            .as_i64()
+            .is_some_and(|expires| expires > run.seeded_at.as_millis()),
+        "renewal returns the live deadline the datastore advanced"
+    );
+}
+
+async fn assert_activity_degrades_gracefully(
+    http: &reqwest::Client,
+    run: &Scenario,
+    lease_id: &str,
+) {
+    let activity = post(
+        http,
+        run,
+        &format!("/v1/runners/me/leases/{lease_id}/activity"),
+        &json!({
+            "frames": [
+                {"tool_call_started": {"name": "search", "args_redacted": "not-json"}},
+                {"tool_call_progress": {"name": "search", "elapsed_ms": 10}},
+                {"fleet_response_chunk": {"text": "working"}},
+                {"tool_call_completed": {"name": "search", "ms": 20}}
+            ]
+        }),
+    )
+    .await;
+    assert_eq!(
+        activity.status().as_u16(),
+        202,
+        "an invalid cosmetic frame is dropped without failing the live run"
+    );
+}
+
+async fn assert_credential_and_duplicate_refusals(
+    http: &reqwest::Client,
+    run: &Scenario,
+    lease_id: &str,
+) {
+    let mint = post(
+        http,
+        run,
+        "/v1/runners/me/credentials/mint",
+        &json!({"lease_id": lease_id, "integration": "anthropic", "scope": null}),
+    )
+    .await;
+    assert_eq!(mint.status().as_u16(), 404);
+    assert_eq!(
+        field(&json(mint).await, "error_code"),
+        &json!("UZ-CRED-001"),
+        "a provider credential is not silently treated as a mintable connector"
+    );
+
+    let no_second_lease = post(http, run, "/v1/runners/me/leases", &json!({})).await;
+    assert_eq!(no_second_lease.status().as_u16(), 200);
+    assert_eq!(
+        field(&json(no_second_lease).await, "lease"),
+        &Value::Null,
+        "a runner already holding the ready event receives no duplicate work"
+    );
 }
 
 /// Dimension 7.2 — the ported statements fill the columns they are supposed to.
@@ -236,63 +345,5 @@ async fn assert_replay_is_fenced(
         lease_column(run, lease_id, "status").await.as_deref(),
         Some("reported"),
         "and mutates nothing — the lease reads exactly as the first report left it"
-    );
-}
-
-/// Dimension 2.3 — an exhausted tenant is refused at issue, and nothing is
-/// written.
-///
-/// The gate that makes every other money assertion matter: without it a fleet
-/// whose tenant went to zero would keep leasing work nobody is paying for. It
-/// belongs beside the loop above rather than in `afd_fleet`'s suites because
-/// the credits gate is only reached on the PULL path — the store verbs those
-/// suites drive skip it entirely — and reaching it needs all six preconditions
-/// `e2e_seed.rs` documents.
-///
-/// The event is not merely left unleased. It is ENDED: a refusal a runner can
-/// do nothing about must not sit on the stream being re-delivered forever, so
-/// the poll marks it terminal and answers no-work.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Redis: make test-integration-rustd"]
-async fn test_lease_money_gate_refusal() {
-    let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
-    let http = reqwest::Client::new();
-
-    // Drained AFTER the seed, so the wallet row exists and holds zero — the
-    // case the gate refuses, as distinct from the absent row it admits.
-    run.drain_wallet().await;
-
-    let beat = post(&http, &run, "/v1/runners/me/heartbeats", &capable_beat()).await;
-    assert_eq!(
-        beat.status().as_u16(),
-        200,
-        "the runner proves its capabilities, so the poll below is refused for \
-         MONEY rather than for a degraded verdict"
-    );
-
-    let polled = post(&http, &run, "/v1/runners/me/leases", &json!({})).await;
-    assert_eq!(
-        polled.status().as_u16(),
-        200,
-        "a refused event is still an answered poll — work and no-work are the \
-         same status on this verb, and an exhausted tenant is no-work"
-    );
-    assert_eq!(
-        field(&json(polled).await, "lease"),
-        &json!(null),
-        "and it carries no lease"
-    );
-
-    assert_eq!(
-        lease_rows(&run).await,
-        0,
-        "no partial write: the gate refuses BEFORE the lease row, so an \
-         exhausted tenant leaves nothing for the reclaim sweep to find"
-    );
-    assert_eq!(
-        balance(&run).await,
-        Some(0),
-        "and nothing was charged against a wallet that had nothing to give"
     );
 }

@@ -141,3 +141,7 @@ impl std::error::Error for Error {
         std::error::Error::source(&self.inner.kind)
     }
 }
+
+#[cfg(test)]
+#[path = "error/tests.rs"]
+mod tests;

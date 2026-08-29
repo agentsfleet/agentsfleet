@@ -55,6 +55,7 @@ pub fn valid_revision(value: &str) -> bool {
 #[derive(Debug, Clone)]
 pub struct GithubSource {
     client: reqwest::Client,
+    api_base: String,
     revision: String,
 }
 
@@ -72,13 +73,32 @@ impl GithubSource {
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(Error::Github)?;
-        Ok(Self { client, revision })
+        Ok(Self {
+            client,
+            api_base: format!("https://{API_HOST}"),
+            revision,
+        })
+    }
+
+    /// Redirects the first request to a test-owned HTTP origin.
+    #[cfg(any(test, feature = "test-util"))]
+    pub(crate) fn pointed_at(mut self, api_base: impl Into<String>) -> Self {
+        self.api_base = api_base.into();
+        self
     }
 
     async fn download(&self, repository: &Repository) -> Result<Vec<u8>> {
+        self.download_with(repository, validate_redirect).await
+    }
+
+    async fn download_with(
+        &self,
+        repository: &Repository,
+        redirect_allowed: fn(&str) -> Result<()>,
+    ) -> Result<Vec<u8>> {
         let url = format!(
-            "https://{API_HOST}/repos/{}/{}/tarball/{}",
-            repository.owner, repository.name, self.revision
+            "{}/repos/{}/{}/tarball/{}",
+            self.api_base, repository.owner, repository.name, self.revision
         );
         let first = self.send(&url).await?;
         if first.status().is_redirection() {
@@ -87,7 +107,7 @@ impl GithubSource {
                 .get(reqwest::header::LOCATION)
                 .and_then(|value| value.to_str().ok())
                 .ok_or(SourceFailure::DisallowedRedirect)?;
-            validate_redirect(location)?;
+            redirect_allowed(location)?;
             let second = self.send(location).await?;
             if second.status().is_redirection() {
                 return Err(SourceFailure::DisallowedRedirect.into());

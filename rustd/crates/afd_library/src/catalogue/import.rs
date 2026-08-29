@@ -23,6 +23,8 @@ const TEMPLATE_OWNER: &str = "agentsfleet";
 pub struct LibraryImports {
     database: Db,
     store: Option<Arc<dyn ObjectStore>>,
+    #[cfg(feature = "test-util")]
+    github_api_base: Option<Box<str>>,
 }
 
 impl LibraryImports {
@@ -32,6 +34,8 @@ impl LibraryImports {
         Self {
             database,
             store: Some(store),
+            #[cfg(feature = "test-util")]
+            github_api_base: None,
         }
     }
 
@@ -41,7 +45,17 @@ impl LibraryImports {
         Self {
             database,
             store: None,
+            #[cfg(feature = "test-util")]
+            github_api_base: None,
         }
+    }
+
+    /// Redirects GitHub fetches to a test-owned HTTP origin.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn with_github_api_base(mut self, api_base: impl Into<Box<str>>) -> Self {
+        self.github_api_base = Some(api_base.into());
+        self
     }
 
     /// Validates and persists an inline upload.
@@ -68,7 +82,7 @@ impl LibraryImports {
         replace: bool,
         now: UnixMillis,
     ) -> Result<PreparedBundle> {
-        let source = GithubSource::new(revision.unwrap_or(DEFAULT_REVISION))?;
+        let source = self.github_source(revision.unwrap_or(DEFAULT_REVISION))?;
         SourceImporter::new(source, self.service(replace, now))
             .import(repository)
             .await
@@ -85,7 +99,7 @@ impl LibraryImports {
         now: UnixMillis,
     ) -> Result<PreparedBundle> {
         let repository = format!("{TEMPLATE_OWNER}/{template}");
-        let source = GithubSource::new(DEFAULT_REVISION)?;
+        let source = self.github_source(DEFAULT_REVISION)?;
         let mut body = source.fetch(&repository).await?;
         body.source_kind = SourceKind::Template;
         body.source_ref = template.to_owned();
@@ -100,6 +114,15 @@ impl LibraryImports {
         now: UnixMillis,
     ) -> Result<PreparedBundle> {
         self.service(replace, now).import(body).await
+    }
+
+    fn github_source(&self, revision: &str) -> Result<GithubSource> {
+        let source = GithubSource::new(revision)?;
+        #[cfg(feature = "test-util")]
+        if let Some(api_base) = &self.github_api_base {
+            return Ok(source.pointed_at(api_base.to_string()));
+        }
+        Ok(source)
     }
 
     fn service(&self, replace: bool, now: UnixMillis) -> ImportService<PlatformCatalog> {

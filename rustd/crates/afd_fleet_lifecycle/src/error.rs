@@ -136,9 +136,7 @@ impl Error {
     /// The code and the sentence, decided together — see the module note.
     const fn answer(&self) -> (ErrorCode, &'static str) {
         match self.inner.kind {
-            // One code for both stores — a caller acts identically on either —
-            // and two sentences, so an operator reading a 503 body does not
-            // have to open the log to learn which datastore is down.
+            // One code for both stores; their sentences identify the datastore.
             ErrorKind::Datastore { .. } => (
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 detail::DATABASE_UNAVAILABLE,
@@ -243,3 +241,7 @@ impl Error {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "error/tests.rs"]
+mod tests;

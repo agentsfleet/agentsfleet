@@ -309,3 +309,7 @@ pub struct SteerAccepted<'a> {
     #[serde(borrow)]
     pub event_id: Cow<'a, str>,
 }
+
+#[cfg(test)]
+#[path = "event/tests.rs"]
+mod tests;

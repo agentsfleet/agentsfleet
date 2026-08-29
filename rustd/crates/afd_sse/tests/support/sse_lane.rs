@@ -41,7 +41,7 @@ impl SseLane {
     /// rather than the whole lane's timeout.
     pub(crate) async fn connect() -> Self {
         install_subscriber();
-        let redis = Redis::connect(&Self::config())
+        let redis = afd_redis::test_util::connect_live(&Self::config())
             .await
             .expect("the lane's Redis must be reachable");
         Self {

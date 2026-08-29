@@ -37,7 +37,8 @@
 //! own I/O and `cancelled()` is interrupted mid-read, which is what Dimension
 //! 7.5 asks to be PROVEN rather than assumed.
 
-use std::time::Duration;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -50,11 +51,29 @@ use tokio_util::sync::CancellationToken;
 /// a line naming the task that would not stop.
 pub const JOIN_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// The supervised-task boundary's three stable event names.
+///
+/// One spelling each, because a log pipeline selects on these strings and a
+/// second spelling of a terminal event is a silently missing alert. `FAILED`
+/// covers both terminal failures — a panic and a join timeout — which is why
+/// it appears twice below and why the `reason` field, not the event name,
+/// distinguishes them.
+const EVENT_STARTED: &str = "supervised_task_started";
+const EVENT_COMPLETED: &str = "supervised_task_completed";
+const EVENT_FAILED: &str = "supervised_task_failed";
+
+/// Correlates task lifecycle events across every supervisor in the process.
+static NEXT_TASK_ID: AtomicU64 = AtomicU64::new(0);
+
 /// One supervised task.
 #[derive(Debug)]
 struct Supervised {
+    /// Correlates this task's started record with exactly one terminal record.
+    task_id: u64,
     /// What it is, for the line that names it if it will not stop.
     name: &'static str,
+    /// When its started event was emitted, for every terminal event's timing.
+    started: Instant,
     handle: JoinHandle<()>,
 }
 
@@ -116,13 +135,18 @@ impl Supervisor {
     where
         F: Future<Output = ()> + Send + 'static,
     {
-        tracing::debug!(
+        let started = Instant::now();
+        let task_id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
+        tracing::info!(
+            task_id,
             task = name,
-            event = "supervised_task_started",
+            event = EVENT_STARTED,
             "supervised task started"
         );
         self.tasks.push(Supervised {
+            task_id,
             name,
+            started,
             handle: tokio::spawn(task(self.token.clone())),
         });
     }
@@ -153,48 +177,68 @@ impl Supervisor {
 
         let mut report = ShutdownReport::default();
         for task in self.tasks {
-            match tokio::time::timeout(JOIN_TIMEOUT, task.handle).await {
-                Ok(Ok(())) => report.joined.push(task.name),
-                // A `JoinError` here can only be a panic. The other way to
-                // get one is an abort, and this supervisor owns every handle
-                // and never calls `abort` — a join that times out DROPS the
-                // handle, which detaches the task rather than cancelling it.
-                // So there is no cancelled arm below this one: it would be a
-                // branch no test could reach and no operator would ever read.
-                Ok(Err(_panicked)) => {
-                    // Hoisted: the `log` bridge duplicates field expressions
-                    // and llvm-cov scores the copy that never runs.
-                    let name = task.name;
-                    let code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-                    tracing::error!(
-                        error_code = code,
-                        task = name,
-                        event = "supervised_task_panicked",
-                        "supervised task panicked"
-                    );
-                    report.panicked.push(task.name);
-                }
-                Err(_elapsed) => {
-                    let name = task.name;
-                    let code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-                    // Hoisted for the same reason as `code` above: a field
-                    // expression containing a CALL is compiled twice while the
-                    // `log` bridge is on, and llvm-cov scores the dead copy.
-                    let timeout_ms = JOIN_TIMEOUT.as_millis();
-                    tracing::error!(
-                        error_code = code,
-                        task = name,
-                        timeout_ms,
-                        event = "supervised_task_abandoned",
-                        "supervised task did not stop when cancelled — it is \
-                         not selecting over its cancellation token"
-                    );
-                    report.abandoned.push(task.name);
-                }
-            }
+            settle(task, &mut report).await;
         }
         report
     }
+}
+
+async fn settle(task: Supervised, report: &mut ShutdownReport) {
+    let Supervised {
+        task_id,
+        name,
+        started,
+        handle,
+    } = task;
+    match tokio::time::timeout(JOIN_TIMEOUT, handle).await {
+        Ok(Ok(())) => completed(task_id, name, started, report),
+        Ok(Err(_panicked)) => panicked(task_id, name, started, report),
+        Err(_elapsed) => timed_out(task_id, name, started, report),
+    }
+}
+
+fn completed(task_id: u64, name: &'static str, started: Instant, report: &mut ShutdownReport) {
+    let duration_ms = started.elapsed().as_millis();
+    tracing::info!(
+        task_id,
+        task = name,
+        duration_ms,
+        event = EVENT_COMPLETED,
+        "supervised task completed"
+    );
+    report.joined.push(name);
+}
+
+fn panicked(task_id: u64, name: &'static str, started: Instant, report: &mut ShutdownReport) {
+    let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let duration_ms = started.elapsed().as_millis();
+    tracing::error!(
+        error_code,
+        task_id,
+        task = name,
+        duration_ms,
+        reason = "panicked",
+        event = EVENT_FAILED,
+        "supervised task panicked"
+    );
+    report.panicked.push(name);
+}
+
+fn timed_out(task_id: u64, name: &'static str, started: Instant, report: &mut ShutdownReport) {
+    let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let timeout_ms = JOIN_TIMEOUT.as_millis();
+    let duration_ms = started.elapsed().as_millis();
+    tracing::error!(
+        error_code,
+        task_id,
+        task = name,
+        timeout_ms,
+        duration_ms,
+        reason = "join_timeout",
+        event = EVENT_FAILED,
+        "supervised task did not stop when cancelled — it is not selecting over its cancellation token"
+    );
+    report.abandoned.push(name);
 }
 
 impl Default for Supervisor {
@@ -202,3 +246,6 @@ impl Default for Supervisor {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests;

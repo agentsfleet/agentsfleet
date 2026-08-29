@@ -7,6 +7,9 @@
 
 use afd_core::error_code::{self, ErrorCode};
 
+#[cfg(test)]
+mod tests;
+
 /// The result every fallible function in this crate returns.
 ///
 /// One alias per crate, defaulted to this crate's own [`Error`], so a reader

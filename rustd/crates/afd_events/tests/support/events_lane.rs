@@ -59,7 +59,7 @@ impl EventsLane {
     pub(crate) async fn open() -> Self {
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
-        let queue = Redis::connect(&redis_config())
+        let queue = afd_redis::test_util::connect_live(&redis_config())
             .await
             .expect("the lane's Redis must be reachable");
 

@@ -6,18 +6,13 @@
 #![expect(
     clippy::unwrap_used,
     clippy::expect_used,
-    clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
 use afd_core::env::MapEnv;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-
-#[path = "support/test_database.rs"]
-mod support;
-
-use self::support::TestDatabase;
+use afd_db::test_util::TestDatabase;
 
 /// Dimension 2.4 — an exhausted pool and an absent datastore are two different
 /// answers, because they are two different incidents.

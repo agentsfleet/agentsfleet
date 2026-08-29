@@ -25,6 +25,7 @@
 //! the unsupervised spawn path Dimension 7.5 says does not exist.
 
 mod accept;
+mod optional;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -33,8 +34,7 @@ use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT};
 use afd_core::env::EnvSource;
 use afd_db::Db;
 use afd_observability::{Analytics, Telemetry};
-use afd_redis::{Redis, RedisConfig, SubscriptionHub};
-use afd_sse::{Ceiling, Live};
+use afd_redis::Redis;
 use tokio::net::TcpListener;
 
 pub use self::accept::Acceptor;
@@ -42,10 +42,10 @@ pub use self::accept::Acceptor;
 pub use self::accept::serve_accepts;
 
 use self::accept::accept_loop;
+use self::optional::{announce_identity, open_analytics, open_live};
 use crate::daemon::{Daemon, Outcome};
 #[doc(inline)]
 pub use crate::error::BootFailure;
-use crate::identity::Capabilities;
 use crate::plane::{ServingPlane, Shared};
 use crate::preflight::{BootConfig, preflight};
 use crate::supervisor::Supervisor;
@@ -126,40 +126,47 @@ async fn open(
     port: u16,
     supervisor: &mut Supervisor,
 ) -> Result<Booted, BootFailure> {
-    // 2. Postgres, then Redis — the Zig order, and the useful one: a daemon
-    //    with no database has nothing to serve, so it is the first thing worth
-    //    failing on.
+    let runtime = open_runtime(&config, &analytics).await?;
+    let router = afd_api::router::build(runtime.plane, &Admission::new(DEFAULT_MAX_IN_FLIGHT));
+    spawn_background(supervisor, &runtime.database, &runtime.queue, runtime.hub);
+    report_workers(supervisor, &analytics);
+    let address = listen(port, router, supervisor).await?;
+    analytics.report(&Telemetry::ServerStarted {
+        port: address.port(),
+    });
+    supervisor.spawn(crate::ANALYTICS_FLUSH, move |token| async move {
+        token.cancelled().await;
+        analytics.flush().await;
+    });
+
+    Ok(Booted {
+        address,
+        database: runtime.database,
+        queue: runtime.queue,
+    })
+}
+
+struct Runtime {
+    database: Db,
+    queue: Redis,
+    plane: Shared,
+    hub: Option<afd_redis::SubscriptionHub>,
+}
+
+async fn open_runtime(config: &BootConfig, analytics: &Analytics) -> Result<Runtime, BootFailure> {
     let database = Db::connect(config.api_pool()).await?;
     let queue = Redis::connect(config.redis()).await?;
-
-    // 3. Everything the router is generic over, chosen here and nowhere else,
-    //    then the router over it. The admission ceiling is passed alongside
-    //    rather than held by the plane: it is a property of the PROCESS, not a
-    //    service a verb acts through, and mixing the two would put a
-    //    concurrency limit behind a trait about datastores.
     let (capabilities, sessions) = crate::identity::resolve(config.identity());
     announce_identity(&capabilities);
-    // The one clone of the key material, at boot, into the handle every store
-    // that opens a sealed row shares. `Kek` zeroes on drop, so the copy this
-    // makes is not a copy that outlives the process.
     let kek = Arc::new(config.kek().clone());
-    // The broker is built BEFORE the plane because it reads this deployment's
-    // own platform credentials out of the vault, which is an asynchronous step
-    // the plane's constructor is not. A deployment holding none still boots and
-    // still serves every other verb.
     let broker = crate::credentials::resolve(
         &afd_credential::vault::Vault::new(database.clone(), Arc::clone(&kek)),
         config.platform_admin_workspace(),
     )
     .await;
-    // The pub/sub hub, opened once for the process: every live stream rides
-    // this ONE connection, so a wall of tiles costs map entries rather than
-    // dials. An instance that cannot open it still serves — the stream routes
-    // answer and stay silent, and every other verb is unaffected — because a
-    // best-effort surface must not be able to refuse boot.
     let live = open_live(config.redis(), config.sse_max_streams()).await;
     let hub = live.hub().cloned();
-    let plane: Shared = Arc::new(ServingPlane::new(crate::plane::PlaneParts {
+    let plane = Arc::new(ServingPlane::new(crate::plane::PlaneParts {
         database: database.clone(),
         queue: queue.clone(),
         kek,
@@ -175,91 +182,47 @@ async fn open(
             api_url: config.api_url().into(),
         },
     }));
-    let router = afd_api::router::build(plane, &Admission::new(DEFAULT_MAX_IN_FLIGHT));
+    Ok(Runtime {
+        database,
+        queue,
+        plane,
+        hub,
+    })
+}
 
-    // The pump itself lives inside the hub; what is supervised here is its
-    // STOP. A shutdown closes the hub, which closes every channel a live stream
-    // is waiting on — so the streams unwind and their tasks end, instead of
-    // parking on a socket nobody is reading.
+fn spawn_background(
+    supervisor: &mut Supervisor,
+    database: &Db,
+    queue: &Redis,
+    hub: Option<afd_redis::SubscriptionHub>,
+) {
     if let Some(hub) = hub {
         supervisor.spawn(crate::HUB_PUMP, move |token| async move {
             token.cancelled().await;
             hub.shutdown();
         });
     }
+    crate::sweepers::spawn(supervisor, database, queue);
+}
 
-    // 4. The background sweepers, before the listener: they read through pools
-    //    that are open by now, and starting them after the socket would leave a
-    //    window where the plane serves while nothing is noticing dead runners.
-    crate::sweepers::spawn(&mut *supervisor, &database, &queue);
-    // The worker set is up. `concurrency` is how many supervised tasks this
-    // process carries — the closest true reading of the Zig's field, whose
-    // runner daemon is not what this binary is.
-    // Saturating rather than a cast: the field is 16-bit on the wire, and a
-    // process with more than 65,535 supervised tasks reports the ceiling rather
-    // than wrapping to a small number that would read as healthy.
+fn report_workers(supervisor: &Supervisor, analytics: &Analytics) {
     let supervised = u16::try_from(supervisor.inventory().len()).unwrap_or(u16::MAX);
     analytics.report(&Telemetry::WorkerStarted {
         concurrency: supervised,
     });
+}
 
-    // 5. Listen last. Until this line the process is not reachable, which is
-    //    what makes every refusal above a refusal rather than an outage.
+async fn listen(
+    port: u16,
+    router: axum::Router,
+    supervisor: &mut Supervisor,
+) -> Result<SocketAddr, BootFailure> {
     let listener = TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, port)).await?;
     let address = listener.local_addr()?;
-
     supervisor.spawn(ACCEPT_LOOP, move |token| {
         accept_loop(listener, router, token)
     });
-
-    // Reported only once the socket is bound, so `server_started` means an
-    // instance that can be reached and not one that got as far as trying.
-    analytics.report(&Telemetry::ServerStarted {
-        port: address.port(),
-    });
-    // Delivering what is queued is part of stopping: an event captured by the
-    // last request served is one this daemon still owes. Supervised so it runs
-    // in shutdown order, before the pools the caller drops.
-    supervisor.spawn(crate::ANALYTICS_FLUSH, move |token| async move {
-        token.cancelled().await;
-        analytics.flush().await;
-    });
-
-    Ok(Booted {
-        address,
-        database,
-        queue,
-    })
-}
-
-/// Says which surfaces this instance can actually serve.
-///
-/// Once, at boot, because the alternative is an operator discovering it from a
-/// 503 on their first enrolment. Reads the RESOLVED seam rather than the config
-/// it was built from: preflight has already refused a boot whose provider knobs
-/// were missing, so the only way to reach the warning below is a provider that
-/// was configured and could not be constructed — which is a reduced surface,
-/// not a fault, because the runner plane consults neither seam.
-fn announce_identity(capabilities: &Capabilities) {
-    match capabilities {
-        Capabilities::Provider(_built) => {
-            tracing::info!(
-                event = "identity_provider_configured",
-                "identity provider configured — tenant and runner planes both serve"
-            );
-        }
-        Capabilities::Unconfigured(_absent) => {
-            // Hoisted: the `log` bridge duplicates field expressions and
-            // llvm-cov scores the dead copy.
-            let code = afd_core::error_code::AUTH_UNAVAILABLE.as_str();
-            tracing::warn!(
-                error_code = code,
-                event = "identity_provider_unusable",
-                "identity provider unusable — the runner plane serves normally \
-                 and every tenant-plane capability read answers unavailable"
-            );
-        }
-    }
+    Ok(address)
 }
 
 /// The supervised name of the accept loop.
@@ -313,38 +276,4 @@ where
     // dropped only after a shutdown that joined every task reading through them.
     drop(booted);
     Ok(outcome)
-}
-
-/// The live-stream surface, or its silent form when the hub will not open.
-///
-/// The ceiling is built either way: an instance that carries no frames still
-/// has to refuse the stream past its ceiling, so a client learns the same thing
-/// about capacity whether or not this deployment's pub/sub connection came up.
-async fn open_live(config: &RedisConfig, max_streams: usize) -> Live {
-    let ceiling = Ceiling::new(max_streams);
-    match SubscriptionHub::start(config.clone()).await {
-        Ok(hub) => Live::new(hub, ceiling),
-        Err(unopened) => {
-            let code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str();
-            let reason = unopened.to_string();
-            tracing::warn!(
-                error_code = code,
-                reason,
-                event = "hub_unavailable",
-                "the live-stream surface will carry no frames; every other verb is unaffected"
-            );
-            Live::detached(ceiling)
-        }
-    }
-}
-
-/// The product-analytics reporter, or its silent form.
-///
-/// A deployment naming no project reports nothing — which is every developer's
-/// and every test's, so it is a value rather than a refusal.
-async fn open_analytics(config: Option<&crate::preflight::PostHogConfig>) -> Analytics {
-    match config {
-        Some(project) => Analytics::resolve(&project.project_key, project.host.as_deref()).await,
-        None => Analytics::silent(),
-    }
 }

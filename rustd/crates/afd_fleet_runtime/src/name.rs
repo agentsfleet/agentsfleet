@@ -280,4 +280,20 @@ mod tests {
         assert!(Version::parse("1..0").is_err());
         assert!(Version::parse(".1.0").is_err());
     }
+
+    #[test]
+    fn validated_names_and_versions_display_as_authored() {
+        let fleet = FleetName::parse("reviewer").expect("fleet name is valid");
+        let credential = CredentialName::parse("GITHUB_TOKEN").expect("credential name is valid");
+        let version = Version::parse("1.2.3").expect("version is valid");
+
+        assert_eq!(fleet.to_string(), "reviewer");
+        assert_eq!(credential.to_string(), "GITHUB_TOKEN");
+        assert_eq!(version.to_string(), "1.2.3");
+    }
+
+    #[test]
+    fn an_empty_credential_reference_is_refused() {
+        assert!(CredentialName::parse("").is_err());
+    }
 }

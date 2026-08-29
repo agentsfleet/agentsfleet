@@ -221,7 +221,7 @@ pub(crate) async fn scenario(supervisor: &mut Supervisor) -> Scenario {
         .await
         .expect("enrolment must succeed");
 
-    let event_id = enqueue(&booted, &fleet, &workspace, now).await;
+    let event_id = enqueue(&booted, &fleet, &workspace, EVENT_TYPE, now).await;
 
     Scenario {
         base,
@@ -237,6 +237,18 @@ pub(crate) async fn scenario(supervisor: &mut Supervisor) -> Scenario {
 }
 
 impl Scenario {
+    /// Appends another event under this scenario's ready fleet.
+    pub(crate) async fn enqueue_event(&self, event_type: &str) -> String {
+        enqueue(
+            &self.booted,
+            &self.fleet,
+            &self.workspace,
+            event_type,
+            afd_core::clock::now(),
+        )
+        .await
+    }
+
     /// Takes the tenant's wallet to zero.
     ///
     /// A row holding ZERO, not a missing row: the credits gate draws that
@@ -274,7 +286,13 @@ impl Scenario {
 /// Both halves: ingress appends and marks in one path, so a mark with no entry
 /// is a state the daemon never produces and a fixture that made one would be
 /// testing a shape nothing ships.
-async fn enqueue(booted: &Booted, fleet: &str, workspace: &str, now: UnixMillis) -> String {
+async fn enqueue(
+    booted: &Booted,
+    fleet: &str,
+    workspace: &str,
+    event_type: &str,
+    now: UnixMillis,
+) -> String {
     let streams = FleetStreams::new(booted.queue.clone());
     streams
         .ensure_group(fleet)
@@ -285,7 +303,7 @@ async fn enqueue(booted: &Booted, fleet: &str, workspace: &str, now: UnixMillis)
         .append(
             fleet,
             &[
-                ("type", EVENT_TYPE),
+                ("type", event_type),
                 ("actor", ACTOR),
                 ("workspace_id", workspace),
                 ("request", REQUEST_JSON),
