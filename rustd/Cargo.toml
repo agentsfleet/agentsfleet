@@ -572,7 +572,15 @@ tracing = { version = "0.1.44", default-features = false, features = ["std", "at
 # test never executes the fields inside an event macro. Every diagnostic line in
 # this workspace would read as dead code that nothing can reach — and the fix is
 # to install a subscriber in tests, not to stop logging.
-tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
+#
+# `ansi` is asked for because the daemon's subscriber already asks for it:
+# `agentsfleetd/src/logs.rs` calls `.with_ansi(true)` whenever standard error is
+# a terminal, and without this feature that call PANICS — "the `ansi` crate
+# feature is required to enable ANSI terminal colors" — taking the daemon down
+# on every interactive start. It survived because the panic needs a terminal on
+# standard error, which is exactly what a service manager and a container never
+# give it, so the deployed paths were the ones that could not reach it.
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["ansi", "fmt", "std"] }
 
 [workspace.lints.rust]
 # Every rustc warning is an error; individual lints below raise their own level
