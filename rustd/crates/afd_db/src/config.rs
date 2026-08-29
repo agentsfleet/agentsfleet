@@ -4,18 +4,14 @@
 //! (`src/agentsfleetd/db/pool.zig`): a deployment moves between the two
 //! binaries without touching its environment, or the port is not a port.
 //!
-//! # TLS is required unless the URL says otherwise
-//!
-//! `sqlx` defaults to `sslmode=prefer` — encrypt if the server offers it,
-//! continue in the clear if it does not. Every role-separated connection here
-//! goes to a hosted provider that mandates TLS, so the default is `require`
-//! and a URL that wants otherwise has to say `?sslmode=disable`, which is what
-//! the local compose Postgres does.
+//! The TLS posture a URL resolves to lives in [`tls`], with the history that
+//! explains it.
 
-use std::str::FromStr as _;
 use std::time::Duration;
 
-use sqlx::postgres::{PgConnectOptions, PgSslMode};
+use sqlx::postgres::PgConnectOptions;
+
+mod tls;
 
 use crate::error::{Error, ErrorKind, Result};
 use afd_core::env::EnvSource;
@@ -89,9 +85,6 @@ const ACQUIRE_TIMEOUT_MS_DEFAULT: u64 = 2_000;
 /// The connection handshake budget, which is a different thing from the wait
 /// for a free connection and is not tunable per role.
 const CONNECT_TIMEOUT_MS_DEFAULT: u64 = 10_000;
-
-/// The two spellings a Postgres URL may carry, and the only two.
-const POSTGRES_SCHEMES: [&str; 2] = ["postgres://", "postgresql://"];
 
 const POOL_SIZE_KNOB: &str = "DATABASE_POOL_SIZE";
 /// The warm floor, overridable for a host that wants a different one.
@@ -177,7 +170,9 @@ impl PoolConfig {
 
         Ok(Self {
             role,
-            connect: connect_options(knob, &url)?,
+            // main's TLS-aware options, this branch's sizing: the two changed
+            // different fields of the same literal.
+            connect: tls::connect_options(role, &url)?,
             max_connections,
             // Never above the ceiling: a floor larger than the pool is a pool
             // that can never satisfy its own maintenance.
@@ -222,6 +217,18 @@ impl PoolConfig {
         self.connect_timeout
     }
 
+    /// The TLS posture this role resolved to, spelled as a connection URL
+    /// spells it.
+    ///
+    /// Published rather than kept to the crate because it is the value an
+    /// operator needs when a connection is refused, and because a posture
+    /// nothing outside this module can read is a promise with no witness — the
+    /// boot line reports it and this is what the boot line reads.
+    #[must_use]
+    pub fn ssl_mode(&self) -> &'static str {
+        tls::ssl_mode_tag(self.connect.get_ssl_mode())
+    }
+
     /// Shortens the handshake budget, for a test that means to exhaust it.
     ///
     /// The production value is a constant because a handshake budget is not an
@@ -240,46 +247,6 @@ impl PoolConfig {
     pub(crate) fn connect_options(&self) -> PgConnectOptions {
         self.connect.clone()
     }
-}
-
-/// Parses a connection URL, defaulting TLS to required.
-///
-/// The default is applied only when the URL is silent: `?sslmode=disable` is
-/// how the local compose Postgres — which serves no TLS at all — is reachable,
-/// and honouring it is why the local lane works without a certificate.
-fn connect_options(knob: &'static str, url: &str) -> Result<PgConnectOptions> {
-    // The scheme is checked here rather than left to sqlx, which accepts
-    // `mysql://host/db` and reads it as host `host`, database `db`. A
-    // deployment that pasted the wrong URL then connects somewhere real and
-    // fails on the first query instead of at boot. `parseUrl` refuses anything
-    // but these two prefixes (`pool.zig:81-87`) and so does this.
-    if !POSTGRES_SCHEMES
-        .iter()
-        .any(|scheme| url.starts_with(scheme))
-    {
-        return Err(Error::new(ErrorKind::InvalidDatabaseUrlScheme { knob }));
-    }
-
-    let options = PgConnectOptions::from_str(url).map_err(|source| {
-        Error::new(ErrorKind::InvalidDatabaseUrl {
-            knob,
-            source: Box::new(source),
-        })
-    })?;
-    if url_declares_sslmode(url) {
-        Ok(options)
-    } else {
-        Ok(options.ssl_mode(PgSslMode::Require))
-    }
-}
-
-/// Whether the URL's query string names `sslmode` at all.
-fn url_declares_sslmode(url: &str) -> bool {
-    url.split_once('?').is_some_and(|(_, query)| {
-        query
-            .split('&')
-            .any(|param| param.split('=').next() == Some("sslmode"))
-    })
 }
 
 /// Reads a numeric knob, preferring the role-scoped override over the base
