@@ -372,7 +372,7 @@ mod tests {
 
     use super::{
         CONNECT_ATTEMPT_TIMEOUT, CONNECT_RESPONSE_TIMEOUT, CONNECT_RETRIES,
-        CONNECT_RETRY_MAX_DELAY, CONNECT_RETRY_MIN_DELAY, connect_retry_policy,
+        CONNECT_RETRY_MAX_DELAY, CONNECT_RETRY_MIN_DELAY, build_client, connect_retry_policy,
     };
     use crate::config::{RedisConfig, RedisRole};
 
@@ -483,6 +483,52 @@ mod tests {
             "the shipped ladder sleeps {sleeps:?} against a {:?} budget, before \
              a single connection attempt is counted",
             default_budget(),
+        );
+    }
+
+    /// A configured authority does not make a plaintext endpoint a TLS one.
+    ///
+    /// The scheme selects the transport; the certificate authority only says
+    /// whom to trust once TLS is chosen. Branching on whether a CA is
+    /// CONFIGURED sends a `redis://` URL into `build_with_tls`, which refuses
+    /// the pair outright with `InvalidClientConfig` — so a caller holding a CA
+    /// path for its TLS endpoint could not open a plaintext one at all. That is
+    /// the lane's own shape: ordinary suites take the plaintext port while the
+    /// trust suite takes `rediss://`, both from a process that has the CA
+    /// configured.
+    ///
+    /// The path names a file that does not exist, and that is the assertion:
+    /// the plaintext branch never reads it. A build that succeeds here proves
+    /// the CA was not consulted, and one that reports `CaCertUnreadable` proves
+    /// the branch went the wrong way.
+    #[test]
+    fn test_a_configured_authority_does_not_force_tls_on_a_plaintext_url() {
+        let config = RedisConfig::from_url(RedisRole::Api, "redis://127.0.0.1:6379".to_owned())
+            .with_ca_cert_file(Some("/nonexistent/authority.pem".into()));
+
+        assert!(
+            build_client(&config).is_ok(),
+            "a redis:// URL opens plaintext whatever authority is configured"
+        );
+    }
+
+    /// And the scheme that does mean TLS still reaches the authority.
+    ///
+    /// The mirror of the case above: same unreadable path, `rediss://` this
+    /// time, so the client must try to READ it and fail on the file rather than
+    /// quietly open a plaintext connection to a TLS port. Without this arm the
+    /// test above is satisfied by a `build_client` that never does TLS at all.
+    #[test]
+    fn test_a_tls_url_reads_the_authority_it_was_given() {
+        let config = RedisConfig::from_url(RedisRole::Api, "rediss://127.0.0.1:6380".to_owned())
+            .with_ca_cert_file(Some("/nonexistent/authority.pem".into()));
+
+        let refusal = build_client(&config).err().map(|error| error.to_string());
+        assert!(
+            refusal
+                .as_deref()
+                .is_some_and(|message| message.contains("/nonexistent/authority.pem")),
+            "a rediss:// URL must consult the authority and name it when unreadable: {refusal:?}"
         );
     }
 }

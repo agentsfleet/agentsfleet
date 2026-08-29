@@ -73,12 +73,12 @@ mod support;
 
 #[path = "connect_refusals.rs"]
 mod connect_refusals;
-#[path = "integration_diagnose_connect.rs"]
-mod integration_diagnose_connect;
 #[path = "error_surface.rs"]
 mod error_surface;
 #[path = "hub_socket_faults.rs"]
 mod hub_socket_faults;
+#[path = "integration_diagnose_connect.rs"]
+mod integration_diagnose_connect;
 #[path = "integration_hub.rs"]
 mod integration_hub;
 #[path = "integration_ready.rs"]
