@@ -19,7 +19,28 @@ use agentsfleetd::cli::{Cli, run};
 use clap::Parser as _;
 
 fn main() -> ExitCode {
-    // Before anything that might have something to say. `install` answers
+    // `Cli::parse` exits on `--help`, `--version` and usage errors, so it comes
+    // first — but it writes nothing on the path that continues, which is what
+    // lets the nameplate still be the process's first output.
+    let cli = Cli::parse();
+
+    // The first write of the process, before the subscriber, the runtime, or
+    // any dependency is touched. Nothing it prints depends on any of them:
+    // its only input is the version, which is why it can be this early.
+    //
+    // The width is not sensed. Reading a terminal's column count needs a
+    // `TIOCGWINSZ` call that neither `std` nor any crate this workspace already
+    // links provides, and the nameplate is not worth a dependency — so the
+    // documented fallback governs and the rule is drawn at its full width.
+    agentsfleetd::nameplate::show(
+        env!("CARGO_PKG_VERSION"),
+        &agentsfleetd::nameplate::Conditions::sense(),
+        None,
+        cli.quiet,
+        cli.no_banner,
+    );
+
+    // `install` answers
     // whether it took the process-wide slot; at boot there is nobody to have
     // taken it first, and a daemon that could not install a subscriber is
     // still a daemon that should serve — so the answer is dropped here rather
@@ -32,7 +53,7 @@ fn main() -> ExitCode {
     // is not a boot refusal, and an init system restarting on the latter should
     // not restart on the former.
     ExitCode::from(run(
-        &Cli::parse(),
+        &cli,
         &ProcessEnv,
         tokio::runtime::Runtime::new,
         agentsfleetd::signal::shutdown(),
