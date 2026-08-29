@@ -121,10 +121,16 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 lint-all: lint-rustd lint-scripts _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
-check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + make-target ref check
+check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + action pins + make-target ref check
 	@echo "→ [gh-actions] Running actionlint on workflows..."
 	@command -v $(ACTIONLINT) >/dev/null 2>&1 || { echo "actionlint not found. Install via: mise install actionlint"; exit 1; }
 	@$(ACTIONLINT) .github/workflows/*.yml
+	@# actionlint validates the YAML and the `run:` shell; it has no opinion on
+	@# whether a pin's runtime still exists or whether its ref can move. That is
+	@# this script's half, and it rides the same target because both answer one
+	@# question: will these workflows still work tomorrow.
+	@echo "→ [gh-actions] Checking action pins — runtimes and mutable refs..."
+	@bash audits/gh-actions-runtime.sh
 	@echo "→ [gh-actions] Verifying make targets referenced in workflows..."
 	@# Filter out our own recipe name — GNU make recurses on $(MAKE) even in
 	@# -n mode (dry-run propagates through sub-makes), so a self-reference
