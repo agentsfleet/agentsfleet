@@ -19,10 +19,11 @@
 # Env:    WITH_PROGRESS_QUIET_SECONDS  (default 15) seconds of silence per tick
 #         WITH_PROGRESS_DISABLE=1      pass the command straight through
 #
-# Progress lines go to STDERR, never stdout. The integration lane pipes its
-# command through `tee` into a tally that `scripts/rustd_lane_result.py` parses
-# for test counts, and progress is not output — a tick landing in that file
-# would be this wrapper editing the evidence another gate reads.
+# Progress lines go to STDERR, never stdout. The Rust integration runner merges
+# both streams while it owns the child and parses Cargo's summaries for test
+# counts. Keeping the heartbeat separate here means the wrapper reports only
+# the command's evidence; the runner may still choose to retain the combined
+# diagnostic stream.
 set -euo pipefail
 
 readonly DEFAULT_QUIET_SECONDS=15
