@@ -16,6 +16,9 @@ use crate::subscriber::install_subscriber;
 const URL_KNOB: &str = "TEST_REDIS_URL";
 const CA_KNOB: &str = "TEST_REDIS_CA_CERT";
 
+/// The same server over TLS, for the cases whose subject is the certificate.
+const TLS_URL_KNOB: &str = "TEST_REDIS_TLS_URL";
+
 /// Distinguishes keys minted by one process.
 static SEQUENCE: AtomicU32 = AtomicU32::new(0);
 
@@ -52,6 +55,21 @@ impl RedisHarness {
                 SEQUENCE.fetch_add(1, Ordering::Relaxed)
             ),
         }
+    }
+
+    /// The lane's TLS endpoint, for assertions whose SUBJECT is the certificate.
+    ///
+    /// The ordinary [`Self::config`] is plaintext, because a handshake
+    /// re-proving an unchanging authority on every one of the lane's connects
+    /// costs a 232 ms median against 0.1 ms. A trust anchor is meaningless on a
+    /// plaintext URL and is correctly ignored there — so a test asserting that
+    /// a MISSING or MALFORMED authority is refused has to ask over `rediss://`,
+    /// or it asserts nothing and passes for the wrong reason.
+    pub(crate) fn tls_config() -> RedisConfig {
+        let url = std::env::var(TLS_URL_KNOB).unwrap_or_else(|_| {
+            panic!("{TLS_URL_KNOB} is unset — run these through `make test-integration-rustd`")
+        });
+        RedisConfig::from_url(RedisRole::Default, url).with_request_timeout(Duration::from_secs(5))
     }
 
     /// The configuration the lane hands this suite.

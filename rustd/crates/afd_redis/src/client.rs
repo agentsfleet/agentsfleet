@@ -328,7 +328,14 @@ pub(crate) fn connect_retry_policy() -> ConnectionManagerConfig {
 }
 
 pub(crate) fn build_client(config: &RedisConfig) -> Result<redis::Client> {
-    let Some(path) = config.ca_cert_file() else {
+    // A certificate authority is meaningless without TLS, and `redis` does not
+    // merely ignore one: `build_with_tls` on a `redis://` URL fails the whole
+    // connect with `InvalidClientConfig`. Branching on whether a CA is
+    // CONFIGURED rather than on whether the connection is TLS made every
+    // caller that keeps a CA path around for its TLS endpoint unable to open a
+    // plaintext one — which is exactly what the lane does now that ordinary
+    // suites take the plaintext port and only the trust suite takes `rediss://`.
+    let Some(path) = config.ca_cert_file().filter(|_| config.is_tls()) else {
         return redis::Client::open(config.url()).map_err(|source| {
             Error::new(ErrorKind::Unreachable {
                 role: config.role().tag(),

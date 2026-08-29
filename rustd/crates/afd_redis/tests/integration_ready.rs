@@ -86,7 +86,6 @@ async fn test_ready_index_read_surface() {
     let harness = RedisHarness::connect().await;
     let index = ReadyIndex::new(harness.redis.clone());
 
-    let before = index.len().await.expect("len");
     let fleets: Vec<String> = (0..3).map(|n| harness.name(&format!("fleet{n}"))).collect();
     for (position, fleet) in fleets.iter().enumerate() {
         index
@@ -95,7 +94,25 @@ async fn test_ready_index_read_surface() {
             .expect("mark");
     }
 
-    assert_eq!(index.len().await.expect("len"), before + 3);
+    // `len()` accounts for this test's marks; it is NOT asserted to have moved
+    // by exactly three. The ready index is one key shared by the whole lane, and
+    // this file used to be its own test binary, which cargo ran while no sibling
+    // suite was writing. Aggregating the crate's suites into one binary runs
+    // them concurrently, and a sibling marking or clearing a fleet between the
+    // two reads made the delta 23 where the arithmetic wanted 24 — a failure of
+    // the test's isolation assumption, not of the read surface.
+    //
+    // What the read surface actually promises survives, and is graded below: a
+    // count that includes what this test marked, an emptiness question that
+    // answers false while it holds entries, and — the dimension this file names
+    // — a sample that pairs every fleet with ITS OWN token rather than a
+    // neighbour's.
+    let marked = u64::try_from(fleets.len()).unwrap_or(u64::MAX);
+    let counted = index.len().await.expect("len");
+    assert!(
+        counted >= marked,
+        "the index must account for the fleets this test marked: {counted} < {marked}"
+    );
     assert!(!index.is_empty().await.expect("is_empty"));
 
     // Every sampled pair must be a field with ITS value, not a shifted pairing.
@@ -138,7 +155,11 @@ async fn test_client_reports_its_own_configuration() {
         .await
         .expect("a live Redis answers PING");
 
-    let missing_ca = RedisHarness::config().with_ca_cert_file(Some("/nonexistent/ca.crt".into()));
+    // TLS, because a trust anchor is what is being graded. On the lane's
+    // plaintext endpoint a certificate authority is correctly ignored, so this
+    // would connect happily and assert nothing.
+    let missing_ca =
+        RedisHarness::tls_config().with_ca_cert_file(Some("/nonexistent/ca.crt".into()));
     let error = afd_redis::Redis::connect(&missing_ca)
         .await
         .expect_err("a certificate authority that is not there must refuse");
@@ -232,7 +253,8 @@ async fn test_connection_failures_name_their_cause() {
     // A certificate authority file that is not a certificate.
     let junk = std::env::temp_dir().join(format!("afd-not-a-cert-{}.pem", std::process::id()));
     std::fs::write(&junk, b"this is not a certificate\n").expect("write the junk file");
-    let bad_pem = RedisHarness::config().with_ca_cert_file(Some(junk.clone()));
+    // TLS, for the reason the missing-authority case above records.
+    let bad_pem = RedisHarness::tls_config().with_ca_cert_file(Some(junk.clone()));
     let error = afd_redis::Redis::connect(&bad_pem)
         .await
         .expect_err("a file that is not a certificate must refuse");
