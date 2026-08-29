@@ -193,11 +193,17 @@ fn test_the_capability_claim_is_read_from_one_place_only() {
 ///
 /// Not fatal: the daemon refuses a principal with no tenant anyway, and failing
 /// the whole verification would report a provisioning problem as a bad token.
+///
+/// This used to assert the same tolerance for `workspace_id` in the same token,
+/// which quietly pinned a hole open: a ceiling of `42` verified with no ceiling
+/// applied, which is the exact grant `UnreadableCeiling` exists to stop. The
+/// ceiling half moved to `claim_authority_bounds`, where it now REFUSES, and
+/// this keeps only the claim the tolerance was reasoned about.
 #[test]
 fn test_an_unparseable_identifier_claim_reads_as_absent() {
     let claims = verify(&format!(
         "{{\"sub\":\"user_x\",\"iss\":\"{ISSUER}\",\"aud\":\"{AUDIENCE}\",\
-          \"exp\":{NOT_EXPIRED},\"tenant_id\":\"tenant_a\",\"workspace_id\":42}}"
+          \"exp\":{NOT_EXPIRED},\"tenant_id\":\"tenant_a\"}}"
     ))
     .expect("the token itself is fine");
     assert!(claims.tenant.is_none());

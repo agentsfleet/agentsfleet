@@ -172,9 +172,27 @@ impl<S: KeySetSource> JwksVerifier<S> {
         // leeway, for the reason `exp` has none: the session token lives sixty
         // seconds, and a skew allowance large enough to matter is a meaningful
         // fraction of its whole life.
-        if claims.nbf.is_some_and(|nbf| nbf > now) {
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "a Unix second count is far inside f64's exact-integer range; the widening exists to accept the non-integer NumericDate RFC 7519 permits"
+        )]
+        let now_seconds = now as f64;
+        if claims.nbf.is_some_and(|nbf| nbf > now_seconds) {
             return Err(VerifyError::NotYetValid);
         }
+        // Said out loud, because the refusal alone is not: `OidcFlow::redact`
+        // collapses this into the generic rejection every bad token gets, so
+        // without a line here a mis-provisioned ceiling is an unexplained
+        // stream of 401s. The VALUE is never logged — it is claim content from
+        // a token, and naming the claim is what an operator needs.
+        let ceiling = claims.ceiling().inspect_err(|_unreadable| {
+            tracing::warn!(
+                event = "workspace_ceiling_unreadable",
+                "a token carries a workspace ceiling this daemon cannot read; \
+                 the token is refused rather than served without the confinement"
+            );
+        });
+
         let subject = claims
             .sub
             .as_deref()
@@ -191,7 +209,7 @@ impl<S: KeySetSource> JwksVerifier<S> {
             // Fallible where the tenant is not: an unreadable ceiling refuses
             // the token rather than reading as "no ceiling". See
             // `Claims::ceiling` for why the two claims part company here.
-            workspace_scope: claims.ceiling()?,
+            workspace_scope: ceiling?,
             scope_claim: claims.scopes.map(Into::into),
         })
     }

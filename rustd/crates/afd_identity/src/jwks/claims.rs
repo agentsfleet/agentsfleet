@@ -37,7 +37,16 @@ pub(crate) struct Claims {
     ///
     /// Named rather than left in `rest` so a token carrying two of them is a
     /// duplicate-field refusal rather than a silent last-one-wins.
-    pub(crate) nbf: Option<i64>,
+    ///
+    /// Deliberately WIDER than `exp`'s `i64`. A `NumericDate` is "a JSON numeric
+    /// value", which RFC 7519 says may be non-integer, and this claim was
+    /// previously carried in `rest` where any shape was tolerated — so naming
+    /// it as an integer would turn a conforming `"nbf": 1704067400.5` into a
+    /// whole-verification `Malformed`, an authentication outage for that issuer
+    /// reported as a bad token. `exp` carries the narrower type already and is
+    /// left alone: widening it is a behaviour change to a claim this milestone
+    /// was not asked to touch.
+    pub(crate) nbf: Option<f64>,
     /// Everything else, so the nested metadata object stays reachable without
     /// naming a second struct for one lookup.
     #[serde(flatten)]
@@ -72,6 +81,19 @@ impl Claims {
             })
     }
 
+    /// Wherever `name` is PRESENT, top level before `metadata`, whatever type.
+    ///
+    /// The distinction [`Self::raw_claim`] cannot make. That one asks "is there
+    /// a readable string here", so a value of the wrong type reads to it as no
+    /// value at all — which is the right answer for a claim that grants and the
+    /// wrong one for a claim that restricts. A number, an object or a boolean
+    /// under `workspace_id` is still something an operator put there.
+    fn present_claim(&self, name: &str) -> Option<&serde_json::Value> {
+        self.rest
+            .get(name)
+            .or_else(|| self.rest.get(CLAIM_METADATA)?.as_object()?.get(name))
+    }
+
     /// An IDENTIFYING claim, where an unreadable value reads as absent.
     ///
     /// Deliberate, and only safe because of what absence costs here: the daemon
@@ -99,16 +121,31 @@ impl Claims {
     /// variant — so this is not a theoretical arm: a v4 identifier, an
     /// uppercase one, or a prefixed one all land here.
     ///
+    /// Presence is decided on the VALUE, not on whether it reads as a string.
+    /// A `workspace_id` of `42`, `true` or `{}` is a restriction someone set and
+    /// this daemon cannot apply, so it refuses — reading it as "no ceiling"
+    /// would be the same silent grant by a different route, and asking only
+    /// `as_str()` is exactly how it would come back.
+    ///
+    /// An explicit JSON `null` is the exception, and is treated as absent: it
+    /// is the spelling of "no value", not of a restriction, so a template that
+    /// projects an unset field as `null` must not refuse every token it mints.
+    ///
     /// # Errors
-    /// [`VerifyError::UnreadableCeiling`] when the claim is present and is not
-    /// a canonical identifier.
+    /// [`VerifyError::UnreadableCeiling`] when the claim is present with any
+    /// value other than `null` that is not a canonical identifier.
     pub(crate) fn ceiling(&self) -> Result<Option<Uuid7>, VerifyError> {
-        let Some(raw) = self.raw_claim(CLAIM_WORKSPACE_ID) else {
+        let Some(value) = self.present_claim(CLAIM_WORKSPACE_ID) else {
             return Ok(None);
         };
-        Uuid7::parse(raw)
+        if value.is_null() {
+            return Ok(None);
+        }
+        value
+            .as_str()
+            .and_then(|raw| Uuid7::parse(raw).ok())
             .map(Some)
-            .map_err(|_unreadable| VerifyError::UnreadableCeiling)
+            .ok_or(VerifyError::UnreadableCeiling)
     }
 
     /// Whether `aud` names `wanted`, as a string or inside an array.
