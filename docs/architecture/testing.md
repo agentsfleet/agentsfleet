@@ -107,10 +107,22 @@ Every threshold is 0%: the target IS the bar, with no give. A patch status grade
 only the lines a diff touched, so on a small diff one unhit line reds the build —
 intentionally. The answer is a test, never absorbed slack.
 
-100 is reachable here rather than aspirational. The Rust crates carry no
-input/output, no runtime and no external dependency, so every line is reachable
-from a test; the TypeScript packages are pinned at 100 by their own runners. A
-floor below what the suite already achieves is slack nobody asked for.
+The Rust target measures the unit tier and the ignored live-datastore tier in
+one `cargo llvm-cov` invocation. Postgres, Redis, HTTP and runtime code are part
+of the denominator, so `make test-coverage-rustd` resets the lane, applies the
+schema through the instrumented daemon, then runs both tiers once with
+`--include-ignored`. The target writes `rustd/lcov.info` and enforces the same
+100% line floor locally before Codecov upload. A floor below the published
+contract would leave local verification and the remote status grading different
+claims.
+
+Coverage builds are intentionally distinct from normal development builds.
+Continuous Integration disables Cargo incremental compilation for this job:
+there is no edit-build loop to reuse, and caching incremental object trees only
+moves stale gigabytes between runners. Local development retains Cargo's
+incremental default. `[profile.dev] debug = 1` limits debug information to line
+tables; it does not disable incremental compilation or garbage-collect old
+fingerprints and artifacts.
 
 If a later change adds a genuinely untestable line, move the number in the same
 commit and say why. Do not let it drift down silently.

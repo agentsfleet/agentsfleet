@@ -9,9 +9,12 @@ Run: python3 -m unittest discover -s scripts -t scripts -p '*_test.py'
 """
 from __future__ import annotations
 
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
-from rustd_lane_result import passed_total, verdict
+from rustd_lane_result import child_status, passed_total, run, verdict, verdict_from_total
 
 # One binary's summary line, as cargo prints it.
 ONE_BINARY = "test result: ok. 12 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out\n"
@@ -68,6 +71,46 @@ class Verdict(unittest.TestCase):
         code, message = verdict(WORKSPACE, status=0)
         self.assertEqual(code, 0)
         self.assertIn("8 tests", message)
+
+    def test_the_streaming_path_classifies_its_in_memory_total(self):
+        self.assertEqual(verdict_from_total(3, 0), (0, "passed (3 tests)"))
+        code, message = verdict_from_total(0, 0)
+        self.assertEqual(code, 1)
+        self.assertIn("did not run", message)
+
+
+class CommandRunner(unittest.TestCase):
+    def test_streams_and_tallies_without_a_status_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            status, passed = run(
+                [sys.executable, "-c", f"print({ONE_BINARY!r})"],
+                root,
+                root / "lane.log",
+            )
+
+            self.assertEqual(status, 0)
+            self.assertEqual(passed, 12)
+            self.assertIn("12 passed", (root / "lane.log").read_text())
+
+    def test_an_unwritable_tally_cannot_replace_the_child_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            status, passed = run(
+                [
+                    sys.executable,
+                    "-c",
+                    f"print({ONE_BINARY!r}); raise SystemExit(23)",
+                ],
+                root,
+                root,
+            )
+
+            self.assertEqual(status, 23)
+            self.assertEqual(passed, 12)
+
+    def test_a_signal_uses_the_shells_status_convention(self):
+        self.assertEqual(child_status(-15), 143)
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Fleet count in the idle term | absent | fleet count appears only in the readiness *recovery* bound | §The per-poll bound |
 | SSE ceiling | `SSE_MAX_STREAMS` = 64 per replica | one dedicated detached thread (~0.25 MiB stack) per tail; 503 at the cap; hub connection shared | §Tuneup knobs, §2 |
 | Redis timeout | `REDIS_REQUEST_TIMEOUT_MS` = 5000 — do not raise | above 5 s is failure, not slowness | §Tuneup knobs |
+| Redis connect timeout | `REDIS_CONNECT_TIMEOUT_MS` = 5000 | bounds establishment, not just commands; a dead endpoint refuses inside the budget instead of holding boot open | §Tuneup knobs |
 | Lease TTL | `LEASE_TTL_MS` = 30000 | reclaim latency floor; renewal decouples run length from it | §Tuneup knobs |
 | Per-host concurrency | assigned `worker_count` = 1 (dashboard, per runner) | a capacity knob that widens the failure domain to N in-flight runs on host loss | §Tuneup knobs, §Runner host loss |
 | Admission ceiling | `API_MAX_IN_FLIGHT_REQUESTS` = 256, api-class only | ops routes (`/healthz`, `/readyz`, `/metrics`) are NEVER shed | §Tuneup knobs |
@@ -205,6 +206,7 @@ The Redis figures above are only half the idle bill. The other half is Postgres,
 | `REDIS_POOL_MAX_IDLE` | 8 | Concurrent in-flight short-lived commands per `agentsfleetd` replica — **not** fleet count | p99 of `Pool.acquire` wait exceeds ~5 ms under load. The lease/report/ingress/activity commands all complete in single-digit ms over Upstash TLS; above 16 is unusual. |
 | `REDIS_POOL_EAGER_MIN` | 2 | Cold-boot dial cost (Upstash TLS handshake) | Cold-boot `agentsfleetd` latency p99 is dominated by dial time. |
 | `REDIS_REQUEST_TIMEOUT_MS` | 5000 | Upstash tail-latency tolerance | Upstash p99 round-trip exceeds 4 s under healthy traffic. **Do not raise it** — >5 s is failure, not slowness. |
+| `REDIS_CONNECT_TIMEOUT_MS` | 5000 | Time to establish a connection, which `REDIS_REQUEST_TIMEOUT_MS` never covered — that knob bounds commands on a connection that already exists. | A dead or black-holing endpoint used to hold a boot preflight open past every deadline it declared; the budget now refuses it as `Unreachable`. Raise only where a TLS handshake to a distant region measurably exceeds 4 s. |
 | `NO_WORK_RETRY_AFTER_MS` | 1000 | Idle lease-poll request volume (Upstash bill) **and** idle pickup latency. **Not busy-fleet delivery latency.** | Idle request bill is the dominant cost line on PAYG. Raise to 2000–5000 to cut the idle bill proportionally; idle pickup latency rises by the same factor. Single-sourced in `src/lib/common/constants.zig`. |
 | `MAX_READY_CANDIDATES_PER_POLL` | 64 | Per-poll fan-out ceiling: the most fleets one lease poll will examine, and the width of the randomized readiness slice. **Not** an idle-cost knob — an idle poll examines zero regardless. | Compile-time, not env-driven. Lower it only if `agentsfleet_lease_poll_candidates_scanned_total / agentsfleet_lease_polls_total` shows busy polls doing more per-fleet work than the hot path can absorb. Raise it if labelled runners are visibly slow to find their eligible fleets (a narrow slice plus a selective label gate — see §"Per-request volume"). Beside `NO_WORK_RETRY_AFTER_MS` in `src/lib/common/constants.zig` because they trade the same axis: per-poll cost against discovery latency. |
 | `LEASE_TTL_MS` | 30000 | Reclaim latency floor **and** the max single-fleet runtime before reclaim (the renewal gap) | Raise to cover the longest expected fleet runtime until M80_006 lands per-lease renewal (see `runner_fleet.md` Failure Recovery Model). Lower only with a tighter recovery requirement and short fleets. |
@@ -289,6 +291,7 @@ Step 4: Emit configuration
   REDIS_POOL_MAX_IDLE      = 8       (override only with measured Pool.acquire p99 > 5ms)
   REDIS_POOL_EAGER_MIN     = 2
   REDIS_REQUEST_TIMEOUT_MS = 5000    (do not raise)
+  REDIS_CONNECT_TIMEOUT_MS = 5000    (raise only for a measured cross-region handshake)
   NO_WORK_RETRY_AFTER_MS   = <step 2 result>
   LEASE_TTL_MS             = <≥ max expected fleet runtime until M80_006>
   agentsfleetd_replicas         = <step 3 result>
