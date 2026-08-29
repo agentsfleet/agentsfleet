@@ -1,5 +1,7 @@
 [package]
 name = "afd_fleet"
+# One aggregated integration binary; see tests/fleet_suite.rs for why.
+autotests = false
 description = "The runner control plane: enrolment, liveness, lease assignment, report settlement, and the sweepers behind them."
 version.workspace = true
 edition.workspace = true
@@ -121,3 +123,7 @@ afd_redis = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true
+
+[[test]]
+name = "fleet_suite"
+path = "tests/fleet_suite.rs"

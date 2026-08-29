@@ -15,7 +15,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-mod support;
 
 use afd_auth::verifier::VerifyError;
 use afd_identity::HttpKeySet;
@@ -100,7 +99,7 @@ fn block_on<F: Future>(future: F) -> F::Output {
 /// A served document arrives whole.
 #[test]
 fn test_a_served_key_set_is_read_back_verbatim() {
-    support::install_subscriber();
+    crate::support::install_subscriber();
     block_on(async {
         let document = b"{\"keys\":[]}".to_vec();
         let (url, server) = serve_once(Serve::Response {
@@ -135,7 +134,7 @@ fn test_the_fetcher_reports_the_endpoint_it_reads() {
 /// set and is a hundred megabytes must stop being read.
 #[test]
 fn test_a_body_past_the_cap_is_refused() {
-    support::install_subscriber();
+    crate::support::install_subscriber();
     block_on(async {
         let (url, server) = serve_once(Serve::Response {
             status: 200,
@@ -161,7 +160,7 @@ fn test_a_body_past_the_cap_is_refused() {
 /// would look like a provider outage rather than a limit.
 #[test]
 fn test_a_body_exactly_at_the_cap_is_accepted() {
-    support::install_subscriber();
+    crate::support::install_subscriber();
     block_on(async {
         let (url, server) = serve_once(Serve::Response {
             status: 200,
@@ -187,7 +186,7 @@ fn test_a_body_exactly_at_the_cap_is_accepted() {
 /// treated as "no keys".
 #[test]
 fn test_a_non_success_status_is_refused() {
-    support::install_subscriber();
+    crate::support::install_subscriber();
     block_on(async {
         for status in [301_u16, 400, 401, 404, 429, 500, 503] {
             let (url, server) = serve_once(Serve::Response {
@@ -211,7 +210,7 @@ fn test_a_non_success_status_is_refused() {
 /// A connection accepted and then dropped is a transport failure, not a parse.
 #[test]
 fn test_a_dropped_connection_is_a_transport_failure() {
-    support::install_subscriber();
+    crate::support::install_subscriber();
     block_on(async {
         let (url, server) = serve_once(Serve::Hangup).await;
 
@@ -233,7 +232,7 @@ fn test_a_dropped_connection_is_a_transport_failure() {
 /// changes it.
 #[test]
 fn test_a_refused_connection_is_the_same_refusal() {
-    support::install_subscriber();
+    crate::support::install_subscriber();
     block_on(async {
         // Bind and immediately drop, so the port is almost certainly closed.
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")

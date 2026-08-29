@@ -1,5 +1,7 @@
 [package]
 name = "afd_identity"
+# One aggregated test binary; see tests/identity_suite.rs for why.
+autotests = false
 description = "The identity provider's side of authentication: JWKS verification and live capability resolution."
 version.workspace = true
 edition.workspace = true
@@ -58,3 +60,7 @@ tracing-subscriber.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "identity_suite"
+path = "tests/identity_suite.rs"
