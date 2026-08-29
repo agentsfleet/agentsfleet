@@ -16,58 +16,36 @@
 
 use std::sync::Arc;
 
+use std::borrow::Cow;
+
 use afd_connector::{Connection, Forgotten};
+use afd_wire::connector::{ConnectionView, STATUS_CONNECTED, STATUS_NOT_CONNECTED};
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
-use serde::Serialize;
 
 use super::{EVENT_READ, EVENT_WRITE, provider_of};
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
 use crate::services::{Services, WorkspaceConnectors as _};
 
-/// What a workspace holding a landed grant is told.
+/// One connection, or the absence of one, as the wire renders it.
 ///
-/// `oauth_status.zig`'s `STATUS_CONNECTED`, kept byte-for-byte: the dashboard
-/// switches on this string and a cutover has both daemons answering the route.
-const STATUS_CONNECTED: &str = "connected";
-
-/// What a workspace holding nothing is told — see [`STATUS_CONNECTED`].
-const STATUS_NOT_CONNECTED: &str = "not_connected";
-
-/// One provider's connection, as this surface renders it.
-///
-/// Carries no token and no expiry. A status read answers whether a person has
-/// connected and what it is called, and every other field of the stored handle
-/// is the broker's business.
-#[derive(Debug, Serialize)]
-struct View<'v> {
-    /// Whether this workspace holds a landed grant.
-    status: &'static str,
-    /// What a person sees the connection called, when the grant named one.
-    ///
-    /// Always present in the document and `null` when absent, rather than
-    /// omitted: a dashboard reading `label` on an object that sometimes lacks
-    /// the key would have to branch on undefined as well as on null.
-    label: Option<&'v str>,
-}
-
-impl<'v> View<'v> {
-    /// One connection, or the absence of one, rendered.
-    fn of(connection: Option<&'v Connection>) -> Self {
-        connection.map_or(
-            Self {
-                status: STATUS_NOT_CONNECTED,
-                label: None,
-            },
-            |connection| Self {
-                status: STATUS_CONNECTED,
-                label: connection.label.as_deref(),
-            },
-        )
-    }
+/// The shape and its two status spellings are `afd_wire::connector`'s — see
+/// that module on why a response type declared beside its handler is a contract
+/// only one side can see.
+fn view(connection: Option<&Connection>) -> ConnectionView<'_> {
+    connection.map_or(
+        ConnectionView {
+            status: Cow::Borrowed(STATUS_NOT_CONNECTED),
+            label: None,
+        },
+        |connection| ConnectionView {
+            status: Cow::Borrowed(STATUS_CONNECTED),
+            label: connection.label.as_deref().map(Cow::Borrowed),
+        },
+    )
 }
 
 /// `GET …/connectors/{provider}`.
@@ -90,7 +68,7 @@ pub(crate) async fn read<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_READ))?;
 
-    Ok(Json(View::of(connection.as_ref())).into_response())
+    Ok(Json(view(connection.as_ref())).into_response())
 }
 
 /// `DELETE …/connectors/{provider}`.

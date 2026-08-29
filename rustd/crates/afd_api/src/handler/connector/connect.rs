@@ -15,25 +15,19 @@
 //! there is about building the URL, which is `afd_connector`'s registry job
 //! here and not this handler's.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_connector::{Started, Starting};
+use afd_wire::connector::ConsentRedirect;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
-use serde::Serialize;
 
 use super::{EVENT_WRITE, provider_of, relay_uri, state_secret, unconfigured};
 use crate::auth::{PersonIdentity, WorkspaceContext};
 use crate::handler::Refusal;
 use crate::services::{Services, WorkspaceConnectors as _};
-
-/// Where a person is sent to consent.
-#[derive(Debug, Serialize)]
-struct Consent {
-    /// The provider's own page, carrying this round-trip's signed state.
-    install_url: String,
-}
 
 /// `POST …/connectors/{provider}/connect`.
 ///
@@ -74,7 +68,10 @@ pub(crate) async fn start<D: Services>(
         .map_err(Refusal::at(EVENT_WRITE))?;
 
     match started {
-        Started::Consent(install_url) => Ok(Json(Consent { install_url }).into_response()),
+        Started::Consent(install_url) => Ok(Json(ConsentRedirect {
+            install_url: Cow::Owned(install_url),
+        })
+        .into_response()),
         Started::NotConfigured => Err(unconfigured()),
     }
 }
