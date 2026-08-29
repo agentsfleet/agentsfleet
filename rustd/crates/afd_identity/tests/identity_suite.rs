@@ -14,6 +14,8 @@ mod support;
 mod cache_refresh;
 #[path = "capability_windows.rs"]
 mod capability_windows;
+#[path = "claim_authority_bounds.rs"]
+mod claim_authority_bounds;
 #[path = "claim_shapes.rs"]
 mod claim_shapes;
 #[path = "http_key_set.rs"]
