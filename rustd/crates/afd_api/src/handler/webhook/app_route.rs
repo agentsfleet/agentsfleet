@@ -43,6 +43,7 @@ use octocrab::models::webhook_events::WebhookEvent;
 use serde::Serialize;
 
 use crate::handler::{Refusal, webhook};
+use webhook::{DETAIL_EVENT_HEADER, HEADER_EVENT, text};
 use crate::services::{Services, WebhookIngress as _};
 
 use super::github::{Ingest, Policy, classify};
@@ -66,9 +67,6 @@ const PROVIDER_GITHUB: &str = "github";
 /// during a cutover, so the key name is a stored-data contract.
 const APP_IDENTITY_GITHUB: &str = "github-app";
 
-/// The header GitHub names the delivery's kind in.
-const HEADER_EVENT: &str = "x-github-event";
-
 /// The delivery kind an App sends to prove the endpoint answers.
 ///
 /// Answered before any routing: a `ping` carries no repository and belongs to
@@ -83,10 +81,6 @@ const EVENT_PING: &str = "ping";
 /// of this daemon, and spending an HMAC over a body to discover it was too big
 /// would spend exactly what the cap exists to protect.
 const MAX_BODY_SIZE: usize = 1024 * 1024;
-
-/// The refusal a delivery with no event header earns.
-const DETAIL_EVENT_HEADER: &str =
-    "Webhook payload could not be parsed. Check Content-Type and body.";
 
 /// The refusal a delivery past the cap earns.
 const DETAIL_TOO_LARGE: &str = "The webhook body exceeds the 1 MiB limit. Reduce the payload size.";
@@ -330,9 +324,4 @@ fn dropped(event: &str, reason: &str) -> Response {
         event = EVENT_DROPPED,
     );
     (StatusCode::OK, Json(webhook::Ignored { ignored: reason })).into_response()
-}
-
-/// One header's value, when it is one this daemon can read as text.
-fn text<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
-    headers.get(name).and_then(|value| value.to_str().ok())
 }
