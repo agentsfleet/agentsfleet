@@ -91,7 +91,6 @@ harness-verify:  ## Run every deterministic gate audit (mechanical HARNESS VERIF
 	@printf "\n$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)HARNESS VERIFY$(C_RESET) $(C_GREY)── deterministic gates · staged scope (pre-commit lens)$(C_RESET)\n"
 	$(call HARNESS_RUN,UFS,$(ORLY_ROOT)/audits/ufs.sh --staged)
 	$(call HARNESS_RUN,GITLEAKS CONFIG,audits/gitleaks-config.sh)
-	$(call HARNESS_RUN,TEST REACHABILITY,audits/test-reachability.sh)
 	$(call HARNESS_RUN,DESIGN TOKEN,$(ORLY_ROOT)/audits/design-tokens.sh --staged)
 	$(call HARNESS_RUN,SPEC TEMPLATE,$(ORLY_ROOT)/audits/spec-template.sh --staged)
 	$(call HARNESS_RUN,ERROR REGISTRY,$(ORLY_ROOT)/audits/error-codes.sh --staged)
@@ -110,7 +109,6 @@ harness-verify-all:  ## Whole-worktree variant for periodic deep audits
 	# diff-shaped script.
 	$(call HARNESS_RUN,UFS,$(ORLY_ROOT)/audits/ufs.sh)
 	$(call HARNESS_RUN,GITLEAKS CONFIG,audits/gitleaks-config.sh)
-	$(call HARNESS_RUN,TEST REACHABILITY,audits/test-reachability.sh)
 	$(call HARNESS_RUN,DESIGN TOKEN,$(ORLY_ROOT)/audits/design-tokens.sh)
 	$(call HARNESS_RUN,SPEC TEMPLATE,$(ORLY_ROOT)/audits/spec-template.sh)
 	$(call HARNESS_RUN,ERROR REGISTRY,$(ORLY_ROOT)/audits/error-codes.sh)

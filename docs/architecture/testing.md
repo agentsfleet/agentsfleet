@@ -85,10 +85,14 @@ this crate prove without a database" before anyone opens a file.
 whatever those files pull in with `#[path]`. A file listed nowhere is not a
 skipped test, it is not a test at all: it compiles in no binary, appears in no
 count, and fails nothing. That is how suites in this repository reached a
-milestone having never executed. The gate worth writing checks that every
-`tests/*.rs` holding a `#[test]` is reachable from a declared target — the
-audit currently reports one unreachable file, `afd_runner/tests/support.rs`,
-which holds no test and is a support module.
+milestone having never executed, and how a merge later orphaned eight sslmode
+tests in `afd_db`.
+
+**Nothing enforces this automatically.** An audit did, briefly; it was removed
+in M185 as more machinery than the hazard was worth. So the check is a review
+obligation: a new `tests/*.rs` in a crate with `autotests = false` must be
+declared in that crate's `*_suite.rs`, and adding one without the declaration
+produces a file that compiles nowhere and fails nothing.
 
 ## Test isolation on a shared datastore (rules ISO-1 to ISO-3)
 
