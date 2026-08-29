@@ -473,6 +473,7 @@ dependencies = [
  "afd_redis",
  "backon",
  "http",
+ "redis",
  "reqwest",
  "serde",
  "serde_json",
@@ -481,6 +482,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
