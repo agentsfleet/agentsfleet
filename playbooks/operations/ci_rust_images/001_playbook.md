@@ -1,11 +1,16 @@
 # Playbook — CI Rust Base Image
 
-Builds and publishes `ghcr.io/agentsfleet/ci-rust-ubuntu`, the host-runner
-replacement for the `rustd` lanes.
+Builds and publishes `ghcr.io/agentsfleet/ci-rust-slim`, the host-runner
+replacement for the `rustd` UNIT lane.
 
 | Image | Arch | Consumers |
 |---|---|---|
-| `ghcr.io/agentsfleet/ci-rust-ubuntu` | amd64 | `test.yml` (`test-unit-rustd`), `test-integration-rustd.yml` |
+| `ghcr.io/agentsfleet/ci-rust-slim` | amd64 | `test.yml` (`test-unit-rustd`) |
+
+The integration lane is NOT a consumer and the image carries nothing for it —
+no Docker client, no compose plugin, no `psql`. §"The integration lane is NOT a
+drop-in" below is why: that lane cannot run from inside a job container at all,
+so provisioning it here would put a Docker daemon in the image to serve nobody.
 
 Sibling of `../ci_zig_images/`, which this follows deliberately — the build
 script, the `versions.env` pin file, and the revision-suffix discipline are all
@@ -54,7 +59,7 @@ export GHCR_TOKEN='...'
 
 ```bash
 cd playbooks/operations/ci_rust_images
-./build_and_push.sh                       # → ghcr.io/agentsfleet/ci-rust-ubuntu:1.98.0
+./build_and_push.sh                       # → ghcr.io/agentsfleet/ci-rust-slim:1.98.0
 ./build_and_push.sh --revision r2         # → :1.98.0-r2
 ./build_and_push.sh --no-push             # local --load, nothing published
 ```
@@ -72,23 +77,31 @@ Every claim the Dockerfile makes, checked from outside it. Run before pointing
 any workflow at a new tag.
 
 ```bash
-TAG=ghcr.io/agentsfleet/ci-rust-ubuntu:1.98.0
+TAG=ghcr.io/agentsfleet/ci-rust-slim:1.98.0
 
-# The toolchain is the pinned one, with all three components.
+# The toolchain is the pinned one, with the components the lane runs.
 docker run --rm "$TAG" rustc --version          # → rustc 1.98.0
 docker run --rm "$TAG" cargo fmt --version
 docker run --rm "$TAG" cargo clippy --version
-docker run --rm "$TAG" cargo llvm-cov --version
 
-# The other tools the lanes call.
-docker run --rm "$TAG" bun --version            # → 1.4.0
-docker run --rm "$TAG" gitleaks version
-docker run --rm "$TAG" docker compose version   # NOT `docker-compose`
-docker run --rm "$TAG" psql --version
+# The tools the lane's two make targets shell out to.
+docker run --rm "$TAG" make --version
+docker run --rm "$TAG" git --version
 
 # The linker exists. A Rust image without `cc` compiles and then fails at link
 # time with a message that reads like a project defect.
 docker run --rm "$TAG" cc --version
+
+# A REAL compile, not a version string. Every check above passes on an image
+# that cannot build anything — the `CARGO_TARGET_DIR=""` defect the Dockerfile
+# records was invisible to exactly this suite. `aws-lc-sys` is the target
+# because it is the one dependency that compiles C through `cmake`, which the
+# bare runner has always supplied for free and a container must carry itself;
+# a workspace crate that happens not to pull it would go green proving nothing.
+# Read-only mount and a container-side target dir, so verifying an image cannot
+# write into the checkout.
+docker run --rm -v "$PWD:/work:ro" -w /work/rustd -e CARGO_TARGET_DIR=/tmp/t "$TAG" \
+  cargo build -p aws-lc-sys
 
 # Readable and writable as a NON-root uid, which is what a runner may pick.
 # This is the check that catches a toolchain installed under /root.
@@ -104,7 +117,7 @@ jobs:
   test-unit-rustd:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/agentsfleet/ci-rust-ubuntu:1.98.0
+      image: ghcr.io/agentsfleet/ci-rust-slim:1.98.0
     steps:
       - uses: actions/checkout@v6
       # `rustup show`, `taiki-e/install-action@cargo-llvm-cov` and
@@ -150,7 +163,39 @@ Then rebuild, re-verify (§3), and move the workflow pins in the same commit.
 
 ## Status
 
-**The image is not published yet.** This directory and the workflow caching
+**Built, measured, and deliberately NOT published. Do not wire a workflow to
+this.**
+
+The image exists to remove per-job setup, and the setup it removes was finally
+measured against a real run of `test-unit-rustd`:
+
+| step | time |
+|---|---|
+| Set up job | 2s |
+| `actions/checkout@v6` | 3s |
+| **Show the pinned toolchain** | **11s** |
+| `Swatinem/rust-cache@v2` | 0s |
+| Lint the Rust workspace | 69s |
+| Test the Rust workspace | 190s |
+| total | 275s |
+
+Eleven seconds is the whole prize. The image costs a 454 MB pull and a 1.21 GB
+unpack on every job to win it, so adopting it would make the lane SLOWER, and
+would additionally buy a GHCR publish step, a third place the Rust version is
+pinned, and a rebuild on every version bump.
+
+The earlier framing here — "measured as steps rather than seconds" — declined
+to measure, and the measurement disagrees with the conclusion it justified.
+Ninety-four per cent of the job is the 190s test and the 69s lint; that is
+where lane time actually is, and no base image touches it.
+
+Kept rather than deleted for one reason: the first cut of this directory could
+not build at all (`rustup-init` takes one value per `--component`, and the
+install line passed three bare words after a single flag), and a repository
+should not carry a file that fails on its own line 74. It is correct now, and
+it is parked. Reopening this needs a NEW measurement, not a new opinion.
+
+**The image is not published.** This directory and the workflow caching
 change landed together; pointing the workflows at the image is a separate commit
 that must not merge before §2 and §3 have been done by someone who can push to
 GHCR. A workflow referencing an unpublished image fails every job on the branch.
