@@ -115,15 +115,24 @@ jobs:
           shared-key: rustd
 ```
 
-The integration lane additionally needs the host Docker socket mounted, because
-it drives `docker compose` for Postgres and Redis:
+### The integration lane is NOT a drop-in, and mounting the socket does not fix it
 
-```yaml
-    container:
-      image: ghcr.io/agentsfleet/ci-rust-ubuntu:1.98.0
-      volumes:
-        - /var/run/docker.sock:/var/run/docker.sock
-```
+Mounting `/var/run/docker.sock` into the job container is the obvious move and
+it does not work here. Compose would then start Postgres and Redis as siblings
+**on the host**, while `make/test-infra.mk:97-98` connects to
+`postgres://…@localhost:$(COMPOSE_PG_PORT)` and
+`rediss://…@localhost:$(COMPOSE_REDIS_PORT)` — and inside a job container
+`localhost` is that container's own loopback, where nothing is listening. The
+lane dies at connection time and reads as a datastore fault. Compose's relative
+bind mounts and `TEST_REDIS_CA_CERT` have the same problem from the other
+direction: they resolve against the host filesystem, where the job container's
+checkout does not exist.
+
+So `test.yml`'s unit job is the one to containerise first. Moving the
+integration lane needs a separate decision that this playbook does not make for
+you — convert it to GitHub Actions `services:` and drop compose, or leave it on
+the bare runner. Until then it keeps its current shape and only takes the cache
+change.
 
 ## Bumping the Rust version
 

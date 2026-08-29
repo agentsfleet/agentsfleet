@@ -72,10 +72,22 @@ jobs:
       # cited in its own config). A compilation cache that must be disabled per
       # job to stay correct is not one to adopt on the evidence of the repo that
       # disabled it.
+      #
+      # `save-if` is what makes the sharing deliberate rather than racy. A
+      # `shared-key` drops the job name from the cache key, so BOTH lanes
+      # compute the same primary key; Actions caches are immutable and the two
+      # run concurrently, so whichever reached its post step first would save
+      # and the other would be rejected as already-existing, its artifacts
+      # discarded — with a race deciding which lane's build got kept. Only the
+      # unit lane on the default branch writes; every other run restores. That
+      # is the arrangement `test.yml` already reasons about at the top of this
+      # file, where the `push: branches: [main]` trigger exists so a main run
+      # populates the cache each Pull Request branch restores from.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rustd
           shared-key: rustd
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Lint the Rust workspace
         run: make lint-rustd
       - name: Test the Rust workspace

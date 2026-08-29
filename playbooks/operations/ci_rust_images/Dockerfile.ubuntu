@@ -119,9 +119,12 @@ RUN set -eux; \
     chmod a+rx /usr/local/bin/gitleaks; \
     gitleaks version
 
-# Cargo writes here on every build; a job running as a non-root uid needs it
-# writable or the first `cargo build` fails on a directory it cannot create.
-ENV CARGO_TARGET_DIR=""
+# No `CARGO_TARGET_DIR`. An earlier cut set it to the empty string, which cargo
+# rejects outright — "the target directory is set to an empty string in the
+# CARGO_TARGET_DIR environment variable" — so every build in the image would
+# have died on its first invocation while every `--version` smoke check in
+# §3 still passed. Left unset, cargo uses the workspace's own `target/`, which
+# is what the lanes and the cache both expect.
 WORKDIR /work
 
 LABEL org.opencontainers.image.title="agentsfleet ci-rust-ubuntu" \
