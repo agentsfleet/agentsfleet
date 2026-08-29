@@ -75,7 +75,13 @@ jobs:
       # compose up, waits for healthchecks, drops schemas and flushes Redis.
       # KEEP_TEST_STATE is never set here: a green run under it would prove
       # nothing about a clean checkout, which is the whole point of this tier.
-      - uses: taiki-e/install-action@cargo-llvm-cov
+      # Versioned pin plus a `tool:` input, not the `@cargo-llvm-cov` tag alias.
+      # Both install the same binary, but the alias is a moving ref: it resolves
+      # to whatever that tag points at when the job starts, so a third party can
+      # change what executes here with no commit in this repository.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
       # One invocation, both tiers, instrumented. `test-integration-rustd` is
       # what a developer runs (no cargo-llvm-cov needed); this is the same
       # suite plus the unit tier under measurement, which is where the
