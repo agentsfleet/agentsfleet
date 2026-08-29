@@ -1,13 +1,13 @@
 //! Every statement this crate runs, schema-qualified and named (RULE NSQ).
 //!
-//! # The column list is one constant, and that is load-bearing
+//! # The column list is one macro, and it is no longer load-bearing
 //!
-//! Nine statements return a schedule row, and every one of them reads it back
-//! through the same positional decoder. A statement that spelled its own column
-//! list could reorder two `TEXT` columns and the decoder would read them
-//! silently swapped — `source_key` into `cron_expression` is a schedule that
-//! registers upstream under a cron expression as its key. One constant makes
-//! the order a fact rather than a convention.
+//! Nine statements return a schedule row. They share one list so a column added
+//! to the table is added in one place — but the decoder reads BY NAME
+//! (`store::decode`), so the order in this file is no longer something
+//! correctness rests on. It used to be, and that was the wrong design: a
+//! positional read made two transposed `TEXT` columns a silent mis-read rather
+//! than a build failure.
 //!
 //! # Why the claim and the finalize are separate statements
 //!
@@ -22,9 +22,8 @@
 ///
 /// A macro expanding to a LITERAL rather than a `const`, because `concat!`
 /// takes literals only — the shape `afd_fleet_lifecycle::sql` already uses next
-/// door, and for the same reason it gives: nine statements each carrying a
-/// hand-kept copy of fifteen columns would not fail to compile when one drifted,
-/// they would shift every field after it and mis-read the row (RULE UFS).
+/// door. What it buys is one edit site for fifteen columns (RULE UFS); what it
+/// no longer has to buy is a stable ORDER, because the decoder reads by name.
 macro_rules! row_columns {
     () => {
         "id::text, fleet_id::text, source, source_key, cron_expression, \

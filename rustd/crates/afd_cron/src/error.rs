@@ -116,16 +116,15 @@ pub(crate) enum ErrorKind {
 }
 
 /// The columns [`ErrorKind::RowUnreadable`] can name, one spelling each.
-pub(crate) const COLUMN_ID: &str = "id";
-/// See [`COLUMN_ID`].
+///
+/// Only the ones the fire-target reader raises on. A schedule ROW's columns are
+/// named by `store::decode`, which reads them through `FromRow` and reports a
+/// bad one as sqlx's own decode failure — one error path per query rather than
+/// two that could disagree about the same column.
 pub(crate) const COLUMN_FLEET: &str = "fleet_id";
-/// See [`COLUMN_ID`].
-pub(crate) const COLUMN_SOURCE: &str = "source";
-/// See [`COLUMN_ID`].
+/// See [`COLUMN_FLEET`].
 pub(crate) const COLUMN_DESIRED_STATUS: &str = "desired_status";
-/// See [`COLUMN_ID`].
-pub(crate) const COLUMN_SYNC_STATUS: &str = "sync_status";
-/// See [`COLUMN_ID`].
+/// See [`COLUMN_FLEET`].
 pub(crate) const COLUMN_WORKSPACE: &str = "workspace_id";
 
 impl Error {

@@ -29,6 +29,12 @@ afd_crypto.workspace = true
 afd_redis.workspace = true
 # The event type and stream field names a fire is appended under.
 afd_wire.workspace = true
+# The constant-time comparison a body claim is checked with — the same
+# primitive `afd_crypto::mac` compares a tag through (RULE CTM).
+subtle.workspace = true
+# Parsing the deployment url a callback destination is built from, so a query
+# or fragment is found by a parser rather than by a substring search.
+url.workspace = true
 # The digest a fire token binds its body with, and the base64url rendering the
 # scheduler emits it in. Compared as text against the claim — see `verifier`.
 base64.workspace = true

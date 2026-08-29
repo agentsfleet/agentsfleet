@@ -13,7 +13,8 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 
-use super::decode::decode;
+use sqlx::FromRow as _;
+
 use super::{Change, SYNC_LEASE_MS, Schedules};
 use crate::error::{self, Result};
 use crate::model::{DesiredStatus, Schedule, SyncStatus};
@@ -58,7 +59,10 @@ impl Schedules {
             .await
             .map_err(error::query(CONTEXT_CLAIM))?;
 
-        row.as_ref().map(decode).transpose()
+        row.as_ref()
+            .map(Schedule::from_row)
+            .transpose()
+            .map_err(error::query(CONTEXT_CLAIM))
     }
 
     /// Takes the fence over the row's current state, changing nothing.
@@ -86,7 +90,10 @@ impl Schedules {
             .await
             .map_err(error::query(CONTEXT_CLAIM))?;
 
-        row.as_ref().map(decode).transpose()
+        row.as_ref()
+            .map(Schedule::from_row)
+            .transpose()
+            .map_err(error::query(CONTEXT_CLAIM))
     }
 
     /// Releases a fence a push succeeded under.
@@ -115,7 +122,10 @@ impl Schedules {
             .await
             .map_err(error::query(CONTEXT_WRITE))?;
 
-        row.as_ref().map(decode).transpose()
+        row.as_ref()
+            .map(Schedule::from_row)
+            .transpose()
+            .map_err(error::query(CONTEXT_CLAIM))
     }
 
     /// Releases a fence a push failed under, keeping why on the row.
@@ -141,7 +151,10 @@ impl Schedules {
             .await
             .map_err(error::query(CONTEXT_WRITE))?;
 
-        row.as_ref().map(decode).transpose()
+        row.as_ref()
+            .map(Schedule::from_row)
+            .transpose()
+            .map_err(error::query(CONTEXT_CLAIM))
     }
 
     /// Removes a row whose upstream schedule is confirmed gone.
