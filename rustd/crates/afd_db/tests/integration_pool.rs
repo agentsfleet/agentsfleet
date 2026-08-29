@@ -19,9 +19,20 @@ use afd_db::test_util::TestDatabase;
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_pool_error_classes() {
-    let database = TestDatabase::create().await;
+    // `shared`, not `create`. `TestDatabase::create` makes an empty,
+    // UNMIGRATED database and `test_util` reserves it for the suites whose
+    // subject IS schema state — the migrator's ledger, its lock, its failure
+    // paths. This suite is about a pool's capacity, which needs a database and
+    // not a virgin one, and `CREATE DATABASE` measures 166 ms against the lane's
+    // Postgres. Paying that here bought nothing and cost the test its budget:
+    // once the crate's suites were aggregated they ran concurrently, a fresh
+    // connection under sibling `CREATE DATABASE` load measured 147-337 ms, and
+    // the 250 ms below is spent before the pool this test is about is even
+    // reached. Widening the budget would have hidden that; taking the lane's
+    // database removes it.
+    let database = TestDatabase::shared();
 
-    // One connection, a quarter-second to wait for it. Holding the only
+    // One connection, a quarter-second to wait for it.     // Holding the only
     // connection makes the next acquire a capacity failure and nothing else —
     // Postgres is up and answering the whole time.
     let db = database
@@ -78,7 +89,18 @@ async fn test_pool_error_classes() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_pools_open_every_role_and_close() {
-    let database = TestDatabase::create().await;
+    // `shared`, not `create`. `TestDatabase::create` makes an empty,
+    // UNMIGRATED database and `test_util` reserves it for the suites whose
+    // subject IS schema state — the migrator's ledger, its lock, its failure
+    // paths. This suite is about a pool's capacity, which needs a database and
+    // not a virgin one, and `CREATE DATABASE` measures 166 ms against the lane's
+    // Postgres. Paying that here bought nothing and cost the test its budget:
+    // once the crate's suites were aggregated they ran concurrently, a fresh
+    // connection under sibling `CREATE DATABASE` load measured 147-337 ms, and
+    // the 250 ms below is spent before the pool this test is about is even
+    // reached. Widening the budget would have hidden that; taking the lane's
+    // database removes it.
+    let database = TestDatabase::shared();
     let pools = afd_db::Pools::connect_all(&database.env(&[]))
         .await
         .expect("every role must open from one environment");

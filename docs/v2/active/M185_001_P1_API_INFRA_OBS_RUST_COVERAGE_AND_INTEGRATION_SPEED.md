@@ -290,6 +290,16 @@ Public HTTP routes, payloads, status codes, error codes, configuration knobs, sc
 
 ## Discovery (consult log)
 
+- **No changelog entry and no `~/Projects/docs` branch (user's call, this
+  session).** A new `<Update>` in the diff is a pre-PR gate, and it is being
+  skipped rather than satisfied. Verbatim: *"skip the changelog or docs repo"*,
+  given after the gate and its consequence were stated — that the Redis event
+  migration (`redis_connected` -> started/completed/failed) is breaking for
+  anything alerting on it, and that shipping without an entry leaves that
+  unannounced. `orly gate pr` will read red on the changelog criterion and needs
+  an `Orly-Override` trailer carrying this decision.
+
+
 - **Coverage closes on a ratchet, not on 100% (user's call, this session).** The
   lane's `--fail-under-lines` moves from 100 to a declared `RUSTD_COVERAGE_FLOOR`
   of 96, set from the measured 96.0219% rather than from a fresh run. Verbatim:
