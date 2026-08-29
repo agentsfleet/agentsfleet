@@ -92,6 +92,8 @@ pub(crate) struct Scripted {
     binding: Option<Binding>,
     /// What [`WebhookIngress::signing_secret`] answers.
     secret: Option<SecretBytes>,
+    /// What [`WebhookIngress::svix_secret`] answers.
+    svix: Option<SecretBytes>,
     /// What [`WebhookIngress::platform_secret`] answers.
     platform_secret: Option<SecretBytes>,
     /// What [`WebhookIngress::installation_workspace`] answers.
@@ -128,6 +130,13 @@ impl Scripted {
     #[must_use]
     pub(crate) fn signing(mut self, secret: &[u8]) -> Self {
         self.secret = Some(SecretBytes::new(secret.to_vec()));
+        self
+    }
+
+    /// The Svix secret a fleet's trigger names.
+    #[must_use]
+    pub(crate) fn svix_signing(mut self, secret: &str) -> Self {
+        self.svix = Some(SecretBytes::new(secret.as_bytes().to_vec()));
         self
     }
 
@@ -180,6 +189,13 @@ impl WebhookIngress for HarnessIngress {
         match self {
             Self::Unreachable(ingress) => ingress.signing_secret(binding).await,
             Self::Scripted(scripted) => Ok(scripted.secret.clone()),
+        }
+    }
+
+    async fn svix_secret(&self, binding: &Binding) -> IngressResult<Option<SecretBytes>> {
+        match self {
+            Self::Unreachable(ingress) => ingress.svix_secret(binding).await,
+            Self::Scripted(scripted) => Ok(scripted.svix.clone()),
         }
     }
 

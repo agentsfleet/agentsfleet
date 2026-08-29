@@ -43,8 +43,8 @@ use octocrab::models::webhook_events::WebhookEvent;
 use serde::Serialize;
 
 use crate::handler::{Refusal, webhook};
-use webhook::{DETAIL_EVENT_HEADER, HEADER_EVENT, text};
 use crate::services::{Services, WebhookIngress as _};
+use webhook::{DETAIL_EVENT_HEADER, HEADER_EVENT, text};
 
 use super::github::{Ingest, Policy, classify};
 
@@ -73,17 +73,6 @@ const APP_IDENTITY_GITHUB: &str = "github-app";
 /// no fleet, and running it through the subscriber lookup would report "nobody
 /// subscribed" for a delivery that was never about a subscription.
 const EVENT_PING: &str = "ping";
-
-/// The most bytes a delivery may carry.
-///
-/// `github.zig`'s `MAX_BODY_SIZE`. Checked on the length BEFORE the body is
-/// hashed: the cap is what bounds the work one unauthenticated request can ask
-/// of this daemon, and spending an HMAC over a body to discover it was too big
-/// would spend exactly what the cap exists to protect.
-const MAX_BODY_SIZE: usize = 1024 * 1024;
-
-/// The refusal a delivery past the cap earns.
-const DETAIL_TOO_LARGE: &str = "The webhook body exceeds the 1 MiB limit. Reduce the payload size.";
 
 /// The refusal a path naming no served provider earns.
 const DETAIL_UNKNOWN_PROVIDER: &str = "Unknown App ingress provider";
@@ -146,14 +135,9 @@ pub(crate) async fn receive<D: Services>(
     }
 
     // Before the hash, and so before any work this delivery could have asked
-    // for. `Bytes::len` is the buffered length; the router's own body limit is
-    // the layer that stops a body from being buffered at all.
-    if body.len() > MAX_BODY_SIZE {
-        return Err(Refusal::coded(
-            error_code::WEBHOOK_PAYLOAD_TOO_LARGE,
-            DETAIL_TOO_LARGE,
-        ));
-    }
+    // for. `Bytes::len` is the buffered length; `webhook::BUFFER_CEILING` is
+    // the layer that stopped a larger one from being buffered at all.
+    webhook::within_cap(&body)?;
 
     let event = text(&headers, HEADER_EVENT)
         .ok_or_else(|| Refusal::coded(error_code::WEBHOOK_MALFORMED, DETAIL_EVENT_HEADER))?

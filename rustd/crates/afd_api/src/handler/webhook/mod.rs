@@ -21,15 +21,67 @@
 //! that had to become a handler to do its job.
 
 pub(crate) mod app_route;
+pub(crate) mod approval_route;
 pub(crate) mod github;
 pub(crate) mod github_route;
+pub(crate) mod receive_route;
+pub(crate) mod svix_route;
 
 mod verify;
+mod verify_platform;
+mod verify_svix;
 
-pub(crate) use self::verify::{verified, verified_app};
+pub(crate) use self::verify::verified;
+pub(crate) use self::verify_platform::verified_app;
 
+use afd_core::error_code;
+use axum::body::Bytes;
 use http::HeaderMap;
 use serde::Serialize;
+
+use crate::handler::Refusal;
+
+/// The most bytes a delivery on this surface may CARRY.
+///
+/// `github.zig`'s `MAX_BODY_SIZE`, and it is the semantic cap: a body past it
+/// earns `UZ-WH-030` and a sentence naming the limit, so a sender that is
+/// posting too much learns which limit it hit.
+pub(crate) const MAX_BODY_SIZE: usize = 1024 * 1024;
+
+/// The most bytes this daemon will BUFFER before it refuses.
+///
+/// Deliberately above [`MAX_BODY_SIZE`] rather than equal to it, and the gap is
+/// the point. The transport limit exists so one unauthenticated request cannot
+/// make this daemon hold an arbitrary amount of memory; the semantic cap exists
+/// so a sender gets a coded answer. Setting them equal would collapse the
+/// second into the first — every over-cap delivery would earn `axum`'s bare 413
+/// instead of `UZ-WH-030`, and a sender reading its delivery log would see a
+/// status with no registry code to search. One doubling is enough headroom for
+/// the coded answer to be the one a real sender meets, while an absurd body is
+/// still refused before it is read.
+pub(crate) const BUFFER_CEILING: usize = MAX_BODY_SIZE * 2;
+
+/// The refusal a delivery past the cap earns.
+const DETAIL_TOO_LARGE: &str = "The webhook body exceeds the 1 MiB limit. Reduce the payload size.";
+
+/// Refuses a delivery past [`MAX_BODY_SIZE`].
+///
+/// Checked on the buffered length BEFORE the body is hashed: the cap is what
+/// bounds the work one unauthenticated request can ask of this daemon, and
+/// spending an HMAC over a body to discover it was too big would spend exactly
+/// what the cap exists to protect.
+///
+/// # Errors
+/// `UZ-WH-030`, with the limit in the sentence.
+pub(crate) fn within_cap(body: &Bytes) -> Result<(), Refusal> {
+    if body.len() > MAX_BODY_SIZE {
+        return Err(Refusal::coded(
+            error_code::WEBHOOK_PAYLOAD_TOO_LARGE,
+            DETAIL_TOO_LARGE,
+        ));
+    }
+    Ok(())
+}
 
 /// The header GitHub names the delivery's kind in.
 ///
@@ -115,3 +167,34 @@ pub(crate) const REASON_UNSUPPORTED_EVENT: &str = "unsupported_event";
 
 /// The reason a delivery outside the trigger's allow-list is dropped.
 pub(crate) const REASON_EVENT_NOT_SUBSCRIBED: &str = "event_not_subscribed";
+
+/// What an approval resolved through this surface records as its detail.
+pub(crate) const REASON_APPROVAL_WEBHOOK: &str = "resolved by approval webhook";
+
+/// What every provider-driven wake is prefixed with.
+///
+/// The actor names the PROVIDER and no person. A delivery carries a sender's
+/// login and recording that would let an actor-shaped assertion certify that a
+/// human woke this fleet when a webhook did — the same reasoning
+/// `afd_events::ACTOR_MACHINE` carries for an api-key wake.
+const ACTOR_PREFIX: &str = "webhook:";
+
+/// The actor a delivery from `source` records.
+pub(crate) fn actor(source: &str) -> String {
+    format!("{ACTOR_PREFIX}{source}")
+}
+
+/// The body as a fleet's prose reads it, when it is a JSON document at all.
+///
+/// `None` for bytes that will not parse. A generic webhook body has no schema
+/// this daemon can check, so the whole of what is asked is that it BE a
+/// document — the fleet's own prose is what reads it, and prose cannot reason
+/// over a form-encoded string or a fragment of XML.
+///
+/// The bytes are handed on unchanged rather than re-serialized: what the fleet
+/// reasons over must be what the sender signed, and a document that went
+/// through a parse and back is a different byte string.
+pub(crate) fn json_payload(body: &[u8]) -> Option<String> {
+    serde_json::from_slice::<serde_json::Value>(body).ok()?;
+    String::from_utf8(body.to_vec()).ok()
+}
