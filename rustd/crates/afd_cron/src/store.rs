@@ -24,7 +24,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use sqlx::{Acquire as _, Row as _};
+use sqlx::{Acquire as _, FromRow as _, Row as _};
 
 use crate::error::{self, COLUMN_DESIRED_STATUS, COLUMN_FLEET, COLUMN_WORKSPACE, Result};
 use crate::model::{DesiredStatus, MAX_SCHEDULES_PER_FLEET, Schedule, Source, SyncStatus};
@@ -33,7 +33,13 @@ use crate::sql;
 mod decode;
 mod fence;
 
-use self::decode::decode;
+/// The columns [`Schedules::fire_target`] reads its answer from.
+///
+/// Named, not positional — see [`decode`] on why an index makes the statement's
+/// column order load-bearing.
+const COLUMN_MESSAGE: &str = "message";
+/// See [`COLUMN_MESSAGE`].
+const COLUMN_FLEET_STATUS: &str = "status";
 
 /// The context a failed read reports under.
 const CONTEXT_READ: &str = "read a schedule";
@@ -164,7 +170,10 @@ impl Schedules {
             .await
             .map_err(error::query(CONTEXT_READ))?;
 
-        rows.iter().map(decode).collect()
+        rows.iter()
+            .map(Schedule::from_row)
+            .collect::<sqlx::Result<Vec<_>>>()
+            .map_err(error::query(CONTEXT_READ))
     }
 
     /// One schedule of this fleet's.
@@ -180,7 +189,10 @@ impl Schedules {
             .await
             .map_err(error::query(CONTEXT_READ))?;
 
-        row.as_ref().map(decode).transpose()
+        row.as_ref()
+            .map(Schedule::from_row)
+            .transpose()
+            .map_err(error::query(CONTEXT_READ))
     }
 
     /// Creates a schedule, already claimed by the caller that will register it.
@@ -264,7 +276,7 @@ impl Schedules {
             .await
             .map_err(error::query(CONTEXT_WRITE))?;
 
-        let created = decode(&row)?;
+        let created = Schedule::from_row(&row).map_err(error::query(CONTEXT_WRITE))?;
         transaction
             .commit()
             .await
@@ -294,11 +306,11 @@ impl Schedules {
         };
 
         let unreadable = error::query(CONTEXT_READ);
-        let fleet: String = row.try_get(0).map_err(&unreadable)?;
-        let workspace: String = row.try_get(1).map_err(&unreadable)?;
-        let message: String = row.try_get(2).map_err(&unreadable)?;
-        let desired: String = row.try_get(3).map_err(&unreadable)?;
-        let fleet_status: String = row.try_get(4).map_err(&unreadable)?;
+        let fleet: String = row.try_get(COLUMN_FLEET).map_err(&unreadable)?;
+        let workspace: String = row.try_get(COLUMN_WORKSPACE).map_err(&unreadable)?;
+        let message: String = row.try_get(COLUMN_MESSAGE).map_err(&unreadable)?;
+        let desired: String = row.try_get(COLUMN_DESIRED_STATUS).map_err(&unreadable)?;
+        let fleet_status: String = row.try_get(COLUMN_FLEET_STATUS).map_err(&unreadable)?;
 
         Ok(Some(FireTarget {
             fleet: Uuid7::parse(&fleet).map_err(|_shape| error::row_unreadable(COLUMN_FLEET))?,

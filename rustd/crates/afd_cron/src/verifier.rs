@@ -28,6 +28,7 @@
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
+use subtle::ConstantTimeEq as _;
 
 /// The one algorithm this daemon will read a fire token under.
 ///
@@ -202,20 +203,14 @@ pub fn verify_at(
 /// Base64url without padding, as the scheduler emits it. Compared as text
 /// rather than decoded first: both sides are a fixed-length digest of the same
 /// alphabet, so a decode would add a failure mode without adding a check.
+///
+/// Compared through [`subtle`], the same primitive `afd_crypto::mac` compares a
+/// tag with (RULE CTM). `ct_eq` short-circuits on LENGTH and not on content,
+/// which is the property that matters: the length of a base64 digest is public,
+/// and what must not leak is how many characters of it matched.
 fn body_matches(claimed: &str, body: &[u8]) -> bool {
-    let digest = Sha256::digest(body);
-    let expected = base64_url_no_pad(&digest);
-    // Constant-time over the digest, because a claim that leaked how many
-    // leading characters matched would let a forger search one character at a
-    // time (RULE CTM).
-    expected.len() == claimed.len()
-        && expected
-            .bytes()
-            .zip(claimed.bytes())
-            .fold(0_u8, |difference, (left, right)| {
-                difference | (left ^ right)
-            })
-            == 0
+    let expected = base64_url_no_pad(&Sha256::digest(body));
+    expected.as_bytes().ct_eq(claimed.as_bytes()).unwrap_u8() == 1
 }
 
 /// The base64url, unpadded rendering the scheduler uses.

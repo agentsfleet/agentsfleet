@@ -18,6 +18,8 @@
 //! and the Zig's single `error.QStashRequestFailed` does not — the delta this
 //! port closes rather than carries (RULE PORT).
 
+use url::Url;
+
 use crate::error::{self, Result};
 
 /// Where the scheduler's management calls go.
@@ -72,14 +74,19 @@ pub enum InvalidDestination {
 /// this daemon never meant — `constants.zig` refuses at construction for
 /// exactly this reason, and so does this.
 pub fn destination_url(api_url: &str) -> Result<String, InvalidDestination> {
-    let base = api_url.trim_end_matches('/');
-    if base.is_empty() {
-        return Err(InvalidDestination::Unusable);
-    }
-    if base.contains(['?', '#']) {
+    let parsed = Url::parse(api_url).map_err(|_unparsed| InvalidDestination::Unusable)?;
+
+    // Asked of the PARSED url rather than of the string. A `#` inside a
+    // percent-encoded path is not a fragment and a `?` in userinfo is not a
+    // query, so a substring search answers this question wrongly in both
+    // directions — which for a value that rides raw inside the provider's own
+    // request path is the difference between a callback that works and one
+    // silently truncated at the first `?`.
+    if parsed.query().is_some() || parsed.fragment().is_some() {
         return Err(InvalidDestination::NotAPlainOrigin);
     }
 
+    let base = parsed.as_str().trim_end_matches('/');
     let destination = format!("{base}{INGRESS_PATH}");
     if destination.len() > MAX_DESTINATION_BYTES {
         return Err(InvalidDestination::Unusable);
