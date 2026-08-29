@@ -707,6 +707,13 @@ debug = 1
 inherits = "release"
 lto = "fat"
 codegen-units = 1
+# Debug info goes; the symbol table stays. DWARF is most of the size on disk
+# and none of the production value, while a panicking daemon's last backtrace
+# still names its functions through the symbol table -- and that name is what
+# an operator greps the runbook for. `symbols` would shrink further and turn
+# that backtrace into bare addresses; the difference is kilobytes bought with
+# the one artifact you need mid-incident.
+strip = "debuginfo"
 
 # Iterating on an OPTIMIZED build without paying the LTO tail each time.
 #

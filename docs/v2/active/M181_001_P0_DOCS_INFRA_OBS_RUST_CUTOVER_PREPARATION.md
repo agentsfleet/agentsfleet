@@ -64,7 +64,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `deploy/**` | EDIT | §2: binary-selection knob for the 3-machine shape |
 | `rustd/rust-toolchain.toml` | EDIT | §2: the musl targets the cross-compile needs, pinned where the toolchain is |
 | `rustd/crates/afd_observability/**` | EDIT | §3: metric instruments, the family registry, SDK Views pinned to the Zig spellings, and the crate's first error type |
-| `rustd/Cargo.toml` | EDIT | §3: `opentelemetry_sdk` gains the `metrics` feature |
+| `rustd/Cargo.toml` | EDIT | §2: the shipped profile strips debug info; §3: `opentelemetry_sdk` gains the `metrics` feature |
 | `make/test-parity.mk` | CREATE | §4: the black-box HTTP parity lane, parameterised by base URL (distinct caller: the cutover checklist) |
 | `make/bench.mk` | EDIT | §4: `bench-cutover` adds a comparison mode with budget constants that refuse to be unset |
 | `make/dry.mk` | EDIT | §4: dry lane variant booting the Rust daemon |
