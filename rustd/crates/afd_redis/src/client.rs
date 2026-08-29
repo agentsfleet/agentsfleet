@@ -376,7 +376,13 @@ mod tests {
     /// ADDITIVE, so one retry's ceiling is twice its capped delay, not the
     /// delay. Budgeting against `max_delay` alone would under-count by half.
     fn worst_case_ladder() -> Duration {
-        let attempts = CONNECT_ATTEMPT_TIMEOUT * u32::try_from(CONNECT_RETRIES + 1).unwrap();
+        // Summed rather than multiplied: the retry count is a `usize` because
+        // that is what the driver's setter takes, and converting it to scale a
+        // `Duration` buys a fallible conversion that cannot fail, for nothing.
+        let mut attempts = Duration::ZERO;
+        for _ in 0..=CONNECT_RETRIES {
+            attempts += CONNECT_ATTEMPT_TIMEOUT;
+        }
 
         let mut sleeps = Duration::ZERO;
         let mut delay = CONNECT_RETRY_MIN_DELAY;

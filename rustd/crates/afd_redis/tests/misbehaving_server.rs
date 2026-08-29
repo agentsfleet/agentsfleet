@@ -22,13 +22,8 @@ use afd_redis::Redis;
 use afd_redis::config::{RedisConfig, RedisRole};
 use afd_redis::streams::FleetStreams;
 
-#[path = "support/fake_redis.rs"]
-mod fake_redis;
-#[path = "support/recorder.rs"]
-mod recorder;
-
-use self::fake_redis::{FakeRedis, Reply, install_subscriber};
-use self::recorder::Recorder;
+use crate::fake_redis::{FakeRedis, Reply, install_subscriber};
+use crate::recorder::Recorder;
 
 /// Short enough that a hang fails the test rather than the lane's timeout.
 const BUDGET: Duration = Duration::from_secs(10);

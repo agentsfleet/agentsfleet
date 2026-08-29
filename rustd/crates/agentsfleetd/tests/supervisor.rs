@@ -20,8 +20,6 @@
     reason = "one task panics deliberately: ShutdownReport has a row for it, and an unreachable row is an unproven one"
 )]
 
-mod support;
-
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -29,7 +27,7 @@ use agentsfleetd::{JOIN_TIMEOUT, ShutdownReport, Supervisor};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
-use self::support::install_subscriber;
+use crate::support::install_subscriber;
 
 /// The tasks the join-order fixture supervises, in the order it spawns them.
 const TASK_NAMES: [&str; 3] = ["stream_reader", "session_sweeper", "hub_pump"];

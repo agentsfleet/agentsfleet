@@ -11,10 +11,7 @@
 
 use afd_redis::session::{SessionState, SessionStatus, SessionStore, VerifyOutcome};
 
-#[path = "support/redis_harness.rs"]
-mod support;
-
-use self::support::RedisHarness;
+use crate::support::RedisHarness;
 
 /// A code that is correct, and one that is not.
 const GOOD_HMAC: &str = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90";

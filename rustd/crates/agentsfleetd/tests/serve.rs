@@ -10,8 +10,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-mod support;
-
 use afd_core::env::MapEnv;
 use agentsfleetd::serve::{Acceptor, BootFailure, DEFAULT_PORT, serve_accepts};
 use agentsfleetd::supervisor::Supervisor;
@@ -46,8 +44,8 @@ fn parses_but_dead() -> MapEnv {
         // Both are required at boot and resolved rather than dialled, so
         // supplying them well-formed keeps this fixture's failure the DATASTORE
         // one it is asserting about.
-        .chain(support::SESSION_PEPPER)
-        .chain(support::IDENTITY),
+        .chain(crate::support::SESSION_PEPPER)
+        .chain(crate::support::IDENTITY),
     )
 }
 

@@ -6,6 +6,11 @@
 //! same port is now measured at a 10.9 ms worst case both in-process and
 //! through Docker, so whatever costs seconds is inside this path, not under it.
 #![cfg(feature = "test-util")]
+#![expect(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
 
 use std::time::{Duration, Instant};
 
@@ -29,16 +34,27 @@ fn config() -> RedisConfig {
         .with_ca_cert_file(std::env::var(CA_KNOB).ok().map(Into::into))
 }
 
+/// The value at a percentile, indexed with integers.
+///
+/// Computed as `(len - 1) * pct / 100` rather than through `f64`, which for a
+/// Vec index buys three cast lints and a truncation question for no accuracy a
+/// latency report can use.
+fn at(sorted: &[u128], pct: usize) -> u128 {
+    sorted
+        .get(sorted.len().saturating_sub(1) * pct / 100)
+        .copied()
+        .unwrap_or_default()
+}
+
 fn report(label: &str, mut micros: Vec<u128>) {
     micros.sort_unstable();
-    let at = |p: f64| micros[((micros.len() as f64 - 1.0) * p).round() as usize];
     println!(
         "{label:<26} n={:<4} p50={:<9} p90={:<9} p99={:<9} max={:<10} (microseconds)",
         micros.len(),
-        at(0.50),
-        at(0.90),
-        at(0.99),
-        micros.last().copied().unwrap_or(0),
+        at(&micros, 50),
+        at(&micros, 90),
+        at(&micros, 99),
+        micros.last().copied().unwrap_or_default(),
     );
 }
 

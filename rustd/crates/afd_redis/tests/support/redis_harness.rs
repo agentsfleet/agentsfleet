@@ -11,10 +11,7 @@ use std::time::Duration;
 use afd_redis::Redis;
 use afd_redis::config::{RedisConfig, RedisRole};
 
-#[path = "subscriber.rs"]
-mod subscriber;
-
-use self::subscriber::install_subscriber;
+use crate::subscriber::install_subscriber;
 
 const URL_KNOB: &str = "TEST_REDIS_URL";
 const CA_KNOB: &str = "TEST_REDIS_CA_CERT";
