@@ -51,6 +51,7 @@ pub mod admin;
 mod admin_catalogue;
 pub mod approval;
 pub mod auth;
+pub mod connector;
 pub mod credentials;
 pub mod event;
 pub mod fleet;

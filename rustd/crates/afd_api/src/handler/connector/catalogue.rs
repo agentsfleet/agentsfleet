@@ -15,61 +15,37 @@
 //! a workspace holds a live grant whose app bag was later removed, which still
 //! works for the fleets spending it and can no longer be reconnected.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_connector::Catalogued;
+use afd_wire::connector::{ARCHETYPE_APP_INSTALL, ARCHETYPE_OAUTH2, CatalogueEntry};
 use axum::Json;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
-use serde::Serialize;
 
 use super::EVENT_READ;
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
 use crate::services::{Services, WorkspaceConnectors as _};
 
-/// The wire spelling of a connector whose flow is a consent hop.
+/// One catalogue row, as the wire renders it.
 ///
-/// `registry.zig` renders `@tagName(spec.archetype)`, so these two strings are
-/// its variant names and are a wire contract the dashboard switches on rather
-/// than a description this surface is free to improve.
-const ARCHETYPE_OAUTH2: &str = "oauth2";
-
-/// The wire spelling of a connector whose flow is an App installation.
-const ARCHETYPE_APP_INSTALL: &str = "app_install";
-
-/// One catalogue row, as this surface renders it.
-///
-/// No secret material and no field that could carry any — the whole document
-/// is four facts about availability.
-#[derive(Debug, Serialize)]
-struct Entry {
-    /// The provider's route segment, which is also its stored id.
-    id: &'static str,
-    /// Which flow connecting it runs — see [`ARCHETYPE_OAUTH2`].
-    archetype: &'static str,
-    /// The name a card shows.
-    display_name: &'static str,
-    /// Whether this DEPLOYMENT has been set up to connect it.
-    configured: bool,
-    /// Whether THIS workspace holds a landed grant for it.
-    connected: bool,
-}
-
-impl Entry {
-    /// One catalogue row, rendered.
-    fn of(row: Catalogued) -> Self {
-        Self {
-            id: row.provider.id(),
-            archetype: if row.is_app_install() {
-                ARCHETYPE_APP_INSTALL
-            } else {
-                ARCHETYPE_OAUTH2
-            },
-            display_name: row.provider.display_name(),
-            configured: row.configured,
-            connected: row.connected,
-        }
+/// The shape and its two archetype spellings are `afd_wire::connector`'s. Both
+/// strings are `registry.zig`'s `@tagName(spec.archetype)`, so they are a wire
+/// contract the dashboard switches on rather than a description this surface
+/// is free to improve.
+fn entry(row: Catalogued) -> CatalogueEntry<'static> {
+    CatalogueEntry {
+        id: Cow::Borrowed(row.provider.id()),
+        archetype: Cow::Borrowed(if row.is_app_install() {
+            ARCHETYPE_APP_INSTALL
+        } else {
+            ARCHETYPE_OAUTH2
+        }),
+        display_name: Cow::Borrowed(row.provider.display_name()),
+        configured: row.configured,
+        connected: row.connected,
     }
 }
 
@@ -91,6 +67,6 @@ pub(crate) async fn list<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_READ))?;
 
-    let entries: Vec<Entry> = catalogue.into_iter().map(Entry::of).collect();
+    let entries: Vec<CatalogueEntry<'_>> = catalogue.into_iter().map(entry).collect();
     Ok(Json(entries).into_response())
 }
