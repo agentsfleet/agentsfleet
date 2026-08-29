@@ -93,6 +93,9 @@ async fn diagnose_where_connect_spends_its_time() {
         started_all.elapsed()
     );
 
-    assert_eq!(failures, 0, "no connect should fail against a healthy Redis");
+    assert_eq!(
+        failures, 0,
+        "no connect should fail against a healthy Redis"
+    );
     let _ = Duration::from_secs(0);
 }

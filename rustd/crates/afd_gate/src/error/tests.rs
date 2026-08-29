@@ -58,15 +58,23 @@ fn composed_failures_delegate_classification_and_keep_causes() -> Result<(), &'s
         .err()
         .ok_or("the controlled entropy source unexpectedly answered")?;
 
-    // The third column is whether the gate is a NEW causal link, and it is not
-    // uniform — demanding a cause from every variant would demand an invented
-    // one. `Datastore`, `Queue`, `Credential`, and `Billing` each add a
-    // gate-voiced sentence over a failure that happened elsewhere, so the
-    // inner error is their `source`. `Entropy` and `Identifier` are
-    // `#[error(transparent)]`: the gate adds no sentence, so it adds no link,
-    // and `source()` forwards to the inner error's own — which is `None`,
-    // because a refused entropy draw and a malformed identifier are data, not
-    // consequences of some other failure.
+    // The third column is whether the gate is a NEW causal link. Every variant
+    // here wraps a failure that happened in another crate, and every one adds
+    // the fact that crate cannot carry: WHICH plane was using it. `afd_db`,
+    // `afd_redis`, `afd_credential`, `afd_billing`, `afd_crypto` and
+    // `afd_core` are each shared by many planes, so "entropy pool exhausted"
+    // alone leaves an operator without the one thing they need to act on.
+    //
+    // `Entropy` and `Identifier` used to be `#[error(transparent)]` and so
+    // carried no link, which read as a deliberate distinction and was not one:
+    // `code()` and `detail()` already answer for `Queue`, `Entropy` and
+    // `Identifier` in a single arm, so three variants identical at the API
+    // boundary had two different internal shapes. They now say which plane and
+    // keep the inner error as their `source`, like their four siblings.
+    //
+    // What stays non-uniform is the SECOND column. Only a datastore failure is
+    // an availability signal; a refused entropy draw is not, however it is
+    // worded.
     let cases = [
         ("database", Error::from(database()?), true, true),
         ("queue", Error::from(queue), false, true),
@@ -82,8 +90,8 @@ fn composed_failures_delegate_classification_and_keep_causes() -> Result<(), &'s
             true,
             true,
         ),
-        ("entropy", Error::from(entropy), false, false),
-        ("identifier", Error::from(identifier), false, false),
+        ("entropy", Error::from(entropy), false, true),
+        ("identifier", Error::from(identifier), false, true),
     ];
 
     for (name, failure, unavailable, has_cause) in cases {
