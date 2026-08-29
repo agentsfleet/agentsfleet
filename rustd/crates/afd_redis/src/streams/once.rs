@@ -52,6 +52,22 @@ const WEBHOOK_DEDUP_TTL_SECONDS: u64 = 86_400;
 /// live claim window is a behaviour change this milestone did not ask for.
 const APP_DEDUP_TTL_SECONDS: u64 = 3 * WEBHOOK_DEDUP_TTL_SECONDS;
 
+/// The key prefix a schedule fire's claim lives under.
+///
+/// Its own namespace rather than the webhook one, because the two are keyed on
+/// different things — a webhook claim is per sender event id, a fire claim is
+/// per schedule and scheduler message id — and one prefix over two key shapes
+/// is a collision waiting for the day the shapes converge.
+const SCHEDULE_FIRE_KEY_PREFIX: &str = "schedule:fire:";
+
+/// How long a fire's claim outlives the fire.
+///
+/// The external scheduler retries a callback it did not get a 2xx for, and
+/// gives up well inside a day. A window equal to the webhook one is therefore
+/// already generous, and matching it means one number to reason about rather
+/// than two that drifted.
+const SCHEDULE_FIRE_TTL_SECONDS: u64 = WEBHOOK_DEDUP_TTL_SECONDS;
+
 /// No expiry — the key is forgotten by name, not by clock.
 const NO_EXPIRY: u64 = 0;
 
@@ -85,6 +101,12 @@ pub enum OnceScope {
     /// each one claims separately — differing only in how long the claim lives.
     /// See [`APP_DEDUP_TTL_SECONDS`].
     AppDelivery,
+    /// A schedule fire, deduplicated per fleet, schedule and message id.
+    ///
+    /// The id a caller passes is `{fleet_id}:{schedule_id}:{message_id}` — the
+    /// schedule is in the key because one fleet holds many, and two of them
+    /// firing on the same tick must not silence each other.
+    ScheduleFire,
 }
 
 impl OnceScope {
@@ -93,6 +115,7 @@ impl OnceScope {
         match self {
             Self::FleetIntent => FLEET_INTENT_KEY_PREFIX,
             Self::WebhookDelivery | Self::AppDelivery => WEBHOOK_DEDUP_KEY_PREFIX,
+            Self::ScheduleFire => SCHEDULE_FIRE_KEY_PREFIX,
         }
     }
 
@@ -104,6 +127,7 @@ impl OnceScope {
             // window append a second event.
             Self::FleetIntent => NO_EXPIRY,
             Self::WebhookDelivery => WEBHOOK_DEDUP_TTL_SECONDS,
+            Self::ScheduleFire => SCHEDULE_FIRE_TTL_SECONDS,
             Self::AppDelivery => APP_DEDUP_TTL_SECONDS,
         }
     }

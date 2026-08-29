@@ -185,6 +185,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_cron"
+version = "0.27.0"
+dependencies = [
+ "afd_core",
+ "afd_crypto",
+ "afd_db",
+ "afd_redis",
+ "afd_wire",
+ "base64 0.23.1",
+ "jsonwebtoken",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "afd_crypto"
 version = "0.27.0"
 dependencies = [
