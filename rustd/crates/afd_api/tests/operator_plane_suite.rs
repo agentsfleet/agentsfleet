@@ -2,8 +2,8 @@
 
 mod harness;
 
-#[path = "admin_live.rs"]
-mod admin_live;
+#[path = "integration_admin.rs"]
+mod integration_admin;
 #[path = "admin_operator_route_inventory.rs"]
 mod admin_operator_route_inventory;
 #[path = "admin_plane.rs"]
@@ -12,5 +12,5 @@ mod admin_plane;
 mod admin_scope_gates;
 #[path = "operator_plane.rs"]
 mod operator_plane;
-#[path = "operator_runner_live.rs"]
-mod operator_runner_live;
+#[path = "integration_operator_runner.rs"]
+mod integration_operator_runner;

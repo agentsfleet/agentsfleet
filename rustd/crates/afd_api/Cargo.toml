@@ -118,11 +118,11 @@ workspace = true
 
 [[test]]
 name = "http_substrate"
-path = "tests/http_substrate.rs"
+path = "tests/http_substrate_suite.rs"
 
 [[test]]
 name = "tenant_plane"
-path = "tests/tenant_plane.rs"
+path = "tests/tenant_plane_suite.rs"
 
 [[test]]
 name = "runner_plane"
