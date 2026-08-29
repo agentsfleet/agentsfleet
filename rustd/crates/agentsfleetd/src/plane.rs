@@ -60,6 +60,8 @@ use afd_tenant::workspace::Workspaces;
 // workspace-admin surface that seals, lists without a key, and deletes under
 // the model-registry lock. Two things called `Vault` in one file is how a
 // reader ends up believing one of them can do the other's job.
+use afd_core::id::Uuid7;
+use afd_ingress::Ingress;
 use afd_vault::Vault as SecretVault;
 
 use crate::bundles::Stores;
@@ -100,6 +102,8 @@ pub struct ServingPlane {
     grants: IntegrationGrants,
     events: History,
     steering: afd_events::Steer,
+    ingress: Ingress,
+    platform_admin_workspace: Option<Uuid7>,
     live: Live,
     analytics: Analytics,
     api_url: Box<str>,
@@ -141,6 +145,7 @@ impl ServingPlane {
             sessions,
             stores,
             broker,
+            platform_admin_workspace,
             live,
             analytics,
             login,
@@ -157,6 +162,7 @@ impl ServingPlane {
         Self {
             bundles,
             library_imports,
+            platform_admin_workspace,
             runner_lease_history: RunnerLeaseHistory::new(database.clone()),
             admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
@@ -180,6 +186,17 @@ impl ServingPlane {
             grants: IntegrationGrants::new(database.clone()),
             events: History::new(database.clone()),
             steering: afd_events::Steer::new(queue.clone()),
+            // The SAME key every other sealing store takes, so the signing
+            // secret a webhook is checked against opens under the key the
+            // workspace surface sealed it with. A second `SecretVault` value
+            // rather than a share of the `secrets` field above because the two
+            // are different surfaces over one table — that one seals and never
+            // opens, this one opens exactly one name and never lists.
+            ingress: Ingress::new(
+                database.clone(),
+                SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+                queue.clone(),
+            ),
             live,
             analytics,
             api_url: login.api_url,
@@ -258,6 +275,12 @@ pub struct PlaneParts {
     pub live: Live,
     /// What the device-flow login surface needs from configuration.
     pub login: LoginConfig,
+    /// The workspace holding this deployment's own platform secrets.
+    ///
+    /// `None` for a deployment that configured none. Threaded through rather
+    /// than re-read, because `preflight` has already parsed and validated it
+    /// and a second reader could disagree with the first.
+    pub platform_admin_workspace: Option<Uuid7>,
 }
 
 mod services;

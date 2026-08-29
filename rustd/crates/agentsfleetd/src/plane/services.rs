@@ -52,6 +52,7 @@ impl Services for ServingPlane {
     type Approvals = Inbox;
     type Grants = IntegrationGrants;
     type Events = History;
+    type Ingress = afd_ingress::Ingress;
     type Steering = afd_events::Steer;
     type Memories = Memories;
     type Billing = Billing;
@@ -75,6 +76,14 @@ impl Services for ServingPlane {
 
     fn sessions(&self) -> &Logins {
         &self.logins
+    }
+
+    fn ingress(&self) -> &afd_ingress::Ingress {
+        &self.ingress
+    }
+
+    fn platform_admin_workspace(&self) -> Option<&afd_core::id::Uuid7> {
+        self.platform_admin_workspace.as_ref()
     }
 
     fn workspaces(&self) -> &Workspaces {

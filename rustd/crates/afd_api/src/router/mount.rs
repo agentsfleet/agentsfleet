@@ -19,11 +19,11 @@ use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
 use crate::handler::{
     admin, approval, auth as auth_handler, event, fleet, fleet_bundles, grant, operator,
-    preference, runner, secret, stream, tenant as tenant_handler,
+    preference, runner, secret, stream, tenant as tenant_handler, webhook,
 };
 use crate::route::{
     AdminRoute, AuthRoute, FleetRoute, OpsRoute, Route, RunnerOpsRoute, RunnerRoute, TenantRoute,
-    WorkspaceRoute,
+    WebhookRoute, WorkspaceRoute,
 };
 
 use super::{Serving, probes};
@@ -51,7 +51,32 @@ pub(super) fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D
         // milestone that ports its handlers; until then the route exists as a
         // template, a guard and a scope rung, and this binary answers 404.
         Route::Admin(verb) => Some(admin_handler::<D>(verb)),
-        Route::Webhook(_) | Route::Connector(_) => None,
+        Route::Webhook(verb) => webhook_handler_for::<D>(verb),
+        Route::Connector(_) => None,
+    }
+}
+
+/// Deliveries proven by a signature over the body rather than by a bearer.
+///
+/// `None` for the five routes M180's later sections own — the fleet envelope
+/// and its Svix twin, the approval delivery, the App ingress and the `QStash`
+/// fire path. Each is an arm rather than an absence from a list, so an endpoint
+/// that is tabled and unserved says so where somebody looking for it will read
+/// it.
+///
+/// There is no layer above these. `plane_of` answers `None` for
+/// `Guard::WebhookSignature` because a signed delivery carries no principal to
+/// resolve, so the check the guard names happens INSIDE the handler — see
+/// [`crate::handler::webhook`] on why the per-fleet secret makes that the only
+/// place it can happen.
+fn webhook_handler_for<D: Serving>(verb: WebhookRoute) -> Option<MethodRouter<Arc<D>>> {
+    match verb {
+        WebhookRoute::GitHub => Some(post(webhook::github_route::receive::<D>)),
+        WebhookRoute::AppIngress => Some(post(webhook::app_route::receive::<D>)),
+        WebhookRoute::Receive
+        | WebhookRoute::ReceiveSvix
+        | WebhookRoute::Approval
+        | WebhookRoute::QstashSchedules => None,
     }
 }
 

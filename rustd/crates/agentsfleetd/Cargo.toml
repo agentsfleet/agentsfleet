@@ -62,6 +62,8 @@ afd_state.workspace = true
 # The runner control plane behind the `/v1/runners` verbs.
 afd_fleet.workspace = true
 afd_gate.workspace = true
+# The signed-ingress plane the webhook and App ingress routes resolve through.
+afd_ingress.workspace = true
 # The workspace fleets surface's store, handed to the router as one service.
 afd_fleet_lifecycle.workspace = true
 # Read-only operator projections are kept off the runner execution crate.

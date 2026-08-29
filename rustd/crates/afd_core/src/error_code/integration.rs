@@ -90,6 +90,15 @@ pub const GRANT_REVOKE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-GRANT-002")
 /// a GitHub App, and the shared connector code is what stops it.
 pub const CONNECTOR_OAUTH_EXCHANGE_FAILED: ErrorCode = ErrorCode::declare("UZ-CONN-006");
 
+/// The path named a provider this daemon ships no App ingress for.
+///
+/// `ERR_CONNECTOR_UNKNOWN` (`error_registry.zig:236`). A refusal rather than a
+/// dropped delivery, unlike the rest of the App ingress family: every other
+/// non-acceptance there is a correctly-addressed delivery this daemon chose not
+/// to act on, and this one is addressed to nothing at all. Nobody is retrying
+/// it into existence, so there is no retry loop to protect.
+pub const CONNECTOR_UNKNOWN: ErrorCode = ErrorCode::declare("UZ-CONN-004");
+
 /// No human approved a repository-write gate for this event.
 ///
 /// `ERR_REPAIR_WRITE_UNAPPROVED` (`error_registry.zig:199`). The run is not

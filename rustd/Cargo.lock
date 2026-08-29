@@ -72,6 +72,8 @@ dependencies = [
  "afd_fleet_lifecycle",
  "afd_fleet_ops",
  "afd_fleet_runtime",
+ "afd_gate",
+ "afd_ingress",
  "afd_library",
  "afd_observability",
  "afd_redis",
@@ -80,6 +82,7 @@ dependencies = [
  "afd_state",
  "afd_tenant",
  "afd_vault",
+ "afd_webhook",
  "afd_wire",
  "axum",
  "bytes",
@@ -87,7 +90,9 @@ dependencies = [
  "http",
  "hyper",
  "hyper-util",
+ "jiff",
  "object_store",
+ "octocrab",
  "serde",
  "serde_json",
  "sqlx",
@@ -293,6 +298,7 @@ dependencies = [
 name = "afd_fleet_runtime"
 version = "0.27.0"
 dependencies = [
+ "afd_webhook",
  "garde",
  "serde",
  "serde_json",
@@ -340,6 +346,28 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "zeroize",
+]
+
+[[package]]
+name = "afd_ingress"
+version = "0.27.0"
+dependencies = [
+ "afd_core",
+ "afd_crypto",
+ "afd_db",
+ "afd_fleet_lifecycle",
+ "afd_fleet_runtime",
+ "afd_redis",
+ "afd_vault",
+ "afd_webhook",
+ "afd_wire",
+ "hex",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -524,6 +552,7 @@ dependencies = [
  "afd_fleet_ops",
  "afd_gate",
  "afd_identity",
+ "afd_ingress",
  "afd_library",
  "afd_observability",
  "afd_redis",

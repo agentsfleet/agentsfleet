@@ -111,6 +111,22 @@ SELECT key_name, created_at, meta_kind, meta_provider, meta_base_url
  WHERE workspace_id = $1::uuid
  ORDER BY key_name ASC";
 
+/// The sealed envelope of one secret, for the daemon's own use.
+///
+/// `$1` workspace · `$2` name.
+///
+/// The one statement in this crate that projects ciphertext, and it is scoped
+/// to a SINGLE name rather than to a workspace. That is the difference between
+/// it and [`SELECT_SECRET_PROJECTIONS`]: a list cannot become a bulk decrypt by
+/// accident here, because there is no shape of this statement that returns more
+/// than one row. Read by `load.rs`, which is on the half of the crate that
+/// holds a key; see that module on which guarantee this does and does not
+/// touch.
+pub(crate) const SELECT_SECRET_ENVELOPE: &str = "\
+SELECT encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, kek_version
+  FROM vault.secrets
+ WHERE workspace_id = $1::uuid AND key_name = $2";
+
 // ── The reference lock ──────────────────────────────────────────────────────
 //
 // `core.tenant_model_entries.secret_ref` names a `vault.secrets` row but cannot
@@ -193,7 +209,7 @@ DELETE FROM vault.secrets
 mod tests {
     use super::{
         DELETE_SECRET, INSERT_SECRET_IF_ABSENT, LOCK_ENTRIES, LOCK_SECRET, LOCK_SELECTION,
-        SELECT_SECRET_PROJECTIONS, UPDATE_SECRET,
+        SELECT_SECRET_ENVELOPE, SELECT_SECRET_PROJECTIONS, UPDATE_SECRET,
     };
 
     /// The six ciphertext columns, plus the version that binds them.
@@ -279,6 +295,7 @@ mod tests {
             INSERT_SECRET_IF_ABSENT,
             UPDATE_SECRET,
             SELECT_SECRET_PROJECTIONS,
+            SELECT_SECRET_ENVELOPE,
             LOCK_SECRET,
             DELETE_SECRET,
         ] {
@@ -310,5 +327,44 @@ mod tests {
         // Locking the same rows in different orders is the classic deadlock,
         // and the only defence is that every participant sorts identically.
         assert!(LOCK_ENTRIES.contains("ORDER BY id"));
+    }
+
+    #[test]
+    fn the_envelope_read_can_only_ever_return_one_secret() {
+        // The guarantee that keeps this from becoming a bulk decrypt: it is
+        // predicated on a single `key_name`, so there is no shape of it that
+        // walks a workspace. A future edit widening the predicate would be
+        // turning one decrypt into a page of them.
+        assert!(SELECT_SECRET_ENVELOPE.contains("key_name = $2"));
+        assert!(
+            !SELECT_SECRET_ENVELOPE.contains("ORDER BY"),
+            "a single-row read has nothing to order"
+        );
+    }
+
+    #[test]
+    fn the_envelope_read_projects_every_component_an_open_needs() {
+        // A missing column here is an envelope that cannot be rebuilt, and the
+        // failure would surface as an unopenable secret rather than as a bad
+        // projection.
+        for column in CIPHERTEXT_COLUMNS {
+            assert!(
+                SELECT_SECRET_ENVELOPE.contains(column),
+                "the envelope read omits {column}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_envelope_read_is_the_only_statement_projecting_ciphertext() {
+        // Spec Invariant 3 restated precisely now that a decrypting read
+        // exists: the LIST performs zero decrypts, and it stays that way
+        // because it still projects none of the six components.
+        for column in CIPHERTEXT_COLUMNS {
+            assert!(
+                !SELECT_SECRET_PROJECTIONS.contains(column),
+                "the list projects {column}, which is ciphertext"
+            );
+        }
     }
 }

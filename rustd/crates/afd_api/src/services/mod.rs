@@ -39,6 +39,7 @@ mod device_flow;
 mod event;
 mod fleets;
 mod grant;
+mod ingress;
 mod leasing;
 mod memory;
 mod preference;
@@ -52,6 +53,7 @@ pub use self::device_flow::DeviceFlow;
 pub use self::event::{FleetSteering, WorkspaceEvents};
 pub use self::fleets::WorkspaceFleets;
 pub use self::grant::FleetGrants;
+pub use self::ingress::WebhookIngress;
 pub use self::leasing::Leasing;
 pub use self::memory::FleetMemories;
 pub use self::preference::WorkspacePreferences;
@@ -60,6 +62,7 @@ pub use self::vault::WorkspaceSecrets;
 
 use afd_admin::{Models as AdminModels, PlatformKeys};
 use afd_core::clock::UnixMillis;
+use afd_core::id::Uuid7;
 use afd_fleet::bundle::Bundles;
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_library::{Libraries, LibraryImports};
@@ -229,6 +232,31 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// A fleet's durable memory: the page, and the forget.
     fn memories(&self) -> &Self::Memories;
+
+    /// What the signed-ingress routes act through.
+    ///
+    /// An associated type for the reason [`Services::Fleets`] is one: the
+    /// concrete store holds a Redis connection opened by CONNECTING — the
+    /// delivery's at-most-once claim and its append are one Lua script on it —
+    /// so a suite proving the refusal matrix in front of these routes cannot
+    /// build one and must not need to.
+    type Ingress: WebhookIngress;
+
+    /// What a signed delivery is resolved, verified and appended through.
+    fn ingress(&self) -> &Self::Ingress;
+
+    /// The workspace whose vault holds this deployment's own platform secrets.
+    ///
+    /// `None` for a deployment that configured none, which is a supported
+    /// state: every surface that needs one fails closed rather than guessing,
+    /// and the rest of the daemon runs without it.
+    ///
+    /// The App ingress is the reason this crosses the seam. Its signing secret
+    /// belongs to the DEPLOYMENT rather than to any fleet or workspace — one
+    /// App, one secret, configured once — so it is the one ingress secret that
+    /// cannot be reached through a [`afd_ingress::Binding`], because it has to
+    /// be verified before there is a binding to reach it through.
+    fn platform_admin_workspace(&self) -> Option<&Uuid7>;
 
     /// What the steer verb acts through.
     type Steering: FleetSteering;
