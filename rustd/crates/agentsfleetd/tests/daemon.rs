@@ -4,6 +4,7 @@
 //! be a race: the signal is made to have ALREADY arrived before the server is
 //! polled, which is the boot-window condition stated as a fact rather than
 //! approximated with a sleep and hoped for.
+mod support;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,7 +13,7 @@ use agentsfleetd::daemon::{Daemon, StopCause};
 use agentsfleetd::inventory::{ANALYTICS_FLUSH, BACKGROUND_TASKS, HUB_PUMP, OTLP_EXPORT};
 use agentsfleetd::supervisor::Supervisor;
 
-use crate::support::install_subscriber;
+use self::support::install_subscriber;
 
 /// Spawns a supervised task that records having observed its cancellation.
 ///

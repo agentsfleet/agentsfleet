@@ -1,7 +1,5 @@
 [package]
 name = "afd_approval"
-# One aggregated test binary; see tests/approval_suite.rs for why.
-autotests = false
 description = "The operator's side of an approval gate: the queue, the one decision Postgres admits, and the continuation an approval lands."
 version.workspace = true
 edition.workspace = true
@@ -45,7 +43,3 @@ test-util = ["afd_core/test-util", "afd_db/test-util", "afd_redis/test-util"]
 # The race the resolve exists to decide is worthless single-threaded: the
 # interleaving two operators produce cannot happen without threads under it.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-
-[[test]]
-name = "approval_suite"
-path = "tests/approval_suite.rs"
