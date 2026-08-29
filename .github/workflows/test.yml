@@ -83,7 +83,11 @@ jobs:
       # is the arrangement `test.yml` already reasons about at the top of this
       # file, where the `push: branches: [main]` trigger exists so a main run
       # populates the cache each Pull Request branch restores from.
-      - uses: Swatinem/rust-cache@v2
+      # Pinned to the commit `v2` resolved to, not the tag. A tag is mutable:
+      # retargeting it upstream changes the code that runs against this
+      # checkout and the shared build cache, with no diff here to review.
+      # The trailing comment is what a reader and Dependabot both bump.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: rustd
           shared-key: rustd
