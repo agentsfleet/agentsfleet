@@ -43,6 +43,104 @@ jobs:
   # ── 1a. x86_64 binary: build inside Alpine container ──────────────────
   # JS actions work inside Alpine on x86_64 runners.
   # Alpine's openssl-libs-static provides musl-native .a — fully static output.
+  # The daemon this release actually serves.
+  #
+  # One job, both architectures, each on its own native runner — no QEMU, and
+  # no cross toolchain either. `rust:alpine` is a musl-NATIVE image, so the
+  # musl target is simply the host target and there is nothing to configure;
+  # building on a glibc runner would mean installing and wiring a cross linker
+  # to reach the same place.
+  #
+  # `aws-lc-sys` compiles a C library (a BoringSSL fork), which the workspace
+  # recorded as the one dependency whose static musl link was unproven. It is
+  # proven here on every release, and the static-ELF assertion below is what
+  # says so — the apk list is exactly its build dependencies.
+  daemon-linux:
+    needs: verify-tag
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The dist profile is fat LTO across 30 crates, which is minutes of link
+      # time bought deliberately for a daemon whose cost is CPU per request.
+      # Paying it once per release is the trade; paying it on a cold registry
+      # every time is not, so the registry and the target directory are keyed
+      # on the lockfile and the toolchain pin.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            .cargo-cache/registry
+            .cargo-cache/git
+            rustd/target
+          key: cargo-dist-${{ matrix.arch }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+          restore-keys: cargo-dist-${{ matrix.arch }}-
+
+      # `docker run` rather than a job `container:`, and deliberately so: JS
+      # actions cannot run inside an Alpine container on an ARM64 runner, which
+      # is the same constraint the aarch64 Zig job below documents. Driving the
+      # build through docker keeps checkout, cache and upload on the host where
+      # they work, on both architectures, with one code path.
+      - name: Build the daemon in Alpine (musl-native)
+        run: |
+          mkdir -p .cargo-cache/registry .cargo-cache/git rustd/target
+          docker run --rm \
+            -v "$PWD:/w" \
+            -v "$PWD/.cargo-cache/registry:/usr/local/cargo/registry" \
+            -v "$PWD/.cargo-cache/git:/usr/local/cargo/git" \
+            -w /w/rustd \
+            rust:1.98-alpine \
+            sh -c '
+              set -e
+              apk add --no-cache build-base perl cmake go linux-headers
+              cargo build --profile dist --bin agentsfleetd
+            '
+          # The container writes as root; the cache action and later steps read
+          # as the runner user.
+          sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
+
+      - name: Verify static ELF — zero NEEDED, no INTERP
+        run: |
+          bin=rustd/target/dist/agentsfleetd
+          test -f "$bin"
+          if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
+            echo "FAIL: $bin has dynamic NEEDED entries"
+            readelf -d "$bin" | grep NEEDED
+            exit 1
+          fi
+          if readelf -l "$bin" 2>/dev/null | grep -q "INTERP"; then
+            echo "FAIL: $bin has INTERP (dynamic linker) section"
+            exit 1
+          fi
+          echo "✓ $bin: fully static (zero NEEDED, no INTERP), $(wc -c < "$bin") bytes"
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp rustd/target/dist/agentsfleetd dist/agentsfleetd-rs-linux-${{ matrix.arch }}
+          chmod +x dist/agentsfleetd-rs-linux-${{ matrix.arch }}
+          tar czf dist/agentsfleetd-rs-linux-${{ matrix.arch }}.tar.gz \
+            -C dist agentsfleetd-rs-linux-${{ matrix.arch }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agentsfleetd-rs-linux-${{ matrix.arch }}
+          path: dist/agentsfleetd-rs-linux-${{ matrix.arch }}.tar.gz
+
+      # Unpackaged, for the image build and the runtime check downstream.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agentsfleetd-rs-linux-${{ matrix.arch }}-raw
+          path: dist/agentsfleetd-rs-linux-${{ matrix.arch }}
+          retention-days: 1
+
   binaries-linux-x86:
     needs: verify-tag
     runs-on: ubuntu-latest
@@ -54,87 +152,75 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Build (x86_64-linux)
-        run: |
-          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl -Dgit-commit="${GITHUB_SHA::7}"
-          zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl
+        run: zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl
 
       - name: Verify static ELF — zero NEEDED, no INTERP (x86_64-linux)
         run: |
-          for bin in zig-out/bin/agentsfleetd zig-out/bin/agentsfleet-runner; do
-            test -f "$bin"
-            if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
-              echo "FAIL: $bin has dynamic NEEDED entries"
-              readelf -d "$bin" | grep NEEDED
-              exit 1
-            fi
-            if readelf -l "$bin" 2>/dev/null | grep -q "INTERP"; then
-              echo "FAIL: $bin has INTERP (dynamic linker) section"
-              exit 1
-            fi
-            echo "✓ $bin: fully static (zero NEEDED, no INTERP)"
-          done
+          bin=zig-out/bin/agentsfleet-runner
+          test -f "$bin"
+          if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
+            echo "FAIL: $bin has dynamic NEEDED entries"
+            readelf -d "$bin" | grep NEEDED
+            exit 1
+          fi
+          if readelf -l "$bin" 2>/dev/null | grep -q "INTERP"; then
+            echo "FAIL: $bin has INTERP (dynamic linker) section"
+            exit 1
+          fi
+          echo "✓ $bin: fully static (zero NEEDED, no INTERP)"
 
       - name: Package
         run: |
           mkdir -p dist
-          cp zig-out/bin/agentsfleetd       dist/agentsfleetd-linux-amd64
           cp zig-out/bin/agentsfleet-runner dist/agentsfleet-runner-linux-amd64
-          chmod +x dist/agentsfleetd-linux-amd64 dist/agentsfleet-runner-linux-amd64
-          tar czf dist/agentsfleetd-linux-amd64.tar.gz -C dist agentsfleetd-linux-amd64
+          chmod +x dist/agentsfleet-runner-linux-amd64
           tar czf dist/agentsfleet-runner-linux-amd64.tar.gz -C dist agentsfleet-runner-linux-amd64
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: agentsfleetd-linux-amd64
-          path: dist/agentsfleetd-linux-amd64.tar.gz
 
       - uses: actions/upload-artifact@v7
         with:
           name: agentsfleet-runner-linux-amd64
           path: dist/agentsfleet-runner-linux-amd64.tar.gz
 
-      # Upload unpackaged binary for runtime compat verification job below.
-      - uses: actions/upload-artifact@v7
-        with:
-          name: agentsfleetd-linux-amd64-ci
-          path: dist/agentsfleetd-linux-amd64
-          retention-days: 1
-
   # ── 1b. Runtime compat: verify release x86_64 binary runs on all target envs ──
   # Mirrors verify-runtime-compat from cross-compile.yml.
   # Release binaries must pass before Docker image is pushed to GHCR.
+  # Prove the binary runs in the image that will actually serve it.
+  #
+  # This job used to `ldd` the binary in debian:bookworm-slim, alpine:3.21 and
+  # debian:trixie-slim. That made sense while the question was "does it find a
+  # compatible libc" — a question a dynamically linked binary can answer
+  # differently on each. A static binary has no libc to find, the build job
+  # already asserts zero NEEDED and no INTERP, and none of those three images
+  # is what production runs. So the check moved to the one environment that is:
+  # the distroless base from the Dockerfile, with no shell in it, which is
+  # exactly the property that would make a wrong binary fail here rather than
+  # at deploy.
   verify-runtime-compat:
     runs-on: ubuntu-latest
-    needs: binaries-linux-x86
+    needs: daemon-linux
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: agentsfleetd-linux-amd64-ci
+          name: agentsfleetd-rs-linux-amd64-raw
           path: dist
 
-      - name: Make binary executable
-        run: chmod +x dist/agentsfleetd-linux-amd64
-
-      - name: Verify in debian:bookworm-slim (Fly.io target)
+      - name: Run the daemon's preflight on the production base image
         run: |
-          docker run --rm \
-            -v "${{ github.workspace }}/dist:/test:ro" \
-            mirror.gcr.io/library/debian:bookworm-slim \
-            sh -c 'ldd /test/agentsfleetd-linux-amd64 2>&1 | grep -q "not a dynamic executable" && echo "✓ bookworm-slim: static binary confirmed" || (echo "FAIL: dynamic deps found in bookworm-slim"; ldd /test/agentsfleetd-linux-amd64 2>&1; exit 1)'
-
-      - name: Verify in alpine:3.21 (musl-native)
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}/dist:/test:ro" \
-            mirror.gcr.io/library/alpine:3.21 \
-            sh -c 'ldd /test/agentsfleetd-linux-amd64 2>&1 | grep -qiE "not a dynamic|Not a valid dynamic" && echo "✓ alpine: static binary confirmed" || (echo "FAIL: dynamic deps found in alpine"; ldd /test/agentsfleetd-linux-amd64 2>&1; exit 1)'
-
-      - name: Verify in debian:trixie-slim (bare-metal worker target)
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}/dist:/test:ro" \
-            mirror.gcr.io/library/debian:trixie-slim \
-            sh -c 'ldd /test/agentsfleetd-linux-amd64 2>&1 | grep -q "not a dynamic executable" && echo "✓ trixie-slim: static binary confirmed" || (echo "FAIL: dynamic deps found in trixie-slim"; ldd /test/agentsfleetd-linux-amd64 2>&1; exit 1)'
+          chmod +x dist/agentsfleetd-rs-linux-amd64
+          printf 'FROM gcr.io/distroless/static-debian12:nonroot\nCOPY agentsfleetd-rs-linux-amd64 /usr/local/bin/agentsfleetd\n' \
+            > dist/Dockerfile.check
+          docker build -q -t agentsfleetd-runtime-check dist
+          # No subcommand: the daemon checks its environment and reports. It
+          # exits non-zero without configuration, so the assertion is that it
+          # RAN — a binary that cannot load says so differently, and says it on
+          # stderr before any of this output exists.
+          out="$(docker run --rm agentsfleetd-runtime-check /usr/local/bin/agentsfleetd 2>&1 || true)"
+          printf '%s\n' "$out"
+          if printf '%s' "$out" | grep -qiE 'no such file|exec format|not found|cannot execute'; then
+            echo "FAIL: the binary did not load on the production base image"
+            exit 1
+          fi
+          echo "✓ distroless/static-debian12: the daemon loads and reports"
 
   # ── 1c. aarch64 binary: bare runner + docker run alpine ───────────────
   # JS actions cannot run inside Alpine containers on ARM64 runners.
@@ -162,10 +248,9 @@ jobs:
               set -e
               cp -a /src/. /build
               cd /build
-              echo "  compiling agentsfleetd + agentsfleet-runner (aarch64-linux)..."
-              zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl -Dgit-commit="${GITHUB_SHA::7}"
+              echo "  compiling agentsfleet-runner (aarch64-linux)..."
               zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl
-              for bin in zig-out/bin/agentsfleetd zig-out/bin/agentsfleet-runner; do
+              for bin in zig-out/bin/agentsfleet-runner; do
                 test -f "$bin"
                 if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
                   echo "FAIL: $bin has dynamic NEEDED entries"
@@ -178,50 +263,47 @@ jobs:
                 fi
                 echo "  ✓ $bin: fully static (zero NEEDED, no INTERP)"
               done
-              cp zig-out/bin/agentsfleetd       /zig-out/bin/agentsfleetd
               cp zig-out/bin/agentsfleet-runner /zig-out/bin/agentsfleet-runner
             '
 
       - name: Package
         run: |
           mkdir -p dist
-          cp zig-out/bin/agentsfleetd       dist/agentsfleetd-linux-arm64
           cp zig-out/bin/agentsfleet-runner dist/agentsfleet-runner-linux-arm64
-          chmod +x dist/agentsfleetd-linux-arm64 dist/agentsfleet-runner-linux-arm64
-          tar czf dist/agentsfleetd-linux-arm64.tar.gz -C dist agentsfleetd-linux-arm64
+          chmod +x dist/agentsfleet-runner-linux-arm64
           tar czf dist/agentsfleet-runner-linux-arm64.tar.gz -C dist agentsfleet-runner-linux-arm64
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: agentsfleetd-linux-arm64
-          path: dist/agentsfleetd-linux-arm64.tar.gz
 
       - uses: actions/upload-artifact@v7
         with:
           name: agentsfleet-runner-linux-arm64
           path: dist/agentsfleet-runner-linux-arm64.tar.gz
 
+  # The macOS daemon is a download, not a deployment: production is linux, and
+  # nothing in this workflow consumes this artifact except the GitHub release.
+  # It is built natively — no cross target, no musl — and it gates nothing.
   binaries-macos:
     needs: verify-tag
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
 
-      - uses: mlugg/setup-zig@v2
+      - uses: actions/cache@v6
         with:
-          version: 0.16.0
-          use-cache: false
-
-      - name: Ensure OpenSSL is available (macOS)
-        run: brew install openssl@3 || true
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rustd/target
+          key: cargo-dist-darwin-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+          restore-keys: cargo-dist-darwin-
 
       - name: Build
-        run: zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-macos -Dgit-commit="${GITHUB_SHA::7}"
+        working-directory: rustd
+        run: cargo build --profile dist --bin agentsfleetd
 
       - name: Package
         run: |
           mkdir -p dist
-          cp zig-out/bin/agentsfleetd dist/agentsfleetd-darwin-arm64
+          cp rustd/target/dist/agentsfleetd dist/agentsfleetd-darwin-arm64
           chmod +x dist/agentsfleetd-darwin-arm64
           tar czf dist/agentsfleetd-darwin-arm64.tar.gz -C dist agentsfleetd-darwin-arm64
 
@@ -233,29 +315,26 @@ jobs:
   # ── 2. Docker: multi-arch build + push stable to GHCR ──────────────────
   push-prod:
     runs-on: ubuntu-latest
-    needs: [verify-tag, binaries-linux-x86, binaries-linux-aarch64, binaries-macos, verify-runtime-compat]
+    # The image carries the daemon and nothing else, so it waits on the daemon
+    # and its runtime check — not on the runner or the macOS binary, which ship
+    # in the GitHub release and never enter this image.
+    needs: [verify-tag, daemon-linux, verify-runtime-compat]
     permissions:
       packages: write
     steps:
       - uses: actions/checkout@v7
 
-      - name: Download linux/amd64 binary
+      # Unpackaged, both architectures, in one download — the image build copies
+      # the binary straight in, so there is nothing to untar.
+      - name: Download the daemon for both architectures
         uses: actions/download-artifact@v8
         with:
-          name: agentsfleetd-linux-amd64
+          pattern: agentsfleetd-rs-linux-*-raw
           path: dist
+          merge-multiple: true
 
-      - name: Download linux/arm64 binary
-        uses: actions/download-artifact@v8
-        with:
-          name: agentsfleetd-linux-arm64
-          path: dist
-
-      - name: Extract binaries
-        run: |
-          cd dist
-          tar xzf agentsfleetd-linux-amd64.tar.gz
-          tar xzf agentsfleetd-linux-arm64.tar.gz
+      - name: Make the binaries executable
+        run: chmod +x dist/agentsfleetd-rs-linux-amd64 dist/agentsfleetd-rs-linux-arm64
 
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
@@ -351,7 +430,7 @@ jobs:
   # ── 4. GitHub Release: changelog + attach binaries ─────────────────────
   create-release:
     runs-on: ubuntu-latest
-    needs: [binaries-linux-x86, binaries-linux-aarch64, binaries-macos]
+    needs: [daemon-linux, binaries-linux-x86, binaries-linux-aarch64, binaries-macos]
     permissions:
       contents: write
     steps:
@@ -377,9 +456,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ── 5. Verify: DEV gate before PROD rollout ──────────────────────────────
+  # Publishing the GitHub release is not a precondition for deploying.
+  #
+  # This used to wait on `create-release`, which waits on the macOS and runner
+  # builds — so a slow native macOS compile sat between a pushed image and a
+  # production rollout, gating a deploy on an artifact the deploy never reads.
+  # Production needs the image, and the image is `push-prod`. The release still
+  # publishes on its own path from the same tag.
   verify-dev-gate:
     runs-on: ubuntu-latest
-    needs: [create-release, push-prod]
+    needs: push-prod
     steps:
       - name: Verify DEV readiness gate
         run: |
