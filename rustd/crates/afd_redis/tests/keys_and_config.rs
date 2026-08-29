@@ -157,9 +157,29 @@ fn test_each_role_resolves_only_its_own_knob() {
 }
 
 /// Unset, blank, and not-a-Redis-URL are all refused at resolve.
+///
+/// The last two cases are the ones a scheme-prefix check let through: each
+/// starts with the seven characters that check looked for and neither is a URL,
+/// so they used to reach `Client::open` and come back as UNREACHABLE — a
+/// network-shaped error for an environment-shaped fault. Validating through the
+/// client's own parser is what moved them here, where the message names the
+/// knob to go and fix.
+///
+/// Not every typo is reachable this way, and the ones that are not are left
+/// out rather than asserted loosely: `url` accepts invalid percent-encoding in
+/// userinfo, so `redis://%zz@host` parses and is still a connect-time failure.
+/// A case list that claimed otherwise would be documenting a guarantee this
+/// check does not make.
 #[test]
 fn test_malformed_urls_are_refused() {
-    for bad in ["", "   ", "http://localhost:6379", "localhost:6379"] {
+    for bad in [
+        "",
+        "   ",
+        "http://localhost:6379",
+        "localhost:6379",
+        "redis://[::1",
+        "redis://localhost:not-a-port",
+    ] {
         let env = env_with(&[("REDIS_URL", bad)]);
         let error =
             RedisConfig::resolve(&env, RedisRole::Default).expect_err("not a Redis URL: {bad:?}");
@@ -308,7 +328,7 @@ fn test_every_role_tags_itself_distinctly() {
 #[test]
 fn test_every_stream_field_reply_shape_renders() {
     let samples = afd_redis::streams::rendered_field_samples();
-    assert_eq!(samples.len(), 4, "a reply shape was added without a sample");
+    assert_eq!(samples.len(), 5, "a reply shape was added without a sample");
 
     for (label, rendered) in &samples {
         assert!(!rendered.is_empty(), "{label} rendered as nothing");
@@ -327,5 +347,11 @@ fn test_every_stream_field_reply_shape_renders() {
         by_label("anything else"),
         "nil",
         "an unrecognised value keeps its shape visible through Debug"
+    );
+    assert_eq!(
+        by_label("invalid utf-8"),
+        "binary-data([255, 254])",
+        "a field this daemon did not write shows its bytes rather than a \
+         sentence with replacement characters punched through it"
     );
 }
