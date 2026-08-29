@@ -10,13 +10,27 @@
 //! one handle — the message stream borrows it. `split()` gives a sink that
 //! subscribes and a stream that yields, so a reader arriving mid-flight is
 //! subscribed without interrupting delivery to everyone else.
+//!
+//! # The reconnect schedule is `backon`'s
+//!
+//! This file used to carry its own: a two-field `Backoff` that doubled, capped
+//! and added a spread of at most a quarter, fed by a jitter source derived from
+//! the process id and a monotonic reading. Every part of that is
+//! [`ExponentialBuilder`] — factor, floor, ceiling, and a jitter the library
+//! seeds itself — and the loop around it is `backon`'s `retry`, which is what
+//! the redial has always been: call a fallible thing, sleep, call it again.
+//!
+//! The one behavioural change is the spread. The hand-rolled version added at
+//! most 25% of the current delay; `backon` adds a random offset anywhere inside
+//! it. Wider, which is the direction that breaks lockstep better.
 
 use std::sync::Arc;
 
+use backon::{ExponentialBuilder, Retryable as _};
 use futures_util::StreamExt as _;
 use redis::aio::{PubSubSink, PubSubStream};
 
-use super::{Backoff, Command, HubInner, Message};
+use super::{Command, HubInner, Message};
 use crate::config::RedisConfig;
 use crate::error::{Error, ErrorKind, Result};
 
@@ -27,13 +41,13 @@ use crate::error::{Error, ErrorKind, Result};
 /// that says nothing is wrong.
 pub(super) async fn spawn(
     config: RedisConfig,
-    backoff: Backoff,
+    schedule: ExponentialBuilder,
     inner: Arc<HubInner>,
     commands: tokio::sync::mpsc::UnboundedReceiver<Command>,
 ) -> Result<()> {
     let connection = connect(&config).await?;
     inner.record_connection();
-    tokio::spawn(run(config, backoff, inner, commands, connection));
+    tokio::spawn(run(config, schedule, inner, commands, connection));
     Ok(())
 }
 
@@ -59,12 +73,11 @@ async fn connect(config: &RedisConfig) -> Result<Connection> {
 /// Pumps messages until the process ends, reconnecting whenever the socket does.
 async fn run(
     config: RedisConfig,
-    backoff: Backoff,
+    schedule: ExponentialBuilder,
     inner: Arc<HubInner>,
     mut commands: tokio::sync::mpsc::UnboundedReceiver<Command>,
     mut connection: Connection,
 ) {
-    let mut attempt = 0_u32;
     loop {
         // Anything subscribed before this connection existed — the whole map
         // after a reconnect — is subscribed again here. A reader that never
@@ -80,27 +93,54 @@ async fn run(
         let error_code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str();
         tracing::warn!(error_code, event = "hub_connection_dropped");
 
-        connection = loop {
-            let delay = backoff.delay(attempt, jitter());
-            tokio::time::sleep(delay).await;
-            attempt = attempt.saturating_add(1);
-            match connect(&config).await {
-                Ok(fresh) => break fresh,
-                Err(failure) => {
-                    let error_code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str();
-                    tracing::warn!(
-                        attempt,
-                        error = %failure,
-                        error_code,
-                        event = "hub_reconnect_failed"
-                    );
-                }
-            }
-        };
-        attempt = 0;
+        connection = redial(&config, schedule).await;
         inner.record_connection();
         tracing::info!(event = "hub_reconnected");
     }
+}
+
+/// Redials until Redis answers, on the schedule the hub was started with.
+///
+/// Infallible by signature, and that is the pub/sub contract: a reader holds a
+/// receiver rather than a connection, so there is no caller to hand a failure
+/// to and nothing sensible to do with one but try again. `production_backoff`
+/// says so with `without_max_times` — the loop ends when Redis comes back and
+/// at no other point.
+///
+/// `notify` is where the per-attempt line comes from, and it is `FnMut(&E,
+/// Duration)` — `backon` counts attempts to drive its own schedule but does not
+/// hand the number out, so the counter stays. What DID go with the old loop is
+/// the reset: this counter is born at the start of one redial and dies when
+/// Redis answers, where the previous one lived across reconnects and had to be
+/// zeroed by hand afterwards.
+async fn redial(config: &RedisConfig, schedule: ExponentialBuilder) -> Connection {
+    let mut attempt = 0_u32;
+    (|| connect(config))
+        .retry(schedule)
+        .notify(|failure: &Error, _delay| {
+            // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+            let error_code = afd_core::error_code::STARTUP_REDIS_CONNECT.as_str();
+            attempt = attempt.saturating_add(1);
+            let count = attempt;
+            let reason = failure.to_string();
+            tracing::warn!(
+                attempt = count,
+                reason,
+                error_code,
+                event = "hub_reconnect_failed"
+            );
+        })
+        .await
+        // `without_max_times` has no terminal arm, so the only way out is a
+        // connection. The arm exists because the signature still admits an
+        // error, and it re-enters the same wait rather than inventing a
+        // Connection that does not exist.
+        .unwrap_or_else(|_unreachable| unreachable_redial())
+}
+
+/// The branch [`redial`]'s unlimited retry cannot reach.
+fn unreachable_redial() -> ! {
+    unreachable!("a redial with no attempt limit returns only on a connection")
 }
 
 /// Serves one connection. Returns true when the socket died, false when the
@@ -152,30 +192,4 @@ async fn resubscribe(sink: &mut PubSubSink, channels: &[String]) {
             );
         }
     }
-}
-
-/// Spread for the reconnect delay.
-///
-/// Derived from the process id and a MONOTONIC reading rather than a
-/// random-number generator: the requirement is that two processes do not redial
-/// in lockstep, not that the value be unpredictable, and this pulls in no
-/// dependency.
-///
-/// Monotonic, not the wall clock, and the distinction is the whole point of the
-/// spread. An operator correcting drift or an NTP step moves the wall clock
-/// BACKWARD, which replays the same sub-second nanoseconds and hands two
-/// redials the same jitter — reproducing the lockstep this exists to break, at
-/// exactly the moment a cluster is most likely to be reconnecting at once.
-/// [`std::time::Instant`] cannot be stepped, and cannot be confused with a
-/// timestamp, which is why `afd_core::clock` deliberately exposes no monotonic
-/// reading of its own.
-fn jitter() -> u64 {
-    /// Fixed at first use, so `elapsed` is a duration this process owns rather
-    /// than an instant anybody could read as a date.
-    static ORIGIN: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-    let nanos = ORIGIN
-        .get_or_init(std::time::Instant::now)
-        .elapsed()
-        .subsec_nanos();
-    u64::from(nanos) ^ u64::from(std::process::id())
 }

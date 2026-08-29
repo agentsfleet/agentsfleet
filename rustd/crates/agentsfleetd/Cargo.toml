@@ -59,6 +59,9 @@ afd_auth.workspace = true
 # The live-stream surface the plane hands the router: the pub/sub hub and the
 # instance's concurrent-stream ceiling, composed once at boot.
 # The product events this daemon reports, and the client behind them.
+# The connector answer-delivery worker this process supervises — see
+# `crate::outbound`.
+afd_outbound.workspace = true
 afd_observability.workspace = true
 afd_sse.workspace = true
 afd_state.workspace = true

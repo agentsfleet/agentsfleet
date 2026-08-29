@@ -1,0 +1,53 @@
+[package]
+name = "afd_outbound"
+description = "The connector answer-delivery worker: reads the outbound queue, routes each job to its provider's poster, and retries a transient failure on a jittered schedule."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+# The registry codes a failed delivery is logged under, and the identifiers a
+# job names.
+afd_core.workspace = true
+# Where the poster reads the originating event's routing fields from.
+afd_db.workspace = true
+# The wrapper the bot token stays inside on its way to the one header it
+# builds, so it zeroes on drop rather than becoming an ordinary `String`.
+afd_crypto.workspace = true
+# The queue itself: the stream, the dedicated reader, the consumer name.
+afd_redis.workspace = true
+# THE dependency that makes this crate the boundary it is: `Provider` is
+# resolved here and nowhere else on the delivery path (Invariant 9).
+afd_connector.workspace = true
+# The retry LOOP. The counter and the terminal rule are what the Zig
+# hand-rolled beside its schedule, and where its install shipped the bug that
+# left the last delay unreachable.
+backon.workspace = true
+# The vendor call. The same client the rest of the workspace dials with.
+reqwest.workspace = true
+# The header name a JSON body is sent under, from the crate that owns the
+# constant rather than as a literal string.
+http.workspace = true
+# Both wire shapes are derived types rather than field lookups — see `slack`.
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+# `select!` over the blocking read and the cancellation token, and the deadline
+# on a vendor post.
+tokio = { workspace = true, features = ["macros", "time"] }
+# The supervisor's token, which is how this worker is stopped.
+tokio-util.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "time", "test-util"] }
+
+[lints]
+workspace = true

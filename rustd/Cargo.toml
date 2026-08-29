@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_api", "crates/afd_approval", "crates/afd_auth", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_observability", "crates/afd_redis", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_api", "crates/afd_approval", "crates/afd_auth", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_observability", "crates/afd_outbound", "crates/afd_redis", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.27.0"
@@ -91,6 +91,7 @@ afd_cron = { path = "crates/afd_cron" }
 afd_ingress = { path = "crates/afd_ingress" }
 afd_library = { path = "crates/afd_library" }
 afd_observability = { path = "crates/afd_observability" }
+afd_outbound = { path = "crates/afd_outbound" }
 afd_redis = { path = "crates/afd_redis" }
 # The HOST's plane, split from `afd_fleet` (the RUN's plane): enrolment,
 # liveness, the assertion verdict, and the offline/retention sweepers. The two
@@ -455,7 +456,16 @@ axum = { version = "0.8.9", default-features = false, features = [
 # precisely where the Zig install shipped its bug, leaving the last delay
 # unreachable. 26.9M recent downloads against tokio-retry's 10.1M, and on 1.x
 # where tokio-retry is still 0.3.
-backon = { version = "1.6.0", default-features = false, features = ["tokio-sleep"] }
+#
+# `std` is NOT optional here, however much it looks like a default worth
+# dropping. `std = ["fastrand/std"]`, and without it `ExponentialBackoff` takes
+# its `#[cfg(not(feature = "std"))]` branch — `Rng::with_seed(RANDOM_SEED)`,
+# where `RANDOM_SEED` is the compile-time constant `0x6261636b6f6e`
+# (`backon-1.6.0/src/backoff/mod.rs:18`). Every process then draws the SAME
+# "jittered" sequence, which is the reconnect storm the jitter exists to
+# prevent, silently. `keys_and_config.rs`'s spread assertion is what catches a
+# future edit that drops it again.
+backon = { version = "1.6.0", default-features = false, features = ["std", "tokio-sleep"] }
 # Tower is the middleware algebra axum composes; `tower-http` carries the
 # ready-made layers. The admission ceiling is ours (it counts in-flight
 # requests per route CLASS, which no off-the-shelf layer knows about), but the
@@ -571,6 +581,15 @@ opentelemetry_sdk = { version = "0.32.1", default-features = false, features = [
 # edge-triggered — `cancelled().await` wakes the instant it fires — where the
 # Zig watcher polls a flag every 100ms and pays that latency on every shutdown.
 tokio-util = { version = "0.7.19", default-features = false }
+
+# `gethostname`, which `std` does not expose. The outbound worker's consumer
+# name must be the same string across restarts of one instance, or every
+# unacknowledged answer strands in a pending list nothing reads again — and
+# `HOSTNAME` is a shell variable, not an exported one, so a systemd unit sees
+# no value at all. `redis_client.zig` calls the syscall for the same reason.
+# A safe wrapper over the one call, rather than `libc` and an `unsafe` block
+# of our own.
+hostname = { version = "0.4.1", default-features = false }
 
 # Stream combinators for the pub/sub pump. `std` only — no executor, no
 # thread pool; the runtime is tokio's.

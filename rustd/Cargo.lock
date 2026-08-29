@@ -463,11 +463,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_outbound"
+version = "0.27.0"
+dependencies = [
+ "afd_connector",
+ "afd_core",
+ "afd_crypto",
+ "afd_db",
+ "afd_redis",
+ "backon",
+ "http",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "afd_redis"
 version = "0.27.0"
 dependencies = [
  "afd_core",
+ "backon",
  "futures-util",
+ "hostname",
  "redis",
  "serde",
  "serde_json",
@@ -605,6 +628,7 @@ dependencies = [
  "afd_ingress",
  "afd_library",
  "afd_observability",
+ "afd_outbound",
  "afd_redis",
  "afd_runner",
  "afd_sse",
@@ -1772,6 +1796,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6303bc9732ae41b04cb554b844a762b4115a61bfaa81e3e83050991eeb56863f"
 dependencies = [
  "digest 0.11.3",
+]
+
+[[package]]
+name = "hostname"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "617aaa3557aef3810a6369d0a99fac8a080891b68bd9f9812a1eeda0c0730cbd"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "windows-link",
 ]
 
 [[package]]

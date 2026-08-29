@@ -31,6 +31,7 @@ use std::sync::Arc;
 
 use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT};
 use afd_core::env::EnvSource;
+use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_observability::{Analytics, Telemetry};
 use afd_redis::{Redis, RedisConfig, SubscriptionHub};
@@ -162,7 +163,10 @@ async fn open(
     let plane: Shared = Arc::new(ServingPlane::new(crate::plane::PlaneParts {
         database: database.clone(),
         queue: queue.clone(),
-        kek,
+        // Cloned rather than moved: the outbound worker below opens its own
+        // grant store over the same key, for the reason `crate::outbound`
+        // gives — it runs beside the plane, not through it.
+        kek: Arc::clone(&kek),
         capabilities,
         sessions,
         stores: crate::bundles::resolve(config.bundles()),
@@ -203,6 +207,22 @@ async fn open(
     //    that are open by now, and starting them after the socket would leave a
     //    window where the plane serves while nothing is noticing dead runners.
     crate::sweepers::spawn(&mut *supervisor, &database, &queue);
+    // The connector answer-delivery worker, beside them and for the same
+    // reason. Its own Redis connection, because it blocks on the stream — see
+    // `crate::outbound`.
+    crate::outbound::spawn(
+        &mut *supervisor,
+        config.redis(),
+        &database,
+        &queue,
+        afd_connector::Grants::new(
+            afd_vault::Vault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+            database.clone(),
+            Entropy::new(),
+        ),
+        crate::credentials::vendor_exchange_client(),
+    )
+    .await;
     // The worker set is up. `concurrency` is how many supervised tasks this
     // process carries — the closest true reading of the Zig's field, whose
     // runner daemon is not what this binary is.

@@ -23,8 +23,9 @@
 
 use std::time::Duration;
 
+use afd_redis::SubscriptionHub;
 use afd_redis::config::{RedisConfig, RedisRole};
-use afd_redis::{Backoff, SubscriptionHub};
+use backon::ExponentialBuilder;
 
 #[path = "support/fake_redis.rs"]
 mod fake_redis;
@@ -36,7 +37,15 @@ const BUDGET: Duration = Duration::from_secs(10);
 
 /// A redial schedule a test can wait out. Production doubles from 200ms to five
 /// seconds, which no test should sit through.
-const IMPATIENT: Backoff = Backoff::new(Duration::from_millis(5), Duration::from_millis(20));
+///
+/// No jitter, unlike production: a test asserting that a reconnect happened
+/// inside [`BUDGET`] should not have a random offset between it and the
+/// assertion.
+fn impatient() -> ExponentialBuilder {
+    ExponentialBuilder::new()
+        .with_min_delay(Duration::from_millis(5))
+        .with_max_delay(Duration::from_millis(20))
+}
 
 /// The rule table for a fake that speaks enough pub/sub to hold a hub.
 fn pubsub_rules() -> Vec<(&'static str, Reply)> {
@@ -103,7 +112,7 @@ async fn test_a_redial_that_keeps_being_refused_never_counts_a_connection() {
 
     let hub = tokio::time::timeout(
         BUDGET,
-        SubscriptionHub::start_with_backoff(config, IMPATIENT),
+        SubscriptionHub::start_with_backoff(config, impatient()),
     )
     .await
     .expect("the fake serves, so the hub must start")
@@ -149,7 +158,7 @@ async fn test_a_resubscribe_onto_a_dead_socket_is_logged_and_survived() {
 
     let hub = tokio::time::timeout(
         BUDGET,
-        SubscriptionHub::start_with_backoff(config, IMPATIENT),
+        SubscriptionHub::start_with_backoff(config, impatient()),
     )
     .await
     .expect("the fake serves, so the hub must start")
@@ -204,7 +213,7 @@ async fn test_an_unsubscribe_over_a_dying_socket_is_a_dropped_connection() {
 
     let hub = tokio::time::timeout(
         BUDGET,
-        SubscriptionHub::start_with_backoff(config, IMPATIENT),
+        SubscriptionHub::start_with_backoff(config, impatient()),
     )
     .await
     .expect("the fake serves, so the hub must start")
@@ -257,7 +266,7 @@ async fn test_a_subscribe_over_a_dying_socket_is_a_dropped_connection() {
 
     let hub = tokio::time::timeout(
         BUDGET,
-        SubscriptionHub::start_with_backoff(config, IMPATIENT),
+        SubscriptionHub::start_with_backoff(config, impatient()),
     )
     .await
     .expect("the fake serves, so the hub must start")
@@ -309,7 +318,7 @@ async fn test_dropping_every_handle_stops_the_pump_and_closes_the_socket() {
 
     let hub = tokio::time::timeout(
         BUDGET,
-        SubscriptionHub::start_with_backoff(config, IMPATIENT),
+        SubscriptionHub::start_with_backoff(config, impatient()),
     )
     .await
     .expect("the fake serves, so the hub must start")

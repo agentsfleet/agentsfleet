@@ -26,6 +26,7 @@ pub mod identity;
 pub mod inventory;
 pub mod logs;
 pub mod migrate;
+pub mod outbound;
 pub mod plane;
 pub mod preflight;
 pub mod probes;
@@ -39,7 +40,9 @@ pub use self::cli::{Cli, Command};
 pub use self::daemon::{Daemon, Outcome, StopCause};
 pub use self::error::{BootFailure, Fault, MigrateFailure, Refusal};
 pub use self::identity::{Capabilities, Sessions};
-pub use self::inventory::{ANALYTICS_FLUSH, BACKGROUND_TASKS, HUB_PUMP, OTLP_EXPORT};
+pub use self::inventory::{
+    ANALYTICS_FLUSH, BACKGROUND_TASKS, HUB_PUMP, OTLP_EXPORT, OUTBOUND_WORKER,
+};
 pub use self::migrate::migrate;
 pub use self::plane::{Authenticator, ServingPlane, Shared};
 pub use self::preflight::{BootConfig, BundleStoreConfig, IdentityConfig, preflight};
