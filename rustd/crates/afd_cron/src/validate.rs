@@ -1,36 +1,33 @@
 //! What this daemon will accept as a schedule, decided before anything is stored.
 //!
-//! # Why the grammar is here rather than in a parser crate
+//! # The parser is the crate's; the policy is this daemon's
 //!
-//! The spec's Prior-Art table settled on `philiprehberger-cron-parser` plus a
-//! parity guard, on the evidence that the crate agrees with the Zig grammar on
-//! 16 of 21 differential cases and disagrees on five: names and macros
-//! (`@daily`, `MON`), a step wider than its own field's span (`*/61`), and a
-//! reversed range (`5-2`). The guard's job would be to reject those five.
+//! [`CronExpr::parse`] does the parsing — field splitting, bounds, ranges,
+//! steps, lists — and this file adds nothing to it (RULE PSR). What it does add
+//! is three refusals for expressions the crate ACCEPTS and the external
+//! scheduler will not act on the way their author meant. They are the
+//! differential cases the spec's Prior-Art table recorded:
 //!
-//! Writing that guard means encoding field bounds, range ordering and
-//! step-versus-span here anyway — which is the whole grammar, because there is
-//! nothing else in it. The crate would then decide only the cases the guard
-//! already decided, and the dependency would buy a second opinion this daemon
-//! is contractually obliged to overrule. RULE PSR asks for a standard parser
-//! where parsing is the hard part; here the hard part is the POLICY, and the
-//! policy is "exactly what the Zig accepts" because a schedule that validates
-//! on one daemon and not the other breaks a cutover.
+//! - **Aliases and names.** `@daily` and `MON` are read by the crate and are
+//!   not what this daemon registers upstream. Refused here so the author sees
+//!   it at create time, rather than storing an expression that fails when it is
+//!   pushed.
+//! - **A step wider than its field's span.** `*/61` in a minute field means
+//!   "every 61st minute of 60", which is not a schedule.
+//! - **A reversed range.** `5-2` reads as an empty set to one implementation
+//!   and as `2-5` to another, so a schedule carrying one fires differently
+//!   depending on who parses it.
 //!
-//! **This is a recorded deviation from the spec's crate verdict, not an
-//! oversight.** `validate.zig` is the oracle and this is its port.
-//!
-//! # The bound on each field is the field's own, not a shared one
-//!
-//! Minute 0-59, hour 0-23, day 1-31, month 1-12, weekday 0-7 — seven being
-//! Sunday a second time, which every cron implementation accepts and none
-//! documents. A shared 0-59 bound would accept hour 40 and month 0, and the
-//! external scheduler would take them and fire at times nobody asked for.
+//! Those last two are the crate's bugs. The guard holds them until they are
+//! fixed upstream, and each is a check ON TOP of a successful parse — none of
+//! them re-implements one.
+
+use philiprehberger_cron_parser::CronExpr;
 
 /// The longest expression this daemon will read.
 ///
-/// `validate.zig`'s `MAX_CRON_LEN`. A bound on the work one create can ask of
-/// the parser, and a value no legitimate five-field expression comes near.
+/// A bound on the work one create can ask of the parser, and a value no
+/// legitimate five-field expression comes near.
 pub const MAX_CRON_LEN: usize = 128;
 
 /// The longest zone name this daemon will read.
@@ -43,10 +40,10 @@ pub const MAX_MESSAGE_LEN: usize = 8192;
 ///
 /// Three variants rather than one, because a person fixing a schedule needs to
 /// know WHICH field they got wrong — and the route renders each to its own
-/// sentence. A single `Invalid` would make the caller guess.
+/// sentence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Invalid {
-    /// The expression is not five fields this daemon can read.
+    /// The expression is not one this daemon will register.
     Cron,
     /// The zone is not a name this daemon will pass upstream.
     Timezone,
@@ -54,23 +51,18 @@ pub enum Invalid {
     Message,
 }
 
-/// The inclusive bounds of one cron field.
-#[derive(Debug, Clone, Copy)]
-struct Bounds {
-    /// The lowest value the field accepts.
-    min: u16,
-    /// The highest.
-    max: u16,
-}
+/// The span of each field, in the order an expression writes them.
+///
+/// Read only by the step guard, which needs to know what "wider than its own
+/// field" means. The crate owns the bounds themselves and refuses a value
+/// outside them; this is the one question it does not ask.
+const FIELD_SPANS: [u16; 5] = [60, 24, 31, 12, 8];
 
-/// The five fields, in the order an expression writes them.
-const FIELD_BOUNDS: [Bounds; 5] = [
-    Bounds { min: 0, max: 59 },
-    Bounds { min: 0, max: 23 },
-    Bounds { min: 1, max: 31 },
-    Bounds { min: 1, max: 12 },
-    Bounds { min: 0, max: 7 },
-];
+/// The character an alias is introduced by.
+const ALIAS_PREFIX: char = '@';
+
+/// The characters a numeric field may carry beside digits.
+const FIELD_PUNCTUATION: [char; 4] = ['*', ',', '-', '/'];
 
 /// The character a field's alternatives are separated by.
 const LIST_SEPARATOR: char = ',';
@@ -81,48 +73,48 @@ const RANGE_SEPARATOR: char = '-';
 /// The character a step is introduced by.
 const STEP_SEPARATOR: char = '/';
 
-/// The field value meaning every value in bounds.
-const WILDCARD: &str = "*";
-
 /// The character a zone's region and city are separated by.
 const ZONE_SEPARATOR: char = '/';
 
 /// Whether `expression` is one this daemon will register.
 ///
 /// # Errors
-/// [`Invalid::Cron`] for an expression that is empty, over
-/// [`MAX_CRON_LEN`], not exactly five fields, or carrying a field this
-/// grammar does not accept.
+/// [`Invalid::Cron`] for an expression the parser refuses, and for the three it
+/// accepts that this daemon does not — see the module note.
 pub fn cron(expression: &str) -> Result<(), Invalid> {
     if expression.is_empty() || expression.len() > MAX_CRON_LEN {
         return Err(Invalid::Cron);
     }
 
-    let mut fields = expression.split_whitespace();
-    for bounds in FIELD_BOUNDS {
-        let field = fields.next().ok_or(Invalid::Cron)?;
-        if !valid_field(field, bounds) {
-            return Err(Invalid::Cron);
-        }
+    // The parser first: everything it refuses is refused, and the guard below
+    // only ever narrows what it accepted.
+    CronExpr::parse(expression).map_err(|_refused| Invalid::Cron)?;
+
+    if expression.trim_start().starts_with(ALIAS_PREFIX) {
+        return Err(Invalid::Cron);
     }
 
-    // A sixth field is refused rather than ignored. Six-field expressions are a
-    // real grammar elsewhere — with seconds in front — so accepting one by
-    // dropping the extra would register a schedule that fires sixty times more
-    // often than its author wrote.
-    if fields.next().is_some() {
-        return Err(Invalid::Cron);
+    let fields = expression.split_whitespace();
+    for (field, span) in fields.zip(FIELD_SPANS) {
+        if !numeric_only(field) {
+            return Err(Invalid::Cron);
+        }
+        for item in field.split(LIST_SEPARATOR) {
+            if !step_within_span(item, span) || !range_is_ordered(item) {
+                return Err(Invalid::Cron);
+            }
+        }
     }
     Ok(())
 }
 
 /// Whether `value` is a zone name this daemon will pass upstream.
 ///
-/// Shape only, deliberately: the set of real zone names belongs to the
-/// timezone database and changes without this daemon being rebuilt, so
-/// refusing an unknown-but-well-formed name here would reject a zone the
-/// external scheduler accepts. What is refused is anything that could be read
-/// as something other than a zone by whatever parses it next.
+/// Shape only, deliberately: the set of real zone names belongs to the timezone
+/// database and changes without this daemon being rebuilt, so refusing an
+/// unknown-but-well-formed name here would reject a zone the external scheduler
+/// accepts. What is refused is anything a path-joining consumer would read
+/// differently from the way it was written.
 ///
 /// # Errors
 /// [`Invalid::Timezone`] for an empty name, one over [`MAX_TIMEZONE_LEN`], or
@@ -136,9 +128,6 @@ pub fn timezone(value: &str) -> Result<(), Invalid> {
     let mut previous_slash = false;
     for (index, character) in value.char_indices() {
         let slash = character == ZONE_SEPARATOR;
-        // Leading, trailing and doubled separators are all refused: each of
-        // them makes a name that a path-joining consumer reads differently
-        // from the way it was written.
         if slash && (index == 0 || previous_slash || index == last) {
             return Err(Invalid::Timezone);
         }
@@ -166,82 +155,40 @@ pub fn message(value: &str) -> Result<(), Invalid> {
     Ok(())
 }
 
-/// Whether every alternative in one field is in bounds.
-fn valid_field(field: &str, bounds: Bounds) -> bool {
-    !field.is_empty()
-        && field
-            .split(LIST_SEPARATOR)
-            .all(|item| valid_item(item, bounds))
-}
-
-/// Whether one alternative — a value, a range, or either with a step — is.
-fn valid_item(item: &str, bounds: Bounds) -> bool {
-    // At most one step. `*/2/3` is refused rather than read as its first two
-    // parts, because a sender that wrote it meant something this grammar has
-    // no answer for.
-    let mut parts = item.split(STEP_SEPARATOR);
-    let Some(base) = parts.next() else {
-        return false;
-    };
-    let step = parts.next();
-    if parts.next().is_some() {
-        return false;
-    }
-
-    if let Some(step) = step {
-        // A step wider than the field's own span is refused rather than
-        // clamped. `*/61` in a minute field means "every 61st minute of 60",
-        // which is not a schedule — and a parser that silently read it as
-        // "once an hour" would register something its author never wrote.
-        let span = bounds.max - bounds.min + 1;
-        let Some(step) = number(step) else {
-            return false;
-        };
-        if step == 0 || step > span {
-            return false;
-        }
-    }
-
-    if base == WILDCARD {
-        return true;
-    }
-
-    let mut ends = base.split(RANGE_SEPARATOR);
-    let Some(start) = ends.next().and_then(number) else {
-        return false;
-    };
-    let Some(end) = ends.next() else {
-        return in_bounds(start, bounds);
-    };
-    if ends.next().is_some() {
-        return false;
-    }
-
-    // A reversed range is refused, not normalised. `5-2` reads as an empty set
-    // to one implementation and as `2-5` to another, so a schedule carrying one
-    // fires differently depending on who parses it — the exact class of drift
-    // this port exists to close.
-    number(end)
-        .is_some_and(|end| in_bounds(start, bounds) && in_bounds(end, bounds) && start <= end)
-}
-
-/// One field component as a number, when it is one.
+/// Whether a field carries only digits and the punctuation cron gives meaning.
 ///
-/// Rejects names and macros by construction: `MON` and `@daily` are not
-/// digits, so they never reach a bounds check. That is the port's rule — the
-/// external scheduler this daemon registers against takes numeric fields, and
-/// accepting a name here would store an expression that fails upstream with no
-/// way for the author to see why.
-fn number(value: &str) -> Option<u16> {
-    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    value.parse().ok()
+/// The name guard. `MON` parses in the crate and is not what this daemon
+/// registers; refusing it here is the difference between an author seeing the
+/// problem at create time and a schedule that silently never fires.
+fn numeric_only(field: &str) -> bool {
+    field
+        .chars()
+        .all(|character| character.is_ascii_digit() || FIELD_PUNCTUATION.contains(&character))
 }
 
-/// Whether a value falls inside its field's bounds.
-const fn in_bounds(value: u16, bounds: Bounds) -> bool {
-    value >= bounds.min && value <= bounds.max
+/// Whether an item's step, if it has one, fits inside its field.
+fn step_within_span(item: &str, span: u16) -> bool {
+    let Some((_base, step)) = item.split_once(STEP_SEPARATOR) else {
+        return true;
+    };
+    step.parse::<u16>()
+        .is_ok_and(|step| step != 0 && step <= span)
+}
+
+/// Whether an item's range, if it has one, runs forwards.
+fn range_is_ordered(item: &str) -> bool {
+    let base = item
+        .split_once(STEP_SEPARATOR)
+        .map_or(item, |(base, _step)| base);
+    let Some((start, end)) = base.split_once(RANGE_SEPARATOR) else {
+        return true;
+    };
+    match (start.parse::<u16>(), end.parse::<u16>()) {
+        (Ok(start), Ok(end)) => start <= end,
+        // Ends the crate parsed and this does not are left to the crate's own
+        // verdict rather than second-guessed here.
+        _unparsed => true,
+    }
 }
 
 /// Whether a character may appear in a zone name outside a separator.

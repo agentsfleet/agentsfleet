@@ -56,6 +56,10 @@ use object_store::ObjectStoreExt as _;
 use object_store::memory::InMemory;
 
 use super::readiness::{unreachable_pool, unreachable_queue};
+use afd_api::SchedulePlane;
+use afd_cron::{Fire, QStash, ScheduleService, Schedules as CronSchedules};
+
+use super::SCHEDULE_DESTINATION;
 use super::stubs_ingress::HarnessIngress;
 use super::{Directory, Fleet, NoWork, OneWorkspace};
 
@@ -138,6 +142,24 @@ impl Fleet {
                 SecretVault::new(database.clone(), kek, Entropy::new()),
                 queue.clone(),
             ))),
+            // The production schedules plane, over stores that are not there
+            // and a scheduler nothing resolves. Same rule as every other seam:
+            // the refusal a route gives is the one its own crate raises.
+            schedules: SchedulePlane::new(
+                ScheduleService::new(
+                    CronSchedules::new(database.clone(), Entropy::new()),
+                    QStash::new(
+                        reqwest::Client::new(),
+                        String::new(),
+                        SCHEDULE_DESTINATION.to_owned(),
+                    ),
+                ),
+                Fire::new(queue.clone()),
+                Entropy::new(),
+            ),
+            // Fail-closed by default — a suite that proves a verified fire
+            // arranges keys with `Fleet::with_schedule_keys`.
+            schedule_keys: None,
             // No admin workspace, which is the fail-closed App-ingress state.
             platform_admin: None,
             preferences: Preferences::new(database.clone(), Entropy::new()),
@@ -207,6 +229,24 @@ impl Fleet {
                 SecretVault::new(database.clone(), kek, Entropy::new()),
                 queue.clone(),
             ))),
+            // The production schedules plane, over stores that are not there
+            // and a scheduler nothing resolves. Same rule as every other seam:
+            // the refusal a route gives is the one its own crate raises.
+            schedules: SchedulePlane::new(
+                ScheduleService::new(
+                    CronSchedules::new(database.clone(), Entropy::new()),
+                    QStash::new(
+                        reqwest::Client::new(),
+                        String::new(),
+                        SCHEDULE_DESTINATION.to_owned(),
+                    ),
+                ),
+                Fire::new(queue.clone()),
+                Entropy::new(),
+            ),
+            // Fail-closed by default — a suite that proves a verified fire
+            // arranges keys with `Fleet::with_schedule_keys`.
+            schedule_keys: None,
             // No admin workspace, which is the fail-closed App-ingress state.
             platform_admin: None,
             preferences: Preferences::new(database.clone(), Entropy::new()),

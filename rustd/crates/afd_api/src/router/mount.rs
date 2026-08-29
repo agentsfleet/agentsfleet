@@ -20,7 +20,7 @@ use axum::routing::{MethodRouter, delete, get, patch, post, put};
 
 use crate::handler::{
     admin, approval, auth as auth_handler, event, fleet, fleet_bundles, grant, operator,
-    preference, runner, secret, stream, tenant as tenant_handler, webhook,
+    preference, runner, schedule, secret, stream, tenant as tenant_handler, webhook,
 };
 use crate::route::{
     AdminRoute, AuthRoute, FleetRoute, OpsRoute, Route, RunnerOpsRoute, RunnerRoute, TenantRoute,
@@ -47,21 +47,20 @@ pub(super) fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D
         Route::Runner(verb) => Some(runner_handler::<D>(verb)),
         Route::RunnerOps(verb) => Some(runner_ops_handler::<D>(verb)),
         Route::Workspace(verb) => workspace_handler_for::<D>(verb),
-        Route::Fleet(verb) => fleet_handler_for::<D>(verb),
+        Route::Fleet(verb) => Some(fleet_handler_for::<D>(verb)),
         // Tabled, not yet served. Each of these families arrives with the
         // milestone that ports its handlers; until then the route exists as a
         // template, a guard and a scope rung, and this binary answers 404.
         Route::Admin(verb) => Some(admin_handler::<D>(verb)),
-        Route::Webhook(verb) => webhook_handler_for::<D>(verb),
+        Route::Webhook(verb) => Some(webhook_handler_for::<D>(verb)),
         Route::Connector(_) => None,
     }
 }
 
 /// Deliveries proven by a signature over the body rather than by a bearer.
 ///
-/// `None` for the `QStash` fire path, which §3 owns. It is an arm rather than
-/// an absence from a list, so an endpoint that is tabled and unserved says so
-/// where somebody looking for it will read it.
+/// Total, with no `Option`: every route this family tables is now served, so
+/// there is nothing for an absence to mean.
 ///
 /// # The one layer these carry, and why it is here rather than in `layered`
 ///
@@ -78,16 +77,16 @@ pub(super) fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D
 /// resolve, so the check the guard names happens INSIDE the handler — see
 /// [`crate::handler::webhook`] on why the per-fleet secret makes that the only
 /// place it can happen.
-fn webhook_handler_for<D: Serving>(verb: WebhookRoute) -> Option<MethodRouter<Arc<D>>> {
+fn webhook_handler_for<D: Serving>(verb: WebhookRoute) -> MethodRouter<Arc<D>> {
     let handler = match verb {
         WebhookRoute::Receive => post(webhook::receive_route::receive::<D>),
         WebhookRoute::GitHub => post(webhook::github_route::receive::<D>),
         WebhookRoute::ReceiveSvix => post(webhook::svix_route::receive::<D>),
         WebhookRoute::Approval => post(webhook::approval_route::receive::<D>),
         WebhookRoute::AppIngress => post(webhook::app_route::receive::<D>),
-        WebhookRoute::QstashSchedules => return None,
+        WebhookRoute::QstashSchedules => post(webhook::qstash_route::receive::<D>),
     };
-    Some(handler.layer(DefaultBodyLimit::max(webhook::BUFFER_CEILING)))
+    handler.layer(DefaultBodyLimit::max(webhook::BUFFER_CEILING))
 }
 
 /// The device-flow login surface — the one bearer family with no scope.
@@ -189,34 +188,30 @@ fn workspace_handler_for<D: Serving>(verb: WorkspaceRoute) -> Option<MethodRoute
 /// arms because they are separate templates carrying separate capabilities. The
 /// rest arrive with the sections that own them — the message thread, the event
 /// surface, the memories and the hosted schedules.
-fn fleet_handler_for<D: Serving>(verb: FleetRoute) -> Option<MethodRouter<Arc<D>>> {
+fn fleet_handler_for<D: Serving>(verb: FleetRoute) -> MethodRouter<Arc<D>> {
     match verb {
-        FleetRoute::Detail => Some(
-            get(fleet::detail::read::<D>)
-                .patch(fleet::detail::patch::<D>)
-                .delete(fleet::detail::purge::<D>),
-        ),
-        FleetRoute::Events => Some(get(event::fleet_list::<D>)),
-        FleetRoute::Event => Some(get(event::detail::<D>)),
+        FleetRoute::Detail => get(fleet::detail::read::<D>)
+            .patch(fleet::detail::patch::<D>)
+            .delete(fleet::detail::purge::<D>),
+        FleetRoute::Events => get(event::fleet_list::<D>),
+        FleetRoute::Event => get(event::detail::<D>),
         // GET alone on the collection and DELETE alone on the item, which is
         // the whole surface: a grant is seeded by the install and answered
         // through the approval inbox, so there is no POST here to create one
         // and no PATCH to edit one.
-        FleetRoute::Grants => Some(get(grant::list::<D>)),
-        FleetRoute::Grant => Some(delete(grant::revoke::<D>)),
+        FleetRoute::Grants => get(grant::list::<D>),
+        FleetRoute::Grant => delete(grant::revoke::<D>),
         // GET alone on the collection: the tenant store verb was retired with
         // the runner-push cutover, so a fleet remembers what it LEARNED and a
         // POST here would be a caller asserting a memory. It answers 405.
-        FleetRoute::Memories => Some(get(fleet::memory::list::<D>)),
+        FleetRoute::Memories => get(fleet::memory::list::<D>),
         // DELETE alone on the item, and there is no GET beside it: one entry is
         // read by paging the collection, and a per-key read would be a second
         // way to ask the same question.
-        FleetRoute::Memory => Some(delete(fleet::memory::forget::<D>)),
+        FleetRoute::Memory => delete(fleet::memory::forget::<D>),
         // GET reads the thread and POST steers it — the read and the write
         // rungs the route table already splits this template on.
-        FleetRoute::Messages => {
-            Some(get(fleet::message::thread::<D>).post(fleet::message::steer::<D>))
-        }
+        FleetRoute::Messages => get(fleet::message::thread::<D>).post(fleet::message::steer::<D>),
         // One fleet's live tail. `/events/stream` and `/events/{event_id}` are
         // siblings under one prefix, and the static segment is what must win —
         // otherwise the stream route is read as an event whose id is the word
@@ -224,8 +219,16 @@ fn fleet_handler_for<D: Serving>(verb: FleetRoute) -> Option<MethodRouter<Arc<D>
         // above a parameter regardless of insertion order, which is why this
         // holds; it is pinned at the ROUTER level because a stream route never
         // closes its connection and so cannot be probed over HTTP.
-        FleetRoute::EventsStream => Some(get(stream::fleet::<D>)),
-        FleetRoute::Schedules | FleetRoute::Schedule | FleetRoute::ScheduleSync => None,
+        FleetRoute::EventsStream => get(stream::fleet::<D>),
+        // GET lists and POST creates; the item takes PATCH and DELETE. There
+        // is no PUT: a schedule is edited field by field, and a whole-row
+        // replacement would make every caller read before it writes and race
+        // its own read.
+        FleetRoute::Schedules => get(schedule::list::<D>).post(schedule::create::<D>),
+        FleetRoute::Schedule => patch(schedule::patch::<D>).delete(schedule::purge::<D>),
+        // POST, because `:sync` is an action and not a resource: it pushes what
+        // the row already says and is not idempotent in the way a PUT claims.
+        FleetRoute::ScheduleSync => post(schedule::sync::<D>),
     }
 }
 

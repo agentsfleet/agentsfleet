@@ -46,7 +46,7 @@
 use std::sync::Arc;
 
 use afd_api::router::{Dependencies, ReadyInputs, build};
-use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Planes, Services};
+use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Planes, SchedulePlane, Services};
 use afd_auth::credential::CredentialKind;
 use afd_auth::directory::{CredentialDirectory, CredentialRecord, Digest, Liveness};
 use afd_auth::error::Unavailable;
@@ -108,6 +108,14 @@ pub(crate) use self::support::{
     file_runner, json_body, presented, runner_id, send, send_with_headers, tenant,
 };
 
+/// Where this fixture deployment's schedule fires would arrive.
+///
+/// A real destination shape, because it is half of what a fire token's subject
+/// is checked against — a blank one would make every token fail the subject
+/// check for a reason no test was about.
+pub(crate) const SCHEDULE_DESTINATION: &str =
+    "https://api.fixture.test/v1/ingress/qstash/schedules";
+
 /// The seams a suite arranges, and the state the router is built over.
 #[derive(Debug)]
 pub(crate) struct Fleet {
@@ -127,6 +135,8 @@ pub(crate) struct Fleet {
     fleets: Fleets,
     secrets: SecretVault,
     ingress: HarnessIngress,
+    schedules: SchedulePlane,
+    schedule_keys: Option<afd_cron::SigningKeys>,
     platform_admin: Option<Uuid7>,
     preferences: Preferences,
     approvals: Inbox,
@@ -180,6 +190,17 @@ impl Fleet {
     /// what it deliberately does not stand in for.
     pub(crate) fn with_ingress(mut self, scripted: &Arc<Scripted>) -> Self {
         self.ingress = HarnessIngress::Scripted(Arc::clone(scripted));
+        self
+    }
+
+    /// An instance holding the scheduler's signing keys.
+    ///
+    /// Absent by default, which is the fail-closed state a fire is refused in.
+    pub(crate) fn with_schedule_keys(mut self, current: &str, next: &str) -> Self {
+        self.schedule_keys = Some(afd_cron::SigningKeys {
+            current: current.to_owned(),
+            next: next.to_owned(),
+        });
         self
     }
 

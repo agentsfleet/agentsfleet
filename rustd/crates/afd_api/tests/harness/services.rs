@@ -11,7 +11,7 @@
 //! crate raises rather than one this file invented.
 
 use afd_admin::{Models as AdminModels, PlatformKeys};
-use afd_api::{Planes, Services};
+use afd_api::{Planes, SchedulePlane, Services};
 use afd_approval::{Inbox, IntegrationGrants};
 use afd_auth::mock::MockCapabilities;
 use afd_auth::verifier::NoVerifier;
@@ -37,7 +37,7 @@ use afd_vault::Vault as SecretVault;
 
 use super::stubs_runner::NoWork;
 use super::stubs_tenant::OneWorkspace;
-use super::{DEPLOYMENT, Directory, Fleet, HarnessIngress};
+use super::{DEPLOYMENT, Directory, Fleet, HarnessIngress, SCHEDULE_DESTINATION};
 
 impl Services for Fleet {
     type Auth = Planes<Directory, MockCapabilities, NoVerifier>;
@@ -54,6 +54,7 @@ impl Services for Fleet {
     type Grants = IntegrationGrants;
     type Events = History;
     type Ingress = HarnessIngress;
+    type Schedules = SchedulePlane;
     type Steering = Steer;
     type Memories = Memories;
     type Billing = Billing;
@@ -126,6 +127,23 @@ impl Services for Fleet {
 
     fn ingress(&self) -> &HarnessIngress {
         &self.ingress
+    }
+
+    fn schedules(&self) -> &SchedulePlane {
+        &self.schedules
+    }
+
+    /// No signing keys, which is the fail-closed default.
+    ///
+    /// A suite proving that a fire is refused when this deployment cannot
+    /// verify one needs exactly this state, and it is the state most
+    /// deployments are in — the schedules surface is opt-in.
+    fn schedule_signing_keys(&self) -> Option<&afd_cron::SigningKeys> {
+        self.schedule_keys.as_ref()
+    }
+
+    fn schedule_destination(&self) -> &str {
+        SCHEDULE_DESTINATION
     }
 
     /// The deployment's own admin workspace, when a suite configured one.

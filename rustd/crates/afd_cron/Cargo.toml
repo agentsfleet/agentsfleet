@@ -45,6 +45,10 @@ serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+# The cron grammar. Zero dependencies, std-only. This crate PARSES; `validate`
+# adds only the three refusals recorded in the spec's Prior-Art table for
+# expressions it accepts and the external scheduler will not honour as written.
+philiprehberger-cron-parser = "0.3.0"
 
 [dev-dependencies]
 tokio.workspace = true
