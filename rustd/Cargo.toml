@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_api", "crates/afd_approval", "crates/afd_auth", "crates/afd_billing", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_observability", "crates/afd_redis", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_api", "crates/afd_approval", "crates/afd_auth", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_observability", "crates/afd_redis", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.27.0"
@@ -46,6 +46,12 @@ afd_auth = { path = "crates/afd_auth" }
 # reads the `billing.*` schema rather than `core.*`, and only the admission gate
 # calls it — the runner plane's other 23,000 lines never ask about money.
 afd_billing = { path = "crates/afd_billing" }
+# Connecting a workspace to a third party: the signed install state, the
+# code-for-token exchange, and the grant that lands in the vault. Its own crate
+# rather than a module in `afd_api` for the reason `afd_ingress` is one — the
+# state machine and the vendor conversation are decided with no router in
+# sight, and `afd_api` is already the workspace's largest crate.
+afd_connector = { path = "crates/afd_connector" }
 afd_core = { path = "crates/afd_core" }
 # What a run may USE: the declared secret, the vault that opens it, the provider
 # it dials, the token a broker mints. Split from afd_fleet once the one misfiled

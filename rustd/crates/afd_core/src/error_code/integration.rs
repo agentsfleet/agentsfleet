@@ -90,6 +90,33 @@ pub const GRANT_REVOKE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-GRANT-002")
 /// a GitHub App, and the shared connector code is what stops it.
 pub const CONNECTOR_OAUTH_EXCHANGE_FAILED: ErrorCode = ErrorCode::declare("UZ-CONN-006");
 
+/// No operator has configured this deployment's app for the provider.
+///
+/// `ERR_CONNECTOR_NOT_CONFIGURED` (`error_registry.zig:233`). A 503, and an
+/// OPERATOR's fault rather than a tenant's: the `<provider>-app` bag holds one
+/// OAuth app serving every workspace, so its absence is a deployment that was
+/// never set up to connect that provider. Nothing a person clicking Connect
+/// can do changes it, which is why it is not a 4xx.
+pub const CONNECTOR_NOT_CONFIGURED: ErrorCode = ErrorCode::declare("UZ-CONN-001");
+
+/// The connect callback's state was missing, forged, expired, or already used.
+///
+/// `ERR_CONNECTOR_STATE_INVALID` (`error_registry.zig:234`). ONE code for all
+/// four, deliberately: a caller able to tell a forged state from a spent one
+/// learns which check they got past, and every one of them has the same remedy
+/// — start the connect again. The reason is in the operator's log instead, where
+/// `afd_connector::state::Rejected` names it.
+pub const CONNECTOR_STATE_INVALID: ErrorCode = ErrorCode::declare("UZ-CONN-002");
+
+/// An outbound provider call timed out, or the provider was unreachable.
+///
+/// `ERR_CONNECTOR_VENDOR_DEADLINE` (`error_registry.zig:235`). Distinct from
+/// [`CONNECTOR_OAUTH_EXCHANGE_FAILED`] beside it, and the difference is what a
+/// person does next (RULE ECL): nothing was spent here, so the same connect
+/// retried in a moment can still succeed, where a refused exchange has burned
+/// its authorization code and must be started again.
+pub const CONNECTOR_VENDOR_DEADLINE: ErrorCode = ErrorCode::declare("UZ-CONN-003");
+
 /// The path named a provider this daemon ships no App ingress for.
 ///
 /// `ERR_CONNECTOR_UNKNOWN` (`error_registry.zig:236`). A refusal rather than a

@@ -1,0 +1,49 @@
+[package]
+name = "afd_connector"
+description = "Connecting a workspace to a third party: the signed install state, the code-for-token exchange, and the grant that lands in the vault."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+# Identifiers, the instant a row is stamped with, and the registry codes.
+afd_core.workspace = true
+# The Postgres pool the install rows are written on.
+afd_db.workspace = true
+# The HMAC a state is signed with, and the entropy its nonce is drawn from.
+# `compute_peppered` is the primitive: a connect signing secret is an
+# operator-supplied string rather than a fixed-width key.
+afd_crypto.workspace = true
+# Where the single-use nonce lives for as long as a connect round-trip does.
+afd_redis.workspace = true
+# Where a grant is sealed. The KEY-holding half: the platform app credentials
+# have to be opened to spend them at the vendor.
+afd_vault.workspace = true
+# The base64url the state payload rides in, matching `state.zig`'s wire shape
+# byte-for-byte so a round-trip started on either daemon completes on either.
+base64.workspace = true
+# The exchange POST. The same client the rest of the workspace dials vendors
+# with, so a connector adds no second HTTP stack.
+reqwest.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+# Constant-time comparison of a presented state against the computed one, and
+# of a subject tag against the starter's (RULE CTM).
+subtle.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+# Percent-encoding the redirect URI a provider is handed, through a parser
+# rather than a hand-rolled escape loop.
+url.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true
