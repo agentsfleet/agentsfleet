@@ -106,6 +106,25 @@ pub const WEBHOOK_PAYLOAD_TOO_LARGE: ErrorCode = ErrorCode::declare("UZ-WH-030")
 /// No approval gate under that id, in that workspace.
 pub const APPROVAL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-APPROVAL-002");
 
+/// No schedule under that identifier belongs to this fleet.
+///
+/// One answer for a schedule that never existed and one belonging to another
+/// fleet, for the reason `WEBHOOK_FLEET_NOT_FOUND` gives about its own pair:
+/// telling them apart confirms an identifier across an ownership boundary.
+pub const SCHEDULE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-SCHED-001");
+
+/// This fleet already holds as many schedules as it may.
+pub const SCHEDULE_LIMIT_REACHED: ErrorCode = ErrorCode::declare("UZ-SCHED-002");
+
+/// This fleet already registered a schedule under that upstream key.
+pub const SCHEDULE_KEY_TAKEN: ErrorCode = ErrorCode::declare("UZ-SCHED-003");
+
+/// Another syncer holds this schedule.
+///
+/// Distinct from a not-found: the row EXISTS and the caller may retry in a
+/// moment, so the two answers send a caller to different places.
+pub const SCHEDULE_SYNCING: ErrorCode = ErrorCode::declare("UZ-SCHED-004");
+
 /// The path named a preference key outside the writable registry.
 pub const PREF_KEY_UNKNOWN: ErrorCode = ErrorCode::declare("UZ-PREFS-001");
 

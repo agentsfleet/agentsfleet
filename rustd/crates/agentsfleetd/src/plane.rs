@@ -60,7 +60,9 @@ use afd_tenant::workspace::Workspaces;
 // workspace-admin surface that seals, lists without a key, and deletes under
 // the model-registry lock. Two things called `Vault` in one file is how a
 // reader ends up believing one of them can do the other's job.
+use afd_api::SchedulePlane;
 use afd_core::id::Uuid7;
+use afd_cron::{Fire, QStash, ScheduleService, Schedules, SigningKeys};
 use afd_ingress::Ingress;
 use afd_vault::Vault as SecretVault;
 
@@ -103,6 +105,9 @@ pub struct ServingPlane {
     events: History,
     steering: afd_events::Steer,
     ingress: Ingress,
+    schedules: SchedulePlane,
+    schedule_keys: Option<SigningKeys>,
+    schedule_destination: String,
     platform_admin_workspace: Option<Uuid7>,
     live: Live,
     analytics: Analytics,
@@ -149,6 +154,7 @@ impl ServingPlane {
             live,
             analytics,
             login,
+            schedule,
         } = parts;
         // One object-store owner, split into the half that READS a snapshot and
         // the half that WRITES one. A deployment with no upload handle still
@@ -196,6 +202,21 @@ impl ServingPlane {
                 database.clone(),
                 SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
                 queue.clone(),
+            ),
+            // The destination is derived from the API url this deployment
+            // already knows, so a schedule registered upstream calls back to
+            // the daemon that registered it. A url carrying a query or a
+            // fragment is refused at construction rather than silently
+            // truncating the callback — see `qstash::destination_url`.
+            schedule_destination: schedule.destination.clone(),
+            schedule_keys: schedule.keys,
+            schedules: SchedulePlane::new(
+                ScheduleService::new(
+                    Schedules::new(database.clone(), Entropy::new()),
+                    QStash::new(schedule.client, schedule.token, schedule.destination),
+                ),
+                Fire::new(queue.clone()),
+                Entropy::new(),
             ),
             live,
             analytics,
@@ -281,6 +302,29 @@ pub struct PlaneParts {
     /// than re-read, because `preflight` has already parsed and validated it
     /// and a second reader could disagree with the first.
     pub platform_admin_workspace: Option<Uuid7>,
+    /// What the schedules surface and the fire ingress need from configuration.
+    pub schedule: ScheduleConfig,
+}
+
+/// What the schedules surface needs from configuration.
+///
+/// A struct rather than four more positional parameters, and for a sharper
+/// reason than length: `token` and the two signing keys are all opaque strings,
+/// so two of them transposed would compile and fail only as a 401 from the
+/// vendor that reads like a wrong credential.
+#[derive(Debug, Clone)]
+pub struct ScheduleConfig {
+    /// The client the management calls go out on.
+    pub client: reqwest::Client,
+    /// This deployment's bearer for the external scheduler.
+    pub token: String,
+    /// Where a fire is expected to arrive — see [`qstash::destination_url`].
+    pub destination: String,
+    /// The scheduler's signing keys, when this deployment configured them.
+    ///
+    /// `None` is fail-closed: every fire is refused, because a daemon that
+    /// cannot verify a callback must not act on one.
+    pub keys: Option<SigningKeys>,
 }
 
 mod services;

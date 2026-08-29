@@ -25,7 +25,7 @@
 #[cfg(test)]
 use {
     afd_db as _, afd_redis as _, afd_state as _, bytes as _, hyper as _, hyper_util as _,
-    object_store as _, sqlx as _, tower as _, tracing_subscriber as _,
+    object_store as _, reqwest as _, sqlx as _, tower as _, tracing_subscriber as _,
 };
 
 pub mod admission;
@@ -48,4 +48,4 @@ pub use self::request_id::{RequestId, UNKNOWN_REQUEST_ID};
 pub use self::route::{Guard, Route, RouteClass, RouteMeta, Scopes};
 pub use self::router::{Dependencies, ReadyInputs, Serving, ready_decision};
 pub use self::server::{MAX_REQUEST_HEADER_BYTES, connection_builder};
-pub use self::services::Services;
+pub use self::services::{SchedulePlane, Services};

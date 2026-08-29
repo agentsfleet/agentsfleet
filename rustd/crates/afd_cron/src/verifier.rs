@@ -74,6 +74,26 @@ pub enum Unverified {
     BodyMismatch,
 }
 
+impl Unverified {
+    /// The scoped reason an operator reads in the log.
+    ///
+    /// A stable word per variant rather than a `Debug` rendering: this is the
+    /// value somebody greps for when a schedule stops firing, and a derived
+    /// spelling would change under a rename that meant nothing to them
+    /// (`LOGGING_STANDARD` §8A also refuses positional formatting in an emit).
+    #[must_use]
+    pub const fn reason(self) -> &'static str {
+        match self {
+            Self::KeysMissing => "signing_keys_absent",
+            Self::Malformed => "token_malformed",
+            Self::SignatureInvalid => "signature_invalid",
+            Self::WrongTarget => "wrong_target",
+            Self::OutsideWindow => "outside_window",
+            Self::BodyMismatch => "body_mismatch",
+        }
+    }
+}
+
 /// What a believed fire carries.
 #[derive(Debug, Clone)]
 pub struct VerifiedFire {

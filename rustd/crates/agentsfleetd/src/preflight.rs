@@ -29,6 +29,7 @@ use self::read::{bundle_store, classify, identity, is_set, read_kek, required};
 
 use afd_core::env::EnvSource;
 use afd_core::id::Uuid7;
+use afd_cron::SigningKeys;
 use afd_crypto::secret::SecretBytes;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_redis::config::{RedisConfig, RedisRole};
@@ -73,6 +74,27 @@ pub const PLATFORM_ADMIN_WORKSPACE_KNOB: &str = "PLATFORM_ADMIN_WORKSPACE_ID";
 /// become a queue somebody can log in from. `runtime_validate.zig` refuses boot
 /// on the same knob for the same reason.
 pub const SESSION_CODE_PEPPER_KNOB: &str = "AUTH_SESSION_CODE_PEPPER";
+
+/// This deployment's bearer for the external scheduler.
+///
+/// Optional, for [`PLATFORM_ADMIN_WORKSPACE_KNOB`]'s reason: a deployment that
+/// registers no schedules still serves everything else, and refusing to boot
+/// would take the product down for a surface nobody called.
+pub const QSTASH_TOKEN_KNOB: &str = "QSTASH_TOKEN";
+
+/// The key the scheduler is signing fire callbacks with now.
+///
+/// Optional AND fail-closed, which is not a contradiction: a deployment without
+/// it boots and serves, and refuses every fire — because a daemon that cannot
+/// verify a callback must not act on one.
+pub const QSTASH_CURRENT_KEY_KNOB: &str = "QSTASH_CURRENT_SIGNING_KEY";
+
+/// The key it will sign with next.
+///
+/// Both are read because the scheduler rotates by promoting the second, and a
+/// daemon that knew one would refuse every delivery between the vendor's
+/// rotation and its own redeploy.
+pub const QSTASH_NEXT_KEY_KNOB: &str = "QSTASH_NEXT_SIGNING_KEY";
 
 /// Where a person goes to approve a command-line login.
 ///
@@ -296,6 +318,8 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
                 identity,
                 bundles,
                 platform_admin_workspace,
+                qstash_token: optional(env, QSTASH_TOKEN_KNOB),
+                qstash_keys: signing_keys(env),
                 sse_max_streams,
                 posthog,
             })
@@ -305,4 +329,32 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
         // fault, so the refusal names them all rather than the first.
         _refused => Err(Refusal::new(faults)),
     }
+}
+
+/// One optional knob, absent when it is unset or blank.
+///
+/// Blank is treated as absent rather than as a value, because an environment
+/// that exports a variable to the empty string is an environment that meant to
+/// unset it — and an empty bearer would be sent upstream as `Bearer `.
+fn optional<E: EnvSource + ?Sized>(source: &E, knob: &str) -> Option<Box<str>> {
+    let value = source.get(knob)?;
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.into())
+}
+
+/// The scheduler's signing keys, when BOTH are configured.
+///
+/// Both or neither, deliberately. One key configured is a rotation half-done,
+/// and a verifier holding the current key alone refuses every delivery the
+/// vendor has already moved to the next one — which is the outage the two-key
+/// check exists to prevent. Treating a half-configuration as no configuration
+/// makes that a loud refusal at the first fire rather than a silent one at the
+/// vendor's next rotation.
+fn signing_keys<E: EnvSource + ?Sized>(source: &E) -> Option<SigningKeys> {
+    let current = optional(source, QSTASH_CURRENT_KEY_KNOB)?;
+    let next = optional(source, QSTASH_NEXT_KEY_KNOB)?;
+    Some(SigningKeys {
+        current: current.into_string(),
+        next: next.into_string(),
+    })
 }

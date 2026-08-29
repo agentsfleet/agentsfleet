@@ -43,6 +43,7 @@ mod ingress;
 mod leasing;
 mod memory;
 mod preference;
+mod schedule;
 mod tenant;
 mod vault;
 
@@ -57,6 +58,7 @@ pub use self::ingress::WebhookIngress;
 pub use self::leasing::Leasing;
 pub use self::memory::FleetMemories;
 pub use self::preference::WorkspacePreferences;
+pub use self::schedule::{FleetSchedules, SchedulePlane};
 pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
 pub use self::vault::WorkspaceSecrets;
 
@@ -232,6 +234,31 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
 
     /// A fleet's durable memory: the page, and the forget.
     fn memories(&self) -> &Self::Memories;
+
+    /// What the schedules surface and the fire ingress act through.
+    ///
+    /// An associated type for the reason [`Services::Ingress`] is one: the
+    /// concrete plane holds a Redis connection and an outbound HTTP client, so
+    /// a suite proving the refusal matrix in front of these routes cannot build
+    /// one and must not need to.
+    type Schedules: FleetSchedules;
+
+    /// What a schedule is read, written and fired through.
+    fn schedules(&self) -> &Self::Schedules;
+
+    /// The scheduler's signing keys, when this deployment configured them.
+    ///
+    /// `None` is fail-closed: a daemon that cannot verify a fire refuses every
+    /// one, because acting on an unverified callback would let anyone who found
+    /// the URL wake every fleet behind it.
+    fn schedule_signing_keys(&self) -> Option<&afd_cron::SigningKeys>;
+
+    /// Where a fire is expected to arrive, as the token's `sub` claim spells it.
+    ///
+    /// Half of what makes a fire token this deployment's: a token minted for
+    /// another daemon's destination fails the subject check rather than waking
+    /// a fleet here.
+    fn schedule_destination(&self) -> &str;
 
     /// What the signed-ingress routes act through.
     ///

@@ -48,6 +48,21 @@ impl Refusable for afd_billing::Error {
     }
 }
 
+impl Refusable for afd_cron::Error {
+    fn code(&self) -> ErrorCode {
+        Self::code(self)
+    }
+    fn detail(&self) -> &'static str {
+        Self::detail(self)
+    }
+    fn is_datastore_unavailable(&self) -> bool {
+        Self::code(self) == afd_core::error_code::INTERNAL_DB_UNAVAILABLE
+    }
+    fn reason(&self) -> String {
+        self.to_string()
+    }
+}
+
 impl Refusable for afd_approval::Error {
     fn code(&self) -> ErrorCode {
         Self::code(self)

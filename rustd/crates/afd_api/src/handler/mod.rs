@@ -27,6 +27,7 @@ pub mod grant;
 pub mod operator;
 pub mod preference;
 pub mod runner;
+pub mod schedule;
 pub mod secret;
 pub mod stream;
 pub mod tenant;

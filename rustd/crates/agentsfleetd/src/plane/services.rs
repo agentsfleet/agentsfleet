@@ -53,6 +53,7 @@ impl Services for ServingPlane {
     type Grants = IntegrationGrants;
     type Events = History;
     type Ingress = afd_ingress::Ingress;
+    type Schedules = afd_api::SchedulePlane;
     type Steering = afd_events::Steer;
     type Memories = Memories;
     type Billing = Billing;
@@ -80,6 +81,18 @@ impl Services for ServingPlane {
 
     fn ingress(&self) -> &afd_ingress::Ingress {
         &self.ingress
+    }
+
+    fn schedules(&self) -> &afd_api::SchedulePlane {
+        &self.schedules
+    }
+
+    fn schedule_signing_keys(&self) -> Option<&afd_cron::SigningKeys> {
+        self.schedule_keys.as_ref()
+    }
+
+    fn schedule_destination(&self) -> &str {
+        &self.schedule_destination
     }
 
     fn platform_admin_workspace(&self) -> Option<&afd_core::id::Uuid7> {

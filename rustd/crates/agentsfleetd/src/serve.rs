@@ -170,6 +170,16 @@ async fn open(
         broker,
         live,
         analytics: analytics.clone(),
+        // A destination that will not build is a deployment that cannot
+        // register schedules, and it fails CLOSED rather than registering a
+        // truncated callback: the empty string matches no token's subject, so
+        // every fire is refused until the api url is corrected.
+        schedule: crate::plane::ScheduleConfig {
+            client: reqwest::Client::new(),
+            token: config.qstash_token().unwrap_or_default().to_owned(),
+            destination: afd_cron::qstash::destination_url(config.api_url()).unwrap_or_default(),
+            keys: config.qstash_signing_keys().cloned(),
+        },
         login: crate::plane::LoginConfig {
             code_pepper: config.session_code_pepper().clone(),
             app_url: config.app_url().to_owned(),

@@ -39,6 +39,9 @@ afd_admin.workspace = true
 # The client every credential exchange is posted through. Built here rather than
 # inside the broker because a connection pool and a deadline are composition-root
 # decisions, and one client per process is what a pool IS.
+# The schedules plane the composition root assembles: the store, the scheduler
+# client, and the verifier the fire ingress crosses.
+afd_cron.workspace = true
 reqwest.workspace = true
 afd_api.workspace = true
 afd_billing.workspace = true

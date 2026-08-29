@@ -65,6 +65,7 @@ dependencies = [
  "afd_billing",
  "afd_core",
  "afd_credential",
+ "afd_cron",
  "afd_crypto",
  "afd_db",
  "afd_events",
@@ -93,6 +94,7 @@ dependencies = [
  "jiff",
  "object_store",
  "octocrab",
+ "reqwest",
  "serde",
  "serde_json",
  "sqlx",
@@ -195,6 +197,7 @@ dependencies = [
  "afd_wire",
  "base64 0.23.1",
  "jsonwebtoken",
+ "philiprehberger-cron-parser",
  "reqwest",
  "serde",
  "serde_json",
@@ -565,6 +568,7 @@ dependencies = [
  "afd_billing",
  "afd_core",
  "afd_credential",
+ "afd_cron",
  "afd_crypto",
  "afd_db",
  "afd_events",
@@ -2712,6 +2716,12 @@ dependencies = [
  "quote",
  "syn 3.0.4",
 ]
+
+[[package]]
+name = "philiprehberger-cron-parser"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f24172c25a14410e8c431eabdc15841dd4449de3acba40cf9bb8ccc60206528a"
 
 [[package]]
 name = "pin-project"
