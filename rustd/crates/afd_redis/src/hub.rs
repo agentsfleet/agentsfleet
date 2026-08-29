@@ -179,6 +179,25 @@ pub(crate) struct HubInner {
 #[derive(Debug)]
 pub(crate) struct ChannelEntry {
     sender: broadcast::Sender<Message>,
+    /// How many [`Subscription`]s this channel is being held open by.
+    ///
+    /// # Not `sender.receiver_count()`, and this is load-bearing
+    ///
+    /// `broadcast::Sender` already counts its receivers, so this field reads
+    /// like a duplicate of one. It is not, because of WHEN it is read:
+    /// [`HubInner::release`] runs from `Subscription`'s `Drop`, and Rust runs a
+    /// type's `drop` before dropping its fields — so the receiver belonging to
+    /// the subscription being released is still alive at that moment.
+    /// `receiver_count()` there answers 1 for the last reader leaving, never 0,
+    /// and the unsubscribe condition would have to be spelled `== 1` with a
+    /// comment explaining that 1 means none.
+    ///
+    /// The deeper reason is that these two numbers answer different questions.
+    /// `receiver_count()` observes how many receivers exist. This counts how
+    /// many callers have declared an interest, and it is what decides whether
+    /// the server is told to `UNSUBSCRIBE` — a lifecycle decision this hub
+    /// owns, which should not be inferred from a tokio internal that is free
+    /// to change what it counts.
     readers: usize,
 }
 
