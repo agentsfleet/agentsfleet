@@ -24,11 +24,16 @@ async fn a_self_managed_selection_resolves_from_the_tenants_primary_workspace() 
         "INSERT INTO core.tenant_model_selection \
            (tenant_id, mode, provider, model, context_cap_tokens, secret_ref, \
             created_at, updated_at) \
-         VALUES ($1::uuid, 'byok', 'selection-provider-is-provenance', \
+         VALUES ($1::uuid, $3, 'selection-provider-is-provenance', \
                  'gpt-fixture', -1, $2, 1, 1)",
     )
     .bind(fixture.tenant.as_str())
     .bind(secret)
+    // Bound from the constant the resolver parses against, never re-spelled.
+    // This row said 'byok', which this codebase has never written: the parse
+    // refuses an unknown posture rather than guessing `platform`, so the
+    // fixture failed the moment it was first run.
+    .bind(afd_billing::sql::posture::SELF_MANAGED)
     .execute(&mut *connection)
     .await
     .expect("the self-managed selection seeds");

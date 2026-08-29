@@ -44,10 +44,33 @@ async fn operator_reads_and_mutates_a_real_runner() {
 }
 
 async fn assert_runner_reads(router: &axum::Router, fixture: &Fixture, runner_path: &str) {
-    let listed = send(
+    // Two reads, because they prove different things and one page cannot prove
+    // both. `/v1/fleets/runners` is the PLATFORM list — unlike a fleet's
+    // memories or the caller's own workspaces, nothing about the path scopes it
+    // to this fixture. A `limit=1` page therefore holds whichever runner sorts
+    // first among every runner every concurrent test has seeded, which is not
+    // this one: `enrol` has already added another. Asking a one-item page to
+    // contain a specific id is a race, and it lost.
+    let page = send(
         router,
         Method::GET,
         "/v1/fleets/runners?limit=1",
+        Some(&fixture.token),
+        "",
+    )
+    .await;
+    assert_eq!(page.status(), StatusCode::OK);
+    let page = json_body(page).await;
+    assert_eq!(
+        page.get("items").and_then(Value::as_array).map(Vec::len),
+        Some(1),
+        "limit bounds the page"
+    );
+
+    let listed = send(
+        router,
+        Method::GET,
+        "/v1/fleets/runners",
         Some(&fixture.token),
         "",
     )

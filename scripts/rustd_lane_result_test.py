@@ -14,7 +14,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from rustd_lane_result import child_status, passed_total, run, verdict, verdict_from_total
+from rustd_lane_result import (
+    PhaseClock,
+    child_status,
+    passed_total,
+    phase_report,
+    run,
+    verdict,
+    verdict_from_total,
+)
 
 # One binary's summary line, as cargo prints it.
 ONE_BINARY = "test result: ok. 12 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out\n"
@@ -83,7 +91,7 @@ class CommandRunner(unittest.TestCase):
     def test_streams_and_tallies_without_a_status_file(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            status, passed = run(
+            status, passed, _clock = run(
                 [sys.executable, "-c", f"print({ONE_BINARY!r})"],
                 root,
                 root / "lane.log",
@@ -96,7 +104,7 @@ class CommandRunner(unittest.TestCase):
     def test_an_unwritable_tally_cannot_replace_the_child_status(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            status, passed = run(
+            status, passed, _clock = run(
                 [
                     sys.executable,
                     "-c",
@@ -111,6 +119,60 @@ class CommandRunner(unittest.TestCase):
 
     def test_a_signal_uses_the_shells_status_convention(self):
         self.assertEqual(child_status(-15), 143)
+
+
+class Phases(unittest.TestCase):
+    """The compile/execute split a speed claim is graded on."""
+
+    @staticmethod
+    def _clock(ticks):
+        """A PhaseClock reading a scripted sequence of monotonic values."""
+        remaining = iter(ticks)
+        return PhaseClock(now=lambda: next(remaining))
+
+    def test_the_finished_line_splits_compile_from_execution(self):
+        # started=0, Finished at 30, phases() reads 100 then 100.
+        clock = self._clock([0.0, 30.0, 100.0, 100.0])
+        clock.mark("   Compiling afd_core v0.27.0\n")
+        clock.mark("    Finished `test` profile [unoptimized] target(s) in 30s\n")
+
+        self.assertEqual(clock.phases(), (30.0, 70.0, 100.0))
+
+    def test_only_the_first_finished_line_is_the_boundary(self):
+        # A second `Finished` must not move the boundary and shrink the build.
+        clock = self._clock([0.0, 30.0, 100.0, 100.0])
+        clock.mark("    Finished `test` profile in 30s\n")
+        clock.mark("    Finished `bench` profile in 5s\n")
+
+        compile_s, _tests_s, _total = clock.phases()
+        self.assertEqual(compile_s, 30.0)
+
+    def test_a_build_that_never_finished_reports_no_split(self):
+        # Inventing a zero compile phase would claim the build was free.
+        clock = self._clock([0.0, 12.0])
+        clock.mark("error: could not compile `afd_api`\n")
+
+        self.assertEqual(clock.phases(), (None, None, 12.0))
+
+    def test_the_report_line_carries_every_number_it_measured(self):
+        clock = self._clock([0.0, 30.0, 100.0, 100.0])
+        clock.mark("    Finished `test` profile in 30s\n")
+
+        line = phase_report(clock, 212)
+
+        self.assertIn("compile_s=30.0", line)
+        self.assertIn("tests_s=70.0", line)
+        self.assertIn("total_s=100.0", line)
+        self.assertIn("tests=212", line)
+
+    def test_an_unsplit_run_says_so_rather_than_reporting_zero(self):
+        clock = self._clock([0.0, 12.0])
+
+        line = phase_report(clock, 0)
+
+        self.assertIn("compile_s=unsplit", line)
+        self.assertIn("tests_s=unsplit", line)
+        self.assertIn("total_s=12.0", line)
 
 
 if __name__ == "__main__":
