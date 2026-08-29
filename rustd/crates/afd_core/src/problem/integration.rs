@@ -137,6 +137,15 @@ pub(super) const INTEGRATION: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::CONNECTOR_UNKNOWN,
+        status: 404,
+        title: "Unknown connector provider",
+        hint: "The `{provider}` segment is not in this deployment's connector registry. Check the dashboard connectors page for the available providers.",
+        user_message: Some(
+            "We don't recognize that connector. Check the available connectors on the dashboard.",
+        ),
+    },
+    Problem {
         code: error_code::REPAIR_WRITE_UNAPPROVED,
         status: 403,
         title: "Write mint requires an approved gate",
