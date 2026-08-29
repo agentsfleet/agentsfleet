@@ -26,6 +26,9 @@ const CMD_SET: &str = "SET";
 /// Increment a counter, setting its window on first touch.
 const CMD_EVAL: &str = "EVAL";
 
+/// Remove one key, answering how many were removed.
+const CMD_DEL: &str = "DEL";
+
 /// `SET`'s seconds-relative expiry argument.
 const ARG_EXPIRE_SECONDS: &str = "EX";
 
@@ -73,6 +76,29 @@ impl Redis {
             .arg(ttl_seconds);
         let _stored: String = self.command(CMD_SET, key, &command).await?;
         Ok(())
+    }
+
+    /// Remove `key`, answering whether THIS caller is the one that removed it.
+    ///
+    /// The single-use primitive, and the reason it is a `DEL` rather than a read
+    /// followed by a write: a `GET` that finds a key and a `DEL` that removes it
+    /// are two commands with a gap, and two callers racing through that gap both
+    /// see the key. `DEL` answers the count it removed, so exactly one caller can
+    /// ever be told `true`.
+    ///
+    /// `false` for a key that was never there and for one that expired. Neither
+    /// is an error: both mean the same thing to whoever asked, which is that the
+    /// slot they were spending is gone.
+    ///
+    /// # Errors
+    /// Returns a command error when Redis will not answer. Deliberately not
+    /// collapsed into `false` — a store that is down would otherwise read as a
+    /// slot somebody else already spent.
+    pub async fn spend_key(&self, key: &str) -> Result<bool> {
+        let mut command = redis::cmd(CMD_DEL);
+        command.arg(key);
+        let removed: i64 = self.command(CMD_DEL, key, &command).await?;
+        Ok(removed == 1)
     }
 
     /// Increment the counter at `key`, giving it a `window_seconds` life on the

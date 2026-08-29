@@ -149,6 +149,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_connector"
+version = "0.27.0"
+dependencies = [
+ "afd_core",
+ "afd_crypto",
+ "afd_db",
+ "afd_redis",
+ "afd_vault",
+ "base64 0.23.1",
+ "reqwest",
+ "serde_json",
+ "sqlx",
+ "subtle",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "afd_core"
 version = "0.27.0"
 dependencies = [

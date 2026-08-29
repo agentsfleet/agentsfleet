@@ -105,6 +105,29 @@ pub(super) const INTEGRATION: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::CONNECTOR_NOT_CONFIGURED,
+        status: 503,
+        title: "Connector not configured",
+        hint: "An operator must configure this provider app before workspaces can connect.",
+        user_message: Some("This connector isn't set up yet. Contact your operator to enable it."),
+    },
+    Problem {
+        code: error_code::CONNECTOR_STATE_INVALID,
+        status: 400,
+        title: "Invalid connect state",
+        hint: "The connect callback's state was missing, forged, expired, or already used. Start the connect again from the dashboard.",
+        user_message: Some(
+            "That connection attempt expired or was already used. Start connecting again from the dashboard.",
+        ),
+    },
+    Problem {
+        code: error_code::CONNECTOR_VENDOR_DEADLINE,
+        status: 502,
+        title: "Connector vendor call exceeded its deadline",
+        hint: "An outbound provider call timed out or could not reach the provider. Retry once; if it continues, check provider status and network access.",
+        user_message: Some("We couldn't reach that service right now. Try again shortly."),
+    },
+    Problem {
         code: error_code::CONNECTOR_OAUTH_EXCHANGE_FAILED,
         status: 502,
         title: "Connector OAuth exchange failed",
