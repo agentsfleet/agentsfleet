@@ -1,5 +1,7 @@
 [package]
 name = "afd_fleet_lifecycle"
+# One aggregated test binary; see tests/lifecycle_suite.rs for why.
+autotests = false
 description = "A workspace's fleets: install, read, edit, purge — the lifecycle around the runtime."
 version.workspace = true
 edition.workspace = true
@@ -58,3 +60,6 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 # The fixture reaches Redis directly to seed and inspect keys the store owns.
 redis = { workspace = true }
 
+[[test]]
+name = "lifecycle_suite"
+path = "tests/lifecycle_suite.rs"

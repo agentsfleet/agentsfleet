@@ -27,10 +27,7 @@ use afd_core::error_code;
 use afd_vault::{Deleted, SecretBody};
 use serde_json::value::RawValue;
 
-#[path = "support/lane.rs"]
-mod support;
-
-use self::support::{Lane, body, named};
+use crate::support::{Lane, body, named};
 
 /// A provider key, as an operator would store one.
 const PROVIDER_KEY: &str = r#"{"provider":"anthropic","api_key":"sk-live"}"#;
