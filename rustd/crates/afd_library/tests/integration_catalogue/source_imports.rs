@@ -41,7 +41,12 @@ async fn github_and_template_imports_use_the_mockable_transport_boundary() {
         .into_iter()
         .find(|entry| entry.id() == template_name)
         .expect("the template row was persisted");
-    assert_eq!(row.source_ref(), "reviewer");
+    // Two columns, two meanings: `source_repo` is WHAT was fetched, and
+    // `source_ref` is the git revision it was fetched AT. A template names no
+    // revision, so it resolves to the default branch. Asserting "reviewer" on
+    // `source_ref` conflated the pair and graded the wrong column.
+    assert_eq!(row.source_repo(), "reviewer");
+    assert_eq!(row.source_ref(), "main");
 
     drop(database);
     lane.cleanup().await;
