@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M185
 **Workstream:** 001
 **Date:** Aug 28, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the daemon's reliability proof is below its declared bar and its only live-datastore lane pays avoidable compilation, connection, cache, and disk costs
 **Categories:** API INFRA OBS
 **Batch:** B1 — follows M184's measured crate decomposition and changes the Rust verification boundary
@@ -109,13 +109,17 @@ Migration and both test tiers share one LLVM-instrumented corpus. The lane strea
 - **Dimension 1.3** [DONE] — zero discovered tests and coverage below the declared bar fail locally before upload → Test `test_coverage_lane_rejects_zero_tests_and_an_under_target_report`
 - **Dimension 1.4** [DEFERRED] — CI cache contents and incremental policy are accepted only when repeat measurements reduce total wall time and stored bytes → Test `test_integration_workflow_caches_only_measured_artifacts`
 
-### §2 — Redis deadlines and lifecycle observability
+### §2 — Datastore connection budgets and lifecycle observability
 
 Connection establishment consumes a configured finite budget just like commands. Timeout remains distinct from a driver refusal and from invalid configuration, sources are retained when one exists, and every boundary has a correlated started plus completed or failed event without casually renaming a compatible event.
+
+The Postgres pool joins this section on the user's ruling that its ceiling and floor ship in this PR while the `PoolTimedOut` error taxonomy waits for the next. It belongs here for the same reason Redis does: a connection budget is the thing being got right, and the two datastores get it right or wrong the same way. The taxonomy is out of scope and named in §12.
 
 - **Dimension 2.1** [DONE] — a dead endpoint returns an unavailable timeout inside the configured connection budget → Test `test_redis_connect_honours_its_deadline`
 - **Dimension 2.2** [DONE] — driver and certificate failures retain their real causes while elapsed deadlines truthfully carry no invented source → Test `test_redis_connect_failures_preserve_error_class_and_source`
 - **Dimension 2.3** [DONE] — Redis connection and supervised tasks emit complete lifecycle pairs at the standard's required severity → Test `test_runtime_boundaries_emit_exactly_one_terminal_event`
+- **Dimension 2.4** [DONE] — the pool's warm floor is ESTABLISHED and not merely configured, and a zero floor establishes nothing → Tests `test_the_warm_floor_is_established_not_merely_configured`, `test_a_zero_floor_warms_nothing`
+- **Dimension 2.5** [DONE] — the pool ceiling is a share of the database's connection budget rather than of the host's cores, and boot warms the floor before it serves → Tests `test_defaults_match_the_documented_sizing`, `test_the_warm_floor_is_a_quarter_of_the_ceiling`, `test_boot_to_ready_on_compose`
 
 ### §3 — Compile-parallel HTTP ownership
 
@@ -209,6 +213,8 @@ Public HTTP routes, payloads, status codes, error codes, configuration knobs, sc
 | 2.1 | integration | `test_redis_connect_honours_its_deadline` | dead loopback endpoint with a finite budget returns timeout within bounded slack |
 | 2.2 | unit | `test_redis_connect_failures_preserve_error_class_and_source` | elapsed timeout has no invented source; driver and certificate failures retain theirs |
 | 2.3 | unit | `test_runtime_boundaries_emit_exactly_one_terminal_event` | captured Redis and supervisor operations contain one correlated start and terminal record |
+| 2.4 | integration | `test_the_warm_floor_is_established_not_merely_configured`, `test_a_zero_floor_warms_nothing` | after `Db::warm` the pool reports at least its floor open; a zero floor opens nothing |
+| 2.5 | unit + integration | `test_defaults_match_the_documented_sizing`, `test_the_warm_floor_is_a_quarter_of_the_ceiling`, `test_boot_to_ready_on_compose` | the default ceiling is budget-derived and host-independent; a booted daemon has reached its floor before it answers `/readyz` |
 | 3.1 | unit | `test_http_plane_dependency_graph_is_acyclic_and_sibling_shaped` | Cargo metadata contains substrate-to-plane edges and no cross-plane edge |
 | 3.2 | integration | `test_http_partition_preserves_the_complete_route_contract` | route inventory and representative real requests match the locked response contract |
 | 3.3 | integration | `test_http_partition_reduces_the_measured_compile_critical_path` | equivalent cargo timings show a strictly shorter serialized critical path |
@@ -293,9 +299,12 @@ Public HTTP routes, payloads, status codes, error codes, configuration knobs, sc
 - **Dimension statuses ruled by the user (this session).** 1.4 deferred ("must
   be deferred since you said there is no point doing it, i prefer to defer");
   4.1 and 4.2 DONE under the 96 ratchet ("must be done, since i have agreed for
-  96"); 6.1 deferred to the next milestone ("deferred, we do it in the next
-  milestone a check"); 6.3 deferred ("i said several times to skip updating
-  docs / changelog in docs repo"); 6.2 to be graded by running the lane; 3.3 to
+  96"), and 4.4 — the 100% dimension — deferred by that same ratchet, since
+  agreeing to 96 IS declining 100 ("i already agreed for 96"); measured at
+  96.86% lines / 96.38% functions against the floor of 96; 6.1 deferred to the
+  next milestone ("deferred, we do it in the next milestone a check"); 6.3
+  deferred ("i said several times to skip updating docs / changelog in docs
+  repo"); 6.2 to be graded by running the lane; 3.3 to
   be graded by a timing measurement on quiet cores.
 
 
