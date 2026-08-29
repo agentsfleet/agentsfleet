@@ -1,0 +1,53 @@
+[package]
+name = "afd_cron"
+description = "Fleet schedules: the stored intent, the external scheduler it is reconciled against, and the signed fire that wakes a fleet."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the direct `Schedule` constructor the sibling crate's
+# route suites drive their cases through; the production door stays the row
+# reader, which is the one that VALIDATES.
+test-util = []
+
+[dependencies]
+# Identifiers, the instant a row is stamped with, and the registry codes.
+afd_core.workspace = true
+# The Postgres pool every statement here runs on.
+afd_db.workspace = true
+# Where a new schedule's identifier comes from — see `store::Schedules::mint`.
+afd_crypto.workspace = true
+# The signed fire's at-most-once claim and its append. `OnceScope::ScheduleFire`
+# carries both the key prefix and the retention, so this crate names neither.
+afd_redis.workspace = true
+# The event type and stream field names a fire is appended under.
+afd_wire.workspace = true
+# The digest a fire token binds its body with, and the base64url rendering the
+# scheduler emits it in. Compared as text against the claim — see `verifier`.
+base64.workspace = true
+sha2.workspace = true
+# The QStash JWT verifier. Pinned to an explicit `Validation` — see `verifier`
+# on why every default this crate does not want is turned off by name.
+jsonwebtoken.workspace = true
+# The QStash management calls. Both published SDK crates are unmaintained and
+# force older transitive versions; a typed outcome classification is the
+# deliverable and this is the client the rest of the workspace already uses.
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true
