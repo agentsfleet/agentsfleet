@@ -30,15 +30,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** a Rust `agentsfleetd` binary cross-compiles to both linux targets, ships in the release artifact set under a name that does not collide with the Zig binary, is selectable per environment by one deploy knob, exports a metric family registry that matches the Zig daemon's names and label keys, and the parity/benchmark lanes exist and refuse to run with their budget constants unset — all provable while M180_001 is still in flight.
+**Goal (testable):** a Rust `agentsfleetd` binary links statically for both linux targets, ships in the release artifact set as the only daemon, runs on the distroless base the deployment uses, exports a metric family registry that matches the Zig daemon's names and label keys, and the parity/benchmark lanes exist and refuse to run with their budget constants unset — all provable while M180_001 is still in flight.
 
 **Problem:** the cutover milestone was one spec whose four slices had two different readiness dates. Half of it — the route parity gate, the OTLP boot wiring, the soak, the swap — cannot start until every route serves from Rust, because it grades the whole route surface or edits the exact boot files M180_001 is rewriting. The other half is blocked on nothing, and it carries the milestone's only two genuine unknowns: whether `aws-lc-sys` cross-compiles static against musl, and whether OpenTelemetry SDK Views can express every Zig metric-family spelling. Discovering either at swap time is discovering it in the worst place.
 
-**Solution summary:** take the half that does not need the route surface and land it first. Bring the Continuous Integration (CI) actions onto a supported Node runtime, prove the musl cross-compile before designing anything on top of it, ship both binaries with distinct names and a selection knob, build the metrics pipeline inside `afd_observability` where no other stream is writing, create the parity and benchmark lanes with their constants declared, and write the runbook skeleton and probe framework that M181_002 fills in. Every unknown that could reshape the cutover gets answered while M180_001 finishes.
+**Solution summary:** take the half that does not need the route surface and land it first. Bring the Continuous Integration (CI) actions onto a supported Node runtime, prove the musl cross-compile before designing anything on top of it, ship the Rust daemon as the only binary in an image that carries nothing else, build the metrics pipeline inside `afd_observability` where no other stream is writing, create the parity and benchmark lanes with their constants declared, and write the runbook skeleton and probe framework that M181_002 fills in. Every unknown that could reshape the cutover gets answered while M180_001 finishes.
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** feat(rustd): cutover preparation — supported CI runtime, dual-binary release, metrics pipeline, parity lanes
+- **PR title (eventual):** feat(rustd): cutover preparation — supported CI runtime, distroless Rust release, metrics pipeline, parity lanes
 - **Intent (one sentence):** everything the production swap depends on that does not depend on the production route surface, landed and proven while the ingress port finishes.
 - **Handshake** — the implementing agent fills this at PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch → STOP and reconcile before any edit.
 
@@ -46,7 +46,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 1. `docs/architecture/observability.md` §The three signal paths — the daemon pushes all three signals over OTLP with no pull endpoint; §3's family registry is graded against what that document declares, and §5 reconciles the one place a sibling document contradicts it.
 2. `rustd/Cargo.toml` around the `aws-lc-rs` pin — the workspace records that the musl cross-compile is unproven and names this milestone as where it gets proven. Read the reasoning before §2.
-3. `.github/workflows/release.yml` + `Dockerfile` + `make/build.mk` — the build/ship path the Rust binary joins, including `make push` and the single `COPY` that assumes one binary name (CI/CD edits — explicit user approval per repository rule; this spec is the record, and REVIEW re-confirms before merge).
+3. `.github/workflows/release.yml` + `Dockerfile` + `make/build.mk` — the build/ship path the Rust binary joins, including `make push` (CI/CD edits — explicit user approval per repository rule; this spec is the record, and REVIEW re-confirms before merge).
 4. `docs/RUST_ERROR_STANDARD.md` — `afd_observability` is listed there as having no fallible function. §3 ends that, so the crate takes the standard's shape on the commit that does.
 5. `docs/LOGGING_STANDARD.md` §8A — the Rust binding, and `[JUDGMENT → EVENT-COMPAT]`: a port preserves the event bytes dashboards match on. The same principle governs metric family names in §3.
 6. `make/test-integration-rustd.mk` — the declared `verify.integration` lane, and the file §4's parity lane sits beside rather than duplicating.
@@ -58,11 +58,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `.github/workflows/*.yml` | EDIT | §1: every action pin moves to a version whose runtime survives the hosted-runner Node 20 removal |
 | `.github/actions/*/action.yml` | EDIT | §1: the two nested composite actions carry pins of their own; a workflow-only sweep leaves them stale |
 | `.github/workflows/release.yml` | EDIT | §2: the Rust binary joins the target matrix and the artifact set |
-| `.github/workflows/deploy-dev.yml` | EDIT | §2: staging deploy selects the serving binary |
-| `Dockerfile` | EDIT | §2: both binaries land in the image under distinct names |
-| `make/build.mk` | EDIT | §2: the image build carries both binaries |
-| `deploy/**` | EDIT | §2: binary-selection knob for the 3-machine shape |
-| `rustd/rust-toolchain.toml` | EDIT | §2: the musl targets the cross-compile needs, pinned where the toolchain is |
+| `.github/workflows/deploy-dev-build.yml` | EDIT | §2: the dev image gets the Rust daemon; the Zig daemon build goes |
+| `audits/gh-actions-runtime.sh` | CREATE | §1: the pin gate — retired runtimes and mutable refs |
+| `make/quality.mk` | EDIT | §1: the pin gate rides `check-gh-actions-valid` |
+| `playbooks/deploy/{dev,prod}/001_playbook.md` | EDIT | §2: there is no shell in the API container |
+| `Dockerfile` | EDIT | §2: a distroless base carrying the Rust daemon and nothing else |
+| `make/build.mk` | EDIT | §2: the local image build produces the Rust daemon for both architectures |
 | `rustd/crates/afd_observability/**` | EDIT | §3: metric instruments, the family registry, SDK Views pinned to the Zig spellings, and the crate's first error type |
 | `rustd/Cargo.toml` | EDIT | §2: the shipped profile strips debug info; §3: `opentelemetry_sdk` gains the `metrics` feature |
 | `make/test-parity.mk` | CREATE | §4: the black-box HTTP parity lane, parameterised by base URL (distinct caller: the cutover checklist) |
@@ -110,26 +111,30 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — The CI actions run on a supported runtime
+### §1 — The CI actions run on a supported runtime — DONE
 
 Every GitHub Actions pin moves to a version whose runtime survives the hosted-runner Node 20 removal, including the two pins nested inside this repository's own composite actions, and the one third-party action floating on a mutable `master` ref gets a pinned commit.
 
 Two pins are load-bearing rather than hygienic: the secret scanner runs on every pull request, so its removal date breaks every pull request; the release-notes publisher fires at tag push after the binaries have already built, so its removal date breaks a release halfway through one.
 
-- **Dimension 1.1** — no workflow or composite action references an action whose runtime is Node 20, and none floats on a mutable ref → Test `test_action_runtimes_supported`
-- **Dimension 1.2** — every workflow still parses and every `make` target a workflow names still exists → Test `test_workflows_lint_clean`
+- **Dimension 1.1** — no workflow or composite action references an action whose runtime is Node 20, and none floats on a mutable ref → Test `test_action_runtimes_supported` — **DONE** (`audits/gh-actions-runtime.sh`, wired into `check-gh-actions-valid`)
+- **Dimension 1.2** — every workflow still parses and every `make` target a workflow names still exists → Test `test_workflows_lint_clean` — **DONE**
 
-### §2 — The Rust binary cross-compiles, ships, and is selectable
+### §2 — The Rust binary cross-compiles and ships, in an image that carries nothing else — DONE
 
-The musl cross-compile is proven FIRST, because the workspace records it as unproven and the whole section rests on it: `aws-lc-sys` compiles a C library, which is the one dependency that can refuse to link static against musl. Only once it links does the rest follow — the release pipeline builds the Rust binary for both linux targets, ships it in the artifact set under a name distinct from the Zig binary's, the image carries both, and one deploy knob selects which one serves.
+The musl cross-compile is proven FIRST, because the workspace records it as unproven and the whole section rests on it: `aws-lc-sys` compiles a C library, which is the one dependency that can refuse to link static against musl. Only once it links does the rest follow.
 
-The naming collision is real and must be decided rather than discovered: the Rust package declares its binary `agentsfleetd`, and the image copies a single artifact to `/usr/local/bin/agentsfleetd`. Two binaries cannot both be that.
+**Decided at PLAN, and it collapsed the section — one binary, not two (Indy, this stream).** The spec was drafted for a dual-binary image with a selection knob: both daemons at distinct paths, one knob choosing which serves. Indy's call is that no Zig daemon ships at all. That is strictly simpler and it resolves, rather than answers, three of the questions this section was written around:
 
-The Zig binary keeps being built and shipped. It is the rollback, and this section is what makes "swap the binary back" a true statement rather than an aspiration.
+- **The naming collision disappears.** It only existed because two binaries had to share the artifact name and the image path `/usr/local/bin/agentsfleetd`. With one daemon in the image, the artifact carries `-rs` to say what built it and the in-container path is unchanged, so nothing downstream — `fly.toml`, the process command, the deploy — has to learn a new name.
+- **The selection knob disappears with it.** There is nothing to select between.
+- **Rollback becomes the container's own mechanism.** The previous image digest is the rollback, which the registry retains and the platform deploys by digest already. This also settles the contradiction the parent spec carried between "the Zig binary stays warm in the artifact set" and "rollback is a hand-dispatched frozen revision": neither, and no binary artifact is load-bearing for it.
 
-- **Dimension 2.1** — the Rust daemon links statically for both linux targets with no dynamic dependency and no interpreter, and runs on all three runtime distributions the Zig binary is checked against → Test `test_rust_binary_static_and_portable`
-- **Dimension 2.2** — a release produces both daemons under distinct artifact names, and both report the version in `VERSION` → Test `test_release_artifact_set`
-- **Dimension 2.3** — the image carries both binaries at distinct paths, and the deploy knob selects which one the container serves → Test `test_deploy_binary_selection`
+The image is distroless as a consequence rather than a preference: a static binary that spawns no child process needs a certificate bundle and a clock, which is what `static-debian12` is.
+
+- **Dimension 2.1** — the daemon links statically for both linux targets with zero dynamic dependencies and no interpreter, asserted on every release build → Test `test_rust_binary_static` — **DONE**
+- **Dimension 2.2** — a release produces the daemon for both linux architectures under `-rs` artifact names, reporting the version in `VERSION` → Test `test_release_artifact_set` — **DONE**
+- **Dimension 2.3** — the daemon loads and reports on the distroless base the deployment actually uses, and that base carries no shell → Test `test_runtime_on_production_base` — **DONE**
 
 ### §3 — The metrics pipeline, in the crate shaped to receive it
 
@@ -159,7 +164,7 @@ The parity harness is deliberately NEW code rather than a repointed Zig suite. T
 - **Dimension 4.1** — the parity lane runs the same suite against two base URLs and diffs status, body and the contract headers per route × method; a seeded difference fails naming the route → Test `test_parity_lane_detects_difference`
 - **Dimension 4.2** — the benchmark lane refuses to run with either budget constant unset, and passes with both set → Test `test_bench_cutover_refuses_unset_budget`
 - **Dimension 4.3** — the dry lane boots the Rust daemon and its page renders pass → Test `test_dry_lane_rust_variant`
-- **Dimension 4.4** — a Rust lane whose suite ran zero tests fails, and one whose child exits non-zero fails, with no Python script on the path → Test `test_lane_guard_inline_rejects_silent_noop`
+- **Dimension 4.4** — a Rust lane whose suite ran zero tests fails, and one whose child exits non-zero fails, with no Python script on the path → Test `test_lane_guard_inline_rejects_silent_noop` — **DONE**
 
 ### §5 — The runbook skeleton, the probe framework, and two documents that disagree
 
@@ -191,7 +196,9 @@ The probe runner's completeness assert is over ROWS, not probes: every rubric ro
 
 ```
 Release artifacts     both daemons, distinct names, versions from VERSION
-Image                 both binaries at distinct paths; one knob selects the served one
+Image                 distroless; the Rust daemon at /usr/local/bin/agentsfleetd,
+                      no shell, no package manager. Rollback is the previous
+                      image digest, which the registry retains.
 make test-parity      BASE_URL=<url> — black-box HTTP suite, either daemon
 make bench-cutover    comparison mode; refuses to run with budgets unset
 make dry-app          Rust daemon variant
@@ -300,7 +307,7 @@ Per RULE ORP, the sweep leaves no reference behind: the lane's invocations go wi
 2. **Preserved user behaviour** — everything. No endpoint, command, flag, or response shape changes.
 3. **Optimal-way check** — proving the cross-compile before designing the pipeline around it beats discovering a linker refusal after the release workflow is rewritten; building the metrics pipeline from the SDK beats porting 1,450 lines of hand-rolled aggregation that Rust's ecosystem already solves.
 4. **Rebuild-vs-iterate** — iterate on the pipeline shapes that exist (release workflow, lane structure, export wrapper); rebuild nothing.
-5. **What we build** — a supported CI runtime, a proven cross-compile, a dual-binary release with a selection knob, the metrics pipeline, three lanes, a runbook skeleton with an executable probe runner.
+5. **What we build** — a supported CI runtime, a proven static musl cross-compile, a distroless release image carrying only the Rust daemon, the metrics pipeline, three lanes, a runbook skeleton with an executable probe runner.
 6. **What we do NOT build** — the route parity gate, the OTLP transport at boot, the soak, the swap, Zig retirement, collector infrastructure, new dashboards.
 7. **Fit with existing features** — rides the existing release and deploy workflow shapes; must not destabilize the path that ships the Zig binary, which remains the rollback.
 8. **Surface order** — N/A — no user surface.
