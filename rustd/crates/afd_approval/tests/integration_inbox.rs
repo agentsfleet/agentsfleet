@@ -20,14 +20,11 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-#[path = "support/gate_lane.rs"]
-mod lane;
-
 use afd_core::clock::UnixMillis;
 
 use afd_approval::{Decision, Filter, Resolution};
 
-use self::lane::{Lane, NOW_MS, WINDOW_MS, sweeper_exclusive};
+use crate::lane::{Lane, NOW_MS, WINDOW_MS, sweeper_exclusive};
 
 /// Who answers, when a test needs an operator.
 const OPERATOR: &str = "human:fixture";

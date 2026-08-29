@@ -58,7 +58,7 @@ Both git hooks dispatch on `*.rs` and on `rustd/*`: manifests and the toolchain
 pin change what the lane compiles and which compiler compiles it, so they trigger
 it too.
 
-## Test isolation on a shared datastore (rules T1–T3)
+## Test isolation on a shared datastore (rules ISO-1 to ISO-3)
 
 One lane, one Postgres, one Redis, and tests that run concurrently inside every
 test binary. Cargo serialises BINARIES and libtest parallelises the tests within
@@ -73,20 +73,20 @@ sibling's daemon had leased this test's event. Shared test data read
 concurrently produces correct answers to the wrong question, and the assertion
 is what breaks.
 
-**T1 — Mint every identifier a test writes or reads back.** A fixed constant is
+**ISO-1 — Mint every identifier a test writes or reads back.** A fixed constant is
 admissible only for a row nothing asserts over (the fixture tenant, written
 `ON CONFLICT DO NOTHING`). The moment a test counts, lists, or filters by an
 identifier, that identifier is minted per test. `Lane::isolated` is the shape:
 mint the workspace and fleet, seed them, scope every read. Cost is a few
 statements; it removes the whole row-collision class.
 
-**T2 — T1 does not reach a key the product spells globally.** `fleet:ready` is
+**ISO-2 — ISO-1 does not reach a key the product spells globally.** `fleet:ready` is
 one hash for the whole deployment and `HRANDFIELD` hands a poller somebody's
 fleet at random — competing consumers, which is the design. Minted row ids do
 not touch it. Isolation here means a keyspace of the test's own (a Redis logical
-database in the connection URL, or a key prefix), and until one exists, T3.
+database in the connection URL, or a key prefix), and until one exists, ISO-3.
 
-**T3 — Exclude what is global BY DESIGN.** `Inbox::expire` is
+**ISO-3 — Exclude what is global BY DESIGN.** `Inbox::expire` is
 `UPDATE … WHERE status = pending AND timeout_at <= $5`: no workspace, no fleet,
 correctly, because a sweeper is system-wide. Nothing namespaces that. Those
 tests take a named lock — and BOTH sides take it, the actor and the test whose
@@ -95,14 +95,14 @@ Hold it for the test body; prefer a guard the fixture owns (`Scenario` holds the
 ready-stream guard as its last field) over a line every test must remember.
 
 **Which tier applies.** Ask what the assertion reads. One row by its own minted
-id is T1. A SET — a count, a listing, a queue depth — is T1, and T2 as well if
+id is ISO-1. A SET — a count, a listing, a queue depth — is ISO-1, and ISO-2 as well if
 the set lives behind a global key. An assertion whose premise a system-wide
-writer can invalidate is T3, whatever else is true of it.
+writer can invalidate is ISO-3, whatever else is true of it.
 
-**T3 is a debt, not a resting place.** Serialisation buys correctness with wall
+**ISO-3 is a debt, not a resting place.** Serialisation buys correctness with wall
 time: the daemon end-to-end scenarios are exclusive over `fleet:ready`, and the
 lane measured `tests_s` 110-123 with the guard against 71 for the concurrent
-runs that were producing wrong answers. Recovering that time means T2 for the
+runs that were producing wrong answers. Recovering that time means ISO-2 for the
 ready stream, not removing the guard.
 
 ## The wire parity proof
