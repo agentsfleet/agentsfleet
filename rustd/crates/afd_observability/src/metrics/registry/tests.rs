@@ -41,6 +41,15 @@ fn census(rows: &[&str]) -> String {
 }
 
 /// A well-formed row, as the base every seeded defect mutates one column of.
+/// The SDK's own per-stream cardinality limit when a View sets none
+/// (`opentelemetry_sdk` 0.32.1, `metrics/instrument.rs`). The backstop
+/// Dimension 3.2 requires never to fire.
+const SDK_STREAM_CARDINALITY_DEFAULT: usize = 2000;
+
+/// What a runner slot table may admit before `_other`. Raised on the stream
+/// explicitly, which is why it may exceed the default above.
+const MAX_ADMITTED_SLOTS: usize = 4096;
+
 const ROW: &str = "a.family\tcounter\tu64\t1\tcumulative\t-\t-\tfixed:1\tno\ttraffic\tnothing";
 
 fn seeded(rows: &[&str]) -> Error {
@@ -169,6 +178,64 @@ fn test_declared_ceilings_admit_at_least_one_series() {
             family.name
         );
     }
+}
+
+/// Dimension 3.6 — a label nothing bounds by construction is bounded by
+/// admission, and nothing else claims a ceiling it cannot justify.
+///
+/// This replaced a const assert over a 256-series cost budget. That budget was
+/// a static array length from the Zig aggregator, excluded from Zig's own
+/// comptime arithmetic and inapplicable to an SDK that allocates per stream.
+/// What is genuinely true is narrower and worth pinning: `runner_id` is the one
+/// census label a customer supplies, so it is the one that needs a slot table,
+/// and a cost family claiming a ceiling would be reintroducing the invented
+/// number by the back door.
+#[test]
+fn test_unbounded_labels_are_slot_admitted() {
+    for family in declared().families() {
+        let customer_supplied = family.labels.iter().any(|key| &**key == "runner_id");
+        match family.policy {
+            Policy::Runner { slots } => {
+                assert!(
+                    customer_supplied,
+                    "`{}` is admitted by slot without carrying an unbounded label",
+                    family.name
+                );
+                assert!(
+                    slots <= MAX_ADMITTED_SLOTS,
+                    "`{}` admits {slots} slots, past the slot table's own capacity",
+                    family.name
+                );
+                // The load-bearing half: the declared slots do NOT fit under
+                // the SDK's default stream cap, so the View has to raise it
+                // explicitly. If a future edit drops the slot count below the
+                // default, the raise becomes dead configuration and this line
+                // is what says so.
+                assert!(
+                    slots > SDK_STREAM_CARDINALITY_DEFAULT,
+                    "`{}` admits {slots} slots, which fits under the SDK default \
+                     of {SDK_STREAM_CARDINALITY_DEFAULT} — the explicit stream-cap \
+                     raise is now unnecessary and should go with it",
+                    family.name
+                );
+            }
+            Policy::Fixed { .. } | Policy::SharedCost => assert!(
+                !customer_supplied,
+                "`{}` carries a customer-supplied label with no slot table, so \
+                 its cardinality is bounded by nothing",
+                family.name
+            ),
+        }
+    }
+}
+
+/// A cost family that declares a ceiling is refused: `shared:cost` is the
+/// spelling for "no ceiling", and `shared:256` would be the invented budget
+/// returning under a new name.
+#[test]
+fn test_a_cost_family_cannot_declare_a_ceiling() {
+    let with_ceiling = ROW.replace("\tfixed:1\t", "\tshared:256\t");
+    assert!(matches!(seeded(&[&with_ceiling]), Error::Census(_)));
 }
 
 /// A short row is refused rather than silently shifting every later field —
