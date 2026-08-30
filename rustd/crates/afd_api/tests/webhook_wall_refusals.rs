@@ -27,15 +27,15 @@
     reason = "a test asserts by panicking; the daemon's restriction set is the manifest's"
 )]
 
-mod harness;
+use crate::harness;
 
 use std::sync::Arc;
 
+use self::harness::webhook as signed;
+use self::harness::{Fleet, Scripted, json_body, send_with_headers};
 use afd_core::error_code::{self, ErrorCode};
 use afd_fleet_lifecycle::FleetStatus;
 use afd_webhook::Scheme;
-use harness::webhook as signed;
-use harness::{Fleet, Scripted, json_body, send_with_headers};
 use http::{Method, StatusCode};
 
 /// A failed run — a delivery that WOULD wake the fleet if it proved itself.

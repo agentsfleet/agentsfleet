@@ -169,7 +169,9 @@ mod tests {
 
     #[test]
     fn the_bare_arm_resolves_with_no_prefix_and_no_timestamp() {
-        let resolved = StaticRegistry.resolve("linear").expect("linear is declared");
+        let resolved = StaticRegistry
+            .resolve("linear")
+            .expect("linear is declared");
 
         assert_eq!(resolved.signature_header(), "linear-signature");
         assert_eq!(

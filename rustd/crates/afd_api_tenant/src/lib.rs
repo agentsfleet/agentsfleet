@@ -94,12 +94,12 @@ pub fn fleet_handler_for<D: Services>(verb: FleetRoute) -> Option<MethodRouter<A
         // No PUT beside the PATCH: a schedule is edited field by field, and a
         // whole-row replace would let a caller silently drop the upstream
         // handle the sync reconciles against.
-        FleetRoute::Schedules => Some(
-            get(handler::schedule::list::<D>).post(handler::schedule::create::<D>),
-        ),
-        FleetRoute::Schedule => Some(
-            patch(handler::schedule::patch::<D>).delete(handler::schedule::purge::<D>),
-        ),
+        FleetRoute::Schedules => {
+            Some(get(handler::schedule::list::<D>).post(handler::schedule::create::<D>))
+        }
+        FleetRoute::Schedule => {
+            Some(patch(handler::schedule::patch::<D>).delete(handler::schedule::purge::<D>))
+        }
         FleetRoute::ScheduleSync => Some(post(handler::schedule::sync::<D>)),
     }
 }

@@ -109,7 +109,10 @@ struct Probe<T>(core::marker::PhantomData<T>);
 // `ProbeFallback` is never used", which tells whoever just added the derive
 // nothing. Silencing the weaker diagnostic lets the assertion below fire with
 // the one that names the leak and the fix.
-#[allow(dead_code, reason = "the fallback is unused exactly when the guard trips")]
+#[allow(
+    dead_code,
+    reason = "the fallback is unused exactly when the guard trips"
+)]
 trait ProbeFallback {
     const IMPLEMENTS_PARTIAL_EQ: bool = false;
 }
