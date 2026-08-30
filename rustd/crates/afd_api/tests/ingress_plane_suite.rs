@@ -20,6 +20,8 @@ mod integration_ingress_live;
 mod webhook_approval_wall;
 #[path = "webhook_fleet_route.rs"]
 mod webhook_fleet_route;
+#[path = "webhook_qstash_route.rs"]
+mod webhook_qstash_route;
 #[path = "webhook_receive_route.rs"]
 mod webhook_receive_route;
 #[path = "webhook_svix_route.rs"]
