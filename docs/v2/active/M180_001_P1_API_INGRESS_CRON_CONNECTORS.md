@@ -163,8 +163,8 @@ Workspace+fleet `/schedules[/{schedule_id}[/sync]]` CRUD, the schedules store, t
 
 `/v1/connectors/{provider}/callback` (GET relay / POST complete) finishing OAuth (Open Authorization) grants into the vault via M176 crypto; `/v1/connectors/slack/events` (URL-verification challenge + event deliveries); workspace `/connectors[/{provider}[/connect]]` surface parity.
 
-- **Dimension 4.1** — callback relay/complete: grant lands in the vault under the provider key name; states/nonces validated → Test to write: `afd_api/tests/connector_callback_route.rs`: `a_completed_callback_lands_the_grant_under_the_provider_key_name`. `afd_api_tenant/src/handler/connector/callback.rs` (100 lines) is at 15.3%
-- **Dimension 4.2** — forged/expired callback state → rejected, no vault write → Test to write: `afd_api/tests/connector_callback_route.rs`: `a_forged_or_expired_state_is_rejected_before_any_vault_write`
+- **Dimension 4.1** — callback relay/complete: grant lands in the vault under the provider key name; states/nonces validated → Tests `afd_api/tests/connector_callback_route.rs` (10 tests) cover the browser leg WHOLE — it touches no store — and the dashboard leg up to its first vault read. The grant landing under the provider key name is past that line → Test to write: `afd_api/tests/integration_connector_callback.rs`
+- **Dimension 4.2** — forged/expired callback state → rejected, no vault write → Tests `afd_api/tests/connector_callback_route.rs` for the refusals reached BEFORE the vault (unshipped provider, no state, no code, an undecodable query, a missing bearer, an insufficient scope). A state that is forged, expired, spent or another person's is refused by `Connectors::verify` AFTER the signing secret is read, so it needs a live vault → Test to write: `afd_api/tests/integration_connector_callback.rs`
 - **Dimension 4.3** — Slack URL-verification answered; signed events accepted; bad Slack signature rejected → Tests `afd_api_ingress/src/handler/events.rs`: `test_the_handshake_echoes_the_value_it_asked_for`, `test_no_valueless_handshake_is_answered_as_one`, `test_a_provider_with_no_handshake_echoes_nothing` (the handshake half). Test to write: `afd_api/tests/connector_events_route.rs`: `a_signed_event_is_accepted_and_a_bad_signature_is_refused`
 
 ### §5 — Outbound answer worker
@@ -256,8 +256,8 @@ No product-analytics changes (machine-facing ingress; parity port).
 | 3.1 | integration | `afd_cron/tests/integration_store.rs` (TO WRITE) | drifted store vs fake upstream → `/sync` converges both |
 | 3.2 | integration (race/replay) | `afd_cron/tests/integration_fence.rs` (TO WRITE) | concurrent duplicate fires → exactly one event row |
 | 3.3 | integration (negative) | `afd_cron/tests/integration_store.rs` (TO WRITE) | upstream down during CRUD → typed error; later `/sync` repairs |
-| 4.1 | integration | `afd_api/tests/connector_callback_route.rs` (TO WRITE) | relay→complete → vault row under provider key name |
-| 4.2 | integration (negative) | `afd_api/tests/connector_callback_route.rs` (TO WRITE) | reused/forged/expired state → rejected, zero vault writes |
+| 4.1 | unit (relay) + integration (grant) | `connector_callback_route.rs` (10 tests) + `integration_connector_callback.rs` (TO WRITE) | the browser leg relays the whole handoff to the dashboard and verifies nothing; then relay→complete → vault row under provider key name |
+| 4.2 | unit (pre-vault) + integration (state) | `connector_callback_route.rs` + `integration_connector_callback.rs` (TO WRITE) | every refusal reachable before the secret read, then reused/forged/expired state → rejected, zero vault writes |
 | 4.3 | unit + integration | `afd_api_ingress/src/handler/events.rs` (3 handshake tests) + `connector_events_route.rs` (TO WRITE) | URL-verification echoed; valid event accepted; bad signature rejected |
 | 4.3 (FM) | integration (negative) | `connector_events_route.rs` (TO WRITE) | slow downstream processing → ack returns before processing completes; retried delivery processed idempotently |
 | 5.1 | unit + integration | `afd_outbound/tests/delivery.rs` (4 tests) + `integration_worker.rs`: `test_outbound_delivery_retry` | destination 5xx×N → jittered backoff budget + terminal handling |

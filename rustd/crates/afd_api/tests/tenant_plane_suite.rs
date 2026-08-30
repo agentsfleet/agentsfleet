@@ -2,6 +2,9 @@
 
 mod harness;
 
+#[path = "connector_callback_route.rs"]
+mod connector_callback_route;
+
 #[path = "auth_sessions.rs"]
 mod auth_sessions;
 #[path = "fleet_grants.rs"]
