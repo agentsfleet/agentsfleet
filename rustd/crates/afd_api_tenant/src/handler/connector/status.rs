@@ -102,3 +102,45 @@ pub(crate) async fn disconnect<D: Services>(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Connection, STATUS_CONNECTED, STATUS_NOT_CONNECTED, view};
+
+    /// Nothing held reads as not connected, and names nothing.
+    ///
+    /// The absence is a rendered state rather than a 404: the dashboard draws a
+    /// card for every shipped provider, and this is the one that offers a
+    /// connect button.
+    #[test]
+    fn an_absent_connection_reads_as_not_connected() {
+        let rendered = view(None);
+        assert_eq!(rendered.status, STATUS_NOT_CONNECTED);
+        assert_eq!(rendered.label, None);
+    }
+
+    /// A held connection reads as connected and carries what it is called.
+    #[test]
+    fn a_held_connection_carries_the_name_a_person_recognises() {
+        let held = Connection {
+            label: Some("Acme Jira".to_owned()),
+        };
+        let rendered = view(Some(&held));
+        assert_eq!(rendered.status, STATUS_CONNECTED);
+        assert_eq!(rendered.label.as_deref(), Some("Acme Jira"));
+    }
+
+    /// A labelless grant is connected, not broken.
+    ///
+    /// The case worth its own test: a provider whose answer named nothing still
+    /// landed a spendable grant. Reading the missing label as "not connected"
+    /// would offer a connect button for a connection that already works, and
+    /// pressing it would replace a live grant.
+    #[test]
+    fn a_connection_carrying_no_label_is_still_connected() {
+        let unlabelled = Connection { label: None };
+        let rendered = view(Some(&unlabelled));
+        assert_eq!(rendered.status, STATUS_CONNECTED);
+        assert_eq!(rendered.label, None);
+    }
+}

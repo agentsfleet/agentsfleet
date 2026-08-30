@@ -70,3 +70,76 @@ pub(crate) async fn list<D: Services>(
     let entries: Vec<CatalogueEntry<'_>> = catalogue.into_iter().map(entry).collect();
     Ok(Json(entries).into_response())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ARCHETYPE_APP_INSTALL, ARCHETYPE_OAUTH2, Catalogued, entry};
+    use afd_connector::Provider;
+
+    /// A row for one provider, in the two states the dashboard acts on.
+    const fn row(provider: Provider, configured: bool, connected: bool) -> Catalogued {
+        Catalogued {
+            provider,
+            configured,
+            connected,
+        }
+    }
+
+    /// Every shipped provider renders with its own id and display name.
+    ///
+    /// The dashboard renders cards from this and no hard-coded list, so a
+    /// provider whose entry borrowed another's id would draw one card twice and
+    /// send the second one's connect button at the first.
+    #[test]
+    fn every_provider_renders_under_its_own_identity() {
+        for provider in Provider::ALL.iter().copied() {
+            let rendered = entry(row(provider, true, false));
+            assert_eq!(rendered.id, provider.id());
+            assert_eq!(rendered.display_name, provider.display_name());
+        }
+    }
+
+    /// The archetype is the registry's, spelled as the wire contract.
+    ///
+    /// Both strings are `registry.zig`'s `@tagName(spec.archetype)` — the
+    /// dashboard switches on them to decide which connect flow to start, so a
+    /// GitHub row rendered as `oauth2` would start a consent round-trip for a
+    /// connector that installs an App instead.
+    #[test]
+    fn an_app_install_and_an_oauth2_connector_are_told_apart() {
+        assert_eq!(
+            entry(row(Provider::GitHub, true, true)).archetype,
+            ARCHETYPE_APP_INSTALL
+        );
+        for provider in [
+            Provider::Slack,
+            Provider::Zoho,
+            Provider::Jira,
+            Provider::Linear,
+        ] {
+            assert_eq!(
+                entry(row(provider, true, true)).archetype,
+                ARCHETYPE_OAUTH2,
+                "`{provider}` runs a consent round-trip",
+            );
+        }
+    }
+
+    /// `configured` and `connected` survive as two independent facts.
+    ///
+    /// The module note's reason, pinned: one is about the deployment and the
+    /// other about this workspace. Collapsing them would hide the combination
+    /// that actually happens — a workspace holding a live grant whose app bag
+    /// was later removed, which still works for the fleets spending it and can
+    /// no longer be reconnected.
+    #[test]
+    fn the_deployment_fact_and_the_workspace_fact_do_not_collapse() {
+        for configured in [false, true] {
+            for connected in [false, true] {
+                let rendered = entry(row(Provider::Slack, configured, connected));
+                assert_eq!(rendered.configured, configured);
+                assert_eq!(rendered.connected, connected);
+            }
+        }
+    }
+}
