@@ -18,5 +18,9 @@ mod integration_connector_events;
 mod webhook_approval_wall;
 #[path = "webhook_fleet_route.rs"]
 mod webhook_fleet_route;
+#[path = "webhook_receive_route.rs"]
+mod webhook_receive_route;
+#[path = "webhook_svix_route.rs"]
+mod webhook_svix_route;
 #[path = "webhook_wall_refusals.rs"]
 mod webhook_wall_refusals;

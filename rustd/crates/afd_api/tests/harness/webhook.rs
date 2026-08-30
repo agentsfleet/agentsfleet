@@ -15,9 +15,14 @@
 
 use afd_api_ingress::{HEADER_APPROVAL_SIGNATURE, HEADER_APPROVAL_TIMESTAMP};
 use afd_core::id::Uuid7;
+use afd_crypto::mac::HmacSha256Tag;
+use afd_crypto::secret::SecretBytes;
 use afd_fleet_lifecycle::FleetStatus;
 use afd_ingress::Binding;
 use afd_webhook::Scheme;
+use afd_webhook::vendor::svix;
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
 use http::HeaderName;
 
 /// The fleet every signed-ingress fixture addresses.
@@ -162,4 +167,49 @@ pub(crate) fn github_headers<'d>(
 /// One header name, as the request builder takes it.
 pub(crate) fn name(header: &str) -> HeaderName {
     HeaderName::from_bytes(header.as_bytes()).expect("the fixture header names are well formed")
+}
+
+/// The Svix secret a fixture deployment verifies against.
+///
+/// Upstream's published test value, and it carries the `whsec_` prefix and a
+/// base64 body because that is the vendor's format: a bare string does not
+/// parse, so a fixture using one would be proving the parse rather than the
+/// wall. Not a live credential.
+pub(crate) const SVIX_SECRET: &str = "whsec_C2FVsBQIhrscChlQIMV+b5sSYspob7oD";
+
+/// A delivery identifier, as Svix shapes one.
+pub(crate) const SVIX_DELIVERY: &str = "msg_2fJk8Lq0PsWzXbYtRnVdEcHgMa";
+
+/// A Svix signature over `body`, bound to `id` and `timestamp`.
+///
+/// Composed here rather than per suite for the reason the module note gives:
+/// two spellings of one signing canon drift, and the second one to drift keeps
+/// passing against a daemon no sender could reach.
+pub(crate) fn svix_signature(id: &str, timestamp: i64, body: &str) -> String {
+    let stamp = timestamp.to_string();
+    let raw = STANDARD
+        .decode(
+            SVIX_SECRET
+                .strip_prefix("whsec_")
+                .expect("the fixture carries the vendor's prefix"),
+        )
+        .expect("the fixture secret is base64");
+    let tag = HmacSha256Tag::compute_peppered(
+        &SecretBytes::new(raw),
+        &[id.as_bytes(), b".", stamp.as_bytes(), b".", body.as_bytes()],
+    );
+    format!("v1,{}", STANDARD.encode(tag.as_bytes()))
+}
+
+/// The three headers a Svix delivery carries.
+pub(crate) fn svix_headers<'d>(
+    id: &'d str,
+    timestamp: &'d str,
+    signature: &'d str,
+) -> Vec<(HeaderName, &'d str)> {
+    vec![
+        (name(svix::ID_HEADER), id),
+        (name(svix::TIMESTAMP_HEADER), timestamp),
+        (name(svix::SIGNATURE_HEADER), signature),
+    ]
 }
