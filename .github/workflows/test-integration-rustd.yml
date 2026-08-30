@@ -15,15 +15,9 @@ name: test-integration-rustd
 # `services:` block would be a second definition of the environment that drifts
 # from the first one silently.
 
+# No push-to-main trigger, by owner decision (Indy, Aug 2026): merges are not
+# squashed, so the merged tree is what the pull request already proved.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'rustd/**'
-      - 'schema/**'
-      - 'make/**'
-      - 'docker-compose.yml'
-      - '.github/workflows/test-integration-rustd.yml'
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:

@@ -1,17 +1,13 @@
 name: test
 
 on:
-  # Run on merges to main (Zig-relevant paths only) so the default branch
-  # populates the actions/cache for each Zig job. GitHub scopes caches per
-  # branch with a fallback to the default branch, so without a main run every
-  # new PR branch starts from a COLD Zig cache (~5 min full recompile). A warmed
-  # main cache lets PR branches restore it and recompile only changed modules.
-  push:
-    branches: [main]
-    paths:
-      - 'rustd/**'
-      - 'make/**'
-      - '.github/workflows/test.yml'
+  # No push-to-main trigger, by owner decision (Indy, Aug 2026): merges here
+  # are not squashed, so the merged tree is the tree the pull request already
+  # tested, and running the same suite twice buys nothing. The trade-off that
+  # goes with it: caches are scoped per-branch with fallback to the default
+  # branch, so with no main runs a new branch starts from a cold cache. If
+  # pull requests get slow, the fix is a cache-warm-only job on main — never
+  # a second test run.
   pull_request:
     types: [opened, synchronize, reopened]
   # Every other trigger here needs a Pull Request or a merge to main, so a long
@@ -25,11 +21,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # Never cancel on main: these runs exist to populate the cache every branch
-  # restores from, so cancelling one to start the next leaves no warm cache at
-  # all — silently undoing the reason the main trigger is here. Pull Request
-  # runs stay cancellable; a superseded push has nothing worth finishing.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: true
 
 jobs:
   test-unit-rustd:
