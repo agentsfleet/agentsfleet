@@ -42,16 +42,56 @@ jobs:
       - name: Show the pinned toolchain
         run: rustup show && rustc --version && cargo --version
         working-directory: rustd
-      - name: Cache cargo registry and build output
-        uses: actions/cache@v5
+      # Compiler artifacts, shared with the integration lane through `shared-key`.
+      #
+      # This replaced a hand-rolled `actions/cache` over `~/.cargo` +
+      # `rustd/target`, which had two faults the comment beside it recorded
+      # honestly and then worked around rather than fixed:
+      #
+      #  - `actions/cache` never re-saves on a hit, so `rustd/target` was frozen
+      #    at whatever the FIRST run under a given `Cargo.lock` left there,
+      #    including a partial tree from a failed job.
+      #  - Two lanes compiling the same crates had to hold two caches under two
+      #    keys, because one shared key meant whichever finished last overwrote
+      #    the other every run. That is the workaround `shared-key` removes.
+      #
+      # Prior art checked before choosing this, per the operating model: the
+      # sibling `e2e-observability-platform` runs the SAME rustc 1.98.0 under
+      # GitLab CI and caches `.cargo/registry` + `.cargo/git` while explicitly
+      # refusing to cache `target/` — "to avoid stale artifact/fingerprint
+      # mismatches across pipeline runs" (`.gitlab/ci/quality-gates.yml`). Its
+      # conclusion is right and is exactly what `rust-cache` implements
+      # properly: it keeps dependency builds, PRUNES the workspace's own
+      # artifacts before saving, keys on the lockfile plus the rustc version
+      # plus the enabled features, and sets `CARGO_INCREMENTAL=0` — which that
+      # sibling has to set by hand on every job.
+      #
+      # It also declines that sibling's other half deliberately. It reaches for
+      # `sccache` as a `RUSTC_WRAPPER`, then has to switch it back off for the
+      # unit-test job over proc-macro cache corruption (mozilla/sccache#1924,
+      # cited in its own config). A compilation cache that must be disabled per
+      # job to stay correct is not one to adopt on the evidence of the repo that
+      # disabled it.
+      #
+      # `save-if` is what makes the sharing deliberate rather than racy. A
+      # `shared-key` drops the job name from the cache key, so BOTH lanes
+      # compute the same primary key; Actions caches are immutable and the two
+      # run concurrently, so whichever reached its post step first would save
+      # and the other would be rejected as already-existing, its artifacts
+      # discarded — with a race deciding which lane's build got kept. Only the
+      # unit lane on the default branch writes; every other run restores. That
+      # is the arrangement `test.yml` already reasons about at the top of this
+      # file, where the `push: branches: [main]` trigger exists so a main run
+      # populates the cache each Pull Request branch restores from.
+      # Pinned to the commit `v2` resolved to, not the tag. A tag is mutable:
+      # retargeting it upstream changes the code that runs against this
+      # checkout and the shared build cache, with no diff here to review.
+      # The trailing comment is what a reader and Dependabot both bump.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            rustd/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
-          restore-keys: |
-            cargo-${{ runner.os }}-
+          workspaces: rustd
+          shared-key: rustd
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Lint the Rust workspace
         run: make lint-rustd
       - name: Test the Rust workspace

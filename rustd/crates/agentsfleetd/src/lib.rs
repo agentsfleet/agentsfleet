@@ -26,6 +26,7 @@ pub mod identity;
 pub mod inventory;
 pub mod logs;
 pub mod migrate;
+pub mod nameplate;
 pub mod outbound;
 pub mod plane;
 pub mod preflight;
