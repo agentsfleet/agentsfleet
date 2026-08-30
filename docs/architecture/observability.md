@@ -40,8 +40,9 @@ The control plane's telemetry surfaces live in `afd_observability`.
 | Postgres | per-run execution telemetry + billing counters in `afd_billing` | the money system of record |
 
 **One process, one registry.** Every runtime family carries the `agentsfleet_`
-prefix; the evented cost families use the dotted OpenTelemetry
-semantic-convention names listed at the end of this file.
+prefix; the evented cost families use dotted OpenTelemetry
+semantic-convention names (§Metrics stay semantic explains each divergence;
+`docs/metrics.census.tsv` carries the full contract).
 The metric-family registry declares every exported name, and the namespace
 guard fails on any family outside it. `fleet_id`, log event names,
 `EventKind` tags, and the Redis consumer group keep their old spelling; the
@@ -80,92 +81,20 @@ the milestone name.
 
 ## Metric family census — what to watch, and what it means
 
-This table is the complete export: every family the daemon pushes over OTLP
-appears exactly once, pinned against the declared metric-family registry.
-The executable contract — kinds, number types, units, temporality, label
-keys, bounds, series policy — lives in [`docs/metrics.census.tsv`](../metrics.census.tsv);
-a registry test asserts that file's names equal this table's, so the human
-census and the machine contract cannot drift apart.
+The complete export lives in ONE file: [`docs/metrics.census.tsv`](../metrics.census.tsv)
+— every family the daemon pushes over OTLP, exactly once, with its kind,
+number type, unit, temporality, label keys, histogram bounds, series policy,
+and the operator guidance (`category`, `watch_for`) that used to be a table
+here. The registry test grades the declared registry against that file in
+both directions, so a family cannot exist on the wire without a census row
+or a census row without a family. This section deliberately repeats none of
+it; a second copy is a second thing to keep true.
 
 Category legend: **latency** (how slow), **traffic** (how much), **errors**
 (what failed), **saturation** (how full), **health** (is the plumbing itself
 working). Improve latency by finding the slow stage; errors by rate per cause;
 saturation by capacity or shedding; health by fixing the exporter or pool, not
 the workload.
-
-| Family | Labels | Category | Watch for |
-|---|---|---|---|
-| `gen_ai.invoke_agent.duration` | bounded cost attribution | latency | runner wall time per invocation |
-| `agentsfleet.invoke_agent.token.usage` | bounded cost attribution | traffic | token spend per invocation, by `gen_ai.token.type` |
-| `agentsfleet.invoke_agent.cache_read.token.usage` | bounded cost attribution | traffic | cache-read subset of input tokens |
-| `agentsfleet.billing.credit.consumed` | bounded cost attribution | traffic | nanocredit spend by charge class |
-| `agentsfleet.telemetry.samples_dropped` | none | health | exporter self-observability: ring + aggregation loss |
-| `agentsfleet_repair_production_to_queue_seconds` | none | latency | provider completion to proof-qualified verifier queueing |
-| `agentsfleet_repair_queue_to_completion_seconds` | none | latency | proof-qualified verifier queueing to completed Fleet report |
-| `agentsfleet_api_in_flight_requests` | none | saturation | approaching `api_max_in_flight_requests` |
-| `agentsfleet_api_backpressure_rejections_total` | none | errors | any growth: requests shed at the cap |
-| `agentsfleet_sse_in_flight_streams` | none | saturation | approaching the stream cap |
-| `agentsfleet_sse_backpressure_rejections_total` | none | errors | streams refused at the cap |
-| `agentsfleet_sse_dropped_frames_total` | none | errors | slow consumers losing frames |
-| `agentsfleet_sse_hub_reconnects_total` | none | health | pub/sub redials; spikes mean Redis instability |
-| `agentsfleet_worker_running` | none | health | 0 when the worker should be up |
-| `agentsfleet_fleet_triggered_total` | none | traffic | trigger volume |
-| `agentsfleet_lease_polls_total` | none | traffic | the denominator for the two below |
-| `agentsfleet_lease_poll_candidates_scanned_total` | none | latency | rate ÷ polls = fan-out per poll |
-| `agentsfleet_lease_poll_db_roundtrips_total` | none | latency | rate ÷ polls = DB cost per poll; idle polls must add zero |
-| `agentsfleet_fleet_ready_depth` | none | saturation | readiness backlog (not summable across replicas) |
-| `agentsfleet_fleet_ready_write_failures_total` | none | errors | Redis index writes failing |
-| `agentsfleet_runner_retention_swept_total` | none | traffic | retention pruning throughput |
-| `agentsfleet_runner_retention_sweep_failures_total` | none | errors | retention sweeps failing |
-| `agentsfleet_account_teardown_unregister_failures_total` | none | errors | teardown purges failing to unregister |
-| `agentsfleet_repair_provider_results_total` | `outcome` | traffic | accepted, replayed, or refused production evidence |
-| `agentsfleet_repair_correlations_total` | `outcome` | errors | exact, missed, and ambiguous repair correlations |
-| `agentsfleet_repair_verification_intents_created_total` | none | traffic | durable verifier intents created after exact correlation |
-| `agentsfleet_repair_dispatch_retried_total` | none | errors | failed verifier dispatch attempts awaiting retry |
-| `agentsfleet_repair_synthetic_events_total` | `outcome` | traffic | emitted and idempotently replayed proof-qualified events |
-| `agentsfleet_repair_verifier_runs_total` | `outcome` | traffic | queued and completed verifier Fleet runs |
-| `agentsfleet_repair_dispatch_due_batch` | none | saturation | due verifier sample capped at the dispatcher batch limit |
-| `agentsfleet_repair_dispatch_oldest_age_seconds` | none | saturation | age of the oldest due verifier intent |
-| `agentsfleet_library_stage_duration_seconds_total` | `surface`,`stage` | latency | ÷ observations = mean stage cost |
-| `agentsfleet_library_stage_observations_total` | `surface`,`stage` | latency | the denominator above |
-| `agentsfleet_library_read_outcome_total` | `surface`,`outcome` | errors | non-`ok` outcomes per surface |
-| `agentsfleet_library_pool_result_total` | `pool_result` | saturation | `timeout` = pool starved; `error` = datastore down |
-| `agentsfleet_library_cache_outcome_total` | `cache` | latency | hit ratio of the global catalogue cache |
-| `agentsfleet_library_payload_bytes_total` | `surface` | traffic | response bytes per surface |
-| `agentsfleet_library_results_total` | `surface` | traffic | rows served per surface |
-| `agentsfleet_runner_executions_total` | `runner_id`,`outcome` | traffic | run volume per runner |
-| `agentsfleet_runner_failures_total` | `runner_id`,`reason` | errors | failure rate per reason |
-| `agentsfleet_runner_failures_overflow_total` | none | health | increments only past 4096 runner slots |
-| `agentsfleet_runner_last_seen_seconds` | `runner_id` | health | a runner going quiet |
-| `agentsfleet_runner_active_leases` | `runner_id` | saturation | best-effort; self-heals on restart |
-| `agentsfleet_memory_entries_captured_total` | none | traffic | durable-memory write volume |
-| `agentsfleet_memory_capture_skipped_total` | none | errors | captures lost to validation |
-| `agentsfleet_memory_capture_truncated_total` | none | errors | captures clipped at the push byte budget |
-| `agentsfleet_memory_push_failures_total` | none | errors | memory writes failing |
-| `agentsfleet_memory_hydration_window_entries` | none | saturation | hydration window fill |
-| `agentsfleet_memory_hydration_dropped_entries_total` | none | errors | hydration overflow (entries) |
-| `agentsfleet_memory_hydration_dropped_bytes_total` | none | errors | hydration overflow (bytes) |
-| `agentsfleet_memory_cap_evictions_total` | none | health | cap pressure on stored memory |
-| `agentsfleet_memory_search_zero_hits_total` | none | health | searches finding nothing |
-| `agentsfleet_signup_bootstrapped_total` | none | traffic | signup funnel: fresh accounts |
-| `agentsfleet_signup_replayed_total` | none | traffic | signup funnel: idempotent replays |
-| `agentsfleet_signup_failed_total` | `reason` | errors | rejected signups per cause |
-| `agentsfleet_sensitive_request_erased_bytes_total` | none | health | plaintext-erasure proof; no labels by design |
-| `agentsfleet_sensitive_response_erased_bytes_total` | none | health | plaintext-erasure proof; no labels by design |
-| `agentsfleet_sensitive_response_write_failures_total` | none | errors | sensitive writes failing |
-| `agentsfleet_http_trace_suppressed_total` | `reason` | health | span budget shedding; storms stay visible |
-| `agentsfleet_otlp_queue_depth` | `signal` | saturation | exporter ring fill per signal |
-| `agentsfleet_otlp_entries_discarded_total` | `signal`,`reason` | errors | telemetry loss counted at the source |
-| `agentsfleet_otel_attribute_omitted_total` | `attribute`,`reason` | health | model attribution gaps (never faked) |
-| `agentsfleet_redis_pool_active` | none | saturation | pool utilisation (leased) |
-| `agentsfleet_redis_pool_idle` | none | saturation | pool utilisation (ready) |
-| `agentsfleet_redis_pool_dials_total` | none | health | dial volume |
-| `agentsfleet_redis_pool_overflow_dials_total` | none | health | burst dialing past `max_idle` |
-| `agentsfleet_redis_pool_reconnects_total` | none | health | transport churn: retry-layer redials |
-| `agentsfleet_redis_pool_poisoned_connections_total` | none | health | transport churn: in-flight transport errors |
-| `agentsfleet_redis_pool_forced_closes_total` | none | health | transport churn: over-cap releases |
-| `agentsfleet_redis_pool_acquire_timeouts_total` | none | errors | currently always 0; acquires never block |
-| `agentsfleet_process_resident_memory_bytes` | none | saturation | process RSS |
 
 ## `agentsfleet-runner` — deliberately bare
 
@@ -473,16 +402,21 @@ when a trusted id exists) and schema URL
 `https://opentelemetry.io/schemas/1.43.0`. The pinned GenAI conventions commit
 publishes no schema URL, so none is fabricated.
 
-OTLP metric series (all emitted in the service layer, strictly after the money
-transaction commits, so the exporter can never block or fail a debit):
+The cost families emit in the service layer, strictly after the money
+transaction commits, so the exporter can never block or fail a debit. Their
+kinds, units and bounds live in [`docs/metrics.census.tsv`](../metrics.census.tsv)
+with every other family; what belongs HERE is why their names diverge from
+the GenAI conventions, because each divergence was chosen, not accidental:
 
-| Series | Kind / unit | Note |
-|---|---|---|
-| `gen_ai.invoke_agent.duration` | histogram, `s` | runner wall time bounds exactly one invocation, so the standard name is truthful |
-| `agentsfleet.invoke_agent.token.usage` | histogram, `{token}` | by `gen_ai.token.type`; cumulative per invocation, so the GenAI client-call name would be false |
-| `agentsfleet.invoke_agent.cache_read.token.usage` | histogram, `{token}` | non-additive subset of input; never a third total |
-| `agentsfleet.billing.credit.consumed` | delta sum, `{nanocredit}` | by charge class; nanocredits are money, not time |
-| `agentsfleet.telemetry.samples_dropped` | sum | exporter self-observability |
+- `gen_ai.invoke_agent.duration` keeps the standard name because runner wall
+  time bounds exactly one invocation, so the standard name is truthful.
+- `agentsfleet.invoke_agent.token.usage` does not use the GenAI client-call
+  name: usage is cumulative per invocation, so that name would be false.
+- `agentsfleet.invoke_agent.cache_read.token.usage` is a non-additive subset
+  of input tokens — never a third total.
+- `agentsfleet.billing.credit.consumed` counts nanocredits by charge class;
+  nanocredits are money, not time.
+- `agentsfleet.telemetry.samples_dropped` is exporter self-observability.
 
 Every committed debit emits once; uncommitted, stale-fenced, or replayed
 operations emit nothing. Flush coalesces the evented cost families into one
