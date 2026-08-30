@@ -24,6 +24,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::error::{Error, Result};
+use crate::metrics::family::{Counter, Gauge, Histogram};
 
 pub use self::column::{Category, Kind, Number, ParsePolicy, Policy, Temporality};
 
@@ -140,6 +141,55 @@ impl Registry {
     pub fn family(&self, name: &str) -> Result<&Family> {
         self.families.get(name).ok_or_else(|| Error::UnknownFamily {
             family: name.into(),
+        })
+    }
+
+    /// The census entry for a family whose type claims it is a counter.
+    ///
+    /// Two independent checks meet here, which is the point of the trait
+    /// layer. The `M: Counter` bound is settled by the compiler: a type that
+    /// does not implement [`Counter`] cannot be passed at all, so there is no
+    /// run-time path for "recorded a gauge as a counter". The census check is
+    /// the other half — the contract on disk must agree with what the type
+    /// claims, and a disagreement is a defect in one of the two that nothing
+    /// else would catch.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::UnknownFamily`] when the census declares no such name, or
+    /// [`Error::KindMismatch`] when it declares it a different kind.
+    pub fn counter<M: Counter>(&self, family: &M) -> Result<&Family> {
+        self.of_kind(family.name(), Kind::Counter)
+    }
+
+    /// The census entry for a family whose type claims it is a histogram.
+    ///
+    /// # Errors
+    ///
+    /// As [`Registry::counter`].
+    pub fn histogram<M: Histogram>(&self, family: &M) -> Result<&Family> {
+        self.of_kind(family.name(), Kind::Histogram)
+    }
+
+    /// The census entry for a family whose type claims it is a gauge.
+    ///
+    /// # Errors
+    ///
+    /// As [`Registry::counter`].
+    pub fn gauge<M: Gauge>(&self, family: &M) -> Result<&Family> {
+        self.of_kind(family.name(), Kind::Gauge)
+    }
+
+    /// The shared half of the three above: found, and of the claimed kind.
+    fn of_kind(&self, name: &str, claimed: Kind) -> Result<&Family> {
+        let family = self.family(name)?;
+        if family.kind == claimed {
+            return Ok(family);
+        }
+        Err(Error::KindMismatch {
+            family: family.name.clone(),
+            declared: family.kind.spelling(),
+            claimed: claimed.spelling(),
         })
     }
 

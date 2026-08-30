@@ -75,6 +75,24 @@ pub enum Error {
         bounds: usize,
     },
 
+    /// A family's Rust type and the census disagree about what kind it is.
+    ///
+    /// The type claims a kind by which trait it implements, so this cannot be
+    /// a caller passing the wrong argument — the compiler settles that. It
+    /// means the contract on disk and the code were edited apart, which
+    /// otherwise surfaces as an instrument built with the wrong aggregation:
+    /// a counter's total rendered as a distribution, or a histogram's buckets
+    /// silently discarded.
+    #[error("the census declares `{family}` a {declared}, but its type claims a {claimed}")]
+    KindMismatch {
+        /// The family the two disagree about.
+        family: Box<str>,
+        /// What the census says, in its own spelling.
+        declared: &'static str,
+        /// What the Rust type's traits claim.
+        claimed: &'static str,
+    },
+
     /// The SDK refused the stream a declared family describes.
     ///
     /// Raised eagerly at registry construction rather than inside a View
