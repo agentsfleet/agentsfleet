@@ -53,7 +53,12 @@ PARITY_TIMEOUT_SEC="${PARITY_TIMEOUT_SEC:-10}"
 # Set by the self-tests to a fixture responder taking <base> <method> <path>.
 # Unset in every real run, where `probe_via_curl` is the responder.
 PARITY_PROBE="${PARITY_PROBE:-}"
-readonly PARITY_OPENAPI PARITY_TIMEOUT_SEC PARITY_PROBE
+# The declared-divergence register. A difference listed there is intended; a
+# difference not listed there is a regression. Without this the lane would fail
+# forever on a route the daemon deliberately does not serve, and the only fixes
+# available would be to un-declare the decision or to stop running the lane.
+PARITY_REGISTER="${PARITY_REGISTER:-$REPO_ROOT/playbooks/operations/cutover/001_playbook.md}"
+readonly PARITY_OPENAPI PARITY_TIMEOUT_SEC PARITY_PROBE PARITY_REGISTER
 
 # The value substituted for every `{path_param}` segment. One constant rather
 # than a per-parameter table: an unauthenticated probe is refused before a
@@ -108,6 +113,17 @@ roster() {
     | select(.key | IN("get","post","put","patch","delete","head"))
     | "\(.key | ascii_upcase)\t\($path)"
   ' "$PARITY_OPENAPI" | sort
+}
+
+# `METHOD /path` per line, read out of the register's table rows. The register
+# is prose a human maintains, so the machine-readable part is deliberately the
+# smallest thing that can be both: a backticked `GET /metrics` inside the row
+# that explains it. A divergence with no explanation cannot be expressed.
+declared_divergences() {
+  [ -f "$PARITY_REGISTER" ] || return 0
+  sed -n '/^| *D[0-9]/p' "$PARITY_REGISTER" \
+    | grep -oE '`(GET|POST|PUT|PATCH|DELETE|HEAD) [^`]+`' \
+    | tr -d '`' | sort -u
 }
 
 # `/v1/workspaces/{workspace_id}/fleets` → `/v1/workspaces/<placeholder>/fleets`
@@ -216,7 +232,8 @@ readonly ROUTE_ABSENT_STATUS="404"
 # contract describes. What an authenticated caller then gets needs credentials
 # and the full route surface, and is graded by the cutover milestone, not here.
 record_mode() {
-  local base="$1" probed=0 method path concrete status
+  local base="$1" probed=0 declared_count=0 method path concrete status declared
+  declared="$(declared_divergences)"
   while IFS=$'\t' read -r method path; do
     [ -n "$method" ] || continue
     concrete="$(concrete_path "$path")"
@@ -225,9 +242,15 @@ record_mode() {
     if [ "$status" = "$NO_ANSWER_STATUS" ]; then
       err "$method $path — no answer from $base (refused or timed out)"
     elif [ "$status" = "$ROUTE_ABSENT_STATUS" ]; then
-      err "$method $path — answered $ROUTE_ABSENT_STATUS, so the route is not mounted"
+      if printf '%s\n' "$declared" | grep -qxF "$method $path"; then
+        declared_count=$((declared_count + 1))
+        printf '  declared: %s %s is not served, per the divergence register\n' "$method" "$path"
+      else
+        err "$method $path — answered $ROUTE_ABSENT_STATUS, so the route is not mounted"
+      fi
     fi
   done < <(roster)
+  [ "$declared_count" -eq 0 ] || ok "$declared_count declared divergence(s) honoured"
   guard_probed "$probed"
   [ "$FAIL" -eq 0 ] && ok "$probed route/method pairs answered from $base"
   return "$FAIL"

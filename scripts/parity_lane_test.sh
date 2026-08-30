@@ -223,6 +223,41 @@ else
   bad "a missing contract document fails naming the path" "exit $status: $(lane_output)"
 fi
 
+# --------------------------------------------------------------------------
+# The declared-divergence register — the seam between this lane and the cutover
+# runbook. Without it the lane fails forever on a route the daemon deliberately
+# does not serve, and the only remaining fixes are to un-declare the decision or
+# to stop running the lane.
+# --------------------------------------------------------------------------
+REGISTER="$WORK_DIR/register.md"
+cat >"$REGISTER" <<REG
+| # | Divergence | Declared by | Why |
+|---|---|---|---|
+| D1 | \`GET $FIXTURE_ROUTE_PLAIN\` is declared and NOT served. | a fixture | because the test says so |
+REG
+
+status="$(env PARITY_OPENAPI="$CONTRACT" PARITY_PROBE="$WORK_DIR/responder.sh" \
+  PARITY_REGISTER="$REGISTER" SEED_BASE="$BASE_A" \
+  SEED_ROUTE="GET $FIXTURE_ROUTE_PLAIN" SEED_STATUS="404" \
+  BASE_URL="$BASE_A" bash "$LANE" >"$WORK_DIR/out" 2>&1; printf '%s' "$?")"
+if [ "$status" = "0" ] && lane_output | grep -qF "declared:"; then
+  ok "a 404 named in the divergence register is honoured, not failed"
+else
+  bad "a 404 named in the divergence register is honoured" "exit $status: $(lane_output)"
+fi
+
+# The register is not a blanket exemption: a DIFFERENT route answering 404 with
+# the same register in place still fails, or the register would be a mute button.
+status="$(env PARITY_OPENAPI="$CONTRACT" PARITY_PROBE="$WORK_DIR/responder.sh" \
+  PARITY_REGISTER="$REGISTER" SEED_BASE="$BASE_A" \
+  SEED_ROUTE="POST $(concrete "$FIXTURE_ROUTE_PARAM")" SEED_STATUS="404" \
+  BASE_URL="$BASE_A" bash "$LANE" >"$WORK_DIR/out" 2>&1; printf '%s' "$?")"
+if [ "$status" != "0" ] && lane_output | grep -qF "not mounted"; then
+  ok "a 404 NOT in the register still fails — the register is not a mute button"
+else
+  bad "a 404 not in the register still fails" "exit $status: $(lane_output)"
+fi
+
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ] || exit 1
 [ "$passed" -gt 0 ] || { printf 'FAIL the self-test suite ran nothing\n' >&2; exit 1; }
