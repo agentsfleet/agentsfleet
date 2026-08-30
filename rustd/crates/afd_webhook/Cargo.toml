@@ -11,6 +11,14 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+# M-TEST-UTIL. Lets a test present a signature this crate would accept, without
+# re-spelling how a scheme composes one. `SlackV0` binds `v0`, a separator and
+# the timestamp into the signed bytes, and all three are private here — a test
+# that rebuilt them beside the scheme would keep passing on the day the
+# composition changed, which is the one day it must not.
+test-util = []
+
 [dependencies]
 # The registry codes a rejection answers with.
 afd_core.workspace = true

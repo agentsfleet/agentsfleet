@@ -16,6 +16,7 @@ pub use afd_http::{admission, auth, client, envelope, etag, request_id, route, s
 mod handler;
 
 pub use handler::webhook::BUFFER_CEILING;
+pub use handler::webhook::verify_platform::{HEADER_APPROVAL_SIGNATURE, HEADER_APPROVAL_TIMESTAMP};
 
 use std::sync::Arc;
 

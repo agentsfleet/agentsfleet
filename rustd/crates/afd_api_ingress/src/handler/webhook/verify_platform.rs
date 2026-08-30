@@ -38,10 +38,10 @@ const EVENT_PLATFORM: &str = "webhook_platform_secret_failed";
 /// `approval.zig`'s `x-signature`, kept byte-for-byte: the sender is a Slack
 /// app an operator configured against the running daemon, and a header name is
 /// a wire contract that cannot change during a cutover.
-pub(crate) const HEADER_APPROVAL_SIGNATURE: &str = "x-signature";
+pub const HEADER_APPROVAL_SIGNATURE: &str = "x-signature";
 
 /// The header an approval callback carries its signed instant in.
-pub(crate) const HEADER_APPROVAL_TIMESTAMP: &str = "x-signature-timestamp";
+pub const HEADER_APPROVAL_TIMESTAMP: &str = "x-signature-timestamp";
 
 /// The vault key the approval signing secret is stored under.
 pub(crate) const APPROVAL_IDENTITY: &str = "approval-signing";

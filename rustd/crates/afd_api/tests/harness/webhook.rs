@@ -13,9 +13,8 @@
 //! a separate crate and cannot see it. One fixture-side declaration shared by
 //! every suite is the closest reachable thing to a single owner.
 
+use afd_api_ingress::{HEADER_APPROVAL_SIGNATURE, HEADER_APPROVAL_TIMESTAMP};
 use afd_core::id::Uuid7;
-use afd_crypto::mac::HmacSha256Tag;
-use afd_crypto::secret::SecretBytes;
 use afd_fleet_lifecycle::FleetStatus;
 use afd_ingress::Binding;
 use afd_webhook::Scheme;
@@ -109,10 +108,38 @@ pub(crate) fn id(text: &str) -> Uuid7 {
 
 /// The signature header value proving `body` was signed with `secret`.
 ///
-/// Built through the scheme rather than beside it — see the module note.
+/// Built through the scheme rather than beside it — see the module note. This
+/// used to recompute the tag here, which was right only for the schemes whose
+/// signed bytes ARE the body; `afd_webhook::test_util` composes whatever the
+/// scheme actually binds, so a timestamped scheme signs correctly too.
 pub(crate) fn signature(scheme: Scheme, secret: &[u8], body: &[u8]) -> String {
-    let tag = HmacSha256Tag::compute_peppered(&SecretBytes::new(secret.to_vec()), &[body]);
-    format!("{}{}", scheme.prefix(), tag.to_hex())
+    signature_at(scheme, secret, None, body)
+}
+
+/// The same, for a scheme that binds a timestamp into its signed bytes.
+pub(crate) fn signature_at(
+    scheme: Scheme,
+    secret: &[u8],
+    timestamp: Option<&str>,
+    body: &[u8],
+) -> String {
+    afd_webhook::test_util::signature(scheme, secret, timestamp, body)
+        .expect("a timestamped scheme was given the timestamp it binds")
+}
+
+/// An approval callback's headers: its proof and the instant that proof covers.
+///
+/// The names are `approval.zig`'s, read from the handler rather than spelled
+/// again here — a header name is a wire contract, and two spellings of one
+/// contract is the defect this indirection prevents.
+pub(crate) fn approval_headers<'d>(
+    signature: &'d str,
+    timestamp: &'d str,
+) -> Vec<(HeaderName, &'d str)> {
+    vec![
+        (name(HEADER_APPROVAL_SIGNATURE), signature),
+        (name(HEADER_APPROVAL_TIMESTAMP), timestamp),
+    ]
 }
 
 /// A GitHub delivery's headers: what it is, which delivery, and its proof.
