@@ -2,7 +2,7 @@
 # BUILD & REGISTRY — container builds and pushes
 # =============================================================================
 
-.PHONY: build build-dev push-dev push build-linux-alpine _docker_login _prepare_prebuilt_linux_binaries sync-version check-version
+.PHONY: build build-dev push-dev push _docker_login dist-daemons image-check sync-version check-version
 
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.1.0")
 # The commit, computed once and EXPORTED. It tags the image below, and
@@ -32,17 +32,32 @@ define _buildx
 		$(3)
 endef
 
-# Both architectures, built the way the release builds them: inside a
-# musl-native Alpine container, so the musl target is the host target and no
-# cross linker has to be configured on a developer's machine.
-_prepare_prebuilt_linux_binaries:
+# The daemon, built the way the release builds it: inside a musl-native Alpine
+# container, so the musl target is the host target and no cross linker has to
+# be configured on a developer's machine. The static assert runs INSIDE the
+# container because that is where readelf is known to exist; a binary with a
+# NEEDED entry or an INTERP section fails here, same as in the release job.
+#
+# DIST_ARCH_PAIRS narrows the build: `image-check` passes only the host's pair,
+# because proving "the daemon runs in the image" needs one architecture and the
+# other one would arrive through QEMU at emulation speed.
+DIST_ARCH_PAIRS ?= amd64:x86_64 arm64:aarch64
+LOCAL_TARGETARCH := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+
+dist-daemons:  ## Build the static daemon for linux (both arches; asserts zero NEEDED + no INTERP)
 	mkdir -p dist
-	@for arch in amd64:x86_64 arm64:aarch64; do \
+	@for arch in $(DIST_ARCH_PAIRS); do \
 	  out="$${arch%%:*}"; platform="$${arch##*:}"; \
 	  echo "→ [image] building the daemon for linux/$$out..."; \
 	  docker run --rm --platform "linux/$$out" \
 	    -v "$(CURDIR):/w" -w /w/rustd rust:1.98-alpine \
-	    sh -c 'apk add --no-cache build-base perl cmake go linux-headers >/dev/null && cargo build --profile dist --bin agentsfleetd' \
+	    sh -c 'set -e; \
+	      apk add --no-cache build-base perl cmake go linux-headers >/dev/null; \
+	      cargo build --profile dist --bin agentsfleetd; \
+	      bin=target/dist/agentsfleetd; \
+	      if readelf -d "$$bin" | grep -q " (NEEDED)"; then echo "FAIL: dynamic NEEDED entries"; exit 1; fi; \
+	      if readelf -l "$$bin" | grep -q INTERP; then echo "FAIL: INTERP present"; exit 1; fi; \
+	      echo "  static: zero NEEDED, no INTERP"' \
 	    || exit 1; \
 	  cp rustd/target/dist/agentsfleetd "dist/agentsfleetd-rs-linux-$$out"; \
 	  chmod +x "dist/agentsfleetd-rs-linux-$$out"; \
@@ -50,7 +65,19 @@ _prepare_prebuilt_linux_binaries:
 	  echo "✓ [image] dist/agentsfleetd-rs-linux-$$out ($$platform)"; \
 	done
 
-build: _prepare_prebuilt_linux_binaries ## Build production container (uses prebuilt linux binaries)
+image-check: ## Build the production image for the host arch and prove the daemon runs in it (VERIFY: runs beside test-integration-rustd)
+	@$(MAKE) dist-daemons DIST_ARCH_PAIRS="$(LOCAL_TARGETARCH):$$(uname -m)"
+	docker build --build-arg TARGETARCH=$(LOCAL_TARGETARCH) -t agentsfleetd-image-check .
+	@echo "→ [image] the daemon answers inside the image..."
+	docker run --rm agentsfleetd-image-check /usr/local/bin/agentsfleetd --version
+	@echo "→ [image] and there is no shell to answer with..."
+	@if docker run --rm --entrypoint /bin/sh agentsfleetd-image-check -c true >/dev/null 2>&1; then \
+	  echo "✗ /bin/sh exists in the image — the base is not distroless"; exit 1; \
+	else \
+	  echo "✓ no shell in the image"; \
+	fi
+
+build: dist-daemons ## Build production container (uses prebuilt linux binaries)
 	$(call _buildx,Dockerfile,$(_PROD_TAGS),)
 
 # One Dockerfile, two tag sets. `Dockerfile.dev` has not existed for some time,
@@ -58,41 +85,8 @@ build: _prepare_prebuilt_linux_binaries ## Build production container (uses preb
 # same image from `Dockerfile` and worked. Development and production differ in
 # what they are TAGGED and where they deploy, never in what is in the image;
 # a second Dockerfile would be a second thing to keep true.
-build-dev: _prepare_prebuilt_linux_binaries  ## Build development container (multi-arch)
+build-dev: dist-daemons  ## Build development container (multi-arch)
 	$(call _buildx,Dockerfile,$(_DEV_TAGS),)
-
-build-linux-alpine:  ## Compile inside Alpine with musl-native OpenSSL; asserts zero NEEDED + no INTERP (mirrors CI)
-	@echo "→ Building aarch64-linux inside Alpine (native ARM, static OpenSSL)..."
-	@docker run --rm --platform linux/arm64 \
-		-v "$(CURDIR):/src:ro" -w /tmp/build \
-		mirror.gcr.io/library/alpine:3.21 \
-		sh -c '\
-			apk add --no-cache openssl-dev openssl-libs-static ca-certificates xz wget binutils >/dev/null 2>&1 && \
-			ARCH=$$(uname -m); \
-			mkdir -p /usr/lib/$${ARCH}-linux-gnu /usr/include/$${ARCH}-linux-gnu && \
-			ln -sf /usr/lib/libssl.a /usr/lib/$${ARCH}-linux-gnu/libssl.a && \
-			ln -sf /usr/lib/libcrypto.a /usr/lib/$${ARCH}-linux-gnu/libcrypto.a && \
-			ln -sf /usr/include/openssl /usr/include/$${ARCH}-linux-gnu/openssl && \
-			cp -a /src/. . && \
-			case $$ARCH in x86_64) ZIG_ARCH=x86_64;; aarch64) ZIG_ARCH=aarch64;; *) echo "unsupported arch $$ARCH"; exit 1;; esac; \
-			ZIG_URL="https://ziglang.org/download/0.15.2/zig-$$ZIG_ARCH-linux-0.15.2.tar.xz"; \
-			echo "  fetching zig 0.15.2 for $$ZIG_ARCH..." && \
-			(cd /tmp && wget -q "$$ZIG_URL" -O zig.tar.xz && tar xf zig.tar.xz && cp zig-*/zig /usr/local/bin/ && cp -r zig-*/lib /usr/local/lib/zig) && \
-			echo "  compiling agentsfleetd (aarch64-linux, static OpenSSL)..." && \
-			zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux && \
-			for bin in zig-out/bin/agentsfleetd; do \
-				test -f "$$bin" || { echo "FAIL: $$bin not found"; exit 1; }; \
-				if readelf -d "$$bin" 2>/dev/null | grep -q " (NEEDED)"; then \
-					echo "FAIL: $$bin has dynamic NEEDED entries"; \
-					readelf -d "$$bin" | grep NEEDED; \
-					exit 1; \
-				fi; \
-				if readelf -l "$$bin" 2>/dev/null | grep -q "INTERP"; then \
-					echo "FAIL: $$bin has INTERP (dynamic linker) section"; \
-					exit 1; \
-				fi; \
-				echo "✓ $$bin: fully static (zero NEEDED, no INTERP)"; \
-			done'
 
 push: _docker_login ## Push production image (expects prebuilt binaries in dist/)
 	$(call _buildx,Dockerfile,$(_PROD_TAGS),--push)
