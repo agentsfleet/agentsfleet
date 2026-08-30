@@ -82,6 +82,10 @@ the milestone name.
 
 This table is the complete export: every family the daemon pushes over OTLP
 appears exactly once, pinned against the declared metric-family registry.
+The executable contract — kinds, number types, units, temporality, label
+keys, bounds, series policy — lives in [`docs/metrics.census.tsv`](../metrics.census.tsv);
+a registry test asserts that file's names equal this table's, so the human
+census and the machine contract cannot drift apart.
 
 Category legend: **latency** (how slow), **traffic** (how much), **errors**
 (what failed), **saturation** (how full), **health** (is the plumbing itself
