@@ -157,10 +157,10 @@ The image is distroless as a consequence rather than a preference: a static bina
 
 **The crate gains its first error type here.** Constructing an instrument set from a registry is fallible, and `docs/RUST_ERROR_STANDARD.md` lists this crate as having no fallible function today. It takes the standard's shape on the commit that ends that — not later, and not exempt for predating the rule.
 
-- **Dimension 3.1** — every family the TSV census declares is emitted under that exact name, kind, number type, unit, temporality and label keys; a family on one side only is named and fails → Test `test_metric_family_registry_parity`
+- **Dimension 3.1** — every family the TSV census declares is emitted under that exact name, kind, number type, unit, temporality and label keys; a family on one side only is named and fails → Test `test_metric_family_registry_parity` — **DONE**
 - **Dimension 3.2** — past a runner-family admission bound, memory stays constant, overflow records under `runner_id="_other"`, and ZERO data points carry `otel.metric.overflow` → Tests `test_runner_admission_other_spelling`, `test_no_sdk_overflow_under_legit_load`
 - **Dimension 3.3** — a failing exporter increments the failed-batch counter and never blocks or delays a recording call; no retry occurs → Test `test_metric_export_fails_counted_never_blocks`
-- **Dimension 3.4** — the crate's error type composes its sources by `#[from]`, and no variant's `source()` returns its own kind → Test `test_observability_error_chain_shape`
+- **Dimension 3.4** — the crate's error type composes its sources by `#[from]`, and no variant's `source()` returns its own kind → Test `test_observability_error_chain_shape` — **DONE**
 - **Dimension 3.5** — an observable callback with an invalid snapshot emits no data point (absent, never zero), and collection completes when a publisher never wrote → Test `test_observed_absent_never_zero`
 - **Dimension 3.6** — the declared cost-family budget exceeding 256 fails the build; the const assert is exercised by a compile-fail check → Test `test_cost_budget_const_assert`
 
