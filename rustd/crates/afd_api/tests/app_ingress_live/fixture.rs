@@ -274,7 +274,7 @@ impl Fixture {
 /// which a leading zero makes unparseable, and the route then answers
 /// `UZ-WH-002` for a payload that looks fine to a reader.
 ///
-/// Built from a UUIDv7's RANDOM half rather than its whole: the leading digits
+/// Built from a `UUIDv7`'s RANDOM half rather than its whole: the leading digits
 /// of a v7 are a timestamp, so two minted a millisecond apart share them.
 fn minted_installation() -> String {
     let minted = mint_id().replace('-', "");
