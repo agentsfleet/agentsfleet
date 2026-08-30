@@ -26,6 +26,8 @@ use afd_core::error_code::{self, ErrorCode};
 pub mod detail;
 mod raise;
 
+#[cfg(feature = "test-util")]
+pub use self::raise::one_of_each_kind;
 pub(crate) use self::raise::{query, row_unreadable};
 
 /// The result every fallible function in this crate returns.

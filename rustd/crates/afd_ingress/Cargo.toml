@@ -16,7 +16,11 @@ categories.workspace = true
 # the VALIDATING door rather than a bypass of it, which is the opposite of the
 # `from_parts` seams `GatePolicy` and `RepositoryBinding` carry — see
 # `Binding::stored` for why a shortcut would have nothing to shorten.
-test-util = []
+# Forwarded rather than bare: `error::one_of_each_kind` samples a queue
+# failure through `afd_redis`'s own sample builder, which lives behind that
+# crate's `test-util`. Building the sample by hand instead would let this
+# crate's idea of a Redis outage drift from Redis's.
+test-util = ["afd_redis/test-util"]
 
 [dependencies]
 # Identifiers, the instant a delivery is stamped with, and the registry codes.
