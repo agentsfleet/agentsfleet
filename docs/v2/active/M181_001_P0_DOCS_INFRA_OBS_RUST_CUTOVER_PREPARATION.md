@@ -76,6 +76,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/bench_cutover_test.sh` | CREATE | §4: its own tests — a lane that grades nothing must not look like one that passed |
 | `make/dev.mk` | EDIT | §4: `make up` built the Zig binary while §2's Dockerfile reads the Rust one; also the shared local-daemon wait |
 | `docker-compose.yml` | EDIT | §4: the healthcheck shells out to wget, which the distroless image does not carry |
+| `.githooks/post-checkout` | EDIT | §4: links the daemon env compose has always declared and nothing ever filled |
 | `make/dry.mk` | EDIT | §4: dry lane variant booting the Rust daemon |
 | `make/test-integration-rustd.mk` | EDIT | §4: the run-verdict guard moves inline as its script is swept |
 | `scripts/rustd_lane_benchmark.py` | DELETE | §4 sweep: no caller in `make/` or `.github/` |
@@ -204,6 +205,14 @@ the path is not routed at all. With two, the same roster is diffed per route ×
 method after per-request volatile fields (`date`, `x-request-id`, the body's
 `request_id`) are normalised away; without that normalisation the lane would be
 red on every run and grade nothing.
+
+**The dry lane's Rust variant is one variable, not a second suite.**
+`playwright.config.ts` declares its backend explicitly rather than falling back
+— production code throws on an unset `NEXT_PUBLIC_API_URL` — and threads
+whatever it is given into the Next server it spawns. So `dry-app-rustd` points
+that one variable at the locally-booted daemon and runs the SAME suite
+`dry-app` runs. A parallel copy would drift; an identical suite against a
+different backend is the property worth having.
 
 **Budgets refuse to be unset.** The latency budget per route class and the
 resident-set ceiling are named constants embedded in the benchmark lane, and the
@@ -410,6 +419,8 @@ Per RULE ORP, the sweep leaves no reference behind: the lane's invocations go wi
 - **`make up` was broken by §2, repaired in §4 (2026-08-30):** `make/dev.mk:52` cross-compiled the Zig daemon to `dist/agentsfleetd-linux-$(LOCAL_DOCKER_ARCH)`; `Dockerfile:39`, since §2, reads `dist/agentsfleetd-rs-linux-${TARGETARCH}`. Only `dist-daemons` writes the second name, so `make up` on a clean checkout fails at COPY — it worked locally solely because a stale artifact was present. Alongside it, `docker-compose.yml` declared a `wget` healthcheck against an image whose own header records that it carries no shell and no HTTP client. Repaired together: the local binary is now a real file target delegating to `dist-daemons` for one arch, and the healthcheck is removed with readiness left where it is acted on (Fly's `[checks.readiness]`). Cost recorded: `make up` now pays a musl release cross-compile instead of a `zig build`, which is the price of the image carrying the Rust daemon. Proven: the image built from the repaired path, the container started, and the Rust daemon ran its own preflight — where `docker build` previously died at COPY.
 
 - **The daemon half of `make up` is a PROVISIONING gap, not a §2 regression (2026-08-30):** with the COPY repaired, the container boots and preflight refuses on five knobs the compose inline block never carried — `AUTH_SESSION_CODE_PEPPER`, `OIDC_ISSUER`, `OIDC_AUDIENCE`, `CLERK_API_BASE`, `CLERK_SECRET_KEY`. This predates the port: `src/agentsfleetd/config/runtime_validate.zig:38` refuses boot on the same pepper, so the Zig daemon would have failed identically. `docs/AUTH.md` §614 names the local-dev source as `~/Projects/agentsfleet/.env`, gitignored and symlinked into worktrees, with the value in `op://ops/ZMB_CD_LOCAL_DEV/...`; that file is absent on this machine and `.githooks/post-checkout` links no daemon env at all. NOT fixed by writing placeholder values into `docker-compose.yml`: `docs/AUTH.md` §665 classes the pepper "catastrophic if disclosed" and bars it from disk, so a committed literal under that name is the wrong shape whatever its value. `LOCAL=1` stays wired and correct; `_ensure-local-daemon` now names the provisioning step when the daemon does not answer.
+
+- **The daemon env was declared and never filled (2026-08-30):** `docker-compose.yml` has always carried `.env.agentsfleetd.local` as an optional `env_file`, and `.githooks/post-checkout` linked `ui.env.local` and `runner.env.local` but never a daemon entry — so the slot existed and nothing filled it. The hook now links it, which took the boot from five environment faults to two (`CLERK_API_BASE`, `CLERK_SECRET_KEY`), both operator-provisioned. Dimension 4.3 is BUILT but UNGRADED for exactly that reason: `make dry-app-rustd` needs a daemon that answers, and `test_dry_lane_rust_variant` is graded by running it, not by reading the target.
 
 - **`LOCAL=1` on both lanes (2026-08-30):** the run-locations decision above wants the compose stack, so `make test-parity LOCAL=1` and `make bench-cutover LOCAL=1` boot it and point at it through one shared `_ensure-local-daemon` prerequisite. That target polls `/healthz` rather than trusting `docker compose up -d`, which returns when a container is STARTED and — with the healthcheck correctly gone — has nothing to wait on. NOT yet built: the two-daemon local diff the run-locations note describes needs a second compose service carrying the Zig daemon, which no target produces; single-target mode is what this half ships, and rubric R3 is the claim it makes.
 

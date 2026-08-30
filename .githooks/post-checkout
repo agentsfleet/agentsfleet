@@ -16,5 +16,12 @@ link() {  # $1 = source basename, $2 = path relative to worktree root
   mkdir -p "$(dirname "$2")"
   ln -s "$SRC/$1" "$2" && printf '✔ linked %s\n' "$2"
 }
-link ui.env.local     ui/packages/app/.env.local
-link runner.env.local .env.runner.local
+link ui.env.local         ui/packages/app/.env.local
+link runner.env.local     .env.runner.local
+# The daemon's own knobs — the pepper, the OIDC pair, the provider credential.
+# `docker-compose.yml` has always declared this path as an optional `env_file`;
+# nothing ever filled it, so `make up` brought up a daemon that refused boot on
+# five missing knobs. Refusing was correct: docs/AUTH.md classes the pepper
+# catastrophic-if-disclosed and bars it from disk, so the value belongs in a
+# linked file and never in a committed default.
+link agentsfleetd.env.local .env.agentsfleetd.local
