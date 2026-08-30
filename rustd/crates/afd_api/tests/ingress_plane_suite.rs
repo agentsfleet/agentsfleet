@@ -14,6 +14,8 @@ mod identity_signup_route;
 mod integration_approval_webhook;
 #[path = "integration_connector_events.rs"]
 mod integration_connector_events;
+#[path = "integration_ingress_live.rs"]
+mod integration_ingress_live;
 #[path = "webhook_approval_wall.rs"]
 mod webhook_approval_wall;
 #[path = "webhook_fleet_route.rs"]
