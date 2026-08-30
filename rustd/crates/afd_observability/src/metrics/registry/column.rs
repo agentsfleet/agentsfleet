@@ -28,7 +28,7 @@ pub enum Kind {
 
 impl Kind {
     /// The census spelling, so a failure reports the contract's own word.
-    pub(super) const fn spelling(self) -> &'static str {
+    pub(crate) const fn spelling(self) -> &'static str {
         match self {
             Self::Counter => "counter",
             Self::Histogram => "histogram",
