@@ -211,15 +211,22 @@ async fn two_conditional_writes_race_and_exactly_one_of_them_lands() {
         if_match: Some(tag.clone()),
         ..Patch::default()
     };
+    // Both documents differ from the STORED one, and that is load-bearing. The
+    // predicate hashes the row's own markdown, so a writer resending the stored
+    // bytes writes nothing, leaves the hash where it was, and the other writer's
+    // guard still matches — both then report success and the assertion below
+    // fails on whichever future finished first. An idempotent write is not a
+    // version moving; only two real edits make one of them a loser.
+    //
     // Bound before the join: both futures borrow their request, and a temporary
     // built inside the macro would be dropped while still held.
     let edited = conditional(TRIGGER_MD_EDITED);
-    let original = conditional(crate::support::TRIGGER_MD);
+    let rival = conditional(crate::support::TRIGGER_MD_RIVAL);
     let (first, second) = tokio::join!(
         lane.fleets
             .patch(&lane.workspace, &fleet.id, &edited, Lane::now()),
         lane.fleets
-            .patch(&lane.workspace, &fleet.id, &original, Lane::now()),
+            .patch(&lane.workspace, &fleet.id, &rival, Lane::now()),
     );
 
     let landed = usize::from(first.is_ok()) + usize::from(second.is_ok());
