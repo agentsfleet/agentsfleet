@@ -32,9 +32,9 @@ use axum::{Json, body::Bytes};
 use http::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
 
-use afd_http::handler::{FleetPath, parse_fleet_id};
 use crate::handler::{Refusal, webhook};
 use crate::services::{Services, WorkspaceApprovals as _};
+use afd_http::handler::{FleetPath, parse_fleet_id};
 
 use super::verify_platform::verified_approval;
 

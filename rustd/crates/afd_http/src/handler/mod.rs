@@ -136,5 +136,6 @@ pub const DETAIL_FLEET_ID: &str = "fleet_id must be a valid UUIDv7";
 /// A malformed refusal for a segment that is not a `UUIDv7`, so the `::uuid`
 /// cast in the statements below is never the thing that fails.
 pub fn parse_fleet_id(raw: &str) -> Result<afd_core::id::Uuid7, Refusal> {
-    afd_core::id::Uuid7::parse(raw).map_err(|_not_an_identifier| Refusal::malformed(DETAIL_FLEET_ID))
+    afd_core::id::Uuid7::parse(raw)
+        .map_err(|_not_an_identifier| Refusal::malformed(DETAIL_FLEET_ID))
 }

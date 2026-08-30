@@ -26,8 +26,8 @@ use http::{HeaderValue, StatusCode, header};
 
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
-pub use afd_http::handler::{DETAIL_FLEET_ID, FleetPath, parse_fleet_id};
 use crate::services::{Services, WorkspaceFleets as _};
+pub use afd_http::handler::{DETAIL_FLEET_ID, FleetPath, parse_fleet_id};
 
 use super::triggers;
 
@@ -143,11 +143,6 @@ pub(crate) async fn purge<D: Services>(
         .map_err(Refusal::at(EVENT_PURGE))?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
-
-/// The fleet named in the path, refused before a connection is drawn.
-///
-/// Which is what keeps the `::uuid` cast in the statements from ever being the
-/// thing that fails, leaving every error from below a genuine datastore fault.
 
 /// The PATCH the body asks for, or the refusal it earns.
 ///

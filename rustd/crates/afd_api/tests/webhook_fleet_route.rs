@@ -22,16 +22,16 @@
     reason = "a test asserts by panicking; the daemon's restriction set is the manifest's"
 )]
 
-mod harness;
+use crate::harness;
 
 use std::sync::Arc;
 
+use self::harness::webhook as signed;
+use self::harness::{Fleet, Recorded, Scripted, json_body, send_with_headers};
 use afd_core::error_code;
 use afd_fleet_lifecycle::FleetStatus;
 use afd_ingress::Surface;
 use afd_webhook::Scheme;
-use harness::webhook as signed;
-use harness::{Fleet, Recorded, Scripted, json_body, send_with_headers};
 use http::{Method, StatusCode};
 use serde_json::Value;
 

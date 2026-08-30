@@ -40,9 +40,9 @@ use axum::response::{IntoResponse as _, Response};
 use axum::{Json, body::Bytes};
 use http::{HeaderMap, StatusCode};
 
-use afd_http::handler::{FleetPath, parse_fleet_id};
 use crate::handler::{Refusal, webhook};
 use crate::services::{Services, WebhookIngress as _};
+use afd_http::handler::{FleetPath, parse_fleet_id};
 
 use super::{DETAIL_EVENT_HEADER, actor};
 
