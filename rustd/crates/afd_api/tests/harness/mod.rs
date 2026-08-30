@@ -162,11 +162,23 @@ pub(crate) const fn frozen_unix_seconds() -> i64 {
 
 /// The process key the secret store seals under.
 ///
-/// Never used to seal anything here — every write refuses at the pool, before
-/// an envelope is built — but a `Vault` cannot be CONSTRUCTED without one, which
-/// is the invariant that type exists to carry. Supplying a fixture key is how a
-/// suite honours it rather than working around it.
+/// Every router built by [`Fleet::new`] refuses at the pool before an envelope
+/// is built, so for those this is only the key a `Vault` cannot be CONSTRUCTED
+/// without — the invariant that type exists to carry. [`Fleet::live`] does
+/// reach a vault, and a suite there seals through [`vault`] under this same
+/// key, which is what makes a secret it stores openable by the router.
 const FIXTURE_KEK: [u8; 32] = [0x11; 32];
+
+/// A vault over `database`, sealing under the key the live routers open with.
+///
+/// A suite proving what a route does with a secret has to PUT one somewhere
+/// first, and the only writer that produces a row the router can open is one
+/// holding [`FIXTURE_KEK`]. Handing that key out instead would let a suite
+/// build a vault under a different one and watch every read answer `None` —
+/// which reads as "the route refuses unconfigured" and proves nothing.
+pub(crate) fn vault(database: Db) -> SecretVault {
+    SecretVault::new(database, Arc::new(Kek::from_bytes(FIXTURE_KEK)), Entropy::new())
+}
 
 /// The pepper the device-flow code digest is computed under, for the same reason.
 const FIXTURE_PEPPER: &[u8] = b"fixture-session-code-pepper";
