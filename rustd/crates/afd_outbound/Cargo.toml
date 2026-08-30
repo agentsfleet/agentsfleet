@@ -47,6 +47,13 @@ tokio-util.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# `SlackPoster` is the one poster this build ships and none of it was covered:
+# the worker suite drives a stub `Deliver`, so the real reads never run. Proving
+# it needs the two stores it actually holds — the pool the destination is read
+# from, and the vault the bot token is opened out of.
+afd_db = { workspace = true, features = ["test-util"] }
+afd_vault.workspace = true
+afd_core.workspace = true
 # `XPENDING` and `DEL` in `tests/support/outbound_harness.rs`. The library never
 # spells a Redis command itself — `afd_redis` owns every one it issues — but the
 # integration suite has to ask Redis what the worker LEFT BEHIND, and an
@@ -55,7 +62,10 @@ redis.workspace = true
 # `rt-multi-thread` because the worker is a spawned task raced against a
 # cancellation token, and a current-thread runtime interleaving the two politely
 # would prove nothing about a shutdown.
-tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "time", "test-util"] }
+# `net` and `io-util` on top of the worker suite's set: the poster is graded
+# against a loopback Slack, and a stand-in for an HTTP round trip would prove
+# nothing about the request this actually builds.
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "time", "test-util", "net", "io-util"] }
 # Installed by the integration harness so event macros evaluate their fields;
 # see `install_subscriber` for why that is a correctness concern.
 tracing-subscriber.workspace = true
