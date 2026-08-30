@@ -137,7 +137,7 @@ async fn complete(
 async fn a_completed_connect_seals_the_grant_under_the_providers_own_key() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let vendor = Vendor::answering(&slack_answer(BOT_TOKEN)).await;
+    let vendor = Vendor::answering(&[&slack_answer(BOT_TOKEN)]).await;
     let router = fixture.router(&vendor);
 
     let state = start_connect(&router, &fixture).await;
@@ -182,7 +182,7 @@ async fn a_replayed_callback_is_refused_without_redeeming_the_code_again() {
     // could replay it, and each replay would redeem the code again.
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let vendor = Vendor::answering(&slack_answer(BOT_TOKEN)).await;
+    let vendor = Vendor::answering(&[&slack_answer(BOT_TOKEN)]).await;
     let router = fixture.router(&vendor);
 
     let state = start_connect(&router, &fixture).await;
@@ -221,7 +221,14 @@ async fn a_reconnect_replaces_the_sealed_grant_rather_than_refusing() {
     // a second name would leave a runner opening whichever it found first.
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let vendor = Vendor::answering(&slack_answer(BOT_TOKEN)).await;
+    // One vendor answering two tokens in order, which is `FakeVendor`'s shape:
+    // a second server would restart the exchange count and lose the evidence
+    // that the reconnect redeemed a code of its own.
+    let vendor = Vendor::answering(&[
+        &slack_answer(BOT_TOKEN),
+        &slack_answer(REPLACEMENT_TOKEN),
+    ])
+    .await;
     let router = fixture.router(&vendor);
 
     let first = start_connect(&router, &fixture).await;
@@ -229,16 +236,14 @@ async fn a_reconnect_replaces_the_sealed_grant_rather_than_refusing() {
         complete(&router, &fixture, &first).await.status(),
         StatusCode::FOUND
     );
-    vendor.close();
 
-    let rotated = Vendor::answering(&slack_answer(REPLACEMENT_TOKEN)).await;
-    let router = fixture.router(&rotated);
     let again = start_connect(&router, &fixture).await;
     assert_eq!(
         complete(&router, &fixture, &again).await.status(),
         StatusCode::FOUND,
         "a reconnect is the same action as a connect, not a conflict"
     );
+    assert_eq!(vendor.exchanges(), 2, "each connect redeemed its own code");
 
     assert_eq!(
         fixture.secret_names().await,
@@ -256,6 +261,6 @@ async fn a_reconnect_replaces_the_sealed_grant_rather_than_refusing() {
         "the standing grant is the newer one"
     );
 
-    rotated.close();
+    vendor.close();
     fixture.cleanup().await;
 }

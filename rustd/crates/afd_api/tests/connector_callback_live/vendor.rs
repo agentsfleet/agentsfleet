@@ -21,6 +21,15 @@
 //! seal an identical grant. Nothing in the vault distinguishes that from the
 //! first connect, so the assertion carrying the property is that the token
 //! endpoint was asked exactly once.
+//!
+//! # A SEQUENCE of answers, which is the reference implementation's shape
+//!
+//! `oauth_providers_integration_test.zig`'s `FakeVendor` holds
+//! `bodies: []const []const u8` and a cursor, so consecutive requests get
+//! consecutive answers — it is how that suite drives Jira's token call and its
+//! site listing from one server. The same shape is what lets a reconnect here
+//! be one server issuing two different tokens rather than two servers, which
+//! keeps the exchange count continuous across both halves of that test.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -35,7 +44,7 @@ use tokio::task::JoinHandle;
 /// and what a provider calls its own endpoint is the registry's business.
 const TOKEN_PATH: &str = "/oauth/access";
 
-/// A token endpoint that answers one body and counts what it was asked.
+/// A token endpoint that answers a sequence of bodies and counts its callers.
 pub(super) struct Vendor {
     /// Where [`Exchange::pointed_at`] should be aimed.
     url: String,
@@ -46,15 +55,17 @@ pub(super) struct Vendor {
 }
 
 impl Vendor {
-    /// Serves `body` as JSON to every request, counting each one.
+    /// Serves `bodies` in order, then repeats the last, counting every call.
     ///
-    /// Through `axum::serve` rather than a hand-written response: this crate
+    /// Repeating rather than running out: a test that sent one request too many
+    /// should fail on the assertion it was making, not on a transport error
+    /// from a server that had nothing left to say.
+    ///
+    /// Through `axum::serve` rather than a hand-written response. This crate
     /// already depends on axum with the `tokio` feature, and framing HTTP by
     /// hand to answer a fixed document is the kind of parser RULE PSR exists to
-    /// stop. It also keeps the server serving indefinitely, which a reconnect
-    /// needs — one that answered a single request would fail that test as a
-    /// transport error rather than as whatever it was proving.
-    pub(super) async fn answering(body: &str) -> Self {
+    /// stop — the Zig wrote its own only because it had no such library.
+    pub(super) async fn answering(bodies: &[&str]) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a loopback port");
@@ -65,13 +76,18 @@ impl Vendor {
 
         let exchanges = Arc::new(AtomicUsize::new(0));
         let counted = Arc::clone(&exchanges);
-        let body = body.to_owned();
+        let answers: Vec<serde_json::Value> = bodies
+            .iter()
+            .map(|body| serde_json::from_str(body).expect("a fixture answer is JSON"))
+            .collect();
+        assert!(!answers.is_empty(), "a vendor answers at least one body");
+
         let router = Router::new().route(
             TOKEN_PATH,
             post(move || {
-                counted.fetch_add(1, Ordering::SeqCst);
-                let answer = body.clone();
-                async move { axum::Json(serde_json::from_str::<serde_json::Value>(&answer).expect("the fixture answer is JSON")) }
+                let asked = counted.fetch_add(1, Ordering::SeqCst);
+                let answer = answers[asked.min(answers.len() - 1)].clone();
+                async move { axum::Json(answer) }
             }),
         );
 
