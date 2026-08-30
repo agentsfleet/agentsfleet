@@ -33,6 +33,17 @@ serde_json.workspace = true
 sha2.workspace = true
 hex.workspace = true
 tracing.workspace = true
+# The error type's derive. The standard's shape is a `thiserror` enum with
+# `#[source]`-carrying variants, so the crate that gains its first error type
+# gains this with it.
+thiserror.workspace = true
+# The census reader. Tab delimiter, `#` comment lines, header-to-field
+# mapping, unequal-row detection and serde deserialization are all its job;
+# every error it raises already names the record and line that failed.
+csv.workspace = true
+# The column vocabularies are `#[serde(rename)]` on the enums that hold them,
+# so the accepted spellings cannot drift from the type.
+serde.workspace = true
 
 [dev-dependencies]
 # The tracer API the suites emit spans through. A dev-dependency because the
