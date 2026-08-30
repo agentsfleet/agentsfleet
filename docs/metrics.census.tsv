@@ -103,5 +103,17 @@ agentsfleet_runner_active_leases	gauge	u64	{lease}	-	runner_id	-	runner:4096	no	
 #   gen_ai.operation.name, gen_ai.provider.name, gen_ai.token.type,
 #   error.type, agentsfleet.execution.posture, agentsfleet.billing.charge.type
 #
-# shared:cost budget: 256 distinct series across all shared:cost rows —
-# const-asserted in the Rust registry, comptime-asserted in the Zig one.
+# shared:cost declares no series ceiling, and that is deliberate. Every label a
+# cost family carries is closed by construction: the evented attrs above are
+# enums, and gen_ai.request.model is a vendor-published list. The Zig daemon's
+# COST_SERIES_BUDGET = 256 sized a static array in an aggregator hand-rolled
+# because Zig has no OpenTelemetry SDK; it was never derived from these rows
+# (otel_metrics_families.zig:246 excludes cost families from that arithmetic
+# outright). The Rust SDK allocates per stream, so the constraint is gone, and
+# a cap here could only fire by folding a real model's spend into an overflow
+# bucket — losing the per-model cost attribution these families exist to give.
+# The SDK's own 2000-per-stream default remains as a backstop that Dimension
+# 3.2 requires never to fire.
+#
+# runner:<n> is the exception, and the only one: runner_id is supplied by the
+# customer spinning up runners, so it is bounded by admission or not at all.
