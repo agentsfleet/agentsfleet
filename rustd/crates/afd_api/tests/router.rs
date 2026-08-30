@@ -283,9 +283,12 @@ const fn is_mounted(route: Route) -> bool {
             )
             | Route::RunnerOps(_)
             | Route::Admin(_)
-            // The device-flow login surface only. The identity-provider
-            // delivery stays unmounted: it is proven by a Svix signature
-            // rather than by a bearer, and its handler is not ported.
+            // The device-flow login surface, plus the identity-provider
+            // delivery beside it. That one is proven by a Svix signature
+            // rather than by a bearer, so it mounts through the Auth family's
+            // tenant-then-ingress fallthrough — the same shape the connector
+            // family already used. It answers 405 to the GET this loop sends,
+            // which is a served path refusing a method, not an absent one.
             | Route::Auth(
                 AuthRoute::CreateSession
                     | AuthRoute::PollSession
@@ -293,6 +296,7 @@ const fn is_mounted(route: Route) -> bool {
                     | AuthRoute::VerifySession
                     | AuthRoute::DeleteSession
                     | AuthRoute::DeleteAllSessions
+                    | AuthRoute::IdentityEventClerk
             )
             // M180 §2 and §3's signed ingress, and §4's connector family —
             // both mounts are total, so no verb in either is unserved. Only
