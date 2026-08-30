@@ -158,7 +158,8 @@ impl Connectors {
     /// Jira's grant, with the site it is scoped to resolved first.
     async fn read_jira(&self, body: &Value, connected_at: UnixMillis) -> Result<Grant> {
         let access_token = text(body, "access_token").ok_or_else(error::exchange_unreadable)?;
-        let site = jira::resolve(&self.client, self.jira_endpoint(), &access_token).await?;
+        let site =
+            jira::resolve(&self.client, self.exchange.pinned_endpoint(), &access_token).await?;
 
         let mut extras = Map::new();
         extras.insert(jira::HANDLE_CLOUD_ID.into(), site.cloud_id.into());
