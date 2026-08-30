@@ -14,8 +14,11 @@ categories.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks the direct `Schedule` constructor the sibling crate's
 # route suites drive their cases through; the production door stays the row
-# reader, which is the one that VALIDATES.
-test-util = []
+# reader, which is the one that VALIDATES. It also unlocks `one_of_each_kind`,
+# which needs the same seam in the crates whose errors this one wraps — most of
+# these kinds cannot be provoked on demand, and a pool does not exhaust itself
+# politely.
+test-util = ["afd_db/test-util", "afd_redis/test-util"]
 
 [dependencies]
 # Identifiers, the instant a row is stamped with, and the registry codes.

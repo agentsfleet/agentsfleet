@@ -52,3 +52,80 @@ pub(crate) fn upstream_unreadable() -> Error {
 pub(crate) fn upstream_refused(status: u16) -> Error {
     ErrorKind::UpstreamRefused { status }.into()
 }
+
+/// One error of every kind, for tests that walk the whole surface.
+///
+/// The M-TEST-UTIL seam, and the same argument `afd_db::error` makes for its
+/// own: `Display`, `code()`, `detail()` and `source()` are what a human reads
+/// while something is already going wrong, and most of these kinds cannot be
+/// provoked from a test on demand — an unreachable scheduler does not become
+/// unreachable politely. These are the values the production paths build,
+/// constructed directly.
+///
+/// The wrapped errors are real ones from their own crates rather than
+/// stand-ins, because the property under test is the CHAIN: a source that is
+/// fabricated here could not catch an `Error` that repeated its own message.
+///
+/// # Panics
+/// When a sibling crate stops refusing an input this builder relies on being
+/// refused — a non-hex key, an identifier that is not one, an unparseable URL.
+/// That is a change in that crate's contract rather than a runtime condition,
+/// and stopping here names it at the sample rather than at whichever assertion
+/// happens to read the wrong value first.
+#[cfg(feature = "test-util")]
+#[must_use]
+#[expect(
+    clippy::expect_used,
+    reason = "a sample builder whose own preconditions fail should stop the suite"
+)]
+pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
+    let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
+    let queue = afd_redis::error::one_of_each_kind()
+        .into_iter()
+        .next()
+        .expect("afd_redis declares at least one kind")
+        .1;
+    let identifier =
+        afd_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
+    let shape =
+        afd_core::id::Uuid7::parse("not-an-identifier").expect_err("a non-identifier is refused");
+    // A URL the builder rejects, so a `reqwest::Error` exists without a request
+    // ever leaving the process — this suite reaches no network.
+    let unreachable = reqwest::Client::new()
+        .get("http://[")
+        .build()
+        .expect_err("an unparseable URL is refused before it is sent");
+
+    vec![
+        (
+            "datastore",
+            ErrorKind::Datastore { source: datastore }.into(),
+        ),
+        (
+            "query",
+            query("reading the schedule row")(sqlx::Error::RowNotFound),
+        ),
+        (
+            "identifier",
+            ErrorKind::Identifier { source: identifier }.into(),
+        ),
+        (
+            "identifier shape",
+            ErrorKind::IdentifierShape { source: shape }.into(),
+        ),
+        ("queue", ErrorKind::Queue { source: queue }.into()),
+        (
+            "upstream unreachable",
+            ErrorKind::UpstreamUnreachable {
+                source: unreachable,
+            }
+            .into(),
+        ),
+        ("upstream refused", upstream_refused(429)),
+        ("upstream unreadable", upstream_unreadable()),
+        (
+            "row unreadable",
+            row_unreadable(super::COLUMN_DESIRED_STATUS),
+        ),
+    ]
+}
