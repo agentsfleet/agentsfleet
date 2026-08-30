@@ -159,5 +159,11 @@ fn unverified() -> Refusal {
 /// and an operator asking "why did my schedule not run" has only this line.
 fn dropped(reason: &str) -> Response {
     tracing::info!(reason, event = EVENT_DROPPED);
-    (StatusCode::OK, Json(webhook::Ignored { ignored: reason.into() })).into_response()
+    (
+        StatusCode::OK,
+        Json(webhook::Ignored {
+            ignored: reason.into(),
+        }),
+    )
+        .into_response()
 }

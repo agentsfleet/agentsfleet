@@ -75,7 +75,12 @@ async fn an_approved_callback_resolves_the_gate_and_continues_the_run() {
     fixture.seed().await;
     let router = fixture.router().await;
 
-    let answered = callback(&router, &fixture.fleet, &payload(&fixture.action, "approve")).await;
+    let answered = callback(
+        &router,
+        &fixture.fleet,
+        &payload(&fixture.action, "approve"),
+    )
+    .await;
     let status = answered.status();
     let document = json_body(answered).await;
     assert_eq!(status, StatusCode::OK, "{document}");

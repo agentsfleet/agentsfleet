@@ -177,7 +177,11 @@ const FIXTURE_KEK: [u8; 32] = [0x11; 32];
 /// build a vault under a different one and watch every read answer `None` —
 /// which reads as "the route refuses unconfigured" and proves nothing.
 pub(crate) fn vault(database: Db) -> SecretVault {
-    SecretVault::new(database, Arc::new(Kek::from_bytes(FIXTURE_KEK)), Entropy::new())
+    SecretVault::new(
+        database,
+        Arc::new(Kek::from_bytes(FIXTURE_KEK)),
+        Entropy::new(),
+    )
 }
 
 /// The pepper the device-flow code digest is computed under, for the same reason.

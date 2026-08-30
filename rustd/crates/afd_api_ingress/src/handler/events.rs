@@ -237,7 +237,13 @@ fn dropped(provider: Provider, body: &Bytes, reason: &str) -> Response {
         reason,
         event = EVENT_DROPPED,
     );
-    (StatusCode::OK, Json(webhook::Ignored { ignored: reason.into() })).into_response()
+    (
+        StatusCode::OK,
+        Json(webhook::Ignored {
+            ignored: reason.into(),
+        }),
+    )
+        .into_response()
 }
 
 #[cfg(test)]

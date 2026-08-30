@@ -30,6 +30,7 @@
 
 #![expect(
     clippy::expect_used,
+    clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
@@ -62,7 +63,9 @@ const UNREACHABLE_BASE: &str = "https://qstash.unreachable.test/v2";
 
 /// The scheduler this lane talks to, or `None` outside the lane.
 fn live() -> Option<(String, String)> {
-    let url = std::env::var(LIVE_URL_KNOB).ok().filter(|v| !v.is_empty())?;
+    let url = std::env::var(LIVE_URL_KNOB)
+        .ok()
+        .filter(|v| !v.is_empty())?;
     let token = std::env::var(LIVE_TOKEN_KNOB)
         .ok()
         .filter(|v| !v.is_empty())?;
@@ -148,8 +151,8 @@ async fn the_scheduler_key_is_adopted_and_a_delete_names_it() {
         .expect("the lane's Postgres must answer")
         .expect("an unheld schedule is claimable");
 
-    let reconciler = against_live(&lane, url, token);
-    let reconciled = reconciler
+    let service = against_live(&lane, url, token);
+    let reconciled = service
         .reconcile(&held, &claim, CronLane::now())
         .await
         .expect("a reachable scheduler is not a datastore failure");
@@ -187,7 +190,7 @@ async fn the_scheduler_key_is_adopted_and_a_delete_names_it() {
         .expect("the lane's Postgres must answer")
         .expect("the schedule is claimable for deletion");
 
-    let removed = reconciler
+    let removed = service
         .reconcile(&deleting, &claim, CronLane::now())
         .await
         .expect("a reachable scheduler is not a datastore failure");

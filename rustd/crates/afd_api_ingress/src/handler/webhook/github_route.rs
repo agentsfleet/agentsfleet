@@ -106,5 +106,11 @@ pub(crate) async fn receive<D: Services>(
 
 /// The 200 a deliberately-dropped delivery answers with.
 fn ignored(reason: &'static str) -> Response {
-    (StatusCode::OK, Json(webhook::Ignored { ignored: reason.into() })).into_response()
+    (
+        StatusCode::OK,
+        Json(webhook::Ignored {
+            ignored: reason.into(),
+        }),
+    )
+        .into_response()
 }

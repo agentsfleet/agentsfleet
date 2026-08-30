@@ -41,8 +41,8 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
-use afd_db::Db;
 use afd_crypto::entropy::Entropy;
+use afd_db::Db;
 
 use crate::sql::signup as sql;
 use crate::workspace::name;
@@ -225,7 +225,10 @@ impl Signups {
                 "a replay restored a wallet row that had gone missing"
             );
         }
-        tracing::info!(event = "signup_replay", "this subject already had an account");
+        tracing::info!(
+            event = "signup_replay",
+            "this subject already had an account"
+        );
         Ok(existing)
     }
 
@@ -294,7 +297,10 @@ impl Signups {
 
         transaction.commit().await.map_err(&raise)?;
 
-        tracing::info!(event = "signup_bootstrapped", "a personal account was opened");
+        tracing::info!(
+            event = "signup_bootstrapped",
+            "a personal account was opened"
+        );
         Ok(Bootstrapped {
             user_id: user_id.as_str().to_owned(),
             tenant_id: tenant_id.as_str().to_owned(),

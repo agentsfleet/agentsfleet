@@ -266,23 +266,7 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
     // Set and unparseable is a typo, and a typo here would otherwise surface as
     // a dashboard that silently refuses every stream — the furthest possible
     // point from the mistake. Unset is the default, which is most deployments.
-    let sse_max_streams = env
-        .get(SSE_MAX_STREAMS_KNOB)
-        .map(|raw| raw.trim().to_owned())
-        .filter(|raw| !raw.is_empty())
-        .map_or(Some(SSE_MAX_STREAMS_DEFAULT), |raw| {
-            classify(
-                &mut faults,
-                true,
-                SSE_MAX_STREAMS_KNOB,
-                WHY_SSE_MAX_STREAMS,
-                raw.parse::<usize>()
-                    .ok()
-                    .filter(|streams| *streams > 0)
-                    .ok_or(WHY_SSE_MAX_STREAMS),
-            )
-        })
-        .unwrap_or(SSE_MAX_STREAMS_DEFAULT);
+    let sse_max_streams = read::sse_max_streams(env, &mut faults);
     // Absent is analytics off, and it is not a fault: a deployment that reports
     // nothing is the normal case, and refusing to boot over an unset key would
     // make every developer configure a product-analytics project to run the

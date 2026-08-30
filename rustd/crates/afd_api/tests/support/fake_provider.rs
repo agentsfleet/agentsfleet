@@ -85,7 +85,10 @@ impl FakeProvider {
             .iter()
             .map(|body| serde_json::from_str(body).expect("a fixture answer is JSON"))
             .collect();
-        assert!(!answers.is_empty(), "a fake provider answers at least one body");
+        assert!(
+            !answers.is_empty(),
+            "a fake provider answers at least one body"
+        );
 
         let router = Router::new().route(
             TOKEN_PATH,

@@ -25,8 +25,8 @@ use afd_redis::Redis;
 use afd_vault::{SecretBody, SecretName};
 use sqlx::Row as _;
 
-use super::harness;
 use super::fake_provider::FakeProvider;
+use super::harness;
 
 /// The vault key this deployment's connect-state signing secret is held under.
 const STATE_KEY: &str = afd_http::services::APPROVAL_IDENTITY;
@@ -98,8 +98,11 @@ impl Fixture {
 
     pub(super) async fn seed(&self) {
         self.seed_rows().await;
-        self.seal(STATE_KEY, &format!(r#"{{"{SECRET_FIELD}":"{STATE_SECRET}"}}"#))
-            .await;
+        self.seal(
+            STATE_KEY,
+            &format!(r#"{{"{SECRET_FIELD}":"{STATE_SECRET}"}}"#),
+        )
+        .await;
         self.seal(
             &Provider::Slack.app_key(),
             &format!(r#"{{"client_id":"{CLIENT_ID}","client_secret":"{CLIENT_SECRET}"}}"#),
@@ -190,13 +193,13 @@ impl Fixture {
         sqlx::query(
             "SELECT key_name FROM vault.secrets WHERE workspace_id = $1::uuid ORDER BY key_name",
         )
-            .bind(self.workspace.as_str())
-            .fetch_all(&mut *connection)
-            .await
-            .expect("the workspace's secret names read")
-            .iter()
-            .map(|row| row.get("key_name"))
-            .collect()
+        .bind(self.workspace.as_str())
+        .fetch_all(&mut *connection)
+        .await
+        .expect("the workspace's secret names read")
+        .iter()
+        .map(|row| row.get("key_name"))
+        .collect()
     }
 
     pub(super) async fn cleanup(self) {
