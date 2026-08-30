@@ -36,10 +36,10 @@ use crate::app::PlatformApp;
 use crate::error::Result;
 use crate::exchange::Exchange;
 use crate::grant::Grants;
+use crate::oauth;
 use crate::provider::Provider;
 use crate::registry::Archetype;
 use crate::state::{self, Rejected, Verified, nonce};
-use crate::{jira, oauth};
 
 /// Where a person is sent to consent, or why they cannot be.
 #[derive(Debug, Clone)]
@@ -118,8 +118,6 @@ pub struct Connectors {
     pub(crate) queue: Redis,
     /// Where a nonce is drawn from.
     pub(crate) entropy: Entropy,
-    /// Where Jira's site listing is read, when a lane pointed it somewhere.
-    pub(crate) jira_endpoint_override: Option<String>,
 }
 
 impl Connectors {
@@ -140,24 +138,7 @@ impl Connectors {
             client,
             queue,
             entropy,
-            jira_endpoint_override: None,
         }
-    }
-
-    /// The same flow, with Jira's site listing pointed at one endpoint.
-    #[must_use]
-    pub fn with_jira_endpoint(self, endpoint: String) -> Self {
-        Self {
-            jira_endpoint_override: Some(endpoint),
-            ..self
-        }
-    }
-
-    /// Where Jira's site listing is read for this deployment.
-    pub(crate) fn jira_endpoint(&self) -> &str {
-        self.jira_endpoint_override
-            .as_deref()
-            .unwrap_or(jira::ACCESSIBLE_RESOURCES)
     }
 
     /// Starts a connect: a remembered nonce, a signed state, a consent URL.

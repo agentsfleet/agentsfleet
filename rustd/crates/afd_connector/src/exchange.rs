@@ -93,6 +93,17 @@ impl Exchange {
         }
     }
 
+    /// Where a lane pointed this exchange, if it pointed it anywhere.
+    ///
+    /// Narrow on purpose, where a `client()` accessor would not be (see
+    /// [`Self::client`]): what a provider's SECOND call needs is not this
+    /// exchange's client but the host a lane pinned, so every host one connect
+    /// dials moves together. [`crate::endpoint::redirected`] is what composes
+    /// on it, and the module note there is why one knob rather than two.
+    pub(crate) fn pinned_endpoint(&self) -> Option<&str> {
+        self.endpoint_override.as_deref()
+    }
+
     /// The same exchange, with every call pointed at one endpoint.
     #[must_use]
     pub fn pointed_at(self, endpoint: String) -> Self {

@@ -20,10 +20,11 @@
 
 use serde_json::Value;
 
+use crate::endpoint;
 use crate::error::{self, Result};
 
 /// Where the sites a grant reaches are listed.
-pub const ACCESSIBLE_RESOURCES: &str = "https://api.atlassian.com/oauth/token/accessible-resources";
+const ACCESSIBLE_RESOURCES: &str = "https://api.atlassian.com/oauth/token/accessible-resources";
 
 /// The header the freshly minted access token is presented in.
 const HEADER_AUTHORIZATION: &str = "authorization";
@@ -62,14 +63,24 @@ pub struct Site {
 
 /// The site this access token reaches.
 ///
+/// Takes the host a lane pinned rather than a URL, so a call site cannot hand
+/// this an endpoint of its own: where the listing lives is Atlassian's fact and
+/// belongs here, beside the fields it is parsed for. `jira/callback.zig:87`
+/// draws the same line — the path is the provider file's, the origin is the
+/// deployment's one override.
+///
 /// # Errors
 /// Reports an Atlassian that could not be reached, one that answered and
 /// refused, and an answer carrying no site — the last is a grant that
 /// authorized nothing, which is indistinguishable from a failed exchange as far
 /// as what the person should do about it.
-pub async fn resolve(client: &reqwest::Client, endpoint: &str, access_token: &str) -> Result<Site> {
+pub async fn resolve(
+    client: &reqwest::Client,
+    pinned: Option<&str>,
+    access_token: &str,
+) -> Result<Site> {
     let answer = client
-        .get(endpoint)
+        .get(endpoint::redirected(ACCESSIBLE_RESOURCES, pinned))
         .header(
             HEADER_AUTHORIZATION,
             format!("{BEARER_PREFIX}{access_token}"),

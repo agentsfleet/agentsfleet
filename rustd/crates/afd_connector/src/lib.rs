@@ -55,6 +55,7 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
 mod complete;
+mod endpoint;
 
 pub mod app;
 pub mod callback;
