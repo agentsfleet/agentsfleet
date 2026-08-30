@@ -1,5 +1,8 @@
 [package]
 name = "afd_observability"
+# One test binary, declared rather than discovered. See
+# `tests/observability_suite.rs` and `docs/architecture/testing.md`.
+autotests = false
 description = "The attribute vocabulary and export machinery for this daemon's push-only telemetry."
 version.workspace = true
 edition.workspace = true
@@ -53,3 +56,7 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
 [lints]
 workspace = true
+
+[[test]]
+name = "observability_suite"
+path = "tests/observability_suite.rs"

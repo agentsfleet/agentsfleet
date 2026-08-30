@@ -546,7 +546,20 @@ octocrab = { version = "0.54.1", default-features = false, features = [
 # an endpoint — a transport built here for nobody would be a dependency with no
 # caller.
 opentelemetry = { version = "0.32.0", default-features = false, features = ["trace"] }
-opentelemetry_sdk = { version = "0.32.1", default-features = false, features = ["trace", "rt-tokio"] }
+opentelemetry_sdk = { version = "0.32.1", default-features = false, features = [
+    "trace",
+    "rt-tokio",
+    "metrics",
+    # Bound instruments resolve a family's attributes ONCE at bind time, so a
+    # hot recording call does no per-call attribute lookup. Experimental on a
+    # pinned SDK, taken deliberately: the alternative is an attribute hash on
+    # every request. Bound gauges do not exist in 0.32 and nothing is designed
+    # against them. Checked before adopting: `with_cardinality_limit` is NOT
+    # behind this or any feature, while `with_allowed_attribute_keys` IS
+    # (`spec_unstable_metrics_views`) — which is why the typed layer, not a
+    # View, is what constrains attribute keys here.
+    "experimental_metrics_bound_instruments",
+] }
 
 # `CancellationToken`, which is what a supervised task is cancelled BY. Chosen
 # over a shared `AtomicBool` for one reason that matters: a token is
