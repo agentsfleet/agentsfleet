@@ -67,10 +67,6 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/cutover/probes.sh` | EDIT | §4: probes for this milestone's rubric rows |
 | `docs/architecture/runner_fleet.md` | EDIT | §4: production-shape note — serving binary and rollback posture |
 | `public/openapi.json` | EDIT | §1: regenerated from the daemon rather than hand-maintained |
-| `docker/builder/Dockerfile` | CREATE | §5: the musl builder, with the toolchain baked as layers instead of installed per build |
-| `.github/workflows/builder-image.yml` | CREATE | §5: publishes that builder for both linux arches, by digest |
-| `make/build.mk` | EDIT | §5: `dist-daemons` consumes the published builder rather than installing a toolchain each run |
-| `audits/builder-image-pin.sh` | CREATE | §5: the builder is referenced by digest, never by a mutable tag |
 
 ## Applicable Rules
 
@@ -125,7 +121,28 @@ Two consequences. The committed OpenAPI document now has nothing generating or g
 
 The Rust daemon emits no telemetry today, so §4's continuity dimension cannot pass as written: metric-family continuity across the swap is unprovable when one side of the boundary exports nothing.
 
-M176 shipped the machinery — the attribute vocabulary, the route-template span layer, and the bounded export wrapper with its drop counter — and M181_001 shipped the metrics pipeline. What neither shipped is the transport, because an endpoint is configuration and those crates have none. The crate says so itself. Confirming evidence: no OTLP import appears anywhere under the daemon's source, and the export task is inventoried as supervised but spawned only in a test, as a stub that waits for cancellation. Boot never spawns it.
+M176 shipped the machinery — the attribute vocabulary, the route-template span layer, and the bounded export wrapper with its drop counter — and M181_001 shipped the metrics pipeline's RECEIVING half: the registry graded against `docs/metrics.census.tsv`, the error type, the snapshot cells, the counting exporter and the admission spelling.
+
+**Two things are missing, not one, and this section owns both.** The transport is the obvious one — an endpoint is configuration and those crates have none. The other is that nothing PRODUCES a measurement: `afd_observability::metrics` has zero callers outside its own crate, while the Zig daemon emits from 38 production files across nine subsystems for the 71 families the census declares. So the pipeline has a graded shape and no input. Neither half is observable without the other — a producer with no transport emits into a process nobody can read, and a transport with no producer carries nothing — which is why they ship together here rather than one milestone apart.
+
+**The span half is one site and one vocabulary.** The Zig daemon opens spans in
+exactly two production files: `http/server.zig`, whose per-request server span
+M176 already ported to `afd_api/src/router/trace.rs`, and
+`fleet_runtime/metering.zig`, whose `SPAN_FLEET_DELIVERY` has no Rust
+counterpart. That span is SYNTHESIZED, not scoped — Zig builds it retro-dated
+from a recorded start epoch plus a capped wall duration, called from
+`fleet/service_report.zig`, whose Rust counterpart is
+`afd_api_runner/src/handler/runner/report.rs`. A scope-based `#[instrument]`
+port would be the wrong shape.
+
+Under it sits the vocabulary: `afd_observability::semconv` carries 6 constants
+against the Zig module's 74, and the 68 missing ones are precisely the
+GenAI/cost/fleet keys the delivery span's attributes and the census's label
+columns are made of. They land HERE rather than in M181_001 because constants
+ahead of their consumers are dead code at write time (RULE NDC) — the
+vocabulary and the emit that uses it have to arrive together.
+
+**The producers are NOT a file-for-file port.** Zig's seventeen `http/` emit sites are seventeen hand-placed call sites; the Rust equivalent is a small number of tower layers where one layer covers every route. The pool families are the same story: `afd_db` and `afd_redis` already expose pool state, so those are SDK observable-gauge callbacks reading a snapshot, not eight hand-placed increments. Porting the call-site COUNT would import a structure the SDK exists to replace. The crate says so itself. Confirming evidence: no OTLP import appears anywhere under the daemon's source, and the export task is inventoried as supervised but spawned only in a test, as a stub that waits for cancellation. Boot never spawns it.
 
 **The transport is a NEW dependency.** The metrics feature was a flag on a crate already in the lock; the OTLP exporter is not in the lock at all. Adding it brings a protocol-encoding and HTTP-client subtree. The alternative — a small exporter over the workspace's existing HTTP client, which is what the Zig daemon does — is a real option in a workspace that audits its tree this carefully, and it is a PLAN decision rather than an EXECUTE discovery. The default is the published exporter over its HTTP transport, matching the wire path the Zig daemon already posts to, which keeps the gRPC stack out of the tree.
 
@@ -133,6 +150,9 @@ M176 shipped the machinery — the attribute vocabulary, the route-template span
 
 **All three signals, including logs.** The architecture document records that the daemon's logs ride the bounded exporter as well as stderr. A transport that carries metrics and spans but not logs would take the log backend dark at the swap with nothing to catch it, so the log signal is part of this section and is graded on event-name continuity, per the logging standard's port rule. Stderr stays logfmt regardless: it is the path that works before the exporter exists and after it fails.
 
+- **Dimension 2.0a** — the attribute vocabulary is complete: every attribute key the census's label columns name, and every key the delivery span carries, resolves to a `semconv` constant rather than a string literal → Test `test_semconv_covers_every_census_label`
+- **Dimension 2.0b** — the fleet-delivery span is emitted where a runner reports completion, carrying operation, agent, provider, model, token counts, posture, workspace, tenant and event → Test `test_delivery_span_attributes`
+- **Dimension 2.0** — every census family has a producer: each family the registry declares is recorded by a call site the daemon actually reaches, and a family with no producer fails naming it → Test `test_every_census_family_has_a_producer`
 - **Dimension 2.1** — boot constructs the transport from configuration and supervises the flush loop under the inventoried task name; the daemon's real inventory equals its declared background task set, and the task joins on termination → Test `test_boot_supervises_otlp_export`
 - **Dimension 2.2** — the standard knobs configure endpoint, headers, protocol and timeout, and the vendor spellings still resolve as aliases with the standard name winning when both are set → Test `test_otlp_endpoint_knob_precedence`
 - **Dimension 2.3** — with no endpoint configured the daemon boots and serves, exporting nothing; with an unreachable one, request latency is unchanged and the drop counter climbs → Test `test_export_absent_and_unreachable`
@@ -167,54 +187,6 @@ The runbook carries the **declared-divergence register** M181_001 seeded, so a p
 - **Dimension 4.3** — an older binary pointed at a newer ledger refuses rather than reaping, and the rollback path invokes no migration → Test `test_rollback_carries_no_migrate_and_refuses`
 - **Dimension 4.4** — every runbook probe is a copy-paste command that passes on staging post-swap, and every rubric row of the merged milestones is probe-tagged or manifest-declared → Test `test_runbook_probes`
 - **Dimension 4.5** — metric, span and log families are continuous across the swap: no renamed series, no dropped family, dashboards unbroken → Test `test_signal_continuity`
-
-### §5 — The musl builder, baked once instead of installed every time
-
-**The image choice is settled. Do not re-litigate it.** `make/build.mk` already
-compiles inside `rust:1.98-alpine`, and an independent review (Eywa, 2026-08-30)
-arrived at `rust:1.98.0-alpine3.24` — the same image family. Alpine is musl
-natively and the official Rust image publishes both amd64 and arm64. This
-section is not "move to Alpine"; that shipped in M181_001 §2.
-
-**What costs time is the `apk add`, not the base.** Every `dist-daemons`
-invocation runs
-
-    docker run --rm --platform linux/$arch ... rust:1.98-alpine \
-      sh -c 'apk add --no-cache build-base perl cmake go linux-headers; cargo build ...'
-
-inside a throwaway container, so the toolchain is fetched and installed again on
-every build, for every architecture, and nothing is cached between them. Baking
-those packages into a published image makes them layers the daemon pulls once.
-Measured on an Apple-silicon workstation, a cold single-architecture
-`make dist-daemons` — which `make up` now depends on — took about eleven
-minutes.
-
-**Pin the builder by DIGEST, not by tag.** `rust:1.98-alpine` is mutable. This
-repository already refuses mutable references for GitHub Actions
-(`audits/gh-actions-runtime.sh`; `check-gh-actions-valid` reports "17 distinct
-pins — all immutable"), and an image that decides which compiler produces the
-shipped binary is owed the same rule: a tag that moves under a release is a
-different binary nobody chose.
-
-**Publish both architectures, because emulation is the other tax.**
-`docker run --platform linux/amd64` on an arm64 host runs the entire compile
-under QEMU. A builder published for both arches lets each host compile natively.
-
-**The static assertions are the contract, not the image.** `dist-daemons`
-asserts zero `NEEDED` entries and no `INTERP` on the output. Those two
-assertions move with the recipe and must keep failing the build, whatever
-produces the binary — they are what make "static" a fact rather than a claim.
-
-**If Alpine ever fights a native dependency**, the escape hatch is
-`ghcr.io/rust-cross/rust-musl-cross` (Ubuntu builder, static musl output).
-Explicitly NOT `clux/muslrust`: it removed OpenSSL and `libpq` in 2025, so it is
-no longer the kitchen-sink musl environment its reputation suggests. Take the
-hatch only against a named linker failure, never pre-emptively.
-
-- **Dimension 5.1** — the published builder carries the toolchain as layers, and a build inside it installs no packages → Test `test_builder_installs_nothing`
-- **Dimension 5.2** — the builder is referenced by digest everywhere it is referenced; a mutable tag fails the gate naming the file → Test `test_builder_pinned_by_digest`
-- **Dimension 5.3** — the builder is published for both linux architectures, and each host resolves its own without emulation → Test `test_builder_is_multi_arch`
-- **Dimension 5.4** — the binary out of the published builder is still static: zero `NEEDED`, no `INTERP`, and a seeded dynamic link fails the build → Test `test_dist_binary_stays_static`
 
 ## Parallelization & execution map
 
@@ -301,10 +273,6 @@ No product-analytics changes.
 | 4.2 | e2e | `test_rollback_rehearsal` | a staged swap back is verified by the probe runner exiting 0 |
 | 4.3 | e2e (negative) | `test_rollback_carries_no_migrate_and_refuses` | the rollback section invokes no migration; a binary seeded with a shortened migration set, pointed at the full ledger, refuses and leaves the ledger unchanged |
 | 4.4 | e2e | `test_runbook_probes` | the probe runner passes post-swap on staging; every merged rubric row is probe-tagged or manifest-declared, and every probe carries a row tag |
-| 5.1 | integration | `test_builder_installs_nothing` | a build inside the published builder emits no `apk add` and no package fetch; removing a baked package fails the build naming it |
-| 5.2 | unit (negative) | `test_builder_pinned_by_digest` | every builder reference is `@sha256:…`; a seeded tag reference fails naming the file and the line |
-| 5.3 | unit | `test_builder_is_multi_arch` | the published manifest lists linux/amd64 and linux/arm64; a single-arch manifest fails |
-| 5.4 | integration (negative) | `test_dist_binary_stays_static` | the output has zero `NEEDED` and no `INTERP`; a seeded dynamic dependency fails the build |
 | 4.5 | integration | `test_signal_continuity` | series names and labels are identical across the swap boundary for all three signals |
 
 ## Acceptance Rubric (single scoring surface)
@@ -315,7 +283,6 @@ No product-analytics changes.
 | R2 | All three signals leave the daemon (§2) | `cd rustd && cargo test --package agentsfleetd otlp_` | exit 0 | P0 | |
 | R3 | Whole-system soak green (§3) | `make test-parity BASE_URL=<rust>` + `make dry-app` (Rust variant) + `make test-handoff` | exit 0 each | P0 | |
 | R4 | Budgets hold (§3) | `make bench-cutover` | exit 0 | P0 | |
-| R6 | The builder is baked, pinned and multi-arch (§5) | `bash audits/builder-image-pin.sh && make dist-daemons` | exit 0 each; no package install in the build log | P1 | |
 | R5 | Rollback rehearsed and probes green (§4) | `bash playbooks/cutover/probes.sh` on staging, post-swap and post-rollback | exit 0 both runs | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |

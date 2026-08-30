@@ -24,7 +24,7 @@ endif
 # `dist/agentsfleetd-rs-linux-$(TARGETARCH)`. Two names for one slot, so
 # `make up` built one file and the image build looked for another and failed at
 # COPY. It survived locally only while a stale artifact from an earlier
-# `make dist-daemons` happened to be sitting in dist/.
+# `make _dist-daemons` happened to be sitting in dist/.
 LOCAL_DAEMON_BINARY := dist/agentsfleetd-rs-linux-$(LOCAL_DOCKER_ARCH)
 
 # A real file target with real prerequisites, not a phony that rebuilds blindly:
@@ -35,7 +35,7 @@ RUSTD_SOURCES := $(shell find rustd/crates -name '*.rs' 2>/dev/null) rustd/Cargo
 
 $(LOCAL_DAEMON_BINARY): $(RUSTD_SOURCES)
 	@echo "Preparing the local daemon for linux/$(LOCAL_DOCKER_ARCH)..."
-	@$(MAKE) --no-print-directory dist-daemons \
+	@$(MAKE) --no-print-directory _dist-daemons \
 	  DIST_ARCH_PAIRS=$(LOCAL_DOCKER_ARCH):$(LOCAL_DIST_PLATFORM)
 
 up: $(LOCAL_DAEMON_BINARY) ## Start all services and tail app logs
