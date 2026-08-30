@@ -5,6 +5,8 @@
 
 mod harness;
 
+#[path = "connector_events_route.rs"]
+mod connector_events_route;
 #[path = "webhook_approval_wall.rs"]
 mod webhook_approval_wall;
 #[path = "webhook_fleet_route.rs"]
