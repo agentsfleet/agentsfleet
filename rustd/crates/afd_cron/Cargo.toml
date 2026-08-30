@@ -60,6 +60,13 @@ tracing.workspace = true
 philiprehberger-cron-parser = "0.3.0"
 
 [dev-dependencies]
+# The fire-token suite MINTS tokens to prove the wall refuses them: a fixture
+# string could only ever assert one shape, and every negative case here is a
+# token that differs from a good one in exactly one claim.
+base64.workspace = true
+jsonwebtoken.workspace = true
+serde.workspace = true
+sha2.workspace = true
 tokio.workspace = true
 
 [lints]
