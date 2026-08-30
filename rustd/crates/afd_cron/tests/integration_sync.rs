@@ -62,14 +62,26 @@ const LIVE_DESTINATION: &str = "https://example.com";
 const UNREACHABLE_BASE: &str = "https://qstash.unreachable.test/v2";
 
 /// The scheduler this lane talks to, or `None` outside the lane.
+///
+/// Says so on the way out. A silent `return` reports `ok` in the same words a
+/// real pass does, so a lane that stopped exporting these knobs would go on
+/// reporting four passes over two tests that never ran — which is how this
+/// suite's own base URL stayed wrong long enough to be found by accident.
 fn live() -> Option<(String, String)> {
-    let url = std::env::var(LIVE_URL_KNOB)
-        .ok()
-        .filter(|v| !v.is_empty())?;
+    let url = std::env::var(LIVE_URL_KNOB).ok().filter(|v| !v.is_empty());
     let token = std::env::var(LIVE_TOKEN_KNOB)
         .ok()
-        .filter(|v| !v.is_empty())?;
-    Some((url, token))
+        .filter(|v| !v.is_empty());
+    match (url, token) {
+        (Some(url), Some(token)) => Some((url, token)),
+        _unset => {
+            eprintln!(
+                "SKIPPED: no live scheduler — {LIVE_URL_KNOB} and {LIVE_TOKEN_KNOB} are what \
+                 `make test-integration-rustd` exports"
+            );
+            None
+        }
+    }
 }
 
 /// A reconciler bound to the real scheduler.
