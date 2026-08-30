@@ -105,6 +105,11 @@ afd_wire = { path = "crates/afd_wire" }
 # `default-features = false` throughout, features named explicitly, so a member
 # cannot silently acquire a feature a sibling enabled (M-CARGO-WORKSPACE).
 serde = { version = "1.0.229", default-features = false, features = ["derive", "std"] }
+# The metric census is a tab-separated contract, and this is the crate that
+# reads one: delimiter, `#` comment lines, header-to-field mapping, unequal-row
+# detection and serde-typed deserialization are all its job rather than ours,
+# and every error it raises already carries the record and line it failed on.
+csv = "1.4.0"
 serde_json = { version = "1.0.151", default-features = false, features = ["std", "preserve_order", "raw_value"] }
 # `raw_value` carries `RawValue`, which is how the activity verb splices a
 # runner's already-JSON tool arguments into a published frame WITHOUT parsing
