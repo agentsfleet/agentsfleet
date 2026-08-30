@@ -109,6 +109,10 @@ pub struct ServingPlane {
     connectors: afd_connector::Connectors,
     schedule_keys: Option<SigningKeys>,
     schedule_destination: String,
+    /// What a signup event from the identity provider is verified against.
+    identity_webhook_secret: Option<SecretBytes>,
+    /// Opening a personal account from a verified signup event.
+    signups: afd_tenant::signup::Signups,
     platform_admin_workspace: Option<Uuid7>,
     live: Live,
     analytics: Analytics,
@@ -146,6 +150,7 @@ impl ServingPlane {
     pub fn new(parts: PlaneParts) -> Self {
         let PlaneParts {
             database,
+            identity_webhook_secret,
             queue,
             kek,
             capabilities,
@@ -208,6 +213,8 @@ impl ServingPlane {
             // fragment is refused at construction rather than silently
             // truncating the callback — see `qstash::destination_url`.
             schedule_destination: schedule.destination.clone(),
+            identity_webhook_secret,
+            signups: afd_tenant::signup::Signups::new(database.clone(), Entropy::new()),
             schedule_keys: schedule.keys,
             schedules: SchedulePlane::new(
                 ScheduleService::new(
@@ -335,6 +342,13 @@ pub struct PlaneParts {
     /// than re-read, because `preflight` has already parsed and validated it
     /// and a second reader could disagree with the first.
     pub platform_admin_workspace: Option<Uuid7>,
+    /// What a signup event from the identity provider is verified against.
+    ///
+    /// Threaded through rather than re-read, for the reason
+    /// [`PlaneParts::platform_admin_workspace`] is: `preflight` has already
+    /// resolved it and a second reader could disagree with the first. `None`
+    /// refuses every delivery — see `preflight::IDENTITY_WEBHOOK_SECRET_KNOB`.
+    pub identity_webhook_secret: Option<SecretBytes>,
     /// What the schedules surface and the fire ingress need from configuration.
     pub schedule: ScheduleConfig,
 }

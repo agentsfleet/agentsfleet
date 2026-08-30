@@ -110,6 +110,16 @@ impl Services for ServingPlane {
         self.platform_admin_workspace.as_ref()
     }
 
+    type Signups = afd_tenant::signup::Signups;
+
+    fn signups(&self) -> &Self::Signups {
+        &self.signups
+    }
+
+    fn identity_webhook_secret(&self) -> Option<&afd_crypto::secret::SecretBytes> {
+        self.identity_webhook_secret.as_ref()
+    }
+
     fn workspaces(&self) -> &Workspaces {
         &self.workspaces
     }

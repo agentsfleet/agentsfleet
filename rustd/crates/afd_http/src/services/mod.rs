@@ -45,6 +45,7 @@ mod leasing;
 mod memory;
 mod preference;
 mod schedule;
+mod signup;
 mod tenant;
 mod vault;
 
@@ -57,6 +58,9 @@ pub use self::event::{FleetSteering, WorkspaceEvents};
 pub use self::fleets::WorkspaceFleets;
 pub use self::grant::FleetGrants;
 pub use self::ingress::{APPROVAL_IDENTITY, WebhookIngress};
+pub use self::signup::{
+    Bootstrapped, IdentityWebhookSecret, NewAccount, Signups, personal_tenant_name,
+};
 pub use self::leasing::Leasing;
 pub use self::memory::FleetMemories;
 pub use self::preference::WorkspacePreferences;
@@ -286,6 +290,22 @@ pub trait Services: Send + Sync + std::fmt::Debug + 'static {
     /// cannot be reached through a [`afd_ingress::Binding`], because it has to
     /// be verified before there is a binding to reach it through.
     fn platform_admin_workspace(&self) -> Option<&Uuid7>;
+
+    /// Opening a personal account from a verified signup event.
+    ///
+    /// An associated type for the reason [`Services::Leases`] is one: the
+    /// suites drive the refusal cases through a stub that reaches no store, and
+    /// the daemon's own is a Postgres pool.
+    type Signups: Signups;
+
+    /// The account-opening plane.
+    fn signups(&self) -> &Self::Signups;
+
+    /// What a signup event's signature is checked against.
+    ///
+    /// `None` refuses every delivery — see [`IdentityWebhookSecret`] on why
+    /// fail-closed is the only safe answer for a route that creates accounts.
+    fn identity_webhook_secret(&self) -> Option<&afd_crypto::secret::SecretBytes>;
 
     /// What the connector routes act through.
     ///

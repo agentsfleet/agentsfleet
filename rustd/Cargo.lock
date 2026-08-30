@@ -91,6 +91,7 @@ dependencies = [
  "afd_webhook",
  "afd_wire",
  "axum",
+ "base64 0.23.1",
  "bytes",
  "futures-util",
  "http",

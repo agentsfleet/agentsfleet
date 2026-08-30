@@ -59,6 +59,10 @@ tracing.workspace = true
 # The route table is pure, so it needs no runtime to test — the admission layer
 # and the envelope writer bring tokio and the subscriber with them.
 [dev-dependencies]
+# The signup fixture signs a Svix delivery, whose tag is base64 over the
+# HMAC. Encoding it is the only way the suite can present a signature the
+# vendored verifier accepts, which is what makes a passing case a round trip.
+base64.workspace = true
 afd_identity.workspace = true
 afd_webhook.workspace = true
 afd_ingress = { workspace = true, features = ["test-util"] }

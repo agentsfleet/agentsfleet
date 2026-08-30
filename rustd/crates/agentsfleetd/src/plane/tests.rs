@@ -54,6 +54,7 @@ fn plane() -> ServingPlane {
         // deployment state, which is what this fixture is for — the plane must
         // map every service to its own store whether or not either is present.
         platform_admin_workspace: None,
+        identity_webhook_secret: None,
         schedule: crate::plane::ScheduleConfig {
             client: reqwest::Client::new(),
             token: String::new(),

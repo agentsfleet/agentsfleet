@@ -48,6 +48,7 @@ pub struct BootConfig {
     pub(super) platform_admin_workspace: Option<Uuid7>,
     pub(super) qstash_token: Option<Box<str>>,
     pub(super) qstash_url: Option<Box<str>>,
+    pub(super) identity_webhook_secret: Option<Box<str>>,
     pub(super) qstash_keys: Option<SigningKeys>,
     pub(super) sse_max_streams: usize,
     pub(super) posthog: Option<PostHogConfig>,
@@ -193,6 +194,14 @@ impl BootConfig {
     #[must_use]
     pub fn qstash_url(&self) -> Option<&str> {
         self.qstash_url.as_deref()
+    }
+
+    /// What a signup event from the identity provider is verified against.
+    ///
+    /// `None` refuses every delivery — see [`super::IDENTITY_WEBHOOK_SECRET_KNOB`].
+    #[must_use]
+    pub fn identity_webhook_secret(&self) -> Option<&str> {
+        self.identity_webhook_secret.as_deref()
     }
 
     /// The scheduler's signing keys, when this deployment configured them.
