@@ -38,6 +38,15 @@ use afd_vault::{SecretBody, SecretName, Vault};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::TcpListener;
 
+/// How long the fake waits to be dialled before it gives up.
+///
+/// A deadline rather than an unbounded accept: a regression that answers
+/// `Delivered` without connecting must FAIL the suite, not park it.
+const ACCEPT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How long one request may take to arrive in full.
+const READ_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// The key every fixture seals under — the harness's own, not a deployment's.
 const FIXTURE_KEK: [u8; 32] = [7u8; 32];
 
@@ -67,19 +76,21 @@ impl FakeSlack {
             .expect("a loopback port is available");
         let port = listener.local_addr().expect("the listener is bound").port();
         let request = tokio::spawn(async move {
-            let (mut socket, _peer) = listener.accept().await.expect("the daemon connects");
-            let mut buffer = vec![0u8; 8192];
-            let read = socket.read(&mut buffer).await.expect("the request arrives");
-            let received =
-                String::from_utf8_lossy(buffer.get(..read).unwrap_or_default()).into_owned();
+            // Bounded on both ends. A regression that answers `Delivered`
+            // without connecting would otherwise park this task forever and
+            // hang the suite, where what it should do is fail — and TCP is
+            // free to split a request across reads, so one `read` would fail
+            // for a reason that has nothing to do with the daemon.
+            let accepted = tokio::time::timeout(ACCEPT_DEADLINE, listener.accept()).await;
+            let Ok(Ok((mut socket, _peer))) = accepted else {
+                return String::new();
+            };
+            let received = read_request(&mut socket).await;
             let response = format!(
                 "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
                 body.len()
             );
-            socket
-                .write_all(response.as_bytes())
-                .await
-                .expect("the answer is written");
+            let _written = socket.write_all(response.as_bytes()).await;
             let _flushed = socket.flush().await;
             received
         });
@@ -93,6 +104,51 @@ impl FakeSlack {
     async fn received(self) -> String {
         self.request.await.expect("the fake Slack completed")
     }
+}
+
+/// One HTTP request, read until its declared body is complete.
+///
+/// TCP does not promise a request arrives in one read, and this one carries a
+/// JSON body — so a single `read` would truncate under a split that has nothing
+/// to do with the daemon, and the assertions on the bearer and the channel
+/// would fail for the wrong reason.
+async fn read_request(socket: &mut tokio::net::TcpStream) -> String {
+    let mut received = Vec::new();
+    let mut chunk = vec![0u8; 4096];
+    let deadline = tokio::time::Instant::now() + READ_DEADLINE;
+    loop {
+        let read = tokio::time::timeout_at(deadline, socket.read(&mut chunk)).await;
+        let Ok(Ok(count)) = read else { break };
+        if count == 0 {
+            break;
+        }
+        received.extend_from_slice(chunk.get(..count).unwrap_or_default());
+        if complete(&received) {
+            break;
+        }
+    }
+    String::from_utf8_lossy(&received).into_owned()
+}
+
+/// Whether the bytes so far carry the headers and the whole declared body.
+fn complete(received: &[u8]) -> bool {
+    let text = String::from_utf8_lossy(received);
+    let Some(head_len) = text.find("\r\n\r\n") else {
+        return false;
+    };
+    let declared = text
+        .get(..head_len)
+        .unwrap_or_default()
+        .lines()
+        .find_map(|line| {
+            line.to_ascii_lowercase()
+                .strip_prefix("content-length:")?
+                .trim()
+                .parse::<usize>()
+                .ok()
+        })
+        .unwrap_or(0);
+    received.len() >= head_len + 4 + declared
 }
 
 /// A workspace whose fleet asked a question, and the grant that answers it.
