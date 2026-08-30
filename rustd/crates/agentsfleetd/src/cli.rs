@@ -46,11 +46,28 @@ pub const FAILURE: u8 = 1;
     version,
     about = "The agentsfleet control-plane daemon.",
     long_about = None,
+    before_help = crate::nameplate::for_help(),
 )]
 pub struct Cli {
     /// What to do. Omitted, the environment is checked and reported.
     #[command(subcommand)]
     pub command: Option<Command>,
+
+    /// Suppress the startup nameplate entirely.
+    ///
+    /// Separate from `--quiet` on purpose: this one is about the nameplate and
+    /// nothing else, so an operator who wants the plain line but not the
+    /// decoration is not forced to change anything else about the run.
+    #[arg(long, global = true)]
+    pub no_banner: bool,
+
+    /// Reduce startup decoration to a single plain line.
+    ///
+    /// One of the five conditions [`crate::nameplate::Style`] falls back on,
+    /// and the only one that is a deliberate request rather than a property of
+    /// the destination.
+    #[arg(long, global = true)]
+    pub quiet: bool,
 }
 
 /// What `agentsfleetd` was asked to do.

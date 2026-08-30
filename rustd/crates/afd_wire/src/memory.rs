@@ -67,6 +67,30 @@ pub struct MemoryHydrateResponse<'a> {
     pub memory: Vec<MemoryDelta<'a>>,
 }
 
+/// `POST /v1/runners/me/memory/{fleet_id}` reply — what the write did.
+///
+/// A runner acts on both numbers: `stored` says its memory landed, `skipped`
+/// says some was refused for shape and it should look at what it sends. The
+/// sweep and eviction counts the control plane also computes stay in the log —
+/// they are the daemon's housekeeping, not a fact about this request.
+///
+/// Declared here rather than assembled inline at the handler, which is where it
+/// used to live. The argument for inline was that no `wire-v2` fixture pins
+/// this shape, so a type would claim a frozen contract the corpus does not
+/// carry. That confuses two things: `tests/roundtrip.rs` generates its cases
+/// from an explicit fixture ROSTER, so a type absent from that roster is
+/// pinned by nothing and claims nothing. What the inline version did claim was
+/// that a response body could be spelled somewhere other than this crate, and
+/// two keys written by hand at a call site are two keys nothing type-checks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryCaptureResponse {
+    /// Deltas written, after upsert.
+    pub stored: usize,
+    /// Deltas refused for shape, which the runner should investigate.
+    pub skipped: usize,
+}
+
 /// One stored entry as the OPERATOR surface renders it.
 ///
 /// A [`MemoryDelta`] plus the instant it was last written. The runner's two

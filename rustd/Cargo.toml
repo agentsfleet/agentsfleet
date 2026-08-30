@@ -175,7 +175,7 @@ hex = { version = "0.4.3", default-features = false, features = ["std"] }
 semver = { version = "1.0.28", default-features = false, features = ["std"] }
 serde_yaml_ng = { version = "0.10.0", default-features = false }
 tar = { version = "0.4.46", default-features = false }
-flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
 
 # Constant-time comparison. RULE CTM: a byte-by-byte `==` over a secret leaks how
 # much of a guess was right through how long it took to reject.
@@ -450,7 +450,7 @@ tower-http = { version = "0.7.0", default-features = false, features = [
 # `client` for the dev-only side of one suite: the protocol-negotiation test
 # drives the same listener with an HTTP/1.1 client and an HTTP/2 one, and there
 # is no other way to prove the auto builder serves both.
-hyper = { version = "1.11.0", default-features = false, features = ["server", "client", "http1", "http2"] }
+hyper = { version = "1.11.1", default-features = false, features = ["server", "client", "http1", "http2"] }
 # The tokio adapter for hyper's own I/O traits, and nothing else: `TokioIo` is
 # what lets a `tokio::net::TcpStream` be served by a hyper connection.
 hyper-util = { version = "0.1.20", default-features = false, features = [
@@ -576,7 +576,15 @@ tracing = { version = "0.1.44", default-features = false, features = ["std", "at
 # test never executes the fields inside an event macro. Every diagnostic line in
 # this workspace would read as dead code that nothing can reach — and the fix is
 # to install a subscriber in tests, not to stop logging.
-tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
+#
+# `ansi` is asked for because the daemon's subscriber already asks for it:
+# `agentsfleetd/src/logs.rs` calls `.with_ansi(true)` whenever standard error is
+# a terminal, and without this feature that call PANICS — "the `ansi` crate
+# feature is required to enable ANSI terminal colors" — taking the daemon down
+# on every interactive start. It survived because the panic needs a terminal on
+# standard error, which is exactly what a service manager and a container never
+# give it, so the deployed paths were the ones that could not reach it.
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["ansi", "fmt", "std"] }
 
 [workspace.lints.rust]
 # Every rustc warning is an error; individual lints below raise their own level
