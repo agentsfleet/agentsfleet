@@ -42,6 +42,14 @@ tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true
 
 [dev-dependencies]
+# The `Refusable` suite grades this crate's adapters against one error of every
+# kind the wrapped crates raise. Their `one_of_each_kind` samplers live behind
+# `test-util`, and building the kinds by hand instead would let this crate's
+# idea of each failure drift from the crate that raises it — which is exactly
+# the drift the adapters exist to prevent.
+afd_connector = { workspace = true, features = ["test-util"] }
+afd_cron = { workspace = true, features = ["test-util"] }
+afd_ingress = { workspace = true, features = ["test-util"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tower = { workspace = true, features = ["util"] }
 
