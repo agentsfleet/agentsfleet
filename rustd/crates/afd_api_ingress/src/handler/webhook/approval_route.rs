@@ -30,13 +30,17 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use axum::{Json, body::Bytes};
 use http::{HeaderMap, StatusCode};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::handler::{Refusal, webhook};
 use crate::services::{Services, WorkspaceApprovals as _};
 use afd_http::handler::{FleetPath, parse_fleet_id};
 
 use super::verify_platform::verified_approval;
+/// What a resolved gate is answered with. Deliberately not
+/// `afd_wire::approval::ResolvedResponse` — that is the dashboard's shape, and a
+/// callback sender is owed a different one.
+use afd_wire::ingress::Resolved;
 
 /// The scoped event a failed resolution is logged under.
 const EVENT_RESOLVE: &str = "approval_webhook_resolve_failed";
@@ -79,17 +83,6 @@ struct Answer {
     action_id: String,
     /// `approve` or `deny`, and nothing else.
     decision: String,
-}
-
-/// What a resolved gate is answered with.
-#[derive(Debug, Serialize)]
-struct Resolved<'a> {
-    /// Always [`STATUS_RESOLVED`].
-    status: &'a str,
-    /// The gate that was answered.
-    action_id: &'a str,
-    /// The answer it was given.
-    decision: &'a str,
 }
 
 /// `POST /v1/webhooks/{fleet_id}/approval`.
@@ -165,9 +158,9 @@ pub(crate) async fn receive<D: Services>(
     Ok((
         StatusCode::OK,
         Json(Resolved {
-            status: STATUS_RESOLVED,
-            action_id: &answer.action_id,
-            decision: &answer.decision,
+            status: STATUS_RESOLVED.into(),
+            action_id: answer.action_id.as_str().into(),
+            decision: answer.decision.as_str().into(),
         }),
     )
         .into_response())

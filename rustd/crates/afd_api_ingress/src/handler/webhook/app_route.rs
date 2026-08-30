@@ -40,13 +40,15 @@ use axum::response::{IntoResponse as _, Response};
 use axum::{Json, body::Bytes};
 use http::{HeaderMap, StatusCode};
 use octocrab::models::webhook_events::WebhookEvent;
-use serde::Serialize;
 
 use crate::handler::{Refusal, webhook};
 use crate::services::{Services, WebhookIngress as _};
 use webhook::{DETAIL_EVENT_HEADER, HEADER_EVENT, text};
 
 use super::github::{Ingest, Policy, classify};
+/// The two bodies this route answers with. Public wire, so `afd_wire` owns
+/// the shape and this route names it.
+use afd_wire::ingress::{FannedOut, Pong};
 
 /// The scoped event a failed append is logged under.
 const EVENT_APPEND: &str = "app_ingress_append_failed";
@@ -89,30 +91,6 @@ const STATUS_PONG: &str = "pong";
 /// owner: recording either would let an actor-shaped assertion certify that a
 /// human woke this fleet when an installation did.
 const ACTOR_APP_GITHUB: &str = "github-app";
-
-/// What an accepted App delivery is answered with.
-///
-/// Wider than [`webhook::Accepted`] because one App delivery is many appends:
-/// a sender debugging its integration wants to know how many fleets this
-/// installation actually woke, which is the number no single event id can show.
-#[derive(Debug, Serialize)]
-struct FannedOut {
-    /// How many fleets subscribed to this delivery.
-    matched: usize,
-    /// How many of them this delivery actually appended an event for.
-    ///
-    /// Lower than `matched` when a fleet already ran this delivery — the claim
-    /// is per fleet, so a retry that reaches a wider set than the first attempt
-    /// appends only for the fleets that had not seen it.
-    enqueued: usize,
-}
-
-/// What a `ping` is answered with.
-#[derive(Debug, Serialize)]
-struct Pong {
-    /// Always [`STATUS_PONG`].
-    status: &'static str,
-}
 
 /// `POST /v1/ingress/{provider}`.
 ///
@@ -159,7 +137,7 @@ pub(crate) async fn receive<D: Services>(
         return Ok((
             StatusCode::OK,
             Json(Pong {
-                status: STATUS_PONG,
+                status: STATUS_PONG.into(),
             }),
         )
             .into_response());
@@ -307,5 +285,5 @@ fn dropped(event: &str, reason: &str) -> Response {
         reason,
         event = EVENT_DROPPED,
     );
-    (StatusCode::OK, Json(webhook::Ignored { ignored: reason })).into_response()
+    (StatusCode::OK, Json(webhook::Ignored { ignored: reason.into() })).into_response()
 }
