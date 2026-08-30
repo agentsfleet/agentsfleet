@@ -86,3 +86,54 @@ fn test_mac_debug_shows_the_digest() {
     assert!(rendered.starts_with("HmacSha256Tag("), "got {rendered}");
     assert!(rendered.contains(&mac.to_hex()), "got {rendered}");
 }
+
+/// The type admits no comparison but the constant-time one (RULE CTM).
+///
+/// The module doc above and `mac.rs:30` both assert that `PartialEq` is
+/// deliberately not derived, because a derived `==` short-circuits on the first
+/// differing byte and leaks where two codes diverge. Until now that was a
+/// comment: nothing failed if someone added `#[derive(PartialEq)]` to buy an
+/// `assert_eq!` in a hurry. This is the assertion.
+///
+/// `Probe` decides it at compile time. The inherent const applies only when
+/// `T: PartialEq`, and path resolution prefers an applicable inherent const over
+/// a trait one, so `Probe::<T>::IMPLEMENTS_PARTIAL_EQ` reads `true` for a
+/// comparable type and falls through to the trait's `false` for one that is not.
+/// The `u8` leg is not decoration — without it a probe that answered `false` for
+/// everything would pass this test while proving nothing.
+struct Probe<T>(core::marker::PhantomData<T>);
+
+// `allow`, not `expect`: this trait is live today and goes unused precisely
+// when the invariant breaks. Under `-D dead-code` that unused-ness is itself a
+// compile error, which does stop the regression — but it stops it with "trait
+// `ProbeFallback` is never used", which tells whoever just added the derive
+// nothing. Silencing the weaker diagnostic lets the assertion below fire with
+// the one that names the leak and the fix.
+#[allow(dead_code, reason = "the fallback is unused exactly when the guard trips")]
+trait ProbeFallback {
+    const IMPLEMENTS_PARTIAL_EQ: bool = false;
+}
+
+impl<T> ProbeFallback for Probe<T> {}
+
+impl<T: PartialEq> Probe<T> {
+    const IMPLEMENTS_PARTIAL_EQ: bool = true;
+}
+
+#[test]
+#[expect(
+    clippy::assertions_on_constants,
+    reason = "the constant IS the subject: `IMPLEMENTS_PARTIAL_EQ` resolves at               compile time, and asserting on it is how a type-level property               becomes a test rather than a comment"
+)]
+fn test_the_tag_type_offers_no_short_circuiting_comparison() {
+    assert!(
+        Probe::<u8>::IMPLEMENTS_PARTIAL_EQ,
+        "the probe cannot tell the two cases apart, so its verdict below is worthless"
+    );
+    assert!(
+        !Probe::<HmacSha256Tag>::IMPLEMENTS_PARTIAL_EQ,
+        "HmacSha256Tag gained a PartialEq: `==` short-circuits on the first \
+         differing byte, which is the timing leak `verify` exists to prevent. \
+         Compare with `verify`, or store `as_bytes()` and compare those."
+    );
+}
