@@ -229,31 +229,7 @@ impl ServingPlane {
                 Fire::new(queue.clone()),
                 Entropy::new(),
             ),
-            // The SAME key every other sealing store takes, twice over and
-            // deliberately: the platform half opens this deployment's own
-            // `<provider>-app` bags in the admin workspace, and the grant half
-            // seals a tenant's handle in theirs. Two `Vault` values over one
-            // table, for the reason the ingress beside them is two — a reader
-            // of the deployment's credentials and a writer of a workspace's are
-            // different surfaces, and one value serving both would let a
-            // connector route reach the wrong workspace's secrets by holding
-            // the wrong handle.
-            connectors: afd_connector::Connectors::new(
-                afd_connector::PlatformApp::new(SecretVault::new(
-                    database.clone(),
-                    Arc::clone(&kek),
-                    Entropy::new(),
-                )),
-                afd_connector::Grants::new(
-                    SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
-                    database.clone(),
-                    Entropy::new(),
-                ),
-                afd_connector::Exchange::new(vendor_client.clone()),
-                vendor_client,
-                queue.clone(),
-                Entropy::new(),
-            ),
+            connectors: connect_flow(&database, &kek, &queue, vendor_client),
             live,
             analytics,
             api_url: login.api_url,
@@ -282,6 +258,44 @@ impl ServingPlane {
             },
         }
     }
+}
+
+/// The connect flow, over this deployment's own vault and a tenant's.
+///
+/// Lifted out of the constructor because it is the largest thing there that
+/// stands alone, and because the paragraph below wants somewhere to live that
+/// is not the middle of a struct literal.
+///
+/// The SAME key every other sealing store takes, twice over and deliberately:
+/// the platform half opens this deployment's own `<provider>-app` bags in the
+/// admin workspace, and the grant half seals a tenant's handle in theirs. Two
+/// `Vault` values over one table, for the reason the ingress beside them is
+/// two — a reader of the deployment's credentials and a writer of a
+/// workspace's are different surfaces, and one value serving both would let a
+/// connector route reach the wrong workspace's secrets by holding the wrong
+/// handle.
+fn connect_flow(
+    database: &Db,
+    kek: &Arc<Kek>,
+    queue: &Redis,
+    vendor_client: reqwest::Client,
+) -> afd_connector::Connectors {
+    afd_connector::Connectors::new(
+        afd_connector::PlatformApp::new(SecretVault::new(
+            database.clone(),
+            Arc::clone(kek),
+            Entropy::new(),
+        )),
+        afd_connector::Grants::new(
+            SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new()),
+            database.clone(),
+            Entropy::new(),
+        ),
+        afd_connector::Exchange::new(vendor_client.clone()),
+        vendor_client,
+        queue.clone(),
+        Entropy::new(),
+    )
 }
 
 /// Everything [`ServingPlane::new`] is assembled from.

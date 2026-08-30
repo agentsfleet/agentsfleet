@@ -14,16 +14,16 @@
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::id::Uuid7;
 use afd_core::clock::UnixMillis;
+use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_vault::{SecretBody, SecretName};
 use sqlx::Row as _;
 
-use super::harness;
 use super::PLATFORM_SECRET;
+use super::harness;
 
 /// The vault key the approval signing secret is stored under.
 ///

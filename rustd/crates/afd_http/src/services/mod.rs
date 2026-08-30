@@ -58,13 +58,13 @@ pub use self::event::{FleetSteering, WorkspaceEvents};
 pub use self::fleets::WorkspaceFleets;
 pub use self::grant::FleetGrants;
 pub use self::ingress::{APPROVAL_IDENTITY, WebhookIngress};
-pub use self::signup::{
-    Bootstrapped, IdentityWebhookSecret, NewAccount, Signups, personal_tenant_name,
-};
 pub use self::leasing::Leasing;
 pub use self::memory::FleetMemories;
 pub use self::preference::WorkspacePreferences;
 pub use self::schedule::{FleetSchedules, SchedulePlane};
+pub use self::signup::{
+    Bootstrapped, IdentityWebhookSecret, NewAccount, Signups, personal_tenant_name,
+};
 pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
 pub use self::vault::WorkspaceSecrets;
 

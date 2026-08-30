@@ -291,7 +291,12 @@ impl Fleet {
     /// provider's own endpoint, which no test may reach — `Exchange::pointed_at`
     /// is the seam the crate already carries for exactly this, and pointing it
     /// at a loopback server is what makes a completed connect reachable at all.
-    pub(crate) fn with_live_connectors(mut self, database: Db, queue: Redis, vendor: String) -> Self {
+    pub(crate) fn with_live_connectors(
+        mut self,
+        database: Db,
+        queue: Redis,
+        vendor: String,
+    ) -> Self {
         let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
         self.connectors = Connectors::new(
             PlatformApp::new(SecretVault::new(

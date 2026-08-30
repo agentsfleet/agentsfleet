@@ -49,9 +49,7 @@ pub fn webhook_handler_for<D: Services>(verb: WebhookRoute) -> MethodRouter<Arc<
 #[must_use]
 pub fn auth_handler_for<D: Services>(verb: AuthRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
-        AuthRoute::IdentityEventClerk => {
-            Some(post(handler::webhook::identity_route::receive::<D>))
-        }
+        AuthRoute::IdentityEventClerk => Some(post(handler::webhook::identity_route::receive::<D>)),
         AuthRoute::CreateSession
         | AuthRoute::PollSession
         | AuthRoute::ApproveSession

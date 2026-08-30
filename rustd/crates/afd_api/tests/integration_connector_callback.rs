@@ -35,13 +35,13 @@ use http::{Method, StatusCode, header};
 use serde_json::Value;
 
 use self::harness::{json_body, send};
-#[path = "connector_callback_live/fixture.rs"]
-mod fixture;
 #[path = "support/fake_provider.rs"]
 mod fake_provider;
+#[path = "connector_callback_live/fixture.rs"]
+mod fixture;
 
-use self::fixture::Fixture;
 use self::fake_provider::FakeProvider;
+use self::fixture::Fixture;
 
 /// The provider these tests connect.
 ///
@@ -224,11 +224,9 @@ async fn a_reconnect_replaces_the_sealed_grant_rather_than_refusing() {
     // One fake answering two tokens in order. A second server would restart
     // the exchange count, and the count is what separates "two connects, one
     // code each" from "one connect that redeemed twice".
-    let provider = FakeProvider::answering(&[
-        &slack_answer(BOT_TOKEN),
-        &slack_answer(REPLACEMENT_TOKEN),
-    ])
-    .await;
+    let provider =
+        FakeProvider::answering(&[&slack_answer(BOT_TOKEN), &slack_answer(REPLACEMENT_TOKEN)])
+            .await;
     let router = fixture.router(&provider);
 
     let first = start_connect(&router, &fixture).await;
@@ -243,7 +241,11 @@ async fn a_reconnect_replaces_the_sealed_grant_rather_than_refusing() {
         StatusCode::FOUND,
         "a reconnect is the same action as a connect, not a conflict"
     );
-    assert_eq!(provider.exchanges(), 2, "each connect redeemed its own code");
+    assert_eq!(
+        provider.exchanges(),
+        2,
+        "each connect redeemed its own code"
+    );
 
     assert_eq!(
         fixture.secret_names().await,

@@ -75,14 +75,18 @@ async fn a_signup_opens_every_row_an_account_needs() {
     // Every row, read back independently. Asserting on the returned struct
     // alone would pass for a bootstrap that composed the right answer and
     // committed none of it.
-    let mut connection = lane.open(DbRole::Api, &[]).await.acquire().await.expect("a connection");
-    let user: (String, String) = sqlx::query_as(
-        "SELECT tenant_id::text, email FROM core.users WHERE oidc_subject = $1",
-    )
-    .bind(&subject)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("the user row lands");
+    let mut connection = lane
+        .open(DbRole::Api, &[])
+        .await
+        .acquire()
+        .await
+        .expect("a connection");
+    let user: (String, String) =
+        sqlx::query_as("SELECT tenant_id::text, email FROM core.users WHERE oidc_subject = $1")
+            .bind(&subject)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the user row lands");
     assert_eq!(user.0, opened.tenant_id);
     assert_eq!(user.1, EMAIL);
 
@@ -96,13 +100,12 @@ async fn a_signup_opens_every_row_an_account_needs() {
     .expect("the membership row lands");
     assert_eq!(role, "owner", "a personal account's one member owns it");
 
-    let workspace: (String, String) = sqlx::query_as(
-        "SELECT tenant_id::text, name FROM core.workspaces WHERE id = $1::uuid",
-    )
-    .bind(&opened.workspace_id)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("the workspace row lands");
+    let workspace: (String, String) =
+        sqlx::query_as("SELECT tenant_id::text, name FROM core.workspaces WHERE id = $1::uuid")
+            .bind(&opened.workspace_id)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the workspace row lands");
     assert_eq!(workspace.0, opened.tenant_id);
     assert_eq!(workspace.1, opened.workspace_name);
 
@@ -124,7 +127,10 @@ async fn a_signup_opens_every_row_an_account_needs() {
         .fetch_one(&mut *connection)
         .await
         .expect("the tenant row lands");
-    assert_eq!(tenant, "ada", "the tenant is named for the address's local part");
+    assert_eq!(
+        tenant, "ada",
+        "the tenant is named for the address's local part"
+    );
 }
 
 #[tokio::test]
@@ -180,7 +186,12 @@ async fn a_replay_restores_a_wallet_that_went_missing() {
         .await
         .expect("the lane's Postgres must answer");
 
-    let mut connection = lane.open(DbRole::Api, &[]).await.acquire().await.expect("a connection");
+    let mut connection = lane
+        .open(DbRole::Api, &[])
+        .await
+        .acquire()
+        .await
+        .expect("a connection");
     sqlx::query("DELETE FROM billing.tenant_wallet WHERE tenant_id = $1::uuid")
         .bind(&opened.tenant_id)
         .execute(&mut *connection)
@@ -224,7 +235,12 @@ async fn a_replay_never_resets_a_balance_already_spent() {
         .expect("the lane's Postgres must answer");
 
     let spent = STARTER_CREDIT_NANOS / 4;
-    let mut connection = lane.open(DbRole::Api, &[]).await.acquire().await.expect("a connection");
+    let mut connection = lane
+        .open(DbRole::Api, &[])
+        .await
+        .acquire()
+        .await
+        .expect("a connection");
     sqlx::query("UPDATE billing.tenant_wallet SET balance_nanos = $2 WHERE tenant_id = $1::uuid")
         .bind(&opened.tenant_id)
         .bind(spent)
@@ -306,12 +322,16 @@ async fn two_concurrent_deliveries_open_exactly_one_account() {
         "exactly one of them opened it; the other reports a replay"
     );
 
-    let mut connection = lane.open(DbRole::Api, &[]).await.acquire().await.expect("a connection");
-    let users: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM core.users WHERE oidc_subject = $1")
-            .bind(&subject)
-            .fetch_one(&mut *connection)
-            .await
-            .expect("counting the subject's users");
+    let mut connection = lane
+        .open(DbRole::Api, &[])
+        .await
+        .acquire()
+        .await
+        .expect("a connection");
+    let users: i64 = sqlx::query_scalar("SELECT count(*) FROM core.users WHERE oidc_subject = $1")
+        .bind(&subject)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("counting the subject's users");
     assert_eq!(users, 1, "one subject, one person");
 }

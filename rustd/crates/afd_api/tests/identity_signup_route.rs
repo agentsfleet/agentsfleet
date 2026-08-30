@@ -198,7 +198,11 @@ async fn a_delivery_resent_under_a_fresh_id_no_longer_verifies() {
         PATH,
         None,
         CREATED,
-        &headers("msg_a_different_delivery_id", &now().to_string(), &signature),
+        &headers(
+            "msg_a_different_delivery_id",
+            &now().to_string(),
+            &signature,
+        ),
     )
     .await;
 
@@ -252,7 +256,10 @@ async fn an_event_this_daemon_serves_no_rule_for_is_answered_rather_than_refused
     let answer = signed(r#"{"type":"user.updated","data":{"id":"user_2fJk8Lq0"}}"#).await;
     assert_eq!(answer.status(), StatusCode::OK);
     assert_eq!(
-        json_body(answer).await.get("ignored").and_then(Value::as_str),
+        json_body(answer)
+            .await
+            .get("ignored")
+            .and_then(Value::as_str),
         Some("user.updated")
     );
 }
@@ -266,7 +273,10 @@ async fn the_account_deletion_event_is_ignored_rather_than_acted_on() {
     let answer = signed(r#"{"type":"user.deleted","data":{"id":"user_2fJk8Lq0"}}"#).await;
     assert_eq!(answer.status(), StatusCode::OK);
     assert_eq!(
-        json_body(answer).await.get("ignored").and_then(Value::as_str),
+        json_body(answer)
+            .await
+            .get("ignored")
+            .and_then(Value::as_str),
         Some("user.deleted"),
         "an unported destructive path must answer as unhandled, never act"
     );

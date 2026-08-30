@@ -178,7 +178,10 @@ impl QStash {
     pub async fn upsert(&self, cron: &str, timezone: &str, message: &str) -> Result<Registered> {
         let answer = self
             .client
-            .post(format!("{}{SCHEDULES_PATH}{}", self.api_base, self.destination))
+            .post(format!(
+                "{}{SCHEDULES_PATH}{}",
+                self.api_base, self.destination
+            ))
             .header(HEADER_AUTHORIZATION, self.bearer())
             .header(HEADER_CRON, cron)
             .header(HEADER_TIMEZONE, timezone)

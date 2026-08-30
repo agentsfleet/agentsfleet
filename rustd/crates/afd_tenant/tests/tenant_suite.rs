@@ -54,9 +54,9 @@ mod redis_harness;
 mod integration_api_key_paging;
 #[path = "integration_device_flow.rs"]
 mod integration_device_flow;
-#[path = "integration_signup.rs"]
-mod integration_signup;
 #[path = "integration_preferences.rs"]
 mod integration_preferences;
+#[path = "integration_signup.rs"]
+mod integration_signup;
 #[path = "integration_workspace_ownership.rs"]
 mod integration_workspace_ownership;
