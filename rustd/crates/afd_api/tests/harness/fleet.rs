@@ -282,6 +282,36 @@ impl Fleet {
         self
     }
 
+    /// Runs the connect flow over live stores and a vendor a test can answer.
+    ///
+    /// Three seams move together and none of them is optional. The nonce slot
+    /// lives in the QUEUE, so a spend against an unreachable one proves nothing
+    /// about single use. The grant is sealed in the VAULT, so its landing is
+    /// only observable over a live pool. And the token exchange posts to the
+    /// provider's own endpoint, which no test may reach — `Exchange::pointed_at`
+    /// is the seam the crate already carries for exactly this, and pointing it
+    /// at a loopback server is what makes a completed connect reachable at all.
+    pub(crate) fn with_live_connectors(mut self, database: Db, queue: Redis, vendor: String) -> Self {
+        let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
+        self.connectors = Connectors::new(
+            PlatformApp::new(SecretVault::new(
+                database.clone(),
+                Arc::clone(&kek),
+                Entropy::new(),
+            )),
+            Grants::new(
+                SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new()),
+                database,
+                Entropy::new(),
+            ),
+            Exchange::new(reqwest::Client::new()).pointed_at(vendor),
+            reqwest::Client::new(),
+            queue,
+            Entropy::new(),
+        );
+        self
+    }
+
     /// Runs fleet installation and purge over a live queue and database.
     pub(crate) fn with_fleet_queue(mut self, database: Db, queue: Redis) -> Self {
         self.fleets = Fleets::new(database, queue, Entropy::new());
