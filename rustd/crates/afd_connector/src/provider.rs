@@ -22,36 +22,78 @@
 
 use std::fmt;
 
-/// A third party this deployment can connect a workspace to.
+/// Declares the catalogue once: the variants, [`Provider::ALL`], and the two
+/// strings each variant carries.
 ///
-/// Five, and the count is deliberate rather than incidental: api-key providers
-/// (Datadog, Grafana, Fly) are workspace secrets referenced as
-/// `${secrets.<name>.<field>}` and were never connectors — `registry.zig`
-/// records the same decision where it dropped its `api_key` archetype.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Provider {
-    /// Slack, whose bot token answers mentions in a channel.
-    Slack,
-    /// GitHub, connected as an App INSTALLATION rather than a token exchange.
-    GitHub,
-    /// Zoho Desk, whose authorization code is redeemable at one data centre.
-    Zoho,
-    /// Jira Cloud, over Atlassian's three-legged OAuth.
-    Jira,
-    /// Linear.
-    Linear,
+/// A macro because `ALL` was a SECOND hand-written list of the same variants,
+/// and the compiler cannot check a list it did not write. A variant left out of
+/// it does not fail to build — every total `match` still compiles, the registry
+/// arm is there, the vault keys are right — and the only symptom is
+/// [`Provider::parse`] answering `None`, so the route 404s while the connector
+/// looks correctly wired everywhere a reader would go looking. Enumerating an
+/// enum's variants otherwise needs a derive (`strum`, `enum-iterator`) that
+/// this workspace does not carry, and one list expanded three ways is cheaper
+/// than the dependency.
+///
+/// The `id` is the route segment, the `provider` column value in
+/// `core.connector_installs`, and the stem of two vault keys — see the module
+/// note on why these are not this crate's to improve.
+macro_rules! catalogue {
+    ($(
+        $(#[doc = $doc:literal])+
+        $variant:ident => id: $id:literal, display: $display:literal;
+    )+) => {
+        /// A third party this deployment can connect a workspace to.
+        ///
+        /// Five, and the count is deliberate rather than incidental: api-key
+        /// providers (Datadog, Grafana, Fly) are workspace secrets referenced
+        /// as `${secrets.<name>.<field>}` and were never connectors —
+        /// `registry.zig` records the same decision where it dropped its
+        /// `api_key` archetype.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub enum Provider {
+            $($(#[doc = $doc])+ $variant,)+
+        }
+
+        impl Provider {
+            /// Every provider this deployment ships, in the order the
+            /// catalogue lists — the same list the variants come from, so it
+            /// cannot fall behind them.
+            pub const ALL: &'static [Self] = &[$(Self::$variant,)+];
+
+            /// The route segment, column value and vault-key stem — see the
+            /// module note.
+            #[must_use]
+            pub const fn id(self) -> &'static str {
+                match self { $(Self::$variant => $id,)+ }
+            }
+
+            /// The name an operator-facing sentence calls this provider.
+            ///
+            /// "Slack connect is not configured on this deployment" — the
+            /// display name is what makes that sentence name the thing the
+            /// operator has to go and configure, rather than saying "a
+            /// connector".
+            #[must_use]
+            pub const fn display_name(self) -> &'static str {
+                match self { $(Self::$variant => $display,)+ }
+            }
+        }
+    };
 }
 
-/// The route segment, column value and vault-key stem for Slack.
-const ID_SLACK: &str = "slack";
-/// See [`ID_SLACK`].
-const ID_GITHUB: &str = "github";
-/// See [`ID_SLACK`].
-const ID_ZOHO: &str = "zoho";
-/// See [`ID_SLACK`].
-const ID_JIRA: &str = "jira";
-/// See [`ID_SLACK`].
-const ID_LINEAR: &str = "linear";
+catalogue! {
+    /// Slack, whose bot token answers mentions in a channel.
+    Slack => id: "slack", display: "Slack";
+    /// GitHub, connected as an App INSTALLATION rather than a token exchange.
+    GitHub => id: "github", display: "GitHub";
+    /// Zoho Desk, whose authorization code is redeemable at one data centre.
+    Zoho => id: "zoho", display: "Zoho Desk";
+    /// Jira Cloud, over Atlassian's three-legged OAuth.
+    Jira => id: "jira", display: "Jira";
+    /// Linear.
+    Linear => id: "linear", display: "Linear";
+}
 
 /// What a `<provider>-app` vault key ends in.
 ///
@@ -60,15 +102,6 @@ const ID_LINEAR: &str = "linear";
 const APP_KEY_SUFFIX: &str = "-app";
 
 impl Provider {
-    /// Every provider this deployment ships, in the order the catalogue lists.
-    pub const ALL: &'static [Self] = &[
-        Self::Slack,
-        Self::GitHub,
-        Self::Zoho,
-        Self::Jira,
-        Self::Linear,
-    ];
-
     /// The provider a route segment names, or nothing.
     ///
     /// Exact and lower-case: `SLACK` resolves to nothing, because the segment
@@ -81,34 +114,6 @@ impl Provider {
             .iter()
             .copied()
             .find(|provider| provider.id() == segment)
-    }
-
-    /// The route segment, column value and vault-key stem — see the module note.
-    #[must_use]
-    pub const fn id(self) -> &'static str {
-        match self {
-            Self::Slack => ID_SLACK,
-            Self::GitHub => ID_GITHUB,
-            Self::Zoho => ID_ZOHO,
-            Self::Jira => ID_JIRA,
-            Self::Linear => ID_LINEAR,
-        }
-    }
-
-    /// The name an operator-facing sentence calls this provider.
-    ///
-    /// "Slack connect is not configured on this deployment" — the display name
-    /// is what makes that sentence name the thing the operator has to go and
-    /// configure, rather than saying "a connector".
-    #[must_use]
-    pub const fn display_name(self) -> &'static str {
-        match self {
-            Self::Slack => "Slack",
-            Self::GitHub => "GitHub",
-            Self::Zoho => "Zoho Desk",
-            Self::Jira => "Jira",
-            Self::Linear => "Linear",
-        }
     }
 
     /// The admin-workspace vault key holding this provider's platform app.
@@ -156,6 +161,43 @@ mod tests {
                 Some(provider),
                 "`{provider}` must parse from its own id",
             );
+        }
+    }
+
+    /// Every provider the catalogue lists is reachable through it.
+    ///
+    /// The property the `catalogue!` macro exists for, stated where a reader
+    /// looking for it will find it: `ALL` and the variants are one list, so
+    /// there is no sixth provider sitting outside this loop. Before the macro
+    /// they were two hand-written lists, and a variant missing from `ALL`
+    /// parsed as nothing — a 404 on a route whose registry arm, vault keys and
+    /// display name all looked correct.
+    #[test]
+    fn the_catalogue_reaches_every_provider_it_declares() {
+        for provider in Provider::ALL.iter().copied() {
+            assert_eq!(Provider::parse(provider.id()), Some(provider));
+            assert!(
+                !provider.display_name().is_empty(),
+                "`{provider}` must name itself in an operator's sentence",
+            );
+        }
+    }
+
+    /// No two providers answer to one display name.
+    ///
+    /// The operator-facing half of the id uniqueness the parse test pins: two
+    /// connectors called "Jira" would make "Jira connect is not configured"
+    /// name neither of them.
+    #[test]
+    fn no_two_providers_share_a_display_name() {
+        for (index, provider) in Provider::ALL.iter().copied().enumerate() {
+            for other in Provider::ALL.iter().copied().skip(index + 1) {
+                assert_ne!(
+                    provider.display_name(),
+                    other.display_name(),
+                    "`{provider}` and `{other}` share a display name",
+                );
+            }
         }
     }
 
