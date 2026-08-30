@@ -60,7 +60,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `.github/workflows/release.yml` | EDIT | §2: the Rust binary joins the target matrix and the artifact set |
 | `.github/workflows/deploy-dev-build.yml` | EDIT | §2: the dev image gets the Rust daemon; the Zig daemon build goes |
 | `audits/gh-actions-runtime.sh` | CREATE | §1: the pin gate — retired runtimes and mutable refs |
-| `make/quality.mk` | EDIT | §1: the pin gate rides `check-gh-actions-valid` |
+| `make/quality.mk` | EDIT | §1: the pin gate rides `check-gh-actions-valid`; §4: `lint-all` gains the parity harness self-test |
 | `playbooks/deploy/{dev,prod}/001_playbook.md` | EDIT | §2: there is no shell in the API container |
 | `Dockerfile` | EDIT | §2: a distroless base carrying the Rust daemon and nothing else |
 | `make/build.mk` | EDIT | §2: the local image build produces the Rust daemon for both architectures |
@@ -68,6 +68,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `docs/metrics.census.tsv` | CREATE | §3: the executable metric-family contract the Rust registry test grades against |
 | `rustd/Cargo.toml` | EDIT | §2: the shipped profile strips debug info; §3: `opentelemetry_sdk` gains the `metrics` feature |
 | `make/test-parity.mk` | CREATE | §4: the black-box HTTP parity lane, parameterised by base URL (distinct caller: the cutover checklist) |
+| `scripts/parity_lane.sh` | CREATE | §4: the harness the lane invokes — roster, probe, normalisation, diff. Shell, not a crate: see §4 |
+| `scripts/parity_lane_test.sh` | CREATE | §4: the harness's own tests — the differ has to be proven to differ |
+| `make/test.mk` | EDIT | §4: includes the new lane; the file is the test graph's include list |
 | `make/bench.mk` | EDIT | §4: `bench-cutover` adds a comparison mode with budget constants that refuse to be unset |
 | `make/dry.mk` | EDIT | §4: dry lane variant booting the Rust daemon |
 | `make/test-integration-rustd.mk` | EDIT | §4: the run-verdict guard moves inline as its script is swept |
@@ -174,11 +177,35 @@ The lanes the cutover grades against, built while there is nothing yet to grade:
 
 The parity harness is deliberately NEW code rather than a repointed Zig suite. The Zig integration corpus imports Zig modules and calls them directly — of 145 such files, three use an HTTP client — so pointing it at a Rust-served environment still exercises Zig handler code. A green run would report a pass rate for the implementation being retired, which is worse than no number because it reads like evidence.
 
+**The harness is shell, and that is a decision.** A Rust crate would join
+`rustd/crates/` under the 100%-line coverage flag and pay that rent for the life
+of the repository, for code whose whole job is pointing curl at two daemons. So
+the harness is `scripts/parity_lane.sh` — shellcheck-linted with the rest of
+`scripts/*.sh`, with `scripts/parity_lane_test.sh` beside it proving the differ
+actually differs. A lane that compared nothing would pass every route.
+
+**The roster is reflection, not a list.** Routes come from
+`public/openapi.json`, so a new route joins the lane the moment it joins the
+contract — the same principle the wire fixtures already hold to. A hand-kept
+list is the one somebody forgets to update, and the forgotten route is the drift
+the lane exists to catch.
+
+**Every probe goes without credentials and without a body**, which is what lets
+one command grade a bare container with no datastore behind it. What that grades
+is the contract at the EDGE: which routes exist, what an unauthenticated caller
+is told, and in what envelope. With one base URL the claim is that every
+declared route answers and none answers 404 — an unauthenticated probe to a
+mounted route is refused before a handler resolves an identifier, so a 404 means
+the path is not routed at all. With two, the same roster is diffed per route ×
+method after per-request volatile fields (`date`, `x-request-id`, the body's
+`request_id`) are normalised away; without that normalisation the lane would be
+red on every run and grade nothing.
+
 **Budgets refuse to be unset.** The latency budget per route class and the resident-set ceiling are named constants embedded in the benchmark lane, and the lane exits non-zero when they are unset, so the gate M181_002 leans on is a real command with real numbers rather than a judgment.
 
 **The sweep.** The five `scripts/rustd_lane_*.py` files go. Four have no caller. The fifth is the run-verdict guard both Rust lanes invoke — the check that a suite which silently ran nothing fails instead of passing — so its BEHAVIOUR moves inline into the lane that calls it. The guard is preserved; the script is not.
 
-- **Dimension 4.1** — the parity lane runs the same suite against two base URLs and diffs status, body and the contract headers per route × method; a seeded difference fails naming the route → Test `test_parity_lane_detects_difference`
+- **Dimension 4.1** — the parity lane runs the same suite against two base URLs and diffs status, body and the contract headers per route × method; a seeded difference fails naming the route → Test `test_parity_lane_detects_difference` — **DONE**
 - **Dimension 4.2** — the benchmark lane refuses to run with either budget constant unset, and passes with both set → Test `test_bench_cutover_refuses_unset_budget`
 - **Dimension 4.3** — the dry lane boots the Rust daemon and its page renders pass → Test `test_dry_lane_rust_variant`
 - **Dimension 4.4** — a Rust lane whose suite ran zero tests fails, and one whose child exits non-zero fails, with no Python script on the path → Test `test_lane_guard_inline_rejects_silent_noop` — **DONE**
