@@ -22,31 +22,53 @@ const SCHEME_SEPARATOR: &str = "://";
 /// What begins the path, and so ends the origin.
 const PATH_SEPARATOR: char = '/';
 
-/// `vendor`'s path, on the host a lane pinned — or `vendor` itself.
+/// What separates userinfo from the host it is disguising.
+const USERINFO_SEPARATOR: char = '@';
+
+/// Rejected because browsers normalise it to [`PATH_SEPARATOR`] and this does
+/// not, which is a disagreement an attacker chooses the side of.
+const BACKSLASH: char = '\\';
+
+/// `vendor`'s path on the host a lane pinned, or `vendor` when none did.
 ///
-/// The PATH is the vendor's and is never replaced: a lane pins where requests
+/// `None` means a pin WAS supplied and is not a usable origin, and the caller
+/// must refuse rather than call. Falling back to the vendor there would be the
+/// opposite of what the knob is for: a lane sets it to keep a test off the real
+/// vendor, so a typo in it would send a freshly minted bearer token to
+/// Atlassian from CI — the one outcome pinning exists to prevent.
+///
+/// The PATH is the vendor's and is never replaced. A lane pins where requests
 /// land, not what they ask for, so a fake provider serving the real paths is
-/// answering the questions the daemon actually asks rather than a shape the
-/// test invented. A `pinned` value that is not an absolute URL leaves `vendor`
-/// alone, because composing on a host that cannot be parsed would dial
-/// somewhere neither the lane nor the vendor chose.
-pub(crate) fn redirected(vendor: &str, pinned: Option<&str>) -> String {
-    let Some(origin) = pinned.and_then(origin_of) else {
-        return vendor.to_owned();
+/// answering the questions the daemon actually asks.
+pub(crate) fn redirected(vendor: &str, pinned: Option<&str>) -> Option<String> {
+    let Some(pin) = pinned else {
+        return Some(vendor.to_owned());
     };
-    match path_of(vendor) {
+    let origin = origin_of(pin)?;
+    Some(match path_of(vendor) {
         Some(path) => format!("{origin}{path}"),
         None => origin.to_owned(),
-    }
+    })
 }
 
-/// The `scheme://host[:port]` of an absolute URL.
+/// The `scheme://host[:port]` of an absolute URL, if it has one.
+///
+/// Deliberately strict about the authority rather than permissive. An empty
+/// host parses as a URL to almost nothing — `http:///a` is scheme `http` and
+/// path `/a` — and composing on it yields a request whose destination the
+/// resolver decides. Userinfo is worse: `http://vendor.example@evil.test`
+/// reads as the vendor to a person and resolves to `evil.test`, which is the
+/// oldest trick there is for making a hostile host look like a friendly one.
+/// A backslash is rejected for the same reason browsers normalise it to `/`.
 fn origin_of(url: &str) -> Option<&str> {
     let (scheme, authority) = url.split_once(SCHEME_SEPARATOR)?;
-    if scheme.is_empty() || authority.is_empty() {
+    if scheme.is_empty() {
         return None;
     }
     let host = authority.split(PATH_SEPARATOR).next()?;
+    if host.is_empty() || host.contains(USERINFO_SEPARATOR) || host.contains(BACKSLASH) {
+        return None;
+    }
     url.get(..scheme.len() + SCHEME_SEPARATOR.len() + host.len())
 }
 
@@ -59,35 +81,33 @@ fn path_of(url: &str) -> Option<&str> {
 mod tests {
     use super::{origin_of, redirected};
 
-    /// An unpinned call reaches the vendor, spelled exactly as declared.
+    /// The vendor's own endpoint, spelled exactly as declared.
     #[test]
-    fn nothing_pinned_leaves_the_vendors_endpoint_alone() {
+    fn nothing_pinned_reaches_the_vendor() {
         let vendor = "https://api.atlassian.com/oauth/token/accessible-resources";
-        assert_eq!(redirected(vendor, None), vendor);
+        assert_eq!(redirected(vendor, None).as_deref(), Some(vendor));
     }
 
     /// A pinned lane moves the HOST and keeps the vendor's path.
     ///
-    /// The path half is the load-bearing one: a fake provider is only proving
-    /// something if the daemon asks it the question it asks Atlassian. Swapping
-    /// the path too would let a lane pass against a route the real vendor does
-    /// not serve.
+    /// The path half is load-bearing: a fake provider only proves something if
+    /// the daemon asks it the question it asks Atlassian.
     #[test]
     fn a_pinned_lane_moves_the_host_and_keeps_the_path() {
         assert_eq!(
             redirected(
                 "https://api.atlassian.com/oauth/token/accessible-resources",
                 Some("http://127.0.0.1:9931/oauth/v2/token"),
-            ),
-            "http://127.0.0.1:9931/oauth/token/accessible-resources",
+            )
+            .as_deref(),
+            Some("http://127.0.0.1:9931/oauth/token/accessible-resources"),
         );
     }
 
-    /// The pin is read for its origin only — its own path is discarded.
+    /// Only the origin of the pin is used — its own path is discarded.
     ///
     /// The knob is the token endpoint, so it arrives carrying the exchange's
-    /// path. A composition that kept it would dial the token route asking for
-    /// a site listing.
+    /// path. Keeping it would dial the token route asking for a site listing.
     #[test]
     fn only_the_origin_of_the_pin_is_used() {
         for pinned in [
@@ -96,23 +116,38 @@ mod tests {
             "http://127.0.0.1:9931/oauth/v2/token",
         ] {
             assert_eq!(
-                redirected("https://vendor.example/a/b", Some(pinned)),
-                "http://127.0.0.1:9931/a/b",
+                redirected("https://vendor.example/a/b", Some(pinned)).as_deref(),
+                Some("http://127.0.0.1:9931/a/b"),
                 "`{pinned}`",
             );
         }
     }
 
-    /// A pin that is not an absolute URL leaves the vendor's endpoint alone.
+    /// An unusable pin REFUSES rather than falling back to the vendor.
     ///
-    /// The fail-safe direction: an unparseable pin means the lane is
-    /// misconfigured, and dialling the vendor is the behaviour a reader can
-    /// diagnose from the request that arrives there.
+    /// The case this suite got wrong the first time, and the reason it matters:
+    /// a lane pins to keep a test off the real vendor, so answering the vendor
+    /// on a typo sends a freshly minted bearer token to Atlassian from CI.
+    /// Every entry below is a pin somebody could plausibly write.
     #[test]
-    fn a_pin_that_is_not_an_absolute_url_changes_nothing() {
-        let vendor = "https://vendor.example/a/b";
-        for pinned in ["", "127.0.0.1:9931", "://nohost", "http://"] {
-            assert_eq!(redirected(vendor, Some(pinned)), vendor, "`{pinned}`");
+    fn a_pin_that_is_not_a_usable_origin_refuses() {
+        for pinned in [
+            "",
+            "127.0.0.1:9931",
+            "://nohost",
+            "http://",
+            // The one the hand-rolled parser accepted: an empty host, which
+            // composes `http:///a/b` and lets the resolver pick a destination.
+            "http:///127.0.0.1:9931/token",
+            // Userinfo — reads as the vendor, resolves to the other host.
+            "http://vendor.example@evil.test/token",
+            "http:\\\\127.0.0.1:9931",
+        ] {
+            assert_eq!(
+                redirected("https://vendor.example/a/b", Some(pinned)),
+                None,
+                "`{pinned}` must refuse, never fall back to the vendor",
+            );
         }
     }
 
@@ -120,8 +155,8 @@ mod tests {
     #[test]
     fn a_vendor_endpoint_with_no_path_becomes_the_pinned_origin() {
         assert_eq!(
-            redirected("https://vendor.example", Some("http://127.0.0.1:9931/t")),
-            "http://127.0.0.1:9931",
+            redirected("https://vendor.example", Some("http://127.0.0.1:9931/t")).as_deref(),
+            Some("http://127.0.0.1:9931"),
         );
     }
 

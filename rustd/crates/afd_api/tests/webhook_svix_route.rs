@@ -13,11 +13,13 @@
 //! content hash would suppress a genuinely new delivery whose body happened to
 //! match.
 //!
-//! The route carries a fallback for when the header is absent — the fleet id —
-//! and `a_delivery_carrying_no_identifier_is_refused_by_the_wall` records that
-//! it is unreachable: `svix::verify_at` refuses an empty id before the route
-//! chooses a claim at all. The fallback is dead, and the test says so rather
-//! than asserting a behaviour the daemon does not have.
+//! The route has no fallback for an absent header, and cannot have one: the id
+//! it claims on comes back FROM the verifier, so the only value that reaches a
+//! delivery is the one `svix::verify_at` already proved non-empty and signed.
+//! `a_delivery_carrying_no_identifier_is_refused_by_the_wall` is what holds
+//! that shut — a fallback reintroduced here would put every unidentified
+//! delivery on one shared per-fleet slot, and only the status code would say
+//! so.
 
 #![cfg(feature = "test-util")]
 #![expect(
@@ -204,7 +206,8 @@ async fn a_delivery_carrying_no_identifier_is_refused_by_the_wall() {
     );
     assert!(
         ingress.deliveries().is_empty(),
-        "nothing reaches the store, so the fleet-id fallback is never chosen"
+        "the wall refuses before a claim key exists, so nothing is appended \
+         under any identifier"
     );
 }
 

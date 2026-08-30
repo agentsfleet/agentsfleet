@@ -79,8 +79,13 @@ pub async fn resolve(
     pinned: Option<&str>,
     access_token: &str,
 ) -> Result<Site> {
+    // A pin that is not a usable origin refuses here rather than falling back
+    // to Atlassian: the lane set it to keep this call off the vendor, and the
+    // request carries a freshly minted bearer.
+    let endpoint = endpoint::redirected(ACCESSIBLE_RESOURCES, pinned)
+        .ok_or_else(error::exchange_unreadable)?;
     let answer = client
-        .get(endpoint::redirected(ACCESSIBLE_RESOURCES, pinned))
+        .get(endpoint)
         .header(
             HEADER_AUTHORIZATION,
             format!("{BEARER_PREFIX}{access_token}"),
