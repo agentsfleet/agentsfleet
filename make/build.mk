@@ -66,7 +66,11 @@ dist-daemons:  ## Build the static daemon for linux (both arches; asserts zero N
 	done
 
 image-check: ## Build the production image for the host arch and prove the daemon runs in it (VERIFY: runs beside test-integration-rustd)
-	@$(MAKE) dist-daemons DIST_ARCH_PAIRS="$(LOCAL_TARGETARCH):$$(uname -m)"
+	@# Reuse an existing dist binary — the expensive half is the fat-LTO build,
+	@# and a VERIFY step that rebuilds it every run would never be run. A stale
+	@# binary is refreshed explicitly: `make dist-daemons`.
+	@test -f "dist/agentsfleetd-rs-linux-$(LOCAL_TARGETARCH)" \
+	  || $(MAKE) dist-daemons DIST_ARCH_PAIRS="$(LOCAL_TARGETARCH):$$(uname -m)"
 	docker build --build-arg TARGETARCH=$(LOCAL_TARGETARCH) -t agentsfleetd-image-check .
 	@echo "→ [image] the daemon answers inside the image..."
 	docker run --rm agentsfleetd-image-check /usr/local/bin/agentsfleetd --version
