@@ -67,6 +67,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/cutover/probes.sh` | EDIT | §4: probes for this milestone's rubric rows |
 | `docs/architecture/runner_fleet.md` | EDIT | §4: production-shape note — serving binary and rollback posture |
 | `public/openapi.json` | EDIT | §1: regenerated from the daemon rather than hand-maintained |
+| `docker/builder/Dockerfile` | CREATE | §5: the musl builder, with the toolchain baked as layers instead of installed per build |
+| `.github/workflows/builder-image.yml` | CREATE | §5: publishes that builder for both linux arches, by digest |
+| `make/build.mk` | EDIT | §5: `dist-daemons` consumes the published builder rather than installing a toolchain each run |
+| `audits/builder-image-pin.sh` | CREATE | §5: the builder is referenced by digest, never by a mutable tag |
 
 ## Applicable Rules
 
@@ -164,6 +168,54 @@ The runbook carries the **declared-divergence register** M181_001 seeded, so a p
 - **Dimension 4.4** — every runbook probe is a copy-paste command that passes on staging post-swap, and every rubric row of the merged milestones is probe-tagged or manifest-declared → Test `test_runbook_probes`
 - **Dimension 4.5** — metric, span and log families are continuous across the swap: no renamed series, no dropped family, dashboards unbroken → Test `test_signal_continuity`
 
+### §5 — The musl builder, baked once instead of installed every time
+
+**The image choice is settled. Do not re-litigate it.** `make/build.mk` already
+compiles inside `rust:1.98-alpine`, and an independent review (Eywa, 2026-08-30)
+arrived at `rust:1.98.0-alpine3.24` — the same image family. Alpine is musl
+natively and the official Rust image publishes both amd64 and arm64. This
+section is not "move to Alpine"; that shipped in M181_001 §2.
+
+**What costs time is the `apk add`, not the base.** Every `dist-daemons`
+invocation runs
+
+    docker run --rm --platform linux/$arch ... rust:1.98-alpine \
+      sh -c 'apk add --no-cache build-base perl cmake go linux-headers; cargo build ...'
+
+inside a throwaway container, so the toolchain is fetched and installed again on
+every build, for every architecture, and nothing is cached between them. Baking
+those packages into a published image makes them layers the daemon pulls once.
+Measured on an Apple-silicon workstation, a cold single-architecture
+`make dist-daemons` — which `make up` now depends on — took about eleven
+minutes.
+
+**Pin the builder by DIGEST, not by tag.** `rust:1.98-alpine` is mutable. This
+repository already refuses mutable references for GitHub Actions
+(`audits/gh-actions-runtime.sh`; `check-gh-actions-valid` reports "17 distinct
+pins — all immutable"), and an image that decides which compiler produces the
+shipped binary is owed the same rule: a tag that moves under a release is a
+different binary nobody chose.
+
+**Publish both architectures, because emulation is the other tax.**
+`docker run --platform linux/amd64` on an arm64 host runs the entire compile
+under QEMU. A builder published for both arches lets each host compile natively.
+
+**The static assertions are the contract, not the image.** `dist-daemons`
+asserts zero `NEEDED` entries and no `INTERP` on the output. Those two
+assertions move with the recipe and must keep failing the build, whatever
+produces the binary — they are what make "static" a fact rather than a claim.
+
+**If Alpine ever fights a native dependency**, the escape hatch is
+`ghcr.io/rust-cross/rust-musl-cross` (Ubuntu builder, static musl output).
+Explicitly NOT `clux/muslrust`: it removed OpenSSL and `libpq` in 2025, so it is
+no longer the kitchen-sink musl environment its reputation suggests. Take the
+hatch only against a named linker failure, never pre-emptively.
+
+- **Dimension 5.1** — the published builder carries the toolchain as layers, and a build inside it installs no packages → Test `test_builder_installs_nothing`
+- **Dimension 5.2** — the builder is referenced by digest everywhere it is referenced; a mutable tag fails the gate naming the file → Test `test_builder_pinned_by_digest`
+- **Dimension 5.3** — the builder is published for both linux architectures, and each host resolves its own without emulation → Test `test_builder_is_multi_arch`
+- **Dimension 5.4** — the binary out of the published builder is still static: zero `NEEDED`, no `INTERP`, and a seeded dynamic link fails the build → Test `test_dist_binary_stays_static`
+
 ## Parallelization & execution map
 
 (Internal batch labels here sequence THIS milestone's work only; the frontmatter **Batch:** line is the family-level ordering — two different axes, deliberately.)
@@ -249,6 +301,10 @@ No product-analytics changes.
 | 4.2 | e2e | `test_rollback_rehearsal` | a staged swap back is verified by the probe runner exiting 0 |
 | 4.3 | e2e (negative) | `test_rollback_carries_no_migrate_and_refuses` | the rollback section invokes no migration; a binary seeded with a shortened migration set, pointed at the full ledger, refuses and leaves the ledger unchanged |
 | 4.4 | e2e | `test_runbook_probes` | the probe runner passes post-swap on staging; every merged rubric row is probe-tagged or manifest-declared, and every probe carries a row tag |
+| 5.1 | integration | `test_builder_installs_nothing` | a build inside the published builder emits no `apk add` and no package fetch; removing a baked package fails the build naming it |
+| 5.2 | unit (negative) | `test_builder_pinned_by_digest` | every builder reference is `@sha256:…`; a seeded tag reference fails naming the file and the line |
+| 5.3 | unit | `test_builder_is_multi_arch` | the published manifest lists linux/amd64 and linux/arm64; a single-arch manifest fails |
+| 5.4 | integration (negative) | `test_dist_binary_stays_static` | the output has zero `NEEDED` and no `INTERP`; a seeded dynamic dependency fails the build |
 | 4.5 | integration | `test_signal_continuity` | series names and labels are identical across the swap boundary for all three signals |
 
 ## Acceptance Rubric (single scoring surface)
@@ -259,6 +315,7 @@ No product-analytics changes.
 | R2 | All three signals leave the daemon (§2) | `cd rustd && cargo test --package agentsfleetd otlp_` | exit 0 | P0 | |
 | R3 | Whole-system soak green (§3) | `make test-parity BASE_URL=<rust>` + `make dry-app` (Rust variant) + `make test-handoff` | exit 0 each | P0 | |
 | R4 | Budgets hold (§3) | `make bench-cutover` | exit 0 | P0 | |
+| R6 | The builder is baked, pinned and multi-arch (§5) | `bash audits/builder-image-pin.sh && make dist-daemons` | exit 0 each; no package install in the build log | P1 | |
 | R5 | Rollback rehearsed and probes green (§4) | `bash playbooks/cutover/probes.sh` on staging, post-swap and post-rollback | exit 0 both runs | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
