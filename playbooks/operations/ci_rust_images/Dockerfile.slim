@@ -1,0 +1,114 @@
+# syntax=docker/dockerfile:1.7
+#
+# Debian slim + the pinned Rust toolchain — host-runner replacement for the
+# `rustd` UNIT lane (`test.yml`'s `test-unit-rustd`), which today runs bare on
+# `ubuntu-latest` and rebuilds its toolchain on every job.
+#
+# What this removes from each run: a rustup channel resolve and the component
+# downloads `rust-toolchain.toml` triggers on first use. What it deliberately
+# does NOT remove is compilation of the workspace itself — an image layer is
+# immutable, so build artifacts cannot live here. That half is the cache's job
+# (`001_playbook.md` §What this image is not for).
+#
+# Everything here is sized against ONE consumer, whose whole recipe is two
+# lines: `make lint-rustd` and `make test-unit-rustd`. A tool no line of that
+# reaches is weight on every job that pulls the image, so it is not here.
+#
+# amd64 only: every `runs-on` in this repository is `ubuntu-latest`, and a
+# second architecture would double build time for an image nothing pulls.
+
+ARG RUST_VERSION
+
+# The base IS the pin. `rust:<version>-slim-bookworm` ships rustc, cargo and a
+# C toolchain already installed under /usr/local, which is both smaller than
+# installing rustup over a bare distribution and impossible to drift from
+# `RUST_VERSION`: a mismatched tag fails to pull rather than compiling the
+# workspace with a compiler no developer uses. `build_and_push.sh` has already
+# checked that number against `rustd/rust-toolchain.toml` before we get here.
+#
+# It is also 0.85 GB of the finished image's 1.21 GB. Roughly seventy per cent
+# of what this image weighs is the Rust toolchain, so the room to make it
+# smaller is in the other thirty and nowhere else.
+#
+# Pulled through `mirror.gcr.io` rather than Docker Hub directly, so a rate
+# limit on an unauthenticated Hub pull cannot fail the build.
+FROM mirror.gcr.io/library/rust:${RUST_VERSION}-slim-bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# What is NOT here is as load-bearing as what is.
+#
+# No `docker.io`, no `docker-compose-v2`, no `postgresql-client`. Those serve
+# the INTEGRATION lane, and `001_playbook.md` §"The integration lane is NOT a
+# drop-in" works out that the lane cannot run from inside a job container at
+# all: compose would start Postgres and Redis on the host while the suites dial
+# `localhost`, which inside a container is its own empty loopback. That lane
+# stays on the bare runner, so a Docker daemon here would be the largest thing
+# in the image and serve nobody.
+#
+# No `bun` and no `gitleaks` either. Both belong to OTHER jobs — `test-unit-cli`
+# brings its own bun through `oven-sh/setup-bun`, and the secret scan is its own
+# workflow — so carrying them here would tax the Rust lane for someone else's
+# dependencies.
+#
+# No `build-essential`: the base already carries `gcc` and `libc6-dev`, which is
+# the whole of what rustc needs to link. `build-essential` would add `g++` and
+# `dpkg-dev` for no caller.
+#
+# `cmake` IS here and looks droppable, because `aws-lc-sys` (the workspace's TLS
+# provider) does compile without it — it falls back to a `cc`-driven build. That
+# fallback measured 3m15s against 1m48s with cmake present on the same host, and
+# 32 MB of image is a poor trade for eighty per cent longer dependency builds on
+# a lane whose reason for existing is speed.
+#
+# `make` because the lane's two steps are make targets, `git` because cargo and
+# the make targets both shell out to it, `pkg-config` because `-sys` crates
+# probe with it. `scripts/with-progress.sh` wraps both steps and needs only bash
+# and `date`, which the base has.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      cmake \
+      git \
+      make \
+      pkg-config \
+ && rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/locale
+
+# ── Rust components ──────────────────────────────────────────────────────
+#
+# The base installs the `minimal` profile — rustc, cargo, rust-std, nothing
+# else. `rustd/rust-toolchain.toml` names three components beyond it.
+#
+# `llvm-tools` is the one that looks wrong here: this lane measures no coverage,
+# so nothing in `make lint-rustd` or `make test-unit-rustd` invokes it. It stays
+# because rustup honours the toolchain file by DOWNLOADING what is missing the
+# first time cargo runs in `rustd/` — an image built without it reports
+# `llvm-tools-x86_64-unknown-linux-gnu` as installed after one `rustup show`,
+# having fetched it over the network. Omitting it does not save the 79 MB; it
+# moves it out of a cached registry pull and into every job.
+#
+# `rustfmt` and `clippy` are the two the lane actually runs, and a toolchain
+# missing either must fail loudly rather than skip the check.
+#
+# World-readable and cargo-writable: a GitHub Actions job may run the container
+# as an arbitrary uid, and a toolchain only root can read surfaces as
+# "cargo: not found" on a machine that plainly has cargo.
+RUN set -eux; \
+    rustup component add rustfmt clippy llvm-tools; \
+    rm -rf "$RUSTUP_HOME/toolchains"/*/share/doc; \
+    chmod -R a+rX,a+w "$CARGO_HOME" "$RUSTUP_HOME"; \
+    rustc --version; \
+    cargo fmt --version; \
+    cargo clippy --version
+
+# No `CARGO_TARGET_DIR`. An earlier cut set it to the empty string, which cargo
+# rejects outright — "the target directory is set to an empty string in the
+# CARGO_TARGET_DIR environment variable" — so every build in the image would
+# have died on its first invocation while every `--version` smoke check in
+# §3 still passed. Left unset, cargo uses the workspace's own `target/`, which
+# is what the lane and the cache both expect.
+WORKDIR /work
+
+LABEL org.opencontainers.image.title="agentsfleet ci-rust-slim" \
+      org.opencontainers.image.description="Debian slim with the pinned Rust toolchain for the rustd unit lane." \
+      org.opencontainers.image.source="https://github.com/agentsfleet/agentsfleet"

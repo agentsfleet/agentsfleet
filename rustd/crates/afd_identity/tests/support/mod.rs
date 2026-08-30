@@ -1,4 +1,14 @@
 //! Shared scaffolding for this crate's test targets.
+//!
+//! Each test target compiles this module separately, so a helper only some
+//! targets reach for reads as dead in the others. That is a property of how
+//! Cargo builds integration tests, not unused code.
+#![allow(
+    dead_code,
+    reason = "shared test support is compiled into every including target; not all of them use all of it"
+)]
+
+pub(crate) mod signing;
 
 /// Installs a subscriber so event macros actually run.
 ///

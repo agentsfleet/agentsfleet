@@ -13,6 +13,8 @@
 
 #[path = "admin_shapes.rs"]
 mod admin_shapes;
+#[path = "memory_shapes.rs"]
+mod memory_shapes;
 #[path = "redaction.rs"]
 mod redaction;
 #[path = "roundtrip.rs"]
