@@ -31,6 +31,22 @@ use super::verify::{DETAIL_FLEET_NOT_FOUND, EVENT_BINDING, Verified, header, wal
 use crate::handler::Refusal;
 use crate::services::{Services, WebhookIngress as _};
 
+/// A Svix delivery that crossed the wall, and the identifier the wall proved.
+///
+/// The id is carried OUT of the verifier rather than re-read at the route,
+/// because those are two different guarantees. [`svix::verify_at`] refuses an
+/// empty `svix-id` before it computes a tag, and signs the header it did read
+/// as the payload's first field — so this value is non-empty and attributable.
+/// A second read at the call site would be neither, and would need a fallback
+/// for a case the wall has already closed.
+#[derive(Debug)]
+pub(crate) struct SvixVerified {
+    /// The binding and the raw body, as [`super::verify::verified`] hands them.
+    pub(crate) proven: Verified,
+    /// `svix-id`, the at-most-once claim key. Non-empty by the wall's refusal.
+    pub(crate) delivery_id: String,
+}
+
 /// Proves a Svix delivery, or answers the refusal it earned.
 ///
 /// The order is [`super::verify::verified`]'s, step for step: resolve the
@@ -48,7 +64,7 @@ pub(crate) async fn verified_svix<D: Services>(
     fleet: &Uuid7,
     headers: &HeaderMap,
     body: Bytes,
-) -> Result<Verified, Refusal> {
+) -> Result<SvixVerified, Refusal> {
     let binding = services
         .ingress()
         .binding(fleet)
@@ -84,7 +100,10 @@ pub(crate) async fn verified_svix<D: Services>(
     };
 
     match svix::verify_at(&secret, presented, &body, services.now().as_seconds()) {
-        Verdict::Verified => Ok(Verified { binding, body }),
+        Verdict::Verified => Ok(SvixVerified {
+            proven: Verified { binding, body },
+            delivery_id: presented.id.to_owned(),
+        }),
         Verdict::Refused(refusal) => Err(wall(refusal)),
     }
 }
