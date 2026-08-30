@@ -221,10 +221,9 @@ async fn a_reconnect_replaces_the_sealed_grant_rather_than_refusing() {
     // a second name would leave a runner opening whichever it found first.
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    // One fake answering two tokens in order, which is the shape
-    // `oauth_providers_integration_test.zig` uses: a second server would
-    // restart the exchange count and lose the evidence that the reconnect
-    // redeemed a code of its own.
+    // One fake answering two tokens in order. A second server would restart
+    // the exchange count, and the count is what separates "two connects, one
+    // code each" from "one connect that redeemed twice".
     let provider = FakeProvider::answering(&[
         &slack_answer(BOT_TOKEN),
         &slack_answer(REPLACEMENT_TOKEN),

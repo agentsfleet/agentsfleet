@@ -66,10 +66,10 @@ impl FakeProvider {
     /// should fail on the assertion it was making, not on a transport error
     /// from a server that had nothing left to say.
     ///
-    /// Through `axum::serve` rather than a hand-written response. This crate
+    /// Through `axum::serve` rather than a hand-written response: this crate
     /// already depends on axum with the `tokio` feature, and framing HTTP by
     /// hand to answer a fixed document is the kind of parser RULE PSR exists to
-    /// stop — the Zig wrote its own only because it had no such library.
+    /// stop.
     pub(crate) async fn answering(bodies: &[&str]) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await

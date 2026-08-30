@@ -10,6 +10,8 @@ mod connector_events_route;
 mod identity_signup_route;
 #[path = "integration_approval_webhook.rs"]
 mod integration_approval_webhook;
+#[path = "integration_connector_events.rs"]
+mod integration_connector_events;
 #[path = "webhook_approval_wall.rs"]
 mod webhook_approval_wall;
 #[path = "webhook_fleet_route.rs"]
