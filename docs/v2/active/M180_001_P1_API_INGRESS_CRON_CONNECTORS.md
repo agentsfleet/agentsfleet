@@ -30,7 +30,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** every signature-verified ingress route (fleet webhooks + approval + GitHub, Svix, QStash schedule fire, connector callbacks, Slack events, Clerk identity events), the schedules surface (CRUD + `:sync`) with its Upstash QStash (external cron provider) sync service, and the connector outbound worker serve from `agentsfleetd-rs` with signature verdicts, rejection codes, replay suppression, and stream writes equal to the Zig daemon.
+**Goal (testable):** every signature-verified ingress route (fleet webhooks + approval + GitHub, Svix, QStash schedule fire, connector callbacks, Slack events, Clerk identity events), the schedules surface (CRUD + `/sync`) with its Upstash QStash (external cron provider) sync service, and the connector outbound worker serve from `agentsfleetd-rs` with signature verdicts, rejection codes, replay suppression, and stream writes equal to the Zig daemon.
 **Problem:** the trigger plane is the daemon's unauthenticated-edge: HMAC (hash-based message authentication code) verification, timestamp windows, and replay suppression are the only wall between the internet and `XADD fleet:{id}:events` — a port defect here is a security defect, and cron double-fires or lost webhooks corrupt the "operational outcomes do not fall into limbo" promise.
 **Solution summary:** port the signature wall — six verification paths (per-fleet webhook HMAC, approval HMAC, Svix, Slack v0, QStash JWT) plus the non-verifying trusted-client-IP derivation — with constant-time compares, the ingress handler groups, the schedules store + QStash client + sync service, the connector callback relay/complete pair + Slack events, and the outbound answer worker as a supervised task — graded by signature fixture matrices and the integration subset.
 
@@ -50,22 +50,40 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Files Changed (blast radius)
 
+Measured, not planned: `git diff --name-only origin/main...HEAD`, grouped by crate.
+Two rows of the original table named crates that were never built — `afd_qstash`
+and `afd_schedule` were folded into a single `afd_cron` during §3, because the
+vendor boundary and our own rows turned out to share a store and splitting them
+bought two crates and no seam. Four rows are new since the original: M185 split
+`afd_api` into a substrate plus planes underneath this branch, so this milestone's
+routes re-homed into `afd_api_ingress` (a NEW fifth plane, created here) and
+`afd_api_tenant`, over an `afd_http` substrate.
+
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afd_api/**` | EDIT | Route variants + handlers: `/v1/webhooks/{fleet_id}[/approval|/github]`, `/v1/webhooks/svix/{fleet_id}`, `/v1/ingress/{provider}`, `/v1/ingress/qstash/schedules`, `/v1/connectors/{provider}/callback` (GET relay / POST complete), `/v1/connectors/slack/events`, `/v1/auth/identity-events/clerk`, workspace+fleet `/schedules[/{schedule_id}[:sync]]` |
-| `rustd/crates/afd_crypto/**` | EDIT | `Mac256` → `HmacSha256Tag` rename (mechanical, its own commit before §1) |
-| `rustd/crates/afd_tenant/**` | EDIT | the one out-of-crate consumer of the renamed tag type |
-| `rustd/crates/afd_core/**` | EDIT | `UZ-WH-*` codes declared in the error-code registry (`error_code/request.rs` family) |
-| `rustd/crates/afd_redis/**` | EDIT | dedicated (non-multiplexed) connection seam for the blocking outbound consumer — the `hub.rs` precedent |
-| `rustd/crates/afd_webhook/**` | CREATE | §1 — the signature wall: scheme table, Slack v0, vendored Svix verifier under `src/vendor/`. Pure verdicts, no datastore and no framework, so every branch is provable without either |
-| `rustd/crates/afd_qstash/**` | CREATE | §3 — one vendor boundary, both directions: the inbound HS256 delivery verifier and the outbound schedule REST client. Swapping cron providers touches this crate alone |
-| `rustd/crates/afd_schedule/**` | CREATE | §3 — our own rows: store, generations, sync leases, cron/timezone validation with the parity guard, fire resolution. Depends on `afd_qstash`; never the reverse |
-| `rustd/crates/afd_connector/**` | CREATE | §4 — OAuth state mint/verify/consume, the provider registry, callback grants into the vault, Slack event handling |
-| `rustd/crates/afd_outbound/**` | CREATE | §5 — the delivery queue and its supervised worker. **The only crate that imports a connector poster**, keeping the report path provider-agnostic (the Zig's Invariant 9) |
-| `rustd/crates/agentsfleetd/**` | EDIT | outbound worker joins the supervisor |
-| `rustd/Cargo.toml` | EDIT | new members + the cron-parser dependency |
+| `rustd/crates/afd_connector/**` (24) | CREATE | §4 — OAuth state mint/verify/consume, the provider registry, callback grants into the vault, Slack event handling |
+| `rustd/crates/afd_cron/**` (17) | CREATE | §3 — one crate for both halves: the inbound HS256 delivery verifier, the outbound schedule REST client, the store, sync leases, and cron/timezone validation with the parity guard |
+| `rustd/crates/afd_api_ingress/**` (16) | CREATE | §2/§4 — the NEW fifth plane: every webhook route plus connector events. Everything a sender proves with a signature over the body rather than with a bearer |
+| `rustd/crates/afd_api/**` (16) | EDIT | Composition root after M185: mounts the planes, owns the route inventory tests |
+| `rustd/crates/afd_redis/**` (15) | EDIT | dedicated (non-multiplexed) connection seam for the blocking outbound consumer — the `hub.rs` precedent — and the `append_once` claim script |
+| `rustd/crates/agentsfleetd/**` (13) | EDIT | outbound worker joins the supervisor; supervised inventory counts it |
+| `rustd/crates/afd_ingress/**` (12) | CREATE | §2 — the append path itself: `deliver.rs`, the `OnceScope` claim, secret resolution |
+| `rustd/crates/afd_outbound/**` (10) | CREATE | §5 — the delivery queue and its supervised worker. **The only crate that imports a connector poster**, keeping the report path provider-agnostic (the Zig's Invariant 9) |
+| `rustd/crates/afd_http/**` (10) | EDIT | M185 substrate: route metadata for the new paths, `provider_of`, `FleetPath`/`parse_fleet_id`, `APPROVAL_IDENTITY` — the two symbols both planes needed, which is what forced them down here |
+| `rustd/crates/afd_api_tenant/**` (10) | EDIT | bearer-proven connector surface (catalogue, connect, status, callback) + fleet schedules |
+| `rustd/crates/afd_webhook/**` (9) | CREATE | §1 — the signature wall: scheme table, Slack v0, vendored Svix verifier under `src/vendor/`. Pure verdicts, no datastore and no framework, so every branch is provable without either |
+| `rustd/crates/afd_core/**` (5) | EDIT | `UZ-WH-*` / `UZ-CONN-*` codes declared in the error-code registry (`error_code/request.rs` family) |
+| `rustd/crates/afd_vault/**` (3) | EDIT | the grant seal's key-name path |
+| `rustd/crates/afd_crypto/**` (3) | EDIT | `Mac256` → `HmacSha256Tag` rename (mechanical, its own commit before §1) |
+| `rustd/crates/afd_wire/**` (2) | EDIT | connector response types, moved out of the handlers so the CLI and the app read one shape |
+| `rustd/crates/{afd_fleet_runtime,afd_fleet_lifecycle}/**` (2 each) | EDIT | event append call sites following the ingress seam |
+| `rustd/crates/{afd_tenant,afd_runner,afd_approval}/**` (1 each) | EDIT | the renamed tag type and the approval resolve path |
+| `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | new members + the cron-parser, `subtle`, `backon` and `jiff` dependencies |
+| `public/openapi.json` | EDIT | the new ingress/schedule/connector paths — **and three custom verbs moving segment**, see the docs entry in Discovery |
+| `cli/src/lib/api-paths.ts`, `cli/test/fleet-schedule.*.test.ts` | EDIT | `/sync` → `/sync` in the client and its tests |
+| `ui/packages/app/**` (2) | EDIT | the same path change on the dashboard's schedule call |
+| `tests/fixtures/webhooks/**` (5) | CREATE | GitHub delivery corpus for Dimension 2.3 — `github_ping`, `github_pull_request`, `github_run_failure`, `github_run_failure_app`, `github_run_success` |
 | `make/test-integration-rustd.mk` | EDIT | ingress/cron/connector subset against the Rust binary |
-| `tests/fixtures/webhooks/**` | CREATE | GitHub delivery corpus for Dimension 2.3 — built from the Zig daemon's accept/reject behaviour (two fixtures exist today; a corpus does not) |
 
 ## Applicable Rules
 
@@ -116,10 +134,10 @@ The rustls invariant, stated precisely: exactly one `CryptoProvider` — `aws-lc
 
 Six verification paths, not the four the draft counted: `webhook_sig` (per-fleet provider HMAC), `webhook_hmac` (approval deliveries), `svix_signature` (vendored upstream verifier), the Slack v0 verdict (in-handler — its secret is a per-request vault read, not a boot secret), and the QStash JWT verifier (§3 consumes it; it lands here with the wall). All over the afd_crypto canon: constant-time compares, the three rejection codes (UZ-WH-020 / UZ-WH-010 / UZ-WH-011), the 5-minute timestamp window. `trusted_client_ip` ports in this section too but is not part of the wall — it verifies nothing; it is pure XFF/`Fly-Client-IP` derivation with an audit trail.
 
-- **Dimension 1.1** — signature matrix per middleware: valid passes; wrong key, tampered body, missing header, malformed header each → the documented code → Test `test_signature_matrix_per_middleware` — DONE
-- **Dimension 1.2** — timestamp window: 4m59s accepted, 5m01s → UZ-WH-011; skew in both directions → Test `test_timestamp_window_bounds` — DONE
-- **Dimension 1.3** — verification is constant-time (no early-return on first mismatched byte — structural assertion on the compare path) → Test `test_signature_constant_time_compare` — DONE
-- **Dimension 1.4** — unconfigured webhook secret → UZ-WH-020, never a verify attempt → Test `test_unconfigured_secret_code` — DONE
+- **Dimension 1.1** — signature matrix per middleware: valid passes; wrong key, tampered body, missing header, malformed header each → the documented code → Tests `afd_webhook/tests/scheme_matrix.rs`: `a_correctly_signed_delivery_verifies_on_every_scheme`, `a_signature_under_the_wrong_key_is_refused_on_every_scheme`, `a_tampered_body_is_refused_on_every_scheme`, `an_absent_signature_header_is_refused_on_every_scheme`, `a_malformed_signature_header_is_refused_on_every_scheme` — DONE
+- **Dimension 1.2** — timestamp window: 4m59s accepted, 5m01s → UZ-WH-011; skew in both directions → Tests `afd_webhook/tests/scheme_matrix.rs`: `only_the_timestamped_scheme_binds_a_window`, `a_timestamped_scheme_missing_its_timestamp_is_refused_as_stale`; `afd_webhook/tests/svix_vendor.rs`: `the_tolerance_window_is_five_minutes_in_both_directions`, `a_stale_delivery_is_refused_as_stale_not_as_a_bad_signature` — DONE
+- **Dimension 1.3** — verification is constant-time. The structural assertion is on the TYPE, not on a timing measurement: `HmacSha256Tag` does not derive `PartialEq` (`afd_crypto/src/mac.rs:30`), so a short-circuiting `==` is unwritable and `verify`'s `subtle::ConstantTimeEq` is the only comparison route (RULE CTM, `docs/greptile-learnings/RULES.md:95`) → Test `afd_crypto/tests/mac.rs`: `the_tag_type_offers_no_short_circuiting_comparison`
+- **Dimension 1.4** — unconfigured webhook secret → UZ-WH-020, never a verify attempt → Tests `afd_webhook/tests/scheme_matrix.rs`: `an_empty_secret_is_refused_as_unconfigured_before_any_comparison`, `a_refusal_carries_its_registry_code_and_a_stable_sentence`; `afd_webhook/tests/svix_vendor.rs`: `an_empty_secret_never_parses` — DONE
 
 ### §2 — Webhook ingress handlers
 
@@ -127,27 +145,27 @@ Six verification paths, not the four the draft counted: `webhook_sig` (per-fleet
 
 **Correction (Aug 29).** This section previously described the idempotency boundary as `INSERT … ON CONFLICT DO NOTHING`. It is not, and the difference is load-bearing rather than cosmetic. Ingress writes **nothing** to Postgres: the durable row appears when the runner leases the event, and a daemon that inserted one at ingress would be racing its own runner to describe the same event. `INSERT_FLEET_EVENT` has exactly two callers — `afd_fleet::lease::event` and `afd_approval::inbox` — and neither is ingress. What makes a redelivery safe is `afd_redis::streams::OnceScope`'s claim key, checked and set in the same Lua script as the `XADD`, so the claim and the append cannot come apart. See `afd_ingress/src/deliver.rs`.
 
-- **Dimension 2.1** — verified webhook → one stream entry and **no** Postgres row (the row is the runner's, at lease); replayed delivery → zero new entries and the FIRST entry's id returned, per the `append_once` claim → Test `test_webhook_ingest_idempotent`
-- **Dimension 2.2** — approval webhook resolves the gate exactly as the M178 surface does (one continuation row) → Test `test_approval_webhook_continuation`
-- **Dimension 2.3** — GitHub-flavored payload parsing parity on a fixture corpus (deliveries the Zig daemon accepts/rejects) → Test `test_github_webhook_corpus_parity`
-- **Dimension 2.4** — Clerk identity events mutate the same identity state as the Zig daemon on fixture events → Test `test_clerk_identity_event_parity`
-- **Dimension 2.5** — every route + method in this spec's Interfaces inventory exists in the Route enum; extras and gaps both fail → Test `test_route_inventory_matches_interfaces`
+- **Dimension 2.1** — verified webhook → one stream entry and **no** Postgres row (the row is the runner's, at lease); replayed delivery → zero new entries and the FIRST entry's id returned, per the `append_once` claim → Tests `afd_api/tests/webhook_fleet_route.rs`: `a_signed_failed_run_wakes_the_fleet_and_answers_the_events_id`, `a_redelivery_repeats_the_first_claim_and_reports_that_it_did` (the claim half). The **no-Postgres-row** half is unproven — no assertion currently distinguishes ingress from the runner's lease → Test to write: `a_verified_delivery_writes_no_durable_row`
+- **Dimension 2.2** — approval webhook resolves the gate exactly as the M178 surface does (one continuation row) → Test to write: `afd_api/tests/webhook_approval_route.rs`: `a_signed_approval_delivery_resolves_the_gate_the_bearer_surface_resolves`. `afd_api_ingress/src/handler/webhook/verify_platform.rs` (113 lines) is at 0% coverage
+- **Dimension 2.3** — GitHub-flavored payload parsing parity on a fixture corpus (deliveries the Zig daemon accepts/rejects) → Tests `afd_api_ingress/src/handler/webhook/github/tests.rs`: `a_failed_run_becomes_the_digest_a_fleet_reasons_over`, `a_green_run_is_dropped_rather_than_woken_on`, `a_run_on_the_repairers_own_branch_is_dropped_before_its_conclusion_is_read`, `an_in_progress_run_is_dropped_as_an_action_rather_than_a_conclusion`, `an_event_this_daemon_serves_no_rule_for_is_unsupported_not_malformed`, `a_body_that_is_not_the_event_its_header_claims_is_an_error`, `the_two_policies_differ_only_on_the_pull_request_action`, `both_policies_drop_a_pull_request_from_the_repairers_own_branch`, `an_opened_pull_request_carries_the_twelve_field_digest`, `a_delivery_shaped_as_github_sends_it_deserializes`, `an_actor_missing_one_url_field_fails_the_whole_delivery`, `the_run_digest_carries_nine_fields_and_no_more` — DONE
+- **Dimension 2.4** — Clerk identity events mutate the same identity state as the Zig daemon on fixture events → **NOT PORTED.** The route is unmounted and no handler exists; a handler wired during the M185 merge was removed rather than left standing to make this row look green. This Dimension does not close in M180
+- **Dimension 2.5** — every route + method in this spec's Interfaces inventory exists in the Route enum; extras and gaps both fail → Tests `afd_api/tests/admin_operator_route_inventory.rs`: `test_route_inventory_matches_interfaces`; `afd_api/tests/route_inventory.rs` — DONE
 
 ### §3 — Schedules and QStash
 
-Workspace+fleet `/schedules[/{schedule_id}[:sync]]` CRUD, the schedules store, the QStash client (create/update/delete upstream schedules), the sync service (`:sync` reconciles), and the fire path `/v1/ingress/qstash/schedules`: signature verified at ingress, replay suppressed atomically, the daemon owns no timer.
+Workspace+fleet `/schedules[/{schedule_id}[/sync]]` CRUD, the schedules store, the QStash client (create/update/delete upstream schedules), the sync service (`/sync` reconciles), and the fire path `/v1/ingress/qstash/schedules`: signature verified at ingress, replay suppressed atomically, the daemon owns no timer.
 
-- **Dimension 3.1** — schedule CRUD + `:sync` reconciliation parity (store rows + upstream calls recorded against a QStash fake) → Test `test_schedule_sync_reconciles`
-- **Dimension 3.2** — schedule fire: verified callback → event append; duplicate fire (same delivery) suppressed atomically under concurrency → Test `test_schedule_fire_replay_suppressed`
-- **Dimension 3.3** — QStash outage during CRUD → typed retryable error; store and upstream never diverge silently (sync repairs) → Test `test_qstash_outage_sync_repair`
+- **Dimension 3.1** — schedule CRUD + `/sync` reconciliation parity (store rows + upstream calls recorded against a QStash fake) → Test to write: `afd_cron/tests/integration_store.rs`: `a_sync_reconciles_the_store_against_what_upstream_actually_holds`. `afd_cron/src/store.rs` (133 lines) is at 2.2%
+- **Dimension 3.2** — schedule fire: verified callback → event append; duplicate fire (same delivery) suppressed atomically under concurrency → Test to write: `afd_cron/tests/integration_fence.rs`: `a_duplicate_fire_is_suppressed_atomically_under_concurrency`. `afd_cron/src/store/fence.rs` (111 lines) is at 0%
+- **Dimension 3.3** — QStash outage during CRUD → typed retryable error; store and upstream never diverge silently (sync repairs) → Test to write: `afd_cron/tests/integration_store.rs`: `an_upstream_outage_during_crud_is_retryable_and_sync_repairs_the_divergence`
 
 ### §4 — Connectors and Slack
 
 `/v1/connectors/{provider}/callback` (GET relay / POST complete) finishing OAuth (Open Authorization) grants into the vault via M176 crypto; `/v1/connectors/slack/events` (URL-verification challenge + event deliveries); workspace `/connectors[/{provider}[/connect]]` surface parity.
 
-- **Dimension 4.1** — callback relay/complete: grant lands in the vault under the provider key name; states/nonces validated → Test `test_connector_callback_grant`
-- **Dimension 4.2** — forged/expired callback state → rejected, no vault write → Test `test_connector_callback_rejects_forged`
-- **Dimension 4.3** — Slack URL-verification answered; signed events accepted; bad Slack signature rejected → Test `test_slack_events_verification`
+- **Dimension 4.1** — callback relay/complete: grant lands in the vault under the provider key name; states/nonces validated → Test to write: `afd_api/tests/connector_callback_route.rs`: `a_completed_callback_lands_the_grant_under_the_provider_key_name`. `afd_api_tenant/src/handler/connector/callback.rs` (100 lines) is at 15.3%
+- **Dimension 4.2** — forged/expired callback state → rejected, no vault write → Test to write: `afd_api/tests/connector_callback_route.rs`: `a_forged_or_expired_state_is_rejected_before_any_vault_write`
+- **Dimension 4.3** — Slack URL-verification answered; signed events accepted; bad Slack signature rejected → Tests `afd_api_ingress/src/handler/events.rs`: `test_the_handshake_echoes_the_value_it_asked_for`, `test_no_valueless_handshake_is_answered_as_one`, `test_a_provider_with_no_handshake_echoes_nothing` (the handshake half). Test to write: `afd_api/tests/connector_events_route.rs`: `a_signed_event_is_accepted_and_a_bad_signature_is_refused`
 
 ### §5 — Outbound answer worker
 
@@ -155,8 +173,8 @@ The connector outbound queue worker as a supervised task: delivers fleet answers
 
 Two recorded departures from the Zig, both improvements over workarounds it documents in its own comments: (1) the worker owns a **dedicated non-multiplexed Redis connection** (new seam in afd_redis, `hub.rs` precedent) and blocks on `XREADGROUP BLOCK` instead of the 250 ms idle poll — the poll existed because Zig's pooled connections could not park on a stream; `tokio::select!` races the blocking read against the supervisor's `CancellationToken`. Dropping the read future does not cancel the command server-side, so the pending-first read on resume is load-bearing, and Dimension 5.2 proves it. (2) The retry backoff is `backon`'s jittered schedule, where the Zig retried at a flat `200ms << attempt` — Dimension 5.1's "jittered" is this improvement, not parity. Delivery stays serial: two answers into one Slack thread must not reorder.
 
-- **Dimension 5.1** — queued answer delivered once; destination 5xx → retry with backoff then documented terminal handling → Test `test_outbound_delivery_retry`
-- **Dimension 5.2** — shutdown mid-delivery: task joins; no lost or double-delivered answer → Test `test_outbound_shutdown_no_loss`
+- **Dimension 5.1** — queued answer delivered once; destination 5xx → retry with backoff then documented terminal handling → Tests `afd_outbound/tests/integration_worker.rs`: `test_outbound_delivery_retry`; `afd_outbound/tests/delivery.rs`: `test_a_delivered_answer_is_offered_exactly_once`, `test_a_retryable_destination_is_offered_the_budget_and_no_more`, `test_a_destination_that_recovers_is_not_offered_again`, `test_a_permanent_refusal_is_offered_once` — DONE
+- **Dimension 5.2** — shutdown mid-delivery: task joins; no lost or double-delivered answer → Tests `afd_outbound/tests/integration_worker.rs`: `test_outbound_shutdown_no_loss`; `afd_outbound/tests/delivery.rs`: `test_a_shutdown_stops_the_retry_without_abandoning_the_attempt`, `test_a_shutdown_during_a_successful_delivery_still_reports_it` — DONE
 
 ## Parallelization & execution map
 
@@ -180,7 +198,7 @@ Ingress routes (per src/agentsfleetd/http/route_template.zig):
   POST /v1/ingress/{provider} · /v1/ingress/qstash/schedules
   GET|POST /v1/connectors/{provider}/callback · POST /v1/connectors/slack/events
   POST /v1/auth/identity-events/clerk
-  /v1/workspaces/{id}/fleets/{fleet_id}/schedules[/{schedule_id}[:sync]]
+  /v1/workspaces/{id}/fleets/{fleet_id}/schedules[/{schedule_id}[/sync]]
 Rejection codes: UZ-WH-020 (misconfig) · UZ-WH-010 (bad signature) ·
 UZ-WH-011 (stale timestamp, 5-minute window) — UNIFIED across this surface
 (Indy's call, Aug 28 2026). The Zig answers three families here — the approval
@@ -200,25 +218,25 @@ Stream write: XADD fleet:{id}:events — entry id IS the canonical event id.
 | Unconfigured secret | misconfigured fleet | UZ-WH-020 before any verify work |
 | Webhook replay | provider at-least-once delivery | idempotent insert + entry-id dedup → zero duplicate rows |
 | Cron double-fire | QStash retry race | atomic suppression; exactly one event row |
-| QStash outage | vendor down | typed retryable on CRUD; `:sync` reconciles when back |
+| QStash outage | vendor down | typed retryable on CRUD; `/sync` reconciles when back |
 | Slack retry storm | slow handler | fast-ack semantics parity; events processed idempotently |
 | Connector destination down | outbound 5xx | jittered backoff retries; terminal handling parity + failure accounting |
 | Forged OAuth callback | CSRF (cross-site request forgery)-style state reuse | state/nonce validation → rejected, no vault write |
 
 ## Invariants
 
-1. Every signature compare on this surface is constant-time via the afd_crypto canon — one implementation, no per-handler crypto — `test_signature_constant_time_compare` + OWN review.
-2. Nothing writes `fleet:{id}:events` on this surface without a passed signature verdict — middleware ordering enforced by the Route metadata; `test_signature_matrix_per_middleware`.
-3. The daemon owns no timer — schedule firing arrives only via verified QStash callbacks; enforced by afd_cron exposing no scheduler task; `test_schedule_fire_replay_suppressed`.
-4. Replay is idempotent end-to-end (webhook + cron): duplicate deliveries produce zero additional durable rows — `test_webhook_ingest_idempotent`.
+1. Every signature compare on this surface is constant-time via the afd_crypto canon — one implementation, no per-handler crypto — `afd_crypto/tests/mac.rs`: `the_tag_type_offers_no_short_circuiting_comparison` (the type admits no other compare) + OWN review under RULE CTM.
+2. Nothing writes `fleet:{id}:events` on this surface without a passed signature verdict — middleware ordering enforced by the Route metadata; `afd_webhook/tests/scheme_matrix.rs`.
+3. The daemon owns no timer — schedule firing arrives only via verified QStash callbacks; enforced by afd_cron exposing no scheduler task; `afd_cron/tests/integration_fence.rs` (TO WRITE).
+4. Replay is idempotent end-to-end (webhook + cron): duplicate deliveries produce zero additional durable rows — `afd_api/tests/webhook_fleet_route.rs`: `a_redelivery_repeats_the_first_claim_and_reports_that_it_did`, plus `a_verified_delivery_writes_no_durable_row` (TO WRITE) for the zero-rows half.
 5. Rejected ingress logs code + provider only — never payload bytes, signatures, or secrets — LOGGING gate + log-capture assertions in the signature tests.
 
 ## Metrics & Observability
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| ingress accept/reject counters (existing families) | ops | each verdict | provider, code, fleet id | no payloads/signatures | `test_signature_matrix_per_middleware` |
-| outbound delivery outcome counter (existing) | ops | delivery attempt terminal state | provider, outcome, retry count | no message content | `test_outbound_delivery_retry` |
+| ingress accept/reject counters (existing families) | ops | each verdict | provider, code, fleet id | no payloads/signatures | `afd_webhook/tests/scheme_matrix.rs` |
+| outbound delivery outcome counter (existing) | ops | delivery attempt terminal state | provider, outcome, retry count | no message content | `afd_outbound/tests/integration_worker.rs`: `test_outbound_delivery_retry` |
 
 No product-analytics changes (machine-facing ingress; parity port).
 
@@ -226,24 +244,24 @@ No product-analytics changes (machine-facing ingress; parity port).
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit (negative-heavy) | `test_signature_matrix_per_middleware` | 4 middlewares × {valid, wrong key, tampered body, missing header, malformed header} → documented verdict each |
-| 1.2 | unit (negative) | `test_timestamp_window_bounds` | ±window-edge fixtures → accept/UZ-WH-011 exactly at the documented boundary |
-| 1.3 | unit | `test_signature_constant_time_compare` | compare path uses the canon's constant-time primitive for all input lengths |
-| 1.4 | unit (negative) | `test_unconfigured_secret_code` | no secret configured → UZ-WH-020, verify never invoked |
-| 2.1 | integration (replay) | `test_webhook_ingest_idempotent` | same delivery twice → one stream entry, one durable row |
-| 2.2 | integration | `test_approval_webhook_continuation` | approval delivery → gate resolved + one continuation row |
-| 2.3 | unit | `test_github_webhook_corpus_parity` | fixture corpus → accept/reject verdicts equal the Zig daemon's |
-| 2.4 | integration | `test_clerk_identity_event_parity` | fixture identity events → same state mutations as Zig |
-| 2.5 | unit | `test_route_inventory_matches_interfaces` | Interfaces inventory ⊆ Route enum with methods; extras/gaps named |
-| 3.1 | integration | `test_schedule_sync_reconciles` | drifted store vs fake upstream → `:sync` converges both |
-| 3.2 | integration (race/replay) | `test_schedule_fire_replay_suppressed` | concurrent duplicate fires → exactly one event row |
-| 3.3 | integration (negative) | `test_qstash_outage_sync_repair` | upstream down during CRUD → typed error; later `:sync` repairs |
-| 4.1 | integration | `test_connector_callback_grant` | relay→complete → vault row under provider key name |
-| 4.2 | integration (negative) | `test_connector_callback_rejects_forged` | reused/forged/expired state → rejected, zero vault writes |
-| 4.3 | integration | `test_slack_events_verification` | URL-verification echoed; valid event accepted; bad signature rejected |
-| 4.3 (FM) | integration (negative) | `test_slack_fast_ack_parity` | slow downstream processing → ack timing parity with Zig; retried delivery processed idempotently |
-| 5.1 | integration (negative) | `test_outbound_delivery_retry` | destination 5xx×N → backoff schedule + terminal handling parity |
-| 5.2 | integration (race) | `test_outbound_shutdown_no_loss` | SIGTERM mid-delivery → join; answer delivered once or re-queued |
+| 1.1 | unit (negative-heavy) | `afd_webhook/tests/scheme_matrix.rs` (5 tests) | every scheme × {valid, wrong key, tampered body, absent header, malformed header} → documented verdict each |
+| 1.2 | unit (negative) | `scheme_matrix.rs` + `svix_vendor.rs` (4 tests) | ±window-edge fixtures → accept/UZ-WH-011 exactly at the documented boundary; only the timestamped scheme binds a window |
+| 1.3 | unit (structural) | `afd_crypto/tests/mac.rs`: `the_tag_type_offers_no_short_circuiting_comparison` | `HmacSha256Tag` does not implement `PartialEq`, so `verify`'s `subtle::ConstantTimeEq` is the only comparison route |
+| 1.4 | unit (negative) | `scheme_matrix.rs` + `svix_vendor.rs` (3 tests) | no secret configured → UZ-WH-020 with its registry sentence, verify never invoked |
+| 2.1 | integration (replay) | `webhook_fleet_route.rs` (2 tests) + `a_verified_delivery_writes_no_durable_row` (TO WRITE) | same delivery twice → one stream entry, the first entry's id returned, and **zero** durable rows — the row is the runner's, at lease (see the §2 Correction) |
+| 2.2 | integration | `webhook_approval_route.rs` (TO WRITE) | approval delivery → gate resolved + one continuation row, identical to the bearer surface |
+| 2.3 | unit | `afd_api_ingress/src/handler/webhook/github/tests.rs` (12 tests) | fixture corpus → accept/drop verdicts equal the Zig daemon's; both policies; digest field counts pinned |
+| 2.4 | — | **none — NOT PORTED** | route unmounted, no handler; does not close in M180 |
+| 2.5 | unit | `admin_operator_route_inventory.rs`, `route_inventory.rs` | Interfaces inventory ⊆ Route enum with methods; extras/gaps named |
+| 3.1 | integration | `afd_cron/tests/integration_store.rs` (TO WRITE) | drifted store vs fake upstream → `/sync` converges both |
+| 3.2 | integration (race/replay) | `afd_cron/tests/integration_fence.rs` (TO WRITE) | concurrent duplicate fires → exactly one event row |
+| 3.3 | integration (negative) | `afd_cron/tests/integration_store.rs` (TO WRITE) | upstream down during CRUD → typed error; later `/sync` repairs |
+| 4.1 | integration | `afd_api/tests/connector_callback_route.rs` (TO WRITE) | relay→complete → vault row under provider key name |
+| 4.2 | integration (negative) | `afd_api/tests/connector_callback_route.rs` (TO WRITE) | reused/forged/expired state → rejected, zero vault writes |
+| 4.3 | unit + integration | `afd_api_ingress/src/handler/events.rs` (3 handshake tests) + `connector_events_route.rs` (TO WRITE) | URL-verification echoed; valid event accepted; bad signature rejected |
+| 4.3 (FM) | integration (negative) | `connector_events_route.rs` (TO WRITE) | slow downstream processing → ack returns before processing completes; retried delivery processed idempotently |
+| 5.1 | unit + integration | `afd_outbound/tests/delivery.rs` (4 tests) + `integration_worker.rs`: `test_outbound_delivery_retry` | destination 5xx×N → jittered backoff budget + terminal handling |
+| 5.2 | unit + integration | `afd_outbound/tests/delivery.rs` (2 tests) + `integration_worker.rs`: `test_outbound_shutdown_no_loss` | SIGTERM mid-delivery → join; answer delivered once or re-queued |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -343,6 +361,39 @@ N/A — no files deleted.
 - **Cutover parity is NOT an argument on this milestone (Indy, Aug 29).** An earlier draft of the entry above defended the signed-state wire format on the grounds that a connect started on the Zig daemon must complete on the Rust one during M181. Struck: the product is not in production, so there are no in-flight connects to preserve and no operator to inconvenience. Wire-format decisions on this port stand on their own merits or not at all — and where a Zig format is kept, the reason to record is that the format is sound, never that a cutover depends on it.
 
 - **The connect flow's Redis dependency, and what a loss actually costs (Indy asked, Aug 29).** Traced rather than assumed. `start` makes exactly ONE write and it is the Redis nonce; every Postgres write — the sealed grant, the `connector_installs` row — happens in `finish`, AFTER the nonce is spent. So: Redis *unreachable* is not a connect-specific concern, because `router/probes.rs:63` is `database && queue` and the instance leaves rotation before a callback can arrive. Redis *data* loss — eviction, a lagged replica, a restart without persistence — fails CLOSED: `DEL` answers 0, the callback answers `UZ-CONN-002`, and there is **no partial state to repair**, because nothing durable had been written. The person starts the connect again. The nonce is also not the only replay gate: completion requires a state this deployment signed, inside its window, presented by the person whose subject tag it carries, who is authorised on that workspace, plus an authorisation code the vendor has not already spent. If the claim should survive Redis entirely, the move is Postgres — the callback is already there for the workspace check — at the cost of a table, a migration behind the Schema Removal Guard, and an expiry sweeper. Not taken now; recorded as priced.
+
+- **Dimension test naming — the spec's names lose, and the reason is measured (Indy, Aug 30).** This spec contracted seventeen `test_`-prefixed names. Fourteen never existed under those names, and `afd_api` — where most of them belong — writes tests as behaviour sentences without the prefix. `docs/architecture/testing.md` legislates FILENAMES (`integration_<subject>.rs` / `<subject>.rs` / `<crate>_suite.rs`) and says nothing about function names, so there was no written standard to appeal to. Measured instead, by the day each test file was introduced: 2026-08-24 through 08-26 are 100% prefixed (378 tests), and from 08-27 the practice inverts — 14%, 0%, 31%, 9% (411 tests). Per crate the split is the same story: the 100% crates (`afd_auth`, `afd_db`, `afd_identity`, `afd_redis`, `afd_state`) all predate the 27th, while `afd_api` sits at 20%, `afd_cron` and `afd_webhook` at 0%. It is also the idiomatic Rust position — `#[test]` performs discovery, so a `test_` prefix is a carryover from runners that discover by name and cargo already prints the module path. **Decision: amend each Dimension to name the test that actually proves it.** Where the real test is better factored than the spec's guess, the spec was the thing that was wrong. `afd_outbound` and `afd_crypto` keep their prefixes — they are pre-27th crates and internally consistent; this is not a rename campaign.
+
+  > Indy (2026-08-30, AskUserQuestion): selected **"Amend the Dimensions"** — "Each Dimension names the test that actually proves it. The spec's names were guessed before the tests existed; afd_api's convention stays intact." — context: the seventeen contracted test names vs. the practiced convention.
+
+- **TOML configuration — DEFERRED to a follow-up (Indy, Aug 30).** The `Layered` TOML-under-env design is fully specified in this log (the three Configuration entries above) and none of it is built: `basic-toml` appears in no `Cargo.toml` in this workspace, there is no Section carrying it, and no Dimension grades it. It has sat unanswered across three checkpoints. Nothing in §1–§5 depends on it — `preflight::resolve` reads the process environment today and every knob works. **Decision: it leaves M180 as a named follow-up rather than growing a §6 on a milestone already 6.67 points under its coverage floor.** The design entries above stay in this log deliberately: they are the follow-up's input, and re-deriving the `basic-toml`-over-`toml` measurement, the section-to-knob mapping, and the `min_pool_size` hazard would be the expensive half.
+
+  > Indy (2026-08-30, AskUserQuestion): selected **"Move to a follow-up"** — "M180 closes without it; the Discovery entry becomes a named follow-up item. Nothing in §1–§5 depends on it." — context: TOML support, unanswered across three checkpoints.
+
+- **Docs gate — a docs change AND an override, and the first framing of this was wrong (Indy, Aug 30).** The question was first put as a template generalisation: `/v1/connectors/slack/events` → `/v1/connectors/{provider}/events`, same concrete URL, therefore nothing a reader could observe. That is true of the connector-events route and **false of the rest of the diff**. Measured against `origin/main`, `public/openapi.json` changes three CONCRETE published paths:
+
+  | was | is |
+  |---|---|
+  | `/v1/workspaces/{workspace_id}/approvals/{gate_id}:approve` | `…/{gate_id}/approve` |
+  | `/v1/workspaces/{workspace_id}/approvals/{gate_id}:deny` | `…/{gate_id}/deny` |
+  | `…/fleets/{fleet_id}/schedules/{schedule_id}:sync` | `…/{schedule_id}/sync` |
+
+  All three are published today at `~/Projects/docs/docs.json:239,240,286`. The approvals pair is **M178's surface**, not this milestone's — the router constraint reached a route M180 does not own, which is why it escaped the first reading of the blast radius.
+
+  **The constraint is real and already argued in code.** `matchit` refuses any literal after a parameter inside one segment (`tree.rs:783`, "Prefixes after route parameters are not supported"), so a custom verb cannot be part of a route pattern at all; see `afd_http/src/route/fleet.rs:96` and `afd_http/src/route/workspace.rs:118`. The rejected alternative — capture the whole leaf and strip the suffix in the handler — works, but takes the verb out of the route table, and that table is what `route_inventory.rs` grades.
+
+  **Decision: update `docs.json`, and keep the override for the connector-events template alone**, where "no observable change" is actually true.
+
+  **Sequencing, discovered by the docs repository's own gate rather than reasoned about.** The commit was written and REFUSED by `_lint-openapi-drift`, which checks every path `docs.json` references against `public/openapi.json` on agentsfleet **main**. The three new paths do not exist there until M180 merges, so the docs commit cannot precede the code merge — the gate enforces code-first, correctly. The branch `chore/m180-ingress-cron-connectors-changelog` is created and parked at `origin/main`; the edit is a **LAND-time step**, not a pre-PR one:
+
+  ```
+  cd ~/Projects/docs && git checkout chore/m180-ingress-cron-connectors-changelog
+  sed -i '' -E 's|(approvals/\{gate_id\}):approve|\1/approve|; s|(approvals/\{gate_id\}):deny|\1/deny|; s|(schedules/\{schedule_id\}):sync|\1/sync|' docs.json
+  ```
+
+  (Unrelated, found while checking that repository's state and recorded so it is not lost: `chore/m172-read-path-changelog` there carries **one unpushed commit**, unmerged.)
+
+  > Indy (2026-08-30, AskUserQuestion): selected **"Update docs.json, keep override for events"** — "Three lines on a `chore/m180-*-changelog` branch off main. The override then covers only the connector-events template, where its premise is actually true." — context: three concrete published URLs change shape, not just the events template.
 
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
 - **Skill-chain outcomes** — `/orly-write-unit-test`, `/review`, `orly-babysit-prs` results (order per `AGENTS.orly.md` CHORE(close); iteration counts, findings dispositioned).

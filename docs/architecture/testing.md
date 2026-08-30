@@ -94,6 +94,45 @@ obligation: a new `tests/*.rs` in a crate with `autotests = false` must be
 declared in that crate's `*_suite.rs`, and adding one without the declaration
 produces a file that compiles nowhere and fails nothing.
 
+## Rust test naming — the function is a sentence, not a `test_` label
+
+The filename rule above decides the tier. This decides the function, and it was
+settled in M180 by measuring rather than by preference, because two conventions
+were live at once and a spec had contracted seventeen names in the losing one.
+
+**A test function is named for the behaviour it pins, as a sentence, with no
+`test_` prefix.** `a_signature_under_the_wrong_key_is_refused_on_every_scheme`,
+not `test_signature_matrix`. The prefix is a carryover from runners that
+discover tests by name; `#[test]` performs discovery here, and cargo already
+prints the module path ahead of the function, so `test_` buys nothing and costs
+the first five characters of every line of failure output.
+
+**The measurement, so a later reader can re-run it rather than trust it.** Test
+functions grouped by the day their file was introduced (`git log --diff-filter=A
+--follow`): 2026-08-24 through 08-26 are 100% prefixed across 378 tests; from
+08-27 onward the practice inverts — 14%, 0%, 31%, 9% across 411. The split is
+the same per crate: every 100% crate (`afd_auth`, `afd_db`, `afd_identity`,
+`afd_redis`, `afd_state`) predates the 27th, while `afd_api` sits at 20% and
+`afd_cron` and `afd_webhook` at 0%.
+
+**What this rule is NOT is a licence to rename.** The prefixed crates are
+internally consistent and their names are not wrong, only older. Touching one
+test in `afd_crypto` does not oblige renaming its neighbours, and a crate
+converts, if ever, in one deliberate commit of its own.
+
+**A new test in an existing file follows that FILE.** A mixed file is worse than
+either convention held whole, so the rule binds new files and new crates; adding
+`the_thing_it_proves` beside four `test_`-prefixed neighbours makes the odd one
+out of the new test, not of the old ones. M180 added
+`test_the_tag_type_offers_no_short_circuiting_comparison` to `afd_crypto` for
+exactly this reason, and it is not an exception to the rule but the rule's
+second clause.
+
+**Where a spec and this rule disagree, the spec is amended.** A spec names the
+test that proves a Dimension so a reader can find it; a name the codebase does
+not use fails at exactly that job. M180 amended seventeen Dimensions rather than
+rename fourteen tests into a convention the repository had already left.
+
 ## Test isolation on a shared datastore (rules ISO-1 to ISO-3)
 
 One lane, one Postgres, one Redis, and tests that run concurrently inside every
