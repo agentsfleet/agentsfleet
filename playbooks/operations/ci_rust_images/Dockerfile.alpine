@@ -1,0 +1,44 @@
+# syntax=docker/dockerfile:1.7
+#
+# Multi-arch Alpine + Rust base for the musl build lane.
+#
+# It exists for the same reason `Dockerfile.alpine` next door exists for Zig:
+# `make dist-daemons` used to run the stock `rust:*-alpine` image and `apk add`
+# its build dependencies inside a throwaway container, so the same packages
+# were fetched and installed again on every build of every architecture and
+# nothing was cached between them. Here they are layers — pulled once, reused
+# by every build after — and the lane becomes a pure
+#   container: image: ghcr.io/agentsfleet/ci-rust-alpine:<tag>
+# step with no per-job network fetch.
+#
+# Both linux architectures are published, because `--platform` on a foreign
+# host runs the whole compile under QEMU and emulation is the heavier tax.
+#
+# Build:
+#   ./build_and_push.sh                     # both arches, pushed
+#   ./build_and_push.sh --no-push           # this arch only, loaded locally
+
+ARG RUST_VERSION
+ARG ALPINE_SERIES
+FROM rust:${RUST_VERSION}-alpine${ALPINE_SERIES}
+
+# What the workspace's native dependencies need in order to link:
+#   build-base     — cc, make, and the musl headers the `cc` crate shells out to
+#   perl, cmake    — the crypto backend's own build scripts
+#   go             — the aws-lc assembly generator
+#   linux-headers  — kernel headers the libc-adjacent crates compile against
+RUN apk add --no-cache \
+    build-base \
+    perl \
+    cmake \
+    go \
+    linux-headers
+
+# `readelf`, for the static assertions the build lane makes on its own output:
+# zero NEEDED entries and no INTERP section. binutils ships it, and asserting
+# inside the image is what keeps "static" a fact rather than a claim.
+RUN apk add --no-cache binutils
+
+LABEL org.opencontainers.image.title="agentsfleet ci-rust-alpine" \
+      org.opencontainers.image.description="Alpine + Rust with the musl build toolchain baked, for agentsfleet static daemon builds" \
+      org.opencontainers.image.source="https://github.com/agentsfleet/agentsfleet"

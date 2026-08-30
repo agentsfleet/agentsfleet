@@ -2,7 +2,7 @@
 # BUILD & REGISTRY — container builds and pushes
 # =============================================================================
 
-.PHONY: build build-dev push-dev push _docker_login dist-daemons sync-version check-version
+.PHONY: build build-dev push-dev push _docker_login _dist-daemons _builder-image sync-version check-version
 
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.1.0")
 # The commit, computed once and EXPORTED. It tags the image below, and
@@ -40,31 +40,51 @@ endef
 #
 # DIST_ARCH_PAIRS narrows the build — pass the host's pair alone when one
 # architecture is enough, since the other arrives through QEMU at emulation
-# speed: `make dist-daemons DIST_ARCH_PAIRS="arm64:aarch64"`.
+# speed: `make _dist-daemons DIST_ARCH_PAIRS="arm64:aarch64"`.
 DIST_ARCH_PAIRS ?= amd64:x86_64 arm64:aarch64
 
-dist-daemons:  ## Build the static daemon for linux (both arches; asserts zero NEEDED + no INTERP)
+# The builder image, baked once. Docker's own layer cache makes this a no-op
+# after the first run, so it is an honest prerequisite rather than a cost.
+# Versions live beside the Dockerfile, in the playbook that owns publishing it —
+# the same shape `ci_zig_images` uses, so there is one place a base moves.
+BUILDER_DIR := playbooks/operations/ci_rust_images
+BUILDER_RUST_VERSION := $(shell sed -n 's/^RUST_VERSION=//p' $(BUILDER_DIR)/versions.env)
+BUILDER_ALPINE_SERIES := $(shell sed -n 's/^ALPINE_SERIES=//p' $(BUILDER_DIR)/versions.env)
+BUILDER_IMAGE ?= ghcr.io/agentsfleet/ci-rust-alpine:$(BUILDER_RUST_VERSION)-alpine$(BUILDER_ALPINE_SERIES)
+
+# Pull the published builder; bake it locally only when the registry does not
+# have it. Either way it happens once and every build after reuses the layers.
+_builder-image:
+	@docker image inspect $(BUILDER_IMAGE) >/dev/null 2>&1 && exit 0; \
+	docker pull -q $(BUILDER_IMAGE) >/dev/null 2>&1 && exit 0; \
+	echo "→ [image] baking the musl builder locally (once)..."; \
+	docker build -q \
+	  --build-arg RUST_VERSION=$(BUILDER_RUST_VERSION) \
+	  --build-arg ALPINE_SERIES=$(BUILDER_ALPINE_SERIES) \
+	  -f $(BUILDER_DIR)/Dockerfile.alpine \
+	  -t $(BUILDER_IMAGE) $(BUILDER_DIR) >/dev/null
+
+_dist-daemons: _builder-image
 	mkdir -p dist
 	@for arch in $(DIST_ARCH_PAIRS); do \
 	  out="$${arch%%:*}"; platform="$${arch##*:}"; \
 	  echo "→ [image] building the daemon for linux/$$out..."; \
 	  docker run --rm --platform "linux/$$out" \
-	    -v "$(CURDIR):/w" -w /w/rustd rust:1.98-alpine \
+	    -e CARGO_TARGET_DIR="/w/rustd/target/musl-$$out" \
+	    -v "$(CURDIR):/w" -w /w/rustd $(BUILDER_IMAGE) \
 	    sh -c 'set -e; \
-	      apk add --no-cache build-base perl cmake go linux-headers >/dev/null; \
 	      cargo build --profile dist --bin agentsfleetd; \
-	      bin=target/dist/agentsfleetd; \
+	      bin="$$CARGO_TARGET_DIR/dist/agentsfleetd"; \
 	      if readelf -d "$$bin" | grep -q " (NEEDED)"; then echo "FAIL: dynamic NEEDED entries"; exit 1; fi; \
 	      if readelf -l "$$bin" | grep -q INTERP; then echo "FAIL: INTERP present"; exit 1; fi; \
 	      echo "  static: zero NEEDED, no INTERP"' \
 	    || exit 1; \
-	  cp rustd/target/dist/agentsfleetd "dist/agentsfleetd-rs-linux-$$out"; \
+	  cp "rustd/target/musl-$$out/dist/agentsfleetd" "dist/agentsfleetd-rs-linux-$$out"; \
 	  chmod +x "dist/agentsfleetd-rs-linux-$$out"; \
-	  rm -rf rustd/target/dist; \
 	  echo "✓ [image] dist/agentsfleetd-rs-linux-$$out ($$platform)"; \
 	done
 
-build: dist-daemons ## Build production container (uses prebuilt linux binaries)
+build: _dist-daemons ## Build production container (uses prebuilt linux binaries)
 	$(call _buildx,Dockerfile,$(_PROD_TAGS),)
 
 # One Dockerfile, two tag sets. `Dockerfile.dev` has not existed for some time,
@@ -72,7 +92,7 @@ build: dist-daemons ## Build production container (uses prebuilt linux binaries)
 # same image from `Dockerfile` and worked. Development and production differ in
 # what they are TAGGED and where they deploy, never in what is in the image;
 # a second Dockerfile would be a second thing to keep true.
-build-dev: dist-daemons  ## Build development container (multi-arch)
+build-dev: _dist-daemons  ## Build development container (multi-arch)
 	$(call _buildx,Dockerfile,$(_DEV_TAGS),)
 
 push: _docker_login ## Push production image (expects prebuilt binaries in dist/)
