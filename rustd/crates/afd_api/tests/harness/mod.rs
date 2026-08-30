@@ -137,6 +137,20 @@ const ACQUIRE_TIMEOUT_MS: &str = "50";
 /// A fixed instant, so every row a verb writes is stamped predictably.
 const FROZEN: i64 = 1_760_000_000_000;
 
+/// Milliseconds in a second, named because two units meet here.
+const MILLIS_PER_SECOND: i64 = 1_000;
+
+/// [`FROZEN`] as whole seconds — the unit a signed timestamp header carries.
+///
+/// A signature scheme that binds a timestamp is checked against
+/// `services.now()`, which is this frozen instant and not the wall clock. A
+/// test that built its timestamps from `SystemTime::now` would be sixty-odd
+/// million seconds adrift and read every delivery as stale, whatever it was
+/// actually testing.
+pub(crate) const fn frozen_unix_seconds() -> i64 {
+    FROZEN / MILLIS_PER_SECOND
+}
+
 /// The process key the secret store seals under.
 ///
 /// Never used to seal anything here — every write refuses at the pool, before

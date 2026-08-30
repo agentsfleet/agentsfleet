@@ -20,6 +20,7 @@ test-util = [
   "afd_api_runner/test-util",
   "afd_api_tenant/test-util",
   "afd_auth/test-util",
+  "afd_webhook/test-util",
   "afd_core/test-util",
 ]
 

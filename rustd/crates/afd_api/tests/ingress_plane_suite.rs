@@ -5,6 +5,8 @@
 
 mod harness;
 
+#[path = "webhook_approval_wall.rs"]
+mod webhook_approval_wall;
 #[path = "webhook_fleet_route.rs"]
 mod webhook_fleet_route;
 #[path = "webhook_wall_refusals.rs"]

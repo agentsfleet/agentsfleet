@@ -159,7 +159,7 @@ impl Scheme {
     ///
     /// `timestamp` is the header's ORIGINAL bytes — see [`freshness::is_fresh_at`]
     /// for why it is never re-rendered from a parsed integer.
-    fn expected_tag(
+    pub(crate) fn expected_tag(
         self,
         secret: &SecretBytes,
         timestamp: Option<&str>,

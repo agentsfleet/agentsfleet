@@ -48,6 +48,8 @@
 
 pub mod freshness;
 pub mod scheme;
+#[cfg(feature = "test-util")]
+pub mod test_util;
 pub mod vendor;
 pub mod verdict;
 
