@@ -141,7 +141,15 @@ export TEST_DATABASE_URL TEST_REDIS_URL TEST_REDIS_TLS_URL TEST_REDIS_CA_CERT TE
 # choose — and nothing it authenticates to holds real data. Derived here from its
 # two plain parts so no credential-shaped blob is stored in the repo.
 # The opt-in live QStash tests read these vars; unset (or server down) → self-skip.
-QSTASH_DEV_URL_LOCAL ?= http://localhost:$(COMPOSE_QSTASH_PORT)
+# The API BASE, `/v2` included. `QStash::upsert` composes
+# `{api_base}/schedules/{destination}`, matching the vendor's own
+# `https://qstash.upstash.io/v2`, so a base without the version segment 404s
+# every push — and a 404 is a refusal, so the row lands `Failed` with "not yet
+# registered" and reads exactly like a scheduler outage.
+#
+# `127.0.0.1` rather than `localhost` for the reason the datastore URLs above
+# give: measured here at 13 ms against 140 ms for the name.
+QSTASH_DEV_URL_LOCAL ?= http://127.0.0.1:$(COMPOSE_QSTASH_PORT)/v2
 QSTASH_DEV_IDENTITY ?= defaultUser
 QSTASH_DEV_SECRET ?= defaultPassword
 QSTASH_DEV_TOKEN_LOCAL ?= $(shell printf '{"UserID":"%s","Password":"%s"}' '$(QSTASH_DEV_IDENTITY)' '$(QSTASH_DEV_SECRET)' | base64 | tr -d '\n')
