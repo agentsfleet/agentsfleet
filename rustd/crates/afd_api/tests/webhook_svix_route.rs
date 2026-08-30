@@ -168,14 +168,12 @@ async fn a_retry_of_one_delivery_is_suppressed_and_a_new_one_is_not() {
 
 #[tokio::test]
 async fn a_delivery_carrying_no_identifier_is_refused_by_the_wall() {
-    // `svix_route` reads the id as `text(&headers, ID_HEADER).unwrap_or(&fleet_id)`,
-    // which reads as a fallback onto the fleet. It is unreachable:
-    // `svix::verify_at` refuses outright when the id is empty
-    // (`vendor/svix.rs:153`), and the route chooses its claim only after the
-    // wall. So the answer is a refusal, not a narrower claim — recorded here
-    // because the two are indistinguishable from the code alone, and a reader
-    // who trusted the fallback would believe unidentified deliveries are
-    // accepted onto one shared slot.
+    // An unidentified delivery earns a refusal, never a narrower claim: the
+    // route has no id of its own to fall back to, because `verified_svix`
+    // hands the claim key back only on the path where `svix::verify_at`
+    // already refused an empty `svix-id`. This test is what holds that shut —
+    // a fallback reintroduced here would put every unidentified delivery on
+    // one shared slot, and only the status code would say so.
     let ingress = fleet_in("active");
     let router = Fleet::new().with_ingress(&ingress).router();
     let at = now();

@@ -20,7 +20,6 @@ use std::sync::Arc;
 
 use afd_core::error_code;
 use afd_ingress::{Delivery, Surface};
-use afd_webhook::vendor::svix;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use axum::{Json, body::Bytes};
@@ -30,8 +29,8 @@ use crate::handler::{Refusal, webhook};
 use crate::services::{Services, WebhookIngress as _};
 use afd_http::handler::{FleetPath, parse_fleet_id};
 
-use super::verify_svix::verified_svix;
-use super::{DETAIL_EVENT_HEADER, actor, text};
+use super::verify_svix::{SvixVerified, verified_svix};
+use super::{DETAIL_EVENT_HEADER, actor};
 
 /// The scoped event a failed append is logged under.
 const EVENT_APPEND: &str = "webhook_svix_append_failed";
@@ -48,13 +47,15 @@ pub(crate) async fn receive<D: Services>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
-    let delivery_id = text(&headers, svix::ID_HEADER)
-        .unwrap_or(&fleet_id)
-        .to_owned();
     webhook::within_cap(&body)?;
 
-    // Nothing above this line has read the body as anything but bytes.
-    let proven = verified_svix(&services, &fleet, &headers, body).await?;
+    // Nothing above this line has read the body as anything but bytes. The
+    // claim key comes back FROM the wall rather than from a second read of the
+    // headers, which is what makes it the id that was signed.
+    let SvixVerified {
+        proven,
+        delivery_id,
+    } = verified_svix(&services, &fleet, &headers, body).await?;
 
     if !proven.binding.is_runnable() {
         return Ok((
