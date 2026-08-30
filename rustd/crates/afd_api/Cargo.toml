@@ -67,6 +67,15 @@ afd_identity.workspace = true
 afd_webhook.workspace = true
 afd_ingress = { workspace = true, features = ["test-util"] }
 afd_cron.workspace = true
+# The schedule-fire suite mints its own scheduler tokens. A pasted fixture
+# string can assert one shape; the cases that matter all differ from a good
+# token in exactly ONE claim — right signature over the wrong body, right body
+# under the wrong key — so each has to be signed here. `afd_cron`'s own
+# verifier suite carries these two for the same reason.
+jsonwebtoken.workspace = true
+# The `body` claim a scheduler token carries is a SHA-256 of the delivery,
+# base64url-unpadded. Minting one means computing it.
+sha2.workspace = true
 afd_connector.workspace = true
 # The harness assembles the production schedules plane over stores that are not
 # there, which needs the client type its constructor takes.
