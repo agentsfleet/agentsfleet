@@ -110,3 +110,42 @@ _bench-loadgen:  ## Internal: hey-backed HTTP loadgen gate (Tier-2).
 	 awk -v er=$$ERR_RATE -v max=$$MAX_ERR_RATE 'BEGIN{if (er+0 > max+0) {print "✗ error rate " er " exceeds gate " max; exit 1}}'; \
 	 awk -v p=$$P95_MS -v max=$$MAX_P95_MS 'BEGIN{if (p+0 > max+0) {print "✗ p95 " p "ms exceeds gate " max "ms"; exit 1}}'; \
 	 echo "✓ [agentsfleetd] Tier-2 hey loadgen passed"
+
+# ── Cutover benchmark ────────────────────────────────────────────────────────
+# The lane the swap decision reads: is the candidate daemon fast enough, and
+# small enough, to replace the one serving now.
+#
+# THE BUDGETS ARE DECLARED HERE AND DEFAULT TO NOTHING, deliberately.
+#
+# `BENCH_P95_TOLERANCE_PCT` is how much slower the candidate may be at the 95th
+# percentile; `BENCH_RSS_CEILING_MB` is its resident-set ceiling. Neither has a
+# value yet because neither has been measured yet — the Rust daemon has not run
+# under load beside the Zig one, and a number written before the measurement is
+# the judgment this row exists to replace (RULE TIM). `scripts/bench_cutover.sh`
+# refuses to run with either empty and names the one it is missing, so the lane
+# fails loudly rather than measuring, printing, and returning success.
+#
+# The milestone that performs the swap sets them from a recorded baseline.
+BENCH_P95_TOLERANCE_PCT ?=
+BENCH_RSS_CEILING_MB ?=
+
+.PHONY: bench-cutover bench-cutover-self-test
+
+# LOCAL=1 stands the stack up and points the lane at it, so the whole thing is
+# one command. Without it the lane measures whatever BASE_URL names, which is
+# how it runs against a deployment.
+bench-cutover: $(if $(LOCAL),_ensure-local-daemon,)  ## Cutover benchmark (BASE_URL=<url> [COMPARE_URL=<url>] | LOCAL=1)
+	@BASE_URL="$(or $(BASE_URL),$(if $(LOCAL),$(LOCAL_DAEMON_URL),))" \
+	 COMPARE_URL="$(COMPARE_URL)" \
+	 BENCH_RSS_CONTAINER="$(or $(BENCH_RSS_CONTAINER),$(if $(LOCAL),$(LOCAL_DAEMON_CONTAINER),))" \
+	 BENCH_P95_TOLERANCE_PCT="$(BENCH_P95_TOLERANCE_PCT)" \
+	 BENCH_RSS_CEILING_MB="$(BENCH_RSS_CEILING_MB)" \
+	 bash scripts/bench_cutover.sh
+
+# The lane's own tests. Fixture load generator, fixture resident set, no daemon
+# — so it rides `lint-all` and proves the half that decides: that a missing
+# budget is refused by name, and that a measurement past one fails.
+bench-cutover-self-test:  ## Run scripts/bench_cutover_test.sh — the cutover benchmark's own tests
+	@echo "→ [bench] Running cutover benchmark self-tests..."
+	@bash scripts/bench_cutover_test.sh
+	@echo "✓ [bench] Cutover benchmark self-tests passed"
