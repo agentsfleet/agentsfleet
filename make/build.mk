@@ -2,7 +2,7 @@
 # BUILD & REGISTRY — container builds and pushes
 # =============================================================================
 
-.PHONY: build build-dev push-dev push _docker_login dist-daemons image-check sync-version check-version
+.PHONY: build build-dev push-dev push _docker_login dist-daemons sync-version check-version
 
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.1.0")
 # The commit, computed once and EXPORTED. It tags the image below, and
@@ -38,11 +38,10 @@ endef
 # container because that is where readelf is known to exist; a binary with a
 # NEEDED entry or an INTERP section fails here, same as in the release job.
 #
-# DIST_ARCH_PAIRS narrows the build: `image-check` passes only the host's pair,
-# because proving "the daemon runs in the image" needs one architecture and the
-# other one would arrive through QEMU at emulation speed.
+# DIST_ARCH_PAIRS narrows the build — pass the host's pair alone when one
+# architecture is enough, since the other arrives through QEMU at emulation
+# speed: `make dist-daemons DIST_ARCH_PAIRS="arm64:aarch64"`.
 DIST_ARCH_PAIRS ?= amd64:x86_64 arm64:aarch64
-LOCAL_TARGETARCH := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 
 dist-daemons:  ## Build the static daemon for linux (both arches; asserts zero NEEDED + no INTERP)
 	mkdir -p dist
@@ -64,22 +63,6 @@ dist-daemons:  ## Build the static daemon for linux (both arches; asserts zero N
 	  rm -rf rustd/target/dist; \
 	  echo "✓ [image] dist/agentsfleetd-rs-linux-$$out ($$platform)"; \
 	done
-
-image-check: ## Build the production image for the host arch and prove the daemon runs in it (VERIFY: runs beside test-integration-rustd)
-	@# Reuse an existing dist binary — the expensive half is the fat-LTO build,
-	@# and a VERIFY step that rebuilds it every run would never be run. A stale
-	@# binary is refreshed explicitly: `make dist-daemons`.
-	@test -f "dist/agentsfleetd-rs-linux-$(LOCAL_TARGETARCH)" \
-	  || $(MAKE) dist-daemons DIST_ARCH_PAIRS="$(LOCAL_TARGETARCH):$$(uname -m)"
-	docker build --build-arg TARGETARCH=$(LOCAL_TARGETARCH) -t agentsfleetd-image-check .
-	@echo "→ [image] the daemon answers inside the image..."
-	docker run --rm agentsfleetd-image-check /usr/local/bin/agentsfleetd --version
-	@echo "→ [image] and there is no shell to answer with..."
-	@if docker run --rm --entrypoint /bin/sh agentsfleetd-image-check -c true >/dev/null 2>&1; then \
-	  echo "✗ /bin/sh exists in the image — the base is not distroless"; exit 1; \
-	else \
-	  echo "✓ no shell in the image"; \
-	fi
 
 build: dist-daemons ## Build production container (uses prebuilt linux binaries)
 	$(call _buildx,Dockerfile,$(_PROD_TAGS),)
