@@ -2,6 +2,9 @@
 
 mod harness;
 
+#[path = "integration_fleet_schedules.rs"]
+mod integration_fleet_schedules;
+
 #[path = "connector_callback_route.rs"]
 mod connector_callback_route;
 

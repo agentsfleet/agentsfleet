@@ -43,3 +43,69 @@ pub(crate) fn exchange_refused(status: u16) -> Error {
 pub(crate) fn exchange_unreadable() -> Error {
     ErrorKind::GrantUnreadable.into()
 }
+
+/// One error of every kind, for tests that walk the whole surface.
+///
+/// The M-TEST-UTIL seam, and the same argument `afd_db::error` makes for its
+/// own. The wrapped errors are real ones from their own crates rather than
+/// stand-ins, because the property under test is the CHAIN: a fabricated source
+/// could not catch an `Error` that repeated its own message.
+///
+/// # Panics
+/// When a sibling crate stops refusing an input this builder relies on being
+/// refused — an empty vault name, a non-hex key, an identifier that is not one,
+/// an unparseable URL. That is a change in that crate's contract rather than a
+/// runtime condition, and stopping here names it at the sample.
+#[cfg(feature = "test-util")]
+#[must_use]
+#[expect(
+    clippy::expect_used,
+    reason = "a sample builder whose own preconditions fail should stop the suite"
+)]
+pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
+    let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
+    let queue = afd_redis::error::one_of_each_kind()
+        .into_iter()
+        .next()
+        .expect("afd_redis declares at least one kind")
+        .1;
+    let vault = afd_vault::SecretName::parse("").expect_err("an empty vault name is refused");
+    let entropy =
+        afd_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
+    let shape =
+        afd_core::id::Uuid7::parse("not-an-identifier").expect_err("a non-identifier is refused");
+    // A URL the builder rejects, so a `reqwest::Error` exists without a request
+    // ever leaving the process — this suite reaches no network.
+    let unreachable = reqwest::Client::new()
+        .get("http://[")
+        .build()
+        .expect_err("an unparseable URL is refused before it is sent");
+
+    vec![
+        (
+            "datastore",
+            ErrorKind::Datastore { source: datastore }.into(),
+        ),
+        (
+            "query",
+            query("reading the connector row")(sqlx::Error::RowNotFound),
+        ),
+        ("vault", ErrorKind::Vault { source: vault }.into()),
+        ("queue", ErrorKind::Queue { source: queue }.into()),
+        ("entropy", ErrorKind::Entropy { source: entropy }.into()),
+        (
+            "identifier shape",
+            ErrorKind::IdentifierShape { source: shape }.into(),
+        ),
+        (
+            "vendor unreachable",
+            ErrorKind::VendorUnreachable {
+                source: unreachable,
+            }
+            .into(),
+        ),
+        ("exchange refused", exchange_refused(400)),
+        ("exchange unreadable", exchange_unreadable()),
+        ("grant unreadable", ErrorKind::GrantUnreadable.into()),
+    ]
+}

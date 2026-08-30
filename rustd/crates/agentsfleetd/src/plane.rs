@@ -212,7 +212,12 @@ impl ServingPlane {
             schedules: SchedulePlane::new(
                 ScheduleService::new(
                     Schedules::new(database.clone(), Entropy::new()),
-                    QStash::new(schedule.client, schedule.token, schedule.destination),
+                    QStash::new(
+                        schedule.client,
+                        schedule.token,
+                        schedule.destination,
+                        schedule.api_base,
+                    ),
                 ),
                 Fire::new(queue.clone()),
                 Entropy::new(),
@@ -348,6 +353,12 @@ pub struct ScheduleConfig {
     pub token: String,
     /// Where a fire is expected to arrive — see [`qstash::destination_url`].
     pub destination: String,
+    /// Which scheduler deployment the management calls go to.
+    ///
+    /// Resolved at boot rather than defaulted in the client, so a deployment
+    /// falling back to the vendor's US region is a visible decision in one
+    /// place — see [`crate::preflight::QSTASH_URL_KNOB`].
+    pub api_base: String,
     /// The scheduler's signing keys, when this deployment configured them.
     ///
     /// `None` is fail-closed: every fire is refused, because a daemon that

@@ -22,8 +22,15 @@ use url::Url;
 
 use crate::error::{self, Result};
 
-/// Where the scheduler's management calls go.
-const API_BASE: &str = "https://qstash.upstash.io/v2";
+/// Where the scheduler's management calls go when a deployment names no base.
+///
+/// A DEFAULT, not a constant the client reaches for directly. `qstash_client.zig`
+/// took its base as a parameter and pinned that with a regression test — "outbound
+/// url uses the configured api base, not a hardcoded host" — because a hardcoded
+/// US host is a bug this product already shipped once and fixed in M105. A
+/// deployment on another region names its own base; this value is what a
+/// deployment that names none falls back to.
+pub const API_BASE: &str = "https://qstash.upstash.io/v2";
 
 /// The path a schedule is created under, before the destination.
 const SCHEDULES_PATH: &str = "/schedules/";
@@ -113,17 +120,36 @@ pub struct QStash {
     token: String,
     /// Where a fire should arrive back.
     destination: String,
+    /// Where this deployment's management calls go.
+    api_base: String,
 }
 
 impl QStash {
-    /// Binds a client to this deployment's credential and callback.
+    /// Binds a client to this deployment's credential, callback and scheduler.
+    ///
+    /// `api_base` carries no default here on purpose: a caller that forgets it
+    /// should not silently get the US region. [`API_BASE`] is what the
+    /// boot path resolves when a deployment names none, where the decision is
+    /// visible.
     #[must_use]
-    pub const fn new(client: reqwest::Client, token: String, destination: String) -> Self {
+    pub const fn new(
+        client: reqwest::Client,
+        token: String,
+        destination: String,
+        api_base: String,
+    ) -> Self {
         Self {
             client,
             token,
             destination,
+            api_base,
         }
+    }
+
+    /// Where this deployment's management calls go.
+    #[must_use]
+    pub fn api_base(&self) -> &str {
+        &self.api_base
     }
 
     /// Where a fire from this deployment's schedules arrives.
@@ -152,7 +178,7 @@ impl QStash {
     pub async fn upsert(&self, cron: &str, timezone: &str, message: &str) -> Result<Registered> {
         let answer = self
             .client
-            .post(format!("{API_BASE}{SCHEDULES_PATH}{}", self.destination))
+            .post(format!("{}{SCHEDULES_PATH}{}", self.api_base, self.destination))
             .header(HEADER_AUTHORIZATION, self.bearer())
             .header(HEADER_CRON, cron)
             .header(HEADER_TIMEZONE, timezone)
@@ -194,7 +220,7 @@ impl QStash {
     pub async fn remove(&self, source_key: &str) -> Result<()> {
         let answer = self
             .client
-            .delete(format!("{API_BASE}{SCHEDULES_PATH}{source_key}"))
+            .delete(format!("{}{SCHEDULES_PATH}{source_key}", self.api_base))
             .header(HEADER_AUTHORIZATION, self.bearer())
             .send()
             .await?;

@@ -82,6 +82,17 @@ pub const SESSION_CODE_PEPPER_KNOB: &str = "AUTH_SESSION_CODE_PEPPER";
 /// would take the product down for a surface nobody called.
 pub const QSTASH_TOKEN_KNOB: &str = "QSTASH_TOKEN";
 
+/// Which scheduler deployment the management calls go to.
+///
+/// Optional, and its absence resolves to [`afd_cron::qstash::API_BASE`].
+/// It exists because the vendor is regional: `qstash_client.zig` took this as a
+/// parameter and its "outbound url uses the configured api base, not a hardcoded
+/// host" test names `qstash-eu-central-1.upstash.io` as the case a hardcoded US
+/// host breaks. The operational half already carries it — `platform_secret_sync.sh`
+/// syncs `url|qstash/url` beside the token — so a deployment that set the URL and
+/// found it ignored was configuring something the daemon never read.
+pub const QSTASH_URL_KNOB: &str = "QSTASH_URL";
+
 /// The key the scheduler is signing fire callbacks with now.
 ///
 /// Optional AND fail-closed, which is not a contradiction: a deployment without
@@ -319,6 +330,7 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
                 bundles,
                 platform_admin_workspace,
                 qstash_token: optional(env, QSTASH_TOKEN_KNOB),
+                qstash_url: optional(env, QSTASH_URL_KNOB),
                 qstash_keys: signing_keys(env),
                 sse_max_streams,
                 posthog,

@@ -168,6 +168,48 @@ pub(crate) async fn list<D: Services>(
     .into_response())
 }
 
+/// `GET …/schedules/{schedule_id}`.
+///
+/// The read half of the CRUD this section declares, and the one verb of it that
+/// did not come across in the port: `public/openapi.json` declares this GET and
+/// the published navigation lists it, while the router mounted only PATCH and
+/// DELETE — so a client following the documented API earned a 405. The Zig
+/// serves it at `handlers/schedules/api.zig:68`, and the service seam here
+/// already carried [`FleetSchedules::one`]; only the handler and its mount were
+/// missing.
+///
+/// A schedule belonging to another fleet answers exactly as one that never
+/// existed. Telling them apart would confirm a schedule id across a fleet
+/// boundary, which is the same reason [`FleetSchedules::one`] returns
+/// `Ok(None)` for both.
+///
+/// # Errors
+/// Reports a datastore that would not answer, and `UZ-SCHED-002` for a schedule
+/// this fleet does not hold.
+pub(crate) async fn one<D: Services>(
+    State(services): State<Arc<D>>,
+    Path((_workspace, fleet_id, schedule_id)): Path<(String, String, String)>,
+) -> Result<Response, Refusal> {
+    let fleet = parse_fleet_id(&fleet_id)?;
+    let schedule = parse_fleet_id(&schedule_id)?;
+
+    let found = services
+        .schedules()
+        .one(&fleet, &schedule)
+        .await
+        .map_err(Refusal::at(EVENT_READ))?;
+
+    found.map_or_else(
+        || {
+            Err(Refusal::coded(
+                error_code::SCHEDULE_NOT_FOUND,
+                DETAIL_NOT_FOUND,
+            ))
+        },
+        |schedule| Ok(Json(View::of(&schedule)).into_response()),
+    )
+}
+
 /// `POST …/schedules`.
 ///
 /// # Errors

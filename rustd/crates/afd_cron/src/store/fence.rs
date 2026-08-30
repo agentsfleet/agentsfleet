@@ -105,10 +105,15 @@ impl Schedules {
     ///
     /// # Errors
     /// As [`Self::list`].
+    ///
+    /// `registered` is the key the scheduler filed this schedule under, when
+    /// this push learned one. `None` leaves the stored key alone — see
+    /// [`sql::FINALIZE_SUCCESS`] on why that is not the same as blanking it.
     pub async fn finalize_synced(
         &self,
         held: &Schedule,
         token: &Uuid7,
+        registered: Option<&str>,
         now: UnixMillis,
     ) -> Result<Option<Schedule>> {
         let mut connection = self.database.acquire().await?;
@@ -118,6 +123,7 @@ impl Schedules {
             .bind(token.as_str())
             .bind(SyncStatus::Synced.as_str())
             .bind(now.as_millis())
+            .bind(registered)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_WRITE))?;

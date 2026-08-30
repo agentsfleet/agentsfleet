@@ -58,6 +58,7 @@ fn plane() -> ServingPlane {
             client: reqwest::Client::new(),
             token: String::new(),
             destination: String::new(),
+            api_base: String::new(),
             keys: None,
         },
         analytics: Analytics::silent(),
