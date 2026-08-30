@@ -188,11 +188,11 @@ services:
         condition: service_healthy
     volumes:
       - redis-tls:/tls:ro
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    # No healthcheck. The image is distroless — no shell, no wget, no HTTP
+    # client — so a compose healthcheck has nothing to run and the container
+    # would sit unhealthy forever. Readiness is declared where it is acted on:
+    # deploy/fly/agentsfleetd-{dev,prod}/fly.toml's `[checks.readiness]` polls
+    # /readyz. Nothing here depends on this service being healthy.
 
 volumes:
   postgres-data:

@@ -36,15 +36,20 @@
 
 PARITY_LANE := scripts/parity_lane.sh
 
-test-parity:  ## Black-box HTTP contract lane (BASE_URL=<url> [COMPARE_URL=<url>])
-	@if [ -z "$(BASE_URL)" ]; then \
+# LOCAL=1 stands the stack up and points the lane at it, so proving the image
+# serves the contract's route table is one command rather than a docker run and
+# a make invocation that have to agree about a port.
+test-parity: $(if $(LOCAL),_ensure-local-daemon,)  ## Black-box HTTP contract lane (BASE_URL=<url> [COMPARE_URL=<url>] | LOCAL=1)
+	@if [ -z "$(or $(BASE_URL),$(if $(LOCAL),$(LOCAL_DAEMON_URL),))" ]; then \
 	  echo "✗ [parity] BASE_URL is unset — the lane has nothing to probe."; \
+	  echo "  Boot and record:     make test-parity LOCAL=1"; \
 	  echo "  Record one daemon:   make test-parity BASE_URL=http://127.0.0.1:3000"; \
 	  echo "  Compare two:         make test-parity BASE_URL=http://127.0.0.1:8080 COMPARE_URL=http://127.0.0.1:3000"; \
 	  exit 1; \
 	fi
-	@echo "→ [parity] Probing the contract roster against $(BASE_URL)$(if $(COMPARE_URL), and $(COMPARE_URL),)..."
-	@BASE_URL="$(BASE_URL)" COMPARE_URL="$(COMPARE_URL)" bash $(PARITY_LANE)
+	@echo "→ [parity] Probing the contract roster against $(or $(BASE_URL),$(LOCAL_DAEMON_URL))$(if $(COMPARE_URL), and $(COMPARE_URL),)..."
+	@BASE_URL="$(or $(BASE_URL),$(if $(LOCAL),$(LOCAL_DAEMON_URL),))" \
+	 COMPARE_URL="$(COMPARE_URL)" bash $(PARITY_LANE)
 	@echo "✓ [parity] Contract parity holds"
 
 # The harness's own tests. Hermetic — fixture roster, fixture responder, no

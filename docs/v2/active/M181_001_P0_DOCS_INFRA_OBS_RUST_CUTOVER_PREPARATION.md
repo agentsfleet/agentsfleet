@@ -72,6 +72,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/parity_lane_test.sh` | CREATE | §4: the harness's own tests — the differ has to be proven to differ |
 | `make/test.mk` | EDIT | §4: includes the new lane; the file is the test graph's include list |
 | `make/bench.mk` | EDIT | §4: `bench-cutover` adds a comparison mode with budget constants that refuse to be unset |
+| `scripts/bench_cutover.sh` | CREATE | §4: the benchmark harness — budget refusal, percentile, resident set, verdict |
+| `scripts/bench_cutover_test.sh` | CREATE | §4: its own tests — a lane that grades nothing must not look like one that passed |
+| `make/dev.mk` | EDIT | §4: `make up` built the Zig binary while §2's Dockerfile reads the Rust one; also the shared local-daemon wait |
+| `docker-compose.yml` | EDIT | §4: the healthcheck shells out to wget, which the distroless image does not carry |
 | `make/dry.mk` | EDIT | §4: dry lane variant booting the Rust daemon |
 | `make/test-integration-rustd.mk` | EDIT | §4: the run-verdict guard moves inline as its script is swept |
 | `scripts/rustd_lane_benchmark.py` | DELETE | §4 sweep: no caller in `make/` or `.github/` |
@@ -201,12 +205,35 @@ method after per-request volatile fields (`date`, `x-request-id`, the body's
 `request_id`) are normalised away; without that normalisation the lane would be
 red on every run and grade nothing.
 
-**Budgets refuse to be unset.** The latency budget per route class and the resident-set ceiling are named constants embedded in the benchmark lane, and the lane exits non-zero when they are unset, so the gate M181_002 leans on is a real command with real numbers rather than a judgment.
+**Budgets refuse to be unset.** The latency budget per route class and the
+resident-set ceiling are named constants embedded in the benchmark lane, and the
+lane exits non-zero when they are unset, so the gate M181_002 leans on is a real
+command with real numbers rather than a judgment.
+
+They are declared in `make/bench.mk` and default to NOTHING. Neither has been
+measured — the Rust daemon has not yet run under load beside the Zig one — and a
+number written before its measurement is exactly the judgment the row exists to
+replace. The Discovery log already routes the absolute ceilings to staging Fly
+machines under the swap milestone, because a workstation figure says nothing
+about a shared-cpu-4x/4GB machine. So this half ships the lane and proves it
+grades; the swap supplies the numbers. `make bench-cutover` fails today, by
+design, naming the constant it is missing.
+
+**`make up` was broken, and §4 is where it bit.** §2 moved the image to a
+distroless base carrying `dist/agentsfleetd-rs-linux-${TARGETARCH}`, while
+`make/dev.mk` still cross-compiled the Zig daemon to
+`dist/agentsfleetd-linux-${ARCH}` — two names for one slot, so the local build
+produced one file and the image build looked for another. It survived only while
+a stale artifact from an earlier `make dist-daemons` sat in `dist/`. The compose
+healthcheck was the same class of miss: it shells out to `wget`, which the
+distroless image deliberately does not carry, so the container could never
+report healthy. Both are repaired here because both lanes below want to boot a
+daemon, and `LOCAL=1` on either is what makes that one command.
 
 **The sweep.** The five `scripts/rustd_lane_*.py` files go. Four have no caller. The fifth is the run-verdict guard both Rust lanes invoke — the check that a suite which silently ran nothing fails instead of passing — so its BEHAVIOUR moves inline into the lane that calls it. The guard is preserved; the script is not.
 
 - **Dimension 4.1** — the parity lane runs the same suite against two base URLs and diffs status, body and the contract headers per route × method; a seeded difference fails naming the route → Test `test_parity_lane_detects_difference` — **DONE**
-- **Dimension 4.2** — the benchmark lane refuses to run with either budget constant unset, and passes with both set → Test `test_bench_cutover_refuses_unset_budget`
+- **Dimension 4.2** — the benchmark lane refuses to run with either budget constant unset, and passes with both set → Test `test_bench_cutover_refuses_unset_budget` — **DONE**
 - **Dimension 4.3** — the dry lane boots the Rust daemon and its page renders pass → Test `test_dry_lane_rust_variant`
 - **Dimension 4.4** — a Rust lane whose suite ran zero tests fails, and one whose child exits non-zero fails, with no Python script on the path → Test `test_lane_guard_inline_rejects_silent_noop` — **DONE**
 
@@ -315,7 +342,7 @@ No product-analytics changes — this milestone adds operator signal only, and t
 | R2 | Rust binary cross-compiles static for both linux targets (§2) | `make dist-daemons` | exit 0 | P0 | |
 | R3 | The daemon serves from the shipped image, proven black-box (§2+§4) | `docker run -d -p 3000:3000 <image>` then `make test-parity BASE_URL=http://127.0.0.1:3000` | exit 0 | P0 | |
 | R4 | Metric family registry parity and overflow spelling (§3) | `cd rustd && cargo test --package afd_observability metric_` | exit 0 | P0 | |
-| R5 | Lanes exist, refuse unset budgets, and preserve the run guard (§4) | `make test-parity BASE_URL=http://127.0.0.1:8080 && make bench-cutover` | exit 0 each | P0 | |
+| R5 | Lanes exist, refuse unset budgets, and preserve the run guard (§4) | `make test-parity-self-test && make bench-cutover-self-test` | exit 0 each | P0 | |
 | R6 | Probe runner row coverage holds (§5) | `bash playbooks/cutover/probes.sh --self-test` | exit 0 | P0 | |
 | R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
@@ -379,6 +406,12 @@ Per RULE ORP, the sweep leaves no reference behind: the lane's invocations go wi
 - > Indy (2026-08-30): "remove any arcade decisions we took in zig for containers" / "I donot want zig or legacy belching crap for agentsfleetd (zig)" — the image carries the Rust daemon alone; `build-linux-alpine` (a Zig-daemon build target with its own stale Zig download) removed with its Makefile help row.
 - **Lane run-locations (decided, 2026-08-30):** `test-parity` diff mode runs LOCALLY on the compose stack — both daemons against identically reset datastores, which staging cannot provide since one daemon serves it at a time; its single-target mode reruns against staging in M181_002's soak. `bench-cutover` comparison mode runs locally on one machine (relative tolerance is what survives a hardware change); absolute RSS/latency ceilings are graded on staging Fly machines in M181_002 via the exported families, because a workstation number says nothing about a shared-cpu-4x/4GB machine.
 - **OTLP-pure invariant (Indy, 2026-08-30): every backend is an OTLP gateway.** The daemon exports OTLP only; the collector's exporters are `otlphttp` ONLY — no vendor-native exporters (no loki/elasticsearch/prometheusremotewrite). A backend without a native OTLP intake is not a supported backend. The one permitted vendor-awareness is a per-backend temporality/transform processor in collector configuration, never a daemon change. Collector deployment shape for M181_002: a per-environment Fly app mirroring `cloudflared-{env}` (own small vm, config baked by Dockerfile, no public service, inbound over 6PN at `otel-{env}.internal`, outbound egress to vendors).
+
+- **`make up` was broken by §2, repaired in §4 (2026-08-30):** `make/dev.mk:52` cross-compiled the Zig daemon to `dist/agentsfleetd-linux-$(LOCAL_DOCKER_ARCH)`; `Dockerfile:39`, since §2, reads `dist/agentsfleetd-rs-linux-${TARGETARCH}`. Only `dist-daemons` writes the second name, so `make up` on a clean checkout fails at COPY — it worked locally solely because a stale artifact was present. Alongside it, `docker-compose.yml` declared a `wget` healthcheck against an image whose own header records that it carries no shell and no HTTP client. Repaired together: the local binary is now a real file target delegating to `dist-daemons` for one arch, and the healthcheck is removed with readiness left where it is acted on (Fly's `[checks.readiness]`). Cost recorded: `make up` now pays a musl release cross-compile instead of a `zig build`, which is the price of the image carrying the Rust daemon. Proven: the image built from the repaired path, the container started, and the Rust daemon ran its own preflight — where `docker build` previously died at COPY.
+
+- **The daemon half of `make up` is a PROVISIONING gap, not a §2 regression (2026-08-30):** with the COPY repaired, the container boots and preflight refuses on five knobs the compose inline block never carried — `AUTH_SESSION_CODE_PEPPER`, `OIDC_ISSUER`, `OIDC_AUDIENCE`, `CLERK_API_BASE`, `CLERK_SECRET_KEY`. This predates the port: `src/agentsfleetd/config/runtime_validate.zig:38` refuses boot on the same pepper, so the Zig daemon would have failed identically. `docs/AUTH.md` §614 names the local-dev source as `~/Projects/agentsfleet/.env`, gitignored and symlinked into worktrees, with the value in `op://ops/ZMB_CD_LOCAL_DEV/...`; that file is absent on this machine and `.githooks/post-checkout` links no daemon env at all. NOT fixed by writing placeholder values into `docker-compose.yml`: `docs/AUTH.md` §665 classes the pepper "catastrophic if disclosed" and bars it from disk, so a committed literal under that name is the wrong shape whatever its value. `LOCAL=1` stays wired and correct; `_ensure-local-daemon` now names the provisioning step when the daemon does not answer.
+
+- **`LOCAL=1` on both lanes (2026-08-30):** the run-locations decision above wants the compose stack, so `make test-parity LOCAL=1` and `make bench-cutover LOCAL=1` boot it and point at it through one shared `_ensure-local-daemon` prerequisite. That target polls `/healthz` rather than trusting `docker compose up -d`, which returns when a container is STARTED and — with the healthcheck correctly gone — has nothing to wait on. NOT yet built: the two-daemon local diff the run-locations note describes needs a second compose service carrying the Zig daemon, which no target produces; single-target mode is what this half ships, and rubric R3 is the claim it makes.
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.
