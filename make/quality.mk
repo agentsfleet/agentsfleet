@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs check-route-registration-doc
+.PHONY: check-cutover-probes lint-scripts _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs check-route-registration-doc
 
 check-documentation-rules:  ## Check public API and command help text
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
@@ -98,6 +98,17 @@ lint-scripts:  ## Run every scripts/*_test.py self-test
 	@$(SCRIPT_SELF_TESTS)
 	@echo "✓ [scripts] Script self-tests passed"
 
+# The cutover probe runner's own tests, plus its three asserts run for real
+# against this repository. Hermetic — fixtures for the negatives, no daemon —
+# so the row-coverage claim is graded at every `lint-all` rather than only on
+# swap day, which is the one day nobody wants to discover it.
+check-cutover-probes:  ## Assert cutover probe row-coverage + run the probe runner's self-tests
+	@echo "→ [cutover] Probe runner self-tests..."
+	@bash playbooks/operations/cutover/probes_test.sh
+	@echo "→ [cutover] Row-coverage, rollback and architecture asserts..."
+	@bash playbooks/operations/cutover/probes.sh --coverage
+	@echo "✓ [cutover] Probe runner green"
+
 SHELLCHECK ?= shellcheck
 
 lint-shell:  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
@@ -118,7 +129,7 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 
-lint-all: lint-rustd lint-scripts _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety test-parity-self-test bench-cutover-self-test  ## Run all linters + quality gates
+lint-all: lint-rustd lint-scripts _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-route-registration-doc check-architecture-doc check-deploy-safety test-parity-self-test bench-cutover-self-test check-cutover-probes  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + action pins + make-target ref check

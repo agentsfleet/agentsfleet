@@ -286,6 +286,44 @@ control plane's records leave through a stderr subscriber installed at boot
 the runner's go to the host supervisor. Field rules:
 `docs/LOGGING_STANDARD.md`, committed in this repository.
 
+## The export path — one endpoint, and the collector owns the fan-out
+
+**Decision (M181_001).** The Rust daemon is a pure OTLP pusher to ONE configured
+endpoint, addressed by the OpenTelemetry specification's own environment names.
+It does not know which backend its signal reaches, and that is the point.
+
+The Zig daemon posts direct to a vendor, gated on a `GRAFANA_OTLP_*` triple —
+vendor identity spelled into the daemon's own configuration. That worked while
+there was one backend, and it makes moving to a second one a daemon change:
+new credentials, new configuration, a redeploy, and a window in which the old
+and new paths are both half-configured. Fan-out to two backends at once is not
+expressible at all without teaching the daemon about both.
+
+Pointing the daemon at a collector moves that decision out of the binary.
+Adding a backend, splitting one signal to two destinations, or moving a vendor
+becomes collector configuration, applied without redeploying the thing that
+serves requests. The daemon keeps one endpoint, one credential and one failure
+mode no matter how many backends exist downstream, and an infrastructure change
+stays separately attributable from a binary change — which is exactly the
+property the cutover needs on swap day.
+
+The cost is honest: a collector is one more thing to run, and a collector that
+is down is a signal gap the daemon cannot route around. The bounded exporter
+already answers for that — a full ring drops and counts rather than blocking a
+request, which is the same behaviour it has when a vendor endpoint is
+unreachable. The gap was never zero; the collector does not widen it.
+
+**There is no pull endpoint, and there will not be one.** Nothing scrapes this
+daemon: no `/metrics` route is served, and no scrape is configured in either
+environment. A pull endpoint would be a second export path exporting the same
+measurements by a different mechanism with a different failure mode, and
+`playbooks/operations/cutover/probes.sh` asserts that the architecture documents and the
+deployed configuration agree on its absence rather than leaving it to a reader.
+
+The vendor-named knobs are accepted as ALIASES through cutover so a rollback to
+the Zig binary keeps exporting, and they retire with that daemon. Where both a
+standard name and a vendor alias are set, the standard name wins.
+
 ## The OTLP exporter substrate
 
 One pipeline serves traces (`/v1/traces`), logs (`/v1/logs`), and metrics

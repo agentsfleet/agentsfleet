@@ -86,8 +86,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/rustd_lane_contract_test.py` | DELETE | §4 sweep: static contracts over a deleted orchestration |
 | `scripts/rustd_lane_result.py` | DELETE | §4 sweep: behaviour preserved inline in the lane |
 | `scripts/rustd_lane_result_test.py` | DELETE | §4 sweep: self-test of a deleted script |
-| `playbooks/cutover/rust_daemon.md` | CREATE | §5: the runbook skeleton, drain order, abort criteria, divergence register |
-| `playbooks/cutover/probes.sh` | CREATE | §5: the probe runner and its row-coverage assert |
+| `playbooks/operations/cutover/001_playbook.md` | CREATE | §5: the runbook skeleton, drain order, abort criteria, divergence register |
+| `playbooks/operations/cutover/probes.sh` | CREATE | §5: the probe runner and its row-coverage assert |
+| `playbooks/operations/cutover/probes_test.sh` | CREATE | §5: its self-tests — an assert that cannot fail is not an assert |
+| `playbooks/operations/cutover/coverage.tsv` | CREATE | §5: the probe→row map as data; a rubric row id is a milestone id, which RULE TST-NAM bars from source |
+| `playbooks/README.md` | EDIT | §5: the playbook index; `check-playbooks` grades README ↔ tree parity |
+| `scripts/parity_lane.sh` | EDIT | §5: the lane reads the divergence register, so a declared difference is not a failure |
 | `docs/architecture/observability.md` | EDIT | §5: the export path decision — standard knobs, collector-owned fan-out |
 | `docs/architecture/runner_fleet.md` | EDIT | §5: the stale Prometheus-scrape claim reconciled against the deployed configuration |
 
@@ -248,7 +252,7 @@ daemon, and `LOCAL=1` on either is what makes that one command.
 - **Dimension 4.3** — the dry lane boots the Rust daemon and its page renders pass → Test `test_dry_lane_rust_variant`
 - **Dimension 4.4** — a Rust lane whose suite ran zero tests fails, and one whose child exits non-zero fails, with no Python script on the path → Test `test_lane_guard_inline_rejects_silent_noop` — **DONE**
 
-### §5 — The runbook skeleton, the probe framework, and two documents that disagree
+### §5 — The runbook skeleton, the probe framework, and two documents that disagree — DONE
 
 The cutover runbook and its executable probe runner, built to the point where M181_002 fills in the rows the swap needs: drain order, abort criteria, the one-move rollback, and the declared-divergence register that lets a parity differ tell a declared difference from a regression. Its first entry is recorded, inherited from M175.
 
@@ -258,9 +262,9 @@ The probe runner's completeness assert is over ROWS, not probes: every rubric ro
 
 **And one document contradicts the deployment.** `docs/architecture/runner_fleet.md` states that a platform Prometheus scrapes a metrics block in the production Fly configuration. No such block exists in either environment's configuration, and `docs/architecture/observability.md` states the daemon has no pull endpoint at all. A milestone that grades metric continuity cannot cite a document that describes a scrape path the deployment does not have.
 
-- **Dimension 5.1** — the probe runner executes end to end and its row-coverage assert fails on an uncovered row, an untagged probe, or an undeclared skip → Test `test_probe_runner_row_coverage`
-- **Dimension 5.2** — the runbook's rollback path invokes no migration command, and the probe runner asserts that absence rather than trusting the prose → Test `test_rollback_carries_no_migrate`
-- **Dimension 5.3** — the architecture documents agree with the deployed configuration on whether a pull endpoint exists → Test `test_architecture_matches_deployed_metrics_path`
+- **Dimension 5.1** — the probe runner executes end to end and its row-coverage assert fails on an uncovered row, an untagged probe, or an undeclared skip → Test `test_probe_runner_row_coverage` — **DONE**
+- **Dimension 5.2** — the runbook's rollback path invokes no migration command, and the probe runner asserts that absence rather than trusting the prose → Test `test_rollback_carries_no_migrate` — **DONE**
+- **Dimension 5.3** — the architecture documents agree with the deployed configuration on whether a pull endpoint exists → Test `test_architecture_matches_deployed_metrics_path` — **DONE**
 
 ## Parallelization & execution map
 
@@ -284,7 +288,7 @@ Image                 distroless; the Rust daemon at /usr/local/bin/agentsfleetd
 make test-parity      BASE_URL=<url> — black-box HTTP suite, either daemon
 make bench-cutover    comparison mode; refuses to run with budgets unset
 make dry-app          Rust daemon variant
-playbooks/cutover/    rust_daemon.md (runbook + divergence register)
+playbooks/operations/cutover/    rust_daemon.md (runbook + divergence register)
                       probes.sh (probe runner + row-coverage assert)
 Metric families       names, label keys and overflow spelling pinned by SDK Views
                       to the Zig registry's
@@ -354,7 +358,7 @@ No product-analytics changes — this milestone adds operator signal only, and t
 | R3 | The daemon serves from the shipped image, proven black-box (§2+§4) | `docker run -d -p 3000:3000 <image>` then `make test-parity BASE_URL=http://127.0.0.1:3000` | exit 0 | P0 | |
 | R4 | Metric family registry parity and overflow spelling (§3) | `cd rustd && cargo test --package afd_observability metric_` | exit 0 | P0 | |
 | R5 | Lanes exist, refuse unset budgets, and preserve the run guard (§4) | `make test-parity-self-test && make bench-cutover-self-test` | exit 0 each | P0 | |
-| R6 | Probe runner row coverage holds (§5) | `bash playbooks/cutover/probes.sh --self-test` | exit 0 | P0 | |
+| R6 | Probe runner row coverage holds (§5) | `make check-cutover-probes` | exit 0 | P0 | |
 | R7 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |

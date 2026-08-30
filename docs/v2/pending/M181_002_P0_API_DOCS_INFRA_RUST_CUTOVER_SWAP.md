@@ -63,8 +63,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/Cargo.toml` | EDIT | §2: the OTLP exporter dependency and its transport features |
 | `make/test-parity.mk` | EDIT | §3: the soak's route corpus, once every route serves |
 | `deploy/**` | EDIT | §4: drain-swap steps for the 3-machine shape; collector configuration |
-| `playbooks/cutover/rust_daemon.md` | EDIT | §4: the runbook's swap rows, verification probes and abort criteria |
-| `playbooks/cutover/probes.sh` | EDIT | §4: probes for this milestone's rubric rows |
+| `playbooks/operations/cutover/001_playbook.md` | EDIT | §4: the runbook's swap rows, verification probes and abort criteria |
+| `playbooks/operations/cutover/probes.sh` | EDIT | §4: probes for this milestone's rubric rows |
 | `docs/architecture/runner_fleet.md` | EDIT | §4: production-shape note — serving binary and rollback posture |
 | `public/openapi.json` | EDIT | §1: regenerated from the daemon rather than hand-maintained |
 
@@ -211,7 +211,7 @@ scripts/check_route_coverage.py   --served <dump> --spec <document>, both direct
 OTEL_EXPORTER_OTLP_ENDPOINT       standard knobs: endpoint, headers, protocol, timeout
                                   vendor spellings accepted as aliases through cutover
 Deploy knob                       serving-binary selection per environment
-Runbook                           playbooks/cutover/rust_daemon.md — drain order,
+Runbook                           playbooks/operations/cutover/001_playbook.md — drain order,
                                   probes, abort criteria, one-move rollback
 ```
 
@@ -283,7 +283,7 @@ No product-analytics changes.
 | R2 | All three signals leave the daemon (§2) | `cd rustd && cargo test --package agentsfleetd otlp_` | exit 0 | P0 | |
 | R3 | Whole-system soak green (§3) | `make test-parity BASE_URL=<rust>` + `make dry-app` (Rust variant) + `make test-handoff` | exit 0 each | P0 | |
 | R4 | Budgets hold (§3) | `make bench-cutover` | exit 0 | P0 | |
-| R5 | Rollback rehearsed and probes green (§4) | `bash playbooks/cutover/probes.sh` on staging, post-swap and post-rollback | exit 0 both runs | P0 | |
+| R5 | Rollback rehearsed and probes green (§4) | `bash playbooks/operations/cutover/probes.sh` on staging, post-swap and post-rollback | exit 0 both runs | P0 | |
 | R6 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |

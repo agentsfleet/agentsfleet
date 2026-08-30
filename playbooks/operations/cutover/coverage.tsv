@@ -1,0 +1,35 @@
+# Which rubric rows each cutover probe covers, and which rows are deliberately
+# not probed. Tab-separated; lines starting with # are comments.
+#
+# WHY THIS IS DATA AND NOT SHELL. Two reasons, and the second is the one that
+# matters. Adding a probe should be a table edit, not a code edit — and rubric
+# row identifiers are milestone identifiers, which RULE TST-NAM bars from
+# source. The same split `docs/metrics.census.tsv` makes for metric families:
+# the contract is data the code is graded against, never a literal inside it.
+#
+# kind      key                       value
+#   milestone <id>                    a merged milestone whose rubric rows must be covered
+#   covers    <probe name>            space-separated rows; `*` expands to every milestone
+#   exclude   <milestone:row>         the reason it is deliberately not probed
+milestone	M175_001
+milestone	M176_001
+milestone	M177_001
+milestone	M178_001
+milestone	M179_001
+covers	conform	*:S1
+covers	unit	*:S2
+covers	lint	*:S3
+covers	version	*:S4
+covers	secrets	*:S5
+covers	boot_ready	M176_001:R1 M176_001:R4
+covers	route_contract	M176_001:R6
+covers	substrate_suite	M176_001:R2 M176_001:R3 M176_001:R5
+covers	runner_plane	M177_001:R1 M177_001:R2 M177_001:R3 M177_001:R4
+covers	tenant_surface	M178_001:R1 M178_001:R2 M178_001:R3 M178_001:R4
+covers	operator_surface	M179_001:R1 M179_001:R2 M179_001:R3 M179_001:R4
+covers	scaffold	M175_001:R1 M175_001:R2 M175_001:R3 M175_001:R4 M175_001:R5
+exclude	*:S6	merge-time diff scope; the oversize sweep grades a diff, not a daemon
+exclude	M175_001:R6	merge-time diff scope, not a property of a deployed environment
+exclude	M177_001:R5	merge-time diff scope, not a property of a deployed environment
+exclude	M178_001:R5	merge-time diff scope, not a property of a deployed environment
+exclude	M179_001:R5	merge-time diff scope, not a property of a deployed environment
