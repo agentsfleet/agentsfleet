@@ -137,7 +137,7 @@ The image is distroless as a consequence rather than a preference: a static bina
 - **Dimension 2.2** — a release produces the daemon for both linux architectures under `-rs` artifact names, reporting the version in `VERSION` → Test `test_release_artifact_set` — **DONE**
 - **Dimension 2.3** — the daemon serves from the distroless image, proven by the parity lane's single-target mode against a container-hosted daemon; the release job's runtime check covers the CI side → Test `test_runtime_on_production_base` (graded with §4's lane)
 
-### §3 — The metrics pipeline, in the crate shaped to receive it
+### §3 — The metrics pipeline, in the crate shaped to receive it — DONE
 
 `afd_observability` carries the span pipeline and the export wrapper. It carries no metric instrument, no aggregation, and no family registry — so a transport plugged in later would carry an empty payload. This section builds the pipeline half, entirely inside the crate, where it needs nothing from the boot path and collides with no other stream.
 
@@ -166,7 +166,7 @@ The image is distroless as a consequence rather than a preference: a static bina
 - **Dimension 3.3** — a failing exporter increments the failed-batch counter and never blocks or delays a recording call; no retry occurs → Tests `test_metric_export_fails_counted_never_blocks`, `test_metric_export_latency_does_not_reach_the_caller` — **DONE**
 - **Dimension 3.4** — the crate's error type composes its sources by `#[from]`, and no variant's `source()` returns its own kind → Test `test_observability_error_chain_shape` — **DONE**
 - **Dimension 3.5** — an observable callback with an invalid snapshot emits no data point (absent, never zero), and collection completes when a publisher never wrote → Test `test_observed_absent_never_zero` — **DONE**
-- **Dimension 3.6** — every census label that is not bounded by construction is admitted through a bounded slot table, and no family declares a ceiling it cannot justify: the runner slot count is const-asserted against the SDK stream cap it must fit inside, and a `SharedCost` family declaring a ceiling fails → Test `test_unbounded_labels_are_slot_admitted`
+- **Dimension 3.6** — every census label that is not bounded by construction is admitted through a bounded slot table, and no family declares a ceiling it cannot justify: the runner slot count is const-asserted against the SDK stream cap it must fit inside, and a `SharedCost` family declaring a ceiling fails → Tests `test_unbounded_labels_are_slot_admitted`, `test_a_cost_family_cannot_declare_a_ceiling` — **DONE**
 
 ### §4 — The lanes, and the scripts they no longer need
 
