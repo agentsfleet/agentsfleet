@@ -115,9 +115,22 @@ impl Schedules {
                     Ok(Reconciled::Superseded)
                 }
             }
-            Ok(_registered) => Ok(self
+            // The scheduler's own key is ADOPTED here, not discarded. A create
+            // invents a placeholder (`{fleet_id}-{millis}`) because it has not
+            // spoken to the scheduler yet; this is the first moment the real key
+            // exists, and the last moment it can be stored before a pause or a
+            // delete has to name it. Dropping it made `remove` name a key the
+            // scheduler never issued, which answers 404 — read as success by
+            // design — so the row reported Removed while the schedule kept
+            // firing. `None` on the pause path teaches nothing and keeps the key.
+            Ok(registered) => Ok(self
                 .store
-                .finalize_synced(held, token, now)
+                .finalize_synced(
+                    held,
+                    token,
+                    registered.as_ref().map(|key| key.schedule_id.as_str()),
+                    now,
+                )
                 .await?
                 .map_or(Reconciled::Superseded, Reconciled::Synced)),
             Err(refused) => {

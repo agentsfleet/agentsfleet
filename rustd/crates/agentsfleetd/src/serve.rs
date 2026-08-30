@@ -218,6 +218,12 @@ async fn open_runtime(config: &BootConfig, analytics: &Analytics) -> Result<Runt
             client: reqwest::Client::new(),
             token: config.qstash_token().unwrap_or_default().to_owned(),
             destination: afd_cron::qstash::destination_url(config.api_url()).unwrap_or_default(),
+            // The one place the vendor's US region is chosen, and only when this
+            // deployment named no scheduler of its own.
+            api_base: config
+                .qstash_url()
+                .unwrap_or(afd_cron::qstash::API_BASE)
+                .to_owned(),
             keys: config.qstash_signing_keys().cloned(),
         },
         login: crate::plane::LoginConfig {

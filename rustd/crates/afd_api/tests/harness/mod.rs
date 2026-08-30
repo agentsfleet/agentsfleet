@@ -112,6 +112,15 @@ pub(crate) use self::stubs_tenant::{DEPLOYMENT, OWNED_WORKSPACE, OneWorkspace};
 pub(crate) const SCHEDULE_DESTINATION: &str =
     "https://api.fixture.test/v1/ingress/qstash/schedules";
 
+/// Which scheduler these fixtures talk to.
+///
+/// A `.test` host, deliberately: `.test` is reserved and resolves nowhere, so a
+/// harness suite that reaches the network by accident fails as a connection
+/// error naming this constant. The alternative — letting the client fall back to
+/// [`afd_cron::qstash::API_BASE`] — would point a test suite at the
+/// vendor's real US deployment.
+pub(crate) const SCHEDULE_API_BASE: &str = "https://qstash.fixture.test/v2";
+
 pub(crate) use self::support::{
     connect_redis, file_runner, json_body, presented, redis_config, runner_id, send,
     send_with_headers, tenant,

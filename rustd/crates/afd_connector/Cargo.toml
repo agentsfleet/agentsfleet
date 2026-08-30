@@ -11,6 +11,14 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+# M-TEST-UTIL. Unlocks `one_of_each_kind`, which needs the same seam in the
+# crates whose errors this one wraps. Most of these kinds cannot be provoked on
+# demand — a vendor does not become unreachable politely — and `Display`,
+# `code()` and `source()` are exactly what a human reads while something is
+# already going wrong.
+test-util = ["afd_core/test-util", "afd_db/test-util", "afd_redis/test-util"]
+
 [dependencies]
 # Identifiers, the instant a row is stamped with, and the registry codes.
 afd_core.workspace = true

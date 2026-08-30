@@ -97,9 +97,11 @@ pub fn fleet_handler_for<D: Services>(verb: FleetRoute) -> Option<MethodRouter<A
         FleetRoute::Schedules => {
             Some(get(handler::schedule::list::<D>).post(handler::schedule::create::<D>))
         }
-        FleetRoute::Schedule => {
-            Some(patch(handler::schedule::patch::<D>).delete(handler::schedule::purge::<D>))
-        }
+        FleetRoute::Schedule => Some(
+            get(handler::schedule::one::<D>)
+                .patch(handler::schedule::patch::<D>)
+                .delete(handler::schedule::purge::<D>),
+        ),
         FleetRoute::ScheduleSync => Some(post(handler::schedule::sync::<D>)),
     }
 }

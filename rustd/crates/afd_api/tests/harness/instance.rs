@@ -60,7 +60,7 @@ use super::readiness::{unreachable_pool, unreachable_queue};
 use afd_api::SchedulePlane;
 use afd_cron::{Fire, QStash, ScheduleService, Schedules as CronSchedules};
 
-use super::SCHEDULE_DESTINATION;
+use super::{SCHEDULE_API_BASE, SCHEDULE_DESTINATION};
 use super::stubs_ingress::HarnessIngress;
 use super::{Directory, Fleet, NoWork, OneWorkspace};
 
@@ -178,6 +178,7 @@ impl Fleet {
                         reqwest::Client::new(),
                         String::new(),
                         SCHEDULE_DESTINATION.to_owned(),
+                        SCHEDULE_API_BASE.to_owned(),
                     ),
                 ),
                 Fire::new(queue.clone()),
@@ -286,6 +287,7 @@ impl Fleet {
                         reqwest::Client::new(),
                         String::new(),
                         SCHEDULE_DESTINATION.to_owned(),
+                        SCHEDULE_API_BASE.to_owned(),
                     ),
                 ),
                 Fire::new(queue.clone()),

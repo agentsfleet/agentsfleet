@@ -132,10 +132,22 @@ pub const CLAIM_CURRENT: &str = concat!(
     row_columns!()
 );
 
-/// Releases a fence a push succeeded under.
+/// Releases a fence a push succeeded under, adopting the scheduler's own key.
+///
+/// `source_key = COALESCE($6, source_key)` and not a plain assignment: only the
+/// ACTIVE push learns a key (the scheduler answers one), while pausing removes
+/// upstream and learns nothing, and a pause must not blank the key its own later
+/// delete has to name. `NULL` there means "this push had nothing to teach".
+///
+/// Storing it at all is the point. The key a create invents is not the key the
+/// scheduler filed the schedule under, and `QStash::remove` treats a 404 as
+/// success — so a delete naming an invented key reports success while the
+/// schedule keeps firing. See `qstash::QStash::upsert` on reading the id out of
+/// the answer rather than minting one.
 pub const FINALIZE_SUCCESS: &str = concat!(
     "UPDATE core.fleet_schedules SET sync_status = $4, sync_token = NULL, \
-     sync_lease_until = NULL, last_error = NULL, updated_at = $5 \
+     sync_lease_until = NULL, last_error = NULL, updated_at = $5, \
+     source_key = COALESCE($6, source_key) \
      WHERE id = $1::uuid AND generation = $2 AND sync_token = $3::uuid RETURNING ",
     row_columns!()
 );
