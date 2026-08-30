@@ -22,11 +22,14 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use axum::{Json, body::Bytes};
 use http::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::handler::Refusal;
 use crate::handler::fleet::detail::parse_fleet_id;
 use crate::services::{FleetSchedules as _, Services};
+/// How this surface renders a schedule. Public wire: the dashboard and the
+/// CLI both read it, so `afd_wire` owns the shape.
+use afd_wire::schedule::{Page, View};
 
 /// The scoped event a failed schedule read is logged under.
 const EVENT_READ: &str = "schedule_read_failed";
@@ -93,58 +96,23 @@ struct Patch {
     paused: Option<bool>,
 }
 
-/// One schedule, as this surface renders it.
-#[derive(Debug, Serialize)]
-struct View<'s> {
-    /// Its identity.
-    schedule_id: &'s str,
-    /// The fleet it wakes.
-    fleet_id: &'s str,
-    /// The expression it fires on.
-    cron: &'s str,
-    /// The zone that expression is read in.
-    timezone: &'s str,
-    /// What the fleet is asked to do.
-    message: &'s str,
-    /// What the operator wants it to be doing.
-    status: &'s str,
-    /// How far the external scheduler has been brought in line.
-    ///
-    /// Rendered rather than hidden: a schedule that saved and did not register
-    /// is the one state a person needs to see, and a view that showed only the
-    /// intent would report a schedule as live when it fires nowhere.
-    sync: &'s str,
-    /// Why the last push failed, when one did.
-    last_error: Option<&'s str>,
-    /// When it was created.
-    created_at: i64,
-    /// When it was last changed.
-    updated_at: i64,
-}
-
-impl<'s> View<'s> {
-    /// One row, rendered.
-    fn of(schedule: &'s Schedule) -> Self {
-        Self {
-            schedule_id: schedule.schedule_id.as_str(),
-            fleet_id: schedule.fleet_id.as_str(),
-            cron: &schedule.cron,
-            timezone: &schedule.timezone,
-            message: &schedule.message,
-            status: schedule.desired_status.as_str(),
-            sync: schedule.sync_status.as_str(),
-            last_error: schedule.last_error.as_deref(),
-            created_at: schedule.created_at,
-            updated_at: schedule.updated_at,
-        }
+/// One row, rendered.
+///
+/// A free function rather than an inherent `impl`: [`View`] is `afd_wire`'s
+/// type now, and the rendering is this plane's knowledge of its own store.
+fn view_of(schedule: &Schedule) -> View<'_> {
+    View {
+        schedule_id: schedule.schedule_id.as_str().into(),
+        fleet_id: schedule.fleet_id.as_str().into(),
+        cron: schedule.cron.as_str().into(),
+        timezone: schedule.timezone.as_str().into(),
+        message: schedule.message.as_str().into(),
+        status: schedule.desired_status.as_str().into(),
+        sync: schedule.sync_status.as_str().into(),
+        last_error: schedule.last_error.as_deref().map(Into::into),
+        created_at: schedule.created_at,
+        updated_at: schedule.updated_at,
     }
-}
-
-/// A page of schedules.
-#[derive(Debug, Serialize)]
-struct Page<'s> {
-    /// The fleet's schedules, oldest first.
-    schedules: Vec<View<'s>>,
 }
 
 /// `GET …/schedules`.
@@ -163,7 +131,7 @@ pub(crate) async fn list<D: Services>(
         .map_err(Refusal::at(EVENT_READ))?;
 
     Ok(Json(Page {
-        schedules: schedules.iter().map(View::of).collect(),
+        schedules: schedules.iter().map(view_of).collect(),
     })
     .into_response())
 }
@@ -206,7 +174,7 @@ pub(crate) async fn one<D: Services>(
                 DETAIL_NOT_FOUND,
             ))
         },
-        |schedule| Ok(Json(View::of(&schedule)).into_response()),
+        |schedule| Ok(Json(view_of(&schedule)).into_response()),
     )
 }
 
@@ -400,7 +368,7 @@ fn held_or(reconciled: Option<Reconciled>, status: StatusCode) -> Result<Respons
 fn rendered(reconciled: Reconciled, status: StatusCode) -> Result<Response, Refusal> {
     match reconciled {
         Reconciled::Synced(schedule) | Reconciled::Failed(schedule) => {
-            Ok((status, Json(View::of(&schedule))).into_response())
+            Ok((status, Json(view_of(&schedule))).into_response())
         }
         Reconciled::Removed => Ok(StatusCode::NO_CONTENT.into_response()),
         Reconciled::Superseded => Err(Refusal::coded(error_code::SCHEDULE_SYNCING, DETAIL_HELD)),

@@ -59,12 +59,13 @@ use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use http::{HeaderMap, StatusCode};
-use serde::Serialize;
 
 use crate::handler::{Refusal, webhook};
 use crate::services::Services;
 
 use super::provider_of;
+/// The echo a handshake is answered with. Public wire.
+use afd_wire::ingress::EchoAnswer;
 
 /// The scoped event a dropped delivery is logged under.
 const EVENT_DROPPED: &str = "connector_events_dropped";
@@ -95,17 +96,6 @@ const REASON_UNREADABLE: &str = "unreadable_body";
 /// handshake kind without its value gets no proof of ownership either way, and
 /// returning an empty string would look like one.
 const REASON_HANDSHAKE_EMPTY: &str = "handshake_missing_echo_value";
-
-/// The echo a handshake is answered with.
-///
-/// Serialized as a one-key map rather than a struct because the KEY is provider
-/// data — [`Echo::echo_field`] — and a struct would fix it at compile time to
-/// whichever vendor was ported first.
-#[derive(Debug, Serialize)]
-struct EchoAnswer<'a> {
-    #[serde(flatten)]
-    field: std::collections::BTreeMap<&'a str, &'a str>,
-}
 
 /// What a proved delivery earns, before any of it is rendered.
 ///
@@ -247,7 +237,7 @@ fn dropped(provider: Provider, body: &Bytes, reason: &str) -> Response {
         reason,
         event = EVENT_DROPPED,
     );
-    (StatusCode::OK, Json(webhook::Ignored { ignored: reason })).into_response()
+    (StatusCode::OK, Json(webhook::Ignored { ignored: reason.into() })).into_response()
 }
 
 #[cfg(test)]

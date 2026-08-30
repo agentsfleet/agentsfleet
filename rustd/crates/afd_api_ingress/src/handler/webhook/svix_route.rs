@@ -60,7 +60,7 @@ pub(crate) async fn receive<D: Services>(
         return Ok((
             StatusCode::OK,
             Json(webhook::Ignored {
-                ignored: webhook::REASON_FLEET_PAUSED,
+                ignored: webhook::REASON_FLEET_PAUSED.into(),
             }),
         )
             .into_response());
@@ -86,7 +86,7 @@ pub(crate) async fn receive<D: Services>(
     Ok((
         StatusCode::ACCEPTED,
         Json(webhook::Accepted {
-            event_id: appended.id.as_str(),
+            event_id: appended.id.as_str().into(),
             replayed: appended.replayed,
         }),
     )

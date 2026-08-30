@@ -38,7 +38,6 @@ pub(crate) use self::verify_platform::{verified_app, verified_connector_events};
 use afd_core::error_code;
 use axum::body::Bytes;
 use http::HeaderMap;
-use serde::Serialize;
 
 use crate::handler::Refusal;
 
@@ -118,38 +117,12 @@ pub(crate) fn text<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
     headers.get(name).and_then(|value| value.to_str().ok())
 }
 
-/// What a delivery this daemon accepted is answered with.
+/// The response bodies these routes answer with.
 ///
-/// `202`, and the event id, so a provider's delivery log carries the identifier
-/// an operator can search the fleet's history by. A replayed delivery answers
-/// the FIRST attempt's id rather than a new one — that is the whole point of
-/// the at-most-once claim, and a sender comparing two responses should see the
-/// same event both times.
-#[derive(Debug, Serialize)]
-pub(crate) struct Accepted<'a> {
-    /// The event the fleet will run, or already ran.
-    pub(crate) event_id: &'a str,
-    /// Whether an earlier delivery already produced it.
-    ///
-    /// Reported rather than hidden: a provider debugging a duplicate wants to
-    /// know this daemon SAW the repeat and declined to run twice, which is a
-    /// different fact from the delivery having been lost.
-    pub(crate) replayed: bool,
-}
-
-/// What a delivery this daemon deliberately dropped is answered with.
-///
-/// `200` and a reason, never a 4xx. Every one of these is a real,
-/// correctly-signed delivery that simply does not wake this fleet — a green
-/// build, a label edit, a paused fleet. Answering an error would put it in the
-/// sender's retry queue forever, and retrying changes none of them. The shape
-/// is `{"ignored": "<reason>"}`, which is `error_entries.zig:135`'s
-/// `{"ignored":"fleet_paused"}` generalised over every reason.
-#[derive(Debug, Serialize)]
-pub(crate) struct Ignored<'a> {
-    /// Which rule dropped it.
-    pub(crate) ignored: &'a str,
-}
+/// Re-exported rather than defined here: they are public wire, declared in
+/// `public/openapi.json` and read by senders and the dashboard, so `afd_wire`
+/// owns the shape and this plane names it.
+pub(crate) use afd_wire::ingress::{Accepted, Ignored};
 
 /// The reason a delivery to a fleet nobody is running is dropped.
 ///

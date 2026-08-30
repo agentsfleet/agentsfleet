@@ -27,12 +27,13 @@ use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
 use axum::{Json, body::Bytes};
 use http::{HeaderMap, StatusCode};
-use serde::Serialize;
 
 use crate::handler::{Refusal, webhook};
 use crate::services::{FleetSchedules as _, Services};
 
 use super::text;
+/// What an accepted fire is answered with. Public wire.
+use afd_wire::ingress::Fired;
 
 /// The scoped event a failed append is logged under.
 const EVENT_APPEND: &str = "schedule_fire_append_failed";
@@ -63,15 +64,6 @@ const REASON_SCHEDULE_PAUSED: &str = "schedule_paused";
 
 /// The reason a fire naming no schedule at all is dropped.
 const REASON_NO_SCHEDULE_HEADER: &str = "schedule_header_absent";
-
-/// What an accepted fire is answered with.
-#[derive(Debug, Serialize)]
-struct Fired<'f> {
-    /// The event the fleet will run, or already ran.
-    event_id: &'f str,
-    /// Whether an earlier attempt already produced it.
-    replayed: bool,
-}
 
 /// `POST /v1/ingress/qstash/schedules`.
 ///
@@ -149,7 +141,7 @@ pub(crate) async fn receive<D: Services>(
     Ok((
         StatusCode::ACCEPTED,
         Json(Fired {
-            event_id: &fired.event_id,
+            event_id: fired.event_id.as_str().into(),
             replayed: fired.replayed,
         }),
     )
@@ -167,5 +159,5 @@ fn unverified() -> Refusal {
 /// and an operator asking "why did my schedule not run" has only this line.
 fn dropped(reason: &str) -> Response {
     tracing::info!(reason, event = EVENT_DROPPED);
-    (StatusCode::OK, Json(webhook::Ignored { ignored: reason })).into_response()
+    (StatusCode::OK, Json(webhook::Ignored { ignored: reason.into() })).into_response()
 }

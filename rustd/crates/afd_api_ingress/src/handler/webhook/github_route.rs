@@ -97,7 +97,7 @@ pub(crate) async fn receive<D: Services>(
     Ok((
         StatusCode::ACCEPTED,
         Json(webhook::Accepted {
-            event_id: appended.id.as_str(),
+            event_id: appended.id.as_str().into(),
             replayed: appended.replayed,
         }),
     )
@@ -106,5 +106,5 @@ pub(crate) async fn receive<D: Services>(
 
 /// The 200 a deliberately-dropped delivery answers with.
 fn ignored(reason: &'static str) -> Response {
-    (StatusCode::OK, Json(webhook::Ignored { ignored: reason })).into_response()
+    (StatusCode::OK, Json(webhook::Ignored { ignored: reason.into() })).into_response()
 }

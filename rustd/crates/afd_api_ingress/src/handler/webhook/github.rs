@@ -38,6 +38,10 @@ use octocrab::models::webhook_events::payload::{
 };
 use octocrab::models::webhook_events::{WebhookEvent, WebhookEventPayload};
 use serde::{Deserialize, Serialize};
+/// The two flat objects a verified delivery becomes on the stream. Stream
+/// payloads rather than HTTP bodies, and wire all the same: a fleet's prose
+/// reads these field names, so `afd_wire` owns them.
+use afd_wire::ingress::{PullRequestDigest, WorkflowRunDigest};
 
 /// The reason a delivery this daemon understands is deliberately not ingested.
 ///
@@ -125,42 +129,6 @@ const fn one() -> i64 {
     1
 }
 
-/// The flat object a `workflow_run` becomes on the stream.
-///
-/// Field names and order are `normalizer/github.zig`'s `Normalized`, kept
-/// exactly: a fleet's prose reads them.
-#[derive(Debug, Serialize)]
-struct WorkflowRunDigest<'a> {
-    run_url: &'a str,
-    head_sha: &'a str,
-    conclusion: &'a str,
-    repo: &'a str,
-    attempt: i64,
-    run_id: i64,
-    head_branch: &'a str,
-    workflow_name: &'a str,
-    received_at: &'a str,
-}
-
-/// The flat object a `pull_request` becomes on the stream.
-///
-/// `github_app.zig`'s `PullRequest`, field for field.
-#[derive(Debug, Serialize)]
-struct PullRequestDigest<'a> {
-    action: &'a str,
-    repo: &'a str,
-    number: u64,
-    title: &'a str,
-    url: &'a str,
-    state: &'a str,
-    draft: bool,
-    author: &'a str,
-    head_ref: &'a str,
-    base_ref: &'a str,
-    head_sha: &'a str,
-    received_at: &'a str,
-}
-
 /// Classifies one delivery under `policy`.
 ///
 /// `event` is the `x-github-event` header's value — the delivery's kind is
@@ -218,15 +186,15 @@ fn workflow_run(
     }
 
     let digest = WorkflowRunDigest {
-        run_url: &run.html_url,
-        head_sha: &run.head_sha,
-        conclusion: &run.conclusion,
-        repo: repository,
+        run_url: run.html_url.as_str().into(),
+        head_sha: run.head_sha.as_str().into(),
+        conclusion: run.conclusion.as_str().into(),
+        repo: repository.into(),
         attempt: run.run_attempt,
         run_id: run.id,
-        head_branch: &run.head_branch,
-        workflow_name: &run.name,
-        received_at,
+        head_branch: run.head_branch.as_str().into(),
+        workflow_name: run.name.as_str().into(),
+        received_at: received_at.into(),
     };
     encoded(&digest)
 }
@@ -260,18 +228,22 @@ fn pull_request(
         .unwrap_or_default();
 
     let digest = PullRequestDigest {
-        action: &action,
-        repo: repository,
+        action: action.as_str().into(),
+        repo: repository.into(),
         number: payload.number,
-        title: pull.title.as_deref().unwrap_or_default(),
-        url: &url,
-        state: &state,
+        title: pull.title.as_deref().unwrap_or_default().into(),
+        url: url.as_str().into(),
+        state: state.as_str().into(),
         draft: pull.draft.unwrap_or(false),
-        author: pull.user.as_ref().map_or("", |user| user.login.as_str()),
-        head_ref,
-        base_ref: pull.base.ref_field.as_str(),
-        head_sha: pull.head.sha.as_str(),
-        received_at,
+        author: pull
+            .user
+            .as_ref()
+            .map_or("", |user| user.login.as_str())
+            .into(),
+        head_ref: head_ref.into(),
+        base_ref: pull.base.ref_field.as_str().into(),
+        head_sha: pull.head.sha.as_str().into(),
+        received_at: received_at.into(),
     };
     encoded(&digest)
 }
