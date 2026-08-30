@@ -37,11 +37,11 @@ use serde_json::Value;
 use self::harness::{json_body, send};
 #[path = "connector_callback_live/fixture.rs"]
 mod fixture;
-#[path = "connector_callback_live/vendor.rs"]
-mod vendor;
+#[path = "support/fake_provider.rs"]
+mod fake_provider;
 
 use self::fixture::Fixture;
-use self::vendor::Vendor;
+use self::fake_provider::FakeProvider;
 
 /// The provider these tests connect.
 ///
@@ -137,8 +137,8 @@ async fn complete(
 async fn a_completed_connect_seals_the_grant_under_the_providers_own_key() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let vendor = Vendor::answering(&[&slack_answer(BOT_TOKEN)]).await;
-    let router = fixture.router(&vendor);
+    let provider = FakeProvider::answering(&[&slack_answer(BOT_TOKEN)]).await;
+    let router = fixture.router(&provider);
 
     let state = start_connect(&router, &fixture).await;
     let landed = complete(&router, &fixture, &state).await;
@@ -168,9 +168,9 @@ async fn a_completed_connect_seals_the_grant_under_the_providers_own_key() {
         grant.get(HANDLE_INTEGRATION).and_then(Value::as_str),
         Some(PROVIDER.id())
     );
-    assert_eq!(vendor.exchanges(), 1);
+    assert_eq!(provider.exchanges(), 1);
 
-    vendor.close();
+    provider.close();
     fixture.cleanup().await;
 }
 
@@ -182,8 +182,8 @@ async fn a_replayed_callback_is_refused_without_redeeming_the_code_again() {
     // could replay it, and each replay would redeem the code again.
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let vendor = Vendor::answering(&[&slack_answer(BOT_TOKEN)]).await;
-    let router = fixture.router(&vendor);
+    let provider = FakeProvider::answering(&[&slack_answer(BOT_TOKEN)]).await;
+    let router = fixture.router(&provider);
 
     let state = start_connect(&router, &fixture).await;
     assert_eq!(
@@ -202,13 +202,13 @@ async fn a_replayed_callback_is_refused_without_redeeming_the_code_again() {
          the connect again, and telling them apart is a probe"
     );
     assert_eq!(
-        vendor.exchanges(),
+        provider.exchanges(),
         1,
         "the replay must not reach the vendor at all — a second redemption \
          would be invisible in the vault, which is why the count is the proof"
     );
 
-    vendor.close();
+    provider.close();
     fixture.cleanup().await;
 }
 
@@ -221,15 +221,16 @@ async fn a_reconnect_replaces_the_sealed_grant_rather_than_refusing() {
     // a second name would leave a runner opening whichever it found first.
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    // One vendor answering two tokens in order, which is `FakeVendor`'s shape:
-    // a second server would restart the exchange count and lose the evidence
-    // that the reconnect redeemed a code of its own.
-    let vendor = Vendor::answering(&[
+    // One fake answering two tokens in order, which is the shape
+    // `oauth_providers_integration_test.zig` uses: a second server would
+    // restart the exchange count and lose the evidence that the reconnect
+    // redeemed a code of its own.
+    let provider = FakeProvider::answering(&[
         &slack_answer(BOT_TOKEN),
         &slack_answer(REPLACEMENT_TOKEN),
     ])
     .await;
-    let router = fixture.router(&vendor);
+    let router = fixture.router(&provider);
 
     let first = start_connect(&router, &fixture).await;
     assert_eq!(
@@ -243,7 +244,7 @@ async fn a_reconnect_replaces_the_sealed_grant_rather_than_refusing() {
         StatusCode::FOUND,
         "a reconnect is the same action as a connect, not a conflict"
     );
-    assert_eq!(vendor.exchanges(), 2, "each connect redeemed its own code");
+    assert_eq!(provider.exchanges(), 2, "each connect redeemed its own code");
 
     assert_eq!(
         fixture.secret_names().await,
@@ -261,6 +262,6 @@ async fn a_reconnect_replaces_the_sealed_grant_rather_than_refusing() {
         "the standing grant is the newer one"
     );
 
-    vendor.close();
+    provider.close();
     fixture.cleanup().await;
 }

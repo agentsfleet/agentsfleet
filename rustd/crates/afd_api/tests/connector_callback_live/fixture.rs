@@ -26,7 +26,7 @@ use afd_vault::{SecretBody, SecretName};
 use sqlx::Row as _;
 
 use super::harness;
-use super::vendor::Vendor;
+use super::fake_provider::FakeProvider;
 
 /// The vault key this deployment's connect-state signing secret is held under.
 const STATE_KEY: &str = afd_http::services::APPROVAL_IDENTITY;
@@ -82,9 +82,9 @@ impl Fixture {
         }
     }
 
-    /// The production router over live stores, with `vendor` standing in for
-    /// the provider's token endpoint.
-    pub(super) fn router(&self, vendor: &Vendor) -> axum::Router {
+    /// The production router over live stores, with `provider` standing in
+    /// for the real one's token endpoint.
+    pub(super) fn router(&self, provider: &FakeProvider) -> axum::Router {
         harness::Fleet::live(
             self.database.clone(),
             &self.subject,
@@ -92,7 +92,7 @@ impl Fixture {
         )
         .with_owned_workspace(self.workspace.clone())
         .with_platform_admin(self.admin.clone())
-        .with_live_connectors(self.database.clone(), self.queue.clone(), vendor.url())
+        .with_live_connectors(self.database.clone(), self.queue.clone(), provider.url())
         .router()
     }
 
