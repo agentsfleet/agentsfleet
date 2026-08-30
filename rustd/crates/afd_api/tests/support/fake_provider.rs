@@ -1,4 +1,9 @@
-//! A provider's token endpoint, on a loopback port.
+//! A FAKE provider token endpoint, on a loopback port.
+//!
+//! Named for what it is, beside `afd_redis/tests/support/fake_redis.rs`: this
+//! serves a fixture's answers, and a reader who took it for a real vendor
+//! client would look here for the daemon's own exchange, which lives in
+//! `afd_connector::Exchange`.
 //!
 //! `Exchange::pointed_at` exists because a token endpoint is a `&'static str`
 //! in the registry and no test may post to Slack's. Pointing it here is what
@@ -24,7 +29,7 @@
 //!
 //! # A SEQUENCE of answers, which is the reference implementation's shape
 //!
-//! `oauth_providers_integration_test.zig`'s `FakeVendor` holds
+//! `oauth_providers_integration_test.zig`'s `FakeProvider` holds
 //! `bodies: []const []const u8` and a cursor, so consecutive requests get
 //! consecutive answers — it is how that suite drives Jira's token call and its
 //! site listing from one server. The same shape is what lets a reconnect here
@@ -45,16 +50,16 @@ use tokio::task::JoinHandle;
 const TOKEN_PATH: &str = "/oauth/access";
 
 /// A token endpoint that answers a sequence of bodies and counts its callers.
-pub(super) struct Vendor {
+pub(crate) struct FakeProvider {
     /// Where [`Exchange::pointed_at`] should be aimed.
     url: String,
     /// How many codes have been redeemed here.
     exchanges: Arc<AtomicUsize>,
-    /// Aborted by [`Vendor::close`] — see there.
+    /// Aborted by [`FakeProvider::close`] — see there.
     handle: JoinHandle<()>,
 }
 
-impl Vendor {
+impl FakeProvider {
     /// Serves `bodies` in order, then repeats the last, counting every call.
     ///
     /// Repeating rather than running out: a test that sent one request too many
@@ -65,7 +70,7 @@ impl Vendor {
     /// already depends on axum with the `tokio` feature, and framing HTTP by
     /// hand to answer a fixed document is the kind of parser RULE PSR exists to
     /// stop — the Zig wrote its own only because it had no such library.
-    pub(super) async fn answering(bodies: &[&str]) -> Self {
+    pub(crate) async fn answering(bodies: &[&str]) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a loopback port");
@@ -80,13 +85,19 @@ impl Vendor {
             .iter()
             .map(|body| serde_json::from_str(body).expect("a fixture answer is JSON"))
             .collect();
-        assert!(!answers.is_empty(), "a vendor answers at least one body");
+        assert!(!answers.is_empty(), "a fake provider answers at least one body");
 
         let router = Router::new().route(
             TOKEN_PATH,
             post(move || {
                 let asked = counted.fetch_add(1, Ordering::SeqCst);
-                let answer = answers[asked.min(answers.len() - 1)].clone();
+                // `get` then `last` rather than a clamped index: the repeat is the
+                // rule being stated, and indexing to express it can panic.
+                let answer = answers
+                    .get(asked)
+                    .or_else(|| answers.last())
+                    .cloned()
+                    .expect("the fake provider was built with at least one answer");
                 async move { axum::Json(answer) }
             }),
         );
@@ -102,12 +113,12 @@ impl Vendor {
         }
     }
 
-    pub(super) fn url(&self) -> String {
+    pub(crate) fn url(&self) -> String {
         self.url.clone()
     }
 
     /// How many codes have been redeemed here.
-    pub(super) fn exchanges(&self) -> usize {
+    pub(crate) fn exchanges(&self) -> usize {
         self.exchanges.load(Ordering::SeqCst)
     }
 
@@ -116,7 +127,7 @@ impl Vendor {
     /// Called rather than left to the drop: the spawned task owns the listener,
     /// so a fixture that only dropped its handle would leave the port bound for
     /// as long as the test binary runs.
-    pub(super) fn close(self) {
+    pub(crate) fn close(self) {
         self.handle.abort();
     }
 }
