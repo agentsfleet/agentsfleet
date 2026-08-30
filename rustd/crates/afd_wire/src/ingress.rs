@@ -195,3 +195,20 @@ pub struct PullRequestDigest<'a> {
     #[serde(borrow)]
     pub received_at: Cow<'a, str>,
 }
+
+/// What a signup event is answered with.
+///
+/// The workspace rather than the person: a provider's delivery log is read by
+/// an operator asking "did this signup land", and the workspace is the thing
+/// they can then go and look at. The subject is already in the request.
+#[derive(Debug, Clone, Serialize)]
+pub struct AccountOpened<'a> {
+    /// The default workspace the account was opened with.
+    #[serde(borrow)]
+    pub workspace_id: Cow<'a, str>,
+    /// What that workspace is called.
+    #[serde(borrow)]
+    pub workspace_name: Cow<'a, str>,
+    /// `true` on a fresh account, `false` when this delivery was a replay.
+    pub created: bool,
+}

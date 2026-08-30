@@ -107,6 +107,11 @@ impl Fleet {
             schedule_keys: None,
             // No admin workspace, which is the fail-closed App-ingress state.
             platform_admin: None,
+            signups: afd_tenant::signup::Signups::new(database.clone(), Entropy::new()),
+            // Unconfigured by default, so a suite that says nothing about the
+            // identity provider proves the fail-closed refusal a deployment
+            // with no CLERK_WEBHOOK_SECRET gives.
+            identity_webhook_secret: None,
             preferences: Preferences::new(database.clone(), Entropy::new()),
             approvals: Inbox::new(database.clone(), queue.clone()),
             grants: IntegrationGrants::new(database.clone()),
@@ -220,6 +225,11 @@ impl Fleet {
             schedule_keys: None,
             // No admin workspace, which is the fail-closed App-ingress state.
             platform_admin: None,
+            signups: afd_tenant::signup::Signups::new(database.clone(), Entropy::new()),
+            // Unconfigured by default, so a suite that says nothing about the
+            // identity provider proves the fail-closed refusal a deployment
+            // with no CLERK_WEBHOOK_SECRET gives.
+            identity_webhook_secret: None,
             preferences: Preferences::new(database.clone(), Entropy::new()),
             approvals: Inbox::new(database.clone(), queue.clone()),
             grants: IntegrationGrants::new(database.clone()),
@@ -450,6 +460,20 @@ impl Fleet {
     /// default alone is how a suite reaches that branch.
     pub(crate) fn with_platform_admin(mut self, workspace: Uuid7) -> Self {
         self.platform_admin = Some(workspace);
+        self
+    }
+
+    /// Configures the secret a signup event is verified against.
+    ///
+    /// `None` is the default and it is a real deployment state rather than an
+    /// unset fixture: a daemon given no secret refuses every delivery, because
+    /// accepting an unverified one on a route that CREATES ACCOUNTS is worse
+    /// than serving none. Leaving the default alone is how a suite reaches
+    /// that branch.
+    pub(crate) fn with_identity_secret(mut self, secret: &str) -> Self {
+        self.identity_webhook_secret = Some(afd_crypto::secret::SecretBytes::new(
+            secret.as_bytes().to_vec(),
+        ));
         self
     }
 }

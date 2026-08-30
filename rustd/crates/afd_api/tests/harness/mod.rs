@@ -197,6 +197,10 @@ pub(crate) struct Fleet {
     connectors: afd_connector::Connectors,
     schedule_keys: Option<afd_cron::SigningKeys>,
     platform_admin: Option<Uuid7>,
+    /// Opening a personal account, over whatever pool this fixture holds.
+    signups: afd_tenant::signup::Signups,
+    /// What a signup event is verified against — `None` refuses every one.
+    identity_webhook_secret: Option<afd_crypto::secret::SecretBytes>,
     preferences: Preferences,
     approvals: Inbox,
     grants: IntegrationGrants,

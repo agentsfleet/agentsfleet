@@ -207,6 +207,11 @@ async fn open_runtime(config: &BootConfig, analytics: &Analytics) -> Result<Runt
         sessions,
         stores: crate::bundles::resolve(config.bundles()),
         platform_admin_workspace: config.platform_admin_workspace().cloned(),
+        // Fail-closed: a deployment that named no secret refuses every signup
+        // delivery rather than trusting an unverified one to open an account.
+        identity_webhook_secret: config
+            .identity_webhook_secret()
+            .map(|secret| afd_crypto::secret::SecretBytes::new(secret.as_bytes().to_vec())),
         broker,
         live,
         analytics: analytics.clone(),

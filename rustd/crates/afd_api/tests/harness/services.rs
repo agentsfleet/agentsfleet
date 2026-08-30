@@ -169,6 +169,16 @@ impl Services for Fleet {
     /// admin workspace refuses every App delivery as unconfigured, and one with
     /// it serves them. A suite that could not say which it was could prove only
     /// half of that.
+    type Signups = afd_tenant::signup::Signups;
+
+    fn signups(&self) -> &Self::Signups {
+        &self.signups
+    }
+
+    fn identity_webhook_secret(&self) -> Option<&afd_crypto::secret::SecretBytes> {
+        self.identity_webhook_secret.as_ref()
+    }
+
     fn platform_admin_workspace(&self) -> Option<&Uuid7> {
         self.platform_admin.as_ref()
     }

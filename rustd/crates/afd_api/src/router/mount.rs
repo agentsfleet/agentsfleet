@@ -24,7 +24,16 @@ pub(super) fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D
             crate::route::OpsRoute::Healthz => get(probes::healthz),
             crate::route::OpsRoute::Readyz => get(probes::readyz::<D>),
         }),
-        Route::Auth(verb) => afd_api_tenant::auth_handler_for::<D>(verb),
+        // Two planes answer this family, exactly as they do for connectors:
+        // the bearer-proven half is the tenant's, and the identity provider's
+        // signature-proven signup event is the ingress plane's. It carries the
+        // webhook family's buffer cap for the same reason that one does — the
+        // proof IS the body, so the body must be read before anything can
+        // decide whether to trust it.
+        Route::Auth(verb) => afd_api_tenant::auth_handler_for::<D>(verb).or_else(|| {
+            afd_api_ingress::auth_handler_for::<D>(verb)
+                .map(|handler| handler.layer(DefaultBodyLimit::max(afd_api_ingress::BUFFER_CEILING)))
+        }),
         Route::Tenant(verb) => afd_api_tenant::tenant_handler_for::<D>(verb),
         Route::Runner(verb) => Some(afd_api_runner::handler_for::<D>(verb)),
         Route::RunnerOps(RunnerOpsRoute::Register) => {

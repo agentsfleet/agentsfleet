@@ -32,6 +32,7 @@ pub mod error;
 pub mod models;
 pub mod preference;
 pub mod session;
+pub mod signup;
 pub mod sql;
 pub mod workspace;
 

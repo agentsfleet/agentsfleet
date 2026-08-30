@@ -93,6 +93,14 @@ pub const QSTASH_TOKEN_KNOB: &str = "QSTASH_TOKEN";
 /// found it ignored was configuring something the daemon never read.
 pub const QSTASH_URL_KNOB: &str = "QSTASH_URL";
 
+/// What a signup event from the identity provider is verified against.
+///
+/// Optional, and its absence is FAIL-CLOSED rather than a degradation: the
+/// route refuses every delivery, because accepting an unverified one on a
+/// public endpoint that creates accounts would be strictly worse than serving
+/// none. The same posture `QSTASH_CURRENT_KEY_KNOB` takes, for the same reason.
+pub const IDENTITY_WEBHOOK_SECRET_KNOB: &str = "CLERK_WEBHOOK_SECRET";
+
 /// The key the scheduler is signing fire callbacks with now.
 ///
 /// Optional AND fail-closed, which is not a contradiction: a deployment without
@@ -331,6 +339,7 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
                 platform_admin_workspace,
                 qstash_token: optional(env, QSTASH_TOKEN_KNOB),
                 qstash_url: optional(env, QSTASH_URL_KNOB),
+                identity_webhook_secret: optional(env, IDENTITY_WEBHOOK_SECRET_KNOB),
                 qstash_keys: signing_keys(env),
                 sse_max_streams,
                 posthog,

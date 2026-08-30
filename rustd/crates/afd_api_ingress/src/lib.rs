@@ -21,7 +21,7 @@ pub use handler::webhook::verify_platform::{HEADER_APPROVAL_SIGNATURE, HEADER_AP
 use std::sync::Arc;
 
 use axum::routing::{MethodRouter, post};
-use route::{ConnectorRoute, WebhookRoute};
+use route::{AuthRoute, ConnectorRoute, WebhookRoute};
 use services::Services;
 
 /// Selects the handler for a signed inbound delivery.
@@ -33,6 +33,31 @@ pub fn webhook_handler_for<D: Services>(verb: WebhookRoute) -> MethodRouter<Arc<
         WebhookRoute::GitHub => post(handler::webhook::github_route::receive::<D>),
         WebhookRoute::AppIngress => post(handler::webhook::app_route::receive::<D>),
         WebhookRoute::QstashSchedules => post(handler::webhook::qstash_route::receive::<D>),
+    }
+}
+
+/// Selects the handler for the one auth route proven by a signature.
+///
+/// `None` for every other verb in the family, so the composition root asks the
+/// tenant plane first and falls through to here — the same split the connector
+/// family already carries, and for the same reason: whoever proves the caller
+/// owns the route.
+///
+/// The identity provider's signup event is not bearer-proven and never can be.
+/// It arrives before the account it opens exists, so there is no credential for
+/// the sender to present; what it presents is a signature over the body.
+#[must_use]
+pub fn auth_handler_for<D: Services>(verb: AuthRoute) -> Option<MethodRouter<Arc<D>>> {
+    match verb {
+        AuthRoute::IdentityEventClerk => {
+            Some(post(handler::webhook::identity_route::receive::<D>))
+        }
+        AuthRoute::CreateSession
+        | AuthRoute::PollSession
+        | AuthRoute::ApproveSession
+        | AuthRoute::VerifySession
+        | AuthRoute::DeleteSession
+        | AuthRoute::DeleteAllSessions => None,
     }
 }
 
