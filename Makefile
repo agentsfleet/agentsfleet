@@ -61,7 +61,6 @@ help:  ## Show all available Makefile targets
 	@echo "Build & Deploy:"
 	@echo "  build                    Build production container (uses prebuilt linux binaries)"
 	@echo "  build-dev                Build development container (multi-arch)"
-	@echo "  build-linux-alpine       Compile inside Alpine with musl-native OpenSSL"
 	@echo "  push                     Push production image to registry"
 	@echo "  push-dev                 Push development image to registry"
 	@echo "  sync-version             Propagate VERSION → build.zig.zon + cli/package.json"

@@ -270,8 +270,8 @@ No product-analytics changes — this milestone adds operator signal only, and t
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | CI actions on a supported runtime (§1) | `actionlint && bash audits/gh-actions-runtime.sh` | exit 0 | P0 | |
-| R2 | Rust binary cross-compiles static for both linux targets (§2) | `make rustd-cross-check` | exit 0 | P0 | |
-| R3 | Both binaries ship and one knob selects the served one (§2) | `make release-artifact-check && make image-binary-check` | exit 0 each | P0 | |
+| R2 | Rust binary cross-compiles static for both linux targets (§2) | `make dist-daemons` | exit 0 | P0 | |
+| R3 | The image carries the daemon, runs it, and has no shell (§2) | `make image-check` | exit 0 | P0 | |
 | R4 | Metric family registry parity and overflow spelling (§3) | `cd rustd && cargo test --package afd_observability metric_` | exit 0 | P0 | |
 | R5 | Lanes exist, refuse unset budgets, and preserve the run guard (§4) | `make test-parity BASE_URL=http://127.0.0.1:8080 && make bench-cutover` | exit 0 each | P0 | |
 | R6 | Probe runner row coverage holds (§5) | `bash playbooks/cutover/probes.sh --self-test` | exit 0 | P0 | |
@@ -325,6 +325,12 @@ Per RULE ORP, the sweep leaves no reference behind: the lane's invocations go wi
 - **Patch-vs-refactor verdict:** this is a **patch** to the operational layer — pipelines, lanes, one crate's interior — with one deliberate deletion whose behaviour is preserved by test.
 
 ## Discovery (consult log)
+
+- > Indy (2026-08-30): "Okay Indy appreciates your fix" — the gitleaks cache-key hit resolved by restructuring to a block scalar, no suppression added.
+- > Indy (2026-08-30): "I think in the VERIFY step you will need to check the container in local with `make test-integration-rustd` along with it." — boundary VERIFY runs `make image-check` beside the declared lanes; rubric R3 names it.
+- > Indy (2026-08-30): "remove any arcade decisions we took in zig for containers" / "I donot want zig or legacy belching crap for agentsfleetd (zig)" — the image carries the Rust daemon alone; `build-linux-alpine` (a Zig-daemon build target with its own stale Zig download) removed with its Makefile help row.
+- **Lane run-locations (decided, 2026-08-30):** `test-parity` diff mode runs LOCALLY on the compose stack — both daemons against identically reset datastores, which staging cannot provide since one daemon serves it at a time; its single-target mode reruns against staging in M181_002's soak. `bench-cutover` comparison mode runs locally on one machine (relative tolerance is what survives a hardware change); absolute RSS/latency ceilings are graded on staging Fly machines in M181_002 via the exported families, because a workstation number says nothing about a shared-cpu-4x/4GB machine.
+- **OTLP-pure invariant (Indy, 2026-08-30): every backend is an OTLP gateway.** The daemon exports OTLP only; the collector's exporters are `otlphttp` ONLY — no vendor-native exporters (no loki/elasticsearch/prometheusremotewrite). A backend without a native OTLP intake is not a supported backend. The one permitted vendor-awareness is a per-backend temporality/transform processor in collector configuration, never a daemon change. Collector deployment shape for M181_002: a per-environment Fly app mirroring `cloudflared-{env}` (own small vm, config baked by Dockerfile, no public service, inbound over 6PN at `otel-{env}.internal`, outbound egress to vendors).
 
 - **Consults** — Architecture / Legacy-Design / gate-flag triage: the question asked + Indy's decision.
 - **Metrics review** — events added, extra events found during `/review`, analytics/funnel playbook update or the explicit no-change reason.

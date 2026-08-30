@@ -225,7 +225,7 @@ jobs:
   # ── 1c. aarch64 binary: bare runner + docker run alpine ───────────────
   # JS actions cannot run inside Alpine containers on ARM64 runners.
   # Solution: use the bare ubuntu-24.04-arm runner and invoke docker run
-  # to execute the Zig build inside Alpine — same approach as `make build-linux-alpine`.
+  # to execute the Zig build inside Alpine.
   binaries-linux-aarch64:
     needs: verify-tag
     runs-on: ubuntu-24.04-arm
