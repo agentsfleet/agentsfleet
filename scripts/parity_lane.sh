@@ -223,21 +223,58 @@ snapshot() {
 # introduces and the one thing a black-box probe can prove without credentials.
 readonly ROUTE_ABSENT_STATUS="404"
 
-# The register permits only the missing-route status. `000` means the daemon
-# never answered, so it is never an absence divergence. Removing the status
-# line must leave equal snapshots; otherwise a header or body drift would be
-# hidden merely because the other response happened to be a 404.
+# A path no contract can declare, probed to learn what a daemon says about a
+# route it does not have. The placeholder segment is the one already used for
+# path parameters, so this cannot collide with a real resource either.
+readonly ABSENCE_PROBE_PATH="/v1/parity-lane-absence-probe/$PATH_PARAM_PLACEHOLDER"
+
+# What THIS daemon's router answers for a route it does not serve, minus the
+# status line. Learned per run rather than hard-coded: the shape is the
+# framework's, and asserting a remembered one would fail the day it changes for
+# a reason that is not drift.
+absence_shape() {
+  snapshot "$1" "$2" "$ABSENCE_PROBE_PATH" | sed '1d'
+}
+
+# The register permits exactly ONE difference: that a daemon does not serve the
+# route. This predicate has now been wrong in three directions, and the next
+# reader needs the map more than the code.
+#
+#   Trap 1 — too loose. `continue` past a declared route accepted EVERY
+#   difference on it, making the register a mute button.
+#   Trap 2 — still too loose. Deciding on status codes alone let `000` (never
+#   answered) pass as an absence, because it differed from a 404.
+#   Trap 3 — too STRICT, and the one the fixtures hid. Requiring the two
+#   snapshots to match apart from the status line cannot hold on real daemons:
+#   a served response and a route-absence differ in every header and byte of
+#   body by construction, so the declared divergence failed the lane it was
+#   written to permit. The self-test fixtures passed because they answered the
+#   same headers and body whatever the status, which no daemon does.
+#
+# So the absent side is graded against its OWN daemon's unmatched-route
+# response, not against the other daemon. That still refuses an arbitrary 404 a
+# handler authored, which is the discrimination the register needs, and it does
+# not demand equality between two responses that were never comparable.
+#
+# `000` is never an absence: a daemon that did not answer has told us nothing,
+# and the register cannot declare silence.
+#
+# The serving side carries no assertion here because there is nothing to assert
+# it against — the whole premise is that the other daemon does not serve it.
+# RECORD mode against that daemon is what grades it, and the cutover runs both.
 declared_absence_only() {
   local status_a="$1" status_b="$2" snap_a="$3" snap_b="$4"
+  local base_a="$5" base_b="$6" method="$7"
+  local absent_snap absent_base
   [ "$status_a" != "$NO_ANSWER_STATUS" ] && [ "$status_b" != "$NO_ANSWER_STATUS" ] || return 1
-  if [ "$status_a" = "$ROUTE_ABSENT_STATUS" ]; then
-    [ "$status_b" != "$ROUTE_ABSENT_STATUS" ] || return 1
-  elif [ "$status_b" = "$ROUTE_ABSENT_STATUS" ]; then
-    [ "$status_a" != "$ROUTE_ABSENT_STATUS" ] || return 1
+  if [ "$status_a" = "$ROUTE_ABSENT_STATUS" ] && [ "$status_b" != "$ROUTE_ABSENT_STATUS" ]; then
+    absent_snap="$snap_a"; absent_base="$base_a"
+  elif [ "$status_b" = "$ROUTE_ABSENT_STATUS" ] && [ "$status_a" != "$ROUTE_ABSENT_STATUS" ]; then
+    absent_snap="$snap_b"; absent_base="$base_b"
   else
     return 1
   fi
-  cmp -s <(sed '1d' "$snap_a") <(sed '1d' "$snap_b")
+  cmp -s <(sed '1d' "$absent_snap") <(absence_shape "$absent_base" "$method")
 }
 
 # RECORD mode — one daemon, no second to compare against.
@@ -294,12 +331,14 @@ compare_mode() {
     probed=$((probed + 1))
     diff -u "$snap_a" "$snap_b" >"$WORK_DIR/delta" 2>&1 && continue
 
-    # A declared route is still probed. Only its status line may differ; the
-    # predicate also rejects a no-answer response and checks the full envelope.
+    # A declared route is still probed. The predicate rejects a no-answer
+    # response and grades the absent side against its own daemon's
+    # unmatched-route shape.
     status_a="$(sed -n 's/^status: //p' "$snap_a")"
     status_b="$(sed -n 's/^status: //p' "$snap_b")"
     if [ "$is_declared" -eq 1 ] \
-      && declared_absence_only "$status_a" "$status_b" "$snap_a" "$snap_b"; then
+      && declared_absence_only "$status_a" "$status_b" "$snap_a" "$snap_b" \
+        "$base_a" "$base_b" "$method"; then
       declared_count=$((declared_count + 1))
       printf '  declared: %s %s — %s on one side, %s on the other, per the divergence register\n' \
         "$method" "$path" "$status_a" "$status_b"

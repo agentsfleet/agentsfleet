@@ -72,6 +72,18 @@ apply_seed() {
 apply_seed "$seed_base" "${SEED_STATUS:-}" "${SEED_HEADER:-}" "${SEED_DETAIL:-}"
 apply_seed "${SECOND_SEED_BASE:-}" "${SECOND_SEED_STATUS:-}" \
   "${SECOND_SEED_HEADER:-}" "${SECOND_SEED_DETAIL:-}"
+# What a router answers for a path it does not have: the bare status, no
+# envelope and no body. The unmatched-route probe always gets this, and so does
+# any seeded 404 unless the test is deliberately staging an arbitrary one.
+# The old fixture answered the SAME headers and body whatever the status, which
+# is what let a predicate demanding snapshot equality look correct.
+case "$path" in
+  */parity-lane-absence-probe/*) status="404"; detail="" ;;
+esac
+if [ "$status" = "404" ] && [ -z "${SEED_DETAIL:-}" ]; then
+  printf '404\n\n\n'
+  exit 0
+fi
 printf '%s\n' "$status"
 printf 'content-type: application/problem+json\n'
 printf '%s\n' "$extra_header"
@@ -299,12 +311,9 @@ declared_compare_case \
   SEED_BASE="$BASE_A" SEED_STATUS="404" \
   SECOND_SEED_BASE="$BASE_B" SECOND_SEED_STATUS="000"
 
-# Only the absence status is declared. The serving response and the 404
-# response must otherwise carry the same canonical snapshot.
-declared_compare_case \
-  "a declared 404 does not hide serving-side header drift" fail "disagree" \
-  SEED_BASE="$BASE_B" SEED_STATUS="404" \
-  SECOND_SEED_BASE="$BASE_A" SECOND_SEED_HEADER="cache-control: max-age=60"
+# The absent side must look like THIS daemon's unmatched-route answer. A 404 a
+# handler authored — carrying an envelope and a body — is not a route absence,
+# and the register does not declare it.
 declared_compare_case \
   "a declared 404 does not hide an arbitrary absence body" fail "disagree" \
   SEED_BASE="$BASE_A" SEED_STATUS="404" SEED_DETAIL="Not a route absence"
