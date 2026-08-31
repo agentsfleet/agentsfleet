@@ -217,10 +217,18 @@ snapshot() {
   printf '\n'
 }
 
-# The status a mounted route can never answer to a bodyless, credential-less
-# probe. Auth refuses before a handler resolves an identifier, so a 404 here
-# means the path is not routed at all — which is precisely the drift a port
-# introduces and the one thing a black-box probe can prove without credentials.
+# The status an unrouted path answers. A 404 is NOT by itself proof of that,
+# and reading it as such is a bug this lane shipped: the premise was "auth
+# refuses before a handler resolves an identifier, so a 404 means the path is
+# not routed". That holds for a guarded route and fails for an open one, which
+# has no auth to refuse — its handler runs, looks up the placeholder segment,
+# finds nothing, and answers a correct 404. Three mounted open routes were
+# reported as missing before the shape check below was added.
+#
+# What separates them is the SHAPE. An unmatched path is answered by the
+# router, identically for every path it does not have; a handler that ran and
+# found nothing answers with its own envelope. So route-absence is decided by
+# comparing against `absence_shape`, never by the status alone.
 readonly ROUTE_ABSENT_STATUS="404"
 
 # A path no contract can declare, probed to learn what a daemon says about a
@@ -286,20 +294,24 @@ declared_absence_only() {
 # and the full route surface, and is graded by the cutover milestone, not here.
 record_mode() {
   local base="$1" probed=0 declared_count=0 method path concrete status declared
+  local snap="$WORK_DIR/record.snapshot"
   declared="$(declared_divergences)"
   while IFS=$'\t' read -r method path; do
     [ -n "$method" ] || continue
     concrete="$(concrete_path "$path")"
-    status="$(snapshot "$base" "$method" "$concrete" | sed -n 's/^status: //p')"
+    snapshot "$base" "$method" "$concrete" >"$snap"
+    status="$(sed -n 's/^status: //p' "$snap")"
     probed=$((probed + 1))
     if [ "$status" = "$NO_ANSWER_STATUS" ]; then
       err "$method $path — no answer from $base (refused or timed out)"
-    elif [ "$status" = "$ROUTE_ABSENT_STATUS" ]; then
+    elif [ "$status" = "$ROUTE_ABSENT_STATUS" ] \
+      && cmp -s <(sed '1d' "$snap") <(absence_shape "$base" "$method"); then
+      # The router answered, not a handler: this path is genuinely not mounted.
       if printf '%s\n' "$declared" | grep -qxF "$method $path"; then
         declared_count=$((declared_count + 1))
         printf '  declared: %s %s is not served, per the divergence register\n' "$method" "$path"
       else
-        err "$method $path — answered $ROUTE_ABSENT_STATUS, so the route is not mounted"
+        err "$method $path — answered the router's unmatched-route response, so the route is not mounted"
       fi
     fi
   done < <(roster)
