@@ -51,10 +51,12 @@ mod endpoint;
 mod managed;
 mod platform;
 mod resolved;
+mod secret_kind;
 mod selection;
 pub mod sql;
 mod ssrf;
 mod store;
+mod upsert;
 mod wire;
 
 use std::fmt::Debug;
@@ -74,6 +76,7 @@ pub use self::endpoint::{OPENAI_COMPATIBLE, Rejection};
 // disagree with this one about the same host.
 pub(crate) use self::endpoint::validate as validate_endpoint;
 pub use self::resolved::{Dialled, Resolved, SecretString};
+pub use self::secret_kind::SecretKind;
 pub use self::selection::{PlatformDefault, Selection};
 pub use self::store::Providers;
 pub use self::wire::Wire;
