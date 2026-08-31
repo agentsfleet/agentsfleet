@@ -35,6 +35,11 @@ use serde_json::Value;
 
 use afd_webhook::vendor::svix;
 
+use afd_auth::scope::ScopeSet;
+use afd_db::Db;
+use afd_db::config::DbRole;
+use afd_db::test_util::{TestDatabase, mint_id};
+
 use self::harness::{Fleet, json_body, send_with_headers};
 
 /// Where a signup event arrives.
@@ -324,4 +329,178 @@ async fn an_address_with_no_local_part_is_refused_rather_than_renamed() {
         refusal_code(answer).await,
         code(error_code::INVALID_REQUEST)
     );
+}
+
+/// The whole point of the endpoint, over a real schema.
+///
+/// Every other case in this file is a refusal, and refusals are decided on
+/// bytes the handler already holds — none of them reaches the store. That left
+/// the one behaviour the route exists for ungraded: a verified `user.created`
+/// opening a personal account, and the `Signups` adapter that carries it to
+/// `afd_tenant` running only in production.
+///
+/// # The replay half is the load-bearing half
+///
+/// An identity provider retries, and the module says a retry must answer as the
+/// first delivery did: 200 with `created: false`, naming the SAME workspace.
+/// A 409 there would put a delivery the provider cannot change into its retry
+/// queue forever, and a second account would give one person two personal
+/// workspaces, which nothing downstream can tell apart.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_verified_signup_opens_one_account_and_a_replay_answers_with_it() {
+    let lane = TestDatabase::shared();
+    let database: Db = lane.open(DbRole::Api, &[]).await;
+    let router = Fleet::live(database, "user_identity_signup_live", ScopeSet::from_scopes(&[]))
+        .with_identity_secret(SECRET)
+        .router();
+
+    // Minted per run so the case does not depend on the schema being reset
+    // between them — `KEEP_TEST_STATE=1` is a supported inner loop, and a fixed
+    // subject would make the second run of it fail as a replay of the first.
+    let subject = format!("user_{}", mint_id().replace('-', ""));
+    let address = format!("{subject}@example.test");
+    let body = format!(
+        r#"{{"type":"user.created","data":{{"id":"{subject}","email_addresses":[{{"id":"idn_1","email_address":"{address}"}}],"primary_email_address_id":"idn_1","first_name":"Ada","last_name":"Lovelace"}}}}"#
+    );
+
+    let opened = json_body(deliver(&router, &body).await).await;
+    assert_eq!(
+        opened.get("created").and_then(Value::as_bool),
+        Some(true),
+        "the first delivery of a subject nobody has seen opens the account"
+    );
+    let workspace = opened
+        .get("workspace_id")
+        .and_then(Value::as_str)
+        .expect("an opened account names its workspace")
+        .to_owned();
+    assert!(
+        !workspace.is_empty(),
+        "an account with no workspace is one the person cannot reach"
+    );
+
+    let replayed = json_body(deliver(&router, &body).await).await;
+    assert_eq!(
+        replayed.get("created").and_then(Value::as_bool),
+        Some(false),
+        "a retry is a success carrying `created: false`, never an error"
+    );
+    assert_eq!(
+        replayed.get("workspace_id").and_then(Value::as_str),
+        Some(workspace.as_str()),
+        "the replay names the workspace the first delivery opened — a second \
+         one would give one person two personal workspaces"
+    );
+}
+
+/// One correctly-signed delivery of `body` to a router the caller built.
+///
+/// Separate from [`signed`], which builds its own unreachable-pool fixture:
+/// the live case needs the router to outlive the request so the same one takes
+/// the replay.
+async fn deliver(
+    router: &axum::Router,
+    body: &str,
+) -> http::Response<axum::body::Body> {
+    let signature = sign(DELIVERY, now(), body);
+    send_with_headers(
+        router,
+        Method::POST,
+        PATH,
+        None,
+        body,
+        &headers(DELIVERY, &now().to_string(), &signature),
+    )
+    .await
+}
+
+/// A secret that is SET but will not parse is unconfigured, not a bad signature.
+///
+/// Two different refusals share one answer here on purpose, and the pairing is
+/// the thing worth locking: an absent secret and an unreadable one both mean
+/// nothing was checked, so neither can be reported as a verification that
+/// failed. Calling a malformed secret a bad signature would send an operator
+/// hunting the sender's key when the fault is this deployment's own
+/// configuration.
+#[tokio::test]
+async fn a_secret_this_deployment_cannot_parse_is_unconfigured_rather_than_refused() {
+    let router = Fleet::new()
+        .with_identity_secret("this is not a vendor secret")
+        .router();
+    let signature = sign(DELIVERY, now(), CREATED);
+    let answer = send_with_headers(
+        &router,
+        Method::POST,
+        PATH,
+        None,
+        CREATED,
+        &headers(DELIVERY, &now().to_string(), &signature),
+    )
+    .await;
+
+    assert_eq!(
+        refusal_code(answer).await,
+        code(error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED),
+        "a secret that will not parse is this deployment's own configuration \
+         failing, not the sender's signature"
+    );
+}
+
+/// Every combination of the two name fields the provider may or may not send.
+///
+/// The provider sends either, both or neither, and the four cases are four
+/// different stored values — the one that must not happen is a person stored
+/// as `" Lovelace"` or `"Ada "` because an absent half was concatenated anyway.
+/// Asserted against the column rather than the response, which does not echo
+/// the name: a case that only ran the branch would pass while storing the
+/// wrong string.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_name_the_provider_sends_only_half_of_is_stored_without_the_gap() {
+    let lane = TestDatabase::shared();
+    let database: Db = lane.open(DbRole::Api, &[]).await;
+    let router = Fleet::live(
+        database.clone(),
+        "user_identity_signup_names",
+        ScopeSet::from_scopes(&[]),
+    )
+    .with_identity_secret(SECRET)
+    .router();
+
+    for (given, family, expected) in [
+        (Some("Ada"), Some("Lovelace"), Some("Ada Lovelace")),
+        (None, Some("Lovelace"), Some("Lovelace")),
+        (Some("Ada"), None, Some("Ada")),
+        (None, None, None),
+    ] {
+        let subject = format!("user_{}", mint_id().replace('-', ""));
+        let names = format!(
+            r#""first_name":{},"last_name":{}"#,
+            given.map_or("null".to_owned(), |it| format!(r#""{it}""#)),
+            family.map_or("null".to_owned(), |it| format!(r#""{it}""#)),
+        );
+        let body = format!(
+            r#"{{"type":"user.created","data":{{"id":"{subject}","email_addresses":[{{"id":"idn_1","email_address":"{subject}@example.test"}}],"primary_email_address_id":"idn_1",{names}}}}}"#
+        );
+
+        let answer = deliver(&router, &body).await;
+        assert_eq!(answer.status(), StatusCode::OK, "given={given:?} family={family:?}");
+
+        let stored: Option<String> = sqlx::query_scalar(
+            "SELECT display_name FROM core.users WHERE oidc_subject = $1",
+        )
+        .bind(&subject)
+        .fetch_one(&mut *database.acquire().await.expect("a read connection"))
+        .await
+        .expect("the opened account is readable");
+
+        assert_eq!(
+            stored.as_deref(),
+            expected,
+            "given={given:?} family={family:?} must store {expected:?} — a \
+             concatenation around an absent half stores a leading or trailing \
+             space nobody typed"
+        );
+    }
 }
