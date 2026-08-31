@@ -161,7 +161,56 @@ pub enum StoredPosture {
     /// The row names a credential the vault could never hold.
     #[error("stored selection names an unreadable credential")]
     Credential(#[from] MalformedSecretRef),
+    /// The stored context cap is not a count.
+    ///
+    /// The column is signed `INTEGER` and a cap is a count, so a negative one
+    /// is a row nothing could have written through this surface. Reported
+    /// rather than saturated to zero, which would silently price a run against
+    /// a window of nothing.
+    #[error("stored selection carries a context cap of {stored}, which is not a count")]
+    ContextCapOutOfRange {
+        /// What the column held, for the operator repairing it.
+        stored: i32,
+    },
 }
+
+/// What the vault holds under a name, as far as the metadata can say.
+///
+/// Three answers rather than a `bool`, because the write ladder's second and
+/// third rungs are different refusals with different repairs: rung two says
+/// "no such credential", rung three says "that credential is not a provider
+/// key". A boolean would collapse them and the caller would have to guess.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecretKind {
+    /// No row in this workspace carries the name.
+    Absent,
+    /// A row exists, and its metadata does not describe a provider key.
+    NotAProviderKey,
+    /// A row exists and describes a provider key.
+    ProviderKey,
+}
+
+impl SecretKind {
+    /// Reads the vault's two metadata columns into one answer.
+    ///
+    /// A named provider must carry a key; `openai-compatible` need not, because
+    /// its endpoint may be unauthenticated. That asymmetry is the registry
+    /// hint's own wording and is why `has_key` alone does not decide this.
+    #[must_use]
+    pub fn of(provider: Option<&str>, has_key: Option<bool>) -> Self {
+        match (provider, has_key) {
+            // Two shapes are a provider key. `openai-compatible` needs no
+            // key because its endpoint may be unauthenticated; every named
+            // provider must carry one. A named provider WITHOUT a key, and a
+            // row naming no provider at all, are the same answer to a caller.
+            (Some(OPENAI_COMPATIBLE), _) | (Some(_), Some(true)) => Self::ProviderKey,
+            _ => Self::NotAProviderKey,
+        }
+    }
+}
+
+/// The one provider spelling whose credential may carry no key.
+pub const OPENAI_COMPATIBLE: &str = "openai-compatible";
 
 /// A tenant's provider selection, as the tenant's own surface renders it.
 ///
@@ -187,6 +236,10 @@ pub struct Selection {
     /// When it last changed.
     pub updated_at: UnixMillis,
 }
+
+mod store;
+
+pub use self::store::Providers;
 
 #[cfg(test)]
 mod tests;

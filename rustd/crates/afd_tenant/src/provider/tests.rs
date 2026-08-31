@@ -12,7 +12,8 @@
 //! much as on what it accepts.
 
 use super::{
-    MODE_PLATFORM, MODE_SELF_MANAGED, MalformedSecretRef, Posture, SecretRef, StoredPosture,
+    MODE_PLATFORM, MODE_SELF_MANAGED, MalformedSecretRef, OPENAI_COMPATIBLE, Posture, SecretKind,
+    SecretRef, StoredPosture,
 };
 
 /// The name a well-formed self-managed row carries.
@@ -107,4 +108,64 @@ fn the_two_modes_do_not_share_a_spelling() {
     // stored row platform mode, and every test above would still pass.
     assert_ne!(Posture::Platform.mode(), MODE_SELF_MANAGED);
     assert_eq!(Posture::Platform.mode(), MODE_PLATFORM);
+}
+
+#[test]
+fn a_named_provider_without_a_key_is_not_a_provider_key() {
+    // Rung three of the write ladder. The row EXISTS — that is rung two's
+    // question, already answered — and what it holds is not dialable.
+    assert_eq!(
+        SecretKind::of(Some("openai"), Some(false)),
+        SecretKind::NotAProviderKey
+    );
+    assert_eq!(
+        SecretKind::of(Some("anthropic"), None),
+        SecretKind::NotAProviderKey
+    );
+}
+
+#[test]
+fn a_named_provider_with_a_key_is_a_provider_key() {
+    assert_eq!(
+        SecretKind::of(Some("openai"), Some(true)),
+        SecretKind::ProviderKey
+    );
+}
+
+#[test]
+fn an_openai_compatible_credential_needs_no_key() {
+    // The one asymmetry in the ladder, and the registry hint says so: a custom
+    // endpoint may be unauthenticated, so absence of a key is not absence of a
+    // credential.
+    assert_eq!(
+        SecretKind::of(Some(OPENAI_COMPATIBLE), Some(false)),
+        SecretKind::ProviderKey
+    );
+    assert_eq!(
+        SecretKind::of(Some(OPENAI_COMPATIBLE), None),
+        SecretKind::ProviderKey
+    );
+}
+
+#[test]
+fn a_row_naming_no_provider_is_not_a_provider_key() {
+    // A vault row storing something else entirely — an env var, a webhook
+    // secret. It is present, so it is not rung two, and it is not dialable, so
+    // it is rung three.
+    assert_eq!(
+        SecretKind::of(None, Some(true)),
+        SecretKind::NotAProviderKey
+    );
+}
+
+#[test]
+fn absent_is_reachable_only_from_a_missing_row() {
+    // `of` reads a row that EXISTS, so it can never answer Absent. The store
+    // answers that before calling this, and conflating the two would turn
+    // "no such credential" into "that credential is wrong".
+    for provider in [None, Some("openai"), Some(OPENAI_COMPATIBLE)] {
+        for has_key in [None, Some(true), Some(false)] {
+            assert_ne!(SecretKind::of(provider, has_key), SecretKind::Absent);
+        }
+    }
 }
