@@ -377,16 +377,15 @@ reqwest = { version = "0.13.4", default-features = false, features = ["form", "r
 # built-in migrator keeps a different ledger under a different lock, so enabling
 # it would mean two migrators disagreeing about the same database.
 #
-# `tls-rustls-ring-webpki` rather than native roots: the trust anchors ship in
-# the binary, so a slim container without `ca-certificates` still verifies. Pure
-# Rust either way, which is the no-C posture afd_crypto already holds.
+# `tls-rustls-aws-lc-rs` rather than native roots: sqlx still enables
+# `webpki-roots`, so the trust anchors ship in the binary. An explicit
+# `sslrootcert` connection parameter remains an operator override whose file
+# sqlx reads at handshake time.
 sqlx = { version = "0.9.0", default-features = false, features = [
     "runtime-tokio",
     # aws-lc-rs, not ring: `object_store` and reqwest 0.13 both force that
     # provider, and two providers in one binary is the state this feature was
-    # originally pinned to prevent. Trust anchors now come from the platform
-    # verifier rather than in-binary webpki roots — the container installs
-    # `ca-certificates`, which is what makes that safe.
+    # originally pinned to prevent.
     "tls-rustls-aws-lc-rs",
     "postgres",
 ] }
