@@ -243,3 +243,35 @@ struct ScheduleAnswer {
     #[serde(rename = "scheduleId")]
     schedule_id: String,
 }
+
+#[cfg(test)]
+mod accessor_tests {
+    use super::QStash;
+
+    /// The two hosts a fire travels between, kept apart.
+    ///
+    /// `api_base` is where this daemon POSTS a schedule, and `destination` is
+    /// where the vendor later CALLS BACK. They are different hosts serving
+    /// different directions, and the accessors exist so a caller cannot reach
+    /// past them into the struct and take whichever field it happened to
+    /// remember. Swapping the two registers every schedule to fire at the
+    /// scheduler's own API — a loop that looks configured and delivers nothing.
+    #[test]
+    fn the_scheduler_host_and_the_callback_host_are_not_the_same_value() {
+        let config = QStash::new(
+            reqwest::Client::new(),
+            "token-fixture".to_owned(),
+            "https://daemon.example.test/v1/fires".to_owned(),
+            "https://qstash.example.test".to_owned(),
+        );
+
+        assert_eq!(config.api_base(), "https://qstash.example.test");
+        assert_eq!(config.destination(), "https://daemon.example.test/v1/fires");
+        assert_ne!(
+            config.api_base(),
+            config.destination(),
+            "the host a schedule is registered AT and the host it fires BACK to \
+             are opposite ends of the round trip"
+        );
+    }
+}

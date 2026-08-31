@@ -10,6 +10,8 @@ mod app_ingress_route;
 #[path = "connector_events_route.rs"]
 mod connector_events_route;
 mod identity_signup_route;
+#[path = "ingress_plane_ownership.rs"]
+mod ingress_plane_ownership;
 #[path = "integration_app_ingress_live.rs"]
 mod integration_app_ingress_live;
 #[path = "integration_approval_webhook.rs"]
