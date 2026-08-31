@@ -215,9 +215,98 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: https://api-test.agentsfleet.net
 
+  # ── Cross-compile proof for the Rust daemon ─────────────────────────────
+  #
+  # THE FAILURE THIS EXISTS TO PREVENT.
+  #
+  # Nothing on a pull request built `agentsfleetd-rs` at all. The first musl
+  # build happened at MERGE (deploy-dev-build, amd64 only) and the first arm64
+  # build happened at TAG, inside `release.yml`. So an arm64-only break — a
+  # dependency without an aarch64 musl path, a target-gated `cfg`, an assembly
+  # backend that resolves differently — stayed invisible until a release was
+  # already underway, which is the most expensive possible moment to find it.
+  #
+  # This job builds BOTH linux targets and asserts the result is what the
+  # distroless runtime requires. It publishes nothing: the binary a release
+  # ships must be built from the TAGGED tree, and reusing a pull request's
+  # binary would ship something never compiled from the released commit. That
+  # is the same rule `release.yml` follows when it deploys an immutable digest
+  # rather than a mutable tag.
+  #
+  # What IS reused is the compilation work, through the cargo cache — and only
+  # from the default branch, because GitHub scopes a pull request's cache to
+  # that pull request. The key matches `release.yml`'s `cargo-dist-<arch>-`
+  # exactly so a warm default-branch cache serves both.
+  #
+  # Native runners per architecture, not QEMU: emulating an LTO build across
+  # thirty crates costs more than the runner it saves, and `release.yml` made
+  # the same call for the same reason.
+  build-daemon-musl:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            .cargo-cache/registry
+            .cargo-cache/git
+            rustd/target
+          key: cargo-dist-${{ matrix.arch }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+          restore-keys: cargo-dist-${{ matrix.arch }}-
+
+      # `docker run` rather than a job `container:`: JS actions cannot run
+      # inside an Alpine container on an ARM64 runner, which is the constraint
+      # release.yml documents on the same build.
+      - name: Build the daemon in the pinned builder (musl-native)
+        run: |
+          mkdir -p .cargo-cache/registry .cargo-cache/git rustd/target
+          # DERIVED, never spelled twice — see check_builder_pin.sh.
+          RUST_VERSION="$(sed -n 's/^RUST_VERSION=//p' playbooks/operations/ci_rust_images/versions.env)"
+          ALPINE_SERIES="$(sed -n 's/^ALPINE_SERIES=//p' playbooks/operations/ci_rust_images/versions.env)"
+          BUILDER="ghcr.io/agentsfleet/ci-rust-alpine:$RUST_VERSION-alpine$ALPINE_SERIES"
+          echo "→ building for linux/${{ matrix.arch }} in $BUILDER"
+          docker run --rm \
+            -v "$PWD:/w" \
+            -v "$PWD/.cargo-cache/registry:/usr/local/cargo/registry" \
+            -v "$PWD/.cargo-cache/git:/usr/local/cargo/git" \
+            -w /w/rustd \
+            "$BUILDER" \
+            sh -c '
+              set -e
+              cargo build --profile dist --bin agentsfleetd
+            '
+          sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
+
+      # The distroless runtime carries no loader and no libc. A binary with a
+      # NEEDED entry or an INTERP section builds green here and dies at boot
+      # there, so the assertion belongs on this side of the wall.
+      - name: Verify static ELF — zero NEEDED, no INTERP
+        run: |
+          bin=rustd/target/dist/agentsfleetd
+          test -f "$bin"
+          if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
+            echo "FAIL: $bin has dynamic NEEDED entries"
+            readelf -d "$bin" | grep NEEDED
+            exit 1
+          fi
+          if readelf -l "$bin" 2>/dev/null | grep -q "INTERP"; then
+            echo "FAIL: $bin has INTERP (dynamic linker) section"
+            exit 1
+          fi
+          echo "✓ linux/${{ matrix.arch }}: fully static (zero NEEDED, no INTERP), $(wc -c < "$bin") bytes"
+
   test:
     runs-on: ubuntu-latest
-    needs: [test-unit-cli, test-unit-website, test-unit-app, test-unit-design-system, bundle-size-website, bundle-size-app]
+    needs: [test-unit-cli, test-unit-website, test-unit-app, test-unit-design-system, bundle-size-website, bundle-size-app, build-daemon-musl]
     # `if: always()` + an explicit result check — a needs-only aggregate is
     # SKIPPED when a dependency fails, and branch protection treats a skipped
     # required check as passing.

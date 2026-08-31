@@ -46,12 +46,12 @@ export AGENTSFLEET_QSTASH_HOST_PORT
 # the port, the URL built from it did not follow, and every Redis test failed at
 # TCP connect against a port nothing was listening on.
 #
-# Each falls back to the declared port when the lookup yields nothing. That is
-# not defensive padding — it is the `TEST_INFRA=provided` lane: `make memleak`
-# runs inside a valgrind container that carries NO docker CLI, so
-# `docker compose port` there produces an empty string and the URL built from it
-# became `postgres://…@localhost:/agentsfleetdb`, which the daemon rejects as
-# InvalidDatabaseUrl. The declared port is the right answer in exactly that case,
+# Each falls back to the declared port when the lookup yields nothing. The case
+# that produced this was `docker compose port` returning an empty string where
+# no docker CLI was present, so the URL became
+# `postgres://…@localhost:/agentsfleetdb`, which the daemon rejects as
+# InvalidDatabaseUrl. The declared port is the right answer whenever the lookup
+# cannot answer,
 # because the caller provisioned the infra itself and told us where it is.
 COMPOSE_PG_PORT = $(or $(strip $(shell docker compose port postgres 5432 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_PG_HOST_PORT))
 COMPOSE_REDIS_PORT = $(or $(strip $(shell docker compose port redis 6379 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_REDIS_HOST_PORT))
@@ -151,16 +151,7 @@ QSTASH_DEV_TOKEN_LOCAL ?= $(shell printf '{"UserID":"%s","Password":"%s"}' '$(QS
 # multiple times. Extracts the Redis TLS CA cert after the container is healthy so
 # subsequent targets can rely on $(TEST_REDIS_CA_CERT) being present.
 #
-# TEST_INFRA=provided — the caller already booted postgres/redis and extracted the
-# CA cert by running THIS recipe in an environment that has docker (CI: the memleak
-# workflow runs it on the host, then the valgrind container — which carries no
-# docker CLI — runs the gate with the flag). Fail-closed: the flag never bypasses
-# the cert check, so a caller that claims infra without providing it dies loudly.
 _ensure-test-infra:
-ifeq ($(TEST_INFRA),provided)
-	@test -s "$(TEST_REDIS_CA_CERT)" || { echo "✗ TEST_INFRA=provided but $(TEST_REDIS_CA_CERT) is missing — the caller did not actually provision infra"; exit 1; }
-	@echo "✓ [infra] postgres + redis provided by caller (TEST_INFRA=provided); compose skipped"
-else
 	@if ! docker info >/dev/null 2>&1; then \
 	  echo "✗ Docker daemon is not running — start Docker Desktop / dockerd and retry."; \
 	  exit 1; \
@@ -190,7 +181,6 @@ else
 	  exit 1; \
 	fi
 	@echo "✓ [infra] postgres + redis ready; Redis CA cert at $(TEST_REDIS_CA_CERT)"
-endif
 
 # Drop and recreate all app schemas so every test-integration run starts from a clean
 # state. Needed because several tests in the suite (rbac, tenant_provider, event_loop) leave

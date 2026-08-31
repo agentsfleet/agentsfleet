@@ -513,7 +513,7 @@ test "integration: redis handshake stages are deadline bounded" {
     // futex wake-after-return race (std.Io.Threaded: the worker publishes the
     // wake condition, then hands a futex word on the awaiter's already-popped
     // stack frame to futex(2); Threaded.zig:760-762) — the race the valgrind
-    // memleak lane flags, deliberately unsuppressed in `make/bench.mk`. This
+    // testing allocator flags, deliberately unsuppressed in `make/bench.mk`. This
     // test needs no io concurrency: the deadline releases a blocked read from
     // its own scheduler thread by shutting the owned socket down, and the
     // stalling peer runs on its own std.Thread.
