@@ -39,6 +39,8 @@
 //! timestamp boundary, and `s:{base64url}:{id}` for a text one, the encoding
 //! being what stops a name containing a colon from corrupting the boundary.
 
+pub mod struct_cursor;
+
 use std::fmt::{self, Display, Formatter};
 
 use base64::Engine as _;
