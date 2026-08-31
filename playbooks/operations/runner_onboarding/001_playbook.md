@@ -10,7 +10,7 @@ route after a wipe.
 | Environment | Dashboard | Vault | Runner inventory |
 |---|---|---|---|
 | Development | `https://app-dev.agentsfleet.net` | `ZMB_CD_DEV` | `agentsfleet-dev-runner-ant` |
-| Production | `https://app.agentsfleet.net` | `ZMB_CD_PROD` | `PROD_WORKER_HOSTS` |
+| Production | `https://app.agentsfleet.net` | `ZMB_CD_PROD` | `PROD_RUNNER_HOSTS` |
 
 ## Execution and verification
 
@@ -41,7 +41,7 @@ Production:
 ALLOW_VAULT_READS=1 \
 ALLOW_RUNNER_HOST_PREPARE=1 \
 ENV=prod \
-WORKER_ITEM=<PRODUCTION_RUNNER_ITEM> \
+RUNNER_ITEM=<PRODUCTION_RUNNER_ITEM> \
   ./playbooks/lib/runner/prepare.sh
 ```
 
@@ -63,7 +63,7 @@ Store the once-revealed `agt_r` value in the concealed `runner-token` field on
 the same 1Password item. If the value is lost, revoke the runner and create it
 again.
 
-For production, add the vault item to `PROD_WORKER_HOSTS` before starting the
+For production, add the vault item to `PROD_RUNNER_HOSTS` before starting the
 deployment.
 
 ## Deploy through the Pipeline

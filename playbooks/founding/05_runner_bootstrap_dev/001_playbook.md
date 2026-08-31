@@ -113,7 +113,7 @@ runner and create it again.
 ## 4. Agent and Pipeline: deploy and verify
 
 ```bash
-gh variable set DEV_WORKER_READY \
+gh variable set DEV_RUNNER_READY \
   --body "true" \
   --repo agentsfleet/agentsfleet
 

@@ -13,7 +13,7 @@ step 08.
 
 | Order | Executor | Action | Verifier | Required evidence |
 |---|---|---|---|---|
-| 1 | Agent | Verify deployment inputs and disable production runners. | Preflight and GitHub variable query | Green gate and `PROD_WORKER_READY=false`. |
+| 1 | Agent | Verify deployment inputs and disable production runners. | Preflight and GitHub variable query | Green gate and `PROD_RUNNER_READY=false`. |
 | 2 | Human | Confirm the exact version and authorize its release tag. | Agent | Verbatim approval tied to the tag. |
 | 3 | Agent | Push the approved tag and watch the release workflow. | Pipeline | Green release workflow URL. |
 | 4 | Human | Attach `app.agentsfleet.net` in Vercel if absent. | Agent | Dashboard URL resolves to the production project. |
@@ -25,7 +25,7 @@ step 08.
 ENV=prod STAGE=deployment \
   ./playbooks/founding/02_preflight/00_gate.sh
 
-gh variable set PROD_WORKER_READY \
+gh variable set PROD_RUNNER_READY \
   --body "false" \
   --repo agentsfleet/agentsfleet
 
@@ -64,7 +64,7 @@ gh run watch "$PROD_RELEASE_RUN_ID" \
   ACTION=apply ENV=prod ALLOW_VAULT_READS=1 ALLOW_MODEL_CATALOGUE_WRITES=1 \
     ./playbooks/operations/model_catalogue/00_gate.sh
   ```
-- Production runner jobs skip because `PROD_WORKER_READY=false`.
+- Production runner jobs skip because `PROD_RUNNER_READY=false`.
 - Post-release installation checks pass against the exact package version in
   `VERSION`; live CLI acceptance and `latest` promotion skip.
 - `https://app.agentsfleet.net` resolves to the production Vercel deployment.

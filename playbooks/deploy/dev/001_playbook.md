@@ -51,13 +51,13 @@ gh run watch "$run_id" \
 | Pipeline job | What it proves |
 |---|---|
 | `check-credentials` | Current development deployment inputs exist. |
-| `compile-dev` and `push-dev` | The exact commit built and its image was published. |
-| `deploy-fly-dev` | The API and Cloudflare tunnel deployed. |
-| `deploy-worker-dev` | The enabled development runner deployed and passed its host gate. |
-| `verify-dev` | Public API health and readiness passed. |
-| `qa-dev` | Dashboard smoke passed. |
-| `acceptance-e2e-dev` | Browser acceptance passed. |
-| `cli-acceptance-dev` | The worktree command-line client passed live acceptance. |
+| `compile-runner` and `push-ghcr` | The exact commit built and its image was published. |
+| `deploy-fly` | The API and Cloudflare tunnel deployed. |
+| `deploy-metal` | The enabled development runner deployed and passed its host gate. |
+| `verify` | Public API health and readiness passed. |
+| `qa` | Dashboard smoke passed. |
+| `acceptance-e2e` | Browser acceptance passed. |
+| `acceptance-cli` | The worktree command-line client passed live acceptance. |
 
 The Agent records the workflow URL, commit, each job result, and any intentionally
 skipped runner job. A skipped enabled job is a failure.

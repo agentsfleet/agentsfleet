@@ -271,7 +271,7 @@ test_discord_notifications_route_by_release_stage() {
     fi
   done
 
-  for workflow in deploy-dev.yml deploy-dev-fly.yml deploy-dev-worker.yml; do
+  for workflow in deploy-dev.yml deploy-dev-fly.yml deploy-dev-metal.yml; do
     path="$repo_root/.github/workflows/$workflow"
     notify_count="$(rg --fixed-strings -c 'uses: ./.github/actions/notify-discord' "$path" || true)"
     if [ "${notify_count:-0}" -ne 1 ]; then

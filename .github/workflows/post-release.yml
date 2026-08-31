@@ -81,8 +81,8 @@ jobs:
   # Command-Line Interface (CLI) acceptance runs only after 🤠 Indy marks the
   # production runner ready. The exact package from the triggering release is
   # tested against the live production API before the mutable latest tag moves.
-  cli-acceptance-prod:
-    if: vars.PROD_WORKER_READY == 'true'
+  acceptance-cli-prod:
+    if: vars.PROD_RUNNER_READY == 'true'
     needs: [resolve-release, verify-npm]
     runs-on: ubuntu-latest
     name: CLI acceptance — api.agentsfleet.net
@@ -148,7 +148,7 @@ jobs:
         shell: bash
 
   promote-latest:
-    needs: [resolve-release, verify-npm, cli-acceptance-prod]
+    needs: [resolve-release, verify-npm, acceptance-cli-prod]
     runs-on: ubuntu-latest
     name: Promote npm latest tag
     steps:
@@ -181,7 +181,7 @@ jobs:
           test "$(npm view @agentsfleet/cli@latest version)" = "$VERSION"
 
   summary:
-    needs: [resolve-release, verify-npm, cli-acceptance-prod, promote-latest]
+    needs: [resolve-release, verify-npm, acceptance-cli-prod, promote-latest]
     if: always()
     runs-on: ubuntu-latest
     name: Post-Release Summary
@@ -195,7 +195,7 @@ jobs:
           |-------|--------|
           | Exact npm version | ${{ needs.resolve-release.outputs.version || 'unresolved' }} |
           | Platform installs | ${{ needs.verify-npm.result }} |
-          | Production CLI acceptance | ${{ needs.cli-acceptance-prod.result }} |
+          | Production CLI acceptance | ${{ needs.acceptance-cli-prod.result }} |
           | npm latest promotion | ${{ needs.promote-latest.result }} |
           EOF
 
@@ -208,13 +208,13 @@ jobs:
         env:
           VERSION: ${{ needs.resolve-release.outputs.version || 'unresolved' }}
           NPM_RESULT: ${{ needs.verify-npm.result }}
-          CLI_RESULT: ${{ needs.cli-acceptance-prod.result }}
+          CLI_RESULT: ${{ needs.acceptance-cli-prod.result }}
           PROMOTE_RESULT: ${{ needs.promote-latest.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          LINE="installs: ${NPM_RESULT} | cli-acceptance: ${CLI_RESULT} | npm latest: ${PROMOTE_RESULT}"
+          LINE="installs: ${NPM_RESULT} | acceptance-cli: ${CLI_RESULT} | npm latest: ${PROMOTE_RESULT}"
 
-          # cli-acceptance-prod is gated by PROD_WORKER_READY, so skipped is allowed.
+          # acceptance-cli-prod is gated by PROD_RUNNER_READY, so skipped is allowed.
           ok=1
           [ "$NPM_RESULT" = success ] || ok=0
           [ "$PROMOTE_RESULT" = success ] || ok=0

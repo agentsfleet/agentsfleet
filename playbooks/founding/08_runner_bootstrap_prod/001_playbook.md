@@ -14,7 +14,7 @@ deploys and verifies runners in step 09
 | 3 | Human and Agent | Bootstrap the administrator; register and synchronize providers. | Provider playbooks | Every provider's post-sync check passes. |
 | 4 | Agent | Restart the control plane with runner rollout disabled. | Pipeline | Green release rerun URL. |
 | 5 | Human | Add each runner and store every one-time token. | Agent | Required vault fields exist without printing values. |
-| 6 | Agent | Enable production runner rollout. | GitHub variable query | `PROD_WORKER_READY=true`. |
+| 6 | Agent | Enable production runner rollout. | GitHub variable query | `PROD_RUNNER_READY=true`. |
 
 ## 1. Human and Agent: prepare every host
 
@@ -46,8 +46,8 @@ Set the repository variable to the exact host inventory:
 ```
 
 ```bash
-gh variable set PROD_WORKER_HOSTS \
-  --body "$PROD_WORKER_HOSTS" \
+gh variable set PROD_RUNNER_HOSTS \
+  --body "$PROD_RUNNER_HOSTS" \
   --repo agentsfleet/agentsfleet
 ```
 
@@ -83,7 +83,7 @@ development:
 
 Complete each registration and sync section. Leave runner-dependent live
 acceptance open for step 09. Restart `agentsfleetd` by rerunning the original
-release workflow while `PROD_WORKER_READY=false`:
+release workflow while `PROD_RUNNER_READY=false`:
 
 ```bash
 gh run rerun "$PROD_RELEASE_RUN_ID" \
@@ -106,7 +106,7 @@ and create it again.
 ## 4. Agent: enable the Pipeline rollout
 
 ```bash
-gh variable set PROD_WORKER_READY \
+gh variable set PROD_RUNNER_READY \
   --body "true" \
   --repo agentsfleet/agentsfleet
 ```

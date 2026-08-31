@@ -29,7 +29,7 @@ const PLAYWRIGHT_SETUP_ACTION = path.join(
 );
 
 const RAW_RESULTS_DIR = "playwright-acceptance-results";
-const DEV_EVIDENCE_ARTIFACT = "acceptance-e2e-dev-results";
+const DEV_EVIDENCE_ARTIFACT = "acceptance-e2e-results";
 const PROD_EVIDENCE_ARTIFACT = "acceptance-e2e-prod-results";
 const PHANTOM_LOCK = "ui/packages/app/bun.lock";
 
@@ -126,7 +126,7 @@ describe("browser cache and evidence in the deployment workflow", () => {
 describe("the release verdict reports every job", () => {
   it("should emit one summary event per release-critical job", () => {
     const workflow = deployDevYaml();
-    for (const job of ["qa-dev", "acceptance-e2e-dev", "cli-acceptance-dev", "deploy-worker-dev"]) {
+    for (const job of ["qa", "acceptance-e2e", "acceptance-cli", "deploy-metal"]) {
       expect(workflow).toContain(`"${job}=$`);
     }
     expect(workflow).toContain("dev_release_acceptance_summary job=${entry%%=*}");
@@ -142,9 +142,9 @@ describe("the notification verdict consumes every gate", () => {
     const workflow = deployDevYaml();
     expect(workflow).toContain("CLI_RESULT: ${{ needs.acceptance.outputs.cli }}");
     expect(workflow).toContain('[ "$CLI_RESULT" = success ]');
-    expect(workflow).toContain("cli-acceptance: ${CLI_RESULT}");
+    expect(workflow).toContain("acceptance-cli: ${CLI_RESULT}");
     const family = deployDevFamily();
-    expect(family).toContain("cli: ${{ needs.cli-acceptance-dev.result }}");
+    expect(family).toContain("cli: ${{ needs.acceptance-cli.result }}");
   });
 
   it("test_dev_notification_green_requires_all_gates", () => {
@@ -152,13 +152,13 @@ describe("the notification verdict consumes every gate", () => {
     expect(workflow).toContain('[ "$QA_RESULT" = success ]');
     expect(workflow).toContain('[ "$ACCEPTANCE_RESULT" = success ]');
     expect(workflow).toContain('[ "$CLI_RESULT" = success ]');
-    expect(workflow).toContain('[ "$WORKER_RESULT" = success ] || [ "$WORKER_RESULT" = skipped ]');
+    expect(workflow).toContain('[ "$METAL_RESULT" = success ] || [ "$METAL_RESULT" = skipped ]');
     expect(workflow).toContain("✅ DEV deploy green");
     expect(workflow).toContain("❌ DEV deploy not releasable");
     // An upstream failure that skipped a whole stage leaves its output empty;
     // the verdict must read that as skipped — red — never as a pass.
     expect(workflow).toContain('QA_RESULT="${QA_RESULT:-skipped}"');
-    expect(workflow).toContain('WORKER_RESULT="${WORKER_RESULT:-skipped}"');
+    expect(workflow).toContain('METAL_RESULT="${METAL_RESULT:-skipped}"');
   });
 });
 
@@ -175,8 +175,8 @@ describe("post-release promotion follows exact-version acceptance", () => {
 
   it("blocks latest promotion behind successful production acceptance", () => {
     const workflow = postReleaseYaml();
-    expect(workflow).toContain("if: vars.PROD_WORKER_READY == 'true'");
-    expect(workflow).toContain("needs: [resolve-release, verify-npm, cli-acceptance-prod]");
+    expect(workflow).toContain("if: vars.PROD_RUNNER_READY == 'true'");
+    expect(workflow).toContain("needs: [resolve-release, verify-npm, acceptance-cli-prod]");
     expect(workflow).toContain('npm dist-tag add "@agentsfleet/cli@$VERSION" latest');
 
     const promotion = workflow.split("  promote-latest:")[1]?.split("\n  summary:")[0];
@@ -196,8 +196,8 @@ describe("deployment workflows keep mutable values out of shell source", () => {
       expect(production).toContain(`${variable}: \${{ vars.${variable} }}`);
       expect(production).not.toContain(`${variable}="\${{ vars.${variable} }}"`);
     }
-    expect(production).toContain("WORKER_ITEM: ${{ steps.canary.outputs.vault_key }}");
-    expect(production).not.toContain('WORKER_ITEM="${{ steps.canary.outputs.vault_key }}"');
+    expect(production).toContain("RUNNER_ITEM: ${{ steps.canary.outputs.vault_key }}");
+    expect(production).not.toContain('RUNNER_ITEM="${{ steps.canary.outputs.vault_key }}"');
   });
 });
 
@@ -214,17 +214,17 @@ describe("production runner rollout is canary-first and fail-closed", () => {
   it("deploys and verifies the canary before the approved fleet rollout", () => {
     const workflow = releaseYaml();
     const canary = workflow
-      .split("  deploy-worker-canary-prod:")[1]
-      ?.split("\n  deploy-worker-fleet-prod:")[0];
-    const fleet = workflow.split("  deploy-worker-fleet-prod:")[1];
+      .split("  deploy-metal-canary-prod:")[1]
+      ?.split("\n  deploy-metal-fleet-prod:")[0];
+    const fleet = workflow.split("  deploy-metal-fleet-prod:")[1];
 
     expect(canary).toBeDefined();
     expect(canary).toContain("./playbooks/lib/runner/deploy.sh");
     expect(canary).toContain("./playbooks/lib/runner/verify.sh");
     expect(fleet).toBeDefined();
-    expect(fleet).toContain("needs: deploy-worker-canary-prod");
+    expect(fleet).toContain("needs: deploy-metal-canary-prod");
     expect(fleet).toContain("environment: production-fleet");
-    expect(fleet).toContain('for worker in "${workers[@]}"; do');
+    expect(fleet).toContain('for runner in "${runners[@]}"; do');
     expect(fleet).toContain("./playbooks/lib/runner/deploy.sh");
     expect(fleet).toContain("./playbooks/lib/runner/verify.sh");
   });

@@ -9,7 +9,7 @@ on:
 
 jobs:
   # ── 4. Wait for Fly DEV to go green (via Cloudflare Tunnel) ─────────────
-  verify-dev:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: 1password/load-secrets-action@v5

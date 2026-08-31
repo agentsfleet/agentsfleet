@@ -1,25 +1,25 @@
 name: deploy (dev)
 
-# A clean rebuild runs twice: first with DEV_WORKER_READY=false for the control
+# A clean rebuild runs twice: first with DEV_RUNNER_READY=false for the control
 # plane, then with it true after the runner bootstrap.
 #
 # This file is the job graph only. Each stage's jobs live in a called
 # workflow (deploy-dev-*.yml) so every file stays within the repository's
 # 350-line bound and a stage can be read and reviewed on its own:
-#   deploy-dev-build.yml       compile-dev + push-dev
-#   deploy-dev-fly.yml         deploy-fly-dev
-#   deploy-dev-worker.yml      deploy-worker-dev (+ result output)
-#   deploy-dev-verify.yml      verify-dev
-#   deploy-dev-acceptance.yml  qa-dev + acceptance-e2e-dev + cli-acceptance-dev
+#   deploy-dev-build.yml       compile-runner + push-ghcr
+#   deploy-dev-fly.yml         deploy-fly
+#   deploy-dev-metal.yml      deploy-metal (+ result output)
+#   deploy-dev-verify.yml      verify
+#   deploy-dev-acceptance.yml  qa + acceptance-e2e + acceptance-cli
 #                              (+ per-gate result outputs)
 # Invariants preserved from the single-file shape: the credential gate blocks
-# everything; worker and Fly always ship together (worker needs build, so a
+# everything; metal and Fly always ship together (metal needs build, so a
 # failed image push updates neither); verify waits only on Fly; the release
-# gates wait on the worker too, because they grade the runner it deploys; the
+# gates wait on metal too, because they grade the runner it deploys; the
 # verdict
 # keeps per-gate granularity and treats a skipped or cancelled release gate as
-# red, with deploy-worker-dev allowed its documented DEV_WORKER_READY skip.
-# Worker additionally needs Fly — see the note on the worker job for why its
+# red, with deploy-metal allowed its documented DEV_RUNNER_READY skip.
+# Metal additionally needs Fly — see the note on the metal job for why its
 # own readiness gate cannot run while the API is still cycling.
 
 # AUTOMATIC ON MERGE, and manual as well.
@@ -28,18 +28,13 @@ name: deploy (dev)
 # the daemon this lane deployed was the FROZEN Zig revision, and rebuilding a
 # codebase being replaced on every merge bought nothing. That commit named the
 # condition for its return — "Deploying the Rust daemon is M181's job" — and
-# `daemon-dev` now does exactly that: `cargo build --profile dist --bin
+# `compile-daemon` now does exactly that: `cargo build --profile dist --bin
 # agentsfleetd`, published as `agentsfleetd-rs-linux-amd64`. The premise is
 # spent, so the trigger comes back.
 #
 # `workflow_dispatch` stays beside it, unchanged and load-bearing: redeploying
 # an older digest by hand is the rollback path, and `The one-move rollback` in
 # playbooks/operations/cutover/001_playbook.md is written against it.
-#
-# `test_daemon_deploy_ships_the_rust_daemon` (renamed from
-# `test_daemon_deploy_retired`, whose premise this change spends) guards the
-# pairing rather than banning the trigger: an automatic deploy is allowed only
-# while the daemon it ships is the Rust one.
 on:
   push:
     branches:
@@ -82,20 +77,20 @@ jobs:
     uses: ./.github/workflows/deploy-dev-fly.yml
     secrets: inherit
 
-  # ── 3. Deploy development worker via Tailscale Secure Shell (SSH) ───────
-  # needs build so the bare-metal worker and Fly.io API always move together:
-  # if the Docker push fails the worker binary is not updated either, keeping
+  # ── 3. Deploy the development runner to bare metal via Tailscale SSH ────
+  # needs build so the bare-metal runner and Fly.io API always move together:
+  # if the Docker push fails the runner binary is not updated either, keeping
   # the development environment consistent.
   #
   # needs fly because this lane does not stop at deploying: its own gate
   # (`playbooks/lib/runner/verify.sh`, verify_control_plane) curls the API's
   # /readyz *from the runner host*. Run alongside fly and that curl lands
-  # mid-cycle and answers 502, failing a worker that deployed fine. The
+  # mid-cycle and answers 502, failing a runner that deployed fine. The
   # production lane already orders it this way — release.yml's
-  # deploy-worker-canary-prod needs deploy-fly-prod.
-  worker:
+  # deploy-metal-canary-prod needs deploy-fly-prod.
+  metal:
     needs: [build, fly]
-    uses: ./.github/workflows/deploy-dev-worker.yml
+    uses: ./.github/workflows/deploy-dev-metal.yml
     secrets: inherit
 
   # ── 4. Wait for the Fly development environment to go green ─────────────
@@ -105,61 +100,78 @@ jobs:
     secrets: inherit
 
   # ── 5. Release gates: quality assurance (QA) smoke + acceptance suites ──
-  # Waits on WORKER as well as verify. The acceptance suites steer real fleets,
+  # Waits on METAL as well as verify. The acceptance suites steer real fleets,
   # so they measure the bare-metal runner's behaviour, not just the API's — and
-  # `worker` is a parallel branch of the graph. Ordering was previously left to
-  # luck: on the run that surfaced this, the worker deploy finished ten seconds
+  # `metal` is a parallel branch of the graph. Ordering was previously left to
+  # luck: on the run that surfaced this, the runner deploy finished ten seconds
   # before the suites started. A slower deploy and the suites grade the PREVIOUS
   # runner, reporting a fixed fault as still broken (or a broken one as fixed).
-  # A documented `DEV_WORKER_READY=false` skip still lets this run: the called
+  # A documented `DEV_RUNNER_READY=false` skip still lets this run: the called
   # workflow's `result` job is `if: always()`, so a skipped deploy concludes
-  # success. A FAILED worker deploy skips these gates, which the verdict below
+  # success. A FAILED runner deploy skips these gates, which the verdict below
   # already reads as red — the honest reading, since nothing was measured.
   acceptance:
-    needs: [verify, worker]
+    needs: [verify, metal]
     uses: ./.github/workflows/deploy-dev-acceptance.yml
     secrets: inherit
 
   # ── 6. Discord notify ────────────────────────────────────────────────────
   notify:
     runs-on: ubuntu-latest
-    needs: [acceptance, worker]
+    needs: [build, fly, acceptance, metal]
     if: always()
     steps:
       - uses: actions/checkout@v7
 
-      # One verdict, every gate. Green requires qa-dev, acceptance-e2e-dev,
-      # and cli-acceptance-dev to be "success". A skipped or canceled
-      # release-critical job is red, with deploy-worker-dev allowed its
-      # documented DEV_WORKER_READY skip. Results arrive as called-workflow
+      # One verdict, every gate. Green requires qa, acceptance-e2e,
+      # and acceptance-cli to be "success". A skipped or canceled
+      # release-critical job is red, with deploy-metal allowed its
+      # documented DEV_RUNNER_READY skip. Results arrive as called-workflow
       # outputs; an upstream failure that skipped a whole stage leaves an
       # output empty, which the verdict reads as skipped — still red.
+      #
+      # The build and Fly stages are REPORTED but not re-judged. They already
+      # decide the verdict transitively: nothing downstream can pass if the
+      # image never pushed or Fly never went green, so the acceptance outputs
+      # come back empty and the verdict is red on their account. What was
+      # missing was WHICH stage broke — a build failure read as four bare
+      # skips and sent the reader to the run log to find out why. These lines
+      # answer that in the message itself; they deliberately do not change
+      # what counts as green.
       - name: Compose release verdict
         id: verdict
         env:
+          RUNNER_BUILD: ${{ needs.build.outputs.runner }}
+          DAEMON_BUILD: ${{ needs.build.outputs.daemon }}
+          GHCR_RESULT: ${{ needs.build.outputs.ghcr }}
+          FLY_RESULT: ${{ needs.fly.outputs.result }}
           QA_RESULT: ${{ needs.acceptance.outputs.qa }}
           ACCEPTANCE_RESULT: ${{ needs.acceptance.outputs.acceptance }}
           CLI_RESULT: ${{ needs.acceptance.outputs.cli }}
-          WORKER_RESULT: ${{ needs.worker.outputs.result }}
+          METAL_RESULT: ${{ needs.metal.outputs.result }}
           REF_NAME: ${{ github.ref_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           SHORT_SHA="${GITHUB_SHA:0:7}"
+          RUNNER_BUILD="${RUNNER_BUILD:-skipped}"
+          DAEMON_BUILD="${DAEMON_BUILD:-skipped}"
+          GHCR_RESULT="${GHCR_RESULT:-skipped}"
+          FLY_RESULT="${FLY_RESULT:-skipped}"
           QA_RESULT="${QA_RESULT:-skipped}"
           ACCEPTANCE_RESULT="${ACCEPTANCE_RESULT:-skipped}"
           CLI_RESULT="${CLI_RESULT:-skipped}"
-          WORKER_RESULT="${WORKER_RESULT:-skipped}"
-          for entry in "qa-dev=$QA_RESULT" "acceptance-e2e-dev=$ACCEPTANCE_RESULT" "cli-acceptance-dev=$CLI_RESULT" "deploy-worker-dev=$WORKER_RESULT"; do
+          METAL_RESULT="${METAL_RESULT:-skipped}"
+          for entry in "compile-runner=$RUNNER_BUILD" "compile-daemon=$DAEMON_BUILD" "push-ghcr=$GHCR_RESULT" "deploy-fly=$FLY_RESULT" "qa=$QA_RESULT" "acceptance-e2e=$ACCEPTANCE_RESULT" "acceptance-cli=$CLI_RESULT" "deploy-metal=$METAL_RESULT"; do
             echo "dev_release_acceptance_summary job=${entry%%=*} result=${entry#*=} commit=$SHORT_SHA"
           done
 
           if [ "$QA_RESULT" = success ] && [ "$ACCEPTANCE_RESULT" = success ] && [ "$CLI_RESULT" = success ] \
-            && { [ "$WORKER_RESULT" = success ] || [ "$WORKER_RESULT" = skipped ]; }; then
+            && { [ "$METAL_RESULT" = success ] || [ "$METAL_RESULT" = skipped ]; }; then
             STATUS=success
-            MESSAGE="✅ DEV deploy green — \`$REF_NAME\` @ \`$SHORT_SHA\`\\nQA: passed | acceptance-e2e: passed | cli-acceptance: passed | worker: ${WORKER_RESULT}\\n→ ready for tag release"
+            MESSAGE="✅ DEV deploy green — \`$REF_NAME\` @ \`$SHORT_SHA\`\\nQA: passed | acceptance-e2e: passed | acceptance-cli: passed | metal: ${METAL_RESULT}\\n→ ready for tag release"
           else
             STATUS=failure
-            MESSAGE="❌ DEV deploy not releasable — \`$REF_NAME\` @ \`$SHORT_SHA\`\\nQA: ${QA_RESULT} | acceptance-e2e: ${ACCEPTANCE_RESULT} | cli-acceptance: ${CLI_RESULT} | worker: ${WORKER_RESULT}\\nCheck: ${RUN_URL}"
+            MESSAGE="❌ DEV deploy not releasable — \`$REF_NAME\` @ \`$SHORT_SHA\`\\nbuild: runner ${RUNNER_BUILD} | daemon ${DAEMON_BUILD} | ghcr ${GHCR_RESULT} | fly ${FLY_RESULT}\\nQA: ${QA_RESULT} | acceptance-e2e: ${ACCEPTANCE_RESULT} | acceptance-cli: ${CLI_RESULT} | metal: ${METAL_RESULT}\\nCheck: ${RUN_URL}"
           fi
 
           echo "status=$STATUS" >>"$GITHUB_OUTPUT"

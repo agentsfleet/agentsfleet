@@ -672,10 +672,10 @@ jobs:
           curl -sf https://api.agentsfleet.net/readyz | jq -e '.ready == true'
 
   # ── 7. Deploy: canary runner (first host) ────────────────────────────────
-  deploy-worker-canary-prod:
+  deploy-metal-canary-prod:
     runs-on: ubuntu-latest
     needs: deploy-fly-prod
-    if: vars.PROD_WORKER_READY == 'true'
+    if: vars.PROD_RUNNER_READY == 'true'
     permissions:
       contents: read
     steps:
@@ -702,7 +702,7 @@ jobs:
         id: canary
         run: |
           vault_key="$(
-            printf '%s' "$PROD_WORKER_HOSTS" |
+            printf '%s' "$PROD_RUNNER_HOSTS" |
               jq -er '
                 select(type == "array" and length > 0)
                 | .[0].vault_key
@@ -711,7 +711,7 @@ jobs:
           )"
           echo "vault_key=$vault_key" >> "$GITHUB_OUTPUT"
         env:
-          PROD_WORKER_HOSTS: ${{ vars.PROD_WORKER_HOSTS }}
+          PROD_RUNNER_HOSTS: ${{ vars.PROD_RUNNER_HOSTS }}
 
       - name: Join Tailscale network
         uses: tailscale/github-action@v4
@@ -731,13 +731,13 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           VAULT_PROD: ${{ vars.VAULT_PROD }}
-          WORKER_ITEM: ${{ steps.canary.outputs.vault_key }}
+          RUNNER_ITEM: ${{ steps.canary.outputs.vault_key }}
           ALLOW_VAULT_READS: "1"
 
   # ── 8. Deploy: remaining fleet (with approval gate) ─────────────────────
-  deploy-worker-fleet-prod:
+  deploy-metal-fleet-prod:
     runs-on: ubuntu-latest
-    needs: deploy-worker-canary-prod
+    needs: deploy-metal-canary-prod
     environment: production-fleet
     permissions:
       contents: read
@@ -771,30 +771,30 @@ jobs:
       - name: Deploy remaining fleet sequentially
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          PROD_WORKER_HOSTS: ${{ vars.PROD_WORKER_HOSTS }}
+          PROD_RUNNER_HOSTS: ${{ vars.PROD_RUNNER_HOSTS }}
           VAULT_PROD: ${{ vars.VAULT_PROD }}
           ALLOW_VAULT_READS: "1"
         run: |
-          printf '%s' "$PROD_WORKER_HOSTS" | jq -e '
+          printf '%s' "$PROD_RUNNER_HOSTS" | jq -e '
             type == "array" and
             length > 0 and
             all(.[].vault_key;
               type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$"))
           ' >/dev/null
-          mapfile -t workers < <(
-            printf '%s' "$PROD_WORKER_HOSTS" |
+          mapfile -t runners < <(
+            printf '%s' "$PROD_RUNNER_HOSTS" |
               jq -r '.[1:][] | .vault_key'
           )
 
-          for worker in "${workers[@]}"; do
-            echo "Deploying $worker"
+          for runner in "${runners[@]}"; do
+            echo "Deploying $runner"
             ENV=prod \
-            WORKER_ITEM="$worker" \
+            RUNNER_ITEM="$runner" \
             RUNNER_BINARY=dist/agentsfleet-runner-linux-amd64 \
             RUNNER_VERSION="${GITHUB_REF#refs/tags/}" \
               ./playbooks/lib/runner/deploy.sh
             ENV=prod \
-            WORKER_ITEM="$worker" \
+            RUNNER_ITEM="$runner" \
               ./playbooks/lib/runner/verify.sh
           done
 
@@ -808,8 +808,8 @@ jobs:
       - npm
       - create-release
       - deploy-fly-prod
-      - deploy-worker-canary-prod
-      - deploy-worker-fleet-prod
+      - deploy-metal-canary-prod
+      - deploy-metal-fleet-prod
     if: always()
     steps:
       - uses: actions/checkout@v7
@@ -820,14 +820,14 @@ jobs:
           NPM_RESULT: ${{ needs.npm.result }}
           RELEASE_RESULT: ${{ needs.create-release.result }}
           FLY_RESULT: ${{ needs.deploy-fly-prod.result }}
-          CANARY_RESULT: ${{ needs.deploy-worker-canary-prod.result }}
-          FLEET_RESULT: ${{ needs.deploy-worker-fleet-prod.result }}
+          CANARY_RESULT: ${{ needs.deploy-metal-canary-prod.result }}
+          FLEET_RESULT: ${{ needs.deploy-metal-fleet-prod.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           LINE="npm: ${NPM_RESULT} | release: ${RELEASE_RESULT} | fly: ${FLY_RESULT} | canary: ${CANARY_RESULT} | fleet: ${FLEET_RESULT}"
 
-          # A skipped worker stage is allowed — PROD_WORKER_READY gates it, and
+          # A skipped metal stage is allowed — PROD_RUNNER_READY gates it, and
           # the fleet stage waits on a human approval that may not have landed.
           ok=1
           for r in "$NPM_RESULT" "$RELEASE_RESULT" "$FLY_RESULT"; do
